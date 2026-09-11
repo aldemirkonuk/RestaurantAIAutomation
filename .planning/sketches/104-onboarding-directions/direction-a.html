@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>104 A &middot; First evidence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  color-scheme:dark;
+}
+:root{--serif:"Fraunces",Georgia,serif;--sans:"DM Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}
+
+/* motion, named from the house tokens */
+:root{
+  --settle:320ms cubic-bezier(.16,1,.3,1);
+  --ink:160ms ease;
+  --tuck:300ms cubic-bezier(.2,1.2,.3,1);
+  --turn:420ms cubic-bezier(.32,.72,0,1);
+  --pour:620ms linear;
+  --stamp:360ms cubic-bezier(.34,1.56,.64,1);
+  --tally:840ms cubic-bezier(.2,.8,.2,1);
+}
+@media (prefers-reduced-motion: reduce){
+  :root{--settle:0ms;--ink:0ms;--tuck:0ms;--turn:0ms;--pour:0ms;--stamp:0ms;--tally:0ms}
+  *{transition:none !important;animation:none !important}
+}
+
+*{box-sizing:border-box}
+html{background:var(--paper-0)}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px;line-height:1.5}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px;display:flex;justify-content:space-between;align-items:center}
+.ground{display:flex;gap:10px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase}
+.ground button{background:transparent;border:0;color:var(--paper-0);opacity:.55;font:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer;padding:2px 0;border-bottom:1px solid transparent}
+.ground button[aria-pressed="true"]{opacity:1;border-bottom-color:var(--paper-0)}
+.wrap{max-width:1400px;margin:0 auto;padding:22px 20px 90px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:14px;letter-spacing:.03em}
+.wordmark .dot{color:var(--seal)}
+h1{font-family:var(--serif);font-size:34px;font-weight:600;letter-spacing:-.018em;line-height:1.08;margin:6px 0 0}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:8px 0 0;max-width:960px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:18px 0 0}
+.eyebrow{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.eyebrow.seal{color:var(--seal-deep)}
+p{color:var(--ink-2);margin:6px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code,.mono{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.02em}
+.note{font-family:var(--mono);font-size:10px;line-height:1.7;color:var(--ink-3);letter-spacing:.02em}
+.note b{color:var(--ink-2)}
+
+/* the flow strip */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);margin:16px 0 0;border:1px solid var(--paper-2);background:var(--paper-1)}
+.flow .st{padding:12px 16px;border-right:1px solid var(--paper-2)}
+.flow .st:last-child{border-right:0}
+.flow .n{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.flow .t{font-weight:600;color:var(--ink-1);margin-top:3px}
+.flow .c{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);margin-top:3px}
+.flow .st.evid{background:var(--seal-tint);border-left:2px solid var(--seal)}
+
+/* screens */
+.sec{margin:40px 0 0}
+.sec-h{display:flex;align-items:baseline;gap:12px}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+.screen{border:1px solid var(--ink-1);background:var(--paper-0);position:relative}
+.screen .cap{position:absolute;top:-9px;left:14px;background:var(--paper-0);padding:0 6px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.app-h{display:flex;justify-content:space-between;align-items:center;padding:16px 28px;border-bottom:1px solid var(--paper-2)}
+.app-h .right{font-size:12px;color:var(--ink-3)}
+.app-h .right a{color:var(--ink-2);text-decoration:none;margin-left:16px;border-bottom:1px solid var(--paper-2)}
+.title{font-family:var(--serif);font-size:27px;font-weight:600;letter-spacing:-.014em;color:var(--ink-1);line-height:1.15}
+.ask{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin-top:6px}
+
+/* forms */
+.field{margin-top:12px}
+.field label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:4px}
+.in{border:1px solid var(--paper-2);background:var(--paper-1);color:var(--ink-1);font-family:var(--sans);font-size:14px;padding:10px 12px;border-radius:2px;width:100%}
+.in.mono{font-family:var(--mono);font-size:20px;letter-spacing:.28em;text-align:center;color:var(--ink-1)}
+.in:focus{outline:2px solid var(--seal-ring);outline-offset:1px}
+.help{font-size:11.5px;color:var(--ink-3);margin-top:4px}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--seal);background:var(--seal);color:var(--paper-0);font-family:var(--sans);font-size:13px;font-weight:600;padding:11px 18px;border-radius:2px;cursor:pointer;transition:background var(--ink),color var(--ink)}
+.btn.dry{background:transparent;color:var(--seal-deep)}
+.btn.plain{border-color:var(--paper-2);background:transparent;color:var(--ink-2);font-weight:500}
+.btn.off{border-color:var(--paper-2);background:var(--paper-1);color:var(--ink-3);cursor:default}
+.btn:focus-visible{outline:2px solid var(--seal-ring);outline-offset:2px}
+.link{color:var(--seal-deep);text-decoration:none;border-bottom:1px solid var(--seal-ring);font-weight:500}
+
+/* screen 1: two paths */
+.paths{display:grid;grid-template-columns:1fr 1px 1fr;gap:0}
+.path{padding:26px 32px 28px}
+.vr{background:var(--paper-2)}
+.resolved{margin-top:14px;border:1px solid var(--paper-2);border-left:2px solid var(--seal);background:var(--seal-tint);padding:12px 14px}
+.resolved .who{font-family:var(--serif);font-size:16px;color:var(--ink-1)}
+.resolved .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:4px}
+.notasked{margin-top:16px;border-top:1px solid var(--paper-2);padding-top:12px}
+.notasked li{color:var(--ink-3);font-size:12px;margin-top:3px}
+.notasked li b{color:var(--ink-2);font-weight:500}
+
+/* screen 2: verify */
+.verify{display:grid;grid-template-columns:1.1fr 1fr;gap:32px;padding:30px 32px 32px;align-items:center}
+.mail{border:1px solid var(--paper-2);background:var(--paper-1);padding:16px 18px}
+.mail .from{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase}
+.mail .subj{font-weight:600;color:var(--ink-1);margin-top:6px}
+.mail .body{color:var(--ink-2);margin-top:8px;font-size:12.5px}
+.mail .body .lnk{display:inline-block;margin-top:10px;border:1px solid var(--seal);color:var(--seal-deep);padding:7px 12px;font-weight:600;border-radius:2px}
+
+/* screen 3: the door */
+.door{display:grid;grid-template-columns:1fr 390px;gap:28px;align-items:start}
+.door-main{padding:30px 32px 32px}
+.choices{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-top:18px}
+.choice{border:1px solid var(--paper-2);background:var(--paper-1);padding:18px 20px;border-radius:2px;transition:border-color var(--ink)}
+.choice.first{border-color:var(--seal);border-width:1px;box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.choice .h{font-family:var(--serif);font-size:18px;font-weight:600;color:var(--ink-1)}
+.choice .s{color:var(--ink-2);margin-top:6px;font-size:12.5px}
+.choice .r{margin-top:12px}
+.ico{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
+.phone{width:390px;border:1px solid var(--ink-1);border-radius:26px;overflow:hidden;background:var(--paper-0);position:relative}
+.phone .cap{left:18px}
+.ph-h{padding:14px 18px 10px;display:flex;justify-content:space-between;align-items:baseline}
+.ph-h .t{font-family:var(--serif);font-size:19px;font-weight:600;letter-spacing:-.01em}
+.finder{margin:0 14px;border:1px solid var(--paper-2);background:var(--paper-1);height:330px;position:relative;overflow:hidden}
+.finder .corner{position:absolute;width:26px;height:26px;border:2px solid var(--seal);border-radius:2px}
+.finder .c1{top:14px;left:14px;border-right:0;border-bottom:0}
+.finder .c2{top:14px;right:14px;border-left:0;border-bottom:0}
+.finder .c3{bottom:14px;left:14px;border-right:0;border-top:0}
+.finder .c4{bottom:14px;right:14px;border-left:0;border-top:0}
+.sheet{position:absolute;left:40px;right:40px;top:34px;bottom:34px;background:var(--paper-0);border:1px solid var(--paper-2);padding:16px 14px;transform:rotate(-1.5deg)}
+.sheet .l{height:6px;background:var(--paper-2);margin-top:8px;border-radius:1px}
+.sheet .l.s{width:55%}
+.sheet .l.m{width:80%}
+.sheet .l.t{width:40%;background:var(--ink-3);opacity:.5}
+.ph-f{padding:14px 18px 18px}
+.ph-f .btn{width:100%;justify-content:center;padding:14px}
+.ph-f .help{text-align:center;margin-top:8px}
+.ph-read{padding:0 18px 18px}
+.ph-line{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--paper-2);font-size:12px}
+.ph-line .q{font-family:var(--mono);font-size:11px;color:var(--ink-2);white-space:nowrap}
+
+/* screen 4: the paper and the registers it answered */
+.read{display:grid;grid-template-columns:400px 1fr;gap:0}
+.paper{border-right:1px solid var(--paper-2);padding:22px 24px;background:var(--paper-1)}
+.paper .photo{border:1px solid var(--paper-2);background:var(--paper-0);padding:18px 16px;transform:rotate(-.6deg);font-family:var(--mono);font-size:10px;color:var(--ink-3);line-height:1.7}
+.paper .photo .v{color:var(--ink-1);font-weight:600}
+.paper .photo .row{display:flex;justify-content:space-between;gap:8px}
+.paper .photo .seen{border:1px solid var(--seal);color:var(--seal-deep);padding:0 3px;border-radius:2px}
+.doc{padding:22px 28px 26px}
+.doc-h{display:flex;justify-content:space-between;align-items:baseline;gap:16px}
+.doc-h .v{font-family:var(--serif);font-size:22px;font-weight:600;color:var(--ink-1)}
+.doc-h .m{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.06em;text-align:right}
+table{border-collapse:collapse;width:100%;margin-top:14px;font-size:12.5px}
+th{text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-weight:400;padding:0 10px 6px 0;border-bottom:1px solid var(--ink-1)}
+td{padding:8px 10px 8px 0;border-bottom:1px solid var(--paper-2);color:var(--ink-2);vertical-align:top}
+td.n,th.n{text-align:right;font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+td .rg{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+tr.sub td{border-bottom:1px solid var(--ink-1)}
+tr.tot td{border-bottom:3px double var(--ink-1);color:var(--ink-1);font-weight:600}
+tr.tot td.n{font-size:14px}
+.prov{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.04em}
+.inf{color:var(--ink-3);border-bottom:1px dashed var(--ink-3)}
+
+.regs{margin-top:22px;border-top:1px solid var(--ink-1)}
+.reg{display:grid;grid-template-columns:150px 1fr 300px 190px;gap:18px;padding:14px 0;border-bottom:1px solid var(--paper-2);align-items:start}
+.reg .nm{font-weight:600;color:var(--ink-1)}
+.reg .nm .r{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:3px;font-weight:400}
+.reg .said{font-size:12px;color:var(--ink-2)}
+.reg .said .q{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);display:block;margin-top:3px}
+.reg .val{font-size:13px}
+.reg .val .v{color:var(--ink-3);border-bottom:1px dashed var(--ink-3);transition:color var(--ink),border-color var(--ink)}
+.reg .val .p{display:block;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);margin-top:4px;letter-spacing:.03em}
+.reg.confirmed .val .v{color:var(--ink-1);border-bottom-color:transparent}
+.reg.skipped .val .v{color:var(--ink-3);border-bottom-color:transparent;font-style:italic}
+.reg .act{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.reg .act .btn{padding:8px 12px;font-size:12px}
+.reg .act .chg{display:none}
+.reg.confirmed .act .yes,.reg.confirmed .act .no,.reg.skipped .act .yes,.reg.skipped .act .no{display:none}
+.reg.confirmed .act .chg,.reg.skipped .act .chg{display:inline-flex}
+.reg .val{animation:settle var(--settle) both}
+@keyframes settle{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.audit{display:none;border:1px solid var(--paper-2);background:var(--paper-1);padding:12px 16px;margin:12px 0 0;font-family:var(--mono);font-size:10.5px;line-height:1.75;color:var(--ink-2)}
+.audit.on{display:block;animation:settle var(--settle) both}
+.audit .kk{color:var(--seal-deep)}
+.audit .vv{color:var(--ink-1)}
+.gap{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.03em;border-left:2px solid var(--ink-3);padding-left:8px;margin-top:6px;line-height:1.6}
+
+/* the popover specimen (320px, anchored, no dim, close is words) */
+.pop-anchor{position:relative}
+.pop{position:absolute;top:34px;left:0;width:320px;border:1px solid var(--ink-1);background:var(--paper-0);padding:14px 16px;z-index:2;box-shadow:0 12px 30px -18px var(--ink-1);animation:settle var(--settle) both}
+.pop .h{font-family:var(--serif);font-size:15px;font-weight:600;color:var(--ink-1)}
+.pop .opt{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--paper-2);font-size:12.5px;color:var(--ink-2)}
+.pop .opt .c{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.pop .opt.on{color:var(--ink-1);font-weight:600}
+.pop .close{margin-top:10px;display:flex;justify-content:space-between;align-items:center}
+.pop .close .btn{padding:7px 10px;font-size:12px}
+.pop .cap{position:static;padding:0;display:block;margin-bottom:6px}
+
+/* the seal */
+.commit{margin-top:22px;border-top:1px solid var(--ink-1);padding-top:18px;display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
+.commit .say{font-family:var(--serif);font-size:19px;font-weight:600;color:var(--ink-1);line-height:1.3}
+.commit .sub{color:var(--ink-2);margin-top:6px;font-size:12.5px;max-width:560px}
+.hold{position:relative;border:1px solid var(--seal);background:transparent;color:var(--seal-deep);font-family:var(--sans);font-weight:600;font-size:14px;padding:16px 18px;border-radius:2px;width:100%;text-align:left;cursor:pointer;overflow:hidden;user-select:none;-webkit-user-select:none}
+.hold .fill{position:absolute;inset:0;width:0;background:var(--seal);opacity:.16;transition:none}
+.hold.pouring .fill{width:100%;transition:width var(--pour)}
+.hold .lbl{position:relative;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.hold .lbl .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:400}
+.hold:focus-visible{outline:2px solid var(--seal-ring);outline-offset:2px}
+.hold.done{border-color:var(--paper-2);color:var(--ink-3);cursor:default}
+.hold.done .fill{width:0}
+.stamped{display:none;margin-top:14px;align-items:flex-start;gap:14px}
+.stamped.on{display:flex}
+.stamped svg{flex:none;animation:stamp var(--stamp) both}
+@keyframes stamp{from{transform:scale(1.5) rotate(-8deg);opacity:0}70%{transform:scale(.96) rotate(1deg);opacity:1}to{transform:none;opacity:1}}
+.stamped .rb{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-1);line-height:1.45}
+.stamped .rb .m{display:block;font-family:var(--mono);font-style:normal;font-size:9.5px;letter-spacing:.06em;color:var(--ink-3);margin-top:6px}
+.early{display:none;margin-top:8px;font-size:12px;color:var(--ink-3)}
+.early.on{display:block}
+.writes{margin-top:10px}
+.writes li{font-family:var(--mono);font-size:10px;color:var(--ink-3);line-height:1.7}
+.writes li b{color:var(--ink-2);font-weight:600}
+
+/* screen 5: the book */
+.book{display:grid;grid-template-columns:1.25fr 1fr;gap:0}
+.ledger{padding:24px 28px 26px;border-right:1px solid var(--paper-2)}
+.row1{border:1px solid var(--paper-2);background:var(--paper-1);padding:14px 16px;margin-top:12px;display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:baseline}
+.row1 .d{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.row1 .w{color:var(--ink-1);font-weight:600}
+.row1 .w small{display:block;font-weight:400;color:var(--ink-2);font-size:12px;margin-top:2px}
+.row1 .a{font-family:var(--mono);font-size:13px;color:var(--ink-1);border-bottom:3px double var(--ink-1);padding-bottom:2px;white-space:nowrap}
+.stock{margin-top:10px;font-size:12px;color:var(--ink-2)}
+.states{padding:24px 28px 26px}
+.state{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--paper-2);font-size:12.5px;align-items:baseline}
+.state .n{color:var(--ink-1);font-weight:500}
+.state .n small{display:block;font-weight:400;color:var(--ink-3);font-size:11px}
+.state .v{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);text-align:right;max-width:58%}
+.state .v.ink{color:var(--ink-1)}
+.state.ruled .v{border-bottom:3px double var(--ink-1);padding-bottom:2px}
+.open-q{margin-top:22px;border-top:1px solid var(--ink-1);padding-top:16px}
+.nine{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.pr{border:1px solid var(--paper-2);background:var(--paper-1);padding:9px 11px;font-size:12px;color:var(--ink-2);display:flex;justify-content:space-between;gap:8px}
+.pr .k{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase}
+.assist{margin-top:14px;border:1px solid var(--paper-2);padding:14px 16px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}
+.assist .h{font-family:var(--serif);font-size:16px;font-weight:600;color:var(--ink-1)}
+.assist .s{color:var(--ink-2);font-size:12.5px;margin-top:4px}
+
+/* two roads + cite */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.panel{border:1px solid var(--paper-2);background:var(--paper-1);padding:14px 16px}
+.panel .h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.panel .big{font-family:var(--serif);font-size:16px;font-weight:600;color:var(--ink-1);margin-top:6px;line-height:1.35}
+.panel p{font-size:12px;margin-top:6px}
+.cite{font-family:var(--mono);font-size:10px;line-height:1.85;color:var(--ink-3);margin-top:12px;word-break:break-word}
+.cite b{color:var(--ink-2);font-weight:600}
+</style>
+</head>
+<body class="mudavym" data-ground="paper">
+<div class="banner">
+  <span>Sketch 104 &middot; direction A &middot; first evidence &mdash; example data, not a tenant</span>
+  <span class="ground" role="group" aria-label="Ground">
+    <button type="button" data-g="paper" aria-pressed="true">Paper</button>
+    <button type="button" data-g="charcoal" aria-pressed="false">Charcoal</button>
+  </span>
+</div>
+<div class="wrap">
+
+<div class="wordmark">Mudavym<span class="dot">.</span></div>
+<h1>The arrival, A &mdash; the first row before the first setting<span style="color:var(--seal)">.</span></h1>
+<p class="lede">One photograph at the door becomes six lines, a vendor, a price and a currency. Every register is then read from what the paper said and confirmed in place. Nothing is asked that the paper already answered; what the paper did not answer stays open, and is never defaulted.</p>
+<div class="dbl"></div>
+
+<div class="flow">
+  <div class="st"><div class="n">1 &middot; /register</div><div class="t">Two doors, six fields</div><div class="c">no currency asked here</div></div>
+  <div class="st"><div class="n">2 &middot; /verify-email</div><div class="t">Open it on the phone</div><div class="c">the link signs the phone in</div></div>
+  <div class="st evid"><div class="n">3 &middot; the door</div><div class="t">Photograph the last invoice</div><div class="c">POST /procurement/documents</div></div>
+  <div class="st evid"><div class="n">4 &middot; what the paper answered</div><div class="t">Lines, vendor, price, currency</div><div class="c">registers confirmed in place &middot; one seal</div></div>
+  <div class="st"><div class="n">5 &middot; the book, opened</div><div class="t">One row, and what is still open</div><div class="c">the assistant takes the rest</div></div>
+</div>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<div class="sec">
+  <div class="sec-h"><span class="sec-n">Screen 1</span><h2>/register &mdash; two doors, and a shorter founding record</h2></div>
+  <div class="sec-k">Path B asks six things. The currency, the vendors, the registers, the thresholds are not on this page because the paper will answer them.</div>
+  <div class="screen"><span class="cap">1440 &middot; /register</span>
+    <div class="app-h"><span class="wordmark">Mudavym<span class="dot">.</span></span><span class="right">Already here? <a href="#">Sign in</a></span></div>
+    <div class="paths">
+      <div class="path">
+        <div class="eyebrow seal">Open a house</div>
+        <div class="title">Lokanta Meyhane</div>
+        <div class="ask">Six things, then the door.</div>
+        <div class="field"><label for="a1">Your name</label><input class="in" id="a1" value="Hasan Demir"></div>
+        <div class="field"><label for="a2">Email</label><input class="in" id="a2" value="hasan@lokantameyhane.example"></div>
+        <div class="field"><label for="a3">Password</label><input class="in" id="a3" type="password" value="passwordpassword"></div>
+        <div class="field"><label for="a4">The house</label><input class="in" id="a4" value="Lokanta Meyhane"></div>
+        <div class="field"><label for="a5">Address</label><input class="in" id="a5" value="Nevizade Sk. 12, Beyoğlu, İstanbul, Türkiye"><div class="help">Chosen from the list, so the house has a point on the map. A typed address stores no point rather than a guess.</div></div>
+        <div style="margin-top:16px"><span class="btn">Open the house</span></div>
+        <div class="notasked">
+          <div class="eyebrow">Not asked here, on purpose</div>
+          <ul style="padding-left:16px;margin:6px 0 0">
+            <li><b>Currency</b> &mdash; the invoice prints it. If the paper prints none, the address&rsquo;s country stands in, stated as a default.</li>
+            <li><b>Vendors and their terms</b> &mdash; the invoice names one and prints its payment terms.</li>
+            <li><b>What the house pours</b> &mdash; read from the lines the paper created, then confirmed.</li>
+            <li><b>Thresholds, notifications</b> &mdash; offered after the first row, never before it.</li>
+          </ul>
+        </div>
+        <div class="note" style="margin-top:12px">writes &rarr; POST /auth/register/restaurant (auth.controller.ts:390; register-restaurant.dto.ts:13-16). currency omitted &rarr; the row stays NULL &mdash; the path Register.tsx:985-990 already sends when nobody answered.</div>
+      </div>
+      <div class="vr"></div>
+      <div class="path">
+        <div class="eyebrow seal">Join a house</div>
+        <div class="title">You were expected</div>
+        <div class="ask">The code says which house and who is waiting, before the account exists.</div>
+        <div class="field"><label for="b1">Invite code</label><input class="in mono" id="b1" value="K7M2P9QX" maxlength="8"></div>
+        <div class="resolved">
+          <div class="who">Hasan is expecting you at Lokanta Meyhane, İstanbul &mdash; as a manager.</div>
+          <div class="k">resolved by GET /auth/invite/:code &middot; restaurant &middot; city &middot; inviter &middot; role</div>
+        </div>
+        <div class="field"><label for="b2">Your name</label><input class="in" id="b2" value="Defne Aksoy"></div>
+        <div class="field"><label for="b3">Email</label><input class="in" id="b3" value="defne@lokantameyhane.example"></div>
+        <div class="field"><label for="b4">Password</label><input class="in" id="b4" type="password" value="passwordpassword"></div>
+        <div style="margin-top:16px"><span class="btn">Join Lokanta Meyhane</span></div>
+        <p style="font-size:12px;margin-top:14px">A joiner arrives inside the house&rsquo;s book, not at an empty one. If the book has no rows yet, a manager is handed the same door as the owner &mdash; the first row can be Defne&rsquo;s. Staff arrive to the read-only welcome that exists today.</p>
+        <div class="note" style="margin-top:12px">preview &rarr; GET /auth/invite/:code (auth.controller.ts:405; shape InviteLanding.tsx:11-20) &middot; join &rarr; POST /auth/join (auth.controller.ts:435; code, name, email) &middot; ?invite=CODE prefill Register.tsx:173-178 &middot; staff &rarr; StaffWelcome (GetStarted.tsx:234-236). Google sign-UP is not a route on this tree (oauth/google is sign-in, auth.controller.ts:113) and is not drawn as one.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<div class="sec">
+  <div class="sec-h"><span class="sec-n">Screen 2</span><h2>/verify-email &mdash; open it on the phone you will photograph with</h2></div>
+  <div class="sec-k">The verification link stores the session on whichever device opens it. So the email is the hand-off to the camera, and the screen says so.</div>
+  <div class="screen"><span class="cap">1440 &middot; /verify-email</span>
+    <div class="verify">
+      <div>
+        <div class="eyebrow seal">One more thing before the door</div>
+        <div class="title">We sent a link to hasan@lokantameyhane.example</div>
+        <div class="ask">Open it on the phone you will photograph with. The link signs that phone in, and the door is the next screen.</div>
+        <p style="margin-top:14px">Nothing waits behind this page but the camera. There is no list to import and no settings to walk through first &mdash; the house&rsquo;s first row is whatever paper came through the door last.</p>
+        <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><span class="btn dry">Send it again</span><span class="help">one per minute</span></div>
+        <div class="note" style="margin-top:14px">redeem &rarr; POST /auth/verify-email returns accessToken + refreshToken and the page stores them on the device that opened the link (VerifyEmail.tsx:31-37, auth.controller.ts:448) &middot; resend &rarr; POST /auth/resend-verification (:457; VerifyEmail.tsx:55-62). Today the redirect is /get-started (VerifyEmail.tsx:41-45); in this direction that page IS the door.</div>
+      </div>
+      <div class="mail">
+        <div class="from">from Mudavym &middot; to hasan@lokantameyhane.example</div>
+        <div class="subj">Lokanta Meyhane &mdash; confirm your email, then photograph one invoice</div>
+        <div class="body">Hasan, tap the link on your phone. It signs you in there, and the first thing you will see is a camera. Photograph the last invoice that came through the door &mdash; that is the whole set-up.<br><span class="lnk">Confirm and open the door</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<div class="sec">
+  <div class="sec-h"><span class="sec-n">Screen 3</span><h2>The door &mdash; photograph the last invoice</h2></div>
+  <div class="sec-k">/get-started becomes one question. The phone frame is the step a manager does standing up.</div>
+  <div class="door">
+    <div class="screen"><span class="cap">1440 &middot; /get-started &rarr; the door</span>
+      <div class="app-h"><span class="wordmark">Mudavym<span class="dot">.</span></span><span class="right">Lokanta Meyhane &middot; Hasan <a href="#">Go to the book</a></span></div>
+      <div class="door-main">
+        <div class="eyebrow seal">The first row</div>
+        <div class="title">Photograph the last invoice that came through the door</div>
+        <div class="ask">Not a list, not a form. One piece of paper the house already has, and it answers most of what we would otherwise ask.</div>
+        <div class="choices">
+          <div class="choice first">
+            <div class="h"><svg class="ico" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>&nbsp; An invoice or delivery note</div>
+            <div class="s">The lines become the house&rsquo;s first items, the header names the vendor, the total names the currency, the footer prints the payment terms. Six lines is the usual size.</div>
+            <div class="r"><span class="btn">Open the camera</span> <span class="btn plain">Upload a PDF or photo</span></div>
+            <div class="note" style="margin-top:10px">POST /procurement/documents, source &ldquo;photo&rdquo; &mdash; classifies, extracts lines, stores for review, writes no stock, cost or orders (documents.controller.ts:66-77, :436-443; documents.dto.ts:19,46-49). Duplicates dedupe per house (:439).</div>
+          </div>
+          <div class="choice">
+            <div class="h">The wine list, if no paper is in yet</div>
+            <div class="s">A menu photo seeds the items and the registers but names no vendor, no price and no currency. It is the second road, kept for a house whose first delivery has not arrived.</div>
+            <div class="r"><span class="btn dry">Photograph the list</span></div>
+            <div class="note" style="margin-top:10px">POST /menus/import, source &ldquo;scan&rdquo; (menus.controller.ts:36; menus.ts:75-83; MenuScanUpload.tsx:14-19) &mdash; the review screen that exists today follows.</div>
+          </div>
+        </div>
+        <p style="margin-top:16px;font-size:12px">A house that skips both is not silent about it: the offer is recorded as a fact (&ldquo;offered on 6 September, skipped&rdquo;), and the book opens empty with the door still on its first page.</p>
+      </div>
+    </div>
+    <div class="phone"><span class="cap">390 &middot; the door, standing up</span>
+      <div class="ph-h"><span class="t">The door<span style="color:var(--seal)">.</span></span><span class="mono">Defne &middot; 14:02</span></div>
+      <div class="finder">
+        <div class="corner c1"></div><div class="corner c2"></div><div class="corner c3"></div><div class="corner c4"></div>
+        <div class="sheet">
+          <div class="l t"></div><div class="l m"></div><div class="l s"></div>
+          <div style="height:8px"></div>
+          <div class="l"></div><div class="l"></div><div class="l"></div><div class="l"></div><div class="l"></div><div class="l"></div>
+          <div style="height:8px"></div>
+          <div class="l s"></div><div class="l t"></div>
+        </div>
+      </div>
+      <div class="ph-f">
+        <span class="btn">Photograph the invoice</span>
+        <div class="help">Hold the whole sheet inside the corners. Ten to twenty seconds to read.</div>
+      </div>
+      <div class="ph-read">
+        <div class="eyebrow">What was read &middot; 6 lines</div>
+        <div class="ph-line"><span>Öküzgözü 2022 &middot; 75 cl</span><span class="q">12 btl</span></div>
+        <div class="ph-line"><span>Narince 2023 &middot; 75 cl</span><span class="q">12 btl</span></div>
+        <div class="ph-line"><span>Kalecik Karası 2021 &middot; 75 cl</span><span class="q">6 btl</span></div>
+        <div class="ph-line"><span>Rakı &middot; 70 cl</span><span class="q">6 btl</span></div>
+        <div class="ph-line"><span>Pilsner &middot; 50 cl &middot; case of 24</span><span class="q">2 cs</span></div>
+        <div class="ph-line"><span>Soda &middot; 20 cl &middot; case of 24</span><span class="q">3 cs</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px"><span class="mono">Marmara İçecek &middot; 2 Sep</span><span class="mono" style="color:var(--ink-1);font-size:13px;border-bottom:3px double var(--ink-1)">₺23.976,00</span></div>
+        <div class="help" style="margin-top:10px;text-align:left">Wrong line? Tap it. Everything else is confirmed on a bigger screen, or here if you prefer &mdash; the seal is the same.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 4 ───────────────────────── -->
+<div class="sec">
+  <div class="sec-h"><span class="sec-n">Screen 4</span><h2>What the paper answered &mdash; and the one seal</h2></div>
+  <div class="sec-k">The photograph on the left; the canonical Mudavym document on the right; under it, every register the paper answered, grey until a person confirms it. Press and hold the seal to enter the row.</div>
+  <div class="screen"><span class="cap">1440 &middot; the reading</span>
+    <div class="read">
+      <div class="paper">
+        <div class="eyebrow">The paper &middot; photographed 6 Sep 14:02 by Defne</div>
+        <div class="photo" style="margin-top:12px">
+          <div class="v">MARMARA İÇECEK DAĞITIM A.Ş.</div>
+          <div>Fatura No: MID-2026-04417 &middot; 02.09.2026</div>
+          <div>Alıcı: Lokanta Meyhane, Beyoğlu</div>
+          <div style="height:8px"></div>
+          <div class="row"><span>Öküzgözü 2022 75cl</span><span>12 &times; 420,00</span></div>
+          <div class="row"><span>Narince 2023 75cl</span><span>12 &times; 365,00</span></div>
+          <div class="row"><span>Kalecik Karası 2021 75cl</span><span>6 &times; 510,00</span></div>
+          <div class="row"><span>Rakı 70cl</span><span>6 &times; 690,00</span></div>
+          <div class="row"><span>Pilsner 50cl KS(24)</span><span>2 &times; 1.320,00</span></div>
+          <div class="row"><span>Soda 20cl KS(24)</span><span>3 &times; 240,00</span></div>
+          <div style="height:8px"></div>
+          <div class="row"><span>Ara toplam</span><span>19.980,00</span></div>
+          <div class="row"><span>KDV %20</span><span>3.996,00</span></div>
+          <div class="row v"><span>GENEL TOPLAM</span><span><span class="seen">₺</span> 23.976,00</span></div>
+          <div style="height:8px"></div>
+          <div>Vade: 30 gün &middot; Teslim: 02.09.2026 Salı</div>
+        </div>
+        <div class="note" style="margin-top:12px">The reader transcribes the currency it SEES and where (&ldquo;₺ beside the grand total&rdquo;) and never infers one from the vendor&rsquo;s country (document-extractor.service.ts:105,115). The whole parse is kept as the paper&rsquo;s own reading in procurement_documents.extracted (document-intake.service.ts:309).</div>
+      </div>
+      <div class="doc">
+        <div class="doc-h">
+          <div><div class="eyebrow seal">Invoice &middot; read, not yet entered</div><div class="v"><span class="inf">Marmara İçecek Dağıtım A.Ş.</span></div><div class="prov" style="margin-top:4px">vendor name &middot; inferred from the header &middot; not yet in your book</div></div>
+          <div class="m">MID-2026-04417<br>2 September 2026<br>delivered 2 September, Tuesday</div>
+        </div>
+        <table>
+          <thead><tr><th style="width:36%">Line</th><th class="n">Qty</th><th class="n">Unit</th><th class="n">Line</th><th>Read as</th></tr></thead>
+          <tbody>
+            <tr><td>Öküzgözü 2022 &middot; 75 cl</td><td class="n">12 btl</td><td class="n">420,00</td><td class="n">5.040,00</td><td><span class="rg">wines</span></td></tr>
+            <tr><td>Narince 2023 &middot; 75 cl</td><td class="n">12 btl</td><td class="n">365,00</td><td class="n">4.380,00</td><td><span class="rg">wines</span></td></tr>
+            <tr><td>Kalecik Karası 2021 &middot; 75 cl</td><td class="n">6 btl</td><td class="n">510,00</td><td class="n">3.060,00</td><td><span class="rg">wines</span></td></tr>
+            <tr><td>Rakı &middot; 70 cl</td><td class="n">6 btl</td><td class="n">690,00</td><td class="n">4.140,00</td><td><span class="rg">spirits</span></td></tr>
+            <tr><td>Pilsner &middot; 50 cl &middot; case of 24</td><td class="n">2 cs &middot; 48 btl</td><td class="n">1.320,00</td><td class="n">2.640,00</td><td><span class="rg">beer</span></td></tr>
+            <tr><td>Soda &middot; 20 cl &middot; case of 24</td><td class="n">3 cs &middot; 72 btl</td><td class="n">240,00</td><td class="n">720,00</td><td><span class="rg">soft drinks</span></td></tr>
+            <tr class="sub"><td colspan="3" style="text-align:right;color:var(--ink-3)">Subtotal</td><td class="n">19.980,00</td><td></td></tr>
+            <tr><td colspan="3" style="text-align:right;color:var(--ink-3)">KDV 20% on 19.980,00</td><td class="n">3.996,00</td><td></td></tr>
+            <tr class="tot"><td colspan="3" style="text-align:right">Total &middot; <span class="inf" style="font-weight:400">TRY</span></td><td class="n"><span id="tally" data-to="23976">0,00</span></td><td></td></tr>
+          </tbody>
+        </table>
+        <div class="prov" style="margin-top:6px">the double rule: this account is ruled off when the seal lands, not before &middot; the money holds the paper&rsquo;s currency once the house confirms one (invoice-currency.ts rules 1-2)</div>
+
+        <div class="regs">
+          <div class="reg" data-reg="currency">
+            <div class="nm">Currency<span class="r">the house reports in</span></div>
+            <div class="said">The paper prints <b>₺</b> beside the grand total.<span class="q">currencySeen &middot; asPrinted &ldquo;₺&rdquo; &middot; where &ldquo;beside the grand total&rdquo;</span></div>
+            <div class="val pop-anchor"><span class="v">Record TRY as the house&rsquo;s currency</span><span class="p">inferred from MID-2026-04417 &middot; not yet confirmed</span>
+              <div class="pop" id="pop" hidden>
+                <span class="cap">Popover &middot; 320 &middot; anchored &middot; no dim</span>
+                <div class="h">Not TRY?</div>
+                <div class="opt on"><span>Turkish lira</span><span class="c">TRY &middot; on the paper</span></div>
+                <div class="opt"><span>Euro</span><span class="c">EUR</span></div>
+                <div class="opt"><span>US dollar</span><span class="c">USD</span></div>
+                <div class="opt"><span>Pound sterling</span><span class="c">GBP</span></div>
+                <div class="close"><span class="mono">each invoice keeps the currency its vendor billed in; nothing is converted</span><span class="btn plain" data-close="pop">Not now</span></div>
+              </div>
+            </div>
+            <div class="act"><span class="btn yes" data-do="confirm">Confirm</span><span class="btn plain" data-pop="pop">Change</span><span class="btn plain no" data-do="skip">Not now</span><span class="btn plain chg" data-do="reset">Undo</span></div>
+          </div>
+          <div class="note" style="padding:0 0 10px">writes &rarr; PUT /settings/currency, owner or manager, audited (settings.controller.ts:227; house-currency.service.ts rules 1-3) &middot; if the paper printed no currency: &ldquo;Defaulted from Türkiye. We will record TRY. Change it if that is wrong.&rdquo; (CurrencyStep.tsx:51-53) &middot; &ldquo;Not now&rdquo; records nothing and every money figure says &ldquo;currency not recorded&rdquo;.</div>
+
+          <div class="reg" data-reg="vendor">
+            <div class="nm">Vendor<span class="r">whom we buy from</span></div>
+            <div class="said">The header names <b>Marmara İçecek Dağıtım A.Ş.</b>, and the paper is in lira.<span class="q">vendorName from the reading &middot; no provider row matches it</span></div>
+            <div class="val"><span class="v">Add Marmara İçecek as a vendor; usually invoices in TRY</span><span class="p">name inferred from the header &middot; usual currency inferred from this one paper</span></div>
+            <div class="act"><span class="btn yes" data-do="confirm">Add the vendor</span><span class="btn plain no" data-do="skip">Not now</span><span class="btn plain chg" data-do="reset">Undo</span></div>
+          </div>
+          <div class="note" style="padding:0 0 10px">writes &rarr; POST /providers with the name pre-filled from the upload&rsquo;s returned parse (providers.controller.ts:201; documents.controller.ts:503-509) then PATCH /providers/:id/usual-currency (:282, managers and owners). <b>Gap:</b> nothing matches a paper&rsquo;s vendor name to a provider row; the name lives only in the extracted jsonb, so the person is the match.</div>
+
+          <div class="reg" data-reg="terms">
+            <div class="nm">Vendor terms<span class="r">Marmara İçecek</span></div>
+            <div class="said">The footer prints <b>&ldquo;Vade: 30 gün&rdquo;</b>. It says nothing about delivery days, lead time, cut-off or a minimum.<span class="q">one invoice is one sighting, not a pattern &mdash; a Tuesday delivery is not &ldquo;delivers Tuesdays&rdquo;</span></div>
+            <div class="val"><span class="v">Payment terms: Net 30 &mdash; typed by you, from the footer</span><span class="p">delivery days &middot; lead time &middot; cut-off &middot; minimum: not yet answered</span></div>
+            <div class="act"><span class="btn yes" data-do="confirm">Record Net 30</span><span class="btn plain no" data-do="skip">Not now</span><span class="btn plain chg" data-do="reset">Undo</span></div>
+          </div>
+          <div class="note" style="padding:0 0 10px">writes &rarr; PUT /vendor-terms/:providerId with paymentTerms only; the other four columns stay NULL, and NULL means nobody said (vendor-terms.controller.ts:71; vendor-terms.dto.ts:27-90). <b>Not built:</b> the reader&rsquo;s contract has no payment-terms field (document-extractor.service.ts:98-120), so this value is typed, not inferred, and its provenance says so.</div>
+
+          <div class="reg" data-reg="pours">
+            <div class="nm">What this house pours<span class="r">cellar registers</span></div>
+            <div class="said">Six lines name three wines, a rakı, a pilsner and a soda.<span class="q">read over the house items the paper creates &mdash; runs after the seal, not before it</span></div>
+            <div class="val"><span class="v">Carries wines, spirits, beer, soft drinks (so non-alcoholic too)</span><span class="p">whiskey &middot; cocktails: not yet answered &mdash; the paper did not say</span></div>
+            <div class="act"><span class="btn yes" data-do="confirm">Confirm</span><span class="btn plain">Edit</span><span class="btn plain no" data-do="skip">Confirm later</span><span class="btn plain chg" data-do="reset">Undo</span></div>
+          </div>
+          <div class="note" style="padding:0 0 10px">writes &rarr; PUT /cellar/:restaurantId/registers, source &ldquo;confirmed&rdquo; (cellar.controller.ts:115; cellar-registers.dto.ts:31-60). The inference reads inventory kinds and names, menu items and cocktails (cellar-registers.ts:332-343), never a document&rsquo;s lines &mdash; so it can only speak once the six lines are house items. A register with no rows behind it says &ldquo;not yet answered&rdquo;, never &ldquo;no&rdquo; (:372-378).</div>
+
+          <div class="reg" data-reg="threshold">
+            <div class="nm">Low-stock line<span class="r">one number to start</span></div>
+            <div class="said">The paper says how the house buys: by the dozen.<span class="q">offered, not inferred &mdash; the default is stated as a default</span></div>
+            <div class="val"><span class="v">Flag a wine below 6 bottles</span><span class="p">default &middot; nobody has said this yet &middot; tune per wine later</span></div>
+            <div class="act"><span class="btn yes" data-do="confirm">Keep 6</span><span class="btn plain no" data-do="skip">Not now</span><span class="btn plain chg" data-do="reset">Undo</span></div>
+          </div>
+          <div class="note" style="padding:0 0 10px">writes &rarr; PATCH /onboarding/threshold (menus.controller.ts:91-99). &ldquo;Not now&rdquo; today writes nothing (ThresholdStep.tsx:80-81); here it writes the skip row below. <b>Not built:</b> the skip writer (get-started.md:193; sketch 101 onboarding-step.html:235-245).</div>
+
+          <div class="audit" id="audit">
+INSERT INTO <span class="vv">public.system_audit_log</span> &nbsp;<span style="color:var(--ink-3)">-- not built: the skip writer of get-started.md &sect;13.7</span><br>
+&nbsp;&nbsp;<span class="kk">actor_id</span> &rarr; <span class="vv">public.users.user_id from the JWT</span><br>
+&nbsp;&nbsp;<span class="kk">action</span> &rarr; <span class="vv">'configuration_step_skipped'</span><br>
+&nbsp;&nbsp;<span class="kk">changes</span> &rarr; <span class="vv">{ register: '<span id="audit-reg">threshold</span>', offered: ['<span id="audit-off">threshold</span>'], answered: [], evidence: 'MID-2026-04417' }</span><br>
+&nbsp;&nbsp;<span class="kk">reason</span> &rarr; <span class="vv">'offered on 6 September at the first row, skipped'</span><br>
+<span style="color:var(--ink-3)">-- no setting is changed by this row. It records that the paper offered, and a person declined.</span>
+          </div>
+        </div>
+
+        <div class="commit">
+          <div>
+            <div class="say">Enter it in the book.</div>
+            <div class="sub">This is the one commitment of the arrival: the six lines become the house&rsquo;s first items, the paper becomes its first document, and the delivery it records becomes the first event. Everything above is a record and reverses in one click; this does not.</div>
+            <ul class="writes">
+              <li><b>items</b> &rarr; POST /inventory/:restaurantId/items/bulk, one line each, wineDraft resolved or created Provisional (inventory.controller.ts:77-83)</li>
+              <li><b>the paper</b> &rarr; POST /procurement/documents/:id/verify &mdash; &ldquo;the transcription is faithful&rdquo;; accepts no charge, moves no stock (documents.controller.ts:1136-1142)</li>
+              <li><b>the event</b> &rarr; POST /procurement/deliveries, no orderId &rarr; permanently UNORDERED, the invoice attached with its role (deliveries.controller.ts:80-99, :143-163)</li>
+              <li><b>stock</b> &rarr; on origin/main fed2b7ca the door count books provisional lots against the delivery when each line names its item (documents.controller.ts:307,415-429 there; deliveries.dto.ts:148-154); on this tree (5443a0b8) the same route books nothing. Both are said, neither is assumed.</li>
+            </ul>
+          </div>
+          <div>
+            <button type="button" class="hold" id="hold" aria-label="Press and hold to enter the row">
+              <span class="fill"></span>
+              <span class="lbl"><span>Hold to enter the row</span><span class="k">pour 620 ms</span></span>
+            </button>
+            <div class="early" id="early">Released early &mdash; nothing was entered.</div>
+            <div class="stamped" id="stamped">
+              <svg viewBox="0 0 100 100" width="48" height="48" style="color:var(--seal)" aria-hidden="true">
+                <path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/>
+                <g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)" fill="var(--paper-0)">
+                  <path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/>
+                </g>
+                <g fill="none" stroke="var(--paper-0)" stroke-linecap="square"><path d="M30 71h40" stroke-width="4.4"/><path d="M30 77h40" stroke-width="2.6"/></g>
+              </svg>
+              <div class="rb">Marmara İçecek, 2 September, six lines, ₺23.976,00. Entered by Defne on 6 September.<span class="m">document verified &middot; delivery UNORDERED &middot; 6 items created &middot; stock: booked provisionally on main, not on this tree &middot; cost: settles at VERIFIED</span></div>
+            </div>
+            <div class="note" style="margin-top:10px">The seal fires once; an early release enters nothing and says so (HoldToApprove semantics, ADR 0113). Price sighting: a class-A row is written only from a verified receipt that carries a currency (own-paper-sighting.ts:282-296) &mdash; the receiving screen sends none today, so this paper&rsquo;s prices reach the document lines and not the price register.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 5 ───────────────────────── -->
+<div class="sec">
+  <div class="sec-h"><span class="sec-n">Screen 5</span><h2>The book, opened &mdash; one row, and what is still open</h2></div>
+  <div class="sec-k">A checklist with state, never a percentage. Each register says how it was decided; each silence says whether it was a choice.</div>
+  <div class="screen"><span class="cap">1440 &middot; the book &middot; first page</span>
+    <div class="app-h"><span class="wordmark">Mudavym<span class="dot">.</span></span><span class="right">Lokanta Meyhane &middot; Defne <a href="#">Inventory</a><a href="#">Receipts</a><a href="#">Settings</a></span></div>
+    <div class="book">
+      <div class="ledger">
+        <div class="eyebrow seal">The ledger &middot; 1 row</div>
+        <div class="title" style="font-size:24px">The house&rsquo;s book begins on 2 September</div>
+        <div class="row1">
+          <span class="d">2 Sep</span>
+          <span class="w">Marmara İçecek Dağıtım &middot; invoice MID-2026-04417<small>6 lines &middot; 36 bottles and 5 cases &middot; entered 6 Sep by Defne &middot; unordered</small></span>
+          <span class="a">₺23.976,00</span>
+        </div>
+        <div class="stock">On the shelf: 36 bottles of wine and rakı, 48 pilsner, 72 soda &mdash; <b>provisionally</b>, with no cost yet. Cost posts when a person verifies the delivery. <span class="mono">(origin/main; on this tree the row exists and the shelf does not move)</span></div>
+        <div class="open-q">
+          <div class="eyebrow">What the paper did not answer</div>
+          <div class="assist">
+            <div>
+              <div class="h">Talk the rest through &mdash; by voice or by typing</div>
+              <div class="s">The assistant has read this paper. It can propose the four vendor terms the footer did not print, the two registers the lines did not name, and the quiet hours &mdash; each with a reason and where it came from &mdash; and one seal applies them item by item.</div>
+              <div class="gap">not built &mdash; would need config.propose_batch (ADR 0113 rule 5, :298-313); the seal in a first-party client is the only caller of apply. Drawn as an offer, not as a working control.</div>
+            </div>
+            <span class="btn off">Talk it through</span>
+          </div>
+          <div style="margin-top:16px" class="eyebrow">Notifications &middot; nine producers, defaults kept &middot; offered, not inferred</div>
+          <div class="nine">
+            <div class="pr"><span>Goal reached</span><span class="k">kept</span></div>
+            <div class="pr"><span>Ceiling held</span><span class="k">kept</span></div>
+            <div class="pr"><span>Delivery recorded</span><span class="k">kept</span></div>
+            <div class="pr"><span>Invoice confirmed</span><span class="k">kept</span></div>
+            <div class="pr"><span>Sale record</span><span class="k">kept</span></div>
+            <div class="pr"><span>Market price</span><span class="k">kept</span></div>
+            <div class="pr"><span>Added tool</span><span class="k">kept</span></div>
+            <div class="pr"><span>Grant suspended</span><span class="k">kept</span></div>
+            <div class="pr"><span>Experiment ended</span><span class="k">kept</span></div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:10px"><span class="btn dry">Change which ones ring</span><span class="btn plain">Keep the defaults</span><span class="help">&ldquo;Keep&rdquo; is recorded as offered on 6 September, kept &mdash; not as silence.</span></div>
+          <div class="note" style="margin-top:8px">writes &rarr; PATCH /notifications/preferences (notifications.controller.ts:237). <b>Gap:</b> the DTO holds five categories, quiet hours, low-stock and two modes (notifications.dto.ts:193-218, 251-300) &mdash; a switch per producer is not built, so the nine are offered and written as the categories they fall into.</div>
+        </div>
+      </div>
+      <div class="states">
+        <div class="eyebrow">Registers &middot; how each was decided</div>
+        <div class="state ruled"><span class="n">Currency</span><span class="v ink">TRY &middot; from MID-2026-04417 &middot; confirmed 6 Sep by Defne</span></div>
+        <div class="state ruled"><span class="n">Vendor<small>Marmara İçecek Dağıtım</small></span><span class="v ink">added 6 Sep &middot; usually TRY &middot; from this paper</span></div>
+        <div class="state"><span class="n">Payment terms</span><span class="v ink">Net 30 &middot; typed 6 Sep by Defne, from the footer</span></div>
+        <div class="state"><span class="n">Delivery days &middot; lead time &middot; cut-off &middot; minimum</span><span class="v">not yet answered &middot; the paper did not say</span></div>
+        <div class="state ruled"><span class="n">What we pour</span><span class="v ink">wines &middot; spirits &middot; beer &middot; soft drinks &middot; confirmed 6 Sep</span></div>
+        <div class="state"><span class="n">Whiskey &middot; cocktails</span><span class="v">not yet answered &middot; no rows to read</span></div>
+        <div class="state"><span class="n">Low-stock line</span><span class="v" id="st-threshold">offered 6 Sep &middot; skipped &middot; nothing changed</span></div>
+        <div class="state"><span class="n">Notifications</span><span class="v">defaults &middot; offered 6 Sep &middot; kept</span></div>
+        <div class="state"><span class="n">The assistant</span><span class="v">offered 6 Sep &middot; not built on this tree</span></div>
+        <div class="state"><span class="n">Google sign-up</span><span class="v">not a route &middot; not drawn</span></div>
+        <div class="note" style="margin-top:12px">Three silences, three sentences: &ldquo;confirmed by&rdquo;, &ldquo;offered and skipped&rdquo;, &ldquo;never asked&rdquo;. The double rule under a register means the house has ruled it off; a single rule means a subtotal &mdash; something is still open beneath it.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── roads not taken ───────────────────────── -->
+<div class="sec">
+  <div class="sec-h"><span class="sec-n">Inside A</span><h2>Two roads not taken</h2></div>
+  <div class="two">
+    <div class="panel">
+      <div class="h">Road 1 &middot; keep the currency question at /register</div>
+      <div class="big">Ask it twice: once from the address, once from the paper.</div>
+      <p>Safer for a house whose first invoice prints no currency. Rejected because it puts a setting before the evidence &mdash; the one thing this direction refuses &mdash; and because the paper&rsquo;s sighting is stronger evidence than a country table. The address stays as the stated fallback when the paper is mute.</p>
+    </div>
+    <div class="panel">
+      <div class="h">Road 2 &middot; a seal per register</div>
+      <div class="big">Six ceremonies instead of one.</div>
+      <p>Every confirmed value would carry its own wax. Rejected because the wax is rationed to the real commitment, and a currency, a vendor name and a threshold are records that reverse in one click. The row entering the book is the only thing here that does not.</p>
+    </div>
+  </div>
+</div>
+
+<div class="dbl" style="margin-top:32px"></div>
+<div class="cite">
+<b>Measured on this worktree</b> (feat/mudavym-new-pages, 5443a0b8) unless marked origin/main (fed2b7ca) &mdash;
+<code>apps/web/src/pages/Register.tsx:173-178,200-201,985-990,1017-1019,1276</code> &middot;
+<code>apps/web/src/pages/GetStarted.tsx:234-236,256-291</code> &middot;
+<code>apps/web/src/pages/VerifyEmail.tsx:31-45,55-62</code> &middot;
+<code>apps/web/src/pages/InviteLanding.tsx:11-20,39-41</code> &middot;
+<code>apps/web/src/components/onboarding/CurrencyStep.tsx:46-57</code> &middot;
+<code>apps/web/src/components/onboarding/CellarRegistersOnboarding.tsx:43-50,60-63</code> &middot;
+<code>apps/web/src/components/onboarding/ThresholdStep.tsx:80-81</code> &middot;
+<code>apps/web/src/components/onboarding/MenuScanUpload.tsx:14-19</code> &middot;
+<code>apps/web/src/services/api/menus.ts:75-83,132-136</code> &middot;
+<code>apps/api-gateway/src/auth/auth.controller.ts:113,390,405,435,448,457</code> &middot;
+<code>apps/api-gateway/src/procurement/documents/documents.controller.ts:66-77,436-443,503-509,1136-1142</code> (origin/main: <code>:307,415-429,483,788</code>) &middot;
+<code>apps/api-gateway/src/procurement/documents/dto/documents.dto.ts:19,46-49</code> &middot;
+<code>apps/api-gateway/src/procurement/documents/document-extractor.service.ts:98-120</code> &middot;
+<code>apps/api-gateway/src/procurement/documents/document-intake.service.ts:309</code> &middot;
+<code>apps/api-gateway/src/procurement/documents/invoice-currency.ts:1-30</code> &middot;
+<code>apps/api-gateway/src/procurement/deliveries.controller.ts:41-44,80-99,143-163,234-240</code> &middot;
+origin/main <code>apps/api-gateway/src/procurement/canonical/delivery-stock.service.ts:1-45</code>, <code>dto/deliveries.dto.ts:148-154</code> &middot;
+<code>apps/api-gateway/src/procurement/own-paper-sighting.ts:282-296</code> &middot;
+<code>apps/api-gateway/src/providers/providers.controller.ts:201,282</code> &middot;
+<code>apps/api-gateway/src/vendor-terms/vendor-terms.controller.ts:71</code>, <code>dto/vendor-terms.dto.ts:27-90</code> &middot;
+<code>apps/api-gateway/src/cellar/cellar.controller.ts:115</code>, <code>cellar-registers.ts:13-21,248,332-343,372-378</code>, <code>dto/cellar-registers.dto.ts:31-60</code> &middot;
+<code>apps/api-gateway/src/settings/settings.controller.ts:227</code>, <code>house-currency.service.ts:1-70</code> &middot;
+<code>apps/api-gateway/src/notifications/notifications.controller.ts:237</code>, <code>dto/notifications.dto.ts:193-218,251-300</code>, <code>producers/</code> (the nine) &middot;
+<code>apps/api-gateway/src/menus/menus.controller.ts:36,91-99</code> &middot;
+<code>apps/api-gateway/src/inventory/inventory.controller.ts:54-58,77-83</code>, <code>dto/inventory.dto.ts:32-35</code> &middot;
+<code>.planning/06-pages/get-started.md:193</code> &middot; <code>.planning/decisions/0113:298-313</code> &middot; <code>.planning/sketches/101-config-assistant/onboarding-step.html:235-245</code>.
+<br><br><b>Lokanta Meyhane, Marmara İçecek, Hasan, Defne, the lines and the figures are invented for the drawing. The repo facts are not.</b>
+</div>
+
+</div>
+
+<script>
+(function(){
+  var body=document.body;
+  var reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ground */
+  var gb=document.querySelectorAll('.ground button');
+  gb.forEach(function(b){b.addEventListener('click',function(){
+    body.setAttribute('data-ground',b.getAttribute('data-g'));
+    gb.forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false')});
+  })});
+
+  /* tally: the total counts up once (overdamped, 840ms) */
+  var t=document.getElementById('tally');
+  function fmt(n){var s=Math.round(n).toString();var out='';while(s.length>3){out='.'+s.slice(-3)+out;s=s.slice(0,-3)}return s+out+',00'}
+  var to=+t.getAttribute('data-to'),ran=false;
+  function runTally(){
+    if(ran)return;ran=true;
+    if(reduced){t.textContent=fmt(to);return}
+    var st=null;
+    function step(ts){if(!st)st=ts;var p=Math.min(1,(ts-st)/840);var e=1-Math.pow(1-p,3);t.textContent=fmt(to*e);if(p<1)requestAnimationFrame(step)}
+    requestAnimationFrame(step);
+  }
+  if('IntersectionObserver' in window){new IntersectionObserver(function(en){en.forEach(function(x){if(x.isIntersecting)runTally()})},{threshold:.4}).observe(t)}else{runTally()}
+
+  /* registers: confirm / skip / undo — a record, reversible in one click */
+  var audit=document.getElementById('audit');
+  document.querySelectorAll('.reg[data-reg]').forEach(function(reg){
+    var v=reg.querySelector('.val .v'),p=reg.querySelector('.val .p');
+    var orig={v:v.textContent,p:p.textContent};
+    reg.querySelectorAll('[data-do]').forEach(function(b){b.addEventListener('click',function(){
+      var d=b.getAttribute('data-do');
+      reg.classList.remove('confirmed','skipped');
+      if(d==='confirm'){reg.classList.add('confirmed');p.textContent=(reg.getAttribute('data-reg')==='terms'?'typed':'inferred from MID-2026-04417')+' · confirmed by Defne · 6 September';}
+      else if(d==='skip'){reg.classList.add('skipped');v.textContent='not yet answered';p.textContent='offered on 6 September, skipped · nothing changed';
+        document.getElementById('audit-reg').textContent=reg.getAttribute('data-reg');document.getElementById('audit-off').textContent=reg.getAttribute('data-reg');audit.classList.add('on');}
+      else{v.textContent=orig.v;p.textContent=orig.p;}
+      v.style.animation='none';void v.offsetWidth;v.style.animation='';
+    })});
+  });
+
+  /* the popover: anchored, no dim, close is words */
+  var pop=document.getElementById('pop');
+  document.querySelectorAll('[data-pop]').forEach(function(b){b.addEventListener('click',function(){pop.hidden=!pop.hidden})});
+  document.querySelectorAll('[data-close]').forEach(function(b){b.addEventListener('click',function(){pop.hidden=true})});
+  pop.querySelectorAll('.opt').forEach(function(o){o.addEventListener('click',function(){pop.querySelectorAll('.opt').forEach(function(x){x.classList.remove('on')});o.classList.add('on');
+    var code=o.querySelector('.c').textContent.split(' ')[0];var reg=document.querySelector('[data-reg="currency"]');reg.querySelector('.val .v').textContent='Record '+code+' as the house’s currency';reg.querySelector('.val .p').textContent=(code==='TRY'?'inferred from MID-2026-04417':'chosen by Defne · the paper printed ₺')+' · not yet confirmed';pop.hidden=true;})});
+
+  /* the seal: press and hold; the pour fills 620ms; the wax lands once */
+  var hold=document.getElementById('hold'),early=document.getElementById('early'),stamped=document.getElementById('stamped'),timer=null,done=false;
+  function start(e){if(done)return;e.preventDefault();early.classList.remove('on');hold.classList.add('pouring');
+    timer=setTimeout(function(){done=true;hold.classList.remove('pouring');hold.classList.add('done');hold.querySelector('.lbl span').textContent='Entered';hold.querySelector('.k').textContent='stamp 360 ms';stamped.classList.add('on');
+      },reduced?0:620)}
+  function stop(){if(done)return;if(timer){clearTimeout(timer);timer=null;if(hold.classList.contains('pouring')){early.classList.add('on')}}hold.classList.remove('pouring')}
+  hold.addEventListener('pointerdown',start);hold.addEventListener('pointerup',stop);hold.addEventListener('pointerleave',stop);hold.addEventListener('pointercancel',stop);
+  hold.addEventListener('keydown',function(e){if((e.key===' '||e.key==='Enter')&&!e.repeat)start(e)});
+  hold.addEventListener('keyup',function(e){if(e.key===' '||e.key==='Enter')stop()});
+})();
+</script>
+</body>
+</html>

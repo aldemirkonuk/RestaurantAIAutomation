@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>104 &middot; Direction B &middot; The interview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  color-scheme:dark;
+}
+:root{--serif:"Fraunces",Georgia,serif;--sans:"DM Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}
+
+/* motion, named from the house tokens */
+:root{
+  --settle:cubic-bezier(.16,1,.3,1); --settle-t:320ms;
+  --ink-t:160ms;
+  --tuck:cubic-bezier(.34,1.56,.64,1); --tuck-t:300ms;
+  --turn:cubic-bezier(.32,.72,0,1); --turn-t:420ms;
+  --pour-t:620ms;
+  --stamp:cubic-bezier(.34,1.56,.64,1); --stamp-t:360ms;
+  --tally-t:840ms;
+}
+@keyframes settle{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+@keyframes stamp{0%{transform:scale(.55) rotate(-6deg);opacity:0}62%{transform:scale(1.07) rotate(1deg);opacity:1}100%{transform:scale(1) rotate(0)}}
+@keyframes turn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+.arrive{animation:settle var(--settle-t) var(--settle) both}
+.turned{animation:turn var(--turn-t) var(--turn) both}
+
+*{box-sizing:border-box}
+html{background:var(--paper-1)}
+body{margin:0;min-width:1440px;background:var(--paper-1);color:var(--ink-1);font-family:var(--sans);font-size:13px;line-height:1.5;transition:background var(--ink-t) linear,color var(--ink-t) linear}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,[tabindex]:focus-visible,input:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
+code,.mono{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-3)}
+b{font-weight:600}
+
+.top{display:flex;align-items:center;justify-content:space-between;background:var(--ink-1);color:var(--paper-0);padding:8px 40px;font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase}
+.ground{display:flex;gap:16px}
+.ground button{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);padding:2px 0;border-bottom:1px solid transparent;transition:color var(--ink-t) linear}
+.ground button[aria-pressed="true"]{color:var(--paper-0);border-bottom-color:var(--paper-0)}
+
+.wrap{width:1440px;margin:0 auto;padding:30px 40px 60px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:14px;letter-spacing:.03em}
+.wordmark i{font-style:normal;color:var(--seal)}
+h1{font-family:var(--serif);font-size:34px;font-weight:600;letter-spacing:-.018em;line-height:1.08;margin:6px 0 0}
+h1 i{font-style:normal;color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:16px;color:var(--ink-2);margin:8px 0 0;max-width:960px}
+.dbl{height:5px;border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);margin:20px 0 26px}
+.rule{height:1px;background:var(--paper-2);margin:26px 0}
+
+.fh{display:flex;align-items:baseline;gap:16px;margin:34px 0 8px}
+.fh .n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+.fh h2{font-family:var(--serif);font-size:23px;font-weight:600;letter-spacing:-.012em;margin:0}
+.fk{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:0 0 12px}
+.fk b{color:var(--ink-2);font-weight:400}
+
+.screen{background:var(--paper-0);border:1px solid var(--paper-2);width:1360px}
+.chrome{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--paper-2)}
+.chrome .r{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.stage{display:grid;grid-template-columns:1fr 440px}
+.stage.wide{grid-template-columns:1fr 560px}
+.talk{padding:22px 28px 26px;min-width:0}
+.talk-h{display:flex;align-items:baseline;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid var(--paper-2);margin-bottom:6px}
+.talk-h .t{font-family:var(--serif);font-size:19px;font-weight:600}
+.talk-h .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+
+.turn{display:grid;grid-template-columns:86px 1fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--paper-2)}
+.turn:last-child{border-bottom:0}
+.who{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:4px}
+.who small{display:block;margin-top:3px;color:var(--ink-3);letter-spacing:.08em;font-size:8.5px;text-transform:none}
+.ask{font-family:var(--serif);font-size:16.5px;line-height:1.42;color:var(--ink-1);margin:0}
+.ask.q{font-weight:600}
+.said{font-family:var(--sans);font-size:14px;line-height:1.5;color:var(--ink-1);margin:0}
+.said q{quotes:"\201C" "\201D"}
+.sub{font-size:12.5px;color:var(--ink-2);margin:6px 0 0;line-height:1.5}
+.note{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;line-height:1.7;color:var(--ink-3);margin:8px 0 0;padding-left:10px;border-left:1px solid var(--paper-2)}
+.moved{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.moved .m{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--ink-2);border:1px solid var(--paper-2);background:var(--paper-1);padding:3px 7px}
+.moved .m.g{color:var(--ink-3);border-style:dashed;font-style:italic}
+
+.answers{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12.5px;font-weight:500;color:var(--ink-2);border:1px solid var(--paper-2);background:var(--paper-0);padding:7px 12px;transition:border-color var(--ink-t) linear,color var(--ink-t) linear}
+.chip:hover{border-color:var(--ink-3);color:var(--ink-1)}
+.chip[aria-pressed="true"]{color:var(--ink-1);border-color:var(--ink-1)}
+.chip.seal{background:var(--seal);color:var(--paper-0);border-color:var(--seal)}
+.chip.seal:hover{background:var(--seal-deep);border-color:var(--seal-deep);color:var(--paper-0)}
+.chip.plain{border-color:transparent;padding-left:4px;padding-right:4px;color:var(--ink-3)}
+.chip.plain:hover{color:var(--ink-1)}
+
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:10px;max-width:640px}
+.fields.one{grid-template-columns:1fr}
+.f label{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.f .v{border-bottom:1px solid var(--ink-3);padding:6px 0;font-size:14px;color:var(--ink-1)}
+.f .v.empty{color:var(--ink-3)}
+.f .v.code{font-family:var(--mono);font-size:22px;letter-spacing:.28em;font-weight:600}
+.f .h{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--ink-3);margin-top:4px}
+
+.card{border:1px solid var(--paper-2);background:var(--paper-1);padding:14px 16px;margin-top:10px;max-width:640px}
+.card .t{font-family:var(--serif);font-size:18px;font-weight:600;line-height:1.3}
+.card .m{display:flex;gap:18px;margin-top:8px;flex-wrap:wrap}
+.card .m div{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.card .m div b{display:block;font-family:var(--sans);font-size:13px;letter-spacing:0;text-transform:none;color:var(--ink-1);font-weight:500;margin-top:2px}
+
+.cta{display:inline-flex;align-items:center;justify-content:center;background:var(--seal);color:var(--paper-0);font-family:var(--sans);font-size:13px;font-weight:600;padding:11px 18px;letter-spacing:.01em;transition:background var(--ink-t) linear}
+.cta:hover{background:var(--seal-deep)}
+.cta.dry{background:transparent;color:var(--ink-1);border:1px solid var(--ink-1)}
+.cta.dry:hover{background:var(--paper-1)}
+.btnrow{display:flex;gap:12px;align-items:center;margin-top:16px}
+
+/* the ledger and the proposal */
+.ledger{padding:20px 22px 22px;background:var(--paper-1);border-left:1px solid var(--paper-2);min-width:0}
+.ledger-h{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-bottom:10px;border-bottom:1px solid var(--paper-2)}
+.ledger-h b{color:var(--ink-2);font-weight:400}
+.grp{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);margin:16px 0 4px;display:flex;justify-content:space-between;gap:10px}
+.grp span{color:var(--ink-3);letter-spacing:.06em;text-transform:none;font-style:italic;text-align:right}
+.lrow{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:9px 0;border-bottom:1px solid var(--paper-2);align-items:start}
+.lrow .f{font-size:12.5px;color:var(--ink-1);font-weight:500}
+.lrow .f small{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:2px}
+.lrow .v{font-family:var(--mono);font-size:12px;color:var(--ink-1);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.lrow .v.g{color:var(--ink-3);font-style:italic}
+.lrow .v.off{color:var(--ink-3);text-decoration:line-through}
+.lrow .why{grid-column:1/-1;font-size:11.5px;color:var(--ink-2);line-height:1.5}
+.lrow .why q{quotes:"\201C" "\201D"}
+.lrow .pv{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px}
+.lrow .act{justify-self:end}
+.lrow.dropped .f,.lrow.dropped .v,.lrow.dropped .why{color:var(--ink-3)}
+.lrow.dropped .v{text-decoration:line-through}
+.lrow.told{background:var(--paper-0);margin:6px -10px 0;padding:9px 10px;border:1px dashed var(--paper-2)}
+.pvc{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border:1px solid var(--paper-2);color:var(--ink-3);background:var(--paper-0)}
+.pvc.typed,.pvc.spoken,.pvc.confirmed,.pvc.chosen,.pvc.stated{color:var(--ink-1);border-color:var(--ink-3)}
+.pvc.spoken::before{content:"";width:5px;height:8px;border:1px solid currentColor;border-radius:3px}
+.pvc.inferred{border-style:dashed;font-style:italic}
+.pvc.defaulted{border-style:dotted}
+.pvc.skipped,.pvc.unanswered,.pvc.told{color:var(--ink-3)}
+.pvc.nb{border-color:var(--ink-3);border-style:double;color:var(--ink-2)}
+.tog{display:inline-flex;border:1px solid var(--paper-2);font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase}
+.tog button{padding:3px 7px;color:var(--ink-3);transition:color var(--ink-t) linear,background var(--ink-t) linear}
+.tog button[aria-pressed="true"]{background:var(--ink-1);color:var(--paper-0)}
+.tally{margin-top:16px;padding-top:12px;border-top:1px solid var(--ink-1)}
+.tally .n{font-family:var(--serif);font-size:30px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.tally .k{font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-top:4px;line-height:1.7}
+.tally .k b{color:var(--ink-2);font-weight:400}
+
+/* the seal */
+.sealbar{margin-top:14px;padding-top:14px;border-top:1px solid var(--paper-2)}
+.sealbar .warn{font-size:11.5px;color:var(--ink-2);line-height:1.5;margin:0 0 10px}
+.hold{position:relative;height:46px;border:1px solid var(--seal-ring);background:var(--paper-0);overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:none;cursor:pointer;width:100%;text-align:left}
+.hold .fill{position:absolute;inset:0;width:0;background:var(--seal-tint)}
+.hold.pouring .fill{width:100%;transition:width var(--pour-t) linear}
+.hold.retreat .fill{width:0;transition:width var(--tuck-t) var(--tuck)}
+.hold .lbl{position:relative;display:flex;align-items:center;gap:10px;height:100%;padding:0 14px;font-family:var(--sans);font-size:13px;font-weight:600;color:var(--seal)}
+.hold .disc{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--seal)}
+.hold.done{border-color:var(--seal);background:var(--seal-tint)}
+.holdnote{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--ink-3);margin-top:6px;min-height:14px}
+.wax{display:none;margin:10px auto 0;width:48px;height:48px}
+.wax.on{display:block;animation:stamp var(--stamp-t) var(--stamp) both}
+.readback{display:none;font-family:var(--serif);font-size:14px;color:var(--ink-1);text-align:center;margin-top:8px;line-height:1.4}
+.readback.on{display:block}
+
+/* composer */
+.composer{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--ink-1)}
+.mic{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--ink-1);padding:9px 12px;font-size:12.5px;font-weight:500;color:var(--ink-1)}
+.mic i{width:8px;height:13px;border:1.5px solid currentColor;border-radius:4px;display:inline-block}
+.composer .in{border-bottom:1px solid var(--ink-3);padding:8px 0;font-size:14px;color:var(--ink-3)}
+.composer .send{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-1);padding:8px 0}
+.composer .note{grid-column:1/-1;margin-top:2px}
+
+/* overlays */
+.pop{position:absolute;left:0;top:calc(100% + 8px);width:320px;background:var(--paper-0);border:1px solid var(--ink-3);padding:12px 14px 10px;z-index:3;animation:settle var(--settle-t) var(--settle) both}
+.pop .t{font-family:var(--serif);font-size:15px;font-weight:600;margin:0 0 8px}
+.pop .o{display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid var(--paper-2);font-size:13px}
+.pop .o.cur{font-weight:600}
+.pop .o small{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.pop .close{display:block;margin-top:8px;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.pop .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:8px;padding-top:6px;border-top:1px solid var(--paper-2)}
+.dim{position:relative;background:var(--paper-0);border:1px solid var(--paper-2);width:1360px;height:520px;overflow:hidden}
+.dim .under{padding:22px 28px;opacity:.38;filter:saturate(0)}
+.dim .scrim{position:absolute;inset:0;background:var(--ink-1);opacity:.42}
+.mudavym[data-ground="charcoal"] .dim .scrim{background:var(--paper-0);opacity:.64}
+.panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:620px;background:var(--paper-0);border:1px solid var(--paper-2);padding:22px 26px 18px;z-index:2}
+.panel .t{font-family:var(--serif);font-size:20px;font-weight:600;margin:0}
+.panel p{font-size:13px;color:var(--ink-2);line-height:1.55;margin:10px 0 0}
+.panel .k{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:12px;line-height:1.8}
+
+/* receipt */
+.receipt{width:1360px;background:var(--paper-0);border:1px solid var(--paper-2)}
+.receipt-h{display:flex;justify-content:space-between;align-items:baseline;padding:16px 24px;border-bottom:1px solid var(--ink-1)}
+.receipt-h .t{font-family:var(--serif);font-size:20px;font-weight:600}
+.receipt-h .id{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.rrow{display:grid;grid-template-columns:120px 300px 1fr;gap:16px;padding:11px 24px;border-bottom:1px solid var(--paper-2);align-items:start}
+.rrow .st{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-1);padding-top:2px}
+.rrow .st.r{color:var(--ink-1);text-decoration:underline;text-decoration-style:double;text-underline-offset:3px}
+.rrow .st.n{color:var(--ink-3)}
+.rrow .f{font-size:13px;font-weight:500}
+.rrow .f small{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:2px}
+.rrow .d{font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.receipt-f{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center;padding:16px 24px;border-top:1px solid var(--ink-1)}
+.receipt-f p{font-size:12.5px;color:var(--ink-2);margin:0;line-height:1.5}
+.ruled{border-bottom:1px solid var(--ink-1);position:relative;padding-bottom:3px}
+.ruled::after{content:"";position:absolute;left:0;right:0;bottom:-4px;border-bottom:1px solid var(--ink-1)}
+
+/* phone */
+.phone{width:390px;background:var(--paper-0);border:1px solid var(--ink-1);padding:0 0 18px;position:relative}
+.phone .bar{display:flex;justify-content:space-between;padding:10px 16px 8px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--paper-2)}
+.phone .body{padding:14px 16px}
+.phone .ask{font-size:19px;font-weight:600;line-height:1.3}
+.phone .sub{margin-top:6px}
+.regs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.reg{border:1px solid var(--paper-2);padding:9px 10px;min-height:60px}
+.reg .n{font-size:13.5px;font-weight:500}
+.reg .s{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-top:4px;line-height:1.5}
+.reg.on{border-color:var(--ink-1)}
+.reg.inf{border-style:dashed}
+.reg.inf .n{color:var(--ink-3);font-style:italic}
+.phone .live{margin-top:12px;border-left:1px solid var(--ink-1);padding-left:10px;font-size:13.5px;line-height:1.45}
+.phone .live small{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:3px}
+.phone .micbig{margin-top:14px;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--ink-1);padding:13px;font-weight:600;font-size:14px}
+.phone .micbig i{width:9px;height:15px;border:1.5px solid currentColor;border-radius:5px;display:inline-block}
+.phone .drawer{margin:14px 16px 0;border-top:1px solid var(--ink-1);padding-top:10px;display:flex;justify-content:space-between;align-items:center}
+.phone .drawer .k{font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);line-height:1.6}
+.phone .drawer .k b{color:var(--ink-1);font-weight:400}
+
+.twoup{display:grid;grid-template-columns:390px 1fr;gap:34px;align-items:start}
+.legend{width:1360px;display:grid;grid-template-columns:1fr 1fr;gap:26px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-weight:400;padding:0 12px 7px 0;border-bottom:1px solid var(--ink-1);vertical-align:bottom}
+td{padding:8px 12px 8px 0;border-bottom:1px solid var(--paper-2);vertical-align:top;line-height:1.45;color:var(--ink-2)}
+td b{color:var(--ink-1)}
+.cite{font-family:var(--mono);font-size:10px;line-height:1.85;color:var(--ink-3);margin-top:14px;word-break:break-word;width:1360px}
+.aside{font-size:13px;color:var(--ink-2);line-height:1.55;max-width:900px;margin:10px 0 0}
+.ctl{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-1);border-bottom:1px solid var(--ink-1);padding-bottom:1px}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:1ms!important;transition-duration:1ms!important}
+  .arrive,.turned,.wax.on,.pop{animation:none}
+}
+</style>
+</head>
+<body class="mudavym" data-ground="paper">
+<div class="top">
+  <div>Sketch 104 &middot; Direction B &middot; The interview &mdash; example data, not a tenant</div>
+  <div class="ground" role="group" aria-label="Ground">
+    <button type="button" data-ground="paper" aria-pressed="true">Paper</button>
+    <button type="button" data-ground="charcoal" aria-pressed="false">Charcoal</button>
+  </div>
+</div>
+
+<div class="wrap">
+<div class="wordmark">Mudavym<i>.</i></div>
+<h1>Direction B &mdash; The interview<i>.</i></h1>
+<p class="lede">The house asks and the owner answers, by voice or by typing. Every sentence lands on the right as rows, each with its reason and where it came from. Nothing is written until one seal applies the lot, item by item &mdash; and a skip is a row too.</p>
+<div class="dbl"></div>
+<p class="aside">Sketch 101 drawn out to the whole arrival. Seven frames, in the order the owner meets them: the door, the joiner&rsquo;s first screen, opening a house, the letter, the interview with its proposal beside it, the receipt, and the one question that needs a panel. Then the step a manager does standing up, at phone width. Controls that would write nowhere today say so in mono on the screen.</p>
+
+<!-- ───────────────────────── 01 THE DOOR ───────────────────────── -->
+<div class="fh"><span class="n">01 &middot; /register &middot; join by invite</span><h2>The door asks one question, and the code answers most of the rest.</h2></div>
+<p class="fk">the same voice as the interview, typed only &mdash; there is no house to read yet, so there is no assistant yet &middot; <b>Register.tsx:24-26, 173-175, 192-213, 344-517</b></p>
+<div class="screen">
+  <div class="chrome"><div class="wordmark">Mudavym<i>.</i></div><div class="r">Arriving &middot; nothing written</div></div>
+  <div class="stage">
+    <div class="talk">
+      <div class="turn">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask q">Were you invited, or are you opening a house?</p>
+          <div class="answers">
+            <button type="button" class="chip" aria-pressed="true">I was invited</button>
+            <button type="button" class="chip" aria-pressed="false">I am opening a house</button>
+          </div>
+          <p class="note">?invite=CODE lands here with the code already in the field &middot; Register.tsx:173-175</p>
+        </div>
+      </div>
+      <div class="turn">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask">Then the code from the letter. Eight characters.</p>
+          <div class="fields one" style="max-width:320px">
+            <div class="f"><label>Invite code</label><div class="v code">LM7K4Q2A</div><div class="h">checked as you type, once all eight are in &middot; Register.tsx:192-213</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="turn">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask q">Hasan is expecting you at Lokanta Meyhane &mdash; as a manager.</p>
+          <div class="card">
+            <div class="t">Lokanta Meyhane</div>
+            <div class="m">
+              <div>Where<b>Kad&#305;k&ouml;y, &#304;stanbul</b></div>
+              <div>Invited by<b>Hasan Demir</b></div>
+              <div>Your role<b>Manager</b></div>
+              <div>The code lasts<b>7 more days</b></div>
+            </div>
+          </div>
+          <p class="note">read from the code before any account exists &middot; GET /auth/invite/:code is public by decision (auth.controller.ts:405) &middot; returns restaurant, city, inviter, role (Register.tsx:28-36)</p>
+        </div>
+      </div>
+      <div class="turn">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask">Three things from you, and you are in.</p>
+          <div class="fields">
+            <div class="f"><label>Your name</label><div class="v">Defne Aksoy</div></div>
+            <div class="f"><label>Email</label><div class="v">defne@lokantameyhane.com</div><div class="h">free &middot; GET /auth/check-email (auth.controller.ts:490)</div></div>
+            <div class="f"><label>Password</label><div class="v">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</div><div class="h">eight or more &middot; Register.tsx:524-527</div></div>
+          </div>
+          <div class="btnrow">
+            <span class="cta">Join Lokanta Meyhane</span>
+            <span class="mono">POST /auth/join (auth.controller.ts:435) &middot; no letter to open: an invited joiner goes straight to the house (Register.tsx:531-532)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ledger">
+      <div class="ledger-h"><span>What I have</span><b>from the code &middot; from you</b></div>
+      <div class="lrow"><div class="f">House<small>from the code</small></div><div class="v">Lokanta Meyhane</div><div class="pv"><span class="pvc stated">read</span></div></div>
+      <div class="lrow"><div class="f">Invited by<small>from the code</small></div><div class="v">Hasan Demir</div><div class="pv"><span class="pvc stated">read</span></div></div>
+      <div class="lrow"><div class="f">Your role<small>set by Hasan when he made the code</small></div><div class="v">manager</div><div class="pv"><span class="pvc stated">read</span></div></div>
+      <div class="lrow"><div class="f">You<small>account</small></div><div class="v">Defne Aksoy</div><div class="pv"><span class="pvc typed">typed</span></div></div>
+      <div class="lrow"><div class="f">Email<small>account</small></div><div class="v">defne@&hellip;</div><div class="pv"><span class="pvc typed">typed</span></div></div>
+      <div class="tally"><div class="n">5</div><div class="k">facts on the table &middot; 0 written<br><b>joining writes one row: your membership of the house</b></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 01b THE JOINER'S FIRST SCREEN ───────────────────────── -->
+<div class="fh"><span class="n">01b &middot; the joiner&rsquo;s first screen</span><h2>Defne arrives to the house as Hasan left it &mdash; as if she had signed in.</h2></div>
+<p class="fk">reads only &middot; GET /cellar/:rid/registers (cellar.controller.ts:40) &middot; GET /vendor-terms (vendor-terms.controller.ts:44) &middot; GET /settings/currency (settings.controller.ts:208) &middot; a manager may answer what is open (vendor-terms.controller.ts:30-35: deliberately not owner-only); staff would see the read-only welcome (GetStarted.tsx:234-236)</p>
+<div class="screen">
+  <div class="chrome"><div class="wordmark">Mudavym<i>.</i></div><div class="r">Lokanta Meyhane &middot; Defne &middot; manager</div></div>
+  <div class="stage">
+    <div class="talk">
+      <div class="turn">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask q">Lokanta Meyhane, as Hasan set it up on 6 September.</p>
+          <p class="sub">It reports in <b>TRY</b>. It pours <b>wines, spirits, beer and soft drinks</b>. It buys from <b>Anadolu G&#305;da</b> and <b>Kad&#305;k&ouml;y Bira</b>, and hears about all nine things by default. Two registers are still open: Kad&#305;k&ouml;y Bira&rsquo;s terms, which Hasan was offered on 6 September and skipped, and the lead times, which nobody has been asked.</p>
+          <div class="answers">
+            <button type="button" class="chip" aria-pressed="true">Answer the two</button>
+            <button type="button" class="chip">Go to the floor</button>
+          </div>
+          <p class="note">&ldquo;skipped&rdquo; and &ldquo;never asked&rdquo; are different sentences because the skip was recorded (frame 05) &middot; the readout renders who and when for a stated value already (vendor-terms.controller.ts:46-48)</p>
+        </div>
+      </div>
+    </div>
+    <div class="ledger">
+      <div class="ledger-h"><span>The house&rsquo;s answers</span><b>as they stand</b></div>
+      <div class="lrow"><div class="f">Reports in</div><div class="v">TRY</div><div class="pv"><span class="pvc stated">stated &middot; Hasan &middot; 6 Sep</span></div></div>
+      <div class="lrow"><div class="f">Pours</div><div class="v">wines &middot; spirits &middot; beer &middot; soft drinks</div><div class="pv"><span class="pvc confirmed">confirmed &middot; Hasan</span><span class="pvc inferred">whiskey, non-alcoholic: still inferred</span></div></div>
+      <div class="lrow"><div class="f">Anadolu G&#305;da &middot; terms</div><div class="v">Tue, Fri &middot; Net 30</div><div class="pv"><span class="pvc stated">stated &middot; Hasan</span><span class="pvc unanswered">lead time: not yet answered</span></div></div>
+      <div class="lrow"><div class="f">Kad&#305;k&ouml;y Bira &middot; terms</div><div class="v g">offered 6 Sep &middot; skipped</div><div class="pv"><span class="pvc skipped">skipped by Hasan</span></div></div>
+      <div class="lrow"><div class="f">Hears about</div><div class="v">all nine</div><div class="pv"><span class="pvc defaulted">defaults kept &middot; offered 6 Sep</span></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 02 OPEN A HOUSE ───────────────────────── -->
+<div class="fh"><span class="n">02 &middot; /register &middot; open a house</span><h2>Four questions, and the money question answered in words before it is recorded.</h2></div>
+<p class="fk">typed only &middot; the account and the house are records, not a ceremony: no wax here &middot; <b>Register.tsx:725-910, 911-1384; CurrencyStep.tsx:51-57, 77</b></p>
+<div class="screen">
+  <div class="chrome"><div class="wordmark">Mudavym<i>.</i></div><div class="r">Arriving &middot; nothing written</div></div>
+  <div class="stage">
+    <div class="talk">
+      <div class="turn">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask q">What is the house called, and who are you?</p>
+          <div class="fields">
+            <div class="f"><label>The house</label><div class="v">Lokanta Meyhane</div></div>
+            <div class="f"><label>Your name</label><div class="v">Hasan Demir</div></div>
+            <div class="f"><label>Email</label><div class="v">hasan@lokantameyhane.com</div></div>
+            <div class="f"><label>Password</label><div class="v">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="turn">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask q">Where is it?</p>
+          <div class="fields one">
+            <div class="f"><label>Address</label><div class="v">Moda Caddesi 41, Kad&#305;k&ouml;y, &#304;stanbul 34710, T&uuml;rkiye</div><div class="h">chosen from the list &middot; city, country, postcode and the point filled from it; a hand-edited address drops the point (Register.tsx:97-117, 1176-1210)</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="turn">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask q">What money does this house report in?</p>
+          <p class="sub">Defaulted from T&uuml;rkiye. We will record TRY. Change it if that is wrong.</p>
+          <div class="answers" style="position:relative">
+            <button type="button" class="chip" aria-pressed="true">Yes, TRY</button>
+            <span style="position:relative;display:inline-block">
+              <button type="button" class="chip" aria-pressed="false">Change it</button>
+              <div class="pop" role="dialog" aria-label="Report in">
+                <p class="t">Report in</p>
+                <div class="o cur"><span>TRY &middot; Turkish lira</span><small>defaulted</small></div>
+                <div class="o"><span>EUR &middot; Euro</span></div>
+                <div class="o"><span>USD &middot; US dollar</span></div>
+                <div class="o"><span>GBP &middot; Pound sterling</span></div>
+                <div class="o"><span>All currencies&hellip;</span><small>CURRENCY_CODES</small></div>
+                <button type="button" class="close">Not now</button>
+                <div class="k">popover &middot; 320 &middot; anchored &middot; no dim &middot; ADR 0112</div>
+              </div>
+            </span>
+            <button type="button" class="chip plain">Not yet</button>
+          </div>
+          <p class="sub" style="margin-top:118px">Each invoice keeps the currency its vendor billed in. Nothing is converted.</p>
+          <p class="note">the sentence is CurrencyStep.tsx:51-57 verbatim &middot; &ldquo;Not yet&rdquo; sends nothing and the row stays NULL; every screen then says &ldquo;currency not recorded&rdquo; (CurrencyStep.tsx:19-21) &middot; the interview re-offers it later through PUT /settings/currency (settings.controller.ts:227)</p>
+        </div>
+      </div>
+      <div class="turn">
+        <div class="who">Mudavym</div>
+        <div>
+          <div class="btnrow" style="margin-top:2px">
+            <span class="cta">Create the account</span>
+            <span class="mono">POST /auth/register/restaurant (auth.controller.ts:390) &middot; currency sent only because you said yes (Register.tsx:985-990) &middot; then the letter (Register.tsx:997)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ledger">
+      <div class="ledger-h"><span>What I have</span><b>written when you create the account</b></div>
+      <div class="lrow"><div class="f">House</div><div class="v">Lokanta Meyhane</div><div class="pv"><span class="pvc typed">typed</span></div></div>
+      <div class="lrow"><div class="f">Owner</div><div class="v">Hasan Demir</div><div class="pv"><span class="pvc typed">typed</span></div></div>
+      <div class="lrow"><div class="f">Address<small>with its point</small></div><div class="v">Moda Cad. 41, Kad&#305;k&ouml;y</div><div class="pv"><span class="pvc chosen">chosen from the list</span></div></div>
+      <div class="lrow"><div class="f">Time zone</div><div class="v">Europe/Istanbul</div><div class="pv"><span class="pvc stated">read from this browser</span></div><div class="why">Register.tsx:984 &mdash; never asked, and it should be; a house set up from a laptop abroad gets the laptop&rsquo;s zone.</div></div>
+      <div class="lrow"><div class="f">Reports in</div><div class="v">TRY</div><div class="pv"><span class="pvc defaulted">defaulted from T&uuml;rkiye</span><span class="pvc confirmed">confirmed by you</span></div><div class="why">A stated value. It will not enter the interview&rsquo;s batch (ADR 0113 rule 3) &mdash; the batch only fills silence.</div></div>
+      <div class="tally"><div class="n">5</div><div class="k">facts &middot; 0 written<br><b>no wax: the account is a record, reversible from /settings</b></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 03 THE LETTER ───────────────────────── -->
+<div class="fh"><span class="n">03 &middot; /verify-email &middot; the letter</span><h2>The interview waits at the letter, and says what is and is not on the server.</h2></div>
+<p class="fk"><b>VerifyEmail.tsx:31-34, 43, 55-59, 62</b> &middot; auth.controller.ts:448, 457</p>
+<div class="screen">
+  <div class="chrome"><div class="wordmark">Mudavym<i>.</i></div><div class="r">Lokanta Meyhane &middot; hasan@&hellip; &middot; not yet verified</div></div>
+  <div class="stage">
+    <div class="talk">
+      <div class="turn">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask q">I have written to hasan@lokantameyhane.com. Open the letter and press the link; I will keep everything you have told me.</p>
+          <div class="card" style="max-width:520px">
+            <div class="m">
+              <div>Letter sent<b>6 September, 11:02</b></div>
+              <div>Opened<b style="color:var(--ink-3)">not yet</b></div>
+            </div>
+          </div>
+          <div class="btnrow">
+            <button type="button" class="chip">Send it again</button>
+            <span class="mono">once a minute (VerifyEmail.tsx:55-59) &middot; POST /auth/resend-verification (auth.controller.ts:457)</span>
+          </div>
+          <p class="note">the link carries the token &middot; POST /auth/verify-email (VerifyEmail.tsx:31-34) &middot; then /get-started, which this direction replaces with frame 04 (VerifyEmail.tsx:43)</p>
+        </div>
+      </div>
+    </div>
+    <div class="ledger">
+      <div class="ledger-h"><span>On the server now</span><b>and not</b></div>
+      <div class="lrow"><div class="f">Account &middot; Hasan Demir</div><div class="v">written</div></div>
+      <div class="lrow"><div class="f">House &middot; Lokanta Meyhane</div><div class="v">written</div></div>
+      <div class="lrow"><div class="f">Reports in &middot; TRY</div><div class="v">written</div></div>
+      <div class="lrow"><div class="f">Everything the interview will ask</div><div class="v g">not yet</div></div>
+      <div class="tally"><div class="n">3</div><div class="k">rows written &middot; 0 inferred<br><b>nothing the platform guessed exists yet</b></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 04 THE INTERVIEW ───────────────────────── -->
+<div class="fh"><span class="n">04 &middot; /get-started, replaced &middot; the interview</span><h2>One conversation on the left. Its consequences on the right. Nothing written until the seal.</h2></div>
+<p class="fk">replaces the review &rarr; registers &rarr; threshold slots (GetStarted.tsx:246-287) &middot; the assistant reads first (ADR 0113 rule 6), asks second, writes nothing &middot; <button type="button" class="ctl" id="replay">Replay the turns</button> &nbsp;<span id="replay-k"></span></p>
+<div class="screen">
+  <div class="chrome"><div class="wordmark">Mudavym<i>.</i></div><div class="r">Lokanta Meyhane &middot; Hasan &middot; owner &middot; <span id="chrome-count">0 of 14 rows written</span></div></div>
+  <div class="stage wide">
+    <div class="talk" id="talk">
+      <div class="talk-h"><div class="t">Set up Lokanta Meyhane with me.</div><div class="k">nothing is written yet</div></div>
+
+      <div class="turn" data-step="0">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask">I have read what Lokanta Meyhane exposes: one address in Kad&#305;k&ouml;y, a currency you stated as TRY, and nothing else &mdash; no list, no vendors, no till. Eleven registers have no answer, which is not the same as a default. Show me the list, or tell me what you pour.</p>
+          <p class="note">every source named (rule 6) &middot; unanswered is not defaulted (rule 1) &middot; the read is GET /cellar/:rid/registers, GET /vendor-terms, GET /settings/currency, GET /notifications/preferences &middot; the propose step itself: <b>not built &mdash; would need config.propose_batch (ADR 0113 rule 5)</b> and a third ask-ai family beyond procurement and communications (ask-ai-actions.ts:32)</p>
+        </div>
+      </div>
+
+      <div class="turn" data-step="1">
+        <div class="who">Hasan<small>spoken</small></div>
+        <div>
+          <p class="said">That&rsquo;s the list.</p>
+          <div class="card" style="max-width:420px;padding:10px 14px"><div class="m" style="margin:0"><div>Attached<b>menu, two pages, photographed</b></div><div>Read<b>38 lines &middot; 24 wines &middot; 9 rak&#305; and spirits &middot; 5 beers</b></div></div></div>
+          <div class="moved"><span class="m g">Cellar &rarr; wines, spirits, beer: inferred</span><span class="m g">Cellar &rarr; whiskey, cocktails, non-alcoholic, soft drinks: inferred absent</span></div>
+          <p class="note">POST /menus/import, the scan path (GetStarted.tsx:371-378, 406) &middot; registers inferred from the house&rsquo;s own books (cellar-registers.service.ts:19-36, ADR 0108) &middot; inferred values sit grey on the right until you say</p>
+        </div>
+      </div>
+
+      <div class="turn" data-step="2">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask q">What does this house pour?</p>
+          <p class="sub">From the list I would say wines, spirits and beer &mdash; and not whiskey, cocktails, non-alcoholic or soft drinks. These are guesses until you say.</p>
+        </div>
+      </div>
+
+      <div class="turn" data-step="3">
+        <div class="who">Hasan<small>spoken</small></div>
+        <div>
+          <p class="said">Right. We do soft drinks too &mdash; ayran and cola &mdash; but no cocktails.</p>
+          <div class="moved"><span class="m">Cellar &rarr; wines, spirits, beer: confirmed</span><span class="m">Cellar &rarr; soft drinks: carried, spoken</span><span class="m">Cellar &rarr; cocktails: not carried, spoken</span><span class="m g">whiskey, non-alcoholic: still only inferred</span></div>
+          <p class="note">a spoken answer and an inferred one are different rows on the right: the value goes from grey italic to ink, and the chip says who</p>
+        </div>
+      </div>
+
+      <div class="turn" data-step="4">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask">Then wines, spirits, beer and soft drinks. I will record that you said no to cocktails. Whiskey and non-alcoholic I still only infer, and I will write them as guesses, not as your answer. Whom do you buy from?</p>
+        </div>
+      </div>
+
+      <div class="turn" data-step="5">
+        <div class="who">Hasan<small>typed</small></div>
+        <div>
+          <p class="said">Anadolu G&#305;da for wine and rak&#305; &mdash; they come Tuesdays and Fridays, thirty days to pay, they bill in lira. Kad&#305;k&ouml;y Bira for the beer.</p>
+          <div class="moved"><span class="m">Vendors &rarr; Anadolu G&#305;da, Kad&#305;k&ouml;y Bira: new</span><span class="m">Anadolu &rarr; delivery days, payment terms: typed</span><span class="m g">Anadolu &rarr; lead time: not yet answered</span><span class="m g">Anadolu &rarr; bills in lira: cannot be recorded</span></div>
+        </div>
+      </div>
+
+      <div class="turn" data-step="6">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask">Two vendors. Anadolu&rsquo;s days and terms are yours, stated, and will read that way. I have no lead time for either and I am not going to guess one. The lira: I cannot record a vendor&rsquo;s currency &mdash; each invoice keeps the one it was billed in, so nothing is lost. Kad&#305;k&ouml;y Bira &mdash; days, terms?</p>
+          <p class="note">POST /providers (providers.controller.ts:201) then PUT /vendor-terms/:providerId (vendor-terms.controller.ts:71) &middot; SetVendorTermsDto carries days, cutoff, minimum, lead time, payment terms, notes &mdash; <b>no currency field</b> (vendor-terms.dto.ts:26-84) &middot; every column NULL until stated (ADR 0116)</p>
+        </div>
+      </div>
+
+      <div class="turn" data-step="7">
+        <div class="who">Hasan<small>typed</small></div>
+        <div>
+          <p class="said">Skip that for now.</p>
+          <div class="moved"><span class="m">Kad&#305;k&ouml;y Bira &rarr; terms: offered 6 September, skipped</span></div>
+          <p class="note">a skip is a fact: one system_audit_log row, no setting changed (ADR 0113 :340-343) &middot; <b>not built &mdash; would need <code style="color:inherit">configuration_step_skipped</code> added to SETTINGS_AUDIT_ACTIONS (settings-audit.service.ts:86-104); no migration</b></p>
+        </div>
+      </div>
+
+      <div class="turn" data-step="8">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask">Nine things I can tell you about: a goal reached, a ceiling held, a delivery recorded, an invoice confirmed, a sale record, a market price, an added tool, a grant suspended, an experiment ended. All nine are on by default. Today I can only hold them by family &mdash; inventory, orders, calendar, system, AI &mdash; not one by one; I would rather say so than draw nine switches that go nowhere.</p>
+          <p class="note">the nine producers: notifications/producers/*.producer.ts &middot; PATCH /notifications/preferences takes email/push/sms, five categories, quiet hours (notifications.controller.ts:237-258; notifications.dto.ts:193-217) &middot; it is <b>per user</b>, not per house</p>
+        </div>
+      </div>
+
+      <div class="turn" data-step="9">
+        <div class="who">Hasan<small>spoken</small></div>
+        <div>
+          <p class="said">Keep them all. But nothing during service &mdash; six to one.</p>
+          <div class="moved"><span class="m">Notifications &rarr; quiet hours 18:00&ndash;01:00: spoken</span><span class="m">Notifications &rarr; nine producers: offered, defaults kept</span></div>
+        </div>
+      </div>
+
+      <div class="turn" data-step="10">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask">Quiet from six to one, on your account; held alerts arrive together in the morning. And the low-stock line &mdash; I flag a wine below six bottles unless you say otherwise.</p>
+        </div>
+      </div>
+
+      <div class="turn" data-step="11">
+        <div class="who">Hasan<small>typed</small></div>
+        <div>
+          <p class="said">Six is fine.</p>
+          <div class="moved"><span class="m">Inventory &rarr; low-stock line 6: defaulted, confirmed</span></div>
+          <p class="note">the number did not change; what changed is that somebody chose it &middot; PATCH /onboarding/threshold (menus.controller.ts:91; menus.ts:132-138)</p>
+        </div>
+      </div>
+
+      <div class="turn" data-step="12">
+        <div class="who">Mudavym</div>
+        <div>
+          <p class="ask">Fourteen rows on the table. Thirteen I can write, through five doors, one at a time. One is a record that you were offered nine things and kept them. One you skipped, and I have recorded the skip. One I cannot record, and I told you which. Nothing has been written. Read the right-hand side, drop what you do not want, and hold the seal. If you let me read your own mailbox I could fill Anadolu&rsquo;s lead time from their last invoice &mdash; I would ask you first, in its own panel.</p>
+          <p class="note">the consent question is frame 06 &middot; ADR 0113 rule 6; ADR 0114 &sect;2</p>
+        </div>
+      </div>
+
+      <div class="composer">
+        <span class="mic"><i></i>Hold to talk</span>
+        <div class="in">Type, or hold the microphone</div>
+        <button type="button" class="send">Send</button>
+        <p class="note">voice: on desktop and phone, neither the fallback for the other (founder, 2026-09-04) &middot; <b>drawn, not built &mdash; the speech provider and whether a spoken setup is a record are open (ADR 0113 Q6, Q7)</b> &middot; typing needs neither</p>
+      </div>
+    </div>
+
+    <!-- the proposal -->
+    <div class="ledger" id="proposal">
+      <div class="ledger-h"><span>Proposed configuration</span><b>not yet applied &middot; batch cfg-9b31e0</b></div>
+      <p class="note" style="margin-top:8px;border-left-color:var(--ink-3)"><b>not built</b> &mdash; the batch row would be config.propose_batch (ADR 0113 rule 5); every door it opens exists today and is named on its row</p>
+
+      <div class="grp" data-step="1">What we pour <span>PUT /cellar/:rid/registers &middot; cellar.controller.ts:115</span></div>
+      <div class="lrow" data-kind="write" data-step="1"><div class="f">Wines<small>24 lines on the list</small></div><div class="v g" data-final="carried" data-final-class="">carried</div><div class="pv"><span class="pvc inferred">inferred from the list</span><span class="pvc confirmed" data-step="3" hidden>confirmed &middot; spoken</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="write" data-step="1"><div class="f">Spirits<small>9 lines &middot; rak&#305; among them</small></div><div class="v g">carried</div><div class="pv"><span class="pvc inferred">inferred from the list</span><span class="pvc confirmed" data-step="3" hidden>confirmed &middot; spoken</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="write" data-step="1"><div class="f">Beer<small>5 lines</small></div><div class="v g">carried</div><div class="pv"><span class="pvc inferred">inferred from the list</span><span class="pvc confirmed" data-step="3" hidden>confirmed &middot; spoken</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="write" data-step="3"><div class="f">Soft drinks<small>not on the list</small></div><div class="v">carried</div><div class="why">You said <q>we do soft drinks too &mdash; ayran and cola</q>. The list never showed it; your word does.</div><div class="pv"><span class="pvc spoken">spoken</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="write" data-step="3"><div class="f">Cocktails</div><div class="v">not carried</div><div class="why">You said <q>no cocktails</q>. Recorded as your answer, not as an absence.</div><div class="pv"><span class="pvc spoken">spoken</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="write" data-step="1"><div class="f">Whiskey</div><div class="v g">not carried</div><div class="why">Nothing on the list. You did not say. Written as a guess &mdash; a second PUT with <code>source: inferred</code>, because the DTO carries one source per write (cellar-registers.dto.ts:56-61) &mdash; and the readout keeps calling it one.</div><div class="pv"><span class="pvc inferred">inferred only</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="write" data-step="1"><div class="f">Non-alcoholic</div><div class="v g">not carried</div><div class="pv"><span class="pvc inferred">inferred only</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+
+      <div class="grp" data-step="5">Whom we buy from <span>POST /providers &middot; PUT /vendor-terms/:providerId</span></div>
+      <div class="lrow" data-kind="write" data-step="5"><div class="f">Anadolu G&#305;da<small>new vendor &middot; providers.controller.ts:201</small></div><div class="v">create</div><div class="pv"><span class="pvc typed">typed</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="write" data-step="5"><div class="f">Anadolu &middot; delivery days<small>deliveryWeekdays [2, 5]</small></div><div class="v">Tue, Fri</div><div class="why">You wrote <q>they come Tuesdays and Fridays</q>. Reads as stated, with your name and today&rsquo;s date.</div><div class="pv"><span class="pvc typed">typed</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="write" data-step="5"><div class="f">Anadolu &middot; payment terms<small>paymentTerms</small></div><div class="v">Net 30</div><div class="pv"><span class="pvc typed">typed</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="none" data-step="5"><div class="f">Anadolu &middot; lead time<small>leadTimeDays</small></div><div class="v g">not yet answered</div><div class="why">Not asked in so many words, not guessed, not written. The column stays NULL, which is the truth.</div><div class="pv"><span class="pvc unanswered">not yet answered</span></div></div>
+      <div class="lrow told" data-kind="told" data-step="5"><div class="f">Anadolu &middot; bills in lira</div><div class="v off">TRY</div><div class="why"><b>Told, not offered.</b> SetVendorTermsDto has no currency field (vendor-terms.dto.ts:26-84). Each invoice keeps the currency it was billed in, so nothing here is lost &mdash; but nothing here can be written either.</div><div class="pv"><span class="pvc told">cannot be recorded</span></div></div>
+      <div class="lrow" data-kind="write" data-step="5"><div class="f">Kad&#305;k&ouml;y Bira<small>new vendor</small></div><div class="v">create</div><div class="pv"><span class="pvc typed">typed</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="skip" data-step="7"><div class="f">Kad&#305;k&ouml;y Bira &middot; terms<small>system_audit_log &middot; configuration_step_skipped</small></div><div class="v g">offered 6 Sep &middot; skipped</div><div class="why">You said <q>skip that for now</q>. One audit row &mdash; <code>changes: {register: 'vendor-terms', subject: Kad&#305;k&ouml;y Bira, offered: [days, cutoff, minimum, lead time, payment terms], answered: []}</code> &mdash; and no setting changed. Later the register says &ldquo;offered 6 September, skipped&rdquo; instead of an em dash.</div><div class="pv"><span class="pvc skipped">skipped</span><span class="pvc nb">not built &middot; action missing from SETTINGS_AUDIT_ACTIONS</span></div></div>
+
+      <div class="grp" data-step="9">What we hear about <span>PATCH /notifications/preferences &middot; your account</span></div>
+      <div class="lrow" data-kind="write" data-step="9"><div class="f">Quiet hours<small>quietHours {enabled, 18:00, 01:00}</small></div><div class="v">18:00 &ndash; 01:00</div><div class="why">You said <q>nothing during service &mdash; six to one</q>. Held, not dropped: one digest in the morning.</div><div class="pv"><span class="pvc spoken">spoken</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+      <div class="lrow" data-kind="record" data-step="9"><div class="f">Nine producers<small>system_audit_log &middot; offered and kept</small></div><div class="v">all on</div><div class="why">You said <q>keep them all</q>. No preference changes; one row records that the nine were offered on 6 September and the defaults kept &mdash; so &ldquo;default&rdquo; here means <em>chosen</em>, and the assistant never re-offers it as if you were never asked.</div><div class="pv"><span class="pvc defaulted">defaults kept</span><span class="pvc spoken">spoken</span><span class="pvc nb">not built &middot; same audit action as the skip</span></div></div>
+      <div class="lrow told" data-kind="told" data-step="9"><div class="f">Per-producer switches</div><div class="v off">nine</div><div class="why"><b>Told, not offered.</b> The route holds five families (inventory, orders, calendar, system, ai &mdash; notifications.dto.ts:193-217), not nine producers. Nine switches would need nine keys; until then the family switches are the honest control, and they are on /settings.</div><div class="pv"><span class="pvc told">cannot be recorded</span></div></div>
+      <div class="lrow told" data-kind="told" data-step="9"><div class="f">Market price drop</div><div class="v off">10%</div><div class="why">One number for every house on this deployment, read from <code>MARKET_SIGNAL_DROP_PCT</code> (market-price.producer.ts:95-97). Named, not offered.</div><div class="pv"><span class="pvc told">not yours to set</span></div></div>
+
+      <div class="grp" data-step="11">The low-stock line <span>PATCH /onboarding/threshold</span></div>
+      <div class="lrow" data-kind="write" data-step="11"><div class="f">Flag a wine below<small>thresholdMin</small></div><div class="v">6 bottles</div><div class="why">Defaulted 6; you said <q>six is fine</q>. Same number, now an answer with an author.</div><div class="pv"><span class="pvc defaulted">defaulted</span><span class="pvc confirmed">confirmed &middot; typed</span></div><div class="act"><span class="tog"><button type="button" aria-pressed="true">Keep</button><button type="button" aria-pressed="false">Drop</button></span></div></div>
+
+      <div class="grp" data-step="0">Outside the batch <span>rule 3: a stated value is never batched</span></div>
+      <div class="lrow" data-kind="outside" data-step="0"><div class="f">Reports in</div><div class="v">TRY</div><div class="why">Stated at the door, by you. Already written. The batch cannot touch it; changing it is its own act on /settings.</div><div class="pv"><span class="pvc stated">stated &middot; Hasan &middot; 6 Sep</span></div></div>
+
+      <div class="tally">
+        <div class="n" id="tally-n">14</div>
+        <div class="k" id="tally-k"><b>13</b> rows written through 5 doors &middot; <b>1</b> recorded as offered and kept<br><b>1</b> skipped, recorded &middot; <b>1</b> not yet answered, not recorded &middot; <b>3</b> cannot be recorded<br><b>0</b> dropped &middot; <b>0 written so far</b></div>
+      </div>
+
+      <div class="sealbar">
+        <p class="warn">Written one at a time through five services with no shared transaction. If one refuses, the rest still stand, and the next screen is a receipt that names each &mdash; never a single tick. <b>Nothing is written until this fills.</b></p>
+        <button type="button" class="hold" id="hold" aria-label="Hold to apply the proposal"><div class="fill"></div><div class="lbl"><span class="disc"></span><span id="hold-lbl">Hold to apply thirteen rows</span></div></button>
+        <div class="holdnote" id="holdnote">the fill is pour, linear, timed against your thumb &middot; an early release is tuck, and says what did not happen</div>
+        <svg class="wax" id="wax" viewBox="0 0 100 100" width="48" height="48" style="color:var(--seal)" aria-hidden="true">
+          <path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/>
+          <g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)" fill="var(--paper-0)">
+            <path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/>
+          </g>
+          <g fill="none" stroke="var(--paper-0)" stroke-linecap="square"><path d="M30 71h40" stroke-width="4.4"/><path d="M30 77h40" stroke-width="2.6"/></g>
+        </svg>
+        <p class="readback" id="readback">Sealed by Hasan Demir, 6 September, 11:41. Thirteen rows, one at a time. The receipt is below.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 05 THE RECEIPT ───────────────────────── -->
+<div class="fh"><span class="n">05 &middot; after the seal &middot; the receipt</span><h2>Item by item: written, refused, recorded, not attempted, not offered. Never one &ldquo;Done&rdquo;.</h2></div>
+<p class="fk">ADR 0113 rule 4 &middot; rule 4a: revocable as one unit for seven days, and the window&rsquo;s end is on the receipt &middot; <b>not built</b>: SettingsAuditService.record never sets correlation_id or reason (settings-audit.service.ts:205-221); the reader for a batch already exists (logs-timeline.service.ts:302)</p>
+<div class="receipt" id="receipt">
+  <div class="receipt-h"><div class="t">Applied 6 September, 11:41 &mdash; twelve written, one refused</div><div class="id">correlation_id cfg-9b31e0 &middot; sealed by Hasan Demir &middot; reason: the utterance that produced each row</div></div>
+  <div class="rrow"><div class="st">written</div><div class="f">What we pour &middot; five answers<small>PUT /cellar/:rid/registers &middot; source: confirmed</small></div><div class="d">Wines, spirits, beer, soft drinks carried; cocktails not. Each row carries <code>confirmed_at</code> and your name. Provenance: proposed, sealed.</div></div>
+  <div class="rrow"><div class="st">written</div><div class="f">What we pour &middot; two guesses<small>PUT /cellar/:rid/registers &middot; source: inferred</small></div><div class="d">Whiskey and non-alcoholic, not carried, still labelled inferred. The readout keeps saying so until somebody answers.</div></div>
+  <div class="rrow"><div class="st">written</div><div class="f">Anadolu G&#305;da<small>POST /providers &middot; 201</small></div><div class="d">Vendor created. Then its terms:</div></div>
+  <div class="rrow"><div class="st">written</div><div class="f">Anadolu &middot; delivery days, payment terms<small>PUT /vendor-terms/:providerId &middot; audit: vendor_terms_changed</small></div><div class="d">Tue, Fri &middot; Net 30. Recorded as <b>stated</b>, with who and when. Lead time untouched: NULL, not yet answered.</div></div>
+  <div class="rrow"><div class="st r">refused</div><div class="f">Kad&#305;k&ouml;y Bira<small>POST /providers &middot; 409</small></div><div class="d"><b>Not created, and this is the honest outcome.</b> A vendor of that name already exists on this house &mdash; created from an email on 2 September. Nothing was duplicated. The existing row is the one your skip below now names.</div></div>
+  <div class="rrow"><div class="st">written</div><div class="f">Quiet hours<small>PATCH /notifications/preferences &middot; your account &middot; audit: notification_preferences_changed</small></div><div class="d">18:00 &ndash; 01:00. Held alerts arrive together in the morning.</div></div>
+  <div class="rrow"><div class="st">written</div><div class="f">Low-stock line<small>PATCH /onboarding/threshold &middot; threshold_configured: true</small></div><div class="d">6 bottles. The value did not change; its provenance did &mdash; it is now an answer with an author.</div></div>
+  <div class="rrow"><div class="st">recorded</div><div class="f">Nine producers &middot; offered, kept<small>system_audit_log &middot; no setting changed</small></div><div class="d">One row: offered on 6 September, defaults kept, reason <q>keep them all</q>. <span class="mono">not built &mdash; the audit action does not exist yet</span></div></div>
+  <div class="rrow"><div class="st">recorded</div><div class="f">Kad&#305;k&ouml;y Bira &middot; terms &middot; skipped<small>system_audit_log &middot; no setting changed</small></div><div class="d">Offered on 6 September, skipped. The register will say so; the assistant may re-offer it truthfully. <span class="mono">not built &mdash; same action</span></div></div>
+  <div class="rrow"><div class="st n">not attempted</div><div class="f">Anadolu &middot; lead time</div><div class="d">Never answered. Nothing written, nothing recorded &mdash; and the register says &ldquo;not yet answered&rdquo;, which is a different sentence from &ldquo;skipped&rdquo;.</div></div>
+  <div class="rrow"><div class="st n">not offered</div><div class="f">Anadolu bills in lira &middot; per-producer switches &middot; market price drop</div><div class="d">Told on the proposal, no door today. Nothing was written and nothing could have been.</div></div>
+  <div class="receipt-f">
+    <p>Every written row shares one <code>correlation_id</code> and stores what it changed <b>from</b> as well as <b>to</b>. That is what makes this reversible as a unit. A row somebody changes after today is shown and skipped by the undo, never overwritten.</p>
+    <div style="text-align:right"><button type="button" class="chip">Undo this setup</button><div class="mono" style="margin-top:6px">until 13 September &middot; then each value is an ordinary setting (rule 4a)</div></div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 06 THE CONSENT PANEL ───────────────────────── -->
+<div class="fh"><span class="n">06 &middot; the one question that needs a panel</span><h2>A person&rsquo;s mailbox is asked for in plain words, in the same conversation, and recorded with the batch.</h2></div>
+<p class="fk">ADR 0113 rule 6 &middot; ADR 0114 &sect;2: the house declares the attachment, each person consents for themselves &middot; centred panel, 620, dims the page, traps focus, closes with words (ADR 0112)</p>
+<div class="dim">
+  <div class="under">
+    <div class="talk-h"><div class="t">Set up Lokanta Meyhane with me.</div><div class="k">nothing is written yet</div></div>
+    <div class="turn"><div class="who">Mudavym</div><div><p class="ask">If you let me read your own mailbox I could fill Anadolu&rsquo;s lead time from their last invoice &mdash; I would ask you first, in its own panel.</p></div></div>
+    <div class="turn"><div class="who">Hasan<small>typed</small></div><div><p class="said">Go on then.</p></div></div>
+  </div>
+  <div class="scrim"></div>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="pt">
+    <p class="t" id="pt">May I read your mailbox, Hasan?</p>
+    <p>Only yours, and only to look for invoices from Anadolu G&#305;da and Kad&#305;k&ouml;y Bira. Whatever I find will be named on the row it fills &mdash; <em>&ldquo;lead time 2 days, from Anadolu&rsquo;s invoice of 28 August, read from Hasan&rsquo;s mailbox&rdquo;</em> &mdash; and in the batch&rsquo;s audit row, forever. Defne&rsquo;s mailbox is hers; this asks nothing of her. You can withdraw this later without touching anyone else&rsquo;s consent, and a withdrawn consent does not unmake a sealed value.</p>
+    <div class="btnrow">
+      <span class="cta">Yes, mine only</span>
+      <button type="button" class="chip">Not now</button>
+    </div>
+    <div class="k">writes one row in mcp_connection_consents (ADR 0114 &sect;2) &middot; the house-declared mail connection must exist first, on /settings &middot; <b>not built</b> as a step of onboarding; the consent table exists (20260903151000_the_house_declares_a_person_consents.sql)</div>
+  </div>
+</div>
+
+<!-- ───────────────────────── 07 THE PHONE ───────────────────────── -->
+<div class="fh"><span class="n">07 &middot; 390 &middot; standing at the bar with the list in hand</span><h2>The step a manager does on their feet: the photo, the guess, the word.</h2></div>
+<p class="fk">one gesture per register, the seal available here or later at the desk &middot; the same rows, the same provenance</p>
+<div class="twoup">
+  <div class="phone">
+    <div class="bar"><span>Mudavym<span style="color:var(--seal)">.</span></span><span>Lokanta &middot; 0 written</span></div>
+    <div class="body">
+      <p class="ask q" style="font-size:19px">What does this house pour?</p>
+      <p class="sub">Read from your photo: 24 wines, 9 rak&#305; and spirits, 5 beers. Tap what is right; say what is missing.</p>
+      <div class="regs">
+        <div class="reg on"><div class="n">Wines</div><div class="s">inferred &middot; confirmed</div></div>
+        <div class="reg on"><div class="n">Spirits</div><div class="s">inferred &middot; confirmed</div></div>
+        <div class="reg on"><div class="n">Beer</div><div class="s">inferred &middot; confirmed</div></div>
+        <div class="reg on"><div class="n">Soft drinks</div><div class="s">spoken &middot; carried</div></div>
+        <div class="reg"><div class="n">Cocktails</div><div class="s">spoken &middot; not carried</div></div>
+        <div class="reg inf"><div class="n">Whiskey</div><div class="s">inferred only &middot; tap to answer</div></div>
+        <div class="reg inf"><div class="n">Non-alcoholic</div><div class="s">inferred only &middot; tap to answer</div></div>
+      </div>
+      <div class="live"><small>heard &middot; spoken</small>Right. We do soft drinks too &mdash; ayran and cola &mdash; but no cocktails.</div>
+      <div class="micbig"><i></i>Hold to talk</div>
+      <p class="note" style="margin-top:8px">voice: drawn, not built (ADR 0113 Q6, Q7) &middot; the photo: POST /menus/import, scan (GetStarted.tsx:406)</p>
+    </div>
+    <div class="drawer">
+      <div class="k"><b>7 rows</b> on the table &middot; 0 written<br>seal here, or at the desk</div>
+      <span class="chip">Keep going</span>
+    </div>
+  </div>
+  <div>
+    <p class="aside">The phone shows the interview&rsquo;s smallest unit: one question, the guess it starts from, and the sentence that turns a guess into an answer. Confirmed registers are ink; inferred ones stay dashed and italic until tapped or spoken to; the drawer at the bottom is the proposal, folded. Nothing on this screen writes. The seal is the same hold as on the desk, and a manager who prefers to finish standing can.</p>
+    <p class="aside">The two grey chips are the whole argument for provenance at phone width: a house that walks away here leaves whiskey and non-alcoholic recorded as <em>guesses</em>, and the desk shows them grey tomorrow. Today&rsquo;s step writes nothing on &ldquo;Confirm later&rdquo; (CellarRegistersOnboarding.tsx:72-79) and cannot tell tomorrow whether anyone looked.</p>
+  </div>
+</div>
+
+<!-- ───────────────────────── 08 LEGEND ───────────────────────── -->
+<div class="fh"><span class="n">08 &middot; the marks, and the doors</span><h2>Eight ways a value can have arrived, and five routes that exist today.</h2></div>
+<div class="legend">
+  <table>
+    <thead><tr><th style="width:38%">Mark</th><th>Means</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pvc typed">typed</span></td><td>A person wrote it in this conversation. Ink. Reads as <b>stated</b> on every register afterwards.</td></tr>
+      <tr><td><span class="pvc spoken">spoken</span></td><td>A person said it. Same weight as typed; the chip says how, because the record question (ADR 0113 Q7) is open.</td></tr>
+      <tr><td><span class="pvc inferred">inferred</span></td><td>The platform read it off the house&rsquo;s own books. <b>Grey, italic, dashed</b>, until a person answers. Sealed unanswered, it is written as a guess and stays labelled one.</td></tr>
+      <tr><td><span class="pvc confirmed">confirmed</span></td><td>An inferred value a person said yes to. The value stays; the provenance changes.</td></tr>
+      <tr><td><span class="pvc defaulted">defaulted</span></td><td>A default stated in words before it is recorded; a person left it standing. <b>Defaulted and confirmed</b> together mean chosen.</td></tr>
+      <tr><td><span class="pvc skipped">skipped</span></td><td>Offered, declined. One audit row, no setting changed. Reads &ldquo;offered on 6 September, skipped&rdquo;.</td></tr>
+      <tr><td><span class="pvc unanswered">not yet answered</span></td><td>Never asked in so many words. Nothing written, nothing recorded. The honest em dash.</td></tr>
+      <tr><td><span class="pvc told">cannot be recorded</span></td><td>Named on the screen, no door today. Drawn as a sentence, never as a control.</td></tr>
+    </tbody>
+  </table>
+  <table>
+    <thead><tr><th style="width:34%">Door</th><th>Route today</th><th style="width:22%">Kept where</th></tr></thead>
+    <tbody>
+      <tr><td><b>Reports in</b></td><td>at the door, POST /auth/register/restaurant with <code>currency</code> only when answered (Register.tsx:985-990; auth.controller.ts:390); later PUT /settings/currency (settings.controller.ts:227; house-currency.service.ts:39-44)</td><td>this house</td></tr>
+      <tr><td><b>What we pour</b></td><td>PUT /cellar/:rid/registers, <code>registers[{id, carried}]</code>, one <code>source</code> per write (cellar.controller.ts:115; cellar-registers.dto.ts:16-61)</td><td>this house</td></tr>
+      <tr><td><b>Whom we buy from</b></td><td>POST /providers (providers.controller.ts:201), then PUT /vendor-terms/:providerId (vendor-terms.controller.ts:71; vendor-terms.dto.ts:26-84)</td><td>this house</td></tr>
+      <tr><td><b>What we hear about</b></td><td>PATCH /notifications/preferences &mdash; channels, five families, quiet hours (notifications.controller.ts:237-258)</td><td>your account</td></tr>
+      <tr><td><b>The low-stock line</b></td><td>PATCH /onboarding/threshold (menus.controller.ts:91; menus.ts:132-138)</td><td>this house</td></tr>
+      <tr><td><b>The skip, the kept default</b></td><td>system_audit_log, <code>configuration_step_skipped</code> &mdash; <b>not built</b> (settings-audit.service.ts:86-104); no migration</td><td>this house</td></tr>
+      <tr><td><b>The assistant</b></td><td>config.propose_batch &mdash; <b>not built</b> (ADR 0113 rule 5); apply is never exposed, the seal in a first-party client is its only caller</td><td>&mdash;</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="dbl" style="margin-top:36px"></div>
+<div class="cite">
+<b>Repo</b>, read on the worktree at d23794ff, 2026-09-06 &mdash;
+apps/web/src/pages/Register.tsx:24-26, 173-175, 192-213, 344-517, 518-538, 725-910, 911-1384, 984-997, 1276-1280 &middot;
+apps/web/src/components/onboarding/CurrencyStep.tsx:19-21, 51-57, 68-69, 77 &middot;
+apps/web/src/pages/VerifyEmail.tsx:31-34, 43, 55-59, 62 &middot;
+apps/web/src/pages/InviteLanding.tsx:39-41, 61-63, 135 &middot;
+apps/web/src/pages/GetStarted.tsx:37-39, 234-236, 246-287, 371-394, 406, 433-441 &middot;
+apps/web/src/components/onboarding/CellarRegistersOnboarding.tsx:9-20, 44, 72-79 &middot;
+apps/web/src/components/onboarding/ThresholdStep.tsx:80-82 &middot; apps/web/src/services/api/menus.ts:132-138 &middot;
+apps/web/src/components/mudavym/HoldToApprove.tsx:1-20 (pour is linear; early release says what did not happen; reduced motion is a two-step confirm) &middot;
+apps/api-gateway/src/auth/auth.controller.ts:96, 113, 390, 405, 435, 448, 457, 490 &middot;
+apps/api-gateway/src/cellar/cellar.controller.ts:32, 40, 115 &middot; cellar/dto/cellar-registers.dto.ts:16-61 &middot; cellar/cellar-registers.ts:13-21 &middot; cellar/cellar-registers.service.ts:19-36, 76-85 &middot;
+apps/api-gateway/src/providers/providers.controller.ts:201 &middot;
+apps/api-gateway/src/vendor-terms/vendor-terms.controller.ts:30-35, 44-48, 71 &middot; vendor-terms/dto/vendor-terms.dto.ts:26-84 &middot;
+apps/api-gateway/src/notifications/notifications.controller.ts:227-258 &middot; notifications/dto/notifications.dto.ts:176-190, 193-217, 251-284 &middot; notifications/producers/*.producer.ts (nine) &middot; market-price.producer.ts:95-97 &middot;
+apps/api-gateway/src/settings/settings.controller.ts:208, 227 &middot; settings/house-currency.service.ts:39-59 &middot; settings/dto/house-currency.dto.ts:19-31 &middot;
+apps/api-gateway/src/settings-audit/settings-audit.service.ts:86-104 (no configuration_step_skipped), 205-221 (correlation_id never set) &middot;
+apps/api-gateway/src/ask-ai/ask-ai-actions.ts:32 (two families) &middot;
+.planning/decisions/0113-*.md:178 (rule 1), 194 (rule 2), 237 (rule 3), 245 (rule 4), 264 (rule 4a), 298 (rule 5), 326-347 (the onboarding use, skip semantics), 379 (rule 6) &middot;
+.planning/decisions/0112-*.md:65-66, 82-83, 106 &middot; 0108, 0114 &sect;2, 0116, 0117 Q25 &middot;
+.planning/sketches/101-config-assistant/ &mdash; README.md, conversation.html, proposal.html, onboarding-step.html.
+<br><br>
+<b>Lokanta Meyhane, Hasan, Defne, Anadolu G&#305;da, Kad&#305;k&ouml;y Bira, the codes, figures and dates are invented for the drawing. The repo facts are not.</b>
+</div>
+</div>
+
+<script>
+(function(){
+  var body=document.body;
+  var reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ground */
+  var gs=document.querySelectorAll('.ground button');
+  gs.forEach(function(b){b.addEventListener('click',function(){
+    body.setAttribute('data-ground',b.getAttribute('data-ground'));
+    gs.forEach(function(x){x.setAttribute('aria-pressed',String(x===b));});
+  });});
+
+  /* keep / drop, and the tally */
+  var rows=Array.prototype.slice.call(document.querySelectorAll('#proposal .lrow[data-kind="write"]'));
+  var tallyN=document.getElementById('tally-n'), tallyK=document.getElementById('tally-k');
+  function recount(){
+    var dropped=rows.filter(function(r){return r.classList.contains('dropped');}).length;
+    var writes=rows.length-dropped;
+    tallyK.innerHTML='<b>'+writes+'</b> rows written through 5 doors &middot; <b>1</b> recorded as offered and kept<br><b>1</b> skipped, recorded &middot; <b>'+(1+dropped)+'</b> not yet answered, not recorded &middot; <b>3</b> cannot be recorded<br><b>'+dropped+'</b> dropped &middot; <b>0 written so far</b>';
+    var lbl=document.getElementById('hold-lbl'); if(lbl&&!done) lbl.textContent='Hold to apply '+words(writes)+' row'+(writes===1?'':'s');
+  }
+  function words(n){var w=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen'];return w[n]||String(n);}
+  rows.forEach(function(r){
+    var bs=r.querySelectorAll('.tog button');
+    bs.forEach(function(b,i){b.addEventListener('click',function(){
+      bs.forEach(function(x,j){x.setAttribute('aria-pressed',String(i===j));});
+      r.classList.toggle('dropped',i===1);
+      var why=r.querySelector('.why');
+      if(i===1&&!r.querySelector('.drop-why')){var p=document.createElement('div');p.className='why drop-why';p.innerHTML='<b>Dropped by you.</b> Not written, not recorded as an answer &mdash; it stays not yet answered. Dropping is not an answer.';r.insertBefore(p,r.querySelector('.pv'));}
+      if(i===0){var d=r.querySelector('.drop-why'); if(d) d.remove();}
+      recount();
+    });});
+  });
+
+  /* the tally count: overdamped spring, 840ms */
+  function countTo(el,to){
+    if(reduced){el.textContent=to;return;}
+    var from=parseInt(el.textContent,10)||0, t0=performance.now();
+    function step(t){var p=Math.min(1,(t-t0)/840); var e=1-Math.exp(-6*p)*(1+6*p); el.textContent=Math.round(from+(to-from)*e); if(p<1) requestAnimationFrame(step); else el.textContent=to;}
+    requestAnimationFrame(step);
+  }
+
+  /* replay the turns: a sentence becomes rows */
+  var stepped=Array.prototype.slice.call(document.querySelectorAll('#talk [data-step], #proposal [data-step]'));
+  var replay=document.getElementById('replay'), rk=document.getElementById('replay-k');
+  var timer=null;
+  replay.addEventListener('click',function(){
+    if(timer){clearInterval(timer);timer=null;}
+    var max=0; stepped.forEach(function(el){max=Math.max(max,+el.getAttribute('data-step'));});
+    stepped.forEach(function(el){ var s=+el.getAttribute('data-step'); if(s>0){ if(el.hasAttribute('hidden')||el.matches('.pvc')) el.setAttribute('hidden',''); else el.style.display='none'; } el.classList.remove('arrive'); });
+    tallyN.textContent='1';
+    var cur=0; rk.textContent='turn 0 of '+max;
+    var onTable={0:1,1:8,3:8,5:14,7:14,9:14,11:14};
+    timer=setInterval(function(){
+      cur++; rk.textContent='turn '+cur+' of '+max;
+      stepped.forEach(function(el){ if(+el.getAttribute('data-step')===cur){ if(el.matches('.pvc')) el.removeAttribute('hidden'); else el.style.display=''; el.classList.add('arrive'); } });
+      if(cur===3){document.querySelectorAll('#proposal .lrow[data-step="1"] .v.g').forEach(function(v,i){ if(i<3){v.classList.remove('g');} });}
+      var n=0; for(var k in onTable){ if(+k<=cur) n=onTable[k]; } countTo(tallyN,n);
+      if(cur>=max){clearInterval(timer);timer=null; rk.textContent='';}
+    }, reduced?1:760);
+  });
+
+  /* the hold: pour, tuck, stamp */
+  var hold=document.getElementById('hold'), note=document.getElementById('holdnote'), wax=document.getElementById('wax'), rb=document.getElementById('readback');
+  var t0=0, tm=null, armed=false, done=false, POUR=620;
+  function complete(){
+    done=true; hold.classList.remove('pouring'); hold.classList.add('done');
+    document.getElementById('hold-lbl').textContent='Sealed';
+    note.textContent='the wax lands on stamp, once; the receipt below names each row';
+    wax.classList.add('on'); rb.classList.add('on');
+    document.getElementById('chrome-count').textContent='13 of 14 rows written, one refused';
+    tallyK.innerHTML=tallyK.innerHTML.replace('<b>0 written so far</b>','<b>sealed 11:41 &mdash; see the receipt</b>');
+    document.getElementById('receipt').classList.add('turned');
+  }
+  function start(){ if(done) return; if(reduced){ if(!armed){armed=true;note.textContent='Press again to seal';setTimeout(function(){if(!done){armed=false;note.textContent='disarmed';}},3000);} else {complete();} return; }
+    t0=performance.now(); hold.classList.remove('retreat'); void hold.offsetWidth; hold.classList.add('pouring'); note.textContent='pouring';
+    tm=setTimeout(complete,POUR); }
+  function stop(){ if(done||!hold.classList.contains('pouring')) return; clearTimeout(tm); var p=Math.min(99,Math.round((performance.now()-t0)/POUR*100));
+    hold.classList.remove('pouring'); hold.classList.add('retreat'); note.textContent='Released at '+p+'% — nothing written'; }
+  hold.addEventListener('pointerdown',function(e){e.preventDefault();start();});
+  hold.addEventListener('pointerup',stop); hold.addEventListener('pointerleave',stop); hold.addEventListener('pointercancel',stop);
+  hold.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); if(done) return; if(!armed){armed=true;note.textContent='Enter again to seal';setTimeout(function(){if(!done){armed=false;note.textContent='disarmed — nothing written';}},3000);} else {complete();} } if(e.key==='Escape'){armed=false;note.textContent='disarmed — nothing written';} });
+})();
+</script>
+</body>
+</html>

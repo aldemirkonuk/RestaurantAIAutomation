@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>104 &middot; Direction D &middot; The invitation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  color-scheme:dark;
+}
+:root{--serif:"Fraunces",Georgia,serif;--sans:"DM Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}
+
+/* ── motion, named from the house tokens ── */
+:root{
+  --settle-ease:cubic-bezier(.16,1,.3,1); --settle-t:320ms;
+  --ink-t:160ms;
+  --tuck-ease:cubic-bezier(.34,1.45,.64,1); --tuck-t:300ms;
+  --turn-ease:cubic-bezier(.32,.72,0,1); --turn-t:420ms;
+  --pour-t:620ms;
+  --stamp-ease:cubic-bezier(.34,1.56,.64,1); --stamp-t:360ms;
+  --tally-t:840ms;
+}
+@keyframes settle{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes tuck{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes turn{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+@keyframes pour{from{width:0}to{width:100%}}
+@keyframes stamp{0%{transform:scale(1.35);opacity:0}60%{opacity:1}100%{transform:scale(1);opacity:1}}
+.settle{animation:settle var(--settle-t) var(--settle-ease) both}
+.turned{animation:turn var(--turn-t) var(--turn-ease) both}
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:0ms!important;transition-duration:0ms!important;animation-delay:0ms!important}
+}
+
+/* ── page ── */
+*{box-sizing:border-box}
+html{background:var(--paper-0)}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{width:1440px;margin:0 auto;padding:0 24px 96px}
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:18px;padding:12px 0;background:var(--paper-0);border-bottom:1px solid var(--paper-2)}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:18px;letter-spacing:-.01em;color:var(--ink-1)}
+.wordmark .dot{color:var(--seal)}
+.top .crumb{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.ground{margin-left:auto;display:flex;gap:2px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+.ground button{appearance:none;border:1px solid transparent;background:none;color:var(--ink-3);font:inherit;padding:5px 9px;cursor:pointer;transition:color var(--ink-t),border-color var(--ink-t)}
+.ground button[aria-pressed="true"]{color:var(--ink-1);border-color:var(--ink-1)}
+.ground button:focus-visible{outline:2px solid var(--seal-ring);outline-offset:1px}
+
+h1{font-family:var(--serif);font-weight:600;font-size:40px;letter-spacing:-.02em;line-height:1.05;margin:44px 0 0}
+.lede{font-family:var(--serif);font-style:italic;font-weight:400;font-size:17px;color:var(--ink-2);margin:12px 0 0;max-width:880px}
+.eyebrow{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.mono{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.02em}
+.mono b{color:var(--ink-2);font-weight:600}
+code{font-family:var(--mono);font-size:10.5px;color:var(--ink-2)}
+p{margin:6px 0 0;color:var(--ink-2)}
+.flow{display:flex;margin:26px 0 0;border:1px solid var(--paper-2);background:var(--paper-1)}
+.flow div{flex:1;padding:11px 14px;border-right:1px solid var(--paper-2);min-width:0}
+.flow div:last-child{border-right:0}
+.flow .n{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.flow .t{font-size:12.5px;font-weight:500;color:var(--ink-1);margin-top:3px}
+.flow .c{font-family:var(--mono);font-size:9px;color:var(--ink-3);margin-top:3px}
+
+.frame{margin-top:64px}
+.frame-h{display:flex;align-items:baseline;gap:14px}
+.frame-h .no{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+.frame-h h2{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:-.012em;margin:0}
+.frame-k{margin:6px 0 14px;font-size:12.5px;color:var(--ink-2);max-width:980px}
+.frame-k code{font-size:10px}
+
+/* ── a screen ── */
+.screen{position:relative;border:1px solid var(--paper-2);background:var(--paper-0);overflow:hidden}
+.chrome{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--paper-2);background:var(--paper-1)}
+.chrome .url{font-family:var(--mono);font-size:10px;color:var(--ink-2)}
+.chrome .ctl{margin-left:auto;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.chrome .ctl button{appearance:none;border:1px solid var(--ink-3);background:none;color:var(--ink-2);font:inherit;padding:3px 8px;cursor:pointer;transition:border-color var(--ink-t),color var(--ink-t)}
+.chrome .ctl button:hover{border-color:var(--ink-1);color:var(--ink-1)}
+.chrome .ctl button:focus-visible{outline:2px solid var(--seal-ring);outline-offset:1px}
+.auth{padding:56px 0 64px;display:flex;justify-content:center}
+.auth .col{width:560px}
+.auth .wm{font-family:var(--serif);font-weight:600;font-size:22px;letter-spacing:-.01em}
+.auth .wm .dot{color:var(--seal)}
+.ask{font-family:var(--serif);font-weight:600;font-size:30px;letter-spacing:-.018em;line-height:1.1;margin:22px 0 0}
+.ask-l{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:8px 0 0}
+
+/* fields */
+.fld{margin-top:16px}
+.fld label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:5px}
+.fld .hint{font-size:11.5px;color:var(--ink-3);margin-top:4px}
+.in{display:flex;align-items:center;height:40px;padding:0 12px;border:1px solid var(--paper-2);background:var(--paper-1);color:var(--ink-1);font-size:14px;transition:border-color var(--ink-t),box-shadow var(--ink-t)}
+.in.focus{border-color:var(--seal);box-shadow:0 0 0 3px var(--seal-ring)}
+.in .ph{color:var(--ink-3)}
+.in.ok::after{content:"available";margin-left:auto;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.codes{display:flex;gap:8px;margin-top:8px}
+.codes span{flex:1;height:58px;border:1px solid var(--paper-2);background:var(--paper-1);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:26px;font-weight:600;color:var(--ink-1);transition:border-color var(--ink-t)}
+.codes span.cur{border-color:var(--seal);box-shadow:0 0 0 3px var(--seal-ring)}
+.codes span:empty::before{content:"\00B7";color:var(--ink-3);font-weight:400}
+.state{margin-top:8px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-3);min-height:14px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 20px;border:1px solid var(--seal);background:var(--seal);color:var(--paper-0);font-family:var(--sans);font-size:14px;font-weight:600;cursor:pointer;transition:background var(--ink-t),border-color var(--ink-t),color var(--ink-t);text-decoration:none}
+.btn:hover{background:var(--seal-deep);border-color:var(--seal-deep)}
+.btn:focus-visible{outline:2px solid var(--seal-ring);outline-offset:2px}
+.btn.full{width:100%}
+.btn.quiet{background:none;color:var(--ink-1);border-color:var(--ink-1)}
+.btn.quiet:hover{background:var(--paper-1)}
+.btn.off{background:none;color:var(--ink-3);border:1px dashed var(--ink-3);cursor:not-allowed}
+.btn .g{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:1.5px solid currentColor;border-radius:50%;font-family:var(--serif);font-weight:600;font-size:12px}
+.link{color:var(--seal-deep);text-decoration:underline;text-underline-offset:2px;cursor:pointer;background:none;border:0;font:inherit;padding:0}
+.link:focus-visible{outline:2px solid var(--seal-ring);outline-offset:2px}
+.or{display:flex;align-items:center;gap:12px;margin:18px 0 0;color:var(--ink-3);font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase}
+.or::before,.or::after{content:"";flex:1;border-top:1px solid var(--paper-2)}
+.greyrow{margin-top:10px;padding:10px 12px;border:1px dashed var(--paper-2);color:var(--ink-3);font-size:12px}
+.foot{margin-top:22px;font-size:12px;color:var(--ink-3)}
+
+/* records */
+.rec{margin-top:14px;border-top:1px solid var(--ink-1)}
+.rec .r{display:grid;grid-template-columns:150px 1fr auto;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--paper-2)}
+.rec .r .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.rec .r .v{font-size:14px;color:var(--ink-1)}
+.rec .r .v.na{color:var(--ink-3);font-style:italic}
+.rec .r .p{justify-self:end}
+.rec.ruled{border-bottom:3px double var(--ink-1)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px solid var(--paper-2);border-radius:2px;font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+.chip.inferred{border-style:dashed;color:var(--ink-3)}
+.chip.typed{border-color:var(--ink-2);color:var(--ink-2)}
+.chip.confirmed{border-color:var(--seal-ring);color:var(--seal-deep);background:var(--seal-tint)}
+.chip.fork{border-color:var(--ink-1);color:var(--ink-1)}
+.cannot{margin-top:18px;padding:12px 14px;border:1px solid var(--paper-2);background:var(--paper-1)}
+.cannot .eyebrow{margin-bottom:6px}
+.cannot li{font-size:12px;color:var(--ink-2);margin:4px 0 0 14px}
+.cannot li code{font-size:9.5px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:40px}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:26px}
+.invite-card{border:1px solid var(--paper-2);background:var(--paper-1);padding:22px 24px}
+.invite-card .big{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.016em;line-height:1.14;margin:8px 0 0}
+.invite-card .big em{font-style:italic;font-weight:400}
+.invalid{margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.invalid div{border:1px solid var(--paper-2);padding:8px 10px;font-size:11.5px;color:var(--ink-2)}
+.invalid div .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:3px}
+
+/* panel specimen */
+.panel-wrap{margin-top:18px;padding:22px;border:1px solid var(--paper-2);background:var(--paper-1);position:relative}
+.panel{width:620px;margin:0 auto;background:var(--paper-0);border:1px solid var(--paper-2);padding:22px 26px;box-shadow:0 18px 40px -24px var(--ink-1)}
+.panel .t{font-family:var(--serif);font-weight:600;font-size:20px;letter-spacing:-.012em}
+.panel .btns{display:flex;gap:10px;margin-top:16px}
+
+/* app shell (the arrival) */
+.shell{display:grid;grid-template-columns:224px 1fr;min-height:720px}
+.rail{border-right:1px solid var(--paper-2);background:var(--paper-1);padding:18px 16px}
+.rail .house{font-family:var(--serif);font-weight:600;font-size:17px;letter-spacing:-.01em}
+.rail .role{margin-top:4px}
+.rail nav{margin-top:22px;display:flex;flex-direction:column;gap:2px}
+.rail nav span{padding:7px 8px;font-size:13px;color:var(--ink-2)}
+.rail nav span.on{color:var(--ink-1);background:var(--paper-2)}
+.main{padding:26px 30px 34px}
+.main .greet{font-family:var(--serif);font-weight:600;font-size:28px;letter-spacing:-.016em;line-height:1.1}
+.main .greet-l{font-family:var(--serif);font-style:italic;font-size:14.5px;color:var(--ink-2);margin-top:6px}
+.sec{margin-top:24px}
+.sec .h{display:flex;align-items:baseline;gap:10px;border-bottom:1px solid var(--ink-1);padding-bottom:6px}
+.sec .h .t{font-size:14px;font-weight:600;color:var(--ink-1)}
+.sec .h .eyebrow{margin-left:auto}
+.row{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:start;padding:10px 0;border-bottom:1px solid var(--paper-2)}
+.row .n{font-size:13.5px;font-weight:500;color:var(--ink-1)}
+.row .s{font-size:12px;color:var(--ink-2);margin-top:3px}
+.row .s.na{color:var(--ink-3);font-style:italic}
+.row .mono{margin-top:5px}
+.row .act{white-space:nowrap}
+.btn.sm{height:32px;padding:0 12px;font-size:12.5px}
+.evidence{display:flex;gap:10px;align-items:center;padding:12px 14px;border:1px solid var(--paper-2);background:var(--paper-1);margin-top:12px}
+.evidence .fig{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--ink-1);min-width:52px}
+.evidence .txt{font-size:12.5px;color:var(--ink-2)}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:4px;margin-top:6px}
+
+/* founding record */
+.found{padding:44px 0 56px;display:flex;justify-content:center}
+.found .col{width:1120px}
+.found .grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:20px}
+.found .part{margin-top:22px}
+.found .part .eyebrow{border-bottom:1px solid var(--ink-1);padding-bottom:5px}
+.select{display:flex;align-items:center;justify-content:space-between;height:40px;padding:0 12px;border:1px solid var(--paper-2);background:var(--paper-1);font-size:14px}
+.select .caret{font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+.statement{margin-top:6px;font-size:12.5px;color:var(--ink-2)}
+.readback{margin-top:34px;padding:22px 0 0;border-top:1px solid var(--ink-1);display:grid;grid-template-columns:1fr 360px;gap:36px;align-items:center}
+.readback .say{font-family:var(--serif);font-size:21px;font-weight:400;line-height:1.35;color:var(--ink-1)}
+.readback .say b{font-weight:600}
+.readback .say .dt{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:8px}
+.sealbox{position:relative}
+.hold{position:relative;display:flex;align-items:center;gap:12px;height:52px;padding:0 18px;border:1px solid var(--seal);background:none;color:var(--seal-deep);font-family:var(--sans);font-size:14px;font-weight:600;width:100%;cursor:pointer;overflow:hidden;user-select:none;-webkit-user-select:none}
+.hold:focus-visible{outline:2px solid var(--seal-ring);outline-offset:2px}
+.hold .bar{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--seal-tint)}
+.hold.pouring .bar{animation:pour var(--pour-t) linear forwards}
+.hold .lbl{position:relative}
+.hold svg{position:relative;flex:none}
+.hold.done{border-color:var(--paper-2);color:var(--ink-3);cursor:default}
+.wax{position:absolute;right:-8px;top:-30px;opacity:0;pointer-events:none}
+.wax.on{animation:stamp var(--stamp-t) var(--stamp-ease) forwards}
+.receipt{margin-top:10px;min-height:52px}
+.receipt .l{font-size:12.5px;color:var(--ink-2)}
+.receipt .l b{color:var(--ink-1)}
+.receipt .mono{margin-top:5px}
+
+/* verify moment */
+.verify{padding:64px 0;display:flex;justify-content:center}
+.verify .card{width:620px;border:1px solid var(--paper-2);background:var(--paper-1);padding:28px 30px}
+.verify .t{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.016em}
+.verify .l{font-family:var(--serif);font-style:italic;font-size:14.5px;color:var(--ink-2);margin-top:8px}
+.verify .btns{display:flex;gap:10px;margin-top:20px;align-items:center}
+
+/* sheet */
+.dim{position:absolute;inset:0;background:var(--ink-1);opacity:.28;transition:opacity var(--settle-t)}
+.sheet{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper-0);border-left:1px solid var(--paper-2);padding:24px 26px 22px;display:flex;flex-direction:column;animation:tuck var(--tuck-t) var(--tuck-ease) both;box-shadow:-24px 0 48px -32px var(--ink-1)}
+.sheet .t{font-family:var(--serif);font-weight:600;font-size:22px;letter-spacing:-.014em;line-height:1.15;margin-top:6px}
+.sheet .l{font-family:var(--serif);font-style:italic;font-size:13.5px;color:var(--ink-2);margin-top:6px}
+.regs{margin-top:16px;border-top:1px solid var(--ink-1);flex:1}
+.reg{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:start;padding:9px 0;border-bottom:1px solid var(--paper-2)}
+.box{width:18px;height:18px;border:1.5px solid var(--ink-2);margin-top:2px;position:relative}
+.box.on::after{content:"";position:absolute;left:5px;top:1px;width:5px;height:10px;border-right:2px solid var(--ink-1);border-bottom:2px solid var(--ink-1);transform:rotate(45deg)}
+.reg .n{font-size:13.5px;font-weight:500;color:var(--ink-1)}
+.reg .b{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);margin-top:3px}
+.sheet .f{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+.sheet .f .btns{display:flex;gap:10px}
+.sheet.gone{display:none}
+.dim.gone{display:none}
+.hidden{display:none!important}
+
+/* invite issuing */
+.issued{margin-top:12px;padding:14px 16px;border:1px solid var(--paper-2);background:var(--paper-1);display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center}
+.issued .code{font-family:var(--mono);font-size:24px;font-weight:600;letter-spacing:.14em;color:var(--ink-1)}
+.issued .d{font-size:12px;color:var(--ink-2)}
+
+/* phone */
+.phone-wrap{display:flex;gap:40px;align-items:flex-start}
+.phone{width:390px;flex:none;border:1px solid var(--ink-2);border-radius:30px;padding:18px 18px 22px;background:var(--paper-0)}
+.phone .bar{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--ink-3);padding:0 6px}
+.phone .wm{font-family:var(--serif);font-weight:600;font-size:18px;margin-top:22px}
+.phone .wm .dot{color:var(--seal)}
+.phone .ask{font-size:24px;margin-top:14px}
+.phone .rec .r{grid-template-columns:96px 1fr}
+.phone .fld{margin-top:12px}
+.phone .in{height:44px}
+.phone .btn{height:48px}
+.aside{max-width:560px}
+.aside p{font-size:12.5px}
+
+/* sources */
+.sources{margin-top:64px;border-top:1px solid var(--ink-1);padding-top:14px;columns:2;column-gap:40px}
+.sources li{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);margin:0 0 4px 12px;break-inside:avoid}
+.sources li b{color:var(--ink-2);font-weight:600}
+</style>
+</head>
+<body class="mudavym" data-ground="paper">
+<div class="wrap">
+
+<div class="top">
+  <span class="wordmark">Mudavym<span class="dot">.</span></span>
+  <span class="crumb">Sketch 104 &middot; Direction D &middot; The invitation &middot; 6 Sep 2026</span>
+  <div class="ground" role="group" aria-label="Ground">
+    <button type="button" data-ground-btn="paper" aria-pressed="true">Paper</button>
+    <button type="button" data-ground-btn="charcoal" aria-pressed="false">Charcoal</button>
+  </div>
+</div>
+
+<h1>The invitation</h1>
+<p class="lede">The house is resolved before the account exists. Whoever was invited arrives already inside it, with everything the house has said about itself already in view; whoever was not invited is founding a house, and presses the seal once.</p>
+
+<div class="flow">
+  <div><div class="n">01 &middot; /register</div><div class="t">The door: a code, or no code</div><div class="c">GET /auth/invite/:code</div></div>
+  <div><div class="n">02 &middot; /invite/:code</div><div class="t">Resolved: who expects you, where, as what</div><div class="c">POST /auth/join</div></div>
+  <div><div class="n">03 &middot; /</div><div class="t">Arrival: the house comes up as if signed in</div><div class="c">tokens carry restaurant_id + role</div></div>
+  <div><div class="n">04 &middot; /register</div><div class="t">Founding record, one page, one seal</div><div class="c">POST /auth/register/restaurant</div></div>
+  <div><div class="n">05 &middot; /verify-email</div><div class="t">The house waits for one letter</div><div class="c">POST /auth/verify-email</div></div>
+  <div><div class="n">06 &middot; /get-started</div><div class="t">Founded: first evidence, four registers, one invitation issued</div><div class="c">PUT /cellar &middot; PATCH /notifications &middot; POST /auth/invite</div></div>
+  <div><div class="n">07 &middot; 390px</div><div class="t">The standing-up step: the link opened in the kitchen</div><div class="c">frames 02 on a phone</div></div>
+</div>
+
+<!-- ─────────────────────────────── FRAME 01 ─────────────────────────────── -->
+<section class="frame" id="f01">
+  <div class="frame-h"><span class="no">Frame 01 &middot; /register</span><h2>The door asks for the invitation first</h2></div>
+  <p class="frame-k">Today <code>/register</code> opens on two marketing cards (<code>Register.tsx:216-342</code>). Here it opens on one question. The code field resolves as it is typed, 400 ms after the eighth character (<code>Register.tsx:191-213</code>); <code>?invite=CODE</code> pre-fills it (<code>:177-188</code>) and a <code>/invite/:code</code> link lands already resolved (<code>InviteLanding.tsx:31-48</code>).</p>
+  <div class="screen">
+    <div class="chrome"><span class="url">mudavym.com/register</span><span class="ctl">signed out</span></div>
+    <div class="auth">
+      <div class="col">
+        <div class="wm">Mudavym<span class="dot">.</span></div>
+        <div class="ask">Who is expecting you?</div>
+        <div class="ask-l">If someone invited you, the code on the invitation opens their house. If nobody did, you are founding one.</div>
+        <div class="fld">
+          <label>Invitation code</label>
+          <div class="codes"><span class="cur"></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="state">not yet resolved</div>
+          <div class="hint">Eight characters, no O, I, 0 or 1. It is checked the moment the eighth lands; nothing is written by checking.</div>
+        </div>
+        <div class="or">or</div>
+        <a class="btn quiet full" href="#f04">No invitation. I am founding a house.</a>
+        <div class="foot">Already have an account? <span class="link">Sign in</span> &middot; If you were invited to a second house, sign in first and the invitation will ask to add it.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── FRAME 02 ─────────────────────────────── -->
+<section class="frame" id="f02">
+  <div class="frame-h"><span class="no">Frame 02 &middot; /invite/KX7MP4QA</span><h2>Hasan is expecting you at Lokanta Meyhane</h2></div>
+  <p class="frame-k">Everything on the left is what <code>GET /auth/invite/:code</code> returns to an anonymous caller today: organisation, restaurant, city, the inviter's name, the role (<code>auth.service.ts:998-1005</code>). Everything it cannot say is listed beneath in ink-3, not filled in. The account is on the right, and joining is one press.</p>
+  <div class="screen" id="resolve" data-state="empty">
+    <div class="chrome"><span class="url">mudavym.com/invite/KX7MP4QA</span><span class="ctl"><button type="button" id="playResolve">Play the resolution</button></span></div>
+    <div class="auth" style="padding-top:40px">
+      <div class="col" style="width:1160px">
+        <div class="two">
+          <div>
+            <div class="wm">Mudavym<span class="dot">.</span></div>
+            <div class="fld" id="codeFld">
+              <label>Invitation code</label>
+              <div class="codes" id="codes2"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+              <div class="state" id="state2">not yet resolved</div>
+            </div>
+
+            <div class="invite-card hidden" id="card2">
+              <div class="eyebrow">Invitation &middot; KX7MP4QA &middot; resolved 6 Sep 2026, 14:12</div>
+              <div class="big">Hasan is expecting you at <em>Lokanta Meyhane</em> &mdash; as a manager.</div>
+              <div class="rec">
+                <div class="r"><span class="k">House</span><span class="v">Lokanta Meyhane</span><span class="p chip">from the preview</span></div>
+                <div class="r"><span class="k">City</span><span class="v">İstanbul</span><span class="p chip">from the preview</span></div>
+                <div class="r"><span class="k">Organisation</span><span class="v">Lokanta Meyhane</span><span class="p chip">from the preview</span></div>
+                <div class="r"><span class="k">You would be</span><span class="v">Manager</span><span class="p chip">from the preview</span></div>
+                <div class="r"><span class="k">Invited by</span><span class="v">Hasan</span><span class="p chip fork">founder fork &middot; invite-landing.md &sect;13.4</span></div>
+              </div>
+              <div class="mono" style="margin-top:8px">The inviter's name is shown to anyone holding the link, before any sign-in (<b>auth.service.ts:987,1003</b>). Whether an anonymous caller should see it is the founder's call; this direction draws it because the sentence is the whole point of the door, and says so.</div>
+              <div class="cannot">
+                <div class="eyebrow">What the preview cannot tell you</div>
+                <ul style="margin:0;padding:0;list-style:none">
+                  <li>When it expires &mdash; not in the response; <code>Register.tsx:478</code> prints &ldquo;7 days&rdquo; as a constant. Drawn here as <i>not stated</i>, never as a number.</li>
+                  <li>Whether it was addressed to you &mdash; <code>targetEmail</code> is stored (<code>auth.service.ts:1095</code>) and never checked on join (<code>:1358-1500</code>). Whoever holds the link gets the role.</li>
+                  <li>The house's currency, address, registers, vendors &mdash; a tenant's facts need a session. They appear in frame 03, after the join.</li>
+                </ul>
+              </div>
+              <div class="invalid">
+                <div><span class="k">not found</span>No invitation carries this code.</div>
+                <div><span class="k">used</span>This invitation was already used. Ask Hasan for another.</div>
+                <div><span class="k">expired</span>This invitation has expired. Ask Hasan for another.</div>
+              </div>
+              <div class="mono" style="margin-top:6px">Three reasons come back (<b>auth.service.ts:993-996</b>); <b>InviteLanding.tsx:95</b> collapses all three to &ldquo;expired&rdquo; today. Three sentences here.</div>
+            </div>
+          </div>
+
+          <div id="acct2" class="hidden">
+            <div class="eyebrow" style="margin-top:34px">Your account &middot; then you are inside</div>
+            <div class="fld"><label>Your name</label><div class="in">Defne Aksoy</div></div>
+            <div class="fld"><label>Email</label><div class="in ok">defne@lokantameyhane.example</div><div class="hint">Checked as you type &mdash; <code>GET /auth/check-email</code> (<code>auth.controller.ts:490-498</code>). No verification letter: Hasan vouched for you (<code>auth.service.ts:1356,1438</code>).</div></div>
+            <div class="fld"><label>Password</label><div class="in focus"><span class="ph">at least 8 characters</span></div></div>
+            <div style="margin-top:20px"><span class="btn full">Join Lokanta Meyhane</span></div>
+            <div class="mono" style="margin-top:6px"><b>POST /auth/join</b> {code, name, email, password} (<b>auth.controller.ts:435-441</b>; <b>join-via-invite.dto.ts:4-7</b>) &rarr; consumes the invitation atomically, writes users(role: manager, email_verified: true), user_restaurant_access, organization_members, claims the team_members row, returns tokens carrying restaurant_id + role (<b>auth.service.ts:1358-1500</b>).</div>
+            <div class="or">or</div>
+            <span class="btn off full"><span class="g">G</span>Join with Google</span>
+            <div class="mono" style="margin-top:6px">Not built &mdash; would need <b>POST /auth/join</b> to accept a Google ID token in place of a password. Today <b>POST /auth/oauth/google</b> resolves an existing account only and refuses an unknown address (<b>auth.service.ts:1629-1656</b>); the DTO takes a password (<b>join-via-invite.dto.ts:7</b>). Drawn in its place so the founder sees where it sits.</div>
+            <div class="greyrow">Microsoft sign-in isn't available on this page yet. <span class="mono">identity-providers.ts:95-96 &middot; the row is shown, not hidden</span></div>
+            <div class="foot">Already have a Mudavym account? Use its password here &mdash; joining a second house costs the account's own password (<code>auth.service.ts:1411-1424</code>). Or <span class="link">sign in first</span> and accept: <code>POST /auth/invite/:code/accept</code> (<code>auth.controller.ts:357-371</code>).</div>
+          </div>
+        </div>
+
+        <div class="panel-wrap">
+          <div class="eyebrow" style="margin-bottom:10px">The signed-in variant &middot; a centred panel, 620 &middot; one question (ADR 0112)</div>
+          <div class="panel">
+            <div class="eyebrow">Invitation &middot; KX7MP4QA</div>
+            <div class="t">Add Lokanta Meyhane to your houses, as a manager?</div>
+            <p style="margin-top:8px">You are signed in as Defne. Hasan invited this account; accepting adds the house beside your current one and you can switch between them.</p>
+            <div class="btns"><span class="btn">Add Lokanta Meyhane</span><span class="btn quiet">Not now</span></div>
+            <div class="mono" style="margin-top:10px"><b>POST /auth/invite/:code/accept</b> (<b>auth.controller.ts:357-371</b>; <b>auth.service.ts:1253-1330</b>) &middot; 409 already_member reads &ldquo;You are already a member&rdquo; (<b>InviteLanding.tsx:69-74</b>) &middot; then refreshBranches() (<b>:65</b>)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── FRAME 03 ─────────────────────────────── -->
+<section class="frame" id="f03">
+  <div class="frame-h"><span class="no">Frame 03 &middot; / &middot; the arrival</span><h2>Defne is inside Lokanta Meyhane, as if she had signed in</h2></div>
+  <p class="frame-k">The join returns tokens that already carry <code>restaurant_id</code> and the role (<code>auth.service.ts:1494-1497</code>), so the first screen is the house, not a setup page. What the house has already said about itself is shown as record; what it has not is <i>not yet answered</i> in ink-3, offered to the roles that may answer. Staff arriving this way get the read-only welcome (<code>StaffWelcome.tsx:36-79</code>).</p>
+  <div class="screen">
+    <div class="chrome"><span class="url">mudavym.com/</span><span class="ctl">Defne &middot; manager &middot; via invitation KX7MP4QA</span></div>
+    <div class="shell">
+      <div class="rail">
+        <div class="house">Lokanta Meyhane</div>
+        <div class="role"><span class="chip">manager &middot; joined 6 Sep by invitation</span></div>
+        <nav><span class="on">Today</span><span>Cellar</span><span>Deliveries</span><span>Vendors</span><span>Reports</span><span>Notifications</span><span>Settings</span></nav>
+      </div>
+      <div class="main">
+        <div class="greet">Good afternoon, Defne. This is Hasan's house.</div>
+        <div class="greet-l">Everything below was said by someone, or by nobody yet. Nothing here was guessed on your behalf.</div>
+
+        <div class="three" style="margin-top:8px">
+          <div>
+            <div class="sec">
+              <div class="h"><span class="t">The house has already answered</span><span class="eyebrow">record</span></div>
+              <div class="rec ruled" style="border-top:0">
+                <div class="r"><span class="k">Reports in</span><span class="v">TRY &middot; Turkish lira</span><span class="p chip typed">typed &middot; Hasan &middot; 2 Sep</span></div>
+                <div class="r"><span class="k">Pours</span><span class="v">Wines, beer, spirits, non-alcoholic, soft drinks</span><span class="p chip confirmed">confirmed &middot; Hasan &middot; 3 Sep</span></div>
+                <div class="r"><span class="k">Does not pour</span><span class="v">Whiskey, cocktails</span><span class="p chip confirmed">confirmed &middot; 3 Sep</span></div>
+                <div class="r"><span class="k">Timezone</span><span class="v">Europe/Istanbul</span><span class="p chip typed">from the founding record</span></div>
+              </div>
+              <div class="mono" style="margin-top:8px">restaurants.currency (<b>settings.controller.ts:208-225</b>, code or null) &middot; restaurant_cellar_registers, one row per register with its source (<b>cellar.controller.ts:40-50</b>)</div>
+            </div>
+            <div class="sec">
+              <div class="h"><span class="t">The list is in the books</span><span class="eyebrow">first evidence &middot; exists</span></div>
+              <div class="evidence"><span class="fig">143</span><span class="txt">lines, put in by Hasan on 2 September from a photographed menu. You check them; you do not re-enter them.</span></div>
+              <div class="mono" style="margin-top:6px">A house with no list yet is asked for one here instead: photograph the menu, upload a file, or type it (<b>GetStarted.tsx:93-102</b>). Never a competitor's export as step one.</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sec">
+              <div class="h"><span class="t">Not yet answered &mdash; a manager may</span><span class="eyebrow">offered</span></div>
+              <div class="row">
+                <div><div class="n">Anadolu Gıda &mdash; their terms</div><div class="s na">lead time, delivery days, payment terms, their currency: not yet answered</div><div class="mono">PUT /vendor-terms/:providerId (<b>vendor-terms.controller.ts:71-83</b>). A column default reads as unknown, never as their word (<b>vendor-terms.service.ts:47-58</b>).</div></div>
+                <div class="act"><span class="btn quiet sm">State them</span></div>
+              </div>
+              <div class="row">
+                <div><div class="n">Marmara İçecek &mdash; their terms</div><div class="s na">not yet answered</div></div>
+                <div class="act"><span class="btn quiet sm">State them</span></div>
+              </div>
+              <div class="row">
+                <div><div class="n">What rings your phone</div><div class="s">Defaults kept. Nine producers will reach you: goal reached, ceiling held, delivery recorded, invoice confirmed, sale record, market price, added tool, grant suspended, experiment ended.</div><div class="mono">Channels, five categories, quiet hours, low-stock: PATCH /notifications/preferences (<b>notifications.controller.ts:237</b>; <b>notifications.dto.ts:251-285</b>). Per-producer keep/mute: <b>not built</b> &mdash; would need a per-producer key on UpdatePreferencesDto.</div></div>
+                <div class="act"><span class="btn quiet sm">Choose</span></div>
+              </div>
+              <div class="row" style="border-bottom:0">
+                <div><div class="n">Talk it through with the assistant</div><div class="s">It reads what the house exposes, proposes registers with a reason each, and one seal applies them item by item. By voice or by typing. Offered, never forced.</div><div class="mono">config.propose_batch: <b>not built</b> (ADR 0113 rule 5). Drawn as an offer with nowhere to go yet.</div></div>
+                <div class="act"><span class="btn off sm">Talk it through</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sec">
+              <div class="h"><span class="t">Who may say what</span><span class="eyebrow">roles</span></div>
+              <div class="row"><div><div class="n">Reporting currency</div><div class="s">Owner or manager. Anyone else gets a 403 in words: the money every figure is stated in is not a per-person setting.</div><div class="mono">settings.controller.ts:227-244</div></div></div>
+              <div class="row"><div><div class="n">Cellar registers, vendor terms</div><div class="s">Any member of the house; tenant-checked against the token.</div><div class="mono">cellar.controller.ts:22-33 &middot; no role decorator on either controller</div></div></div>
+              <div class="row" style="border-bottom:0"><div><div class="n">Notifications</div><div class="s">Per person. Defne's choices are Defne's.</div><div class="mono">UpdatePreferencesDto.userId &middot; notifications.dto.ts:253-254</div></div></div>
+            </div>
+            <div class="sec">
+              <div class="h"><span class="t">What this arrival must not read</span><span class="eyebrow">gap</span></div>
+              <div class="mono" style="margin-top:10px;font-size:10.5px;line-height:1.6"><b>GET /onboarding/progress answers 404 for everyone who joined by invitation</b> &mdash; Path A writes no user_onboarding_progress row (<b>auth.service.ts:1358-1500</b>, compare Path B <b>:830-850</b>; <b>menus.service.ts:654-665</b>). The arrival reads the house's registers and books directly, never the progress row.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── FRAME 04 ─────────────────────────────── -->
+<section class="frame" id="f04">
+  <div class="frame-h"><span class="no">Frame 04 &middot; /register &middot; no invitation</span><h2>The founding record: one page, one seal</h2></div>
+  <p class="frame-k">Path B today is two steps and a three-section rail (<code>Register.tsx:725-1384</code>). Here it is one record, read back in a sentence, sealed once. It asks only what <code>POST /auth/register/restaurant</code> can take (<code>register-restaurant.dto.ts:14-86</code>). What the house pours is not asked here: a register is read off the house's own books (ADR 0108), and the books do not exist until the seal lands.</p>
+  <div class="screen">
+    <div class="chrome"><span class="url">mudavym.com/register?type=new</span><span class="ctl"><button type="button" id="resetSeal">Reset the seal</button></span></div>
+    <div class="found">
+      <div class="col">
+        <div class="wm" style="font-family:var(--serif);font-weight:600;font-size:22px">Mudavym<span style="color:var(--seal)">.</span></div>
+        <div class="ask">Found a house.</div>
+        <div class="ask-l">One record, one seal. Everything below is what the house will say about itself on its first day, with your name against it.</div>
+
+        <div class="grid">
+          <div>
+            <div class="part"><div class="eyebrow">Who</div>
+              <div class="fld"><label>Your name</label><div class="in">Marcus Hale</div></div>
+              <div class="fld"><label>Email</label><div class="in ok">marcus@theoldmill.example</div><div class="hint">A verification letter goes here after the seal. The house opens when it is opened.</div></div>
+              <div class="fld"><label>Password</label><div class="in">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</div><div class="hint">At least 8 characters (<code>register-restaurant.dto.ts:16</code>).</div></div>
+              <div class="or">or</div>
+              <span class="btn off full"><span class="g">G</span>Found it with Google</span>
+              <div class="mono" style="margin-top:6px">Not built &mdash; <b>POST /auth/register/restaurant</b> takes a password; Google sign-in resolves existing accounts only (<b>auth.service.ts:1611-1656</b>). Would need a provider token accepted on this route and a user_oauth_accounts row written with the owner.</div>
+              <div class="greyrow">Microsoft sign-in isn't available on this page yet.</div>
+            </div>
+          </div>
+          <div>
+            <div class="part"><div class="eyebrow">The house</div>
+              <div class="fld"><label>Its name</label><div class="in">The Old Mill</div></div>
+              <div class="fld"><label>Address</label><div class="in">412 Mill Street, Ann Arbor, Michigan 48104, United States</div><div class="hint">Chosen from the list, so the point is recorded with it: latitude, longitude, place id (<code>Register.tsx:991-995</code>). A typed address records no point (<code>auth.service.ts:753-758</code>).</div></div>
+              <div class="two" style="gap:14px">
+                <div class="fld"><label>Cuisine <span class="mono">optional</span></label><div class="in">American, farm table</div></div>
+                <div class="fld"><label>Phone <span class="mono">optional</span></label><div class="in"><span class="ph">+1</span></div></div>
+              </div>
+              <div class="fld"><label>Reports in</label>
+                <div class="select"><span>USD &middot; US dollar</span><span class="caret">change</span></div>
+                <div class="statement">Defaulted from United States. We will record USD. Change it if that is wrong. &ldquo;Not yet&rdquo; is also an answer: it records nothing, and every screen says <i>currency not recorded</i> until you choose.</div>
+                <div class="mono" style="margin-top:5px"><span class="chip inferred">inferred from the address</span> until you touch it; then <span class="chip typed">typed</span>. Sent only when answered (<b>Register.tsx:985-990</b>); the gateway writes the code or NULL, never USD by default (<b>auth.service.ts:776-789</b>; <b>CurrencyStep.tsx:51-57,77</b>). Each invoice keeps the currency its vendor billed in.</div>
+              </div>
+              <div class="fld"><label>Timezone</label><div class="in" style="color:var(--ink-2)">America/Detroit</div><div class="hint">Read from this browser (<code>Register.tsx:984</code>); the gateway falls back to America/New_York when absent (<code>auth.service.ts:775</code>) &mdash; so it is shown, not hidden.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="readback">
+          <div class="say"><b>Marcus Hale</b> founds <b>The Old Mill</b>, 412 Mill Street, Ann Arbor, Michigan. It reports in <b>US dollars</b>. Marcus is its owner.<span class="dt">6 September 2026 &middot; the arrival's only ceremony</span></div>
+          <div class="sealbox">
+            <svg class="wax" id="wax" viewBox="0 0 100 100" width="48" height="48" style="color:var(--seal)" aria-hidden="true">
+              <path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/>
+              <g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)" fill="var(--paper-0)">
+                <path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/>
+              </g>
+              <g fill="none" stroke="var(--paper-0)" stroke-linecap="square"><path d="M30 71h40" stroke-width="4.4"/><path d="M30 77h40" stroke-width="2.6"/></g>
+            </svg>
+            <button type="button" class="hold" id="hold" aria-label="Hold to found the house">
+              <span class="bar"></span>
+              <svg viewBox="0 0 100 100" width="22" height="22" style="color:currentColor" aria-hidden="true"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/></svg>
+              <span class="lbl" id="holdLbl">Hold to found the house</span>
+            </button>
+            <div class="receipt" id="receipt">
+              <div class="mono">Hold for 620 ms (<b>pour</b>); let go early and nothing happens. The wax lands once (<b>stamp</b>). No confirmation after it.</div>
+            </div>
+          </div>
+        </div>
+        <div class="mono" style="margin-top:14px"><b>POST /auth/register/restaurant</b> (<b>auth.controller.ts:390-400</b>) writes organizations &rarr; restaurants(currency: code or null, timezone, point) &rarr; users(owner, email_verified: false) &rarr; organization_members &rarr; user_restaurant_access &rarr; user_onboarding_progress, rolling all back on any failure (<b>auth.service.ts:722-850</b>); then <b>/verify-email</b> (<b>Register.tsx:997</b>).</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── FRAME 05 ─────────────────────────────── -->
+<section class="frame" id="f05">
+  <div class="frame-h"><span class="no">Frame 05 &middot; /verify-email</span><h2>The house waits for one letter</h2></div>
+  <p class="frame-k">Only the founder sees this: the invited are vouched for and arrive verified (<code>auth.service.ts:1438</code>). The letter's link carries a token; redeeming it returns tokens with the verified claim and sends the owner on to frame 06 (<code>VerifyEmail.tsx:23-46</code>).</p>
+  <div class="screen">
+    <div class="chrome"><span class="url">mudavym.com/verify-email</span><span class="ctl">Marcus &middot; owner &middot; not yet verified</span></div>
+    <div class="verify">
+      <div class="card">
+        <div class="eyebrow">The Old Mill &middot; founded 6 Sep 2026, 14:31 &middot; sealed</div>
+        <div class="t">We wrote to marcus@theoldmill.example.</div>
+        <div class="l">Open the letter and the house opens with it. Until then nothing in it can be read or written, and nothing is being guessed in your absence.</div>
+        <div class="btns">
+          <span class="btn quiet">Send the letter again</span>
+          <span class="mono">sent 14:31 &middot; can be sent again at 14:32 &middot; one a minute (<b>auth.controller.ts:457-466</b>; <b>VerifyEmail.tsx:54-58</b>)</span>
+        </div>
+        <div class="foot">Wrong address? <span class="link">Sign in and change it</span> &mdash; <code>PATCH /auth/me</code> (<code>auth.controller.ts:212</code>). Opening the link: <code>POST /auth/verify-email {token}</code> (<code>:447-452</code>) &rarr; new tokens &rarr; <code>/get-started</code>, or the house itself if a list is already in the books (<code>VerifyEmail.tsx:41-43</code>).</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── FRAME 06 ─────────────────────────────── -->
+<section class="frame" id="f06">
+  <div class="frame-h"><span class="no">Frame 06 &middot; /get-started &middot; the owner's arrival</span><h2>The Old Mill is founded. First evidence, four registers, one invitation issued</h2></div>
+  <p class="frame-k">The founder's first page inside the house. The list goes into the books first (first evidence, not first configuration); the four registers the house has not yet said are offered with their state, each answered in a right sheet (440) and each skippable as a recorded fact; and the owner's second act is to issue an invitation, which closes the loop back to frame 02.</p>
+  <div class="screen" id="ownerArrival" style="min-height:820px">
+    <div class="chrome"><span class="url">mudavym.com/get-started</span><span class="ctl">Marcus &middot; owner &middot; verified 14:38 &middot; <button type="button" id="reopenSheet">Reopen the sheet</button></span></div>
+    <div class="shell">
+      <div class="rail">
+        <div class="house">The Old Mill</div>
+        <div class="role"><span class="chip">owner &middot; founded 6 Sep</span></div>
+        <nav><span class="on">Today</span><span>Cellar</span><span>Deliveries</span><span>Vendors</span><span>Reports</span><span>Notifications</span><span>Settings</span></nav>
+      </div>
+      <div class="main">
+        <div class="greet">The Old Mill is founded, Marcus.</div>
+        <div class="greet-l">Put the list in the books, then say the four things the house has not said yet. Or say them later; the house remembers what it was asked.</div>
+
+        <div class="two" style="margin-top:6px;gap:32px">
+          <div>
+            <div class="sec">
+              <div class="h"><span class="t">Put the list in the books</span><span class="eyebrow">first evidence</span></div>
+              <div class="evidence" style="align-items:flex-start">
+                <span class="fig" id="tally">61</span>
+                <span class="txt"><b style="color:var(--ink-1)">lines read from the menu you photographed.</b> Drop your list here in any form it already exists: a photo of the menu, a PDF, a spreadsheet, or the wine list your supplier emailed. We read the lines; you check them before anything is counted. <span class="mono">photograph &middot; upload a file &middot; type it (<b>GetStarted.tsx:93-102</b>); review before write (<b>:246-253</b>)</span></span>
+              </div>
+              <div style="margin-top:10px;display:flex;gap:10px"><span class="btn sm">Check the 61 lines</span><span class="btn quiet sm">Add another page</span></div>
+            </div>
+
+            <div class="sec">
+              <div class="h"><span class="t">Who is expected?</span><span class="eyebrow">the second act</span></div>
+              <div class="row" style="border-bottom:0">
+                <div><div class="n">Invite a manager</div><div class="s">A code and a link. Whoever opens it sees &ldquo;Marcus is expecting you at The Old Mill&rdquo; and arrives inside the house, with the list and these answers already in view.</div></div>
+                <div class="act"><span class="btn sm">Invite</span></div>
+              </div>
+              <div class="issued">
+                <span class="code">TH8RW3NC</span>
+                <span class="d">manager &middot; issued 6 Sep 14:52 &middot; expires 13 Sep &middot; link copied: mudavym.com/invite/TH8RW3NC<div class="mono" style="margin-top:4px"><b>POST /auth/invite</b> {restaurantId, role, targetEmail?} &middot; owner or manager (<b>auth.controller.ts:414-430</b>) &rarr; organization_invites + a pending team_members row + team_member_invited (<b>auth.service.ts:1049-1114</b>)</div></span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sec">
+              <div class="h"><span class="t">The house has not yet said</span><span class="eyebrow">four registers &middot; state, never a percentage</span></div>
+              <div class="row" id="rowPour">
+                <div><div class="n">What it pours</div><div class="s" id="pourState">Read off the 61 lines: wines certain, beer likely, spirits likely, whiskey and cocktails not named. Not yet confirmed.</div><div class="mono">restaurant_cellar_registers &middot; inferred until a person confirms (<b>cellar-registers.dto.ts:40-61</b>)</div></div>
+                <div class="act"><span class="btn quiet sm" id="openPour">Confirm</span></div>
+              </div>
+              <div class="row">
+                <div><div class="n">Whom it buys from</div><div class="s na">No vendors yet. Offered the day the first vendor is added: lead time, delivery days, payment terms, their currency, each NULL until stated.</div><div class="mono">PUT /vendor-terms/:providerId (<b>vendor-terms.controller.ts:71</b>). Nothing to ask is not the same as answered; this row stays open.</div></div>
+                <div class="act"><span class="btn off sm">No vendor yet</span></div>
+              </div>
+              <div class="row">
+                <div><div class="n">What it hears about</div><div class="s">Defaults kept. Nine producers; choose channels, quiet hours and which kinds reach you.</div><div class="mono">PATCH /notifications/preferences (<b>notifications.controller.ts:237</b>). Per-producer switches: <b>not built</b>.</div></div>
+                <div class="act"><span class="btn quiet sm">Choose</span></div>
+              </div>
+              <div class="row" style="border-bottom:0">
+                <div><div class="n">Talk it through</div><div class="s">The assistant reads what the house exposes, proposes a batch with a reason and a provenance per value; one seal applies it item by item.</div><div class="mono">config.propose_batch: <b>not built</b> (ADR 0113 rule 5).</div></div>
+                <div class="act"><span class="btn off sm">Talk it through</span></div>
+              </div>
+              <div class="mono" style="margin-top:10px">A skip is a fact: system_audit_log &middot; configuration_step_skipped &middot; {register, offered, answered: []} (ADR 0113; get-started.md &sect;13.7). <b>Not built</b> &mdash; would need one SettingsAuditService.record call (<b>settings-audit.service.ts:202</b>). Today &ldquo;Confirm later&rdquo; writes nothing (<b>CellarRegistersOnboarding.tsx:72-79</b>).</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dim" id="dim"></div>
+    <aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetT">
+      <div class="eyebrow">Register &middot; what this house pours &middot; sheet 440</div>
+      <div class="t" id="sheetT">What does this house pour?</div>
+      <div class="l">Read off the list you just put in the books. Untick what is wrong; tick what the list does not show yet.</div>
+      <div class="regs">
+        <div class="reg"><span class="box on"></span><div><div class="n">Wines</div><div class="b">38 lines name a wine &middot; certain</div></div><span class="chip inferred pv">inferred</span></div>
+        <div class="reg"><span class="box on"></span><div><div class="n">Beer</div><div class="b">6 lines &middot; likely</div></div><span class="chip inferred pv">inferred</span></div>
+        <div class="reg"><span class="box"></span><div><div class="n">Whiskey</div><div class="b">nothing in the list names whiskey &middot; none</div></div><span class="chip inferred pv">inferred</span></div>
+        <div class="reg"><span class="box on"></span><div><div class="n">Spirits</div><div class="b">4 lines &middot; likely</div></div><span class="chip inferred pv">inferred</span></div>
+        <div class="reg"><span class="box"></span><div><div class="n">Cocktails</div><div class="b">nothing in the list names a cocktail &middot; none</div></div><span class="chip inferred pv">inferred</span></div>
+        <div class="reg"><span class="box on"></span><div><div class="n">Non-alcoholic</div><div class="b">9 lines &middot; certain</div></div><span class="chip inferred pv">inferred</span></div>
+        <div class="reg"><span class="box on"></span><div><div class="n">Soft drinks</div><div class="b">4 lines &middot; certain</div></div><span class="chip inferred pv">inferred</span></div>
+      </div>
+      <div class="f">
+        <div class="btns"><span class="btn" id="confirmRegs">Confirm these seven</span><span class="btn quiet" id="notNow">Not now</span></div>
+        <div class="mono"><b>PUT /cellar/:restaurantId/registers</b> {registers[7], source: 'confirmed'} (<b>cellar.controller.ts:115</b>; <b>useCellarNextData.ts:937-943</b>). Seven answers at once, so a &ldquo;no&rdquo; is as firm as a &ldquo;yes&rdquo;. &ldquo;Not now&rdquo; records the offer and closes; it is reversible from Settings, and nothing is written as a register.</div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── FRAME 07 ─────────────────────────────── -->
+<section class="frame" id="f07">
+  <div class="frame-h"><span class="no">Frame 07 &middot; 390px &middot; the standing-up step</span><h2>The link opened in the kitchen</h2></div>
+  <p class="frame-k">The step a manager does on their feet is frame 02: Hasan sends the link on the house's group chat, Defne opens it between two tables. One sentence, three facts, three fields, one press. No code to type: the link carries it.</p>
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="bar"><span>14:12</span><span>mudavym.com/invite/KX7MP4QA</span></div>
+      <div class="wm">Mudavym<span class="dot">.</span></div>
+      <div class="ask">Hasan is expecting you at Lokanta Meyhane.</div>
+      <div class="ask-l">As a manager. İstanbul.</div>
+      <div class="rec">
+        <div class="r"><span class="k">House</span><span class="v">Lokanta Meyhane</span></div>
+        <div class="r"><span class="k">Invited by</span><span class="v">Hasan</span></div>
+        <div class="r"><span class="k">Expires</span><span class="v na">not stated by the invitation</span></div>
+      </div>
+      <div class="fld"><label>Your name</label><div class="in">Defne Aksoy</div></div>
+      <div class="fld"><label>Email</label><div class="in ok">defne@lokantameyhane.example</div></div>
+      <div class="fld"><label>Password</label><div class="in focus"><span class="ph">at least 8 characters</span></div></div>
+      <div style="margin-top:18px"><span class="btn full">Join Lokanta Meyhane</span></div>
+      <div class="or">or</div>
+      <span class="btn off full"><span class="g">G</span>Join with Google</span>
+      <div class="mono" style="margin-top:6px">not built &mdash; the join takes a password today</div>
+      <div class="foot" style="margin-top:14px">Already have an account? Use its password. <span class="link">Sign in first</span> to add this house to yours.</div>
+    </div>
+    <div class="aside">
+      <div class="eyebrow">Why this is the standing-up step</div>
+      <p>An owner founds a house at a desk, once. A manager joins one from wherever the message reached them, and the join is the only moment in the whole arrival where a person is likely to be standing. So it is the one drawn at 390: everything the preview knows is above the fold, everything it does not know says so, and there is a single press.</p>
+      <div class="eyebrow" style="margin-top:18px">What was left out on purpose</div>
+      <p>No code entry: the link carries it, and typing eight characters on a phone is the door's failure mode. No confirmation after the press: the join is reversible from Settings (<code>POST /auth/me/leave-restaurant</code>, <code>auth.controller.ts:321</code>). No verification letter: the invited are vouched for.</p>
+      <div class="eyebrow" style="margin-top:18px">What happens after the press</div>
+      <p>Frame 03, on the phone: the house's answered registers as record, the unanswered as <i>not yet answered</i>, the list already in the books. The manager can read Hasan's house before Hasan has said a word to her.</p>
+    </div>
+  </div>
+</section>
+
+<ul class="sources">
+  <li><b>Register.tsx</b> :25-36 InvitePreview shape &middot; :177-213 pre-fill and 400 ms resolution &middot; :216-342 today's selector &middot; :344-517 code entry &middot; :518-724 join account &middot; :725-910 create account &middot; :959-1003 submit incl. currency :985-990 &middot; :1276-1280 CurrencyStep mount</li>
+  <li><b>InviteLanding.tsx</b> :11-20 preview type &middot; :31-48 GET /auth/invite/:code &middot; :54-79 accept + 409 &middot; :95 three reasons collapsed &middot; :128-139 sign-in / create paths</li>
+  <li><b>GetStarted.tsx</b> :93-102 three ways in &middot; :179,234-235 StaffWelcome for staff &middot; :246-253 review before write &middot; :256-273 CellarRegistersOnboarding &middot; :276-291 ThresholdStep</li>
+  <li><b>StaffWelcome.tsx</b> :30-35 no upload, no threshold, no invite for staff &middot; :43-46 &ldquo;uploaded by your manager&rdquo;</li>
+  <li><b>CurrencyStep.tsx</b> :1-30 why it exists (ADR 0117 Q25) &middot; :51-57 the statement in words &middot; :77 &ldquo;Not yet&rdquo;</li>
+  <li><b>CellarRegistersOnboarding.tsx</b> :9-20 infer then confirm, never a gate &middot; :60-70 PUT with source confirmed &middot; :72-79 &ldquo;Confirm later&rdquo; writes nothing</li>
+  <li><b>GoogleSignInButton.tsx</b> :53-57 GSI, One Tap &middot; :110-126 context signin, text signin_with &middot; :156-162 unconfigured deployment says so</li>
+  <li><b>identity-providers.ts</b> :72-109 the registry &middot; :95-96 Microsoft disabledReason &middot; :117-120 storable providers</li>
+  <li><b>auth.controller.ts</b> :96 register &middot; :113 oauth/google &middot; :357-371 invite accept &middot; :390-400 register/restaurant &middot; :405-409 invite preview (Public) &middot; :414-430 generate invite &middot; :435-441 join (Public) &middot; :447-452 verify-email &middot; :457-466 resend &middot; :490-498 check-email</li>
+  <li><b>auth.service.ts</b> :341-355 loginWithGoogle &middot; :722-850 registerRestaurant (currency :776-789, timezone :775, point :753-758) &middot; :979-1006 getInvitePreview &middot; :1049-1114 generateInvite &middot; :1253-1330 acceptInviteAsExistingUser &middot; :1354-1500 joinViaInvite (takeover closed :1399-1424; email_verified true :1438; tokens :1494-1497) &middot; :1611-1656 OAuth never creates</li>
+  <li><b>join-via-invite.dto.ts</b> :3-8 &middot; <b>register-restaurant.dto.ts</b> :13-86 &middot; <b>invite.dto.ts</b> :6 role</li>
+  <li><b>settings.controller.ts</b> :208-225 GET currency &middot; :227-244 PUT currency, owner or manager</li>
+  <li><b>cellar.controller.ts</b> :22-33 tenant scope &middot; :40-50 read &middot; :115 PUT registers &middot; <b>cellar-registers.dto.ts</b> :16-61 &middot; <b>useCellarNextData.ts</b> :925-943 &middot; <b>cellar-format.ts</b> :147-165 the seven</li>
+  <li><b>vendor-terms.controller.ts</b> :71-83 PUT &middot; <b>vendor-terms.service.ts</b> :45-58 a default reads as unknown</li>
+  <li><b>notifications.controller.ts</b> :227,237 preferences &middot; <b>notifications.dto.ts</b> :195-285 categories, quiet hours, low-stock, UpdatePreferencesDto &middot; <b>notifications/producers/</b> nine producers</li>
+  <li><b>menus.service.ts</b> :654-665 progress 404 &middot; <b>settings-audit.service.ts</b> :202 SettingsAuditService</li>
+  <li><b>invite-landing.md</b> &sect;11 what an anonymous caller learns &middot; &sect;13 item 4 the inviter fork &middot; <b>get-started.md</b> &sect;13.7 the recorded skip &middot; <b>ADR 0108, 0112, 0113, 0116, 0117</b></li>
+</ul>
+
+</div>
+<script>
+(function(){
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ground
+  var body = document.body;
+  Array.prototype.forEach.call(document.querySelectorAll('[data-ground-btn]'), function(b){
+    b.addEventListener('click', function(){
+      var g = b.getAttribute('data-ground-btn');
+      body.setAttribute('data-ground', g);
+      Array.prototype.forEach.call(document.querySelectorAll('[data-ground-btn]'), function(x){
+        x.setAttribute('aria-pressed', x.getAttribute('data-ground-btn') === g ? 'true' : 'false');
+      });
+    });
+  });
+
+  // frame 02: the resolution
+  var code = 'KX7MP4QA';
+  var frame = document.getElementById('resolve');
+  var boxes = document.getElementById('codes2').children;
+  var state = document.getElementById('state2');
+  var card = document.getElementById('card2');
+  var acct = document.getElementById('acct2');
+  var play = document.getElementById('playResolve');
+  var timers = [];
+  function clear(){ timers.forEach(clearTimeout); timers = []; }
+  function reset(){
+    clear();
+    frame.setAttribute('data-state','empty');
+    for (var i=0;i<8;i++){ boxes[i].textContent=''; boxes[i].classList.toggle('cur', i===0); }
+    state.textContent = 'not yet resolved';
+    card.classList.add('hidden'); card.classList.remove('settle');
+    acct.classList.add('hidden'); acct.classList.remove('settle');
+    play.textContent = 'Play the resolution';
+  }
+  function resolved(){
+    frame.setAttribute('data-state','resolved');
+    state.textContent = 'resolved 14:12 · GET /auth/invite/KX7MP4QA · valid';
+    card.classList.remove('hidden'); card.classList.add('settle');
+    acct.classList.remove('hidden'); acct.classList.add('settle');
+    play.textContent = 'Reset';
+  }
+  function run(){
+    if (frame.getAttribute('data-state') === 'resolved'){ reset(); return; }
+    if (reduced){ for (var i=0;i<8;i++){ boxes[i].textContent = code[i]; boxes[i].classList.remove('cur'); } resolved(); return; }
+    frame.setAttribute('data-state','typing');
+    for (var i=0;i<8;i++){
+      (function(i){
+        timers.push(setTimeout(function(){
+          boxes[i].textContent = code[i];
+          boxes[i].classList.remove('cur');
+          if (boxes[i+1]) boxes[i+1].classList.add('cur');
+          if (i===7){ state.textContent = 'checking … 400 ms after the eighth character'; }
+        }, 90*(i+1)));
+      })(i);
+    }
+    timers.push(setTimeout(resolved, 90*8 + 400));
+  }
+  play.addEventListener('click', run);
+  reset();
+
+  // frame 04: hold to seal
+  var hold = document.getElementById('hold');
+  var lbl = document.getElementById('holdLbl');
+  var wax = document.getElementById('wax');
+  var receipt = document.getElementById('receipt');
+  var holdTimer = null, done = false;
+  function land(){
+    done = true;
+    hold.classList.remove('pouring'); hold.classList.add('done');
+    lbl.textContent = 'Founded';
+    wax.classList.add('on');
+    receipt.innerHTML = '<div class="l"><b>The Old Mill is founded.</b> We wrote to marcus@theoldmill.example. Nothing more to confirm.</div><div class="mono">POST /auth/register/restaurant · 201 · restaurants.currency = USD (typed) · users.email_verified = false · then /verify-email</div>';
+  }
+  function start(e){
+    if (done) return;
+    if (reduced){ land(); return; }
+    e.preventDefault();
+    hold.classList.add('pouring');
+    holdTimer = setTimeout(land, 620);
+  }
+  function stop(){
+    if (done) return;
+    if (holdTimer){ clearTimeout(holdTimer); holdTimer = null; }
+    hold.classList.remove('pouring');
+  }
+  hold.addEventListener('pointerdown', start);
+  hold.addEventListener('pointerup', stop);
+  hold.addEventListener('pointerleave', stop);
+  hold.addEventListener('pointercancel', stop);
+  hold.addEventListener('keydown', function(e){ if (e.key === ' ' || e.key === 'Enter'){ start(e); } });
+  hold.addEventListener('keyup', function(e){ if (e.key === ' ' || e.key === 'Enter'){ stop(); } });
+  document.getElementById('resetSeal').addEventListener('click', function(){
+    done = false; stop();
+    hold.classList.remove('done'); lbl.textContent = 'Hold to found the house';
+    wax.classList.remove('on');
+    receipt.innerHTML = '<div class="mono">Hold for 620 ms (<b>pour</b>); let go early and nothing happens. The wax lands once (<b>stamp</b>). No confirmation after it.</div>';
+  });
+
+  // frame 06: the sheet, the skip as a fact, the tally
+  var sheet = document.getElementById('sheet');
+  var dim = document.getElementById('dim');
+  var pourState = document.getElementById('pourState');
+  var openPour = document.getElementById('openPour');
+  var pvs = sheet.querySelectorAll('.pv');
+  function closeSheet(){ sheet.classList.add('gone'); dim.classList.add('gone'); }
+  function openSheet(){ sheet.classList.remove('gone'); dim.classList.remove('gone'); sheet.style.animation='none'; void sheet.offsetWidth; sheet.style.animation=''; }
+  document.getElementById('notNow').addEventListener('click', function(){
+    closeSheet();
+    pourState.className = 's na';
+    pourState.textContent = 'Offered on 6 September, skipped. The seven stay inferred; confirm any time from Settings, Cellar.';
+    openPour.textContent = 'Confirm';
+  });
+  document.getElementById('confirmRegs').addEventListener('click', function(){
+    Array.prototype.forEach.call(pvs, function(c){ c.className = 'chip confirmed pv'; c.textContent = 'confirmed'; });
+    closeSheet();
+    pourState.className = 's';
+    pourState.textContent = 'Wines, beer, spirits, non-alcoholic, soft drinks. Not whiskey, not cocktails. Confirmed by Marcus, 6 September.';
+    openPour.textContent = 'Change';
+  });
+  openPour.addEventListener('click', openSheet);
+  document.getElementById('reopenSheet').addEventListener('click', openSheet);
+  dim.addEventListener('click', function(){ /* a sheet traps focus; the dim does not close it */ });
+
+  // tally: the figure counting up over 840 ms, overdamped
+  var tally = document.getElementById('tally');
+  var target = 61;
+  if (reduced){ tally.textContent = String(target); }
+  else {
+    var t0 = null;
+    function step(ts){
+      if (!t0) t0 = ts;
+      var p = Math.min(1, (ts - t0) / 840);
+      var e = 1 - Math.pow(1 - p, 3);
+      tally.textContent = String(Math.round(target * e));
+      if (p < 1) requestAnimationFrame(step);
+    }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if (en.isIntersecting){ requestAnimationFrame(step); io.disconnect(); } });
+    });
+    io.observe(tally);
+  }
+})();
+</script>
+</body>
+</html>

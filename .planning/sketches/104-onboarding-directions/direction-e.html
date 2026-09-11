@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Sketch 104 E - Set the table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  color-scheme:dark;
+}
+:root{--serif:"Fraunces",Georgia,serif;--sans:"DM Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}
+
+/* motion tokens, named from the house */
+:root{
+  --settle:320ms cubic-bezier(.16,1,.3,1);
+  --ink:160ms ease;
+  --tuck:300ms cubic-bezier(.34,1.4,.64,1);
+  --pour:620ms linear;
+  --stamp:360ms cubic-bezier(.34,1.56,.64,1);
+  --tally:840ms cubic-bezier(.2,.9,.2,1);
+}
+
+*{box-sizing:border-box}
+html{background:var(--paper-0)}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--seal-ring);outline-offset:3px}
+b{font-weight:600}
+code{font-family:var(--mono);font-size:.92em}
+
+.top{width:1440px;margin:0 auto;display:flex;justify-content:space-between;align-items:baseline;padding:26px 40px 10px}
+.wm{font-family:var(--serif);font-weight:600;font-size:22px;letter-spacing:-.01em}
+.wm i{font-style:normal;color:var(--seal)}
+.ground{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);display:flex;gap:14px;align-items:center}
+.ground button{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding:2px 0;border-bottom:1px solid transparent;transition:color var(--ink),border-color var(--ink)}
+.ground button[aria-pressed="true"]{color:var(--ink-1);border-bottom-color:var(--ink-1)}
+
+.frame{width:1440px;margin:0 auto 64px;padding:0 40px}
+.frame-k{font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:26px 0 12px;display:flex;justify-content:space-between}
+.k{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.k.ink{color:var(--ink-1)}
+
+/* the table */
+.table{background:var(--paper-1);border:1px solid var(--paper-2);padding:34px 44px 0;position:relative}
+.table-h{display:flex;justify-content:space-between;align-items:flex-start;gap:40px;margin-bottom:26px}
+.title{font-family:var(--serif);font-weight:600;font-size:34px;line-height:1.1;letter-spacing:-.015em;color:var(--ink-1)}
+.lede{font-family:var(--serif);font-style:italic;font-weight:400;font-size:15px;color:var(--ink-2);margin-top:8px;max-width:760px;line-height:1.55}
+
+/* the assistant control + popover */
+.assist{position:relative;flex:0 0 auto;padding-top:6px}
+.ctl{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--ink-1);border-radius:2px;padding:9px 14px;font-weight:600;font-size:12.5px;color:var(--ink-1);background:var(--paper-0);transition:background var(--ink)}
+.ctl:hover{background:var(--paper-2)}
+.ctl svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.pop{position:absolute;right:0;top:calc(100% + 10px);width:320px;background:var(--paper-0);border:1px solid var(--ink-1);padding:16px 18px 14px;z-index:5;transform-origin:top right;animation:tuck var(--tuck) both}
+.pop[hidden]{display:none}
+.pop .said{font-family:var(--serif);font-style:italic;font-size:14px;line-height:1.5;color:var(--ink-1);margin:8px 0 10px;padding-left:12px;border-left:2px solid var(--ink-3)}
+.pop p{margin:0 0 8px;font-size:12px;color:var(--ink-2);line-height:1.55}
+.pop .row{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.pop .listen{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink-1)}
+.pop .listen .dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--ink-1)}
+.word{font-size:12px;font-weight:600;color:var(--ink-1);border-bottom:1px solid var(--ink-3);padding-bottom:1px;transition:border-color var(--ink)}
+.word:hover{border-bottom-color:var(--ink-1)}
+.word.quiet{color:var(--ink-3);font-weight:500}
+.gap{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--ink-3);line-height:1.6;margin-top:6px}
+.gap::before{content:"not built \2014  ";color:var(--ink-1)}
+
+/* the head of the table */
+.head{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:22px}
+.place{background:var(--paper-0);border:1px solid var(--paper-2);padding:18px 22px 16px;position:relative}
+.place .ask{font-family:var(--serif);font-weight:600;font-size:19px;line-height:1.2;color:var(--ink-1);margin:5px 0 4px}
+.place .why{font-family:var(--serif);font-style:italic;font-size:12.5px;color:var(--ink-2);line-height:1.5;margin-bottom:12px}
+.fl{display:grid;grid-template-columns:120px 1fr;gap:8px 14px;align-items:baseline}
+.fl .n{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding-top:3px}
+.fl .v{font-size:13px;color:var(--ink-1);line-height:1.45}
+.v .prov{display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-left:8px;white-space:nowrap}
+.v.grey{color:var(--ink-3)}
+.card{margin-top:12px;border-top:1px dashed var(--ink-3);padding-top:11px;font-size:12px;color:var(--ink-2);line-height:1.55}
+.card b{color:var(--ink-1)}
+.card .k{margin-bottom:4px;display:block}
+.sat{position:absolute;right:22px;top:16px;text-align:right}
+.sat .k{display:block}
+.sat .t{font-family:var(--mono);font-size:11px;color:var(--ink-1);margin-top:2px}
+
+/* sources */
+.sources{display:grid;grid-template-columns:1.35fr 1fr;gap:22px;margin-bottom:22px}
+.src{background:var(--paper-0);border:1px solid var(--paper-2);padding:16px 22px 14px;display:grid;grid-template-columns:150px 1fr;gap:18px;align-items:start}
+.photo{height:104px;border:1px solid var(--ink-3);background:repeating-linear-gradient(0deg,var(--paper-1) 0 7px,var(--paper-2) 7px 8px);position:relative}
+.photo .cap{position:absolute;left:8px;bottom:6px;font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--ink-1);background:var(--paper-0);padding:2px 5px}
+.src .ask{font-family:var(--serif);font-weight:600;font-size:16px;color:var(--ink-1);margin:2px 0 3px}
+.src .d{font-size:12px;color:var(--ink-2);line-height:1.55}
+.src .d b{color:var(--ink-1)}
+.src .ways{display:flex;gap:16px;margin-top:9px;flex-wrap:wrap}
+.ways .word{font-size:11.5px}
+.src .read{font-family:var(--mono);font-size:10.5px;color:var(--ink-1);margin-top:8px;line-height:1.7}
+.src .read span{color:var(--ink-3)}
+.map{height:104px;border:1px solid var(--ink-3);position:relative;background:var(--paper-1);overflow:hidden}
+.map::before,.map::after{content:"";position:absolute;background:var(--paper-2)}
+.map::before{left:0;right:0;top:44px;height:14px;transform:rotate(-8deg)}
+.map::after{top:0;bottom:0;left:62px;width:10px;transform:rotate(14deg)}
+.map .pin{position:absolute;left:78px;top:38px;width:10px;height:10px;border-radius:50%;border:2px solid var(--ink-1);background:var(--paper-0)}
+
+/* the settings */
+.settings{display:grid;grid-template-columns:5fr 7fr;gap:22px;margin-bottom:22px}
+.setting{background:var(--paper-0);border:1px solid var(--paper-2);padding:18px 22px 16px;position:relative;transition:border-color var(--settle)}
+.setting[data-status="confirmed"],.setting[data-status="typed"]{border-color:var(--ink-3)}
+.setting .ask{font-family:var(--serif);font-weight:600;font-size:21px;line-height:1.15;color:var(--ink-1);margin:5px 0 4px;letter-spacing:-.01em}
+.setting .why{font-family:var(--serif);font-style:italic;font-size:12.5px;color:var(--ink-2);line-height:1.5;margin-bottom:12px;max-width:560px}
+.state{position:absolute;right:22px;top:18px;text-align:right}
+.state .k{display:block}
+.state .s{font-size:12px;font-weight:600;color:var(--ink-1);margin-top:2px}
+.state .s.grey{color:var(--ink-3);font-weight:500}
+
+/* values: grey until confirmed */
+.val{color:var(--ink-3);border-bottom:1px dashed var(--ink-3);transition:color var(--settle),border-color var(--settle)}
+[data-status="confirmed"] .val,[data-status="typed"] .val,.val.typed{color:var(--ink-1);border-bottom-color:transparent}
+.val.typed{font-weight:600}
+.chip{display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);border:1px solid var(--paper-2);padding:2px 6px;border-radius:2px;margin-left:8px;vertical-align:middle;white-space:nowrap}
+.chip.ink{color:var(--ink-1);border-color:var(--ink-3)}
+.chip .c{display:none}
+[data-status="confirmed"] .chip .c{display:inline}
+[data-status="confirmed"] .chip{color:var(--ink-1);border-color:var(--ink-3)}
+.notyet{color:var(--ink-3);font-style:italic}
+
+/* pours */
+.regs{display:grid;grid-template-columns:1fr;gap:0;border-top:1px solid var(--paper-2)}
+.reg{display:grid;grid-template-columns:96px 1fr 56px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--paper-2)}
+.reg .nm{font-size:13px;font-weight:600}
+.reg .ev{font-size:11.5px;color:var(--ink-2);line-height:1.45}
+.reg .ev .val{font-style:normal}
+.sw{justify-self:end;display:inline-flex;border:1px solid var(--paper-2);border-radius:2px;overflow:hidden}
+.sw span{font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;color:var(--ink-3)}
+.sw span.on{background:var(--ink-3);color:var(--paper-0)}
+.sw.typed span.on{background:var(--ink-1)}
+[data-status="confirmed"] .sw span.on{background:var(--ink-1)}
+
+/* buys from */
+.vendor{border-top:1px solid var(--paper-2);padding:10px 0 4px}
+.vendor .vn{display:flex;justify-content:space-between;align-items:baseline}
+.vendor .vn .nm{font-size:15px;font-weight:600}
+.terms{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 18px;margin-top:10px}
+.term .n{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.term .v{font-size:13px;margin-top:2px;line-height:1.4}
+.term .v .chip{margin-left:6px}
+.inf{margin-top:12px;font-family:var(--mono);font-size:10px;color:var(--ink-3);line-height:1.65}
+.inf b{color:var(--ink-1);font-weight:500}
+
+/* hears about */
+.producers{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 18px;border-top:1px solid var(--paper-2);padding-top:10px}
+.pr{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;padding:3px 0;border-bottom:1px solid var(--paper-2)}
+.pr .k{font-size:9px}
+.also{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 18px;margin-top:12px}
+.left-note{margin-top:12px;border-top:1px dashed var(--ink-3);padding-top:10px;font-size:12px;color:var(--ink-2);line-height:1.55}
+.left-note b{color:var(--ink-1)}
+.audit{font-family:var(--mono);font-size:10px;color:var(--ink-3);line-height:1.7;margin-top:6px}
+.audit .kk{color:var(--ink-1)}
+
+/* gestures */
+.gest{display:flex;align-items:center;gap:18px;margin-top:14px}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--ink-1);border-radius:2px;padding:8px 14px;font-weight:600;font-size:12.5px;color:var(--ink-1);background:var(--paper-0);transition:background var(--ink),opacity var(--settle)}
+.btn:hover{background:var(--paper-2)}
+.btn.done{border-style:solid;border-color:var(--ink-3);color:var(--ink-3);cursor:default}
+.btn .tick{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:square}
+.btn .tick{display:none}
+[data-status="confirmed"] .btn.confirm .tick{display:inline}
+.undo{display:none}
+[data-status="confirmed"] .undo,[data-status="left"] .undo{display:inline}
+[data-status="confirmed"] .btn.confirm .label-a,[data-status="left"] .btn.leave .label-a{display:none}
+.btn .label-b{display:none}
+[data-status="confirmed"] .btn.confirm .label-b,[data-status="left"] .btn.leave .label-b{display:inline}
+[data-status="confirmed"] .btn.confirm,[data-status="left"] .btn.leave{border-color:var(--ink-3);color:var(--ink-1);background:var(--paper-1);cursor:default}
+.hidden-until-left{display:none}
+[data-status="left"] .hidden-until-left{display:block}
+[data-status="left"] .producers,[data-status="left"] .also{opacity:.55}
+
+/* the foot: one seal for the lot */
+.foot{border-top:1px solid var(--ink-1);margin:0 -44px;padding:24px 44px 28px;display:grid;grid-template-columns:1fr 340px;gap:40px;align-items:center;position:relative}
+.foot::before{content:"";position:absolute;left:0;right:0;top:3px;border-top:1px solid var(--ink-1);opacity:.5}
+.tally{font-family:var(--serif);font-weight:600;font-size:21px;line-height:1.35;color:var(--ink-1);transition:opacity var(--tally)}
+.tally .n{font-variant-numeric:tabular-nums}
+.warn{font-size:12px;color:var(--ink-2);line-height:1.6;margin-top:8px;max-width:720px}
+.warn b{color:var(--ink-1)}
+.hold{position:relative;width:100%;border:1px solid var(--seal);background:var(--seal);color:var(--paper-0);border-radius:2px;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:none}
+.hold .fill{position:absolute;inset:0;width:0;background:var(--paper-0);opacity:.18}
+.hold.holding .fill{width:100%;transition:width var(--pour)}
+.hold .lbl{position:relative;display:flex;align-items:center;justify-content:center;gap:12px;font-weight:600;font-size:14px;padding:15px 16px}
+.hold .lbl svg{width:22px;height:22px;color:currentColor}
+.hold[data-armed="true"] .lbl::after{content:"Enter again to seal";font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-left:6px;opacity:.85}
+.holdnote{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);text-align:center;margin-top:8px}
+
+/* the receipt */
+.receipt{margin:0 -44px;border-top:1px solid var(--ink-1);background:var(--paper-0);display:none}
+.receipt[data-show="true"]{display:block;animation:settle var(--settle) both}
+.receipt-h{padding:18px 44px 12px;display:flex;align-items:center;gap:18px;border-bottom:1px solid var(--paper-2)}
+.wax{width:48px;height:48px;color:var(--seal);animation:stamp var(--stamp) both}
+.receipt-h .t{font-family:var(--serif);font-weight:600;font-size:22px}
+.receipt-h .m{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.rrow{display:grid;grid-template-columns:130px 1fr 1fr;gap:16px;padding:9px 44px;border-bottom:1px solid var(--paper-2);align-items:start;font-size:12.5px}
+.rrow .st{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding-top:3px;color:var(--ink-3)}
+.rrow .st.w{color:var(--seal-deep)}
+.rrow .st.r{color:var(--ink-1)}
+.rrow .f{font-weight:600}
+.rrow .f small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:400;margin-top:2px}
+.rrow .d{font-size:11.5px;color:var(--ink-2);line-height:1.55}
+.rrow .d code{color:var(--ink-1)}
+.receipt-f{padding:14px 44px 20px;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;background:var(--paper-1)}
+.receipt-f .u{font-size:12px;color:var(--ink-3)}
+.receipt-f .u b{color:var(--ink-1)}
+
+/* frame 2 + phone side by side */
+.pair{display:grid;grid-template-columns:1fr 390px;gap:50px;align-items:start}
+.join .table{padding:30px 36px 26px}
+.join .title{font-size:28px}
+.code{display:inline-flex;gap:6px;font-family:var(--mono);font-size:22px;letter-spacing:.14em;color:var(--ink-1);border-bottom:1px solid var(--ink-1);padding-bottom:4px;margin:12px 0 8px}
+.resolved{font-family:var(--serif);font-weight:600;font-size:20px;line-height:1.3;margin:10px 0 4px}
+.laid{margin-top:18px;border-top:1px solid var(--paper-2)}
+.laid .row{display:grid;grid-template-columns:150px 1fr 190px;gap:16px;padding:9px 0;border-bottom:1px solid var(--paper-2);align-items:baseline;font-size:12.5px}
+.laid .row .n{font-family:var(--serif);font-weight:600;font-size:14px}
+.laid .row .p{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);text-align:right}
+.seat{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+.field{border-bottom:1px solid var(--ink-3);padding:6px 0 5px;font-size:13px}
+.field .n{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:2px}
+.field .dots{letter-spacing:.2em}
+
+.phone{width:390px;background:var(--paper-1);border:1px solid var(--ink-3);border-radius:22px;padding:18px 18px 16px;position:relative}
+.phone .bar{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+.phone .wm{font-size:17px}
+.finder{height:190px;border:1px solid var(--ink-1);position:relative;background:repeating-linear-gradient(0deg,var(--paper-0) 0 9px,var(--paper-2) 9px 10px);margin-bottom:10px}
+.finder .corner{position:absolute;width:18px;height:18px;border:2px solid var(--ink-1)}
+.finder .c1{left:10px;top:10px;border-right:0;border-bottom:0}.finder .c2{right:10px;top:10px;border-left:0;border-bottom:0}.finder .c3{left:10px;bottom:10px;border-right:0;border-top:0}.finder .c4{right:10px;bottom:10px;border-left:0;border-top:0}
+.finder .cap{position:absolute;left:0;right:0;bottom:24px;text-align:center;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-1)}
+.phone .ask{font-family:var(--serif);font-weight:600;font-size:20px;line-height:1.15;margin:8px 0 3px}
+.phone .why{font-family:var(--serif);font-style:italic;font-size:12px;color:var(--ink-2);line-height:1.45;margin-bottom:8px}
+.phone .reg{grid-template-columns:86px 1fr 52px;padding:7px 0}
+.phone .reg .ev{font-size:11px}
+.phone .btn{width:100%;justify-content:center;padding:12px;font-size:14px;margin-top:12px}
+.phone .k.foot-k{display:block;text-align:center;margin-top:10px;line-height:1.7}
+
+/* citations */
+.cite{width:1440px;margin:0 auto 60px;padding:0 40px;font-family:var(--mono);font-size:10px;line-height:1.85;color:var(--ink-3);word-break:break-word}
+.cite b{color:var(--ink-1);font-weight:500}
+
+@keyframes settle{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes tuck{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes stamp{0%{transform:scale(1.6);opacity:0}60%{transform:scale(.94);opacity:1}100%{transform:scale(1)}}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:1ms!important;transition-duration:1ms!important}
+  .hold.holding .fill{transition:none;width:100%}
+}
+</style>
+</head>
+<body class="mudavym" data-ground="paper">
+
+<div class="top">
+  <div class="wm">Mudavym<i>.</i></div>
+  <div class="ground" aria-label="Ground">
+    <button type="button" data-ground-pick="paper" aria-pressed="true">Paper</button>
+    <span aria-hidden="true">/</span>
+    <button type="button" data-ground-pick="charcoal" aria-pressed="false">Charcoal</button>
+  </div>
+</div>
+
+<!-- ============================================================ FRAME 1 -->
+<section class="frame" aria-labelledby="f1">
+  <div class="frame-k" id="f1"><span>Frame 1 &middot; The owner lays the table &middot; 1440 &middot; the whole arrival is this one screen</span><span>Direction E &middot; Set the table</span></div>
+
+  <div class="table" id="table">
+    <div class="table-h">
+      <div>
+        <div class="k">Lokanta Meyhane &middot; Kad&#305;k&ouml;y &middot; Saturday 6 September &middot; 14:10</div>
+        <h1 class="title">The table is laid. Nothing on it is written yet.</h1>
+        <p class="lede">From one photograph of the wine list and one address, Mudavym has set out what this house pours, buys, hears about and pays in. Grey is a guess with its source named. Ink is yours. One seal at the foot writes the lot, item by item, and tells you what it wrote.</p>
+      </div>
+      <div class="assist">
+        <button type="button" class="ctl" id="assist-ctl" aria-expanded="true" aria-controls="assist-pop">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+          Lay it by talking
+        </button>
+        <div class="pop" id="assist-pop" role="dialog" aria-label="The assistant">
+          <span class="k">The assistant &middot; listens, or reads what you type</span>
+          <div class="said">&ldquo;We do wine, beer and rak&#305;. Anadolu wants the order in by eleven.&rdquo;</div>
+          <p><b>Two things heard.</b> The first is already on the table and agrees with the menu, so nothing moved. The second landed <b>grey</b> on <i>Whom we buy from</i> as an order cutoff of 11:00, with your sentence as its reason. It is a proposal until you confirm it there and seal below.</p>
+          <p>The assistant reads what the house exposes and never a person&rsquo;s mail without that person&rsquo;s own consent (ADR 0113 rule 6).</p>
+          <span class="gap">would need <code>config.propose_batch</code> (ADR 0113 rule 5). Today no route can carry this sentence into a value.</span>
+          <div class="row">
+            <span class="listen"><span class="dot" aria-hidden="true"></span> Say more, or type</span>
+            <button type="button" class="word quiet" id="assist-close">Not now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- head of the table -->
+    <div class="head">
+      <div class="place">
+        <span class="k">Who sat down</span>
+        <div class="ask">Defne, owner.</div>
+        <div class="why">The account is a record, not a ceremony. You sat down at 14:03; the house has existed since then. The wax is kept for the table.</div>
+        <div class="fl">
+          <div class="n">Name</div><div class="v">Defne <span class="prov">typed</span></div>
+          <div class="n">Email</div><div class="v">defne@lokanta.example <span class="prov">typed</span></div>
+          <div class="n">Password</div><div class="v"><span class="dots">&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;</span> <span class="prov">typed &middot; never shown</span></div>
+        </div>
+        <div class="card">
+          <span class="k">The letter</span>
+          A letter went to <b>defne@lokanta.example</b> at 14:02. <b>Not yet answered.</b> It does not hold the table; it holds your next sign-in. <button type="button" class="word" style="margin-left:6px">Send it again</button>
+        </div>
+        <div class="sat"><span class="k">Sat down</span><div class="t">14:03 &middot; POST /auth/register/restaurant</div></div>
+      </div>
+
+      <div class="place">
+        <span class="k">The house</span>
+        <div class="ask">Lokanta Meyhane.</div>
+        <div class="why">Name and address are yours. The clock was taken from this browser and is said so; change it if the house keeps another.</div>
+        <div class="fl">
+          <div class="n">Name</div><div class="v">Lokanta Meyhane <span class="prov">typed</span></div>
+          <div class="n">Address</div><div class="v">Moda Cd. 112, Kad&#305;k&ouml;y, &#304;stanbul 34710, T&uuml;rkiye <span class="prov">chosen from the list &middot; point kept</span></div>
+          <div class="n">Clock</div><div class="v">Europe/Istanbul <span class="prov">defaulted from this browser</span></div>
+          <div class="n">Google</div><div class="v grey">Sign up with Google is not on this page. <span class="prov">not built &middot; sign-in only</span></div>
+        </div>
+        <div class="card">
+          <span class="k">What the address gave the table</span>
+          The country <b>T&uuml;rkiye</b>, which defaulted the money below to TRY. Nothing else was inferred from it.
+        </div>
+      </div>
+    </div>
+
+    <!-- the two sources -->
+    <div class="sources">
+      <div class="src">
+        <div class="photo" aria-label="A photograph of the wine list"><span class="cap">menu-arka.jpg &middot; 14:04</span></div>
+        <div>
+          <span class="k">Laid from &middot; the list</span>
+          <div class="ask">Drop the wine list here, in whatever form you have it.</div>
+          <div class="d">A photograph of the printed list, a file exported from the till (CSV, XLSX or PDF), or lines typed in by hand. Every line is read onto the table as a guess with the page it came from. <b>Nothing is saved until you seal.</b></div>
+          <div class="ways"><span class="word">Photograph it</span><span class="word">A file from the till</span><span class="word">Type the lines</span></div>
+          <div class="read"><b>41 lines read</b> <span>&middot; 35 name a wine &middot; 3 name rak&#305; &middot; 2 name a beer &middot; 1 names ayran &middot; 4 need a look</span><br><span>read after you sat down &mdash; POST /menus/import needs the house to exist (menus.ts:79-86)</span></div>
+        </div>
+      </div>
+      <div class="src">
+        <div class="map" aria-label="A map with one pin"><span class="pin"></span></div>
+        <div>
+          <span class="k">Laid from &middot; the address</span>
+          <div class="ask">One pin.</div>
+          <div class="d">The address gave the table a country and a point. It did not give a vendor, a delivery day or a price &mdash; a map cannot say who delivers to this door, and the table does not pretend it can.</div>
+          <div class="read"><b>T&uuml;rkiye</b> <span>&rarr; TRY, as a stated default</span><br><b>41.0 N, 29.0 E</b> <span>&rarr; kept for the map, never for a guess</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- the four settings -->
+    <div class="settings">
+
+      <!-- POURS -->
+      <div class="setting" id="s-pours" data-status="grey">
+        <span class="k">Pours</span>
+        <div class="ask">What does this house pour?</div>
+        <div class="why">Read from the list at 14:04. Seven registers; each one is a guess until you say so. Change anything that is wrong &mdash; nothing here is saved until it is confirmed.</div>
+        <div class="state"><span class="k">State</span><div class="s grey" data-state-text>Grey &middot; not yet answered</div></div>
+        <div class="regs">
+          <div class="reg"><div class="nm">Wines</div><div class="ev"><span class="val">35 lines on the list</span> <span class="chip">certain <span class="c">&middot; confirmed</span></span></div><span class="sw"><span class="on">carried</span><span>no</span></span></div>
+          <div class="reg"><div class="nm">Beer</div><div class="ev"><span class="val">2 lines: Efes, Bomonti</span> <span class="chip">likely <span class="c">&middot; confirmed</span></span></div><span class="sw"><span class="on">carried</span><span>no</span></span></div>
+          <div class="reg"><div class="nm">Spirits</div><div class="ev"><span class="val">3 lines name rak&#305;</span> <span class="chip">likely <span class="c">&middot; confirmed</span></span></div><span class="sw"><span class="on">carried</span><span>no</span></span></div>
+          <div class="reg"><div class="nm">Whiskey</div><div class="ev"><span class="val">none read &mdash; not on the list</span> <span class="chip">none <span class="c">&middot; confirmed</span></span></div><span class="sw"><span>carried</span><span class="on">no</span></span></div>
+          <div class="reg"><div class="nm">Cocktails</div><div class="ev"><span class="val">none read &mdash; not on the list</span> <span class="chip">none <span class="c">&middot; confirmed</span></span></div><span class="sw"><span>carried</span><span class="on">no</span></span></div>
+          <div class="reg"><div class="nm">Non-alcoholic</div><div class="ev"><span class="val typed">Defne: on &mdash; &ldquo;ayran and &#351;algam&rdquo;</span> <span class="chip ink">typed &middot; 14:06</span></div><span class="sw typed"><span class="on">carried</span><span>no</span></span></div>
+          <div class="reg"><div class="nm">Soft drinks</div><div class="ev"><span class="val">none read &mdash; nothing on the list names a cola; the catalogue was not asked</span> <span class="chip">none <span class="c">&middot; confirmed</span></span></div><span class="sw"><span>carried</span><span class="on">no</span></span></div>
+        </div>
+        <div class="gest">
+          <button type="button" class="btn confirm" data-confirm="s-pours"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-11"/></svg><span class="label-a">That&rsquo;s right &mdash; all seven</span><span class="label-b">Confirmed by Defne &middot; 14:11</span></button>
+          <button type="button" class="word quiet undo" data-undo="s-pours">Undo</button>
+          <span class="k">writes all seven, source: confirmed</span>
+        </div>
+      </div>
+
+      <!-- BUYS FROM -->
+      <div class="setting" id="s-buys" data-status="typed">
+        <span class="k">Buys from</span>
+        <div class="ask">Whom does this house buy from?</div>
+        <div class="why">Nothing on a wine list names a distributor, so this place was laid empty and says so. Name a vendor and every term stays blank until somebody states it; a blank is not a seven-day lead time.</div>
+        <div class="state"><span class="k">State</span><div class="s">Yours &middot; one vendor typed</div></div>
+        <div class="vendor">
+          <div class="vn"><span class="nm">Anadolu &#304;&ccedil;ecek</span><span class="chip ink">typed by Defne &middot; 14:08</span></div>
+          <div class="terms">
+            <div class="term"><div class="n">Delivery days</div><div class="v">Tue &middot; Fri<span class="chip ink">stated &middot; 14:09</span></div></div>
+            <div class="term"><div class="n">Order cutoff</div><div class="v"><span class="val" id="cutoff-val">11:00, same day</span><span class="chip">proposed &middot; from what you said</span><span class="gap">would need <code>config.propose_batch</code>; sealing leaves this grey, unwritten</span></div></div>
+            <div class="term"><div class="n">Lead time</div><div class="v notyet">not yet stated</div></div>
+            <div class="term"><div class="n">Payment terms</div><div class="v notyet">not yet stated</div></div>
+            <div class="term"><div class="n">Minimum order</div><div class="v notyet">not yet stated</div></div>
+            <div class="term"><div class="n">Vendor&rsquo;s currency</div><div class="v notyet">no place for it<span class="gap">would need a currency column on vendor terms (vendor-terms.dto.ts:27-90)</span></div></div>
+          </div>
+          <div class="inf"><b>Inferred from orders:</b> nothing &mdash; 0 receipts. An inference is a claim about evidence (term-inference.ts:11), and this house has none yet. Payment terms are never inferable from orders at all (term-inference.ts:25).</div>
+        </div>
+        <div class="gest">
+          <button type="button" class="btn">Name another vendor</button>
+          <span class="k">later is fine &middot; nothing is guessed in the meantime</span>
+        </div>
+      </div>
+
+      <!-- HEARS ABOUT -->
+      <div class="setting" id="s-hears" data-status="left" style="grid-column:1 / span 1">
+        <span class="k">Hears about</span>
+        <div class="ask">What does this house hear about?</div>
+        <div class="why">Nine things the house can be told. They arrive as they stand unless you say otherwise. Leaving them is an answer, and it is written down as one.</div>
+        <div class="state"><span class="k">State</span><div class="s" data-state-text>Left as they stand &middot; recorded</div></div>
+        <div class="producers">
+          <div class="pr"><span>Goal reached</span><span class="k">as it stands</span></div>
+          <div class="pr"><span>Ceiling held</span><span class="k">as it stands</span></div>
+          <div class="pr"><span>Delivery recorded</span><span class="k">as it stands</span></div>
+          <div class="pr"><span>Invoice confirmed</span><span class="k">as it stands</span></div>
+          <div class="pr"><span>Sale record</span><span class="k">as it stands</span></div>
+          <div class="pr"><span>Market price</span><span class="k">as it stands</span></div>
+          <div class="pr"><span>Added tool</span><span class="k">as it stands</span></div>
+          <div class="pr"><span>Grant suspended</span><span class="k">as it stands</span></div>
+          <div class="pr"><span>Experiment ended</span><span class="k">as it stands</span></div>
+        </div>
+        <div class="also">
+          <div class="term"><div class="n">Quiet hours</div><div class="v notyet">none &middot; offered</div></div>
+          <div class="term"><div class="n">Low stock</div><div class="v"><span class="val">6 bottles</span><span class="chip">the product&rsquo;s suggestion</span></div></div>
+          <div class="term"><div class="n">Reaches you by</div><div class="v notyet">email, push &middot; as they stand</div></div>
+        </div>
+        <span class="gap">a switch per producer. Today the door carries channels, five categories, quiet hours and low stock, per person &mdash; never per house (notifications.controller.ts:237-256; notifications.dto.ts:251-298).</span>
+        <div class="left-note hidden-until-left">
+          <b>Left on 6 September at 14:10.</b> No setting changed. The asking is a fact and it was written down, so Settings will say <i>offered 6 September, left</i> &mdash; not the em dash of a thing nobody mentioned.
+          <div class="audit"><span class="kk">system_audit_log</span> &middot; action <span class="kk">configuration_step_skipped</span> &middot; changes { register: <span class="kk">'hears_about'</span>, offered: [nine producers, quiet_hours, low_stock], answered: [] } &middot; actor: Defne, from the JWT</div>
+        </div>
+        <div class="gest">
+          <button type="button" class="btn leave" data-leave="s-hears"><span class="label-a">Leave them as they stand</span><span class="label-b">Left &middot; recorded 14:10</span></button>
+          <button type="button" class="word quiet undo" data-undo="s-hears">Take it back</button>
+        </div>
+      </div>
+
+      <!-- PAYS IN -->
+      <div class="setting" id="s-pays" data-status="confirmed">
+        <span class="k">Pays in</span>
+        <div class="ask">What money does this house report in?</div>
+        <div class="why">Defaulted from T&uuml;rkiye and said so before it was recorded. Each invoice keeps the currency its vendor billed in; nothing is ever converted. &ldquo;Not yet&rdquo; is a real answer: it records nothing, and every screen says <i>currency not recorded</i>.</div>
+        <div class="state"><span class="k">State</span><div class="s" data-state-text>Confirmed by Defne &middot; 14:07</div></div>
+        <div class="fl" style="grid-template-columns:120px 1fr;margin-top:6px">
+          <div class="n">Reports in</div><div class="v"><span class="val" style="font-size:22px;font-family:var(--serif);font-weight:600">TRY &mdash; Turkish lira</span> <span class="chip">inferred from T&uuml;rkiye <span class="c">&middot; confirmed</span></span></div>
+          <div class="n">Sentence</div><div class="v" style="font-family:var(--serif);font-style:italic;color:var(--ink-2)">Defaulted from T&uuml;rkiye. We will record TRY. Change it if that is wrong.</div>
+        </div>
+        <div class="gest">
+          <button type="button" class="btn confirm" data-confirm="s-pays"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-11"/></svg><span class="label-a">That&rsquo;s right</span><span class="label-b">Confirmed by Defne &middot; 14:07</span></button>
+          <button type="button" class="word quiet undo" data-undo="s-pays">Undo</button>
+          <button type="button" class="word quiet">Change it</button>
+          <button type="button" class="word quiet">Not yet</button>
+          <span class="k">the seal writes it through PUT /settings/currency</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- the foot: one seal for the lot -->
+    <div class="foot" id="foot">
+      <div>
+        <div class="tally" id="tally"></div>
+        <div class="warn">The seal writes each setting through its own door and tells you, one by one, what was <b>written</b>, <b>refused</b> and <b>not attempted</b>. It never says &ldquo;Done&rdquo;. Whatever is still grey when the wax lands is not written; it is recorded as offered and left, and can be answered from Settings any day.</div>
+      </div>
+      <div>
+        <div class="hold" id="hold" role="button" tabindex="0" aria-label="Hold to seal the table">
+          <div class="fill" aria-hidden="true"></div>
+          <div class="lbl">
+            <svg viewBox="0 0 100 100" aria-hidden="true"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/></svg>
+            Hold to seal the table
+          </div>
+        </div>
+        <div class="holdnote">hold 620 ms &middot; let go early and nothing is written</div>
+      </div>
+    </div>
+
+    <!-- the receipt, after the wax -->
+    <div class="receipt" id="receipt" data-show="false" aria-live="polite">
+      <div class="receipt-h">
+        <svg class="wax" viewBox="0 0 100 100" width="48" height="48" style="color:var(--seal)" aria-hidden="true">
+          <path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/>
+          <g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)" fill="var(--paper-0)">
+            <path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/>
+          </g>
+          <g fill="none" stroke="var(--paper-0)" stroke-linecap="square"><path d="M30 71h40" stroke-width="4.4"/><path d="M30 77h40" stroke-width="2.6"/></g>
+        </svg>
+        <div>
+          <div class="t">Sealed by Defne at 14:12. Here is what happened, item by item.</div>
+          <div class="m">six doors &middot; no shared transaction &middot; each answer is its own row in system_audit_log</div>
+        </div>
+      </div>
+      <div id="receipt-rows"></div>
+      <div class="receipt-f">
+        <div class="u"><b>Undo this table</b> &mdash; one control, seven days, every value restored through its own door (ADR 0113 rule 4a). <span class="gap" style="display:inline;margin:0">the batch&rsquo;s correlation_id is never set today (settings-audit.service.ts:19, 214), so the rows cannot yet be found as one.</span></div>
+        <button type="button" class="word">Open the house</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ FRAME 2 + PHONE -->
+<section class="frame" aria-labelledby="f2">
+  <div class="frame-k" id="f2"><span>Frame 2 &middot; Arriving with a code: the table is already laid &middot; and the one step done standing, at 390</span><span>Same screen, two other seats</span></div>
+  <div class="pair">
+    <div class="join">
+      <div class="table">
+        <span class="k">Join &middot; the code resolves before the account exists</span>
+        <h2 class="title">Hasan is expecting you.</h2>
+        <div class="code" aria-label="Invite code">K7F2<span aria-hidden="true">&middot;</span>9QDA</div>
+        <div class="resolved">At Lokanta Meyhane, Kad&#305;k&ouml;y &mdash; as a manager.</div>
+        <p class="lede" style="font-size:13.5px;margin-top:2px">You are not setting this table; you are sitting at it. Everything below was laid by Hasan and is shown to you the way it will be the moment you sign in. Change it later from Settings, if your role allows.</p>
+        <div class="laid">
+          <div class="row"><div class="n">Pours</div><div>Wines &middot; Beer &middot; Spirits &middot; Non-alcoholic</div><div class="p">confirmed &middot; Hasan &middot; 2 Sep</div></div>
+          <div class="row"><div class="n">Buys from</div><div>Anadolu &#304;&ccedil;ecek (Tue &middot; Fri) &middot; Ege &#350;arap (terms not yet stated)</div><div class="p">typed &middot; Hasan &middot; 2 Sep</div></div>
+          <div class="row"><div class="n">Hears about</div><div>As they stand &middot; quiet hours 18:00&ndash;01:30</div><div class="p">stated &middot; Hasan &middot; 3 Sep</div></div>
+          <div class="row"><div class="n">Pays in</div><div>TRY &mdash; Turkish lira</div><div class="p">confirmed &middot; Hasan &middot; 2 Sep</div></div>
+        </div>
+        <div class="seat">
+          <div class="field"><span class="n">Your name</span>Marcus</div>
+          <div class="field"><span class="n">Email</span>marcus@lokanta.example</div>
+          <div class="field"><span class="n">Password</span><span class="dots">&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;</span></div>
+          <div class="field" style="border-bottom-color:transparent"><span class="n">The letter</span><span style="color:var(--ink-2)">None to answer &mdash; the code is the proof.</span></div>
+        </div>
+        <div class="gest" style="margin-top:16px">
+          <button type="button" class="btn">Sit down</button>
+          <span class="k">POST /auth/register with the code &middot; then the house, as if signed in</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phone" aria-label="Phone frame, 390 wide">
+      <div class="bar"><div class="wm">Mudavym<i style="font-style:normal;color:var(--seal)">.</i></div><span class="k">at the pass &middot; 14:04</span></div>
+      <div class="finder">
+        <span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>
+        <div class="cap">Point at the wine list &middot; page 2 of 2</div>
+      </div>
+      <div class="read" style="font-family:var(--mono);font-size:10.5px;line-height:1.7"><b style="font-weight:500">41 lines read</b> <span style="color:var(--ink-3)">&middot; 4 need a look &middot; the table on your desk has them</span></div>
+      <div class="ask">What does this house pour?</div>
+      <div class="why">Read from the photograph you just took. Tap a line to change it; nothing is saved until confirmed.</div>
+      <div class="regs">
+        <div class="reg"><div class="nm">Wines</div><div class="ev"><span class="val">35 lines</span></div><span class="sw"><span class="on">carried</span><span>no</span></span></div>
+        <div class="reg"><div class="nm">Beer</div><div class="ev"><span class="val">2 lines</span></div><span class="sw"><span class="on">carried</span><span>no</span></span></div>
+        <div class="reg"><div class="nm">Spirits</div><div class="ev"><span class="val">3 lines name rak&#305;</span></div><span class="sw"><span class="on">carried</span><span>no</span></span></div>
+        <div class="reg"><div class="nm">Whiskey</div><div class="ev"><span class="val">none read</span></div><span class="sw"><span>carried</span><span class="on">no</span></span></div>
+        <div class="reg"><div class="nm">Cocktails</div><div class="ev"><span class="val">none read</span></div><span class="sw"><span>carried</span><span class="on">no</span></span></div>
+        <div class="reg"><div class="nm">Non-alc.</div><div class="ev"><span class="val typed">on &mdash; ayran</span></div><span class="sw typed"><span class="on">carried</span><span>no</span></span></div>
+        <div class="reg"><div class="nm">Soft drinks</div><div class="ev"><span class="val">none read</span></div><span class="sw"><span>carried</span><span class="on">no</span></span></div>
+      </div>
+      <button type="button" class="btn">That&rsquo;s right &mdash; all seven</button>
+      <span class="k foot-k">confirmed here, sealed at the desk or here<br>the rest of the table is waiting either place</span>
+    </div>
+  </div>
+</section>
+
+<div class="cite">
+  <b>Drawn from</b> &middot; Register.tsx:201 (GET /auth/invite/:code resolves the house and inviter live) &middot; :240 (&ldquo;No email verification needed&rdquo; on the join path) &middot; :971-995 (POST /auth/register/restaurant; :984 timezone from the browser; :990 currency sent only when answered; :993 the point only when chosen) &middot; auth.controller.ts:96, :357, :390, :405, :448, :457 &middot; VerifyEmail.tsx:34, :62 &middot; InviteLanding.tsx:40, :62 &middot;
+  GetStarted.tsx:373-389 (the three ways in), :248 (review), :264 (cellar registers), :280 (threshold) &middot; menus.ts:79-86 and import-menu.dto.ts:5-13 (POST /menus/import needs restaurantId) &middot;
+  CurrencyStep.tsx:52-57 (the stated sentence), :77 (&ldquo;Not yet&rdquo;) &middot; settings.controller.ts:227 (PUT /settings/currency, owner or manager) &middot; house-currency.service.ts (never derives, never writes on a read) &middot;
+  cellar-registers.ts:13-21 (the seven), :38 (certain, likely, none, unknown) &middot; cellar-format.ts:577 (nothing in menu, invoices, orders, quotes or till lines) &middot; cellar.controller.ts:115 (PUT /cellar/:restaurantId/registers) &middot; cellar-registers.dto.ts:61 (source: inferred, confirmed, manual) &middot; CellarRegistersStep.tsx:12-16, :96 &middot; CellarRegistersOnboarding.tsx:78 &middot; ADR 0108 Decision (a register is the house&rsquo;s own books first; soft drinks are served by the house&rsquo;s books alone and the catalogue is not asked) &middot;
+  providers.controller.ts:201 (POST /providers) &middot; vendor-terms.controller.ts:71 (PUT /vendor-terms/:providerId) &middot; vendor-terms.dto.ts:27-90 (no currency field) &middot; vendor-terms.service.ts:47-59 (a column default is not an answer) &middot; term-inference.ts:11, :25 &middot; ADR 0116 &middot;
+  notifications/producers/ (nine producers) &middot; notifications.controller.ts:237-256 (PATCH /notifications/preferences, per userId) &middot; notifications.dto.ts:251-298 &middot; ThresholdStep.tsx:18 (6), :26 (PATCH /onboarding/threshold via menus.ts:132-136), :80-81 (a skip writes nothing) &middot; get-started.md:193 (configuration_step_skipped) &middot; settings-audit.service.ts:19, :214 &middot;
+  ADR 0113 rules 1, 3, 4, 4a, 5, 6 &middot; ADR 0112 (popover 320, no dim) &middot; sketch 101 proposal.html (grey current, ink proposed, dropped is not an answer).
+  <b>Example data, not a tenant:</b> Lokanta Meyhane, Defne, Hasan, Marcus, Anadolu &#304;&ccedil;ecek and Ege &#350;arap are invented.
+</div>
+
+<script>
+(function(){
+  var body=document.body;
+  document.querySelectorAll('[data-ground-pick]').forEach(function(b){
+    b.addEventListener('click',function(){
+      body.setAttribute('data-ground',b.getAttribute('data-ground-pick'));
+      document.querySelectorAll('[data-ground-pick]').forEach(function(x){x.setAttribute('aria-pressed',String(x===b));});
+    });
+  });
+
+  var pop=document.getElementById('assist-pop'),ctl=document.getElementById('assist-ctl');
+  document.getElementById('assist-close').addEventListener('click',function(){pop.hidden=true;ctl.setAttribute('aria-expanded','false');});
+  ctl.addEventListener('click',function(){var open=pop.hidden;pop.hidden=!open;ctl.setAttribute('aria-expanded',String(open));});
+
+  var S={pours:'s-pours',buys:'s-buys',hears:'s-hears',pays:'s-pays'};
+  function st(id){return document.getElementById(id).getAttribute('data-status');}
+  function setStatus(id,v,text){var el=document.getElementById(id);el.setAttribute('data-status',v);var t=el.querySelector('[data-state-text]');if(t&&text)t.textContent=text;tally();}
+
+  document.querySelectorAll('[data-confirm]').forEach(function(b){b.addEventListener('click',function(){var id=b.getAttribute('data-confirm');if(st(id)==='confirmed')return;setStatus(id,'confirmed','Confirmed by Defne · 14:11');});});
+  document.querySelectorAll('[data-leave]').forEach(function(b){b.addEventListener('click',function(){var id=b.getAttribute('data-leave');if(st(id)==='left')return;setStatus(id,'left','Left as they stand · recorded');});});
+  document.querySelectorAll('[data-undo]').forEach(function(b){b.addEventListener('click',function(){var id=b.getAttribute('data-undo');setStatus(id,'grey','Grey · not yet answered');});});
+
+  function tally(){
+    var c=0,g=0,l=0,y=0;
+    [S.pours,S.hears,S.pays].forEach(function(id){var s=st(id);if(s==='confirmed')c++;else if(s==='left')l++;else g++;});
+    if(st(S.buys)==='typed')y++;
+    var parts=[];
+    var yours=c+y;
+    parts.push(yours===0?'Nothing on the table is yours yet.':(yours===1?'One setting is yours.':yours+' settings are yours.'));
+    if(g)parts.push(g===1?'One is still grey.':g+' are still grey.');
+    if(l)parts.push(l===1?'One was left, and that is written down.':l+' were left, and that is written down.');
+    document.getElementById('tally').innerHTML=parts.join(' ');
+  }
+  tally();
+
+  function row(stCls,stTxt,f,sub,d){return '<div class="rrow"><div class="st '+stCls+'">'+stTxt+'</div><div class="f">'+f+'<small>'+sub+'</small></div><div class="d">'+d+'</div></div>';}
+  function receipt(){
+    var h='';
+    h+=(st(S.pays)==='confirmed')
+      ? row('w','written','Pays in — TRY','PUT /settings/currency','Audited; the readout came back with <code>audited: true</code>. Provenance kept: inferred from Türkiye, confirmed by Defne.')
+      : row('r','recorded','Pays in — left grey','system_audit_log · configuration_step_skipped','Nothing written. Screens say <i>currency not recorded</i> until somebody answers. Offered 6 September.');
+    h+=(st(S.pours)==='confirmed')
+      ? row('w','written','Pours — seven registers','PUT /cellar/:restaurantId/registers · source: confirmed','All seven at once, the four <i>no</i> answers as firmly as the three <i>yes</i>. Non-alcoholic carries Defne’s own word.')
+      : row('r','recorded','Pours — left grey','system_audit_log · configuration_step_skipped','The registers stay <i>inferred</i>, which is honestly different from confirmed. Offered 6 September.');
+    h+=row('w','written','Anadolu İçecek','POST /providers','One vendor row, typed by Defne. Terms follow through their own door.');
+    h+=row('w','written','Anadolu — delivery days','PUT /vendor-terms/:providerId · deliveryWeekdays [2, 5]','Stated by Defne; lead time, payment terms and minimum stay <i>not yet stated</i>. The response carries <code>audited</code>.');
+    h+=row('','not attempted','Anadolu — order cutoff 11:00','the assistant’s proposal','No route can carry a sentence into a value today (<code>config.propose_batch</code>, ADR 0113 rule 5). It stays grey, and it says so.');
+    h+=(st(S.hears)==='left'||st(S.hears)==='grey')
+      ? row('r','recorded','Hears about — left as they stand','system_audit_log · configuration_step_skipped','No preference changed; nine producers, quiet hours and low stock were offered and declined. Settings will say <i>offered 6 September, left</i>.')
+      : row('w','written','Hears about','PATCH /notifications/preferences','Per person, not per house.');
+    document.getElementById('receipt-rows').innerHTML=h;
+  }
+
+  var hold=document.getElementById('hold'),timer=null,sealed=false,armTimer=null;
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function seal(){if(sealed)return;sealed=true;hold.classList.remove('holding');hold.setAttribute('data-armed','false');hold.querySelector('.lbl').lastChild.textContent=' Sealed at 14:12';receipt();var r=document.getElementById('receipt');r.setAttribute('data-show','true');document.getElementById('foot').querySelector('.warn').textContent='The wax has landed once. Everything below is a record; each line names its door.';}
+  function start(){if(sealed)return;hold.classList.add('holding');timer=setTimeout(seal,reduce?0:620);}
+  function stop(){if(sealed)return;hold.classList.remove('holding');if(timer){clearTimeout(timer);timer=null;}}
+  hold.addEventListener('pointerdown',function(e){e.preventDefault();start();});
+  hold.addEventListener('pointerup',stop);hold.addEventListener('pointerleave',stop);hold.addEventListener('pointercancel',stop);
+  hold.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){hold.setAttribute('data-armed','false');clearTimeout(armTimer);return;}
+    if(e.key!=='Enter'||sealed)return;e.preventDefault();
+    if(hold.getAttribute('data-armed')==='true'){seal();}
+    else{hold.setAttribute('data-armed','true');armTimer=setTimeout(function(){hold.setAttribute('data-armed','false');},3000);}
+  });
+})();
+</script>
+</body>
+</html>
