@@ -284,8 +284,8 @@ export class LineMappingService {
       }
 
       // A person, always — named when we hold the name, and otherwise SAID to
-      // be unnamed. "someone here" read the same for an id we never looked up
-      // and an id that has no name, and only one of those is a fact.
+      // be unnamed. The pronoun this replaces read the same for an id we never
+      // looked up and an id that has no name, and only one of those is a fact.
       const who =
         (newest.linked_by ? lookup(newest.linked_by) : null) ??
         "a person whose name is not on record";
