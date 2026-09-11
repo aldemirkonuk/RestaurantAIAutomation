@@ -208,7 +208,13 @@ export class LineMappingService {
     restaurantId: string;
     providerId: string | null;
     lines: MappableLine[];
-    /** Resolves `linked_by` to a name for the sentence. Optional. */
+    /**
+     * Resolves `linked_by` to a name for the sentence. Optional, and only for
+     * a caller that already holds the names — when it is absent this service
+     * reads `public.users` ITSELF rather than falling back to a pronoun. The
+     * fallback was the whole defect: `linked_by` is a known id, so "someone
+     * here" was the product declining to read a fact it holds.
+     */
     nameFor?: (userId: string) => string | null;
   }): Promise<ReadResult<Map<string, RememberedPairing>>> {
     const out = new Map<string, RememberedPairing>();
@@ -244,6 +250,21 @@ export class LineMappingService {
 
     const rows = (read.data ?? []) as MappingRow[];
 
+    // The names for every author the memory is about to quote. ONE read, and a
+    // FAILED one withholds the whole proposal: "a person whose name is not on
+    // record" asserts we looked, and after a failed read we did not.
+    const names = input.nameFor
+      ? null
+      : await this.namesFor(
+          rows
+            .filter((r) => r.action === "linked")
+            .map((r) => r.linked_by)
+            .filter((v): v is string => !!v),
+        );
+    if (names && !names.ok) return names;
+    const lookup = (id: string): string | null =>
+      input.nameFor ? input.nameFor(id) : (names?.value.get(id) ?? null);
+
     for (const [composite, key] of keys) {
       // Newest first, and `key_value` alone is not unique across kinds.
       const forKey = rows.filter(
@@ -262,9 +283,12 @@ export class LineMappingService {
         if (r.inventory_id === newest.inventory_id) timesConfirmed++;
       }
 
-      const who = newest.linked_by
-        ? (input.nameFor?.(newest.linked_by) ?? "someone here")
-        : "someone here";
+      // A person, always — named when we hold the name, and otherwise SAID to
+      // be unnamed. The pronoun this replaces read the same for an id we never
+      // looked up and an id that has no name, and only one of those is a fact.
+      const who =
+        (newest.linked_by ? lookup(newest.linked_by) : null) ??
+        "a person whose name is not on record";
       const when = newest.linked_at.slice(0, 10);
       const from =
         timesConfirmed === 1
@@ -282,6 +306,37 @@ export class LineMappingService {
     }
 
     return { ok: true, value: out };
+  }
+
+  /**
+   * user_id → name, the same read the correction log uses
+   * (`document-correction.service.ts` `namesFor`). An id we hold no row for is
+   * ABSENT from the map, never mapped to the id itself — a raw uuid in a
+   * sentence is not a name.
+   */
+  private async namesFor(
+    ids: string[],
+  ): Promise<ReadResult<Map<string, string>>> {
+    const unique = Array.from(new Set(ids));
+    if (!unique.length) return { ok: true, value: new Map() };
+    const read = await this.db
+      .getClient()
+      .from("users")
+      .select("user_id, name")
+      .in("user_id", unique);
+    if (read.error)
+      return {
+        ok: false,
+        error: `the people who confirmed these pairings could not be read (${read.error.message}) — no shelf is being proposed on this document, which is NOT the same as having nothing to propose`,
+      };
+    return {
+      ok: true,
+      value: new Map(
+        ((read.data ?? []) as { user_id: string; name: string | null }[])
+          .filter((u) => !!u.name)
+          .map((u) => [u.user_id, u.name as string]),
+      ),
+    };
   }
 
   /**
