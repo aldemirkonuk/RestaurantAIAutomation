@@ -37,6 +37,32 @@ import { DoorCountDto } from "../dto/deliveries.dto";
 
 type AuthedUser = { userId: string; restaurantId: string };
 
+/** The house shape (`procurement.service.ts`, `vendor-intel.controller.ts`). */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A path param that is not a uuid is the CALLER'S mistake, and it is caught
+ * here rather than by Postgres.
+ *
+ * Every `:id` and `:lineId` on this controller lands in a `uuid` column. Passed
+ * a malformed one, PostgREST answers `22P02 invalid input syntax for type uuid`,
+ * the route's catch-all turns that into a 500, and the caller is told the server
+ * broke when nothing did. Measured on the slice 4 live re-drive against
+ * `…/lines/:lineId/link-item`, and its `link`, `PATCH lines/:lineId` and
+ * `line-mappings` siblings all carried the same hole.
+ *
+ * This runs BEFORE the handler's `try`, so the 400 cannot be re-wrapped as a
+ * 500 by the catch that exists for real failures.
+ */
+function requireUuid(value: string, label: string): void {
+  if (typeof value === "string" && UUID_RE.test(value)) return;
+  throw new HttpException(
+    `The ${label} in this address is not an id we can read: "${value}".`,
+    HttpStatus.BAD_REQUEST,
+  );
+}
+
 /**
  * Vendor documents — upload, review, and the four-way match's evidence base.
  *
@@ -721,6 +747,8 @@ export class DocumentsController {
     @Body() body: { inventoryId?: string | null; source?: "chosen" | "remembered" },
     @CurrentUser() user: AuthedUser,
   ) {
+    requireUuid(documentId, "document id");
+    requireUuid(lineId, "line id");
     try {
       return await this.mapping.linkLineToItem({
         documentId,
@@ -755,6 +783,7 @@ export class DocumentsController {
       "The append-only log behind the mapping memory (ADR 0104 D5/D12). Newest first. An `unlinked` row is a person saying \"not this one\" — a real act, kept, not a gap.",
   })
   async lineMappings(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    requireUuid(id, "document id");
     const log = await this.mapping.logFor(id, user.restaurantId);
     // A failed read is not an empty log (ADR 0067).
     if (!log.ok)
@@ -776,6 +805,8 @@ export class DocumentsController {
     @Body() body: { orderLineId?: string | null },
     @CurrentUser() user: AuthedUser,
   ) {
+    requireUuid(documentId, "document id");
+    requireUuid(lineId, "line id");
     try {
       return await this.intake.confirmLineMatch(
         documentId,
@@ -819,6 +850,8 @@ export class DocumentsController {
     },
     @CurrentUser() user: AuthedUser,
   ) {
+    requireUuid(documentId, "document id");
+    requireUuid(lineId, "line id");
     try {
       return await this.intake.editLine(
         documentId,
