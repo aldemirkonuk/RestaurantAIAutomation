@@ -53,6 +53,7 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
       {} as any, // DocumentCorrectionService (ADR 0104 D5)
       {} as any, // DeliveryService (ADR 0103 — the door-count route's other half)
       {} as any, // DeliveryStockService (ADR 0103 A1 — the door's booking half)
+      {} as any, // LineMappingService (ADR 0104 D12 slice 4 — the mapping memory)
     );
   });
 
