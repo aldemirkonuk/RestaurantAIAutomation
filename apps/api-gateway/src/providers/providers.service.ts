@@ -374,20 +374,32 @@ export class ProvidersService {
     providerId: string,
     restaurantId: string,
   ): Promise<ProviderResponseDto> {
+    // `maybeSingle`, never `single`. `single()` turns "no row" into a PostgREST
+    // ERROR (PGRST116, "Cannot coerce the result to a single JSON object"),
+    // which the caller then cannot tell apart from a database that is down —
+    // an id that is simply not a provider answered 500 with that sentence.
     const { data, error } = await this.databaseService.supabase
       .from("providers")
       .select("*")
       .eq("id", providerId)
       .eq("restaurant_id", restaurantId)
-      .single();
+      .maybeSingle();
 
-    if (error) {
+    // A row that is absent and a read that FAILED are two different answers and
+    // must stay two different answers. PGRST116 is kept as a not-found only
+    // because an older client on `single()` can still surface it here.
+    if (error && (error as { code?: string }).code !== "PGRST116") {
       this.logger.error("Failed to fetch provider", {
         providerId,
         error: error.message,
       });
       throw error;
     }
+
+    if (!data)
+      throw new NotFoundException(
+        `No provider with id ${providerId} belongs to this restaurant.`,
+      );
 
     return this.mapProviderRow(data as ProviderRow);
   }
