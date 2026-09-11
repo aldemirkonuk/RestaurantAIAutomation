@@ -56,6 +56,19 @@ Behind `mudavym_design_documents_reports` (OFF — the Sorting Office, §1b):
 - **Cross-filed under** (sketch affordance): the pane's footer counts the report's period in the other registers — vendor paper by `doc_date`, conversation threads via the production `list_conversation_threads` window total — linked to `/receipts` and `/communications`; either register answering `null` renders `—`, never a zero. The "report with no period" branch was **removed** in ADR 0086: `report_period_start`/`report_period_end` are `date NOT NULL`, so it could never render, and the test pinning it went with it
 - `?doc=` share links preselect in the pane, same as legacy
 
+On the canonical document page (`/documents/:id`, `PageGate page="document"`):
+- **The remembered shelf** (ADR 0104 D12 slice 4, 2026-09-11): a line naming no
+  inventory item shows the shelf a person linked for this vendor before, as a
+  one-tap tick plus one sentence — *"Remembered from N earlier documents from this
+  vendor, last confirmed by <name> on <date>."* **No number ever reaches the
+  person.** The tick records itself as `remembered`; a shelf chosen by hand records
+  `chosen`; *"Not this one"* un-links and the memory FORGETS the pairing.
+- **"Memory unavailable"** is its own state, drawn differently from "names no shelf
+  yet". A read that failed and a vendor never linked before look identical unless the
+  page says which it is, and only one of them is a fact about the document.
+- A shelf inherited from a matched ORDER line reads *"From the order line"*, not as a
+  person's link — ADR 0103 A12 only lets a caller-supplied shelf book stock.
+
 ## 1b. Redesign state — Direction D chosen, built 2026-08-31
 
 The REWORK verdict (MAKEOVER-VERDICTS: *"more modern, more transformative…
