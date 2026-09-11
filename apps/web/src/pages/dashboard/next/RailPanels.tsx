@@ -100,7 +100,10 @@ export function WeekAhead({ restaurantId }: { restaurantId: string | null }) {
  * The low-stock endpoint returns raw `v_low_stock_items` rows in snake_case
  * (`wine_name`, `stock_live`, `threshold_min`, `vintage`) — verified against
  * the running gateway — while the web `InventoryItem` type promises camelCase.
- * Normalize both so the panel never shows "Unnamed wine" for a named one.
+ * `inventoryApi.getLowStockItems` now normalizes that at the service boundary
+ * (`services/api/inventory.ts`, `normalizeInventoryItem`); the raw fallback
+ * below is kept so the panel stays correct if a caller ever hands it rows that
+ * skipped the service.
  */
 interface RawLowStockFields {
   wine_name?: string | null;

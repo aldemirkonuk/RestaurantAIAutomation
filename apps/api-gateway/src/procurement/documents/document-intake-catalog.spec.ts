@@ -240,6 +240,9 @@ describe("DocumentsController.upload — an 832 arrives", () => {
     // currency_restate (founder, 2026-09-06, batch 64). Stubbed here; the
     // redemption itself is proven in `documents.seal.spec.ts` against a
     // real double. `tsc -p tsconfig.spec.json` counts the arguments.
+    // DeliveryStockService (main's ADR 0103 A1, the door's booking half; merged
+    // 2026-09-11) -- stubbed, this file never books stock. tsc counts the arguments.
+    {} as any,
     {} as any,
   );
   const body = (over: Record<string, unknown> = {}) =>
@@ -346,6 +349,9 @@ describe("DocumentsController.upload — who handed the catalogue over", () => {
     // currency_restate (founder, 2026-09-06, batch 64). Stubbed here; the
     // redemption itself is proven in `documents.seal.spec.ts` against a
     // real double. `tsc -p tsconfig.spec.json` counts the arguments.
+    // DeliveryStockService (main's ADR 0103 A1, the door's booking half; merged
+    // 2026-09-11) -- stubbed, this file never books stock. tsc counts the arguments.
+    {} as any,
     {} as any,
   );
   const body = () =>

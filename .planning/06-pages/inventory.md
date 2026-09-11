@@ -35,9 +35,11 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 
 ## 1a. Features
 - 9-column live stock table; expand a row for detail: live vs shadow stock, par/reorder bar, velocity, busy-hours heatmap, order history, manual entry (🚧 market-price columns render "—" until price enrichment exists)
+- **Item activity names both directions (fixed 2026-09-06, V6).** The row's velocity series carries `out` AND `in`: a delivery booked at the door, a POS void/return, a positive manual adjustment. Before this it was depletion-only, so a shelf that had just gained ten bottles rendered identically to one nothing had touched. The payload's `includes` block states what was counted, and a failed ledger read is a 500, never an empty chart.
 - Attention rail surfacing low stock first
 - Spot counts with an offline-safe outbox (counts queue and sync when back online)
 - Receiving verification as a pinned task, not a popup — verify a delivery against its documents
+- **Provisional cost is a first-class state (ADR 0103 A1, built 2026-09-06).** A lot booked at the door before its invoice was agreed reads `cost_state = provisional`: it is pourable and it is not a settled cost. A delivery stuck in RECONCILING is therefore on the shelf and absent from cost figures — which is the behaviour A1 asks for, not a gap.
 - Cellar map view of storage zones
 - Scan a menu/wine list photo to add wines
 - Add and remove wines; manage storage locations

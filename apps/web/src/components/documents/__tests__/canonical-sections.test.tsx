@@ -914,3 +914,48 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
     expect(text).toMatch(/Nothing was posted to inventory or cost/)
   })
 })
+
+/**
+ * v3.0-TECH-DEBT 2026-09-06, finding 3 — our own door count rendered under
+ * "Billed" while "Received" read "not counted" on every line.
+ */
+describe('a receiving_advice is the RECEIVED column, never the BILLED one', () => {
+  const ourCount = () =>
+    doc({
+      docType: 'receiving_advice',
+      direction: 'issued_by_us',
+      layer3: {
+        lines: [
+          adjudicated({
+            lineIndex: 0,
+            ordered: null,
+            shipped: null,
+            received: 10,
+            billed: null,
+            verdict: 'not_adjudicated',
+          }),
+        ],
+        tiesOut: null,
+        tieOutDeltaCents: null,
+        verdicts: [],
+      },
+    })
+
+  it('prints the count in Received and nothing in Billed', () => {
+    const { getAllByTestId } = render(<CanonicalSheet doc={ourCount()} />)
+    const cells = getAllByTestId('sheet-line')[0].querySelectorAll('td')
+    // # · Item · Ordered · Shipped · Received · Billed · Unit …
+    expect(getAllByTestId('received-cell')[0].textContent).toMatch(/10/)
+    expect(cells[5].textContent).not.toMatch(/10/)
+    expect(getAllByTestId('received-cell')[0].textContent).not.toMatch(/not counted/i)
+  })
+
+  it('says COUNTED, not "billed —", when nothing has been compared with it yet', () => {
+    const { container } = render(<VerdictBlock doc={ourCount()} />)
+    expect(container.textContent).toMatch(/counted/i)
+    expect(container.textContent).toMatch(/nothing was compared/i)
+    // The old sentence claimed a billed quantity on a document that carries no
+    // money at all (ADR 0104 D11).
+    expect(container.textContent).not.toMatch(/billed —/)
+  })
+})

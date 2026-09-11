@@ -588,6 +588,9 @@ describe("restating or confirming a currency clears the receiving refusal", () =
        * anonymous, because a permissive double that looks like the real service
        * is how a seal quietly stops being tested anywhere.
        */
+      // DeliveryStockService (main's ADR 0103 A1, the door's booking half; merged
+      // 2026-09-11) -- stubbed, this file never books stock. tsc counts the arguments.
+      {} as any,
       { redeem: async () => ({ sealId: "seal-1" }) } as any,
     );
   }

@@ -58,6 +58,7 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
       // the block below builds its own controller with a real double.
       {} as any,
       {} as any, // DeliveryService (ADR 0103 — the door-count route's other half)
+      {} as any, // DeliveryStockService (ADR 0103 A1 — the door's booking half)
       // SealChallengeService — the seal on verify / line_edit /
       // currency_restate (founder, 2026-09-06, batch 64). Stubbed here; the
       // redemption itself is proven in `documents.seal.spec.ts` against a
@@ -303,6 +304,9 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
        * against a double that refuses. Making this one refuse here would test
        * the seal twice and the audit row never.
        */
+      // DeliveryStockService (main's ADR 0103 A1, the door's booking half; merged
+      // 2026-09-11) -- stubbed, this file never books stock. tsc counts the arguments.
+      {} as any,
       { redeem: async () => ({ sealId: "seal-1" }) } as any,
     );
     return { controller, inserts, updates, refileCalls };

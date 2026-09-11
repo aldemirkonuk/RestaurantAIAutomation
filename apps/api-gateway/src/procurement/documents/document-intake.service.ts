@@ -165,6 +165,8 @@ export class DocumentIntakeService {
       packSize?: number | null;
       vintage?: number | null;
       formatMl?: number | null;
+      /** The shelf this line is about, when the door knows it (ADR 0103 A1). */
+      inventoryId?: string | null;
     }[];
     /** Who signed the vendor's ticket at the door, when anyone did. */
     signedBy?: string | null;
@@ -260,6 +262,39 @@ export class DocumentIntakeService {
       )
       .digest("hex");
 
+    /**
+     * THE SAME COUNT, TWICE, IS ANSWERED — NOT LEAKED (v3.0-TECH-DEBT 2026-09-06,
+     * finding 4).
+     *
+     * `uq_pd_restaurant_sha256` catches this correctly, but a receiver who
+     * pressed the button twice was told `duplicate key value violates unique
+     * constraint "uq_pd_restaurant_sha256"` with a 422 indistinguishable from a
+     * malformed body. The sentence that matters is: this exact count is already
+     * recorded, and here it is. The read is not a substitute for the index —
+     * the index is still what makes it true under a race, and the 23505 below
+     * comes back through this same sentence.
+     */
+    const already = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id")
+      .eq("restaurant_id", input.restaurantId)
+      .eq("sha256", sha256)
+      .maybeSingle();
+    if (already.error)
+      return {
+        documentId: null,
+        parsed: null,
+        duplicate: false,
+        error: `the door count could not be recorded: the duplicate check failed (${already.error.message}), and a count written without it could silently double a document`,
+      };
+    if (already.data?.id)
+      return {
+        documentId: (already.data as { id: string }).id,
+        parsed,
+        duplicate: true,
+      };
+
     let storagePath: string | null = null;
     let storageError: string | undefined;
     if (input.photo?.bytes?.length) {
@@ -326,13 +361,32 @@ export class DocumentIntakeService {
       .select("id")
       .single();
 
-    if (error)
+    if (error) {
+      // The race the pre-check cannot close: two receivers pressing at once.
+      // The index is what makes the guarantee; this turns its 23505 into the
+      // same sentence rather than a constraint name.
+      if (error.code === "23505") {
+        const raced = await this.db
+          .getClient()
+          .from("procurement_documents")
+          .select("id")
+          .eq("restaurant_id", input.restaurantId)
+          .eq("sha256", sha256)
+          .maybeSingle();
+        if (raced.data?.id)
+          return {
+            documentId: (raced.data as { id: string }).id,
+            parsed,
+            duplicate: true,
+          };
+      }
       return {
         documentId: null,
         parsed: null,
         duplicate: false,
         error: `the door count could not be recorded: ${error.message}`,
       };
+    }
     if (!data)
       return {
         documentId: null,
@@ -358,6 +412,30 @@ export class DocumentIntakeService {
         // would leave a caller believing nothing was written.
         error: `the door count document ${documentId} was written but its lines were not: ${lineErr.message}`,
       };
+
+    // WHICH SHELF EACH COUNTED LINE IS ABOUT (ADR 0103 A1).
+    //
+    // Written here rather than through `ParsedLine`, deliberately: a parsed
+    // document is what a DOCUMENT said, and no document says which of this
+    // restaurant's items a line is. The door knows because a person picked it.
+    // A line with no id keeps NULL and the booking path reports it as not
+    // booked, with the reason — it is never matched by description.
+    for (const l of input.lines) {
+      if (!l.inventoryId) continue;
+      const linked = await this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .update({ inventory_id: l.inventoryId })
+        .eq("document_id", documentId)
+        .eq("line_no", l.lineNo);
+      if (linked.error)
+        return {
+          documentId,
+          parsed,
+          duplicate: false,
+          error: `the door count document ${documentId} was written but line ${l.lineNo} could not be linked to item ${l.inventoryId}: ${linked.error.message}. Nothing was booked — booking onto a line whose item is unknown is the failure this refuses.`,
+        };
+    }
 
     return {
       documentId,

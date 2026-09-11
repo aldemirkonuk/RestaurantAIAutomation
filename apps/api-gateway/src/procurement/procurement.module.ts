@@ -41,6 +41,7 @@ import { DocumentCorrectionService } from "./canonical/document-correction.servi
 // `undefined` at runtime.
 import { DistributorFeedModule } from "../distributor-feed/distributor-feed.module";
 import { DeliveryService } from "./canonical/delivery.service";
+import { DeliveryStockService } from "./canonical/delivery-stock.service";
 import { DeliveryClockService } from "./canonical/delivery-clock.service";
 
 /**
@@ -100,6 +101,7 @@ import { DeliveryClockService } from "./canonical/delivery-clock.service";
     // ladder of ADR 0103 D9/A10. Registered here, like the two above, because
     // an unregistered provider is a DI failure at boot that CI cannot see.
     DeliveryService,
+    DeliveryStockService,
     DeliveryClockService,
   ],
   // Exported for callers that already depend on procurement. The inbound-email

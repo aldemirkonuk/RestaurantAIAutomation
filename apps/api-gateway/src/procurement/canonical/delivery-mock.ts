@@ -21,7 +21,12 @@ export interface Answer {
 }
 
 export interface MockDb {
-  client: { getClient: () => { from: (t: string) => unknown } };
+  client: {
+    getClient: () => {
+      from: (t: string) => unknown;
+      rpc: (fn: string, args: Record<string, unknown>) => Promise<Answer>;
+    };
+  };
   /** Per-table answers for reads. A table with no answer resolves to `null`. */
   answers: Record<string, Answer>;
   /** Per-table answers for a chain that called `.insert()`. */
@@ -32,23 +37,41 @@ export interface MockDb {
   writes: { table: string; verb: string; payload: unknown }[];
   /** Every `table.verb` the service issued, in order. */
   verbs: string[];
+  /** Per-function answers for `rpc()`. A function with no answer succeeds. */
+  rpcAnswers: Record<string, Answer>;
+  /** Every RPC the service issued, with its arguments. ADR 0103 A1 asserts on
+   * these: the door's booking and the verification's cost posting are RPC
+   * calls, and what they were CALLED WITH is the behaviour under test. */
+  rpcCalls: { fn: string; args: Record<string, unknown> }[];
   reset(): void;
 }
 
 export function makeMockDb(): MockDb {
   const state: MockDb = {
-    client: { getClient: () => ({ from: (t: string) => chainFor(t) }) },
+    client: {
+      getClient: () => ({
+        from: (t: string) => chainFor(t),
+        rpc: async (fn: string, args: Record<string, unknown>) => {
+          state.rpcCalls.push({ fn, args });
+          return state.rpcAnswers[fn] ?? { data: null, error: null };
+        },
+      }),
+    },
     answers: {},
     insertAnswers: {},
     updateAnswers: {},
     writes: [],
     verbs: [],
+    rpcAnswers: {},
+    rpcCalls: [],
     reset() {
       state.answers = {};
       state.insertAnswers = {};
       state.updateAnswers = {};
       state.writes = [];
       state.verbs = [];
+      state.rpcAnswers = {};
+      state.rpcCalls = [];
     },
   };
 

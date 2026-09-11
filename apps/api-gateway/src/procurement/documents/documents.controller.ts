@@ -10,6 +10,7 @@ import {
   Post,
   Query,
   UseGuards,
+  Logger,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -38,6 +39,7 @@ import { OrganizationsService } from "../../organizations/organizations.service"
 import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { documentMoneyState } from "./invoice-currency";
 import { DeliveryService } from "../canonical/delivery.service";
+import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import {
@@ -110,6 +112,8 @@ type AuthedUser = {
 @UseGuards(JwtAuthGuard)
 @Controller("procurement/documents")
 export class DocumentsController {
+  private readonly logger = new Logger(DocumentsController.name);
+
   constructor(
     private readonly intake: DocumentIntakeService,
     private readonly db: DatabaseService,
@@ -123,6 +127,7 @@ export class DocumentsController {
     // the module graph and no `forwardRef`.
     private readonly organizations: OrganizationsService,
     private readonly deliveries: DeliveryService,
+    private readonly deliveryStock: DeliveryStockService,
     // THE SEAL ON THE THREE WRITE ACTS (founder, 2026-09-06, batch 64:
     // "Decide as a module: seal all three"). `SealModule` is already a
     // `ProcurementModule` import for the order seal, so this adds no edge to
@@ -601,6 +606,21 @@ export class DocumentsController {
       note: body.note ?? null,
       photo,
     });
+    /**
+     * THE SAME COUNT TWICE IS A CONFLICT, AND IT NAMES THE DOCUMENT.
+     *
+     * 409, not 422. 422 says "I understood the request and cannot process this
+     * content" — but the content is fine; it is the SECOND request for a state
+     * that already exists, which is what 409 is for, and it lets a caller tell
+     * "you already recorded this" from "your body is wrong" without parsing
+     * prose. The document id travels in the message and in `documentId`, so the
+     * receiver is taken to the count rather than told to type it again.
+     */
+    if (result.duplicate && result.documentId)
+      throw new HttpException(
+        `This count was already recorded as document ${result.documentId}. A re-count at a different moment is a different document — change the time it was counted, or open the one that exists.`,
+        HttpStatus.CONFLICT,
+      );
     if (result.error || !result.documentId)
       throw new HttpException(
         result.error ?? "the door count could not be recorded",
@@ -609,6 +629,7 @@ export class DocumentsController {
 
     let delivery: unknown = null;
     let differsOnLines: number | null = null;
+    let deliveryId: string | null = null;
     if (body.deliveryId) {
       const linked = await this.deliveries.linkDocument(
         user.restaurantId,
@@ -624,6 +645,7 @@ export class DocumentsController {
           linked.status,
         );
       delivery = linked.value.delivery;
+      deliveryId = body.deliveryId;
     } else if (body.createDelivery) {
       const created = await this.deliveries.create(
         user.restaurantId,
@@ -643,12 +665,71 @@ export class DocumentsController {
         );
       delivery = created.value.delivery;
       differsOnLines = created.value.differsOnLines;
+      deliveryId = created.value.delivery.id;
+    }
+
+    /**
+     * STOCK IS BOOKED AT THE DOOR (ADR 0103 A1 / A5).
+     *
+     * The bottles are on the shelf and the staff can pour them; what nobody has
+     * yet is a price, so the lots are `cost_state = provisional` and carry NO
+     * unit cost — absent, never zero. Verification settles the cost later.
+     *
+     * A count with no delivery books nothing, and that is not a silent skip:
+     * `booking` is null and the caller can see that the count was recorded as a
+     * document without becoming stock. A line that names no item comes back in
+     * `booking.notBooked` with its reason rather than being guessed onto a
+     * shelf by its description.
+     */
+    let booking: unknown = null;
+    if (deliveryId) {
+      const booked = await this.deliveryStock.bookAtTheDoor(
+        user.restaurantId,
+        deliveryId,
+        result.documentId,
+        user.userId,
+      );
+      /**
+       * A FAILED BOOKING DOES NOT FAIL THE COUNT — AND IS NOT HIDDEN EITHER.
+       *
+       * Measured live on 2026-09-06 against a database that did not yet carry
+       * this stop's migration: the booking read failed, the endpoint answered
+       * 500, and the response carried no `deliveryId` — although the count AND
+       * the delivery were both already durable. The receiver's only move is to
+       * press the button again, which then 409s on the content hash. The door's
+       * whole promise is that one tap in a stairwell succeeds.
+       *
+       * So the count is 201 with the ids, and the booking's failure travels in
+       * the receipt: `failed: true`, `bottlesMoved: 0`, and the reason in words.
+       * That is the opposite of a silent success — a caller reading `booking`
+       * at all sees the failure, and one ignoring it sees zero bottles moved,
+       * never a number that did not happen.
+       */
+      booking = booked.ok
+        ? booked.value
+        : {
+            failed: true,
+            deliveryId,
+            documentId: result.documentId,
+            booked: [],
+            notBooked: [],
+            bottlesMoved: 0,
+            error: booked.error,
+          };
+      if (!booked.ok)
+        this.logger.error(
+          `door count ${result.documentId} was recorded and attached to delivery ${deliveryId} but booked no stock: ${booked.error}`,
+        );
     }
 
     return {
       documentId: result.documentId,
       document: result.parsed,
       delivery,
+      // NULL = the count is a document and nothing more: no delivery, so no
+      // stock. Never an empty booking receipt, which would read as "booked
+      // nothing" (ADR 0103 A6).
+      booking,
       // NULL = no comparison was possible (no order, or the read failed).
       // 0 = compared, and nothing differed. The two are never the same answer.
       differsOnLines,

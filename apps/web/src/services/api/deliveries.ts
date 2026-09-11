@@ -175,12 +175,28 @@ export const deliveriesApi = {
     return data;
   },
 
-  /** D6. A human, from AGREED only, and idempotent. Writes no stock. */
+  /**
+   * D6. A human, from AGREED only, and idempotent.
+   *
+   * Since ADR 0103 A1 this is where COST is settled: the goods went on the
+   * shelf at the door, provisionally costed, and verification posts the agreed
+   * price onto those lots. It never moves a quantity. `costNote` is the
+   * sentence to render — including when nothing could be costed, which is a
+   * real answer and not a failure.
+   */
   async verify(
     id: string,
   ): Promise<{
     alreadyVerified: boolean;
-    stockUntouched: string;
+    costNote: string;
+    cost: {
+      finalised: {
+        inventoryId: string;
+        unitCost: number;
+        bottlesFinalised: number;
+      }[];
+      stillProvisional: { inventoryId: string; reason: string }[];
+    } | null;
     delivery: Record<string, unknown>;
   }> {
     const { data } = await apiClient.post(
