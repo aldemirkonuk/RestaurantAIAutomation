@@ -53,6 +53,7 @@ import {
   sourceSentence,
 } from '../../../components/documents'
 import { canonicalApi } from '../../../services/api/canonical'
+import { getInventory } from '../../../services/api/inventory'
 import { deliveriesApi, type ProposalBody } from '../../../services/api/deliveries'
 import './canonical-document.css'
 
@@ -93,6 +94,57 @@ export function CanonicalDocumentPage() {
     enabled: !!id,
     staleTime: 30_000,
   })
+
+  /**
+   * The shelves this venue has, so a proposal can name an item rather than an
+   * id. A FAILED read here leaves the names unknown and the shelf rows fall
+   * back to the id — the proposal itself still stands, because the memory and
+   * the item list are two different facts.
+   */
+  const itemsQ = useQuery({
+    queryKey: ['canonical-document-items', id],
+    queryFn: () => getInventory(),
+    staleTime: 60_000,
+  })
+  const itemName = (inventoryId: string): string | null => {
+    const it = (itemsQ.data ?? []).find((x) => x.id === inventoryId)
+    if (!it) return null
+    if (!it.wineName) return null
+    const vintage = it.wineVintage ? ` ${it.wineVintage}` : ''
+    const size = it.bottleSizeMl ? ` · ${it.bottleSizeMl} ml` : ''
+    return `${it.wineName}${vintage}${size}`
+  }
+
+  /** The append-only who-linked-what log (ADR 0104 D5/D12). */
+  const mappingsQ = useQuery({
+    queryKey: ['canonical-document-mappings', id],
+    queryFn: () => canonicalApi.lineMappings(id),
+    enabled: !!id,
+    staleTime: 30_000,
+  })
+
+  /**
+   * Name a shelf (or forget one). RE-READ afterwards rather than patching in
+   * place: the link changes what the memory proposes on every OTHER line with
+   * the same key, and a client editing its own copy would show one line linked
+   * while the rest still asked.
+   */
+  const linkItem = async (
+    lineId: string,
+    inventoryId: string | null,
+    source: 'chosen' | 'remembered',
+  ) => {
+    setWriteError(null)
+    try {
+      const out = await canonicalApi.linkLineToItem(id, lineId, inventoryId, source)
+      // The link landed on the line even when the MEMORY did not record it.
+      // Saying so is the difference between "we will remember" and "we did".
+      if (out.memoryNote) setWriteError(out.memoryNote)
+      await Promise.all([q.refetch(), mappingsQ.refetch()])
+    } catch (err) {
+      setWriteError(messageFrom(err))
+    }
+  }
 
   const fetchedAt = q.dataUpdatedAt || Date.now()
   const res = q.data
@@ -505,6 +557,8 @@ export function CanonicalDocumentPage() {
                 setCorrecting({ path, label })
               }}
               onVerify={(path) => void tickField(path)}
+              onLinkItem={linkItem}
+              itemName={itemName}
             />
           ) : (
             <DoorFrame
