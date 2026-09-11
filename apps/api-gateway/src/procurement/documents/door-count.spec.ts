@@ -2,6 +2,7 @@ import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
+import { LineMappingService } from "../canonical/line-mapping.service";
 import { makeMockDb, MockDb } from "../canonical/delivery-mock";
 
 /**
