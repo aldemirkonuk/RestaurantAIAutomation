@@ -3,6 +3,7 @@ import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "../documents/document-extractor.service";
 import { DocumentIntakeService } from "../documents/document-intake.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
+import { LineMappingService } from "./line-mapping.service";
 import { runCorpus } from "./cli";
 
 /**
@@ -292,6 +293,7 @@ async function serviceReading(rows: Persisted) {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       CanonicalDocumentService,
+      LineMappingService,
       { provide: DatabaseService, useValue: { getClient: () => client } },
     ],
   }).compile();

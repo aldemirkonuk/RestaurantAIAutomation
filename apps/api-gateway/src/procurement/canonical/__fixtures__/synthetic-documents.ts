@@ -685,6 +685,12 @@ export const TR_CASE_PRICED_INVOICE: CanonicalDocument = doc(
       lines: [
         {
           lineIndex: 0,
+          lineId: null,
+          inventoryIdSource: null,
+          proposedInventoryId: null,
+          proposedSentence: null,
+          proposalUnavailable: false,
+          proposalUnavailableReason: null,
           inventoryId: null,
           masterWineId: null,
           canonicalUom: "case",

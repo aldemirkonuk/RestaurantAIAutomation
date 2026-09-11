@@ -32,6 +32,7 @@ import { DeliverySpineService } from "../canonical/delivery-spine.service";
 import { DocumentCorrectionService } from "../canonical/document-correction.service";
 import { DeliveryService } from "../canonical/delivery.service";
 import { DeliveryStockService } from "../canonical/delivery-stock.service";
+import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 
 type AuthedUser = { userId: string; restaurantId: string };
@@ -68,6 +69,7 @@ export class DocumentsController {
     private readonly corrections: DocumentCorrectionService,
     private readonly deliveries: DeliveryService,
     private readonly deliveryStock: DeliveryStockService,
+    private readonly mapping: LineMappingService,
   ) {}
 
   /**
@@ -701,6 +703,63 @@ export class DocumentsController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  @Post(":id/lines/:lineId/link-item")
+  @ApiOperation({
+    summary: "Link this line to a shelf, and remember the pairing for this vendor",
+    description:
+      "ADR 0104 D12 slice 4. A person names the restaurant item this line is about; the line carries it from then on (`procurement_document_lines.inventory_id`), which is what lets a VERIFIED delivery finalise the cost for that item (ADR 0103 A1/A12). " +
+      "The act is also APPENDED to the mapping memory, so the next document from the same vendor carries the shelf as a PROPOSAL — a tick a person gives, never a booking and never a number. " +
+      "`source` says whether the person accepted what the memory proposed (`remembered`) or chose the shelf themselves (`chosen`). " +
+      "Pass `inventoryId: null` for \"not this one\": the line is cleared AND the memory FORGETS the pairing — it is not averaged away, it is gone, because a majority of wrong ticks is still the wrong shelf. " +
+      "Nothing here books stock or writes a cost.",
+  })
+  async linkLineToItem(
+    @Param("id") documentId: string,
+    @Param("lineId") lineId: string,
+    @Body() body: { inventoryId?: string | null; source?: "chosen" | "remembered" },
+    @CurrentUser() user: AuthedUser,
+  ) {
+    try {
+      return await this.mapping.linkLineToItem({
+        documentId,
+        lineId,
+        restaurantId: user.restaurantId,
+        userId: user.userId,
+        inventoryId: body?.inventoryId ?? null,
+        // Default `chosen`: claiming a person merely confirmed what we proposed,
+        // when we do not know that, would overstate the memory's own record.
+        source: body?.source === "remembered" ? "remembered" : "chosen",
+      });
+    } catch (error) {
+      const msg: string = error?.message ?? "Failed to link the line to an item";
+      if (msg === "NOT_FOUND")
+        throw new HttpException(
+          "Document or line not found",
+          HttpStatus.NOT_FOUND,
+        );
+      if (msg === "ITEM_NOT_FOUND")
+        throw new HttpException(
+          "That item does not belong to this restaurant, so the line was not linked.",
+          HttpStatus.NOT_FOUND,
+        );
+      throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get(":id/line-mappings")
+  @ApiOperation({
+    summary: "Who linked which line to which shelf on this document, and when",
+    description:
+      "The append-only log behind the mapping memory (ADR 0104 D5/D12). Newest first. An `unlinked` row is a person saying \"not this one\" — a real act, kept, not a gap.",
+  })
+  async lineMappings(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    const log = await this.mapping.logFor(id, user.restaurantId);
+    // A failed read is not an empty log (ADR 0067).
+    if (!log.ok)
+      throw new HttpException(log.error, HttpStatus.INTERNAL_SERVER_ERROR);
+    return { entries: log.value };
   }
 
   @Post(":id/lines/:lineId/link")
