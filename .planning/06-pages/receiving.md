@@ -87,6 +87,17 @@ receving, and let them approve if otherwise"*:
 - **The invoice's currency is printed beside the ORDER's** (B4). A mismatch is shown, a
   failed read of the order says so rather than reading as agreement, and nothing is
   converted.
+- **The act that clears the hold now takes a REDEEMED SEAL** (founder 2026-09-06, batch
+  64: *"Decide as a module: seal all three"*). The restatement/confirmation this door
+  links out to is behind challenge-and-redeem like the order approval is: the manager
+  holds a control on `/receipts`, the seal is minted at the START of the gesture bound to
+  this document and to the pair of currency codes, and the write spends it exactly once.
+  So a seal obtained to move a held invoice to EUR cannot be spent after somebody else
+  filed it in USD, and the append-only row is still written before the currency lands.
+  **This door itself is unchanged** — `verifyReceipt` is not a document act and is not in
+  the seal census; what changed is that the errand it sends a manager on now costs one
+  ceremony. See [[receipts]] §1a and §13, and
+  `apps/api-gateway/src/procurement/documents/document-seal.ts`.
 
 Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/0057-receiving-write-path-integrity.md)):
 - **A manager's verification note is saved.** It goes to `delivery_notes`, and is
@@ -353,11 +364,20 @@ now"* is the founder's own hedge and it is recorded as one: if two page loads in
 middle of a delivery prove painful, the control can be embedded with the document image
 beside it.
 
-**2026-09-06 — AN OPEN QUESTION, MEASURED, NOT CHANGED: a receipt whose order has no
-LINKED document accepts a typed price with no cross-check.**
+**2026-09-06, batch 64 — the errand costs one ceremony now.** The founder's answer to
+whether procurement's write routes should be sealed was **"Decide as a module: seal all
+three"**, and the currency restatement is one of the three. Clearing a held price is
+therefore: this door refuses and links out; on `/receipts` the manager picks the code and
+HOLDS a control; the hold mints a one-time seal over that document and that pair of codes;
+the write redeems it. The two-screen cost above is unchanged and the hold is the third
+step, not a fourth screen. `verifyReceipt` is not sealed and is not in the census —
+sealing the door as well was not asked for and is not assumed here.
 
-Found by the Sonnet audit of `6c0933d3` and reproduced here as a shipped test
-(`receiving-price-held.spec.ts`, "what happens today when NO document is linked").
+**2026-09-06 — a receipt whose order has no LINKED document accepts a typed price with
+no cross-check. HALF ANSWERED the same day (batch 67); read to the end of this section.**
+
+Found by the Sonnet audit of `6c0933d3` and reproduced here as shipped tests
+(`receiving-price-held.spec.ts`).
 
 `heldInvoiceForOrder` (`apps/api-gateway/src/procurement/procurement.service.ts:2303`) is
 gated solely on `procurement_document_links` returning rows for the order. Zero rows and
@@ -374,12 +394,28 @@ this path".
 The register mirror is not fooled: `vendor_price_observations` refuses a sighting with an
 unstated currency, so only `price_history` is reachable this way.
 
-**This behaviour is UNCHANGED and the change is a founder's call, not a builder's.**
-Refusing a typed price that names no currency would stop a desk recording what it actually
-paid, on a table whose whole design admits `currency: null` as an honest answer; refusing
-it only when an unlinked held document exists would make the guard depend on a link nobody
-made. The test above pins exactly what happens today so that whichever way it is decided,
-the change is visible as one.
+**ANSWERED 2026-09-06, batch 67 — HALF of this is now closed.** The founder chose
+*"Refuse a typed price with no currency"*: *"a price without money is not a price: the
+receiving screen requires a code (the order's, the house's, or one typed) before a unit
+price is accepted; price_history never gains a currency-null row from that door again."*
+
+So `verifyReceipt` refuses `invoiceUnitPrice` with no valid `invoiceCurrency` BEFORE any
+read or write, and `VerifyReceiptDto` refuses the same pair on the wire
+(`priceStatesItsCurrency`) — one sentence from one function
+(`price-currency.ts` `receivingPriceNeedsACurrency`), naming the three ways to state a
+code and what still records without one. The receiving workspace carries the code beside
+the price field, pre-filled from the order's own currency when it has one, with the
+invoice's filed code and the house's reporting currency offered as labelled one-tap
+choices — offered, never applied. Two of the three tests that pinned the old behaviour are
+flipped and the typed-code one is kept
+(`receiving-price-held.spec.ts`, `dto/verify-receipt-currency.spec.ts`).
+
+**WHAT IS STILL OPEN, and it is the other half.** Nothing cross-checks a typed code against
+a document that EXISTS but has not been linked yet: a desk typing `USD` against an order
+whose unlinked invoice is in TRY still writes `USD`. The currency-null row is gone from
+this door; the wrong-currency row is not. Closing it means running the held-invoice check
+when a document is LINKED to an order that already has priced receipts — new behaviour, not
+a narrowing of this one, and not built.
 
 
 1. **Fix the staff query.** Use `getOrders({ status: … })` from `services/api/orders.ts`

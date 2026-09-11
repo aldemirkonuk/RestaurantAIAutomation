@@ -26,6 +26,14 @@ const api = vi.hoisted(() => ({
   /** The caller's role at this house, for rule 3's control. */
   role: 'manager' as 'owner' | 'manager' | 'staff' | null,
   restateCurrency: vi.fn(),
+  /**
+   * The three mints (founder, 2026-09-06, batch 64: "Decide as a module: seal
+   * all three"). Each returns a token the write then has to carry back; the
+   * gateway's own refusals are proven in `documents.seal.spec.ts`.
+   */
+  mintVerifySeal: vi.fn(() => Promise.resolve('seal-verify' as string | null)),
+  mintLineEditSeal: vi.fn(() => Promise.resolve('seal-edit' as string | null)),
+  mintCurrencySeal: vi.fn(() => Promise.resolve('seal-currency' as string | null)),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -51,6 +59,9 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       match: vi.fn(),
       linkLine: api.linkLine,
       restateCurrency: api.restateCurrency,
+      mintVerifySeal: api.mintVerifySeal,
+      mintLineEditSeal: api.mintLineEditSeal,
+      mintCurrencySeal: api.mintCurrencySeal,
     },
   };
 });
@@ -185,6 +196,18 @@ async function openFirstDoc() {
   await screen.findByLabelText('Quantity, line 1');
 }
 
+/**
+ * Complete a `HoldToApprove` gesture by its keyboard path: Enter arms it (and
+ * begins the mint, which is the whole point of the timing), Enter again
+ * approves. The pointer path is a timed rAF hold and is not what these contracts
+ * are about.
+ */
+function holdToApprove(name: RegExp) {
+  const control = screen.getByRole('button', { name });
+  fireEvent.keyDown(control, { key: 'Enter' });
+  fireEvent.keyDown(control, { key: 'Enter' });
+}
+
 describe('ReceiptsNext', () => {
   it('edits a line in place and shows the recomputed tie-out immediately', async () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
@@ -192,7 +215,16 @@ describe('ReceiptsNext', () => {
     const qty = screen.getByLabelText('Quantity, line 1');
     fireEvent.change(qty, { target: { value: '11' } });
     fireEvent.blur(qty);
-    await waitFor(() => expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 11 }));
+    // A moved cell is a PENDING correction, not a write (founder, 2026-09-06).
+    expect(await screen.findByText(/Nothing has been written yet/)).toBeTruthy();
+    expect(api.editLine).not.toHaveBeenCalled();
+    holdToApprove(/Hold to seal this correction/);
+    await waitFor(() =>
+      expect(api.mintLineEditSeal).toHaveBeenCalledWith('d1', 'l1', { qty: 11 }),
+    );
+    await waitFor(() =>
+      expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 11 }, 'seal-edit'),
+    );
     await waitFor(() => expect(container.textContent).toContain('off by $210.10'));
   });
 
@@ -214,7 +246,11 @@ describe('ReceiptsNext', () => {
     expect(screen.getByText(/does not accept charges or touch stock/)).toBeInTheDocument();
     const handle = screen.getByRole('button', { name: /Swipe up to confirm/ });
     fireEvent.keyDown(handle, { key: ' ' });
-    await waitFor(() => expect(api.verify).toHaveBeenCalledWith('d1'), { timeout: 3000 });
+    // The seal is minted when the gesture BEGINS, and the write carries it back.
+    await waitFor(() => expect(api.mintVerifySeal).toHaveBeenCalledWith('d1'));
+    await waitFor(() => expect(api.verify).toHaveBeenCalledWith('d1', 'seal-verify'), {
+      timeout: 3000,
+    });
   });
 
   it('deliveries without paperwork share the surface', async () => {
@@ -397,6 +433,8 @@ describe('ReceiptsNext', () => {
     const qty = screen.getByLabelText('Quantity, line 1');
     fireEvent.change(qty, { target: { value: '11' } });
     fireEvent.blur(qty);
+    await screen.findByText(/Nothing has been written yet/);
+    holdToApprove(/Hold to seal this correction/);
     expect(await screen.findByText(/Only a document awaiting review can be edited/)).toBeInTheDocument();
   });
 
@@ -406,12 +444,19 @@ describe('ReceiptsNext', () => {
     const qty = screen.getByLabelText('Quantity, line 1');
     fireEvent.change(qty, { target: { value: '11' } });
     fireEvent.blur(qty);
+    await screen.findByText(/Nothing has been written yet/);
+    holdToApprove(/Hold to seal this correction/);
     await waitFor(() => expect(api.editLine).toHaveBeenCalled());
     expect(await screen.findByText(/extracted 12/)).toBeInTheDocument();
     const undo = screen.getByRole('button', { name: /Undo quantity on line 1/ });
     api.editLine.mockClear();
     fireEvent.click(undo);
-    await waitFor(() => expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 12 }));
+    // The undo is a correction like any other: it stages, and the hold sends it.
+    await screen.findByText(/Nothing has been written yet/);
+    holdToApprove(/Hold to seal this correction/);
+    await waitFor(() =>
+      expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 12 }, 'seal-edit'),
+    );
   });
 });
 
@@ -462,9 +507,10 @@ describe('ReceiptsNext — what money this invoice is in', () => {
     fireEvent.change(screen.getByLabelText("Currency this invoice is denominated in"), {
       target: { value: 'TRY' },
     });
-    fireEvent.click(screen.getByText('Restate the currency'));
+    holdToApprove(/Hold to file this invoice in TRY/);
+    await waitFor(() => expect(api.mintCurrencySeal).toHaveBeenCalledWith('d1', 'TRY'));
     await waitFor(() =>
-      expect(api.restateCurrency).toHaveBeenCalledWith('d1', 'TRY', undefined),
+      expect(api.restateCurrency).toHaveBeenCalledWith('d1', 'TRY', undefined, 'seal-currency'),
     );
     expect(await screen.findByText(/Currency restated from NOT RECORDED/)).toBeTruthy();
   });
@@ -490,7 +536,7 @@ describe('ReceiptsNext — what money this invoice is in', () => {
     fireEvent.change(screen.getByLabelText("Currency this invoice is denominated in"), {
       target: { value: 'EUR' },
     });
-    fireEvent.click(screen.getByText('Restate the currency'));
+    holdToApprove(/Hold to file this invoice in EUR/);
     expect(await screen.findByText(/the change could not be recorded/)).toBeTruthy();
   });
 });

@@ -1923,3 +1923,17 @@ in the list.
 dark (`COMMODITY_ALERT_DARK` off) and its money clause is exercised in
 `cadence-value.spec.ts` rather than on a screen. The register is the input; the reader is
 phase 1.
+
+**2026-09-06 (batch 67) — the currency register now offers every active ISO 4217
+currency, 96 → 157.** The picker was one code per country in `lib/countries.ts`, so a
+house in Hong Kong, Macau or the CFA-franc zone could not state its own reporting
+currency at all, and the gateway (which mirrors this table) HELD every invoice
+denominated in one. `CURRENCY_CODES` is now the keys of `CURRENCIES` in
+`apps/web/src/lib/currency.ts` — every ACTIVE code minus the 22 in ISO's list A1 that are
+not money a vendor bills in (metals, test, bond units, units of account, funds codes);
+`apps/api-gateway/src/common/iso-4217.ts` holds the same 157 and `iso-4217.spec.ts` reads
+this file as text and fails on a one-code difference either way. Each row also carries
+its MINOR-UNIT count, so `formatMoney` prints 1200 JPY as `1,200` and a 1.500 KWD line
+with three decimals instead of forcing two everywhere. `PUT /settings/currency` still
+validates `^[A-Z]{3}$` (that is `restaurants_currency_check` verbatim) and now checks
+MEMBERSHIP beside it, so `ZZZ` is refused with a sentence naming the code.

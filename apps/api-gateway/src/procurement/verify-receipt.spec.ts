@@ -308,6 +308,15 @@ const deliveredOrder = {
 // ---------------------------------------------------------------------------
 // D1
 // ---------------------------------------------------------------------------
+
+/*
+ * `invoiceCurrency: "USD"` appears beside every `invoiceUnitPrice` below since
+ * 2026-09-06 (founder batch 67): `verifyReceipt` refuses a unit price with no
+ * currency before it reads anything, so a payload that carries a figure and no
+ * code no longer reaches any of the behaviour these tests are about. The value
+ * is incidental here — what each test asserts is unchanged.
+ */
+
 describe("verifyReceipt — writes only columns that exist", () => {
   it("never sends a key that is not a real procurement_orders column", async () => {
     // This is the assertion that fails against the pre-fix tree: the payload
@@ -319,6 +328,7 @@ describe("verifyReceipt — writes only columns that exist", () => {
       note: "Two bottles arrived cracked.",
       invoiceQuantity: 10,
       invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
       acceptedQuantity: 8,
       rejectedQuantity: 2,
     } as any);
@@ -337,6 +347,7 @@ describe("verifyReceipt — writes only columns that exist", () => {
       note: "Two bottles arrived cracked.",
       invoiceQuantity: 10,
       invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
       acceptedQuantity: 8,
       rejectedQuantity: 2,
     } as any);
@@ -358,6 +369,7 @@ describe("verifyReceipt — writes only columns that exist", () => {
       note: "Two bottles arrived cracked.",
       invoiceQuantity: 10,
       invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
       acceptedQuantity: 8,
       rejectedQuantity: 2,
     } as any);
@@ -376,6 +388,7 @@ describe("verifyReceipt — writes only columns that exist", () => {
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 10,
       invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
       acceptedQuantity: 10,
     } as any);
 
@@ -578,6 +591,7 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
       invoiceQuantity: 24,
       invoiceUom: "bottle",
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 2,
       countedUom: "case",
     } as any);
@@ -597,6 +611,7 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
       invoiceQuantity: 24,
       invoiceUom: "bottle",
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 2,
       countedUom: "case",
     } as any);
@@ -615,6 +630,7 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
       invoiceQuantity: 24,
       invoiceUom: "bottle",
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 2,
       countedUom: "case",
     } as any);
@@ -644,6 +660,7 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
       invoiceQuantity: 24,
       invoiceUom: "bottle",
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 1,
       rejectedQuantity: 1,
       rejectedReason: "case crushed",
@@ -677,6 +694,7 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
       invoiceQuantity: 24,
       invoiceUom: "bottle",
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 2,
       countedUom: "case",
     } as any);
@@ -709,6 +727,7 @@ describe("verifyReceipt — a unit it cannot read is refused, never assumed", ()
         invoiceQuantity: 24,
         invoiceUom: "bxs",
         invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
         acceptedQuantity: 2,
       } as any),
     ).rejects.toThrow(/not a unit this match can convert/i);
@@ -724,6 +743,7 @@ describe("verifyReceipt — a unit it cannot read is refused, never assumed", ()
         invoiceQuantity: 24,
         invoiceUom: "bxs",
         invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
         acceptedQuantity: 2,
       } as any),
     ).rejects.toThrow();
@@ -748,6 +768,7 @@ describe("verifyReceipt — a unit it cannot read is refused, never assumed", ()
       service(db).verifyReceipt(REST, ORDER, USER, {
         invoiceQuantity: 24,
         invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
         acceptedQuantity: 5,
       } as any),
     ).rejects.toThrow(/how many bottles are in one/i);
@@ -768,6 +789,7 @@ describe("verifyReceipt — a unit it cannot read is refused, never assumed", ()
         invoiceQuantity: 24,
         invoiceUom: "bottle",
         invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
         acceptedQuantity: 2,
       } as any),
     ).rejects.toThrow(/cannot be compared/i);
@@ -802,6 +824,7 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
         acceptedQuantity: 22,
         invoiceQuantity: 24,
         invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
       } as any),
     ).rejects.toThrow(
       /acceptedQuantityInCountedUom=24 disagrees with its deprecated alias acceptedQuantity=22/,
@@ -819,6 +842,7 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
       invoiceQuantityInInvoiceUom: 24,
       invoiceQuantity: 24,
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
     } as any);
 
     expect(calls.orderUpdates[0].match_status).toBe("matched");
@@ -833,6 +857,7 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 24,
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 22,
       rejectedQuantity: 2,
     } as any);

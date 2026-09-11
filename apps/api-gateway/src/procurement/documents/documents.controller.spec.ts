@@ -58,6 +58,11 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
       // the block below builds its own controller with a real double.
       {} as any,
       {} as any, // DeliveryService (ADR 0103 — the door-count route's other half)
+      // SealChallengeService — the seal on verify / line_edit /
+      // currency_restate (founder, 2026-09-06, batch 64). Stubbed here; the
+      // redemption itself is proven in `documents.seal.spec.ts` against a
+      // real double. `tsc -p tsconfig.spec.json` counts the arguments.
+      {} as any,
     );
   });
 
@@ -286,6 +291,19 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
         },
       } as any,
       {} as any, // DeliveryService (ADR 0103 — the door-count route's other half)
+      /*
+       * SealChallengeService — the seal on verify / line_edit /
+       * currency_restate (founder, 2026-09-06, batch 64).
+       *
+       * A double that ADMITS, and it is named as such rather than left to look
+       * like the real thing. These tests are about WHAT A RESTATEMENT WRITES —
+       * the audit row, its ordering against the currency write, which reading
+       * the figures came from. The seal's own refusals (absent, wrong act,
+       * spent twice, arguments moved) are proven in `documents.seal.spec.ts`
+       * against a double that refuses. Making this one refuse here would test
+       * the seal twice and the audit row never.
+       */
+      { redeem: async () => ({ sealId: "seal-1" }) } as any,
     );
     return { controller, inserts, updates, refileCalls };
   }

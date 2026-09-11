@@ -41,9 +41,12 @@
  *     currency the vendor billed in (`price_history.currency`,
  *     `vendor_price_observations.currency`), and a reader that finds two
  *     currencies in one comparison refuses in words rather than converting.
- *   * It is not a validator of the world's currencies. The gateway checks shape
- *     only (`/^[A-Z]{3}$/`); the codes a manager can choose are exactly the ones
- *     below, so "TL" and "$" cannot be typed in.
+ *   * It IS the validator of the world's currencies, as of 2026-09-06. The
+ *     gateway used to check shape only (`/^[A-Z]{3}$/`), so "ZZZ" was filed as
+ *     money; `apps/api-gateway/src/common/iso-4217.ts` now checks membership
+ *     against a copy of the table below, and `iso-4217.spec.ts` reads this file
+ *     as text so the copy cannot drift. "TL" and "$" cannot be typed in on
+ *     either side.
  */
 
 // RETIRED 2026-09-05, ADR 0117 Q33 (retire-to-write, CLAUDE.md §4).
@@ -62,7 +65,6 @@
 // a manager may pick, their names, and the formatter that refuses to print a
 // symbol nobody earned.
 export { currencyForCountry } from './countries';
-import { COUNTRIES } from './countries';
 
 /**
  * What the sign-up form and the agreement sheet will actually RECORD, given the
@@ -86,58 +88,234 @@ export function currencyToRecord(
   return choice || null
 }
 
-/** Every code a manager may choose, sorted. Exactly the codes above — no free text. */
-export const CURRENCY_CODES: readonly string[] = Array.from(
-  new Set(
-    COUNTRIES.map((c) => c.currency).filter(
-      (code): code is string => typeof code === 'string',
-    ),
-  ),
-).sort()
+/**
+ * One row per ACTIVE ISO 4217 currency — the name a picker shows and the number
+ * of decimal places the money actually has.
+ *
+ * WIDENED 2026-09-06, founder batch 67: *"The full active ISO 4217 list, in both
+ * tables ... A Hong Kong or Macau vendor's invoice files instead of being
+ * held."* It held 96 codes for one day, one per country in `lib/countries.ts`,
+ * which meant the product could not name money that ~60 real currencies are
+ * billed in — HKD, MOP, XOF, XAF, XCD, XPF among them — and the gateway, which
+ * mirrors this table, HELD every invoice denominated in one.
+ *
+ * WHAT IS DELIBERATELY ABSENT. The 22 codes in ISO's list A1 that are not money
+ * a vendor bills in: the precious metals (XAU, XAG, XPT, XPD), the test and
+ * no-currency codes (XTS, XXX), the bond market units (XBA-XBD), the units of
+ * account (XDR, XSU, XUA) and the funds codes (BOV, CHE, CHW, CLF, COU, MXV,
+ * USN, UYI, UYW). 157 + 22 is the ~180 ISO publishes. Withdrawn codes are
+ * absent too — HRK, CUC, SLL, ZWL, MRO, STD, VEF — so paper old enough to name
+ * one says "currency not recorded" rather than being read as live money; ANG is
+ * kept because XCG only just replaced it and invoices still carry it.
+ *
+ * `apps/api-gateway/src/common/iso-4217.ts` holds the same 157 codes and
+ * `iso-4217.spec.ts` reads THIS FILE as text and fails on a one-code
+ * difference in either direction. Adding a currency is two edits, and the
+ * gateway suite is red until both are made.
+ */
+export interface CurrencyRow {
+  /** What it is called, for a picker row and a sentence. */
+  name: string
+  /**
+   * ISO 4217's minor-unit count — how many decimal places this money HAS.
+   *
+   * Not cosmetic. `formatMoney` printed two everywhere, so a 1200-yen invoice
+   * rendered as JPY 1,200.00 (yen have no subunit) and a 1.500-dinar one as
+   * BHD 1.50, which is a different amount. Sixteen currencies here take 0 and
+   * seven take 3.
+   */
+  minor: 0 | 2 | 3
+}
+
+const CURRENCIES: Readonly<Record<string, CurrencyRow>> = {
+  AED: { name: 'UAE dirham', minor: 2 },
+  AFN: { name: 'Afghan afghani', minor: 2 },
+  ALL: { name: 'Albanian lek', minor: 2 },
+  AMD: { name: 'Armenian dram', minor: 2 },
+  ANG: { name: 'Netherlands Antillean guilder', minor: 2 },
+  AOA: { name: 'Angolan kwanza', minor: 2 },
+  ARS: { name: 'Argentine peso', minor: 2 },
+  AUD: { name: 'Australian dollar', minor: 2 },
+  AWG: { name: 'Aruban florin', minor: 2 },
+  AZN: { name: 'Azerbaijani manat', minor: 2 },
+  BAM: { name: 'Bosnia-Herzegovina mark', minor: 2 },
+  BBD: { name: 'Barbadian dollar', minor: 2 },
+  BDT: { name: 'Bangladeshi taka', minor: 2 },
+  BGN: { name: 'Bulgarian lev', minor: 2 },
+  BHD: { name: 'Bahraini dinar', minor: 3 },
+  BIF: { name: 'Burundian franc', minor: 0 },
+  BMD: { name: 'Bermudian dollar', minor: 2 },
+  BND: { name: 'Brunei dollar', minor: 2 },
+  BOB: { name: 'Bolivian boliviano', minor: 2 },
+  BRL: { name: 'Brazilian real', minor: 2 },
+  BSD: { name: 'Bahamian dollar', minor: 2 },
+  BTN: { name: 'Bhutanese ngultrum', minor: 2 },
+  BWP: { name: 'Botswanan pula', minor: 2 },
+  BYN: { name: 'Belarusian rouble', minor: 2 },
+  BZD: { name: 'Belize dollar', minor: 2 },
+  CAD: { name: 'Canadian dollar', minor: 2 },
+  CDF: { name: 'Congolese franc', minor: 2 },
+  CHF: { name: 'Swiss franc', minor: 2 },
+  CLP: { name: 'Chilean peso', minor: 0 },
+  CNY: { name: 'Chinese yuan', minor: 2 },
+  COP: { name: 'Colombian peso', minor: 2 },
+  CRC: { name: 'Costa Rican colon', minor: 2 },
+  CUP: { name: 'Cuban peso', minor: 2 },
+  CVE: { name: 'Cape Verdean escudo', minor: 2 },
+  CZK: { name: 'Czech koruna', minor: 2 },
+  DJF: { name: 'Djiboutian franc', minor: 0 },
+  DKK: { name: 'Danish krone', minor: 2 },
+  DOP: { name: 'Dominican peso', minor: 2 },
+  DZD: { name: 'Algerian dinar', minor: 2 },
+  EGP: { name: 'Egyptian pound', minor: 2 },
+  ERN: { name: 'Eritrean nakfa', minor: 2 },
+  ETB: { name: 'Ethiopian birr', minor: 2 },
+  EUR: { name: 'Euro', minor: 2 },
+  FJD: { name: 'Fijian dollar', minor: 2 },
+  FKP: { name: 'Falkland Islands pound', minor: 2 },
+  GBP: { name: 'Pound sterling', minor: 2 },
+  GEL: { name: 'Georgian lari', minor: 2 },
+  GHS: { name: 'Ghanaian cedi', minor: 2 },
+  GIP: { name: 'Gibraltar pound', minor: 2 },
+  GMD: { name: 'Gambian dalasi', minor: 2 },
+  GNF: { name: 'Guinean franc', minor: 0 },
+  GTQ: { name: 'Guatemalan quetzal', minor: 2 },
+  GYD: { name: 'Guyanese dollar', minor: 2 },
+  HKD: { name: 'Hong Kong dollar', minor: 2 },
+  HNL: { name: 'Honduran lempira', minor: 2 },
+  HTG: { name: 'Haitian gourde', minor: 2 },
+  HUF: { name: 'Hungarian forint', minor: 2 },
+  IDR: { name: 'Indonesian rupiah', minor: 2 },
+  ILS: { name: 'Israeli shekel', minor: 2 },
+  INR: { name: 'Indian rupee', minor: 2 },
+  IQD: { name: 'Iraqi dinar', minor: 3 },
+  IRR: { name: 'Iranian rial', minor: 2 },
+  ISK: { name: 'Icelandic krona', minor: 0 },
+  JMD: { name: 'Jamaican dollar', minor: 2 },
+  JOD: { name: 'Jordanian dinar', minor: 3 },
+  JPY: { name: 'Japanese yen', minor: 0 },
+  KES: { name: 'Kenyan shilling', minor: 2 },
+  KGS: { name: 'Kyrgyzstani som', minor: 2 },
+  KHR: { name: 'Cambodian riel', minor: 2 },
+  KMF: { name: 'Comorian franc', minor: 0 },
+  KPW: { name: 'North Korean won', minor: 2 },
+  KRW: { name: 'South Korean won', minor: 0 },
+  KWD: { name: 'Kuwaiti dinar', minor: 3 },
+  KYD: { name: 'Cayman Islands dollar', minor: 2 },
+  KZT: { name: 'Kazakhstani tenge', minor: 2 },
+  LAK: { name: 'Lao kip', minor: 2 },
+  LBP: { name: 'Lebanese pound', minor: 2 },
+  LKR: { name: 'Sri Lankan rupee', minor: 2 },
+  LRD: { name: 'Liberian dollar', minor: 2 },
+  LSL: { name: 'Lesotho loti', minor: 2 },
+  LYD: { name: 'Libyan dinar', minor: 3 },
+  MAD: { name: 'Moroccan dirham', minor: 2 },
+  MDL: { name: 'Moldovan leu', minor: 2 },
+  MGA: { name: 'Malagasy ariary', minor: 2 },
+  MKD: { name: 'Macedonian denar', minor: 2 },
+  MMK: { name: 'Myanmar kyat', minor: 2 },
+  MNT: { name: 'Mongolian tugrik', minor: 2 },
+  MOP: { name: 'Macanese pataca', minor: 2 },
+  MRU: { name: 'Mauritanian ouguiya', minor: 2 },
+  MUR: { name: 'Mauritian rupee', minor: 2 },
+  MVR: { name: 'Maldivian rufiyaa', minor: 2 },
+  MWK: { name: 'Malawian kwacha', minor: 2 },
+  MXN: { name: 'Mexican peso', minor: 2 },
+  MYR: { name: 'Malaysian ringgit', minor: 2 },
+  MZN: { name: 'Mozambican metical', minor: 2 },
+  NAD: { name: 'Namibian dollar', minor: 2 },
+  NGN: { name: 'Nigerian naira', minor: 2 },
+  NIO: { name: 'Nicaraguan cordoba', minor: 2 },
+  NOK: { name: 'Norwegian krone', minor: 2 },
+  NPR: { name: 'Nepalese rupee', minor: 2 },
+  NZD: { name: 'New Zealand dollar', minor: 2 },
+  OMR: { name: 'Omani rial', minor: 3 },
+  PAB: { name: 'Panamanian balboa', minor: 2 },
+  PEN: { name: 'Peruvian sol', minor: 2 },
+  PGK: { name: 'Papua New Guinean kina', minor: 2 },
+  PHP: { name: 'Philippine peso', minor: 2 },
+  PKR: { name: 'Pakistani rupee', minor: 2 },
+  PLN: { name: 'Polish zloty', minor: 2 },
+  PYG: { name: 'Paraguayan guarani', minor: 0 },
+  QAR: { name: 'Qatari riyal', minor: 2 },
+  RON: { name: 'Romanian leu', minor: 2 },
+  RSD: { name: 'Serbian dinar', minor: 2 },
+  RUB: { name: 'Russian rouble', minor: 2 },
+  RWF: { name: 'Rwandan franc', minor: 0 },
+  SAR: { name: 'Saudi riyal', minor: 2 },
+  SBD: { name: 'Solomon Islands dollar', minor: 2 },
+  SCR: { name: 'Seychellois rupee', minor: 2 },
+  SDG: { name: 'Sudanese pound', minor: 2 },
+  SEK: { name: 'Swedish krona', minor: 2 },
+  SGD: { name: 'Singapore dollar', minor: 2 },
+  SHP: { name: 'Saint Helena pound', minor: 2 },
+  SLE: { name: 'Sierra Leonean leone', minor: 2 },
+  SOS: { name: 'Somali shilling', minor: 2 },
+  SRD: { name: 'Surinamese dollar', minor: 2 },
+  SSP: { name: 'South Sudanese pound', minor: 2 },
+  STN: { name: 'Sao Tome and Principe dobra', minor: 2 },
+  SVC: { name: 'Salvadoran colon', minor: 2 },
+  SYP: { name: 'Syrian pound', minor: 2 },
+  SZL: { name: 'Swazi lilangeni', minor: 2 },
+  THB: { name: 'Thai baht', minor: 2 },
+  TJS: { name: 'Tajikistani somoni', minor: 2 },
+  TMT: { name: 'Turkmenistani manat', minor: 2 },
+  TND: { name: 'Tunisian dinar', minor: 3 },
+  TOP: { name: 'Tongan pa-anga', minor: 2 },
+  TRY: { name: 'Turkish lira', minor: 2 },
+  TTD: { name: 'Trinidad and Tobago dollar', minor: 2 },
+  TWD: { name: 'New Taiwan dollar', minor: 2 },
+  TZS: { name: 'Tanzanian shilling', minor: 2 },
+  UAH: { name: 'Ukrainian hryvnia', minor: 2 },
+  UGX: { name: 'Ugandan shilling', minor: 0 },
+  USD: { name: 'US dollar', minor: 2 },
+  UYU: { name: 'Uruguayan peso', minor: 2 },
+  UZS: { name: 'Uzbekistani som', minor: 2 },
+  VED: { name: 'Venezuelan bolivar digital', minor: 2 },
+  VES: { name: 'Venezuelan bolivar', minor: 2 },
+  VND: { name: 'Vietnamese dong', minor: 0 },
+  VUV: { name: 'Vanuatu vatu', minor: 0 },
+  WST: { name: 'Samoan tala', minor: 2 },
+  XAF: { name: 'CFA franc BEAC', minor: 0 },
+  XCD: { name: 'East Caribbean dollar', minor: 2 },
+  XCG: { name: 'Caribbean guilder', minor: 2 },
+  XOF: { name: 'CFA franc BCEAO', minor: 0 },
+  XPF: { name: 'CFP franc', minor: 0 },
+  YER: { name: 'Yemeni rial', minor: 2 },
+  ZAR: { name: 'South African rand', minor: 2 },
+  ZMW: { name: 'Zambian kwacha', minor: 2 },
+  ZWG: { name: 'Zimbabwe gold', minor: 2 },
+}
 
 /**
- * What a code is called, for the picker. Only the codes above need a name; a
- * code with none is shown as itself, which is still unambiguous.
+ * Every code a manager may choose, sorted. Exactly the table above — no free
+ * text, and nothing the gateway would refuse.
+ *
+ * IT USED TO BE THE COUNTRY TABLE'S 96 (`COUNTRIES[].currency`), which made the
+ * picker narrower than the money this product accepts: a house billed in HKD
+ * could have the invoice filed but could not name HKD anywhere itself. One
+ * table now answers both questions, and `currencyForCountry` still supplies the
+ * DEFAULT from the country — an offer, never an application (ADR 0117 Q25).
  */
-const CURRENCY_NAMES: Readonly<Record<string, string>> = {
-  AED: 'UAE dirham', AFN: 'Afghan afghani', ALL: 'Albanian lek', AMD: 'Armenian dram',
-  AOA: 'Angolan kwanza', ARS: 'Argentine peso', AUD: 'Australian dollar',
-  AZN: 'Azerbaijani manat', BAM: 'Bosnia-Herzegovina mark', BBD: 'Barbadian dollar',
-  BDT: 'Bangladeshi taka', BGN: 'Bulgarian lev', BHD: 'Bahraini dinar',
-  BND: 'Brunei dollar', BOB: 'Bolivian boliviano', BRL: 'Brazilian real',
-  BWP: 'Botswanan pula', BYN: 'Belarusian rouble', BZD: 'Belize dollar',
-  CAD: 'Canadian dollar', CHF: 'Swiss franc', CLP: 'Chilean peso',
-  CNY: 'Chinese yuan', COP: 'Colombian peso', CRC: 'Costa Rican colon',
-  CUP: 'Cuban peso', CZK: 'Czech koruna', DKK: 'Danish krone',
-  DOP: 'Dominican peso', DZD: 'Algerian dinar', EGP: 'Egyptian pound',
-  ETB: 'Ethiopian birr', EUR: 'Euro', FJD: 'Fijian dollar', GBP: 'Pound sterling',
-  GEL: 'Georgian lari', GHS: 'Ghanaian cedi', GTQ: 'Guatemalan quetzal',
-  HNL: 'Honduran lempira', HUF: 'Hungarian forint', IDR: 'Indonesian rupiah',
-  ILS: 'Israeli shekel', INR: 'Indian rupee', IQD: 'Iraqi dinar',
-  IRR: 'Iranian rial', ISK: 'Icelandic krona', JMD: 'Jamaican dollar',
-  JOD: 'Jordanian dinar', JPY: 'Japanese yen', KES: 'Kenyan shilling',
-  KHR: 'Cambodian riel', KRW: 'South Korean won', KWD: 'Kuwaiti dinar',
-  KZT: 'Kazakhstani tenge', LBP: 'Lebanese pound', LKR: 'Sri Lankan rupee',
-  LYD: 'Libyan dinar', MAD: 'Moroccan dirham', MDL: 'Moldovan leu',
-  MKD: 'Macedonian denar', MNT: 'Mongolian tugrik', MXN: 'Mexican peso',
-  MYR: 'Malaysian ringgit', NGN: 'Nigerian naira', NIO: 'Nicaraguan cordoba',
-  NOK: 'Norwegian krone', NPR: 'Nepalese rupee', NZD: 'New Zealand dollar',
-  OMR: 'Omani rial', PAB: 'Panamanian balboa', PEN: 'Peruvian sol',
-  PHP: 'Philippine peso', PKR: 'Pakistani rupee', PLN: 'Polish zloty',
-  PYG: 'Paraguayan guarani', QAR: 'Qatari riyal', RON: 'Romanian leu',
-  RSD: 'Serbian dinar', RUB: 'Russian rouble', SAR: 'Saudi riyal',
-  SEK: 'Swedish krona', SGD: 'Singapore dollar', THB: 'Thai baht',
-  TND: 'Tunisian dinar', TRY: 'Turkish lira', TWD: 'New Taiwan dollar',
-  TZS: 'Tanzanian shilling', UAH: 'Ukrainian hryvnia', UGX: 'Ugandan shilling',
-  USD: 'US dollar', UYU: 'Uruguayan peso', UZS: 'Uzbekistani som',
-  VES: 'Venezuelan bolivar', VND: 'Vietnamese dong', ZAR: 'South African rand',
-  ZMW: 'Zambian kwacha',
-}
+export const CURRENCY_CODES: readonly string[] = Object.keys(CURRENCIES).sort()
 
 /** `TRY - Turkish lira`, for a picker row. */
 export function currencyLabel(code: string): string {
-  const name = CURRENCY_NAMES[code]
-  return name ? `${code} - ${name}` : code
+  const row = CURRENCIES[code]
+  return row ? `${code} - ${row.name}` : code
+}
+
+/**
+ * How many decimal places this money HAS, or `null` for a code we do not hold.
+ *
+ * `null` is not "two". A caller that gets `null` has been handed a code this
+ * product does not stand behind, and guessing two for it is how BHD (three) and
+ * JPY (zero) both came to print as if they were dollars.
+ */
+export function currencyMinorUnits(code: string | null | undefined): number | null {
+  if (typeof code !== 'string') return null
+  const row = CURRENCIES[code.trim().toUpperCase()]
+  return row ? row.minor : null
 }
 
 /** The sentence every screen shows where a house has not answered the question. */
@@ -159,7 +337,12 @@ export function formatMoney(
   opts: { maximumFractionDigits?: number } = {},
 ): string {
   if (amount == null || !Number.isFinite(amount)) return '-'
-  const digits = opts.maximumFractionDigits ?? 2
+  // The CURRENCY'S own decimal places, not two. Yen have no subunit and a
+  // Bahraini dinar has three, so a flat two printed 1200 JPY as `1,200.00` and
+  // rounded a 1.500 BHD line to `1.50` — a different amount, on a screen a
+  // person reconciles an invoice against. A caller may still override, and a
+  // code this product does not hold falls back to two rather than to nothing.
+  const digits = opts.maximumFractionDigits ?? currencyMinorUnits(currency) ?? 2
   if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
     return `${amount.toLocaleString(undefined, {
       minimumFractionDigits: digits,

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpException,
   HttpStatus,
   Param,
@@ -38,6 +39,31 @@ import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { documentMoneyState } from "./invoice-currency";
 import { DeliveryService } from "../canonical/delivery.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
+import { SealChallengeService } from "../../common/seal/seal-challenge.service";
+import {
+  DOCUMENT_SEAL_SUBJECT_KIND,
+  DocumentSealAct,
+  documentCurrencySealArgs,
+  documentLineEditSealArgs,
+  documentVerifySealArgs,
+} from "./document-seal";
+
+/**
+ * The document columns a verify seal is taken over, as ONE literal string.
+ *
+ * A module-level `const` of literal names IN THIS FILE, rather than an import
+ * from `document-seal.ts`: `scripts/check_read_columns_exist.py` resolves a
+ * const only within the file that reads it, so an imported list would count as
+ * an unreadable read — a `.select()` nobody is checking. `document-seal.spec.ts`
+ * asserts that every field the seal functions touch is named here, so the pure
+ * module and this list cannot drift apart in silence.
+ */
+export const DOCUMENT_SEAL_DOC_COLUMNS =
+  "id, status, currency, doc_number, doc_date, total, freight, fuel_surcharge, split_case_fee, delivery_fee, deposit_total, tax, other_charges, discount_total";
+
+/** The line columns a verify seal is taken over. See above for why it is here. */
+export const DOCUMENT_SEAL_LINE_COLUMNS =
+  "id, line_no, qty, uom, pack_size, qty_bottles, free_goods_qty, unit_price, line_total, allowance, description, vintage, vendor_sku";
 
 /**
  * `fullName`, `name` and `email` are read for ONE purpose: an admitted class-C
@@ -97,7 +123,204 @@ export class DocumentsController {
     // the module graph and no `forwardRef`.
     private readonly organizations: OrganizationsService,
     private readonly deliveries: DeliveryService,
+    // THE SEAL ON THE THREE WRITE ACTS (founder, 2026-09-06, batch 64:
+    // "Decide as a module: seal all three"). `SealModule` is already a
+    // `ProcurementModule` import for the order seal, so this adds no edge to
+    // the module graph. See `document-seal.ts` for what each act binds.
+    private readonly seals: SealChallengeService,
   ) {}
+
+  /**
+   * Redeem the seal one of the three sealed acts has to carry back, or refuse in
+   * the seal's own words.
+   *
+   * ONE HELPER, THREE ACTS, and the shape is `payment-methods.controller.ts`'s
+   * `assertSealed` deliberately: a second policy for redeeming is a second
+   * opinion about what "exactly once" means.
+   *
+   * AN ABSENT SEAL IS REFUSED BEFORE THE DOCUMENT IS READ. `readArgs` is only
+   * called when a token was actually sent. Reading first would answer a caller
+   * with no seal with whatever the read said — when the table is unreachable,
+   * that is a 500 about Postgres rather than the sentence telling them to begin
+   * the hold, and when the document is another house's it is a 404 that leaks
+   * nothing but teaches nothing either. The cheap, certain refusal comes first.
+   */
+  private async assertSealed(
+    user: AuthedUser,
+    documentId: string,
+    act: DocumentSealAct,
+    challenge: string | undefined,
+    readArgs: () => Promise<Record<string, unknown>>,
+  ): Promise<void> {
+    const present = (challenge ?? "").trim().length > 0;
+    const args = present ? await readArgs() : {};
+    await this.seals.redeem({
+      restaurantId: user.restaurantId,
+      actorUserId: user.userId,
+      subjectKind: DOCUMENT_SEAL_SUBJECT_KIND,
+      subjectId: documentId,
+      action: act,
+      args,
+      challenge: challenge ?? null,
+    });
+  }
+
+  /**
+   * Mint the seal for one act on one document, at the moment the gesture BEGINS.
+   *
+   * The three mint routes below all land here. A token fetched at the moment of
+   * the write would be one more thing the same request asked for itself, which
+   * is the assertion model with extra steps (founder, 2026-09-04; ADR 0116
+   * addendum) — so the pages call these when the hold STARTS, and
+   * `HoldToApprove`/`SwipeToConfirm`'s `onChallenge` is what guarantees it.
+   */
+  private async mintSeal(
+    user: AuthedUser,
+    documentId: string,
+    act: DocumentSealAct,
+    args: Record<string, unknown>,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    const issued = await this.seals.issue({
+      restaurantId: user.restaurantId,
+      actorUserId: user.userId,
+      subjectKind: DOCUMENT_SEAL_SUBJECT_KIND,
+      subjectId: documentId,
+      action: act,
+      args,
+    });
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
+  }
+
+  /**
+   * The facts a VERIFY seal is taken over: the whole transcription.
+   *
+   * ONE READER, used by the mint and by the redemption. Two readers is how issue
+   * and redemption learn to disagree, and the disagreement would surface as a
+   * refusal nobody could explain.
+   *
+   * A FAILED READ IS NEVER AN EMPTY ONE (ADR 0067). supabase-js resolves
+   * `{ data, error }` and never throws, so an outage here would otherwise hash
+   * "a document with no lines" — and a seal minted over that would be redeemable
+   * against a document whose lines had simply not loaded.
+   */
+  private async readVerifySealArgs(
+    documentId: string,
+    restaurantId: string,
+  ): Promise<Record<string, unknown>> {
+    const client = this.db.getClient();
+    const { data: doc, error: docError } = await client
+      .from("procurement_documents")
+      .select(DOCUMENT_SEAL_DOC_COLUMNS)
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (docError)
+      throw new HttpException(
+        `This document could not be read, so nothing was sealed and nothing was changed: ${docError.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!doc) throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+
+    const { data: lines, error: linesError } = await client
+      .from("procurement_document_lines")
+      .select(DOCUMENT_SEAL_LINE_COLUMNS)
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (linesError)
+      throw new HttpException(
+        `This document's lines could not be read, so nothing was sealed and nothing was changed: ${linesError.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+
+    return documentVerifySealArgs(
+      doc as Record<string, unknown>,
+      (lines ?? []) as Record<string, unknown>[],
+    );
+  }
+
+  /**
+   * The facts a LINE EDIT seal is taken over: the document's status, the line as
+   * it stands, and the correction about to be written to it.
+   *
+   * The PATCH comes from the caller at both ends and is canonicalised by
+   * `documentLineEditSealArgs`, so the mint and the write have to name the same
+   * correction. Everything else is read here.
+   */
+  private async readLineEditSealArgs(
+    documentId: string,
+    lineId: string,
+    restaurantId: string,
+    patch: Record<string, unknown> | null | undefined,
+  ): Promise<Record<string, unknown>> {
+    const client = this.db.getClient();
+    const { data: doc, error: docError } = await client
+      .from("procurement_documents")
+      .select("id, status")
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (docError)
+      throw new HttpException(
+        `This document could not be read, so nothing was sealed and nothing was changed: ${docError.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!doc) throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+
+    const { data: line, error: lineError } = await client
+      .from("procurement_document_lines")
+      .select(DOCUMENT_SEAL_LINE_COLUMNS)
+      .eq("id", lineId)
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (lineError)
+      throw new HttpException(
+        `This line could not be read, so nothing was sealed and nothing was changed: ${lineError.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+
+    return documentLineEditSealArgs({
+      documentId,
+      lineId,
+      status: (doc as { status?: unknown }).status ?? null,
+      line: (line as Record<string, unknown> | null) ?? null,
+      patch,
+    });
+  }
+
+  /**
+   * The facts a CURRENCY RESTATEMENT seal is taken over: the code the document
+   * carries NOW, the code being written, and the document's status.
+   */
+  private async readCurrencySealArgs(
+    documentId: string,
+    restaurantId: string,
+    next: string,
+  ): Promise<Record<string, unknown>> {
+    const { data: doc, error } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id, status, currency")
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error)
+      throw new HttpException(
+        `This document could not be read, so nothing was sealed and nothing was changed: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!doc) throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+    return documentCurrencySealArgs({
+      documentId,
+      status: (doc as { status?: unknown }).status ?? null,
+      previous: (doc as { currency?: string | null }).currency ?? null,
+      next,
+    });
+  }
 
   /**
    * Sign the stored original for viewing, or say why it could not be signed.
@@ -836,9 +1059,43 @@ export class DocumentsController {
     }
   }
 
+  /**
+   * Begin the hold on a line correction. Returns a one-time seal, once.
+   *
+   * THE PATCH IS IN THE BODY HERE TOO, and that is the point rather than an
+   * inconvenience: the seal is taken over the correction about to be made, so a
+   * token obtained for "qty 12" cannot be spent to write 120. The page sends the
+   * same patch to both routes; anything else refuses with "This document changed
+   * after the seal was issued".
+   */
+  @Post(":id/lines/:lineId/edit-seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal a line correction has to carry back",
+    description:
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `line_edit`, so this token cannot be spent on `POST :id/verify` or `PATCH :id/currency`. It is bound to this actor, this document, this line AS IT STANDS and this exact patch: a second manager's correction landing in between refuses it.",
+  })
+  async mintLineEditSeal(
+    @Param("id") documentId: string,
+    @Param("lineId") lineId: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() user: AuthedUser,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.mintSeal(
+      user,
+      documentId,
+      "line_edit",
+      await this.readLineEditSealArgs(
+        documentId,
+        lineId,
+        user.restaurantId,
+        body ?? {},
+      ),
+    );
+  }
+
   @Patch(":id/lines/:lineId")
   @ApiOperation({
-    summary: "Correct one extracted line by hand",
+    summary: "Correct one extracted line by hand, behind a redeemed seal",
     description:
       "The receipts brief's editable half (ADR 0045 §5): a manager fixes what the model misread, then confirms. Only a pre-verification document (received / needs_review) may be edited — a verified document is the record a vendor dispute leans on, and there is deliberately no un-verify. Edits are anonymous drafts; provenance is carried by verify, which stamps who confirmed the final transcription. The document's tie-out is recomputed through the same rule extraction uses, so an edit can never leave a stale ties-out claim standing. Note the tie-out arithmetic prefers a line's stated lineTotal over qty × unitPrice — that is the paper's own claim; correcting qty alone moves the tie-out only when the line has no stated total, which is the honest reading, not a bug. qty_bottles is derived and follows qty/packSize corrections automatically unless set explicitly.",
   })
@@ -860,7 +1117,23 @@ export class DocumentsController {
       vendorSku?: string | null;
     },
     @CurrentUser() user: AuthedUser,
+    // The seal travels in the SAME header as the order and payment writes, so a
+    // caller has one thing to learn and the acts cannot be confused by shape —
+    // only by the act the token was minted for, which the seal service compares.
+    @Headers("x-seal-challenge") challenge?: string,
   ) {
+    // BEFORE the write, and outside the try/catch below: a refused seal is a
+    // 403 with a whole sentence, and this method's catch turns unknown messages
+    // into 500s. It is deliberately NOT wrapped.
+    await this.assertSealed(user, documentId, "line_edit", challenge, () =>
+      this.readLineEditSealArgs(
+        documentId,
+        lineId,
+        user.restaurantId,
+        (body ?? {}) as Record<string, unknown>,
+      ),
+    );
+
     try {
       return await this.intake.editLine(
         documentId,
@@ -908,15 +1181,22 @@ export class DocumentsController {
    *      parse, kept precisely so a held document does not have to be uploaded
    *      again — and says what moved.
    *
-   * NOT SEALED, DELIBERATELY. `scripts/check_money_routes_are_sealed.py` scopes
-   * the seal to `payment-methods`, `billing` and `communications/text/credits`:
-   * routes that change WHAT THE HOUSE IS CHARGED. This changes what a vendor's
-   * bill is denominated in, inside a module where none of the twelve other
-   * routes — including `POST :id/verify`, which is the record a dispute leans on
-   * — redeems a seal. Sealing this one alone would read as a policy while
-   * leaving the other six non-GET routes on this controller open. The gate is role
-   * plus an append-only log, and whether procurement as a whole should be sealed is a founder
-   * question, not a decision to take one route at a time.
+   * SEALED SINCE 2026-09-06 (batch 64), AND THE QUESTION BELOW IS WHY.
+   *
+   * This docblock used to end "NOT SEALED, DELIBERATELY", on the grounds that
+   * sealing one route inside an unsealed corridor *"would read as a policy while
+   * leaving the other six non-GET routes on this controller open"*, and that
+   * whether procurement as a whole should be sealed was a founder question
+   * rather than a decision to take one route at a time. It was put to the
+   * founder and the answer was **"Decide as a module: seal all three"** — verify,
+   * line edit and currency restatement, each taking a redeemed seal like the
+   * payment and register acts do. So the gate here is now role, PLUS a
+   * one-time seal bound to this document and to the pair of codes
+   * (`document-seal.ts`), PLUS the append-only log.
+   *
+   * The rest of the controller is still unsealed and is meant to be visible as
+   * such: `scripts/check_money_routes_are_sealed.py` prints every write route on
+   * this file that no census names, rather than passing over it in silence.
    *
    * A VERIFIED DOCUMENT MAY STILL BE RESTATED, unlike a line edit
    * (`PATCH :id/lines/:lineId` refuses anything past review). The two are not
@@ -926,16 +1206,89 @@ export class DocumentsController {
    * a verification never asserted. The status at the time is written to the log
    * so a restatement after verification is legible as one.
    */
+  /**
+   * Begin the hold on a restatement. Returns a one-time seal, once.
+   *
+   * EVERYTHING THAT WOULD REFUSE THE WRITE REFUSES THE SEAL FIRST — the currency
+   * has to be a real ISO 4217 code and the caller has to be a manager or an
+   * owner here, checked in the same words as below. A manager handed a seal that
+   * is going to be refused a second and a half later learns that the seal is
+   * decoration.
+   */
+  @Post(":id/currency-seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal a currency restatement has to carry back",
+    description:
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `currency_restate`. Bound to this actor, this document, the code being written AND the code the document carries now, so a seal minted to move a held invoice to EUR cannot be spent after somebody else filed it in USD. Refused with the same sentences the write gives: a code that is not a currency is a 400, a caller who is not a manager or an owner is a 403.",
+  })
+  async mintCurrencySeal(
+    @Param("id") id: string,
+    @Body() body: { currency?: string },
+    @CurrentUser() user: AuthedUser,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    const next = String(body?.currency ?? "")
+      .trim()
+      .toUpperCase();
+    if (!isIso4217(next))
+      throw new HttpException(
+        `${notACurrencyBecause(body?.currency)} Nothing was sealed and nothing was changed: a seal names the act it approves, and there is no act here to approve.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    await this.assertMayRestateCurrency(user);
+    return this.mintSeal(
+      user,
+      id,
+      "currency_restate",
+      await this.readCurrencySealArgs(id, user.restaurantId, next),
+    );
+  }
+
+  /**
+   * MAY THIS PERSON RESTATE A CURRENCY HERE — asked twice, in one place.
+   *
+   * The role is asserted when the seal is ISSUED and again when the write
+   * arrives, so a manager demoted between the two cannot spend a token they were
+   * legitimately given (the rule `payment-methods.controller.ts` states for the
+   * same reason). The sentence is this route's own, because
+   * `assertCanManageRestaurant`'s does not say what the caller IS, that nothing
+   * was written, or what to do next.
+   */
+  private async assertMayRestateCurrency(user: AuthedUser): Promise<string | null> {
+    // WHO THIS PERSON IS HERE. `null` means "not proven to hold any role" —
+    // a read that failed and a person with no row are indistinguishable at this
+    // layer, and neither may pass (`order-approval-gate.ts`'s header).
+    const role = await this.organizations.resolveRestaurantRole(
+      user.userId,
+      user.restaurantId,
+    );
+    try {
+      await this.organizations.assertCanManageRestaurant(
+        user.userId,
+        user.restaurantId,
+        "restate an invoice's currency",
+      );
+    } catch {
+      throw new HttpException(
+        `Restating an invoice's currency re-files its money, so it is a manager's or an owner's decision. ` +
+          `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was changed. Ask a manager or an owner to restate it.`,
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    return role;
+  }
+
   @Patch(":id/currency")
   @ApiOperation({
-    summary: "Restate what currency this invoice's money is in",
+    summary:
+      "Restate what currency this invoice's money is in, behind a redeemed seal",
     description:
-      "The house's deliberate change (founder, 2026-09-06). Managers and owners only; staff are refused in words. Writes an append-only row naming who, when and the previous value, then re-files the document's money — including money rules 1 and 2 withheld — under the currency named, and returns a sentence saying what moved. NOTHING IS CONVERTED: there is no exchange rate in this system, so the vendor's own figures are restored and only their denomination changes.",
+      "The house's deliberate change (founder, 2026-09-06). Managers and owners only; staff are refused in words. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/currency-seal-challenge` when the hold begins and redeemed exactly once here. Writes an append-only row naming who, when and the previous value, then re-files the document's money — including money rules 1 and 2 withheld — under the currency named, and returns a sentence saying what moved. NOTHING IS CONVERTED: there is no exchange rate in this system, so the vendor's own figures are restored and only their denomination changes.",
   })
   async restateCurrency(
     @Param("id") id: string,
     @Body() body: { currency?: string; reason?: string },
     @CurrentUser() user: AuthedUser,
+    @Headers("x-seal-challenge") challenge?: string,
   ) {
     /*
      * MEMBERSHIP, NOT SHAPE. This route used to ask `/^[A-Z]{3}$/`, so
@@ -951,43 +1304,32 @@ export class DocumentsController {
         HttpStatus.BAD_REQUEST,
       );
 
-    // WHO THIS PERSON IS HERE. `null` means "not proven to hold any role" —
-    // a read that failed and a person with no row are indistinguishable at this
-    // layer, and neither may pass (`order-approval-gate.ts`'s header).
-    //
-    // Read for the AUDIT ROW, which records what the actor was. The GATE below
-    // is `assertCanManageRestaurant`, the same helper `settings.controller.ts`
-    // and `mcp-connections` call.
-    const role = await this.organizations.resolveRestaurantRole(
-      user.userId,
-      user.restaurantId,
-    );
     /*
-     * ONE IMPLEMENTATION OF "MAY THIS PERSON MANAGE THIS HOUSE".
+     * ROLE FIRST, THEN THE SEAL.
      *
-     * This route used to build its own gate from `resolveRestaurantRole` plus
-     * `roleSatisfies(role, "manager")`. Functionally identical to
-     * `assertCanManageRestaurant` — both refuse staff and both refuse a null
-     * role — but a second copy of the rule is exactly the drift
-     * `organizations.service.ts:143` warns about in writing ("Lifted rather
-     * than copied... how the settings page and the gate that enforces it drift
-     * apart"). The decision is now the shared helper's; only the SENTENCE is
-     * this route's, because "Only managers and owners can …" does not say what
-     * the caller is, that nothing was written, or what to do next.
+     * `assertMayRestateCurrency` is ONE implementation of "may this person
+     * manage this house" (`assertCanManageRestaurant`, the same helper
+     * `settings.controller.ts` and `mcp-connections` call) with this route's own
+     * sentence around it, and it is the same call the MINT makes — so the role
+     * is asserted when the seal is issued and again here, and a manager demoted
+     * in between cannot spend a token they were legitimately given.
+     *
+     * `role` comes back for the AUDIT ROW, which records what the actor was.
+     * `null` means "not proven to hold any role" — a read that failed and a
+     * person with no row are indistinguishable at this layer, and neither may
+     * pass (`order-approval-gate.ts`'s header).
+     *
+     * The order matters: a person who may not restate anything is told so,
+     * rather than being told their seal is wrong.
      */
-    try {
-      await this.organizations.assertCanManageRestaurant(
-        user.userId,
-        user.restaurantId,
-        "restate an invoice's currency",
-      );
-    } catch {
-      throw new HttpException(
-        `Restating an invoice's currency re-files its money, so it is a manager's or an owner's decision. ` +
-          `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was changed. Ask a manager or an owner to restate it.`,
-        HttpStatus.FORBIDDEN,
-      );
-    }
+    const role = await this.assertMayRestateCurrency(user);
+
+    // THE SEAL, before the log and before the write. A restatement is a
+    // manager's own act on the record a vendor dispute leans on, and a role
+    // check answers "may this role" and cannot answer "did a person".
+    await this.assertSealed(user, id, "currency_restate", challenge, () =>
+      this.readCurrencySealArgs(id, user.restaurantId, next),
+    );
 
     const { data: doc, error: readError } = await this.db
       .getClient()
@@ -1200,13 +1542,50 @@ export class DocumentsController {
     };
   }
 
+  /**
+   * Begin the hold on a verification. Returns a one-time seal, once.
+   *
+   * The seal is taken over the WHOLE TRANSCRIPTION — every line as well as the
+   * document's own figures — because that is what a verification asserts and
+   * because there is no un-verify. A token minted while the reviewer was reading
+   * the lines cannot be spent after one of them was corrected: the person's name
+   * would otherwise stand behind a figure they never saw, on the record a vendor
+   * dispute leans on. See `document-seal.ts`.
+   */
+  @Post(":id/verify-seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal a verification has to carry back",
+    description:
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `verify`, so this token cannot be spent on a line correction or a currency restatement. Bound to this actor, this document and the transcription AS IT STANDS: a line corrected between the hold and the write refuses it with 'This document changed after the seal was issued'.",
+  })
+  async mintVerifySeal(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.mintSeal(
+      user,
+      id,
+      "verify",
+      await this.readVerifySealArgs(id, user.restaurantId),
+    );
+  }
+
   @Post(":id/verify")
   @ApiOperation({
-    summary: "Confirm the extraction is faithful to the paper document",
+    summary:
+      "Confirm the extraction is faithful to the paper document, behind a redeemed seal",
     description:
-      "Records who checked it and when. This asserts only that the transcription is right — it does not accept the charges, apply anything to stock, or settle a discrepancy.",
+      "Records who checked it and when. This asserts only that the transcription is right — it does not accept the charges, apply anything to stock, or settle a discrepancy. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/verify-seal-challenge` when the gesture begins and redeemed exactly once here: the transcription somebody is standing behind has to be the one they read.",
   })
-  async verify(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+  async verify(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+    @Headers("x-seal-challenge") challenge?: string,
+  ) {
+    await this.assertSealed(user, id, "verify", challenge, () =>
+      this.readVerifySealArgs(id, user.restaurantId),
+    );
+
     const { data, error } = await this.db
       .getClient()
       .from("procurement_documents")

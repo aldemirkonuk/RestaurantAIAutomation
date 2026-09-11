@@ -26,21 +26,36 @@ const WEB_CURRENCY_FILE = resolve(
   "../../../../apps/web/src/lib/currency.ts",
 );
 
-function webCurrencyCodes(): string[] {
+/** One row of the web's table: the code, its name and its minor-unit count. */
+interface WebCurrencyRow {
+  code: string;
+  name: string;
+  minor: number;
+}
+
+function webCurrencyRows(): WebCurrencyRow[] {
   const source = readFileSync(WEB_CURRENCY_FILE, "utf8");
 
-  // The table is `const CURRENCY_NAMES: Readonly<Record<string, string>> = {…}`.
+  // The table is
+  // `const CURRENCIES: Readonly<Record<string, CurrencyRow>> = {…}`.
   // Anchored on the declaration and closed on the first line that is a bare
   // `}`, so a later object in the file cannot leak codes in.
-  const start = source.indexOf("const CURRENCY_NAMES");
+  const start = source.indexOf("const CURRENCIES");
   expect(start).toBeGreaterThan(-1);
   const end = source.indexOf("\n}", start);
   expect(end).toBeGreaterThan(start);
   const table = source.slice(start, end);
 
-  const codes = new Set<string>();
-  for (const m of table.matchAll(/\b([A-Z]{3}):\s*'/g)) codes.add(m[1]);
-  return [...codes].sort();
+  const rows: WebCurrencyRow[] = [];
+  for (const m of table.matchAll(
+    /\b([A-Z]{3}):\s*\{\s*name:\s*'([^']+)',\s*minor:\s*(\d)\s*\}/g,
+  ))
+    rows.push({ code: m[1], name: m[2], minor: Number(m[3]) });
+  return rows.sort((a, b) => a.code.localeCompare(b.code));
+}
+
+function webCurrencyCodes(): string[] {
+  return webCurrencyRows().map((r) => r.code);
 }
 
 describe("the gateway's currency list mirrors the web's, exactly", () => {
@@ -65,8 +80,58 @@ describe("the gateway's currency list mirrors the web's, exactly", () => {
     // pass against an empty set on both sides the day the web file is
     // reformatted. The count is asserted so the mirror cannot go green by
     // finding nothing.
-    expect(webCurrencyCodes().length).toBeGreaterThan(90);
-    expect(ISO_4217_CODES.length).toBe(96);
+    //
+    // 157 is ISO 4217 list A1's active codes MINUS the 22 that are not money a
+    // vendor bills in (metals, test, bond units, units of account, funds) —
+    // the arithmetic behind the founder's "about 180", batch 67. Updated from
+    // a run, never by hand.
+    expect(webCurrencyCodes().length).toBeGreaterThan(150);
+    expect(ISO_4217_CODES.length).toBe(157);
+  });
+
+  it("carries a name and a minor-unit count for every code, so money prints right", () => {
+    // The gateway does not need these — a screen does, and the screen's table
+    // is this one. A row added here with no name, or with the default two
+    // decimals on a currency that has none, prints a wrong AMOUNT rather than
+    // a wrong label: 1200 JPY as `1,200.00`, a 1.500 BHD line as `1.50`.
+    const rows = webCurrencyRows();
+    expect(rows.map((r) => r.code)).toEqual([...ISO_4217_CODES].sort());
+    expect(rows.filter((r) => r.name.trim() === "")).toEqual([]);
+    expect([...new Set(rows.map((r) => r.minor))].sort()).toEqual([0, 2, 3]);
+
+    // The seven three-decimal currencies and a sample of the zero-decimal ones,
+    // spot-checked against the published standard rather than against the file
+    // that would be wrong.
+    const minor = new Map(rows.map((r) => [r.code, r.minor]));
+    for (const code of ["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"])
+      expect(`${code}=${minor.get(code)}`).toBe(`${code}=3`);
+    for (const code of ["JPY", "KRW", "VND", "CLP", "ISK", "XOF", "XAF", "XPF"])
+      expect(`${code}=${minor.get(code)}`).toBe(`${code}=0`);
+    for (const code of ["USD", "TRY", "HKD", "MOP", "XCD"])
+      expect(`${code}=${minor.get(code)}`).toBe(`${code}=2`);
+  });
+
+  it("holds no funds, metal, test or unit-of-account code", () => {
+    // The 22 codes ISO publishes in A1 that are not money a vendor can bill in.
+    // Listed rather than described, because "we excluded the special ones" is
+    // not something a later reader can check.
+    const NOT_MONEY = [
+      "XAU", "XAG", "XPT", "XPD", // metals
+      "XTS", "XXX", // test, and "no currency"
+      "XBA", "XBB", "XBC", "XBD", // bond market units
+      "XDR", "XSU", "XUA", // units of account
+      "BOV", "CHE", "CHW", "CLF", "COU", "MXV", "USN", "UYI", "UYW", // funds
+    ];
+    expect(NOT_MONEY.length).toBe(22);
+    expect(NOT_MONEY.filter((c) => isIso4217(c))).toEqual([]);
+  });
+
+  it("holds no WITHDRAWN currency, so old paper is held rather than read as live money", () => {
+    for (const gone of ["HRK", "CUC", "SLL", "ZWL", "MRO", "STD", "VEF", "BYR"])
+      expect(`${gone}:${isIso4217(gone)}`).toBe(`${gone}:false`);
+    // ...and their live replacements ARE here.
+    for (const live of ["SLE", "ZWG", "MRU", "STN", "VES", "BYN", "EUR"])
+      expect(`${live}:${isIso4217(live)}`).toBe(`${live}:true`);
   });
 
   it("is sorted and free of duplicates, so a diff that adds one is one line", () => {
@@ -89,6 +154,20 @@ describe("isIso4217 — membership, not shape", () => {
     expect(isIso4217("XTS")).toBe(false);
     expect(isIso4217("XTT")).toBe(false);
     expect(isIso4217("ABC")).toBe(false);
+  });
+
+  it("ADMITS the currencies the 96-code list refused", () => {
+    // Founder, 2026-09-06 batch 67: "A Hong Kong or Macau vendor's invoice
+    // files instead of being held." These three were the named cost of the
+    // narrow list — HKD and MOP have no country row in `lib/countries.ts`, and
+    // XOF is one currency across eight countries, so a per-country table can
+    // never reach it. The pair with the test above is the point: widening the
+    // list did not weaken the refusal.
+    expect(isIso4217("HKD")).toBe(true);
+    expect(isIso4217("MOP")).toBe(true);
+    expect(isIso4217("XOF")).toBe(true);
+    expect(isIso4217("ZZZ")).toBe(false);
+    expect(isIso4217("XTS")).toBe(false);
   });
 
   it("refuses the wrong shape and the wrong type", () => {

@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { DocumentsController } from "./documents/documents.controller";
 import { ProcurementService } from "./procurement.service";
 import { DatabaseService } from "../database/database.service";
@@ -235,11 +236,27 @@ const service = (db: DatabaseService) =>
   new ProcurementService(db, events, ledger);
 
 /** The receipt a manager submits, with or without the price. */
+/**
+ * A receipt as the desk submits it.
+ *
+ * `withPrice` now carries a CURRENCY as well, because since 2026-09-06 (founder
+ * batch 67) a unit price without one is refused before any read — so a price
+ * with no code no longer reaches the held-invoice question these tests are
+ * about. `priceNoCurrency` below is the payload that exercises the new refusal.
+ */
 const receipt = (withPrice: boolean) => ({
   invoiceQuantity: 10,
   acceptedQuantity: 10,
   rejectedQuantity: 0,
-  ...(withPrice ? { invoiceUnitPrice: 40 } : {}),
+  ...(withPrice ? { invoiceUnitPrice: 40, invoiceCurrency: "TRY" } : {}),
+});
+
+/** A price with no currency at all — the shape that used to write a null. */
+const priceNoCurrency = () => ({
+  invoiceQuantity: 10,
+  acceptedQuantity: 10,
+  rejectedQuantity: 0,
+  invoiceUnitPrice: 40,
 });
 
 const HELD_DOC = () => ({
@@ -384,38 +401,67 @@ describe("verifyReceipt — a held invoice refuses the PRICE, never the stock", 
   });
 
   /* =========================================================================
-   * WHAT HAPPENS TODAY WHEN NO DOCUMENT IS LINKED — measured, not changed.
+   * A TYPED PRICE STATES ITS CURRENCY OR IS REFUSED — founder, 2026-09-06
+   * batch 67: *"a price without money is not a price ... price_history never
+   * gains a currency-null row from that door again."*
    *
-   * Found by the Sonnet audit of `6c0933d3`. `heldInvoiceForOrder`
-   * (`procurement.service.ts:2303`) is gated solely on
-   * `procurement_document_links` returning rows: zero rows and zero error is
-   * indistinguishable from "no invoice exists", so the refusal never fires —
-   * while `hasInvoice` (`procurement.service.ts:4989`) depends only on the DESK
-   * typing an invoice quantity, and `recordPriceHistory`
-   * (`procurement.service.ts:5192`) fires on `match && hasInvoice`.
+   * WHAT THESE THREE USED TO PIN. Found by the Sonnet audit of `6c0933d3`:
+   * `heldInvoiceForOrder` (`procurement.service.ts:2303`) is gated solely on
+   * `procurement_document_links` returning rows, so zero rows and zero error is
+   * indistinguishable from "no invoice exists" and the hold never fires — while
+   * `hasInvoice` depends only on the desk typing an invoice quantity, and
+   * `recordPriceHistory` fires on `match && hasInvoice`. A typed price with no
+   * currency therefore reached `price_history` as a `currency: null` row. Three
+   * tests pinned that on 2026-09-06 so that whichever way the founder decided,
+   * the change would be visible AS a change. It is: the first two flip.
    *
-   * So a typed price reaches `price_history` with no cross-check against a
-   * document that exists but has not been linked yet. THIS TEST DOES NOT ASSERT
-   * THAT IT SHOULD. It pins exactly what the row looks like today, so that
-   * whichever way the founder decides (refuse a typed price with no currency,
-   * refuse only against an unlinked held document, or leave it), the change is
-   * visible as a change. Written up in `.planning/06-pages/receiving.md` §13.
+   * The unlinked-document gap ITSELF is not closed by this — nothing here
+   * cross-checks a typed code against a document that exists but is not linked.
+   * What is closed is the currency-null row: the code now has to be stated and
+   * has to name a currency, whatever paper is or is not attached.
    * ====================================================================== */
-  it("PINS TODAY'S BEHAVIOUR: no linked document, a typed price with no currency reaches price_history as currency null", async () => {
+  it("no linked document, a typed price with NO currency is REFUSED — and nothing is written", async () => {
     const { db, calls } = makeDb({ documents: [] });
     await expect(
-      service(db).verifyReceipt(REST, ORDER, USER, receipt(true)),
-    ).resolves.toBeDefined();
+      service(db).verifyReceipt(REST, ORDER, USER, priceNoCurrency()),
+    ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(calls.priceHistoryInserts).toHaveLength(1);
-    const row = calls.priceHistoryInserts[0];
-    expect(row.price).toBe(40);
-    // NOT USD, and not the house's currency: the column records the absence.
-    expect(row.currency).toBeNull();
-    expect(String(row.notes)).toContain("Currency not recorded");
+    // BEFORE ANY WRITE, not "rolled back". The refusal is the first thing the
+    // priced branch does, so there is nothing to undo.
+    expect(calls.priceHistoryInserts).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.inventoryUpdates).toEqual([]);
+    expect(calls.rpc).toEqual([]);
+    expect(calls.eventInserts).toEqual([]);
   });
 
-  it("PINS TODAY'S BEHAVIOUR: a hand-typed currency is written as given, with no document cross-check", async () => {
+  it("the refusal names all three ways to state a code, and says the count still works", async () => {
+    const { db } = makeDb({ documents: [] });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, priceNoCurrency())
+      .catch((e: Error) => e);
+
+    const said = String((err as { message?: string }).message ?? err);
+    // The three rungs the screen offers, named rather than implied.
+    expect(said).toContain("this order was placed in");
+    expect(said).toContain("house's own reporting currency");
+    expect(said).toContain("typed on the spot");
+    // ...and what is NOT lost by resubmitting without a price.
+    expect(said).toContain("the count, the rejection and the stock movement");
+  });
+
+  it("the same receipt WITHOUT the price records the delivery in full", async () => {
+    // The promise the refusal makes, kept. A delivery that physically happened
+    // is not made un-happened by a bookkeeping doubt.
+    const { db, calls } = makeDb({ documents: [] });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, receipt(false)),
+    ).resolves.toBeDefined();
+    expect(calls.orderUpdates.length).toBeGreaterThan(0);
+    expect(calls.priceHistoryInserts).toEqual([]);
+  });
+
+  it("KEPT: a hand-typed currency is written as given, with no document cross-check", async () => {
     const { db, calls } = makeDb({ documents: [] });
     await expect(
       service(db).verifyReceipt(REST, ORDER, USER, {
@@ -426,23 +472,37 @@ describe("verifyReceipt — a held invoice refuses the PRICE, never the stock", 
 
     expect(calls.priceHistoryInserts).toHaveLength(1);
     // Taken from the receipt form. `invoiceCurrencyClaim` says outright that
-    // `procurement_documents.currency` is not read by this path.
+    // `procurement_documents.currency` is not read by this path — that gap is
+    // unchanged, and is the open half of the audit's finding 2.
     expect(calls.priceHistoryInserts[0].currency).toBe("USD");
   });
 
-  it("a hand-typed currency that names no currency is REFUSED into the column, not stored", async () => {
-    // The one part of this path that IS now checked: membership. `ZZZ` used to
-    // pass `/^[A-Z]{3}$/` and reach the price ladder as a real denomination.
+  it("a hand-typed code that names no currency is REFUSED AT THE DOOR, not written as a null", async () => {
+    // `ZZZ` used to pass `/^[A-Z]{3}$/` and reach the price ladder as a real
+    // denomination; on 2026-09-06 it started being refused INTO THE COLUMN, so
+    // the row was still written with `currency: null`. It is now refused
+    // before any write, because "a code that names nothing" and "no code" are
+    // the same statement about the money.
     const { db, calls } = makeDb({ documents: [] });
     await expect(
       service(db).verifyReceipt(REST, ORDER, USER, {
         ...receipt(true),
         invoiceCurrency: "ZZZ",
       } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(calls.priceHistoryInserts).toEqual([]);
+  });
+
+  it("ADMITS a real currency the 96-code list refused — HKD (batch 67)", async () => {
+    const { db, calls } = makeDb({ documents: [] });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        ...receipt(true),
+        invoiceCurrency: "HKD",
+      } as any),
     ).resolves.toBeDefined();
     expect(calls.priceHistoryInserts).toHaveLength(1);
-    expect(calls.priceHistoryInserts[0].currency).toBeNull();
-    expect(String(calls.priceHistoryInserts[0].notes)).toContain("ZZZ");
+    expect(calls.priceHistoryInserts[0].currency).toBe("HKD");
   });
 });
 
@@ -521,6 +581,14 @@ describe("restating or confirming a currency clears the receiving refusal", () =
         assertCanManageRestaurant: async () => undefined,
       } as any,
       {} as any,
+      /*
+       * SealChallengeService — a double that ADMITS. This file is about the
+       * RECEIVING refusal and what lifts it (p4br, item A); the seal's own
+       * refusals are proven in `documents.seal.spec.ts`. Named rather than left
+       * anonymous, because a permissive double that looks like the real service
+       * is how a seal quietly stops being tested anywhere.
+       */
+      { redeem: async () => ({ sealId: "seal-1" }) } as any,
     );
   }
 

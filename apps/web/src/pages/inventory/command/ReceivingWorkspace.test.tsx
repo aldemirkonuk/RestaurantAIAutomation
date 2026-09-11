@@ -29,6 +29,15 @@ vi.mock('../../../services/api/documents', async () => {
 vi.mock('../../../stores', () => ({
   useNotificationStore: () => ({ success: toastSuccess, error: toastError }),
 }))
+/*
+ * The house's own reporting currency, read by the screen since batch 67 so it
+ * can OFFER a code beside a typed price. Stubbed rather than left to axios: an
+ * unmocked read here would reach the network in a unit test and the screen would
+ * silently render the un-offered case, which is exactly the state these tests
+ * need to be able to set on purpose.
+ */
+const houseCurrency = vi.hoisted(() => vi.fn())
+vi.mock('../../../services/api/settings', () => ({ settingsApi: { houseCurrency } }))
 // The real select renders a portal/popover that this test has no reason to drive.
 vi.mock('../../../components/ui/ThemedSelect', () => ({
   ThemedSelect: () => null,
@@ -77,20 +86,31 @@ function renderWorkspace(props: Partial<Parameters<typeof ReceivingWorkspace>[0]
 
 const plusButtons = () => screen.getAllByRole('button', { name: '+' })
 const minusButtons = () => screen.getAllByRole('button', { name: '-' })
-const submit = () => screen.getByRole('button', { name: /Accept|Reason required/ })
+const submit = () =>
+  screen.getByRole('button', { name: /Accept|Reason required|Currency required/ })
 
 /** The match inputs, addressed by their accessible names. */
 const invoiceQtyInput = () => screen.getByLabelText('Quantity invoiced')
 const invoicePriceInput = () => screen.getByLabelText('Invoice unit price')
+const currencySelect = () =>
+  screen.getByLabelText('Invoice currency') as HTMLSelectElement
 
-/** Enter an invoice by hand, the way a manager does when no document is attached. */
+/**
+ * Enter an invoice by hand, the way a manager does when no document is attached.
+ *
+ * The CURRENCY is part of that since 2026-09-06 (founder batch 67): the gateway
+ * refuses a price with no code, so a helper that typed only a figure would leave
+ * every test below driving a screen a real desk cannot submit.
+ */
 async function enterInvoice(
   user: ReturnType<typeof userEvent.setup>,
   qty = 24,
   price = 22,
+  currency: string | null = 'USD',
 ) {
   await user.type(invoiceQtyInput(), String(qty))
   await user.type(invoicePriceInput(), String(price))
+  if (currency) await user.selectOptions(currencySelect(), currency)
 }
 
 beforeEach(() => {
@@ -109,6 +129,16 @@ beforeEach(() => {
     documents: await forOrder(id),
     order: orderBlock,
   }))
+  // A house that HAS answered the currency question, readably. Individual tests
+  // override this to cover the unanswered and the unreadable cases.
+  houseCurrency.mockResolvedValue({
+    restaurantId: 'rest-1',
+    code: 'TRY',
+    country: 'Turkiye',
+    readable: true,
+    reason: null,
+    statedAt: '2026-09-05T00:00:00.000Z',
+  })
 })
 
 describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
@@ -265,6 +295,9 @@ describe('reading the vendor’s own paperwork', () => {
     // No price deviation here, so nothing blocks submission — the discrepancy is
     // purely between the vendor's own two documents.
     await screen.findByText(/Overbilled vs their slip/)
+    // The document pre-filled a PRICE and states no currency, and this order
+    // names none either — so the desk says what the money is before it goes.
+    await user.selectOptions(currencySelect(), 'USD')
     await user.click(submit())
 
     expect(verifyOrderReceipt).toHaveBeenCalledWith(
@@ -322,6 +355,7 @@ describe('ReceivingWorkspace — ADR 0059, the correction is visible', () => {
     const user = userEvent.setup()
     await user.clear(invoiceQtyInput())
     await user.type(invoiceQtyInput(), '24')
+    await user.selectOptions(currencySelect(), 'USD')
     await user.click(submit())
 
     expect(verifyOrderReceipt).toHaveBeenCalledTimes(1)
@@ -338,7 +372,9 @@ describe('ReceivingWorkspace — ADR 0059, the correction is visible', () => {
     renderWorkspace()
     await screen.findByText(/Read from their paperwork/)
 
-    await userEvent.setup().click(submit())
+    const user = userEvent.setup()
+    await user.selectOptions(currencySelect(), 'USD')
+    await user.click(submit())
 
     const [, body] = verifyOrderReceipt.mock.calls[0]
     // Equal values are not a redundant write: "the human looked and agreed" is
@@ -501,5 +537,152 @@ describe('ReceivingWorkspace — the order’s currency beside the invoice’s (
     const panel = await screen.findByTestId('receiving-currency-compare')
     expect(panel).toHaveTextContent('could not be read')
     expect(panel).not.toHaveTextContent('The order was placed in')
+  })
+})
+
+/* ===========================================================================
+ * ITEM B — A TYPED PRICE STATES ITS CURRENCY OR IS REFUSED.
+ *
+ * Founder, 2026-09-06 batch 67: *"a price without money is not a price: the
+ * receiving screen requires a code (the order's, the house's, or one typed)
+ * before a unit price is accepted; price_history never gains a currency-null
+ * row from that door again."*
+ *
+ * The gateway refuses the pair (`VerifyReceiptDto.priceStatesItsCurrency` and
+ * `verifyReceipt`), so these tests are about the screen not SENDING one — a
+ * request that 400s is a worse version of the same refusal, delivered later and
+ * as a red toast.
+ *
+ * These fail against the tree as it stood this morning: the price field had no
+ * code beside it and the button submitted a currency-less price happily.
+ * ======================================================================== */
+describe('ReceivingWorkspace — a price says what it is in', () => {
+  it('will not submit a typed price with no currency, and says why', async () => {
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await enterInvoice(user, 24, 22, null) // no code chosen
+
+    const panel = screen.getByTestId('receiving-price-needs-currency')
+    expect(panel).toHaveTextContent('A price without a currency is not a price')
+    // The promise: nothing else is blocked.
+    expect(panel).toHaveTextContent('the count, the rejection and the stock movement')
+    expect(submit()).toBeDisabled()
+    expect(submit()).toHaveTextContent('Currency required')
+
+    await user.click(submit())
+    expect(verifyOrderReceipt).not.toHaveBeenCalled()
+  })
+
+  it('sends the code beside the price once one is chosen', async () => {
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await enterInvoice(user, 24, 22, 'TRY')
+
+    expect(screen.queryByTestId('receiving-price-needs-currency')).toBeNull()
+    await user.click(submit())
+    expect(verifyOrderReceipt).toHaveBeenCalledWith(
+      'order-1',
+      expect.objectContaining({ invoiceUnitPrice: 22, invoiceCurrency: 'TRY' }),
+    )
+  })
+
+  it('PRE-FILLS the code from the order, when the order names one', async () => {
+    orderBlock = {
+      id: 'order-1',
+      currency: 'GBP',
+      currencySource: 'typed',
+      orderNumber: 'PO-1042',
+      failure: null,
+    }
+    renderWorkspace()
+
+    await screen.findByDisplayValue('GBP')
+    const user = userEvent.setup()
+    await user.type(invoicePriceInput(), '22')
+    // Nothing to ask: the order already said it, and the desk can change it.
+    expect(screen.queryByTestId('receiving-price-needs-currency')).toBeNull()
+  })
+
+  it('NEVER assumes the house currency — it offers it, labelled', async () => {
+    // The house reports in TRY (the beforeEach stub). That is a fact about the
+    // HOUSE, not about what this vendor billed, so it arrives as a one-tap
+    // choice that says where it came from — never in the field.
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await user.type(invoicePriceInput(), '22')
+    expect(currencySelect().value).toBe('')
+
+    const offer = await screen.findByRole('button', { name: /this house reports in TRY/ })
+    await user.click(offer)
+    expect(currencySelect().value).toBe('TRY')
+    expect(screen.queryByTestId('receiving-price-needs-currency')).toBeNull()
+  })
+
+  it('offers the code the INVOICE is filed in, above the house', async () => {
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24 }], {
+        currency: 'EUR',
+        moneyState: { priced: true },
+      }),
+    ])
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await screen.findByText(/Read from their paperwork/)
+    await user.type(invoicePriceInput(), '22')
+    const offer = await screen.findByRole('button', {
+      name: /this invoice is filed in EUR/,
+    })
+    await user.click(offer)
+    expect(currencySelect().value).toBe('EUR')
+  })
+
+  it('a receipt with NO price submits with no currency at all', async () => {
+    // The count is not a money question. This is the sentence the refusal
+    // makes, kept by the screen as well as by the gateway.
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    expect(screen.queryByTestId('receiving-price-needs-currency')).toBeNull()
+    expect(submit()).not.toBeDisabled()
+    await user.click(submit())
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    expect(body.invoiceUnitPrice).toBeUndefined()
+    expect(body.invoiceCurrency).toBeUndefined()
+  })
+
+  it('offers a currency the old 96-code list did not hold — HKD', async () => {
+    // Batch 67's own example. Before today this option did not exist at all.
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await enterInvoice(user, 24, 22, 'HKD')
+    await user.click(submit())
+    expect(verifyOrderReceipt).toHaveBeenCalledWith(
+      'order-1',
+      expect.objectContaining({ invoiceCurrency: 'HKD' }),
+    )
+  })
+
+  it('a house whose currency could not be READ is not offered as a choice', async () => {
+    // A failed read is not "no currency". Offering a code from an unreadable
+    // register would be the absence-reported-as-health shape on a money field.
+    houseCurrency.mockResolvedValue({
+      restaurantId: 'rest-1',
+      code: null,
+      country: null,
+      readable: false,
+      reason: 'connection reset',
+      statedAt: null,
+    })
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await user.type(invoicePriceInput(), '22')
+    await screen.findByTestId('receiving-price-needs-currency')
+    expect(screen.queryByRole('button', { name: /this house reports in/ })).toBeNull()
   })
 })

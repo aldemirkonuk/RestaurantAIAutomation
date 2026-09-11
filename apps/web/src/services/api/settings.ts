@@ -33,7 +33,37 @@ export interface FeatureFlagCheckResult {
   restaurant_id: string;
 }
 
+/**
+ * The house's reporting currency, as `GET /settings/currency` answers it.
+ *
+ * THREE STATES, never two. `readable: false` is a failed READ and carries a
+ * `reason`; `code: null` is an unanswered QUESTION; a code is an answer. A
+ * caller that collapses the first two into "no currency" reports an outage as a
+ * settled fact, which is the [[absence-reported-as-health]] shape (ADR 0083).
+ * Mirrors `HouseCurrencyReadout` on the gateway and the identical interface in
+ * `pages/settings/next/useSettingsNextData.ts`, which owns the settings page's
+ * own copy.
+ */
+export interface HouseCurrency {
+  restaurantId: string;
+  code: string | null;
+  country: string | null;
+  readable: boolean;
+  reason: string | null;
+  statedAt: string | null;
+}
+
 export const settingsApi = {
+  /**
+   * Read-only. Used by the receiving door to OFFER the house's code beside a
+   * typed price (founder, 2026-09-06 batch 67) — offered as a labelled choice,
+   * never written into the field for somebody.
+   */
+  async houseCurrency(): Promise<HouseCurrency> {
+    const response = await apiClient.get<HouseCurrency>('/settings/currency');
+    return response.data;
+  },
+
   async getFeatureFlags(): Promise<FeatureFlags> {
     const response = await apiClient.get<FeatureFlags>('/settings/feature-flags');
     return response.data;

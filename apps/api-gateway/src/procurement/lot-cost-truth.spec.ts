@@ -143,6 +143,15 @@ function migrationSql(): string {
 // D3 — the enum cast that made every receipt verification 422
 // ---------------------------------------------------------------------------
 
+
+/*
+ * `invoiceCurrency: "USD"` appears beside every `invoiceUnitPrice` below since
+ * 2026-09-06 (founder batch 67): `verifyReceipt` refuses a unit price with no
+ * currency before it reads anything, so a payload that carries a figure and no
+ * code no longer reaches any of the behaviour these tests are about. The value
+ * is incidental here — what each test asserts is unchanged.
+ */
+
 describe("D3 — stock writes name enum values that exist", () => {
   it("inventory_transaction_source in the dump is the eight-value enum production has", () => {
     expect(enumLabels("inventory_transaction_source")).toEqual([
@@ -298,6 +307,7 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 10,
       invoiceUnitPrice: 43,
+      invoiceCurrency: "USD",
       acceptedQuantity: 10,
       priceOverrideReason: "fuel surcharge agreed by phone",
     } as any);
@@ -318,6 +328,7 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 10,
       invoiceUnitPrice: 43,
+      invoiceCurrency: "USD",
       acceptedQuantity: 10,
       priceOverrideReason: "fuel surcharge agreed by phone",
     } as any);
@@ -336,6 +347,7 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 12,
       invoiceUnitPrice: 43,
+      invoiceCurrency: "USD",
       acceptedQuantity: 12,
       priceOverrideReason: "fuel surcharge agreed by phone",
     } as any);

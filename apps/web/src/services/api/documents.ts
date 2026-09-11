@@ -6,7 +6,40 @@
  * transcribing them.
  */
 
-import { apiClient } from './client'
+import axios from 'axios'
+import { apiClient, getErrorMessage } from './client'
+
+/**
+ * The header every sealed write in this product carries its proof back in.
+ *
+ * One name, one shape, across orders, payment methods, text credits and — since
+ * 2026-09-06 (batch 64) — the three procurement document acts. The seal is not
+ * one of the arguments it is a seal OVER, so it never travels in the body.
+ */
+const SEAL_HEADER = 'X-Seal-Challenge'
+
+const sealed = (challenge?: string | null) =>
+  challenge ? { headers: { [SEAL_HEADER]: challenge } } : undefined
+
+/**
+ * THE REFUSAL HAS TO SURVIVE THE TRIP.
+ *
+ * The gateway answers a refused seal with a whole sentence naming what did not
+ * match and saying that nothing was changed. An axios error carries that in
+ * `response.data.message` and puts "Request failed with status code 403" in
+ * `.message`, which is what every call site here reads. So the server's sentence
+ * is promoted onto `.message` and the SAME error object is rethrown — `response`,
+ * `status` and `isAxiosError` all intact, because callers branch on
+ * `err.response?.status` elsewhere. (`orders.ts` states the same rule for the
+ * order seal; this is that rule, not a second copy of the policy.)
+ */
+function rethrowSpoken(error: unknown): never {
+  if (axios.isAxiosError(error)) {
+    const spoken = getErrorMessage(error)
+    if (spoken) error.message = spoken
+  }
+  throw error
+}
 
 export interface ProcurementDocument {
   id: string
@@ -173,9 +206,56 @@ export const documentsApi = {
     return data
   },
 
-  /** Confirm the extraction is a faithful transcription of the paper document. */
-  async verify(id: string): Promise<void> {
-    await apiClient.post(`/procurement/documents/${id}/verify`, {})
+  /**
+   * Mint the one-time seal a VERIFICATION has to carry back — at the moment the
+   * confirm gesture BEGINS.
+   *
+   * THE SEAL IS REDEEMED, NOT ASSERTED (founder, 2026-09-06 batch 64: "Decide as
+   * a module: seal all three"). The gateway mints a token bound to (this
+   * reviewer, this document, "verify", and the whole transcription as it stands)
+   * and redeems it exactly once, so a verification proves a person did it rather
+   * than asserting one did — and a line corrected between the gesture and the
+   * write refuses the seal instead of putting a reviewer's name on a figure they
+   * never read.
+   *
+   * It MUST be called when the gesture starts, never at the moment of confirm: a
+   * token this request fetched for itself is the assertion model with extra
+   * steps. `SwipeToConfirm`/`HoldToApprove`'s `onChallenge` is the hook that
+   * guarantees the timing, and a mint that fails or returns null does NOT
+   * verify.
+   */
+  async mintVerifySeal(id: string): Promise<string | null> {
+    try {
+      const { data } = await apiClient.post<{ challenge?: string }>(
+        `/procurement/documents/${id}/verify-seal-challenge`,
+        {},
+      )
+      return data?.challenge ?? null
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * Confirm the extraction is a faithful transcription of the paper document,
+   * carrying the seal minted when the gesture began.
+   *
+   * `challenge` is not optional in practice — the gateway refuses a verification
+   * without one, in words. It is typed optional so a caller that does not yet
+   * mint keeps COMPILING and receives the gateway's refusal sentence rather than
+   * a type error. That refusal is the honest outcome: it says, in words, that
+   * the seal has to be proven and that nothing was changed.
+   */
+  async verify(id: string, challenge?: string | null): Promise<void> {
+    try {
+      await apiClient.post(
+        `/procurement/documents/${id}/verify`,
+        {},
+        sealed(challenge),
+      )
+    } catch (error) {
+      rethrowSpoken(error)
+    }
   },
 
   /**
@@ -195,6 +275,7 @@ export const documentsApi = {
     id: string,
     currency: string,
     reason?: string,
+    challenge?: string | null,
   ): Promise<{
     currency: string
     previousCurrency: string | null
@@ -203,11 +284,41 @@ export const documentsApi = {
     linesRefiled: number
     lineFailures: string[]
   }> {
-    const { data } = await apiClient.patch(
-      `/procurement/documents/${id}/currency`,
-      { currency, reason },
-    )
-    return data
+    try {
+      const { data } = await apiClient.patch(
+        `/procurement/documents/${id}/currency`,
+        { currency, reason },
+        sealed(challenge),
+      )
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * Mint the one-time seal a RESTATEMENT has to carry back.
+   *
+   * The currency is named at the MINT as well as at the write, because the seal
+   * is bound to the pair (the code being written, the code the document carries
+   * now): a seal obtained to move a held invoice to EUR cannot be spent after
+   * somebody else already filed it in USD.
+   *
+   * It is also the first refusal a person meets. The gateway will not mint a
+   * seal for a restatement it would refuse — a caller who is not a manager or an
+   * owner, or a code that is not a currency — so the hold fails at its start
+   * with the reason rather than at its end after a second of ceremony.
+   */
+  async mintCurrencySeal(id: string, currency: string): Promise<string | null> {
+    try {
+      const { data } = await apiClient.post<{ challenge?: string }>(
+        `/procurement/documents/${id}/currency-seal-challenge`,
+        { currency },
+      )
+      return data?.challenge ?? null
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
   },
 
   /**
@@ -224,6 +335,13 @@ export const documentsApi = {
    * every field it did NOT send against its own cached copy of the row, so a
    * value that moved underneath is said out loud instead of silently winning.
    * A real precondition needs a migration; filed as a page-note gap.
+   *
+   * THE SEAL IS NOW THAT PRECONDITION, and it is stronger than the after-the-fact
+   * comparison this comment describes. Since 2026-09-06 the mint hashes the line
+   * AS IT STANDS together with the exact patch, so a correction written on top of
+   * somebody else's is REFUSED rather than reported once it has already landed.
+   * The collision notice below stays: it is what a person reads when the refusal
+   * arrives, and it names which field moved.
    */
   async editLine(
     documentId: string,
@@ -234,15 +352,45 @@ export const documentsApi = {
         'qty' | 'description' | 'vintage' | 'uom'
       > & { unitPrice: number | null; lineTotal: number | null }
     >,
+    challenge?: string | null,
   ): Promise<{
     line: ProcurementDocumentLine
     tieOut: { computedLinesTotal: number; tieOutDelta: number | null; tiesOut: boolean | null }
   }> {
-    const { data } = await apiClient.patch(
-      `/procurement/documents/${documentId}/lines/${lineId}`,
-      patch,
-    )
-    return data
+    try {
+      const { data } = await apiClient.patch(
+        `/procurement/documents/${documentId}/lines/${lineId}`,
+        patch,
+        sealed(challenge),
+      )
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * Mint the one-time seal a LINE CORRECTION has to carry back.
+   *
+   * THE PATCH GOES TO THE MINT TOO, and that is the point: the seal is taken over
+   * the correction about to be made, so a gesture obtained for "qty 14" cannot be
+   * spent to write 140. The caller must send the SAME patch object to both — the
+   * page does, because both come from one commit.
+   */
+  async mintLineEditSeal(
+    documentId: string,
+    lineId: string,
+    patch: Record<string, unknown>,
+  ): Promise<string | null> {
+    try {
+      const { data } = await apiClient.post<{ challenge?: string }>(
+        `/procurement/documents/${documentId}/lines/${lineId}/edit-seal-challenge`,
+        patch,
+      )
+      return data?.challenge ?? null
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
   },
 
   /**

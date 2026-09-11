@@ -2150,7 +2150,13 @@ export class DocumentIntakeService {
         // the total being null. A document whose total was never stated but
         // whose lines are priced is not held, and used to be described as if
         // it were.
-        wasHeld: plan.source === "withheld_snapshot",
+        //
+        // `!== "current_rows"` and not `=== "withheld_snapshot"` since
+        // 2026-09-06: `mixed` means at least one line came back from the
+        // withheld reading, and a document that recovered anything WAS held.
+        // The equality form would have called a mixed document unheld the day
+        // `mixed` was added — a new enum member silently changing a sentence.
+        wasHeld: plan.source !== "current_rows",
         documentTotal: plan.document.total,
         lineCount: plan.lines.length,
         pricedLines,

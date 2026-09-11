@@ -123,6 +123,11 @@ describe("DocumentsController.canonicalDocument", () => {
       // than omitted because `tsc -p tsconfig.spec.json` counts the arguments
       // and `tsconfig.json` does not look at this file at all.
       {} as any,
+      // SealChallengeService — the seal on verify / line_edit /
+      // currency_restate (founder, 2026-09-06, batch 64). Stubbed here; the
+      // redemption itself is proven in `documents.seal.spec.ts` against a
+      // real double. `tsc -p tsconfig.spec.json` counts the arguments.
+      {} as any,
     );
   });
 

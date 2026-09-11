@@ -15,6 +15,7 @@ import {
   CURRENCY_NOT_RECORDED,
   currencyForCountry,
   currencyLabel,
+  currencyMinorUnits,
   formatMoney,
 } from './currency'
 
@@ -69,19 +70,52 @@ describe('the table itself', () => {
     }
   })
 
-  it('offers every code it can default to, and nothing else', () => {
-    // The picker's list IS the table's codes, so a manager cannot type "TL" or
-    // "$" and cannot pick a code this file does not stand behind.
-    expect(new Set(CURRENCY_CODES)).toEqual(
-      new Set(COUNTRIES.map((c) => c.currency).filter(Boolean)),
-    )
+  it('offers every code it can default to, and every other active ISO currency', () => {
+    // WIDENED 2026-09-06 (founder batch 67). The picker used to be exactly the
+    // country table's 96 codes, which meant a house billed in HKD could have
+    // the invoice filed by the gateway and still not name HKD anywhere itself.
+    // The country table is now a SUBSET: every default it can derive is
+    // offerable, and ~60 currencies no country row reaches are offerable too.
+    const fromCountries = COUNTRIES.map((c) => c.currency).filter(Boolean) as string[]
+    const offered = new Set(CURRENCY_CODES)
+    expect(fromCountries.filter((c) => !offered.has(c))).toEqual([])
     expect(CURRENCY_CODES).toEqual([...CURRENCY_CODES].sort())
+    expect(new Set(CURRENCY_CODES).size).toBe(CURRENCY_CODES.length)
+  })
+
+  it('offers the three currencies the narrow list refused, and still no junk', () => {
+    // The founder's own examples: "A Hong Kong or Macau vendor's invoice files
+    // instead of being held." XOF is one currency across eight countries, so a
+    // per-country table could never reach it.
+    for (const code of ['HKD', 'MOP', 'XOF']) {
+      expect(CURRENCY_CODES).toContain(code)
+      expect(currencyLabel(code)).not.toBe(code) // it has a real name, not a bare echo
+    }
+    // Not currencies, and not offerable: a test code, a metal, a funds code and
+    // a withdrawn one.
+    for (const code of ['ZZZ', 'XTS', 'XAU', 'CLF', 'HRK']) {
+      expect(CURRENCY_CODES).not.toContain(code)
+    }
   })
 
   it('names the codes the estate actually needs', () => {
     expect(currencyLabel('TRY')).toBe('TRY - Turkish lira')
     expect(currencyLabel('GBP')).toBe('GBP - Pound sterling')
     expect(currencyLabel('USD')).toBe('USD - US dollar')
+    expect(currencyLabel('HKD')).toBe('HKD - Hong Kong dollar')
+    expect(currencyLabel('XOF')).toBe('XOF - CFA franc BCEAO')
+  })
+
+  it('knows how many decimal places each currency HAS', () => {
+    // Not cosmetic. Two decimals on every code printed 1200 yen as `1,200.00`
+    // and rounded a 1.500-dinar line to `1.50` — a different amount.
+    expect(currencyMinorUnits('JPY')).toBe(0)
+    expect(currencyMinorUnits('KWD')).toBe(3)
+    expect(currencyMinorUnits('USD')).toBe(2)
+    expect(currencyMinorUnits('XOF')).toBe(0)
+    // A code this product does not hold gets NULL, not a confident two.
+    expect(currencyMinorUnits('ZZZ')).toBeNull()
+    expect(currencyMinorUnits(null)).toBeNull()
   })
 })
 
@@ -111,5 +145,28 @@ describe('formatMoney — never a symbol nobody earned', () => {
     expect(formatMoney(null, 'TRY')).toBe('-')
     expect(formatMoney(undefined, null)).toBe('-')
     expect(formatMoney(Number.NaN, 'GBP')).toBe('-')
+  })
+
+  it("prints the currency's OWN decimal places, not two", () => {
+    // Yen have no subunit; a flat two decimals printed a 1200-yen invoice as
+    // `1,200.00`, which is not a yen figure anybody writes. Asserted on the
+    // digits rather than on the symbol, because Intl chooses the symbol and
+    // its placement by locale.
+    expect(formatMoney(1200, 'JPY')).toMatch(/1[.,]200(?![.,]\d)/)
+    expect(formatMoney(1200, 'JPY')).not.toMatch(/1[.,]200[.,]00/)
+    // Three, for the seven dinars and rials that have three.
+    expect(formatMoney(1.5, 'KWD')).toMatch(/1[.,]500/)
+    // Two, still, for the ordinary case.
+    expect(formatMoney(1200, 'USD')).toMatch(/1[.,]200[.,]00/)
+    // XOF, one of the codes the old list refused, has none.
+    expect(formatMoney(5000, 'XOF')).not.toMatch(/5[.,]000[.,]00/)
+  })
+
+  it('still honours an explicit digit count from the caller', () => {
+    // The unit-price columns pass three deliberately; the currency's own count
+    // is a DEFAULT, not an override of the caller.
+    expect(formatMoney(1200, 'JPY', { maximumFractionDigits: 2 })).toMatch(
+      /1[.,]200[.,]00/,
+    )
   })
 })

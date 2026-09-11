@@ -274,6 +274,24 @@ describe("HouseCurrencyService.write — explicit, validated, audited", () => {
     );
   });
 
+  /*
+   * ...AND A HOUSE MAY NOW STATE ANY REAL CURRENCY (founder, 2026-09-06 batch
+   * 67). For one day this route held every ACTIVE ISO code that had no country
+   * row in `apps/web/src/lib/countries.ts` — so a house in Hong Kong or Macau,
+   * or one reporting in XOF, could not state its own reporting currency at all.
+   * Paired with the refusal above so widening the list cannot quietly become
+   * widening the gate.
+   */
+  it("ADMITS HKD, MOP and XOF, and writes them", async () => {
+    for (const real of ["HKD", "MOP", "XOF"]) {
+      const { svc, calls } = service(HOUSE_NULL);
+      await svc.write(REST, real, USER);
+      expect(calls.updates).toEqual([
+        { table: "restaurants", row: { currency: real }, id: REST },
+      ]);
+    }
+  });
+
   it("the refusal is the sentence the page prints", async () => {
     const { svc } = service(HOUSE_NULL);
     await expect(svc.write(REST, "usd", USER)).rejects.toThrow(

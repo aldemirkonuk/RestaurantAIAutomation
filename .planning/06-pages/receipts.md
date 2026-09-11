@@ -65,6 +65,24 @@ documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
   from the same object it writes the money columns from, so once the fields were nulled
   the reading was gone from both — `refiledMoney` restored a document of nulls while
   `refilingSentence` announced that the money "was held and is now filed"
+- **The three write acts each take a redeemed seal** (founder 2026-09-06, batch 64:
+  *"Decide as a module: seal all three"*). `POST :id/verify`, `PATCH :id/lines/:lineId`
+  and `PATCH :id/currency` are behind challenge-and-redeem, the same mechanism the order
+  approval and the payment-register acts use (`subject_kind 'procurement_document'`, acts
+  `verify` / `line_edit` / `currency_restate`; `20260906200000`). Each mint happens when
+  the GESTURE BEGINS and each token is spent exactly once. What each seal is taken OVER is
+  the point: **verify** hashes the whole transcription, so a line corrected between the
+  gesture and the write refuses it rather than putting a reviewer's name on a figure they
+  never read; **line_edit** hashes the line as it stands AND the exact patch, which turns
+  the last-write-wins collision this page could previously only report after the fact into
+  a refusal; **currency_restate** hashes the pair of codes, so a seal minted to move a held
+  invoice to EUR cannot be spent after somebody else filed it in USD. A moved cell is now a
+  PENDING correction stated in figures, not a write: the hold below it is what sends it.
+  **A failed mint is a failure in words and never a silent unsealed call.** The legacy
+  `/receipts` page (rendered whenever the flag is off) mints and carries the seal too.
+  The other seven write routes on the documents controller are deliberately NOT sealed and
+  `scripts/check_money_routes_are_sealed.py` PRINTS them as outside every census rather
+  than passing over them
 - **Pairing** — matcher suggestions carry their reason **and their confidence** for one-tap confirmation. The matcher **does** auto-write unambiguous vendor-SKU pairings server-side (`line-matcher.ts:282-296`); the page names them as written-without-asking, and every paired row has **Unlink**. The `Paired with` column names its target (ordered wine · quantity · order-line ref · method · confidence) and says "not paired" in words
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receipts`)
@@ -334,6 +352,28 @@ chase never leaves the building (§10). "Claim → requested" reads as "we asked
 
 ## 13. Roadmap
 
+**2026-09-06 (batch 67) — the currency vocabulary is now all of ISO 4217, and a typed
+receiving price states its code or is refused.** Two founder decisions, one pass. (1) The
+gateway's currency list went 96 → 157 — every ACTIVE ISO 4217 code, minus the 22 in list
+A1 that are not money a vendor bills in (metals, test, bond units, units of account, funds
+codes) — mirrored against `apps/web/src/lib/currency.ts` by `iso-4217.spec.ts`, which
+reads that file as text and fails on a one-code difference either way. *"A Hong Kong or
+Macau vendor's invoice files instead of being held."* HKD, MOP, XOF, XAF, XCD, XPF and
+about 55 others were HELD for one day and now file; ZZZ, XTS, the metals, the funds codes
+and every WITHDRAWN currency (HRK, CUC, SLL, ZWL, MRO, STD, VEF) are still refused, by
+name. The web table gained each currency's MINOR-UNIT count, so a figure prints with the
+decimal places its money actually has. (2) `verifyReceipt` and `VerifyReceiptDto` refuse a
+`invoiceUnitPrice` with no `invoiceCurrency`, before any write — the three pinning tests
+p4bt wrote on 2026-09-06 for the currency-null row are flipped, and the sentence names the
+three ways to state a code (the order's, the house's, one typed here) and what still
+records without one (the count, the rejection, the stock movement). Also in this pass, from
+the Sonnet audit of `4abd03ff`: the two Stripe-backed message-credit gates
+(`communications/text/credits/text-credits.controller.ts`,
+`communications/text/text-usage.service.ts`) were still shape-only and now check
+membership; and `planRefile` decides `current_rows` vs `withheld_snapshot` PER LINE
+(source `mixed`, with per-line counts), which stops a two-line held document losing line
+2's recoverable figures when a manager edits line 1.
+
 **2026-09-06 — the invoice's money, and who may change it.** The founder, batch 63,
 asked what an 810 with no `CUR` should do and answered verbatim:
 
@@ -370,7 +410,8 @@ have re-dollarised on the canonical face every document rule 1 had just refused.
 2. **Rule 2's evidence is shown only on a disagreement** — as built. The agreeing and
    unreadable cases are recorded on the document and not surfaced.
 3. **Procurement's three writes will be sealed as a module in a later pass.** Not sealed
-   now, and deliberately not one route at a time.
+   now, and deliberately not one route at a time. ~~Later pass~~ — **BUILT the same day,
+   see the block below.**
 4. **Invoices already filed under the `USD` nobody chose are left alone** — as built.
    Nothing in this pass touches an existing row; rule 3 restates the ones a person
    disputes, and the audit log says who did.
@@ -397,6 +438,38 @@ have re-dollarised on the canonical face every document rule 1 had just refused.
    `/receipts?doc=<id>`, which opens that document (pinned by a router test in
    `ReceiptsNext.test.tsx`); the manager decides here and goes back. *"For now"* is the
    founder's own hedge and is recorded as one.
+
+**2026-09-06, batch 64 — procurement's three writes are sealed as a module. BUILT.**
+
+Asked whether procurement's write routes should be sealed, the founder answered verbatim:
+
+> **"Decide as a module: seal all three (Recommended)"**
+
+The option read: *"One policy for the corridor: verify, line edit and currency
+restatement each take a redeemed seal like the payment and register acts do. Its own
+pass; the receiving flow gains one ceremony per act."*
+
+Built as ONE subject kind with three acts rather than three mechanisms — the same
+`SealChallengeService` the order approval, the payment register and the credit purchase
+redeem through (`common/seal/`), extended by
+`supabase/migrations/20260906200000_a_document_act_takes_a_redeemed_seal.sql`, which
+widens the seal's `subject_kind` CHECK by READING it and appending, never by a hand-typed
+literal (four passes touched that one constraint this week). What each seal is taken over
+is in `apps/api-gateway/src/procurement/documents/document-seal.ts` and in the §1a entry.
+
+What this REPLACED, measured on this tree: all three routes wrote behind the JWT and, for
+the restatement only, a role check — which answers *may this role* and cannot answer *did
+a person*. The guard was run against `git show HEAD:` of the controller (copied to a probe
+tree under `$SP`, no git state change) and named all three UNSEALED, exit 1.
+
+Two costs, accepted and stated. **A moved cell is no longer a write**: correcting a
+quantity now stages a pending correction and a hold sends it, which is one gesture per
+correction where there used to be none. And the **other seven** write routes on this
+controller (upload, extraction, match, link, field correction, field tick, door count) are
+still unsealed; the founder's decision named three acts and nothing more, so the guard
+PRINTS the seven as outside every census rather than either failing on them or passing
+over them in silence. Whether the whole controller should join the money modules' rule is
+a founder question, filed in p4bs's report.
 
 
 1. **Send the claim.** `→ requested` should draft the vendor email through the same

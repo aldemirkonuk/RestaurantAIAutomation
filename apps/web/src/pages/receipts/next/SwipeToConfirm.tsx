@@ -9,6 +9,14 @@
  * honesty rule as every countdown: linear, no theatrical easing). Letting
  * go early resets. Screen readers get the control as a button whose label
  * says exactly what completing it asserts.
+ *
+ * THE SEAL (founder, 2026-09-06, batch 64: "Decide as a module: seal all
+ * three"). `onChallenge` is the SAME contract `HoldToApprove` carries, lifted
+ * rather than re-invented: the proof is minted when the gesture BEGINS, and a
+ * mint that fails or resolves null does NOT confirm — the control says the seal
+ * could not be issued and nothing is sent. A silent fallback to an unsealed call
+ * would be the one failure this whole mechanism exists to prevent, arriving
+ * through the UI instead of the API.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -23,28 +31,76 @@ interface Props {
   /** What completing the gesture asserts — read to screen readers too. */
   assertion: string;
   disabled?: boolean;
-  onConfirm: () => void;
+  /**
+   * Called once when the gesture completes. Receives the challenge token when
+   * `onChallenge` supplied one; callers that do not seal keep the `() => void`
+   * shape and get `null`.
+   */
+  onConfirm: (challenge?: string | null) => void;
+  /** Mint the proof, at the moment the gesture BEGINS. See the header. */
+  onChallenge?: () => Promise<string | null>;
 }
 
-export function SwipeToConfirm({ label, assertion, disabled = false, onConfirm }: Props) {
+export function SwipeToConfirm({
+  label,
+  assertion,
+  disabled = false,
+  onConfirm,
+  onChallenge,
+}: Props) {
   const reduced = useReducedMotion();
   const [progress, setProgress] = useState(0); // 0..1
   const [settling, setSettling] = useState(false);
+  const [sealNote, setSealNote] = useState<string | null>(null);
   const doneRef = useRef(false);
   const startY = useRef<number | null>(null);
   const holdTimer = useRef<number | null>(null);
   const holdStart = useRef(0);
+  /** The in-flight mint, started when the gesture began. */
+  const challengeRef = useRef<Promise<string | null> | null>(null);
+
+  /** Begin minting the proof, once per gesture. */
+  const beginChallenge = useCallback(() => {
+    if (!onChallenge || challengeRef.current) return;
+    challengeRef.current = Promise.resolve()
+      .then(() => onChallenge())
+      .catch(() => null);
+  }, [onChallenge]);
 
   const complete = useCallback(() => {
     if (doneRef.current) return;
     doneRef.current = true;
     setProgress(1);
-    onConfirm();
+
+    // No proof was asked for: the original behaviour, unchanged.
+    if (!challengeRef.current) {
+      onConfirm(null);
+      return;
+    }
+
+    const pending = challengeRef.current;
+    challengeRef.current = null;
+    void pending
+      .then((token) => {
+        if (!token) throw new Error('no seal');
+        onConfirm(token);
+      })
+      .catch(() => {
+        // Not sealed, and said so. The gesture completed and the confirmation
+        // did not — a different sentence from "released early", because the
+        // operator did nothing wrong.
+        doneRef.current = false;
+        setProgress(0);
+        setSealNote('The seal could not be issued — nothing was confirmed.');
+      });
   }, [onConfirm]);
 
   const reset = useCallback(() => {
     startY.current = null;
     if (!doneRef.current) {
+      // The gesture ended without a confirmation, so the seal it began is
+      // abandoned. It expires on the server; nothing here spends it.
+      challengeRef.current = null;
       setSettling(true);
       setProgress(0);
     }
@@ -55,6 +111,8 @@ export function SwipeToConfirm({ label, assertion, disabled = false, onConfirm }
     if (disabled || doneRef.current) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setSettling(false);
+    setSealNote(null);
+    beginChallenge();
     startY.current = e.clientY;
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -83,6 +141,8 @@ export function SwipeToConfirm({ label, assertion, disabled = false, onConfirm }
     e.preventDefault();
     if (holdTimer.current !== null) return; // already holding
     setSettling(false);
+    setSealNote(null);
+    beginChallenge();
     holdStart.current = performance.now();
     const tick = () => {
       const p = Math.min((performance.now() - holdStart.current) / pour.ms, 1);
@@ -194,6 +254,23 @@ export function SwipeToConfirm({ label, assertion, disabled = false, onConfirm }
       <p style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--ink-3, #7C7365)', margin: '2px 0 0', maxWidth: 220, marginLeft: 'auto', marginRight: 'auto' }}>
         {assertion}
       </p>
+      {/* A failed mint is a failure IN WORDS, never a silent unsealed call. */}
+      {sealNote && (
+        <p
+          role="alert"
+          style={{
+            textAlign: 'center',
+            fontSize: 11,
+            color: 'var(--ink-1, #211C16)',
+            margin: '4px 0 0',
+            maxWidth: 240,
+            marginLeft: 'auto',
+            marginRight: 'auto',
+          }}
+        >
+          {sealNote}
+        </p>
+      )}
     </div>
   );
 }

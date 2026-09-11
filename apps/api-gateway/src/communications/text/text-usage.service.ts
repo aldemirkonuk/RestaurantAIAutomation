@@ -39,6 +39,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
+import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 
 /** Columns read here, as module-level literals for check_read_columns_exist.py. */
 const ALLOWANCE_COLUMNS =
@@ -497,12 +498,23 @@ export class TextUsageService {
           "A credit purchase is a whole number of minor units above zero. Nothing was recorded.",
       };
     }
-    if (!/^[A-Z]{3}$/.test(params.currency)) {
+    /*
+     * MEMBERSHIP, NOT SHAPE (2026-09-06, batch 67). See the identical note in
+     * `text-credits.controller.ts`. Both gates guard the same act — a
+     * Stripe-backed credit purchase — and both asked a regex that cannot tell a
+     * currency from three capitals, so `ZZZ` was writable into
+     * `house_message_credits.currency`. The controller refuses first for an
+     * HTTP caller; this is the gate for every other caller, and the one whose
+     * refusal is a `words` string rather than an exception.
+     */
+    if (!isIso4217(params.currency)) {
       return {
         recorded: false,
         entryId: null,
         words:
-          "A credit purchase names its currency as a three-letter ISO 4217 code. An amount with no currency is not money, so nothing was recorded.",
+          "A credit purchase names its currency as an ISO 4217 code, and an amount with no currency is not money. " +
+          notACurrencyBecause(params.currency) +
+          " Nothing was recorded.",
       };
     }
     if (!params.paymentRef || !params.paymentRef.trim()) {

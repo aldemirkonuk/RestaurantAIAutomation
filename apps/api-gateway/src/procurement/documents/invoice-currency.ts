@@ -602,8 +602,20 @@ export interface DocumentLineRow {
   deposit?: unknown;
 }
 
-/** Which of the two readings a re-filing used. Recorded, never inferred. */
-export type RefileSource = "current_rows" | "withheld_snapshot";
+/**
+ * Which reading a re-filing used. Recorded, never inferred.
+ *
+ * `mixed` since 2026-09-06 (Sonnet audit of `4abd03ff`, finding 2). The source
+ * used to be chosen ONCE for the whole document, so a two-line held invoice
+ * whose line 1 a manager had corrected took the `current_rows` branch globally
+ * and returned `null` for every money field on line 2 — permanently discarding
+ * a figure that was still sitting, recoverable, in
+ * `extracted.moneyWithheld.lines[1]`. The audit proved it with a probe. The
+ * decision is now made PER LINE, and `mixed` is what a document looks like when
+ * both answers were true at once — which is exactly the state that used to lose
+ * money silently, so it gets a name rather than being folded into either.
+ */
+export type RefileSource = "current_rows" | "withheld_snapshot" | "mixed";
 
 export interface RefilePlan {
   source: RefileSource;
@@ -671,81 +683,121 @@ export function planRefile(args: {
   };
 
   const headerHasMoney = Object.values(currentHeader).some((v) => v !== null);
-  const linesHaveMoney = rows.some(
-    (l) =>
-      l.unit_price !== null ||
-      l.line_total !== null ||
-      l.allowance !== null ||
-      l.deposit !== null,
-  );
 
-  let source: RefileSource;
-  let header: DocumentMoney;
-  let lineMoney: LineMoney[];
+  /*
+   * THE SNAPSHOT IS READ ALWAYS, not only when the current rows are empty.
+   *
+   * That is the fix: a document is not held or unheld as a whole once a manager
+   * has touched one of its lines. `editLine` permits an edit on any
+   * `needs_review`/`received` document, and a currency-held document is still
+   * one — so "line 1 has money because somebody corrected it, line 2 has none
+   * because the hold took it" is an ordinary state, not an edge case.
+   */
+  const kept = withheldSnapshot(args.extracted);
 
-  if (headerHasMoney || linesHaveMoney) {
-    source = "current_rows";
-    header = { ...currentHeader, computed_lines_total: null, tie_out_delta: null, ties_out: null };
-    lineMoney = rows.map((l) => ({
-      line_no: l.line_no,
+  /*
+   * MATCHED BY `line_no`, AND ONLY THE LINES THAT ARE STILL THERE. The
+   * snapshot is what the paper said at intake; the line ROWS are what the
+   * document has now. Writing the snapshot's own line list would resurrect a
+   * line somebody deleted, and there would be no row to write it to anyway.
+   */
+  const byNo = new Map<number, NonNullable<typeof kept>["lines"][number]>();
+  for (const l of kept?.lines ?? [])
+    if (typeof l?.lineNo === "number") byNo.set(l.lineNo, l);
+
+  const keptHeader = {
+    subtotal: money(kept?.subtotal),
+    freight: money(kept?.freight),
+    fuel_surcharge: money(kept?.fuelSurcharge),
+    split_case_fee: money(kept?.splitCaseFee),
+    delivery_fee: money(kept?.deliveryFee),
+    deposit_total: money(kept?.depositTotal),
+    tax: money(kept?.tax),
+    other_charges: money(kept?.otherCharges),
+    discount_total: money(kept?.discountTotal),
+    total: money(kept?.total),
+  };
+  const hasMoney = (l: {
+    unit_price: number | null;
+    line_total: number | null;
+    allowance: number | null;
+    deposit: number | null;
+  }): boolean =>
+    l.unit_price !== null ||
+    l.line_total !== null ||
+    l.allowance !== null ||
+    l.deposit !== null;
+
+  /*
+   * THE HEADER IS STILL DECIDED ONCE, over the whole row, and deliberately so.
+   * A header is ONE set of figures, and "this document's header states nothing
+   * but its lines are priced" is a document that was never held rather than one
+   * whose header was stripped — which is the rule
+   * `invoice-currency.spec.ts`'s "counts a line-only price as money on the row"
+   * pins. Only the LINES gained a per-row decision, because only the lines can
+   * disagree with each other.
+   */
+  const linesHaveMoney = rows.some(hasMoney);
+  const headerFromCurrent = headerHasMoney || linesHaveMoney;
+  if (!headerFromCurrent && !kept) return null;
+  const header: DocumentMoney = {
+    ...(headerFromCurrent ? currentHeader : keptHeader),
+    computed_lines_total: null,
+    tie_out_delta: null,
+    ties_out: null,
+  };
+  const headerFromWithheld =
+    !headerFromCurrent && Object.values(keptHeader).some((v) => v !== null);
+
+  // EACH LINE ON ITS OWN. A line that still carries money keeps exactly what it
+  // carries — that is a manager's correction and nothing may overwrite it. A
+  // line with none recovers from the snapshot, which is the only place its
+  // figure still exists.
+  let linesFromCurrent = 0;
+  let linesFromWithheld = 0;
+  const lineMoney: LineMoney[] = rows.map((l) => {
+    const current = {
       unit_price: l.unit_price,
       line_total: l.line_total,
       allowance: l.allowance,
       deposit: l.deposit,
-    }));
-  } else {
-    const kept = withheldSnapshot(args.extracted);
-    if (!kept) return null;
-    source = "withheld_snapshot";
-    header = {
-      subtotal: money(kept.subtotal),
-      freight: money(kept.freight),
-      fuel_surcharge: money(kept.fuelSurcharge),
-      split_case_fee: money(kept.splitCaseFee),
-      delivery_fee: money(kept.deliveryFee),
-      deposit_total: money(kept.depositTotal),
-      tax: money(kept.tax),
-      other_charges: money(kept.otherCharges),
-      discount_total: money(kept.discountTotal),
-      total: money(kept.total),
-      computed_lines_total: null,
-      tie_out_delta: null,
-      ties_out: null,
     };
-    /*
-     * MATCHED BY `line_no`, AND ONLY THE LINES THAT ARE STILL THERE. The
-     * snapshot is what the paper said at intake; the line ROWS are what the
-     * document has now. Writing the snapshot's own line list would resurrect a
-     * line somebody deleted, and there would be no row to write it to anyway.
-     */
-    const byNo = new Map<number, (typeof kept.lines)[number]>();
-    for (const l of kept.lines ?? [])
-      if (typeof l?.lineNo === "number") byNo.set(l.lineNo, l);
-    lineMoney = rows.map((l) => {
-      const k = byNo.get(l.line_no) ?? null;
-      return {
-        line_no: l.line_no,
-        unit_price: money(k?.unitPrice),
-        line_total: money(k?.lineTotal),
-        allowance: money(k?.allowance),
-        deposit: money(k?.deposit),
-      };
-    });
-    // A held document with no lines left and no header figures recovered is
-    // nothing to write. Saying "re-filed" over that is the absence this whole
-    // module is against.
-    if (
-      !Object.values(header).some((v) => v !== null) &&
-      !lineMoney.some(
-        (l) =>
-          l.unit_price !== null ||
-          l.line_total !== null ||
-          l.allowance !== null ||
-          l.deposit !== null,
-      )
-    )
-      return null;
-  }
+    if (hasMoney(current)) {
+      linesFromCurrent += 1;
+      return { line_no: l.line_no, ...current };
+    }
+    const k = byNo.get(l.line_no) ?? null;
+    const recovered = {
+      unit_price: money(k?.unitPrice),
+      line_total: money(k?.lineTotal),
+      allowance: money(k?.allowance),
+      deposit: money(k?.deposit),
+    };
+    if (hasMoney(recovered)) {
+      linesFromWithheld += 1;
+      return { line_no: l.line_no, ...recovered };
+    }
+    // Neither source has anything for this line. Written as nulls, which is
+    // what it is — a line whose money is genuinely gone.
+    return { line_no: l.line_no, ...current };
+  });
+
+  const usedCurrent =
+    (headerFromCurrent && headerHasMoney) || linesFromCurrent > 0;
+  const usedWithheld = headerFromWithheld || linesFromWithheld > 0;
+
+  // Nothing anywhere, from either reading. The caller says so rather than
+  // writing zeroes: a re-filing that quietly restores nothing is the
+  // absence-reported-as-health shape aimed at a manager who has just been told
+  // their invoice is priced.
+  if (!usedCurrent && !usedWithheld) return null;
+
+  const source: RefileSource =
+    usedCurrent && usedWithheld
+      ? "mixed"
+      : usedWithheld
+        ? "withheld_snapshot"
+        : "current_rows";
 
   const rebuilt = applyTieOut({
     subtotal: header.subtotal,
@@ -786,7 +838,16 @@ export function planRefile(args: {
     sourceSaid:
       source === "current_rows"
         ? "the figures on the document as it stands now, corrections included"
-        : "the reading this document's money was withheld from at intake (extracted.moneyWithheld)",
+        : source === "withheld_snapshot"
+          ? "the reading this document's money was withheld from at intake (extracted.moneyWithheld)"
+          : // MIXED, with the counts, because "some of each" is not a useful
+            // sentence to read in an audit log a month later. A manager
+            // disputing a figure needs to know which of their lines came back
+            // from the withheld reading and which are their own corrections.
+            `both readings: ${linesFromCurrent} line(s) kept the figures on the document as they stand ` +
+            `(corrections included) and ${linesFromWithheld} recovered the reading withheld at intake ` +
+            `(extracted.moneyWithheld); the header came from ` +
+            `${headerFromWithheld ? "the withheld reading" : "the document as it stands"}`,
     document: {
       ...header,
       computed_lines_total: rebuilt.computedLinesTotal,

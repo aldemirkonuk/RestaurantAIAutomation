@@ -91,6 +91,27 @@
  * instead, and `commodity-calibration.ts` says so where somebody looking for
  * the seal would go.
  */
+/**
+ * `procurement_document` (added 2026-09-06, batch 64) is the seal on the three
+ * write acts of the receiving corridor: confirming a transcription
+ * (`verify`), correcting one extracted line (`line_edit`) and restating or
+ * confirming what currency an invoice's money is in (`currency_restate`).
+ *
+ * The founder's answer to "should procurement's write routes be sealed" was
+ * *"Decide as a module: seal all three"*, and this is that decision as one kind
+ * with three acts rather than three mechanisms. Its subject is the DOCUMENT for
+ * all three — the line edit names its line in the arguments instead, because a
+ * refusal reading "a different line" would name a row rather than the paper, and
+ * because putting a second table's uuids under one kind is the collision
+ * `subject_kind` exists to stop.
+ *
+ * It is sealed rather than role-gated because a verification is the record a
+ * vendor dispute leans on and there is deliberately no un-verify; because a line
+ * edit changes what the paper is claimed to say, with no `updated_at` on
+ * `procurement_document_lines` to precondition on; and because a restatement
+ * re-files a whole invoice's money. See `procurement/documents/document-seal.ts`
+ * for what each act's arguments cover and why.
+ */
 export const SEAL_SUBJECT_KINDS = [
   "mcp_tool",
   "mcp_tool_grant",
@@ -100,6 +121,7 @@ export const SEAL_SUBJECT_KINDS = [
   "house_mail_export",
   "text_credit_purchase",
   "commodity_exposure",
+  "procurement_document",
 ] as const;
 
 export type SealSubjectKind = (typeof SEAL_SUBJECT_KINDS)[number];
@@ -143,6 +165,13 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // the publisher's number, and one that said "a different item" would name
       // the shelf; neither is the thing that was approved.
       return "exposure";
+    case "procurement_document":
+      // "document", not "invoice" and not "line": the subject of all three acts
+      // is the paper. "A different invoice" would be wrong for a credit memo or
+      // a delivery note, which this kind also covers, and "a different line"
+      // would name the row a correction touches rather than the record somebody
+      // is standing behind.
+      return "document";
   }
 }
 

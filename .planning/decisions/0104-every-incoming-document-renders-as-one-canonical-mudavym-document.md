@@ -457,6 +457,68 @@ three-valued-logic hole in one of them was found before it shipped: `currency_so
 constraint read correctly in English and enforced nothing in exactly the case it was
 written for.
 
+## Amendment 2026-09-06 (batch 64) — the three document write acts take a redeemed seal (class E)
+
+**The founder's answer, verbatim**, to whether procurement's write routes should be
+sealed:
+
+> **"Decide as a module: seal all three (Recommended)"**
+
+The option read: *"One policy for the corridor: verify, line edit and currency restatement
+each take a redeemed seal like the payment and register acts do. Its own pass; the
+receiving flow gains one ceremony per act."*
+
+**What it replaces.** `documents.controller.ts` argued in writing against sealing the
+currency restatement alone — *"Sealing this one alone would read as a policy while leaving
+the other six non-GET routes on this controller open"* — and named the corridor-wide
+question as the founder's. It was asked and answered; that paragraph is now a record of
+the question rather than a decision, and the header says so. The receipts page note's
+batch-64 item 3 (*"will be sealed as a module in a later pass"*) is struck the same way.
+
+**The shape.** ONE subject kind, `procurement_document`, with three acts in `tool_name`:
+`verify`, `line_edit`, `currency_restate`. Not three mechanisms — the redemption policy
+lives once, in `common/seal/seal-challenge.service.ts`, the same service the order
+approval, the payment register and the credit purchase spend through. The subject of all
+three is the DOCUMENT, including the line edit, whose line is named in `args_hash`
+instead: a refusal reading *"that seal was issued for a different line"* would name a row
+rather than the paper, and putting a second table's uuids under one kind is the collision
+`subject_kind` exists to stop.
+
+**What each seal is taken OVER**, which is the half that makes it more than a second
+click (`apps/api-gateway/src/procurement/documents/document-seal.ts`):
+
+| act | args_hash covers | the failure it closes |
+|---|---|---|
+| `verify` | the whole transcription — the document's own figures and every line, sorted by id | a line corrected between the gesture and the write would otherwise put a reviewer's name on a figure they never read, on the record a dispute leans on, with no un-verify |
+| `line_edit` | the line AS IT STANDS plus the exact patch | `procurement_document_lines` has no `updated_at`, so last-write-wins was unavoidable and the page could only report a collision AFTER it landed; the seal makes it a refusal |
+| `currency_restate` | the code being written and the code the document carries now | a seal minted to move a held invoice to EUR being spent after somebody else filed it in USD |
+
+The restatement's free-text `reason` is deliberately not hashed: it is what a person types
+ABOUT the decision, not the decision, and binding it would refuse an honest act because a
+typo was fixed.
+
+**The migration widens the CHECK by reading it.**
+`20260906200000_a_document_act_takes_a_redeemed_seal.sql` selects
+`pg_get_constraintdef`, parses the admitted kinds, appends one and writes the union back —
+never a hand-typed literal. Four passes touched that one constraint this week, and a
+DROP/CREATE from a list typed an hour earlier deletes whatever landed in between: the
+gateway then declares a kind the database refuses, which reads as a code bug. Proven on
+PGlite (`p4-scratch/pglite-probe/p4bs-document-seal-kind.mjs`): all eight prior kinds
+survive, the new one is admitted for all three acts, a document seal carrying a
+`connection_id` is refused 23514, and a second apply changes nothing.
+
+**Two costs, accepted and stated.** A moved cell on `/receipts` is no longer a write — it
+stages a pending correction stated in figures, and a hold sends it; that is one gesture
+per correction where there used to be none. And the OTHER seven write routes on this
+controller (upload, extraction, match, link, field correction, field tick, door count)
+remain unsealed: the decision named three acts, and inventing exemption sentences for seven
+routes would be filing seven decisions the founder never made.
+`scripts/check_money_routes_are_sealed.py` therefore grew a second census — routes a
+decision REQUIRES to be sealed, checked by name — and PRINTS the seven as outside every
+census rather than passing over them. That is a stated soft spot: a fourth write act added
+to this controller tomorrow lands in that printed list rather than failing the build, which
+a fourth MONEY route would not.
+
 ## Review trail
 
 | Date       | Reviewer                                                                                                                                            | Outcome                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |

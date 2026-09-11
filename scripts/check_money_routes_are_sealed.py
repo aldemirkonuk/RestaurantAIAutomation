@@ -84,9 +84,68 @@ SEAL_SERVICE = SRC / "common" / "seal" / "seal-challenge.service.ts"
 # outside its scope is exactly how the last one went unsealed.
 MONEY_MODULES = ("payment-methods", "billing", "communications/text/credits")
 
+# ---------------------------------------------------------------------------
+# THE ACT CENSUS — routes sealed by a founder decision that is NOT about money.
+# ---------------------------------------------------------------------------
+# `MONEY_MODULES` above is a WHOLE-MODULE rule: every non-GET route in those
+# directories must seal, and a route added tomorrow is caught. That is the right
+# shape there, because the modules exist to change what the house is charged.
+#
+# It is the wrong shape for `procurement/documents`. On 2026-09-06 (batch 64) the
+# founder was asked whether procurement's write routes should be sealed and
+# answered "Decide as a module: seal all three" — naming THREE acts: verify, line
+# edit and currency restatement. The controller they live on has seven other
+# non-GET routes (upload, extraction, match, link, correction, field tick, door
+# count) that the decision did not name, and inventing an exemption sentence for
+# each of them would be filing seven decisions the founder never made.
+#
+# So this census names the routes a decision REQUIRES to be sealed, one row per
+# route, each carrying the decision that made it true. Everything else on a
+# census file is reported `not-in-census` and PRINTED — never counted as a pass.
+# That is the honest statement of this census's own soft spot, and it is stated
+# again in the output: a FOURTH write act added to one of these files tomorrow is
+# not caught here the way a fourth money route would be. Whether the whole
+# controller should join the whole-module rule is a founder question, recorded in
+# p4bs's report rather than decided by this file.
+SEALED_ACTS: dict[tuple[str, str], str] = {
+    (
+        "procurement/documents/documents.controller.ts",
+        "verify",
+    ): (
+        "Founder, 2026-09-06 (batch 64): \"Decide as a module: seal all three.\" "
+        "A verification is the record a vendor dispute leans on and there is "
+        "deliberately no un-verify, so the person standing behind a "
+        "transcription has to be a PERSON — which a role check cannot answer."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "editLine",
+    ): (
+        "Founder, 2026-09-06 (batch 64): \"Decide as a module: seal all three.\" "
+        "A line correction changes what the paper is claimed to say, and "
+        "procurement_document_lines carries no `updated_at` to precondition on — "
+        "so the seal's args_hash over the line AS IT STANDS is the only thing "
+        "that can refuse a correction written on top of somebody else's."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "restateCurrency",
+    ): (
+        "Founder, 2026-09-06 (batch 64): \"Decide as a module: seal all three.\" "
+        "A restatement re-files a whole invoice's money under a different "
+        "denomination and is what ends a receiving hold; its gate was role plus "
+        "an append-only log, and a role answers 'may this role' rather than 'did "
+        "a person'."
+    ),
+}
+
+# The files the act census reaches into. Parsed and reported like a money module,
+# but only the handlers named above are REQUIRED to seal.
+CENSUS_FILES = tuple(sorted({f for f, _ in SEALED_ACTS}))
+
 # Where a seal may be redeemed FROM. The walk resolves injected providers only
 # within these directories; anything else is an unresolved hop and is listed.
-RESOLVE_DIRS = MONEY_MODULES + ("common/seal",)
+RESOLVE_DIRS = MONEY_MODULES + ("common/seal", "procurement/documents")
 
 HTTP_METHODS = ("Get", "Post", "Put", "Patch", "Delete", "All", "Head", "Options")
 WRITE_METHODS = ("Post", "Put", "Patch", "Delete", "All")
@@ -158,6 +217,34 @@ ALLOWLIST: dict[tuple[str, str], str] = {
         "provider's search lag is left alone rather than judged. Running it twice "
         "is a no-op: settled rows leave the open set and "
         "uq_house_message_credits_purchase_seal refuses a second credit."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "mintVerifySeal",
+    ): (
+        "The mint itself, for the same circular reason as the payment-methods "
+        "row above: requiring a seal to obtain a seal approves nothing. It "
+        "writes no document and touches no line — it inserts one short-lived "
+        "challenge row bound to this actor, this document and the transcription "
+        "as it stands, and it is scoped to the caller's own house by the token."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "mintLineEditSeal",
+    ): (
+        "The mint itself. It writes nothing to the line: it inserts one "
+        "short-lived challenge row bound to this actor, this document, this line "
+        "AS IT STANDS and the exact patch asked for. Binding the patch is what "
+        "stops a gesture obtained for one correction being spent on another."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "mintCurrencySeal",
+    ): (
+        "The mint itself. It changes no currency and writes no audit row: it "
+        "inserts one short-lived challenge row behind the SAME manager-or-owner "
+        "check and the SAME ISO 4217 membership check the write runs, so a seal "
+        "is never issued for a restatement this house would refuse."
     ),
 }
 
@@ -406,8 +493,43 @@ def reaches_seal(
     return False
 
 
+def route_verdict(
+    verb: str,
+    handler: str,
+    rel: str,
+    body: str,
+    owner: str,
+    by_class: dict[str, dict],
+    primitives: list[str],
+    unresolved: list[str],
+    whole_module: bool,
+) -> str:
+    """The one decision, used by `analyse` AND by the self-test.
+
+    Two callers, one function, on purpose: a self-test that re-implemented the
+    verdict would prove the fixture parser and nothing about the guard.
+
+    `whole_module` is the difference between the two censuses. In a money module
+    every non-GET route must seal or carry an exemption. In a file reached by the
+    ACT census, only the handlers `SEALED_ACTS` names must seal; the rest are
+    `not-in-census` — reported, printed, and never counted as a pass.
+    """
+    if verb not in WRITE_METHODS:
+        return "read"
+    if reaches_seal(body, owner, by_class, primitives, 0, unresolved):
+        return "sealed"
+    if (rel, handler) in ALLOWLIST:
+        return "allow-listed"
+    if whole_module or (rel, handler) in SEALED_ACTS:
+        return "UNSEALED"
+    return "not-in-census"
+
+
 def analyse(
-    path: Path, by_class: dict[str, dict], primitives: list[str]
+    path: Path,
+    by_class: dict[str, dict],
+    primitives: list[str],
+    whole_module: bool = True,
 ) -> tuple[list[dict], list[str]]:
     raw = path.read_text(encoding="utf8")
     if "@Controller" not in raw:
@@ -454,13 +576,10 @@ def analyse(
             continue
 
         body = method_body(lines, sig_line)
-        sealed = reaches_seal(body, owner, by_class, primitives, 0, unresolved)
-        if sealed:
-            verdict = "sealed"
-        elif (rel, handler) in ALLOWLIST:
-            verdict = "allow-listed"
-        else:
-            verdict = "UNSEALED"
+        verdict = route_verdict(
+            verb, handler, rel, body, owner, by_class, primitives,
+            unresolved, whole_module,
+        )
         routes.append(
             {"line": i + 1, "verb": verb, "handler": handler, "verdict": verdict}
         )
@@ -588,6 +707,68 @@ export class XController {
     ),
 ]
 
+# ---------------------------------------------------------------------------
+# The ACT-census fixtures. Same parser, the other census: only the handlers
+# `SEALED_ACTS` names must seal, and everything else on the file is reported
+# rather than passed.
+#
+# The `rel`/handler pairs are REAL keys of `SEALED_ACTS`, so these cases exercise
+# the live census rather than a copy of it. A renamed handler does not break them
+# (they test the mechanism); `main`'s stale-census check is what catches that.
+# ---------------------------------------------------------------------------
+CENSUS_FIXTURES: list[tuple[str, str, str, str, str]] = [
+    (
+        "a route the act census names, that does not redeem, is UNSEALED",
+        """
+@Controller("x")
+export class XController {
+  constructor(private readonly organizations: OrganizationsService) {}
+  @Post("a")
+  async verify() {
+    return 1;
+  }
+}
+""",
+        "procurement/documents/documents.controller.ts",
+        "verify",
+        "UNSEALED",
+    ),
+    (
+        "a route the act census names, that redeems, is sealed",
+        """
+@Controller("x")
+export class XController {
+  constructor(private readonly seals: SealChallengeService) {}
+  @Post("a")
+  async verify() {
+    await this.seals.redeem({});
+    return 1;
+  }
+}
+""",
+        "procurement/documents/documents.controller.ts",
+        "verify",
+        "sealed",
+    ),
+    (
+        # The honest half. A write on a census FILE that no census row names is
+        # not a pass and not a failure — it is reported, and the output says so.
+        "a write on a census file that no row names is not-in-census, never a pass",
+        """
+@Controller("x")
+export class XController {
+  @Post("a")
+  async upload() {
+    return 1;
+  }
+}
+""",
+        "procurement/documents/documents.controller.ts",
+        "upload",
+        "not-in-census",
+    ),
+]
+
 
 def self_test() -> int:
     import tempfile
@@ -599,9 +780,19 @@ def self_test() -> int:
         return 2
     print(f"  seal primitives read from the service: {', '.join(primitives)}")
 
+    # `rel` is a stand-in for the money-module fixtures: no ALLOWLIST or
+    # SEALED_ACTS row names it, so neither census can match by accident.
+    cases: list[tuple[str, str, str, str | None, str, bool]] = [
+        (name, source, "t.controller.ts", None, expected, True)
+        for name, source, expected in SELF_TEST_FIXTURES
+    ] + [
+        (name, source, rel, handler, expected, False)
+        for name, source, rel, handler, expected in CENSUS_FIXTURES
+    ]
+
     failures = 0
     with tempfile.TemporaryDirectory() as tmp:
-        for name, source, expected in SELF_TEST_FIXTURES:
+        for name, source, rel, want_handler, expected, whole_module in cases:
             f = Path(tmp) / "t.controller.ts"
             f.write_text(source, encoding="utf8")
             text = strip_comments(source)
@@ -613,9 +804,6 @@ def self_test() -> int:
                     "injected": injected(text),
                 }
             }
-            # `analyse` wants a path under SRC for its relative name; the
-            # verdict does not depend on it, so a stand-in is used and the
-            # allow-list cannot accidentally match.
             lines = text.splitlines()
             got = "<no route parsed>"
             for i, line in enumerate(lines):
@@ -623,21 +811,30 @@ def self_test() -> int:
                     continue
                 verb = ROUTE_RE.match(line).group(1)
                 sig_line = None
+                handler = None
                 for j in range(i + 1, len(lines)):
                     s = lines[j].strip()
                     if s.startswith("@") or s == "":
                         continue
-                    if re.match(r"^\s*(?:async\s+)?(\w+)\s*\(", lines[j]):
+                    hm = re.match(r"^\s*(?:async\s+)?(\w+)\s*\(", lines[j])
+                    if hm:
+                        handler = hm.group(1)
                         sig_line = j
                         break
-                if verb not in WRITE_METHODS:
-                    got = "read"
+                if handler is None:
                     break
-                body = method_body(lines, sig_line)
-                got = (
-                    "sealed"
-                    if reaches_seal(body, "XController", by_class, primitives, 0, [])
-                    else "UNSEALED"
+                if want_handler is not None and handler != want_handler:
+                    got = f"<fixture handler is {handler}, expected {want_handler}>"
+                    break
+                body = (
+                    method_body(lines, sig_line)
+                    if verb in WRITE_METHODS
+                    else ""
+                )
+                # THE GUARD'S OWN DECISION FUNCTION, not a copy of it.
+                got = route_verdict(
+                    verb, handler, rel, body, "XController",
+                    by_class, primitives, [], whole_module,
                 )
                 break
             ok = got == expected
@@ -647,7 +844,7 @@ def self_test() -> int:
     if failures:
         print(f"\nSELF-TEST FAILED — {failures} case(s). The parser cannot be trusted.")
         return 2
-    print(f"\nSELF-TEST PASSED — {len(SELF_TEST_FIXTURES)} cases.")
+    print(f"\nSELF-TEST PASSED — {len(cases)} cases.")
     return 0
 
 
@@ -677,11 +874,30 @@ def main() -> int:
         )
         return 2
 
+    # The act census's files. A named file that has gone missing is exit 2, not a
+    # quiet skip: a census row pointing at nothing reads like a decision in
+    # force, which is this guard's own badge on the absence-as-health shape.
+    census_paths: list[Path] = []
+    for rel in CENSUS_FILES:
+        p = SRC / rel
+        if not p.is_file():
+            print(
+                f"FATAL: the act census names {rel}, which does not exist. A "
+                "census row nothing matches still reads as a live decision.",
+                file=sys.stderr,
+            )
+            return 2
+        census_paths.append(p)
+
     all_routes: list[dict] = []
     unresolved: list[str] = []
     try:
         for path in controllers:
-            routes, un = analyse(path, by_class, primitives)
+            routes, un = analyse(path, by_class, primitives, whole_module=True)
+            all_routes.extend(routes)
+            unresolved.extend(un)
+        for path in census_paths:
+            routes, un = analyse(path, by_class, primitives, whole_module=False)
             all_routes.extend(routes)
             unresolved.extend(un)
     except Fatal as exc:
@@ -706,14 +922,16 @@ def main() -> int:
         return 2
 
     print(
-        f"Money routes: {len(all_routes)} routes across {len(controllers)} "
-        f"controllers in {', '.join(MONEY_MODULES)}"
+        f"Sealed surfaces: {len(all_routes)} routes across "
+        f"{len(controllers) + len(census_paths)} controllers — whole-module in "
+        f"{', '.join(MONEY_MODULES)}; named acts in {', '.join(CENSUS_FILES)}"
     )
     for r in all_routes:
         print(f"  {r['verdict']:13} {r['verb']:6} {r['file']}:{r['line']} {r['handler']}")
 
     # A stale exemption is worse than a missing one: it reads like a live
-    # decision. Exit 2, not 1 — the guard cannot check what it claims to.
+    # decision. Exit 2, not 1 — the guard cannot check what it claims to. Both
+    # censuses are held to it.
     live = {(r["file"], r["handler"]) for r in all_routes}
     stale = [k for k in ALLOWLIST if k not in live]
     if stale:
@@ -723,6 +941,18 @@ def main() -> int:
             file=sys.stderr,
         )
         for f, h in stale:
+            print(f"  {f} :: {h}", file=sys.stderr)
+        return 2
+
+    stale_acts = [k for k in SEALED_ACTS if k not in live]
+    if stale_acts:
+        print(
+            "\nFATAL: the act census names route(s) that no longer exist. A "
+            "requirement nothing matches reads as a decision being enforced "
+            "when nothing is being checked:",
+            file=sys.stderr,
+        )
+        for f, h in stale_acts:
             print(f"  {f} :: {h}", file=sys.stderr)
         return 2
 
@@ -738,21 +968,39 @@ def main() -> int:
             print(f"  {r['file']}:{r['line']} {r['handler']}")
             print(f"    {ALLOWLIST[(r['file'], r['handler'])]}")
 
+    # THE SOFT SPOT, PRINTED. These are writes on a file the act census reaches
+    # into that no census row names. They are NOT checked and NOT exempt — they
+    # are outside every decision this guard knows about, and saying so out loud
+    # is the difference between a stated limit and a silent pass.
+    outside = [r for r in all_routes if r["verdict"] == "not-in-census"]
+    if outside:
+        print(
+            f"\nNOT IN ANY SEAL CENSUS — {len(outside)} write(s) on a census file "
+            "that no decision names. This guard does NOT check them, and a new "
+            "one added tomorrow will land here rather than failing the build:"
+        )
+        for r in outside:
+            print(f"  {r['file']}:{r['line']} {r['verb']} {r['handler']}")
+
     unsealed = [r for r in all_routes if r["verdict"] == "UNSEALED"]
     if unsealed:
-        print(f"\nFAIL — {len(unsealed)} money route(s) write without redeeming a seal.")
-        print("Each can change which instrument this house is charged on, behind a")
-        print("role check that answers 'may this role' and not 'did a person'. Add")
-        print("the redemption (see billing.controller.ts) or add an ALLOWLIST entry")
-        print("with the sentence that makes the exemption true.")
+        print(f"\nFAIL — {len(unsealed)} route(s) write without redeeming a seal.")
+        print("A money route can change which instrument this house is charged on,")
+        print("and a census act is one a founder decision requires a seal on. Both")
+        print("run behind a role check, which answers 'may this role' and not 'did")
+        print("a person'. Add the redemption (see billing.controller.ts or")
+        print("documents.controller.ts) or, for a money route, add an ALLOWLIST")
+        print("entry with the sentence that makes the exemption true.")
         for r in unsealed:
             print(f"  {r['file']}:{r['line']} {r['verb']} {r['handler']}")
         return 1
 
     sealed = len([r for r in all_routes if r["verdict"] == "sealed"])
+    named = len(SEALED_ACTS)
     print(
-        f"\nPASS — {sealed} money write(s) redeem a seal, "
-        f"{len(allowed)} are allow-listed with a reason."
+        f"\nPASS — {sealed} write(s) redeem a seal ({named} of them required by "
+        f"the act census), {len(allowed)} are allow-listed with a reason, "
+        f"{len(outside)} are outside every census and are listed above."
     )
     return 0
 

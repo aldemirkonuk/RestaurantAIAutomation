@@ -236,6 +236,11 @@ describe("DocumentsController.upload — an 832 arrives", () => {
     // path too. `tsc -p tsconfig.spec.json` counts the arguments; `tsconfig.json`
     // never looks at this file.
     {} as any,
+    // SealChallengeService — the seal on verify / line_edit /
+    // currency_restate (founder, 2026-09-06, batch 64). Stubbed here; the
+    // redemption itself is proven in `documents.seal.spec.ts` against a
+    // real double. `tsc -p tsconfig.spec.json` counts the arguments.
+    {} as any,
   );
   const body = (over: Record<string, unknown> = {}) =>
     ({
@@ -336,6 +341,11 @@ describe("DocumentsController.upload — who handed the catalogue over", () => {
     // DeliveryService (ADR 0103) — the door-count route's other half, off this
     // path too. `tsc -p tsconfig.spec.json` counts the arguments; `tsconfig.json`
     // never looks at this file.
+    {} as any,
+    // SealChallengeService — the seal on verify / line_edit /
+    // currency_restate (founder, 2026-09-06, batch 64). Stubbed here; the
+    // redemption itself is proven in `documents.seal.spec.ts` against a
+    // real double. `tsc -p tsconfig.spec.json` counts the arguments.
     {} as any,
   );
   const body = () =>

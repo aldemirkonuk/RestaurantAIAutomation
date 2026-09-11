@@ -13,7 +13,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
-import { currencyCode } from "../common/iso-4217";
+import { currencyCode, isIso4217 } from "../common/iso-4217";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
@@ -78,6 +78,7 @@ import {
   agreementCurrencyClaim,
   invoiceCurrencyClaim,
   priceCurrency,
+  receivingPriceNeedsACurrency,
   type PriceCurrencyClaim,
 } from "./price-currency";
 import {
@@ -4807,6 +4808,31 @@ export class ProcurementService {
      * this check it walks past all three through a text field.
      */
     if (body.invoiceUnitPrice != null) {
+      /*
+       * ITEM B — A TYPED PRICE STATES ITS CURRENCY OR IS REFUSED (founder,
+       * 2026-09-06 batch 67: *"a price without money is not a price ...
+       * price_history never gains a currency-null row from that door again"*).
+       *
+       * FIRST, and before the held-invoice question, because it needs no read:
+       * a price with no code is refused on the payload alone, so an order whose
+       * documents cannot be read still gets this answer rather than a
+       * best-effort one. `VerifyReceiptDto` refuses the same pair on the wire
+       * (`priceStatesItsCurrency`), so an HTTP caller never reaches here — this
+       * is the gate for every OTHER caller, and the one the tests drive.
+       *
+       * MEMBERSHIP, not presence. `isIso4217` and not `!= null`: a code that
+       * names no currency states nothing, and admitting it here would move the
+       * currency-null row one column over rather than remove it.
+       *
+       * NOTHING HAS BEEN WRITTEN AT THIS POINT — the method has read the order
+       * row and the aliased quantities and nothing else — so the count is
+       * exactly as it was, which is what the sentence promises.
+       */
+      if (!isIso4217(body.invoiceCurrency))
+        throw new BadRequestException(
+          receivingPriceNeedsACurrency(body.invoiceUnitPrice),
+        );
+
       const held = await this.heldInvoiceForOrder(restaurantId, orderId);
       if (held)
         throw new ConflictException(

@@ -95,6 +95,26 @@ describe("priceCurrency", () => {
     }
   });
 
+  /*
+   * ...AND ADMITS THE ONES THE 96-CODE LIST REFUSED (founder, 2026-09-06 batch
+   * 67: "A Hong Kong or Macau vendor's invoice files instead of being held").
+   * Paired with the refusal above deliberately: for one day this path refused
+   * ZZZ and HKD alike, so a real Kowloon invoice and a fabricated code got the
+   * same answer, and only one of them was a defect.
+   */
+  it("ADMITS a real currency no country row reaches — HKD, MOP, XOF", () => {
+    for (const real of ["HKD", "MOP", "XOF"]) {
+      const r = priceCurrency({
+        kind: "stated",
+        code: real,
+        from: "the invoice for order 1",
+      });
+      expect(`${real}->${r.code}`).toBe(`${real}->${real}`);
+      expect(r.reason).toBeNull();
+      expect(r.note).toBeNull();
+    }
+  });
+
   it("records nothing for an unstated currency, and never USD", () => {
     const r = priceCurrency({
       kind: "unstated",
@@ -175,6 +195,18 @@ describe("the price register refuses a sighting with no currency", () => {
       expect(d.write).toBe(false);
       if (d.write) return;
       expect(d.reason).toContain(fake);
+    }
+  });
+
+  it("ADMITS HKD, MOP and XOF into the register (batch 67)", () => {
+    // The register is NOT NULL on currency, so a refusal here is a sighting
+    // that never gets recorded at all — the narrow list did not hold a Macau
+    // vendor's price with a caveat, it dropped it.
+    for (const real of ["HKD", "MOP", "XOF"]) {
+      const d = decideOwnPaperSighting({ ...base, currency: real });
+      expect(`${real}:${d.write}`).toBe(`${real}:true`);
+      if (!d.write) return;
+      expect(d.row.currency).toBe(real);
     }
   });
 
@@ -346,26 +378,37 @@ describe("price_history records the currency, or records that it has none", () =
     expect(calls.priceHistoryInserts[0].currency).not.toBe("USD");
   });
 
-  it("writes NULL, not USD, when the invoice was keyed in without one", async () => {
+  /*
+   * CHANGED 2026-09-06, batch 67. This test used to assert that a keyed-in
+   * price with no currency wrote `price_history.currency = NULL` — the honest
+   * answer for a table that admits one, and the founder's call is that the DOOR
+   * should stop producing it: *"a price without money is not a price ...
+   * price_history never gains a currency-null row from that door again."*
+   *
+   * The column stays nullable and `priceCurrency`'s `unstated` branch is still
+   * the right answer for every OTHER writer (see the unit tests above, which are
+   * unchanged). What moved is that `verifyReceipt` refuses the pair before it
+   * reads anything, so this path can no longer reach that branch.
+   */
+  it("REFUSES a keyed-in price with no currency, rather than writing NULL", async () => {
     const { db, calls } = makeDb({ orderRow: turkishHouseOrder });
 
-    await new ProcurementService(db, events, ledger).verifyReceipt(
-      REST,
-      ORDER,
-      USER,
-      {
-        invoiceQuantity: 10,
-        invoiceUnitPrice: 40,
-        acceptedQuantity: 10,
-      } as any,
-    );
+    await expect(
+      new ProcurementService(db, events, ledger).verifyReceipt(
+        REST,
+        ORDER,
+        USER,
+        {
+          invoiceQuantity: 10,
+          invoiceUnitPrice: 40,
+          acceptedQuantity: 10,
+        } as any,
+      ),
+    ).rejects.toThrow(/A price without a currency is not a price/);
 
-    expect(calls.priceHistoryInserts).toHaveLength(1);
-    // NOT RECORDED. The observation is kept because it is real; the currency is
-    // absent because nobody stated it, and the two facts are both on the row.
-    expect(calls.priceHistoryInserts[0].currency).toBeNull();
-    expect(calls.priceHistoryInserts[0].notes).toContain("Currency not recorded");
-    // And the register, which cannot hold a null, holds nothing at all.
+    // Nothing on either register, and nothing anywhere else: the refusal is the
+    // first thing the priced branch does.
+    expect(calls.priceHistoryInserts).toHaveLength(0);
     expect(calls.sightingInserts).toHaveLength(0);
   });
 
@@ -397,7 +440,14 @@ describe("price_history records the currency, or records that it has none", () =
       REST,
       ORDER,
       USER,
-      { invoiceQuantity: 10, invoiceUnitPrice: 40, acceptedQuantity: 10 } as any,
+      {
+        invoiceQuantity: 10,
+        invoiceUnitPrice: 40,
+        acceptedQuantity: 10,
+        // A code is now REQUIRED beside a price (batch 67). The key being
+        // named explicitly is what this test is about, not its value.
+        invoiceCurrency: "TRY",
+      } as any,
     );
 
     // A conditional spread would leave the key off, and the capture-contract

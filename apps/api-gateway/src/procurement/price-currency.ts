@@ -113,6 +113,49 @@ export function priceCurrency(claim: PriceCurrencyClaim): PriceCurrencyResolutio
 }
 
 /**
+ * A TYPED RECEIVING PRICE STATES ITS CURRENCY OR IS REFUSED.
+ *
+ * Founder, 2026-09-06 batch 67: *"Refuse a typed price with no currency — a
+ * price without money is not a price: the receiving screen requires a code (the
+ * order's, the house's, or one typed) before a unit price is accepted;
+ * price_history never gains a currency-null row from that door again."*
+ *
+ * WHAT THIS REPLACES. `verifyReceipt` accepted `invoiceUnitPrice` with
+ * `invoiceCurrency` absent and wrote a `price_history` row with `currency:
+ * null` — measured 2026-09-06 on an order with no linked document (audit
+ * 6c0933d3 finding 2, then pinned by three tests). The row was honest about
+ * itself and useless to every reader: a price ladder cannot compare it, the
+ * four-way match cannot denominate it, and nothing on any screen can print it
+ * as money. `price_history.currency` stays NULLABLE — rows written before today
+ * are real observations and are not being rewritten — but this DOOR stops
+ * producing more of them.
+ *
+ * WHY A REFUSAL AND NOT A DEFAULT. Every rung that could have filled it in is a
+ * claim about somebody else's paper: the ORDER's currency is what this house
+ * agreed to pay in, the HOUSE's is what it reports in, and neither is a
+ * statement about what the vendor's invoice says. So the screen puts a code
+ * beside the field and the person confirms it (`ReceivingWorkspace.tsx`); the
+ * gateway takes the answer and never derives one. That is ADR 0083's shape:
+ * the offer is visible before it is recorded.
+ *
+ * The count is deliberately untouched. A delivery that physically happened is
+ * not made un-happened by a bookkeeping doubt, and the sentence says so.
+ */
+export function receivingPriceNeedsACurrency(unitPrice: number): string {
+  return (
+    `A unit price of ${unitPrice} was submitted with no currency, so nothing ` +
+    `was recorded. A price without a currency is not a price: it cannot be ` +
+    `compared with the agreed price, cannot join the price ladder, and prints ` +
+    `on every screen as a number with a caveat. State the code and send it ` +
+    `again — the receiving screen offers three: the currency this order was ` +
+    `placed in, this house's own reporting currency, or a code typed on the ` +
+    `spot. Everything else on this receipt still stands: submit it without a ` +
+    `price and the count, the rejection and the stock movement all record ` +
+    `exactly as they would have.`
+  );
+}
+
+/**
  * The claim for a figure whose paper is an invoice the manager keyed in.
  *
  * The invoice header is the one place in this system that already carries a real
@@ -127,6 +170,12 @@ export function invoiceCurrencyClaim(
   if (typeof code === "string" && code.trim() !== "") {
     return { kind: "stated", code, from: `the invoice for ${where}` };
   }
+  // UNREACHABLE FROM THE RECEIVING DOOR SINCE 2026-09-06, and kept anyway.
+  // `verifyReceipt` refuses a price with no code before it gets here, so this
+  // branch can no longer produce a `price_history` row — but the claim type is
+  // the shared vocabulary every price writer speaks, and a caller that DOES have
+  // an unstated currency (a future importer, a backfill) needs a sentence rather
+  // than a crash. Deleting it would leave the next caller to invent one.
   return {
     kind: "unstated",
     because:

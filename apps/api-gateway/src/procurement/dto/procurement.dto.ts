@@ -13,11 +13,55 @@ import {
   Max,
   Min,
   ValidateNested,
+  registerDecorator,
+  type ValidationArguments,
+  type ValidationOptions,
 } from "class-validator";
-import { ISO_4217_CODES } from "../../common/iso-4217";
+import { ISO_4217_CODES, isIso4217 } from "../../common/iso-4217";
+import { receivingPriceNeedsACurrency } from "../price-currency";
 import { Type } from "class-transformer";
 import { ORDER_UNIT_TYPES } from "../order-units";
 import { PRICE_UOM_TYPES } from "../agreed-price";
+
+/**
+ * A UNIT PRICE ON A RECEIPT STATES ITS CURRENCY, ON THE WIRE.
+ *
+ * Founder, 2026-09-06 batch 67. Written as a decorator rather than as two
+ * `@ValidateIf`s because the pair needs ONE sentence: `@IsString()` firing on an
+ * absent `invoiceCurrency` says "invoiceCurrency must be a string", which tells
+ * a desk clerk nothing about the price they typed or about the receipt they can
+ * still submit. `receivingPriceNeedsACurrency` is the same sentence
+ * `ProcurementService.verifyReceipt` throws, so the wire and the service cannot
+ * drift into two different refusals for one act.
+ *
+ * It reads a SIBLING field, which no other validator in this file does — that is
+ * the point of the rule. Neither value is invalid alone; the pair is.
+ */
+function PriceStatesItsCurrency(options?: ValidationOptions) {
+  return function (object: object, propertyName: string): void {
+    registerDecorator({
+      name: "priceStatesItsCurrency",
+      target: object.constructor,
+      propertyName,
+      options,
+      validator: {
+        validate(value: unknown, args: ValidationArguments): boolean {
+          // No price, no rule. `@IsOptional` still governs the field itself.
+          if (value === undefined || value === null) return true;
+          const sent = (args.object as { invoiceCurrency?: unknown })
+            .invoiceCurrency;
+          // MEMBERSHIP, not presence: a code naming no currency states nothing,
+          // and `@IsIn` on the sibling would report it as a second, separate
+          // problem rather than as this one.
+          return isIso4217(sent);
+        },
+        defaultMessage(args: ValidationArguments): string {
+          return receivingPriceNeedsACurrency(Number(args.value));
+        },
+      },
+    });
+  };
+}
 
 export enum ProcurementOrderStatus {
   PENDING = "PENDING",
@@ -446,10 +490,13 @@ export class VerifyReceiptDto {
   @ApiPropertyOptional({
     description:
       "Unit price the vendor invoice bills, PER BOTTLE. It is compared directly against the agreed " +
-      "price, which the order line derives per bottle (line_total = final_unit_price * total_bottles).",
+      "price, which the order line derives per bottle (line_total = final_unit_price * total_bottles). " +
+      "REQUIRES `invoiceCurrency` (2026-09-06): a price with no currency is refused before anything is " +
+      "written, and the receipt still records its count without one.",
   })
   @IsNumber()
   @Min(0)
+  @PriceStatesItsCurrency()
   @IsOptional()
   invoiceUnitPrice?: number;
 

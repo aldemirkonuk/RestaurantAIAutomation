@@ -360,6 +360,50 @@ describe("recordPurchase — money in, with its provenance", () => {
     expect(db.tables.house_message_credits).toHaveLength(0);
   });
 
+  /*
+   * MEMBERSHIP, NOT SHAPE (2026-09-06, batch 67; Sonnet audit of `4abd03ff`
+   * finding 1). This gate asked `/^[A-Z]{3}$/`, which the test above satisfies
+   * itself with `"$$"` — the WRONG SHAPE. A well-formed fake passed it, so
+   * `ZZZ` was writable into `house_message_credits.currency` on a Stripe-backed
+   * purchase: real money charged, filed under a denomination that does not
+   * exist. The pass that closed this across the procurement gates missed the
+   * two behind an actual payment.
+   */
+  it("refuses a well-formed code that names no currency, and writes nothing", async () => {
+    for (const fake of ["ZZZ", "XTS", "XAU", "HRK"]) {
+      const db = seed();
+      const out = await svc(db).recordPurchase({
+        restaurantId: RID,
+        sealId: SEAL,
+        amountMinor: 5000,
+        currency: fake,
+        recordedBy: USER,
+        paymentRef: "pi_1",
+      });
+      expect(`${fake}:${out.recorded}`).toBe(`${fake}:false`);
+      // The refusal NAMES the code, so a house can tell "we sent nonsense" from
+      // "this product does not hold our currency".
+      expect(out.words).toContain(fake);
+      expect(db.tables.house_message_credits).toHaveLength(0);
+    }
+  });
+
+  it("ADMITS a real currency, including one the 96-code list did not hold", async () => {
+    for (const real of ["TRY", "HKD", "XOF"]) {
+      const db = seed();
+      const out = await svc(db).recordPurchase({
+        restaurantId: RID,
+        sealId: SEAL,
+        amountMinor: 5000,
+        currency: real,
+        recordedBy: USER,
+        paymentRef: "pi_1",
+      });
+      expect(`${real}:${out.recorded}`).toBe(`${real}:true`);
+      expect(db.tables.house_message_credits[0].currency).toBe(real);
+    }
+  });
+
   it("refuses a zero or negative purchase, and writes nothing", async () => {
     const db = seed();
     for (const amountMinor of [0, -1, 1.5]) {

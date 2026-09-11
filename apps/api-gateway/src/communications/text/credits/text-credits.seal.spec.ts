@@ -452,12 +452,42 @@ describe("POST /communications/text-credits/purchase — the seal is spent, not 
     const { controller, seals, credits } = build();
     await expect(
       controller.sealChallenge(req(), { amountMinor: 5000 }),
-    ).rejects.toThrow(/three-letter ISO 4217/);
+    ).rejects.toThrow(/ISO 4217/);
     await expect(
       controller.purchase(req(), { amountMinor: 5000 }, "x"),
-    ).rejects.toThrow(/three-letter ISO 4217/);
+    ).rejects.toThrow(/ISO 4217/);
     expect(seals).toHaveLength(0);
     expect(credits).toHaveLength(0);
+  });
+
+  /*
+   * MEMBERSHIP, NOT SHAPE (2026-09-06, batch 67; Sonnet audit of `4abd03ff`
+   * finding 1). `PurchaseBody` is a bare interface with no class-validator
+   * decorators, so this method IS the whole gate — and it asked
+   * `/^[A-Z]{3}$/`, which admitted `ZZZ` into a Stripe charge and into
+   * `house_message_credits.currency`. The test above only ever sent an ABSENT
+   * currency, which is why the hole survived the pass that closed it elsewhere.
+   */
+  it("refuses a WELL-FORMED fake code before it mints or spends anything", async () => {
+    for (const fake of ["ZZZ", "XTS", "XAU", "HRK"]) {
+      const { controller, seals, credits } = build();
+      await expect(
+        controller.sealChallenge(req(), { amountMinor: 5000, currency: fake }),
+      ).rejects.toThrow(new RegExp(`${fake} is not a currency`));
+      await expect(
+        controller.purchase(req(), { amountMinor: 5000, currency: fake }, "x"),
+      ).rejects.toThrow(new RegExp(`${fake} is not a currency`));
+      expect(seals).toHaveLength(0);
+      expect(credits).toHaveLength(0);
+    }
+  });
+
+  it("ADMITS a real currency the 96-code list did not hold — HKD", async () => {
+    const { controller, seals } = build();
+    await expect(
+      controller.sealChallenge(req(), { amountMinor: 5000, currency: "HKD" }),
+    ).resolves.toBeDefined();
+    expect(seals).toHaveLength(1);
   });
 
   it("refuses a session with no active restaurant", async () => {

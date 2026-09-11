@@ -103,6 +103,7 @@ import { Public } from "../../../auth/decorators/public.decorator";
 import { OrganizationsService } from "../../../organizations/organizations.service";
 import { SealChallengeService } from "../../../common/seal/seal-challenge.service";
 import { BillingService } from "../../../billing/billing.service";
+import { isIso4217, notACurrencyBecause } from "../../../common/iso-4217";
 import { TextUsageService, type MeterReadout } from "../text-usage.service";
 import { PurchaseIntentService } from "./purchase-intent.service";
 import {
@@ -177,9 +178,21 @@ export class TextCreditsController {
         "A credit purchase names a whole number of minor units above zero. Send `amountMinor`.",
       );
     }
-    if (!/^[A-Z]{3}$/.test(currency)) {
+    /*
+     * MEMBERSHIP, NOT SHAPE (2026-09-06, batch 67). This asked
+     * `/^[A-Z]{3}$/`, which says a string is three capitals and nothing about
+     * whether it names money — so `ZZZ` reached a Stripe-backed purchase and
+     * was written into `house_message_credits.currency` as a real money row.
+     * `PurchaseBody` is a bare interface with no class-validator decorators,
+     * so no pipe caught it upstream either. Found by the Sonnet audit of
+     * `4abd03ff`, finding 1: the pass that closed this everywhere else missed
+     * the two gates behind an actual payment.
+     */
+    if (!isIso4217(currency)) {
       throw new BadRequestException(
-        "A credit purchase names its currency as a three-letter ISO 4217 code. An amount with no currency is not money. Send `currency`.",
+        "A credit purchase names its currency as an ISO 4217 code, and an amount with no currency is not money. " +
+          notACurrencyBecause(body?.currency ?? "") +
+          " Nothing was charged and nothing was recorded.",
       );
     }
     return { amountMinor: amountMinor as number, currency };

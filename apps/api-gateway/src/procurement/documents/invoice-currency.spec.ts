@@ -862,6 +862,144 @@ describe("a restatement never reverts a hand-corrected line", () => {
     ).toContain("moneyWithheld");
   });
 
+  /* =======================================================================
+   * A MIXED DOCUMENT — one line corrected, one still held.
+   *
+   * Sonnet audit of `4abd03ff`, finding 2, proved with a probe: the source was
+   * chosen ONCE for the whole document, so a two-line held invoice whose line 1
+   * a manager had edited took the `current_rows` branch globally and returned
+   * `null` for every money field on line 2 — permanently discarding a figure
+   * that was still sitting, recoverable, in `extracted.moneyWithheld.lines[1]`.
+   * Every fixture above is single-line, which is why the suite never saw it.
+   *
+   * `editLine` permits an edit on any `needs_review`/`received` document, and a
+   * currency-held document is still one, so this state is reachable rather than
+   * hypothetical.
+   * ==================================================================== */
+  describe("a mixed document: one line corrected, one still held", () => {
+    /** Two lines at intake: 142 on line 1, 99 on line 2. */
+    const twoLines = () =>
+      extracted({
+        lines: [
+          extracted().lines[0],
+          {
+            ...extracted().lines[0],
+            lineNo: 2,
+            description: "Sevilen Majestic Okuzgozu",
+            unitPrice: 99,
+            lineTotal: 990,
+            deposit: 40,
+          },
+        ],
+      });
+
+    /** Line 1 corrected to 194 by `editLine`; line 2 exactly as the hold left it. */
+    const mixedRows = () => [
+      {
+        line_no: 1,
+        qty: 12,
+        uom: "bottle",
+        pack_size: 1,
+        unit_price: 194,
+        line_total: 2328,
+        allowance: null,
+        deposit: 60,
+      },
+      {
+        line_no: 2,
+        qty: 10,
+        uom: "bottle",
+        pack_size: 1,
+        unit_price: null,
+        line_total: null,
+        allowance: null,
+        deposit: null,
+      },
+    ];
+
+    it("KEEPS the correction AND recovers the line the hold stripped", () => {
+      const plan = planRefile({
+        row: moneyRow(),
+        lines: mixedRows(),
+        extracted: withholdMoney(twoLines(), "held for the test"),
+      });
+
+      // The correction, untouched. Reverting it is the defect `planRefile`
+      // exists to prevent and must not be reintroduced by the recovery.
+      expect(plan!.lines[0].unit_price).toBe(194);
+      expect(plan!.lines[0].line_total).toBe(2328);
+      // The withheld line, back — this is the figure that used to be lost.
+      expect(plan!.lines[1].unit_price).toBe(99);
+      expect(plan!.lines[1].line_total).toBe(990);
+      expect(plan!.lines[1].deposit).toBe(40);
+    });
+
+    it("records the source as MIXED, with the per-line counts", () => {
+      const plan = planRefile({
+        row: moneyRow(),
+        lines: mixedRows(),
+        extracted: withholdMoney(twoLines(), "held for the test"),
+      });
+      expect(plan!.source).toBe("mixed");
+      // The audit row has to be readable a month later by a manager disputing
+      // one figure, so the counts are in the sentence, not just the label.
+      expect(plan!.sourceSaid).toContain("1 line(s) kept");
+      expect(plan!.sourceSaid).toContain("1 recovered");
+      expect(plan!.sourceSaid).toContain("moneyWithheld");
+    });
+
+    it("the tie-out is recomputed over BOTH lines, not just the surviving one", () => {
+      const plan = planRefile({
+        row: moneyRow(),
+        lines: mixedRows(),
+        extracted: withholdMoney(twoLines(), "held for the test"),
+      });
+      // 2328 + 990. Before the fix line 2 contributed nothing, so the
+      // recomputed total silently under-counted the document as well as
+      // losing the figure.
+      expect(plan!.document.computed_lines_total).toBe(3318);
+    });
+
+    it("is NOT mixed when every line still carries its own money", () => {
+      const plan = planRefile({
+        row: moneyRow(),
+        lines: [mixedRows()[0], { ...mixedRows()[1], unit_price: 99, line_total: 990 }],
+        extracted: withholdMoney(twoLines(), "held earlier"),
+      });
+      expect(plan!.source).toBe("current_rows");
+    });
+
+    it("is NOT mixed when no line carries any — that is a plain recovery", () => {
+      const plan = planRefile({
+        row: heldRow(),
+        lines: [
+          { ...mixedRows()[0], unit_price: null, line_total: null, deposit: null },
+          mixedRows()[1],
+        ],
+        extracted: withholdMoney(twoLines(), "held earlier"),
+      });
+      expect(plan!.source).toBe("withheld_snapshot");
+      expect(plan!.lines[0].unit_price).toBe(142);
+      expect(plan!.lines[1].unit_price).toBe(99);
+    });
+
+    it("leaves a line NEITHER source has as nulls, and says nothing about it", () => {
+      // A line added after the hold, with no money on it and none in the
+      // snapshot. Writing a zero there would invent a price.
+      const plan = planRefile({
+        row: moneyRow(),
+        lines: [
+          mixedRows()[0],
+          { line_no: 3, qty: 6, uom: "bottle", pack_size: 1, unit_price: null, line_total: null, allowance: null, deposit: null },
+        ],
+        extracted: withholdMoney(twoLines(), "held earlier"),
+      });
+      expect(plan!.source).toBe("current_rows");
+      expect(plan!.lines[1].unit_price).toBeNull();
+      expect(plan!.lines[1].line_total).toBeNull();
+    });
+  });
+
   it("writes to the lines that EXIST, not to the ones the snapshot remembers", () => {
     // A line deleted since intake has no row to write to; resurrecting it from
     // the snapshot would write a price against a line_no nobody holds.

@@ -471,6 +471,16 @@ export async function verifyOrderReceipt(
     /** PER BOTTLE — compared directly against the agreed per-bottle price. */
     invoiceUnitPrice?: number;
     /**
+     * What that price is IN. REQUIRED whenever `invoiceUnitPrice` is sent
+     * (founder, 2026-09-06 batch 67): the gateway refuses the pair before it
+     * writes anything, because a price with no currency cannot be compared with
+     * the agreed price, cannot join the price ladder and prints on every screen
+     * as a number with a caveat. A code with no price is fine. ISO 4217 alpha-3,
+     * checked for MEMBERSHIP on both sides — the vendor's currency, off the
+     * vendor's paper, never the house's.
+     */
+    invoiceCurrency?: string;
+    /**
      * From the vendor's own packing slip / EDI 856. When this disagrees with the
      * invoice quantity, the overbill is proven by their paperwork and the resulting
      * claim needs no argument.
