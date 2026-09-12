@@ -300,6 +300,8 @@ is quoted from another session.
   rather than as an empty report, which is the rule this ADR turns on. **No
   production write was made and no assignment was created** — the assignment
   route was exercised unauthenticated only.
+
+**[CORRECTED 2026-09-12: `ux_experiment_assignments` EXISTS on production now -- `20260905220000` and `20260905235500` were both applied on 2026-09-12, with the nineteen that a defect in `20260906020000` had blocked. So this route no longer answers 500 for that reason, and the read no longer fails. Verified that day by query: `to_regclass('public.ux_experiment_assignments')`, `to_regclass('public.mcp_seal_challenges')` and `to_regclass('public.payment_methods')` all return NOT NULL. The observation above is kept as the dated finding it was; do not read it as the current state, and do not infer that a missing table is guarding anything.]**
 - **Captures**, both arms on both grounds, into `$SP/shots-note-experiment/`
   (`shoot-note-experiment.mjs`): real bundle, real components, real Mudavym
   tokens off `:5274`; **stubbed data**, because the tenant holds zero one-tap
