@@ -40,6 +40,16 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
 - Email a vendor from the page (Quick Gmail modal)
 - See each vendor's orders
 - Search the vendor catalogue and add a vendor with one tap (duplicates detected)
+- **A vendor can now be BORN FROM A DOCUMENT** (ADR 0104 D15, 2026-09-11). When an incoming
+  document prints a seller tax identity (VKN / TCKN / EIN / EU VAT) that no provider of this
+  restaurant carries, intake creates the vendor from the printed identity — legal name, tax id,
+  tax office, address, country — and flags it `provisional_until_first_order` with
+  `created_from_document_id` pointing at the paper it came from. Nobody is asked. It is not a
+  guess: the identity is copied from a legal document, and a partial unique index on
+  `(restaurant_id, tax_id_normalized)` is what guarantees a second document from the same
+  vendor finds the same row instead of making another. A document that prints no identity, a
+  malformed one, or an identity with no seller name creates **nothing** — name similarity is
+  not a rule here and does not become one.
 - **Discover** tab: the U.S. distributor catalogue on a map with facet filters and one-tap add
 - Export; contextual insights rail
 - 🚧 No link to `/vendor-prices` price comparison — that page is unreachable from here (§9)

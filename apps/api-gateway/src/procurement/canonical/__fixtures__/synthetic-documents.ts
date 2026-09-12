@@ -161,7 +161,7 @@ function doc(
     jurisdiction: null,
     revision: 1,
     layer1,
-    layer2: { providerId: null, lines: [] },
+    layer2: { providerId: null, vendorResolution: null, lines: [] },
     layer3: { lines: [], tiesOut: null, tieOutDeltaCents: null, verdicts: [] },
     ...overrides,
   };
@@ -682,6 +682,7 @@ export const TR_CASE_PRICED_INVOICE: CanonicalDocument = doc(
     // invariant says so rather than guessing twelve.
     layer2: {
       providerId: null,
+    vendorResolution: null,
       lines: [
         {
           lineIndex: 0,
