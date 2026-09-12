@@ -41,6 +41,14 @@ describe("InventoryService", () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // clearAllMocks does NOT drop values queued with mockResolvedValueOnce, so an
+    // unconsumed one leaked into the next test. It surfaced when ADR 0141's
+    // ownership check began refusing before an RPC a test had queued an error
+    // for: that error was then served to the FOLLOWING test. Reset the three
+    // queues outright; the defaults are re-applied just below.
+    mockRpc.mockReset();
+    mockSingle.mockReset();
+    mockMaybeSingle.mockReset();
     // Restore the chain mock after clearAllMocks wipes return values
     mockSupabaseChain.from.mockReturnThis();
     mockSupabaseChain.select.mockReturnThis();
@@ -213,6 +221,9 @@ describe("InventoryService", () => {
     // `set_stock_absolute`, which returns NULL on a zero delta and therefore
     // wrote NOTHING when the count agreed.
     it("commits through record_stock_count with a count:{inventoryId}:{clientCountId} idempotency key", async () => {
+      // ADR 0141, Correction: this path now checks ownership before its RPC,
+      // so the item must belong to the house for the happy path to run.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       await service.recordSpotCount("rest-1", "inv-1", {
         countedQty: 8,
         clientCountId: "client-count-42",
@@ -236,6 +247,9 @@ describe("InventoryService", () => {
 
     // The core claim. A count that AGREES produces a record.
     it("returns the recorded count when the count agrees — variance 0, no movement", async () => {
+      // ADR 0141, Correction: this path now checks ownership before its RPC,
+      // so the item must belong to the house for the happy path to run.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       mockRpc.mockResolvedValueOnce({
         data: {
           count_id: "count-9",
@@ -270,6 +284,9 @@ describe("InventoryService", () => {
     });
 
     it("surfaces both the count and the movement when the count disagrees", async () => {
+      // ADR 0141, Correction: this path now checks ownership before its RPC,
+      // so the item must belong to the house for the happy path to run.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       mockRpc.mockResolvedValueOnce({
         data: {
           count_id: "count-10",
@@ -299,6 +316,10 @@ describe("InventoryService", () => {
     // structural assertions on the constraint and the replay gate); what this
     // test proves is that the gateway hands the retry a key the gate can match.
     it("hands a retried count the identical key, so the retry is de-duplicable", async () => {
+      // ADR 0141, Correction: this path now checks ownership before its RPC,
+      // so the item must belong to the house for the happy path to run.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       const dto = { countedQty: 8, clientCountId: "client-count-retry" };
       await service.recordSpotCount("rest-1", "inv-1", { ...dto });
       await service.recordSpotCount("rest-1", "inv-1", { ...dto });
@@ -316,6 +337,9 @@ describe("InventoryService", () => {
     // failure only warned, so a count could leave no trace at all and still
     // report success. It is now written inside record_stock_count's transaction.
     it("does not stamp last_counted_at in a separate write that could fail alone", async () => {
+      // ADR 0141, Correction: this path now checks ownership before its RPC,
+      // so the item must belong to the house for the happy path to run.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       await service.recordSpotCount("rest-1", "inv-1", {
         countedQty: 8,
         clientCountId: "client-count-43",
@@ -328,6 +352,10 @@ describe("InventoryService", () => {
     });
 
     it("surfaces an RPC error as an HttpException instead of silently succeeding", async () => {
+      // ADR 0141, Correction: without an owned item the ownership check refuses
+      // first -- a ForbiddenException IS an HttpException, so this test would
+      // pass without ever reaching the RPC error it exists to test.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       mockRpc.mockResolvedValueOnce({
         data: null,
         error: { message: "inventory not found" },
@@ -339,6 +367,7 @@ describe("InventoryService", () => {
           clientCountId: "client-count-44",
         }),
       ).rejects.toThrow(HttpException);
+      expect(mockRpc).toHaveBeenCalled();
     });
   });
 
@@ -348,6 +377,9 @@ describe("InventoryService", () => {
   // a ledger built to answer "who moved this" answering "the system".
   describe("attribution comes from the caller, not from nowhere", () => {
     it("passes performedBy to transfer_stock", async () => {
+      // ADR 0141, Correction: this path now checks ownership before its RPC,
+      // so the item must belong to the house for the happy path to run.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       await service.transferStock(
         "rest-1",
         "inv-1",
@@ -362,6 +394,9 @@ describe("InventoryService", () => {
     });
 
     it("passes performedBy to record_glass_pour", async () => {
+      // ADR 0141, Correction: this path now checks ownership before its RPC,
+      // so the item must belong to the house for the happy path to run.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       await service.recordPour(
         "rest-1",
         "inv-1",
@@ -376,6 +411,10 @@ describe("InventoryService", () => {
     });
 
     it("passes performedBy to the manual-override set_stock_absolute", async () => {
+      // ADR 0141, second correction: updateInventoryItem now checks ownership
+      // before any write, so the item must belong to the house for the path to
+      // reach set_stock_absolute at all.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       // 1: the informational old-values read. 2: the post-write re-fetch, which
       // mapInventoryItem dereferences.
       mockSingle

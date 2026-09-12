@@ -931,6 +931,11 @@ def _materialise_opening_stock(plan: Mapping[str, Any], rest_caller) -> dict[str
                 "p_source": "system",
                 "p_reason": "sim opening stock (ADR 0093 D4)",
                 "p_idempotency_key": row["idempotency_key"],
+                # ADR 0141: the house this opening stock is for. The seed knows
+                # it — it is the sim restaurant being built — so it says it, and
+                # `apply_stock_movement` refuses any planned row whose item
+                # turns out to live somewhere else.
+                "p_restaurant_id": restaurant_id,
             },
         )
         if replayed:
