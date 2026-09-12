@@ -181,6 +181,25 @@ believes, which is a diagnostic that has been used and that nothing replaces.
 - Whether any page other than the sommelier reads the database directly from the
   browser. That is a measurement nobody has run.
 
+## Founder answer, 2026-09-12 — the agent restart control on the desk
+
+Section 2 above made `/admin` one operations desk and left one control undecided:
+restarting or stopping an agent ([[admin]] section 13 item 3, NEW-545). Measured before
+asking: `restart_agent` and `stop_agent` in
+`services/agent-orchestrator/core/orchestrator.py:497,525` take only an agent NAME;
+there is one orchestrator for the whole platform (`get_orchestrator()`, `main.py:69`);
+and nothing calls either method — no route reaches them. **A restart is therefore not
+a house action.** Restarting an agent restarts it for every restaurant on Mudavym at
+once.
+
+**Answered: operators only, never owners.** The restart and stop endpoints are built
+behind the admin key, and the controls render on the desk only for a platform
+operator. Owners see each agent's health read-only, with a plain line about what is
+happening. Rejected: owners restarting behind the held seal — today that lets one house
+restart every house's agent, and doing it properly means running agents per house
+first, which is a multi-tenancy build and not a button; no control on any screen — the
+desk would show a problem it offers no way to act on, including to us.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |

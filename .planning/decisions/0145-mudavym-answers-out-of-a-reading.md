@@ -229,9 +229,39 @@ measured as hollow instead of rebuilding it; its repair becomes `/ask`'s build.
 Rejected: two front doors over one store — two entry points and a cellar-scoped variant
 of every reply shape; rebuilding `/sommelier` first — the same build done twice.
 
-**Still open: fork 3, what the seal is over** — the proposal id, or the order the
-proposal creates. Not asked yet; it is put to the founder with the next batch rather
-than defaulted.
+**Fork 3, what the seal is over — answered: the order, at approval.** Asked the same
+day, after measuring what a confirm actually does. Confirming an `/ask` proposal
+creates only a DRAFT: a reorder goes to `procurement.createOrder` tagged
+`source: "ask_ai"`, a vendor reply goes to a draft letter, and the service's own
+docblock calls confirm "the FIRST of two human gates, not the only one"
+(`ask-ai.service.ts`, `execute`). So confirm on `/ask` stays an ordinary tap, and the
+held seal sits where money is actually committed — approving the order, sealed as
+`procurement_order` with the act `approve`. That kind already exists
+(`apps/api-gateway/src/common/seal/seal-subject.ts:129-139`, nine kinds), so there is
+no new subject kind and no migration rebuilding the constraint. It is the shape the
+one-tap delivery flow already chose, for the reason it gives: "two cards pointing at
+one order must not be two independent permissions"
+(`one-tap-actions/one-tap-workflow.ts:145`). For a vendor letter, the seal sits on the
+send.
+
+This moves where "The acting half" above re-checks its figures, and the move is part of
+the answer rather than a detail: **the reading behind the proposal travels with the
+draft order and is re-run at approval.** If a figure moved between the ask and the
+approval, the seal does not apply, both numbers render, and it asks again — the same
+rule, applied at the gate that commits.
+
+[CORRECTED 2026-09-12 by the answer above: "The acting half" says the Finding is
+"re-run at seal time" and that the seal is `HoldToApprove` with `onChallenge` on this
+page. Both hold, but the seal and therefore the re-run now happen at order approval,
+not on `/ask`.]
+
+Rejected: sealing the proposal at confirm — a new subject kind and a constraint
+migration, and one purchase would take two held seals because the order still needs
+its own approval; one seal that confirms and approves at once — it removes the second
+human gate the service was deliberately built with, so a question becomes a committed
+purchase in one gesture.
+
+With this, all five forks this record named are answered.
 
 ## Measurement provenance
 
