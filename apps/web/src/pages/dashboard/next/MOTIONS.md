@@ -1,7 +1,7 @@
 # DashboardNext — motion map
 
 The per-page motion inventory the founder asked for. Every motion below uses
-the ADR-0042/sketch-059 tokens from `@/lib/mudavym` (or the CSS equivalent of
+the ADR-0042/sketch-083 tokens from `@/lib/mudavym` (or the CSS equivalent of
 the same curve) and collapses to its end state under `prefers-reduced-motion`
 — via the `animate()` wrapper for WAAPI motions and the `@media` guard in
 `dashboard-next.css` for CSS transitions. Nothing on this page moves that is
