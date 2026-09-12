@@ -13,6 +13,7 @@ import { normalizeInventoryItem } from '../../services/api/inventory'
 import type { InventoryItem, InventorySummary, CreateInventoryItemRequest } from '../../services/api/types'
 import { useAuth } from '../../contexts/AuthContext'
 import { useInventorySubscription } from '../../contexts/RealtimeContext'
+import { isQueryAffectedByStockUpdate, type StockUpdatedEvent } from '../../lib/websocket'
 import { useCallback } from 'react'
 
 // ---------------------------------------------------------------------------
@@ -23,13 +24,39 @@ export function useInventory() {
   const { activeRestaurantId, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
 
-  // Real-time: invalidate on WS event from agent bridge
+  // Real-time: invalidate on WS event from agent bridge.
+  //
+  // This runs the SAME predicate as the socket handler that raised the event
+  // (lib/websocket.tsx `isQueryAffectedByStockUpdate`). It has to: the
+  // `stock:updated` handler narrows its own `invalidateQueries` and then
+  // dispatches the `inventory_change` CustomEvent three lines below, which
+  // lands here — so a blanket `['inventory']` invalidation at this end undoes
+  // the narrowing entirely and the whole tree refetches anyway. One rule, two
+  // entry points.
+  //
+  // Only a payload carrying a `restaurant_id` is narrowed. `inventory_change`
+  // is also dispatched locally with `InventoryUpdatePayload`
+  // (contexts/RealtimeContext.tsx `dispatchInventoryUpdate`), a different shape
+  // with no restaurant or inventory id and no promise of being stock-shaped at
+  // all — an add, a removal or a reconciliation. Those keep the blanket
+  // invalidation they have always had, because narrowing a payload we cannot
+  // read would be muting, and a missing field must widen a refresh, never
+  // silence it.
   useInventorySubscription(
-    useCallback(() => {
-      if (activeRestaurantId) {
+    useCallback(
+      (payload: unknown) => {
+        if (!activeRestaurantId) return
+        const data = (payload as { new?: Partial<StockUpdatedEvent['data']> } | undefined)?.new
+        if (typeof data?.restaurant_id === 'string' && data.restaurant_id.length > 0) {
+          queryClient.invalidateQueries({
+            predicate: (query) => isQueryAffectedByStockUpdate(query.queryKey, data),
+          })
+          return
+        }
         queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
-      }
-    }, [activeRestaurantId, queryClient]),
+      },
+      [activeRestaurantId, queryClient],
+    ),
   )
 
   return useQuery({

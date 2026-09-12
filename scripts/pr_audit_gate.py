@@ -34,6 +34,8 @@ and the other scripts/check_*.sh guards for the convention this follows.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import pathlib
@@ -172,7 +174,34 @@ def _required_contexts() -> list[str] | None:
 # Checks known to be cosmetic/external and never required — confirmed by hand
 # against branch protection on 2026-09-02, used only in fallback mode (never
 # to filter when the real required-contexts list was actually read).
-_FALLBACK_IGNORE_PREFIXES = ("Vercel", "Supabase")
+#
+# `CodeQL` and `Dependabot` added 2026-09-12. Both are app-produced aggregate
+# check-runs (github-advanced-security, dependabot), neither has ever been a
+# required context, and both report terminal states that are not failures:
+# `CodeQL` concludes NEUTRAL when the analysis ran and had nothing to say, and
+# `Dependabot` reports a failure whenever an update branch cannot be built. The
+# state allow-list above is deliberately strict — only an explicit SUCCESS is
+# green, because the third audit found TIMED_OUT and friends falling through to
+# green by default — so a NEUTRAL `CodeQL` made this job red on EVERY PR opened
+# on 2026-09-12, which is how a gate stops being read.
+#
+# The right fix is not to soften the state allow-list: a TIMED_OUT on a check
+# that really does gate a merge must still be red. It is to stop waiting, in
+# FALLBACK MODE ONLY, on checks that cannot block a merge in the first place.
+# When the required-contexts list is actually readable this tuple is not
+# consulted at all, so nothing here can hide a real required check.
+#
+# Re-measured 2026-09-12, and this is a dated reading rather than the state
+# (the list is a dashboard setting — one person, one click, no commit):
+#   gh api repos/<owner>/<repo>/branches/main/protection \
+#     --jq '.required_status_checks.contexts'
+#   -> ["CI Complete", "Beverage identity key — SQL matches Python",
+#       "Guest merge policy — zero false merges", "Fresh database equals remote",
+#       "Code queries only relations production has"]
+# Neither `CodeQL` nor `Dependabot` appears. If either is ever made required,
+# REMOVE it from here in the same change, or this gate will stop waiting for a
+# check that now gates merges.
+_FALLBACK_IGNORE_PREFIXES = ("Vercel", "Supabase", "CodeQL", "Dependabot")
 
 # This workflow's own check name (jobs.audit.name in pr-audit-gate.yml). MUST
 # be excluded in fallback mode: confirmed live, run 33693914388 — "waiting for
@@ -181,6 +210,19 @@ _FALLBACK_IGNORE_PREFIXES = ("Vercel", "Supabase")
 # converge and burns the full MAX_WAIT_SECONDS on a guaranteed deadlock every
 # single run. Not a race, not a timing fluke — structural, every time.
 _SELF_CHECK_NAME = "PR Audit Gate"
+
+
+def _fallback_names(by_name: dict[str, str]) -> list[str]:
+    """Which reported checks to wait for when branch protection could NOT be
+    read. Extracted 2026-09-12 so --self-test exercises this exact selection
+    rather than a hand-retyped mirror of it -- the same gap the seventh round
+    found in the poll classifier.
+
+    Used ONLY in fallback mode. When the required-contexts list is readable it
+    is used verbatim and nothing here is consulted, so this cannot hide a check
+    that genuinely gates a merge."""
+    return [n for n in by_name
+            if not n.startswith(_FALLBACK_IGNORE_PREFIXES) and n != _SELF_CHECK_NAME]
 
 
 def _classify_poll(names: list[str], by_name: dict[str, str]) -> tuple[list[str], list[str], list[str]]:
@@ -250,8 +292,7 @@ def wait_upstream(pr_number: str) -> int:
         if required is not None:
             names = [c for c in required if c != _SELF_CHECK_NAME]
         else:
-            names = [n for n in by_name
-                     if not n.startswith(_FALLBACK_IGNORE_PREFIXES) and n != _SELF_CHECK_NAME]
+            names = _fallback_names(by_name)
 
         missing, pending, failed = _classify_poll(names, by_name)
         reported = {c: by_name[c] for c in names if c in by_name}
@@ -410,7 +451,7 @@ def run_audit(pr_number: str) -> int:
             sha7 = pr["headRefOid"][:7]
         except Exception:
             pass
-        return _fail_closed(pr_number, sha7, f"{type(exc).__name__}: {exc}")
+        return _fail_closed(pr_number, sha7, _exception_reason(exc))
 
 
 def _run_audit_inner(pr_number: str) -> int:
@@ -773,16 +814,102 @@ def _redact(text: str) -> str:
     return text[:2000] + ("... [truncated]" if len(text) > 2000 else "")
 
 
+# A COULD NOT RUN is a single red square whatever caused it, and its causes
+# want different responses: an account behind ANTHROPIC_API_KEY that is out of
+# credit never clears and reruns forever until someone tops it up, while a rate
+# limit clears on its own. So the cause is classified and named, rather than
+# left for a reader to infer from prose.
+#
+# What this table deliberately does NOT cover: a red from `wait_upstream`. That
+# path never reaches _fail_closed -- on a confirmed-red or timed-out upstream it
+# prints, writes `upstream_red`, returns 1, and the workflow skips the audit
+# step, so NO comment is posted at all. A wait failure and a COULD NOT RUN are
+# therefore already told apart by whether a comment exists. An earlier version
+# of this table carried an `upstream-wait` tag for that case; it could never
+# fire, and the adversarial pass that found it was right to overturn it.
+#
+# Every pattern here is ANCHORED to text the failing library actually emits,
+# never a bare token. A bare "429" was the first version, and `_gh_json` puts
+# the whole command -- PR number included -- into its error string, so any gh
+# failure on PR #429 or #4290-4299 would have been named `rate-limited` with
+# "rerunning is the fix". A confident wrong cause is the one outcome this table
+# exists to prevent, so a pattern that cannot be traced to a real message is
+# left out rather than guessed.
+#
+# Ordered most-specific first; first match wins. `hint` is what to DO.
+_CANNOT_CHECK_CAUSES: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    # Measured 2026-09-12 on this repository's own key: the Anthropic SDK
+    # raised BadRequestError carrying "Your credit balance is too low to access
+    # the Anthropic API".
+    ("no-credit", ("credit balance is too low",),
+     "The account behind ANTHROPIC_API_KEY is out of credit. Top it up; "
+     "rerunning changes nothing until then."),
+    # Emitted by _run_audit_inner itself, so the wording is ours and stable.
+    ("no-key", ("anthropic_api_key is not set",),
+     "The secret is absent. Add it with `gh secret set ANTHROPIC_API_KEY`."),
+    # The Anthropic SDK formats an APIStatusError as "Error code: <status> -",
+    # and a rate-limit body carries "type": "rate_limit_error". Either anchor
+    # is specific to the API's own response; a PR number cannot produce them.
+    ("rate-limited", ("error code: 429",),
+     "The API rate-limited this run. Rerunning after a pause is the fix."),
+    ("rate-limited", ("rate_limit_error",),
+     "The API rate-limited this run. Rerunning after a pause is the fix."),
+    # Emitted by _run_audit_inner itself.
+    ("empty-diff", ("returned nothing to review",),
+     "There is no diff to audit. Check the PR still has commits against its base."),
+)
+
+
+def classify_cannot_check(reason: str) -> tuple[str, str]:
+    """Name the cause of a COULD NOT RUN, so a reader knows whether a rerun
+    can possibly help. Returns (tag, hint). Unrecognised reasons get
+    "unclassified" and a hint that says so plainly rather than guessing --
+    an unknown cause misreported as a known one is worse than an admitted
+    unknown (see [[absence-reported-as-health]])."""
+    low = reason.lower()
+    for tag, terms, hint in _CANNOT_CHECK_CAUSES:
+        if all(t in low for t in terms):
+            return tag, hint
+    return ("unclassified",
+            "This cause is not one the gate recognises. Read the reason above "
+            "before rerunning -- a rerun may or may not help.")
+
+
+def _exception_reason(exc: BaseException) -> str:
+    """The reason string a COULD NOT RUN is classified from.
+
+    A subprocess error's str() repeats the whole argv. For `gh pr comment` that
+    argv carries the audit report itself, which can quote the very strings the
+    classifier keys on -- so a comment post that timed out on a PR whose report
+    discusses a credit outage was named `no-credit`, with "rerunning changes
+    nothing", when a rerun was exactly the fix (found by the second adversarial
+    pass). Name the command and its outcome, never its arguments.
+    """
+    if isinstance(exc, (subprocess.TimeoutExpired, subprocess.CalledProcessError)):
+        cmd = exc.cmd if isinstance(exc.cmd, (list, tuple)) else [str(exc.cmd)]
+        head = " ".join(str(c) for c in list(cmd)[:3])
+        if isinstance(exc, subprocess.TimeoutExpired):
+            return f"TimeoutExpired: `{head}` timed out after {exc.timeout}s"
+        return f"CalledProcessError: `{head}` exited {exc.returncode}"
+    return f"{type(exc).__name__}: {exc}"
+
+
 def _fail_closed(pr_number: str, sha7: str | None, reason: str) -> int:
     reason = _redact(reason)
+    tag, hint = classify_cannot_check(reason)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     name = f"{pr_number}-{sha7 or 'unknown'}.md"
     (REPORT_DIR / name).write_text(
-        f"# PR #{pr_number} audit\n\n**VERDICT: COULD NOT RUN**\n\n{reason}\n"
+        f"# PR #{pr_number} audit\n\n**VERDICT: COULD NOT RUN [{tag}]**\n\n"
+        f"{reason}\n\n{hint}\n"
     )
-    body = f"## PR Audit Gate — COULD NOT RUN\n\n{reason}\n\nNot merging — see ADR 0090."
+    body = (
+        f"## PR Audit Gate — COULD NOT RUN [{tag}]\n\n{reason}\n\n{hint}\n\n"
+        "This is a CANNOT CHECK: it is not a BLOCK and it is not a pass. "
+        "Whether the audit itself had run depends on which step raised; the reason above names it.\n\nNot merging — see ADR 0090."
+    )
     _run(["gh", "pr", "comment", pr_number, "--body", body])
-    print(f"CANNOT CHECK: {reason}", file=sys.stderr)
+    print(f"CANNOT CHECK [{tag}]: {reason}", file=sys.stderr)
     return 1
 
 
@@ -800,7 +927,15 @@ def run_self_test() -> int:
     the network -- pure functions only."""
     failures = []
 
+    # `ran` is COUNTED, not written down. Until 2026-09-12 the summary line
+    # below printed a hardcoded count of the invariants -- a number nothing
+    # re-derived, which had to be hand-edited every time a case was added and
+    # was therefore wrong the moment somebody forgot. A count that does not come
+    # from the thing it counts is the same shape as a check that cannot fail.
+    ran = [0]
+
     def check(label, got, want):
+        ran[0] += 1
         if got != want:
             failures.append(f"{label}: got {got!r}, want {want!r}")
 
@@ -875,6 +1010,27 @@ def run_self_test() -> int:
     m, p, f = _classify_poll(names, {"A": "SUCCESS", "B": "SUCCESS", "C": "SUCCESS"})
     check("all SUCCESS -> nothing missing or failed", (m, f), ([], []))
 
+    # FALLBACK-MODE SELECTION (added 2026-09-12). The live failure: `CodeQL`
+    # concluded NEUTRAL, the state allow-list correctly called that "not
+    # SUCCESS, therefore failed", and this job went red on every PR opened that
+    # day -- over a check that has never been a required context and cannot
+    # block a merge. Fixed by not WAITING on it in fallback mode, not by
+    # softening the state allow-list: the two cases below pin both halves.
+    fb = {"CI Complete": "SUCCESS", "CodeQL": "NEUTRAL", "Dependabot": "FAILURE",
+          "Vercel - web": "FAILURE", "Supabase Preview": "SKIPPED",
+          "PR Audit Gate": "IN_PROGRESS", "Fresh database equals remote": "SUCCESS"}
+    check("fallback waits only on checks that can gate a merge",
+          sorted(_fallback_names(fb)), ["CI Complete", "Fresh database equals remote"])
+    check("fallback never waits on itself (structural deadlock, run 33693914388)",
+          _SELF_CHECK_NAME in _fallback_names(fb), False)
+    check("a NEUTRAL CodeQL no longer makes the gate red in fallback mode",
+          _classify_poll(_fallback_names(fb), fb)[2], [])
+    # ...and the state allow-list is NOT softened: the same NEUTRAL on a check
+    # that IS waited for is still failed. This is the case that stops the fix
+    # above from becoming "NEUTRAL is fine everywhere".
+    m2, p2, f2 = _classify_poll(["CI Complete"], {"CI Complete": "NEUTRAL"})
+    check("NEUTRAL on a gating check is still failed", f2, ["CI Complete"])
+
     # _confirmed_red's two-consecutive-poll debounce (Correction, seventh
     # round): reproduces the exact CodeQL incident confirmed live on PRs
     # #288, #290, #291, #294 -- a check reporting a state this classifier
@@ -904,6 +1060,62 @@ def run_self_test() -> int:
     red, prev = _confirmed_red(["CodeQL"], prev)
     check("a shrinking failed set (one check recovered) does not confirm either", red, False)
 
+    # classify_cannot_check. The credit string is the literal one this
+    # repository's own key produced on 2026-09-12. Every invariant below was
+    # proven to fail by breaking exactly the code it names.
+    tag, hint = classify_cannot_check(
+        "BadRequestError: Error code: 400 - Your credit balance is too low to access the Anthropic API")
+    check("an out-of-credit key is named as no-credit", tag, "no-credit")
+    check("...and its hint says a rerun will not help", "rerunning changes nothing" in hint, True)
+    tag, _ = classify_cannot_check(
+        "ANTHROPIC_API_KEY is not set. Add it with `gh secret set ANTHROPIC_API_KEY`")
+    check("an absent secret is its own cause, not a credit outage", tag, "no-key")
+    tag, _ = classify_cannot_check(
+        "RateLimitError: Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error'}}")
+    check("a real Anthropic 429 is named rate-limited", tag, "rate-limited")
+    # The regression the adversarial pass demonstrated. _gh_json builds its
+    # error from ' '.join(cmd), which carries the PR number, so a gh timeout on
+    # PR #429 must NOT come out as a rate limit with "rerunning is the fix".
+    tag, _ = classify_cannot_check(
+        "RuntimeError: gh pr view 429 --json headRefOid failed: "
+        "Command '['gh', 'pr', 'view', '429']' timed out after 60 seconds")
+    check("a PR numbered 429 is not mistaken for an HTTP 429", tag, "unclassified")
+    tag, hint = classify_cannot_check("ValueError: something nobody has seen before")
+    check("an unrecognised cause admits it rather than guessing", tag, "unclassified")
+    check("...and says so in the hint instead of implying a rerun works",
+          "may or may not help" in hint, True)
+
+    # The property the classifier must never break: a CANNOT CHECK stays a
+    # non-zero exit whatever it is tagged. The first version of this invariant
+    # compared the list of tag NAMES and never called _fail_closed, so changing
+    # its `return 1` to `return 0` still passed -- a test that cannot fail. This
+    # one drives the real function once per tag, with the two side effects
+    # (the PR comment and the report file) stubbed so nothing touches the
+    # network or the tree, and records every exit code it saw.
+    import tempfile as _tempfile
+    _saved_run, _saved_dir = globals()["_run"], globals()["REPORT_DIR"]
+    _exits = []
+    try:
+        with _tempfile.TemporaryDirectory() as _tmp:
+            globals()["_run"] = lambda *a, **k: None
+            globals()["REPORT_DIR"] = pathlib.Path(_tmp)
+            _samples = [terms[0] for _, terms, _ in _CANNOT_CHECK_CAUSES] + ["nobody knows"]
+            for _reason in _samples:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    _exits.append(_fail_closed("0", "selftst", _reason))
+    finally:
+        globals()["_run"], globals()["REPORT_DIR"] = _saved_run, _saved_dir
+    tag, _ = classify_cannot_check(_exception_reason(subprocess.TimeoutExpired(
+        ["gh", "pr", "comment", "363", "--body", "a report quoting: credit balance is too low"], 60)))
+    check("a timed-out comment post is not named by the report text it was carrying", tag, "unclassified")
+    tag, _ = classify_cannot_check("gh pr diff returned nothing to review.")
+    check("an empty diff is named empty-diff", tag, "empty-diff")
+    check("no cause is keyed on a single bare word",
+          all(len([w for w in re.split(r"[ _:]+", t.strip()) if w]) >= 2
+              for _, terms, _ in _CANNOT_CHECK_CAUSES for t in terms), True)
+    check("_fail_closed returns 1 for every cause it can name, and for an unknown one",
+          sorted(set(_exits)), [1])
+
     # Escalation logic (round 4): touches_own_gate and a still-truncated diff
     # must both force BLOCK even when every angle/adversary leaned PASS --
     # exercised as the same pure decision the real code makes, not a mock of
@@ -926,7 +1138,7 @@ def run_self_test() -> int:
         for line in failures:
             print(f"SELF-TEST FAILED: {line}")
         return 1
-    print("SELF-TEST OK — 35 invariants held.")
+    print(f"SELF-TEST OK — {ran[0]} invariants held.")
     return 0
 
 

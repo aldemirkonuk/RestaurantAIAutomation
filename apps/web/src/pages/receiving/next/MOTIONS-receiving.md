@@ -1,7 +1,7 @@
 # ReceivingNext — motion map
 
 Per-page motion inventory for `/receiving` (Mudavym redesign). Every motion
-below runs on a token from `lib/mudavym/motion.ts` (sketch 059's vocabulary,
+below runs on a token from `lib/mudavym/motion.ts` (sketch 083's vocabulary,
 sampled springs included). Reduced motion collapses every entry to its end
 state (the `animate()` wrapper and each component's own reduced path); the
 hold-to-approve gesture becomes a two-step press-to-arm / press-to-confirm.
@@ -15,7 +15,7 @@ hold-to-approve gesture becomes a two-step press-to-arm / press-to-confirm.
 | 5 | `receiving.credit.tuck` | Early release retreat | Same die — the fill retreats and the status line states what did **not** happen ("Released at N% — nothing sent"). | `tuck` — near-critically-damped spring · 300ms |
 | 6 | `receiving.credit.stamp` | The seal lands on a sent request | `HoldToApprove` completion in `DraftCard`: the pressed Seal lands (scale 0.8→1). The **only** motion in the system allowed to overshoot (~11%). A gateway refusal resets the die with the refusal stated in place — still drafted, nothing sent. | `stamp` — spring `linear(…)` w/ overshoot · 360ms |
 | 7 | `receiving.draft.turn` | The draft's working turns in | `RcCreditDrafts`/`DraftCard` — "Show the working" reveals what the house knows (notes, amount, whether a document is attached), slower than settle on purpose. | `turn` — cubic-bezier(0.32,0.72,0,1) · 420ms |
-| 8 | `receiving.outbox.pin` | Nothing vanishes; the drop becomes a pin | `RcOutboxRail`/`PinnedDrop` — a receipt `flushDoorOutbox` permanently dropped (4xx, or 8 attempts — the `failed` count the legacy page throws away) arrives in the rail: it travels in on `turn`, then lands on the house `stamp` (inv-09's spec, verbatim). Only a drop pinned THIS session moves; one restored from storage was already landed when you walked in. It stays until a person unpins it. | `turn` 420ms, then `stamp` at reduced amplitude (scale 0.97→1) · 360ms |
+| 8 | `receiving.outbox.pin` | Nothing vanishes; the drop becomes a pin | `RcOutboxRail`/`PinnedDrop` — a receipt `flushDoorOutbox` permanently dropped (4xx, or 8 attempts — the `dropped` count, a subset of `failed`; the `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)` branch of `flushDoorOutbox`, lib/doorOutbox.ts) arrives in the rail: it travels in on `turn`, then lands on the house `stamp` (inv-09's spec, verbatim). Only a drop pinned THIS session moves; one restored from storage was already landed when you walked in. It stays until a person unpins it. | `turn` 420ms, then `stamp` at reduced amplitude (scale 0.97→1) · 360ms |
 | 9 | `receiving.micro.ink` | Micro-states | Hovers, the staff hand-off's pressed state (brightness only), the retry buttons, the attempt counter's colour as it climbs toward 8/8. Nothing travels more than 2px. | `ink` — house curve · 160ms |
 
 Deliberate non-motions on this page:

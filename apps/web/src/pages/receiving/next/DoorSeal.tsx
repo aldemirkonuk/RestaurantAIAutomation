@@ -9,7 +9,7 @@
  * early release still retreats and says exactly what did not happen — the
  * gesture stays deliberate, it just stops being a dexterity test.
  *
- * Motion (059 tokens, lib/mudavym/motion.ts):
+ * Motion (083 tokens, lib/mudavym/motion.ts):
  * - fill is `pour` — linear, the operator times it against their own thumb;
  * - release below the threshold retreats on `tuck` ("Released at N% —
  *   nothing saved.");
