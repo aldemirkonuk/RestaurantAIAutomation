@@ -8,19 +8,21 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, FlaskConical, Loader2 } from "lucide-react";
 import { simposApi } from "../../services/api/simpos";
 import { cn } from "../../lib/utils";
+import { formatMoney } from "../../lib/currency";
 import { formatVenueTime, hoursStateLabel } from "../../lib/venueTime";
 
 /**
  * An unpriced button has no line total. `$0.00` would say the guest paid
  * nothing, which is a different claim from "nobody has priced this" (ADR 0020).
  */
-function fmtLineTotal(price: number | null, qty: number): string {
+function fmtLineTotal(price: number | null, qty: number, currency: string | null): string {
   if (price === null || price === undefined) return "unpriced";
-  return `$${(Number(price) * Number(qty)).toFixed(2)}`;
+  return formatMoney(Number(price) * Number(qty), currency);
 }
 
-function fmtMoney(n: number): string {
-  return `$${Number(n).toFixed(2)}`;
+/** The venue's own currency, or the number with "currency not recorded" — never a bare dollar. */
+function fmtMoney(n: number, currency: string | null): string {
+  return formatMoney(Number(n), currency);
 }
 
 export function SimposOrderLogPage() {
@@ -43,6 +45,7 @@ export function SimposOrderLogPage() {
     retry: false,
     staleTime: 300_000,
   });
+  const venueCurrency = venueQuery.data?.currency ?? null;
   const venueZone = venueQuery.data?.timezone ?? null;
 
   const orders = query.data ?? [];
@@ -140,7 +143,7 @@ export function SimposOrderLogPage() {
                   );
                 })()}
                 <span className="ml-auto text-xs font-bold text-rose-300 tabular-nums">
-                  Loss {fmtMoney(o.lossTotal ?? 0)}
+                  Loss {fmtMoney(o.lossTotal ?? 0, venueCurrency)}
                 </span>
               </div>
 
@@ -164,7 +167,7 @@ export function SimposOrderLogPage() {
                           "text-amber-500/80 not-italic",
                       )}
                     >
-                      {fmtLineTotal(l.unit_price_snapshot, l.qty)}
+                      {fmtLineTotal(l.unit_price_snapshot, l.qty, venueCurrency)}
                     </span>
                   </li>
                 ))}

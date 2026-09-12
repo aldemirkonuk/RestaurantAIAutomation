@@ -1,19 +1,30 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { TokenCryptoService } from "../common/crypto/token-crypto.service";
+// The SERVICE file, not `retention.module`. Importing the module here would put
+// `AuthModule` on this file's require chain twice over; the service itself
+// imports only DatabaseService and NotificationsService, so requiring it
+// directly adds no module edge. `IntegrationsModule` imports `RetentionModule`
+// so the injector has something to supply.
+import { RawMailRetentionService } from "../communications/retention/raw-mail-retention.service";
 import {
   INTEGRATION_DEFINITIONS,
   IntegrationDefinition,
   IntegrationId,
   IntegrationProvider,
+  MIRRORING_INTEGRATION_IDS,
+  isIntegrationId,
   scopeStringFor,
 } from "./integrations-oauth.constants";
 
@@ -38,6 +49,66 @@ export interface ConnectionSummary {
   account: string | null;
   scopes: string[];
   connectedAt: string | null;
+  /**
+   * The restaurant the grant was recorded against, or null for a grant made
+   * before a tenant was on the token. Returned rather than hidden because
+   * `/connections` lists a person's grants beside the house's own attachments
+   * and has to say which house each one was made in.
+   */
+  restaurantId: string | null;
+}
+
+/** PostgREST `or=` takes a raw filter string; only a UUID may reach it. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * ONE personal grant, as the house sees it (`/connections` Register III).
+ *
+ * "A manager may SEE, not approve, what a member has personally connected"
+ * (founder, 2026-09-03). Every field here is a fact about a grant a person
+ * made; nothing on it can end that grant. `houseAccess` is the one thing the
+ * house controls — whether it uses the grant at all.
+ */
+export interface HouseGrantSummary {
+  connectionId: string;
+  integrationId: IntegrationId;
+  provider: IntegrationProvider;
+  label: string;
+  /** Whose it is. The register names a person on every row, never "a member". */
+  ownerUserId: string;
+  ownerName: string | null;
+  ownerEmail: string | null;
+  account: string | null;
+  scopes: string[];
+  connectedAt: string | null;
+  /**
+   * When the stored access token expires. Read by nothing before this build —
+   * §6b's checklist listed "expiry visible" as stored and unread.
+   */
+  tokenExpiresAt: string | null;
+  houseAccess: {
+    /** TRUE when this house has stopped using the grant. The person keeps it. */
+    revoked: boolean;
+    at: string | null;
+    by: string | null;
+    byName: string | null;
+    reason: string | null;
+  };
+}
+
+/**
+ * What the house can see of its members' personal grants.
+ *
+ * `unattributed` is not decoration. `restaurant_id` is nullable, so a grant
+ * made before a tenant reached the token belongs to a person who works here and
+ * to no recorded house — it may well be acting here, and dropping it silently
+ * would make this list quietly incomplete in exactly the way the surface exists
+ * to prevent. It is counted and said.
+ */
+export interface HouseGrantsResponse {
+  grants: HouseGrantSummary[];
+  unattributed: number;
 }
 
 @Injectable()
@@ -48,6 +119,18 @@ export class IntegrationsOauthService {
     private readonly db: DatabaseService,
     private readonly config: ConfigService,
     private readonly crypto: TokenCryptoService,
+    /**
+     * ADR 0118 (retention, 2026-09-05) — revoking a reading grant deletes the
+     * raw mail it mirrored, immediately.
+     *
+     * `@Optional` because this class is ALSO provided bare from its file inside
+     * `CommunicationsModule` (see the long note there), where no injector can
+     * supply this. It is not a silent fallback: `disconnect` REFUSES to report
+     * success for a mirroring grant when it is absent, because a revocation
+     * that quietly deleted nothing is exactly the promise the consent screen
+     * makes and does not keep.
+     */
+    @Optional() private readonly rawMailRetention?: RawMailRetentionService,
   ) {}
 
   // ── configuration ────────────────────────────────────────────────────────
@@ -473,14 +556,54 @@ export class IntegrationsOauthService {
 
   // ── reads and revocation ────────────────────────────────────────────────
 
-  async listConnections(userId: string): Promise<ConnectionSummary[]> {
-    const { data, error } = await this.db.client
+  /**
+   * A person's grants, in ONE restaurant (G21, fixed 2026-09-03).
+   *
+   * This filtered on `user_id` alone while `restaurant_id` was written on every
+   * grant (`:150` on the state row, `:439` on the connection), so a Drive grant
+   * made while standing in restaurant A was listed while standing in restaurant
+   * B. `settings/next/st-format.ts:103` even labels the tab `'account'` scope
+   * for exactly that reason — the label was on the tab because the filter was
+   * not on the row.
+   *
+   * `restaurant_id` is NULLABLE (`20260826170000:126`) and a null is NOT
+   * treated as "belongs to no one, hide it": a grant recorded before a tenant
+   * was on the token is a live grant, and dropping it here would turn a real
+   * attachment into an absence — the one thing this codebase refuses to do. It
+   * is listed in every restaurant, carrying `restaurantId: null`, so the
+   * surface can say that its house was never recorded rather than imply one.
+   *
+   * `restaurantId: null` from the caller means "this session has no tenant", and
+   * then no restaurant filter is applied at all — the caller is asking about a
+   * person, not about a house.
+   */
+  async listConnections(
+    userId: string,
+    restaurantId: string | null = null,
+  ): Promise<ConnectionSummary[]> {
+    let query = this.db.client
       .from("integration_oauth_connections")
       .select(
-        "integration_id, provider, account_email, scopes, connected_at, revoked_at",
+        "integration_id, provider, account_email, scopes, connected_at, revoked_at, restaurant_id",
       )
       .eq("user_id", userId)
       .is("revoked_at", null);
+
+    if (restaurantId) {
+      if (!UUID_RE.test(restaurantId)) {
+        // The value comes from the signed token, so this is belt and braces —
+        // but an `or=` filter is a raw string, and a raw string built from an
+        // unvalidated id is how a scope filter becomes a scope bypass.
+        throw new Error(
+          "listConnections was given a restaurant id that is not a UUID",
+        );
+      }
+      query = query.or(
+        `restaurant_id.eq.${restaurantId},restaurant_id.is.null`,
+      );
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       this.logger.error(`Failed to list connections: ${error.message}`);
@@ -498,8 +621,231 @@ export class IntegrationsOauthService {
         account: row?.account_email ?? null,
         scopes: row?.scopes ?? [],
         connectedAt: row?.connected_at ?? null,
+        restaurantId: (row?.restaurant_id as string | null) ?? null,
       };
     });
+  }
+
+  /**
+   * Every personal grant recorded against THIS restaurant, with its owner.
+   *
+   * Manager-gated at the controller. The reciprocal obligation from
+   * `.planning/06-pages/profile.md` §13a: moving the house's registers off
+   * `/profile` only works if `/connections` can name every personal grant that
+   * acts inside the house — otherwise the split produces a second incomplete
+   * list, which is the fault it exists to fix.
+   *
+   * A read error THROWS. This list's whole job is to be complete, and an empty
+   * array on failure would be the most confident possible lie about it.
+   */
+  async listHouseGrants(restaurantId: string): Promise<HouseGrantsResponse> {
+    if (!UUID_RE.test(restaurantId)) {
+      throw new BadRequestException("That is not a restaurant id.");
+    }
+
+    const { data, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .select(
+        "id, user_id, integration_id, provider, account_email, scopes, connected_at, token_expires_at",
+      )
+      .eq("restaurant_id", restaurantId)
+      .is("revoked_at", null);
+
+    if (error) {
+      throw new InternalServerErrorException(
+        `The house's list of personal grants could not be read: ${error.message}`,
+      );
+    }
+
+    const rows = (data ?? []) as unknown as Record<string, unknown>[];
+    const [people, revocations, unattributed] = await Promise.all([
+      this.peopleFor(rows.map((r) => String(r.user_id))),
+      this.houseRevocations(restaurantId),
+      this.countUnattributed(restaurantId),
+    ]);
+
+    const grants = rows
+      .filter((r) => isIntegrationId(String(r.integration_id)))
+      .map((r) => {
+        const id = String(r.integration_id) as IntegrationId;
+        const definition = INTEGRATION_DEFINITIONS[id];
+        const owner = people.get(String(r.user_id));
+        const cut = revocations.get(String(r.id));
+        return {
+          connectionId: String(r.id),
+          integrationId: id,
+          provider: definition.provider,
+          label: definition.label,
+          ownerUserId: String(r.user_id),
+          ownerName: owner?.name ?? null,
+          ownerEmail: owner?.email ?? null,
+          account: (r.account_email as string | null) ?? null,
+          scopes: Array.isArray(r.scopes) ? (r.scopes as string[]) : [],
+          connectedAt: (r.connected_at as string | null) ?? null,
+          tokenExpiresAt: (r.token_expires_at as string | null) ?? null,
+          houseAccess: {
+            revoked: Boolean(cut),
+            at: cut?.at ?? null,
+            by: cut?.by ?? null,
+            byName: cut?.by ? (people.get(cut.by)?.name ?? null) : null,
+            reason: cut?.reason ?? null,
+          },
+        };
+      });
+
+    return { grants, unattributed };
+  }
+
+  /**
+   * Stop, or resume, this house's use of one person's grant.
+   *
+   * It does NOT revoke the grant. That belongs to the person whose Google
+   * account it is, and there is no code path here that could take it — the
+   * house adds itself to a revocation list and stops asking for a token.
+   */
+  async setHouseGrantAccess(params: {
+    restaurantId: string;
+    connectionId: string;
+    managerUserId: string;
+    houseUses: boolean;
+    reason?: string | null;
+  }): Promise<HouseGrantsResponse> {
+    const { data: row, error: readError } = await this.db.client
+      .from("integration_oauth_connections")
+      .select("id, restaurant_id")
+      .eq("id", params.connectionId)
+      .eq("restaurant_id", params.restaurantId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new InternalServerErrorException(
+        `That grant could not be read: ${readError.message}`,
+      );
+    }
+    if (!row) {
+      throw new NotFoundException(
+        "No personal grant with that id is recorded against this restaurant.",
+      );
+    }
+
+    if (params.houseUses) {
+      const { error } = await this.db.client
+        .from("restaurant_personal_grant_access")
+        .delete()
+        .eq("restaurant_id", params.restaurantId)
+        .eq("connection_id", params.connectionId);
+      if (error) {
+        throw new InternalServerErrorException(
+          `The house's access was not restored: ${error.message}`,
+        );
+      }
+    } else {
+      const { error } = await this.db.client
+        .from("restaurant_personal_grant_access")
+        .upsert(
+          {
+            restaurant_id: params.restaurantId,
+            connection_id: params.connectionId,
+            revoked_at: new Date().toISOString(),
+            revoked_by: params.managerUserId,
+            reason: params.reason ?? null,
+          },
+          { onConflict: "restaurant_id,connection_id" },
+        );
+      if (error) {
+        throw new InternalServerErrorException(
+          `The house's access was not withdrawn: ${error.message}`,
+        );
+      }
+    }
+
+    return this.listHouseGrants(params.restaurantId);
+  }
+
+  private async peopleFor(
+    ids: string[],
+  ): Promise<Map<string, { name: string | null; email: string | null }>> {
+    const out = new Map<string, { name: string | null; email: string | null }>();
+    const unique = Array.from(new Set(ids.filter(Boolean)));
+    if (unique.length === 0) return out;
+
+    const { data, error } = await this.db.client
+      .from("users")
+      .select("user_id, name, email")
+      .in("user_id", unique);
+
+    if (error) {
+      // Not fatal and not filled in: the row carries nulls and the page says
+      // the account could not be named, rather than showing a plausible one.
+      this.logger.error(`Failed to name grant owners: ${error.message}`);
+      return out;
+    }
+    for (const r of (data ?? []) as unknown as Record<string, unknown>[]) {
+      out.set(String(r.user_id), {
+        name: (r.name as string | null) ?? null,
+        email: (r.email as string | null) ?? null,
+      });
+    }
+    return out;
+  }
+
+  private async houseRevocations(
+    restaurantId: string,
+  ): Promise<
+    Map<string, { at: string; by: string | null; reason: string | null }>
+  > {
+    const out = new Map<
+      string,
+      { at: string; by: string | null; reason: string | null }
+    >();
+    const { data, error } = await this.db.client
+      .from("restaurant_personal_grant_access")
+      .select("connection_id, revoked_at, revoked_by, reason")
+      .eq("restaurant_id", restaurantId);
+
+    if (error) {
+      // Fatal here, unlike the name lookup: not knowing which grants the house
+      // has cut off would render every one of them as live.
+      throw new InternalServerErrorException(
+        `Which grants this house still uses could not be read: ${error.message}`,
+      );
+    }
+    for (const r of (data ?? []) as unknown as Record<string, unknown>[]) {
+      out.set(String(r.connection_id), {
+        at: String(r.revoked_at),
+        by: (r.revoked_by as string | null) ?? null,
+        reason: (r.reason as string | null) ?? null,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Live grants belonging to people who work here but recorded against no
+   * restaurant. Counted, never guessed at: they are listed on nobody's house
+   * page and they still work.
+   */
+  private async countUnattributed(restaurantId: string): Promise<number> {
+    const { data: members, error: memberError } = await this.db.client
+      .from("user_restaurant_access")
+      .select("user_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true);
+
+    if (memberError || !members || members.length === 0) return 0;
+
+    const { count, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .select("id", { count: "exact", head: true })
+      .in(
+        "user_id",
+        members.map((m) => String((m as Record<string, unknown>).user_id)),
+      )
+      .is("restaurant_id", null)
+      .is("revoked_at", null);
+
+    if (error) return 0;
+    return count ?? 0;
   }
 
   /**
@@ -510,7 +856,9 @@ export class IntegrationsOauthService {
   async disconnect(userId: string, integrationId: IntegrationId) {
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
-      .select("id, provider, refresh_token_encrypted, access_token_encrypted")
+      .select(
+        "id, provider, restaurant_id, refresh_token_encrypted, access_token_encrypted",
+      )
       .eq("user_id", userId)
       .eq("integration_id", integrationId)
       .is("revoked_at", null)
@@ -547,7 +895,36 @@ export class IntegrationsOauthService {
       );
     }
 
-    return { success: true };
+    // ADR 0118 (retention) — "stop reads AND delete the raw mail" is one
+    // promise, made on the consent screen before the grant. The stopping is
+    // above (no token, `revoked_at` set, and `getAccessToken` is the single
+    // door the reader uses). The deleting is here, and it happens for every
+    // grant that can mirror mail into the house's book.
+    //
+    // It runs AFTER the local record is revoked, not before: if the deletion
+    // fails, the grant is already dead and no further mail arrives, whereas
+    // deleting first and failing to revoke would leave a live reader refilling
+    // what was just deleted.
+    const mirrors = MIRRORING_INTEGRATION_IDS.includes(integrationId);
+    if (mirrors) {
+      if (!this.rawMailRetention) {
+        // Loud, not silent. The grant IS revoked; what did not happen is the
+        // deletion, and the person is told that rather than shown a success
+        // that did not include the half they care about.
+        throw new InternalServerErrorException(
+          "The grant was revoked and nothing more will be read, but the raw mail it mirrored was NOT deleted: the retention service is not available here. The mail is still in this restaurant's conversation book.",
+        );
+      }
+      const run = await this.rawMailRetention.sweepForRevokedGrant({
+        connectionId: String(data.id),
+        restaurantId: String(data.restaurant_id ?? ""),
+        ownerUserId: userId,
+      });
+      this.logger.log(`disconnect ${integrationId}: ${run.says}`);
+      return { success: true, retention: run };
+    }
+
+    return { success: true, retention: null };
   }
 
   private async revokeAtProvider(provider: string, token: string) {
@@ -577,6 +954,7 @@ export class IntegrationsOauthService {
    */
   async getAccessToken(
     userId: string,
+    restaurantId: string,
     integrationId: IntegrationId,
   ): Promise<string> {
     const definition = INTEGRATION_DEFINITIONS[integrationId];
@@ -594,6 +972,19 @@ export class IntegrationsOauthService {
 
     if (error || !data) {
       throw new NotFoundException(`${definition.label} is not connected.`);
+    }
+
+    // The house's own switch, checked at the ONE door feature code uses. A
+    // manager may cut the house off from a member's grant without touching the
+    // member's credential (ADR 0114); this is where that stops being a row and
+    // becomes a refusal. `restaurantId` is REQUIRED rather than optional
+    // precisely so a caller cannot skip the check by omitting it.
+    const cut = await this.houseRevocations(restaurantId);
+    if (cut.has(String(data.id))) {
+      const record = cut.get(String(data.id))!;
+      throw new ForbiddenException(
+        `This house has stopped using that ${definition.label} grant${record.reason ? `: ${record.reason}` : "."} The grant itself is untouched and still belongs to the person who made it.`,
+      );
     }
 
     const expiresAt = data.token_expires_at

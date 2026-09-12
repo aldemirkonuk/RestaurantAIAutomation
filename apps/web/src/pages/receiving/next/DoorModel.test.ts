@@ -20,6 +20,7 @@ import {
   readPaper,
   suggestOutcome,
   NOTES_MAX,
+  VENDOR_NOT_NAMED,
 } from './DoorModel';
 
 function caseOrder(quantity: number, extras: Record<string, unknown> = {}) {
@@ -49,6 +50,20 @@ describe('normalizeDoorOrder', () => {
   it('treats a missing unit as incomparable, not as cases', () => {
     const vm = normalizeDoorOrder({ quantity: 10 } as unknown as Order);
     expect(vm?.expectedBoxes).toBeNull();
+  });
+
+  it('carries the vendor name off the wire, and nulls anything that is not one', () => {
+    expect(caseOrder(16)?.providerName).toBe('Vinifera Imports');
+    // Trimmed, because a name with trailing whitespace addresses a letter with
+    // trailing whitespace.
+    expect(caseOrder(16, { providerName: '  Vinifera Imports  ' })?.providerName).toBe(
+      'Vinifera Imports',
+    );
+    // null (join found nothing), absent (route does not join) and blank all
+    // fold to null: the door has no name in any of the three.
+    expect(caseOrder(16, { providerName: null })?.providerName).toBeNull();
+    expect(caseOrder(16, { providerName: undefined })?.providerName).toBeNull();
+    expect(caseOrder(16, { providerName: '   ' })?.providerName).toBeNull();
   });
 });
 
@@ -123,12 +138,42 @@ describe('creditDraft — calm, complete, unsent', () => {
       driverName: 'Miguel',
       initials: 'ak',
     });
-    expect(d).toContain('Vinifera Imports');
+    // THE VENDOR'S NAME. `GET /procurement/orders/:id` joins `providers` on
+    // `provider_id` since 2026-09-05, so the letter is addressed. It was
+    // pinned here as an ABSENCE until that join existed, which is the state
+    // this assertion replaces.
+    expect(d).toContain('To Vinifera Imports:');
+    expect(d).not.toContain('To the vendor:');
     expect(d).toContain('order ORD-2026-00042');
     expect(d).toContain('14 of 16 boxes — two short');
     expect(d).toContain('photographed at the door');
     expect(d).toContain('Miguel');
     expect(d).toContain('signed by AK');
+  });
+
+  // The three ways the door can end up with no name, and the one sentence all
+  // three produce. `null` is "the route joined and found nothing"; the key
+  // ABSENT is "this route does not join"; an empty string is a provider row
+  // whose name column is blank. The door can do nothing different about any of
+  // them, so all three say so rather than addressing a letter to nobody.
+  it.each([
+    ['a join that found no name', null],
+    ['a route that does not join', undefined],
+    ['a provider row with a blank name', '   '],
+  ])('says the vendor is unnamed for %s', (_label, providerName) => {
+    const d = creditDraft({
+      outcome: 'short',
+      reason: null,
+      counted: 14,
+      order: caseOrder(16, { providerName }),
+      hasPhoto: false,
+      driverName: '',
+      initials: '',
+    });
+    expect(d).toContain(`To ${VENDOR_NOT_NAMED}:`);
+    // Still a usable letter — the missing name costs the address, not the claim.
+    expect(d).toContain('order ORD-2026-00042');
+    expect(d).toContain('14 of 16 boxes — two short');
   });
 
   it('drafts a refusal with its reason', () => {
@@ -208,6 +253,11 @@ describe('composeDoorNotes', () => {
     expect(notes.length).toBeLessThanOrEqual(NOTES_MAX);
     // And it is still a usable letter, not a stub.
     expect(notes).toContain('credit-draft (unsent):');
+    // BOTH names, now that the vendor is on the wire — this is the pair that
+    // measured 546 before the budgets existed, and the whole point of the
+    // clamp is that it fits WITH the distributor's name in it, not by leaving
+    // the distributor out.
+    expect(notes).toContain('Château Pichon');
     expect(notes).toContain('Southern Glazer');
   });
 

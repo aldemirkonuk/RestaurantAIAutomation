@@ -1,0 +1,40 @@
+{
+  "features": [
+    {
+      "properties": {
+        "stationIdentifier": "KPAO",
+        "name": "Palo Alto Airport"
+      }
+    },
+    {
+      "properties": {
+        "stationIdentifier": "AW020",
+        "name": "AE6EO MOUNTAIN VIEW"
+      }
+    },
+    {
+      "properties": {
+        "stationIdentifier": "KNUQ",
+        "name": "Mountain View, Moffett Field"
+      }
+    },
+    {
+      "properties": {
+        "stationIdentifier": "LOAC1",
+        "name": "LOS ALTOS"
+      }
+    },
+    {
+      "properties": {
+        "stationIdentifier": "LAHC1",
+        "name": "LA HONDA"
+      }
+    },
+    {
+      "properties": {
+        "stationIdentifier": "KSJC",
+        "name": "San Jose, San Jose International Airport"
+      }
+    }
+  ]
+}

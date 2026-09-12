@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
@@ -23,10 +23,21 @@ const api = vi.hoisted(() => ({
   linkLine: vi.fn(() => Promise.resolve()),
   verify: vi.fn(() => Promise.resolve()),
   restaurantId: 'rest-A' as string | null,
+  /** The caller's role at this house, for rule 3's control. */
+  role: 'manager' as 'owner' | 'manager' | 'staff' | null,
+  restateCurrency: vi.fn(),
+  /**
+   * The three mints (founder, 2026-09-06, batch 64: "Decide as a module: seal
+   * all three"). Each returns a token the write then has to carry back; the
+   * gateway's own refusals are proven in `documents.seal.spec.ts`.
+   */
+  mintVerifySeal: vi.fn(() => Promise.resolve('seal-verify' as string | null)),
+  mintLineEditSeal: vi.fn(() => Promise.resolve('seal-edit' as string | null)),
+  mintCurrencySeal: vi.fn(() => Promise.resolve('seal-currency' as string | null)),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: api.restaurantId, user: null }),
+  useAuth: () => ({ activeRestaurantId: api.restaurantId, activeRole: api.role, user: null }),
   // `useMudavymDesign` reads the CONTEXT OBJECT directly (not the hook), so a
   // mock that exports only `useAuth` makes any gated affordance on this page
   // throw at render. DocView gained one with ADR 0104 slice 2's
@@ -47,6 +58,10 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       verify: api.verify,
       match: vi.fn(),
       linkLine: api.linkLine,
+      restateCurrency: api.restateCurrency,
+      mintVerifySeal: api.mintVerifySeal,
+      mintLineEditSeal: api.mintLineEditSeal,
+      mintCurrencySeal: api.mintCurrencySeal,
     },
   };
 });
@@ -78,6 +93,13 @@ function doc(over: Partial<ProcurementDocument>): ProcurementDocument {
     doc_number: 'INV-88',
     doc_date: '2026-08-28',
     status: 'needs_review',
+    // The document's OWN money, stated. `procurement_documents.currency` has
+    // always been in the payload and this fixture simply never carried it,
+    // which is why every figure this page printed wore a hardcoded dollar sign
+    // (fixed 2026-09-06; `rc2-format.ts`'s `fmtMoney`). A fixture with no
+    // currency now renders "(currency not recorded)", which is the honest
+    // output and is asserted directly below.
+    currency: 'USD',
     total: 412.5,
     freight: null,
     fuel_surcharge: null,
@@ -124,6 +146,23 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The same wrapper, entered at a URL. `?doc=<id>` is the link the receiving
+ * workspace hands a manager when it refuses a unit price, so the query string
+ * is a real entry point and not decoration.
+ */
+function wrapperAt(entry: string) {
+  return function Wrapped({ children }: { children: ReactNode }) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    lastQc = qc;
+    return (
+      <MemoryRouter initialEntries={[entry]}>
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      </MemoryRouter>
+    );
+  };
+}
+
 beforeEach(() => {
   api.queue = [doc({})];
   api.verified = [];
@@ -139,11 +178,34 @@ beforeEach(() => {
     tieOut: { computedLinesTotal: 202.4, tieOutDelta: -210.1, tiesOut: false },
   });
   api.verify.mockClear();
+  api.role = 'manager';
+  api.restateCurrency.mockReset();
+  api.restateCurrency.mockResolvedValue({
+    currency: 'TRY',
+    previousCurrency: null,
+    sentence:
+      'Currency restated from NOT RECORDED (its money was withheld) to TRY. Its stated total of 412.50 is now TRY.',
+    moneyRefiled: true,
+    linesRefiled: 1,
+    lineFailures: [],
+  });
 });
 
 async function openFirstDoc() {
   fireEvent.click(await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-88/.test(el.textContent ?? '')));
   await screen.findByLabelText('Quantity, line 1');
+}
+
+/**
+ * Complete a `HoldToApprove` gesture by its keyboard path: Enter arms it (and
+ * begins the mint, which is the whole point of the timing), Enter again
+ * approves. The pointer path is a timed rAF hold and is not what these contracts
+ * are about.
+ */
+function holdToApprove(name: RegExp) {
+  const control = screen.getByRole('button', { name });
+  fireEvent.keyDown(control, { key: 'Enter' });
+  fireEvent.keyDown(control, { key: 'Enter' });
 }
 
 describe('ReceiptsNext', () => {
@@ -153,8 +215,17 @@ describe('ReceiptsNext', () => {
     const qty = screen.getByLabelText('Quantity, line 1');
     fireEvent.change(qty, { target: { value: '11' } });
     fireEvent.blur(qty);
-    await vi.waitFor(() => expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 11 }));
-    await vi.waitFor(() => expect(container.textContent).toContain('off by $210.10'));
+    // A moved cell is a PENDING correction, not a write (founder, 2026-09-06).
+    expect(await screen.findByText(/Nothing has been written yet/)).toBeTruthy();
+    expect(api.editLine).not.toHaveBeenCalled();
+    holdToApprove(/Hold to seal this correction/);
+    await waitFor(() =>
+      expect(api.mintLineEditSeal).toHaveBeenCalledWith('d1', 'l1', { qty: 11 }),
+    );
+    await waitFor(() =>
+      expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 11 }, 'seal-edit'),
+    );
+    await waitFor(() => expect(container.textContent).toContain('off by $210.10'));
   });
 
   it('locks the lines of a verified document, with the reason in words', async () => {
@@ -175,7 +246,11 @@ describe('ReceiptsNext', () => {
     expect(screen.getByText(/does not accept charges or touch stock/)).toBeInTheDocument();
     const handle = screen.getByRole('button', { name: /Swipe up to confirm/ });
     fireEvent.keyDown(handle, { key: ' ' });
-    await vi.waitFor(() => expect(api.verify).toHaveBeenCalledWith('d1'), { timeout: 3000 });
+    // The seal is minted when the gesture BEGINS, and the write carries it back.
+    await waitFor(() => expect(api.mintVerifySeal).toHaveBeenCalledWith('d1'));
+    await waitFor(() => expect(api.verify).toHaveBeenCalledWith('d1', 'seal-verify'), {
+      timeout: 3000,
+    });
   });
 
   it('deliveries without paperwork share the surface', async () => {
@@ -190,7 +265,7 @@ describe('ReceiptsNext', () => {
   it('a null tie-out is untestable, never a pass or a fail', async () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
     await screen.findByLabelText('Awaiting review');
-    await vi.waitFor(() => expect(container.textContent).toContain('tie-out —'));
+    await waitFor(() => expect(container.textContent).toContain('tie-out —'));
     await openFirstDoc();
     expect(container.textContent).toContain('no stated total to test against');
   });
@@ -258,7 +333,7 @@ describe('ReceiptsNext', () => {
   it('every list query key carries the active restaurant id', async () => {
     render(<ReceiptsNext />, { wrapper });
     await screen.findByLabelText('Awaiting review');
-    await vi.waitFor(() => expect(lastQc.getQueryCache().getAll().length).toBeGreaterThan(2));
+    await waitFor(() => expect(lastQc.getQueryCache().getAll().length).toBeGreaterThan(2));
     const keys = lastQc.getQueryCache().getAll().map((q) => q.queryKey as unknown[]);
     for (const name of ['queue', 'verified', 'unverified-deliveries']) {
       const k = keys.find((key) => key[0] === 'receipts-next' && key[1] === name);
@@ -282,7 +357,7 @@ describe('ReceiptsNext', () => {
   it('a full queue window renders as a floor, not a total', async () => {
     api.queue = Array.from({ length: 100 }, (_, i) => doc({ id: `d${i}`, doc_number: `INV-${i}` }));
     const { container } = render(<ReceiptsNext />, { wrapper });
-    await vi.waitFor(() => expect(container.textContent).toContain('≥100 awaiting review'));
+    await waitFor(() => expect(container.textContent).toContain('≥100 awaiting review'));
   });
 
   it('a failed detail fetch says the failure, and never claims an empty invoice', async () => {
@@ -293,7 +368,7 @@ describe('ReceiptsNext', () => {
     fireEvent.click(
       await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-88/.test(el.textContent ?? '')),
     );
-    await vi.waitFor(() => expect(container.textContent).toContain('documents backend is down'));
+    await waitFor(() => expect(container.textContent).toContain('documents backend is down'));
     expect(container.textContent).toContain('unknown, not empty');
     expect(container.textContent).not.toContain('No lines were extracted');
   });
@@ -302,7 +377,7 @@ describe('ReceiptsNext', () => {
     api.unverifiedFails = new Error('receiving endpoint 500');
     const { container } = render(<ReceiptsNext />, { wrapper });
     await screen.findByLabelText('Awaiting review');
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(container.textContent).toContain('the deliveries counted at the door'),
     );
   });
@@ -332,11 +407,11 @@ describe('ReceiptsNext', () => {
     };
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    await vi.waitFor(() => expect(container.textContent).toContain('paired → Albariño'));
+    await waitFor(() => expect(container.textContent).toContain('paired → Albariño'));
     expect(container.textContent).toContain('order line #ol-abcde');
     expect(container.textContent).toContain('confidence 97%');
     fireEvent.click(screen.getByRole('button', { name: 'Unlink' }));
-    await vi.waitFor(() => expect(api.linkLine).toHaveBeenCalledWith('d1', 'l1', null));
+    await waitFor(() => expect(api.linkLine).toHaveBeenCalledWith('d1', 'l1', null));
   });
 
   it('an unpaired line says "not paired", not a bare dash', async () => {
@@ -358,6 +433,8 @@ describe('ReceiptsNext', () => {
     const qty = screen.getByLabelText('Quantity, line 1');
     fireEvent.change(qty, { target: { value: '11' } });
     fireEvent.blur(qty);
+    await screen.findByText(/Nothing has been written yet/);
+    holdToApprove(/Hold to seal this correction/);
     expect(await screen.findByText(/Only a document awaiting review can be edited/)).toBeInTheDocument();
   });
 
@@ -367,11 +444,139 @@ describe('ReceiptsNext', () => {
     const qty = screen.getByLabelText('Quantity, line 1');
     fireEvent.change(qty, { target: { value: '11' } });
     fireEvent.blur(qty);
-    await vi.waitFor(() => expect(api.editLine).toHaveBeenCalled());
+    await screen.findByText(/Nothing has been written yet/);
+    holdToApprove(/Hold to seal this correction/);
+    await waitFor(() => expect(api.editLine).toHaveBeenCalled());
     expect(await screen.findByText(/extracted 12/)).toBeInTheDocument();
     const undo = screen.getByRole('button', { name: /Undo quantity on line 1/ });
     api.editLine.mockClear();
     fireEvent.click(undo);
-    await vi.waitFor(() => expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 12 }));
+    // The undo is a correction like any other: it stages, and the hold sends it.
+    await screen.findByText(/Nothing has been written yet/);
+    holdToApprove(/Hold to seal this correction/);
+    await waitFor(() =>
+      expect(api.editLine).toHaveBeenCalledWith('d1', 'l1', { qty: 12 }, 'seal-edit'),
+    );
+  });
+});
+
+/**
+ * RULE 3, AND THE MONEY THAT NAMES ITS CURRENCY — founder, 2026-09-06.
+ *
+ * The page printed a hardcoded `$` on every figure until this pass, including
+ * on the two TRY invoices production already holds. These pin the three things
+ * that had to become true: money states its currency, a HELD document says so
+ * in the server's own words, and the deliberate change is a manager's act that
+ * staff can see and cannot take.
+ */
+describe('ReceiptsNext — what money this invoice is in', () => {
+  it('prints the DOCUMENT\'s own currency, not a dollar sign', async () => {
+    api.queue = [doc({ currency: 'TRY', total: 412.5 })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(container.textContent).toContain('Filed in TRY - Turkish lira');
+    expect(container.textContent).not.toContain('$412.50');
+  });
+
+  it('says "currency not recorded" rather than assuming one', async () => {
+    api.queue = [doc({ currency: null, total: 412.5 })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(container.textContent).toContain('412.50 (currency not recorded)');
+    expect(container.textContent).toContain('nothing on this document is priced');
+  });
+
+  it('renders the HOLD in the server\'s own words, verbatim', async () => {
+    const held =
+      'MONEY HELD, NOT FILED. This document would be filed under USD, and the model read "\u20BA" at beside the grand total, which is TRY and not USD.';
+    api.queue = [doc({ currency: null, total: null, notes: held })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    // Both currencies AND the location, because the client cannot reconstruct
+    // any of the three.
+    expect(container.textContent).toContain('MONEY HELD, NOT FILED');
+    expect(container.textContent).toContain('beside the grand total');
+  });
+
+  it('restates the currency and shows what the server said moved', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    fireEvent.change(screen.getByLabelText("Currency this invoice is denominated in"), {
+      target: { value: 'TRY' },
+    });
+    holdToApprove(/Hold to file this invoice in TRY/);
+    await waitFor(() => expect(api.mintCurrencySeal).toHaveBeenCalledWith('d1', 'TRY'));
+    await waitFor(() =>
+      expect(api.restateCurrency).toHaveBeenCalledWith('d1', 'TRY', undefined, 'seal-currency'),
+    );
+    expect(await screen.findByText(/Currency restated from NOT RECORDED/)).toBeTruthy();
+  });
+
+  it('disables the control for staff WITH the sentence, and never hides it', async () => {
+    api.role = 'staff';
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    // Visible, and refused in words that name who can do it.
+    const picker = screen.getByLabelText("Currency this invoice is denominated in");
+    expect((picker as HTMLSelectElement).disabled).toBe(true);
+    expect(container.textContent).toContain('You are signed in as staff at this house');
+    expect(container.textContent).toContain('Ask a manager or an owner');
+    expect(api.restateCurrency).not.toHaveBeenCalled();
+  });
+
+  it('says a failed restatement failed, in the gateway\'s words', async () => {
+    api.restateCurrency.mockRejectedValue({
+      response: { status: 500, data: { message: 'the change could not be recorded' } },
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    fireEvent.change(screen.getByLabelText("Currency this invoice is denominated in"), {
+      target: { value: 'EUR' },
+    });
+    holdToApprove(/Hold to file this invoice in EUR/);
+    expect(await screen.findByText(/the change could not be recorded/)).toBeTruthy();
+  });
+});
+
+
+/**
+ * THE DEEP LINK — `?doc=<id>`.
+ *
+ * [[receiving]] refuses a keyed-in unit price for an invoice whose money is
+ * held and links here so the manager can restate or confirm the currency
+ * (founder, 2026-09-06 batch 64; batch 66's *"Two screens, for now"* is what
+ * keeps the act on this page rather than inside the receiving workspace). The
+ * audit of `6c0933d3` found the behaviour correct by inspection and untested:
+ * a link that lands on the queue without opening the document names an act the
+ * reader then has to go and find.
+ */
+describe('ReceiptsNext — ?doc=<id> opens that document', () => {
+  it('opens the document named in the query string, without a click', async () => {
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=d1') });
+    // The line editor is only rendered for an OPEN document, so finding it is
+    // the assertion that the deep link selected one.
+    expect(await screen.findByLabelText('Quantity, line 1')).toBeTruthy();
+  });
+
+  it('lands on the queue, opening nothing, when the id names no document here', async () => {
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=not-a-document') });
+    // The queue still renders; nothing is opened, and nothing throws.
+    await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-88/.test(el.textContent ?? ''));
+    expect(screen.queryByLabelText('Quantity, line 1')).toBeNull();
+  });
+
+  it('does not fight a person who then opens a different row', async () => {
+    // Seeded ONCE from the URL: re-selecting from the query string on every
+    // render would take the choice back off the reader.
+    api.queue = [doc({}), doc({ id: 'd2', doc_number: 'INV-99' })];
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=d1') });
+    await screen.findByLabelText('Quantity, line 1');
+    fireEvent.click(
+      await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-99/.test(el.textContent ?? '')),
+    );
+    await waitFor(() => expect(screen.getAllByText(/INV-99/).length).toBeGreaterThan(0));
   });
 });

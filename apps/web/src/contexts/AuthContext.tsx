@@ -82,6 +82,29 @@ interface RegisterRestaurantData {
   phone?: string;
   cuisineType?: string;
   timezone?: string;
+  /**
+   * The money this house reports in, ISO 4217 alpha-3, from the sign-up form's
+   * currency step.
+   *
+   * Omitted — not defaulted to `USD` — when the manager answered "not yet" or
+   * when no default could be worked out from the address's country. The gateway
+   * then writes NULL and every screen says "currency not recorded". Until
+   * 2026-09-05 the column carried `DEFAULT 'USD'` and this payload never
+   * mentioned it, which is how all fourteen production houses came to assert
+   * dollars including two in Turkiye and one in London (ADR 0117 Q25).
+   */
+  currency?: string;
+  /**
+   * The coordinate of the Google Places selection, when the operator chose one.
+   *
+   * Omitted — not zeroed, not defaulted — for a hand-typed address. The gateway
+   * writes NULL in that case, and `/settings` then says "no coordinate — set the
+   * address" rather than pointing the weather overlay at a place nobody named
+   * (ADR 0111 slice 1).
+   */
+  latitude?: number;
+  longitude?: number;
+  googlePlaceId?: string;
 }
 
 interface JoinViaInviteData {
@@ -441,9 +464,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         if (cancelled) return;
         const r = data.role as string | null | undefined;
-        if (!cancelled && r && ["owner", "manager", "staff"].includes(r)) {
+        if (r && ["owner", "manager", "staff"].includes(r)) {
           setActiveRole(r as "owner" | "manager" | "staff");
-        } else if (!cancelled) setActiveRole(null);
+        } else setActiveRole(null);
       } catch {
         if (!cancelled) setActiveRole(null);
       }

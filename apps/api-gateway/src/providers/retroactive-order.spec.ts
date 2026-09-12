@@ -210,6 +210,26 @@ function services(db: DatabaseService, orchestrator?: OrchestratorService) {
  * absence IS the defect.
  */
 const PROCUREMENT_ORDER_COLUMNS = new Set([
+  // 20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql
+  // (2026-09-06): the ORDER carries the currency it was placed in and says where
+  // that came from. Both are always written together -- the CHECK
+  // `procurement_orders_currency_states_its_source` refuses either half alone --
+  // and on a RETROACTIVE order both are normally null: nobody chose a currency
+  // for an invoice that had already been paid.
+  "currency",
+  "currency_source",
+  // 20260905235800_an_order_that_repeats_says_so_on_itself.sql (2026-09-05):
+  // nine additive recurrence columns; createOrder writes the last two on a
+  // generated child (ADR 0125 recurrence addendum).
+  "recurrence_frequency",
+  "recurrence_anchor_day",
+  "recurrence_anchored_on",
+  "recurrence_next_due_on",
+  "recurrence_status",
+  "recurrence_status_by",
+  "recurrence_status_at",
+  "recurrence_parent_order_id",
+  "recurrence_occurrence_on",
   "id",
   "order_number",
   "restaurant_id",

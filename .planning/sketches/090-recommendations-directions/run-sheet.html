@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>090a · /recommendations — the run-sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{ color-scheme: light }
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,0.10); --seal-ring:rgba(26,94,107,0.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#E7E2D8}
+.mudavym{background:var(--paper-0);color:var(--ink-1);
+  font-family:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.serif{font-family:"Fraunces",Georgia,serif;font-weight:420;letter-spacing:-0.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.ico{display:inline-block;vertical-align:-0.14em;flex:0 0 auto}
+.banner{background:var(--seal);color:#FAF7F1;font-size:11px;letter-spacing:.18em;
+  text-transform:uppercase;padding:7px 16px;font-family:"JetBrains Mono",ui-monospace,monospace;
+  display:flex;gap:14px;align-items:center;justify-content:space-between}
+.banner b{font-weight:600}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 26px 48px}
+
+.kicker{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);
+  font-family:"JetBrains Mono",ui-monospace,monospace}
+h1.page{font-size:36px;line-height:1.05;margin:8px 0 4px}
+.voice{font-family:"Fraunces",Georgia,serif;font-size:16.5px;color:var(--ink-2);margin:0 0 4px;line-height:1.45}
+.readat{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);
+  font-family:"JetBrains Mono",ui-monospace,monospace;margin:6px 0 0}
+.rule2{border-top:1px solid var(--ink-4);box-shadow:0 3px 0 -2px var(--ink-4);margin:14px 0 0}
+.withheld{font-size:11.5px;color:var(--ink-3);margin:10px 0 0;line-height:1.5}
+
+/* the filter rail — the register, demoted to a strip */
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 4px;align-items:center}
+.f{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;border:1px solid var(--paper-2);border-radius:6px;padding:4px 9px;
+  color:var(--ink-3);background:transparent;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.f.on{background:var(--seal-tint);border-color:var(--seal-ring);color:var(--seal-deep)}
+.f b{font-weight:600}
+
+/* the bands */
+.band{margin-top:26px}
+.band-head{display:flex;align-items:baseline;gap:12px;padding-bottom:6px}
+.band-head h2{font-family:"Fraunces",Georgia,serif;font-size:22px;margin:0;font-weight:500}
+.band-head .when{font-size:11px;color:var(--ink-4);font-family:"JetBrains Mono",ui-monospace,monospace;
+  letter-spacing:.1em;text-transform:uppercase}
+.band-head .n{margin-left:auto;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3)}
+.band.now .band-head h2{color:var(--seal-deep)}
+
+.row{display:grid;grid-template-columns:34px 1fr;gap:12px;padding:14px 0 13px;border-bottom:1px solid var(--paper-2)}
+.row .gut{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;color:var(--ink-4);padding-top:3px}
+.row.now{border-left:2px solid var(--seal);padding-left:10px;margin-left:-12px}
+.stamps{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:5px}
+.chip{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);border:1px solid var(--paper-2);
+  border-radius:3px;padding:2px 5px}
+.chip.seal{color:var(--seal-deep);border-color:var(--seal-ring)}
+.obs{font-family:"Fraunces",Georgia,serif;font-size:16px;line-height:1.4;margin:0 0 4px;color:var(--ink-1)}
+.do{font-size:12.5px;line-height:1.55;color:var(--ink-2);margin:0}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px;max-width:640px}
+.fact .l{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-4)}
+.fact .v{font-size:12px;color:var(--ink-2);margin-top:2px;line-height:1.35}
+.fact .b{font-size:10px;color:var(--ink-4);margin-top:1px;line-height:1.3}
+.ctrls{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}
+.q{font-size:11.5px;padding:4px 9px;border-radius:7px;border:1px solid var(--paper-2);
+  background:transparent;color:var(--ink-2);cursor:pointer}
+.act{font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;border:1px solid var(--seal);
+  background:var(--seal-tint);color:var(--seal-deep);cursor:pointer}
+
+/* the dismissal sheet, drawn open */
+.sheet{margin-top:12px;border:1px solid var(--paper-2);background:var(--paper-1);border-radius:11px;
+  padding:14px 16px;max-width:640px}
+.sheet h3{font-family:"Fraunces",Georgia,serif;font-size:15px;margin:0 0 10px;font-weight:500}
+.sheet .lab{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-4);display:block;margin-bottom:5px}
+.sheet .grp{margin-bottom:12px}
+.opts{display:flex;gap:6px;flex-wrap:wrap}
+.scopes{display:grid;gap:5px}
+.scope{display:flex;gap:8px;align-items:flex-start;font-size:12.3px;color:var(--ink-2);line-height:1.4}
+.dot{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--ink-4);flex:0 0 auto;margin-top:2px;
+  display:inline-flex;align-items:center;justify-content:center}
+.dot.on{border-color:var(--seal)}
+.dot.on i{width:6px;height:6px;border-radius:50%;background:var(--seal);display:block}
+.box{width:12px;height:12px;border-radius:3px;border:1.5px solid var(--ink-4);flex:0 0 auto;margin-top:2px;
+  display:inline-flex;align-items:center;justify-content:center;color:#FAF7F1}
+.box.on{background:var(--seal);border-color:var(--seal)}
+.why{font-size:10.5px;color:var(--ink-3);margin:5px 0 0;line-height:1.45}
+.promise{margin-top:11px;padding-top:9px;border-top:1px solid var(--paper-2);
+  font-size:11.5px;color:var(--ink-2);line-height:1.5}
+.sheetfoot{display:flex;gap:8px;align-items:center;margin-top:11px}
+
+/* the margin column */
+.grid{display:grid;grid-template-columns:1fr 250px;gap:34px;align-items:start}
+.margin{position:sticky;top:16px}
+.mcard{border:1px solid var(--paper-2);border-radius:11px;padding:12px 13px;margin-bottom:14px;background:var(--paper-1)}
+.mcard h4{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-4);margin:0 0 7px}
+.mrow{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--ink-2);padding:3px 0}
+.mrow .mono{color:var(--ink-1)}
+.excl{font-size:11.5px;color:var(--ink-2);padding:5px 0;border-bottom:1px solid var(--paper-2)}
+.excl:last-child{border-bottom:0}
+.excl .d{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;color:var(--ink-1)}
+.excl .r{font-size:10.5px;color:var(--ink-3);margin-top:1px}
+.dark{opacity:.55;cursor:not-allowed}
+footer.sig{margin-top:38px;padding-top:14px;border-top:1px solid var(--paper-2);
+  display:flex;gap:12px;align-items:baseline;color:var(--ink-3);font-size:11.5px}
+.word{font-family:"Fraunces",Georgia,serif;font-size:15px;color:var(--ink-1);letter-spacing:-0.02em}
+</style></head>
+<body><div class="mudavym">
+
+<div class="banner"><span><b>SKETCH</b> — example data, not a tenant</span>
+<span>090a · the run-sheet · banded by time-to-act</span></div>
+
+<div class="wrap">
+  <div class="kicker">Mudavym · Recommendations</div>
+  <h1 class="page serif">The run-sheet</h1>
+  <p class="voice">17 rules were read. 9 entries stand — 4 to be done tonight. The rest did not fire, or you have already ruled them off.</p>
+  <p class="readat">Read at 4:12 PM · one entry = one deterministic rule that fired</p>
+  <div class="rule2"></div>
+  <p class="withheld">3 entries were withheld because you dismissed them. They are on the Dismissed leaf, and every one can be returned.</p>
+
+  <div class="filters">
+    <button class="f on">All <b>9</b></button>
+    <button class="f">Money <b>3</b></button>
+    <button class="f">Stock <b>3</b></button>
+    <button class="f">Vendors <b>2</b></button>
+    <button class="f">The floor <b>1</b></button>
+    <button class="f">Unfiled <b>0</b></button>
+    <span style="margin-left:auto" class="kicker">Print this and carry it to the pass</span>
+  </div>
+
+  <div class="grid">
+  <div>
+
+  <!-- ── TONIGHT ─────────────────────────────────────────────────── -->
+  <section class="band now">
+    <div class="band-head">
+      <h2>Tonight</h2><span class="when">before service · 4 entries</span>
+      <span class="n">04</span>
+    </div>
+    <div class="rule2" style="margin:0 0 2px"></div>
+
+    <div class="row now">
+      <div class="gut">01</div>
+      <div>
+        <div class="stamps"><span class="chip seal">Tonight</span><span class="chip">sales</span></div>
+        <p class="obs">Wednesday sales came in 23% lower than your average Wednesday ($1,840 vs $2,390, over 11 past Wednesdays).</p>
+        <p class="do">Brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section.</p>
+        <div class="facts">
+          <div class="fact"><div class="l">Would change</div><div class="v">Money</div></div>
+          <div class="fact"><div class="l">Whose hand</div><div class="v">Yours, in Reports</div></div>
+          <div class="fact"><div class="l">Standing</div><div class="v mono">6 days</div><div class="b">since it was first shown to you</div></div>
+        </div>
+        <div class="ctrls">
+          <button class="act">Open the menu report →</button>
+          <button class="q">The working</button><button class="q">Snooze</button>
+          <button class="q" style="border-color:var(--seal-ring);color:var(--seal-deep)">Dismiss</button>
+          <button class="q">Pin</button><button class="q">Select</button>
+        </div>
+
+        <!-- the dismissal dialogue, open -->
+        <div class="sheet">
+          <h3>Dismiss it — and never show it again</h3>
+
+          <div class="grp">
+            <span class="lab">Why are you dismissing it?</span>
+            <div class="opts">
+              <button class="q">Not relevant</button>
+              <button class="q" style="background:var(--seal-tint);border-color:var(--seal-ring);color:var(--seal-deep)">Already handled</button>
+              <button class="q">I disagree</button>
+              <button class="q">Not right now</button>
+            </div>
+          </div>
+
+          <div class="grp">
+            <span class="lab">Never show me…</span>
+            <div class="scopes">
+              <div class="scope"><span class="dot on"><i></i></span><span>This exact finding — Wed 2 Sep</span></div>
+              <div class="scope"><span class="dot"></span><span>Every Wednesday, for this rule</span></div>
+              <div class="scope"><span class="dot"></span><span>This rule entirely, for this restaurant</span></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="scope"><span class="box on">
+              <svg class="ico" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </span><span>Also exclude Wed 2 Sep from the analysis</span></div>
+            <p class="why">A closure or an outage should not drag the average down. Excluding the day stops its numbers counting toward every baseline, on this page and everywhere else.</p>
+          </div>
+
+          <p class="promise">After this you will not see this one finding about Wednesday on Wed 2 Sep — the same rule will still be read on every other day. Undo it from the History leaf.</p>
+
+          <div class="sheetfoot">
+            <button class="act">Dismiss it</button>
+            <button class="q">Keep it standing</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row now">
+      <div class="gut">02</div>
+      <div>
+        <div class="stamps"><span class="chip seal">Tonight</span><span class="chip">inventory</span><span class="chip seal">Deniz A.</span></div>
+        <p class="obs">Chablis 1er Cru "Montmains" 2021 has a 68% chance of stocking out before a 7-day replenishment (on hand: 4).</p>
+        <p class="do">Place the order today — reorder point is 11 bottles. If the vendor is slow, split the order across two vendors.</p>
+        <div class="facts">
+          <div class="fact"><div class="l">Would change</div><div class="v">Stock</div></div>
+          <div class="fact"><div class="l">Whose hand</div><div class="v">Yours, in Orders</div></div>
+          <div class="fact"><div class="l">Standing</div><div class="v mono">2 days</div><div class="b">since it was first shown to you</div></div>
+        </div>
+        <div class="ctrls"><button class="act">Draft the PO →</button>
+          <button class="q">The working</button><button class="q">Snooze</button>
+          <button class="q">Dismiss</button><button class="q">Pin</button><button class="q">Select</button></div>
+      </div>
+    </div>
+
+    <div class="row now">
+      <div class="gut">03</div>
+      <div>
+        <div class="stamps"><span class="chip seal">Tonight</span><span class="chip">staff</span></div>
+        <p class="obs">Deniz ranks #1 of 6 by average check, 34% above the group average ($187). After adjusting for table assignments, Emre adds the most per check.</p>
+        <p class="do">Have the top seller run a 15-minute pre-shift on their pitch, and mirror their table-visit timing with one underperformer this week.</p>
+        <div class="facts">
+          <div class="fact"><div class="l">Would change</div><div class="v">The floor</div></div>
+          <div class="fact"><div class="l">Whose hand</div><div class="v">Yours, in Team</div></div>
+          <div class="fact"><div class="l">Standing</div><div class="v mono">1 day</div><div class="b">since it was first shown to you</div></div>
+        </div>
+        <div class="ctrls"><button class="act">Open the roster →</button>
+          <button class="q">The working</button><button class="q">Snooze</button>
+          <button class="q">Dismiss</button><button class="q">Pin</button><button class="q">Select</button></div>
+      </div>
+    </div>
+
+    <div class="row now">
+      <div class="gut">04</div>
+      <div>
+        <div class="stamps"><span class="chip seal">Tonight</span><span class="chip">risk</span></div>
+        <p class="obs">One vendor supplied 71% of the last 90 days of purchasing spend ($18.4k of $25.9k, HHI 5,412).</p>
+        <p class="do">Put the next two reorders of your top three movers out to a second vendor and compare landed cost before the month closes.</p>
+        <div class="facts">
+          <div class="fact"><div class="l">Would change</div><div class="v">Vendors</div></div>
+          <div class="fact"><div class="l">Whose hand</div><div class="v">Yours, in Providers</div></div>
+          <div class="fact"><div class="l">Standing</div><div class="v mono">3 weeks</div><div class="b">since it was first shown to you</div></div>
+        </div>
+        <div class="ctrls"><button class="act">Compare vendors →</button>
+          <button class="q">The working</button><button class="q">Snooze</button>
+          <button class="q">Dismiss</button><button class="q">Pin</button><button class="q">Select</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── THIS WEEK ───────────────────────────────────────────────── -->
+  <section class="band">
+    <div class="band-head"><h2>This week</h2><span class="when">before Sunday · 3 entries</span><span class="n">03</span></div>
+    <div class="rule2" style="margin:0 0 2px"></div>
+
+    <div class="row">
+      <div class="gut">05</div>
+      <div>
+        <div class="stamps"><span class="chip">This week</span><span class="chip">efficiency</span></div>
+        <p class="obs">4 wines sell fast but earn below-median margin (top: Sancerre "Les Roches" 2022, 214 bottles, 41% GM).</p>
+        <p class="do">Raise those prices 5–8% or renegotiate cost on the next PO — volume holds on small moves for high-velocity wines.</p>
+        <div class="facts">
+          <div class="fact"><div class="l">Would change</div><div class="v">The floor</div></div>
+          <div class="fact"><div class="l">Whose hand</div><div class="v">Yours, in Reports</div></div>
+          <div class="fact"><div class="l">Standing</div><div class="v mono">9 days</div><div class="b">since it was first shown to you</div></div>
+        </div>
+        <div class="ctrls"><button class="act">Open the menu report →</button>
+          <button class="q">The working</button><button class="q">Snooze</button>
+          <button class="q">Dismiss</button><button class="q">Pin</button><button class="q">Select</button></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="gut">06</div>
+      <div>
+        <div class="stamps"><span class="chip">This week</span><span class="chip">purchasing</span></div>
+        <p class="obs">Purchasing spend rose 38% vs the previous 30 days ($9.1k vs $6.6k) with bottles sold flat.</p>
+        <p class="do">Audit the three largest open orders before they land; a spend rise with flat sell-through is usually a double order or a price change nobody signed.</p>
+        <div class="facts">
+          <div class="fact"><div class="l">Would change</div><div class="v">Vendors</div></div>
+          <div class="fact"><div class="l">Whose hand</div><div class="v">Yours, in Orders</div></div>
+          <div class="fact"><div class="l">Standing</div><div class="v mono">4 days</div><div class="b">since it was first shown to you</div></div>
+        </div>
+        <div class="ctrls"><button class="act">Audit open orders →</button>
+          <button class="q">The working</button><button class="q">Snooze</button>
+          <button class="q">Dismiss</button><button class="q">Pin</button><button class="q">Select</button></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="gut">07</div>
+      <div>
+        <div class="stamps"><span class="chip">This week</span><span class="chip">goals</span></div>
+        <p class="obs">Goal "September average check ₺920" is behind its linear pace (78% done, 9 days left).</p>
+        <p class="do">Pick the single biggest lever from the insight feed for this goal's category and commit to it for 7 days before adding anything else.</p>
+        <div class="facts">
+          <div class="fact"><div class="l">Would change</div><div class="v">Money</div></div>
+          <div class="fact"><div class="l">Whose hand</div><div class="v">Yours, in Reports</div></div>
+          <div class="fact"><div class="l">Standing</div><div class="v mono">12 days</div><div class="b">since it was first shown to you</div></div>
+        </div>
+        <div class="ctrls"><button class="act">Open the goal →</button>
+          <button class="q">The working</button><button class="q">Snooze</button>
+          <button class="q">Dismiss</button><button class="q">Pin</button><button class="q">Select</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── THIS MONTH ──────────────────────────────────────────────── -->
+  <section class="band">
+    <div class="band-head"><h2>This month</h2><span class="when">before the month closes · 2 entries</span><span class="n">02</span></div>
+    <div class="rule2" style="margin:0 0 2px"></div>
+
+    <div class="row">
+      <div class="gut">08</div>
+      <div>
+        <div class="stamps"><span class="chip">This month</span><span class="chip">inventory</span></div>
+        <p class="obs">$7,340 is locked in inventory that has not moved in 90 days (top: Barolo "Bussia" 2016, 18 bottles).</p>
+        <p class="do">Build a weekend flight or staff-pick feature from the top three idle wines; if untouched after two weeks, discount to cost and reinvest in A-class movers.</p>
+        <div class="facts">
+          <div class="fact"><div class="l">Would change</div><div class="v">Stock</div></div>
+          <div class="fact"><div class="l">Whose hand</div><div class="v">Yours, in Promotions</div></div>
+          <div class="fact"><div class="l">Standing</div><div class="v mono">1 month</div><div class="b">since it was first shown to you</div></div>
+        </div>
+        <div class="ctrls"><button class="act">Create the promo →</button>
+          <button class="q">The working</button><button class="q">Snooze</button>
+          <button class="q">Dismiss</button><button class="q">Pin</button><button class="q">Select</button></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="gut">09</div>
+      <div>
+        <div class="stamps"><span class="chip">This month</span><span class="chip">basket</span></div>
+        <p class="obs">Ribeye and Malbec appear together 3.1× more often than chance across 412 checks.</p>
+        <p class="do">Print the pair on the specials card and brief it as one line, not two — the lift is already there and nobody is naming it.</p>
+        <div class="facts">
+          <div class="fact"><div class="l">Would change</div><div class="v">Money</div></div>
+          <div class="fact"><div class="l">Whose hand</div><div class="v">Yours, in Promotions</div></div>
+          <div class="fact"><div class="l">Standing</div><div class="v mono">—</div><div class="b">nothing has recorded when this entry first fired</div></div>
+        </div>
+        <div class="ctrls"><button class="act">Promote the pairing →</button>
+          <button class="q">The working</button><button class="q">Snooze</button>
+          <button class="q">Dismiss</button><button class="q">Pin</button><button class="q">Select</button></div>
+      </div>
+    </div>
+  </section>
+
+  </div>
+
+  <!-- ── the margin ─────────────────────────────────────────────── -->
+  <aside class="margin">
+    <div class="mcard">
+      <h4>The leaves</h4>
+      <div class="mrow"><span>Standing</span><span class="mono">9</span></div>
+      <div class="mrow"><span>Snoozed</span><span class="mono">2</span></div>
+      <div class="mrow"><span>Dismissed</span><span class="mono">3</span></div>
+      <div class="mrow"><span>Ruled off</span><span class="mono">14</span></div>
+      <div class="mrow"><span>History</span><span class="mono">31</span></div>
+    </div>
+
+    <div class="mcard">
+      <h4>Out of the analysis</h4>
+      <div class="excl"><div class="d">Wed 2 Sep</div><div class="r">closed for the holiday</div>
+        <button class="q" style="margin-top:4px;font-size:10.5px">Count it again</button></div>
+      <div class="excl"><div class="d">Sun 17 Aug</div><div class="r">private buyout, no à-la-carte</div>
+        <button class="q" style="margin-top:4px;font-size:10.5px">Count it again</button></div>
+      <div class="excl"><div class="d">Mon 4 Aug</div><div class="r">POS outage — no checks filed</div>
+        <button class="q" style="margin-top:4px;font-size:10.5px">Count it again</button></div>
+    </div>
+
+    <div class="mcard">
+      <h4>Daily digest</h4>
+      <button class="q dark" style="width:100%">Stored: on, 7:00</button>
+      <p class="why">Disabled on purpose: the preference stores, but nothing sends it — no scheduler reads recommendation_digest_prefs.</p>
+    </div>
+
+    <div class="mcard">
+      <h4>Keys</h4>
+      <p style="font-size:11.5px;color:var(--ink-2);line-height:1.6;margin:0">
+        j / k move · e the working · a act<br>d the dismissal sheet · s snooze<br>p pin · x select</p>
+    </div>
+  </aside>
+  </div>
+
+  <footer class="sig">
+    <span class="word">Mudavym.</span>
+    <span>Every entry is one deterministic rule against your own numbers. No model wrote them.</span>
+  </footer>
+</div>
+</div></body></html>

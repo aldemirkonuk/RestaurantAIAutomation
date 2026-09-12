@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>101 &middot; The optional step</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:33px;font-weight:600;letter-spacing:-.018em;line-height:1.08;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:7px 0 0;max-width:920px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:920px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+a{color:var(--seal-deep)}
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:32px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:23px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+.ico{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-2);font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:2px;white-space:nowrap}
+.chip.seal{border-color:var(--seal-ring);color:var(--seal-deep);background:var(--seal-tint)}
+
+/* ── the flow strip ── */
+.flow{display:flex;align-items:stretch;gap:0;margin:14px 0 0;border:1px solid var(--paper-2);background:var(--paper-1)}
+.flow .st{flex:1;padding:13px 16px;border-right:1px solid var(--paper-2);min-width:0}
+.flow .st:last-child{border-right:0}
+.flow .st .n{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.flow .st .t{font-size:12.5px;color:var(--ink-2);font-weight:500;margin-top:3px;line-height:1.4}
+.flow .st .c{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);margin-top:4px}
+.flow .st.here{background:var(--seal-tint);border-left:2px solid var(--seal)}
+.flow .st.here .t{color:var(--ink-1);font-weight:600}
+.flow .st.here .n{color:var(--seal-deep)}
+.flow .st.gone{opacity:.55}
+
+/* ── the step screen ── */
+.screen{border:1px solid var(--ink-1);background:var(--paper-0);margin:14px 0 0}
+.screen-h{padding:22px 26px 18px;border-bottom:1px solid var(--paper-2);text-align:center}
+.screen-h .k{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.screen-h .t{font-family:var(--serif);font-size:27px;font-weight:600;color:var(--ink-1);margin-top:5px;letter-spacing:-.012em}
+.screen-h .s{font-size:12.5px;color:var(--ink-2);margin:8px auto 0;max-width:640px;line-height:1.62}
+.qs{padding:4px 26px 0}
+.q{display:grid;grid-template-columns:1fr 300px;gap:24px;align-items:center;padding:16px 0;border-bottom:1px solid var(--paper-2)}
+.q .lbl{font-size:14px;color:var(--ink-1);font-weight:600}
+.q .hint{font-size:11.5px;color:var(--ink-2);margin-top:4px;line-height:1.55}
+.q .hint code{font-size:10.5px}
+.ctrl{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.field{border:1px solid var(--paper-2);background:var(--paper-1);font-family:var(--mono);font-size:14px;color:var(--ink-1);padding:9px 12px;border-radius:2px;min-width:104px;text-align:right;font-variant-numeric:tabular-nums}
+.field.wide{min-width:190px;text-align:left;font-size:13px}
+.unit{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.pills{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.pill{border:1px solid var(--paper-2);background:var(--paper-1);color:var(--ink-3);font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:6px 10px;border-radius:2px}
+.pill.on{border-color:var(--seal);background:var(--seal);color:#FAF7F1}
+.q.told{background:var(--paper-1);margin:0 -26px;padding-left:26px;padding-right:26px}
+.q.told .lbl{color:var(--ink-2)}
+
+.screen-f{border-top:1px solid var(--ink-1);padding:20px 26px 22px;background:var(--paper-1);display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center}
+.btnrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.btn{border:1px solid var(--seal);background:var(--seal);color:#FAF7F1;font-family:var(--sans);font-size:13px;font-weight:600;padding:11px 18px;border-radius:2px}
+.btn.dry{background:transparent;color:var(--seal-deep)}
+.btn.plain{border-color:var(--paper-2);background:transparent;color:var(--ink-2);font-weight:500}
+.screen-f p{margin:0;max-width:640px;font-size:11.5px}
+
+/* the audit row specimen */
+.audit{border:1px solid var(--paper-2);background:var(--paper-1);padding:15px 18px;margin:12px 0 0;font-family:var(--mono);font-size:11px;line-height:1.75;color:var(--ink-2);overflow-x:auto}
+.audit .kk{color:var(--seal-deep)}
+.audit .vv{color:var(--ink-1)}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0 0}
+.panel{border:1px solid var(--paper-2);background:var(--paper-1);padding:16px 18px}
+.panel .h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.panel .big{font-family:var(--serif);font-size:17px;font-weight:600;color:var(--ink-1);margin-top:6px;line-height:1.35}
+.panel p{font-size:11.5px;margin-top:7px}
+.panel.bad{border-left:2px solid var(--ink-3)}
+.panel.good{border-left:2px solid var(--seal);background:var(--seal-tint)}
+.regline{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--paper-2);font-size:12px}
+.regline:last-child{border-bottom:0}
+.regline .n{color:var(--ink-1);font-weight:500}
+.regline .v{font-family:var(--mono);font-size:11px;color:var(--ink-3);text-align:right}
+.regline .v.was{color:var(--seal-deep)}
+
+table{border-collapse:collapse;width:100%;margin:14px 0 0;font-size:12px}
+th{text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-weight:400;padding:0 12px 7px 0;border-bottom:1px solid var(--ink-1);vertical-align:bottom}
+td{padding:9px 12px 9px 0;border-bottom:1px solid var(--paper-2);color:var(--ink-2);vertical-align:top;line-height:1.55}
+td b{color:var(--ink-1)}
+.callout{border-left:2px solid var(--seal);background:var(--seal-tint);padding:14px 18px;margin-top:14px}
+.cite{font-family:var(--mono);font-size:10px;line-height:1.85;color:var(--ink-3);margin-top:12px;word-break:break-word}
+.cite b{color:var(--ink-2);font-weight:600}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 101 &middot; the optional step in /get-started &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<a class="back" href="index.html">&larr; 101 index</a>
+<div class="wordmark">Mudavym</div>
+<h1>The optional step, and a skip that is recorded<span class="dot">.</span></h1>
+<p class="lede">The founder&rsquo;s smaller ask: &ldquo;keep as defaults, but while onboarding they have the option to do that.&rdquo; The option is the fact worth recording &mdash; not the default.</p>
+<div class="dbl"></div>
+
+<div class="sec-h"><span class="sec-n">01</span><h2>Where it goes</h2></div>
+<div class="sec-k">the slot GetStarted.tsx already reserves &mdash; it replaces a step, it does not add one</div>
+
+<div class="flow">
+  <div class="st gone"><div class="n">Step 1</div><div class="t">Import the menu</div><div class="c">scan &middot; csv &middot; manual</div></div>
+  <div class="st gone"><div class="n">Step 2</div><div class="t">Review what was read</div><div class="c">MenuReviewScreen</div></div>
+  <div class="st gone"><div class="n">Step 2b</div><div class="t">What does this house pour?</div><div class="c">CellarRegistersOnboarding &middot; :256&ndash;271</div></div>
+  <div class="st here"><div class="n">Step 3 &mdash; here</div><div class="t">Five questions, or none</div><div class="c">replaces ThresholdStep &middot; :280&ndash;286</div></div>
+  <div class="st gone"><div class="n">Step 4</div><div class="t">You&rsquo;re activated</div><div class="c">SuccessScreen</div></div>
+  <div class="st gone"><div class="n">Anytime</div><div class="t">The finish-later panel</div><div class="c">OptionalTail</div></div>
+</div>
+
+<p>Today step 3 is one number on its own full screen. Five short questions in the same slot is not more work for the owner &mdash; it is the same one sitting, with four more things answered by somebody rather than defaulted by a column.</p>
+
+<div class="sec-h"><span class="sec-n">02</span><h2>The step</h2></div>
+<div class="sec-k">one screen &middot; five questions &middot; every one skippable, and skipping is recorded</div>
+
+<div class="screen">
+  <div class="screen-h">
+    <div class="k"><svg class="ico" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/></svg> Optional &middot; step 3 of 4</div>
+    <div class="t">Five things the house will otherwise guess</div>
+    <div class="s">None of these is required, and every one of them has a working default. But a default is an answer nobody gave, and Mudavym would rather know the difference. Answer what you know; skip the rest.</div>
+  </div>
+
+  <div class="qs">
+    <div class="q">
+      <div>
+        <div class="lbl">Flag a wine when it drops below</div>
+        <div class="hint">One number for the whole list. You can tune it per wine later from Inventory.</div>
+      </div>
+      <div class="ctrl"><span class="field">6</span><span class="unit">bottles</span></div>
+    </div>
+
+    <div class="q">
+      <div>
+        <div class="lbl">Above what amount must the owner sign?</div>
+        <div class="hint"><b>There is no approval policy in this product today</b> &mdash; the hold-to-approve ceremony on <code>/orders</code> renders for every pending order and no rule stands behind it. This is the rule.</div>
+      </div>
+      <div class="ctrl"><span class="unit">&#8378;</span><span class="field">5,000</span><span class="pill on">Owner</span></div>
+    </div>
+
+    <div class="q">
+      <div>
+        <div class="lbl">When should we not ring your phone?</div>
+        <div class="hint">Held alerts are not dropped &mdash; they arrive together the next morning.</div>
+      </div>
+      <div class="ctrl"><span class="field wide">18:00 &ndash; 01:30</span><span class="unit">digest 10:00</span></div>
+    </div>
+
+    <div class="q">
+      <div>
+        <div class="lbl">Which days are you closed?</div>
+        <div class="hint">A closed day held out of the baselines stops reading as a bad day.</div>
+      </div>
+      <div class="ctrl"><div class="pills">
+        <span class="pill on">Mon</span><span class="pill">Tue</span><span class="pill">Wed</span><span class="pill">Thu</span><span class="pill">Fri</span><span class="pill">Sat</span><span class="pill">Sun</span>
+      </div></div>
+    </div>
+
+    <div class="q">
+      <div>
+        <div class="lbl">Anadolu Gıda &mdash; what time do they close for the day?</div>
+        <div class="hint">Asked only for the vendors you have already added. Leave it blank and it stays unanswered rather than becoming a guess. <span class="chip">2 more vendors after this</span></div>
+      </div>
+      <div class="ctrl"><span class="field">11:00</span></div>
+    </div>
+
+    <div class="q told">
+      <div>
+        <div class="lbl"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg> Price alerts fire at 10% below the thirty-day average.</div>
+        <div class="hint"><b>Told, not offered.</b> That number is set once for every house on this deployment &mdash; it is read from <code>MARKET_SIGNAL_DROP_PCT</code>, not from your settings, and there is no per-restaurant value to write. A control here would go nowhere, so there is not one.</div>
+      </div>
+      <div class="ctrl"><span class="chip">not yours to set</span></div>
+    </div>
+  </div>
+
+  <div class="screen-f">
+    <p>Whatever you answer here is recorded with your name against it. Whatever you skip stays <b>unanswered</b> &mdash; which is different from being set to the default, and the difference is the whole point of the screen.</p>
+    <div class="btnrow">
+      <span class="btn plain">Skip &mdash; keep the defaults</span>
+      <span class="btn dry">Talk it through instead</span>
+      <span class="btn">Save these five</span>
+    </div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">03</span><h2>The skip is the actual proposal</h2></div>
+<div class="sec-k">what is broken today, in one measurement</div>
+
+<div class="two">
+  <div class="panel bad">
+    <div class="h">Today</div>
+    <div class="big">&ldquo;Skip for now&rdquo; writes nothing at all.</div>
+    <p><code>ThresholdStep.tsx:80&ndash;81</code> calls <code>onDone()</code> and returns. The only state it could have touched is <code>restaurants.threshold_configured boolean DEFAULT false NOT NULL</code> (baseline <code>:3597</code>) &mdash; which is <b>false</b> for a house that skipped <em>and</em> for a house nobody ever asked.</p>
+    <p><b>The product cannot tell them apart.</b> That is <em>absence reported as health</em> at the front door of onboarding: the register later shows an em dash and cannot say whether the silence was a choice.</p>
+  </div>
+  <div class="panel good">
+    <div class="h">Proposed</div>
+    <div class="big">An explicit skip writes one row, and changes no setting.</div>
+    <p>The asking is a fact. Recording it costs one insert into a table that has existed since the baseline, and <b>no migration</b>. Nothing about the values changes &mdash; every default stays exactly where it was.</p>
+    <p>Then the assistant can say <em>&ldquo;you skipped this on 4 September &mdash; want to set it now?&rdquo;</em> instead of <em>&ldquo;nobody has ever set this&rdquo;</em>, which is a different and worse sentence to hear about your own restaurant.</p>
+  </div>
+</div>
+
+<div class="audit">
+INSERT INTO <span class="vv">public.system_audit_log</span><br>
+&nbsp;&nbsp;<span class="kk">actor_type</span>   &rarr; <span class="vv">'user'</span><br>
+&nbsp;&nbsp;<span class="kk">actor_id</span>     &rarr; <span class="vv">public.users.user_id from the JWT</span>&nbsp;&nbsp;<span style="color:var(--ink-3)">-- never auth.users; the two tables are disjoint</span><br>
+&nbsp;&nbsp;<span class="kk">action</span>       &rarr; <span class="vv">'configuration_step_skipped'</span><br>
+&nbsp;&nbsp;<span class="kk">entity_type</span>  &rarr; <span class="vv">'onboarding'</span><br>
+&nbsp;&nbsp;<span class="kk">changes</span>      &rarr; <span class="vv">{ register: 'onboarding', offered: ['threshold','ceiling','quiet_hours','closed_days','vendor_cutoff'], answered: [] }</span><br>
+&nbsp;&nbsp;<span class="kk">reason</span>       &rarr; <span class="vv">'skipped at step 3 of get-started'</span><br>
+&nbsp;&nbsp;<span class="kk">restaurant_id</span> &rarr; <span class="vv">the tenant</span><br>
+<span style="color:var(--ink-3)">-- no setting is changed by this row. It records that the question was asked.</span>
+</div>
+
+<div class="sec-h"><span class="sec-n">04</span><h2>What /settings shows afterwards</h2></div>
+<div class="sec-k">the same five registers, in the two worlds</div>
+
+<div class="two">
+  <div class="panel bad">
+    <div class="h">Today &mdash; every silence looks the same</div>
+    <div class="regline"><span class="n">Low-stock threshold</span><span class="v">&mdash;</span></div>
+    <div class="regline"><span class="n">Manager ceiling</span><span class="v">&mdash;</span></div>
+    <div class="regline"><span class="n">Quiet hours</span><span class="v">&mdash;</span></div>
+    <div class="regline"><span class="n">Closed days</span><span class="v">&mdash;</span></div>
+    <div class="regline"><span class="n">Anadolu cutoff</span><span class="v">&mdash;</span></div>
+    <p style="margin-top:11px">Five em dashes with nothing behind them. Two of these were never mentioned to anybody; three were put in front of the owner and declined. The page cannot say which is which, so it says the weaker thing about all five.</p>
+  </div>
+  <div class="panel good">
+    <div class="h">Proposed &mdash; the silence carries its own history</div>
+    <div class="regline"><span class="n">Low-stock threshold</span><span class="v was">6 &middot; set 4 Sep by Aldemir</span></div>
+    <div class="regline"><span class="n">Manager ceiling</span><span class="v was">&#8378;5,000 &middot; set 4 Sep by Aldemir</span></div>
+    <div class="regline"><span class="n">Quiet hours</span><span class="v">offered 4 Sep &middot; skipped</span></div>
+    <div class="regline"><span class="n">Closed days</span><span class="v">offered 4 Sep &middot; skipped</span></div>
+    <div class="regline"><span class="n">Anadolu cutoff</span><span class="v">never asked</span></div>
+    <p style="margin-top:11px">Three states, and each one earns a different next move: leave it, re-offer it, or ask for the first time. The register already renders <em>who</em> and <em>when</em> for a stated value &mdash; this gives it something true to render for the others.</p>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">05</span><h2>What each question actually writes</h2></div>
+<div class="sec-k">every row is offered only because a write path exists today</div>
+
+<table>
+  <thead><tr><th style="width:26%">Question</th><th style="width:36%">The route that writes it</th><th>Kept where</th></tr></thead>
+  <tbody>
+    <tr><td><b>Low-stock threshold</b></td><td><code>menus.service.ts:707-720</code> &mdash; today&rsquo;s whole step</td><td>this restaurant</td></tr>
+    <tr><td><b>Approval ceiling + role</b></td><td><code>PUT /settings/approval-thresholds</code> (<code>settings.controller.ts:107</code>)</td><td>this restaurant &mdash; <b>behind the role gate below</b></td></tr>
+    <tr><td><b>Quiet hours</b></td><td><code>PATCH /notifications/preferences</code> (<code>notifications.controller.ts:159</code>)</td><td>your account</td></tr>
+    <tr><td><b>Closed days</b></td><td>the calendar register</td><td>this restaurant</td></tr>
+    <tr><td><b>Vendor cutoff</b></td><td><code>PUT /vendor-terms/:providerId</code> (<code>vendor-terms.controller.ts:71</code>)</td><td>this restaurant</td></tr>
+    <tr><td><b>Which registers this house carries</b></td><td>already asked one screen earlier &mdash; <code>CellarRegistersOnboarding</code></td><td>this restaurant</td></tr>
+    <tr><td colspan="3" style="background:var(--paper-1);padding-left:12px"><b>Market price drop threshold &mdash; deliberately not offered.</b> Read per deployment from <code>MARKET_SIGNAL_DROP_PCT</code> (<code>market-price.producer.ts:95-97</code>; default <code>0.1</code> at <code>market-signal.ts:93</code>). No per-house value exists to write. It is <b>named on the screen and not given a control</b>, because a control that writes nowhere is the fault this whole design exists to avoid.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <p style="margin:0"><b>One blocking precondition, and it is not cosmetic.</b> <code>PUT /settings/approval-thresholds</code> carries <code>@UseGuards(JwtAuthGuard, TenantGuard)</code> and <b>no role decorator</b> (<code>settings.controller.ts:40,107</code>), so any authenticated member of the tenant can rewrite the rule that decides who may seal an order. <code>@Roles()</code> and <code>RolesGuard</code> exist and are used on two other controllers. The ceiling question ships <em>after</em> that gate, or not at all.</p>
+</div>
+
+<div class="sec-h"><span class="sec-n">06</span><h2>The step, charcoal</h2></div>
+<div class="sec-k">both grounds read; the seal tint is the only colour on either</div>
+
+<div class="screen mudavym" data-ground="charcoal">
+  <div class="screen-h">
+    <div class="k">Optional &middot; step 3 of 4</div>
+    <div class="t">Five things the house will otherwise guess</div>
+    <div class="s">None of these is required. But a default is an answer nobody gave, and Mudavym would rather know the difference.</div>
+  </div>
+  <div class="qs">
+    <div class="q">
+      <div>
+        <div class="lbl">Above what amount must the owner sign?</div>
+        <div class="hint">There is no approval policy in this product today. This is the rule.</div>
+      </div>
+      <div class="ctrl"><span class="unit">&#8378;</span><span class="field">5,000</span><span class="pill on">Owner</span></div>
+    </div>
+    <div class="q">
+      <div>
+        <div class="lbl">Which days are you closed?</div>
+        <div class="hint">A closed day held out of the baselines stops reading as a bad day.</div>
+      </div>
+      <div class="ctrl"><div class="pills"><span class="pill on">Mon</span><span class="pill">Tue</span><span class="pill">Wed</span><span class="pill">Thu</span><span class="pill">Fri</span><span class="pill">Sat</span><span class="pill">Sun</span></div></div>
+    </div>
+    <div class="q told" style="border-bottom:0">
+      <div>
+        <div class="lbl"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg> Price alerts fire at 10% below the thirty-day average.</div>
+        <div class="hint"><b>Told, not offered.</b> Set once for every house on this deployment; there is no per-restaurant value to write.</div>
+      </div>
+      <div class="ctrl"><span class="chip">not yours to set</span></div>
+    </div>
+  </div>
+  <div class="screen-f">
+    <p>Whatever you skip stays <b>unanswered</b> &mdash; which is different from being set to the default.</p>
+    <div class="btnrow">
+      <span class="btn plain">Skip &mdash; keep the defaults</span>
+      <span class="btn dry">Talk it through</span>
+      <span class="btn">Save these five</span>
+    </div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">07</span><h2>Two things this drawing is asking</h2></div>
+<div class="sec-k">and one it is deliberately not asking</div>
+
+<table>
+  <thead><tr><th style="width:32%">Question</th><th>Why it is open</th></tr></thead>
+  <tbody>
+    <tr><td><b>Five questions, or three?</b></td><td>Today it is one. Five in one sitting is still one screen, but the vendor-cutoff question repeats per vendor and a house with eight vendors would feel it. The alternative is to ask it once for the vendor they order from most and leave the rest to <code>/settings</code>.</td></tr>
+    <tr><td><b>Should &ldquo;Talk it through&rdquo; exist here at all?</b></td><td>It routes into the assistant of <a href="conversation.html">the conversation</a>. That is the founder&rsquo;s bigger ask arriving at the earliest possible moment &mdash; before the owner has any feel for the product, which is either the best time or the worst.</td></tr>
+    <tr><td><b>Not asking: whether to keep the defaults.</b></td><td>That was already decided &mdash; <em>&ldquo;keep as defaults, but while onboarding they have the option to do that.&rdquo;</em> Every default in the code stays exactly where it is. This screen changes only whether anybody was asked.</td></tr>
+  </tbody>
+</table>
+
+<div class="dbl" style="margin-top:32px"></div>
+<div class="cite">
+<b>Repo</b>, re-verified on <code>feat/mudavym-design-p4</code> 2026-09-04 &mdash;
+<code>apps/web/src/pages/GetStarted.tsx:256-286</code> (the review &rarr; registers &rarr; threshold slots) &middot;
+<code>apps/web/src/components/onboarding/ThresholdStep.tsx:80-81</code> (&ldquo;Skip for now&rdquo; calls onDone and writes nothing) &middot;
+<code>apps/web/src/components/onboarding/CellarRegistersOnboarding.tsx</code> &middot;
+<code>apps/web/src/components/onboarding/OptionalTail.tsx</code> (the finish-later panel) &middot;
+<code>supabase/migrations/20260805000000_baseline_from_production.sql:3597</code> (<code>threshold_configured</code> boolean, default false) and <code>:5553-5568</code> (system_audit_log) &middot;
+<code>apps/api-gateway/src/menus/menus.service.ts:707-720</code> &middot;
+<code>apps/api-gateway/src/settings/settings.controller.ts:40,107</code> &middot;
+<code>apps/api-gateway/src/notifications/notifications.controller.ts:159</code> &middot;
+<code>apps/api-gateway/src/vendor-terms/vendor-terms.controller.ts:71</code> &middot;
+<code>apps/api-gateway/src/settings/approval-thresholds.ts:1-30</code> (the ceremony exists; no policy stands behind it) &middot;
+<code>apps/api-gateway/src/notifications/producers/market-price.producer.ts:95-97</code>, <code>market-signal.ts:93,96</code> &middot;
+<code>apps/api-gateway/src/settings-audit/settings-audit.service.ts:1-54</code> (actor_id must be <code>public.users.user_id</code>; the two user tables are disjoint and CI cannot catch a mistake here).
+<br><br>
+<b>Lokanta M&uuml;davim, its vendor, figures and dates are invented for the drawing. The repo facts are not.</b>
+</div>
+
+</div>
+</body>
+</html>

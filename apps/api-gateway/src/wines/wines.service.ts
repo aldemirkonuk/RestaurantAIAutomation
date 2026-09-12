@@ -30,6 +30,15 @@ interface WineRow {
   producer_story?: string | null;
   tasting_notes?: string | null;
   bottle_size_ml?: number | null;
+  /**
+   * Alcohol by volume, as a percentage, TYPED BY A PERSON
+   * (20260906120000_a_strength_is_stated_by_a_person.sql). Nullable and
+   * normally null: no default and no inference from a category, because this
+   * is the multiplicand in a duty figure on a row every house that stocks the
+   * bottle reads. `null` means nobody has stated one; `0` is a person stating
+   * a de-alcoholised product and is a different answer.
+   */
+  abv_percent?: number | string | null;
   created_at?: string | null;
   updated_at?: string | null;
   // Plan §1: derived full descriptive name ("2016 Gravner Ribolla
@@ -49,6 +58,19 @@ interface WineRow {
   // silently drop what it received.
   library_tier?: number | null;
   review_status?: string | null;
+  // 20260817060000_beverage_kind_classification.sql:44-48. The database's own
+  // answer to "what IS this row" — wine / beer / spirit / sake / cider /
+  // cocktail / non_alcoholic / unknown — computed by trigger from a real
+  // primary_type, else the menu's own section header, else `unknown`.
+  //
+  // It was arriving on every `select("*")` and being dropped here, which is why
+  // the browser could not COUNT the beers in a library that had already
+  // classified them. Optional for the same reason the provenance block is:
+  // undefined means "this query did not ask for the column", which is a
+  // different sentence from "the classifier said unknown" — and this pair is
+  // precisely the distinction classification_status exists to preserve.
+  beverage_kind?: string | null;
+  classification_status?: string | null;
   field_confidences?: Record<string, number> | null;
   data_enrichment?: { knowledge?: string | null; [k: string]: unknown } | null;
   enrichment_observed_at?: string | null;
@@ -100,8 +122,22 @@ export class WinesService {
       tastingNotes: row.tasting_notes ?? undefined,
       bottleSizeMl,
       bottleSizeOz,
+      // Carried through as a NUMBER or as null, never coerced to 0: `Number(null)`
+      // is 0 and a zero here is a real, stateable strength (a de-alcoholised
+      // wine). Postgres returns NUMERIC as a string over PostgREST, so the
+      // conversion is explicit rather than implicit.
+      abvPercent:
+        row.abv_percent === null || row.abv_percent === undefined
+          ? undefined
+          : Number(row.abv_percent),
       createdAt: row.created_at ?? undefined,
       updatedAt: row.updated_at ?? undefined,
+      // Carried, not dropped. `unknown` is a real classifier verdict and is
+      // passed through as itself; `undefined` means the column was not
+      // selected. A consumer that cannot tell those apart will render "no
+      // beer" over a query that never asked.
+      beverageKind: row.beverage_kind ?? undefined,
+      classificationStatus: row.classification_status ?? undefined,
       // N4: present only when the query selected these columns (row.* is
       // undefined, not null, for a column that was never asked for) — so a
       // narrow list projection doesn't advertise provenance it doesn't have,
@@ -486,7 +522,7 @@ export class WinesService {
         // display_name added (plan §1): this is the search/autocomplete
         // list, exactly where the "same wine, different vintage, reads
         // identical" complaint was visible.
-        "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at",
+        "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at",
       )
       .or(`name.ilike.%${query.text}%,producer.ilike.%${query.text}%`)
       .limit(query.limit || 10);
