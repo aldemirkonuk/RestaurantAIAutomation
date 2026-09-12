@@ -581,6 +581,33 @@ P("/team", "team", "team.md",
     acts="Upload CSV, Excel or JSON shift templates; the apply path was simulated (file.size / 80)", went="No import route exists. Delete with the desk."),
 ])
 
+# ─────────────────────────────────────────── logs ──
+# Added 2026-09-12 from `feat/mudavym-new-pages`, which is PAST this census's
+# `META["tree"]` read. /logs was in NO_OVERLAY when this file was written and
+# that was true then; the ADR 0133 rebuild gave it one sheet, so leaving it in
+# that list would have made the census assert an absence that had been filled.
+P("/logs", "logs", "logs.md",
+  "One overlay, built. The thread is NOT an overlay and never was — following a correlation id turns the page itself, through `?correlationId=`, so it is shareable and survives a refresh.",
+  flag="mudavym_design_logs", overlays=[
+  O("The entry", "built", "sheet",
+    eyebrow="Who changed what, and why they said they did",
+    title="user update on procurement_order",
+    action="Earlier · Later",
+    source="pages/logs/next/EventSheet.tsx:96",
+    body=[["quiet","Entry 11 of the 34 on this page."],
+          ["fact","Recorded","Fri, Sep 11, 2026 · 09:50:00"],
+          ["fact","Register","the audit trail  system_audit_log"],
+          ["fact","Row","a1f4…"],
+          ["fact","Thread","9f000000-4c1b-4a2e-9d10-…"],
+          ["item","Follow this thread"],
+          ["sect","The row, as the register holds it"],
+          ["fact","actorType","user"],["fact","entityType","procurement_order"],
+          ["fact","reason","not recorded", True]],
+    footer="Open the orders",
+    why="One row of the ledger is one object, and its payload is arbitrary JSON that needs a scroll of its own. The list stays readable beneath.",
+    went="Earlier / Later step to the adjacent entry WITHOUT closing — the read pattern is 'open one, it is not the one, open the next'. A control is drawn only where it can move; at either end the position line says why in words, never a dead control. Focus lands on that line, not on a step control."),
+])
+
 # ─────────────────────────────────────────── pages not yet rebuilt ──
 P("/promotions", "promotions", "promotions.md",
   "Not rebuilt. Two legacy overlays take their shapes now so the rebuild inherits them.", rebuilt=False, overlays=[
@@ -768,7 +795,7 @@ MORE_ACCESS = [
 
 NO_OVERLAY = ["/login","/register","/forgot-password","/reset-password","/verify-email","/invite/:code","/no-access","/privacy",
   "/v/:slug","/onboarding (redirect)","/studio","/studio/queue","/studio/invite/:token","/simpos/:restaurantId (+orders, scenarios)",
-  "/authorize/:integrationId","/inventory-legacy (redirect)","/vendor-prices","/dev/truth","/recommendations/catalog","/credits","/logs",
+  "/authorize/:integrationId","/inventory-legacy (redirect)","/vendor-prices","/dev/truth","/recommendations/catalog","/credits",
   "/profile","/connections","/help","/admin","/sommelier (HOLD)","/services","/dev-sandbox (mounts the retiring builders)","/calendar-classic"]
 
 ANSWERS = {

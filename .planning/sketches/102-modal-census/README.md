@@ -12,7 +12,7 @@ tags: [modal, sheet, panel, popover, census, mudavym, design-system, adr-0112]
 
 The founder, 2026-09-05: *"finalize all modal windows for all pages."* Sketch 099 drew the three
 shapes on the first pages that used them; ADR 0112 built the primitive. This sketch reads **every**
-place the web app opens something over the page — 141 sites, folded into 117 overlays plus the three the founder's rulings added (120 rows), on 22 pages plus the shell — and gives each
+place the web app opens something over the page — 141 sites, folded into 117 overlays plus the three the founder's rulings added (121 rows), on 23 pages plus the shell — and gives each
 one the shape the policy gives it, or a reason it has none.
 
 ## How to view
@@ -39,15 +39,15 @@ page's ground). Filter by shape and by status.
 
 | | |
 |---|---|
-| Overlay sites read · census rows | 141 · 120 |
-| Built on the primitive | 31 |
+| Overlay sites read · census rows | 141 · 121 |
+| Built on the primitive | 32 |
 | Migrate — legacy inside a house-flagged page today | 10 |
 | Owed — an act the rebuilt page does not yet offer | 12 |
 | Target — page not yet rebuilt, shape decided | 7 |
 | Retires with the legacy page | 42 |
 | Delete — nobody imports it | 15 |
 | Not a shape (paint, a label) | 3 |
-| Drawn: sheets · panels · popovers | 28 · 22 · 10 |
+| Drawn: sheets · panels · popovers | 29 · 22 · 10 |
 | Behaviours drawn from the research (nothing built) | 22 |
 
 ## Files
@@ -85,7 +85,7 @@ page's ground). Filter by shape and by status.
 
 ## Pages that open nothing
 
-`/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/invite/:code`, `/no-access`, `/privacy`, `/v/:slug`, `/onboarding (redirect)`, `/studio`, `/studio/queue`, `/studio/invite/:token`, `/simpos/:restaurantId (+orders, scenarios)`, `/authorize/:integrationId`, `/inventory-legacy (redirect)`, `/vendor-prices`, `/dev/truth`, `/recommendations/catalog`, `/credits`, `/logs`, `/profile`, `/connections`, `/help`, `/admin`, `/sommelier (HOLD)`, `/services`, `/dev-sandbox (mounts the retiring builders)`, `/calendar-classic`
+`/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/invite/:code`, `/no-access`, `/privacy`, `/v/:slug`, `/onboarding (redirect)`, `/studio`, `/studio/queue`, `/studio/invite/:token`, `/simpos/:restaurantId (+orders, scenarios)`, `/authorize/:integrationId`, `/inventory-legacy (redirect)`, `/vendor-prices`, `/dev/truth`, `/recommendations/catalog`, `/credits`, `/profile`, `/connections`, `/help`, `/admin`, `/sommelier (HOLD)`, `/services`, `/dev-sandbox (mounts the retiring builders)`, `/calendar-classic`
 
 ## The census
 
@@ -206,6 +206,7 @@ page's ground). Filter by shape and by status.
 | `/team` | Desk editors | — | Retires | Edit this shift · On the roster. | `pages/team/command/editors.tsx:23` |
 | `/team` | Ops rules | — | Retires · fork F4 | The first-rule form is inline on the rebuilt page (ADR 0089). **Certifications** are built as the sheet drawn above (decided 2026-09-05, F4). | `pages/team/command/OpsRulesPanel.tsx:37` |
 | `/team` | Import shift configurations | — | Delete | No import route exists. Delete with the desk. | `components/team/ShiftImportModal.tsx:135 — opened only from the legacy desk` |
+| `/logs` | The entry | sheet | Built | One row of the ledger is one object, and its payload is arbitrary JSON that needs a scroll of its own. The list stays readable beneath. | `pages/logs/next/EventSheet.tsx:96` |
 | `/promotions` | The offer | sheet | Target | One offer is one object. | `pages/Promotions.tsx:336` |
 | `/promotions` | Offer menu | popover | Target | A row's own menu. | `pages/Promotions.tsx:328` |
 | `/distributors` | Distributor detail | sheet | Target | One distributor is one object. | `pages/distributors/command/DistributorDrawer.tsx:125` |
@@ -240,7 +241,7 @@ Tree: feat/mudavym-design-p4 @ origin tip, read 2026-09-05. Every `.tsx` under `
 for a JSX `<Sheet>` / `<Panel>` / `<Popover>` whose import resolves to `components/mudavym`, a
 `fixed inset-0` or `position: fixed` wrapper, and a Radix `*Content`. That gave 141 sites across
 25 house files and 69 legacy files, folded into 117 overlays; the founder's rulings of 2026-09-05
-added three owed sheets, so the census holds 120 rows. Each site was then read by hand for what it does and who opens
+added three owed sheets, so the census holds 121 rows. Each site was then read by hand for what it does and who opens
 it. Page-local components that merely share a name (`ReportsNext`'s cutting `Sheet`, the dashboard
 rail's `Panel`, the door's local `Panel`) were excluded; files nobody imports were checked twice
 (`rg` for their basename across `apps/web/src`). The house branches inside the eight shell files

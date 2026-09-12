@@ -27,6 +27,17 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'r1' }),
 }));
 
+/**
+ * `animate` is spied, not stubbed: the real tokens still come through, so a
+ * case can assert WHICH token fired and on which render. Nothing else about
+ * the motion module is replaced.
+ */
+const motion = vi.hoisted(() => ({ animate: vi.fn() }));
+vi.mock('@/lib/mudavym/motion', async () => {
+  const real = await vi.importActual<typeof import('@/lib/mudavym/motion')>('@/lib/mudavym/motion');
+  return { ...real, animate: (...args: unknown[]) => motion.animate(...args) };
+});
+
 const flags = vi.hoisted(() => ({ on: false }));
 vi.mock('@/lib/mudavym/useMudavymDesign', async () => {
   const real = await vi.importActual<typeof import('@/lib/mudavym/useMudavymDesign')>(
@@ -36,6 +47,7 @@ vi.mock('@/lib/mudavym/useMudavymDesign', async () => {
 });
 
 import LogsNext from './LogsNext';
+import { settle, turn } from '@/lib/mudavym/motion';
 import { PageGate } from '@/components/mudavym/PageGate';
 
 const SIX = [
@@ -100,11 +112,20 @@ function cell(label: string): HTMLElement {
 
 beforeEach(() => {
   flags.on = false;
+  motion.animate.mockClear();
   mockData.current = ready();
 });
 
 describe('LogsNext — states', () => {
-  it('states that it is loading, and counts nothing', () => {
+  /**
+   * This used to assert the opposite — that a loading register renders the em
+   * dash — and the page did. `MOTIONS.md` has always said why that is wrong:
+   * "A skeleton means 'the first page is in flight'; a dash means 'asked, and
+   * there is no answer'. They are never the same element." A dash on every
+   * cell for the length of the load made them the same element, so the page's
+   * own rule is the contract now and this case is inverted.
+   */
+  it('shows a register still being asked as a waiting bar, never as the unknown dash', () => {
     mockData.current = {
       ...ready(),
       state: 'loading',
@@ -115,10 +136,24 @@ describe('LogsNext — states', () => {
       hasMore: null,
       window: null,
     };
-    renderPage();
+    const { container } = renderPage();
     expect(screen.getByRole('status')).toHaveTextContent('Reading six registers');
-    expect(cell('Till')).toHaveTextContent('—');
     expect(cell('Till')).toHaveTextContent('reading');
+    expect(cell('Till')).not.toHaveTextContent('—');
+    expect(container.querySelectorAll('.lg-figure--wait')).toHaveLength(6);
+  });
+
+  it('keeps the dash for a register that WAS asked and did not answer', () => {
+    mockData.current = ready({ events: [ev({})], failedSources: ['pos_checks'] });
+    const { container } = renderPage();
+    expect(cell('Till')).toHaveTextContent('—');
+    expect(container.querySelector('.lg-figure--wait')).toBeNull();
+  });
+
+  it('names the thread it is reading while a pivot is in flight', () => {
+    mockData.current = { ...ready(), state: 'loading', events: null, counts: null };
+    renderPage('/logs?correlationId=corr-5');
+    expect(screen.getByRole('status')).toHaveTextContent('Reading every register for this thread');
   });
 
   it('says a whole-request failure is a failure, not a quiet house, and offers a retry', () => {
@@ -186,6 +221,43 @@ describe('LogsNext — ADR 0086, every clause kept', () => {
     expect(cell('Audit')).toHaveTextContent('—');
     expect(cell('Agent')).toHaveTextContent('1');
     expect(screen.getByText(/Every count is a floor: the till and the audit trail could not be read/)).toBeTruthy();
+  });
+
+  /**
+   * A failure has to be impossible to miss, not merely present. Three things
+   * carry that and all three are pinned: the band is STRUCK (a heavier rule
+   * than the band used for a quiet Tuesday, so the two cannot be skimmed as
+   * one), the failed cells are struck too, and the band precedes the strip —
+   * it used to sit below it, so the reader met six unexplained dashes first.
+   */
+  it('marks a failure as a failure, and explains it before the dashes it explains', () => {
+    mockData.current = ready({ events: [ev({})], failedSources: ['pos_checks'] });
+    const { container } = renderPage();
+    const alert = screen.getByRole('alert');
+    expect(alert.className).toContain('lg-band--struck');
+    expect(within(alert).getByText('Not read')).toBeTruthy();
+    expect(cell('Till').getAttribute('data-struck')).toBe('true');
+    expect(cell('Agent').getAttribute('data-struck')).toBeNull();
+    const strip = container.querySelector('.lg-strip') as HTMLElement;
+    // 4 === Node.DOCUMENT_POSITION_FOLLOWING: the strip comes after the band.
+    expect(alert.compareDocumentPosition(strip) & 4).toBeTruthy();
+  });
+
+  /**
+   * A failed register IS in `sourcesQueried` — it was asked — so it never
+   * appeared in the `skipped` set this line was built from. The count fell
+   * from 6 to 5 and named nobody; only the banner said who.
+   */
+  it('names the failed registers in the tally line, not only in the banner', () => {
+    mockData.current = ready({
+      events: [ev({})],
+      failedSources: ['pos_checks', 'system_audit_log'],
+      sourcesQueried: SIX.slice(0, 5) as never,
+    });
+    renderPage();
+    const hint = screen.getByText(/Read 3 of 6 registers/);
+    expect(hint).toHaveTextContent('could not be read: the till and the audit trail');
+    expect(hint).toHaveTextContent('not read: the event store');
   });
 
   it('makes no claim at all when the gateway reports neither field', () => {
@@ -355,6 +427,219 @@ describe('LogsNext — the way out, and the thread', () => {
     expect(screen.getByText(/1 of them match the register you chose/)).toBeTruthy();
     fireEvent.click(cell('Till'));
     expect(screen.getByText('agent one')).toBeTruthy();
+  });
+});
+
+describe('LogsNext — without the mouse', () => {
+  const three = () => [
+    ev({ id: 'a', source: 'pos_checks', summary: 'till one', occurredAt: '2026-09-10T10:00:02.000Z' }),
+    ev({ id: 'b', summary: 'agent one', correlationId: 'corr-3', occurredAt: '2026-09-10T10:00:01.000Z' }),
+    ev({ id: 'c', source: 'system_audit_log', summary: 'audit one', occurredAt: '2026-09-10T10:00:00.000Z' }),
+  ];
+
+  function press(key: string) {
+    fireEvent.keyDown(window, { key });
+  }
+
+  it('walks the feed with j and k, opens with Enter, and puts the cursor down with Escape', () => {
+    mockData.current = ready({ events: three() });
+    const { container } = renderPage();
+    const rows = () => Array.from(container.querySelectorAll('.lg-row'));
+
+    press('j');
+    expect(rows()[0].getAttribute('data-cursor')).toBe('true');
+    press('j');
+    expect(rows()[1].getAttribute('data-cursor')).toBe('true');
+    expect(rows()[0].getAttribute('data-cursor')).toBeNull();
+    press('k');
+    expect(rows()[0].getAttribute('data-cursor')).toBe('true');
+    // The walk clamps at the ends; it never wraps round.
+    press('k');
+    expect(rows()[0].getAttribute('data-cursor')).toBe('true');
+
+    press('Enter');
+    expect(within(screen.getByRole('dialog')).getByText('till one')).toBeTruthy();
+  });
+
+  it('follows the cursor row’s thread with f, through the URL', () => {
+    mockData.current = ready({ events: three() });
+    renderPage();
+    press('j');
+    press('j'); // the agent row, the only one carrying a correlation id
+    press('f');
+    expect(screen.getByRole('main', { name: 'One thread' })).toBeTruthy();
+    expect((screen.getByLabelText('Correlation id') as HTMLInputElement).value).toBe('corr-3');
+  });
+
+  it('never fires while the reader is typing a correlation id', () => {
+    mockData.current = ready({ events: three() });
+    const { container } = renderPage();
+    const box = screen.getByLabelText('Correlation id');
+    fireEvent.keyDown(box, { key: 'j' });
+    fireEvent.keyDown(box, { key: 'f' });
+    expect(container.querySelector('.lg-row[data-cursor="true"]')).toBeNull();
+    expect(screen.getByRole('main', { name: 'The feed' })).toBeTruthy();
+  });
+
+  it('backs out one step at a time — the cursor first, then the thread', () => {
+    mockData.current = ready({ events: [ev({ id: 'n', correlationId: 'corr-1' })] });
+    renderPage('/logs?correlationId=corr-1');
+    press('j');
+    press('Escape');
+    expect(screen.getByRole('main', { name: 'One thread' })).toBeTruthy();
+    press('Escape');
+    expect(screen.getByRole('main', { name: 'The feed' })).toBeTruthy();
+  });
+
+  it('prints the key map over a ledger there is something to walk', () => {
+    mockData.current = ready({ events: three() });
+    renderPage();
+    expect(screen.getByRole('heading', { name: 'Without the mouse' })).toBeTruthy();
+  });
+
+  it('does not promise keys over rows that are not there', () => {
+    mockData.current = ready({ events: [] });
+    renderPage();
+    expect(screen.queryByRole('heading', { name: 'Without the mouse' })).toBeNull();
+  });
+});
+
+describe('LogsNext — the sheet is not a dead end', () => {
+  const three = () => [
+    ev({ id: 'a', summary: 'newest', occurredAt: '2026-09-10T10:00:02.000Z' }),
+    ev({ id: 'b', summary: 'middle', occurredAt: '2026-09-10T10:00:01.000Z' }),
+    ev({ id: 'c', summary: 'oldest', occurredAt: '2026-09-10T10:00:00.000Z' }),
+  ];
+
+  it('steps to the entry either side without closing, and says where it stands', () => {
+    mockData.current = ready({ events: three() });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'middle' }));
+    let dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Entry 2 of the 3 on this page.');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Earlier' }));
+    dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('oldest');
+    expect(dialog).toHaveTextContent('Entry 3 of the 3 on this page.');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Later' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('middle');
+  });
+
+  it('draws no control where it cannot move, and says why in words instead', () => {
+    mockData.current = ready({ events: three(), hasMore: true });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'oldest' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByRole('button', { name: 'Earlier' })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: 'Later' })).toBeTruthy();
+    expect(dialog).toHaveTextContent('older ones exist beyond the window');
+  });
+
+  it('says the registers are exhausted only when the gateway said so', () => {
+    mockData.current = ready({ events: three(), hasMore: false });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'oldest' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('the earliest entry the registers hold');
+  });
+
+  it('makes no claim about older entries when the gateway never said', () => {
+    mockData.current = ready({ events: three(), hasMore: null });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'oldest' }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('was not reported by this gateway');
+    expect(dialog).not.toHaveTextContent('the earliest entry the registers hold');
+  });
+
+  it('walks the sheet with j and k, in the list’s own direction', () => {
+    mockData.current = ready({ events: three() });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'newest' }));
+    fireEvent.keyDown(window, { key: 'j' });
+    expect(screen.getByRole('dialog')).toHaveTextContent('middle');
+    fireEvent.keyDown(window, { key: 'k' });
+    expect(screen.getByRole('dialog')).toHaveTextContent('newest');
+  });
+});
+
+/**
+ * `lg-turn` is the page's one signature motion, and it used to play on the
+ * LOADING SKELETON: the effect depended on `correlationId` alone, so it ran on
+ * the render in which the URL changed — at which point `<main>` holds the
+ * loading band — and by the time the thread arrived `correlationId` had not
+ * changed, so nothing animated. `MOTIONS.md` described a behaviour the page
+ * did not have. These cases pin the sequencing, which is otherwise only
+ * checkable by reading the effect.
+ */
+describe('LogsNext — the page turns on what arrived', () => {
+  const tokens = () => motion.animate.mock.calls.map((c) => c[2]);
+  const turns = () => tokens().filter((t) => t === turn).length;
+
+  it('does not turn on arrival — the opening is the opening', () => {
+    mockData.current = ready({ events: [ev({ id: 'x', correlationId: 'corr-9' })] });
+    renderPage();
+    expect(tokens()).toContain(settle);
+    expect(turns()).toBe(0);
+  });
+
+  it('does not turn while the pivot is still in flight', () => {
+    mockData.current = ready({ events: [ev({ id: 'x', correlationId: 'corr-9' })] });
+    renderPage();
+    motion.animate.mockClear();
+    // The pivot changes the query key, so the next render is the loading band.
+    mockData.current = { ...ready(), state: 'loading', events: null, counts: null };
+    fireEvent.click(screen.getByRole('button', { name: 'Follow thread corr-9' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Reading every register for this thread');
+    expect(turns()).toBe(0);
+  });
+
+  it('turns once when the thread lands, and again when the reader leaves it', () => {
+    mockData.current = ready({ events: [ev({ id: 'x', correlationId: 'corr-9' })] });
+    const { rerender } = renderPage();
+    motion.animate.mockClear();
+
+    mockData.current = { ...ready(), state: 'loading', events: null, counts: null };
+    fireEvent.click(screen.getByRole('button', { name: 'Follow thread corr-9' }));
+    expect(turns()).toBe(0);
+
+    // The thread arrives. Same tree, same router, same URL — only the read
+    // has settled, which is exactly the frame the motion belongs on.
+    mockData.current = ready({ events: [ev({ id: 'x', correlationId: 'corr-9' })] });
+    rerender(
+      <MemoryRouter initialEntries={['/logs']}>
+        <Routes>
+          <Route path="/logs" element={<LogsNext />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(turns()).toBe(1);
+    expect(screen.getByRole('main', { name: 'One thread' })).toBeTruthy();
+
+    // Leaving is the same turn, not a reverse — and it waits for the feed too.
+    mockData.current = { ...ready(), state: 'loading', events: null, counts: null };
+    fireEvent.click(screen.getByRole('button', { name: 'Leave the thread' }));
+    expect(turns()).toBe(1);
+    mockData.current = ready({ events: [ev({ id: 'x', correlationId: 'corr-9' })] });
+    rerender(
+      <MemoryRouter initialEntries={['/logs']}>
+        <Routes>
+          <Route path="/logs" element={<LogsNext />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(turns()).toBe(2);
+  });
+
+  it('turns on the same frame when the thread is already in cache', () => {
+    mockData.current = ready({ events: [ev({ id: 'x', correlationId: 'corr-9' })] });
+    renderPage();
+    motion.animate.mockClear();
+    // No loading render at all: react-query answers from cache, so `ready` and
+    // the new correlationId land together.
+    fireEvent.click(screen.getByRole('button', { name: 'Follow thread corr-9' }));
+    expect(turns()).toBe(1);
   });
 });
 

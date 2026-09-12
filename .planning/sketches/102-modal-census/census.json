@@ -4212,6 +4212,84 @@
    ]
   },
   {
+   "route": "/logs",
+   "slug": "logs",
+   "doc": "logs.md",
+   "rebuilt": true,
+   "flag": "mudavym_design_logs",
+   "verdict": "One overlay, built. The thread is NOT an overlay and never was — following a correlation id turns the page itself, through `?correlationId=`, so it is shareable and survives a refresh.",
+   "overlays": [
+    {
+     "name": "The entry",
+     "status": "built",
+     "shape": "sheet",
+     "wide": false,
+     "modal": false,
+     "seal": false,
+     "eyebrow": "Who changed what, and why they said they did",
+     "title": "user update on procurement_order",
+     "action": "Earlier · Later",
+     "close": "Close",
+     "body": [
+      [
+       "quiet",
+       "Entry 11 of the 34 on this page."
+      ],
+      [
+       "fact",
+       "Recorded",
+       "Fri, Sep 11, 2026 · 09:50:00"
+      ],
+      [
+       "fact",
+       "Register",
+       "the audit trail  system_audit_log"
+      ],
+      [
+       "fact",
+       "Row",
+       "a1f4…"
+      ],
+      [
+       "fact",
+       "Thread",
+       "9f000000-4c1b-4a2e-9d10-…"
+      ],
+      [
+       "item",
+       "Follow this thread"
+      ],
+      [
+       "sect",
+       "The row, as the register holds it"
+      ],
+      [
+       "fact",
+       "actorType",
+       "user"
+      ],
+      [
+       "fact",
+       "entityType",
+       "procurement_order"
+      ],
+      [
+       "fact",
+       "reason",
+       "not recorded",
+       true
+      ]
+     ],
+     "footer": "Open the orders",
+     "why": "One row of the ledger is one object, and its payload is arbitrary JSON that needs a scroll of its own. The list stays readable beneath.",
+     "source": "pages/logs/next/EventSheet.tsx:96",
+     "acts": null,
+     "went": "Earlier / Later step to the adjacent entry WITHOUT closing — the read pattern is 'open one, it is not the one, open the next'. A control is drawn only where it can move; at either end the position line says why in words, never a dead control. Focus lands on that line, not on a step control.",
+     "fork": null
+    }
+   ]
+  },
+  {
    "route": "/promotions",
    "slug": "promotions",
    "doc": "promotions.md",
@@ -5451,7 +5529,6 @@
   "/dev/truth",
   "/recommendations/catalog",
   "/credits",
-  "/logs",
   "/profile",
   "/connections",
   "/help",
