@@ -1,5 +1,5 @@
 /**
- * Bulk approve — the dry emboss (sketch 063 sig-03).
+ * Bulk approve — the dry emboss (sketch 087 sig-03).
  *
  * The rule it exists for is rationing: fourteen approvals must not land
  * fourteen wax seals, or the seal stops meaning anything. The gesture is the
