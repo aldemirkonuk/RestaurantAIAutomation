@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
  *
  * What is NOT tested here, because it deliberately no longer exists: any
  * durable, screen-facing claim that a receipt was given up on without a record.
- * See ADR 0139.
+ * See ADR 0140.
  */
 
 const recordDoorReceipt = vi.hoisted(() => vi.fn())
@@ -140,7 +140,7 @@ describe('a receipt whose loss cannot be recorded is KEPT, not destroyed', () =>
 
     // Each pass says what IT did. Neither claims a running total, and the
     // module exposes no reader that would let a screen build one — that is the
-    // mechanism ADR 0139 withdrew, five defects deep.
+    // mechanism ADR 0140 withdrew, five defects deep.
     expect(first.stranded).toBe(1)
     expect(second.stranded).toBe(1)
     const api = await import('./doorOutbox')

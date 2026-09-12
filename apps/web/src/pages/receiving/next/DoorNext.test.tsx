@@ -202,7 +202,7 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
 })
 
 /**
- * The strand has NO screen of its own, deliberately — ADR 0139.
+ * The strand has NO screen of its own, deliberately — ADR 0140.
  *
  * Five successive attempts to give a receipt-the-outbox-gave-up-on-but-could-
  * not-record a durable, screen-facing witness each shipped a defect: a count

@@ -42,7 +42,7 @@ const STRANDED_MARKER =
   'Given up on, and this device could not save a record of it. Kept here so the delivery is not lost — keep the paperwork.'
 
 /**
- * THE OUTBOX DOES NOT REPORT A STRAND. Read ADR 0139 before adding one back.
+ * THE OUTBOX DOES NOT REPORT A STRAND. Read ADR 0140 before adding one back.
  *
  * A "strand" is a receipt the outbox gave up on and could NOT write the drop
  * record for. The receipt is kept — see the `permanent` branch below, which is
@@ -463,7 +463,7 @@ export interface DoorFlushResult {
    * correctly — so accumulating it turns one lost delivery into three, and
    * holding it in component state loses it on the next navigate. Both were
    * shipped and measured. Render it, if at all, beside the rest of the pass
-   * result and never as a standing alarm: ADR 0139 has the five ways this has
+   * result and never as a standing alarm: ADR 0140 has the five ways this has
    * gone wrong and why the outbox keeps no durable witness for it.
    */
   stranded: number

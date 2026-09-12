@@ -40,6 +40,17 @@ for pattern, why in [
     if re.search(pattern, door, re.M):
         bad.append("doorOutbox.ts " + why)
 
+# The warning in the module must point at THIS record. The door work was first
+# drafted as ADR 0139, a number another lane had already taken for an OAuth
+# decision; the file was renumbered and eight code comments were not, so the
+# comment guarding this decision sent a reader to an unrelated record. Nothing
+# checked a citation's target -- the ADR-number guard reads filenames only.
+cited = set(re.findall(r"ADR[ -](\d{4})", door))
+if "0140" not in cited:
+    bad.append("doorOutbox.ts does not cite ADR 0140")
+if cited - {"0140", "0104", "0042", "0138"}:
+    bad.append("doorOutbox.ts cites an unexpected ADR: " + ", ".join(sorted(cited - {"0140"})))
+
 # D4 — no screen carries a standing strand surface.
 for screen in SCREENS:
     if "door:stranded" in open(screen, encoding="utf-8").read():

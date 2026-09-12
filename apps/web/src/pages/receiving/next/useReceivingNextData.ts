@@ -736,7 +736,7 @@ export function useDoorOutbox(): OutboxData {
       // Rendered exactly as stored — attempt count and last error, both read
       // from the entry. The rail deliberately does NOT ask whether the outbox
       // gave up on one: five attempts to answer that durably each shipped a
-      // defect, and ADR 0139 records why the question has no honest answer
+      // defect, and ADR 0140 records why the question has no honest answer
       // while the storage layer reports a failed write as a success.
       setQueued(pending.filter((m) => belongsToRestaurant(m, rid)).map(toQueuedVM));
     } catch {
@@ -789,7 +789,7 @@ export function useDoorOutbox(): OutboxData {
       // the queue list above like any other entry. The flush tries to leave the
       // reason on it as `lastError`, which this rail shows — best-effort, since
       // that write goes through the storage that refused the record in the
-      // first place. ADR 0139 is why nothing here claims more than that.
+      // first place. ADR 0140 is why nothing here claims more than that.
       if (res !== null && res.dropped > 0) {
         setDrops(readDroppedDoorReceipts(rid).map(toDroppedVM));
       }

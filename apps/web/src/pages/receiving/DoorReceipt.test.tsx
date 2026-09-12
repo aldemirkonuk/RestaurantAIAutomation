@@ -205,7 +205,7 @@ describe('DoorReceipt — a dropped receipt is not a delivered one', () => {
 })
 
 /**
- * The strand has NO screen of its own, deliberately — ADR 0139. See the
+ * The strand has NO screen of its own, deliberately — ADR 0140. See the
  * matching block in DoorNext.test.tsx for the five defects that decision came
  * out of. What survives is the DROP alarm, which is backed by a record on disk.
  */
