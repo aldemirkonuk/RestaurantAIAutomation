@@ -39,11 +39,20 @@ describe("WineSubmissionsService normalization contract", () => {
     const cases: Array<[string, string]> = [
       ["Château Léoville-Barton", "chateau leoville barton"],
       ["Domaine de la Mandelière", "domaine de la mandeliere"],
-      ["2022 Olivier Leflaive “Les Sétilles” Bourgogne", "2022 olivier leflaive les setilles bourgogne"],
+      [
+        "2022 Olivier Leflaive “Les Sétilles” Bourgogne",
+        "2022 olivier leflaive les setilles bourgogne",
+      ],
       ["Fekete Pince Somló", "fekete pince somlo"],
-      ["2022 Majestik Sultaniye Denizli TÜRKİYE", "2022 majestik sultaniye denizli turkiye"],
+      [
+        "2022 Majestik Sultaniye Denizli TÜRKİYE",
+        "2022 majestik sultaniye denizli turkiye",
+      ],
       ["NERO D’AVOLA", "nero d avola"],
-      ["Comte Henry d'Assay Argile à Silex", "comte henry d assay argile a silex"],
+      [
+        "Comte Henry d'Assay Argile à Silex",
+        "comte henry d assay argile a silex",
+      ],
       // The case that exposed the drift, and the reason this file exists.
       // U+00B7 MIDDLE DOT is a Diacritic to JS but was missing from the first
       // SQL class, so Catalan "Xarel·lo" normalized to "xarello" here and
@@ -75,9 +84,12 @@ describe("WineSubmissionsService normalization contract", () => {
       expect(normalize(input)).toBe(expected);
     });
 
-    it.each(abbreviations)("expands the trade abbreviation in %j", (input, expected) => {
-      expect(normalize(input)).toBe(expected);
-    });
+    it.each(abbreviations)(
+      "expands the trade abbreviation in %j",
+      (input, expected) => {
+        expect(normalize(input)).toBe(expected);
+      },
+    );
 
     it("leaves a bare trade word alone", () => {
       // Dom Pérignon is a wine, not a Domaine. Expanding a period-less "Dom"

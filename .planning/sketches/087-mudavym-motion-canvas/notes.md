@@ -259,8 +259,8 @@ cost alongside 132 sibling motions; and any browser other than Chrome.
 
 ## Wave 4 — the founder's canvas ports (2026-08-30)
 
-The founder uploaded his own Claude Design canvas (`.planning/Mudavym Motion
-Canvas.dc.html`, 85 demos, 2026-08-29) and said it holds *some* of the motions he
+The founder uploaded his own Claude Design canvas
+(`.planning/brand/Mudavym Motion Canvas.dc.html`, 85 demos, 2026-08-29) and said it holds *some* of the motions he
 really liked — so the canvas is curation (ADR 0044 §4). Its twelve **"unafraid"**
 signatures, which existed nowhere in 087, are ported faithfully as `sig-17`–`sig-28`
 (part `sig-d`), each `source`-stamped `founder canvas 2026-08-29 · "<name>"` plus the
