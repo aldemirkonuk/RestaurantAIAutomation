@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -9,6 +11,7 @@ import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import {
   ModelClientService,
+  ModelSpendCeilingError,
   NfEventRef,
 } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
@@ -347,6 +350,12 @@ export class AskAiService {
           ],
         },
         timeoutMs: 30_000,
+        // The one call site in the gateway a member can trigger at will, so
+        // the one that opts into metering its FIRST attempt and not only its
+        // retries. Everywhere else the ceiling stays retry-only, because
+        // adding a ledger read to a background path's happy route would give
+        // it a failure mode it was never written to handle.
+        gateFirstAttempt: true,
         nf: {
           subjectId: "AskAi",
           taskType: "ask_ai_proposal",
@@ -365,6 +374,17 @@ export class AskAiService {
         },
       });
     } catch (err: any) {
+      // A spend refusal is not an outage and must not be dressed as one. The
+      // model is fine, nothing was charged, and the condition clears by
+      // itself — so it answers 429 with the ceiling's own words rather than
+      // 503 with "temporarily unavailable", which would send an operator
+      // looking for a fault that does not exist.
+      if (err instanceof ModelSpendCeilingError) {
+        this.logger.warn(
+          `Ask AI refused before the first call: ${err.message} (restaurant ${restaurantId})`,
+        );
+        throw new HttpException(err.message, HttpStatus.TOO_MANY_REQUESTS);
+      }
       this.logger.error(`Ask AI model call failed: ${err?.message}`);
       throw new ServiceUnavailableException(
         "Ask AI is temporarily unavailable.",

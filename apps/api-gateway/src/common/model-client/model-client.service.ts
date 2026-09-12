@@ -42,11 +42,15 @@ const MODEL_PRICING_USD_PER_MTOK: Record<
  * core = a $5 CREDIT that depletes (menu upload + trial), plus = $5/day, pro = $10/day.
  * All PLACEHOLDERS — pricing is founder-deferred (OD-23) and no ADR records a price.
  *
- * The ceiling suppresses RETRY attempts, never first attempts: gating a first call on a
- * ledger read would add a new failure mode to seven production paths, which the migration
- * contract ("preserve everything except retry/timeout/emission") forbids. A retry storm is
- * exactly how transport flakiness turns into surprise spend, so that is where the cap bites.
- * MODEL_DAILY_SPEND_CEILING_USD still overrides the NUMBER for incident response.
+ * The ceiling suppresses RETRY attempts by default, and first attempts ONLY where a call
+ * site opts in with `gateFirstAttempt`. Gating every first call on a ledger read would add
+ * a new failure mode to the seven production paths that predate this client, which the
+ * migration contract ("preserve everything except retry/timeout/emission") forbids — so the
+ * default is unchanged and those paths are untouched. A retry storm is how transport
+ * flakiness turns into surprise spend, which is why the cap bit there first; a caller who
+ * can trigger a first call at will is the other way it happens, which is what the opt-in
+ * closes (added 2026-09-12 for Ask AI). MODEL_DAILY_SPEND_CEILING_USD still overrides the
+ * NUMBER for incident response, never the mode.
  */
 const SPEND_CACHE_TTL_MS = 60_000;
 const TIER_CACHE_TTL_MS = 300_000;
@@ -57,6 +61,20 @@ const TIER_CACHE_TTL_MS = 300_000;
  * document-extractor and vendor-page-extractor produced before the migration,
  * so their callers' logs read the same. Emission failures NEVER surface here.
  */
+/**
+ * Thrown when a call site that opted into `gateFirstAttempt` is over its spend
+ * allowance. A SEPARATE type from ModelClientError on purpose: this is not a
+ * transport failure and must not be retried, logged as an outage, or reported
+ * to an operator as "the model is down". Nothing reached the API, nothing was
+ * charged, and the condition clears on its own.
+ */
+export class ModelSpendCeilingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ModelSpendCeilingError";
+  }
+}
+
 export class ModelClientError extends Error {
   constructor(
     message: string,
@@ -150,6 +168,30 @@ export interface ModelCallOptions {
   headers?: Record<string, string>;
   /** Transport retry on by default (founder decision); opt out per call. */
   retry?: boolean;
+  /**
+   * Refuse the FIRST attempt too when the restaurant is over its allowance,
+   * not only the retries. Off by default, and that default is load-bearing.
+   *
+   * The ceiling was built to suppress retry storms, and the migration
+   * contract that produced this client ("preserve everything except
+   * retry/timeout/emission") forbids adding a new failure mode to the seven
+   * production paths that existed before it. Turning the gate on globally
+   * would do exactly that: every one of those paths would gain a way to fail
+   * that it has never had, on a ledger read, at a moment none of them were
+   * written to handle.
+   *
+   * So it is opt-in, per call site, for the sites where a caller can drive
+   * the spend directly — today that is Ask AI, where an authenticated member
+   * can loop `POST /ask-ai/propose` and reach the model on every first call.
+   * A route a person taps is not the same risk as a background job.
+   *
+   * The gate still FAILS OPEN on an unreadable ledger, exactly as it does for
+   * retries. That is deliberate and it is why this is never the only defence:
+   * `RateLimitGuard` bounds the RATE in one process, this bounds the COST
+   * across the fleet, and a ledger outage degrades to the first of those
+   * rather than to nothing.
+   */
+  gateFirstAttempt?: boolean;
 }
 
 /**
@@ -215,6 +257,22 @@ export class ModelClientService {
     const retryEnabled = opts.retry !== false;
     const model = String((opts.body as any)?.model ?? "");
     const startedAt = Date.now();
+
+    // Opt-in first-attempt gate. Sites that set `gateFirstAttempt` are the
+    // ones a caller can drive directly; for everyone else this is unreachable
+    // and the seven pre-existing paths are byte-for-byte unchanged.
+    //
+    // It throws BEFORE any NF row is emitted, deliberately: nothing was spent,
+    // so writing a zero-cost row would put a call in the ledger that never
+    // happened and make the ledger disagree with the bill.
+    if (opts.gateFirstAttempt === true) {
+      if (!(await this.allowedBySpendCeiling(opts.nf.restaurantId))) {
+        throw new ModelSpendCeilingError(
+          "This restaurant has reached its AI allowance for now. " +
+            "It resets on its own; nothing was charged for this request.",
+        );
+      }
+    }
 
     let attempts = 0;
     let lastError: ModelClientError | null = null;
@@ -519,6 +577,17 @@ export class ModelClientService {
    * cost_usd rows client-side rather than in SQL.
    */
   private async retryAllowedBySpendCeiling(
+    restaurantId?: string | null,
+  ): Promise<boolean> {
+    return this.allowedBySpendCeiling(restaurantId);
+  }
+
+  /**
+   * The ceiling read itself, with no opinion about which attempt is asking.
+   * `retryAllowedBySpendCeiling` is the retry-path name for it and is kept so
+   * the three existing call sites and their tests read unchanged.
+   */
+  private async allowedBySpendCeiling(
     restaurantId?: string | null,
   ): Promise<boolean> {
     const key = restaurantId ?? "__unattributed__";
