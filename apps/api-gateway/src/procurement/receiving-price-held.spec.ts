@@ -627,6 +627,10 @@ describe("restating or confirming a currency clears the receiving refusal", () =
         assertCanManageRestaurant: async () => undefined,
       } as any,
       {} as any,
+      // LineMappingService (ADR 0104 D12 slice 4, merged from main 2026-09-12) --
+      // stubbed: this file never asks the mapping memory, and
+      // tsc -p tsconfig.spec.json counts the arguments.
+      {} as any,
       /*
        * SealChallengeService — a double that ADMITS. This file is about the
        * RECEIVING refusal and what lifts it (p4br, item A); the seal's own

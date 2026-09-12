@@ -305,6 +305,10 @@ function build(
     // DeliveryStockService (main's ADR 0103 A1, the door's booking half; merged
     // 2026-09-11) -- stubbed, this file never books stock. tsc counts the arguments.
     {} as any,
+    // LineMappingService (ADR 0104 D12 slice 4, merged from main 2026-09-12) --
+    // stubbed: this file never asks the mapping memory, and
+    // tsc -p tsconfig.spec.json counts the arguments.
+    {} as any,
     new SealChallengeService(db),
   );
 

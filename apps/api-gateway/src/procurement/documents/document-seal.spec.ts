@@ -641,9 +641,19 @@ describe("document-seal — the correction seal over a REAL canonical build", ()
       document_corrections: { data: [], error: null },
       document_revisions: { data: [], error: null },
     });
-    const service = new CanonicalDocumentService({
-      getClient: () => client,
-    } as never);
+    const service = new CanonicalDocumentService(
+      { getClient: () => client } as never,
+      /*
+       * LineMappingService (ADR 0104 D12 slice 4, merged from main 2026-09-12).
+       * A double that answers "no memory for this document" - the same answer
+       * the real service gives when the document names no vendor, and the same
+       * answer BOTH times. This test is about whether the seal's hash over the
+       * canonical document is STABLE; a memory that replied differently on the
+       * second build would make the hash move for a reason that has nothing to
+       * do with the hash, and the test would be measuring the memory instead.
+       */
+      { proposalsFor: async () => ({ ok: true, value: new Map() }) } as never,
+    );
     const read = await service.buildFromDocumentId("rest-1", "doc-1");
     if (!read.ok) throw new Error(`the fixture did not build: ${read.error}`);
     return read.value;

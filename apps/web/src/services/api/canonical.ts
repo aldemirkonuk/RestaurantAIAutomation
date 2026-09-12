@@ -145,7 +145,24 @@ export interface Extracted {
 
 export interface ResolvedLine {
   lineIndex: number;
+  /** `procurement_document_lines.id` — what the shelf-link door is addressed by. */
+  lineId: string | null;
   inventoryId: string | null;
+  /** `line` = a person linked THIS line; `order` = inherited from the order line. */
+  inventoryIdSource: 'line' | 'order' | null;
+  /**
+   * ADR 0104 D12 slice 4 — the mapping memory's proposal for an unlinked line.
+   * A tick a person gives; nothing is booked or costed from it.
+   */
+  proposedInventoryId: string | null;
+  /** The whole sentence. Never a number (ADR 0104). */
+  proposedSentence: string | null;
+  /**
+   * The memory could not be READ. NOT the same as having nothing to propose,
+   * although both draw a line with no tick — so the page says which it is.
+   */
+  proposalUnavailable: boolean;
+  proposalUnavailableReason: string | null;
   masterWineId: string | null;
   canonicalUom: string | null;
   packSize: number | null;
@@ -161,6 +178,17 @@ export interface ResolvedLine {
  * "not counted". It is never 0 and never silently equal to shipped or billed.
  */
 export type ReceivedQuantity = number | "not_counted";
+
+/** One act in the append-only mapping log (ADR 0104 D5/D12). */
+export interface LineMappingEntry {
+  action: 'linked' | 'unlinked';
+  inventoryId: string | null;
+  lineNo: number | null;
+  keyDisplay: string | null;
+  source: string;
+  linkedBy: string | null;
+  linkedAt: string;
+}
 
 export interface AdjudicatedLine {
   lineIndex: number;
@@ -385,6 +413,42 @@ export const canonicalApi = {
     } catch (error) {
       return rethrowSpoken(error);
     }
+  },
+
+  /**
+   * ADR 0104 D12 slice 4 — name the shelf this line is about.
+   *
+   * The line carries the item from here on, which is what lets a VERIFIED
+   * delivery finalise its cost (ADR 0103 A1), and the act is appended to the
+   * per-vendor mapping memory so the next document proposes it.
+   *
+   * `inventoryId: null` is "not this one": the line is cleared and the memory
+   * FORGETS the pairing. It is not averaged away.
+   */
+  async linkLineToItem(
+    documentId: string,
+    lineId: string,
+    inventoryId: string | null,
+    source: 'chosen' | 'remembered',
+  ): Promise<{
+    lineId: string;
+    inventoryId: string | null;
+    remembered: boolean;
+    memoryNote: string | null;
+  }> {
+    const { data } = await apiClient.post(
+      `/procurement/documents/${documentId}/lines/${lineId}/link-item`,
+      { inventoryId, source },
+    );
+    return data;
+  },
+
+  /** Who linked which line to which shelf, newest first. */
+  async lineMappings(documentId: string): Promise<{ entries: LineMappingEntry[] }> {
+    const { data } = await apiClient.get(
+      `/procurement/documents/${documentId}/line-mappings`,
+    );
+    return data;
   },
 
   /** The per-field `verified_by` tick. The value and its source are unchanged. */

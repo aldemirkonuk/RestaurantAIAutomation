@@ -3,6 +3,7 @@ import { DocumentIntakeService } from "./document-intake.service";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
+import { LineMappingService } from "../canonical/line-mapping.service";
 
 /**
  * ADR 0059 — a machine proposal shown to a human is written before the human
@@ -133,6 +134,7 @@ async function buildService(db: ReturnType<typeof makeDb>, extractor: any) {
       // the real service over the same mocked client — nothing on the path
       // under test reaches it, and a stub would have to pretend otherwise.
       CanonicalDocumentService,
+      LineMappingService,
     ],
   }).compile();
   return module.get<DocumentIntakeService>(DocumentIntakeService);

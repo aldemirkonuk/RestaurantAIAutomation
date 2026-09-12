@@ -736,6 +736,12 @@ export function canonicalFromParsedDocument(
         const canonicalUom: Uom | null = normalizeUom(l.uom);
         return {
           lineIndex: i,
+          lineId: null,
+          inventoryIdSource: null,
+          proposedInventoryId: null,
+          proposedSentence: null,
+          proposalUnavailable: false,
+          proposalUnavailableReason: null,
           inventoryId: null,
           masterWineId: null,
           canonicalUom,

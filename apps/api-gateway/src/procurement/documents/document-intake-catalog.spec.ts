@@ -27,6 +27,7 @@ import { DocumentIntakeService } from "./document-intake.service";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
+import { LineMappingService } from "../canonical/line-mapping.service";
 import { looksLikeX12, parseInterchange, parseX12 } from "./x12";
 import { DocumentsController } from "./documents.controller";
 import { createHash } from "node:crypto";
@@ -119,6 +120,11 @@ describe("DocumentIntakeService — an 832 price catalogue", () => {
         { provide: DatabaseService, useValue: { getClient: () => chain } },
         { provide: DocumentExtractorService, useValue: mockExtractor },
         CanonicalDocumentService,
+        // The canonical service asks the mapping memory for every document it
+        // builds (ADR 0104 D12 slice 4, merged from main 2026-09-12), so Nest
+        // cannot construct it without this provider - the failure is a DI error
+        // at compile of the test module, not a test assertion.
+        LineMappingService,
       ],
     }).compile();
     service = module.get(DocumentIntakeService);
@@ -236,6 +242,10 @@ describe("DocumentsController.upload — an 832 arrives", () => {
     // path too. `tsc -p tsconfig.spec.json` counts the arguments; `tsconfig.json`
     // never looks at this file.
     {} as any,
+    // LineMappingService (ADR 0104 D12 slice 4, merged from main 2026-09-12) --
+    // stubbed: this file never asks the mapping memory, and
+    // tsc -p tsconfig.spec.json counts the arguments.
+    {} as any,
     // SealChallengeService — the seal on verify / line_edit /
     // currency_restate (founder, 2026-09-06, batch 64). Stubbed here; the
     // redemption itself is proven in `documents.seal.spec.ts` against a
@@ -344,6 +354,10 @@ describe("DocumentsController.upload — who handed the catalogue over", () => {
     // DeliveryService (ADR 0103) — the door-count route's other half, off this
     // path too. `tsc -p tsconfig.spec.json` counts the arguments; `tsconfig.json`
     // never looks at this file.
+    {} as any,
+    // LineMappingService (ADR 0104 D12 slice 4, merged from main 2026-09-12) --
+    // stubbed: this file never asks the mapping memory, and
+    // tsc -p tsconfig.spec.json counts the arguments.
     {} as any,
     // SealChallengeService — the seal on verify / line_edit /
     // currency_restate (founder, 2026-09-06, batch 64). Stubbed here; the

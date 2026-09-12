@@ -220,8 +220,8 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
             </div>
             <Sparkline analytic={data.analytic!} />
             {/* The dashed line and grey band are the TEAM benchmark, and it is
-                a window: performance.service.ts:139 computes the median and
-                quartiles over the most recent
+                a window: performance.service.ts:145-168 computes the median
+                and quartiles over the most recent
                 TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES logged services across
                 the whole restaurant, not over all of them. Drawn without that
                 sentence it reads as "the team", which it is not. */}

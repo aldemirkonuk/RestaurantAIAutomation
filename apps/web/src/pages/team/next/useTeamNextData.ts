@@ -69,7 +69,7 @@ import { mondayOf, parsePeriod, resolveName } from './tm-format';
  * computed over, never a floor on a count (ADR 0051 clause 2).
  */
 export const TEAM_SERVER_WINDOWS = {
-  /** performance.service.ts:139 — the team benchmark ends `.limit(200)`. */
+  /** performance.service.ts:150 — the team benchmark ends `.limit(200)`. */
   BENCHMARK_SERVICES: 200,
   /**
    * settings-audit.service.ts:252,270 — the trail read is
