@@ -176,6 +176,63 @@ Also not settled, and each belongs to its own record rather than to this one: th
 
 ---
 
+## Founder answers, 2026-09-12 — four of the five forks above
+
+Asked in session the same day the record was locked, each with the measured facts
+and the options' costs. Recorded here rather than in a new record, because each
+answer closes a fork this record itself named.
+
+**Fork 1, the model and the time budget — answered: pick on Haiku, answer on Sonnet 5.**
+The routing step runs as the `lookup` class on `claude-haiku-4-5`; the answer runs as
+the `compose` class on `claude-sonnet-5` (`MODEL_FOR_CLASS`,
+`apps/api-gateway/src/common/model-client/model-routing.ts:140-144`). `/ask` gets its
+own 60 s client budget **on that route only**; every other request keeps the web
+client's 30 000 ms (`apps/web/src/services/api/client.ts:52`). Rejected: streaming the
+answer — new plumbing on both sides, since today only the MCP runtime streams anything,
+and streamed prose is harder to bind to minted provenance, which is this record's
+central rule; one Sonnet 5 call doing both — every refusal would cost a Sonnet call and
+the pick would stop being a separate, checkable step; Opus 4.8 for consult-class
+questions — slowest and most expensive, and without streaming it breaches the budget on
+exactly the questions it exists for.
+
+[CORRECTED 2026-09-12, measured at `a914b8cf`: the Context above speaks of "a gateway
+model budget that is itself 30 s". That describes Ask AI's call site —
+`ask-ai.service.ts:349` passes `timeoutMs: 30_000` — not the model client, whose
+`DEFAULT_TIMEOUT_MS` is `60_000` (`model-client.service.ts:12`). The fork stood either
+way, because the web client's 30 s abort is the binding limit.]
+
+**Fork 2, answering from the model's own knowledge — answered: yes, marked as not from
+the house's books.** "What goes with lamb" gets an answer. It carries a source value of
+its own, distinct from `house` and from `library` in R8's `{source}` axis, and renders
+as not from the house's books. It is **never** mixed into a figure: a sentence whose
+source is the model cannot carry a `cellId`, and the runner, not the reading, sets that
+source — the same discipline as R1 applied to prose, so the label cannot be dropped by a
+builder any more than a row count can be typed. Rejected: declining everything not in
+the books — it declines exactly the questions a new house asks first; allowing model
+knowledge only for pairing and service — a class boundary the router must get right on
+every straddling question.
+
+**Fork 4, reach — answered: every house, behind the same switch.** `/ask` ships the way
+every redesigned page ships: merged dark, flipped per house by the founder. No
+readiness floor. A house whose books are thin sees the honest shelf — what Mudavym does
+not keep yet — rather than a gate. Rejected: a stated floor below which the page only
+explains what unlocks it — a floor to define and defend, a second page state, and a
+number that can itself be wrong; holding the page off everywhere — it cannot improve
+from real use while off, and "fuller" has no date.
+
+**Fork 5, the sommelier — answered: `/sommelier` redirects into `/ask`.** One front
+door, one conversation store, one surface to keep honest. The route survives as a
+redirect so no bookmark breaks, the same shape as `/admin/health` folding into `/admin`
+([[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] section 2). That removes
+the page [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] section 3
+measured as hollow instead of rebuilding it; its repair becomes `/ask`'s build.
+Rejected: two front doors over one store — two entry points and a cellar-scoped variant
+of every reply shape; rebuilding `/sommelier` first — the same build done twice.
+
+**Still open: fork 3, what the seal is over** — the proposal id, or the order the
+proposal creates. Not asked yet; it is put to the founder with the next batch rather
+than defaulted.
+
 ## Measurement provenance
 
 Everything cited above as a file, a line, a column or a grep count was run by me this session, read-only, on `/Users/aldemirkonuk/Projects/wt-p4` at `feat/mudavym-design-p4`, **HEAD `ca869d72`** — not the `86575566` the briefing packets quote; the branch moved by one commit under the design pass, and that commit touched no ask-ai or askai file, so the briefing's module measurements still describe the tree. Two guards were executed: `scripts/check_queried_tables_exist.py` (PASS, exit 0, 6 shrink-only debt entries) and `scripts/check_read_errors_not_swallowed.py` (PASS, 1444 files scanned, 190 sites, 190 baselined).
