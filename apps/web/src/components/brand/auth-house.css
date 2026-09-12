@@ -1,0 +1,89 @@
+/* ============================================================
+   /login and /register on the house path (ADR 0133 §1)
+   ============================================================
+
+   Tokens only. No hex, no rgb()/hsl(), no `prefers-color-scheme`, no
+   `[data-theme]`: every colour is a `.mudavym` custom property from
+   `styles/mudavym.css`, so both grounds arrive by the routes ADR 0042 already
+   defines and none of them can be contradicted from here.
+
+   EVERY SELECTOR STARTS AT `.mudavym.mdv-auth`. That pair of classes exists on
+   exactly one element, the page root, and only while the public switch is on
+   (`usePublicDesign()` in Login.tsx and Register.tsx). With the switch off not
+   one rule below can match, which is how the off path stays today's page.
+   `pages/__tests__/authPages.publicDesign.test.tsx` reads this file back and
+   asserts all of the above.
+
+   The founder's call for these two pages is "improve today's pages in place,
+   no redraw" (ADR 0143 §1 keeps them out of PublicShell), so this file carries
+   no layout at all — no size, no spacing, no position. It exists only for the
+   two things a colour utility on an element cannot do. */
+
+/* ── 1. The focus ring, inherited ────────────────────────────────────────
+   The app draws a wine ring on every `*:focus-visible` (globals.css, "Better
+   focus states") as a Tailwind ring — a box-shadow — so an outline alone does
+   not replace it and the shadow is cancelled explicitly. Today's pages then
+   draw three more by hand on top (Login's `focus:ring-4`, Register's
+   `focus:shadow-[0_0_0_3px_rgba(...)]` on the invite code, the
+   `focus:ring-wine-500` on every field). The house path drops all of those and
+   takes this one: the seal outline on a gap, identical to
+   `sheet.css`'s `.mdv-ovl :focus-visible` and `public-shell.css`'s
+   `.mdv-pub :focus-visible`.
+
+   A descendant rule, not a class per control, because half the focusable
+   controls on these pages are not theirs to dress: the shared Button, the
+   country and cuisine pickers, the currency select, Google's button.
+
+   `.mudavym.mdv-auth` makes this (0,3,0), above every competitor:
+   `.dark *:focus-visible` and `.focus-visible\:ring-2:focus-visible` are
+   (0,2,0), `.dark input:focus-visible` is (0,2,1). No border-radius here —
+   public-shell's 4px would re-round a `rounded-xl` field the moment it takes
+   focus, and an outline already follows the element's own corners. */
+
+.mudavym.mdv-auth :focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  --tw-ring-shadow: 0 0 transparent;
+  --tw-ring-offset-shadow: 0 0 transparent;
+  box-shadow: none;
+}
+
+/* ── 2. Fields on both grounds ───────────────────────────────────────────
+   globals.css forces every `input`, `textarea` and `select` to a white fill,
+   near-black text and `color-scheme: light`, all `!important` ("Global input
+   text color fix"). Its `.dark input` counterpart swaps in literals, and only
+   under the app's `.dark` class. So a `bg-paper-0` on the element is simply
+   ignored, and on the charcoal ground a field stays a white slab.
+
+   Only `!important` answers `!important`, and then specificity decides:
+   `html .mudavym.mdv-auth input` is (0,2,2) and beats
+   `.dark input[type="email"]` at (0,2,1). It is the same fight, won the same
+   way, that mudavym.css records for date inputs.
+
+   The field sits on the ground (`--paper-0`) inside a plate (`--paper-1`),
+   which is `sheet.css`'s `.mdv-input` inside a panel. `color-scheme: inherit`
+   takes `light` or `dark` from the `.mudavym` root, so the caret, autofill and
+   the select's native list turn with the page. */
+
+html .mudavym.mdv-auth input,
+html .mudavym.mdv-auth textarea,
+html .mudavym.mdv-auth select {
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+  background-color: var(--paper-0) !important;
+  color-scheme: inherit !important;
+}
+
+html .mudavym.mdv-auth select option {
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+  background: var(--paper-0) !important;
+}
+
+/* The placeholder sits back the way a hint does: ink-3, which measures 4.37:1
+   on paper-0 and 5.09:1 on charcoal paper-0 (authpages-report.md). */
+html .mudavym.mdv-auth input::placeholder,
+html .mudavym.mdv-auth textarea::placeholder {
+  color: var(--ink-3) !important;
+  -webkit-text-fill-color: var(--ink-3) !important;
+}
