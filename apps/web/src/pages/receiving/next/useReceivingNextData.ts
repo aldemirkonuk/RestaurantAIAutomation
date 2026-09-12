@@ -633,8 +633,9 @@ function toDroppedVM(d: DroppedDoorReceipt): DroppedReceiptVM {
 /**
  * The most recent flush. `attempted: false` is a first-class state: the outbox
  * returns a zeroed result without touching the network when the device is
- * offline (the `if (!navigator.onLine) return` at lib/doorOutbox.ts:122), and
- * stamping that with a timestamp printed "last sync 14:32 · sent 0 · failed 0"
+ * offline (the `if (!navigator.onLine)` guard near the top of
+ * `flushDoorOutbox`), and stamping that with a timestamp printed
+ * "last sync 14:32 · sent 0 · failed 0"
  * directly under a header reading "offline — holding".
  */
 export type FlushRecord =
@@ -683,9 +684,10 @@ function belongsToRestaurant(m: PendingMutation, restaurantId: string): boolean 
  * The pending-outbox rail's data. This is the defect fix the motion canvas
  * named (inv-09, "Nothing vanishes; the drop becomes a pin"): `flushDoorOutbox`
  * DELETES a receipt it gives up on (a 4xx, or the eighth failed attempt — the
- * `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)` branch,
- * lib/doorOutbox.ts:144), so the pending count falls by one exactly as it does
- * on a delivery and a permanent loss is indistinguishable from a success.
+ * `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)` branch of
+ * `flushDoorOutbox`, lib/doorOutbox.ts), so the pending count falls by one
+ * exactly as it does on a delivery and a permanent loss is indistinguishable
+ * from a success.
  *
  * CORRECTED 2026-09-12 — this used to say the legacy page "calls
  * `watchDoorOutbox` and throws the flush result away", which was true when it
@@ -694,11 +696,15 @@ function belongsToRestaurant(m: PendingMutation, restaurantId: string): boolean 
  * the result carries a `dropped` count separate from the retryable `failed`,
  * and DoorReceipt.tsx accumulates it. The distinction is held on BOTH pages.
  *
- * This hook keeps its own reconstruction rather than reading `dropped`: it
- * needs the NAMES of the dropped receipts to pin them, and the count alone
- * cannot say which ones left. The queue is snapshotted around each flush;
- * anything that left beyond what `sent` accounts for is pinned, named, and
- * stays until a person dismisses it.
+ * CORRECTED AGAIN 2026-09-12 — the paragraph here used to say this hook "keeps
+ * its own reconstruction rather than reading `dropped`", snapshotting the queue
+ * around each flush and pinning whatever left beyond what `sent` accounts for.
+ * That was true for two commits. `57e59ae2` made the flush the ONLY writer: it
+ * records each drop keyed on the queue id BEFORE deleting the entry, so the
+ * names are read back (`readDroppedDoorReceipts`), not inferred — see the
+ * "The drops are READ, not reconstructed" note inside `flushNow` below, which
+ * is the code this paragraph had started to contradict. A pin still stays until
+ * a person dismisses it.
  */
 export function useDoorOutbox(): OutboxData {
   const rid = useActiveRestaurantId();

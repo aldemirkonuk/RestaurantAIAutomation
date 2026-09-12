@@ -24,9 +24,15 @@
  * (written with `grep '\.tsx:'` rather than a `**` pathspec on purpose — a
  * glob ending `*.tsx` would close this comment block.)
  *
- * (36 lines across 11 files on this branch; 33 across the same 11 on
- * `origin/main` — this branch's door work added three. The command is the
- * claim; those readings are only when it was last run.)
+ * Run it — for a total, pipe it through
+ * `awk -F: '{s+=$NF; n++} END {print s" lines across "n" files"}'`, and put a
+ * ref before `--` to read any other tree (`git grep -c 'data-ux-key=' origin/main
+ * -- apps/web/src | …`). No count is written here ON PURPOSE. The version of
+ * this comment that shipped hours ago carried one, and it was already wrong by
+ * the next commit on the same branch, which added markers to the door screen.
+ * That is the whole failure this file is an example of: a figure in prose is
+ * checked once, the day it is written; a command is checked every time someone
+ * reads it. Quoting today's output here would only start the clock again.
  *
  * How the previous version of this comment came to lie. It said "Mounted once
  * in DashboardLayout", and that was TRUE the day it was written — 7c80b587

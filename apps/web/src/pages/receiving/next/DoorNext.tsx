@@ -230,9 +230,15 @@ export default function DoorNext() {
   // `onChange?.(result)`), which is how DoorReceipt.tsx gets the same
   // `dropped`/`failed` split. The reason is the `offline`/`online` pair below:
   // this screen RENDERS connectivity, and watchDoorOutbox listens for `online`
-  // without exposing it, has no `offline` handler at all, and its returned
-  // cleanup detaches only the `online` listener — not the `visibilitychange`
-  // one. Flushing twice is safe (idempotent).
+  // without exposing it and has no `offline` handler at all. Flushing twice is
+  // safe (idempotent).
+  //
+  // (This used to add "and its returned cleanup detaches only the `online`
+  // listener — not the `visibilitychange` one". True the hour it was written,
+  // and false by the next commit on this same branch: `e93f368c` named both
+  // handlers so the cleanup could remove both — see the `return () =>` at the
+  // end of `watchDoorOutbox`, lib/doorOutbox.ts. The listener leak is gone; the
+  // connectivity reason above is the whole reason now.)
   useEffect(() => {
     let alive = true;
     const refresh = () => void pendingDoorCount().then((n) => alive && setPendingQueue(n));

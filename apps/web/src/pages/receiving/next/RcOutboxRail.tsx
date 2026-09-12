@@ -9,8 +9,9 @@
  *    count out of 8 and the last error verbatim.
  * 2. DROPPED — the defect fix (v3.0-TECH-DEBT / motion canvas inv-09):
  *    `flushDoorOutbox` permanently discards a receipt on a 4xx or after 8
- *    attempts (lib/doorOutbox.ts:144), deleting it from the queue, so the
- *    pending count falls exactly as it does on a delivery and a dropped
+ *    attempts (the `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)` branch
+ *    in `flushDoorOutbox`, lib/doorOutbox.ts), deleting it from the queue, so
+ *    the pending count falls exactly as it does on a delivery and a dropped
  *    receipt looks identical to a delivered one. Here every drop is pinned by
  *    name and stays until a person dismisses it. Nothing vanishes; the drop
  *    becomes a pin (turn, then the stamp landing).
