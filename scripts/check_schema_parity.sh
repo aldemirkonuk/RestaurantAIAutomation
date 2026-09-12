@@ -97,9 +97,10 @@ RESET=0
 case "${1:-}" in
   --reset)     RESET=1 ;;
   --self-test) MODE="self-test" ;;
+  --self-test-offline) MODE="self-test-offline" ;;
   --print-sql) MODE="print-sql" ;;
   "")          ;;
-  *) echo "usage: $0 [--reset|--self-test|--print-sql]" >&2; exit 2 ;;
+  *) echo "usage: $0 [--reset|--self-test|--self-test-offline|--print-sql]" >&2; exit 2 ;;
 esac
 
 WORK="$(mktemp -d)"
@@ -403,6 +404,16 @@ count_of() { awk -F'\t' -v c="$2" '$1==c{n++} END{print n+0}' "$1"; }
 # ---------------------------------------------------------------------------
 # compare <local-file> <remote-file> [--quiet]
 # 0 = identical, 1 = differs. Exits 2 itself on an unusable input.
+PARITY_REORDERED_COUNT=0
+
+# The three tables whose physical column ORDER may differ between a fresh build
+# and production without failing the build. Declared here, at file level, so
+# `--self-test-offline` can read it without first running a comparison -- an
+# earlier version declared it inside compare() and the offline suite died on an
+# unbound variable while still exiting 0, which is the exact shape this file
+# exists to refuse. See the block in compare() for why these three and no others.
+REORDERED_BY_THE_2026_09_12_APPLY="public.providers public.restaurants public.restaurant_feature_flags"
+
 compare() {
   local lf="$1" rf="$2" quiet="${3:-}"
   local d="$WORK/d.$$"; rm -f "$d".*
@@ -427,25 +438,46 @@ compare() {
     cannot_check "local is server_version_num $lv, remote is $rv — different major versions"
   fi
 
-  # A `column-order` row whose two sides hold the SAME COLUMNS in a different
-  # ORDER is a reordering, not drift, and is separated out below rather than
-  # failing the build. Measured cause, 2026-09-12: production applied #289's
-  # nineteen migrations AFTER four migrations authored later than them, so three
-  # tables carry their columns in a different physical order than a fresh build
-  # of the same files produces. The column SETS are identical -- 7461 facts on
-  # both sides, every category equal.
+  # THREE NAMED TABLES may differ in physical column ORDER without failing the
+  # build. Not a category: three rows, listed by name, and any other table's
+  # reordering still fails.
   #
-  # This narrows the check by exactly one property, and only when that property
-  # is the only thing that differs:
+  # Measured cause, 2026-09-12: production applied #289's nineteen migrations
+  # AFTER four migrations authored later than them, so these three carry their
+  # columns in a different physical order than a fresh build of the same files
+  # produces. The column SETS are identical -- 7461 facts on both sides, every
+  # category equal, and the entire residual was these three rows. The production
+  # order cannot be undone without rewriting three live tables, one of which
+  # holds every tenant.
+  #
+  # The list is NAMED rather than the category narrowed because ADR 0072:209-211
+  # says so in as many words: "narrowed by name in this ADR, never by deleting
+  # the category quietly". A blanket rule would also permanently hide the one
+  # difference this loses -- `DROP COLUMN x; ADD COLUMN x <identical def>` applied
+  # by hand, which destroys that column's data and whose only schema residue is
+  # attnum order. Bounded to three tables, that shape still fails everywhere else.
+  #
+  # This waives exactly one property, and only for these three:
   #   * a column present on one side only still fails, in the `column` category;
-  #   * a column-order row whose SETS differ still fails here, as CHANGED;
+  #   * a column-order row whose SETS differ still fails here, as CHANGED --
+  #     including for these three;
+  #   * a reordering of ANY OTHER table still fails here, as CHANGED;
   #   * every other category is untouched.
-  # Physical column order is load-bearing only for positional SQL -- `INSERT
-  # INTO t VALUES (...)` with no column list, or reading a row by index. Checked
-  # on 941d9cb4 before narrowing this: a repo-wide grep for a positional INSERT
-  # into any table, and for indexed row access in TypeScript and Python, returns
-  # nothing. Every write goes through the Supabase client, which names columns.
-  LC_ALL=C awk -F'\t' -v OL="$d.only_local" -v OR="$d.only_remote" -v CH="$d.changed" -v RO="$d.reordered" '
+  #
+  # Why it is safe for these three, checked and not assumed: physical column
+  # order is load-bearing only for positional SQL -- `INSERT INTO t VALUES (...)`
+  # with no column list, `INSERT ... SELECT` with no column list, `COPY` with no
+  # column list, reading a row by index, `%ROWTYPE`, or `RETURNS SETOF <table>`
+  # with an explicit column list. Every one of those was swept on 941d9cb4 and
+  # every one returns nothing, or returns only same-table `SELECT * INTO` whose
+  # two sides reorder together. Recorded as commands in CLAIMS.jsonl.
+  #
+  # TO REMOVE A ROW: rebuild that table in migration order, or accept that its
+  # order is now production's. Removing a row is always safe; ADDING one needs a
+  # founder decision and an amendment to ADR 0072, exactly as this one did.
+  LC_ALL=C awk -F'\t' -v OL="$d.only_local" -v OR="$d.only_remote" -v CH="$d.changed" -v RO="$d.reordered" \
+      -v ALLOWED="$REORDERED_BY_THE_2026_09_12_APPLY" '
+    BEGIN { n = split(ALLOWED, t, " "); for (i = 1; i <= n; i++) if (t[i] != "") ALLOW[t[i]] = 1 }
     function same_set(a, b,   xa, xb, i, n, m, sa, sb) {
       n = split(a, xa, ","); m = split(b, xb, ",")
       if (n != m) return 0
@@ -459,7 +491,7 @@ compare() {
     { k = $1 SUBSEP $2; R[k] = $3
       if (!(k in L)) { print $1 "\t" $2 "\t" $3 > OR }
       else if (L[k] != $3) {
-        if ($1 == "column-order" && same_set(L[k], $3))
+        if ($1 == "column-order" && ($2 in ALLOW) && same_set(L[k], $3))
           print $1 "\t" $2 "\t" L[k] "\t" $3 > RO
         else
           print $1 "\t" $2 "\t" L[k] "\t" $3 > CH } }
@@ -473,6 +505,10 @@ compare() {
   n_or=$(wc -l < "$d.only_remote" | tr -d ' ')
   n_ch=$(wc -l < "$d.changed"     | tr -d ' ')
   n_ro=$(wc -l < "$d.reordered"   | tr -d ' ')
+  # The caller's PASS message has to name these; `d` is local, so publish the
+  # count rather than let the summary line quietly claim column order was
+  # compared when three named tables were exempt from it.
+  PARITY_REORDERED_COUNT="$n_ro"
 
   [[ "$quiet" == "--quiet" ]] && { [[ $((n_ol + n_or + n_ch)) -eq 0 ]] && return 0 || return 1; }
 
@@ -500,8 +536,8 @@ compare() {
   section "IN LOCAL, NOT IN REMOTE — unpushed migration" "$d.only_local" \
     "Run 'supabase db push', or drop the migration if it was a mistake." \
     fmt_one
-  section "REORDERED — same columns, different physical order (does NOT fail)" "$d.reordered" \
-    "Not drift: the two sides hold exactly the same columns. A table lands here when migrations reached production in a different order than a fresh build applies them — production applied #289's nineteen migrations after four later ones on 2026-09-12. Nothing in this repository reads a column by position. A column present on one side only does NOT land here; it fails as CHANGED or in the 'column' category." \
+  section "REORDERED — one of three named tables, same columns, different physical order (does NOT fail)" "$d.reordered" \
+    "Not drift, and not a category: exactly three tables are listed by name in this script (public.providers, public.restaurants, public.restaurant_feature_flags), because production applied #289's nineteen migrations after four later ones on 2026-09-12 and that order cannot be undone without rewriting three live tables. ANY OTHER table's reordering fails as CHANGED, and so does a listed table whose column SETS differ. See ADR 0072's amendment." \
     fmt_changed
 
   [[ $((n_ol + n_or + n_ch)) -eq 0 ]] && return 0 || return 1
@@ -581,7 +617,94 @@ PAIRS
 st_sql() { docker exec -i "$DBC" psql -U postgres -d "$1" -v ON_ERROR_STOP=1 -q -c "$2" </dev/null >/dev/null 2>&1; }
 st_admin() { docker exec -i "$DBC" psql -U postgres -d postgres -q -c "$1" </dev/null >/dev/null 2>&1 || true; }
 
+
+# --- the part of the suite that needs no database -------------------------
+#
+# Split out 2026-09-12 so it can run in CI. The rest of self_test() builds real
+# databases in Docker and therefore runs nowhere automatic; that was tolerable
+# while every invariant was about SQL rendering, and stopped being tolerable
+# when the three cases below became the only thing keeping a required status
+# check's exception bounded to three named tables. A guard whose only proof does
+# not run is documentation.
+#
+# These are fixture-driven on purpose. The property under test is the
+# comparison's own routing, not SQL rendering, so real DDL would add a Docker
+# dependency without adding evidence.
+self_test_offline() {
+  local FAILED="$WORK/st_offline_failures"; : > "$FAILED"
+  local checks=0 code=0
+  fail() { echo "$*" >> "$FAILED"; }
+
+  mk_fp() {  # <file> <table> <column order>
+    { printf 'server\tversion\t160000\n'
+      printf 'relation\t%s\ttable\n' "$2"
+      printf 'column\t%s.a\tinteger\n' "$2"
+      printf 'constraint\t%s.pk\tPRIMARY KEY (a)\n' "$2"
+      printf 'index\t%s_pkey\tCREATE UNIQUE INDEX\n' "$2"
+      printf 'function\tpublic.f\tSELECT 1\n'
+      printf 'column-order\t%s\t%s\n' "$2" "$3"
+    } > "$1"
+  }
+
+  # Every table on the list, reordered, must PASS -- including the ones nobody
+  # thinks to test, because a typo in the list would otherwise go unnoticed
+  # until the next production apply.
+  local t
+  for t in $REORDERED_BY_THE_2026_09_12_APPLY; do
+    checks=$((checks+1))
+    mk_fp "$WORK/sto_a" "$t" "a,b,c"
+    mk_fp "$WORK/sto_b" "$t" "c,a,b"
+    code=0; ( compare "$WORK/sto_a" "$WORK/sto_b" --quiet ) >/dev/null 2>&1 || code=$?
+    [[ "$code" == "0" ]] || fail "listed table $t reordered exited $code, not 0"
+  done
+
+  # A listed table whose column SETS differ must FAIL. Without this, "same
+  # columns in a different order" becomes "any column-order difference is fine".
+  checks=$((checks+1))
+  mk_fp "$WORK/sto_a" "public.restaurants" "a,b,c"
+  mk_fp "$WORK/sto_c" "public.restaurants" "c,a,d"
+  code=0; ( compare "$WORK/sto_a" "$WORK/sto_c" --quiet ) >/dev/null 2>&1 || code=$?
+  [[ "$code" == "1" ]] || fail "a listed table whose column SETS differ exited $code, not 1"
+
+  # An UNLISTED table, reordered exactly the same way, must FAIL. This is what
+  # keeps the exception three rows rather than a category.
+  checks=$((checks+1))
+  mk_fp "$WORK/sto_d" "public.not_on_the_list" "a,b,c"
+  mk_fp "$WORK/sto_e" "public.not_on_the_list" "c,a,b"
+  code=0; ( compare "$WORK/sto_d" "$WORK/sto_e" --quiet ) >/dev/null 2>&1 || code=$?
+  [[ "$code" == "1" ]] || fail "an UNLISTED table reordered exited $code, not 1"
+
+  # The list itself is not empty. An empty list would make every case above
+  # vacuous: the loop would run zero times and the two FAIL cases would pass for
+  # the wrong reason.
+  checks=$((checks+1))
+  [[ -n "${REORDERED_BY_THE_2026_09_12_APPLY// /}" ]] || fail "the reordered-table list is empty; every case above would be vacuous"
+
+  # Identical-but-empty is still exit 2 here too -- the offline path must not
+  # become a way to get a pass out of nothing.
+  checks=$((checks+1))
+  printf 'server\tversion\t160000\n' > "$WORK/sto_h"
+  cp "$WORK/sto_h" "$WORK/sto_h2"
+  code=0; ( compare "$WORK/sto_h" "$WORK/sto_h2" --quiet ) >/dev/null 2>&1 || code=$?
+  [[ "$code" == "2" ]] || fail "identical-but-empty fingerprints exited $code, not 2"
+
+  if [[ -s "$FAILED" ]]; then
+    echo "FAIL — $(wc -l < "$FAILED" | tr -d ' ') of $checks offline invariant(s) did not hold:"
+    sed 's/^/   /' "$FAILED"
+    return 1
+  fi
+  echo "PASS — $checks offline invariant(s) hold:"
+  echo "   each of the $(echo $REORDERED_BY_THE_2026_09_12_APPLY | wc -w | tr -d ' ') named tables may be reordered without failing the build"
+  echo "   a named table whose column SETS differ still fails"
+  echo "   an UNLISTED table reordered still fails"
+  echo "   the named list is not empty, so none of the above is vacuous"
+  echo "   two identical-but-empty fingerprints are still exit 2, never a pass"
+  return 0
+}
+
 self_test() {
+  # The database-free half first, so the full suite covers it too.
+  self_test_offline || return 1
   resolve_container
   local A="parity_selftest_a" B="parity_selftest_b" E1="parity_selftest_e1" E2="parity_selftest_e2"
   local FAILED="$WORK/st_failures"; : > "$FAILED"
@@ -663,44 +786,8 @@ self_test() {
   code=0; ( compare "$WORK/st_h1" "$WORK/st_h2" --quiet ) >/dev/null 2>&1 || code=$?
   [[ "$code" == "2" ]] || fail "identical-but-empty fingerprints exited $code, not 2"
 
-  # 4b. A column REORDERING passes; a column-order row whose SETS differ does
-  #     NOT. These two cases are the whole of the narrowing added 2026-09-12,
-  #     and the second is the one that matters: it is what stops "same columns,
-  #     different order" from becoming "any column-order difference is fine".
-  checks=$((checks+1))
-  {
-    printf 'server\tversion\t160000\n'
-    printf 'relation\tpublic.t\ttable\n'
-    printf 'column\tpublic.t.a\tinteger\n'
-    printf 'constraint\tpublic.t.t_pkey\tPRIMARY KEY (a)\n'
-    printf 'index\tpublic.t_pkey\tCREATE UNIQUE INDEX\n'
-    printf 'function\tpublic.f\tSELECT 1\n'
-    printf 'column-order\tpublic.t\ta,b,c\n'
-  } > "$WORK/st_ro1"
-  {
-    printf 'server\tversion\t160000\n'
-    printf 'relation\tpublic.t\ttable\n'
-    printf 'column\tpublic.t.a\tinteger\n'
-    printf 'constraint\tpublic.t.t_pkey\tPRIMARY KEY (a)\n'
-    printf 'index\tpublic.t_pkey\tCREATE UNIQUE INDEX\n'
-    printf 'function\tpublic.f\tSELECT 1\n'
-    printf 'column-order\tpublic.t\tc,a,b\n'
-  } > "$WORK/st_ro2"
-  code=0; ( compare "$WORK/st_ro1" "$WORK/st_ro2" --quiet ) >/dev/null 2>&1 || code=$?
-  [[ "$code" == "0" ]] || fail "the same columns in a different order exited $code, not 0"
-
-  checks=$((checks+1))
-  {
-    printf 'server\tversion\t160000\n'
-    printf 'relation\tpublic.t\ttable\n'
-    printf 'column\tpublic.t.a\tinteger\n'
-    printf 'constraint\tpublic.t.t_pkey\tPRIMARY KEY (a)\n'
-    printf 'index\tpublic.t_pkey\tCREATE UNIQUE INDEX\n'
-    printf 'function\tpublic.f\tSELECT 1\n'
-    printf 'column-order\tpublic.t\tc,a,d\n'
-  } > "$WORK/st_ro3"
-  code=0; ( compare "$WORK/st_ro1" "$WORK/st_ro3" --quiet ) >/dev/null 2>&1 || code=$?
-  [[ "$code" == "1" ]] || fail "a column-order row with DIFFERENT columns exited $code, not 1"
+  # 4b. The 2026-09-12 exception -- proven by self_test_offline(), called at the
+  #     top of this function so the full suite still covers it.
 
   # 5. A major-version mismatch is exit 2, not a wall of phantom drift.
   checks=$((checks+1))
@@ -789,6 +876,15 @@ if [[ "$MODE" == "self-test" ]]; then
   exit $?
 fi
 
+# The database-free half, for CI. `--self-test` needs Docker and a running local
+# stack, so it runs nowhere automatic; this half needs neither, and it carries
+# the invariants that keep the 2026-09-12 column-order exception bounded to the
+# three tables it names.
+if [[ "$MODE" == "self-test-offline" ]]; then
+  self_test_offline
+  exit $?
+fi
+
 # ---------------------------------------------------------------------------
 # The run
 # ---------------------------------------------------------------------------
@@ -823,14 +919,22 @@ fi
 
 if compare "$WORK/local" "$WORK/remote"; then
   echo
-  echo "PASS — local and remote agree on every compared object."
+  if [[ "${PARITY_REORDERED_COUNT:-0}" -gt 0 ]]; then
+    echo "PASS — local and remote agree on every compared object, except the"
+    echo "       physical column ORDER of ${PARITY_REORDERED_COUNT} named table(s), listed above."
+  else
+    echo "PASS — local and remote agree on every compared object."
+  fi
   echo "       Compared: relations (incl. materialized views), columns with full"
   echo "       type/nullability/default, column order, constraints, indexes,"
   echo "       function signatures and bodies, view bodies, triggers, RLS"
   echo "       policies, enum/domain types, sequences."
   echo "       NOT compared: grants and role membership, table/column comments,"
-  echo "       schemas other than public, table data, and physical storage"
-  echo "       settings. Those are still blind spots — see ADR 0072."
+  echo "       schemas other than public, table data, physical storage settings,"
+  echo "       and — for public.providers, public.restaurants and"
+  echo "       public.restaurant_feature_flags ONLY — physical column order,"
+  echo "       when those tables hold the same columns on both sides. Those are"
+  echo "       still blind spots — see ADR 0072 and its 2026-09-12 amendment."
   exit 0
 fi
 

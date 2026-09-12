@@ -196,19 +196,30 @@ back (base type only, no typmod / nullability / default; function keyed on
   differs between a fresh `supabase db reset` and production. **This has not been
   run against the real pair** (see Not verified), so the first real run may need
   a triage pass.
-- **Given up:** nothing that was previously compared. The new comparison is a
-  strict superset of the old one, minus 19 information_schema column rows that
-  belonged to extension-owned relations and were never migration-owned anyway
-  (3,391 old keys = 3,396 new column facts − 24 matview columns + 19 extension
-  columns; the arithmetic closes exactly).
+- **Given up:** nothing that was previously compared, *as written on 2026-09-02*.
+  The new comparison is a strict superset of the old one, minus 19
+  information_schema column rows that belonged to extension-owned relations and
+  were never migration-owned anyway (3,391 old keys = 3,396 new column facts −
+  24 matview columns + 19 extension columns; the arithmetic closes exactly).
+  **Amended 2026-09-12: one thing has since been given up, for three tables by
+  name — see the amendment below.**
 - **Still not compared, and named so it is not mistaken for coverage:** grants
   and role membership, table and column comments, schemas other than `public`
   (`auth`, `storage`, `extensions`), table data, physical storage parameters,
-  publication/replication membership, and the *ordering* of enum labels beyond
-  their sort order. The PASS message prints this list on every run.
+  publication/replication membership, the *ordering* of enum labels beyond their
+  sort order, and — **added 2026-09-12, for `public.providers`,
+  `public.restaurants` and `public.restaurant_feature_flags` only** — the
+  physical column ORDER of those three tables when both sides hold the same
+  columns. The PASS message prints this list on every run, and says how many of
+  the three were exempted on that run rather than printing an unqualified
+  agreement.
 - **Revisit when:** the first real run against production produces a red that is
   not drift. That is the signal that a category needs narrowing, and it should be
   narrowed by name in this ADR, never by deleting the category quietly.
+  **That signal fired on 2026-09-12 and the amendment below is its answer.** It
+  narrows by naming three tables, not by deleting the `column-order` category:
+  every other table's reordering still fails, and so does a named table whose
+  column sets differ.
 - **Fork PRs cannot merge whatever of this file is required (deliberate, not a
   bug).** Every job in this workflow carries `if: github.event_name !=
   'pull_request' || github.event.pull_request.head.repo.full_name ==
@@ -524,8 +535,102 @@ whoever owns `purchase_reasons` so they renumber before CI tells them.
   every run). Unchanged behaviour, restated because an exclusion nobody re-reads
   becomes a blind spot.
 
+## Amendment, 2026-09-12 — three tables are exempt from the column-order comparison
+
+### What happened
+
+Production applied the nineteen migrations that arrived with PR #289 on
+2026-09-12, months after four migrations authored *later* than them had already
+landed from their own PRs (`20260906163412`, `20260906233000`, `20260907120000`,
+`20260911120000`). The nineteen had never applied because the first of them,
+`20260906020000`, failed its own assertion: its history CHECK evaluated to NULL,
+and a CHECK whose expression is NULL **passes** in Postgres.
+
+A fresh `supabase db reset` applies all twenty-three in version order. Production
+did not. So three tables now hold exactly the same columns in a different
+physical order:
+
+| table | what moved |
+|---|---|
+| `public.restaurants` | `carrying_cost_*` before `tax_id*` locally; the other way round on production |
+| `public.providers` | `usual_currency*` before `tax_id*` locally; after on production |
+| `public.restaurant_feature_flags` | `mudavym_design_document` late locally; earlier on production |
+
+Everything else agrees: **7461 facts on each side, every category count equal**,
+and the entire residual was those three `column-order` rows. The production order
+cannot be undone without rewriting three live tables, one of which is the tenant
+root.
+
+### What was decided
+
+`scripts/check_schema_parity.sh` carries a **named list of three tables**, in a
+file-level constant, whose `column-order` rows are reported as REORDERED and do
+not fail the build **when both sides hold the same set of columns**. Nothing else
+changes:
+
+- a column present on one side only still fails, in the `column` category;
+- a listed table whose column SETS differ still fails, as CHANGED;
+- **any other table's reordering still fails**, as CHANGED;
+- every other category is untouched.
+
+Removing a name from that list is always safe. Adding one needs a founder
+decision and another amendment here, exactly as this one did.
+
+### What this gives up, stated rather than implied
+
+One shape, for three tables: `DROP COLUMN x; ADD COLUMN x <identical
+definition>` applied by hand on production. That destroys the column's data and
+its only schema residue is `attnum` order, so on those three tables it would now
+pass. It still fails on every other table. This is the loss; it is not
+hypothetical and it is not zero.
+
+### Why it is safe for these three, checked rather than assumed
+
+Physical column order is load-bearing only for positional SQL. Every shape was
+swept on `941d9cb4`:
+
+| shape | result |
+|---|---|
+| `INSERT INTO t VALUES (...)` with no column list | none (2,829 `INSERT INTO` occurrences; every one with no following column list is prose, a comment, a guard's search string, or a multi-line fragment whose column list is on the next line) |
+| `INSERT INTO t SELECT ...` with no column list | none |
+| `COPY ... FROM/TO` with no column list | none; no `copy_from` / `copy_expert` / `copy_to` |
+| indexed row access (`rows[N][M]`, `fetchone()[0]`, `rowMode: 'array'`) | none |
+| `%ROWTYPE` | two, both `SELECT * INTO` from the same table the rowtype is derived from, so both sides reorder together; neither table is on the list |
+| `RETURNS SETOF <table>` with an explicit column list | none |
+| `SELECT *` against the three listed tables | none |
+
+The orchestrator reaches the database only through supabase-py's builder, which
+names columns; the gateway only through the Supabase client, which does the same.
+
+### The guard, and the proof that it is not vacuous
+
+`--self-test-offline` is a new mode that needs no database, and it runs in CI as
+its own step in `.github/workflows/schema-parity.yml`, before the comparison is
+asked to judge anything. The full `--self-test` needs Docker and a running local
+stack, so it runs nowhere automatic and never has — which was tolerable while
+every invariant it proved was about SQL rendering, and stopped being tolerable
+the moment three cases became the only thing standing between "three rows" and
+"a category nobody compares any more".
+
+Seven invariants, proven to fail when the exception is widened:
+
+| mutation | result |
+|---|---|
+| the allow-list gate removed from the awk | exit **1**, "an UNLISTED table reordered exited 0, not 1" |
+| the named list emptied | exit **1**, "the reordered-table list is empty; every case above would be vacuous" |
+
+The second exists because an empty list would make every other case pass for the
+wrong reason.
+
+### The PASS message
+
+It no longer claims column order is compared when it was not. On a run where any
+of the three was exempted it says so and gives the count, and the exclusion list
+it prints on every run names the three tables.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | — | Created. Diagnosis verified against a fixture and against production; fix proven to fail where the old one passed; self-test proven non-vacuous by mutation. |
+| 2026-09-12 | — | **Amended.** The "revisit when" signal fired: the first run after production caught up on #289's nineteen migrations was red on three `column-order` rows that were not drift. Narrowed BY NAME (three tables) per this ADR's own instruction, never by deleting the category. `:199` and the not-compared list rewritten; the PASS message corrected; `--self-test-offline` added and wired into CI, and proven to fail under two widening mutations. |

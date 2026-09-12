@@ -330,8 +330,49 @@ this book reaches" are two different questions and only the second one is about 
 | never the person who refused it | `reopen()`, and **not** a CHECK — see below |
 | once per set of bytes | `reopened_at IS NULL` in the UPDATE's own filter |
 | a reason, always | `reopen()` + `price_index_upload_reviews_reopen_complete` |
-| the refusal is kept, not deleted | `price_index_upload_reviews_reopen_has_history` |
+| the refusal is kept, not deleted | `price_index_upload_reviews_reopen_has_history` — **corrected 2026-09-12: as shipped, this constraint enforced nothing.** See the correction below. |
 | its own seal act | `price_index_upload.reopen`, never `.admit` |
+
+### Correction, 2026-09-12 — the history constraint enforced nothing, and the migration is now on production
+
+Two statements in this record were wrong, and both are corrected here rather than
+edited away.
+
+**1. `price_index_upload_reviews_reopen_has_history` never enforced its row.** As
+shipped in `20260906020000`, the predicate read:
+
+```sql
+CHECK (reopened_at IS NULL
+       OR (jsonb_typeof(decision_history) = 'array'
+           AND jsonb_array_length(decision_history) > 0))
+```
+
+`jsonb_typeof(NULL)` is NULL, `NULL = 'array'` is NULL, and **a CHECK whose
+expression evaluates to NULL PASSES** in Postgres — it refuses only on FALSE. So
+the constraint admitted exactly the row the table exists to refuse: a reopen
+carrying no history, which is a refusal overturned with nothing recording that it
+happened. The enforcement table above claimed an invariant the shipped constraint
+never had.
+
+The fix adds `decision_history IS NOT NULL` as the FIRST conjunct, and adds a
+data-free structural assertion that reads `pg_get_constraintdef` and refuses the
+migration if that guard is ever removed. PR #360.
+
+**2. "the migration is NOT applied anywhere" and "the in-file `DO $$` assertions
+are UNEXECUTED" are both out of date.** `20260906020000` is on production as of
+2026-09-12, applied through the Supabase connector on the founder's explicit
+authorisation, together with the eighteen migrations behind it that it had been
+blocking. Its assertions have executed against real data — and the behavioural
+probe, which CI had never been able to run because CI builds a database with no
+users, ran and passed.
+
+**Why it had never applied, and why nothing noticed.** The migration's own probe
+inserts the historyless reopen and expects the constraint to refuse it. The
+constraint passed it, so the probe's `RAISE EXCEPTION` fired and the migration
+refused itself — every time the integration tried. CI never saw it because the
+probe is wrapped in `IF probe_user IS NOT NULL` and a fresh database has no
+users: a check that could not run, reporting as health, inside the block written
+to prove the constraint works.
 
 Two consequences are stated rather than left to be discovered.
 

@@ -269,7 +269,24 @@ BEGIN
       'no user row exists here, so the reopen CHECKs were created but not exercised. They are exercised against the same predicates by the jest suite.';
   END IF;
 
-  RAISE NOTICE
-    'price_index_upload_reviews: reopened_at/reopened_by/reopen_reason/reopen_seal_id/decision_history added; a reasonless reopen and a historyless reopen both proven refused; RLS and grants untouched.';
+  -- The closing line says which of the two things happened, because until
+  -- 2026-09-12 it said BOTH unconditionally: on a fresh database it printed
+  -- 'both proven refused' four lines after correctly printing that the probes
+  -- had not run. That is this migration's own defect in miniature -- a check
+  -- that could not run, reporting as health -- and it sat inside the block that
+  -- exists to prove the constraint works.
+  --
+  -- This edit is text inside a RAISE NOTICE. It creates, alters and drops
+  -- nothing, so the schema this file builds is byte-for-byte what production
+  -- already has from the 2026-09-12 apply. The ledger's stored `statements[1]`
+  -- is the text that RAN that day and is deliberately not rewritten: the ledger
+  -- records what ran, not what the file says now.
+  IF probe_user IS NOT NULL THEN
+    RAISE NOTICE
+      'price_index_upload_reviews: reopened_at/reopened_by/reopen_reason/reopen_seal_id/decision_history added; a reasonless reopen and a historyless reopen both proven refused against real rows; RLS and grants untouched.';
+  ELSE
+    RAISE NOTICE
+      'price_index_upload_reviews: reopened_at/reopened_by/reopen_reason/reopen_seal_id/decision_history added; the two behavioural probes did NOT run here (no user row), so nothing about refusal is claimed -- only the structural assertion above held; RLS and grants untouched.';
+  END IF;
 END
 $$;
