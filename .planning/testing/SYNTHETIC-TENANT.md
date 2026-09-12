@@ -94,16 +94,18 @@ Service-role seed/teardown runs only from CI secrets / server scripts — **neve
 
 ### Current `E2E_TABLES` (verbatim from `conftest_prod.py` e2e sweep)
 
-These eight tables remain the **e2e-% tag-based** sweep (Phase 25):
+**Five** tables remain the **e2e-% tag-based** sweep (Phase 25) — `inventory_stock`,
+`calendar_events` and `pos_webhook_logs` were removed 2026-09-12 (ADR 0137): the only
+writers of the first and third (waves E and D) are retired, and the sweep's own filter
+(`restaurant_id = 'e2e-test-restaurant'`) could never match `calendar_events`' uuid-typed
+column anyway, so trimming it removes three guaranteed-failing production DELETEs per
+nightly, not live coverage:
 
 ```python
 E2E_TABLES = [
-    "inventory_stock",
     "notification_deliveries",
     "notification_logs",
     "order_interactions",
-    "calendar_events",
-    "pos_webhook_logs",
     "system_audit_log",
     "master_wine_library_submissions",
 ]
