@@ -709,7 +709,18 @@ export class IdentityService {
     return (data ?? []).length;
   }
 
-  /** What is waiting for a person, newest first. */
+  /**
+   * What is waiting for a person, newest first.
+   *
+   * Each candidate carries the identity it proposes AS THE PERSON WILL SEE IT
+   * (2026-09-11, the /vendor-prices rebuild): `display_label` and `standing`,
+   * read in one batch from `beverage_identities`. The question a candidate
+   * asks is "is this bottle that bottle", and a queue that names only an id
+   * cannot be answered from the queue. When the labels cannot be read, every
+   * candidate says so (`identity.unread` with the reason) rather than the
+   * queue collapsing to a failure: the decision is still takeable, and the
+   * log's `evidence_shown` is built server-side at decision time regardless.
+   */
   async pending(restaurantId: string | null, limit = 50) {
     let q = this.databaseService.supabase
       .from("beverage_identity_candidates")
@@ -728,7 +739,29 @@ export class IdentityService {
         `The candidate queue could not be read (${error.message}). This is unknown, not an empty queue.`,
       );
     }
-    return data ?? [];
+    const rows = (data ?? []) as any[];
+    if (rows.length === 0) return rows;
+
+    const ids = [...new Set(rows.map((r) => r.identity_id).filter(Boolean))];
+    const labels = await this.databaseService.supabase
+      .from("beverage_identities")
+      .select("id, display_label, standing")
+      .in("id", ids);
+    const byId = new Map<string, { display_label: string | null; standing: string | null }>();
+    if (!labels.error) {
+      for (const r of (labels.data ?? []) as any[]) {
+        byId.set(r.id, { display_label: r.display_label ?? null, standing: r.standing ?? null });
+      }
+    }
+    return rows.map((r) => {
+      const found = byId.get(r.identity_id);
+      const identity = labels.error
+        ? { unread: true, reason: labels.error.message }
+        : found
+          ? { unread: false, display_label: found.display_label, standing: found.standing }
+          : { unread: true, reason: "the identity row was not found" };
+      return { ...r, identity };
+    });
   }
 
   /**

@@ -78,6 +78,12 @@ export const SOURCE_HALF_LIFE_DAYS: Record<PriceSourceType, number> = {
 };
 
 export interface PriceObservation {
+  /**
+   * The register row this observation came from, carried through to the
+   * ladder unchanged so a reader can open the row behind a rung. Optional:
+   * callers that only rank need not name one, and the engine never keys on it.
+   */
+  id?: string | null;
   price: number;
   sourceType: PriceSourceType;
   observedAt: Date | string;
@@ -228,6 +234,8 @@ export function trimmedMean(xs: number[], fraction = 0.1): number | null {
 }
 
 export interface VendorQuote {
+  /** The register row behind this rung, or null when the caller named none. */
+  id: string | null;
   vendorId: string | null;
   vendorName: string | null;
   unitPrice: number;
@@ -312,6 +320,7 @@ export function vendorPriceConsensus(
 
   const ladder: VendorQuote[] = normalized
     .map((n, i) => ({
+      id: n.id ?? null,
       vendorId: n.vendorId ?? null,
       vendorName: n.vendorName ?? null,
       unitPrice: n.unitPrice,

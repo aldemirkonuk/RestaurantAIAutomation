@@ -41,22 +41,110 @@ import {
   scopePriceRegisterRead,
 } from "../price-register/visibility";
 
+/**
+ * One register row, with everything a reader needs to open the thing it was
+ * read from (2026-09-11, the /vendor-prices rebuild).
+ *
+ * The provenance travels on the row and nowhere else: `sourceRef` is the
+ * writer's own pointer (`receipt_verified:<orderId>`, `<url>#<product>`, a feed
+ * key), `raw` carries what the writer chose to keep beside it (the own-paper
+ * mirror's `orderId` and `statedUnit`, a typed price's `enteredBy` and
+ * `note`), and the write-time verdict comes back as the sentence that was
+ * stored, never re-derived here. `scope` says whose row it is — this house's
+ * own paper or the openly posted market — because `restaurant_id` itself is
+ * not returned: a reader is told which side of the boundary a row sits on, not
+ * handed the key.
+ */
+export interface RegisterObservation {
+  id: string;
+  scope: "house" | "market";
+  providerId: string | null;
+  vendorCatalogueId: string | null;
+  vendorName: string | null;
+  productName: string | null;
+  masterWineId: string | null;
+  identityId: string | null;
+  sourceType: PriceSourceType;
+  trustTier: number | null;
+  sourceRef: string | null;
+  sourceUrl: string | null;
+  rawPrice: number;
+  currency: string;
+  packSize: number;
+  unitVolumeMl: number | null;
+  observedAt: string;
+  effectiveDate: string | null;
+  parseConfidence: number | null;
+  /** The stored verdict. `null` reason means no judge has ever looked. */
+  isOutlier: boolean;
+  outlierReason: string | null;
+  outlierBasis: string | null;
+  outlierJudgedAt: string | null;
+  /** The writer's own notes, verbatim. Never interpreted here. */
+  raw: Record<string, unknown>;
+}
+
 export interface VendorComparison {
   productKey: { masterWineId?: string; signatureHash?: string };
   productName: string | null;
   consensus: ConsensusResult;
   trends: PriceTrend[];
   /** Every observation behind the ladder, for the "show your working" panel. */
-  observations: Array<{
-    vendorName: string | null;
-    sourceType: PriceSourceType;
-    sourceUrl: string | null;
-    rawPrice: number;
-    packSize: number;
-    unitVolumeMl: number | null;
-    observedAt: string;
-    parseConfidence: number | null;
-  }>;
+  observations: RegisterObservation[];
+}
+
+/**
+ * A vendor's book: every price this house may see that names one vendor,
+ * newest first. `complete` is false when the page came back full, so the count
+ * is a floor and the caller must print it as one.
+ */
+export interface VendorBook {
+  vendor: { providerId: string | null; vendorName: string | null };
+  items: RegisterObservation[];
+  count: number;
+  limit: number;
+  complete: boolean;
+  /** The tenancy boundary the read was made under, in words. */
+  scope: string;
+}
+
+/** The columns a register read names. One list, so the two reads cannot drift. */
+const REGISTER_COLUMNS =
+  "id, restaurant_id, provider_id, vendor_catalogue_id, vendor_name_raw, product_name_raw, master_wine_id, identity_id, source_type, trust_tier, source_ref, source_url, raw_price, currency, pack_size, unit_volume_ml, yield_factor, parse_confidence, observed_at, effective_date, is_outlier, outlier_reason, outlier_basis, outlier_judged_at, raw";
+
+function toRegisterObservation(r: any): RegisterObservation {
+  return {
+    id: String(r.id),
+    scope: r.restaurant_id ? "house" : "market",
+    providerId: r.provider_id ?? null,
+    vendorCatalogueId: r.vendor_catalogue_id ?? null,
+    vendorName: r.vendor_name_raw ?? null,
+    productName: r.product_name_raw ?? null,
+    masterWineId: r.master_wine_id ?? null,
+    identityId: r.identity_id ?? null,
+    sourceType: r.source_type,
+    trustTier:
+      r.trust_tier === null || r.trust_tier === undefined
+        ? null
+        : Number(r.trust_tier),
+    sourceRef: r.source_ref ?? null,
+    sourceUrl: r.source_url ?? null,
+    rawPrice: Number(r.raw_price),
+    currency: r.currency ?? "USD",
+    packSize: r.pack_size ?? 1,
+    unitVolumeMl: r.unit_volume_ml ?? null,
+    observedAt: r.observed_at,
+    effectiveDate: r.effective_date ?? null,
+    parseConfidence:
+      r.parse_confidence === null || r.parse_confidence === undefined
+        ? null
+        : Number(r.parse_confidence),
+    isOutlier: r.is_outlier === true,
+    outlierReason: r.outlier_reason ?? null,
+    outlierBasis: r.outlier_basis ?? null,
+    outlierJudgedAt: r.outlier_judged_at ?? null,
+    raw: r.raw && typeof r.raw === "object" ? r.raw : {},
+  };
 }
 
 /**
@@ -153,9 +241,7 @@ export class VendorComparisonService {
     let q = scopePriceRegisterRead(
       this.databaseService.supabase
         .from("vendor_price_observations")
-        .select(
-          "provider_id, vendor_name_raw, product_name_raw, source_type, source_url, raw_price, currency, pack_size, unit_volume_ml, yield_factor, parse_confidence, observed_at",
-        ),
+        .select(REGISTER_COLUMNS),
       VENDOR_PRICE_OBSERVATIONS,
       restaurantId
         ? { kind: "houseAndOpenMarket", restaurantId }
@@ -243,8 +329,22 @@ export class VendorComparisonService {
     sourceUrl?: string;
     observedAt?: string;
     note?: string;
+    /**
+     * The money the price was quoted in, ISO 4217. Until 2026-09-11 this
+     * writer hard-coded "USD" on every hand-typed row, so a lira quote in
+     * Antalya entered the register as dollars. Validated by the DTO; defaults
+     * to USD only when the caller says nothing, and that default is printed
+     * back to them on the form.
+     */
+    currency?: string;
     restaurantId: string;
     userId?: string;
+    /**
+     * The name (or email) on the token, kept on the row. `raw.enteredBy` is an
+     * id that goes stale when the person leaves; a register that can name
+     * who typed a price is worth more than one that can only number them.
+     */
+    enteredByLabel?: string | null;
   }) {
     const sourceType = params.sourceType ?? "manual";
     const TRUST_BY_SOURCE: Record<string, number> = {
@@ -360,7 +460,7 @@ export class VendorComparisonService {
         source_url: params.sourceUrl ?? null,
         observed_at: observedAt,
         raw_price: params.price,
-        currency: "USD",
+        currency: (params.currency ?? "USD").toUpperCase(),
         pack_size: params.packSize ?? 1,
         unit_volume_ml: params.unitVolumeMl ?? null,
         // Null, not 1. parse_confidence answers "how well did we read this",
@@ -373,6 +473,7 @@ export class VendorComparisonService {
         outlier_judged_at: judgedAt,
         raw: {
           enteredBy: params.userId ?? null,
+          enteredByLabel: params.enteredByLabel?.trim() || null,
           note: params.note ?? null,
           producer: params.producer ?? null,
           vintage: params.vintage ?? null,
@@ -538,6 +639,9 @@ export class VendorComparisonService {
     });
 
     const observations: PriceObservation[] = rows.map((r: any) => ({
+      // The row's id rides through the engine to its rung on the ladder, so
+      // the page can open the source behind a price (2026-09-11).
+      id: r.id ?? null,
       price: Number(r.raw_price),
       sourceType: r.source_type as PriceSourceType,
       observedAt: r.observed_at,
@@ -566,19 +670,81 @@ export class VendorComparisonService {
       productName: wine.label ?? rows[0]?.product_name_raw ?? null,
       consensus: vendorPriceConsensus(observations),
       trends: standardTrends(observations),
-      observations: rows.map((r: any) => ({
-        vendorName: r.vendor_name_raw ?? null,
-        sourceType: r.source_type,
-        sourceUrl: r.source_url ?? null,
-        rawPrice: Number(r.raw_price),
-        packSize: r.pack_size ?? 1,
-        unitVolumeMl: r.unit_volume_ml ?? null,
-        observedAt: r.observed_at,
-        parseConfidence:
-          r.parse_confidence === null || r.parse_confidence === undefined
-            ? null
-            : Number(r.parse_confidence),
-      })),
+      observations: rows.map(toRegisterObservation),
+    };
+  }
+
+  /**
+   * A vendor's book — every price this house may see that names one vendor.
+   *
+   * The other way into the register (2026-09-11): `compare()` starts from a
+   * bottle, this starts from a vendor, which is how a person arrives from the
+   * vendor's own card on /providers. It is the same read under the same
+   * boundary — `houseAndOpenMarket`, so this house's own paper plus the openly
+   * posted rows, never another house's — and it is keyed by `provider_id`
+   * when the caller has one and by the raw vendor name otherwise, because most
+   * hand-typed prices name a vendor the book has no row for.
+   *
+   * `.limit()` makes the count a FLOOR: `complete` is false when the page came
+   * back full, and the page must not print `items.length` as a total then
+   * (`scripts/check_windowed_figures.py`). A failed read THROWS, with the
+   * reason: an empty book and an unreadable one are different sentences.
+   */
+  async vendorBook(params: {
+    restaurantId: string;
+    providerId?: string | null;
+    vendorName?: string | null;
+    limit?: number;
+  }): Promise<VendorBook> {
+    const providerId = params.providerId?.trim() || null;
+    const vendorName = params.vendorName?.trim() || null;
+    if (!providerId && !vendorName) {
+      throw new BadRequestException(
+        "Name the vendor: providerId for a vendor in the book, or vendorName for one that only a typed price knows.",
+      );
+    }
+    const limit = Math.min(Math.max(params.limit ?? 100, 1), 500);
+
+    let q = scopePriceRegisterRead(
+      this.databaseService.supabase
+        .from("vendor_price_observations")
+        .select(REGISTER_COLUMNS),
+      VENDOR_PRICE_OBSERVATIONS,
+      { kind: "houseAndOpenMarket", restaurantId: params.restaurantId },
+    )
+      .order("observed_at", { ascending: false })
+      .limit(limit);
+
+    // `.eq()` parameterises; `.ilike()` on a free-text name is the one place a
+    // caller's string reaches a filter, and PostgREST escapes it as a value,
+    // not as filter syntax. The two keys are alternatives, not a union: a
+    // provider id is exact, a name is a name.
+    q = providerId
+      ? q.eq("provider_id", providerId)
+      : q.ilike("vendor_name_raw", vendorName as string);
+
+    const { data, error } = await q;
+    if (error) {
+      this.logger.error(`Failed to read a vendor's book: ${error.message}`);
+      if ((error as { code?: string }).code === "22P02") {
+        throw new BadRequestException(
+          "providerId must be a vendor id. Open the vendor from the book rather than typing an id.",
+        );
+      }
+      throw new InternalServerErrorException(
+        `Could not read the vendor's book: ${error.message}`,
+      );
+    }
+
+    const items = ((data ?? []) as any[]).map(toRegisterObservation);
+    return {
+      vendor: { providerId, vendorName },
+      items,
+      count: items.length,
+      limit,
+      complete: items.length < limit,
+      scope:
+        "this house's own sightings of the vendor, plus the openly posted market rows that name it; no other house's",
     };
   }
 }

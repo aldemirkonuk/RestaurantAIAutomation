@@ -6,6 +6,7 @@ import {
   IsString,
   IsUUID,
   IsUrl,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -87,6 +88,19 @@ export class ManualObservationDto {
   @Min(50)
   @Max(30000)
   unitVolumeMl?: number;
+
+  /**
+   * The money the number is in, ISO 4217 (`TRY`, `USD`, `GBP`). Absent means
+   * USD, and the writer says so on the row rather than assuming it silently:
+   * before 2026-09-11 every hand-typed price was stored as dollars whatever
+   * the rep had said. Three upper-case letters; nothing here converts.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message: "currency must be a three-letter ISO code, upper case (USD, TRY, GBP).",
+  })
+  currency?: string;
 
   /**
    * How the price was learned. Restricted to the informal sources a human can

@@ -140,15 +140,62 @@ export class VendorIntelController {
   @Post("observations")
   @ApiOperation({ summary: "Record a hand-entered vendor price observation" })
   async recordObservation(
-    @CurrentUser() user: { restaurantId: string; userId?: string; id?: string },
+    @CurrentUser()
+    user: {
+      restaurantId: string;
+      userId?: string;
+      id?: string;
+      name?: string;
+      email?: string;
+    },
     @Body() body: ManualObservationDto,
   ) {
     const observation = await this.comparison.recordManualObservation({
       ...body,
       restaurantId: user.restaurantId,
       userId: user.userId ?? user.id,
+      // Read HERE, from the token, and kept on the row — the same rule the
+      // identity log keeps (`actorOf` below): a name joined back out of
+      // `users` at read time goes with the person when they leave.
+      enteredByLabel: user.name ?? user.email ?? null,
     });
     return { success: true, observation };
+  }
+
+  /**
+   * A vendor's book: every price this house may see that names one vendor,
+   * newest first (2026-09-11, the /vendor-prices rebuild).
+   *
+   * The second way into the register. `compare` starts from a bottle; this
+   * starts from a vendor, which is how a person arrives from the vendor's own
+   * card on /providers. Same boundary as the ladder — this house's rows plus
+   * the open market — and the response says so in words. Owner/manager like
+   * the rest of the controller: it lists what a vendor quoted this house.
+   */
+  @Get("observations")
+  @ApiOperation({
+    summary:
+      "Every register row this house may see that names one vendor, newest first, with its provenance",
+  })
+  async vendorBook(
+    @CurrentUser() user: { restaurantId: string },
+    @Query("providerId") providerId?: string,
+    @Query("vendorName") vendorName?: string,
+    @Query("limit") limit?: string,
+  ) {
+    if (providerId && !UUID_RE.test(providerId)) {
+      throw new BadRequestException(
+        "providerId must be a vendor id. Open the vendor from the book rather than typing an id.",
+      );
+    }
+    const n = limit ? Number(limit) : undefined;
+    const book = await this.comparison.vendorBook({
+      restaurantId: user.restaurantId,
+      providerId: providerId ?? null,
+      vendorName: vendorName ?? null,
+      limit: Number.isFinite(n) && (n as number) > 0 ? (n as number) : undefined,
+    });
+    return { success: true, ...book };
   }
 
   /**
