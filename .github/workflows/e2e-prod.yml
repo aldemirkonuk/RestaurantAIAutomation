@@ -95,7 +95,7 @@ jobs:
       #   ADMIN_API_KEY              tests/e2e/conftest_prod.py:179 (prod_admin_headers) -> Wave B entirely
       #   SUPABASE_URL               tests/e2e/conftest_prod.py:132 and :197             -> prod_jwt + prod_supabase
       #   SUPABASE_ANON_KEY          tests/e2e/conftest_prod.py:133 (prod_jwt)
-      #   SUPABASE_SERVICE_ROLE_KEY  tests/e2e/conftest_prod.py:198 (prod_supabase)      -> Waves D,E,G
+      #   SUPABASE_SERVICE_ROLE_KEY  tests/e2e/conftest_prod.py:198 (prod_supabase)      -> the teardown sweep only, since waves D/E/G retired 2026-09-12 (ADR 0137)
       #   E2E_TEST_EMAIL             tests/e2e/conftest_prod.py:134, apps/web/e2e/prod-smoke.spec.ts:33
       #   E2E_TEST_PASSWORD          tests/e2e/conftest_prod.py:135, apps/web/e2e/prod-smoke.spec.ts:34
       #   E2E_BASE_URL               apps/web/playwright.prod.config.ts:21-26 — the config
@@ -104,16 +104,16 @@ jobs:
       # OPTIONAL — each gates exactly one wave, and a partial run is a legitimate
       # result, so these warn and never fail:
       #   RABBITMQ_URL          tests/e2e/wave_c_agent_triggers.py:100  -> skips Wave C
-      #   TOAST_WEBHOOK_SECRET  tests/e2e/wave_d_toast_pipeline.py:68   -> skips Wave D
-      #   GMAIL_USER            tests/e2e/wave_e_gmail_pipeline.py:40   -> skips Wave E
       #   SENTRY_DSN            tests/e2e/conftest_prod.py:36           -> failure alerting only
       #
-      # Two mapping defects this comment records but this change does not fix:
-      #   * Wave G's gate reads GOOGLE_CALENDAR_CREDENTIALS / GOOGLE_CLIENT_ID /
-      #     CALENDAR_REFRESH_TOKEN (tests/e2e/wave_g_calendar.py:52-54) and NONE of
-      #     the three is mapped into this job's env — Wave G can never run as written.
-      #   * GMAIL_PASSWORD is mapped in the env block above but read by no wave
-      #     (only services/agent-orchestrator/config/settings.py:48, the runtime).
+      # Waves D (Toast), E (Gmail) and G (Calendar) were RETIRED 2026-09-12
+      # (ADR 0137), not merely gated — each tested a table or endpoint with zero
+      # production consumer (pos_webhook_logs / inventory_stock never existed in
+      # production; Google Calendar sync was investigated and cut 2026-08-26).
+      # TOAST_WEBHOOK_SECRET and GMAIL_USER are consequently no longer read by
+      # anything in this suite; GMAIL_PASSWORD remains mapped above and, as
+      # before, read only by services/agent-orchestrator/config/settings.py:48
+      # (the runtime, not this test suite).
       #
       # Secret VALUES are never printed — only presence.
       - name: Required secrets are present
@@ -242,37 +242,20 @@ jobs:
           wait $WAVE_C_PID || true
 
       # -----------------------------------------------------------------------
-      # WAVE D — Toast pipeline (depends on A + B completing)
+      # WAVES D, E, G — RETIRED 2026-09-12 (ADR 0137)
       # -----------------------------------------------------------------------
-      - name: Wave D — Toast Pipeline
-        working-directory: services/agent-orchestrator
+      # wave_d_toast_pipeline.py / wave_e_gmail_pipeline.py / wave_g_calendar.py
+      # are deleted, not skipped: each tested a table or endpoint with zero
+      # production consumer (measured 2026-09-11 via information_schema.columns
+      # on the live Supabase project). Repointing any of them would mean
+      # BUILDING new production wiring to make an E2E test pass, not repairing
+      # drift — see ADR 0137 for the per-wave evidence. This step is a no-op so
+      # the job's log states the reason instead of a bare "file not found".
+      - name: Waves D, E, G — retired
         run: |
-          pytest tests/e2e/wave_d_toast_pipeline.py \
-            --junitxml=test-results/wave_d.xml \
-            -v --tb=short -q \
-            2>&1 | tee test-results/wave_d.log || true
+          echo "::notice::Waves D (Toast), E (Gmail), G (Calendar) retired 2026-09-12 (ADR 0137) -- see .planning/decisions/0137-legacy-e2e-waves-d-e-g-are-retired-not-repointed.md"
+          echo "retired: no production consumer for the schema each tested (pos_webhook_logs, inventory_stock, Google Calendar sync)"
 
-      # -----------------------------------------------------------------------
-      # WAVE E — Gmail pipeline (independent)
-      # -----------------------------------------------------------------------
-      - name: Wave E — Gmail Pipeline
-        working-directory: services/agent-orchestrator
-        run: |
-          pytest tests/e2e/wave_e_gmail_pipeline.py \
-            --junitxml=test-results/wave_e.xml \
-            -v --tb=short -q \
-            2>&1 | tee test-results/wave_e.log || true
-
-      # -----------------------------------------------------------------------
-      # WAVE G — Calendar scheduling (D-17: depends on E)
-      # -----------------------------------------------------------------------
-      - name: Wave G — Calendar DB Assertion
-        working-directory: services/agent-orchestrator
-        run: |
-          pytest tests/e2e/wave_g_calendar.py \
-            --junitxml=test-results/wave_g.xml \
-            -v --tb=short -q \
-            2>&1 | tee test-results/wave_g.log || true
 
       # -----------------------------------------------------------------------
       # WAVE F — Playwright frontend smoke tests (independent — D-17)

@@ -102,8 +102,10 @@ is nonetheless **dormant**, and ADR 0049 §3a names it so
 Verified two ways:
 
 1. **No product caller.** Grepping `/api/v1/pos/webhook` across `apps/` returns nothing.
-   The only callers are `scripts/simulate/bridge.py:47`, the e2e harness
-   (`tests/e2e/wave_d_toast_pipeline.py`), and `scripts/ngrok_live_test.py`.
+   The only callers were `scripts/simulate/bridge.py:47`, the e2e harness
+   (`tests/e2e/wave_d_toast_pipeline.py` — retired 2026-09-12, ADR 0137, exactly
+   because it had zero product caller and a table with no CREATE TABLE anywhere),
+   and `scripts/ngrok_live_test.py`.
 2. **It could not work if called.** It writes `pos_webhook_logs`
    (`pos_integration_agent.py:951`) — a table with **no `CREATE TABLE` anywhere in
    `supabase/migrations/`**. That path fails on every webhook
