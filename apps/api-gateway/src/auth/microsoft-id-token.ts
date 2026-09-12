@@ -33,9 +33,18 @@ import axios from "axios";
  *   3. `aud` equals the configured `MICROSOFT_CLIENT_ID` exactly. This is the
  *      arm that makes "a token minted for someone else's app" useless here.
  *   4. `iss` equals the configured issuer exactly.
- *   5. `exp` / `nbf` hold, with 60s of clock skew.
- *   6. The address is verified — see `xms_edov` below.
- *   7. `oid` (the stable subject identifier) and an email claim are present.
+ *   5. It is an ID token, not an access token: `ver` is "2.0" and `scp` is
+ *      absent. The exact issuer already rules out a v1.0 token; `scp` is what
+ *      rules out an access token minted for this same application by an app
+ *      registration that exposes an API scope.
+ *   6. `exp` / `nbf` hold, with 60s of clock skew.
+ *   7. The `email` claim is present and verified — see `xms_edov` below.
+ *   8. `oid`, the stable subject identifier, is present.
+ *
+ * And before any of that, the configuration itself is checked rather than
+ * merely read: `MICROSOFT_ISSUER` and `MICROSOFT_JWKS_URI` must both be https,
+ * on a known Microsoft identity host, and must name the same host and the same
+ * tenant segment as each other.
  *
  * FAIL CLOSED
  * -----------
@@ -136,10 +145,54 @@ export const MICROSOFT_NOT_CONFIGURED =
 const TENANT_PLACEHOLDERS = new Set(["common", "organizations", "consumers"]);
 
 /**
+ * Hosts a Microsoft identity endpoint may live on.
+ *
+ * `MICROSOFT_ISSUER` and `MICROSOFT_JWKS_URI` are operator overrides, and an
+ * unvalidated override is a hole with a config file in front of it: an
+ * `http://` JWKS uri makes key retrieval MITM-able, and a JWKS pointed at a
+ * host we do not recognise verifies whatever that host chooses to sign. So both
+ * are checked, not merely read.
+ */
+const MICROSOFT_LOGIN_HOSTS = new Set([
+  "login.microsoftonline.com",
+  "login.microsoftonline.us",
+  "login.partner.microsoftonline.cn",
+  "login.microsoftonline.de",
+]);
+
+/** First path segment of a Microsoft identity URL: the tenant. */
+function tenantSegmentOf(url: URL): string {
+  return (url.pathname.split("/").filter(Boolean)[0] ?? "").toLowerCase();
+}
+
+function parseMicrosoftEndpoint(value: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new UnauthorizedException(MICROSOFT_NOT_CONFIGURED);
+  }
+  if (url.protocol !== "https:") {
+    throw new UnauthorizedException(MICROSOFT_NOT_CONFIGURED);
+  }
+  if (!MICROSOFT_LOGIN_HOSTS.has(url.hostname.toLowerCase())) {
+    throw new UnauthorizedException(MICROSOFT_NOT_CONFIGURED);
+  }
+  return url;
+}
+
+/**
  * Read the Microsoft configuration, or refuse.
  *
  * `read` is `ConfigService#get` narrowed to a function so this stays testable
  * without a Nest container.
+ *
+ * The two overrides are not independent. An issuer naming one tenant paired
+ * with a JWKS naming another would check the right issuer string against the
+ * wrong signing keys, so the host AND the tenant segment must agree. The
+ * practical consequence: override one and you must override both, with the same
+ * tenant segment. That is a loud refusal rather than a silent mismatch, which
+ * is the trade this file makes everywhere.
  */
 export function resolveMicrosoftOidcConfig(
   read: (key: string) => string | undefined,
@@ -168,6 +221,15 @@ export function resolveMicrosoftOidcConfig(
       ? `https://login.microsoftonline.com/${tenant}/discovery/v2.0/keys`
       : "");
   if (!jwksUri) {
+    throw new UnauthorizedException(MICROSOFT_NOT_CONFIGURED);
+  }
+
+  const issuerUrl = parseMicrosoftEndpoint(issuer);
+  const jwksUrl = parseMicrosoftEndpoint(jwksUri);
+  if (issuerUrl.hostname.toLowerCase() !== jwksUrl.hostname.toLowerCase()) {
+    throw new UnauthorizedException(MICROSOFT_NOT_CONFIGURED);
+  }
+  if (tenantSegmentOf(issuerUrl) !== tenantSegmentOf(jwksUrl)) {
     throw new UnauthorizedException(MICROSOFT_NOT_CONFIGURED);
   }
 
@@ -390,6 +452,29 @@ export class MicrosoftIdTokenVerifier {
       throw new UnauthorizedException(TOKEN_REFUSED);
     }
 
+    // This must be an ID TOKEN, not an access token.
+    //
+    // The exact v2.0 issuer above already rules out a v1.0 token, but it does
+    // NOT rule out an access token minted for this same application — an app
+    // registration that exposes an API scope issues those with `aud` equal to
+    // its own client id. Two claims separate them:
+    //
+    //   `ver` must be "2.0". Belt to the issuer's braces, and the one claim
+    //   that is present on every Microsoft token of either version.
+    //
+    //   `scp` must be ABSENT. A delegated-permission scope claim is an
+    //   access-token claim; an ID token does not carry one.
+    //
+    // `roles` is deliberately NOT refused: Azure app-role assignments appear in
+    // a legitimate ID token as `roles`, so refusing it would reject a real
+    // sign-in from any tenant that uses app roles. `scp` has no such ambiguity.
+    if (payload.ver !== "2.0") {
+      throw new UnauthorizedException(TOKEN_REFUSED);
+    }
+    if (payload.scp !== undefined) {
+      throw new UnauthorizedException(TOKEN_REFUSED);
+    }
+
     const nowSeconds = Math.floor(this.now() / 1000);
     const exp = payload.exp;
     if (
@@ -406,8 +491,16 @@ export class MicrosoftIdTokenVerifier {
       throw new UnauthorizedException(TOKEN_REFUSED);
     }
 
-    const email =
-      asString(payload.email) ?? asString(payload.preferred_username);
+    // The `email` claim, and only it.
+    //
+    // This used to fall back to `preferred_username` when `email` was absent,
+    // and then accept it on the strength of `xms_edov` — but `xms_edov` attests
+    // the domain of the `email` claim specifically. Using it to bless a
+    // different claim is borrowing a proof for something it does not prove,
+    // which is the same move as reading absence as health. The fallback is
+    // gone: if the token does not carry `email`, there is nothing `xms_edov`
+    // can vouch for and the sign-in refuses.
+    const email = asString(payload.email);
     if (!email) {
       throw new UnauthorizedException(TOKEN_REFUSED);
     }

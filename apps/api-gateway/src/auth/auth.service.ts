@@ -1671,16 +1671,23 @@ export class AuthService {
    *
    * Follows `resolveLinkedProviderIds` rather than forming a second opinion:
    * `user_oauth_accounts` is the source of truth, and `users.oauth_provider` is
-   * a legacy hint consulted ONLY when there are no rows at all. That fallback
-   * is deliberate — it is NULL for 9 of 10 production users including the one
-   * who genuinely has a linked Google account, so treating the column as the
-   * answer is what produced the fabricated "this account uses Google" message
-   * (ADR 0024). Measured on production 2026-09-12 before this change: 8 users,
-   * all 8 with a password hash, 1 link row (google), 0 microsoft links, 1 user
-   * carrying the legacy column, and ZERO users with no password, no row and no
-   * legacy value. So requiring a link locks nobody out.
+   * a legacy hint consulted ONLY when there are no rows at all.
    *
-   * Two differences from `resolveLinkedProviderIds`, both deliberate:
+   * TWO CENSUSES, TWO DATES. They are different measurements and must not be
+   * read as one:
+   *
+   *   - **2026-08-26 (ADR 0024):** `oauth_provider` was NULL for 9 of 10
+   *     production users, including the one user who genuinely had a linked
+   *     Google account. That is why the column is a hint and not the answer —
+   *     treating it as the answer produced the fabricated "this account uses
+   *     Google sign-in" message.
+   *   - **2026-09-12 (this change):** 8 users; all 8 carry a password hash; 1
+   *     row in `user_oauth_accounts` (google); 0 Microsoft links; 1 user with
+   *     the legacy column set — and that user is the SAME user who has the link
+   *     row. So requiring a link locks nobody out, and there is no production
+   *     account today that reaches the legacy branch below.
+   *
+   * Three differences from `resolveLinkedProviderIds`, all deliberate:
    *
    *   1. It reads `provider_user_id` as well, and when the stored row carries
    *      one, the token's own subject id must match it. The address is not the
@@ -1691,13 +1698,25 @@ export class AuthService {
    *      `provider_user_id` is matched on the provider alone rather than
    *      refused, because that is a row this codebase could have written, and
    *      locking a real user out over our own gap is not a security gain.
-   *   2. A FAILED READ REFUSES. `resolveLinkedProviderIds` answers a display
+   *   2. **The legacy branch compares a subject too**, against `users.oauth_id`
+   *      — the column `linkOAuthProvider` writes beside `oauth_provider` and
+   *      which nothing had ever read back. Without this, `oauth_provider =
+   *      'google'` with no row is an UNBOUND claim: it names a provider but no
+   *      account, so any Google identity presenting that verified address
+   *      signs in. That state was reachable — `unlinkOAuthProvider` produced it
+   *      until this change (see the note there) — so a legacy hint with no
+   *      `oauth_id`, or with one that does not match, refuses.
+   *   3. A FAILED READ REFUSES. `resolveLinkedProviderIds` answers a display
    *      question, where an empty list is a survivable wrong answer; this
    *      answers an authorisation question, where "I could not read the table"
    *      must never resolve to either "linked" or "not linked".
    */
   private async oauthAccountIsLinked(
-    user: { user_id: string; oauth_provider?: string | null },
+    user: {
+      user_id: string;
+      oauth_provider?: string | null;
+      oauth_id?: string | null;
+    },
     params: { provider: "google" | "microsoft"; providerId: string },
   ): Promise<boolean> {
     const { provider, providerId } = params;
@@ -1741,7 +1760,17 @@ export class AuthService {
       );
     }
 
-    return user.oauth_provider === provider;
+    // Legacy branch: no rows at all. The column names a provider; `oauth_id`
+    // names the account. Both must be present and the subject must match, or
+    // this is an unbound claim and refuses.
+    if (user.oauth_provider !== provider) return false;
+    const legacySubject =
+      typeof user.oauth_id === "string" ? user.oauth_id.trim() : "";
+    return (
+      legacySubject.length > 0 &&
+      typeof providerId === "string" &&
+      legacySubject === providerId
+    );
   }
 
   /**
@@ -2272,27 +2301,62 @@ export class AuthService {
       .eq("user_id", userId)
       .eq("provider", provider);
 
-    const { data: legacy } = await this.databaseService.supabase
-      .from("users")
-      .select("oauth_provider")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (legacy?.oauth_provider === provider) {
-      const remaining = await this.getLinkedProviders(userId);
-      const next = remaining.google
-        ? "google"
-        : remaining.microsoft
-          ? "microsoft"
-          : null;
+    // Recompute the legacy columns FROM THE ROWS, unconditionally.
+    //
+    // This used to ask `getLinkedProviders` what to put in `oauth_provider` —
+    // and `resolveLinkedProviderIds`, underneath it, falls back to reading
+    // `oauth_provider` when there are no rows. Having just deleted the last
+    // row, it read the very column it was about to overwrite and answered with
+    // its current value, so unlinking Google left `oauth_provider = 'google'`
+    // with ZERO rows and `oauth_id = null`: a claim naming a provider but no
+    // account. Under ADR 0139's legacy branch that is an UNBOUND claim, and
+    // before that branch learned to compare `oauth_id` it would have admitted
+    // any Google identity presenting the same verified address. Proven with a
+    // probe; the regression test is "unlink leaves no unbound legacy claim" in
+    // oauth-provider-binding.spec.ts.
+    //
+    // The rows are the source of truth, so the rows are what this reads. It
+    // runs on every unlink, not only when the column happens to name the
+    // provider being removed — a column naming a provider whose row is already
+    // gone is the same defect, just older. `oauth_id` is carried over from the
+    // surviving row rather than nulled, which is what keeps the pair bound.
+    const { data: remainingRows, error: remainingError } =
       await this.databaseService.supabase
-        .from("users")
-        .update({
-          oauth_provider: next,
-          oauth_id: null,
-        })
+        .from("user_oauth_accounts")
+        .select("provider, provider_user_id")
         .eq("user_id", userId);
+
+    if (remainingError) {
+      // The delete already happened. Refusing to guess beats writing a legacy
+      // pair derived from a read that failed.
+      this.logger.error(
+        `unlinkOAuthProvider could not re-read links for ${userId}: ${remainingError.message}`,
+      );
+      throw new BadRequestException(
+        "Unlinked, but we could not refresh your sign-in methods. Reload and check before linking again.",
+      );
     }
+
+    const survivors = (
+      (remainingRows ?? []) as {
+        provider: string | null;
+        provider_user_id: string | null;
+      }[]
+    ).filter(
+      (row) =>
+        typeof row.provider === "string" &&
+        isKnownIdentityProviderId(row.provider) &&
+        row.provider !== provider,
+    );
+    const next = survivors[0] ?? null;
+
+    await this.databaseService.supabase
+      .from("users")
+      .update({
+        oauth_provider: next?.provider ?? null,
+        oauth_id: next?.provider_user_id ?? null,
+      })
+      .eq("user_id", userId);
 
     return this.getLinkedProviders(userId);
   }

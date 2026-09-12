@@ -660,7 +660,27 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
       fs.readFileSync(path.join(__dirname, "auth.service.ts"), "utf8"),
     );
     const fn = src.slice(src.indexOf("async findOrCreateOAuthUser"));
-    const body = fn.slice(0, fn.indexOf("\n  async ", 1));
+
+    // Terminate on ANY next member at class-indent, not just `async`. The
+    // original terminator was "\n  async ", which `private async
+    // oauthAccountIsLinked` does not match — so when that method landed
+    // between this one and the next `async`, the slice silently grew to 127
+    // lines spanning two methods and a JSDoc. It still passed, and it no
+    // longer meant what its name says. A scan whose region can quietly widen
+    // is a scan that stops proving anything.
+    const nextMember = fn.slice(1).search(/\n {2}(?:private |protected |public |static )*(?:async )?[A-Za-z_$][\w$]*\s*[(<]/);
+    expect(nextMember).toBeGreaterThan(0);
+    const body = fn.slice(0, nextMember + 1);
+
+    // The region must be THIS method and no more: it ends at the function's
+    // own closing brace, and never reaches the next member's name.
+    expect(body).toContain("async findOrCreateOAuthUser");
+    // The CALL to the link check belongs here; its DECLARATION does not.
+    expect(body).toContain("this.oauthAccountIsLinked(");
+    expect(body).not.toContain("private async oauthAccountIsLinked");
+    expect(body).not.toContain("async checkEmailExists");
+    expect(body.split("\n").length).toBeLessThan(60);
+
     expect(body).not.toContain("DEFAULT_RESTAURANT_ID");
     expect(body).not.toContain(".insert(");
   });

@@ -30,11 +30,34 @@ jest.mock("axios", () => ({
  *    compared the provider's own subject id. So a token for an address that
  *    matches one of our users signed the holder in AS that user, including a
  *    password-only user who had never touched Microsoft.
+ * 3. `unlinkOAuthProvider` left `users.oauth_provider` naming a provider with
+ *    ZERO rows, because it asked `getLinkedProviders` what to write and that
+ *    path falls back to reading the very column being replaced. An unbound
+ *    legacy claim then admitted any identity with the same verified address.
  *
- * Every test in the two `AuthService` describes below was run against the
- * pre-fix module (`git show HEAD:apps/api-gateway/src/auth/auth.service.ts`
- * copied to a same-depth probe) and observed to FAIL there. A test that passes
- * against the bug is worse than no test.
+ * WHAT WAS MEASURED AGAINST THE PRE-FIX MODULE, EXACTLY
+ * -----------------------------------------------------
+ * The original 39 tests in this file were run against the pre-fix
+ * `auth.service.ts` (`git show 6e6f2f94:…` copied to a same-depth probe, run,
+ * deleted). The result was **15 failed, 24 passed**. Not every test here is
+ * failing-first evidence, and the header must not imply it is:
+ *
+ *   - **15 failing-first.** Every one lives in the two `AuthService` describes
+ *     and asserts a refusal the pre-fix code did not make. Those are the
+ *     evidence.
+ *   - **5 regression tests in those same describes, which PASS pre-fix by
+ *     construction and must keep passing:** "signs in an account that is
+ *     genuinely linked" (Microsoft), "honours the legacy users.oauth_provider
+ *     hint when there are no rows at all", "signs in an account that is
+ *     genuinely linked" (Google), "keeps its audience check", "keeps its
+ *     email_verified check". They exist to catch a fix that over-refuses.
+ *   - **19 unit tests of `microsoft-id-token.ts`**, which is a NEW module with
+ *     no pre-fix counterpart, so "fails pre-fix" is not a property they can
+ *     have. They pass against the probe because they never touch the service.
+ *
+ * Tests added after that probe run (the unlink regression, the legacy-subject
+ * cases, `ver`/`scp`, the endpoint-override validation, the `email`-claim
+ * requirement) are marked in place with what they were measured against.
  */
 
 const TENANT = "contoso-tenant-id";
@@ -100,6 +123,7 @@ function msPayload(
   return {
     iss: ISSUER,
     aud: CLIENT_ID,
+    ver: "2.0",
     oid: "ms-oid-1",
     tid: TENANT,
     email: VICTIM_EMAIL,
@@ -315,6 +339,68 @@ describe("resolveMicrosoftOidcConfig — unset configuration refuses", () => {
       jwksUri: JWKS_URI,
     });
   });
+
+  // Added after the pre-fix probe run; these validate configuration that the
+  // first version of this module read without checking, so there is no pre-fix
+  // counterpart to fail against. Measured here only.
+  describe("the endpoint overrides are checked, not merely read", () => {
+    function cfgWith(over: Record<string, string>) {
+      return () =>
+        resolveMicrosoftOidcConfig(
+          (k) =>
+            ({
+              MICROSOFT_CLIENT_ID: CLIENT_ID,
+              MICROSOFT_TENANT_ID: TENANT,
+              ...over,
+            })[k as string],
+        );
+    }
+
+    it("refuses an http JWKS uri, which would make key retrieval MITM-able", () => {
+      expect(
+        cfgWith({
+          MICROSOFT_JWKS_URI: `http://login.microsoftonline.com/${TENANT}/discovery/v2.0/keys`,
+        }),
+      ).toThrow(MICROSOFT_NOT_CONFIGURED);
+    });
+
+    it("refuses a JWKS host that is not a Microsoft identity host", () => {
+      expect(
+        cfgWith({
+          MICROSOFT_JWKS_URI: `https://keys.evil.test/${TENANT}/discovery/v2.0/keys`,
+        }),
+      ).toThrow(MICROSOFT_NOT_CONFIGURED);
+    });
+
+    it("refuses an issuer host that is not a Microsoft identity host", () => {
+      expect(
+        cfgWith({
+          MICROSOFT_ISSUER: `https://login.microsoftonline.com.evil.test/${TENANT}/v2.0`,
+        }),
+      ).toThrow(MICROSOFT_NOT_CONFIGURED);
+    });
+
+    it("refuses an issuer from one tenant paired with a JWKS from another", () => {
+      // The right issuer string checked against the wrong signing keys.
+      expect(
+        cfgWith({
+          MICROSOFT_ISSUER: `https://login.microsoftonline.com/${TENANT}/v2.0`,
+          MICROSOFT_JWKS_URI:
+            "https://login.microsoftonline.com/some-other-tenant/discovery/v2.0/keys",
+        }),
+      ).toThrow(MICROSOFT_NOT_CONFIGURED);
+    });
+
+    it("accepts overrides that agree on host and tenant", () => {
+      const cfg = cfgWith({
+        MICROSOFT_ISSUER: `https://login.microsoftonline.us/${TENANT}/v2.0`,
+        MICROSOFT_JWKS_URI: `https://login.microsoftonline.us/${TENANT}/discovery/v2.0/keys`,
+      })();
+      expect(cfg.issuer).toBe(
+        `https://login.microsoftonline.us/${TENANT}/v2.0`,
+      );
+    });
+  });
 });
 
 describe("MicrosoftIdTokenVerifier — the token must have been minted for us", () => {
@@ -398,6 +484,50 @@ describe("MicrosoftIdTokenVerifier — the token must have been minted for us", 
     await expect(verifier().verify(signToken(payload), cfg)).rejects.toThrow(
       "Your Microsoft email address is not verified",
     );
+  });
+
+  // Added after the pre-fix probe run. These pin checks the first version of
+  // this module did not make; `microsoft-id-token.ts` is new, so none of them
+  // has a pre-fix counterpart and none is failing-first evidence.
+  it("refuses an access token minted for this same application (scp present)", async () => {
+    // An app registration that exposes an API scope issues access tokens with
+    // `aud` equal to its own client id. `scp` is what separates them.
+    const token = signToken(msPayload({ scp: "Files.Read" }));
+    await expect(verifier().verify(token, cfg)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it("refuses a token that is not ver 2.0", async () => {
+    const token = signToken(msPayload({ ver: "1.0" }));
+    await expect(verifier().verify(token, cfg)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    const missing = msPayload();
+    delete missing.ver;
+    await expect(
+      verifier().verify(signToken(missing), cfg),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it("still accepts an ID token carrying app-role assignments (roles)", async () => {
+    // `roles` appears in a legitimate ID token for a tenant using app roles,
+    // so it must NOT be treated the way `scp` is.
+    const token = signToken(msPayload({ roles: ["Restaurant.Owner"] }));
+    await expect(verifier().verify(token, cfg)).resolves.toMatchObject({
+      email: VICTIM_EMAIL,
+    });
+  });
+
+  it("refuses when `email` is absent, even with preferred_username and xms_edov", async () => {
+    // `xms_edov` attests the domain of the `email` claim specifically. Using it
+    // to bless `preferred_username` borrows a proof for something it does not
+    // prove.
+    const payload = msPayload({ preferred_username: VICTIM_EMAIL });
+    delete payload.email;
+    await expect(
+      verifier().verify(signToken(payload), cfg),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it("refuses a token with no oid, since nothing could bind it to a link row", async () => {
@@ -553,15 +683,53 @@ describe("loginWithMicrosoft — the account must actually use Microsoft", () =>
 
   it("honours the legacy users.oauth_provider hint when there are no rows at all", async () => {
     // The deliberate fallback `resolveLinkedProviderIds` already carries: the
-    // column is NULL for 9 of 10 production users, so it is a hint consulted
-    // only in the absence of rows, never the answer.
+    // column was NULL for 9 of 10 production users on 2026-08-26, so it is a
+    // hint consulted only in the absence of rows, never the answer. The pair
+    // must be BOUND — `oauth_id` names the account the column's provider
+    // refers to.
     const { svc } = makeService({
-      userByEmail: { ...linkedUser, oauth_provider: "microsoft" },
+      userByEmail: {
+        ...linkedUser,
+        oauth_provider: "microsoft",
+        oauth_id: "ms-oid-1",
+      },
       oauthRows: [],
     });
     await expect(
       svc.loginWithMicrosoft(signToken(msPayload())),
     ).resolves.toMatchObject({ accessToken: "signed-token" });
+  });
+
+  // Added after the pre-fix probe run, closing the unbound-legacy state the
+  // correctness angle proved reachable. Both fail against the FIRST version of
+  // this fix (which returned `user.oauth_provider === provider` outright), not
+  // against 6e6f2f94.
+  it("refuses a legacy hint with no oauth_id — a provider named, no account bound", async () => {
+    const { svc } = makeService({
+      userByEmail: {
+        ...linkedUser,
+        oauth_provider: "microsoft",
+        oauth_id: null,
+      },
+      oauthRows: [],
+    });
+    expect(
+      await refusalFrom(svc.loginWithMicrosoft(signToken(msPayload()))),
+    ).toBe(REFUSED_MS);
+  });
+
+  it("refuses a legacy hint whose oauth_id names a different Microsoft account", async () => {
+    const { svc } = makeService({
+      userByEmail: {
+        ...linkedUser,
+        oauth_provider: "microsoft",
+        oauth_id: "ms-oid-SOMEONE-ELSE",
+      },
+      oauthRows: [],
+    });
+    expect(
+      await refusalFrom(svc.loginWithMicrosoft(signToken(msPayload()))),
+    ).toBe(REFUSED_MS);
   });
 
   it("refuses a token minted for another Azure application", async () => {
@@ -744,5 +912,189 @@ describe("loginWithGoogle — the same link requirement", () => {
       unlinked.svc.loginWithGoogle("google-id-token"),
     );
     expect(a).toBe(b);
+  });
+});
+
+/**
+ * The unbound-legacy state, and the unlink that produced it.
+ *
+ * Proven with a probe by the merge gate's correctness angle: `unlinkOAuthProvider`
+ * deleted the link row, then computed the replacement legacy value through
+ * `getLinkedProviders` -> `resolveLinkedProviderIds`, whose fallback reads the
+ * very column being replaced. With the last row gone it read `oauth_provider =
+ * 'google'` and wrote it straight back, leaving rows [] and the column still
+ * naming Google. A later Google sign-in for a DIFFERENT `sub` with the same
+ * verified address then resolved that account.
+ *
+ * Both halves are fixed and both are tested here: the write now derives from
+ * the rows, and the legacy branch of the link check compares `users.oauth_id`.
+ *
+ * These tests post-date the 6e6f2f94 probe run. They fail against the FIRST
+ * version of this fix, not against main - stated rather than implied.
+ */
+describe("unlinkOAuthProvider — leaves no unbound legacy claim", () => {
+  interface Store {
+    rows: { provider: string; provider_user_id: string | null }[];
+    user: Record<string, unknown>;
+  }
+
+  /**
+   * A supabase-js-shaped fake with STATE, so the unlink and the sign-in after
+   * it see the same rows. Every chain object is thenable, so `await
+   * from(...).delete().eq().eq()` and `await from(...).select().eq()` both
+   * resolve at whatever depth the caller stops.
+   */
+  function makeStatefulService(seed: Store) {
+    const state: Store = {
+      rows: seed.rows.map((r) => ({ ...r })),
+      user: { ...seed.user },
+    };
+
+    const from = jest.fn((table: string) => {
+      const chain: any = {
+        _filters: {} as Record<string, unknown>,
+        _op: "select",
+        _patch: null as Record<string, unknown> | null,
+      };
+      chain.select = () => chain;
+      chain.eq = (col: string, val: unknown) => {
+        chain._filters[col] = val;
+        return chain;
+      };
+      chain.is = () => chain;
+      chain.delete = () => {
+        chain._op = "delete";
+        return chain;
+      };
+      chain.update = (patch: Record<string, unknown>) => {
+        chain._op = "update";
+        chain._patch = patch;
+        return chain;
+      };
+
+      const settle = () => {
+        if (table === "user_oauth_accounts") {
+          if (chain._op === "delete") {
+            state.rows = state.rows.filter(
+              (r) => r.provider !== chain._filters.provider,
+            );
+            return { data: null, error: null };
+          }
+          return { data: state.rows.map((r) => ({ ...r })), error: null };
+        }
+        if (table === "users") {
+          if (chain._op === "update") {
+            Object.assign(state.user, chain._patch ?? {});
+            return { data: null, error: null };
+          }
+          return { data: { ...state.user }, error: null };
+        }
+        if (table === "user_roles") return { data: [], error: null };
+        if (table === "user_restaurant_access")
+          return { data: null, error: null };
+        throw new Error(`unexpected table in this fixture: ${table}`);
+      };
+
+      chain.maybeSingle = () => Promise.resolve(settle());
+      chain.single = () => Promise.resolve(settle());
+      chain.then = (onOk: any, onErr: any) =>
+        Promise.resolve(settle()).then(onOk, onErr);
+      return chain;
+    });
+
+    const svc = new AuthService(
+      {
+        sign: jest.fn().mockReturnValue("signed-token"),
+        verify: jest.fn(),
+        decode: jest.fn(),
+      } as any,
+      {
+        get: jest.fn(
+          (key: string) =>
+            ({
+              MICROSOFT_CLIENT_ID: CLIENT_ID,
+              MICROSOFT_TENANT_ID: TENANT,
+              GOOGLE_CLIENT_ID,
+            })[key],
+        ),
+      } as any,
+      { supabase: { from } } as any,
+      { blacklistToken: jest.fn() } as any,
+      { sendEmail: jest.fn() } as any,
+    );
+
+    return { svc, state };
+  }
+
+  const seededUser = {
+    user_id: "u-owner",
+    email: VICTIM_EMAIL,
+    name: "Owner",
+    role: "owner",
+    password_hash: "$2b$10$hash",
+    oauth_provider: "google",
+    oauth_id: "google-sub-1",
+  };
+
+  it("clears the legacy pair when the last link is removed", async () => {
+    const { svc, state } = makeStatefulService({
+      rows: [{ provider: "google", provider_user_id: "google-sub-1" }],
+      user: { ...seededUser },
+    });
+
+    await svc.unlinkOAuthProvider("u-owner", "google");
+
+    expect(state.rows).toEqual([]);
+    // Pre-fix this read "google" with zero rows.
+    expect(state.user.oauth_provider).toBeNull();
+    expect(state.user.oauth_id).toBeNull();
+  });
+
+  it("a Google sign-in for a DIFFERENT sub is refused after the unlink", async () => {
+    const { svc } = makeStatefulService({
+      rows: [{ provider: "google", provider_user_id: "google-sub-1" }],
+      user: { ...seededUser },
+    });
+
+    await svc.unlinkOAuthProvider("u-owner", "google");
+
+    // Same verified address, a different Google account.
+    googleTokenInfo.sub = "google-sub-SOMEONE-ELSE";
+    expect(await refusalFrom(svc.loginWithGoogle("google-id-token"))).toBe(
+      REFUSED_GOOGLE,
+    );
+  });
+
+  it("the original account is refused too — unlinked means unlinked", async () => {
+    const { svc } = makeStatefulService({
+      rows: [{ provider: "google", provider_user_id: "google-sub-1" }],
+      user: { ...seededUser },
+    });
+
+    await svc.unlinkOAuthProvider("u-owner", "google");
+
+    expect(await refusalFrom(svc.loginWithGoogle("google-id-token"))).toBe(
+      REFUSED_GOOGLE,
+    );
+  });
+
+  it("rewrites the legacy pair from a surviving row instead of nulling its id", async () => {
+    const { svc, state } = makeStatefulService({
+      rows: [
+        { provider: "google", provider_user_id: "google-sub-1" },
+        { provider: "microsoft", provider_user_id: "ms-oid-1" },
+      ],
+      user: { ...seededUser },
+    });
+
+    await svc.unlinkOAuthProvider("u-owner", "google");
+
+    expect(state.rows).toEqual([
+      { provider: "microsoft", provider_user_id: "ms-oid-1" },
+    ]);
+    // The old code wrote `oauth_id: null` even when it kept a provider name,
+    // manufacturing the same unbound pair from the other direction.
+    expect(state.user.oauth_provider).toBe("microsoft");
+    expect(state.user.oauth_id).toBe("ms-oid-1");
   });
 });

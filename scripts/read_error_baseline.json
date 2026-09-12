@@ -1,6 +1,6 @@
 {
   "_comment": "Pre-existing swallowed supabase reads, recorded at adoption of scripts/check_read_errors_not_swallowed.py (ADR 0067). ADOPTION IS THE MERGE OF THAT GUARD, not the day this file was first written: code that reached main before the guard did is pre-existing by definition, and rows for it may be added while this branch is still open. AFTER the guard is on main this list ONLY SHRINKS -- a key absent from the tree fails the build, and a new finding must be fixed or allowlisted with a written reason in the guard, never appended here. Two rows were added on 2026-09-02 under the first rule (procurement.service.ts from PR #240, and SeatingDensityPanel.tsx which is a detector false match from an ASI statement boundary, not a real swallowed read); six were retired the same day because concurrent sessions fixed them.",
-  "total_sites": 195,
+  "total_sites": 194,
   "total_files": 43,
   "sites": {
     "apps/api-gateway/src/analytics/consultants.service.ts::analytics_insight_prefs::data": 1,
@@ -28,7 +28,6 @@
     "apps/api-gateway/src/auth/auth.service.ts::users::actor": 1,
     "apps/api-gateway/src/auth/auth.service.ts::users::existing": 2,
     "apps/api-gateway/src/auth/auth.service.ts::users::existingUser": 2,
-    "apps/api-gateway/src/auth/auth.service.ts::users::legacy": 1,
     "apps/api-gateway/src/auth/auth.service.ts::users::me": 1,
     "apps/api-gateway/src/auth/auth.service.ts::users::user": 5,
     "apps/api-gateway/src/calendar/calendar.service.ts::calendar_recurrence_rules::ruleData": 1,

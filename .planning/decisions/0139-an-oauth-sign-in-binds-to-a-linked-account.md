@@ -21,11 +21,11 @@ Graph access token, including one minted by an Azure application the attacker
 owns. There was no audience check, so a token issued to someone else's app was
 as good as one issued to us; no issuer check; no signature we verified
 ourselves; and no verified-address check. Compare `verifyGoogleToken`
-(`auth.service.ts:596-612`), which at least compared `aud` against
+(`auth.service.ts:590-625` on `6e6f2f94`), which at least compared `aud` against
 `GOOGLE_CLIENT_ID` and required `email_verified`.
 
 **Defect 2 — the account was resolved by address alone.**
-`findOrCreateOAuthUser` (`auth.service.ts:1629-1658`) normalised the address,
+`findOrCreateOAuthUser` (`auth.service.ts:1559-1589` on `6e6f2f94`) normalised the address,
 read one row out of `users`, and returned it. It never read
 `user_oauth_accounts`, never read `users.oauth_provider`, and never compared the
 provider's own subject id. An address is not an authorisation, and here it was
@@ -51,24 +51,31 @@ decision that could be taken now rather than a migration.
 **An OAuth sign-in returns an account only when that account is linked to that
 provider, and a provider token is a credential only when it was minted for us.**
 
-Four arms, all in this PR:
+Six arms, all in this PR:
 
 1. **The link requirement** (`auth.service.ts`, `findOrCreateOAuthUser` →
    `oauthAccountIsLinked`). After the account is found by address, it must
    actually use the provider: a row in `user_oauth_accounts` for
    `(user_id, provider)`, or — only when there are **no rows at all** — the
-   legacy hint `users.oauth_provider === provider`. This follows
-   `resolveLinkedProviderIds` (`auth.service.ts` §"The providers actually linked
-   to a user") rather than forming a second opinion; that method is the existing
-   source of truth and its legacy fallback is deliberate (ADR 0024: the column
-   is NULL for 9 of 10 production users, including the one who genuinely has a
+   legacy pair in `users`. This follows `resolveLinkedProviderIds`
+   (`auth.service.ts` §"The providers actually linked to a user") rather than
+   forming a second opinion; that method is the existing source of truth and its
+   legacy fallback is deliberate (ADR 0024, measured 2026-08-26: the column was
+   NULL for 9 of 10 production users, including the one who genuinely had a
    linked Google account).
 
-   Where the stored row carries a `provider_user_id`, the provider's own subject
-   id must match it. Both providers supply one — Google's `sub`, Microsoft's
-   `oid` — so both arms are enforced; a row with a blank `provider_user_id` is
-   matched on the provider alone, because that is a row this codebase could have
-   written and locking a real user out over our own gap is not a security gain.
+   **Every branch compares a subject.** Where the stored row carries a
+   `provider_user_id`, the provider's own subject id must match it; both
+   providers supply one — Google's `sub`, Microsoft's `oid`. A row with a blank
+   `provider_user_id` is matched on the provider alone, because that is a row
+   this codebase could have written and locking a real user out over our own gap
+   is not a security gain.
+
+   The **legacy branch compares `users.oauth_id`** — the column
+   `linkOAuthProvider` writes beside `oauth_provider` and which nothing had ever
+   read back. Without it, `oauth_provider = 'google'` with no rows is an UNBOUND
+   claim: it names a provider but no account, so any Google identity presenting
+   that verified address signs in. That is not hypothetical — see arm 5.
 
 2. **A failed read of the link table REFUSES.** supabase-js *resolves*
    `{ data, error }`; it does not throw. Without an explicit branch an
@@ -89,10 +96,42 @@ Four arms, all in this PR:
    all **refusals**. Unset `MICROSOFT_CLIENT_ID`, or unset issuer configuration,
    refuses with a sentence rather than falling back to anything.
 
+   Two narrowings added after the merge gate's security angle. **It must be an
+   ID token:** `ver` is `"2.0"` and `scp` is absent — the exact v2.0 issuer
+   already rules out a v1.0 token, but not an access token minted for this same
+   application by an app registration that exposes an API scope, and `scp` is
+   what separates those. `roles` is deliberately NOT refused: Azure app-role
+   assignments appear in a legitimate ID token. And **`xms_edov` may only vouch
+   for the claim it attests**, so the `preferred_username` fallback is gone; a
+   token with no `email` claim refuses rather than borrowing a proof.
+
 4. **Google keeps its checks and gains the link requirement**, and its audience
    check now fails closed. It read `if (expectedClientId && data.aud !== ...)`,
    so an unset `GOOGLE_CLIENT_ID` silently removed the audience check entirely —
    the same shape of hole on the other provider, found while hardening this one.
+
+5. **`unlinkOAuthProvider` recomputes the legacy pair FROM THE ROWS,
+   unconditionally.** It used to ask `getLinkedProviders` what to write, and
+   `resolveLinkedProviderIds` underneath it falls back to reading
+   `users.oauth_provider` when there are no rows. Having just deleted the last
+   row, it read the very column it was about to overwrite and wrote the same
+   value back: unlinking Google left `oauth_provider = 'google'` with **zero
+   rows** and `oauth_id = null`. Proven with a probe by the merge gate's
+   correctness angle on PR #357, which measured rows `[]`, provider `google`,
+   and a subsequent Google sign-in for a **different `sub`** resolving that
+   account. Arm 1's subject comparison closes the sign-in side; this closes the
+   write side, so the state cannot be created in the first place. It also
+   carries `oauth_id` over from a surviving row instead of nulling it, which the
+   old code did even when it kept a provider name — the same unbound pair from
+   the other direction.
+
+6. **The Microsoft endpoint configuration is validated, not merely read.**
+   `MICROSOFT_ISSUER` and `MICROSOFT_JWKS_URI` are operator overrides; an
+   `http://` JWKS uri makes key retrieval MITM-able, and an issuer naming one
+   tenant paired with a JWKS naming another checks the right issuer string
+   against the wrong signing keys. Both must be `https`, on a known Microsoft
+   identity host, and must agree on host and tenant segment. Consequence,
+   stated plainly: override one and you must override both, consistently.
 
 The refusals for "no account uses that address" and "that account does not use
 this provider" are **the same sentence**. The route is public; two sentences
@@ -131,7 +170,7 @@ exactly the fabrication ADR 0024 removed.
 4. **`JwtService.verify(token, { publicKey })`.** Rejected because it would
    **silently verify with the wrong key**. `JwtService#getSecretKey` resolves
    `options.secret || this.options.secret || … || options.publicKey`, and
-   `AuthModule` registers `JwtModule` with a `secret` (`auth.module.ts:30`), so
+   `AuthModule` registers `JwtModule` with a `secret` (`auth.module.ts:29`), so
    the application's own HS256 secret wins over the RSA public key passed at the
    call site. A token signed with our own JWT secret would then verify as a
    Microsoft identity — a worse hole than the one being closed, and a silent one.
@@ -157,6 +196,32 @@ exactly the fabrication ADR 0024 removed.
 8. **Do nothing / file it as tech debt.** The endpoint is public, unauthenticated
    and live. Rejected by the founder on sight.
 
+9. **Close the TECH-DEBT gap the other way: write the missing
+   `user_oauth_accounts` row on sign-in.** That entry
+   (`v3.0-TECH-DEBT.md`, under the PR #179 closure) described a real
+   truthfulness gap — `resolveSignInMethods` reporting an identity as
+   password-only while Google demonstrably worked for it. Writing the row would
+   have made the report true and preserved the frictionless path. Rejected:
+   persisting a link off the back of a check that was passed **by address
+   alone** would have made permanent exactly the thing that made the Microsoft
+   endpoint a takeover. Refusing is the arm that removes the premise instead of
+   recording it. The entry is struck and the reasoning recorded there.
+
+10. **Make the CLAIMS verify run the behavioural test.** The merge gate was
+    right that "an address is no longer an authorisation" is a property a grep
+    cannot check. Rejected on measurement: the `decision-claims` CI job
+    (`.github/workflows/ci.yml:539-547`) is checkout-only — no Node setup, no
+    install — so `npx jest` there is a command that CANNOT RUN, which this repo
+    counts as a failure, not a skip. The claim is narrowed to what the grep
+    proves and labelled a SHAPE CLAIM; the property itself is proven by
+    `oauth-provider-binding.spec.ts` in the `test-typescript` job.
+
+11. **Refuse `roles` alongside `scp` when separating ID tokens from access
+    tokens.** Symmetrical and tempting. Rejected: Azure app-role assignments
+    appear in a legitimate ID token as `roles`, so refusing it would reject a
+    real sign-in from any tenant that uses app roles. `scp` carries no such
+    ambiguity, and `ver` covers the version axis.
+
 ## Consequences
 
 - **Easier:** an address stops being an authorisation anywhere in the OAuth path;
@@ -165,13 +230,13 @@ exactly the fabrication ADR 0024 removed.
   button is still unbuilt.
 - **Harder / given up:** linking a provider is now a prerequisite for signing in
   with it, so the "sign in with Google and it just works" path requires a link
-  first (`POST /auth/link-provider`, already built). Enabling Microsoft now also
+  first (`POST /auth/me/link/:provider`, `auth.controller.ts:286-289`, already built). Enabling Microsoft now also
   requires a concrete tenant and the `xms_edov` optional claim in the Azure app
   registration, not just a client id.
 - **Operationally:** with `MICROSOFT_CLIENT_ID` unset — its state in production
   today — the route refuses every call. That is the intended resting state.
-- **Revisit when:** a second tenant needs to sign in (arm 5 above must be
-  decided), or `user_oauth_accounts` acquires rows with a blank
+- **Revisit when:** a second tenant needs to sign in (the multi-tenant fork
+  below must be decided), or `user_oauth_accounts` acquires rows with a blank
   `provider_user_id` (the lenient branch in arm 1 stops being a compatibility
   shim and becomes a hole).
 
@@ -194,10 +259,23 @@ exactly the fabrication ADR 0024 removed.
   what Google sends today.** Unverifiable from here without a production write
   path or a live sign-in; that user has a password, so the worst case is one
   provider button that refuses, not a lockout.
+- **Whether Microsoft's real JWKS and ID tokens match the shapes assumed here.**
+  There is no Azure app registration in this environment and no outbound call was
+  made. The JWKS path is exercised against locally generated RSA keys, through
+  both a stub fetcher and the production `axios` fetcher; what is unproven is
+  that a real token carries `kid`, `xms_edov` and an `iss` in the exact derived
+  form.
+- **The Profile page's link buttons when a provider is unconfigured.** They now
+  refuse with the server's sentence (`linkOAuthProvider` runs the same
+  verifiers); nothing pre-checks configuration or greys the button, so a
+  misconfigured environment reads as a broken button. Recorded in
+  `.planning/06-pages/profile.md` §4 and §9, not fixed here.
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-12 | Aldemir (founder) | Decided in session: fix properly in ONE PR, harden BOTH providers, first PR off main |
-| 2026-09-12 | Claude (builder) | Created; 15 of 39 new tests observed failing against the pre-fix module before being kept |
+| 2026-09-12 | Claude (builder) | Created; 15 of the first 39 tests observed failing against `6e6f2f94` before being kept |
+| 2026-09-12 | Merge gate, PR #357 (3 angles + adversary) | **BLOCK** from the compliance angle: a live TECH-DEBT item this PR falsified, a route name that does not exist in two documents, and a test header that over-claimed the pre-fix evidence |
+| 2026-09-12 | Merge gate, correctness angle | Probe-proved `unlinkOAuthProvider` reaching the unbound-legacy state; arms 1 and 5 above are the answer. Spec now 54 tests: **21 fail against `6e6f2f94`**, **6 against the first version of this fix** (`2815c742`, the unlink and legacy-subject cases), **7 against the first version of `microsoft-id-token.ts`** (`ver`/`scp`, the `email` claim, the endpoint-override validation) |
