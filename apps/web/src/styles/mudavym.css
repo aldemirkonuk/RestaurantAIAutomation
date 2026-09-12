@@ -29,10 +29,13 @@
    ancestor race to lose.
 
    One escape remains, and it is explicit: `[data-ground="paper"]`, a surface
-   that is a sheet of paper by decision (the canonical document, ADR 0104 D9).
-   It takes the light column back on the ONE element that carries it, in
-   pages/documents/next/canonical-document.css. At (0,2,0) it outranks this
-   file's (0,1,0) base on specificity, not on source order.
+   that is a sheet of paper by decision (the canonical document, ADR 0104 D9;
+   the legacy vendor panel inside providers/next/TwinSheet). It takes the light
+   column back on the ONE element that carries it, and it is declared at the
+   bottom of THIS file — it used to live in the canonical document's own
+   stylesheet, which is imported by a lazily-loaded page, so the escape did not
+   exist on any other route. At (0,2,0) it outranks this file's (0,1,0) base on
+   specificity, not on source order.
 
    `[data-ground="charcoal"]` is kept as a synonym of the base so that a page
    may still state its ground out loud (DoorNext does, and hangs input rules
@@ -59,4 +62,33 @@
   --ink-4: #ABA294;
 
   color-scheme: dark;
+}
+
+/* THE ONE ESCAPE — ADR 0104 D9, the sheet of paper.
+
+   It lives here, in the globally-imported token file, and NOT in the page that
+   first needed it. It used to sit in pages/documents/next/canonical-document.css,
+   which only CanonicalDocumentPage imports and App.tsx lazy-loads: the rule was
+   therefore absent from every other route, so a surface elsewhere that carried
+   `data-ground="paper"` rendered charcoal while its markup said paper. The
+   escape has to be reachable wherever `.mudavym` is.
+
+   It beats the base on specificity, not source order — (0,2,0) over (0,1,0) —
+   which matters because Vite decides when a chunk's CSS is injected. */
+.mudavym[data-ground="paper"] {
+  --seal: #1a5e6b;
+  --seal-deep: #14515c;
+  --seal-tint: rgba(26, 94, 107, 0.1);
+  --seal-ring: rgba(26, 94, 107, 0.32);
+
+  --paper-0: #fffdf8;
+  --paper-1: #f3efe6;
+  --paper-2: #eae4d8;
+
+  --ink-1: #211c16;
+  --ink-2: #4f473c;
+  --ink-3: #7c7365;
+  --ink-4: #665d50;
+
+  color-scheme: light;
 }

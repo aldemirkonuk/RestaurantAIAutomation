@@ -4,39 +4,13 @@
    flattened into a footnote column).
    ============================================================ */
 
-/* D9 — THE PAPER STAYS LIGHT. THE ONE ESCAPE FROM THE DECIDED GROUND.
-
-   The sheet is a sheet of paper on a dark desk: the scan beside it is light
-   anyway, and print must equal screen. `mudavym.css` now gives the bare
-   `.mudavym` selector the Warm Charcoal column in EVERY app theme (founder,
-   2026-09-12 — the ground is decided, not preferred), so a sheet would
-   inherit charcoal on a light-themed browser as well as a dark one. This rule
-   takes the light column back on the ONE element that carries
-   `data-ground="paper"`.
-
-   It needs no `.dark` variant any more, and no descendant-of-charcoal variant:
-   the base it has to beat is a bare `.mudavym` at (0,1,0), and this selector
-   is (0,2,0). It wins on specificity, not on source order — which matters,
-   because Vite decides when this file is injected relative to globals.css.
-   (That tie is the trap PageGate's header records.) */
-.mudavym[data-ground='paper'] {
-  --seal: #1a5e6b;
-  --seal-deep: #14515c;
-  --seal-tint: rgba(26, 94, 107, 0.1);
-  --seal-ring: rgba(26, 94, 107, 0.32);
-
-  --paper-0: #fffdf8;
-  --paper-1: #f3efe6;
-  --paper-2: #eae4d8;
-
-  --ink-1: #211c16;
-  --ink-2: #4f473c;
-  --ink-3: #7c7365;
-  --ink-4: #665d50;
-
-  color-scheme: light;
-}
-
+/* D9 — THE PAPER STAYS LIGHT. The `data-ground="paper"` token block used to
+   live here. It now lives in styles/mudavym.css, beside the ground it escapes:
+   this file is imported only by CanonicalDocumentPage, which App.tsx loads
+   lazily, so the escape existed nowhere else in the app — any other surface
+   that carried `data-ground="paper"` (providers/next/TwinSheet) silently got
+   charcoal, and the ground test could not see it because it reads both files
+   off disk. What stays here is the sheet's geometry and its print rules. */
 .cd-page {
   min-height: 100%;
 }

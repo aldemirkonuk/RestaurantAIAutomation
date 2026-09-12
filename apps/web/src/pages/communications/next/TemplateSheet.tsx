@@ -194,7 +194,20 @@ export function TemplateSheet({ channel, onClose }: Props) {
           minus-banner container becomes their containing block, so the whole
           overlay (backdrop, card, header) lives BELOW the banner instead of
           being clipped by it (Opus correctness review, DEFECT 7). */}
+      {/*
+        `data-ground="paper"` because the builders below are LEGACY components:
+        hard-coded `bg-white` cards on their own scrim, reading none of the
+        Mudavym tokens. Their ground is therefore already right — but
+        `color-scheme` IS inherited, and since 2026-09-12 the bare `.mudavym`
+        scope on CommunicationsNext declares `color-scheme: dark` in every app
+        theme. That reaches the builders' native controls (four in
+        GmailTemplateBuilder, one in SMSTemplateBuilder) and their scroll areas,
+        painting dark UA chrome inside a white card. The escape takes the light
+        column, and with it `color-scheme: light`, back for this subtree.
+      */}
       <div
+        className="mudavym"
+        data-ground="paper"
         style={{
           position: 'fixed',
           top: 52,

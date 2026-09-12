@@ -137,6 +137,19 @@ describe('the one escape still escapes', () => {
     });
   }
 
+  it('is declared in the GLOBALLY-imported stylesheet, not a lazy page chunk', () => {
+    // The block used to live in pages/documents/next/canonical-document.css,
+    // which only CanonicalDocumentPage imports and App.tsx lazy-loads. The
+    // tests above could not see that: `install()` reads both files off disk and
+    // concatenates them, so the escape resolved here while being absent from
+    // every route but one — providers/next/TwinSheet asked for paper and got
+    // charcoal. Pin where it is declared, not just that it resolves.
+    expect(readFileSync(MUDAVYM_CSS, 'utf8')).toMatch(
+      /\.mudavym\[data-ground=["']paper["']\]/
+    );
+    expect(readFileSync(PAPER_ESCAPE_CSS, 'utf8')).not.toMatch(/--paper-0\s*:/);
+  });
+
   it('escapes even nested inside a charcoal page — declared, not inherited', () => {
     setAppTheme('light');
     mount(

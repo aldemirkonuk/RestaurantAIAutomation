@@ -170,15 +170,39 @@ export function TwinSheet({ provider, onClose }: Props) {
           >
             What the platform has learned
           </h3>
-          <Suspense
-            fallback={
-              <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
-                Opening the vendor’s record…
-              </p>
-            }
+          {/*
+            ProviderIntelligencePanel is a LEGACY component — hard-coded
+            `bg-white` / `text-gray-900` (components/providers/ProviderIntelligencePanel.tsx:42).
+            Since 2026-09-12 the bare `.mudavym` selector paints Warm Charcoal in
+            every app theme, so this sheet's ground turned dark underneath it and
+            a light-mode card was left sitting on charcoal.
+
+            The panel keeps the ground it was drawn for. `data-ground="paper"` is
+            the decided escape (ADR 0104 D9) and wins on specificity — (0,2,0)
+            over the base `.mudavym`'s (0,1,0) — so the tokens the panel and the
+            Suspense fallback read resolve light again inside this inset.
+          */}
+          <div
+            className="mudavym"
+            data-ground="paper"
+            style={{
+              background: 'var(--paper-0, #FFFDF8)',
+              border: '1px solid var(--paper-2, #EAE4D8)',
+              borderRadius: 12,
+              padding: 10,
+              color: 'var(--ink-1, #211C16)',
+            }}
           >
-            <ProviderIntelligencePanel providerId={provider.id} providerName={provider.name} />
-          </Suspense>
+            <Suspense
+              fallback={
+                <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+                  Opening the vendor’s record…
+                </p>
+              }
+            >
+              <ProviderIntelligencePanel providerId={provider.id} providerName={provider.name} />
+            </Suspense>
+          </div>
         </div>
       </aside>
     </div>
