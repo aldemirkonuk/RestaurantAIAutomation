@@ -96,9 +96,9 @@ a table-write-to-event-bus path that has never existed, purely to make an E2E te
 
 ### Wave G — the feature it names was investigated and explicitly cut
 
-`apps/api-gateway/src/settings/feature-flag-registry.ts:316-320` — the file is live on
+`apps/api-gateway/src/settings/feature-flag-registry.ts` (the `enable_calendar_sync` comment block — no line number: this file has drifted under two different merges in the time it took this ADR to clear review, and a symbol name outlives a merge) — the file is live on
 `main` today; what was removed on 2026-08-26 is the `enable_calendar_sync` flag itself
-(`:335`, `REMOVED_FEATURE_FLAGS`) — states outright: *"no Google Calendar sync exists (only a credential-gated e2e that
+(the `REMOVED_FEATURE_FLAGS` array, `"enable_calendar_sync"` entry) — states outright: *"no Google Calendar sync exists (only a credential-gated e2e that
 skips)"* — naming **this exact test** as the only thing keeping a Google-Calendar-sync
 illusion alive. No `googleapis`/OAuth2 Google Calendar client exists anywhere in
 `calendar_agent.py` or the repo; "calendar" here means a real, substantially-built
