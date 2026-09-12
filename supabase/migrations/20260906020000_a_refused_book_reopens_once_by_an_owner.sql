@@ -107,7 +107,14 @@ BEGIN
       ADD CONSTRAINT price_index_upload_reviews_reopen_has_history
       CHECK (
         reopened_at IS NULL
-        OR (jsonb_typeof(decision_history) = 'array'
+        -- `decision_history IS NOT NULL` FIRST, and it is load-bearing:
+        -- `jsonb_typeof(NULL)` is NULL, `NULL = 'array'` is NULL, and a CHECK
+        -- whose expression is NULL PASSES. Without this conjunct the constraint
+        -- admits exactly the row it exists to refuse -- a reopen carrying no
+        -- history -- and the assertion below catches it (measured on production
+        -- 2026-09-12: the insert succeeded and the migration refused itself).
+        OR (decision_history IS NOT NULL
+            AND jsonb_typeof(decision_history) = 'array'
             AND jsonb_array_length(decision_history) > 0)
       );
   END IF;
@@ -176,6 +183,21 @@ BEGIN
        AND ns.nspname <> 'public'
   ) THEN
     RAISE EXCEPTION 'reopened_by points outside public; auth.users and public.users are disjoint';
+  END IF;
+
+  -- STRUCTURAL, AND IT RUNS EVERYWHERE. The behavioural probe below needs a
+  -- `public.users` row, so on a fresh database -- which is what CI builds -- it
+  -- is skipped and the migration reports success without ever exercising the
+  -- CHECK. That is how a constraint that admitted a historyless reopen passed
+  -- every test and failed only against production. This assertion reads the
+  -- constraint's own definition and needs no data at all.
+  IF pg_get_constraintdef(
+       (SELECT oid FROM pg_constraint
+         WHERE conname = 'price_index_upload_reviews_reopen_has_history'
+           AND conrelid = to_regclass('public.price_index_upload_reviews'))
+     ) NOT LIKE '%decision_history IS NOT NULL%' THEN
+    RAISE EXCEPTION
+      'the history CHECK has no NULL guard: jsonb_typeof(NULL) is NULL, a NULL CHECK PASSES, and the constraint would admit the reopen it exists to refuse';
   END IF;
 
   SELECT user_id INTO probe_user FROM public.users LIMIT 1;
