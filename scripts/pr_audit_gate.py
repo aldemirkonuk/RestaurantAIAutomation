@@ -34,6 +34,8 @@ and the other scripts/check_*.sh guards for the convention this follows.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import pathlib
@@ -449,7 +451,7 @@ def run_audit(pr_number: str) -> int:
             sha7 = pr["headRefOid"][:7]
         except Exception:
             pass
-        return _fail_closed(pr_number, sha7, f"{type(exc).__name__}: {exc}")
+        return _fail_closed(pr_number, sha7, _exception_reason(exc))
 
 
 def _run_audit_inner(pr_number: str) -> int:
@@ -873,6 +875,25 @@ def classify_cannot_check(reason: str) -> tuple[str, str]:
             "before rerunning -- a rerun may or may not help.")
 
 
+def _exception_reason(exc: BaseException) -> str:
+    """The reason string a COULD NOT RUN is classified from.
+
+    A subprocess error's str() repeats the whole argv. For `gh pr comment` that
+    argv carries the audit report itself, which can quote the very strings the
+    classifier keys on -- so a comment post that timed out on a PR whose report
+    discusses a credit outage was named `no-credit`, with "rerunning changes
+    nothing", when a rerun was exactly the fix (found by the second adversarial
+    pass). Name the command and its outcome, never its arguments.
+    """
+    if isinstance(exc, (subprocess.TimeoutExpired, subprocess.CalledProcessError)):
+        cmd = exc.cmd if isinstance(exc.cmd, (list, tuple)) else [str(exc.cmd)]
+        head = " ".join(str(c) for c in list(cmd)[:3])
+        if isinstance(exc, subprocess.TimeoutExpired):
+            return f"TimeoutExpired: `{head}` timed out after {exc.timeout}s"
+        return f"CalledProcessError: `{head}` exited {exc.returncode}"
+    return f"{type(exc).__name__}: {exc}"
+
+
 def _fail_closed(pr_number: str, sha7: str | None, reason: str) -> int:
     reason = _redact(reason)
     tag, hint = classify_cannot_check(reason)
@@ -885,7 +906,7 @@ def _fail_closed(pr_number: str, sha7: str | None, reason: str) -> int:
     body = (
         f"## PR Audit Gate — COULD NOT RUN [{tag}]\n\n{reason}\n\n{hint}\n\n"
         "This is a CANNOT CHECK: it is not a BLOCK and it is not a pass. "
-        "Nothing was audited.\n\nNot merging — see ADR 0090."
+        "Whether the audit itself had run depends on which step raised; the reason above names it.\n\nNot merging — see ADR 0090."
     )
     _run(["gh", "pr", "comment", pr_number, "--body", body])
     print(f"CANNOT CHECK [{tag}]: {reason}", file=sys.stderr)
@@ -1080,9 +1101,18 @@ def run_self_test() -> int:
             globals()["REPORT_DIR"] = pathlib.Path(_tmp)
             _samples = [terms[0] for _, terms, _ in _CANNOT_CHECK_CAUSES] + ["nobody knows"]
             for _reason in _samples:
-                _exits.append(_fail_closed("0", "selftst", _reason))
+                with contextlib.redirect_stderr(io.StringIO()):
+                    _exits.append(_fail_closed("0", "selftst", _reason))
     finally:
         globals()["_run"], globals()["REPORT_DIR"] = _saved_run, _saved_dir
+    tag, _ = classify_cannot_check(_exception_reason(subprocess.TimeoutExpired(
+        ["gh", "pr", "comment", "363", "--body", "a report quoting: credit balance is too low"], 60)))
+    check("a timed-out comment post is not named by the report text it was carrying", tag, "unclassified")
+    tag, _ = classify_cannot_check("gh pr diff returned nothing to review.")
+    check("an empty diff is named empty-diff", tag, "empty-diff")
+    check("no cause is keyed on a single bare word",
+          all(len([w for w in re.split(r"[ _:]+", t.strip()) if w]) >= 2
+              for _, terms, _ in _CANNOT_CHECK_CAUSES for t in terms), True)
     check("_fail_closed returns 1 for every cause it can name, and for an unknown one",
           sorted(set(_exits)), [1])
 
