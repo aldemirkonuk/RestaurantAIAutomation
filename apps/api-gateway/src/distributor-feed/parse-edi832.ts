@@ -69,6 +69,11 @@
 
 import { createHash } from "node:crypto";
 import { PriceCodeMeaning, attributionFor } from "./price-code-mappings";
+import {
+  currencyCode,
+  isIso4217,
+  notACurrencyBecause,
+} from "../common/iso-4217";
 
 /**
  * `api_catalog` / tier 3 — read from the CHECK constraint, not chosen.
@@ -160,6 +165,7 @@ export type FeedRefusalReason =
   | "no_catalog_header"
   | "no_currency"
   | "currency_disagreement"
+  | "not_a_currency"
   | "no_item_id"
   | "no_description"
   | "no_price"
@@ -377,8 +383,43 @@ export function parseEdi832(raw: string, opts: Edi832Options): Edi832Run {
   }
   const curCode = distinctCurCodes[0] ?? "";
   const declared = (opts.declaredCurrency ?? "").trim().toUpperCase();
-  const fileStates = /^[A-Z]{3}$/.test(curCode);
-  const houseStated = /^[A-Z]{3}$/.test(declared);
+  /*
+   * MEMBERSHIP, NOT SHAPE (2026-09-11, audit of b6d2e4b4, iso-tables finding).
+   *
+   * These two lines asked `/^[A-Z]{3}$/`, which says a string is three capitals
+   * and nothing about whether it names money. So `CUR*SE*ZZZ~`, or a connection
+   * declared as `ZZZ`, passed as the catalogue's currency and was written into
+   * `vendor_price_observations.currency` and `procurement_documents.currency`,
+   * neither of which holds a list: the defect `common/iso-4217.ts` describes,
+   * left open on this one path after the pass that closed it elsewhere.
+   *
+   * A code that is STATED but names no currency now refuses the whole file,
+   * naming the code, on the same `refusedWhole` path as a disagreement. That
+   * includes a malformed declaration (`US`) beside a file that states its own:
+   * it used to be ignored, which discarded the manager's typed declaration with
+   * no trace, the silence the founder's batch 62 Q2 answer ended for a
+   * well-formed one. An EMPTY CUR element and an empty declaration still state
+   * nothing, exactly as before.
+   */
+  if (curCode !== "" && !isIso4217(curCode)) {
+    run.refusedWhole = `the file's own CUR segment does not name a currency; nothing was read. ${notACurrencyBecause(curCode)} A catalogue priced in a code that names no money is not priced. Send the file again with its CUR corrected.`;
+    run.refusals.push({
+      reason: "not_a_currency",
+      detail: `CUR02 was '${curCode}'`,
+    });
+    return run;
+  }
+  if (declared !== "" && !isIso4217(declared)) {
+    run.refusedWhole = `the currency declared for this connection does not name a currency; nothing was read. ${notACurrencyBecause(opts.declaredCurrency)} Send the file again with the declaration corrected, or leave it empty and let the file state its own.`;
+    run.refusals.push({
+      reason: "not_a_currency",
+      detail: `declaredCurrency was '${declared}'`,
+    });
+    return run;
+  }
+  // Each is a member or empty from here, so "states" means "names money".
+  const fileStates = curCode !== "";
+  const houseStated = declared !== "";
   /*
    * A DISAGREEMENT REFUSES THE WHOLE FILE, NAMING BOTH (the founder,
    * 2026-09-06, batch 62 Q2: "Refuse the file, naming both").
@@ -665,8 +706,17 @@ export function looksLikeEdi832(raw: string): boolean {
 export interface Edi832Header {
   catalogNumber: string | null;
   catalogVersion: string | null;
-  /** `CUR02` only. Never a default, and never the caller's declared currency. */
+  /**
+   * `CUR02` only, and only when it names a currency. Never a default, and never
+   * the caller's declared currency.
+   */
   currency: string | null;
+  /**
+   * `CUR02` as the file printed it (trimmed, upper-cased), or null when it
+   * printed none. Differs from `currency` only when the file states a code that
+   * names no currency, so the document door can say THAT rather than "no CUR".
+   */
+  currencyAsPrinted: string | null;
   /** `N1*SU` — the sender's own name for itself, or null when it named none. */
   senderName: string | null;
   /** The newest `DTM*007`/`DTM*128` anywhere in the document. */
@@ -700,7 +750,10 @@ export function readEdi832Header(raw: string): Edi832Header {
   return {
     catalogNumber: (bct && element(bct, 2)) || null,
     catalogVersion: (bct && element(bct, 3)) || null,
-    currency: /^[A-Z]{3}$/.test(curCode) ? curCode : null,
+    // Membership, not shape (2026-09-11, audit of b6d2e4b4): through this
+    // field `ZZZ` in CUR02 became `procurement_documents.currency`.
+    currency: currencyCode(curCode),
+    currencyAsPrinted: curCode === "" ? null : curCode,
     senderName: (n1su && element(n1su, 2)) || null,
     effectiveDate,
     lineCount: segs.filter((s) => s.tag === "LIN").length,

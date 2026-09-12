@@ -566,7 +566,13 @@ describe("rule 3: a deliberate change re-files the money and says what moved", (
     const s = refilingSentence({
       previous: null,
       next: "TRY",
-      wasHeld: true,
+      provenance: {
+        header: "withheld",
+        headerRestored: ["subtotal", "freight", "deposit total", "tax", "total"],
+        linesKept: [],
+        linesRestored: [1],
+        linesWithout: [],
+      },
       documentTotal: 11306.4,
       lineCount: 1,
       pricedLines: 1,
@@ -574,6 +580,33 @@ describe("rule 3: a deliberate change re-files the money and says what moved", (
     expect(s).toContain("from NOT RECORDED");
     expect(s).toContain("11306.40 is now TRY");
     expect(s).toContain("no exchange rate");
+    expect(s).toContain(
+      "Put back from the reading withheld at intake: the header's subtotal, freight, deposit total, tax and total; and line 1.",
+    );
+  });
+
+  it("claims NOT RECORDED and a hold only when a withheld reading was used", () => {
+    // 2026-09-11, audit of b6d2e4b4: the caller passes `previous: null` because
+    // the new code has already landed, and a null alone is not evidence that
+    // the document had no currency or that anything was withheld.
+    const s = refilingSentence({
+      previous: null,
+      next: "TRY",
+      provenance: {
+        header: "current",
+        headerRestored: [],
+        linesKept: [1],
+        linesRestored: [],
+        linesWithout: [],
+      },
+      documentTotal: 11306.4,
+      lineCount: 1,
+      pricedLines: 1,
+    });
+    expect(s).toContain("Currency restated to TRY.");
+    expect(s).not.toContain("NOT RECORDED");
+    expect(s).not.toContain("was held");
+    expect(s).toContain("only the currency they are stated in has moved");
   });
 });
 
@@ -835,13 +868,13 @@ describe("a restatement never reverts a hand-corrected line", () => {
     expect(plan!.lines[0].unit_price).toBe(142);
   });
 
-  it("counts a line-only price as money on the row", () => {
-    // A document whose header states nothing but whose lines are priced is NOT
-    // held, and must not be re-filed from a snapshot.
+  it("re-files a priced body under a blank header from its rows when nothing was withheld", () => {
+    // A document whose header states nothing, whose lines are priced and which
+    // carries no `moneyWithheld` was never held: there is nothing to recover.
     const plan = planRefile({
       row: heldRow(),
       lines: lineRows(),
-      extracted: withholdMoney(extracted(), "held earlier"),
+      extracted: extracted(),
     });
     expect(plan!.source).toBe("current_rows");
     expect(plan!.lines[0].unit_price).toBe(142);
@@ -849,6 +882,27 @@ describe("a restatement never reverts a hand-corrected line", () => {
     // No stated total is an UNTESTABLE tie-out, never a failed one.
     expect(plan!.document.ties_out).toBeNull();
     expect(plan!.document.computed_lines_total).toBe(1704);
+    expect(plan!.provenance.header).toBe("none");
+  });
+
+  it("puts a withheld header back under a priced body (this case was pinned the other way)", () => {
+    // Until 2026-09-11 this row shape WITH a snapshot was pinned as "counts a
+    // line-only price as money on the row": source current_rows, total null.
+    // That pin was the b6d2e4b4 audit's BLOCKING defect, not a rule. A blank
+    // header beside a `moneyWithheld` reading is a header the hold stripped and
+    // `editLine` never repaired; the line keeps its figures, and the header
+    // comes back from the only place it still exists.
+    const plan = planRefile({
+      row: heldRow(),
+      lines: lineRows(),
+      extracted: withholdMoney(extracted(), "held earlier"),
+    });
+    expect(plan!.source).toBe("mixed");
+    expect(plan!.lines[0].unit_price).toBe(142);
+    expect(plan!.document.total).toBe(11306.4);
+    expect(plan!.document.tax).toBe(1834.4);
+    expect(plan!.document.computed_lines_total).toBe(1704);
+    expect(plan!.document.ties_out).toBe(false);
   });
 
   it("says which reading it used, in words", () => {
@@ -997,6 +1051,115 @@ describe("a restatement never reverts a hand-corrected line", () => {
       expect(plan!.source).toBe("current_rows");
       expect(plan!.lines[1].unit_price).toBeNull();
       expect(plan!.lines[1].line_total).toBeNull();
+    });
+
+    /* ---------------------------------------------------------------------
+     * THE HELD ROW SHAPE (2026-09-11, audit of b6d2e4b4: the BLOCKING finding
+     * and this block's SHOULD-FIX). Every case above passes `moneyRow()`, a
+     * header WITH money. Production has no such row for a held document:
+     * intake writes its header columns NULL from the withheld parse and
+     * `editLine` never repairs them. So the header loss was invisible here.
+     * These cases use the row a hold actually leaves.
+     * ------------------------------------------------------------------- */
+    const heldMixed = () => ({
+      row: heldRow(),
+      lines: mixedRows(),
+      extracted: withholdMoney(twoLines(), "held for the test"),
+    });
+
+    it("HELD ROW: keeps the correction AND puts the header back", () => {
+      const plan = planRefile(heldMixed());
+      expect(plan!.source).toBe("mixed");
+      // The correction, untouched.
+      expect(plan!.lines[0].unit_price).toBe(194);
+      expect(plan!.lines[0].line_total).toBe(2328);
+      // The withheld line, back.
+      expect(plan!.lines[1].unit_price).toBe(99);
+      expect(plan!.lines[1].line_total).toBe(990);
+      // The header the old branch discarded for good.
+      expect(plan!.document.subtotal).toBe(9172);
+      expect(plan!.document.freight).toBe(120);
+      expect(plan!.document.deposit_total).toBe(180);
+      expect(plan!.document.tax).toBe(1834.4);
+      expect(plan!.document.total).toBe(11306.4);
+      expect(plan!.provenance).toEqual({
+        header: "withheld",
+        headerRestored: ["subtotal", "freight", "deposit total", "tax", "total"],
+        linesKept: [1],
+        linesRestored: [2],
+        linesWithout: [],
+      });
+      expect(plan!.sourceSaid).toContain("the header came from the withheld reading");
+    });
+
+    it("HELD ROW: the tie-out is recomputed over the resulting lines and the restored header", () => {
+      const plan = planRefile(heldMixed());
+      expect(plan!.document.computed_lines_total).toBe(3318);
+      expect(plan!.document.tie_out_delta).toBe(
+        Math.round((11306.4 - (3318 + 120 + 180 + 1834.4)) * 100) / 100,
+      );
+      expect(plan!.document.ties_out).toBe(false);
+    });
+
+    it("HELD ROW: a second restatement changes nothing that was right", () => {
+      const first = planRefile(heldMixed())!;
+      // The row and the lines exactly as `refileMoneyForCurrency` writes them;
+      // `extracted` still carries the snapshot, because nothing clears it.
+      const second = planRefile({
+        row: { ...first.document },
+        lines: mixedRows().map((l, i) => ({ ...l, ...first.lines[i] })),
+        extracted: withholdMoney(twoLines(), "held for the test"),
+      })!;
+      expect(second.document).toEqual(first.document);
+      expect(second.lines).toEqual(first.lines);
+      expect(second.source).toBe("current_rows");
+    });
+
+    it("HELD ROW: plans nothing to write when neither reading has money", () => {
+      const unpriced = [
+        { ...mixedRows()[0], unit_price: null, line_total: null, deposit: null },
+        mixedRows()[1],
+      ];
+      expect(
+        planRefile({ row: heldRow(), lines: unpriced, extracted: null }),
+      ).toBeNull();
+      const emptySnapshot = withholdMoney(
+        extracted({
+          subtotal: null,
+          freight: null,
+          depositTotal: null,
+          tax: null,
+          total: null,
+          lines: [
+            { ...extracted().lines[0], unitPrice: null, lineTotal: null, deposit: null },
+          ],
+        }),
+        "held with nothing to keep",
+      );
+      expect(
+        planRefile({ row: heldRow(), lines: unpriced, extracted: emptySnapshot }),
+      ).toBeNull();
+    });
+
+    it("HELD ROW: the sentence names what was put back and what was kept, and nothing else", () => {
+      const plan = planRefile(heldMixed())!;
+      const s = refilingSentence({
+        previous: null,
+        next: "TRY",
+        provenance: plan.provenance,
+        documentTotal: plan.document.total,
+        lineCount: plan.lines.length,
+        pricedLines: 2,
+      });
+      expect(s).toContain("Its stated total of 11306.40 is now TRY");
+      expect(s).toContain(
+        "Put back from the reading withheld at intake: the header's subtotal, freight, deposit total, tax and total; and line 2.",
+      );
+      expect(s).toContain(
+        "Kept exactly as they stood on the document, corrections included: line 1.",
+      );
+      expect(s).not.toContain("the vendor's own figures were put back");
+      expect(s).not.toContain("states no total");
     });
   });
 

@@ -68,8 +68,10 @@ export type { CurrencySeen };
  * restatement should read from at all; it is not, because it is written only at
  * intake and `editLine` never updates it, so re-filing from it reverted every
  * hand correction (`planRefile`, 2026-09-06). A restatement now reads the
- * document's CURRENT rows and falls back to `moneyWithheld` only when there is
- * no money on them.
+ * document's CURRENT rows and falls back to `moneyWithheld` for each part that
+ * carries no money on them: the header as one unit, and each line on its own
+ * (2026-09-11; until then one priced line also kept a blank header, which lost
+ * a held document's header for good).
  */
 
 /**
@@ -617,6 +619,30 @@ export interface DocumentLineRow {
  */
 export type RefileSource = "current_rows" | "withheld_snapshot" | "mixed";
 
+/**
+ * WHAT a re-filing put back and WHAT it kept, part by part (2026-09-11, audit
+ * of `b6d2e4b4`). `source` is one word for the whole document; this is the
+ * detail a sentence needs to say exactly which figures came from the withheld
+ * reading and which already stood on the document, so that "the vendor's
+ * figures were put back" is never said of a document where some were not.
+ */
+export interface RefileProvenance {
+  /**
+   * Where the header came from: `current` when the row's own header columns
+   * carry money, `withheld` when they carry none and the snapshot's do, `none`
+   * when neither reading states a header figure.
+   */
+  header: "current" | "withheld" | "none";
+  /** The header figures put back, in column order and in words. Empty unless `header` is `withheld`. */
+  headerRestored: string[];
+  /** `line_no` of each line that kept the figures on its row, corrections included. */
+  linesKept: number[];
+  /** `line_no` of each line whose figures were put back from the withheld reading. */
+  linesRestored: number[];
+  /** `line_no` of each line neither reading prices; written as nulls. */
+  linesWithout: number[];
+}
+
 export interface RefilePlan {
   source: RefileSource;
   /**
@@ -625,6 +651,8 @@ export interface RefilePlan {
    * corrections back" from "we recovered the reading we had withheld".
    */
   sourceSaid: string;
+  /** Which part came from which reading, for the sentence. */
+  provenance: RefileProvenance;
   document: DocumentMoney;
   lines: LineMoney[];
 }
@@ -729,32 +757,58 @@ export function planRefile(args: {
     l.deposit !== null;
 
   /*
-   * THE HEADER IS STILL DECIDED ONCE, over the whole row, and deliberately so.
-   * A header is ONE set of figures, and "this document's header states nothing
-   * but its lines are priced" is a document that was never held rather than one
-   * whose header was stripped — which is the rule
-   * `invoice-currency.spec.ts`'s "counts a line-only price as money on the row"
-   * pins. Only the LINES gained a per-row decision, because only the lines can
-   * disagree with each other.
+   * THE HEADER AND THE LINES ARE DECIDED INDEPENDENTLY (2026-09-11, audit of
+   * `b6d2e4b4`, BLOCKING, three of three verifiers).
+   *
+   * This read `headerFromCurrent = headerHasMoney || linesHaveMoney`, on the
+   * argument that a document whose header states nothing while its lines are
+   * priced "was never held". That is false in exactly the row shape production
+   * has for a held document: intake writes the header columns NULL from the
+   * withheld parse, and `editLine` never repairs them (it writes only
+   * `computed_lines_total`, `tie_out_delta` and `ties_out`). One corrected line
+   * therefore selected the all-null CURRENT header, the snapshot's subtotal,
+   * freight, tax and total were never put back, `total` was written null, and
+   * no later restatement could recover them, because by then every line carries
+   * money. A line recovered from `moneyWithheld` is itself the proof that the
+   * document was held.
+   *
+   * So the header comes from the row only when the row's HEADER has money, and
+   * otherwise from the withheld reading. It is still ONE set of figures, never
+   * assembled field by field out of two readings. A priced body under a blank
+   * header with NO snapshot still re-files from its rows, as it always did.
    */
-  const linesHaveMoney = rows.some(hasMoney);
-  const headerFromCurrent = headerHasMoney || linesHaveMoney;
-  if (!headerFromCurrent && !kept) return null;
+  const headerFromCurrent = headerHasMoney;
+  const headerFromWithheld =
+    !headerFromCurrent && Object.values(keptHeader).some((v) => v !== null);
   const header: DocumentMoney = {
-    ...(headerFromCurrent ? currentHeader : keptHeader),
+    ...(headerFromWithheld ? keptHeader : currentHeader),
     computed_lines_total: null,
     tie_out_delta: null,
     ties_out: null,
   };
-  const headerFromWithheld =
-    !headerFromCurrent && Object.values(keptHeader).some((v) => v !== null);
+
+  /** The header columns in column order, with the words a sentence uses. */
+  const headerWords: ReadonlyArray<readonly [keyof typeof keptHeader, string]> = [
+    ["subtotal", "subtotal"],
+    ["freight", "freight"],
+    ["fuel_surcharge", "fuel surcharge"],
+    ["split_case_fee", "split-case fee"],
+    ["delivery_fee", "delivery fee"],
+    ["deposit_total", "deposit total"],
+    ["tax", "tax"],
+    ["other_charges", "other charges"],
+    ["discount_total", "discount total"],
+    ["total", "total"],
+  ];
 
   // EACH LINE ON ITS OWN. A line that still carries money keeps exactly what it
   // carries — that is a manager's correction and nothing may overwrite it. A
   // line with none recovers from the snapshot, which is the only place its
-  // figure still exists.
-  let linesFromCurrent = 0;
-  let linesFromWithheld = 0;
+  // figure still exists. Every line is named by `line_no` in the provenance, so
+  // the sentence can say which were put back and which were kept.
+  const linesKept: number[] = [];
+  const linesRestored: number[] = [];
+  const linesWithout: number[] = [];
   const lineMoney: LineMoney[] = rows.map((l) => {
     const current = {
       unit_price: l.unit_price,
@@ -763,7 +817,7 @@ export function planRefile(args: {
       deposit: l.deposit,
     };
     if (hasMoney(current)) {
-      linesFromCurrent += 1;
+      linesKept.push(l.line_no);
       return { line_no: l.line_no, ...current };
     }
     const k = byNo.get(l.line_no) ?? null;
@@ -774,17 +828,17 @@ export function planRefile(args: {
       deposit: money(k?.deposit),
     };
     if (hasMoney(recovered)) {
-      linesFromWithheld += 1;
+      linesRestored.push(l.line_no);
       return { line_no: l.line_no, ...recovered };
     }
     // Neither source has anything for this line. Written as nulls, which is
     // what it is — a line whose money is genuinely gone.
+    linesWithout.push(l.line_no);
     return { line_no: l.line_no, ...current };
   });
 
-  const usedCurrent =
-    (headerFromCurrent && headerHasMoney) || linesFromCurrent > 0;
-  const usedWithheld = headerFromWithheld || linesFromWithheld > 0;
+  const usedCurrent = headerFromCurrent || linesKept.length > 0;
+  const usedWithheld = headerFromWithheld || linesRestored.length > 0;
 
   // Nothing anywhere, from either reading. The caller says so rather than
   // writing zeroes: a re-filing that quietly restores nothing is the
@@ -798,6 +852,22 @@ export function planRefile(args: {
       : usedWithheld
         ? "withheld_snapshot"
         : "current_rows";
+
+  const provenance: RefileProvenance = {
+    header: headerFromCurrent
+      ? "current"
+      : headerFromWithheld
+        ? "withheld"
+        : "none",
+    headerRestored: headerFromWithheld
+      ? headerWords
+          .filter(([key]) => keptHeader[key] !== null)
+          .map(([, words]) => words)
+      : [],
+    linesKept,
+    linesRestored,
+    linesWithout,
+  };
 
   const rebuilt = applyTieOut({
     subtotal: header.subtotal,
@@ -844,10 +914,17 @@ export function planRefile(args: {
             // sentence to read in an audit log a month later. A manager
             // disputing a figure needs to know which of their lines came back
             // from the withheld reading and which are their own corrections.
-            `both readings: ${linesFromCurrent} line(s) kept the figures on the document as they stand ` +
-            `(corrections included) and ${linesFromWithheld} recovered the reading withheld at intake ` +
+            // The header's branch is reachable since 2026-09-11: before the
+            // independent decision above, `mixed` forced a current header.
+            `both readings: ${linesKept.length} line(s) kept the figures on the document as they stand ` +
+            `(corrections included) and ${linesRestored.length} recovered the reading withheld at intake ` +
             `(extracted.moneyWithheld); the header came from ` +
-            `${headerFromWithheld ? "the withheld reading" : "the document as it stands"}`,
+            (provenance.header === "withheld"
+              ? "the withheld reading"
+              : provenance.header === "current"
+                ? "the document as it stands"
+                : "neither reading, because neither states a header figure"),
+    provenance,
     document: {
       ...header,
       computed_lines_total: rebuilt.computedLinesTotal,
@@ -886,17 +963,57 @@ function withheldSnapshot(
  * and the sentence has to be able to say both that and "nothing was priced
  * before, and now these figures are".
  */
+/** "line 2", "lines 1 and 3", "lines 1, 2 and 4". */
+function linesNamed(nos: readonly number[]): string {
+  return nos.length === 1 ? `line ${nos[0]}` : `lines ${andList(nos.map(String))}`;
+}
+
+/** "a", "a and b", "a, b and c". */
+function andList(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts.join("");
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
 export function refilingSentence(args: {
   previous: string | null;
   next: string;
-  wasHeld: boolean;
+  /**
+   * What was put back and what was kept, from `RefilePlan.provenance`.
+   *
+   * This was a `wasHeld` boolean until 2026-09-11 (audit of `b6d2e4b4`). One
+   * bit can only say "the vendor's own figures were put back" or "nothing
+   * moved", so a document whose corrected line was kept while its header came
+   * back, or whose header was lost while a line came back, was told that every
+   * figure had been restored. The sentence now names each part and claims
+   * nothing it was not given.
+   */
+  provenance: RefileProvenance;
   documentTotal: number | null;
   lineCount: number;
   pricedLines: number;
 }): string {
+  const p = args.provenance;
+  const putBack = [
+    ...(p.header === "withheld" && p.headerRestored.length > 0
+      ? [`the header's ${andList(p.headerRestored)}`]
+      : []),
+    ...(p.linesRestored.length > 0 ? [linesNamed(p.linesRestored)] : []),
+  ];
+  const kept = [
+    ...(p.header === "current" ? ["the header"] : []),
+    ...(p.linesKept.length > 0 ? [linesNamed(p.linesKept)] : []),
+  ];
+  // Two parts at most (the header, the lines), joined so a list inside a part
+  // cannot be misread as a list of parts.
+  const parts = (xs: string[]) => xs.join("; and ");
+  // "NOT RECORDED (its money was withheld)" is said only when a withheld
+  // reading was actually used. The caller passes `previous: null` because the
+  // new code has already landed, and a null alone is evidence of nothing.
   const from = args.previous
-    ? `from ${args.previous}`
-    : "from NOT RECORDED (its money was withheld)";
+    ? ` from ${args.previous}`
+    : putBack.length > 0
+      ? " from NOT RECORDED (its money was withheld)"
+      : "";
   const total =
     args.documentTotal == null
       ? "The document states no total"
@@ -905,10 +1022,23 @@ export function refilingSentence(args: {
     args.lineCount === 0
       ? "It carries no lines"
       : `${args.pricedLines} of ${args.lineCount} line${args.lineCount === 1 ? "" : "s"} ${args.pricedLines === 1 ? "carries" : "carry"} a price, and ${args.pricedLines === 1 ? "it is" : "they are"} now ${args.next}`;
-  const restored = args.wasHeld
-    ? ` The money was held and is now filed: nothing was converted, because there is no exchange rate in this system — the vendor's own figures were put back and denominated in ${args.next}.`
-    : ` Nothing was converted: the figures are unchanged and only the currency they are stated in has moved.`;
-  return `Currency restated ${from} to ${args.next}. ${total}. ${lines}.${restored}`;
+  const without = p.linesWithout.length;
+  const restored =
+    putBack.length > 0
+      ? ` The money was held and is now filed: nothing was converted, because there is no exchange rate in this system.` +
+        ` Put back from the reading withheld at intake: ${parts(putBack)}.` +
+        (kept.length > 0
+          ? ` Kept exactly as they stood on the document, corrections included: ${parts(kept)}.`
+          : "") +
+        (p.header === "none"
+          ? " Neither reading states a header figure, so none was put back."
+          : "") +
+        (without > 0
+          ? ` ${without === 1 ? "Line" : "Lines"} ${andList(p.linesWithout.map(String))} ${without === 1 ? "has" : "have"} no figure in either reading and ${without === 1 ? "was" : "were"} left without one.`
+          : "") +
+        ` The figures named here are now denominated in ${args.next}.`
+      : ` Nothing was converted: the figures are unchanged and only the currency they are stated in has moved.`;
+  return `Currency restated${from} to ${args.next}. ${total}. ${lines}.${restored}`;
 }
 
 /**

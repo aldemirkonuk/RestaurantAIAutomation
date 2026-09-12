@@ -404,6 +404,30 @@ describe("recordPurchase — money in, with its provenance", () => {
     }
   });
 
+  it("writes the NORMALISED code, never the raw one it was given", async () => {
+    // 2026-09-11, audit of b6d2e4b4: the gate trimmed and the insert did not,
+    // so `" try"` passed and was written as four characters into a CHAR(3)
+    // column.
+    for (const spelt of [" try", "TRY ", "try"]) {
+      const db = seed();
+      const out = await svc(db).recordPurchase({
+        restaurantId: RID,
+        sealId: SEAL,
+        amountMinor: 5000,
+        currency: spelt,
+        recordedBy: USER,
+        paymentRef: "pi_1",
+      });
+      expect(`${JSON.stringify(spelt)}:${out.recorded}`).toBe(
+        `${JSON.stringify(spelt)}:true`,
+      );
+      expect(db.tables.house_message_credits[0].currency).toBe("TRY");
+      expect(db.tables.house_message_credits[0].detail).toContain(
+        "5000 TRY minor units",
+      );
+    }
+  });
+
   it("refuses a zero or negative purchase, and writes nothing", async () => {
     const db = seed();
     for (const amountMinor of [0, -1, 1.5]) {

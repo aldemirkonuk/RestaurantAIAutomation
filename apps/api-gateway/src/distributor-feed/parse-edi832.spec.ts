@@ -152,10 +152,75 @@ describe("parseEdi832 — the file's CUR against the house's declaration", () =>
     expect(run.currency).toBe("TRY");
   });
 
-  it("ignores a malformed declaration against a file that states its own", () => {
+  it("refuses a malformed declaration against a file that states its own, naming it", () => {
+    // Pinned the other way until 2026-09-11 ("ignores a malformed
+    // declaration"). Ignoring it discarded the manager's typed declaration with
+    // no trace, which is the silence batch 62 Q2 ended; a declaration that
+    // names no currency is now refused like any other code that names none.
     const run = parseEdi832(constructed(), { ...BASE, declaredCurrency: "US" });
-    expect(run.refusedWhole).toBeNull();
-    expect(run.currency).toBe("USD");
+    expect(run.refusedWhole).toContain('"US" is not a currency');
+    expect(run.refusals[0].reason).toBe("not_a_currency");
+    expect(run.currency).toBeNull();
+    expect(run.sightings).toHaveLength(0);
+  });
+});
+
+/**
+ * A CODE THAT NAMES NO CURRENCY IS NOT MONEY (2026-09-11, audit of b6d2e4b4,
+ * iso-tables finding). The two gates on this path asked `/^[A-Z]{3}$/`, so
+ * `CUR*SE*ZZZ~` or a `ZZZ` declaration was filed as the catalogue's currency
+ * into `vendor_price_observations` and `procurement_documents`.
+ */
+describe("parseEdi832 — a code that names no currency refuses the whole file", () => {
+  const constructed = () => fixture("edi832-constructed-from-spec.edi");
+
+  it("refuses the WHOLE file when its own CUR states ZZZ, naming the code", () => {
+    const text = constructed().replace("CUR*SE*USD~", "CUR*SE*ZZZ~");
+    expect(text).toContain("CUR*SE*ZZZ~");
+    const run = parseEdi832(text, BASE);
+    expect(run.refusedWhole).toContain("ZZZ is not a currency");
+    expect(run.refusedWhole).toContain("nothing was read");
+    expect(run.refusals[0]).toEqual({
+      reason: "not_a_currency",
+      detail: "CUR02 was 'ZZZ'",
+    });
+    expect(run.currency).toBeNull();
+    expect(run.linesRead).toBe(0);
+    expect(run.sightings).toHaveLength(0);
+  });
+
+  it("refuses the WHOLE file when ZZZ is declared beside a file that states its own", () => {
+    const run = parseEdi832(constructed(), { ...BASE, declaredCurrency: "ZZZ" });
+    expect(run.refusedWhole).toContain("ZZZ is not a currency");
+    expect(run.refusals[0]).toEqual({
+      reason: "not_a_currency",
+      detail: "declaredCurrency was 'ZZZ'",
+    });
+    expect(run.currency).toBeNull();
+    expect(run.sightings).toHaveLength(0);
+  });
+
+  it("refuses the WHOLE file when ZZZ is declared and the file states none", () => {
+    const run = parseEdi832(
+      fixture("edi832-msss-guide-sample-2022-06-02.edi"),
+      { ...BASE, declaredCurrency: " zzz " },
+    );
+    expect(run.refusedWhole).toContain("ZZZ is not a currency");
+    expect(run.refusals[0].reason).toBe("not_a_currency");
+    expect(run.currency).toBeNull();
+  });
+
+  it("still reads a real code, from the file and from the declaration", () => {
+    const fromFile = parseEdi832(constructed(), BASE);
+    expect(fromFile.refusedWhole).toBeNull();
+    expect(fromFile.currency).toBe("USD");
+    expect(fromFile.linesRead).toBeGreaterThan(0);
+    const fromDeclaration = parseEdi832(
+      fixture("edi832-msss-guide-sample-2022-06-02.edi"),
+      { ...BASE, declaredCurrency: " try " },
+    );
+    expect(fromDeclaration.refusedWhole).toBeNull();
+    expect(fromDeclaration.currency).toBe("TRY");
   });
 });
 

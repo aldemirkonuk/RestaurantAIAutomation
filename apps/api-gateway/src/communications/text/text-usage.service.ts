@@ -39,7 +39,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
-import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
+import { currencyCode, notACurrencyBecause } from "../../common/iso-4217";
 
 /** Columns read here, as module-level literals for check_read_columns_exist.py. */
 const ALLOWANCE_COLUMNS =
@@ -507,7 +507,12 @@ export class TextUsageService {
      * HTTP caller; this is the gate for every other caller, and the one whose
      * refusal is a `words` string rather than an exception.
      */
-    if (!isIso4217(params.currency)) {
+    // NORMALISED ONCE, and only the normalised code is written (2026-09-11,
+    // audit of b6d2e4b4): this asked `isIso4217(params.currency)`, which trims,
+    // and then wrote `params.currency` RAW, so `" try"` passed the gate and
+    // reached a CHAR(3) column as four characters.
+    const currency = currencyCode(params.currency);
+    if (currency === null) {
       return {
         recorded: false,
         entryId: null,
@@ -535,7 +540,7 @@ export class TextUsageService {
         restaurant_id: params.restaurantId,
         entry_kind: "purchase",
         amount_minor: params.amountMinor,
-        currency: params.currency,
+        currency: currency,
         // A purchase has neither half of a debit's cost split.
         provider_cost_minor: null,
         platform_fee_minor: null,
@@ -543,7 +548,7 @@ export class TextUsageService {
         meter_id: null,
         seal_id: params.sealId,
         payment_ref: params.paymentRef,
-        detail: `Credits bought: ${params.amountMinor} ${params.currency} minor units. ${PLATFORM_FEE_BASIS_UNSET}`,
+        detail: `Credits bought: ${params.amountMinor} ${currency} minor units. ${PLATFORM_FEE_BASIS_UNSET}`,
         recorded_by: params.recordedBy,
       })
       .select("id")

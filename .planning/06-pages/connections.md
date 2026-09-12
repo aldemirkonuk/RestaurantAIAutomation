@@ -310,6 +310,16 @@ the two registers that would actually leak are refused at the gateway as well.
   padded**. Beside it the sentence that an 832 with no `CUR` is the *common*
   case — the published MSSS sample carries none — and that a file with neither
   is refused whole rather than read as dollars
+- **A code that is well-formed and names no money is refused too** (2026-09-11,
+  audit of `b6d2e4b4`). Until then this path asked only `/^[A-Z]{3}$/`, on both
+  the file's own `CUR` segment and the declaration, so `ZZZ` was filed as the
+  catalogue's currency into `vendor_price_observations.currency` and
+  `procurement_documents.currency` — neither of which holds a list. Every code
+  on this path now goes through `isIso4217`, and one that names no currency
+  **refuses the whole file, naming the code**, on the same `refusedWhole` path a
+  disagreement uses (`parse-edi832.ts:404` for the file's own segment, `:412`
+  for the declaration; refusal reason `not_a_currency`). An empty element and an
+  empty declaration still state nothing, exactly as before
 - **The door is open to staff; the price register is not.** The upload route
   itself keeps no role gate — a runner photographs paper at the delivery door,
   and a check there would lose documents as they arrive — so the gate sits on
@@ -1106,6 +1116,22 @@ that reach this register:
       nothing was read"*) instead of letting the file win silently, which is
       what it did until this pass. Agreement and absence are unchanged. The 810
       path is untouched because it never reads a declared currency at all.
+    - **And so does a code that names no currency** (added 2026-09-11, audit of
+      `b6d2e4b4`). The two gates beside the disagreement check were shape-only
+      (`/^[A-Z]{3}$/`), so `CUR*SE*ZZZ~` — or a connection declared as `ZZZ` —
+      was read as the catalogue's money and written into
+      `vendor_price_observations.currency`, a column with no CHECK. Both now ask
+      `isIso4217` and refuse the whole file naming the code
+      (`parse-edi832.ts:404`, `:412`), and `readEdi832Header` files `NULL`
+      rather than the code while keeping what the file printed in
+      `currencyAsPrinted` (`:755-756`), so the document door can say *"the
+      catalogue's CUR segment states ZZZ, which names no currency"* instead of
+      the older and now-false *"the catalogue states no CUR currency segment"*
+      (`document-intake.service.ts:869`). A malformed DECLARATION beside a file
+      that states its own is refused rather than ignored — ignoring it discarded
+      a manager's typed declaration with no trace. Pinned at
+      `parse-edi832.spec.ts:174` and `catalog-ingest.spec.ts:145`; every one of
+      those cases fails against the pre-fix parser.
     - **Three failure states for the register, not two.** The commit message
       named two. There are three, each with its own sentence and each now
       tested: `registerError` — *this house's price-code statements could not be

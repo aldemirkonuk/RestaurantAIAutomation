@@ -863,7 +863,12 @@ export class DocumentIntakeService {
     ];
     if (!header.currency)
       warnings.push(
-        "The catalogue states no CUR currency segment. No currency was assumed — there is deliberately no USD default here — so every line will be refused until one is declared with the file.",
+        // A CUR02 that names no currency is not "no CUR" (2026-09-11, audit of
+        // b6d2e4b4): saying the file states none would be a false sentence
+        // about a file that states ZZZ.
+        header.currencyAsPrinted
+          ? `The catalogue's CUR segment states ${header.currencyAsPrinted}, which names no currency, so no currency was filed for it. Nothing was assumed and there is deliberately no USD default here; every line will be refused until the file is sent again with a real currency.`
+          : "The catalogue states no CUR currency segment. No currency was assumed — there is deliberately no USD default here — so every line will be refused until one is declared with the file.",
       );
     if (!header.catalogNumber)
       warnings.push(
@@ -2161,10 +2166,11 @@ export class DocumentIntakeService {
    * (`20260905120000_a_house_names_its_money.sql`, rule 3). Only what the
    * figures are denominated in has moved.
    *
-   * The withheld snapshot (`extracted.moneyWithheld`) is used ONLY for a
-   * document whose money is not on the row at all — the exact state
-   * `withholdMoney` leaves, header and lines and tie-out all null. That was
-   * this method's only source until today, and it was wrong: `extracted` is
+   * The withheld snapshot (`extracted.moneyWithheld`) is used for each PART
+   * of the document whose money is not on the row: the header when the row's
+   * header columns are all null, and each line whose own money columns are
+   * (per part since 2026-09-11, per line since 2026-09-06). It was this
+   * method's only source until 2026-09-06, and it was wrong: `extracted` is
    * written at intake and `editLine` never touches it, so restating the
    * currency of a hand-corrected document put the original AI reading back and
    * announced it as a re-filing. `planRefile`'s header carries the proof.
@@ -2224,17 +2230,14 @@ export class DocumentIntakeService {
       refilingSentence({
         previous: null,
         next: currency,
-        // "Held" is now a fact about WHICH reading was used, not a guess from
-        // the total being null. A document whose total was never stated but
-        // whose lines are priced is not held, and used to be described as if
-        // it were.
-        //
-        // `!== "current_rows"` and not `=== "withheld_snapshot"` since
-        // 2026-09-06: `mixed` means at least one line came back from the
-        // withheld reading, and a document that recovered anything WAS held.
-        // The equality form would have called a mixed document unheld the day
-        // `mixed` was added — a new enum member silently changing a sentence.
-        wasHeld: plan.source !== "current_rows",
+        // WHAT was put back and WHAT was kept, part by part (2026-09-11, audit
+        // of b6d2e4b4). This passed `wasHeld: plan.source !== "current_rows"`,
+        // one bit, so a mixed document was told "the vendor's own figures were
+        // put back" while a corrected line had been kept and the header had
+        // been lost: a write the act did not make. The plan now names the
+        // header's source and every line's, and the sentence repeats exactly
+        // that.
+        provenance: plan.provenance,
         documentTotal: plan.document.total,
         lineCount: plan.lines.length,
         pricedLines,

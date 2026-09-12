@@ -59,7 +59,23 @@ outbound-email audit trail, labelled by `outbound_email_type`).
   and a ledger holding two currencies is flagged rather than summed. Buying
   credits is `POST /communications/text-credits/purchase` and is **sealed** —
   bound to the amount and the currency, so a hold obtained for one figure cannot
-  be spent on another. **Updated 2026-09-05 (founder: *"Wire it to the card on
+  be spent on another. **The currency is normalised ONCE, before the check, the
+  seal binding and the write** (2026-09-11, audit of `b6d2e4b4`). Until then the
+  gate upper-cased without trimming while `isIso4217` trims, so `" try"` passed
+  as `" TRY"`, was bound into the seal's args, redeemed, and only then met
+  `house_message_credit_intents.currency CHAR(3) CHECK (currency ~ '^[A-Z]{3}$')`
+  as a four-character value — a 500 with a SPENT seal where a 400 refusal
+  belonged. Nothing was charged (the intent row precedes the provider), but the
+  same purchase spelt two ways was two purchases to the seal and one the
+  database would not take. Both gates now go through `currencyCode(...)`, which
+  trims, folds and asks membership in one call, and the code it returns is the
+  only one used from there on — the controller's
+  (`text-credits.controller.ts:187`) and the service's, which also writes the
+  normalised code rather than the raw one into the ledger row and its `detail`
+  sentence (`text-usage.service.ts:514`, `:543`). Pinned at
+  `text-credits.seal.spec.ts:428` and `text-usage.spec.ts:407`; all three cases
+  fail against the pre-fix modules. Measured on fakes, not against Postgres: the
+  `CHAR(3)` outcome is read from the column definition, never executed. **Updated 2026-09-05 (founder: *"Wire it to the card on
   file, sealed"*): that route now CHARGES** the house's Stripe instrument for the
   stated amount before the credit is written. A refused charge writes nothing and
   says why. **Updated 2026-09-06 (founder: *"Close it now with the intent row"*):

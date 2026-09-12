@@ -141,6 +141,17 @@ describe("readEdi832Header — what the stored document says about itself", () =
     // The published MSSS sample carries no CUR at all — the common case.
     expect(readEdi832Header(PUBLISHED_SAMPLE).currency).toBeNull();
   });
+
+  it("reports a code that names no currency as NULL, and keeps what was printed", () => {
+    // 2026-09-11, audit of b6d2e4b4: the header asked `/^[A-Z]{3}$/`, so ZZZ
+    // reached `procurement_documents.currency` through the document door.
+    expect(CONSTRUCTED).toContain("CUR*SE*USD~");
+    const h = readEdi832Header(CONSTRUCTED.replace("CUR*SE*USD~", "CUR*SE*ZZZ~"));
+    expect(h.currency).toBeNull();
+    expect(h.currencyAsPrinted).toBe("ZZZ");
+    expect(readEdi832Header(CONSTRUCTED).currencyAsPrinted).toBe("USD");
+    expect(readEdi832Header(PUBLISHED_SAMPLE).currencyAsPrinted).toBeNull();
+  });
 });
 
 describe("CatalogIngestService.admit", () => {

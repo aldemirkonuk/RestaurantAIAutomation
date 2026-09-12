@@ -547,6 +547,130 @@ describe("DocumentIntakeService.refileMoneyForCurrency", () => {
     expect(out.sentence).toContain("nothing was erased");
   });
 
+  /*
+   * THE ROW SHAPE PRODUCTION HAS FOR A HELD DOCUMENT WITH ONE CORRECTED LINE
+   * (2026-09-11, audit of b6d2e4b4, BLOCKING). Header columns NULL, as intake
+   * writes them from the withheld parse; line 1 corrected by `editLine`, which
+   * never repairs the header; line 2 exactly as the hold left it. The old plan
+   * kept the null header because one line had money, wrote `total: null`, and
+   * said "the vendor's own figures were put back".
+   */
+  const TWO_LINE_SNAPSHOT = {
+    ...HELD_SNAPSHOT,
+    moneyWithheld: {
+      ...HELD_SNAPSHOT.moneyWithheld,
+      lines: [
+        KEPT_LINES[0],
+        { lineNo: 2, unitPrice: 99, lineTotal: 990, allowance: null, deposit: 40 },
+      ],
+    },
+  };
+  const CORRECTED_AND_HELD_LINES = [
+    {
+      line_no: 1,
+      qty: 12,
+      uom: "bottle",
+      pack_size: 1,
+      unit_price: 194,
+      line_total: 2328,
+      allowance: null,
+      deposit: 60,
+    },
+    {
+      line_no: 2,
+      qty: 10,
+      uom: "bottle",
+      pack_size: 1,
+      unit_price: null,
+      line_total: null,
+      allowance: null,
+      deposit: null,
+    },
+  ];
+
+  it("HELD ROW + one corrected line: keeps the correction AND writes the header back", async () => {
+    const { service, updates } = build({
+      doc: { ...HELD_ROW, extracted: TWO_LINE_SNAPSHOT },
+      lines: CORRECTED_AND_HELD_LINES,
+    });
+    const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+
+    const doc = updates.find((u) => u.table === "procurement_documents")!;
+    expect(doc.row.subtotal).toBe(9172);
+    expect(doc.row.freight).toBe(120);
+    expect(doc.row.deposit_total).toBe(180);
+    expect(doc.row.tax).toBe(1834.4);
+    expect(doc.row.total).toBe(11306.4);
+    expect(doc.row.computed_lines_total).toBe(3318);
+
+    const lines = updates
+      .filter((u) => u.table === "procurement_document_lines")
+      .map((u) => u.row);
+    expect(lines).toHaveLength(2);
+    expect(lines[0].unit_price).toBe(194);
+    expect(lines[1].unit_price).toBe(99);
+
+    expect(out.source).toBe("mixed");
+    expect(out.sentence).toContain(
+      "Put back from the reading withheld at intake: the header's subtotal, freight, deposit total, tax and total; and line 2.",
+    );
+    expect(out.sentence).toContain(
+      "Kept exactly as they stood on the document, corrections included: line 1.",
+    );
+    expect(out.sentence).not.toContain("the vendor's own figures were put back");
+    expect(out.sentence).not.toContain("states no total");
+  });
+
+  it("HELD ROW: a second restatement writes exactly what the first did", async () => {
+    const first = build({
+      doc: { ...HELD_ROW, extracted: TWO_LINE_SNAPSHOT },
+      lines: CORRECTED_AND_HELD_LINES,
+    });
+    await first.service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+    const docWrite = first.updates.find((u) => u.table === "procurement_documents")!.row;
+    const lineWrites = first.updates
+      .filter((u) => u.table === "procurement_document_lines")
+      .map((u) => u.row);
+
+    const second = build({
+      doc: { ...HELD_ROW, ...docWrite, currency: "TRY", extracted: TWO_LINE_SNAPSHOT },
+      lines: CORRECTED_AND_HELD_LINES.map((l, i) => ({ ...l, ...lineWrites[i] })),
+    });
+    const out = await second.service.refileMoneyForCurrency("doc-9", "rest-1", "EUR");
+    expect(second.updates.map((u) => u.row)).toEqual(first.updates.map((u) => u.row));
+    expect(out.source).toBe("current_rows");
+  });
+
+  it("HELD ROW: writes NOTHING when neither reading has money", async () => {
+    const { service, updates } = build({
+      doc: {
+        ...HELD_ROW,
+        extracted: {
+          ...HELD_SNAPSHOT,
+          moneyWithheld: {
+            subtotal: null,
+            freight: null,
+            fuelSurcharge: null,
+            splitCaseFee: null,
+            deliveryFee: null,
+            depositTotal: null,
+            tax: null,
+            otherCharges: null,
+            discountTotal: null,
+            total: null,
+            lines: [
+              { lineNo: 1, unitPrice: null, lineTotal: null, allowance: null, deposit: null },
+            ],
+          },
+        },
+      },
+      lines: HELD_LINE_ROWS,
+    });
+    const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+    expect(updates).toHaveLength(0);
+    expect(out.snapshotReadable).toBe(false);
+  });
+
   it("tells a failed READ apart from a document with no reading (ADR 0067)", async () => {
     const { service } = build({ doc: null, readError: { message: "connection reset" } });
     await expect(
@@ -581,5 +705,37 @@ describe("DocumentIntakeService.refileMoneyForCurrency", () => {
       "procurement_documents",
       "procurement_document_lines",
     ]);
+  });
+});
+
+/*
+ * AN 832 CATALOGUE'S CURRENCY IS A MEMBER OR NOTHING (2026-09-11, audit of
+ * b6d2e4b4, iso-tables finding). `readEdi832Header` asked `/^[A-Z]{3}$/`, so a
+ * catalogue whose CUR02 said ZZZ was filed with `procurement_documents.currency`
+ * ZZZ through this door, and the warning beside it would have said the file
+ * stated no CUR at all.
+ */
+describe("DocumentIntakeService — an EDI 832 catalogue's currency", () => {
+  const service = () =>
+    new DocumentIntakeService(
+      { getClient: () => ({}) } as any,
+      { available: () => false, extract: jest.fn() } as any,
+      {} as any,
+    );
+
+  it("files no currency for CUR*SE*ZZZ~ and says the file stated a code that names none", () => {
+    const doc = (service() as any).priceCatalogue(
+      "ST*832*0001~BCT*00*Q3-2026~CUR*SE*ZZZ~LIN**VN*1~SE*4*0001~",
+    );
+    expect(doc.currency).toBe("");
+    expect(doc.warnings.join(" ")).toContain("states ZZZ, which names no currency");
+    expect(doc.warnings.join(" ")).not.toContain("states no CUR currency segment");
+  });
+
+  it("still files a real code", () => {
+    const doc = (service() as any).priceCatalogue(
+      "ST*832*0001~BCT*00*Q3-2026~CUR*SE*eur~LIN**VN*1~SE*4*0001~",
+    );
+    expect(doc.currency).toBe("EUR");
   });
 });

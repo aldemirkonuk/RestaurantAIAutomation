@@ -26,7 +26,11 @@
 -- So this file READS the kinds the constraint currently admits, adds exactly
 -- one, and writes the union back. It cannot drop a peer's kind, and it RAISES
 -- rather than guessing if it cannot read the existing constraint. Same shape as
--- 20260905225000 and 20260905233000, deliberately.
+-- 20260905225000 and 20260905233000, deliberately, with one difference since
+-- 2026-09-11: those two (and 20260906070000) read the kinds with the character
+-- class [a-z_], which silently drops a kind holding a digit or a capital; this
+-- file reads every quoted literal, and then checks that the rebuilt constraint
+-- holds exactly the kinds it read plus its own (section 1).
 --
 -- NOTHING ELSE ABOUT THE TABLE CHANGES. `procurement_document` is a non-`mcp_tool`
 -- kind, so `chk_mcp_seal_challenges_non_tool_has_no_connection` already forbids
@@ -44,6 +48,7 @@ DECLARE
   kinds TEXT[];
   wanted TEXT := 'procurement_document';
   rebuilt TEXT;
+  written TEXT[];
 BEGIN
   SELECT pg_get_constraintdef(oid) INTO existing_def
   FROM pg_constraint
@@ -55,8 +60,15 @@ BEGIN
       'chk_mcp_seal_challenges_subject_kind is absent: this migration extends a constraint that must already exist (20260904210000)';
   END IF;
 
-  SELECT array_agg(DISTINCT m[1]) INTO kinds
-  FROM regexp_matches(existing_def, '''([a-z_]+)''', 'g') AS m;
+  -- EVERY QUOTED LITERAL, not a character class (2026-09-11, audit of
+  -- b6d2e4b4). This read '''([a-z_]+)''', which silently DROPPED any existing
+  -- kind whose name holds a digit or a capital: the parse skipped it, the union
+  -- was written back without it, and the floor below could not notice because
+  -- the other kinds were read. `pg_get_constraintdef` renders the CHECK as
+  -- `ARRAY['kind'::text, ...]`, whose only quoted literals are the kinds, so
+  -- every literal is taken whole and a doubled quote inside one is unescaped.
+  SELECT array_agg(DISTINCT replace(m[1], '''''', '''')) INTO kinds
+  FROM regexp_matches(existing_def, '''((?:[^'']|'''')+)''', 'g') AS m;
 
   -- Four kinds existed on 2026-09-04 before any of this week's work; reading
   -- fewer than four means the parse failed, and rewriting a constraint from a
@@ -82,6 +94,22 @@ BEGIN
   EXECUTE 'ALTER TABLE public.mcp_seal_challenges '
        || 'ADD CONSTRAINT chk_mcp_seal_challenges_subject_kind '
        || format('CHECK (subject_kind IN (%s))', rebuilt);
+
+  -- PROVE the union rather than trust it: read the rebuilt constraint back
+  -- with the same parse and refuse unless it holds exactly the kinds read plus
+  -- the one added. The PGlite probe proves the parse itself by INSERTING a row
+  -- of every older kind, which no comparison of constraint text can do.
+  SELECT array_agg(DISTINCT replace(m[1], '''''', '''')) INTO written
+  FROM pg_constraint c,
+       LATERAL regexp_matches(pg_get_constraintdef(c.oid), '''((?:[^'']|'''')+)''', 'g') AS m
+  WHERE c.conrelid = 'public.mcp_seal_challenges'::regclass
+    AND c.conname = 'chk_mcp_seal_challenges_subject_kind';
+
+  IF written IS NULL OR NOT (written @> kinds AND kinds @> written) THEN
+    RAISE EXCEPTION
+      'rebuilding the seal subject_kind CHECK did not keep exactly the kinds it read plus %: read %, wrote %',
+      wanted, kinds, written;
+  END IF;
 END $$;
 
 COMMENT ON COLUMN public.mcp_seal_challenges.subject_kind IS
@@ -128,9 +156,9 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  SELECT array_agg(m[1]) INTO admitted
+  SELECT array_agg(replace(m[1], '''''', '''')) INTO admitted
   FROM pg_constraint c,
-       LATERAL regexp_matches(pg_get_constraintdef(c.oid), '''([a-z_]+)''', 'g') AS m
+       LATERAL regexp_matches(pg_get_constraintdef(c.oid), '''((?:[^'']|'''')+)''', 'g') AS m
   WHERE c.conrelid = 'public.mcp_seal_challenges'::regclass
     AND c.conname = 'chk_mcp_seal_challenges_subject_kind';
 

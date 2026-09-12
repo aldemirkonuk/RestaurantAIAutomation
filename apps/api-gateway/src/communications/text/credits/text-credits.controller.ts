@@ -103,7 +103,7 @@ import { Public } from "../../../auth/decorators/public.decorator";
 import { OrganizationsService } from "../../../organizations/organizations.service";
 import { SealChallengeService } from "../../../common/seal/seal-challenge.service";
 import { BillingService } from "../../../billing/billing.service";
-import { isIso4217, notACurrencyBecause } from "../../../common/iso-4217";
+import { currencyCode, notACurrencyBecause } from "../../../common/iso-4217";
 import { TextUsageService, type MeterReadout } from "../text-usage.service";
 import { PurchaseIntentService } from "./purchase-intent.service";
 import {
@@ -172,7 +172,19 @@ export class TextCreditsController {
     currency: string;
   } {
     const amountMinor = body?.amountMinor;
-    const currency = (body?.currency ?? "").toUpperCase();
+    /*
+     * NORMALISED ONCE, BEFORE THE CHECK AND BEFORE THE SEAL (2026-09-11, audit
+     * of b6d2e4b4). This upper-cased without trimming while `isIso4217` trims,
+     * so `" try"` passed the gate as `" TRY"`, was bound into the seal's args,
+     * redeemed, and then met the intent row's `CHAR(3) CHECK (currency ~
+     * '^[A-Z]{3}$')` after the seal was already spent: a 500 with a spent seal
+     * instead of a 400. `currencyCode` trims, folds and asks membership in one
+     * call, and the code it returns is the only currency used from here on, by
+     * the check, the seal and the spend alike. A currency that is not a string
+     * at all (the body is a bare interface) is refused the same way instead of
+     * throwing on `.toUpperCase`.
+     */
+    const currency = currencyCode(body?.currency);
     if (!Number.isInteger(amountMinor) || (amountMinor as number) <= 0) {
       throw new BadRequestException(
         "A credit purchase names a whole number of minor units above zero. Send `amountMinor`.",
@@ -188,7 +200,7 @@ export class TextCreditsController {
      * `4abd03ff`, finding 1: the pass that closed this everywhere else missed
      * the two gates behind an actual payment.
      */
-    if (!isIso4217(currency)) {
+    if (currency === null) {
       throw new BadRequestException(
         "A credit purchase names its currency as an ISO 4217 code, and an amount with no currency is not money. " +
           notACurrencyBecause(body?.currency ?? "") +

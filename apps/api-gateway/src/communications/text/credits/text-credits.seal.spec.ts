@@ -418,6 +418,46 @@ describe("POST /communications/text-credits/purchase — the seal is spent, not 
     expect(credits).toHaveLength(0);
   });
 
+  /*
+   * NORMALISED ONCE (2026-09-11, audit of b6d2e4b4). `money()` upper-cased
+   * without trimming while `isIso4217` trims, so `" try"` passed the gate as
+   * `" TRY"`, was bound into the seal, and reached the intent row as four
+   * characters. The same purchase spelt two ways is ONE purchase: sealed,
+   * spent, charged and recorded as `TRY`.
+   */
+  it("normalises the currency ONCE: ' try' is sealed, charged and recorded as TRY", async () => {
+    const { controller, credits, intents, charge } = build();
+    const minted = await controller.sealChallenge(req(), {
+      amountMinor: 5000,
+      currency: " try",
+    });
+    const out = await controller.purchase(
+      req(),
+      { amountMinor: 5000, currency: "TRY " },
+      minted.challenge,
+    );
+    expect(out.state).toBe("settled");
+    expect(intents[0].currency).toBe("TRY");
+    expect(charge.mock.calls[0][0].currency).toBe("TRY");
+    expect(credits).toHaveLength(1);
+    expect(credits[0].currency).toBe("TRY");
+  });
+
+  it("binds and writes the trimmed code even when both routes are sent the same untrimmed one", async () => {
+    const { controller, credits, intents } = build();
+    const minted = await controller.sealChallenge(req(), {
+      amountMinor: 5000,
+      currency: " try",
+    });
+    await controller.purchase(
+      req(),
+      { amountMinor: 5000, currency: " try" },
+      minted.challenge,
+    );
+    expect(intents[0].currency).toBe("TRY");
+    expect(credits[0].currency).toBe("TRY");
+  });
+
   it("refuses another PERSON's seal", async () => {
     const { controller, credits } = build();
     const minted = await controller.sealChallenge(req(MANAGER), {
