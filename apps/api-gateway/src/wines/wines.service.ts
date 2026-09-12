@@ -1,5 +1,11 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { escapeLikeWildcards } from "../distributor-discovery/distributor-query";
 import {
   normalizeSignatureText,
   wineSignatureHashOrNull,
@@ -13,6 +19,50 @@ import {
 } from "./dto/wines.dto";
 
 const ML_PER_OZ = 29.5735;
+
+/**
+ * A case-insensitive "contains" match on any of `columns`, written as a
+ * PostgREST `or` filter in which the search term is only ever a value.
+ *
+ * postgrest-js does not escape `or()` (2.103.0, dist/index.cjs:2952-2955), and
+ * this used to paste the raw term between `name.ilike.%` and `%`. A comma, which
+ * 417 of 9,598 wine names and producers in the local menu corpus contain, ended
+ * the condition: the filter failed to parse and GET /wines answered 500 with the
+ * database's message. A crafted term could add conditions of its own.
+ *
+ * Two layers, in this order:
+ *  1. LIKE: `\`, `%` and `_` are escaped so they match themselves ("100%" no
+ *     longer matches every row).
+ *  2. PostgREST: a value holding a character its documentation reserves in a
+ *     logic tree (`,` `.` `:` `(` `)`), or a `"` or `\`, is double-quoted with
+ *     `"` and `\` backslash-escaped. A term with none of those goes out
+ *     unquoted, byte-identical to what this endpoint has always sent.
+ *
+ * Not covered: PostgREST rewrites `*` to `%` inside a like pattern, so a
+ * literal asterisk still matches as a wildcard. No wine in the corpus has one.
+ */
+export function ilikeValue(term: string): string {
+  const pattern = `%${escapeLikeWildcards(term)}%`;
+  return /[,.:()"\\]/.test(pattern)
+    ? `"${pattern.replace(/[\\"]/g, (ch) => `\\${ch}`)}"`
+    : pattern;
+}
+
+/**
+ * The same filter for a list of columns. Kept for callers and tests that name
+ * columns as data. The two reads in this file write their columns out
+ * literally instead, `name.ilike.${v},producer.ilike.${v}`, so that
+ * check_read_columns_exist.py can still see which columns they filter on.
+ * A column list passed through a helper counts as an unreadable read, and that
+ * count has a shrink-only ceiling (ADR 0074).
+ */
+export function ilikeAnyOf(columns: readonly string[], term: string): string {
+  const value = ilikeValue(term);
+  return columns.map((column) => `${column}.ilike.${value}`).join(",");
+}
+
+const LIBRARY_READ_FAILED =
+  "The wine library could not be read. That is a failed read, not an empty result.";
 
 interface WineRow {
   id: string;
@@ -400,9 +450,8 @@ export class WinesService {
     }
 
     if (query.search) {
-      supa = supa.or(
-        `name.ilike.%${query.search}%,producer.ilike.%${query.search}%`,
-      );
+      const v = ilikeValue(query.search);
+      supa = supa.or(`name.ilike.${v},producer.ilike.${v}`);
     }
 
     if (query.type) {
@@ -447,8 +496,19 @@ export class WinesService {
 
     const { data, error } = await supa;
     if (error) {
-      this.logger.error(`Failed to search wines: ${error.message}`);
-      throw error;
+      this.logger.error(`Failed to search wines: ${error.message}`, {
+        code: error.code,
+      });
+      // 22P02 is invalid_text_representation. Every other input here is
+      // validated or whitelisted by GetWinesQueryDto, so the only text that can
+      // fail a cast is an entry in `ids` that is not a uuid. That is the
+      // caller's mistake, not the library being unavailable.
+      if (error.code === "22P02" && query.ids) {
+        throw new BadRequestException(
+          "ids must be a comma-separated list of wine ids.",
+        );
+      }
+      throw new ServiceUnavailableException(LIBRARY_READ_FAILED);
     }
 
     return (data || []).map((row: WineRow) => this.mapWine(row));
@@ -514,20 +574,23 @@ export class WinesService {
     if (!query.text || query.text.length < 2) {
       return [];
     }
+    const textValue = ilikeValue(query.text);
 
     const client = this.dbService.getClient();
-    const { data, error } = await client
-      .from("master_wine_library")
-      .select(
-        // display_name added (plan §1): this is the search/autocomplete
-        // list, exactly where the "same wine, different vintage, reads
-        // identical" complaint was visible.
-        "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at",
-      )
-      .or(`name.ilike.%${query.text}%,producer.ilike.%${query.text}%`)
-      .limit(query.limit || 10);
+    let suggestions = client.from("master_wine_library").select(
+      "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at",
+    );
+    suggestions = suggestions.or(
+      `name.ilike.${textValue},producer.ilike.${textValue}`,
+    );
+    const { data, error } = await suggestions.limit(query.limit || 10);
 
-    if (error) throw error;
+    if (error) {
+      this.logger.error(`Failed to read wine suggestions: ${error.message}`, {
+        code: error.code,
+      });
+      throw new ServiceUnavailableException(LIBRARY_READ_FAILED);
+    }
     return (data || []).map((row: WineRow) => this.mapWine(row));
   }
 

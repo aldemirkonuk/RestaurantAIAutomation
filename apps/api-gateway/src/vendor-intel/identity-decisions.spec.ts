@@ -26,6 +26,8 @@ interface Recorded {
   inserts: Array<{ table: Table; payload: any }>;
   updates: Array<{ table: Table; patch: any; filters: Array<[string, any]> }>;
   deletes: Array<{ table: Table; filters: Array<[string, any]> }>;
+  /** Every awaited SELECT, with its filters, so a test can say a read never ran. */
+  reads: Array<{ table: Table; filters: Array<[string, any]> }>;
 }
 
 function makeService(opts: {
@@ -41,7 +43,7 @@ function makeService(opts: {
   identity?: any;
   identityError?: any;
 }) {
-  const rec: Recorded = { inserts: [], updates: [], deletes: [] };
+  const rec: Recorded = { inserts: [], updates: [], deletes: [], reads: [] };
 
   const build = (table: Table) => {
     const filters: Array<[string, any]> = [];
@@ -103,6 +105,7 @@ function makeService(opts: {
       then: (resolve: any) => {
         if (mode === "update") rec.updates.push({ table, patch, filters });
         if (mode === "delete") rec.deletes.push({ table, filters });
+        if (mode === "select") rec.reads.push({ table, filters });
         if (table === "beverage_identity_decisions" && mode === "select") {
           return resolve({ data: opts.logRows ?? [], error: opts.logError ?? null });
         }
@@ -474,5 +477,87 @@ describe("the decision log read", () => {
     await expect(svc.decisions("house-1")).rejects.toThrow(
       /could not be read \(relation missing\)\. This is a failure, not an empty log/,
     );
+  });
+});
+
+/**
+ * A session that names no house.
+ *
+ * `JwtStrategy.validate` returns `restaurantId` from the token, falling back to
+ * `users.restaurant_id`, and both can be empty. The controller passes that on
+ * as `null`. Before this fix a null house was read as "no filter": the queue
+ * and the log returned every tenant's rows, and `requireSameHouse` waved a
+ * decision or an undo through on any house's candidate. ADR 0124 gives the
+ * not-a-tenant view to the service key, never to a JWT session, so a session
+ * with no house is refused before anything is read or written.
+ */
+describe("a session that names no house", () => {
+  const HOUSE_DECISION = {
+    id: "dec-1",
+    candidate_id: "cand-1",
+    restaurant_id: "house-1",
+    action: "confirmed",
+    link_written: "restaurant_inventory.identity_id",
+  };
+
+  it("is refused the candidate queue rather than shown every house's", async () => {
+    const { svc, rec } = makeService({});
+    await expect(svc.pending(null, 50)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(rec.reads).toHaveLength(0);
+  });
+
+  it("still gives a session that names a house its own queue plus the public registers", async () => {
+    const { svc, rec } = makeService({});
+    await svc.pending("house-1", 50);
+    const read = rec.reads.find((r) => r.table === "beverage_identity_candidates")!;
+    expect(read.filters).toEqual(
+      expect.arrayContaining([
+        ["status", "pending"],
+        ["or", "restaurant_id.is.null,restaurant_id.eq.house-1"],
+      ]),
+    );
+  });
+
+  it("is refused the decision log rather than shown every decision", async () => {
+    const { svc, rec } = makeService({ logRows: [{ id: "d1" }] });
+    await expect(svc.decisions(null, 50)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(rec.reads).toHaveLength(0);
+  });
+
+  it("still gives a session that names a house its own log plus the public registers", async () => {
+    const { svc, rec } = makeService({ logRows: [] });
+    const out = await svc.decisions("house-1", 50);
+    const read = rec.reads.find((r) => r.table === "beverage_identity_decisions")!;
+    expect(read.filters).toEqual([
+      ["or", "restaurant_id.is.null,restaurant_id.eq.house-1"],
+    ]);
+    expect(out.scope).toContain("this house");
+  });
+
+  it("cannot decide a house's candidate, and nothing is linked or logged", async () => {
+    const { svc, rec } = makeService({ candidate: CANDIDATE });
+    await expect(
+      svc.decide({
+        candidateId: "cand-1",
+        decision: "confirmed",
+        actor: STAFF,
+        restaurantId: null,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(rec.updates).toHaveLength(0);
+    expect(rec.inserts).toHaveLength(0);
+  });
+
+  it("cannot undo a house's decision, and no link is taken back", async () => {
+    const { svc, rec } = makeService({
+      decision: HOUSE_DECISION,
+      candidate: { ...CANDIDATE, status: "confirmed" },
+    });
+    await expect(
+      svc.undo({ decisionId: "dec-1", actor: MANAGER, restaurantId: null }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(rec.updates).toHaveLength(0);
+    expect(rec.deletes).toHaveLength(0);
+    expect(rec.inserts).toHaveLength(0);
   });
 });

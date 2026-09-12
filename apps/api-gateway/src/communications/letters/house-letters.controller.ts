@@ -3,7 +3,8 @@
  * from this house (ADR 0118).
  *
  * Every route here is JWT-guarded at the class level and tenant-scoped from the
- * SIGNED token (`@CurrentUser()`), never from a body field or a path parameter.
+ * SIGNED token (`@CurrentUser()`, read through `houseActor` in
+ * house-letters.actor.ts), never from a body field or a path parameter.
  * That is the difference between this and `POST /communications/email`, which is
  * a service-key route carrying no tenant at all and writing no conversation row
  * (communications.controller.ts:207-228).
@@ -36,11 +37,7 @@ import { HouseLettersCron } from "./house-letters.cron";
 import { HouseInboxCron } from "../inbox/house-inbox.cron";
 import { HouseInboxService } from "../inbox/house-inbox.service";
 import { QueueLetterDto, UpsertLetterTemplateDto } from "./house-letters.dto";
-
-interface Actor {
-  id: string;
-  restaurantId: string;
-}
+import { houseActor, type TokenUser } from "./house-letters.actor";
 
 @ApiTags("Communications")
 @UseGuards(JwtAuthGuard)
@@ -64,8 +61,11 @@ export class HouseLettersController {
     description:
       "`kind: none` means no letter may be sent and says why; `kind: unknown` means the read failed and is NOT the same answer. `conversation.where` states the whole thing in four words: `whole_conversation_here`, `letters_leave_only`, `replies_arrive_only`, `shared_mailbox` (plus `unknown` for a failed read), and `conversation.words` says it in a sentence.",
   })
-  async senderIdentity(@CurrentUser() user: Actor) {
-    const identity = await this.sender.resolve(user.restaurantId, user.id);
+  async senderIdentity(@CurrentUser() user: TokenUser) {
+    // `userId`, never `id`: JwtStrategy.validate has no `id`, and reading one
+    // made `mine` false for every caller, so nobody's own grant was preferred.
+    const { userId, restaurantId } = houseActor(user);
+    const identity = await this.sender.resolve(restaurantId, userId);
     return {
       ...identity,
       dispatcher: this.cron.lastRun(),
@@ -75,7 +75,7 @@ export class HouseLettersController {
       // "nothing to do".
       reader: {
         lastRun: this.inboxCron.lastRun(),
-        ...(await this.inbox.statusFor(user.restaurantId)),
+        ...(await this.inbox.statusFor(restaurantId)),
       },
       categories: LETTER_CATEGORIES,
     };
@@ -85,36 +85,36 @@ export class HouseLettersController {
   @ApiOperation({
     summary: "Every address this house may write to, and whose it is",
   })
-  async book(@CurrentUser() user: Actor) {
-    return { entries: await this.letters.book(user.restaurantId) };
+  async book(@CurrentUser() user: TokenUser) {
+    const { restaurantId } = houseActor(user);
+    return { entries: await this.letters.book(restaurantId) };
   }
 
   @Get("queued")
   @ApiOperation({ summary: "Letters still inside their undo window" })
-  async queued(@CurrentUser() user: Actor) {
-    return { queued: await this.letters.queued(user.restaurantId) };
+  async queued(@CurrentUser() user: TokenUser) {
+    const { restaurantId } = houseActor(user);
+    return { queued: await this.letters.queued(restaurantId) };
   }
 
   @Get("templates")
   @ApiOperation({ summary: "The house's letter templates" })
-  async templates(@CurrentUser() user: Actor) {
+  async templates(@CurrentUser() user: TokenUser) {
+    const { restaurantId } = houseActor(user);
     return {
       categories: LETTER_CATEGORIES,
-      templates: await this.letters.listTemplates(user.restaurantId),
+      templates: await this.letters.listTemplates(restaurantId),
     };
   }
 
   @Post("templates")
   @ApiOperation({ summary: "Create or edit a house letter template" })
   async upsertTemplate(
-    @CurrentUser() user: Actor,
+    @CurrentUser() user: TokenUser,
     @Body() dto: UpsertLetterTemplateDto,
   ) {
-    return this.letters.upsertTemplate({
-      restaurantId: user.restaurantId,
-      userId: user.id,
-      dto,
-    });
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.upsertTemplate({ restaurantId, userId, dto });
   }
 
   @Post()
@@ -140,20 +140,18 @@ export class HouseLettersController {
     description:
       "The house has stopped using the grant this identity rests on (ADR 0114).",
   })
-  async queue(@CurrentUser() user: Actor, @Body() dto: QueueLetterDto) {
-    return this.letters.queue({
-      restaurantId: user.restaurantId,
-      userId: user.id,
-      dto,
-    });
+  async queue(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.queue({ restaurantId, userId, dto });
   }
 
   @Post(":id/cancel")
   @ApiOperation({ summary: "Pull a queued letter back before it leaves" })
   async cancel(
-    @CurrentUser() user: Actor,
+    @CurrentUser() user: TokenUser,
     @Param("id", new ParseUUIDPipe()) id: string,
   ) {
-    return this.letters.cancel({ restaurantId: user.restaurantId, id });
+    const { restaurantId } = houseActor(user);
+    return this.letters.cancel({ restaurantId, id });
   }
 }

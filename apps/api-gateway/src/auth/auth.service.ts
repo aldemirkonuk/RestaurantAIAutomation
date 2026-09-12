@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   ConflictException,
+  ServiceUnavailableException,
   Logger,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -1042,7 +1043,7 @@ export class AuthService {
    * @Public() endpoint — no auth required.
    */
   async getInvitePreview(code: string): Promise<object> {
-    const { data: invite } = await this.databaseService.supabase
+    const { data: invite, error } = await this.databaseService.supabase
       .from("organization_invites")
       .select(
         `
@@ -1054,6 +1055,17 @@ export class AuthService {
       )
       .eq("code", code.toUpperCase())
       .maybeSingle();
+
+    if (error) {
+      // supabase-js RESOLVES `{ data, error }`; it does not throw. Without this
+      // branch a failed read arrives as `invite: null` and is answered
+      // `not_found`, which the invite page renders as "This invite has
+      // expired". The database's own words stay in the log: this is public.
+      this.logger.error(`Invite preview read failed: ${error.message}`);
+      throw new ServiceUnavailableException(
+        "Could not read this invite right now. Please try again.",
+      );
+    }
 
     if (!invite) return { valid: false, reason: "not_found" };
     if (invite.used_at) return { valid: false, reason: "used" };
@@ -1567,11 +1579,25 @@ export class AuthService {
    * Returns a new token pair with emailVerified: true in the payload.
    */
   async verifyEmail(token: string): Promise<TokenPair> {
-    const { data: verif } = await this.databaseService.supabase
-      .from("email_verifications")
-      .select("id, expires_at, verified_at, user_id")
-      .eq("token", token)
-      .maybeSingle();
+    const { data: verif, error: verifError } =
+      await this.databaseService.supabase
+        .from("email_verifications")
+        .select("id, expires_at, verified_at, user_id")
+        .eq("token", token)
+        .maybeSingle();
+
+    if (verifError) {
+      // A failed read is not an invalid link. Before this branch the database
+      // being down answered 400 "Invalid verification token". VerifyEmailDto
+      // guarantees `token` is UUID-shaped, so a malformed token can no longer
+      // be what raised this error.
+      this.logger.error(
+        `Email verification lookup failed: ${verifError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not check this verification link right now. Please try again.",
+      );
+    }
 
     if (!verif) throw new BadRequestException("Invalid verification token");
     if (verif.verified_at)

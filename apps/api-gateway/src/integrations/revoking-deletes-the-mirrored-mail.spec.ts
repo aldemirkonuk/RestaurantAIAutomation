@@ -124,7 +124,7 @@ describe("disconnecting a grant that mirrors mail", () => {
       retention.service,
     );
 
-    const result = await service.disconnect(PERSON, "gmail_read");
+    const result = await service.disconnect(PERSON, "gmail_read", HOUSE);
 
     expect(retention.calls).toEqual([
       { connectionId: GRANT, restaurantId: HOUSE, ownerUserId: PERSON },
@@ -150,7 +150,7 @@ describe("disconnecting a grant that mirrors mail", () => {
       retention.service,
     );
 
-    const result = await service.disconnect(PERSON, "gmail_send");
+    const result = await service.disconnect(PERSON, "gmail_send", HOUSE);
 
     expect(retention.calls).toHaveLength(0);
     expect((result as { retention: unknown }).retention).toBeNull();
@@ -162,10 +162,10 @@ describe("disconnecting a grant that mirrors mail", () => {
     // provides this class bare from its file.
     const service = new IntegrationsOauthService(db, config, crypto);
 
-    await expect(service.disconnect(PERSON, "gmail_read")).rejects.toBeInstanceOf(
+    await expect(service.disconnect(PERSON, "gmail_read", HOUSE)).rejects.toBeInstanceOf(
       InternalServerErrorException,
     );
-    await expect(service.disconnect(PERSON, "gmail_read")).rejects.toThrow(
+    await expect(service.disconnect(PERSON, "gmail_read", HOUSE)).rejects.toThrow(
       /was NOT deleted/,
     );
   });

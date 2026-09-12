@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **192 of 215** | 43 |
 
+> **186 as of 2026-09-12, on `fix/page-endpoints-tenant-faults`** (`check_read_errors_not_swallowed.py` on that tree: 1449 files scanned, 186 sites, 186 baselined, 0 allowlisted). ADR 0147 retired four rows: `organizations.service.ts` restaurants/r and one of users/user (the branches read now throws), and `prospects.service.ts` providers/existing and providers/raced (promote no longer treats a failed read as empty). The figure below was measured on another tree and branches merge in any order, so re-measure before citing either.
+>
 > **192 as of 2026-09-12** (`check_read_errors_not_swallowed.py` on this tree:
 > 1061 files scanned, 192 sites, 192 baselined, 0 allowlisted). ADR 0139 removed
 > one — `auth.service.ts`'s `users::legacy`, the read inside

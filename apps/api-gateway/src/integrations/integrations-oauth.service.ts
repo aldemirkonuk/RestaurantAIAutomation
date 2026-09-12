@@ -606,8 +606,15 @@ export class IntegrationsOauthService {
     const { data, error } = await query;
 
     if (error) {
+      // A failed read REFUSES. Until 2026-09-12 this returned `[]`, which the
+      // map below turned into `connected: false` for every integration, so a
+      // database failure was served as "nothing connected". The rule
+      // `listHouseGrants` already states: an empty list on failure is the most
+      // confident possible lie about it.
       this.logger.error(`Failed to list connections: ${error.message}`);
-      return [];
+      throw new ServiceUnavailableException(
+        "Your connections could not be read, so whether anything is connected is unknown. Try again.",
+      );
     }
 
     const byId = new Map(data?.map((row) => [row.integration_id, row]) ?? []);
@@ -852,8 +859,25 @@ export class IntegrationsOauthService {
    * Revokes at the provider first, then locally. Doing it in that order means a
    * provider outage leaves the row intact so the user can retry, instead of us
    * forgetting about a grant that is still live on Google's side.
+   *
+   * TENANT (fixed 2026-09-12). `restaurantId` is the house on the caller's
+   * token, REQUIRED for the reason it is at `getAccessToken`: a caller cannot
+   * skip the check by omitting it. The row is keyed per person
+   * (UNIQUE(user_id, integration_id)) but recorded against one house, and
+   * revoking it reaches that house — for a mirroring grant it sweeps that
+   * house's raw mail. The lookup used to ignore the tenant, so a token scoped
+   * to house B revoked the grant recorded against house A. The refusal sits
+   * BEFORE the provider revoke, which cannot be undone.
+   *
+   * A grant with no recorded house (`restaurant_id IS NULL`) stays revocable
+   * from any session: `listConnections` lists it in every house, so the page
+   * offers Disconnect for it there, and refusing would strand a live grant.
    */
-  async disconnect(userId: string, integrationId: IntegrationId) {
+  async disconnect(
+    userId: string,
+    integrationId: IntegrationId,
+    restaurantId: string | null,
+  ) {
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
       .select(
@@ -870,6 +894,16 @@ export class IntegrationsOauthService {
     }
     if (!data) {
       throw new NotFoundException("That integration is not connected.");
+    }
+
+    const recordedIn = (data.restaurant_id as string | null) ?? null;
+    if (
+      recordedIn &&
+      recordedIn.toLowerCase() !== (restaurantId ?? "").toLowerCase()
+    ) {
+      throw new ForbiddenException(
+        "That grant was made in a different restaurant, so it cannot be disconnected from this one. Switch to that restaurant to disconnect it. Nothing was revoked.",
+      );
     }
 
     const token =

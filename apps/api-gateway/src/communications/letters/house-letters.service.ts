@@ -13,12 +13,15 @@
  * (communications.controller.ts:207-228, and its own header says so). A browser
  * must never reach it.
  *
- * THE FOUR REFUSALS, IN THIS ORDER
- * --------------------------------
+ * THE REFUSALS, IN THIS ORDER
+ * ---------------------------
  * The order is load-bearing, not incidental: each refusal must be reachable on
  * its own, so a caller can be told the one true reason rather than the first
  * reason that happens to be checkable.
  *
+ *   0. the letter names no writer              → 401, before anything is read
+ *      (`email_headers.written_by` is how the dispatcher finds the writer's
+ *      own mailbox; a row without it names nobody)
  *   1. the recipient is not in the book        → 422
  *   2. the draft trips a guardrail             → 422, with the sentence
  *   3. this house has no sending identity      → 409
@@ -57,6 +60,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
+import { assertNamedActor } from "./house-letters.actor";
 import { COMMITMENT_PATTERN_SOURCES } from "../../common/orchestrator/commitment-patterns";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import type { IntegrationId } from "../../integrations/integrations-oauth.constants";
@@ -328,7 +332,11 @@ export class HouseLettersService {
     notices: GuardrailHit[];
     insightsRecorded: number;
   }> {
-    const { restaurantId, userId, dto } = params;
+    const { restaurantId, dto } = params;
+    const userId = assertNamedActor(
+      params.userId,
+      "queued and nothing was sent",
+    );
 
     // ── 1. the recipient must be in the book ────────────────────────────────
     // `book()` states the failure; this caller adds what it means HERE, because
@@ -621,7 +629,10 @@ export class HouseLettersService {
     userId: string;
     dto: UpsertLetterTemplateDto;
   }) {
-    const { restaurantId, userId, dto } = params;
+    const { restaurantId, dto } = params;
+    // An absent key is not written at all, so an edit naming no editor would
+    // leave the PREVIOUS editor's name on the template, not a blank.
+    const userId = assertNamedActor(params.userId, "saved");
     if (!(LETTER_CATEGORIES as readonly string[]).includes(dto.category)) {
       throw new UnprocessableEntityException(
         `"${dto.category}" is not one of the house's letter purposes (${LETTER_CATEGORIES.join(", ")}). A staff broadcast is deliberately not one of them: the composer writes to the vendor book, and crew messages stay on /team.`,

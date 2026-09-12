@@ -4,6 +4,7 @@ import {
   Inject,
   Optional,
   forwardRef,
+  NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
@@ -893,19 +894,29 @@ export class NotificationsService {
     return count || 0;
   }
 
-  async markAsRead(id: string) {
+  /**
+   * Every write by notification id below is scoped to the OWNER'S user id
+   * (2026-09-12). They matched on `id` alone, so any signed-in user could
+   * read, archive or delete another user's notification, in any restaurant,
+   * by naming its uuid. A row that is not the caller's is a 404, the same
+   * answer as a row that does not exist, so the refusal says nothing about
+   * whether the id is real.
+   */
+  async markAsRead(id: string, userId: string) {
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .update({ status: "read", read_at: now })
       .eq("id", id)
+      .eq("user_id", userId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error(`markAsRead error: ${error.message}`);
       throw error;
     }
+    if (!data) throw new NotFoundException("Notification not found");
 
     return this.mapNotificationRow(data);
   }
@@ -914,28 +925,31 @@ export class NotificationsService {
    * Inverse of markAsRead (UX path NEW-474). Clears read_at so the unread
    * count and the "unread" filter both agree with the row's status again.
    */
-  async markAsUnread(id: string) {
+  async markAsUnread(id: string, userId: string) {
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .update({ status: "unread", read_at: null })
       .eq("id", id)
+      .eq("user_id", userId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error(`markAsUnread error: ${error.message}`);
       throw error;
     }
+    if (!data) throw new NotFoundException("Notification not found");
 
     return this.mapNotificationRow(data);
   }
 
-  async markBulkAsRead(ids: string[]): Promise<number> {
+  async markBulkAsRead(ids: string[], userId: string): Promise<number> {
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .update({ status: "read", read_at: now })
       .in("id", ids)
+      .eq("user_id", userId)
       .select("id");
 
     if (error) {
@@ -972,40 +986,48 @@ export class NotificationsService {
     return data?.length || 0;
   }
 
-  async archiveNotification(id: string) {
+  async archiveNotification(id: string, userId: string) {
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .update({ status: "archived", archived_at: now })
       .eq("id", id)
+      .eq("user_id", userId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error(`archiveNotification error: ${error.message}`);
       throw error;
     }
+    if (!data) throw new NotFoundException("Notification not found");
 
     return this.mapNotificationRow(data);
   }
 
-  async deleteNotification(id: string): Promise<void> {
-    const { error } = await this.databaseService.supabase
+  async deleteNotification(id: string, userId: string): Promise<void> {
+    const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("id");
 
     if (error) {
       this.logger.error(`deleteNotification error: ${error.message}`);
       throw error;
     }
+    if (!data || data.length === 0) {
+      throw new NotFoundException("Notification not found");
+    }
   }
 
-  async deleteBulk(ids: string[]): Promise<number> {
+  async deleteBulk(ids: string[], userId: string): Promise<number> {
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .delete()
       .in("id", ids)
+      .eq("user_id", userId)
       .select("id");
 
     if (error) {
@@ -1032,16 +1054,23 @@ export class NotificationsService {
     return data?.length || 0;
   }
 
-  async getNotificationHistory(userId: string, days: number = 30) {
+  async getNotificationHistory(
+    userId: string,
+    days: number = 30,
+    restaurantId?: string,
+  ) {
     const sinceDate = new Date();
     sinceDate.setDate(sinceDate.getDate() - days);
 
-    const { data, error } = await this.databaseService.supabase
+    let query = this.databaseService.supabase
       .from("notifications")
       .select("*")
       .eq("user_id", userId)
-      .gte("created_at", sinceDate.toISOString())
-      .order("created_at", { ascending: false });
+      .gte("created_at", sinceDate.toISOString());
+    if (restaurantId) query = query.eq("restaurant_id", restaurantId);
+    const { data, error } = await query.order("created_at", {
+      ascending: false,
+    });
 
     if (error) {
       this.logger.error(`getNotificationHistory error: ${error.message}`);

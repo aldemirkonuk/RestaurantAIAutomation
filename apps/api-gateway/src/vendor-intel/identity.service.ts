@@ -709,8 +709,15 @@ export class IdentityService {
     return (data ?? []).length;
   }
 
-  /** What is waiting for a person, newest first. */
+  /**
+   * What is waiting for a person in this house, newest first: this house's
+   * candidates plus those on the public registers.
+   *
+   * A session with no house is REFUSED. With a null house this used to apply
+   * no filter at all, which is not a queue but every tenant's pending rows.
+   */
   async pending(restaurantId: string | null, limit = 50) {
+    const house = this.requireHouse(restaurantId);
     let q = this.databaseService.supabase
       .from("beverage_identity_candidates")
       .select(
@@ -719,9 +726,7 @@ export class IdentityService {
       .eq("status", "pending")
       .order("created_at", { ascending: false })
       .limit(limit);
-    if (restaurantId) {
-      q = q.or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`);
-    }
+    q = q.or(`restaurant_id.is.null,restaurant_id.eq.${house}`);
     const { data, error } = await q;
     if (error) {
       throw new BadRequestException(
@@ -758,6 +763,7 @@ export class IdentityService {
     decisionId: string;
   }> {
     const actor = this.requireActor(params.actor);
+    const house = this.requireHouse(params.restaurantId);
 
     const cand = await this.loadCandidate(params.candidateId);
 
@@ -766,7 +772,7 @@ export class IdentityService {
         `That candidate was already ${cand.status}. A decision is not re-taken silently; a manager can undo it, which is itself logged.`,
       );
     }
-    this.requireSameHouse(cand.restaurant_id, params.restaurantId);
+    this.requireSameHouse(cand.restaurant_id, house);
 
     let linkWritten: string | null = null;
     if (params.decision === "confirmed") {
@@ -843,6 +849,7 @@ export class IdentityService {
         "Taking a decision back is a manager's call. Staff may confirm and reject; only an owner or a manager may undo.",
       );
     }
+    const house = this.requireHouse(params.restaurantId);
 
     const { data: prior, error: readErr } = await this.databaseService.supabase
       .from("beverage_identity_decisions")
@@ -862,7 +869,7 @@ export class IdentityService {
         "That row IS an undo. Undoing an undo would be a re-confirmation, which is a decision somebody has to take on the evidence.",
       );
     }
-    this.requireSameHouse(before.restaurant_id, params.restaurantId);
+    this.requireSameHouse(before.restaurant_id, house);
 
     const alreadyUndone = await this.databaseService.supabase
       .from("beverage_identity_decisions")
@@ -934,6 +941,9 @@ export class IdentityService {
     restaurantId: string | null,
     limit = 50,
   ): Promise<{ items: any[]; scope: string; limit: number; complete: boolean }> {
+    // A session with no house is refused. With a null house this used to read
+    // with no filter and label the result "every decision".
+    const house = this.requireHouse(restaurantId);
     const capped = Math.min(Math.max(limit, 1), 200);
     let q = this.databaseService.supabase
       .from("beverage_identity_decisions")
@@ -942,9 +952,7 @@ export class IdentityService {
       )
       .order("decided_at", { ascending: false })
       .limit(capped);
-    if (restaurantId) {
-      q = q.or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`);
-    }
+    q = q.or(`restaurant_id.is.null,restaurant_id.eq.${house}`);
     const { data, error } = await q;
     if (error) {
       throw new BadRequestException(
@@ -954,9 +962,7 @@ export class IdentityService {
     const items = data ?? [];
     return {
       items,
-      scope: restaurantId
-        ? "this house's decisions, plus decisions on the public registers"
-        : "every decision",
+      scope: "this house's decisions, plus decisions on the public registers",
       limit: capped,
       // A full page is a FLOOR, not a total. The page must not print `items.length`
       // as "N decisions" when the query was capped at exactly that many.
@@ -992,8 +998,37 @@ export class IdentityService {
     };
   }
 
-  private requireSameHouse(rowHouse: string | null, actorHouse: string | null) {
-    if (rowHouse && actorHouse && rowHouse !== actorHouse) {
+  /**
+   * The house this session acts in, or a refusal.
+   *
+   * `JwtStrategy.validate` can return no restaurant: the token names none and
+   * neither does the user row. The queue, the log, `decide` and `undo` used to
+   * read that as "no filter", so a session with no house saw every tenant's
+   * candidates and decisions and could decide or undo any house's. ADR 0124
+   * gives the not-a-tenant view to the service key
+   * (`identity-curation.controller.ts`), never to a JWT session, so a session
+   * with no house is refused before anything is read or written.
+   */
+  private requireHouse(actorHouse: string | null): string {
+    if (!actorHouse) {
+      throw new ForbiddenException(
+        "This session names no house, so it has no identity queue, no decision log and no decision to take. Choose a house and try again.",
+      );
+    }
+    return actorHouse;
+  }
+
+  /**
+   * A candidate or decision that names a house may only be acted on from it.
+   *
+   * A row with NO house (a public-register candidate, `restaurant_id` NULL)
+   * still passes, and that is deliberately left as it was. ADR 0124 Q2 shows
+   * those rows to every house, and whether any house may decide or undo one is
+   * an open question the founder has not ruled on. This guard does not settle
+   * it by default.
+   */
+  private requireSameHouse(rowHouse: string | null, actorHouse: string) {
+    if (rowHouse && rowHouse !== actorHouse) {
       throw new ForbiddenException("That candidate belongs to another house.");
     }
   }
