@@ -187,6 +187,18 @@ describe('the one escape still escapes', () => {
  * providers to mount. The CSS half matters — `TeamNext`'s roots paint through
  * `.tm-page { background: var(--paper-0) }`, so a check that looked only at
  * inline styles would call two correct roots defects.
+ *
+ * WHAT THIS DOES NOT PROVE — so a green here is not read as more than it is.
+ * A computed `data-ground={ground}` is accepted on PRESENCE, not on value.
+ * 10 page roots use exactly that, driven by a `ground` prop that `App.tsx`
+ * passes 0 times (measured 2026-09-12), so at runtime they render no
+ * attribute and their ground is painted by an inner child instead — `LogsNext`'s
+ * `.lg-root`, for one, painted from a `<style>` string this scan cannot read.
+ * Those roots are correct: the merged-tree sweep measured the wave-4 page roots
+ * painting their own ground, and `LogsNext` was read by hand. But this test
+ * would pass a computed ground that painted nothing. It closes the case that
+ * actually shipped — a literal scope dropped onto someone else's page — and is
+ * not a proof of every root's paint.
  */
 describe('every .mudavym scope root says what ground it is on', () => {
   /** The opening tag containing `idx`, braces and strings respected. */
