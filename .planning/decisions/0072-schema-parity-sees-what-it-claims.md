@@ -584,20 +584,38 @@ its only schema residue is `attnum` order, so on those three tables it would now
 pass. It still fails on every other table. This is the loss; it is not
 hypothetical and it is not zero.
 
-**And on two of the three the reset direction is fail-OPEN, not fail-closed.**
-Worth saying because "destroys the column's data" reads as a loss of function and
-on these two it is a grant:
+**On ONE of the three the reset direction is fail-OPEN, not fail-closed.**
+Worth saying because "destroys the column's data" reads as a loss of function,
+and on this one column it is a grant:
 
 - `restaurant_feature_flags.enable_ai_negotiation` is `boolean NOT NULL DEFAULT
   true` (`20260826120000_od86_feature_flag_settings_row.sql:24-25`) -- the only
-  fail-open flag on that table, since every `mudavym_design_*` flag and
-  `enable_ai_autonomous_send` default `false`. A drop-and-re-add backfills `true`
-  into every row, so a house that deliberately turned autonomous negotiation OFF
-  has it back ON, and nothing on that table would notice: its only index is on
-  `restaurant_id`, and it carries no constraint, no view and no CLAIMS row.
-- `providers.agent_permissions` is `jsonb` defaulting to a permissive tier-1
-  object, so a drop-and-re-add discards whatever narrowing a house had set on a
-  vendor's agent envelope.
+  fail-open flag on that table, since `enabled`, `enable_ai_autonomous_send` and
+  all eleven `mudavym_design_*` flags default `false`. A drop-and-re-add
+  backfills `true` into every row, so a house that deliberately turned
+  autonomous negotiation OFF has it back ON. Nothing would cascade and catch it:
+  the table's three constraints (`restaurant_feature_flags_pkey`, the
+  `(restaurant_id, flag_name)` UNIQUE, and the `restaurant_id` FOREIGN KEY) and
+  its one btree all sit on OTHER columns, no view references the table, and no
+  CLAIMS row names it.
+
+**CORRECTED 2026-09-12, before this record was merged.** An earlier draft of this
+section said *two* of the three were fail-open and named
+`providers.agent_permissions` as the second, "defaulting to a permissive tier-1
+object". Measured, `20260805000000_baseline_from_production.sql:4889`:
+
+```
+agent_permissions jsonb DEFAULT '{"tier": 1, "auto_complaints": false,
+  "auto_operational": false, "recurring_orders": []}'::jsonb
+```
+
+That is tier 1 with both auto-grants FALSE and an empty recurring-order list --
+the LEAST capable value on the axis, not a permissive one, so a reset to it can
+only narrow. And a repo-wide grep over `apps/`, `services/` and `scripts/` finds
+**zero readers and zero writers** of the column, so no house can have set a
+narrowing to lose. The claim was false in both halves. It is corrected here
+rather than deleted, because a security claim that turned out to be wrong is
+worth more on the record than a clean paragraph.
 
 On `restaurants` the worst case is `deleted_at`: nothing indexes it, so nothing
 cascades, and every soft-deleted house returns into every `deleted_at IS NULL`

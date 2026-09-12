@@ -293,11 +293,14 @@ BEGIN
   -- that could not run, reporting as health -- and it sat inside the block that
   -- exists to prove the constraint works.
   --
-  -- This edit is text inside a RAISE NOTICE. It creates, alters and drops
-  -- nothing, so the schema this file builds is byte-for-byte what production
-  -- already has from the 2026-09-12 apply. The ledger's stored `statements[1]`
-  -- is the text that RAN that day and is deliberately not rewritten: the ledger
-  -- records what ran, not what the file says now.
+  -- This edit is text inside a RAISE NOTICE, and the structural assertion above
+  -- gained an existence check the same day. Neither creates, alters or drops
+  -- anything, so the SCHEMA this file builds is what production already has from
+  -- the 2026-09-12 apply -- schema-identical, no longer byte-identical. The
+  -- ledger's stored `statements[1]` is the text that RAN that day and is
+  -- deliberately not rewritten: the ledger records what ran, not what the file
+  -- says now. Three md5s exist for this file across the branch; only the first
+  -- is the one in the ledger, and equality was checked at that commit.
   IF probe_user IS NOT NULL THEN
     RAISE NOTICE
       'price_index_upload_reviews: reopened_at/reopened_by/reopen_reason/reopen_seal_id/decision_history added; a reasonless reopen and a historyless reopen both proven refused against real rows; RLS and grants untouched.';
