@@ -1,4 +1,4 @@
-# ADR 0047 — 2026-09-11/12 session: P1 readout hardening + brand-sync push to `feat/p1-readout`
+# ADR 0136 — 2026-09-11/12 session: P1 readout hardening + brand-sync push to `feat/p1-readout`
 
 **Status:** Record of work done and pushed. Not itself a new decision — this
 ADR exists per CLAUDE.md §0.4 ("work that is not documented did not happen")
