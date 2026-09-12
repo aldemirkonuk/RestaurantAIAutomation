@@ -44,11 +44,9 @@ import {
   newIdempotencyKey,
   pendingDoorCount,
   readDroppedDoorReceipts,
-  readStrandedDoorReceipts,
   submitDoorReceipt,
   type DoorFlushResult,
   type DroppedDoorReceipt,
-  type StrandedDoorReceipt,
 } from '@/lib/doorOutbox';
 import { useActiveRestaurantId } from './useReceivingNextData';
 import { SCAN_ACCEPT, resolveMimeType } from '@/lib/uploadAccept';
@@ -168,23 +166,6 @@ export default function DoorNext() {
   const [drops, setDrops] = useState<DroppedDoorReceipt[]>(() =>
     readDroppedDoorReceipts(rid),
   );
-  /**
-   * Gave up on, and the record could NOT be written — so the outbox kept the
-   * queue ENTRY instead of deleting it. Louder than a drop, and never silent.
-   *
-   * Read, not counted up. `DoorFlushResult.stranded` describes one pass, and
-   * the entry is still there on the next one, so every later flush reports the
-   * same strand again — accumulating them read "3 deliveries could not be sent"
-   * after three screen unlocks with one receipt at stake, and a `useState(0)`
-   * total died on the navigate Finish triggers.
-   *
-   * What is read is the QUEUE ENTRY plus the outbox's in-memory ledger, unioned
-   * by id (`readStrandedDoorReceipts`). Deriving it from the disk alone was the
-   * round after that one, and it was worse: the mark cannot be written in the
-   * one condition that creates a strand, so the alarm went silent and this
-   * screen said "still trying" about a delivery that exists nowhere.
-   */
-  const [stranded, setStranded] = useState<StrandedDoorReceipt[]>([]);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
@@ -260,11 +241,6 @@ export default function DoorNext() {
       // result: this is also what makes the `[rid]` note below true, since a
       // lazy `useState` initializer does not re-run on a house switch.
       setDrops(readDroppedDoorReceipts(rid));
-      // `null` is "the queue could not be read", never "nothing is stranded" —
-      // keep what we last knew rather than sounding an all-clear.
-      void readStrandedDoorReceipts(rid).then(
-        (s) => alive && setStranded((prev) => s ?? prev),
-      );
     };
     /**
      * The pass already accounted for.
@@ -504,23 +480,6 @@ export default function DoorNext() {
         </div>
       </div>
 
-      {/* The loudest thing on the screen, and first: a stranded receipt is a
-          delivery held ONLY in this device's queue, because the record of its
-          loss could not be written. Nothing on the server, nothing on disk.
-          Not dismissible — nothing here makes it untrue, and the next flush
-          raises it again anyway. */}
-      {stranded.length > 0 && (
-        <p
-          role="alert"
-          data-ux-key="door:stranded"
-          className="mx-4 mt-3 rounded-xl border border-rose-400/60 bg-rose-500/20 px-3 py-2 text-sm text-rose-200"
-        >
-          {stranded.length === 1
-            ? 'A delivery could not be sent, and this phone could not save a record of it.'
-            : `${stranded.length} deliveries could not be sent, and this phone could not save a record of them.`}
-          {' The count is held in this app and nowhere else. Photograph the paperwork and tell a manager before closing this page.'}
-        </p>
-      )}
 
       {/* A send that permanently failed is NOT a sent one — said loudly,
           wherever the receiver is in the flow (point 5). Loud is reserved for

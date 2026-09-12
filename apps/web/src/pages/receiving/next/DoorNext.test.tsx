@@ -25,13 +25,11 @@ const flushDoorOutbox = vi.hoisted(() => vi.fn())
 const pendingDoorCount = vi.hoisted(() => vi.fn())
 const readDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 const clearDroppedDoorReceipts = vi.hoisted(() => vi.fn())
-const readStrandedDoorReceipts = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/doorOutbox', () => ({
   flushDoorOutbox,
   pendingDoorCount,
   readDroppedDoorReceipts,
   clearDroppedDoorReceipts,
-  readStrandedDoorReceipts,
   submitDoorReceipt: vi.fn(),
   newIdempotencyKey: () => 'door:o1:test',
 }))
@@ -90,22 +88,14 @@ const pass = (r: Flush): Flush => {
   return { stranded: 0, unreachable: false, ...r }
 }
 
-/**
- * Stands in for the QUEUE, which is the record for a stranded receipt: the
- * entry was kept rather than deleted, so it is still there on the next pass.
- */
-let strandedQueue: Array<{ id: string; orderLabel: string; restaurantId: string }> = []
-
 beforeEach(() => {
   vi.clearAllMocks()
   record = []
-  strandedQueue = []
   pendingDoorCount.mockResolvedValue(0)
   readDroppedDoorReceipts.mockImplementation(() => record)
   clearDroppedDoorReceipts.mockImplementation(() => {
     record = []
   })
-  readStrandedDoorReceipts.mockImplementation(async () => strandedQueue)
   flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 0, dropped: 0 }))
 })
 
@@ -212,67 +202,39 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
 })
 
 /**
- * The strand: a receipt the outbox gave up on and could NOT write down, so it
- * kept the queue entry. The entry stays until the record can be written, which
- * means every later pass reports the SAME strand again — `stranded: 1`, over
- * and over, correctly. Adding those up is what turned one lost delivery into
- * "3 deliveries could not be sent" by the third screen unlock at the dock.
+ * The strand has NO screen of its own, deliberately — ADR 0139.
+ *
+ * Five successive attempts to give a receipt-the-outbox-gave-up-on-but-could-
+ * not-record a durable, screen-facing witness each shipped a defect: a count
+ * that inflated one loss into three, a mark that could not be written in the
+ * one condition that creates it (so the alarm went silent), a strand that
+ * became unclearable over a delivery the server had accepted, a ledger erased
+ * by one unreadable read, and a conversion that fabricated a permanent loss
+ * record from a read blip. The outbox now keeps the RECEIPT and claims nothing
+ * more. This pins that: no alarm is raised off a flush result alone.
  */
-describe('DoorNext — one stranded receipt is one, on the fifth pass as on the first', () => {
+describe('DoorNext raises no standing alarm off a pass result', () => {
   const strand = () => document.querySelector('[data-ux-key="door:stranded"]')
 
-  it('does not grow the count when later passes re-report the same strand', async () => {
-    strandedQueue = [{ id: 'm-1', orderLabel: 'PO-1', restaurantId: 'rest-A' }]
+  it('renders no strand alarm, however many passes report one', async () => {
     flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 0, stranded: 1 }))
     renderPage()
-    await waitFor(() => expect(strand()).not.toBeNull())
-    expect(strand()?.textContent).toContain('A delivery could not be sent')
+    await waitFor(() => expect(quiet()).not.toBeNull())
 
-    // The dock-to-office walk, twice. The entry is still queued, so the outbox
-    // honestly reports it again both times.
     await flushAgain({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
     await flushAgain({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
 
-    expect(strand()?.textContent).toContain('A delivery could not be sent')
-    expect(strand()?.textContent).not.toContain('2 deliveries')
-    expect(strand()?.textContent).not.toContain('3 deliveries')
+    expect(strand()).toBeNull()
+    // And it is NOT dressed up as a delivered one either: the receipt is still
+    // queued, so the quiet line still says it has not sent.
+    expect(quiet()?.textContent).toContain('still trying')
   })
 
-  it('shows a strand left by an earlier visit, which a count in state could not', async () => {
-    // Nothing is stranded THIS pass — it was stranded before the porter
-    // navigated away, and the queue still holds it.
-    strandedQueue = [{ id: 'm-9', orderLabel: 'PO-9', restaurantId: 'rest-A' }]
-    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 0, dropped: 0, stranded: 0 }))
+  it('still raises the drop alarm, which is backed by a record', async () => {
+    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 1 }))
     renderPage()
 
-    await waitFor(() => expect(strand()).not.toBeNull())
-  })
-
-  it('stops shouting once the strand heals', async () => {
-    strandedQueue = [{ id: 'm-2', orderLabel: 'PO-2', restaurantId: 'rest-A' }]
-    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 0, stranded: 1 }))
-    renderPage()
-    await waitFor(() => expect(strand()).not.toBeNull())
-
-    // Storage frees up: the next pass writes the record and the entry goes, so
-    // the receipt is now an ordinary drop. Two contradictory alerts for one
-    // receipt is what leaving the strand up would mean.
-    strandedQueue = []
-    await flushAgain({ sent: 0, failed: 1, dropped: 1, stranded: 0 })
-
-    await waitFor(() => expect(strand()).toBeNull())
-    expect(alarm()?.textContent).toContain('never sent')
-  })
-
-  it('keeps a standing strand when the queue cannot be read, rather than sounding an all-clear', async () => {
-    strandedQueue = [{ id: 'm-3', orderLabel: 'PO-3', restaurantId: 'rest-A' }]
-    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 0, stranded: 1 }))
-    renderPage()
-    await waitFor(() => expect(strand()).not.toBeNull())
-
-    readStrandedDoorReceipts.mockResolvedValue(null)
-    await flushAgain({ sent: 0, failed: 0, dropped: 0, stranded: 0 })
-
-    expect(strand()).not.toBeNull()
+    await waitFor(() => expect(alarm()).not.toBeNull())
+    expect(alarm()?.textContent).toContain('PO-1')
   })
 })

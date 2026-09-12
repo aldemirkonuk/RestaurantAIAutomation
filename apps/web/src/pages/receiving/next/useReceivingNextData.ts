@@ -19,7 +19,6 @@ import {
   dismissDroppedDoorReceipt,
   flushDoorOutbox,
   readDroppedDoorReceipts,
-  readStrandedDoorReceipts,
   type DroppedDoorReceipt,
   type QueuedDoorReceipt,
 } from '@/lib/doorOutbox';
@@ -601,18 +600,6 @@ export interface QueuedReceiptVM {
   /** Attempt N of 8 (doorOutbox MAX_ATTEMPTS). 0 = not yet tried. */
   retryCount: number;
   lastError: string | null;
-  /**
-   * The outbox GAVE UP on this one and could not write the record, so it kept
-   * the entry. It is not waiting for anything; it is a lost delivery sitting in
-   * a queue that looks like it is still working.
-   *
-   * Read from `readStrandedDoorReceipts`, not inferred from `retryCount` or
-   * `lastError`: the common case is the mark never landing, because the write
-   * that parks it is refused by the same storage that caused the strand. An
-   * entry in exactly that state reads `0/8` with no error — an ordinary waiting
-   * receipt — which is what this rail rendered for it until 2026-09-12.
-   */
-  stranded: boolean;
 }
 
 export interface DroppedReceiptVM {
@@ -666,7 +653,7 @@ export interface OutboxData {
   flushNow: () => void;
 }
 
-function toQueuedVM(m: PendingMutation, stranded = false): QueuedReceiptVM {
+function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
   const entry = m.data as QueuedDoorReceipt | undefined;
   return {
     id: m.id,
@@ -674,7 +661,6 @@ function toQueuedVM(m: PendingMutation, stranded = false): QueuedReceiptVM {
     queuedAt: m.timestamp ? new Date(m.timestamp).toISOString() : null,
     retryCount: m.retryCount ?? 0,
     lastError: m.lastError ?? null,
-    stranded,
   };
 }
 
@@ -747,19 +733,12 @@ export function useDoorOutbox(): OutboxData {
   const refreshQueue = useCallback(async () => {
     try {
       const pending = await offlineStorage.getPendingMutationsByType(DOOR_MUTATION_TYPE);
-      // Which of these the outbox has GIVEN UP on. Asked, not inferred: a
-      // strand whose mark could not be written is indistinguishable from a
-      // waiting receipt by anything on the entry itself. `null` means the read
-      // could not say, and an unknown is not a no — the rows keep whatever the
-      // last known answer was rather than all flipping to "still trying".
-      const strands = await readStrandedDoorReceipts(rid);
-      const strandedIds = strands && new Set(strands.map((s) => s.id));
-      setQueued((prev) => {
-        const known = new Map((prev ?? []).map((q) => [q.id, q.stranded]));
-        return pending
-          .filter((m) => belongsToRestaurant(m, rid))
-          .map((m) => toQueuedVM(m, strandedIds ? strandedIds.has(m.id) : (known.get(m.id) ?? false)));
-      });
+      // Rendered exactly as stored — attempt count and last error, both read
+      // from the entry. The rail deliberately does NOT ask whether the outbox
+      // gave up on one: five attempts to answer that durably each shipped a
+      // defect, and ADR 0139 records why the question has no honest answer
+      // while the storage layer reports a failed write as a success.
+      setQueued(pending.filter((m) => belongsToRestaurant(m, rid)).map(toQueuedVM));
     } catch {
       setQueued(null); // unknown, and rendered as unknown — never as empty
     }
@@ -805,13 +784,12 @@ export function useDoorOutbox(): OutboxData {
       // is nothing left to infer from a before/after diff — and nothing that
       // can point at the wrong receipt when a pass both sends and drops.
       //
-      // A `stranded` receipt deliberately produces no drop PIN: it was not
-      // dropped, it is still in the queue. It renders in the queue list above,
-      // marked `given up` — asked for by `readStrandedDoorReceipts` in
-      // `refreshQueue`, because the attempt count and last error on the entry
-      // cannot show it: the write that would have set them is refused by the
-      // same storage that caused the strand, so the common case reads `0/8`
-      // with no error and looked exactly like an ordinary waiting receipt.
+      // A receipt the flush gave up on but could not RECORD produces no drop
+      // pin: it was not dropped, it is still in the queue, and it renders in
+      // the queue list above like any other entry. The flush tries to leave the
+      // reason on it as `lastError`, which this rail shows — best-effort, since
+      // that write goes through the storage that refused the record in the
+      // first place. ADR 0139 is why nothing here claims more than that.
       if (res !== null && res.dropped > 0) {
         setDrops(readDroppedDoorReceipts(rid).map(toDroppedVM));
       }

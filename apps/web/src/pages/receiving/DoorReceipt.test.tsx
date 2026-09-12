@@ -27,13 +27,11 @@ const watchDoorOutbox = vi.hoisted(() => vi.fn())
 const pendingDoorCount = vi.hoisted(() => vi.fn())
 const readDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 const clearDroppedDoorReceipts = vi.hoisted(() => vi.fn())
-const readStrandedDoorReceipts = vi.hoisted(() => vi.fn())
 vi.mock('../../lib/doorOutbox', () => ({
   watchDoorOutbox,
   pendingDoorCount,
   readDroppedDoorReceipts,
   clearDroppedDoorReceipts,
-  readStrandedDoorReceipts,
   submitDoorReceipt: vi.fn(),
   newIdempotencyKey: () => 'door:o1:test',
 }))
@@ -68,14 +66,9 @@ const drop = (id: string, reason: Drop['reason'] = 'refused'): Drop => ({
   reason,
 })
 
-/** Stands in for the QUEUE — the record for a strand, since the entry is kept. */
-let strandedQueue: Array<{ id: string; orderLabel: string; restaurantId: string }> = []
-
 beforeEach(() => {
   vi.clearAllMocks()
   record = []
-  strandedQueue = []
-  readStrandedDoorReceipts.mockImplementation(async () => strandedQueue)
   pendingDoorCount.mockResolvedValue(0)
   readDroppedDoorReceipts.mockImplementation(() => record)
   clearDroppedDoorReceipts.mockImplementation(() => {
@@ -212,37 +205,24 @@ describe('DoorReceipt — a dropped receipt is not a delivered one', () => {
 })
 
 /**
- * The strand, on the legacy screen. Same shape as DoorNext's: the outbox kept
- * the queue entry because it could not write the drop record, so every later
- * pass re-reports it — honestly — and adding those up told the porter two
- * deliveries were gone when one was.
+ * The strand has NO screen of its own, deliberately — ADR 0139. See the
+ * matching block in DoorNext.test.tsx for the five defects that decision came
+ * out of. What survives is the DROP alarm, which is backed by a record on disk.
  */
-describe('DoorReceipt — a re-reported strand is the same strand', () => {
-  const strand = () => document.querySelector('[data-ux-key="door:stranded"]')
-
-  it('does not grow the count across passes', async () => {
-    strandedQueue = [{ id: 'm-1', orderLabel: 'order-a', restaurantId: 'rest-A' }]
+describe('DoorReceipt raises no standing alarm off a pass result', () => {
+  it('renders no strand alarm, however many passes report one', async () => {
     renderPage()
     await flush({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
-    expect(strand()?.textContent).toContain('A delivery could not be sent')
-
-    await flush({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
     await flush({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
 
-    expect(strand()?.textContent).toContain('A delivery could not be sent')
-    expect(strand()?.textContent).not.toContain('3 deliveries')
+    expect(document.querySelector('[data-ux-key="door:stranded"]')).toBeNull()
   })
 
-  it('stops shouting once the strand heals into an ordinary drop', async () => {
-    strandedQueue = [{ id: 'm-2', orderLabel: 'order-b', restaurantId: 'rest-A' }]
+  it('still raises the drop alarm, which is backed by a record', async () => {
     renderPage()
-    await flush({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
-    expect(strand()).not.toBeNull()
+    await flush({ sent: 0, failed: 1, dropped: 1 }, [drop('a')])
 
-    strandedQueue = []
-    await flush({ sent: 0, failed: 1, dropped: 1, stranded: 0 }, [drop('b')])
-
-    expect(strand()).toBeNull()
     expect(dropNotice()?.textContent).toContain('never sent')
+    expect(dropNotice()?.textContent).toContain('order-a')
   })
 })

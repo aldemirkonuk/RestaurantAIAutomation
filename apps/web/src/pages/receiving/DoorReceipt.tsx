@@ -7,11 +7,9 @@ import {
   newIdempotencyKey,
   pendingDoorCount,
   readDroppedDoorReceipts,
-  readStrandedDoorReceipts,
   submitDoorReceipt,
   watchDoorOutbox,
   type DroppedDoorReceipt,
-  type StrandedDoorReceipt,
 } from '../../lib/doorOutbox'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
@@ -92,27 +90,6 @@ export default function DoorReceipt() {
   const [drops, setDrops] = useState<DroppedDoorReceipt[]>(() =>
     readDroppedDoorReceipts(rid),
   )
-  /**
-   * Receipts the flush gave up on and could NOT write down, so it KEPT them in
-   * the queue rather than destroying them.
-   *
-   * Separate from `drops` because there is no drop record to read — the queue
-   * ENTRY is the record instead. The receipt exists here and nowhere else, so
-   * this screen is the only thing that can say so, and saying nothing is the
-   * one outcome that is never allowed.
-   *
-   * Read, not added up. The entry stays put until the record can be written, so
-   * every later pass reports the same strand again and a running total told the
-   * receiver two deliveries were gone when one was — the same
-   * count-where-a-record-belongs mistake as the paragraph above. Reading also
-   * means a strand that heals stops being reported instead of standing forever
-   * beside the drop pin for the same receipt.
-   *
-   * `readStrandedDoorReceipts` unions the queue entry with the outbox's
-   * in-memory ledger, and the ledger is not optional: a strand is caused by the
-   * disk refusing a write, so the disk cannot be the only witness to it.
-   */
-  const [stranded, setStranded] = useState<StrandedDoorReceipt[]>([])
 
   const fileRef = useRef<HTMLInputElement>(null)
   // Generated once per screen, not per attempt: retrying the same delivery must
@@ -127,9 +104,6 @@ export default function DoorReceipt() {
       // both records on a house switch — a lazy `useState` initializer does not
       // re-run when `rid` changes, so the previous house's loss stayed on screen.
       setDrops(readDroppedDoorReceipts(rid))
-      // `null` is "the queue could not be read", never "nothing is stranded":
-      // keep what was last known rather than sounding an all-clear.
-      void readStrandedDoorReceipts(rid).then((s) => setStranded((prev) => s ?? prev))
     }
     const stop = watchDoorOutbox(() => {
       // A discarded receipt leaves the queue exactly as a delivered one does,
@@ -261,26 +235,6 @@ export default function DoorReceipt() {
         about them, which is only true while they are standing there with the
         paperwork.
       */}
-      {/*
-        The louder of the two, and deliberately first: a stranded receipt is a
-        delivery that exists ONLY in this device's queue because the record of
-        its loss could not be written. There is nothing on the server and
-        nothing on disk. It is not dismissible — nothing here makes it untrue,
-        and the next flush re-raises it anyway.
-      */}
-      {stranded.length > 0 && (
-        <div
-          role="alert"
-          data-ux-key="door:stranded"
-          className="mx-4 mt-3 rounded-xl border border-rose-400/50 bg-rose-500/20 px-3 py-2 text-sm text-rose-100"
-        >
-          {stranded.length === 1
-            ? 'A delivery could not be sent, and this phone could not save a record of it.'
-            : `${stranded.length} deliveries could not be sent, and this phone could not save a record of them.`}{' '}
-          The count is still held in this app and nowhere else. Photograph the
-          paperwork and tell a manager before closing this page.
-        </div>
-      )}
       {drops.length > 0 && (
         <div
           role="alert"
