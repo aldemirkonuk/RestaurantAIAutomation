@@ -427,20 +427,52 @@ compare() {
     cannot_check "local is server_version_num $lv, remote is $rv — different major versions"
   fi
 
-  LC_ALL=C awk -F'\t' -v OL="$d.only_local" -v OR="$d.only_remote" -v CH="$d.changed" '
+  # A `column-order` row whose two sides hold the SAME COLUMNS in a different
+  # ORDER is a reordering, not drift, and is separated out below rather than
+  # failing the build. Measured cause, 2026-09-12: production applied #289's
+  # nineteen migrations AFTER four migrations authored later than them, so three
+  # tables carry their columns in a different physical order than a fresh build
+  # of the same files produces. The column SETS are identical -- 7461 facts on
+  # both sides, every category equal.
+  #
+  # This narrows the check by exactly one property, and only when that property
+  # is the only thing that differs:
+  #   * a column present on one side only still fails, in the `column` category;
+  #   * a column-order row whose SETS differ still fails here, as CHANGED;
+  #   * every other category is untouched.
+  # Physical column order is load-bearing only for positional SQL -- `INSERT
+  # INTO t VALUES (...)` with no column list, or reading a row by index. Checked
+  # on 941d9cb4 before narrowing this: a repo-wide grep for a positional INSERT
+  # into any table, and for indexed row access in TypeScript and Python, returns
+  # nothing. Every write goes through the Supabase client, which names columns.
+  LC_ALL=C awk -F'\t' -v OL="$d.only_local" -v OR="$d.only_remote" -v CH="$d.changed" -v RO="$d.reordered" '
+    function same_set(a, b,   xa, xb, i, n, m, sa, sb) {
+      n = split(a, xa, ","); m = split(b, xb, ",")
+      if (n != m) return 0
+      for (i = 1; i <= n; i++) sa[xa[i]] = 1
+      for (i = 1; i <= m; i++) if (!(xb[i] in sa)) return 0
+      for (i = 1; i <= m; i++) sb[xb[i]] = 1
+      for (i = 1; i <= n; i++) if (!(xa[i] in sb)) return 0
+      return 1
+    }
     FNR==NR { k = $1 SUBSEP $2; L[k] = $3; next }
     { k = $1 SUBSEP $2; R[k] = $3
       if (!(k in L)) { print $1 "\t" $2 "\t" $3 > OR }
-      else if (L[k] != $3) { print $1 "\t" $2 "\t" L[k] "\t" $3 > CH } }
+      else if (L[k] != $3) {
+        if ($1 == "column-order" && same_set(L[k], $3))
+          print $1 "\t" $2 "\t" L[k] "\t" $3 > RO
+        else
+          print $1 "\t" $2 "\t" L[k] "\t" $3 > CH } }
     END { for (k in L) if (!(k in R)) {
             split(k, p, SUBSEP); print p[1] "\t" p[2] "\t" L[k] > OL } }
   ' "$lf" "$rf"
 
-  touch "$d.only_local" "$d.only_remote" "$d.changed"
-  local n_ol n_or n_ch
+  touch "$d.only_local" "$d.only_remote" "$d.changed" "$d.reordered"
+  local n_ol n_or n_ch n_ro
   n_ol=$(wc -l < "$d.only_local" | tr -d ' ')
   n_or=$(wc -l < "$d.only_remote" | tr -d ' ')
   n_ch=$(wc -l < "$d.changed"     | tr -d ' ')
+  n_ro=$(wc -l < "$d.reordered"   | tr -d ' ')
 
   [[ "$quiet" == "--quiet" ]] && { [[ $((n_ol + n_or + n_ch)) -eq 0 ]] && return 0 || return 1; }
 
@@ -468,6 +500,9 @@ compare() {
   section "IN LOCAL, NOT IN REMOTE — unpushed migration" "$d.only_local" \
     "Run 'supabase db push', or drop the migration if it was a mistake." \
     fmt_one
+  section "REORDERED — same columns, different physical order (does NOT fail)" "$d.reordered" \
+    "Not drift: the two sides hold exactly the same columns. A table lands here when migrations reached production in a different order than a fresh build applies them — production applied #289's nineteen migrations after four later ones on 2026-09-12. Nothing in this repository reads a column by position. A column present on one side only does NOT land here; it fails as CHANGED or in the 'column' category." \
+    fmt_changed
 
   [[ $((n_ol + n_or + n_ch)) -eq 0 ]] && return 0 || return 1
 }
@@ -627,6 +662,45 @@ self_test() {
   cp "$WORK/st_h1" "$WORK/st_h2"
   code=0; ( compare "$WORK/st_h1" "$WORK/st_h2" --quiet ) >/dev/null 2>&1 || code=$?
   [[ "$code" == "2" ]] || fail "identical-but-empty fingerprints exited $code, not 2"
+
+  # 4b. A column REORDERING passes; a column-order row whose SETS differ does
+  #     NOT. These two cases are the whole of the narrowing added 2026-09-12,
+  #     and the second is the one that matters: it is what stops "same columns,
+  #     different order" from becoming "any column-order difference is fine".
+  checks=$((checks+1))
+  {
+    printf 'server\tversion\t160000\n'
+    printf 'relation\tpublic.t\ttable\n'
+    printf 'column\tpublic.t.a\tinteger\n'
+    printf 'constraint\tpublic.t.t_pkey\tPRIMARY KEY (a)\n'
+    printf 'index\tpublic.t_pkey\tCREATE UNIQUE INDEX\n'
+    printf 'function\tpublic.f\tSELECT 1\n'
+    printf 'column-order\tpublic.t\ta,b,c\n'
+  } > "$WORK/st_ro1"
+  {
+    printf 'server\tversion\t160000\n'
+    printf 'relation\tpublic.t\ttable\n'
+    printf 'column\tpublic.t.a\tinteger\n'
+    printf 'constraint\tpublic.t.t_pkey\tPRIMARY KEY (a)\n'
+    printf 'index\tpublic.t_pkey\tCREATE UNIQUE INDEX\n'
+    printf 'function\tpublic.f\tSELECT 1\n'
+    printf 'column-order\tpublic.t\tc,a,b\n'
+  } > "$WORK/st_ro2"
+  code=0; ( compare "$WORK/st_ro1" "$WORK/st_ro2" --quiet ) >/dev/null 2>&1 || code=$?
+  [[ "$code" == "0" ]] || fail "the same columns in a different order exited $code, not 0"
+
+  checks=$((checks+1))
+  {
+    printf 'server\tversion\t160000\n'
+    printf 'relation\tpublic.t\ttable\n'
+    printf 'column\tpublic.t.a\tinteger\n'
+    printf 'constraint\tpublic.t.t_pkey\tPRIMARY KEY (a)\n'
+    printf 'index\tpublic.t_pkey\tCREATE UNIQUE INDEX\n'
+    printf 'function\tpublic.f\tSELECT 1\n'
+    printf 'column-order\tpublic.t\tc,a,d\n'
+  } > "$WORK/st_ro3"
+  code=0; ( compare "$WORK/st_ro1" "$WORK/st_ro3" --quiet ) >/dev/null 2>&1 || code=$?
+  [[ "$code" == "1" ]] || fail "a column-order row with DIFFERENT columns exited $code, not 1"
 
   # 5. A major-version mismatch is exit 2, not a wall of phantom drift.
   checks=$((checks+1))
