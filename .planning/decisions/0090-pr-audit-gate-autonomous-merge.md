@@ -729,6 +729,35 @@ from quietly becoming "NEUTRAL is fine everywhere". Proven by mutation: revertin
 the tuple alone makes the suite exit 1 with "fallback waits only on checks that
 can gate a merge: got ['CI Complete', 'CodeQL', 'Dependabot', ...]".
 
+**A COULD NOT RUN now names its cause.** Added the same day, raised by a peer
+session while this branch was waiting on `main`: the gate had TWO distinct
+reasons to be red on every PR at once, and the check's red square is identical
+for both. This Correction's cause is one of them; the other was measured live
+the same afternoon by a sibling session -- the account behind the repo's
+`ANTHROPIC_API_KEY` had run out of credit, so `_run_audit_inner` raised, the
+catch-all reached `_fail_closed`, and the PR got a `COULD NOT RUN` comment
+whose prose carried "credit balance is too low" but whose headline did not.
+
+The two want opposite responses. An upstream wait clears itself and a rerun is
+the fix. An out-of-credit key never clears and a rerun is an hour wasted. A
+reader with one red square and a paragraph of prose cannot tell which they
+have, and both are a **CANNOT CHECK** -- never a BLOCK, and never a pass;
+nothing was audited either way. That last sentence is now in the comment body
+as well, because the failure mode is a reader treating a red gate as a finding
+about their diff.
+
+`classify_cannot_check()` maps the reason to one of `no-credit`, `no-key`,
+`rate-limited`, `upstream-wait`, `empty-diff`, or **`unclassified`**, and the
+tag goes in the local report, the PR comment headline and the stderr line. The
+sixth tag is the load-bearing one: an unrecognised cause says it is
+unrecognised and that a rerun may or may not help, rather than being sorted
+into the nearest known bucket -- a wrong cause confidently named is worse than
+an admitted unknown, which is this repo's standing rule about absence and
+health. `--self-test` grows 39 -> 46. Proven by mutation: breaking only the
+credit pattern makes the suite report `an out-of-credit key is named as
+no-credit: got 'unclassified', want 'no-credit'`, and the hint invariant fails
+with it.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |

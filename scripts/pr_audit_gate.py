@@ -812,16 +812,69 @@ def _redact(text: str) -> str:
     return text[:2000] + ("... [truncated]" if len(text) > 2000 else "")
 
 
+# A COULD NOT RUN is a single red square whatever caused it, and the causes
+# want different responses: an outage of the account behind ANTHROPIC_API_KEY
+# is fixed by topping the account up and reruns forever until someone does,
+# while a wait on an upstream check clears itself. A session that reads a
+# credit outage as a flaky wait reruns the job for an hour; a session that
+# reads a flaky wait as an outage goes looking at billing. So the cause is
+# classified and named, rather than left for a reader to infer from prose.
+#
+# Ordered most-specific first; the first pattern whose every term appears in
+# the lowercased reason wins. `hint` is what to DO, never a restatement.
+_CANNOT_CHECK_CAUSES: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    ("no-credit", ("credit balance",),
+     "The account behind ANTHROPIC_API_KEY is out of credit. Top it up; "
+     "rerunning changes nothing until then."),
+    ("no-credit", ("billing",),
+     "A billing error stopped the audit. Check the account behind "
+     "ANTHROPIC_API_KEY; rerunning changes nothing until it is resolved."),
+    ("no-key", ("anthropic_api_key", "not set"),
+     "The secret is absent. Add it with `gh secret set ANTHROPIC_API_KEY`."),
+    ("rate-limited", ("rate_limit",),
+     "The API rate-limited this run. Rerunning after a pause is the fix."),
+    ("rate-limited", ("429",),
+     "The API rate-limited this run. Rerunning after a pause is the fix."),
+    ("upstream-wait", ("waiting on",),
+     "An upstream check had not settled. Rerun once those checks finish."),
+    ("upstream-wait", ("timed out waiting",),
+     "An upstream check had not settled. Rerun once those checks finish."),
+    ("empty-diff", ("returned nothing to review",),
+     "There is no diff to audit. Check the PR still has commits against its base."),
+)
+
+
+def classify_cannot_check(reason: str) -> tuple[str, str]:
+    """Name the cause of a COULD NOT RUN, so a reader knows whether a rerun
+    can possibly help. Returns (tag, hint). Unrecognised reasons get
+    "unclassified" and a hint that says so plainly rather than guessing --
+    an unknown cause misreported as a known one is worse than an admitted
+    unknown (see [[absence-reported-as-health]])."""
+    low = reason.lower()
+    for tag, terms, hint in _CANNOT_CHECK_CAUSES:
+        if all(t in low for t in terms):
+            return tag, hint
+    return ("unclassified",
+            "This cause is not one the gate recognises. Read the reason above "
+            "before rerunning -- a rerun may or may not help.")
+
+
 def _fail_closed(pr_number: str, sha7: str | None, reason: str) -> int:
     reason = _redact(reason)
+    tag, hint = classify_cannot_check(reason)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     name = f"{pr_number}-{sha7 or 'unknown'}.md"
     (REPORT_DIR / name).write_text(
-        f"# PR #{pr_number} audit\n\n**VERDICT: COULD NOT RUN**\n\n{reason}\n"
+        f"# PR #{pr_number} audit\n\n**VERDICT: COULD NOT RUN [{tag}]**\n\n"
+        f"{reason}\n\n{hint}\n"
     )
-    body = f"## PR Audit Gate — COULD NOT RUN\n\n{reason}\n\nNot merging — see ADR 0090."
+    body = (
+        f"## PR Audit Gate — COULD NOT RUN [{tag}]\n\n{reason}\n\n{hint}\n\n"
+        "This is a CANNOT CHECK: it is not a BLOCK and it is not a pass. "
+        "Nothing was audited.\n\nNot merging — see ADR 0090."
+    )
     _run(["gh", "pr", "comment", pr_number, "--body", body])
-    print(f"CANNOT CHECK: {reason}", file=sys.stderr)
+    print(f"CANNOT CHECK [{tag}]: {reason}", file=sys.stderr)
     return 1
 
 
@@ -971,6 +1024,30 @@ def run_self_test() -> int:
     red, prev = _confirmed_red(["CodeQL", "Build All Packages"], frozenset())
     red, prev = _confirmed_red(["CodeQL"], prev)
     check("a shrinking failed set (one check recovered) does not confirm either", red, False)
+
+    # classify_cannot_check: a COULD NOT RUN is one red square whatever caused
+    # it, and the two causes seen live want opposite responses. The credit
+    # string is the literal one the repo key produced on 2026-09-12
+    # ("credit balance is too low"); the wait string is what the upstream
+    # poller raises. A rerun fixes the second and never the first.
+    tag, hint = classify_cannot_check(
+        "BadRequestError: Your credit balance is too low to access the Anthropic API")
+    check("an out-of-credit key is named as no-credit", tag, "no-credit")
+    check("...and its hint says a rerun will not help", "rerunning changes nothing" in hint, True)
+    tag, _ = classify_cannot_check("TimeoutError: timed out waiting for upstream checks")
+    check("an upstream wait is named as upstream-wait, not no-credit", tag, "upstream-wait")
+    tag, _ = classify_cannot_check(
+        "ANTHROPIC_API_KEY is not set. Add it with `gh secret set ANTHROPIC_API_KEY`")
+    check("an absent secret is its own cause, not a credit outage", tag, "no-key")
+    tag, hint = classify_cannot_check("ValueError: something nobody has seen before")
+    check("an unrecognised cause admits it rather than guessing", tag, "unclassified")
+    check("...and says so in the hint instead of implying a rerun works",
+          "may or may not help" in hint, True)
+    # The classifier must never turn a CANNOT CHECK into a verdict: every tag
+    # it can return still leaves _fail_closed returning 1.
+    check("every classified cause is still a non-zero exit, never a pass",
+          sorted({t for t, _, _ in _CANNOT_CHECK_CAUSES} | {"unclassified"}),
+          ["empty-diff", "no-credit", "no-key", "rate-limited", "unclassified", "upstream-wait"])
 
     # Escalation logic (round 4): touches_own_gate and a still-truncated diff
     # must both force BLOCK even when every angle/adversary leaned PASS --
