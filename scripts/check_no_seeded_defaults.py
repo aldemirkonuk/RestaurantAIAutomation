@@ -194,6 +194,14 @@ SCAN_ROOTS = [
     Path("apps/web/src/pages/team/next"),
     Path("apps/web/src/pages/documents-reports/next"),
     Path("apps/web/src/pages/communications/next"),
+    # New-pages wave (ADR 0133, 2026-09-11): `/logs`, rebuilt behind
+    # `mudavym_design_logs`. Every figure on it is a per-register count of
+    # rows the gateway returned; a seeded row would be a fabricated entry in
+    # the house's own ledger of what happened. (Note: this branch ships /logs
+    # standalone, ahead of PR #289's full p4 wave — the other rebuilt
+    # surfaces that wave adds to this list are not part of this scan-root
+    # addition and will arrive with that PR.)
+    Path("apps/web/src/pages/logs/next"),
 ]
 
 # Hooks that back those surfaces. These are data hooks, so a fabricated row set
