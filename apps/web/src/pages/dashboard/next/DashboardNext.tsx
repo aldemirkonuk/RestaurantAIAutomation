@@ -11,10 +11,13 @@
  *    that are labelled as what they are (vendor spend, never "revenue").
  *
  * Reachable only when `mudavym.design.dashboard` / the feature flag is on —
- * PageGate wraps this tree in the `.mudavym` token scope; the root here
- * carries the class too so the page stands alone in tests and sandboxes.
- * Both grounds ship: paper by default, Warm Charcoal under the app's dark
- * theme (`.dark .mudavym`) or an explicit data-ground="charcoal".
+ * the root here carries the `.mudavym` token scope itself, so the page stands
+ * alone in tests and sandboxes (PageGate adds no second scope).
+ *
+ * The ground is Warm Charcoal in EVERY app theme (founder, 2026-09-12): the
+ * `.mudavym` scope paints the decided ground and the light/dark toggle does
+ * not reach into it. The page does NOT follow the user's theme; the rest of
+ * the app still does.
  */
 
 import { useEffect, useMemo, useRef } from 'react';
@@ -41,7 +44,12 @@ function voice(now: Date): { greeting: string; service: string } {
 }
 
 export interface DashboardNextProps {
-  /** Force the Warm Charcoal ground regardless of app theme (ADR 0042). */
+  /**
+   * State the ground out loud. Charcoal is now the `.mudavym` default in every
+   * theme, so this changes nothing on its own — it is kept because a surface
+   * may want to name its ground, and because `[data-ground="charcoal"]` is a
+   * hook other rules hang off (see DoorNext).
+   */
   ground?: 'charcoal';
 }
 
@@ -102,9 +110,16 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
     day: 'numeric',
   });
 
+  // `min-h-screen`, NOT `min-h-full`. DashboardLayout's <main> is itself
+  // `min-h-screen` with no resolved height on the chain above it
+  // (components/layout/DashboardLayout.tsx:85), so a percentage minimum
+  // resolves against a content-sized parent: measured, this child came out at
+  // 18.5px against a 563px viewport, leaving the light app shell showing below
+  // a charcoal band — a seam across the first page a manager lands on. Every
+  // other Next page states the viewport minimum directly; this one now matches.
   return (
     <div
-      className="mudavym min-h-full bg-paper-0 text-inkm-1"
+      className="mudavym min-h-screen bg-paper-0 text-inkm-1"
       data-ground={ground}
       style={{ fontFamily: '"Plus Jakarta Sans", "DM Sans", system-ui, sans-serif' }}
     >

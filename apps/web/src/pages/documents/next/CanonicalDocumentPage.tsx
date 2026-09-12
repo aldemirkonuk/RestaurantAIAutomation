@@ -309,7 +309,13 @@ export function CanonicalDocumentPage() {
         background: 'var(--paper-1, #F3EFE6)',
         color: 'var(--ink-1, #211C16)',
         fontFamily: SANS,
-        minHeight: '100%',
+        // The viewport minimum is NOT set here. It belongs to `.cd-page` in
+        // canonical-document.css, which drops it again under `@media print`.
+        // An inline declaration outranks an author stylesheet in every medium,
+        // so setting it here made that print override inert and put a 100vh
+        // minimum on paper — a blank trailing page for any document shorter
+        // than the screen, on the one document ADR 0104 D9 locks to "print
+        // equals screen".
       }}
     >
       <div style={{ maxWidth: 1240, margin: '0 auto', padding: '18px 22px 40px' }}>

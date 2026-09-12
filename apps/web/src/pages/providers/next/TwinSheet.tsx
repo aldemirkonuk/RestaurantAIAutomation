@@ -126,15 +126,27 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
         >
           What the platform has learned
         </h3>
-        <Suspense
-          fallback={
-            <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
-              Opening the vendor’s record…
-            </p>
-          }
-        >
-          <ProviderIntelligencePanel providerId={provider.id} providerName={provider.name} />
-        </Suspense>
+        {/*
+          `data-ground="paper"` because the panel below is a LEGACY component —
+          hard-coded light Tailwind cards that read none of the Mudavym tokens.
+          Since 2026-09-12 the bare `.mudavym` selector paints Warm Charcoal in
+          every app theme (ADR 0138), so without this the panel sits as a white
+          card on charcoal, and `color-scheme: dark` reaches its native controls.
+          The escape is the decided one (ADR 0104 D9) and wins on specificity —
+          (0,2,0) over the base `.mudavym`'s (0,1,0) — but only on the SAME
+          element, which is why the class is repeated here.
+        */}
+        <div className="mudavym" data-ground="paper">
+          <Suspense
+            fallback={
+              <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+                Opening the vendor’s record…
+              </p>
+            }
+          >
+            <ProviderIntelligencePanel providerId={provider.id} providerName={provider.name} />
+          </Suspense>
+        </div>
       </div>
     </Sheet>
   );
