@@ -839,7 +839,15 @@ def run_self_test() -> int:
     the network -- pure functions only."""
     failures = []
 
+    # `ran` is COUNTED, not written down. Until 2026-09-12 the summary line
+    # below printed a hardcoded "35 invariants held" -- a number nothing
+    # re-derived, which had to be hand-edited every time a case was added and
+    # was therefore wrong the moment somebody forgot. A count that does not come
+    # from the thing it counts is the same shape as a check that cannot fail.
+    ran = [0]
+
     def check(label, got, want):
+        ran[0] += 1
         if got != want:
             failures.append(f"{label}: got {got!r}, want {want!r}")
 
@@ -986,7 +994,7 @@ def run_self_test() -> int:
         for line in failures:
             print(f"SELF-TEST FAILED: {line}")
         return 1
-    print("SELF-TEST OK — 35 invariants held.")
+    print(f"SELF-TEST OK — {ran[0]} invariants held.")
     return 0
 
 
