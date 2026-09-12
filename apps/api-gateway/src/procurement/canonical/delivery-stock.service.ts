@@ -265,6 +265,7 @@ export class DeliveryStockService {
       }
 
       const moved = await this.move({
+        restaurantId,
         inventoryId,
         delta,
         deliveryId,
@@ -411,6 +412,7 @@ export class DeliveryStockService {
     for (const [inventoryId, qty] of booked.value.entries()) {
       if (qty <= 0) continue;
       const moved = await this.move({
+        restaurantId,
         inventoryId,
         delta: -qty,
         deliveryId,
@@ -440,6 +442,7 @@ export class DeliveryStockService {
    * what makes the lot provisional and stamps both rows with the delivery id.
    */
   private async move(input: {
+    restaurantId: string;
     inventoryId: string;
     delta: number;
     deliveryId: string;
@@ -464,6 +467,15 @@ export class DeliveryStockService {
       p_idempotency_key: input.idempotencyKey,
       p_reference_type: "delivery",
       p_reference_id: input.deliveryId,
+      // ADR 0141 — WHICH HOUSE this delivery is being booked for.
+      //
+      // The lines come from `procurement_document_lines` read with
+      // `.eq("restaurant_id", restaurantId)`, so the LINE belongs to this
+      // restaurant. `procurement_document_lines.inventory_id` is a plain FK to
+      // `restaurant_inventory` with no tenant constraint on it, so a line of
+      // ours may name an item that is not — and before this argument existed,
+      // booking such a line moved the other house's shelf.
+      p_restaurant_id: input.restaurantId,
     });
     if (rpc.error) {
       this.logger.error(

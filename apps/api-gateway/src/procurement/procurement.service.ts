@@ -24,6 +24,7 @@ import { GmailService } from "../communications/gmail.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { NotificationsService } from "../notifications/notifications.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
+import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   CreateOrderDto,
@@ -350,6 +351,27 @@ export class ProcurementService {
     },
   ): Promise<OrderResponseDto> {
     const fulfilled = provenance?.alreadyFulfilled;
+
+    // TENANCY, BEFORE THE ORDER EXISTS (ADR 0141).
+    //
+    // `dto.inventoryId` is the caller's choice and it reaches stock: this order
+    // persists it on `procurement_orders.inventory_id`, and the shadow-stock
+    // reservation below hands it to `apply_stock_movement`, which — until ADR
+    // 0141 — took the restaurant from the item rather than from the caller. So
+    // an order placed against another house's item reserved shadow stock in
+    // that house.
+    //
+    // The check is here rather than beside the RPC so the ORDER ROW is never
+    // written with a foreign item in the first place. Refusing after the insert
+    // would leave a row behind pointing somewhere it must not point.
+    await assertInventoryBelongsToRestaurant(
+      this.databaseService.supabase,
+      restaurantId,
+      dto.inventoryId,
+      "createOrder",
+      this.logger,
+    );
+
     // Guard: restaurant must have at least one active provider before placing orders
     const { count: providerCount, error: countError } =
       await this.databaseService.supabase
@@ -1382,14 +1404,32 @@ export class ProcurementService {
     try {
       // Shadow stock is a projection of inventory_lots — release via the ledger RPC, clamped
       // to what is actually on-order (floor at 0). in_transit_quantity is a separate display counter.
-      const { data: inv } = await this.databaseService.supabase
+      // ADR 0141: the error is bound. This read is BOTH the balance lookup and,
+      // because it is scoped to `restaurant_id`, this path's ownership proof —
+      // so a failed read used to mean "no row", which meant "release nothing",
+      // which read on the way out as a successful release of zero. It fails
+      // closed on the write either way; what it did not do was say so.
+      const { data: inv, error: invError } = await this.databaseService.supabase
         .from("restaurant_inventory")
         .select("shadow_stock, in_transit_quantity")
         .eq("restaurant_id", restaurantId)
         .eq("id", inventoryId)
-        .single();
+        .maybeSingle();
 
-      if (inv) {
+      if (invError) {
+        throw new Error(
+          `could not read the on-order balance for item ${inventoryId} ` +
+            `(${invError.message}), so no shadow stock was released`,
+        );
+      }
+      if (!inv) {
+        throw new Error(
+          `item ${inventoryId} is not an item of this restaurant, so no ` +
+            `shadow stock was released`,
+        );
+      }
+
+      {
         const currentShadow = (inv as any).shadow_stock ?? 0;
         const currentInTransit = (inv as any).in_transit_quantity ?? 0;
         const release = Math.min(quantity, currentShadow);
@@ -1403,6 +1443,10 @@ export class ProcurementService {
               p_transaction_type: "adjustment",
               p_source: "order",
               p_reason: "released on order close",
+              // ADR 0141 — the house this release is for. The read above is
+              // already scoped to it, so this can only ever agree; it is passed
+              // anyway so the primitive is never the thing that has to trust us.
+              p_restaurant_id: restaurantId,
             },
           );
           if (error) throw new Error(error.message);
@@ -1441,6 +1485,12 @@ export class ProcurementService {
           p_transaction_type: "purchase",
           p_source: "order",
           p_reason: "reserved on order placement",
+          // ADR 0141. This is the path that made the hole reachable from order
+          // placement: `createOrder` took `dto.inventoryId` from the request and
+          // this reservation handed it straight to the primitive. `createOrder`
+          // now proves ownership before the order row exists; this argument is
+          // what holds if some later caller reaches here without doing so.
+          p_restaurant_id: restaurantId,
         },
       );
       if (error) throw new Error(error.message);
@@ -1730,6 +1780,11 @@ export class ProcurementService {
                 p_reason: "shadow released on delivery",
                 p_order_id: orderId,
                 p_idempotency_key: `order-delivered-shadow:${orderId}`,
+                // ADR 0141. `order.inventoryId` comes off the order row, which
+                // was read scoped to this restaurant — but the COLUMN carries no
+                // tenant constraint, so the row belonging here does not make the
+                // item belong here.
+                p_restaurant_id: restaurantId,
               });
             }
             await this.databaseService.supabase.rpc("apply_stock_movement", {
@@ -1743,6 +1798,8 @@ export class ProcurementService {
               p_cost_provenance: costProvenance,
               p_order_id: orderId,
               p_idempotency_key: `order-delivered-live:${orderId}`,
+              // ADR 0141 — same reason as the shadow release above.
+              p_restaurant_id: restaurantId,
             });
 
             // in_transit_quantity is a separate denormalized display counter.
@@ -1910,37 +1967,18 @@ export class ProcurementService {
     // The DTO's @IsUUID only rejects ids that are not UUID-shaped. A well-formed
     // UUID belonging to another restaurant is exactly the case that matters, and
     // no decorator can see it.
-    const { data: owned, error: ownershipError } =
-      await this.databaseService.supabase
-        .from("restaurant_inventory")
-        .select("id")
-        .eq("restaurant_id", restaurantId)
-        .eq("id", inventoryId)
-        .maybeSingle();
-
-    // A failed lookup is NOT permission. Saying so out loud rather than falling
-    // through is the whole point (ADR 0051): the alternative reports the absence
-    // of an answer as a yes.
-    if (ownershipError) {
-      this.logger.error(
-        `verifyReceipt ownership check failed for ${inventoryId}: ${ownershipError.message}`,
-      );
-      throw new UnprocessableEntityException(
-        `Could not confirm that item ${inventoryId} belongs to this restaurant, ` +
-          `so no stock was moved: ${ownershipError.message}`,
-      );
-    }
-
-    if (!owned) {
-      this.logger.warn(
-        `verifyReceipt rejected a foreign inventory id on order ${orderId}: ${inventoryId}`,
-      );
-      throw new ForbiddenException(
-        `Item ${inventoryId} does not belong to this restaurant. ` +
-          `A receipt adjustment can only move stock on this restaurant's own ` +
-          `inventory, so nothing was written.`,
-      );
-    }
+    //
+    // ADR 0141: this check was written here first and is now the shared one
+    // (`common/tenant/assert-inventory-belongs-to-restaurant.ts`), called by
+    // every stock path that takes an id from a request. Same two refusals: a
+    // failed lookup is NOT permission, and a foreign id is a 403.
+    await assertInventoryBelongsToRestaurant(
+      this.databaseService.supabase,
+      restaurantId,
+      inventoryId,
+      `verifyReceipt on order ${orderId}`,
+      this.logger,
+    );
 
     // QUANTITY FIRST, THEN PRICE. The two are separate writes because they are
     // separate facts: `apply_stock_movement` only ever creates or consumes
@@ -1981,6 +2019,10 @@ export class ProcurementService {
           p_cost_provenance: delta > 0 && unitCost != null ? "invoice" : null,
           p_order_id: orderId,
           p_idempotency_key: `receipt-verify:${orderId}:${inventoryId}`,
+          // ADR 0141. The ownership check above already refused a foreign id;
+          // this says the same thing to the primitive, which is where the
+          // guarantee has to live for the callers that do not exist yet.
+          p_restaurant_id: restaurantId,
         },
       );
       if (error) {

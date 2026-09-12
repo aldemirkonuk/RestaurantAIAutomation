@@ -837,6 +837,11 @@ export class InventoryService {
             p_unit_cost: unitCost,
             p_location_id: dto.storageLocationId ?? null,
             p_cost_provenance: provenance,
+            // ADR 0141 — the house this stock is for. `existing.id` came from a
+            // read scoped to this restaurant, so this agrees by construction;
+            // the primitive is told anyway, because the guarantee must not rest
+            // on each caller having remembered.
+            p_restaurant_id: restaurantId,
           });
         }
 
@@ -923,6 +928,11 @@ export class InventoryService {
         p_unit_cost: unitCost,
         p_location_id: dto.storageLocationId ?? null,
         p_cost_provenance: provenance,
+        // ADR 0141 — the house this stock is for. `data.id` is the row this
+        // method just INSERTed with `restaurant_id: restaurantId`, so the two
+        // cannot disagree; the argument is passed so the primitive never has to
+        // take that on trust.
+        p_restaurant_id: restaurantId,
       });
       if (rpcErr) {
         this.logger.warn(
@@ -1228,6 +1238,10 @@ export class InventoryService {
         p_location_id: line.storageLocationId ?? null,
         p_cost_provenance:
           line.costProvenance ?? (unitCost !== null ? "manual" : null),
+        // ADR 0141 — the house this line is being received into. `inventoryId`
+        // here is either a row this method just INSERTed under `restaurantId`
+        // or one it read back with `.eq("restaurant_id", restaurantId)`.
+        p_restaurant_id: restaurantId,
       });
 
       if (rpcError) {

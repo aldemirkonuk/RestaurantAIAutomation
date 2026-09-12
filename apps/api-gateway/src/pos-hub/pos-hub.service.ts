@@ -840,6 +840,12 @@ export class PosHubService {
             p_source: "pos",
             p_reason: `POS ${isVoid ? "void" : "sale"} (${label}): ${it.name}`,
             p_idempotency_key: isVoid ? `${idem}:void` : idem,
+            // ADR 0141 — the house this check belongs to. `it.inventory_id`
+            // comes from a `pos_item_mappings` row read for this restaurant;
+            // the row belonging here does not make the item it names belong
+            // here, and a mis-seeded mapping used to move another house's
+            // shelf on every sale.
+            p_restaurant_id: restaurantId,
           }));
         }
 

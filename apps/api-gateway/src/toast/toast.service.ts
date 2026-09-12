@@ -609,6 +609,14 @@ export class ToastService {
               p_source: "pos",
               p_reason: `POS void (glass): ${line.name}`,
               p_idempotency_key: idem,
+              // ADR 0141 — the house this POS line is for. `inventoryId` is
+              // resolved from `pos_item_mappings` (or the legacy
+              // `toast_item_guid` column) read with
+              // `.eq("restaurant_id", restaurantId)`; the mapping ROW belongs
+              // here, and its `inventory_id` column carries no tenant
+              // constraint, so a stale or mis-seeded mapping could point at
+              // another house's shelf. It now refuses instead of moving it.
+              p_restaurant_id: restaurantId,
             }));
           } else {
             ({ error: rpcError } = await db.rpc("record_glass_pour", {
@@ -630,6 +638,8 @@ export class ToastService {
             p_source: "pos",
             p_reason: `POS ${isVoid ? "void" : "sale"}: ${line.name}`,
             p_idempotency_key: idem,
+            // ADR 0141 — same mapping-derived id, same refusal.
+            p_restaurant_id: restaurantId,
           }));
         }
         if (rpcError) {

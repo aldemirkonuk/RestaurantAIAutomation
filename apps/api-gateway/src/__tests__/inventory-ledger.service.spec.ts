@@ -23,6 +23,10 @@ describe("InventoryLedgerService", () => {
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
     single: jest.fn(),
+    // ADR 0141 added two maybeSingle() reads to this path: the ownership probe
+    // that runs BEFORE the RPC, and the read-back that runs after it. Both are
+    // answered here; the per-test overrides below say what each one sees.
+    maybeSingle: jest.fn(),
     rpc: jest.fn(),
   };
 
@@ -91,6 +95,15 @@ describe("InventoryLedgerService", () => {
       });
 
       mockSupabaseClient.single.mockResolvedValue({
+        data: mockTransaction,
+        error: null,
+      });
+
+      // ADR 0141. Two maybeSingle() reads now bracket the RPC: the ownership
+      // probe before it (the item is this restaurant's) and the read-back after
+      // it. The transaction row answers both — it is truthy, which is all the
+      // probe asks — so one default covers the pair.
+      mockSupabaseClient.maybeSingle.mockResolvedValue({
         data: mockTransaction,
         error: null,
       });
@@ -168,6 +181,15 @@ describe("InventoryLedgerService", () => {
       });
 
       mockSupabaseClient.single.mockResolvedValue({
+        data: mockTransaction,
+        error: null,
+      });
+
+      // ADR 0141. Two maybeSingle() reads now bracket the RPC: the ownership
+      // probe before it (the item is this restaurant's) and the read-back after
+      // it. The transaction row answers both — it is truthy, which is all the
+      // probe asks — so one default covers the pair.
+      mockSupabaseClient.maybeSingle.mockResolvedValue({
         data: mockTransaction,
         error: null,
       });
@@ -536,7 +558,12 @@ describe("InventoryLedgerService", () => {
         .mockResolvedValueOnce({ data: "txn-1", error: null })
         .mockResolvedValueOnce({ data: "txn-2", error: null });
 
-      mockSupabaseClient.single
+      // ADR 0141. Each transaction now makes TWO maybeSingle() reads, in this
+      // order: the ownership probe before the RPC, then the read-back after it
+      // (which is no longer `getTransaction`, because a row that a committed
+      // write returned is not something that can be "not found").
+      mockSupabaseClient.maybeSingle
+        .mockResolvedValueOnce({ data: { id: "inv-1" }, error: null })
         .mockResolvedValueOnce({
           data: {
             id: "txn-1",
@@ -556,6 +583,7 @@ describe("InventoryLedgerService", () => {
           },
           error: null,
         })
+        .mockResolvedValueOnce({ data: { id: "inv-2" }, error: null })
         .mockResolvedValueOnce({
           data: {
             id: "txn-2",

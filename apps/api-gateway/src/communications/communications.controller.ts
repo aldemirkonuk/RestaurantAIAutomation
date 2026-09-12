@@ -37,6 +37,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
+import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 
 @ApiTags("Communications")
 /**
@@ -721,9 +722,9 @@ export class CommunicationsController {
       threshold?: number;
     },
   ) {
-    const restaurantId =
+    const restaurantId: string =
       body?.restaurantId ||
-      this.configService.get(
+      this.configService.get<string>(
         "DEFAULT_RESTAURANT_ID",
         "00000000-0000-0000-0000-000000000001",
       );
@@ -758,6 +759,20 @@ export class CommunicationsController {
     // projection of inventory_lots (owned by project_stock_from_lots) and is
     // never written directly (SimPOS testbed plan, decision A8).
     if (inventoryId) {
+      // TENANCY (ADR 0141). `body.wineId` is supplied by the caller and, unlike
+      // the lookup above it, is never scoped to `restaurantId` — so this route
+      // would move stock on any item in the database whose id someone knew.
+      // `NonProductionGuard` keeps it off production; it does not make a
+      // cross-tenant write acceptable on a staging database full of real
+      // tenants' data, and a guard is not a reason to skip the check.
+      await assertInventoryBelongsToRestaurant(
+        this.databaseService.supabase,
+        restaurantId,
+        inventoryId,
+        "e2eStep1TriggerThreshold",
+        this.logger,
+      );
+
       const { data: current } = await this.databaseService.supabase
         .from("restaurant_inventory")
         .select("stock_live")
@@ -773,6 +788,8 @@ export class CommunicationsController {
           p_source: "system",
           p_reason: "E2E test — manual spillage scenario",
           p_idempotency_key: `e2e-step1:${inventoryId}:${Date.now()}`,
+          // ADR 0141 — the house this scenario is running for.
+          p_restaurant_id: restaurantId,
         });
       }
       await this.databaseService.supabase

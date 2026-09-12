@@ -43,6 +43,9 @@ function makeDb(opts: {
   insertedOrder?: Row;
   orderRow?: Row | null;
   inventory?: Row | null;
+  /** ADR 0141: what the ownership probe (`select("id")`) sees. `null` = the
+   *  item is not this restaurant's, which is a 403 and not a missing wine. */
+  ownedInventory?: Row | null;
 }) {
   const calls: Calls = {
     orderInserts: [],
@@ -59,8 +62,26 @@ function makeDb(opts: {
       const settle = (shape: "one" | "many") => {
         if (table === "providers")
           return { data: null, count: opts.providerCount ?? 1, error: null };
-        if (table === "restaurant_inventory")
+        if (table === "restaurant_inventory") {
+          // ADR 0141 split this table into TWO reads on the createOrder path,
+          // and the mock has to tell them apart or the test cannot say what it
+          // means. `select("id")` is the OWNERSHIP probe — does this item belong
+          // to the caller — and `opts.inventory` answers the WINE IDENTITY
+          // lookup, which selects master_wine_id/wine_name. A test passing
+          // `inventory: null` is saying "the identity cannot be resolved", not
+          // "the item is another restaurant's"; conflating them would make
+          // `writes a line even when the wine identity cannot be resolved`
+          // assert a 403 instead.
+          if (lastSelect.trim() === "id")
+            return {
+              data:
+                opts.ownedInventory === undefined
+                  ? { id: "inv-1" }
+                  : opts.ownedInventory,
+              error: null,
+            };
           return { data: opts.inventory ?? null, error: null };
+        }
         if (table === "procurement_orders") {
           if (op === "insert")
             return { data: opts.insertedOrder ?? null, error: null };
@@ -71,8 +92,12 @@ function makeDb(opts: {
         return { data: shape === "many" ? [] : null, error: null };
       };
 
+      let lastSelect = "";
       const q: any = {
-        select: () => q,
+        select: (cols?: string) => {
+          lastSelect = cols ?? "";
+          return q;
+        },
         eq: () => q,
         neq: () => q,
         not: () => q,
