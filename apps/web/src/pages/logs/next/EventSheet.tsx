@@ -11,8 +11,17 @@
  * The way out of the timeline is in the footer as words. When the register
  * has no page of its own the footer says so, in a sentence — never a dead
  * control, never a missing one.
+ *
+ * AND IT IS NOT A DEAD END. Reading a log is "open one, it is not the one,
+ * open the next", and that used to cost a close, a re-aim and a click for
+ * every miss. Earlier / Later live in the header (`Sheet`'s `action` slot) and
+ * step within the list the reader came from; `j`/`k` do the same from the
+ * page's own handler. Neither ever walks past the loaded window in silence —
+ * at an end the control is absent and the position line says which end it is,
+ * and whether anything is known to lie beyond it.
  */
 
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Sheet } from '@/components/mudavym';
 import {
@@ -31,27 +40,73 @@ import {
   type TimelineEvent,
 } from './lg-format';
 
+/**
+ * Where this entry stands in the list the reader came from, and whether there
+ * is one either side of it WITHIN THAT LIST. `earlier`/`later` are true only
+ * when a step is possible; at an end the sheet says so in words rather than
+ * offering a control that does nothing — and it says so about the LOADED page,
+ * never about the registers, because that is all it can know.
+ */
+export interface SheetSteps {
+  index: number;
+  total: number;
+  earlier: boolean;
+  later: boolean;
+  /** Why there is nothing further that way; null while both ways are open. */
+  endNote: string | null;
+}
+
 export interface EventSheetProps {
   event: TimelineEvent | null;
   onClose: () => void;
   /** Pivot the page onto this row's thread (closes the sheet). */
   onFollow: (correlationId: string) => void;
   link: LinkContext;
+  /** Step to the adjacent entry without leaving the sheet. */
+  onStep?: (dir: 'earlier' | 'later') => void;
+  steps?: SheetSteps | null;
 }
 
-export function EventSheet({ event, onClose, onFollow, link }: EventSheetProps) {
+export function EventSheet({ event, onClose, onFollow, link, onStep, steps }: EventSheetProps) {
   const e = event;
   const out = e ? linkOutFor(e, link) : null;
   const lines = e ? payloadLines(e.detail) : [];
+  // Focus lands on the line that says where the reader now is, not on the
+  // first control. The primitive's default is the first focusable, and with
+  // Earlier/Later in the header that is a STEP: opening an entry and pressing
+  // Space would move to a different one before it had been read.
+  const placeRef = useRef<HTMLParagraphElement | null>(null);
 
   return (
     <Sheet
       open={!!e}
       onClose={onClose}
+      initialFocusRef={placeRef}
       label={e ? `${labelOf(e.source)} entry` : 'Entry'}
       eyebrow={e ? describeOf(e.source) : undefined}
       title={e ? e.summary : undefined}
       closeLabel="Close"
+      // THE SHEET IS NO LONGER A DEAD END. Reading a log is "open one, it is
+      // not the one, open the next", and that used to cost a close, a re-aim
+      // and a click for every miss. A control is drawn only where it can move:
+      // at either end the words below say why, which is this page's rule for
+      // every other absent control (`lg-noway`).
+      action={
+        e && steps && onStep ? (
+          <span className="lg-step">
+            {steps.earlier ? (
+              <button type="button" className="lg-step__btn lg-ink" onClick={() => onStep('earlier')}>
+                Earlier
+              </button>
+            ) : null}
+            {steps.later ? (
+              <button type="button" className="lg-step__btn lg-ink" onClick={() => onStep('later')}>
+                Later
+              </button>
+            ) : null}
+          </span>
+        ) : undefined
+      }
       footer={
         e ? (
           out ? (
@@ -71,6 +126,10 @@ export function EventSheet({ event, onClose, onFollow, link }: EventSheetProps) 
     >
       {e ? (
         <div className="lg-sheet" style={{ fontFamily: SANS }}>
+          <p className="lg-place" ref={placeRef} tabIndex={-1}>
+            {steps ? `Entry ${steps.index} of the ${steps.total} on this page.` : 'One entry, as the register holds it.'}
+            {steps?.endNote ? ` ${steps.endNote}` : ''}
+          </p>
           <dl className="lg-facts">
             <dt>Recorded</dt>
             <dd>

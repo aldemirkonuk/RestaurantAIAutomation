@@ -118,16 +118,27 @@ W7  AN IMPORTED QUERY HOOK THE PAGE DEPENDS ON IS ALSO TENANT-KEYED. W6 reads
       holds `useConversations`, whose filter-keyed cache belongs to a different
       page and is not this page's to judge.
 
-SCOPE. Five pages: `apps/web/src/pages/receiving/next`,
+SCOPE. Six pages: `apps/web/src/pages/receiving/next`,
 `apps/web/src/pages/receipts/next`, `apps/web/src/pages/communications/next`,
-`apps/web/src/pages/documents-reports/next` and `apps/web/src/pages/team`
-(that last one BOTH halves — the `next/` redesign and the `command/` legacy
+`apps/web/src/pages/documents-reports/next`, `apps/web/src/pages/team`
+(that one BOTH halves — the `next/` redesign and the `command/` legacy
 desk are one route behind one flag, and the tenant leak this guard's W6 exists
-for was on the redesigned half while the legacy half had it right), plus the
-gateway files their registers cite and the shared query hooks they name. Each
-page declares its own register, renderers and nullable contract in PAGES below;
-adding a sixth page means adding a sixth entry, not a second script. A page
-absent from PAGES is NOT checked, and this guard makes no claim about it.
+for was on the redesigned half while the legacy half had it right) and
+`apps/web/src/pages/logs/next`, plus the gateway files their registers cite and
+the shared query hooks they name. Each page declares its own register,
+renderers and nullable contract in PAGES below; adding a seventh page means
+adding a seventh entry, not a second script. A page absent from PAGES is NOT
+checked, and this guard makes no claim about it.
+
+/logs ARRIVED LAST AND BROUGHT A SHAPE NOTHING HERE HAD SEEN. It is the first
+guarded page whose feed is walked rather than read once, so its cache is a
+`useInfiniteQuery` and not a `useQuery`. `USE_QUERY` has always spelled the
+`Infinite` half optional, but until this page no fixture exercised it — an
+optional group nothing tests is an assertion, not a measurement, and this
+file's collection of vacuities is entirely made of those. Two /logs cases below
+stand on it directly (`W6 sees a useInfiniteQuery`, and the generic-annotated
+form of the same), because if the matcher ever loses its grip on that syntax
+the page's only cache bucket becomes invisible to W5, W6 and W7 at once.
 
 A NOTE ON /team's MARKER, BECAUSE THE WRONG ONE WOULD BE A LIE. `floor_markers`
 is a per-page tuple for a reason. /team has exactly one server-side window and
@@ -235,6 +246,7 @@ _COMMS = Path("apps/web/src/pages/communications/next")
 _SORTING_OFFICE = Path("apps/web/src/pages/documents-reports/next")
 _TEAM_NEXT = Path("apps/web/src/pages/team/next")
 _TEAM_CMD = Path("apps/web/src/pages/team/command")
+_LOGS = Path("apps/web/src/pages/logs/next")
 _QUERY_HOOKS = Path("apps/web/src/hooks/queries/useConversationQueries.ts")
 _DRAFT_HOOKS = Path("apps/web/src/hooks/queries/useDraftEmailQueries.ts")
 
@@ -379,6 +391,52 @@ PAGES = (
         # query it reads is a `useQuery` in one of its own five files above, so
         # W6 sees all of them. That is a measurement, not an omission, and it is
         # printed on every clean run so it cannot be read as "checked and fine".
+        imported_query_hooks=(),
+    ),
+    PageSpec(
+        name="/logs",
+        hooks=_LOGS / "useLogsNextData.ts",
+        # Both files. `EventSheet.tsx` declares no window and reads no query, so
+        # W2's marker rule never applies to it — but W3 does, and an entry sheet
+        # is exactly where `count > 0 ? n : EM` gets written. Listing it costs
+        # nothing; leaving it out would make the run's "clean" cover one of the
+        # page's two rendering files while reading as though it covered both.
+        renderers=(_LOGS / "LogsNext.tsx", _LOGS / "EventSheet.tsx"),
+        register="LOGS_SERVER_WINDOWS",
+        floor_markers=("GE",),
+        nullable_contract={
+            # Each of these is a field whose whole job is to say the gateway did
+            # not answer, and each has a specific lie attached to losing its
+            # null. `hasMore: boolean` would make a gateway that predates the
+            # field read as "nothing older exists", and the page would then
+            # print "All N entries are on the page" about a window — ADR 0086's
+            # own fault, one layer up. The three register fields would turn "did
+            # not say" into "said none". `window` would print an unreported
+            # clamp as "0 at a time".
+            "LogsNextData": [
+                "failure",
+                "events",
+                "counts",
+                "sourcesQueried",
+                "failedSources",
+                "hasMore",
+                "window",
+            ],
+            # A transport failure carries no HTTP status (a timeout, a DNS
+            # failure, a CORS refusal). `status: number` could only say 0, and
+            # the page prints the status beside the message.
+            "FailureVM": ["status"],
+        },
+        tenant_tokens=("rid", "restaurantId"),
+        tenant_keyed=True,
+        # W7 reads the shared hooks a page DECLARES, and /logs declares none —
+        # a measurement, not an omission. Its one cache bucket is the
+        # `useInfiniteQuery` in `useLogsNextData.ts`, which W6 sees. The page's
+        # other two hooks are not query hooks at all: `useAuth` is a context
+        # read, and `useMudavymDesign` keeps its own promise map rather than a
+        # react-query key (`useMudavymDesign.ts`, `flagCache`), so there is no
+        # key there for W7 to judge. If either moves behind react-query, name it
+        # here — W6 structurally cannot see it.
         imported_query_hooks=(),
     ),
 )
@@ -719,11 +777,21 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
     # bucket anything is stored under, and flagging it would train people to
     # silence the rule.
     hook_bodies = query_bodies(hooks_src)
-    # A hook that mentions useQuery but parses to zero bodies means the matcher
+    # A hook that mentions a query but parses to zero bodies means the matcher
     # lost its grip on the syntax — the exact way this rule once went vacuous.
-    if "useQuery" in hooks_src and not hook_bodies:
+    #
+    # BOTH SPELLINGS, and that is not cosmetic. This read `"useQuery" in
+    # hooks_src` until /logs arrived, and `"useQuery"` is not a substring of
+    # `"useInfiniteQuery"` — so on the one page whose cache is a walked feed
+    # this check was STRUCTURALLY DEAD: it could never fire, on the file it
+    # exists to protect. The generic no-keys-found branch below would still
+    # have caught it, which is why this was never a hole; but a check that
+    # cannot fire on a page it is printed as covering is the shape this whole
+    # file is written against, so it is matched as an identifier now and tested
+    # on the Infinite form below.
+    if re.search(r"\buse(?:Infinite)?Query\b", hooks_src) and not hook_bodies:
         raise CannotCheck(
-            f"{page.hooks} contains `useQuery` but none could be parsed. W6 and W5 "
+            f"{page.hooks} contains a query call but none could be parsed. W6 and W5 "
             "would both pass on a file they never read."
         )
     bodies = hook_bodies + [b for src in renderer_src.values() for b in query_bodies(src)]
@@ -1118,6 +1186,78 @@ export class PerformanceService {
 }
 """
 
+# /logs. The ONLY fixture in this file whose cache is a `useInfiniteQuery`, and
+# the reason that matters is written in the header: the `Infinite` half of
+# USE_QUERY had no test behind it until this page arrived. Every rule below
+# reaches this hook through that one matcher.
+CLEAN_LOGS_HOOKS = """
+export const LOGS_SERVER_WINDOWS = {
+  /** logs-timeline.service.ts:106 — `Math.min(200, …)` clamps the feed; this page asks for 100 a page. */
+  TIMELINE: 100,
+} as const;
+
+export interface FailureVM {
+  status: number | null;
+  message: string;
+  forbidden: boolean;
+}
+
+export interface LogsNextData {
+  state: ReadState;
+  failure: FailureVM | null;
+  events: TimelineEvent[] | null;
+  counts: Partial<Record<string, number>> | null;
+  sourcesQueried: TimelineSource[] | null;
+  failedSources: TimelineSource[] | null;
+  hasMore: boolean | null;
+  window: number | null;
+  stalled: boolean;
+  readMore: () => void;
+}
+
+export function useLogsNextData(correlationId: string | null): LogsNextData {
+  const rid = useAuth().activeRestaurantId ?? '';
+  const q = useInfiniteQuery({
+    queryKey: ['logs-next', 'timeline', rid, correlationId ?? ''],
+    queryFn: async ({ pageParam }) => {
+      const { data } = await apiClient.get(`/logs/timeline/${rid}`, {
+        params: { limit: LOGS_SERVER_WINDOWS.TIMELINE, before: pageParam ?? undefined },
+      });
+      return data;
+    },
+    getNextPageParam: (last, _all, lastParam) =>
+      last.hasMore === true && last.nextCursor !== lastParam ? last.nextCursor : undefined,
+  });
+  const atFloor = (q.data?.pages.length ?? 0) >= LOGS_SERVER_WINDOWS.TIMELINE;
+  return { atFloor };
+}
+"""
+
+CLEAN_LOGS_RENDERER = """
+import { EM, GE } from './lg-format';
+import { LOGS_SERVER_WINDOWS } from './useLogsNextData';
+export default function LogsNext() {
+  const floor = loaded >= LOGS_SERVER_WINDOWS.TIMELINE;
+  return <span>{count === null ? EM : floor ? `${GE} ${count}` : count}</span>;
+}
+"""
+
+# The entry sheet: no window, no query, no marker. It is listed as a renderer so
+# W3 reads it, and its presence is what makes the "the entry sheet is missing"
+# case below a cannot-check rather than a silently narrower run.
+CLEAN_LOGS_SHEET = """
+import { Sheet } from '@/components/mudavym';
+import { EM, NOT_RECORDED } from './lg-format';
+export function EventSheet({ event }) {
+  return (
+    <Sheet open={!!event} closeLabel="Close">
+      {event ? event.summary : EM}
+      {NOT_RECORDED}
+    </Sheet>
+  );
+}
+"""
+
 _TEAM = PAGES[3]
 
 # Bound BY NAME, not by position. /documents-reports and /team were added on
@@ -1132,6 +1272,7 @@ _RCP = _BY_NAME["/receipts"]
 _CMS = _BY_NAME["/communications"]
 _SO = _BY_NAME["/documents-reports"]
 _TEAM = _BY_NAME["/team"]
+_LOGS_PAGE = _BY_NAME["/logs"]
 
 
 def _scaffold(tmp: Path) -> None:
@@ -1185,6 +1326,22 @@ def _scaffold(tmp: Path) -> None:
     (tmp / GATEWAY_ROOT / "team" / "performance.service.ts").write_text(
         CLEAN_PERF_GATEWAY, encoding="utf-8"
     )
+
+    # /logs. Its cited gateway file is `logs-timeline.service.ts`, already
+    # written above for the Sorting Office — SHARED on purpose, because it is
+    # shared in the real tree too. That sharing is exactly why the two /logs W1
+    # cases below assert on the message text: a mutation to that one file trips
+    # both pages, so a verdict-only case would stay green with this page's
+    # register entry deleted.
+    (tmp / _LOGS_PAGE.hooks.parent).mkdir(parents=True, exist_ok=True)
+    (tmp / _LOGS_PAGE.hooks).write_text(CLEAN_LOGS_HOOKS, encoding="utf-8")
+    _logs_bodies = {
+        "LogsNext.tsx": CLEAN_LOGS_RENDERER,
+        "EventSheet.tsx": CLEAN_LOGS_SHEET,
+    }
+    for rel in _LOGS_PAGE.renderers:
+        (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp / rel).write_text(_logs_bodies.get(rel.name, CLEAN_LOGS_RENDERER), encoding="utf-8")
 
 
 def self_test() -> int:
@@ -1768,6 +1925,206 @@ def self_test() -> int:
             "export class PerformanceService {}\n", encoding="utf-8"
         ),
         "cannot-check",
+    )
+
+    # ── /logs ────────────────────────────────────────────────────────────────
+    # The first page here whose feed is WALKED. Two consequences run through
+    # every case below: its cache is a `useInfiniteQuery`, so W5/W6 reach it
+    # only through the optional `Infinite` half of USE_QUERY; and its cited
+    # gateway file is shared with the Sorting Office, so both W1 cases assert on
+    # the message text rather than on the verdict alone.
+    print("\n-- /logs --\n")
+    case(
+        "W6 sees a useInfiniteQuery (the page's ONLY cache bucket)",
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace("'timeline', rid, correlationId", "'timeline', correlationId"),
+            encoding="utf-8",
+        ),
+        "violation",
+        expect_text="/logs",
+    )
+    case(
+        "W6 sees a GENERIC-annotated useInfiniteQuery too",
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace("useInfiniteQuery({", "useInfiniteQuery<TimelinePage>({").replace(
+                "'timeline', rid, correlationId", "'timeline', correlationId"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+        expect_text="/logs",
+    )
+    case(
+        "W5 the walked feed stops reading its own hasMore and stops citing the cap",
+        # Both halves at once, because either alone is legitimate: a queryFn
+        # that names the register is asking for the cap deliberately, and one
+        # that reads `hasMore` has kept its cardinality. Losing BOTH is a page
+        # length standing in for a total — and on THIS page it is worse than
+        # elsewhere, because `hasMore` is what the "Read older entries" control
+        # and the floor mark are both computed from.
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace(
+                "limit: LOGS_SERVER_WINDOWS.TIMELINE", "limit: 100"
+            ).replace(
+                "    getNextPageParam: (last, _all, lastParam) =>\n"
+                "      last.hasMore === true && last.nextCursor !== lastParam ? last.nextCursor : undefined,\n",
+                "",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+        expect_text="/logs",
+    )
+    case(
+        "W1 the /logs register drifted past the server's clamp",
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace("TIMELINE: 100,", "TIMELINE: 250,"), encoding="utf-8"
+        ),
+        "violation",
+        expect_text="/logs",
+    )
+    case(
+        "W1 the timeline clamp fell below /logs' declared window",
+        # The same mutation the Sorting Office already has a case for. Asserting
+        # on "/logs" is what proves THIS page's register entry is live rather
+        # than decoration riding on the other page's.
+        lambda t: (t / GATEWAY_ROOT / "logs" / "logs-timeline.service.ts").write_text(
+            CLEAN_TIMELINE_GATEWAY.replace("Math.min(200", "Math.min(25"), encoding="utf-8"
+        ),
+        "violation",
+        expect_text="/logs",
+    )
+    case(
+        "W2 the /logs floor marker was deleted but its IMPORT remained",
+        lambda t: (t / _LOGS_PAGE.renderers[0]).write_text(
+            CLEAN_LOGS_RENDERER.replace(
+                "{count === null ? EM : floor ? `${GE} ${count}` : count}",
+                "{count === null ? EM : count}",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W2 the /logs window is declared but every reader took the literal",
+        lambda t: (
+            (t / _LOGS_PAGE.hooks).write_text(
+                CLEAN_LOGS_HOOKS.replace("LOGS_SERVER_WINDOWS.TIMELINE", "100"), encoding="utf-8"
+            ),
+            (t / _LOGS_PAGE.renderers[0]).write_text(
+                CLEAN_LOGS_RENDERER.replace("LOGS_SERVER_WINDOWS.TIMELINE", "100"), encoding="utf-8"
+            ),
+        )
+        and None,
+        "violation",
+        expect_text="/logs",
+    )
+    case(
+        "W3 a measured zero on /logs rendered as the unknown dash",
+        lambda t: (t / _LOGS_PAGE.renderers[0]).write_text(
+            CLEAN_LOGS_RENDERER.replace(
+                "{count === null ? EM : floor ? `${GE} ${count}` : count}",
+                "{GE}{count > 0 ? String(count) : EM}",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W3 reads the ENTRY SHEET too, not just the page",
+        # The sheet carries no window and no query, so W1/W2/W5/W6 never touch
+        # it. If it were left out of `renderers` this mutation would be invisible
+        # and the run would still print "clean".
+        lambda t: (t / _LOGS_PAGE.renderers[1]).write_text(
+            CLEAN_LOGS_SHEET.replace(
+                "{event ? event.summary : EM}", "{event.count > 0 ? event.count : EM}"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W4 hasMore widened away, so an old gateway reads as 'nothing older exists'",
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace("hasMore: boolean | null;", "hasMore: boolean;"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W4 failedSources widened away, so 'did not say' becomes 'said none'",
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace(
+                "failedSources: TimelineSource[] | null;", "failedSources: TimelineSource[];"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W4 the failure's status widened away from | null",
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace("status: number | null;", "status: number;"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W3 a /logs register field whose unanswered branch is an empty list",
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace(
+                "  return { atFloor };",
+                "  return {\n    failedSources: known ? last.failedSources : [],\n    atFloor,\n  };",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "the /logs register was deleted",
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            "export const nothing = 1;\n", encoding="utf-8"
+        ),
+        "cannot-check",
+    )
+    case(
+        "the /logs entry sheet is missing",
+        lambda t: (t / _LOGS_PAGE.renderers[1]).unlink(),
+        "cannot-check",
+    )
+    case(
+        "a /logs nullable field was renamed",
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace("sourcesQueried:", "registersQueried:"), encoding="utf-8"
+        ),
+        "cannot-check",
+    )
+    case(
+        "the /logs hook's query call vanished entirely",
+        # No query call at all: the page's only bucket is gone and there is
+        # nothing left to name it, so this lands on the generic no-keys-found
+        # branch. It must read as cannot-check, never as clean.
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace("useInfiniteQuery({", "notAQuery({"), encoding="utf-8"
+        ),
+        "cannot-check",
+        expect_text="no `queryKey: [...]` found",
+    )
+    case(
+        "the matcher LOSES ITS GRIP on useInfiniteQuery and says so",
+        # The vacuity that matters most on this page, and the one the anti-
+        # vacuity branch could not catch until it was matched as an identifier:
+        # the call is still there and still spelled `useInfiniteQuery`, but the
+        # options are no longer a brace literal, so USE_QUERY finds nothing.
+        # W5, W6 and W7 would all pass on a file they never read. The expected
+        # message is the SPECIFIC one — landing on the generic no-keys branch
+        # instead would mean the widened check is still dead.
+        lambda t: (t / _LOGS_PAGE.hooks).write_text(
+            CLEAN_LOGS_HOOKS.replace("useInfiniteQuery({", "useInfiniteQuery(\n    buildOptions({"),
+            encoding="utf-8",
+        ),
+        "cannot-check",
+        expect_text="contains a query call but none could be parsed",
     )
 
     print()
