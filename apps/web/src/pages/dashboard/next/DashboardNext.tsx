@@ -106,9 +106,16 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
     day: 'numeric',
   });
 
+  // `min-h-screen`, NOT `min-h-full`. DashboardLayout's <main> is itself
+  // `min-h-screen` with no resolved height on the chain above it
+  // (components/layout/DashboardLayout.tsx:85), so a percentage minimum
+  // resolves against a content-sized parent: measured, this child came out at
+  // 18.5px against a 563px viewport, leaving the light app shell showing below
+  // a charcoal band — a seam across the first page a manager lands on. Every
+  // other Next page states the viewport minimum directly; this one now matches.
   return (
     <div
-      className="mudavym min-h-full bg-paper-0 text-inkm-1"
+      className="mudavym min-h-screen bg-paper-0 text-inkm-1"
       data-ground={ground}
       style={{ fontFamily: '"Plus Jakarta Sans", "DM Sans", system-ui, sans-serif' }}
     >

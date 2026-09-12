@@ -271,7 +271,10 @@ export function CanonicalDocumentPage() {
         background: 'var(--paper-1, #F3EFE6)',
         color: 'var(--ink-1, #211C16)',
         fontFamily: SANS,
-        minHeight: '100%',
+        // 100vh, not 100%: see canonical-document.css's `.cd-page` — a
+        // percentage minimum collapses inside DashboardLayout's <main> and
+        // leaves the light app shell showing under the charcoal ground.
+        minHeight: '100vh',
       }}
     >
       <div style={{ maxWidth: 1240, margin: '0 auto', padding: '18px 22px 40px' }}>
