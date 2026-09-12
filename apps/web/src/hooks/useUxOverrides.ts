@@ -13,9 +13,20 @@
  * `git grep -n useUxOverrides -- apps/web/src` returns only this file, and
  * `../lib/uxSignals` has no importer but this hook. So no TTI is reported, no
  * friction detector is attached, no override is ever fetched, and the
- * `data-ux-key` markers in the page tree (33 across 11 files when this was
- * written) are inert attributes nothing reads. VITE_UX_OPTIMIZER gates code
- * that does not run: flipping it collects nothing.
+ * `data-ux-key` markers in the page tree are inert attributes nothing reads.
+ * VITE_UX_OPTIMIZER gates code that does not run: flipping it collects nothing.
+ *
+ * How many markers is a number that moves, so it is written as the command that
+ * produces it rather than as a figure that rots:
+ *
+ *   git grep -c 'data-ux-key=' -- apps/web/src | grep '\.tsx:' | grep -v '\.test\.'
+ *
+ * (written with `grep '\.tsx:'` rather than a `**` pathspec on purpose — a
+ * glob ending `*.tsx` would close this comment block.)
+ *
+ * (36 lines across 11 files on this branch; 33 across the same 11 on
+ * `origin/main` — this branch's door work added three. The command is the
+ * claim; those readings are only when it was last run.)
  *
  * How the previous version of this comment came to lie. It said "Mounted once
  * in DashboardLayout", and that was TRUE the day it was written — 7c80b587

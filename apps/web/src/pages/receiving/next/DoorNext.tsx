@@ -147,9 +147,11 @@ export default function DoorNext() {
    * queue and will send itself — so alarming on it tells a receiver to go find
    * a manager about a delivery that is about to arrive on the server by itself.
    * `dropped` is the permanent subset: the item has been deleted from the queue
-   * and exists nowhere (lib/doorOutbox.ts:143-150). Nothing that happens later,
+   * and exists nowhere (the `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)`
+   * branch, lib/doorOutbox.ts:144-149). Nothing that happens later,
    * least of all a successful flush, makes a drop untrue, so this never resets.
-   * The legacy page pins the same distinction (DoorReceipt.test.tsx:92).
+   * The legacy page pins the same distinction — DoorReceipt.test.tsx,
+   * `describe('DoorReceipt — a dropped receipt is not a delivered one')`.
    */
   const [dropped, setDropped] = useState(0);
 
@@ -203,10 +205,16 @@ export default function DoorNext() {
     };
   }, [orderId]);
 
-  // The outbox, watched by hand rather than via watchDoorOutbox, because that
-  // helper discards the flush result — and the `dropped`/`failed` split is
-  // exactly what point 5 requires this page to surface. Flushing twice is safe
-  // (idempotent).
+  // The outbox, watched by hand rather than via watchDoorOutbox.
+  //
+  // NOT because that helper discards the flush result — it no longer does; it
+  // hands the `DoorFlushResult` to its callback (lib/doorOutbox.ts,
+  // `onChange?.(result)`), which is how DoorReceipt.tsx gets the same
+  // `dropped`/`failed` split. The reason is the `offline`/`online` pair below:
+  // this screen RENDERS connectivity, and watchDoorOutbox listens for `online`
+  // without exposing it, has no `offline` handler at all, and its returned
+  // cleanup detaches only the `online` listener — not the `visibilitychange`
+  // one. Flushing twice is safe (idempotent).
   useEffect(() => {
     let alive = true;
     const refresh = () => void pendingDoorCount().then((n) => alive && setPendingQueue(n));

@@ -567,7 +567,7 @@ export function useOwnerRecovery(): RecoveryData {
 /**
  * `doorOutbox.ts` keeps this literal private; cited here rather than
  * re-exported so this page cannot drift from the queue it watches
- * (lib/doorOutbox.ts:24).
+ * (`const MUTATION_TYPE` — lib/doorOutbox.ts:23).
  */
 const DOOR_MUTATION_TYPE = 'receiving.door';
 
@@ -620,10 +620,10 @@ export interface DroppedReceiptVM {
 
 /**
  * The most recent flush. `attempted: false` is a first-class state: the outbox
- * returns `{sent:0, failed:0}` without touching the network when the device is
- * offline (lib/doorOutbox.ts:94), and stamping that with a timestamp printed
- * "last sync 14:32 · sent 0 · failed 0" directly under a header reading
- * "offline — holding".
+ * returns a zeroed result without touching the network when the device is
+ * offline (the `if (!navigator.onLine) return` at lib/doorOutbox.ts:122), and
+ * stamping that with a timestamp printed "last sync 14:32 · sent 0 · failed 0"
+ * directly under a header reading "offline — holding".
  */
 export type FlushRecord =
   | { attempted: true; sent: number; failed: number; at: string }
@@ -721,13 +721,24 @@ function belongsToRestaurant(m: PendingMutation, restaurantId: string): boolean 
 
 /**
  * The pending-outbox rail's data. This is the defect fix the motion canvas
- * named (inv-09, "Nothing vanishes; the drop becomes a pin"): the legacy page
- * calls `watchDoorOutbox` and throws the flush result away, so a receipt that
- * `flushDoorOutbox` permanently drops (4xx, or 8 failed attempts —
- * doorOutbox.ts:115) is indistinguishable from one that was delivered. Here
- * the queue is snapshotted around each flush; anything that left the queue
- * beyond what `sent` accounts for is pinned, named, and stays until a person
- * dismisses it.
+ * named (inv-09, "Nothing vanishes; the drop becomes a pin"): `flushDoorOutbox`
+ * DELETES a receipt it gives up on (a 4xx, or the eighth failed attempt — the
+ * `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)` branch,
+ * lib/doorOutbox.ts:144), so the pending count falls by one exactly as it does
+ * on a delivery and a permanent loss is indistinguishable from a success.
+ *
+ * CORRECTED 2026-09-12 — this used to say the legacy page "calls
+ * `watchDoorOutbox` and throws the flush result away", which was true when it
+ * was written and is not true of this tree. `watchDoorOutbox` now hands its
+ * `DoorFlushResult` to the callback (`onChange?.(result)`, lib/doorOutbox.ts),
+ * the result carries a `dropped` count separate from the retryable `failed`,
+ * and DoorReceipt.tsx accumulates it. The distinction is held on BOTH pages.
+ *
+ * This hook keeps its own reconstruction rather than reading `dropped`: it
+ * needs the NAMES of the dropped receipts to pin them, and the count alone
+ * cannot say which ones left. The queue is snapshotted around each flush;
+ * anything that left beyond what `sent` accounts for is pinned, named, and
+ * stays until a person dismisses it.
  */
 export function useDoorOutbox(): OutboxData {
   const rid = useActiveRestaurantId();
@@ -783,8 +794,9 @@ export function useDoorOutbox(): OutboxData {
         beforeKnown = false;
       }
 
-      // `flushDoorOutbox` returns {sent:0, failed:0} WITHOUT attempting
-      // anything when the device is offline (lib/doorOutbox.ts:94). Two
+      // `flushDoorOutbox` returns a zeroed result WITHOUT attempting anything
+      // when the device is offline (`if (!navigator.onLine) return` —
+      // lib/doorOutbox.ts:122). Two
       // independent readings separate that non-attempt from a real flush that
       // found nothing to send, neither of which requires touching that file:
       //

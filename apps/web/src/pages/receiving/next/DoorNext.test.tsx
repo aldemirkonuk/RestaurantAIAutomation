@@ -7,14 +7,16 @@ import DoorNext from './DoorNext'
  * The rebuilt door screen, and the one distinction it was crying wolf over.
  *
  * `flushDoorOutbox` counts a RETRYABLE pass in `failed` — the receipt is still
- * in the queue and the next flush sends it (lib/doorOutbox.ts:152-158). Only
+ * in the queue and the next flush sends it (the `updatePendingMutation` retry
+ * path, lib/doorOutbox.ts:151-155). Only
  * `dropped` means the app has given up: a 4xx, or the retry budget spent, with
- * the item deleted from the queue (lib/doorOutbox.ts:143-150).
+ * the item deleted from the queue (lib/doorOutbox.ts:144-149).
  *
  * This page rendered its red "did not send — tell a manager" banner on
  * `failed`, so a single flaky flush on a phone at the dock sent a receiver to
  * find a manager about a delivery that was about to arrive on the server by
- * itself. The legacy page pins the opposite (DoorReceipt.test.tsx:92); this
+ * itself. The legacy page pins the same pair — DoorReceipt.test.tsx,
+ * `describe('DoorReceipt — a dropped receipt is not a delivered one')`; this
  * pins it here, on the version the founder's house has switched ON.
  */
 

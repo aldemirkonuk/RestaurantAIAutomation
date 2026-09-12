@@ -9,10 +9,16 @@
  *    count out of 8 and the last error verbatim.
  * 2. DROPPED — the defect fix (v3.0-TECH-DEBT / motion canvas inv-09):
  *    `flushDoorOutbox` permanently discards a receipt on a 4xx or after 8
- *    attempts and the legacy page throws that `failed` count away, so a
- *    dropped receipt looks identical to a delivered one. Here every drop is
- *    pinned by name and stays until a person dismisses it. Nothing vanishes;
- *    the drop becomes a pin (turn, then the stamp landing).
+ *    attempts (lib/doorOutbox.ts:144), deleting it from the queue, so the
+ *    pending count falls exactly as it does on a delivery and a dropped
+ *    receipt looks identical to a delivered one. Here every drop is pinned by
+ *    name and stays until a person dismisses it. Nothing vanishes; the drop
+ *    becomes a pin (turn, then the stamp landing).
+ *
+ *    (This used to say the legacy page "throws that `failed` count away". That
+ *    was true when written; as of 2026-09-12 the legacy DoorReceipt page pins
+ *    the same distinction — `watchDoorOutbox` hands it the `DoorFlushResult`
+ *    and it accumulates `dropped`. What this rail still adds is the NAMES.)
  *
  * Honesty: a storage read that throws renders as "unknown", never as an
  * empty queue — and the empty state says what emptiness means.
