@@ -137,6 +137,7 @@ DECLARE
   admitted TEXT[];
   probe_restaurant UUID;
   probe_user UUID;
+  probe_challenge UUID;
   rejected BOOLEAN;
 BEGIN
   IF to_regclass('public.mcp_seal_challenges') IS NULL THEN
@@ -185,6 +186,7 @@ BEGIN
   SELECT user_id INTO probe_user FROM public.users LIMIT 1;
   IF probe_restaurant IS NOT NULL AND probe_user IS NOT NULL THEN
     rejected := FALSE;
+    probe_challenge := NULL;
     BEGIN
       INSERT INTO public.mcp_seal_challenges (
         subject_kind, subject_id, restaurant_id, actor_user_id, connection_id,
@@ -193,12 +195,17 @@ BEGIN
         'procurement_document', gen_random_uuid(), probe_restaurant, probe_user,
         gen_random_uuid(),
         'verify', 'migration probe', 'migration probe', now() + interval '1 minute'
-      );
+      )
+      RETURNING id INTO probe_challenge;
     EXCEPTION WHEN check_violation THEN
       rejected := TRUE;
     END;
     IF NOT rejected THEN
-      DELETE FROM public.mcp_seal_challenges WHERE args_hash = 'migration probe';
+      -- Scoped by the id the INSERT itself just returned, never by
+      -- args_hash: a magic string is not a key, and this table is real and
+      -- live -- it would delete any genuine challenge that happened to
+      -- share the string, not only this probe's row.
+      DELETE FROM public.mcp_seal_challenges WHERE id = probe_challenge;
       RAISE EXCEPTION
         'a procurement_document seal was accepted carrying a connection_id — chk_mcp_seal_challenges_non_tool_has_no_connection is not biting';
     END IF;
@@ -212,7 +219,8 @@ BEGIN
     ) VALUES (
       'procurement_document', gen_random_uuid(), probe_restaurant, probe_user,
       'verify', 'migration probe', 'migration probe', now() + interval '1 minute'
-    );
-    DELETE FROM public.mcp_seal_challenges WHERE args_hash = 'migration probe';
+    )
+    RETURNING id INTO probe_challenge;
+    DELETE FROM public.mcp_seal_challenges WHERE id = probe_challenge;
   END IF;
 END $$;
