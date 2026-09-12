@@ -1394,6 +1394,23 @@ export class InventoryService {
   ) {
     const client = this.dbService.getClient();
 
+    // ADR 0141, second correction 2026-09-12. `stockLive` / `shadowStock` below
+    // hand this item id to set_stock_absolute, a SQL wrapper that derives the
+    // house from the item and calls apply_stock_movement WITHOUT
+    // p_restaurant_id, so neither database-side refusal runs. The scoped read
+    // that follows kept `data` and never refused on null, so a PATCH naming
+    // another house's item moved that house's stock: a PGlite probe on this
+    // tree's migrations took its lots from 9 to empty. Checked FIRST, before
+    // any write in this method -- the plain UPDATE of non-stock fields
+    // included -- so a foreign item is refused whole, never half-applied.
+    await assertInventoryBelongsToRestaurant(
+      client,
+      restaurantId,
+      itemId,
+      "updateInventoryItem",
+      this.logger,
+    );
+
     // Fetch old values for the event payload only (informational — the actual
     // stock delta is computed inside set_stock_absolute against a locked
     // read, not against this value).

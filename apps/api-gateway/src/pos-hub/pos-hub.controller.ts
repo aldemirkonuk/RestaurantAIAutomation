@@ -159,6 +159,9 @@ export class PosHubController {
     try {
       return await this.posHub.upsertItemMapping(restaurantId, body || {});
     } catch (error) {
+      // ADR 0141: a refusal the service chose (403 foreign item, 422 failed
+      // ownership read) reaches the caller as itself, not re-wrapped as a 400.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Mapping failed",
         HttpStatus.BAD_REQUEST,
@@ -329,6 +332,8 @@ export class PosHubController {
         },
       );
     } catch (error) {
+      // ADR 0141: a foreign candidate item is refused as a 403, not a 400.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Approve failed",
         HttpStatus.BAD_REQUEST,

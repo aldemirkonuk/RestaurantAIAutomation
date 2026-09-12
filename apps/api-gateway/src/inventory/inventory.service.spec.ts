@@ -411,6 +411,10 @@ describe("InventoryService", () => {
     });
 
     it("passes performedBy to the manual-override set_stock_absolute", async () => {
+      // ADR 0141, second correction: updateInventoryItem now checks ownership
+      // before any write, so the item must belong to the house for the path to
+      // reach set_stock_absolute at all.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
       // 1: the informational old-values read. 2: the post-write re-fetch, which
       // mapInventoryItem dereferences.
       mockSingle

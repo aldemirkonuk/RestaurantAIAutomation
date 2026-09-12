@@ -134,7 +134,11 @@ describe("sale_unit reaches the mapping row", () => {
   // omitted the column, so all 92 production mappings were null and every glass
   // pour took the `?? "bottle"` fallback — 750ml booked instead of 150ml.
   it("persists sale_unit, the column that decides glass vs bottle depletion", async () => {
-    const { service, calls } = makeService();
+    // ADR 0141, second correction: a mapping that names an item is written only
+    // when the ownership read finds that item under this restaurant.
+    const { service, calls } = makeService({
+      inventory: { bottle_size_ml: 750, pour_size_ml: 150 },
+    });
 
     await service.upsertItemMapping("r1", {
       external_item_id: "item-glass",

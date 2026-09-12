@@ -520,8 +520,15 @@ describe("InventoryLedgerService", () => {
       const selectedColumns = mockSupabaseClient.select.mock.calls.map((c) =>
         String(c[0] ?? ""),
       );
+      //
+      // Tightened 2026-09-12 (ADR 0141, second correction): `select("*")` names
+      // no column and returns every one, stock_live included, so a filter on
+      // column NAMES let the A11 race back in through a star -- the
+      // adversarial pass added a `select("*")` read before the RPC and this
+      // test stayed green. A star, bare or inside an embedded relation, is
+      // refused as well.
       expect(
-        selectedColumns.filter((cols) => /stock|qty|quantity/i.test(cols)),
+        selectedColumns.filter((cols) => /stock|qty|quantity|\*/i.test(cols)),
       ).toEqual([]);
       expect(mockSupabaseClient.from).toHaveBeenCalledWith(
         "restaurant_inventory",
