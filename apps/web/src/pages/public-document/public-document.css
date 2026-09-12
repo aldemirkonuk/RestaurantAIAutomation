@@ -1,0 +1,293 @@
+/* ============================================================
+   The public document treatment — `/privacy` and `/v/:slug`
+   ============================================================
+
+   Scoped under `.mudavym .pd-…` so nothing here can reach a legacy page.
+   Tokens are ADR 0042's (styles/mudavym.css); the ground follows the app's
+   `light`/`dark` class on <html>, which ThemeContext stamps from the stored
+   `wineops-theme` key or, absent that, `prefers-color-scheme` — a public page
+   has no house, so that is the only ground it can have.
+
+   Motion is written from the tokens in lib/mudavym/motion.ts — `settle` 320ms
+   on the house curve for the one arrival, `ink` 160ms for every micro-state —
+   and MOTIONS.md beside this file lists each one. Reduced motion collapses to
+   the end state at the bottom.
+
+   Local to these two pages: `components/mudavym/PublicShell.tsx` had not
+   landed when this was built (see PublicDocument.tsx). */
+
+.mudavym.pd-root {
+  min-height: 100vh;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mudavym .pd-wrap {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 44px 20px 72px;
+}
+.mudavym .pd-wrap[data-width="ledger"] { max-width: 980px; }
+
+/* the one arrival — `settle` */
+.mudavym .pd-arrive { animation: pd-settle 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes pd-settle {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* masthead */
+.mudavym .pd-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.mudavym .pd-wm { text-decoration: none; display: inline-block; }
+.mudavym .pd-wm:focus-visible { outline: 2px solid var(--seal-ring); outline-offset: 3px; }
+
+.mudavym .pd-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mudavym .pd-head { margin-top: 36px; }
+.mudavym .pd-head[data-bare="true"] { margin-top: 0; }
+.mudavym .pd-title {
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  font-size: 32px;
+  letter-spacing: -0.018em;
+  line-height: 1.1;
+  margin: 10px 0 0;
+  color: var(--ink-1);
+}
+.mudavym .pd-lede {
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 16px;
+  color: var(--ink-2);
+  margin: 10px 0 0;
+  max-width: 60ch;
+}
+.mudavym .pd-prov,
+.mudavym .pd-mono {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.mudavym .pd-prov { margin-top: 14px; }
+.mudavym .pd-prov b, .mudavym .pd-mono b { color: var(--ink-2); font-weight: 600; }
+
+/* a section of the notice */
+.mudavym .pd-sec {
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px solid var(--paper-2);
+}
+.mudavym .pd-sec h2 {
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  font-size: 20px;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--ink-1);
+}
+.mudavym .pd-sec p { margin: 8px 0 0; color: var(--ink-2); max-width: 66ch; }
+.mudavym .pd-read {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  margin-top: 10px;
+  word-break: break-word;
+}
+.mudavym .pd-read::before { content: "read against "; color: var(--ink-3); }
+.mudavym .pd-prose { margin-top: 20px; color: var(--ink-2); max-width: 70ch; }
+
+/* records — a ruled list, the house's own shape */
+.mudavym .pd-rec { margin-top: 12px; border-top: 1px solid var(--ink-1); }
+.mudavym .pd-rec .pd-r {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--paper-2);
+}
+.mudavym .pd-rec .pd-k {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mudavym .pd-rec .pd-v { font-size: 14px; color: var(--ink-1); min-width: 0; overflow-wrap: anywhere; }
+.mudavym .pd-rec .pd-v.pd-na { color: var(--ink-3); font-style: italic; }
+.mudavym .pd-rec.pd-ruled { border-bottom: 3px double var(--ink-1); }
+
+/* words that act */
+.mudavym .pd-link {
+  color: var(--seal-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  transition: color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mudavym .pd-link:hover { color: var(--seal); }
+.mudavym .pd-link:focus-visible { outline: 2px solid var(--seal-ring); outline-offset: 2px; }
+
+.mudavym .pd-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--ink-1);
+  background: none;
+  color: var(--ink-1);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mudavym .pd-btn:hover { background: var(--paper-1); }
+.mudavym .pd-btn:focus-visible { outline: 2px solid var(--seal-ring); outline-offset: 2px; }
+.mudavym .pd-btn[aria-pressed="true"] { background: var(--ink-1); color: var(--paper-0); }
+.mudavym .pd-btn.pd-quiet { border-color: var(--ink-3); color: var(--ink-2); }
+.mudavym .pd-btn.pd-quiet:hover { border-color: var(--ink-1); color: var(--ink-1); }
+
+/* a field */
+.mudavym .pd-in {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 14px;
+  transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mudavym .pd-in::placeholder { color: var(--ink-3); }
+.mudavym .pd-in:focus { outline: none; border-color: var(--seal); box-shadow: 0 0 0 3px var(--seal-ring); }
+
+/* the catalogue's controls row */
+.mudavym .pd-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-top: 28px;
+}
+.mudavym .pd-controls .pd-search { flex: 1 1 260px; }
+.mudavym .pd-sort { display: inline-flex; align-items: center; gap: 6px; }
+.mudavym .pd-sort .pd-sort-k { margin-right: 4px; }
+.mudavym .pd-count { margin-top: 12px; }
+
+/* the ledger */
+.mudavym .pd-tablewrap { overflow-x: auto; margin-top: 10px; border-top: 1px solid var(--ink-1); }
+.mudavym .pd-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.mudavym .pd-table th {
+  text-align: left;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-weight: 500;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 10px 12px 8px 0;
+  border-bottom: 1px solid var(--paper-2);
+  white-space: nowrap;
+}
+.mudavym .pd-table th.pd-num, .mudavym .pd-table td.pd-num { text-align: right; padding-right: 0; }
+.mudavym .pd-table th:last-child { padding-right: 0; }
+.mudavym .pd-table td {
+  padding: 10px 12px 10px 0;
+  border-bottom: 1px solid var(--paper-2);
+  vertical-align: top;
+  color: var(--ink-2);
+  transition: background 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mudavym .pd-table td:last-child { padding-right: 0; }
+.mudavym .pd-table tr:hover td { background: var(--paper-1); }
+.mudavym .pd-table td.pd-name { color: var(--ink-1); font-weight: 500; }
+.mudavym .pd-table .pd-sub { display: block; color: var(--ink-3); font-weight: 400; font-size: 12.5px; margin-top: 2px; }
+.mudavym .pd-table td.pd-num {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 12.5px;
+  color: var(--ink-1);
+  white-space: nowrap;
+}
+.mudavym .pd-table .pd-na {
+  color: var(--ink-3);
+  font-style: italic;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.mudavym .pd-note { margin-top: 10px; }
+
+/* a stated state — loading, empty, missing, failed */
+.mudavym .pd-state {
+  margin-top: 28px;
+  padding: 18px 0 20px;
+  border-top: 1px solid var(--ink-1);
+  border-bottom: 3px double var(--ink-1);
+}
+.mudavym .pd-state h2 {
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.014em;
+  line-height: 1.15;
+  margin: 0;
+  color: var(--ink-1);
+}
+.mudavym .pd-state p { margin: 8px 0 0; color: var(--ink-2); max-width: 66ch; }
+.mudavym .pd-state .pd-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+.mudavym .pd-foot {
+  margin-top: 44px;
+  padding-top: 14px;
+  border-top: 1px solid var(--paper-2);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.mudavym .pd-foot p { margin: 0; max-width: 70ch; }
+
+@media (max-width: 640px) {
+  .mudavym .pd-title { font-size: 28px; }
+  .mudavym .pd-rec .pd-r { grid-template-columns: 1fr; gap: 3px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mudavym .pd-arrive { animation: none; }
+  .mudavym .pd-link,
+  .mudavym .pd-btn,
+  .mudavym .pd-in,
+  .mudavym .pd-table td { transition: none; }
+}
