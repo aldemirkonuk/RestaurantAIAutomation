@@ -33,7 +33,16 @@ describe("ProcurementService — draft trigger fallback (regression: Bug 2)", ()
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
-    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+    // ADR 0141: createOrder proves the item belongs to the caller before it
+    // writes anything, and that probe is a `maybeSingle()` on
+    // restaurant_inventory. A flat `null` here means "not this
+    // restaurant's item" and every createOrder test would 403. The row
+    // carries only `id`, so the wine-identity lookup that shares this mock
+    // still resolves to no master_wine_id and no wine_name, exactly as it
+    // did when this returned null.
+    maybeSingle: jest
+      .fn()
+      .mockResolvedValue({ data: { id: "inv-1" }, error: null }),
     single: mockSingle,
   };
 
@@ -100,7 +109,9 @@ describe("ProcurementService — draft trigger fallback (regression: Bug 2)", ()
       delete: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       neq: jest.fn().mockReturnThis(),
-      maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+      maybeSingle: jest
+        .fn()
+        .mockResolvedValue({ data: { id: "inv-1" }, error: null }),
       single: mockSingle,
     });
 
