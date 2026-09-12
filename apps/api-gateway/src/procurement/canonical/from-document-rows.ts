@@ -70,6 +70,16 @@ function snapshotNum(v: unknown): number | null {
 /** The document-level fields that live only in the `extracted` snapshot. */
 export interface SnapshotOnlyFields {
   vendorName: string | null;
+  /**
+   * ADR 0104 D15 — BT-31/BT-32, the seller's printed tax identity, and BT-48.
+   * They live only in the snapshot (no column), and they are read back here so
+   * the sheet can show what the PAGE said even when no provider resolved.
+   */
+  vendorTaxId: string | null;
+  vendorTaxOffice: string | null;
+  vendorAddress: string | null;
+  vendorCountry: string | null;
+  buyerTaxId: string | null;
   deliveredDate: string | null;
   taxBreakdown: ParsedTaxBreakdownRow[] | undefined;
 }
@@ -93,7 +103,16 @@ function asObject(v: unknown): Record<string, unknown> | null {
 export function readSnapshot(extracted: unknown): SnapshotOnlyFields {
   const snap = asObject(extracted);
   if (!snap)
-    return { vendorName: null, deliveredDate: null, taxBreakdown: undefined };
+    return {
+      vendorName: null,
+      vendorTaxId: null,
+      vendorTaxOffice: null,
+      vendorAddress: null,
+      vendorCountry: null,
+      buyerTaxId: null,
+      deliveredDate: null,
+      taxBreakdown: undefined,
+    };
 
   const rawRows = snap.taxBreakdown;
   const taxBreakdown = Array.isArray(rawRows)
@@ -116,6 +135,11 @@ export function readSnapshot(extracted: unknown): SnapshotOnlyFields {
 
   return {
     vendorName: snapshotStr(snap.vendorName),
+    vendorTaxId: snapshotStr(snap.vendorTaxId),
+    vendorTaxOffice: snapshotStr(snap.vendorTaxOffice),
+    vendorAddress: snapshotStr(snap.vendorAddress),
+    vendorCountry: snapshotStr(snap.vendorCountry),
+    buyerTaxId: snapshotStr(snap.buyerTaxId),
     deliveredDate: snapshotStr(snap.deliveredDate),
     taxBreakdown,
   };
@@ -215,6 +239,11 @@ export function parsedFromDocumentRows(
     referencesDocNumber: rowStr(document.references_doc_number),
     poNumber: null,
     vendorName: snapshot.vendorName,
+    vendorTaxId: snapshot.vendorTaxId,
+    vendorTaxOffice: snapshot.vendorTaxOffice,
+    vendorAddress: snapshot.vendorAddress,
+    vendorCountry: snapshot.vendorCountry,
+    buyerTaxId: snapshot.buyerTaxId,
     vendorAccount: null,
     /*
      * WHAT THE ROW SAYS, or nothing — never `USD`.

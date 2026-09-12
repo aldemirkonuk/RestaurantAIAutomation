@@ -1057,6 +1057,10 @@ export class DocumentsController {
       // immediately, without a second round trip.
       document: result.parsed,
       ...(catalog ? { catalog } : {}),
+      // ADR 0104 D15 — and so is what resolving the vendor answered, refusals
+      // included. Omitting a refusal would leave the caller unable to tell
+      // `unresolved` from "resolution never ran".
+      ...(result.vendor ? { vendor: result.vendor } : {}),
     };
   }
 
@@ -1343,6 +1347,8 @@ export class DocumentsController {
       // Never omitted when it failed: a document whose lines landed and whose
       // revision did not is a different thing from one where both did.
       revision: applied.revision,
+      // ADR 0104 D15 — what resolving the vendor answered on this read.
+      ...(applied.vendor ? { vendor: applied.vendor } : {}),
     };
   }
 

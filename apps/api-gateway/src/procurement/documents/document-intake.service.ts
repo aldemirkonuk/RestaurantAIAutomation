@@ -30,6 +30,10 @@ import {
   CanonicalDocumentService,
   ReadResult,
 } from "../canonical/canonical-document.service";
+import {
+  VendorResolution,
+  VendorResolutionService,
+} from "../vendor-identity/vendor-resolution.service";
 
 /**
  * DocumentIntakeService — the single door every vendor document comes through.
@@ -89,6 +93,15 @@ export interface IntakeResult {
    * when the upload succeeded or when the channel carried no bytes to store.
    */
   storageError?: string;
+  /**
+   * ADR 0104 D15 — what resolving the vendor from the seller party answered.
+   *
+   * Present on every ingest that produced a document, including the refusals:
+   * `unresolved` (the paper names no identity we can verify) and `unavailable`
+   * (we could not look) are answers, and omitting them would leave the caller
+   * unable to tell either from "resolution never ran".
+   */
+  vendor?: VendorResolution;
 }
 
 /** What the extraction door reports back beyond the document itself. */
@@ -106,6 +119,8 @@ export interface ExternalExtractionResult {
    * did, and collapsing them is this repository's absence-as-health fault.
    */
   revision: ReadResult<{ revision: number; id: string }>;
+  /** ADR 0104 D15 — what resolving the vendor answered on this read. */
+  vendor?: VendorResolution;
 }
 
 @Injectable()
@@ -116,6 +131,7 @@ export class DocumentIntakeService {
     private readonly db: DatabaseService,
     private readonly extractor: DocumentExtractorService,
     private readonly canonical: CanonicalDocumentService,
+    private readonly vendorResolution: VendorResolutionService,
   ) {}
 
   /**
@@ -500,11 +516,31 @@ export class DocumentIntakeService {
         bytes,
         parsedWithStorage,
       );
+
+      /**
+       * ADR 0104 D15 — the vendor, from the seller party the document PRINTED.
+       *
+       * Runs here rather than inside `persist` because resolution needs the
+       * document's own id: rule 2 writes `created_from_document_id` and the
+       * append-only log is keyed on the document. It is deliberately not
+       * allowed to fail the ingest — a document whose vendor we could not
+       * resolve is still a document, and D15's answer for that case is
+       * `unresolved` with a sentence, never a discarded upload.
+       */
+      const vendor = documentId
+        ? await this.resolveVendorFor(
+            documentId,
+            resolvedInput,
+            parsedWithStorage,
+          )
+        : null;
+
       return {
         documentId,
         parsed: parsedWithStorage,
         duplicate: false,
         ...(stored.failure ? { storageError: stored.failure } : {}),
+        ...(vendor ? { vendor } : {}),
       };
     } catch (err: any) {
       this.logger.warn(`ingest failed: ${err?.message}`);
@@ -1155,6 +1191,67 @@ export class DocumentIntakeService {
    * invisible: a document that skipped review because the second copy forgot a
    * clause looks exactly like one that passed it.
    */
+  /**
+   * ADR 0104 D15 — run resolution for one document and write what it answered.
+   *
+   * One place, called from BOTH doors (the ingest above and the external
+   * extraction below), because two copies would drift and the second copy is
+   * always the one that stops checking whether the document is self-billed.
+   *
+   * `applyToDocument` writes `provider_id` only where it is still NULL, so a
+   * vendor a caller named is never overwritten by a reading of the paper; the
+   * disagreement is recorded in the log instead.
+   */
+  private async resolveVendorFor(
+    documentId: string,
+    input: { restaurantId: string; providerId?: string | null },
+    parsed: ParsedDocument,
+    actorUserId: string | null = null,
+  ): Promise<VendorResolution | null> {
+    try {
+      const resolution = await this.vendorResolution.resolveVendor({
+        restaurantId: input.restaurantId,
+        documentId,
+        seller: {
+          name: parsed.vendorName ?? null,
+          taxId: parsed.vendorTaxId ?? null,
+          taxOffice: parsed.vendorTaxOffice ?? null,
+          address: parsed.vendorAddress ?? null,
+          country: parsed.vendorCountry ?? null,
+        },
+        buyerTaxId: parsed.buyerTaxId ?? null,
+        // The extraction contract carries no UNCL1001 code, so the self-billed
+        // case reaches the resolver through the OTHER two catches (the buyer id
+        // and the venue's own recorded identity) rather than through a code we
+        // would have to invent. `typeCode` stays a real input for the callers
+        // that do have one — the canonical object's BT-3.
+        typeCode: null,
+        existingProviderId: input.providerId ?? null,
+        actorUserId,
+      });
+      await this.vendorResolution.applyToDocument(
+        input.restaurantId,
+        documentId,
+        resolution,
+      );
+      return resolution;
+    } catch (err: any) {
+      // A THROW here is our own failure, not the document's, so it is reported
+      // as `unavailable` rather than swallowed — `unresolved` would blame the
+      // paper for something we broke.
+      this.logger.warn(
+        `vendor resolution threw for document ${documentId}: ${err?.message}`,
+      );
+      return {
+        state: "unavailable",
+        providerId: null,
+        source: null,
+        identity: null,
+        reason: `The vendor could not be resolved because the resolution itself failed: ${err?.message ?? "unknown error"}`,
+      };
+    }
+  }
+
   private needsReview(parsed: ParsedDocument): boolean {
     return (
       parsed.docType === "unknown" ||
@@ -1478,10 +1575,22 @@ export class DocumentIntakeService {
         `${parsed.lines.length} line(s) were written and the header was not, so this document now has lines under an unread header and this door will refuse it: ${headerErr.message}`,
       );
 
-    // ---- 6. the same tail intake runs -------------------------------------
+    // ---- 6. the vendor, now that the paper has been read ------------------
+    // ADR 0104 D15. This door is where a photographed invoice first carries a
+    // seller party at all, so it is the door that most often resolves one. It
+    // runs BEFORE the revision is appended (step 7), so the canonical object
+    // that revision records already names the vendor it resolved.
+    const vendor = await this.resolveVendorFor(
+      documentId,
+      { restaurantId },
+      parsed,
+      userId,
+    );
+
+    // ---- 7. the same tail intake runs -------------------------------------
     await this.linkAndMatch(documentId, restaurantId, null, parsed);
 
-    // ---- 7. one appended revision (ADR 0104 D1/D5) ------------------------
+    // ---- 8. one appended revision (ADR 0104 D1/D5) ------------------------
     // Built from the COLUMNS rather than from `parsed`, so the revision records
     // what the database actually holds — including the pairings step 6 just
     // wrote — rather than what we hoped to write. `extracted` is the honest
@@ -1506,6 +1615,7 @@ export class DocumentIntakeService {
 
     return {
       warnings: parsed.warnings,
+      ...(vendor ? { vendor } : {}),
       tieOut: {
         computedLinesTotal: parsed.computedLinesTotal,
         tieOutDelta: parsed.tieOutDelta,

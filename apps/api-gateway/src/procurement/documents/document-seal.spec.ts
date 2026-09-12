@@ -653,6 +653,16 @@ describe("document-seal — the correction seal over a REAL canonical build", ()
        * do with the hash, and the test would be measuring the memory instead.
        */
       { proposalsFor: async () => ({ ok: true, value: new Map() }) } as never,
+      /*
+       * VendorResolutionService (ADR 0104 D15, merged from main 2026-09-12).
+       * buildFromDocumentId asks it for the latest resolution on every read, so
+       * it cannot be an empty object here. It answers "nothing recorded for this
+       * document" - the same answer the real service gives for a document that
+       * predates D15 - and the same answer BOTH times, for the reason the
+       * mapping double above gives: this test is about whether the hash is
+       * stable, not about what the resolver says.
+       */
+      { latestFor: async () => ({ ok: true, value: null }) } as never,
     );
     const read = await service.buildFromDocumentId("rest-1", "doc-1");
     if (!read.ok) throw new Error(`the fixture did not build: ${read.error}`);

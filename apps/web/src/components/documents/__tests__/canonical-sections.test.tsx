@@ -119,7 +119,7 @@ const doc = (over: Partial<CanonicalDocument> = {}): CanonicalDocument => ({
     totals: totals(),
     vatBreakdown: [],
   },
-  layer2: { providerId: null, lines: [] },
+  layer2: { providerId: null, vendorResolution: null, lines: [] },
   layer3: {
     lines: [adjudicated()],
     tiesOut: true,
@@ -957,5 +957,99 @@ describe('a receiving_advice is the RECEIVED column, never the BILLED one', () =
     // The old sentence claimed a billed quantity on a document that carries no
     // money at all (ADR 0104 D11).
     expect(container.textContent).not.toMatch(/billed —/)
+  })
+})
+
+/**
+ * ADR 0104 D15 — how the vendor was resolved, on the sheet.
+ *
+ * Five facts, five renderings. The one that matters most is the LAST: a
+ * document nobody resolved renders NOTHING, because a line invented about it
+ * would say "no vendor" in the same words as a document we looked at and
+ * refused — and only one of those is something a person can act on.
+ */
+describe('the vendor resolution line (ADR 0104 D15)', () => {
+  const withResolution = (
+    over: Partial<NonNullable<CanonicalDocument['layer2']['vendorResolution']>> | null,
+  ) =>
+    doc({
+      layer2: {
+        providerId: over ? 'prov-1' : null,
+        vendorResolution: over
+          ? {
+              state: 'matched',
+              reason: 'Matched on VKN 1234567890 — exactly one provider on file carries it.',
+              providerName: 'SENTETİK ŞARAP DAĞITIM A.Ş.',
+              matchedOn: '1234567890',
+              scheme: 'TR_VKN',
+              provisional: false,
+              ...over,
+            }
+          : null,
+        lines: [],
+      },
+    })
+
+  it('names what it matched on, in the scheme the document uses', () => {
+    render(<CanonicalSheet doc={withResolution({})} />)
+    const el = screen.getByTestId('vendor-resolution')
+    expect(el).toHaveTextContent('Matched on VKN 1234567890')
+    expect(el).toHaveAttribute('data-state', 'matched')
+  })
+
+  it('says a vendor was BORN from this document, and that it is provisional', () => {
+    render(
+      <CanonicalSheet
+        doc={withResolution({ state: 'created', provisional: true })}
+      />,
+    )
+    const el = screen.getByTestId('vendor-resolution')
+    expect(el).toHaveTextContent('New vendor, created from this document')
+    expect(el).toHaveTextContent('provisional until the first order')
+  })
+
+  it('prints the REASON on a refusal, so the reader knows what to do', () => {
+    render(
+      <CanonicalSheet
+        doc={withResolution({
+          state: 'unresolved',
+          matchedOn: null,
+          scheme: null,
+          providerName: null,
+          reason:
+            'This document names no vendor identity we can verify: no tax identity is printed on this document.',
+        })}
+      />,
+    )
+    expect(screen.getByTestId('vendor-resolution')).toHaveTextContent(
+      'no tax identity is printed on this document',
+    )
+  })
+
+  it('says WE could not look — never dressed as the document’s fault', () => {
+    render(
+      <CanonicalSheet
+        doc={withResolution({
+          state: 'unavailable',
+          matchedOn: null,
+          scheme: null,
+          reason: 'the providers on file could not be read',
+        })}
+      />,
+    )
+    const el = screen.getByTestId('vendor-resolution')
+    expect(el).toHaveAttribute('data-state', 'unavailable')
+    expect(el).toHaveTextContent('Vendor not looked for')
+    expect(el).not.toHaveTextContent('names no vendor identity')
+  })
+
+  it('renders NOTHING for a document resolution never ran on', () => {
+    render(<CanonicalSheet doc={withResolution(null)} />)
+    expect(screen.queryByTestId('vendor-resolution')).toBeNull()
+  })
+
+  it('never prints a confidence number beside any of it', () => {
+    const { container } = render(<CanonicalSheet doc={withResolution({})} />)
+    expect(container.textContent).not.toMatch(/\b0\.\d+\b/)
   })
 })

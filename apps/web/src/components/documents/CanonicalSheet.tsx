@@ -25,6 +25,7 @@ import type {
   CanonicalDocument,
   CorrectionLogEntry,
   FieldEnvelope,
+  VendorResolutionView,
 } from '../../services/api/canonical'
 import { ProvenanceHover } from './ProvenanceHover'
 import { RememberedShelf } from './RememberedShelf'
@@ -69,6 +70,68 @@ const TD: React.CSSProperties = {
   padding: '2px 4px',
   borderBottom: '1px solid rgba(33,28,22,.10)',
   textAlign: 'right',
+}
+
+/**
+ * ADR 0104 D15 — how this document's vendor came to be, in one line.
+ *
+ * FIVE renderings, because there are five different facts and a reader who is
+ * shown four of them cannot act on the fifth:
+ *
+ *   matched     "Matched on VKN 1234567890"
+ *   created     "New vendor, created from this document's VKN … · provisional"
+ *   unresolved  the sentence saying WHY, so the reader knows whether to fix the
+ *               paper, merge two providers, or do nothing
+ *   unavailable "we could not look" — never dressed as the document's fault
+ *   null        NOTHING is rendered. Resolution never ran on this document, and
+ *               inventing a line about it would be the absence-as-health fault
+ *               in its purest form.
+ *
+ * No colour alone carries any of it (D4): every state is words first.
+ */
+function VendorResolutionLine({
+  resolution,
+}: {
+  resolution: VendorResolutionView | null
+}) {
+  if (!resolution) return null
+  const { state, matchedOn, scheme, reason, provisional } = resolution
+  const label =
+    scheme === 'TR_VKN'
+      ? 'VKN'
+      : scheme === 'TR_TCKN'
+        ? 'TCKN'
+        : scheme === 'US_EIN'
+          ? 'EIN'
+          : 'tax id'
+  const text =
+    state === 'matched' && matchedOn
+      ? `Matched on ${label} ${matchedOn}`
+      : state === 'created' && matchedOn
+        ? `New vendor, created from this document's ${label} ${matchedOn}${
+            provisional ? ' · provisional until the first order' : ''
+          }`
+        : state === 'unavailable'
+          ? `Vendor not looked for — ${reason}`
+          : reason
+  return (
+    <span
+      data-testid="vendor-resolution"
+      data-state={state}
+      style={{
+        display: 'block',
+        fontFamily: MONO,
+        fontSize: 9,
+        marginTop: 2,
+        color:
+          state === 'matched' || state === 'created'
+            ? 'var(--ink-soft, #6B6257)'
+            : 'var(--seal-deep, #14515C)',
+      }}
+    >
+      {text}
+    </span>
+  )
 }
 
 /**
@@ -383,6 +446,7 @@ export function CanonicalSheet({
               EM
             )}
           </span>
+          <VendorResolutionLine resolution={doc.layer2.vendorResolution} />
         </div>
         <div>
           <span style={KICK}>Buyer</span>

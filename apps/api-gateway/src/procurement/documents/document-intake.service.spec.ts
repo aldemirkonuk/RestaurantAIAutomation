@@ -4,6 +4,7 @@ import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
+import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
 import { getCorrelationId } from "../../common/model-client/correlation";
 
 describe("DocumentIntakeService — original bytes persistence (decision E47)", () => {
@@ -70,6 +71,8 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
         // under test reaches it, and a stub would have to pretend otherwise.
         CanonicalDocumentService,
         LineMappingService,
+      VendorResolutionService,
+        VendorResolutionService,
       ],
     }).compile();
 
@@ -452,6 +455,11 @@ describe("DocumentIntakeService.refileMoneyForCurrency", () => {
       { getClient: () => client } as any,
       { available: () => false, extract: jest.fn() } as any,
       {} as any,
+      // VendorResolutionService (ADR 0104 D15, merged from main 2026-09-12).
+      // Stubbed: neither path below resolves a vendor - the tie-out test writes
+      // columns it re-derives itself, and the 832 catalogue never names a seller
+      // tax id. tsc -p tsconfig.spec.json counts the arguments.
+      {} as any,
     );
     return { service, updates };
   }
@@ -722,6 +730,11 @@ describe("DocumentIntakeService — an EDI 832 catalogue's currency", () => {
     new DocumentIntakeService(
       { getClient: () => ({}) } as any,
       { available: () => false, extract: jest.fn() } as any,
+      {} as any,
+      // VendorResolutionService (ADR 0104 D15, merged from main 2026-09-12).
+      // Stubbed: neither path below resolves a vendor - the tie-out test writes
+      // columns it re-derives itself, and the 832 catalogue never names a seller
+      // tax id. tsc -p tsconfig.spec.json counts the arguments.
       {} as any,
     );
 

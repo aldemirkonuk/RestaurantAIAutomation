@@ -157,6 +157,30 @@ export interface ParsedDocument {
   vendorAccount?: string | null;
 
   /**
+   * BT-31 / BT-32 — the SELLER's printed tax identity, exactly as printed.
+   *
+   * ADR 0104 D15 resolves the document's vendor from this and from nothing
+   * else: a tax id is a legal identifier, a trading name is a description.
+   * NULL means the page printed none, which is a real answer (the document
+   * stays unresolved) and never an invitation to fall back on the name.
+   */
+  vendorTaxId?: string | null;
+  /** The tax office / registration authority beside it (`Vergi Dairesi`). */
+  vendorTaxOffice?: string | null;
+  /** BG-5 flattened — the seller's address as printed. */
+  vendorAddress?: string | null;
+  /** ISO-3166 alpha-2 for the seller, when the address states a country. */
+  vendorCountry?: string | null;
+
+  /**
+   * BT-48 — the BUYER's tax identity. Not used to resolve a vendor; used to
+   * REFUSE one. A document whose seller id equals its buyer id is self-billed
+   * or returned, and must never create a provider out of the restaurant itself.
+   */
+  buyerTaxId?: string | null;
+  buyerName?: string | null;
+
+  /**
    * The currency this document's money is FILED under. Empty string means the
    * money was refused or held and there is none to file — never `USD` by
    * default (ADR 0104 amendment 2026-09-06; `documents/invoice-currency.ts`).

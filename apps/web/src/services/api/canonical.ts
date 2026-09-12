@@ -95,6 +95,16 @@ export interface ExtractedLine {
   freeGoodsQty: FieldEnvelope<number>;
 }
 
+/** ADR 0104 D15 — the vendor resolution, as the sheet renders it. */
+export interface VendorResolutionView {
+  state: 'matched' | 'created' | 'unresolved' | 'unavailable';
+  reason: string;
+  providerName: string | null;
+  matchedOn: string | null;
+  scheme: string | null;
+  provisional: boolean;
+}
+
 export interface ExtractedParty {
   name: FieldEnvelope<string>;
   vatIdentifier: FieldEnvelope<string>;
@@ -227,7 +237,16 @@ export interface CanonicalDocument {
   jurisdiction: "TR" | "US-CA" | "unknown" | null;
   revision: number;
   layer1: Extracted;
-  layer2: { providerId: string | null; lines: ResolvedLine[] };
+  layer2: {
+    providerId: string | null;
+    /**
+     * ADR 0104 D15 — how this document's vendor came to be, or why it did not.
+     * `null` means resolution never ran on this document (it predates D15); it
+     * is NOT the same as having run and refused, which is `unresolved`.
+     */
+    vendorResolution: VendorResolutionView | null;
+    lines: ResolvedLine[];
+  };
   layer3: Adjudicated;
 }
 
