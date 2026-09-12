@@ -214,6 +214,27 @@ def main() -> int:
         "looking for an outage that does not exist",
     )
 
+    # --- 8. An empty house is refused BEFORE the model is called ------------
+    #
+    # ADR 0145 build item 8. Every action is grounded against the three candidate
+    # lists, so with all three empty no proposal can pass however the model
+    # answers; the call would be paid for and then rejected. Checked as ORDER in
+    # the source, not mere presence: a gate written after the model call refuses
+    # correctly and still spends the money.
+    gate = re.search(
+        r"if\s*\(\s*lists\.inventory\.length\s*===\s*0\s*&&\s*"
+        r"lists\.providers\.length\s*===\s*0\s*&&\s*"
+        r"lists\.orders\.length\s*===\s*0\s*\)\s*\{\s*return\s*\{\s*proposed:\s*false",
+        service,
+    )
+    call_at = service.find("this.modelClient.call(")
+    want(
+        gate is not None and call_at != -1 and gate.start() < call_at,
+        "propose does not refuse an empty house before calling the model -- with no "
+        "items, vendors or open orders nothing can be grounded, so the call is paid "
+        "for and then rejected (ADR 0145 build item 8)",
+    )
+
     if failures:
         print("FAIL -- Ask AI is not bounded:", file=sys.stderr)
         for f in failures:
