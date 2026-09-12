@@ -299,8 +299,9 @@ BEGIN
   -- the 2026-09-12 apply -- schema-identical, no longer byte-identical. The
   -- ledger's stored `statements[1]` is the text that RAN that day and is
   -- deliberately not rewritten: the ledger records what ran, not what the file
-  -- says now. Three md5s exist for this file across the branch; only the first
-  -- is the one in the ledger, and equality was checked at that commit.
+  -- says now. The file has FOUR distinct blobs across this branch, not three as
+  -- an earlier version of this comment said; only the first is the one in the
+  -- ledger, and equality was checked at that commit.
   IF probe_user IS NOT NULL THEN
     RAISE NOTICE
       'price_index_upload_reviews: reopened_at/reopened_by/reopen_reason/reopen_seal_id/decision_history added; a reasonless reopen and a historyless reopen both proven refused against real rows; RLS and grants untouched.';

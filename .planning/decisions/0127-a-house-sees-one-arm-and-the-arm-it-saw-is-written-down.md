@@ -301,11 +301,13 @@ is quoted from another session.
   production write was made and no assignment was created** — the assignment
   route was exercised unauthenticated only.
 
-**[CORRECTED 2026-09-12: `ux_experiment_assignments` EXISTS on production now -- `20260905220000` and `20260905235500` were both applied on 2026-09-12, with the nineteen that a defect in `20260906020000` had blocked. So this route no longer answers 500 for that reason, and the read no longer fails. Verified that day by query: `to_regclass('public.ux_experiment_assignments')`, `to_regclass('public.mcp_seal_challenges')` and `to_regclass('public.payment_methods')` all return NOT NULL. The observation above is kept as the dated finding it was; do not read it as the current state, and do not infer that a missing table is guarding anything.]**
+**[CORRECTED 2026-09-12: `ux_experiment_assignments` EXISTS on production now -- `20260905220000` and `20260905235500` were both applied when PR #289 MERGED, in its first 53 -- they sort before `20260906020000` and were never among the nineteen it blocked. (An earlier version of this bracket said they were in the nineteen. Measured: `git diff --diff-filter=A 941d9cb4^1 941d9cb4 -- supabase/migrations/` gives 72 files, 53 below `20260906020000` and 19 at or above it, and both of these are in the 53.) So this route no longer answers 500 for that reason, and the read no longer fails. Verified that day by query: `to_regclass('public.ux_experiment_assignments')`, `to_regclass('public.mcp_seal_challenges')` and `to_regclass('public.payment_methods')` all return NOT NULL. The observation above is kept as the dated finding it was; do not read it as the current state, and do not infer that a missing table is guarding anything.]**
 - **Captures**, both arms on both grounds, into `$SP/shots-note-experiment/`
   (`shoot-note-experiment.mjs`): real bundle, real components, real Mudavym
   tokens off `:5274`; **stubbed data**, because the tenant holds zero one-tap
   actions and the assignments table does not exist in production. Verified per
+
+**[CORRECTED 2026-09-12: this is no longer true. Measured that day by query -- `to_regclass('public.ux_experiment_assignments')` returns NOT NULL. PR #289 merged and 53 of its 72 migrations applied; the remaining 19 were blocked by a defect in `20260906020000` and were applied through the connector on 2026-09-12. The observation above is kept as the dated finding it was. Do NOT infer from it that a missing table is guarding anything -- that inference is what this correction exists to stop.]**
   shot that the assigned arm is drawn and the other is absent
   (`this arm drawn: 1 | other arm drawn: 0` in all four).
 
@@ -885,7 +887,7 @@ would have fallen to *Other*, which is exactly how a new register goes invisible
   Auth, none of which import `NotificationsModule`, so it sits on no cycle.
 - **NOT verified live, and nothing was sent.** No notification was written, no
   mail was sent, no production row was touched, and `ux_experiment_state` still
-  does not exist in production.
+  does not exist in production. **[CORRECTED 2026-09-12: no longer true -- `to_regclass('public.ux_experiment_state')` returns NOT NULL, measured that day. PR #289's 19 blocked migrations were applied through the connector on 2026-09-12 once a defect in `20260906020000` was fixed. The finding above is kept as the dated observation it was; do not infer from it that a missing table is guarding anything.]**
 
 ### The fork this addendum left open, and how it was answered
 
