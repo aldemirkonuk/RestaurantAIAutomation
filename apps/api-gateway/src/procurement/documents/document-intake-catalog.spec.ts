@@ -28,6 +28,7 @@ import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
+import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
 import { looksLikeX12, parseInterchange, parseX12 } from "./x12";
 import { DocumentsController } from "./documents.controller";
 import { createHash } from "node:crypto";
@@ -125,6 +126,11 @@ describe("DocumentIntakeService — an 832 price catalogue", () => {
         // cannot construct it without this provider - the failure is a DI error
         // at compile of the test module, not a test assertion.
         LineMappingService,
+        // DocumentIntakeService takes it as its fourth argument (ADR 0104 D15,
+        // merged from main 2026-09-12), so Nest cannot construct the service
+        // without it: the failure is a DI error at module compile, not an
+        // assertion, and it reads as five unrelated tests breaking at once.
+        VendorResolutionService,
       ],
     }).compile();
     service = module.get(DocumentIntakeService);
