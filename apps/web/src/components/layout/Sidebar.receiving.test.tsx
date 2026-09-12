@@ -16,12 +16,20 @@ import { MemoryRouter } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { staticCommands } from '../command/commands'
 
-vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: { userId: 'user-1', name: 'Ada', role: 'manager', restaurantId: 'rest-1' },
-    logout: vi.fn(),
-  }),
-}))
+vi.mock('../../contexts/AuthContext', async () => {
+  // The sidebar now reads a page flag through useMudavymDesign, which consumes
+  // AuthContext optionally; a mock without that export throws on access, so
+  // the context is exported as an empty one and the hook degrades to its
+  // localStorage fallback, which is the behaviour the hook promises.
+  const React = await import('react')
+  return {
+    AuthContext: React.createContext(null),
+    useAuth: () => ({
+      user: { userId: 'user-1', name: 'Ada', role: 'manager', restaurantId: 'rest-1' },
+      logout: vi.fn(),
+    }),
+  }
+})
 
 vi.mock('../../hooks/queries/useOnboardingProgress', () => ({
   useOnboardingProgress: () => ({

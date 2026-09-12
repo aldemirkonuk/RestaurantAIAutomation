@@ -6,7 +6,7 @@
  * is no second person to catch it. 56px minimum targets — the smallest a
  * cold, gloved hand hits reliably (legacy's measured floor; well past 44px).
  *
- * The figure itself ticks on the overdamped `tally` spring (motion 059) in
+ * The figure itself ticks on the overdamped `tally` spring (motion 083) in
  * tabular figures — it arrives, it never bounces past a number someone will
  * act on. Two honesty rules carried from the Tally on /orders:
  * - it never animates on first paint;

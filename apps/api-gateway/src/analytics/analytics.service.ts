@@ -417,25 +417,36 @@ export class AnalyticsService {
     const inventoryValue = costCoverage.complete
       ? E.stats.sum(onHand.map((i) => i.inventoryValue as number))
       : null;
-    const cogs = E.stats.sum(orders.map((o) => o.cost));
+
+    // `E.stats.sum([])` is 0, and BOTH loaders above degrade a failed query to
+    // `[]` (see their comments), so an unconditional sum reported "the query
+    // failed" and "this restaurant bought nothing in a year" as the same $0 —
+    // absence rendered as a fact. An empty result set is not a measured zero:
+    // it is the absence of any row to measure, so it is null and the basis
+    // says which. A restaurant that genuinely placed orders still gets its
+    // real total, including a real 0 if every order carried no cost.
+    const cogs =
+      orders.length === 0 ? null : E.stats.sum(orders.map((o) => o.cost));
 
     // Revenue basis: sell-price valuation of purchased bottles (proxy until a
     // POS revenue feed lands). Menu price is recorded, so this survives an
     // unknown cost — it is the cost-derived fields below that go null.
-    const revenue = E.stats.sum(
-      inventory.map((i) => i.unitPrice * (i.qty || 0)),
-    );
+    const revenue =
+      inventory.length === 0
+        ? null
+        : E.stats.sum(inventory.map((i) => i.unitPrice * (i.qty || 0)));
     const marginDollars =
-      inventoryValue == null ? null : revenue - inventoryValue;
+      inventoryValue == null || revenue == null ? null : revenue - inventoryValue;
 
-    // Every one of these takes inventory value as its cost input. A null cost
-    // makes them unknown, not zero and not infinite.
+    // Every one of these takes inventory value as its cost input, and the two
+    // ratios take revenue as their denominator. A null on either side makes
+    // them unknown, not zero and not infinite.
     const turnover =
-      inventoryValue == null
+      inventoryValue == null || cogs == null
         ? null
         : E.inventory.inventoryTurnover(cogs, inventoryValue);
     const dio =
-      inventoryValue == null
+      inventoryValue == null || cogs == null
         ? null
         : E.inventory.daysInventoryOutstanding(cogs, inventoryValue);
     const gmroi =
@@ -443,15 +454,15 @@ export class AnalyticsService {
         ? null
         : E.inventory.gmroi(marginDollars, inventoryValue);
     const grossMargin =
-      inventoryValue != null && revenue > 0
+      inventoryValue != null && revenue != null && revenue > 0
         ? E.finance.grossMargin(inventoryValue, revenue)
         : null;
     const cogsRatioVal =
-      inventoryValue != null && revenue > 0
+      inventoryValue != null && revenue != null && revenue > 0
         ? E.finance.cogsRatio(inventoryValue, revenue)
         : null;
     const primeCost =
-      inventoryValue != null && revenue > 0
+      inventoryValue != null && revenue != null && revenue > 0
         ? E.finance.primeCostRatio(inventoryValue, labor, revenue)
         : null;
 
@@ -518,15 +529,21 @@ export class AnalyticsService {
 
     return {
       basis: {
-        cogs: "delivered procurement_orders (trailing 365d)",
-        revenue: "unit_price × on-hand qty (POS-revenue proxy)",
+        cogs:
+          orders.length === 0
+            ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window, which is either no purchasing or a read that failed, and $0 would claim the first"
+            : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed`,
+        revenue:
+          inventory.length === 0
+            ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
+            : `unit_price × on-hand qty (POS-revenue proxy) — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued`,
         // This string used to read "on-hand qty × WAC (lot rollup)"
         // unconditionally while ~70 of 72 rows were valued off a fabricated
         // 0.6 × menu price. A basis now describes the rows it covered.
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
         costDerived:
-          "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051)",
+          "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio",
       },
       costCoverage,
       inventoryValue,
@@ -873,19 +890,50 @@ export class AnalyticsService {
         new Date(today.getTime() + h * 86400000).toISOString().substring(0, 10),
       );
 
+    // `toDailySeries` zero-fills, so a restaurant with no consumption feed
+    // still hands Holt-Winters 120 numbers and HW dutifully "fits" them. The
+    // arithmetic is sound and the answer is not: a projection of zero built on
+    // a log holding no observation is not a forecast of no demand, it is the
+    // absence of any demand signal — and `totalForecastDemand: 0` put that
+    // absence in front of a manager as a prediction. `accuracy` already refuses
+    // to score this window (`no_observations_in_scored_window` below); the
+    // projection itself must refuse too, or the page reads a flat zero line as
+    // a claim about next week (ADR 0020).
+    const hasObservation = values.some((v) => v !== 0);
+    const projection = hasObservation ? result : null;
+
     return {
-      model,
+      // `model` used to report the LAST model attempted even when none of the
+      // three fitted, so a caller read "ses" and had no way to learn that SES
+      // had refused the history too. When nothing is projected there is no
+      // model, and `modelFitted` says so in one field a consumer cannot miss.
+      model: projection ? model : null,
+      modelFitted: !!projection,
       masterWineId: opts.masterWineId ?? "all",
       horizon,
       history: { dates, values },
       forecast:
-        result?.forecast.map((v, i) => ({
+        projection?.forecast.map((v, i) => ({
           date: futureDates[i],
           value: Math.max(0, v),
         })) ?? [],
-      totalForecastDemand: result
-        ? E.stats.sum(result.forecast.map((v) => Math.max(0, v)))
-        : 0,
+      // This was `: 0` — a zero standing in for an absent model, which reads as
+      // "we project you will sell nothing" when the truth is "there is nothing
+      // here to project from". Nothing was projected, so nothing is totalled.
+      totalForecastDemand: projection
+        ? E.stats.sum(projection.forecast.map((v) => Math.max(0, v)))
+        : null,
+      basis: {
+        demand: `wine_consumption_log units/day over ${sinceDays}d, zero-filled to a dense daily series`,
+        model: projection
+          ? `${model} fitted on ${values.length} days of history`
+          : hasObservation
+            ? "no model fitted — Holt-Winters, Holt and SES each refused this history, so no line is projected and no total is claimed"
+            : `no model fitted — every one of the ${values.length} days of history reads zero, so there is no demand signal to project from`,
+        total: projection
+          ? `sum of the ${horizon}-day forecast, each day floored at 0`
+          : "null — there is no projection to total",
+      },
       accuracy,
       generatedAt: new Date().toISOString(),
     };

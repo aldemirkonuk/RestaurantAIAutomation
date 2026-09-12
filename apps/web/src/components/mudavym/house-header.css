@@ -1,0 +1,410 @@
+/* ============================================================
+   The house header — chrome for every rebuilt page (ADR 0112 family)
+   ============================================================
+
+   Tokens only. Every colour here is a `.mudavym` custom property
+   (styles/mudavym.css:28-60), so the bar turns with the page under it: warm
+   paper by default, Warm Charcoal under `.dark .mudavym` or an explicit
+   `data-ground="charcoal"`.
+
+   Motion is `ink` — cubic-bezier(0.16, 1, 0.3, 1) at 160ms, the micro-state
+   token from lib/mudavym/motion.ts:106. Nothing in this bar moves more than a
+   colour: it is chrome, and chrome that animates is chrome you look at.
+
+   The last block re-dresses two LEGACY triggers this header reuses whole
+   (`RestaurantBranchSwitcher`, `ThemeMenu`). Their popovers are already the
+   house shape while the shell is on; only their buttons still wear Tailwind's
+   wine palette. Restyling them here — scoped inside `.mdv-hdr`, never
+   globally — keeps both components byte-identical for the legacy header that
+   also renders them (ADR 0042's promise). */
+
+.mdv-hdr {
+  /* `sheet.css` declares --mdv-mono on `.mdv-ovl`, so it does not reach a bar
+     that is not an overlay; the `.mdv-kbd` chord borrowed from that file needs
+     it here. Same value, one place to change it. */
+  --mdv-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: color-mix(in srgb, var(--paper-0) 88%, transparent);
+  backdrop-filter: saturate(1.2) blur(10px);
+  -webkit-backdrop-filter: saturate(1.2) blur(10px);
+  border-bottom: 1px solid transparent;
+  transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The hairline only exists once there is a page underneath it to separate. */
+.mdv-hdr[data-stuck='true'] {
+  border-bottom-color: var(--paper-2);
+}
+
+/* Under 768px the layout already draws its own top bar with the brand and the
+   nav toggle (DashboardLayout.tsx:79-92, `md:hidden`). Two sticky bars at
+   top:0 would overlap, so this one gives up the sticky and stays a header. */
+@media (max-width: 767px) {
+  .mdv-hdr {
+    position: static;
+    border-bottom-color: var(--paper-2);
+  }
+}
+
+.mdv-hdr__in {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 16px;
+}
+
+@media (min-width: 640px) {
+  .mdv-hdr__in {
+    padding: 0 24px;
+  }
+}
+
+/* ── left: the mark, a rule, the page's name ─────────────────────────── */
+
+.mdv-hdr__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mdv-hdr__mark {
+  display: inline-flex;
+  align-items: center;
+  color: var(--seal);
+  border-radius: 6px;
+  padding: 2px;
+  text-decoration: none;
+  transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-hdr__mark:hover {
+  opacity: 0.78;
+}
+
+.mdv-hdr__rule {
+  width: 1px;
+  height: 18px;
+  background: var(--paper-2);
+  flex: 0 0 auto;
+}
+
+.mdv-hdr__page {
+  font-family: Fraunces, Georgia, serif;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── centre: the one search that is also the one command surface ─────── */
+
+.mdv-hdr__search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto;
+  padding: 6px 10px 6px 11px;
+  min-width: 0;
+  border: 1px solid var(--paper-2);
+  border-radius: 9px;
+  background: var(--paper-1);
+  color: var(--ink-3);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-hdr__search:hover {
+  border-color: var(--seal-ring);
+  color: var(--ink-2);
+}
+
+.mdv-hdr__searchtext {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .mdv-hdr__searchtext {
+    display: none;
+  }
+}
+
+.mdv-hdr__chord {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .mdv-hdr__chord {
+    display: none;
+  }
+}
+
+/* ── right: where you are, the bell, the theme, the account ──────────── */
+
+.mdv-hdr__right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.mdv-hdr__slot {
+  position: relative;
+}
+
+.mdv-hdr__house {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  padding: 0 8px 0 2px;
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mdv-hdr__house--unknown {
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767px) {
+  .mdv-hdr__house {
+    display: none;
+  }
+}
+
+.mdv-hdr__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  position: relative;
+  padding: 7px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-hdr__btn:hover {
+  background: var(--paper-1);
+  border-color: var(--paper-2);
+}
+
+.mdv-hdr__btn--user {
+  padding: 5px 8px 5px 5px;
+}
+
+.mdv-hdr__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--seal-tint);
+  color: var(--seal);
+  font-size: 11.5px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.mdv-hdr__who {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-1);
+  max-width: 130px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1023px) {
+  .mdv-hdr__who {
+    display: none;
+  }
+}
+
+.mdv-hdr__chev {
+  color: var(--ink-4);
+  flex: 0 0 auto;
+}
+
+/* The badge. A number when the register gave one; a hollow ring when it did
+   not — never a confident zero for a failed read (ADR 0020). */
+.mdv-hdr__badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--seal);
+  color: var(--paper-0);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.mdv-hdr__badge--unknown {
+  min-width: 9px;
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  top: 4px;
+  right: 4px;
+  background: transparent;
+  border: 1.5px dashed var(--ink-4);
+}
+
+/* ── inside the bell's popover ───────────────────────────────────────── */
+
+.mdv-hdr__bellrow {
+  align-items: flex-start;
+}
+
+.mdv-hdr__wrap {
+  white-space: normal;
+}
+
+.mdv-hdr__stamp {
+  flex: 0 0 auto;
+  text-align: right;
+  font-family: var(--mdv-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-4);
+  line-height: 1.35;
+}
+
+/* The fold's newest stamp leads; the surviving line's own age sits under it,
+   so a stale winner cannot pass for today's news. */
+.mdv-hdr__stamp-lead {
+  display: block;
+  color: var(--ink-1);
+}
+
+.mdv-hdr__stamp-own {
+  display: block;
+  font-size: 9px;
+}
+
+.mdv-hdr__bellfoot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.mdv-hdr__note {
+  font-size: 11px;
+  color: var(--ink-4);
+}
+
+.mdv-hdr__role {
+  margin: 0 0 6px;
+  padding: 0 2px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+.mdv-hdr__ruled {
+  border-top: 1px solid var(--paper-2);
+  margin-top: 4px;
+  padding-top: 9px;
+}
+
+/* ── focus, on a paper gap ───────────────────────────────────────────── */
+
+.mdv-hdr :focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-hdr,
+  .mdv-hdr__mark,
+  .mdv-hdr__search,
+  .mdv-hdr__btn {
+    transition: none;
+  }
+}
+
+/* ── the two reused legacy triggers, re-dressed in place ─────────────── */
+
+.mdv-hdr .mdv-hdr__theme > button,
+.mdv-hdr .mdv-hdr__branch > button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--ink-2);
+  box-shadow: none;
+  transition:
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-hdr .mdv-hdr__theme > button:hover,
+.mdv-hdr .mdv-hdr__branch > button:hover {
+  background: var(--paper-1);
+  border-color: var(--paper-2);
+  box-shadow: none;
+}
+
+.mdv-hdr .mdv-hdr__theme > button {
+  padding: 7px;
+}
+
+.mdv-hdr .mdv-hdr__branch > button {
+  padding: 4px 7px 4px 5px;
+  gap: 8px;
+}
+
+/* the branch trigger's initial square */
+.mdv-hdr .mdv-hdr__branch > button > div:first-child {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--seal-tint);
+}
+
+.mdv-hdr .mdv-hdr__branch > button > div:first-child span {
+  color: var(--seal);
+  font-size: 11px;
+}
+
+.mdv-hdr .mdv-hdr__branch > button p:first-child {
+  color: var(--ink-1);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.mdv-hdr .mdv-hdr__branch > button p + p {
+  color: var(--ink-4);
+}
+
+.mdv-hdr .mdv-hdr__theme > button svg,
+.mdv-hdr .mdv-hdr__branch > button svg,
+.mdv-hdr .mdv-hdr__branch > button:hover svg {
+  color: var(--ink-3);
+  width: 16px;
+  height: 16px;
+}

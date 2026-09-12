@@ -1,8 +1,8 @@
 /**
- * Mudavym motion vocabulary — sketch 059 `motion.json`, as code.
+ * Mudavym motion vocabulary — sketch 083 `motion.json`, as code.
  *
  * The spring curves are produced by a damped-spring integrator sampled into a
- * CSS `linear()` easing string, adapted from the proven sampler in sketch 063
+ * CSS `linear()` easing string, adapted from the proven sampler in sketch 087
  * `parts/sig-hero.html` — so the numbers on the token ARE the curve that runs.
  *
  * NO new npm dependency, deliberately: this is CSS easings + the Web
@@ -10,12 +10,12 @@
  * decision (it would be an ADR of its own); nothing here precludes it, and the
  * token shape `{ easing, ms }` ports to it directly.
  *
- * Duration semantics (matters if you re-derive): 059's `durationMs` for spring
+ * Duration semantics (matters if you re-derive): 083's `durationMs` for spring
  * tokens is the time for the spring to settle within 1% of target — tally's
  * card says so explicitly ("time to within 1% of target … fully at rest at
  * 1408ms"). The sampler below integrates to that same 1% envelope, so its
- * measured settle time reproduces 059's numbers (the unit test asserts it);
- * the exported tokens carry 059's documented figures verbatim.
+ * measured settle time reproduces 083's numbers (the unit test asserts it);
+ * the exported tokens carry 083's documented figures verbatim.
  */
 
 import { useEffect, useState } from 'react';
@@ -39,7 +39,7 @@ export interface SpringSample extends MotionToken {
  *
  * Integration stops when the energy amplitude √(x² + (v/ω)²) — the decay
  * envelope, not the instantaneous position, which passes through zero twice a
- * cycle — drops below restDelta. Gating on the envelope reproduces 059's
+ * cycle — drops below restDelta. Gating on the envelope reproduces 083's
  * measured durations; gating on |x| and |v| separately fires early whenever
  * the two momentarily align out of phase.
  *
@@ -91,7 +91,7 @@ export function springLinear(
   };
 }
 
-/* ── The seven tokens — names and numbers are 059's, verbatim ────────────── */
+/* ── The seven tokens — names and numbers are 083's, verbatim ────────────── */
 
 const HOUSE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
@@ -113,13 +113,13 @@ export const turn: MotionToken = { easing: 'cubic-bezier(0.32, 0.72, 0, 1)', ms:
 
 /**
  * Hold-to-approve fill. Deliberately `linear`: the operator is timing it
- * against their own thumb. (059 files this token under the name "press";
+ * against their own thumb. (083 files this token under the name "press";
  * the design foundation exports it as `pour` — same numbers, one curve.
  * Cancel/release retreats on `tuck`.)
  */
 export const pour: MotionToken = { easing: 'linear', ms: 620 };
 
-/** 059's canonical name for {@link pour}. */
+/** 083's canonical name for {@link pour}. */
 export const press: MotionToken = pour;
 
 /** The seal landing. The only motion in the system allowed to overshoot. */
@@ -128,7 +128,7 @@ export const stamp: MotionToken = { easing: stampSpring.easing, ms: 360 };
 /** Number tickers. Overdamped — figures arrive, they never bounce past. */
 export const tally: MotionToken = { easing: tallySpring.easing, ms: 840 };
 
-/** All tokens by 059 name, for data-driven use. */
+/** All tokens by 083 name, for data-driven use. */
 export const motionTokens = { settle, ink, tuck, turn, pour, stamp, tally } as const;
 export type MotionTokenName = keyof typeof motionTokens;
 

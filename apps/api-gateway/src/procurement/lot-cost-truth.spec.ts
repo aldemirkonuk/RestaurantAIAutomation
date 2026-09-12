@@ -143,6 +143,15 @@ function migrationSql(): string {
 // D3 — the enum cast that made every receipt verification 422
 // ---------------------------------------------------------------------------
 
+
+/*
+ * `invoiceCurrency: "USD"` appears beside every `invoiceUnitPrice` below since
+ * 2026-09-06 (founder batch 67): `verifyReceipt` refuses a unit price with no
+ * currency before it reads anything, so a payload that carries a figure and no
+ * code no longer reaches any of the behaviour these tests are about. The value
+ * is incidental here — what each test asserts is unchanged.
+ */
+
 describe("D3 — stock writes name enum values that exist", () => {
   it("inventory_transaction_source in the dump is the eight-value enum production has", () => {
     expect(enumLabels("inventory_transaction_source")).toEqual([
@@ -229,7 +238,9 @@ describe("D1 — no price is promoted to 'invoice' by silence", () => {
   });
 
   it("markDelivered books the delivery at a stated, non-invoice provenance", async () => {
-    const { db, calls } = makeDb();
+    // A delivery that has NOT yet happened: the goods-arrived guard refuses a
+    // second one, and this test is about what the first one costs the lot.
+    const { db, calls } = makeDb({ status: "APPROVED", quantity_received: null });
     await service(db).markDelivered(REST, ORDER, USER, 10);
 
     const live = calls.rpc.find(
@@ -296,6 +307,7 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 10,
       invoiceUnitPrice: 43,
+      invoiceCurrency: "USD",
       acceptedQuantity: 10,
       priceOverrideReason: "fuel surcharge agreed by phone",
     } as any);
@@ -316,6 +328,7 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 10,
       invoiceUnitPrice: 43,
+      invoiceCurrency: "USD",
       acceptedQuantity: 10,
       priceOverrideReason: "fuel surcharge agreed by phone",
     } as any);
@@ -334,6 +347,7 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 12,
       invoiceUnitPrice: 43,
+      invoiceCurrency: "USD",
       acceptedQuantity: 12,
       priceOverrideReason: "fuel surcharge agreed by phone",
     } as any);
@@ -370,7 +384,15 @@ const orderRow = {
   delivery_notes: null,
 };
 
-function makeDb() {
+/**
+ * @param orderOverrides Fields to change on the fixture order. Added 2026-09-05
+ *   because the shared fixture is DELIVERED — right for `verifyReceipt`, which
+ *   only ever runs on a delivered order, and wrong for `markDelivered`, which
+ *   now refuses an order whose goods have already arrived (`delivered-once.ts`).
+ *   The provenance assertion below is about the PRICE, so it gets a
+ *   pre-delivery order rather than a fixture that agrees with it by accident.
+ */
+function makeDb(orderOverrides: Record<string, any> = {}) {
   const calls = { rpc: [] as { name: string; args: Record<string, any> }[] };
 
   const supabase: any = {
@@ -381,7 +403,11 @@ function makeDb() {
       const settle = (shape: "one" | "many"): Record<string, any> => {
         if (table === "procurement_orders")
           return {
-            data: { ...orderRow, inventory: { wine_name: "Barolo" } },
+            data: {
+              ...orderRow,
+              ...orderOverrides,
+              inventory: { wine_name: "Barolo" },
+            },
             error: null,
           };
         if (table === "restaurant_inventory") {

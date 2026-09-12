@@ -81,6 +81,8 @@ export interface SimposVenue {
   name: string | null;
   /** IANA zone, or null when the venue has not set one — never defaulted. */
   timezone: string | null;
+  /** The house's stated ISO 4217 code, or null — money is printed with it, never as a bare dollar. */
+  currency: string | null;
   operating_hours: unknown;
   /**
    * Whether the venue is open at the moment of the read, answered by the

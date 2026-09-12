@@ -18,6 +18,21 @@
  * what it is holding. The claims workflow and the mapping memory are slices 4
  * and 5; nothing else here writes.
  *
+ * BOTH ARE SEALED, AND BOTH ARE HOLDS (founder, 2026-09-11, batch 69: *"Seal
+ * corrections and fields/verify too"* — *"the decision then holds on both faces
+ * of the document"*). The /receipts face had taken a redeemed seal on its three
+ * acts since batch 64; these two are the same paper reached through a different
+ * screen, and leaving them open would have made the policy an accident of which
+ * screen somebody opened. The seal is minted when the gesture BEGINS
+ * (`onChallenge`), never at the moment of the write, and a mint that fails says
+ * so and sends nothing — the control's own words, not a silent unsealed post.
+ *
+ * NO NEW ROLE GATE. Neither route has ever had one beyond the token and the
+ * house scope, the gateway did not gain one in batch 69, and adding a
+ * staff-disabled control here would be a gate the server does not enforce —
+ * the same disagreement between page and gateway, running the other way, that
+ * every other screen in this corridor is written to avoid.
+ *
  * BEHIND THE GATE, OFF BY DEFAULT. `/documents/:id` renders through PageGate on
  * the `document` page name; a restaurant without `mudavym_design_document` is
  * sent to `/receipts`, which is where this view's second face already lives
@@ -42,6 +57,7 @@ import {
   DeliveryGates,
   DeliverySpine,
   DoorFrame,
+  FieldVerifyDialog,
   MONO,
   OriginalPane,
   ProposalThread,
@@ -73,6 +89,16 @@ export function CanonicalDocumentPage() {
   const [selectedLine, setSelectedLine] = useState<number | null>(null)
   /** The field a correction form is open on, or null. */
   const [correcting, setCorrecting] = useState<{ path: string; label: string } | null>(null)
+  /**
+   * The field a TICK is open on, or null.
+   *
+   * The tick used to fire straight from the provenance popover. It takes a
+   * redeemed seal since batch 69, and a seal needs a hold — which that popover
+   * cannot carry, because it closes on blur and on mouse-leave. So the popover
+   * keeps the affordance and opens this, the same way "Correct this" already
+   * opens the correction form.
+   */
+  const [ticking, setTicking] = useState<{ path: string; label: string } | null>(null)
   /**
    * The GATEWAY's own words when it refused, shown verbatim.
    *
@@ -186,16 +212,24 @@ export function CanonicalDocumentPage() {
       : 'The correction could not be recorded, and the reason did not come back.'
   }
 
-  const recordCorrection = async (value: unknown, reason: string) => {
+  const recordCorrection = async (
+    value: unknown,
+    reason: string,
+    challenge?: string | null,
+  ) => {
     if (!correcting) return
     setWriting(true)
     setWriteError(null)
     try {
-      await canonicalApi.correctField(id, {
-        path: correcting.path,
-        value,
-        ...(reason.trim() ? { reason: reason.trim() } : {}),
-      })
+      await canonicalApi.correctField(
+        id,
+        {
+          path: correcting.path,
+          value,
+          ...(reason.trim() ? { reason: reason.trim() } : {}),
+        },
+        challenge,
+      )
       setCorrecting(null)
       // RE-READ, never patch in place. The correction moves the tie-out, the
       // bottle-equivalents and every invariant; the gateway recomputes all of
@@ -223,13 +257,17 @@ export function CanonicalDocumentPage() {
     }
   }
 
-  const tickField = async (path: string) => {
+  const tickField = async (path: string, challenge?: string | null) => {
+    setWriting(true)
     setWriteError(null)
     try {
-      await canonicalApi.verifyField(id, path)
+      await canonicalApi.verifyField(id, path, challenge)
+      setTicking(null)
       await q.refetch()
     } catch (err) {
       setWriteError(messageFrom(err))
+    } finally {
+      setWriting(false)
     }
   }
 
@@ -271,7 +309,13 @@ export function CanonicalDocumentPage() {
         background: 'var(--paper-1, #F3EFE6)',
         color: 'var(--ink-1, #211C16)',
         fontFamily: SANS,
-        minHeight: '100%',
+        // The viewport minimum is NOT set here. It belongs to `.cd-page` in
+        // canonical-document.css, which drops it again under `@media print`.
+        // An inline declaration outranks an author stylesheet in every medium,
+        // so setting it here made that print override inert and put a 100vh
+        // minimum on paper — a blank trailing page for any document shorter
+        // than the screen, on the one document ADR 0104 D9 locks to "print
+        // equals screen".
       }}
     >
       <div style={{ maxWidth: 1240, margin: '0 auto', padding: '18px 22px 40px' }}>
@@ -556,7 +600,10 @@ export function CanonicalDocumentPage() {
                 setWriteError(null)
                 setCorrecting({ path, label })
               }}
-              onVerify={(path) => void tickField(path)}
+              onVerify={(path, label) => {
+                setWriteError(null)
+                setTicking({ path, label })
+              }}
               onLinkItem={linkItem}
               itemName={itemName}
             />
@@ -684,7 +731,30 @@ export function CanonicalDocumentPage() {
             setCorrecting(null)
             setWriteError(null)
           }}
-          onSubmit={(value, reason) => void recordCorrection(value, reason)}
+          /* The seal is minted over the REVISION being corrected and the exact
+             path and value — so this sends the same body the write will. */
+          onChallenge={(value) =>
+            canonicalApi.mintCorrectFieldSeal(id, { path: correcting.path, value })
+          }
+          onSubmit={(value, reason, challenge) =>
+            void recordCorrection(value, reason, challenge)
+          }
+        />
+      )}
+
+      {ticking && (
+        <FieldVerifyDialog
+          path={ticking.path}
+          label={ticking.label}
+          envelope={envelopeAt(doc.layer1, ticking.path)}
+          error={writeError}
+          busy={writing}
+          onCancel={() => {
+            setTicking(null)
+            setWriteError(null)
+          }}
+          onChallenge={() => canonicalApi.mintVerifyFieldSeal(id, ticking.path)}
+          onConfirm={(challenge) => void tickField(ticking.path, challenge)}
         />
       )}
     </>,

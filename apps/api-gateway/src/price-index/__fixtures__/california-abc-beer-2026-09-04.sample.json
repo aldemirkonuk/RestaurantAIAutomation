@@ -1,0 +1,483 @@
+[
+  {
+    "id": "7475103",
+    "manufacturer": {
+      "name": "COOPERS BREWERY LIMITED"
+    },
+    "product": {
+      "name": "Coopers Best Extra Stout",
+      "tradeName": "Coopers Brewery"
+    },
+    "status": "Active",
+    "package": {
+      "package": "4 x 6 Pack"
+    },
+    "productSize": {
+      "size": 375,
+      "unit": {
+        "unit": "Milliliter"
+      },
+      "containerType": {
+        "type": "Glass Bottle"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 52.7,
+    "pricePromotion": false,
+    "containerCharge": 0,
+    "effectiveDate": 1754035200000,
+    "createdAt": 1753219866339,
+    "createdByLicensee": {
+      "id": "8650",
+      "name": "BREAKTHRU BEVERAGE CALIFORNIA LLC"
+    }
+  },
+  {
+    "id": "7476357",
+    "manufacturer": {
+      "name": "Brouwerij Bosteels"
+    },
+    "product": {
+      "name": "Pauwel Kwak",
+      "tradeName": "Bosteels"
+    },
+    "status": "Active",
+    "package": {
+      "package": "6 Loose"
+    },
+    "productSize": {
+      "size": 330,
+      "unit": {
+        "unit": "Milliliter"
+      },
+      "containerType": {
+        "type": "Glass Bottle"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 69.6,
+    "pricePromotion": false,
+    "containerCharge": 0,
+    "effectiveDate": 1754035200000,
+    "createdAt": 1753222455095,
+    "createdByLicensee": {
+      "id": "8650",
+      "name": "BREAKTHRU BEVERAGE CALIFORNIA LLC"
+    }
+  },
+  {
+    "id": "8348198",
+    "manufacturer": {
+      "name": "BURNING BARREL BREWING COMPANY LLC"
+    },
+    "product": {
+      "name": "Bad Kitty",
+      "tradeName": "Burning Barrel Brewing Company"
+    },
+    "status": "Active",
+    "package": {
+      "package": "6 x 4 Pack"
+    },
+    "productSize": {
+      "size": 16,
+      "unit": {
+        "unit": "Ounce"
+      },
+      "containerType": {
+        "type": "Can"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 95,
+    "pricePromotion": false,
+    "containerCharge": 0,
+    "effectiveDate": 1773129600000,
+    "createdAt": 1773097714513,
+    "createdByLicensee": {
+      "id": "1348",
+      "name": "BURNING BARREL BREWING COMPANY LLC"
+    }
+  },
+  {
+    "id": "8348256",
+    "manufacturer": {
+      "name": "BURNING BARREL BREWING COMPANY LLC"
+    },
+    "product": {
+      "name": "Primal Punch",
+      "tradeName": "Burning Barrel Brewing Company"
+    },
+    "status": "Active",
+    "package": {
+      "package": "6 x 4 Pack"
+    },
+    "productSize": {
+      "size": 16,
+      "unit": {
+        "unit": "Ounce"
+      },
+      "containerType": {
+        "type": "Can"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 95,
+    "pricePromotion": false,
+    "containerCharge": 0,
+    "effectiveDate": 1773129600000,
+    "createdAt": 1773097714989,
+    "createdByLicensee": {
+      "id": "1348",
+      "name": "BURNING BARREL BREWING COMPANY LLC"
+    }
+  },
+  {
+    "id": "7899168",
+    "manufacturer": {
+      "name": "EVERYWHERE GROUP LLC"
+    },
+    "product": {
+      "name": "softly",
+      "tradeName": "Everywhere"
+    },
+    "status": "Active",
+    "package": {
+      "package": "1 Keg"
+    },
+    "productSize": {
+      "size": 5.16,
+      "unit": {
+        "unit": "Gallon"
+      },
+      "containerType": {
+        "type": "Keg"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "FOB",
+    "price": 100,
+    "pricePromotion": false,
+    "containerCharge": 50,
+    "effectiveDate": 1761937269417,
+    "createdAt": 1761937269417,
+    "createdByLicensee": {
+      "id": "8290",
+      "name": "EVERYWHERE GROUP LLC"
+    }
+  },
+  {
+    "id": "7475506",
+    "manufacturer": {
+      "name": "Colner Hofbrau Fruh KG"
+    },
+    "product": {
+      "name": "Fruh Kolsch",
+      "tradeName": "Colner Hofbrau Fruh KG"
+    },
+    "status": "Active",
+    "package": {
+      "package": "1 Keg"
+    },
+    "productSize": {
+      "size": 13.2,
+      "unit": {
+        "unit": "Gallon"
+      },
+      "containerType": {
+        "type": "Keg"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 239,
+    "pricePromotion": false,
+    "containerCharge": 30,
+    "effectiveDate": 1754035200000,
+    "createdAt": 1753220996963,
+    "createdByLicensee": {
+      "id": "8650",
+      "name": "BREAKTHRU BEVERAGE CALIFORNIA LLC"
+    }
+  },
+  {
+    "id": "4447203",
+    "manufacturer": {
+      "name": "DE GARDE BREWING INC"
+    },
+    "product": {
+      "name": "Across A Crowded Room",
+      "tradeName": "de Garde Brewing"
+    },
+    "status": "Active",
+    "package": {
+      "package": "1 Keg"
+    },
+    "productSize": {
+      "size": 30,
+      "unit": {
+        "unit": "Liter"
+      },
+      "containerType": {
+        "type": "Keg"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 225,
+    "pricePromotion": false,
+    "containerCharge": 0,
+    "effectiveDate": 1700678427447,
+    "createdAt": 1700678427447,
+    "createdByLicensee": {
+      "id": "7664",
+      "name": "LIME VENTURES INC"
+    }
+  },
+  {
+    "id": "6391129",
+    "manufacturer": {
+      "name": "ANHEUSER-BUSCH LLC"
+    },
+    "product": {
+      "name": "ULTRA",
+      "tradeName": "MICHELOB"
+    },
+    "status": "Old",
+    "package": {
+      "package": "18 Pack"
+    },
+    "productSize": {
+      "size": 12,
+      "unit": {
+        "unit": "Ounce"
+      },
+      "containerType": {
+        "type": "Glass Bottle"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 16.85,
+    "pricePromotion": true,
+    "containerCharge": 0,
+    "effectiveDate": 1734940800000,
+    "createdAt": 1734115027398,
+    "createdByLicensee": {
+      "id": "4917",
+      "name": "MATAGRANO INC"
+    }
+  },
+  {
+    "id": "4439271",
+    "manufacturer": {
+      "name": "Paulaner Brauerei Gruppe GmbH & Co. KGaA"
+    },
+    "product": {
+      "name": "Best of Munich Variety Pack",
+      "tradeName": "Paulaner"
+    },
+    "status": "Active",
+    "package": {
+      "package": "24 Loose"
+    },
+    "productSize": {
+      "size": 11.2,
+      "unit": {
+        "unit": "Ounce"
+      },
+      "containerType": {
+        "type": "Glass Bottle"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Wholesalers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 22.45,
+    "pricePromotion": false,
+    "containerCharge": 0,
+    "effectiveDate": 1700668768287,
+    "createdAt": 1700668768287,
+    "createdByLicensee": {
+      "id": "4502",
+      "name": "Paulaner USA LLC"
+    }
+  },
+  {
+    "id": "2265787",
+    "manufacturer": {
+      "name": "URBAN ROOTS BREWERY LP"
+    },
+    "product": {
+      "name": "Fun Fare",
+      "tradeName": "Urban Roots Brewing"
+    },
+    "status": "Old",
+    "package": {
+      "package": "1 Keg"
+    },
+    "productSize": {
+      "size": 15.5,
+      "unit": {
+        "unit": "Gallon"
+      },
+      "containerType": {
+        "type": "Keg"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Manufacturers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 200,
+    "pricePromotion": false,
+    "containerCharge": 0,
+    "effectiveDate": 1659081600000,
+    "createdAt": 1658255712630,
+    "createdByLicensee": {
+      "id": "4461",
+      "name": "URBAN ROOTS BREWERY LP"
+    }
+  },
+  {
+    "id": "1724510",
+    "manufacturer": {
+      "name": "STREET SIGN BREWING COMPANY INC"
+    },
+    "product": {
+      "name": "Brown Ale",
+      "tradeName": "San Fernando Brewing Company"
+    },
+    "status": "Inactive",
+    "package": {
+      "package": "1 Keg"
+    },
+    "productSize": {
+      "size": 5.16,
+      "unit": {
+        "unit": "Gallon"
+      },
+      "containerType": {
+        "type": "Keg"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 90,
+    "pricePromotion": false,
+    "containerCharge": 30,
+    "effectiveDate": 1643918310425,
+    "createdAt": 1643918310425,
+    "createdByLicensee": {
+      "id": "5639",
+      "name": "RLED LLC"
+    }
+  },
+  {
+    "id": "7063587",
+    "manufacturer": {
+      "name": "PURE PROJECT LLC"
+    },
+    "product": {
+      "name": "Murkeley",
+      "tradeName": "Pure Project"
+    },
+    "status": "Old",
+    "package": {
+      "package": "6 x 4 Pack"
+    },
+    "productSize": {
+      "size": 16,
+      "unit": {
+        "unit": "Ounce"
+      },
+      "containerType": {
+        "type": "Can"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 98.7,
+    "pricePromotion": false,
+    "containerCharge": 0,
+    "effectiveDate": 1746345600000,
+    "createdAt": 1745516483885,
+    "createdByLicensee": {
+      "id": "4283",
+      "name": "PURE PROJECT LLC"
+    }
+  },
+  {
+    "id": "7475103",
+    "manufacturer": {
+      "name": "COOPERS BREWERY LIMITED"
+    },
+    "product": {
+      "name": "Coopers Best Extra Stout",
+      "tradeName": "Coopers Brewery"
+    },
+    "status": "Active",
+    "package": {
+      "package": "4 x 6 Pack"
+    },
+    "productSize": {
+      "size": 375,
+      "unit": {
+        "unit": "Milliliter"
+      },
+      "containerType": {
+        "type": "Glass Bottle"
+      }
+    },
+    "county": "Santa Clara",
+    "pricesTo": {
+      "name": "Retailers"
+    },
+    "receivingMethod": "Delivery",
+    "price": 52.7,
+    "pricePromotion": false,
+    "containerCharge": 0,
+    "effectiveDate": 1754035200000,
+    "createdAt": 1753219866339,
+    "createdByLicensee": {
+      "id": "8650",
+      "name": "BREAKTHRU BEVERAGE CALIFORNIA LLC"
+    }
+  }
+]

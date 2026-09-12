@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+body{margin:0;background:#15130F;--bg:#15130F;--surf:#1C1915;--sunk:#100E0B;--line:#2B271F;--line2:#3B362C;--ink:#ECE7DD;--muted:#8D857A;--seal:#5FB0BC;--neg:#C4705A;--sans:'Instrument Sans',system-ui,sans-serif;--serif:'Fraunces',Georgia,serif;--mono:'JetBrains Mono',ui-monospace,SFMono-Regular,monospace}
+body[data-skin="neutral"]{--bg:#141414;--surf:#1C1C1C;--sunk:#0F0F0F;--line:#282828;--line2:#3A3A3A;--ink:#E8E8E8;--muted:#8A8A8A;--seal:#A3A3A3;--neg:#6F6F6F}
+*{box-sizing:border-box}
+a{color:var(--seal);text-decoration:none}
+a:hover{color:var(--ink)}
+::selection{background:var(--line2)}
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
+</style>
+</helmet>
+<div style="background:var(--bg);color:var(--ink);font-family:var(--sans);min-height:100vh;padding-bottom:64px">
+
+  <header style="position:sticky;top:0;z-index:30;background:color-mix(in oklab, var(--bg) 90%, transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)">
+    <div style="max-width:1360px;margin:0 auto;padding:14px 24px 0;display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <div style="font-family:var(--serif);font-size:19px;font-weight:600;letter-spacing:-.015em;line-height:1">Mudavym.</div>
+        <div style="width:64px;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2);height:3px"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;padding-bottom:2px">
+        <span style="font:600 8.5px var(--mono);letter-spacing:.14em;color:var(--muted)">MOTION CANVAS</span>
+        <span style="font:400 11px var(--sans);color:var(--muted)">{{ countLabel }} demos · every curve simulated, not eyeballed</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding-bottom:2px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font:600 8.5px var(--mono);letter-spacing:.1em;color:var(--muted)">SKIN</span>
+          <div style="display:flex;border:1px solid var(--line2);border-radius:5px;overflow:hidden">
+            <button onClick="{{ setBranded }}" style="padding:5px 11px;border:0;background:{{ brandedBg }};color:{{ brandedFg }};font:600 10px var(--sans);cursor:pointer">Branded</button>
+            <button onClick="{{ setNeutral }}" style="padding:5px 11px;border:0;border-left:1px solid var(--line2);background:{{ neutralBg }};color:{{ neutralFg }};font:600 10px var(--sans);cursor:pointer">Neutral</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:150px">
+          <span style="font:600 8.5px var(--mono);letter-spacing:.1em;color:var(--muted)">SPEED · <span style="color:var(--ink)">{{ speedLabel }}</span></span>
+          <input type="range" min="0.2" max="2" step="0.1" value="{{ speed }}" onChange="{{ onSpeed }}" onInput="{{ onSpeed }}" style="width:150px;accent-color:var(--muted);background:transparent">
+        </div>
+        <button onClick="{{ playAll }}" style="align-self:flex-end;padding:6px 12px;border:1px solid var(--line2);border-radius:5px;background:var(--surf);color:var(--ink);font:600 10.5px var(--sans);cursor:pointer" style-hover="border-color:var(--muted)">Play all</button>
+      </div>
+    </div>
+    <div style="max-width:1360px;margin:0 auto;padding:10px 24px 12px;display:flex;gap:6px;flex-wrap:wrap">
+      <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="7">
+        <button onClick="{{ ch.pick }}" style="padding:4px 10px;border-radius:99px;border:1px solid {{ ch.bc }};background:{{ ch.bg }};color:{{ ch.fg }};font:500 10px var(--sans);cursor:pointer">{{ ch.label }}</button>
+      </sc-for>
+    </div>
+    <sc-if value="{{ reduced }}" hint-placeholder-val="{{ false }}">
+      <div style="border-top:1px solid var(--line);background:var(--sunk);padding:8px 24px;font:500 10.5px var(--mono);color:var(--muted)">prefers-reduced-motion: reduce — every demo is showing its end state. A still canvas is the correct behaviour here.</div>
+    </sc-if>
+  </header>
+
+  <main style="max-width:1360px;margin:0 auto;padding:0 24px">
+    <section style="padding:34px 0 8px;max-width:680px">
+      <p style="margin:0 0 10px;font-family:var(--serif);font-size:22px;line-height:1.32;font-weight:400;letter-spacing:-.01em;text-wrap:pretty">The giving of hospitality and passion while technically superior.</p>
+      <p style="margin:0;font:400 12.5px/1.6 var(--sans);color:var(--muted);text-wrap:pretty">Six motion tokens, one accent, no hard-coded colour anywhere in a demo. Every card names the surface it belongs to and prints the curve driving it — springs are integrated from m·x″ + c·x′ + k·x = k and sampled into a CSS <span style="font-family:var(--mono);font-size:11.5px;color:var(--ink)">linear()</span> easing, so the measured overshoot on the card is the overshoot on screen. Demos replay on hover, on Replay, and once on first paint.</p>
+    </section>
+
+    <section style="display:flex;flex-wrap:wrap;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:20px 0 4px;background:var(--surf)">
+      <sc-for list="{{ tokenRows }}" as="t" hint-placeholder-count="7">
+        <div style="flex:1 1 190px;padding:11px 14px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)">
+          <div style="font:600 11px var(--mono);letter-spacing:.02em;color:var(--ink);margin-bottom:3px">{{ t.name }}</div>
+          <div style="font:500 9.5px var(--mono);color:var(--muted);line-height:1.5">{{ t.phys }}</div>
+          <div style="font:400 10px var(--sans);color:var(--muted);margin-top:4px">{{ t.use }}</div>
+        </div>
+      </sc-for>
+    </section>
+
+    <sc-for list="{{ groups }}" as="g" hint-placeholder-count="6">
+      <section style="padding:38px 0 0">
+        <div style="display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--line);padding-bottom:9px;margin-bottom:18px">
+          <h2 style="margin:0;font-family:var(--serif);font-size:17px;font-weight:600;letter-spacing:-.01em">{{ g.title }}</h2>
+          <span style="font:500 9.5px var(--mono);color:var(--muted)">{{ g.count }}</span>
+          <p style="margin:0 0 0 auto;max-width:560px;text-align:right;font:400 11px/1.5 var(--sans);color:var(--muted);text-wrap:pretty">{{ g.blurb }}</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+          <sc-for list="{{ g.cards }}" as="c" hint-placeholder-count="9">
+            <article style="display:flex;flex-direction:column;background:var(--surf);border:1px solid var(--line);border-radius:8px;overflow:hidden">
+              <div style="display:flex;align-items:baseline;gap:8px;padding:11px 12px 6px">
+                <h3 style="margin:0;font:600 12.5px var(--sans);letter-spacing:-.012em;color:var(--ink)">{{ c.name }}</h3>
+                <span style="margin-left:auto;font:500 8.5px var(--mono);color:var(--muted);letter-spacing:.06em">{{ c.num }}</span>
+              </div>
+              <p style="margin:0 12px 10px;min-height:30px;font:400 10.5px/1.45 var(--sans);color:var(--muted);text-wrap:pretty">{{ c.why }}</p>
+              <div ref="{{ c.mount }}" style="position:relative;height:150px;padding:12px;background:var(--sunk);border-top:1px solid var(--line);border-bottom:1px solid var(--line);overflow:hidden"></div>
+              <div style="display:flex;align-items:center;gap:8px;padding:9px 12px">
+                <span style="flex:1;font:500 8.5px/1.4 var(--mono);color:var(--muted);letter-spacing:.01em">{{ c.spec }}</span>
+                <button onClick="{{ c.replay }}" style="padding:4px 9px;border:1px solid var(--line);border-radius:4px;background:transparent;color:var(--muted);font:600 9.5px var(--sans);cursor:pointer" style-hover="border-color:var(--muted);color:var(--ink)">Replay</button>
+              </div>
+            </article>
+          </sc-for>
+        </div>
+      </section>
+    </sc-for>
+
+    <footer style="margin-top:48px;border-top:1px solid var(--line);padding-top:18px;display:flex;gap:28px;flex-wrap:wrap;max-width:900px">
+      <p style="margin:0;flex:1 1 260px;font:400 11px/1.6 var(--sans);color:var(--muted);text-wrap:pretty">The bar: every motion answers <em style="font-style:normal;color:var(--ink)">why this movement and not a fade</em> from restaurant operations — an owner approving money, a porter at the door on 12% with no signal, a manager reading a discrepancy queue at 1am. Motion that exists to impress is cut.</p>
+      <p style="margin:0;flex:1 1 260px;font:400 11px/1.6 var(--sans);color:var(--muted);text-wrap:pretty">The neutral skin is not a dark-mode variant. It removes the palette so movement can be judged without the brand arguing for it — and it removes red, which is why failure has to be structural: emptiness sits centred and still, failure arrives from the top edge, left-aligned, carrying a way out.</p>
+      <p style="margin:0;flex:1 1 200px;font:500 10px/1.6 var(--mono);color:var(--muted)">İznik #5FB0BC is the seal. It is reserved for acts of record. If it appears twice on a screen, one of them is wrong.</p>
+    </footer>
+  </main>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1360,&quot;height&quot;:900},&quot;defaultSkin&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;branded&quot;,&quot;neutral&quot;],&quot;default&quot;:&quot;branded&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Canvas&quot;},&quot;defaultSpeed&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:0.2,&quot;max&quot;:2,&quot;step&quot;:0.1,&quot;default&quot;:1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Canvas&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#5FB0BC&quot;,&quot;#C9A227&quot;,&quot;#B4654A&quot;,&quot;#8D857A&quot;],&quot;default&quot;:&quot;#5FB0BC&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Canvas&quot;},&quot;showSpec&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Canvas&quot;}}">
+class Component extends DCLogic {
+  state = { skin: 'branded', speed: 1, fam: 'all' };
+
+  componentDidMount() {
+    const skin = this.props.defaultSkin || 'branded';
+    document.body.dataset.skin = skin;
+    if (this.props.accent) document.body.style.setProperty('--seal', this.props.accent);
+    if (this.props.defaultSpeed) this.setState({ speed: +this.props.defaultSpeed });
+    this.setState({ skin });
+  }
+  componentWillUnmount() {
+    (this.demos || []).forEach(c => { (c._t || []).forEach(clearTimeout); (c._raf || []).forEach(f => f()); });
+    if (this._io) this._io.disconnect();
+    clearTimeout(this._drainT);
+  }
+
+  get reduced() { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+
+  /* ---- spring integration: m x'' + c x' + k x = k, sampled into CSS linear() ---- */
+  sim(k, c, m) {
+    const dt = 1 / 20000; let x = 0, v = 0, t = 0, peak = 0; const traj = [0];
+    while (t < 8) {
+      const a = (k * (1 - x) - c * v) / m; v += a * dt; x += v * dt; t += dt; traj.push(x);
+      if (x > peak) peak = x;
+      if (Math.abs(1 - x) < 5e-4 && Math.abs(v) < 5e-4) break;
+    }
+    const dur = Math.round(t * 1000), N = Math.min(80, Math.max(20, Math.round(dur / 12))), pts = [];
+    for (let i = 0; i <= N; i++) pts.push(+traj[Math.round(i / N * (traj.length - 1))].toFixed(4));
+    return { duration: dur, easing: 'linear(' + pts.join(',') + ')', over: Math.max(0, (peak - 1) * 100), ease: this.sampled(pts) };
+  }
+  /* evaluators so JS-driven values follow the exact same curve as the CSS easing */
+  sampled(pts) {
+    return t => {
+      if (t <= 0) return pts[0];
+      if (t >= 1) return pts[pts.length - 1];
+      const f = t * (pts.length - 1), i = Math.floor(f);
+      return pts[i] + (pts[i + 1] - pts[i]) * (f - i);
+    };
+  }
+  bezier(x1, y1, x2, y2) {
+    const cx = t => 3 * (1 - t) * (1 - t) * t * x1 + 3 * (1 - t) * t * t * x2 + t * t * t;
+    const cy = t => 3 * (1 - t) * (1 - t) * t * y1 + 3 * (1 - t) * t * t * y2 + t * t * t;
+    return x => {
+      if (x <= 0) return 0; if (x >= 1) return 1;
+      let lo = 0, hi = 1, t = x;
+      for (let i = 0; i < 24; i++) { const v = cx(t); if (v < x) lo = t; else hi = t; t = (lo + hi) / 2; }
+      return cy(t);
+    };
+  }
+  get TOK() {
+    if (this._tok) return this._tok;
+    const tuck = this.sim(380, 32, 1), stamp = this.sim(500, 26, 1), tally = this.sim(200, 34, 1);
+    const sp = (n, o, s) => n + ' · ' + s + ' · ' + o.duration + 'ms · overshoot ' + o.over.toFixed(1) + '%';
+    this._tok = {
+      settle: { duration: 320, easing: 'cubic-bezier(.16,1,.3,1)', over: 0, spec: 'settle · cubic-bezier(.16,1,.3,1) 320ms', ease: this.bezier(.16, 1, .3, 1) },
+      tuck: Object.assign({}, tuck, { spec: sp('tuck', tuck, 'spring 380/32/1') }),
+      stamp: Object.assign({}, stamp, { spec: sp('stamp', stamp, 'spring 500/26/1') }),
+      tally: Object.assign({}, tally, { spec: sp('tally', tally, 'spring 200/34/1 overdamped') }),
+      ink: { duration: 150, easing: 'cubic-bezier(.4,0,.2,1)', over: 0, spec: 'ink · ease-out 150ms', ease: this.bezier(.4, 0, .2, 1) },
+      turn: { duration: 420, easing: 'cubic-bezier(.32,.72,0,1)', over: 0, spec: 'turn · cubic-bezier(.32,.72,0,1) 420ms', ease: this.bezier(.32, .72, 0, 1) },
+      linear: { duration: 620, easing: 'linear', over: 0, spec: 'linear 620ms · un-eased on purpose', ease: t => t }
+    };
+    return this._tok;
+  }
+
+  /* ---- per-card utilities ---- */
+  mkU(card) {
+    const self = this, TOK = this.TOK;
+    const u = {
+      a(el, kf, tok, o) {
+        o = o || {}; const t = TOK[tok] || TOK.settle;
+        if (!el) return null;
+        if (self.reduced) { Object.keys(kf).forEach(p => { const v = kf[p]; el.style[p] = Array.isArray(v) ? v[v.length - 1] : v; }); return null; }
+        return el.animate(kf, { duration: (o.duration || t.duration) / self.state.speed, delay: (o.delay || 0) / self.state.speed, easing: o.easing || t.easing, fill: 'both', iterations: o.iterations || 1 });
+      },
+      after(ms, fn) { if (self.reduced) { fn(); return; } card._t.push(setTimeout(fn, ms / self.state.speed)); },
+      set(el, o) { if (el) Object.assign(el.style, o); },
+      txt(el, v) { if (el) el.textContent = v; },
+      q(s) { return card._node.querySelector(s); },
+      qa(s) { return Array.from(card._node.querySelectorAll(s)); },
+      flip(els, mutate, tok, o) {
+        const before = new Map(); els.forEach(e => before.set(e, e.getBoundingClientRect()));
+        mutate();
+        els.forEach(e => {
+          const p = before.get(e), n = e.getBoundingClientRect();
+          const dx = p.left - n.left, dy = p.top - n.top;
+          const sx = (o && o.noScale) || !n.width ? 1 : p.width / n.width;
+          const sy = (o && o.noScale) || !n.height ? 1 : p.height / n.height;
+          if (Math.abs(dx) < .5 && Math.abs(dy) < .5 && Math.abs(sx - 1) < .005 && Math.abs(sy - 1) < .005) return;
+          e.style.transformOrigin = 'top left';
+          u.a(e, { transform: ['translate(' + dx + 'px,' + dy + 'px) scale(' + sx + ',' + sy + ')', 'translate(0,0) scale(1,1)'] }, tok);
+        });
+      },
+      /* numeric tween on the same integrated curve as the CSS easing — overshoot included */
+      tween(ms, tok, step, done) {
+        if (self.reduced) { step(1); if (done) done(); return; }
+        const t = TOK[tok] || TOK.tally, ease = t.ease || (x => x);
+        const dur = (ms || t.duration) / self.state.speed, t0 = performance.now();
+        let raf = 0, alive = true;
+        const loop = () => {
+          if (!alive) return;
+          const e = (performance.now() - t0) / dur;
+          if (e >= 1) { step(1); if (done) done(); return; }
+          step(ease(e));
+          raf = requestAnimationFrame(loop);
+        };
+        loop();
+        card._raf.push(() => { alive = false; cancelAnimationFrame(raf); });
+      }
+    };
+    return u;
+  }
+
+  mount(card, node) {
+    if (!node) return;
+    if (card._node === node && card._play) return;
+    (card._t || []).forEach(clearTimeout); (card._raf || []).forEach(f => f());
+    card._node = node; card._t = []; card._raf = [];
+    card._u = this.mkU(card);
+    try { card._play = card.build(node, card._u) || function () { }; }
+    catch (e) { console.warn('build ' + card.name, e); card._play = function () { }; }
+    node.onmouseenter = () => this.play(card);
+    this._byNode = this._byNode || new Map();
+    this._byNode.set(node, card);
+    if (!this._io) {
+      this._io = new IntersectionObserver(es => es.forEach(e => {
+        if (!e.isIntersecting) return;
+        const c = this._byNode.get(e.target);
+        if (c && !c._played) { c._played = true; this.enqueue(c); }
+      }), { rootMargin: '60px' });
+    }
+    this._io.observe(node);
+  }
+  play(card) {
+    if (!card._play) return;
+    (card._t || []).forEach(clearTimeout); card._t = [];
+    (card._raf || []).forEach(f => f()); card._raf = [];
+    if (card._node) card._node.getAnimations({ subtree: true }).forEach(a => a.cancel());
+    try { card._play(); } catch (e) { console.warn('play ' + card.name, e); }
+  }
+  enqueue(card) {
+    this._q = this._q || []; this._q.push(card);
+    if (this._draining) return;
+    this._draining = true;
+    const step = () => {
+      const n = this._q.shift();
+      if (!n) { this._draining = false; return; }
+      this.play(n);
+      this._drainT = setTimeout(step, 110);
+    };
+    step();
+  }
+
+  /* ---------------- demos ---------------- */
+  get demos() { if (!this._demos) { this._fams = this.buildFams(); this._demos = this._fams.reduce((a, g) => a.concat(g.cards), []); } return this._demos; }
+  get fams() { this.demos; return this._fams; }
+
+  buildFams() {
+    const S = {
+      row: 'display:flex;align-items:center;gap:7px;padding:6px 8px;background:var(--surf);border:1px solid var(--line);border-radius:5px;font:500 10.5px var(--sans);color:var(--ink)',
+      mono: "font:500 10.5px var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em",
+      sm: "font:500 9px var(--mono);color:var(--muted);letter-spacing:.03em",
+      lbl: "font:600 8.5px var(--mono);color:var(--muted);letter-spacing:.09em;text-transform:uppercase",
+      btn: 'padding:5px 9px;border-radius:4px;border:1px solid var(--line2);background:var(--surf);color:var(--ink);font:600 10px var(--sans);cursor:pointer',
+      col: 'display:flex;flex-direction:column;gap:6px',
+      nm: 'flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis',
+      seal: 'color:var(--seal)',
+      note: "position:absolute;left:12px;right:12px;bottom:9px;font:500 8.5px var(--mono);color:var(--muted)"
+    };
+    const row = (a, b, c, extra) => '<div style="' + S.row + (extra || '') + '"><span style="' + S.mono + ';color:var(--muted)">' + a + '</span><span style="' + S.nm + '">' + b + '</span><span style="' + S.mono + '">' + c + '</span></div>';
+    const PO = [['PO-1042', 'Vinos del Norte', '$1,860'], ['PO-1043', 'Bodega Álvaro', '$740'], ['PO-1044', 'Panadería Sur', '$212'], ['PO-1045', 'Mariscos Ría', '$1,105']];
+
+    const ent = [
+      { name: 'Staggered arrival', why: 'Open purchase orders on first paint of the PO list.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '">' + PO.map(p => row(p[0], p[1], p[2])).join('') + '</div>';
+        const r = u.qa('[style*="border-radius:5px"]');
+        return () => r.forEach((e, i) => u.a(e, { opacity: [0, 1], transform: ['translateY(9px)', 'none'] }, 'settle', { delay: i * 60 }));
+      } },
+      { name: 'Skeleton resolves', why: 'The PO list loading: skeleton occupies the exact content box, so nothing shifts when data lands.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="position:relative">' + PO.slice(0, 3).map(p => row(p[0], p[1], p[2])).join('') +
+          '<div data-sk style="position:absolute;inset:0;' + S.col + '">' + PO.slice(0, 3).map(() => '<div style="height:29px;border-radius:5px;background:color-mix(in oklab, var(--ink) 6%, var(--surf));border:1px solid var(--line)"></div>').join('') + '</div></div>';
+        const wrap = u.q('[style*="position:relative"]'); wrap.style.gap = '6px'; wrap.style.display = 'flex'; wrap.style.flexDirection = 'column';
+        const sk = u.q('[data-sk]'), rows = u.qa('[style*="border-radius:5px"][style*="padding:6px"]');
+        return () => {
+          u.set(sk, { opacity: '1' }); rows.forEach(r => u.set(r, { opacity: '0' }));
+          u.a(sk, { opacity: [1, 0] }, 'ink', { delay: 260 });
+          rows.forEach((r, i) => u.a(r, { opacity: [0, 1] }, 'ink', { delay: 300 + i * 50 }));
+        };
+      } },
+      { name: 'The late row does not shove', why: 'A PO approved elsewhere arrives while a manager is mid-sentence: the gap opens first, the row materialises inside space that already exists.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '">' + row('PO-1042', 'Vinos del Norte', '$1,860') +
+          '<div data-g style="display:grid;grid-template-rows:0fr;transition:none"><div style="overflow:hidden;min-height:0">' + row('PO-1046', 'Bodega Álvaro', '$980', ';border-color:var(--line2)') + '</div></div>' +
+          row('PO-1044', 'Panadería Sur', '$212') + row('PO-1045', 'Mariscos Ría', '$1,105') + '</div>';
+        const g = u.q('[data-g]'), inner = g.firstElementChild.firstElementChild;
+        return () => {
+          u.set(g, { gridTemplateRows: '0fr' }); u.set(inner, { opacity: '0' });
+          u.a(g, { gridTemplateRows: ['0fr', '1fr'] }, 'settle');
+          u.a(inner, { opacity: [0, 1] }, 'ink', { delay: 200 });
+        };
+      } },
+      { name: 'Scroll reveal', why: 'Analytics sections entering the viewport on the weekly review page.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '">' + [['Food cost', '28.4%'], ['Labour', '31.1%'], ['Waste', '$212'], ['Covers', '184']].map(x => row(x[0], '', x[1])).join('') + '</div>';
+        const r = u.qa('[style*="padding:6px"]');
+        return () => r.forEach((e, i) => u.a(e, { opacity: [0, 1], transform: ['translateY(16px)', 'none'], clipPath: ['inset(0 0 100% 0)', 'inset(0 0 0 0)'] }, 'settle', { delay: i * 90 }));
+      } },
+      { name: 'Empty becomes its first row', why: 'The deliveries screen at 06:00, when the first crate actually arrives at the door.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="position:relative;height:100%"><div data-e style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;' + S.sm + '">Nothing received yet today</div><div data-r style="opacity:0">' + row('07:12', 'Vinos del Norte · 24 bottles', '$1,860') + '</div></div>';
+        const e = u.q('[data-e]'), r = u.q('[data-r]');
+        return () => {
+          u.set(e, { opacity: '1' }); u.set(r, { opacity: '0' });
+          u.a(e, { opacity: [1, 0], transform: ['none', 'scale(.97)'] }, 'ink', { delay: 180 });
+          u.a(r, { opacity: [0, 1], transform: ['translateY(10px)', 'none'] }, 'settle', { delay: 300 });
+        };
+      } },
+      { name: 'Card lands in the grid', why: 'A new vendor tile joining the vendor board — measured FLIP, not a fade-in.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' + ['Vinos del Norte', 'Bodega Álvaro', 'Panadería Sur', 'Mariscos Ría'].map((v, i) => '<div data-c="' + i + '" style="padding:9px;border:1px solid var(--line);border-radius:6px;background:var(--surf);font:500 10px var(--sans);height:52px">' + v + '<div style="' + S.sm + ';margin-top:4px">on account</div></div>').join('') + '</div>';
+        const last = u.q('[data-c="3"]');
+        return () => u.a(last, { transform: ['translate(-104%, -100%) scale(.9)', 'none'], opacity: [0, 1] }, 'settle');
+      } },
+      { name: 'Table paints column by column', why: 'The 1am discrepancy queue: the identifier column lands first so the eye has an anchor before the numbers arrive.', tok: 'ink', build(s, u) {
+        const cols = [['PO', 'PO-1042', 'PO-1043', 'PO-1044'], ['VENDOR', 'Vinos', 'Álvaro', 'Sur'], ['ORD', '24', '12', '40'], ['LAND', '22', '12', '40'], ['Δ', '−2', '0', '0']];
+        s.innerHTML = '<div style="display:flex;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surf)">' + cols.map((c, i) => '<div data-col style="flex:' + (i < 2 ? 2 : 1) + ';border-right:' + (i < 4 ? '1px solid var(--line)' : '0') + '">' + c.map((v, j) => '<div style="padding:5px 7px;' + (j ? S.mono : S.lbl) + ';border-bottom:' + (j < 3 ? '1px solid var(--line)' : '0') + ';white-space:nowrap;overflow:hidden">' + v + '</div>').join('') + '</div>').join('') + '</div>';
+        const c = u.qa('[data-col]');
+        return () => c.forEach((e, i) => u.a(e, { opacity: [0, 1] }, 'ink', { delay: i * 90 }));
+      } },
+      { name: 'Thumbnail resolves', why: 'A vendor invoice thumbnail in the document list: the box is reserved, only the content sharpens.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="display:flex;gap:10px;align-items:center"><div data-th style="width:66px;height:88px;border:1px solid var(--line2);border-radius:3px;background:repeating-linear-gradient(0deg,var(--surf) 0 6px,var(--sunk) 6px 12px)"></div><div style="' + S.col + ';flex:1"><span style="font:600 11px var(--sans)">Factura 88-A</span><span style="' + S.sm + '">Vinos del Norte · 2 pages</span></div></div><div style="' + S.note + '">filter blur is the one non-compositor property here</div>';
+        const th = u.q('[data-th]');
+        return () => u.a(th, { filter: ['blur(7px)', 'blur(0px)'], opacity: [.4, 1] }, 'turn');
+      } },
+      { name: 'The mark draws', why: 'App launch: the double rule and the full stop, which is part of the wordmark.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="display:flex;align-items:baseline;font-family:var(--serif);font-size:26px;font-weight:600;letter-spacing:-.02em"><span data-w style="display:inline-block">Mudavym</span><span data-s style="display:inline-block">.</span></div><div data-r1 style="width:78px;border-top:1px solid var(--line2)"></div><div data-r2 style="width:78px;border-top:1px solid var(--line2)"></div></div>';
+        const w = u.q('[data-w]'), st = u.q('[data-s]'), r1 = u.q('[data-r1]'), r2 = u.q('[data-r2]');
+        return () => {
+          u.a(w, { clipPath: ['inset(0 100% 0 0)', 'inset(0 0 0 0)'] }, 'turn');
+          u.a(st, { opacity: [0, 1], transform: ['scale(.4)', 'none'] }, 'stamp', { delay: 300 });
+          u.a(r1, { transform: ['scaleX(0)', 'none'] }, 'settle', { delay: 340 });
+          u.a(r2, { transform: ['scaleX(0)', 'none'] }, 'settle', { delay: 400 });
+          [r1, r2].forEach(r => u.set(r, { transformOrigin: 'left' }));
+        };
+      } },
+      { name: 'Drawer contents cascade', why: 'The vendor drawer: the surface arrives first, its contents follow so the panel reads as one object.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div data-d style="position:absolute;inset:0 0 0 30%;background:var(--surf);border-left:1px solid var(--line2);padding:12px;' + S.col + '"><div data-i style="font:600 11.5px var(--sans)">Vinos del Norte</div><div data-i style="' + S.sm + '">Rioja · net 30</div><div data-i style="' + S.mono + '">$4,712 open</div><div data-i style="' + S.mono + ';color:var(--muted)">14 POs this quarter</div></div>';
+        const d = u.q('[data-d]'), items = u.qa('[data-i]');
+        return () => {
+          u.a(d, { transform: ['translateX(100%)', 'none'] }, 'settle');
+          items.forEach((e, i) => u.a(e, { opacity: [0, 1], transform: ['translateX(12px)', 'none'] }, 'settle', { delay: 140 + i * 55 }));
+        };
+      } }
+    ];
+
+    const st = [
+      { name: 'Hold to approve · the seal', why: 'Approving PO-1042 for $1,860. Press and hold the plate — this is the signature moment of the brand.', tok: 'stamp', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;gap:9px"><div style="' + S.mono + ';display:flex;gap:8px"><span style="color:var(--muted)">PO-1042</span><span style="' + S.nm + '">Vinos del Norte</span><span>$1,860</span></div>' +
+          '<div data-plate tabindex="0" style="position:relative;height:38px;border:1px solid var(--line2);border-radius:5px;overflow:hidden;background:var(--surf);cursor:pointer;display:flex;align-items:center;justify-content:center">' +
+          '<div data-fill style="position:absolute;inset:0;transform-origin:left;transform:scaleX(0);background:color-mix(in oklab, var(--seal) 22%, transparent)"></div>' +
+          '<div data-ghost style="position:absolute;width:26px;height:26px;border-radius:50%;border:1px solid var(--seal);opacity:0"></div>' +
+          '<div data-halo style="position:absolute;width:26px;height:26px;border-radius:50%;border:1px solid var(--seal);opacity:0"></div>' +
+          '<div data-seal style="position:absolute;width:26px;height:26px;border-radius:50%;background:var(--seal);opacity:0;display:flex;align-items:center;justify-content:center;font:700 9px var(--mono);color:var(--sunk)">M.</div>' +
+          '<span data-cap style="position:relative;font:600 10.5px var(--sans);color:var(--ink)">Hold to approve</span></div>' +
+          '<div data-ledger style="' + S.mono + ';color:var(--seal);clip-path:inset(0 100% 0 0)">16:22 · approved · PO-1042 · $1,860 · Elif Kaya</div></div>';
+        const plate = u.q('[data-plate]'), fill = u.q('[data-fill]'), ghost = u.q('[data-ghost]'), halo = u.q('[data-halo]'), seal = u.q('[data-seal]'), cap = u.q('[data-cap]'), led = u.q('[data-ledger]');
+        const reset = () => { u.set(fill, { transform: 'scaleX(0)' }); [ghost, halo, seal].forEach(e => u.set(e, { opacity: '0', transform: 'none' })); u.set(led, { clipPath: 'inset(0 100% 0 0)' }); u.txt(cap, 'Hold to approve'); u.set(cap, { opacity: '1' }); };
+        const land = () => {
+          u.a(ghost, { opacity: [.6, 0] }, 'ink');
+          u.a(cap, { opacity: [1, 0] }, 'ink');
+          u.a(seal, { opacity: [0, 1], transform: ['scale(2.2)', 'scale(1)'] }, 'stamp');
+          u.a(halo, { opacity: [.7, 0], transform: ['scale(1)', 'scale(3.1)'] }, 'settle', { duration: 620, delay: 60 });
+          u.after(360, () => u.a(led, { clipPath: ['inset(0 100% 0 0)', 'inset(0 0 0 0)'] }, 'turn'));
+        };
+        let holding = false;
+        const begin = () => {
+          holding = true; reset();
+          u.a(fill, { transform: ['scaleX(0)', 'scaleX(1)'] }, 'linear');
+          u.a(ghost, { opacity: [0, .55], transform: ['scale(1.6)', 'scale(1.1)'] }, 'linear');
+          u.after(620, () => { if (holding) land(); });
+        };
+        const end = () => {
+          if (!holding) return; holding = false;
+          const m = new DOMMatrixReadOnly(getComputedStyle(fill).transform);
+          const pct = Math.round(m.a * 100);
+          if (pct >= 99) return;
+          (card => card)(0);
+          u.set(fill, { transform: 'scaleX(0)' });
+          u.txt(cap, 'Released at ' + pct + '% — nothing sent.');
+          u.a(cap, { opacity: [.5, 1] }, 'ink');
+        };
+        plate.onpointerdown = e => { e.preventDefault(); begin(); };
+        plate.onpointerup = end; plate.onpointerleave = end;
+        plate.onkeydown = e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); begin(); } };
+        plate.onkeyup = e => { if (e.key === ' ' || e.key === 'Enter') end(); };
+        return () => { reset(); holding = true; u.a(fill, { transform: ['scaleX(0)', 'scaleX(1)'] }, 'linear'); u.a(ghost, { opacity: [0, .55], transform: ['scale(1.6)', 'scale(1.1)'] }, 'linear'); u.after(620, () => { holding = false; land(); }); };
+      } },
+      { name: 'Released early', why: 'The operator lifts their thumb at 42%. It never silently does nothing — it says what did not happen.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:9px"><div data-plate style="position:relative;height:38px;border:1px solid var(--line2);border-radius:5px;overflow:hidden;background:var(--surf);display:flex;align-items:center;justify-content:center"><div data-fill style="position:absolute;inset:0;transform-origin:left;transform:scaleX(0);background:color-mix(in oklab, var(--seal) 20%, transparent)"></div><span data-cap style="position:relative;font:600 10.5px var(--sans)">Hold to approve</span></div><div data-msg style="' + S.mono + ';color:var(--muted);opacity:0">Released at 42% — nothing sent.</div></div>';
+        const fill = u.q('[data-fill]'), cap = u.q('[data-cap]'), msg = u.q('[data-msg]');
+        return () => {
+          u.set(fill, { transform: 'scaleX(0)' }); u.set(msg, { opacity: '0' }); u.txt(cap, 'Hold to approve');
+          const a = u.a(fill, { transform: ['scaleX(0)', 'scaleX(.42)'] }, 'linear', { duration: 260 });
+          u.after(280, () => {
+            u.a(fill, { transform: ['scaleX(.42)', 'scaleX(0)'] }, 'tally');
+            u.a(msg, { opacity: [0, 1] }, 'ink');
+          });
+          return a;
+        };
+      } },
+      { name: 'Undo window drains un-eased', why: 'Cancelling a sent order. A countdown that eases is lying about how much time is left.', tok: 'linear', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="' + S.row + ';border-color:var(--line2)"><span style="' + S.nm + '">Order sent to Bodega Álvaro</span><span data-n style="' + S.mono + '">5</span><span style="' + S.mono + ';color:var(--ink);text-decoration:underline">Undo</span></div><div style="height:2px;background:var(--line)"><div data-bar style="height:2px;background:var(--muted);transform-origin:left"></div></div><div style="' + S.sm + '">linear · no easing · 5,000ms</div></div>';
+        const bar = u.q('[data-bar]'), n = u.q('[data-n]');
+        return () => {
+          u.a(bar, { transform: ['scaleX(1)', 'scaleX(0)'] }, 'linear', { duration: 5000 });
+          u.tween(5000, 'linear', p => u.txt(n, String(Math.ceil(5 - p * 5) || 0)));
+        };
+      } },
+      { name: 'Optimistic write walks back', why: 'Par level saved on a phone at the walk-in door; the server rejects it. The number corrects on tally and owns the reason in place — no toast.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="' + S.lbl + '">Rioja · par level</div><div data-v style="font:600 30px var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em">36</div><div data-g style="display:grid;grid-template-rows:0fr"><div style="overflow:hidden;min-height:0"><div style="' + S.mono + ';color:var(--neg);padding-top:4px">rejected · par cannot exceed case multiple (24)</div></div></div></div>';
+        const v = u.q('[data-v]'), g = u.q('[data-g]');
+        return () => {
+          u.set(g, { gridTemplateRows: '0fr' }); u.txt(v, '24'); u.set(v, { color: 'var(--ink)' });
+          u.after(120, () => u.tween(400, 'tally', p => u.txt(v, String(Math.round(24 + p * 12)))));
+          u.after(760, () => {
+            u.tween(700, 'tally', p => u.txt(v, String(Math.round(36 - p * 12))));
+            u.set(v, { color: 'var(--neg)' });
+            u.a(g, { gridTemplateRows: ['0fr', '1fr'] }, 'settle');
+          });
+        };
+      } },
+      { name: 'Toggle', why: 'Auto-reorder on the Rioja line — the knob moves under a finger, so it is tuck.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:10px"><div data-t style="width:40px;height:22px;border-radius:99px;background:var(--line);border:1px solid var(--line2);padding:2px"><div data-k style="width:16px;height:16px;border-radius:50%;background:var(--ink)"></div></div><span style="font:500 10.5px var(--sans)">Auto-reorder Rioja at par</span></div>';
+        const t = u.q('[data-t]'), k = u.q('[data-k]');
+        let on = false;
+        const go = () => { on = !on; u.a(k, { transform: on ? ['translateX(0)', 'translateX(18px)'] : ['translateX(18px)', 'translateX(0)'] }, 'tuck'); u.a(t, { background: on ? ['var(--line)', 'color-mix(in oklab, var(--ink) 22%, var(--line))'] : ['color-mix(in oklab, var(--ink) 22%, var(--line))', 'var(--line)'] }, 'ink'); };
+        t.onclick = go;
+        return () => { on = false; u.set(k, { transform: 'translateX(0)' }); u.after(80, go); };
+      } },
+      { name: 'The tick draws', why: 'A line item confirmed at the door — the mark is drawn, not popped, so it reads as an act.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:10px"><svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="11" fill="none" stroke="var(--line2)" stroke-width="1.5"></circle><path data-p d="M7 13.5 L11.5 18 L19 8.5" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="22" stroke-dashoffset="22"></path></svg><div style="' + S.col + '"><span style="font:600 11px var(--sans)">24 bottles received</span><span style="' + S.sm + '">counted at the door · 07:12</span></div></div>';
+        const p = u.q('[data-p]');
+        return () => u.a(p, { strokeDashoffset: [22, 0] }, 'settle', { duration: 380 });
+      } },
+      { name: 'Press', why: 'Any primary action under a thumb during service: down fast, back on tuck.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center"><button data-b style="' + S.btn + ';padding:9px 16px;font-size:11.5px">Receive delivery</button></div>';
+        const b = u.q('[data-b]');
+        b.onpointerdown = () => u.a(b, { transform: ['none', 'scale(.955)'] }, 'ink', { duration: 90 });
+        b.onpointerup = () => u.a(b, { transform: ['scale(.955)', 'none'] }, 'tuck');
+        return () => { u.a(b, { transform: ['none', 'scale(.955)'] }, 'ink', { duration: 90 }); u.after(180, () => u.a(b, { transform: ['scale(.955)', 'none'] }, 'tuck')); };
+      } },
+      { name: 'Two-step confirm', why: 'Deleting a scheduled shift: the same object changes its mind rather than throwing a dialog at you.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center"><div data-w style="position:relative;display:inline-flex"><button data-a style="' + S.btn + '">Remove shift</button><button data-c style="' + S.btn + ';position:absolute;inset:0;white-space:nowrap;border-color:var(--neg);color:var(--neg);opacity:0">Remove Friday dinner?</button></div></div>';
+        const a = u.q('[data-a]'), c = u.q('[data-c]');
+        return () => {
+          u.set(c, { opacity: '0' }); u.set(a, { opacity: '1' });
+          u.a(a, { opacity: [1, 0] }, 'ink', { delay: 260 });
+          u.a(c, { opacity: [0, 1], transform: ['scale(.94)', 'none'] }, 'settle', { delay: 300 });
+        };
+      } },
+      { name: 'Progress becomes success', why: 'Sending 4 vendor emails: the bar becomes the tick — one object, one story.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:9px"><div data-t style="' + S.mono + '">sending 4 vendor emails</div><div style="height:3px;background:var(--line);border-radius:2px;overflow:hidden"><div data-b style="height:3px;background:var(--muted);transform-origin:left;transform:scaleX(0)"></div></div></div>';
+        const b = u.q('[data-b]'), t = u.q('[data-t]');
+        return () => {
+          u.txt(t, 'sending 4 vendor emails'); u.set(t, { color: 'var(--ink)' });
+          u.a(b, { transform: ['scaleX(0)', 'scaleX(1)'] }, 'linear', { duration: 900 });
+          u.after(940, () => { u.txt(t, '4 sent · 16:22'); u.a(t, { opacity: [0, 1], transform: ['translateY(5px)', 'none'] }, 'settle'); u.a(b, { background: ['var(--muted)', 'var(--seal)'] }, 'ink'); });
+        };
+      } },
+      { name: 'Field error opens in place', why: 'Invoice total that does not match the lines. The message takes space rather than shaking the field.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:6px"><div style="' + S.lbl + '">Invoice total</div><div data-f style="padding:7px 9px;border:1px solid var(--line2);border-radius:5px;background:var(--surf);' + S.mono + '">$1,884.00</div><div data-g style="display:grid;grid-template-rows:0fr"><div style="overflow:hidden;min-height:0"><div style="' + S.mono + ';color:var(--neg);padding-top:5px">lines total $1,860.00 · difference $24.00</div></div></div></div>';
+        const f = u.q('[data-f]'), g = u.q('[data-g]');
+        return () => {
+          u.set(g, { gridTemplateRows: '0fr' }); u.set(f, { borderColor: 'var(--line2)' });
+          u.a(f, { borderColor: ['var(--line2)', 'var(--neg)'] }, 'ink', { delay: 200 });
+          u.a(g, { gridTemplateRows: ['0fr', '1fr'] }, 'settle', { delay: 220 });
+        };
+      } },
+      { name: 'Toast arrives and leaves', why: 'A vendor reply landing while you are elsewhere in the app. It enters from the edge it lives on.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%"></div><div data-t style="position:absolute;left:12px;right:12px;bottom:12px;padding:8px 10px;border:1px solid var(--line2);border-radius:6px;background:var(--surf);display:flex;gap:8px;align-items:center"><span style="' + S.nm + ';font:500 10.5px var(--sans)">Bodega Álvaro replied</span><span style="' + S.mono + ';color:var(--muted)">16:24</span></div>';
+        const t = u.q('[data-t]');
+        return () => {
+          u.a(t, { transform: ['translateY(140%)', 'none'], opacity: [0, 1] }, 'settle');
+          u.after(1600, () => u.a(t, { transform: ['none', 'translateY(140%)'], opacity: [1, 0] }, 'settle'));
+        };
+      } },
+      { name: 'Badge counts, never bounces', why: 'The discrepancy queue count. A figure that bounces invites you to distrust it.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:10px"><span style="font:500 11px var(--sans)">Discrepancies</span><span data-b style="min-width:22px;text-align:center;padding:2px 6px;border-radius:99px;background:var(--line);' + S.mono + '">0</span><span style="' + S.sm + '">overdamped · 0% overshoot</span></div>';
+        const b = u.q('[data-b]');
+        return () => { u.txt(b, '0'); u.tween(560, 'tally', p => u.txt(b, String(Math.round(p * 7)))); };
+      } },
+      { name: 'Chip select', why: 'Filtering the delivery log by vendor — a micro-state, so ink and nothing more.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;flex-wrap:wrap;gap:6px">' + ['Vinos del Norte', 'Bodega Álvaro', 'Panadería Sur'].map((v, i) => '<button data-c="' + i + '" style="padding:4px 9px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--muted);font:500 10px var(--sans);cursor:pointer">' + v + '</button>').join('') + '</div>';
+        const c = u.qa('[data-c]');
+        const pick = i => c.forEach((e, j) => { const on = i === j; u.a(e, { borderColor: [e.style.borderColor || 'var(--line)', on ? 'var(--line2)' : 'var(--line)'], color: [on ? 'var(--muted)' : 'var(--ink)', on ? 'var(--ink)' : 'var(--muted)'], background: [on ? 'transparent' : 'var(--surf)', on ? 'var(--surf)' : 'transparent'] }, 'ink'); });
+        c.forEach((e, i) => e.onclick = () => pick(i));
+        return () => { pick(-1); u.after(140, () => pick(0)); };
+      } },
+      { name: 'Saving becomes saved', why: 'Autosave on a purchase order draft: the status never blinks out of existence.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:8px"><div data-d style="width:6px;height:6px;border-radius:50%;background:var(--muted)"></div><span data-t style="' + S.mono + ';color:var(--muted)">saving…</span></div>';
+        const d = u.q('[data-d]'), t = u.q('[data-t]');
+        return () => {
+          u.txt(t, 'saving…'); u.set(d, { background: 'var(--muted)' });
+          u.a(d, { opacity: [1, .3, 1] }, 'linear', { duration: 700, iterations: 2 });
+          u.after(1440, () => { u.txt(t, 'saved 16:22'); u.a(t, { opacity: [0, 1] }, 'ink'); u.set(d, { background: 'var(--ink)' }); });
+        };
+      } }
+    ];
+
+    const num = [
+      { name: 'Count-up', why: 'Today\'s covers on the owner\'s morning card. Overdamped, because money and covers do not bounce.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center"><div style="' + S.lbl + '">Covers · Friday</div><div data-v style="font:600 34px var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.03em">0</div></div>';
+        const v = u.q('[data-v]');
+        return () => { u.txt(v, '0'); u.tween(700, 'tally', p => u.txt(v, String(Math.round(p * 184)))); };
+      } },
+      { name: 'Odometer · unchanged digits hold', why: 'Open spend correcting from $1,860 to $1,924. Only the digits that changed move; the rest stay still and readable.', tok: 'tally', build(s, u) {
+        const A = '1860', B = '1924';
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:6px"><div style="' + S.lbl + '">Open spend</div><div style="display:flex;align-items:center;font:600 30px var(--mono);letter-spacing:-.03em"><span>$</span>' +
+          A.split('').map((d, i) => (i === 1 ? '<span>,</span>' : '') + '<span data-c="' + i + '" style="display:inline-block;height:34px;overflow:hidden;vertical-align:top"><span data-i style="display:block"><span style="display:block;height:34px;line-height:34px">' + d + '</span><span style="display:block;height:34px;line-height:34px">' + B[i] + '</span></span></span>').join('') + '</div><div data-note style="' + S.sm + '">2 of 4 digits moved</div></div>';
+        const cols = u.qa('[data-c]');
+        return () => cols.forEach((c, i) => {
+          const inner = c.querySelector('[data-i]');
+          u.set(inner, { transform: 'translateY(0)' });
+          if (A[i] !== B[i]) u.a(inner, { transform: ['translateY(0)', 'translateY(-34px)'] }, 'tally', { delay: 120 + i * 40 });
+        });
+      } },
+      { name: 'Delta flip', why: 'Food cost against last week on the analytics header. The sign changes meaning, so the glyph moves through zero.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:4px"><div style="' + S.lbl + '">Food cost vs last week</div><div style="display:flex;align-items:baseline;gap:8px"><span data-v style="font:600 26px var(--mono);letter-spacing:-.02em">28.4%</span><span data-d style="' + S.mono + ';display:inline-block">+1.9</span></div></div>';
+        const d = u.q('[data-d]'), v = u.q('[data-v]');
+        return () => {
+          u.txt(d, '+1.9'); u.set(d, { color: 'var(--neg)' });
+          u.after(340, () => {
+            u.a(d, { transform: ['none', 'translateY(-14px)'], opacity: [1, 0] }, 'tally', { duration: 220 });
+            u.after(240, () => { u.txt(d, '−0.7'); u.set(d, { color: 'var(--muted)' }); u.txt(v, '26.8%'); u.a(d, { transform: ['translateY(14px)', 'none'], opacity: [0, 1] }, 'tally'); });
+          });
+        };
+      } },
+      { name: 'Sparkline draws', why: 'Seven days of waste cost. The line draws left to right because that is the direction time runs.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="' + S.lbl + '">Waste · 7 days</div><svg width="252" height="52" viewBox="0 0 252 52"><polyline data-p points="2,40 44,32 86,36 128,18 170,26 212,12 250,20" fill="none" stroke="var(--ink)" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="300" stroke-dashoffset="300"></polyline></svg><div style="' + S.mono + ';color:var(--muted)">$212 this week</div></div>';
+        const p = u.q('[data-p]');
+        return () => u.a(p, { strokeDashoffset: [300, 0] }, 'turn', { duration: 620 });
+      } },
+      { name: 'Bars grow', why: 'Spend by vendor this month, ordered largest first so the stagger reads as ranking.', tok: 'settle', build(s, u) {
+        const d = [['Vinos del Norte', 1], ['Mariscos Ría', .62], ['Bodega Álvaro', .41], ['Panadería Sur', .18]];
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center">' + d.map(x => '<div style="display:flex;align-items:center;gap:8px"><span style="width:96px;font:500 9.5px var(--sans);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + x[0] + '</span><div style="flex:1;height:8px;background:var(--line)"><div data-b style="height:8px;background:var(--muted);transform-origin:left;transform:scaleX(0);width:' + (x[1] * 100) + '%"></div></div></div>').join('') + '</div>';
+        const b = u.qa('[data-b]');
+        return () => b.forEach((e, i) => u.a(e, { transform: ['scaleX(0)', 'scaleX(1)'] }, 'settle', { delay: i * 70 }));
+      } },
+      { name: 'Gauge sweep', why: 'Labour percentage against target on the shift dashboard. It arrives at the value once and stops.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:12px"><svg width="72" height="72" viewBox="0 0 72 72"><circle cx="36" cy="36" r="28" fill="none" stroke="var(--line)" stroke-width="6"></circle><circle data-c cx="36" cy="36" r="28" fill="none" stroke="var(--ink)" stroke-width="6" stroke-linecap="butt" stroke-dasharray="176" stroke-dashoffset="176" transform="rotate(-90 36 36)"></circle></svg><div style="' + S.col + '"><span data-v style="font:600 20px var(--mono);letter-spacing:-.02em">0.0%</span><span style="' + S.sm + '">labour · target 30%</span></div></div>';
+        const c = u.q('[data-c]'), v = u.q('[data-v]');
+        return () => { u.txt(v, '0.0%'); u.a(c, { strokeDashoffset: [176, 176 - 176 * .311] }, 'tally', { duration: 700 }); u.tween(700, 'tally', p => u.txt(v, (p * 31.1).toFixed(1) + '%')); };
+      } },
+      { name: 'Cost drift shows its working', why: 'A dish margin that moved. The figure opens the three line changes that caused it — the calculation is the explanation.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%"><div style="display:flex;align-items:baseline;gap:8px"><span style="' + S.lbl + '">Pulpo · plate cost</span><span data-v style="margin-left:auto;font:600 15px var(--mono)">$6.42</span></div><div data-g style="display:grid;grid-template-rows:0fr"><div style="overflow:hidden;min-height:0"><div style="padding-top:6px;border-top:1px solid var(--line)">' + [['octopus 180g', '+$0.51'], ['potato 120g', '−$0.03'], ['pimentón', '+$0.04']].map(x => '<div style="display:flex;' + S.mono + ';color:var(--muted);padding:2px 0"><span style="' + S.nm + '">' + x[0] + '</span><span>' + x[1] + '</span></div>').join('') + '</div></div></div></div>';
+        const g = u.q('[data-g]'), v = u.q('[data-v]');
+        return () => {
+          u.set(g, { gridTemplateRows: '0fr' }); u.txt(v, '$5.90');
+          u.after(200, () => u.tween(700, 'tally', p => u.txt(v, '$' + (5.90 + p * .52).toFixed(2))));
+          u.after(420, () => u.a(g, { gridTemplateRows: ['0fr', '1fr'] }, 'turn'));
+        };
+      } },
+      { name: 'Par crossing becomes a decision', why: 'Rioja stock falling below par. Inert while healthy; on the single frame the geometry crosses, the colour turns, the tick pulses once, and the reorder opens.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center"><div style="display:flex;' + S.mono + '"><span style="' + S.nm + ';color:var(--muted)">Rioja · bottles</span><span data-n>31</span></div>' +
+          '<div style="position:relative;height:10px;background:var(--line)"><div data-b style="position:absolute;inset:0 auto 0 0;width:100%;background:var(--muted);transform-origin:left"></div><div data-tick style="position:absolute;left:44%;top:-3px;bottom:-3px;width:1px;background:var(--ink)"></div></div>' +
+          '<div style="' + S.sm + ';display:flex"><span style="' + S.nm + '">par 24</span></div>' +
+          '<div data-g style="display:grid;grid-template-rows:0fr"><div style="overflow:hidden;min-height:0"><div style="padding-top:6px;display:flex;gap:6px;align-items:center"><span style="' + S.mono + ';color:var(--neg);' + S.nm + '">below par</span><span style="' + S.btn + '">Reorder 24</span></div></div></div></div>';
+        const b = u.q('[data-b]'), tick = u.q('[data-tick]'), g = u.q('[data-g]'), n = u.q('[data-n]');
+        return () => {
+          u.set(g, { gridTemplateRows: '0fr' }); u.set(b, { transform: 'scaleX(1)', background: 'var(--muted)' });
+          let crossed = false;
+          u.tween(1100, 'linear', p => {
+            const bottles = 31 - p * 12, frac = bottles / 70;
+            u.txt(n, String(Math.round(bottles)));
+            u.set(b, { transform: 'scaleX(' + frac / (31 / 70) + ')' });
+            if (!crossed && frac < .44) {
+              crossed = true;
+              u.set(b, { background: 'var(--neg)' });
+              u.a(tick, { transform: ['scaleY(1)', 'scaleY(1.9)', 'scaleY(1)'], opacity: [1, 1, 1] }, 'ink', { duration: 260 });
+              u.a(g, { gridTemplateRows: ['0fr', '1fr'] }, 'settle');
+            }
+          });
+        };
+      } },
+      { name: 'Unknown is a dash', why: 'A vendor invoice with no landed cost yet. It is an em dash — not zero, not 0%, and it never animates as though it were a number.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;height:100%;align-items:center">' + [['Ordered', 'n1'], ['Landed', 'n2'], ['Variance', 'dash']].map(x => '<div style="' + S.col + ';gap:3px"><span style="' + S.lbl + '">' + x[0] + '</span><span data-' + x[1] + ' style="font:600 20px var(--mono);letter-spacing:-.02em">' + (x[1] === 'dash' ? '—' : '0') + '</span></div>').join('') + '</div><div style="' + S.note + '">not 0. not 0%. a dash.</div>';
+        const n1 = u.q('[data-n1]'), n2 = u.q('[data-n2]'), d = u.q('[data-dash]');
+        return () => {
+          u.txt(n1, '0'); u.txt(n2, '0'); u.txt(d, '—'); u.set(d, { color: 'var(--muted)' });
+          u.tween(600, 'tally', p => { u.txt(n1, '$' + Math.round(p * 1860)); u.txt(n2, '$' + Math.round(p * 1836)); });
+        };
+      } },
+      { name: 'Total recomputes', why: 'Unticking a line on a received delivery. The total corrects; it never re-renders from scratch.', tok: 'tally', build(s, u) {
+        const items = [['Rioja Crianza', 1860], ['Albariño', 640], ['Cava brut', 320]];
+        s.innerHTML = '<div style="' + S.col + ';height:100%">' + items.map((x, i) => '<label style="display:flex;gap:7px;align-items:center;' + S.mono + ';cursor:pointer"><input data-ck="' + i + '" type="checkbox" checked style="accent-color:var(--muted)"><span style="' + S.nm + ';font-family:var(--sans);font-size:10.5px">' + x[0] + '</span><span>$' + x[1].toLocaleString() + '</span></label>').join('') + '<div style="margin-top:auto;display:flex;border-top:1px solid var(--line);padding-top:6px;' + S.mono + '"><span style="' + S.nm + ';color:var(--muted)">total</span><span data-t>$2,820</span></div></div>';
+        const t = u.q('[data-t]'), cks = u.qa('[data-ck]');
+        let cur = 2820;
+        const recalc = () => {
+          const to = cks.reduce((a, c, i) => a + (c.checked ? items[i][1] : 0), 0), from = cur; cur = to;
+          u.tween(500, 'tally', p => u.txt(t, '$' + Math.round(from + (to - from) * p).toLocaleString()));
+        };
+        cks.forEach(c => c.onchange = recalc);
+        return () => { cks.forEach(c => c.checked = true); cur = 2820; u.txt(t, '$2,820'); u.after(300, () => { cks[1].checked = false; recalc(); }); };
+      } },
+      { name: 'Variance chip turns', why: 'Ordered against landed on PO-1042 resolving to −2 bottles. The chip earns its colour only when the sign is real.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:9px"><span style="' + S.mono + ';color:var(--muted)">PO-1042</span><span data-c style="padding:3px 8px;border-radius:99px;border:1px solid var(--line);' + S.mono + ';color:var(--muted)">—</span><span style="' + S.sm + '">24 ordered · 22 landed</span></div>';
+        const c = u.q('[data-c]');
+        return () => {
+          u.txt(c, '—'); u.set(c, { color: 'var(--muted)', borderColor: 'var(--line)' });
+          u.after(420, () => { u.txt(c, '−2 bottles'); u.set(c, { color: 'var(--neg)', borderColor: 'var(--neg)' }); u.a(c, { opacity: [0, 1], transform: ['translateY(4px)', 'none'] }, 'tally'); });
+        };
+      } },
+      { name: 'Figure corrects after reconciliation', why: 'Month-to-date spend after the credit note lands. It walks down; it does not flicker to the new number.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:5px"><div style="' + S.lbl + '">Spend · month to date</div><div data-v style="font:600 28px var(--mono);letter-spacing:-.03em">$24,118</div><div data-n style="' + S.mono + ';color:var(--muted);opacity:0">credit note 88-A · −$248</div></div>';
+        const v = u.q('[data-v]'), n = u.q('[data-n]');
+        return () => {
+          u.txt(v, '$24,118'); u.set(n, { opacity: '0' });
+          u.after(300, () => { u.a(n, { opacity: [0, 1] }, 'ink'); u.tween(760, 'tally', p => u.txt(v, '$' + Math.round(24118 - p * 248).toLocaleString())); });
+        };
+      } }
+    ];
+
+    const nav = [
+      { name: 'The row expands', why: 'A PO row opening its lines in the list. grid-template-rows 0fr→1fr, chevron on the same token — one gesture, not two.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '"><div data-h style="' + S.row + ';cursor:pointer"><span data-ch style="' + S.mono + ';color:var(--muted)">›</span><span style="' + S.nm + '">PO-1042 · Vinos del Norte</span><span style="' + S.mono + '">$1,860</span></div><div data-g style="display:grid;grid-template-rows:0fr"><div style="overflow:hidden;min-height:0">' + [['Rioja Crianza', '24 btl'], ['Albariño', '12 btl']].map(x => '<div style="display:flex;' + S.mono + ';color:var(--muted);padding:3px 8px"><span style="' + S.nm + '">' + x[0] + '</span><span>' + x[1] + '</span></div>').join('') + '</div></div></div>';
+        const g = u.q('[data-g]'), ch = u.q('[data-ch]'), h = u.q('[data-h]');
+        let open = false;
+        const go = () => { open = !open; u.a(g, { gridTemplateRows: open ? ['0fr', '1fr'] : ['1fr', '0fr'] }, 'settle'); u.a(ch, { transform: open ? ['none', 'rotate(90deg)'] : ['rotate(90deg)', 'none'] }, 'settle'); };
+        h.onclick = go;
+        return () => { open = false; u.set(g, { gridTemplateRows: '0fr' }); u.set(ch, { transform: 'none' }); u.after(140, go); };
+      } },
+      { name: 'Show the working', why: 'Tapping a suspicious figure in the analytics table opens the arithmetic beneath it, in place.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '"><div style="display:flex;align-items:baseline"><span style="' + S.lbl + ';' + S.nm + '">Food cost</span><span style="font:600 18px var(--mono)">28.4%</span></div><div data-g style="display:grid;grid-template-rows:0fr"><div style="overflow:hidden;min-height:0"><div style="' + S.mono + ';color:var(--muted);padding-top:6px;line-height:1.7">purchases $24,118<br>− credits $248<br>÷ net sales $84,120<br><span style="color:var(--ink)">= 28.4%</span></div></div></div></div>';
+        const g = u.q('[data-g]');
+        return () => { u.set(g, { gridTemplateRows: '0fr' }); u.a(g, { gridTemplateRows: ['0fr', '1fr'] }, 'turn', { delay: 160 }); };
+      } },
+      { name: 'Tab indicator travels', why: 'Moving between Orders, Deliveries, Team. It stretches mid-flight, so the travel is legible at speed.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center"><div style="position:relative;display:flex;gap:14px;border-bottom:1px solid var(--line);padding-bottom:7px">' + ['Orders', 'Deliveries', 'Team'].map((t, i) => '<span data-t="' + i + '" style="font:600 10.5px var(--sans);color:' + (i ? 'var(--muted)' : 'var(--ink)') + ';cursor:pointer">' + t + '</span>').join('') + '<div data-ind style="position:absolute;bottom:-1px;left:0;height:1px;background:var(--ink);width:44px;transform-origin:left"></div></div></div>';
+        const ind = u.q('[data-ind]'), ts = u.qa('[data-t]');
+        const to = i => {
+          const host = ind.parentElement.getBoundingClientRect(), r = ts[i].getBoundingClientRect();
+          const x = r.left - host.left, w = r.width / 44;
+          const cx = new DOMMatrixReadOnly(getComputedStyle(ind).transform).m41;
+          const mid = (cx + x) / 2, stretch = Math.max(w, Math.abs(x - cx) / 44 + w * .6);
+          ts.forEach((e, j) => u.a(e, { color: [e.style.color, j === i ? 'var(--ink)' : 'var(--muted)'] }, 'ink'));
+          u.a(ind, { transform: ['translateX(' + cx + 'px) scaleX(' + w + ')', 'translateX(' + mid + 'px) scaleX(' + stretch + ')', 'translateX(' + x + 'px) scaleX(' + w + ')'] }, 'settle', { duration: 420 });
+        };
+        ts.forEach((e, i) => e.onclick = () => to(i));
+        return () => { u.set(ind, { transform: 'translateX(0) scaleX(1)' }); u.after(200, () => to(1)); u.after(1200, () => to(2)); };
+      } },
+      { name: 'Drawer', why: 'The vendor record over the PO list — the list stays put so you keep your place.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '">' + PO.slice(0, 3).map(p => row(p[0], p[1], p[2])).join('') + '</div><div data-sc style="position:absolute;inset:0;background:color-mix(in oklab, var(--sunk) 65%, transparent);opacity:0"></div><div data-d style="position:absolute;inset:0 0 0 34%;background:var(--surf);border-left:1px solid var(--line2);padding:11px;' + S.col + '"><span style="font:600 11px var(--sans)">Vinos del Norte</span><span style="' + S.sm + '">Rioja · net 30 · 14 POs</span></div>';
+        const d = u.q('[data-d]'), sc = u.q('[data-sc]');
+        return () => { u.a(sc, { opacity: [0, 1] }, 'settle'); u.a(d, { transform: ['translateX(100%)', 'none'] }, 'settle'); };
+      } },
+      { name: 'Modal', why: 'Confirming a $1,860 commitment. It scales from near-true-size, so nothing flies at the operator.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div data-sc style="position:absolute;inset:0;background:color-mix(in oklab, var(--sunk) 70%, transparent);opacity:0"></div><div data-m style="position:absolute;left:16px;right:16px;top:32px;background:var(--surf);border:1px solid var(--line2);border-radius:8px;padding:12px;' + S.col + '"><span style="font-family:var(--serif);font-size:14px">Send PO-1042 to Vinos del Norte?</span><span style="' + S.mono + ';color:var(--muted)">24 bottles · $1,860</span><div style="display:flex;gap:6px;margin-top:2px"><span style="' + S.btn + '">Send</span><span style="' + S.btn + ';border-color:var(--line);color:var(--muted)">Not yet</span></div></div>';
+        const m = u.q('[data-m]'), sc = u.q('[data-sc]');
+        return () => { u.a(sc, { opacity: [0, 1] }, 'ink'); u.a(m, { opacity: [0, 1], transform: ['scale(.965) translateY(6px)', 'none'] }, 'settle'); };
+      } },
+      { name: 'Accordion swaps', why: 'Delivery day sections: closing and opening are the same movement, so the page never jumps twice.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '">' + ['Friday', 'Saturday'].map((d, i) => '<div><div data-h="' + i + '" style="' + S.row + ';cursor:pointer"><span style="' + S.nm + '">' + d + '</span><span style="' + S.mono + ';color:var(--muted)">' + (i ? '2' : '3') + '</span></div><div data-g="' + i + '" style="display:grid;grid-template-rows:' + (i ? '0fr' : '1fr') + '"><div style="overflow:hidden;min-height:0"><div style="' + S.mono + ';color:var(--muted);padding:4px 8px">' + (i ? 'Panadería Sur 06:30<br>Mariscos Ría 07:00' : 'Vinos del Norte 07:12<br>Bodega Álvaro 09:40<br>Panadería Sur 06:30') + '</div></div></div></div>').join('') + '</div>';
+        const g = u.qa('[data-g]'), h = u.qa('[data-h]');
+        let open = 0;
+        const to = i => { if (i === open) return; u.a(g[open], { gridTemplateRows: ['1fr', '0fr'] }, 'settle'); u.a(g[i], { gridTemplateRows: ['0fr', '1fr'] }, 'settle'); open = i; };
+        h.forEach((e, i) => e.onclick = () => to(i));
+        return () => { open = 0; u.set(g[0], { gridTemplateRows: '1fr' }); u.set(g[1], { gridTemplateRows: '0fr' }); u.after(280, () => to(1)); };
+      } },
+      { name: 'Rows leave, not repaint', why: 'Filtering the PO list to one vendor. The rows that do not match leave, so you can see what was removed.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div data-l style="' + S.col + '">' + PO.map(p => '<div data-r style="' + S.row + '"><span style="' + S.mono + ';color:var(--muted)">' + p[0] + '</span><span style="' + S.nm + '">' + p[1] + '</span><span style="' + S.mono + '">' + p[2] + '</span></div>').join('') + '</div>';
+        const rows = u.qa('[data-r]');
+        return () => {
+          rows.forEach(r => u.set(r, { opacity: '1', display: 'flex' }));
+          const out = [rows[1], rows[2], rows[3]];
+          out.forEach((r, i) => { const a = u.a(r, { opacity: [1, 0], transform: ['none', 'translateX(-16px)'] }, 'settle', { delay: 200 + i * 60 }); if (a) a.onfinish = () => { u.flip([rows[0]], () => out.forEach(x => x.style.display = 'none'), 'settle'); }; });
+        };
+      } },
+      { name: 'Rows travel when sorted', why: 'Sorting the discrepancy queue by value. Rows move to their new places so the reorder is witnessed, not assumed.', tok: 'settle', build(s, u) {
+        const d = [['PO-1042', '$1,860'], ['PO-1043', '$740'], ['PO-1044', '$212'], ['PO-1045', '$1,105']];
+        s.innerHTML = '<div data-l style="' + S.col + '">' + d.map(p => '<div data-r style="' + S.row + '"><span style="' + S.nm + '">' + p[0] + '</span><span style="' + S.mono + '">' + p[1] + '</span></div>').join('') + '</div>';
+        const l = u.q('[data-l]'), rows = u.qa('[data-r]');
+        const order = [0, 1, 2, 3];
+        return () => {
+          rows.forEach(r => l.appendChild(r));
+          u.after(260, () => u.flip(rows, () => { [rows[0], rows[3], rows[1], rows[2]].forEach(r => l.appendChild(r)); }, 'settle', { noScale: true }));
+        };
+      } },
+      { name: 'The row becomes the header', why: 'Opening PO-1042: the row you tapped flips into the detail header with its type untouched, so the record is provably the row.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div data-list style="' + S.col + '">' + PO.slice(0, 3).map((p, i) => '<div ' + (i === 0 ? 'data-hero' : '') + ' style="' + S.row + '"><span style="' + S.mono + ';color:var(--muted)">' + p[0] + '</span><span style="' + S.nm + '">' + p[1] + '</span><span style="' + S.mono + '">' + p[2] + '</span></div>').join('') + '</div><div data-detail style="position:absolute;inset:0;background:var(--sunk);opacity:0;padding:12px"><div data-slot style="height:29px"></div><div data-body style="' + S.mono + ';color:var(--muted);padding-top:9px;line-height:1.7">Rioja Crianza · 24 btl<br>ordered 14:02 · Elif Kaya</div></div>';
+        const hero = u.q('[data-hero]'), detail = u.q('[data-detail]'), slot = u.q('[data-slot]'), body = u.q('[data-body]'), list = u.q('[data-list]');
+        return () => {
+          if (hero.parentElement !== list) list.insertBefore(hero, list.firstChild);
+          u.set(detail, { opacity: '0' }); u.set(hero, { transform: 'none', position: 'static' });
+          u.after(240, () => {
+            const from = hero.getBoundingClientRect();
+            detail.style.opacity = '1';
+            slot.appendChild(hero);
+            hero.style.borderColor = 'var(--line2)';
+            const to = hero.getBoundingClientRect();
+            u.a(hero, { transform: ['translate(' + (from.left - to.left) + 'px,' + (from.top - to.top) + 'px)', 'none'] }, 'settle');
+            u.a(body, { opacity: [0, 1], transform: ['translateY(8px)', 'none'] }, 'settle', { delay: 120 });
+            u.a(detail, { background: ['color-mix(in oklab, var(--sunk) 0%, transparent)', 'var(--sunk)'] }, 'ink');
+          });
+        };
+      } },
+      { name: 'Segmented back', why: 'Leaving the PO detail on a phone: the reverse of the way in, on the page-turn curve.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div data-a style="position:absolute;inset:0;padding:12px;background:var(--sunk)"><div style="' + S.lbl + '">Orders</div><div style="' + S.col + ';padding-top:8px">' + PO.slice(0, 2).map(p => row(p[0], p[1], p[2])).join('') + '</div></div><div data-b style="position:absolute;inset:0;padding:12px;background:var(--surf);border-left:1px solid var(--line2)"><div style="' + S.lbl + '">‹ back</div><div style="' + S.mono + ';padding-top:10px">PO-1042 · $1,860</div></div>';
+        const a = u.q('[data-a]'), b = u.q('[data-b]');
+        return () => {
+          u.set(b, { transform: 'none' }); u.set(a, { transform: 'translateX(-22%)', filter: 'none' });
+          u.a(b, { transform: ['none', 'translateX(100%)'] }, 'turn', { delay: 220 });
+          u.a(a, { transform: ['translateX(-22%)', 'none'] }, 'turn', { delay: 220 });
+        };
+      } },
+      { name: 'Sticky day hands off', why: 'Scrolling the delivery log across midnight: one day label replaces another without either of them fading.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="position:relative;height:100%;overflow:hidden"><div data-l style="' + S.col + ';padding-top:22px">' + ['06:30 Panadería Sur', '07:12 Vinos del Norte', '09:40 Bodega Álvaro', '11:05 Mariscos Ría'].map(t => '<div style="' + S.row + '"><span style="' + S.nm + '">' + t + '</span></div>').join('') + '</div><div style="position:absolute;left:0;right:0;top:0;height:16px;overflow:hidden;background:var(--sunk)"><div data-d style="' + S.lbl + ';height:16px;line-height:16px">FRIDAY</div><div data-d2 style="' + S.lbl + ';color:var(--ink);height:16px;line-height:16px">SATURDAY</div></div></div>';
+        const l = u.q('[data-l]'), d = u.q('[data-d]'), d2 = u.q('[data-d2]');
+        return () => {
+          u.set(l, { transform: 'none' }); u.set(d, { transform: 'none' });
+          u.a(l, { transform: ['none', 'translateY(-46px)'] }, 'settle', { duration: 900, delay: 200 });
+          u.a(d, { transform: ['none', 'translateY(-16px)'] }, 'settle', { delay: 620 });
+          u.a(d2, { transform: ['none', 'translateY(-16px)'] }, 'settle', { delay: 620 });
+        };
+      } }
+    ];
+
+    const prod = [
+      { name: 'Invoice opens full-bleed', why: 'Factura 88-A from the document list. It takes the whole surface because reading it is the whole task.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '">' + row('88-A', 'Vinos del Norte', '$1,860') + row('88-B', 'Bodega Álvaro', '$740') + '</div><div data-doc style="position:absolute;inset:0;background:var(--surf);border:1px solid var(--line2);padding:11px;opacity:0"><div style="font-family:var(--serif);font-size:13px">Factura 88-A</div><div style="' + S.sm + ';padding-top:2px">Vinos del Norte · Rioja</div><div style="' + S.mono + ';padding-top:9px;line-height:1.8;color:var(--muted)">24 × Rioja Crianza · $1,860<br>IVA 21% · included<br><span style="color:var(--ink)">total $1,860.00</span></div></div>';
+        const doc = u.q('[data-doc]');
+        return () => u.a(doc, { opacity: [0, 1], transform: ['scale(.92) translateY(14px)', 'none'] }, 'turn', { delay: 180 });
+      } },
+      { name: 'The page turns', why: 'Page 2 of a two-page vendor invoice. A page turn, because that is the object being handled.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="position:relative;height:100%;perspective:900px"><div style="position:absolute;inset:0;background:var(--surf);border:1px solid var(--line);padding:10px;' + S.mono + ';color:var(--muted)">page 2 / 2<br>IVA 21%<br>total $1,860.00</div><div data-p style="position:absolute;inset:0;background:var(--surf);border:1px solid var(--line2);padding:10px;transform-origin:left center;' + S.mono + '">page 1 / 2<br><span style="color:var(--muted)">24 × Rioja Crianza</span><br><span style="color:var(--muted)">12 × Albariño</span></div></div>';
+        const p = u.q('[data-p]');
+        return () => u.a(p, { transform: ['rotateY(0deg)', 'rotateY(-92deg)'], opacity: [1, .35] }, 'turn', { delay: 200 });
+      } },
+      { name: 'Scan resolves', why: 'A porter photographs a delivery note at the door. Blur to read, so the operator sees the machine catch up.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div data-sc style="height:100%;background:var(--surf);border:1px solid var(--line);border-radius:4px;padding:10px;' + S.mono + ';line-height:1.8">ALBARÁN 4471<br><span style="color:var(--muted)">Vinos del Norte</span><br><span style="color:var(--muted)">24 btl Rioja Crianza</span><br><span style="color:var(--muted)">07:12 · firmado</span></div><div data-l style="position:absolute;left:12px;right:12px;height:1px;background:var(--seal);opacity:0"></div>';
+        const sc = u.q('[data-sc]'), l = u.q('[data-l]');
+        return () => {
+          u.a(sc, { filter: ['blur(6px)', 'blur(0px)'], transform: ['scale(1.03)', 'none'] }, 'turn', { duration: 700 });
+          u.a(l, { opacity: [0, .9, 0], transform: ['translateY(4px)', 'translateY(110px)'] }, 'linear', { duration: 700 });
+        };
+      } },
+      { name: 'PO advances', why: 'draft → approved → in transit → delivered. Each step commits; the track never runs backwards on its own.', tok: 'settle', build(s, u) {
+        const st = ['draft', 'approved', 'in transit', 'delivered'];
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center"><div style="' + S.mono + ';color:var(--muted)">PO-1042 · Vinos del Norte</div><div style="position:relative;display:flex;justify-content:space-between;padding-top:12px">' + st.map((t, i) => '<div style="' + S.col + ';gap:5px;align-items:center;flex:1"><div data-d="' + i + '" style="width:7px;height:7px;border-radius:50%;background:var(--line2)"></div><span data-l="' + i + '" style="font:500 8.5px var(--mono);color:var(--muted);text-align:center">' + t + '</span></div>').join('') + '<div style="position:absolute;left:12%;right:12%;top:3px;height:1px;background:var(--line)"><div data-t style="height:1px;background:var(--muted);transform-origin:left;transform:scaleX(0)"></div></div></div></div>';
+        const dots = u.qa('[data-d]'), labels = u.qa('[data-l]'), track = u.q('[data-t]');
+        return () => {
+          dots.forEach(d => u.set(d, { background: 'var(--line2)', transform: 'none' }));
+          labels.forEach(l => u.set(l, { color: 'var(--muted)' }));
+          u.set(track, { transform: 'scaleX(0)' });
+          st.forEach((_, i) => u.after(200 + i * 420, () => {
+            u.a(track, { transform: ['scaleX(' + (i / 3) + ')', 'scaleX(' + ((i) / 3) + ')'] }, 'settle');
+            u.a(track, { transform: ['scaleX(' + Math.max(0, (i - 1) / 3) + ')', 'scaleX(' + (i / 3) + ')'] }, 'settle');
+            u.set(dots[i], { background: 'var(--ink)' }); u.set(labels[i], { color: 'var(--ink)' });
+            u.a(dots[i], { transform: ['scale(.4)', 'scale(1)'] }, i === 1 ? 'stamp' : 'settle');
+          }));
+        };
+      } },
+      { name: 'Ordered against landed', why: 'The porter counted 22 of 24 bottles. Two bars, one of them short — the gap is the point, so it holds still once it lands.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center;gap:10px"><div><div style="' + S.lbl + '">ordered 24</div><div style="height:9px;background:var(--line);margin-top:4px"><div data-o style="height:9px;background:var(--muted);transform-origin:left;transform:scaleX(0)"></div></div></div><div><div style="' + S.lbl + '">landed 22</div><div style="height:9px;background:var(--line);margin-top:4px"><div data-l style="height:9px;width:91.6%;background:var(--neg);transform-origin:left;transform:scaleX(0)"></div></div></div><div data-d style="' + S.mono + ';color:var(--neg);opacity:0">−2 · short at the door</div></div>';
+        const o = u.q('[data-o]'), l = u.q('[data-l]'), d = u.q('[data-d]');
+        return () => { u.a(o, { transform: ['scaleX(0)', 'scaleX(1)'] }, 'tally'); u.a(l, { transform: ['scaleX(0)', 'scaleX(1)'] }, 'tally', { delay: 120 }); u.a(d, { opacity: [0, 1] }, 'ink', { delay: 620 }); };
+      } },
+      { name: 'Vendor thread drawer', why: 'The email history behind PO-1042, opened from the order and closed back into it.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div data-d style="position:absolute;inset:0 0 0 22%;background:var(--surf);border-left:1px solid var(--line2);padding:10px;' + S.col + ';gap:7px"><span style="' + S.lbl + '">Thread · Vinos del Norte</span>' + [['us', 'Confirmando 24 Rioja para viernes'], ['them', 'Confirmado. Salida 06:00.'], ['us', '¿Albariño disponible?']].map(m => '<div data-m style="max-width:82%;' + (m[0] === 'us' ? 'align-self:flex-end;background:var(--sunk);' : 'background:var(--line);') + 'border:1px solid var(--line);border-radius:5px;padding:5px 7px;font:400 9.5px var(--sans)">' + m[1] + '</div>').join('') + '</div>';
+        const d = u.q('[data-d]'), ms = u.qa('[data-m]');
+        return () => { u.a(d, { transform: ['translateX(100%)', 'none'] }, 'settle'); ms.forEach((m, i) => u.a(m, { opacity: [0, 1], transform: ['translateY(6px)', 'none'] }, 'settle', { delay: 160 + i * 70 })); };
+      } },
+      { name: 'Inbox row triages into a lane', why: 'A vendor email sorted into Deliveries. It travels under the finger, so it is tuck, and the lane count admits it arrived.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;gap:8px"><div data-r style="' + S.row + ';border-color:var(--line2)"><span style="' + S.nm + '">Albarán 4471 · Vinos del Norte</span></div><div style="display:flex;gap:6px;margin-top:auto">' + ['Invoices 4', 'Deliveries 2', 'Later 1'].map((t, i) => '<div data-lane="' + i + '" style="flex:1;padding:7px;border:1px dashed var(--line2);border-radius:5px;' + S.sm + ';text-align:center">' + t + '</div>').join('') + '</div></div>';
+        const r = u.q('[data-r]'), lane = u.qa('[data-lane]');
+        return () => {
+          u.set(r, { opacity: '1', transform: 'none' });
+          const a = r.getBoundingClientRect(), b = lane[1].getBoundingClientRect();
+          u.a(r, { transform: ['none', 'translate(' + (b.left - a.left + 8) + 'px,' + (b.top - a.top) + 'px) scale(.42)'], opacity: [1, 0] }, 'tuck', { delay: 240 });
+          u.after(560, () => { u.txt(lane[1], 'Deliveries 3'); u.a(lane[1], { borderColor: ['var(--line2)', 'var(--ink)', 'var(--line2)'], color: ['var(--muted)', 'var(--ink)', 'var(--muted)'] }, 'settle', { duration: 520 }); });
+        };
+      } },
+      { name: 'Attachment becomes a record', why: 'A PDF pulled out of a vendor email into the document store, on a real two-axis arc — it is being carried, not teleported.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;position:relative"><div style="' + S.row + ';border-color:var(--line2)"><span style="' + S.nm + '">Re: pedido viernes</span><span data-att style="' + S.mono + ';color:var(--muted);border:1px solid var(--line);border-radius:3px;padding:1px 5px">88-A.pdf</span></div><div data-slot style="position:absolute;left:0;right:0;bottom:0;padding:7px;border:1px solid var(--line);border-radius:5px;background:var(--surf);' + S.mono + ';color:var(--muted)">Documents · <span data-n>12</span></div></div>';
+        const att = u.q('[data-att]'), slot = u.q('[data-slot]'), n = u.q('[data-n]');
+        return () => {
+          u.set(att, { opacity: '1', transform: 'none' }); u.txt(n, '12');
+          const a = att.getBoundingClientRect(), b = slot.getBoundingClientRect();
+          const dx = b.left - a.left + 10, dy = b.top - a.top + 6;
+          u.a(att, { transform: ['none', 'translate(' + (dx * .35) + 'px,' + (dy * .72) + 'px) rotate(-5deg) scale(1.06)', 'translate(' + dx + 'px,' + dy + 'px) rotate(0deg) scale(.9)'], opacity: [1, 1, 0] }, 'tuck', { delay: 220 });
+          u.after(620, () => { u.txt(n, '13'); u.a(slot, { borderColor: ['var(--line)', 'var(--line2)'] }, 'ink'); });
+        };
+      } },
+      { name: 'Shift dropped into a slot', why: 'Marco moved to Friday dinner on the week grid. It follows the finger and tucks into place with a 1.1% overshoot — the weight of a real object.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:auto 1fr;gap:5px;' + S.sm + '">' + ['THU', 'FRI', 'SAT', 'SUN'].map(d => '<div style="' + S.lbl + ';text-align:center">' + d + '</div>').join('') + '<div style="border:1px solid var(--line);border-radius:4px;padding:4px"><div data-chip style="background:var(--surf);border:1px solid var(--line2);border-radius:3px;padding:4px;font:500 9px var(--sans)">Marco<br><span style="' + S.sm + '">17–23</span></div></div><div data-target style="border:1px dashed var(--line2);border-radius:4px"></div><div style="border:1px solid var(--line);border-radius:4px"></div><div style="border:1px solid var(--line);border-radius:4px"></div></div>';
+        const chip = u.q('[data-chip]'), t = u.q('[data-target]');
+        return () => {
+          u.set(chip, { transform: 'none' });
+          const a = chip.getBoundingClientRect(), b = t.getBoundingClientRect();
+          u.a(chip, { transform: ['none', 'translate(' + (b.left - a.left + 4) + 'px,' + (b.top - a.top + 4) + 'px)'] }, 'tuck', { delay: 200 });
+          u.a(t, { borderStyle: ['dashed', 'solid'] }, 'ink', { delay: 500 });
+        };
+      } },
+      { name: 'A call-out hollows the shift', why: 'Rosa calls out of Friday dinner. The fill drains, the border goes dashed, the name leaves and OPEN arrives — the hole is visible from across the pass.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center"><div data-sh style="width:110px;padding:9px;border:1px solid var(--line2);border-radius:5px;background:var(--surf);text-align:center"><div data-nm style="font:500 10.5px var(--sans)">Rosa Vidal</div><div data-open style="font:600 10.5px var(--mono);color:var(--muted);opacity:0;margin-top:-15px">OPEN</div><div style="' + S.sm + ';margin-top:4px">Fri dinner · 17–23</div></div></div>';
+        const sh = u.q('[data-sh]'), nm = u.q('[data-nm]'), op = u.q('[data-open]');
+        return () => {
+          u.set(sh, { background: 'var(--surf)', borderStyle: 'solid' }); u.set(nm, { opacity: '1' }); u.set(op, { opacity: '0' });
+          u.a(sh, { background: ['var(--surf)', 'transparent'] }, 'settle', { duration: 420 });
+          u.a(nm, { opacity: [1, 0], transform: ['none', 'translateY(-6px)'] }, 'settle', { delay: 160 });
+          u.after(340, () => u.set(sh, { borderStyle: 'dashed' }));
+          u.a(op, { opacity: [0, 1], transform: ['translateY(6px)', 'none'] }, 'settle', { delay: 420 });
+        };
+      } },
+      { name: 'The offer ripples, someone takes it', why: 'The open Friday shift goes to the team; Yusuf takes it and travels into the hole.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;position:relative"><div data-hole style="width:110px;padding:9px;border:1px dashed var(--line2);border-radius:5px;text-align:center"><div data-open style="font:600 10.5px var(--mono);color:var(--muted)">OPEN</div><div data-nm style="font:500 10.5px var(--sans);opacity:0;margin-top:-15px">Yusuf Demir</div><div style="' + S.sm + ';margin-top:4px">Fri dinner · 17–23</div></div><div data-rip style="position:absolute;width:110px;height:56px;border:1px solid var(--muted);border-radius:5px;opacity:0"></div><div data-who style="position:absolute;right:6px;bottom:4px;padding:3px 7px;border:1px solid var(--line2);border-radius:99px;background:var(--surf);font:500 9px var(--sans)">Yusuf</div></div>';
+        const rip = u.q('[data-rip]'), who = u.q('[data-who]'), hole = u.q('[data-hole]'), op = u.q('[data-open]'), nm = u.q('[data-nm]');
+        return () => {
+          u.set(op, { opacity: '1' }); u.set(nm, { opacity: '0' }); u.set(who, { opacity: '1', transform: 'none' }); u.set(hole, { borderStyle: 'dashed' });
+          u.a(rip, { opacity: [.7, 0], transform: ['scale(1)', 'scale(1.9)'] }, 'settle', { duration: 700 });
+          const a = who.getBoundingClientRect(), b = hole.getBoundingClientRect();
+          u.a(who, { transform: ['none', 'translate(' + (b.left - a.left + 30) + 'px,' + (b.top - a.top + 14) + 'px) scale(.85)'], opacity: [1, 0] }, 'settle', { delay: 760 });
+          u.after(1080, () => { u.a(op, { opacity: [1, 0] }, 'ink'); u.a(nm, { opacity: [0, 1] }, 'settle'); u.set(hole, { borderStyle: 'solid' }); });
+        };
+      } },
+      { name: 'Invite becomes a person', why: 'The code dissolves upward as the face arrives in its place — one slot, two states, no gap in between.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center"><div style="position:relative;display:flex;align-items:center;gap:9px"><div style="position:relative;width:32px;height:32px"><div data-code style="position:absolute;inset:0;border:1px dashed var(--line2);border-radius:50%;display:flex;align-items:center;justify-content:center;font:600 8px var(--mono);color:var(--muted)">K7F</div><div data-face style="position:absolute;inset:0;border-radius:50%;background:var(--line2);display:flex;align-items:center;justify-content:center;font:600 11px var(--sans);opacity:0">EK</div></div><div style="' + S.col + ';gap:2px"><span data-t style="font:500 10.5px var(--sans);color:var(--muted)">invite K7F · pending</span><span style="' + S.sm + '">floor · Friday onward</span></div></div></div>';
+        const code = u.q('[data-code]'), face = u.q('[data-face]'), t = u.q('[data-t]');
+        return () => {
+          u.set(code, { opacity: '1', transform: 'none' }); u.set(face, { opacity: '0' });
+          u.a(code, { opacity: [1, 0], transform: ['none', 'translateY(-11px)'] }, 'settle', { delay: 240 });
+          u.a(face, { opacity: [0, 1], transform: ['translateY(11px)', 'none'] }, 'settle', { delay: 340 });
+          u.after(420, () => { u.txt(t, 'Elif Kaya · joined'); u.set(t, { color: 'var(--ink)' }); });
+        };
+      } },
+      { name: 'The AI draft stops at the human', why: 'The vendor reply writes itself, then deliberately stalls. Send never lights on its own — the guardrail is physics, not copy.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;gap:7px"><div style="' + S.lbl + '">Draft to Vinos del Norte</div><div data-txt style="flex:1;font:400 10.5px/1.5 var(--sans);color:var(--ink)"></div><div style="display:flex;gap:6px;align-items:center"><span data-send style="' + S.btn + ';border-color:var(--line);color:var(--muted);cursor:not-allowed">Send</span><span data-cap style="' + S.sm + '">waiting for a human</span></div></div>';
+        const txt = u.q('[data-txt]'), send = u.q('[data-send]'), cap = u.q('[data-cap]');
+        const words = 'Buenos días — confirmamos 24 botellas de Rioja Crianza para el viernes, entrega antes de las 07:00.'.split(' ');
+        return () => {
+          txt.textContent = ''; u.set(send, { borderColor: 'var(--line)', color: 'var(--muted)' }); u.txt(cap, 'waiting for a human');
+          words.forEach((w, i) => u.after(120 + i * 95, () => {
+            const sp = document.createElement('span'); sp.textContent = (i ? ' ' : '') + w; txt.appendChild(sp);
+            u.a(sp, { opacity: [0, 1] }, 'ink', { duration: 130 });
+            if (i === words.length - 1) u.after(320, () => { u.txt(cap, 'stalled · nothing sent'); u.a(cap, { opacity: [.4, 1] }, 'ink'); });
+          }));
+        };
+      } },
+      { name: 'The draft rubber-bands at Sent', why: 'Try to drag the AI draft into Sent and it comes home on tuck. You cannot shove your way past the approval.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;gap:8px"><div data-card style="' + S.row + ';border-color:var(--line2);cursor:grab;touch-action:none"><span style="' + S.nm + '">Draft · Vinos del Norte</span><span style="' + S.mono + ';color:var(--muted)">AI</span></div><div data-lane style="margin-top:auto;padding:8px;border:1px dashed var(--line2);border-radius:5px;' + S.sm + ';text-align:center">Sent · requires approval</div></div>';
+        const c = u.q('[data-card]'), lane = u.q('[data-lane]');
+        let sx = 0, dragging = false;
+        c.onpointerdown = e => { dragging = true; sx = e.clientY; c.setPointerCapture(e.pointerId); c.style.transition = 'none'; };
+        c.onpointermove = e => { if (!dragging) return; const d = Math.min(46, Math.max(0, e.clientY - sx)); c.style.transform = 'translateY(' + d + 'px)'; };
+        c.onpointerup = () => { if (!dragging) return; dragging = false; const cur = new DOMMatrixReadOnly(getComputedStyle(c).transform).m42; c.style.transform = 'none'; u.a(c, { transform: ['translateY(' + cur + 'px)', 'none'] }, 'tuck'); u.a(lane, { borderColor: ['var(--line2)', 'var(--line)'] }, 'ink'); };
+        return () => {
+          u.set(c, { transform: 'none' });
+          u.a(c, { transform: ['none', 'translateY(44px)'] }, 'settle', { duration: 300, delay: 160 });
+          u.after(500, () => u.a(c, { transform: ['translateY(44px)', 'none'] }, 'tuck'));
+        };
+      } },
+      { name: 'Approved, still not sent', why: 'The approval gives the draft a solid edge and a timestamp — and says exactly what it did and did not do.', tok: 'stamp', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div data-c style="padding:9px;border:1px dashed var(--line2);border-radius:5px;background:var(--surf)"><div style="font:400 10px/1.45 var(--sans);color:var(--muted)">Confirmamos 24 botellas de Rioja Crianza para el viernes.</div></div><div data-st style="' + S.mono + ';color:var(--seal);opacity:0">Approved 16:22 · still not sent.</div></div>';
+        const c = u.q('[data-c]'), st = u.q('[data-st]');
+        return () => {
+          u.set(c, { borderStyle: 'dashed', borderColor: 'var(--line2)' }); u.set(st, { opacity: '0' });
+          u.after(280, () => { u.set(c, { borderStyle: 'solid', borderColor: 'var(--seal)' }); u.a(c, { transform: ['scale(.985)', 'scale(1)'] }, 'stamp'); u.a(st, { opacity: [0, 1], transform: ['translateY(4px)', 'none'] }, 'settle'); });
+        };
+      } },
+      { name: 'Received at the door', why: 'The porter ticks the crate off on a phone. Lines confirm in the order they come out of the van.', tok: 'settle', build(s, u) {
+        const items = [['Rioja Crianza', '24'], ['Albariño', '12'], ['Cava brut', '6']];
+        s.innerHTML = '<div style="' + S.col + ';height:100%"><div style="' + S.lbl + '">Vinos del Norte · 07:12</div>' + items.map(x => '<div style="display:flex;align-items:center;gap:7px;' + S.mono + '"><span data-tk style="width:12px;height:12px;border:1px solid var(--line2);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:8px;color:var(--sunk);background:transparent">✓</span><span style="' + S.nm + ';font-family:var(--sans);font-size:10.5px">' + x[0] + '</span><span>' + x[1] + '</span></div>').join('') + '</div>';
+        const tks = u.qa('[data-tk]');
+        return () => tks.forEach((t, i) => u.after(220 + i * 260, () => { u.set(t, { background: 'var(--ink)', borderColor: 'var(--ink)' }); u.a(t, { transform: ['scale(.6)', 'scale(1)'] }, 'settle'); }));
+      } }
+    ];
+
+    const sys = [
+      { name: 'Offline, then the queue drains', why: 'The porter is at the door on 12% with no signal. Writes queue, then leave in the order they were made — visibly, one at a time.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%"><div data-b style="' + S.mono + ';color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:4px 7px">offline · 3 queued</div>' + ['count 24 Rioja', 'photo albarán 4471', 'signed 07:12'].map(t => '<div data-q style="' + S.row + ';border-style:dashed"><span style="' + S.nm + '">' + t + '</span><span style="' + S.mono + ';color:var(--muted)">queued</span></div>').join('') + '</div>';
+        const b = u.q('[data-b]'), qs = u.qa('[data-q]');
+        return () => {
+          u.set(b, { color: 'var(--muted)', borderColor: 'var(--line)' });
+          qs.forEach(q => { u.set(q, { borderStyle: 'dashed', opacity: '1', transform: 'none' }); q.lastElementChild.textContent = 'queued'; });
+          u.after(500, () => { u.txt(b, 'online · draining'); u.a(b, { borderColor: ['var(--line)', 'var(--line2)'] }, 'ink'); });
+          qs.forEach((q, i) => u.after(700 + i * 320, () => { u.set(q, { borderStyle: 'solid' }); q.lastElementChild.textContent = 'sent'; u.a(q, { transform: ['translateX(-6px)', 'none'] }, 'settle'); }));
+          u.after(1700, () => u.txt(b, 'online · queue empty'));
+        };
+      } },
+      { name: 'Session expires, the text survives', why: 'A manager typing a vendor note at 1am gets logged out. The words stay on screen behind the lock — nothing typed is ever lost to a timeout.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%"><div style="' + S.lbl + '">Note · PO-1042</div><div style="margin-top:6px;padding:7px;border:1px solid var(--line);border-radius:5px;font:400 10px/1.45 var(--sans);color:var(--muted)">2 bottles short, Álvaro said he would credit them on the next albarán.</div></div><div data-lock style="position:absolute;inset:auto 0 0 0;background:var(--surf);border-top:1px solid var(--line2);padding:10px;' + S.col + ';gap:6px"><span style="font-family:var(--serif);font-size:12px">Still there?</span><span style="' + S.mono + ';color:var(--muted)">session expired · your note is kept</span></div>';
+        const lock = u.q('[data-lock]');
+        return () => u.a(lock, { transform: ['translateY(100%)', 'none'] }, 'settle', { delay: 260 });
+      } },
+      { name: 'Switching branch', why: 'One owner, two restaurants. The whole surface turns over so nobody approves money against the wrong house.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="position:relative;height:100%;overflow:hidden"><div data-a style="position:absolute;inset:0;' + S.col + '"><div style="' + S.lbl + '">Mudavym · Kadıköy</div>' + PO.slice(0, 2).map(p => row(p[0], p[1], p[2])).join('') + '</div><div data-b style="position:absolute;inset:0;' + S.col + ';opacity:0"><div style="' + S.lbl + '">Mudavym · Beşiktaş</div>' + row('PO-2210', 'Mariscos Ría', '$1,105') + row('PO-2211', 'Panadería Sur', '$188') + '</div></div>';
+        const a = u.q('[data-a]'), b = u.q('[data-b]');
+        return () => {
+          u.set(a, { opacity: '1' }); u.set(b, { opacity: '0' });
+          u.a(a, { opacity: [1, 0], transform: ['none', 'translateY(-14px)'] }, 'turn', { delay: 200 });
+          u.a(b, { opacity: [0, 1], transform: ['translateY(14px)', 'none'] }, 'turn', { delay: 300 });
+        };
+      } },
+      { name: 'Command palette', why: 'A manager who knows the product finds PO-1042 without looking at the screen. It arrives near where the eye already is.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div data-sc style="position:absolute;inset:0;background:color-mix(in oklab, var(--sunk) 60%, transparent);opacity:0"></div><div data-p style="position:absolute;left:14px;right:14px;top:18px;background:var(--surf);border:1px solid var(--line2);border-radius:7px;overflow:hidden"><div style="padding:7px 9px;border-bottom:1px solid var(--line);' + S.mono + '">po-10<span style="color:var(--muted)">|</span></div>' + [['PO-1042', 'Vinos del Norte'], ['PO-1043', 'Bodega Álvaro']].map((x, i) => '<div data-i style="display:flex;gap:8px;padding:6px 9px;' + S.mono + ';background:' + (i ? 'transparent' : 'var(--sunk)') + '"><span>' + x[0] + '</span><span style="color:var(--muted)">' + x[1] + '</span></div>').join('') + '</div>';
+        const p = u.q('[data-p]'), sc = u.q('[data-sc]'), items = u.qa('[data-i]');
+        return () => { u.a(sc, { opacity: [0, 1] }, 'ink'); u.a(p, { opacity: [0, 1], transform: ['scale(.97) translateY(-8px)', 'none'] }, 'settle'); items.forEach((e, i) => u.a(e, { opacity: [0, 1] }, 'ink', { delay: 120 + i * 50 })); };
+      } },
+      { name: 'A row updates while you read it', why: 'The 1am queue: a value corrects under the cursor. The row holds its position and only the figure moves, on tally.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '">' + row('PO-1043', 'Bodega Álvaro', '$740') + '<div data-r style="' + S.row + ';border-color:var(--line2)"><span style="' + S.mono + ';color:var(--muted)">PO-1042</span><span style="' + S.nm + '">Vinos del Norte</span><span data-v style="' + S.mono + '">$1,860</span></div>' + row('PO-1044', 'Panadería Sur', '$212') + '</div><div style="' + S.note + '">the row never moves · only the figure does</div>';
+        const v = u.q('[data-v]'), r = u.q('[data-r]');
+        return () => {
+          u.txt(v, '$1,860');
+          u.after(420, () => { u.tween(620, 'tally', p => u.txt(v, '$' + Math.round(1860 - p * 174).toLocaleString())); u.a(r, { borderColor: ['var(--line2)', 'var(--muted)', 'var(--line2)'] }, 'settle', { duration: 700 }); });
+        };
+      } },
+      { name: 'Failure is not an empty room', why: 'The neutral skin has no red, so the difference must be structural: emptiness sits centred and still; failure arrives from the top edge, left-aligned, carrying a way out.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;height:100%"><div style="border:1px solid var(--line);border-radius:5px;position:relative;overflow:hidden"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;' + S.sm + ';padding:8px">No deliveries today</div></div><div style="border:1px solid var(--line);border-radius:5px;position:relative;overflow:hidden"><div data-f style="position:absolute;left:0;right:0;top:0;padding:7px;background:var(--surf);border-bottom:1px solid var(--neg)"><div style="' + S.mono + ';color:var(--neg)">503 · vendor gateway</div><div style="' + S.sm + ';padding-top:3px">retry · or enter by hand</div></div></div></div>';
+        const f = u.q('[data-f]');
+        return () => u.a(f, { transform: ['translateY(-100%)', 'none'] }, 'settle', { delay: 200 });
+      } },
+      { name: 'Reconnecting ticks', why: 'Backoff between retries at the door. Un-eased, because the operator is counting seconds and deciding whether to phone the vendor.', tok: 'linear', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="' + S.mono + ';color:var(--muted)">reconnecting · attempt <span data-a>1</span> of 4</div><div style="display:flex;gap:4px">' + [0, 1, 2, 3].map(i => '<div data-d="' + i + '" style="flex:1;height:3px;background:var(--line)"><div data-f style="height:3px;background:var(--muted);transform-origin:left;transform:scaleX(0)"></div></div>').join('') + '</div></div>';
+        const fills = u.qa('[data-f]'), a = u.q('[data-a]');
+        return () => {
+          fills.forEach(f => u.set(f, { transform: 'scaleX(0)' })); u.txt(a, '1');
+          fills.forEach((f, i) => u.after(i * 620, () => { u.txt(a, String(i + 1)); u.a(f, { transform: ['scaleX(0)', 'scaleX(1)'] }, 'linear', { duration: 600 }); }));
+        };
+      } },
+      { name: 'Honest slow load', why: 'A vendor gateway taking its time. The label tells the truth rather than looping a spinner forever.', tok: 'linear', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="height:3px;background:var(--line)"><div data-b style="height:3px;background:var(--muted);transform-origin:left;transform:scaleX(0)"></div></div><div data-t style="' + S.mono + ';color:var(--muted)">fetching 14 vendor invoices…</div></div>';
+        const b = u.q('[data-b]'), t = u.q('[data-t]');
+        return () => {
+          u.set(b, { transform: 'scaleX(0)' });
+          u.a(b, { transform: ['scaleX(0)', 'scaleX(.72)'] }, 'linear', { duration: 1400 });
+          u.txt(t, 'fetching 14 vendor invoices…');
+          u.after(1500, () => { u.txt(t, 'vendor gateway is slow · 10 of 14 · still going'); u.a(t, { opacity: [.4, 1] }, 'ink'); });
+        };
+      } },
+      { name: 'Porter mode at 12%', why: 'On a dying phone at the door the canvas stops moving on purpose: states swap instantly and say so.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%"><div data-b style="' + S.mono + ';color:var(--muted)">battery 12% · reduced motion on</div>' + [['count 24 Rioja', 'done'], ['photo albarán', 'done']].map(x => '<div data-r style="' + S.row + '"><span style="' + S.nm + '">' + x[0] + '</span><span style="' + S.mono + ';color:var(--muted)">' + x[1] + '</span></div>').join('') + '<div style="' + S.sm + ';margin-top:auto">no transitions · instant state</div></div>';
+        const rows = u.qa('[data-r]');
+        return () => rows.forEach((r, i) => { u.set(r, { opacity: '0' }); u.after(140 + i * 320, () => u.set(r, { opacity: '1' })); });
+      } },
+      { name: 'Reduced motion, stated', why: 'Under prefers-reduced-motion every demo on this page collapses to its end state. A still canvas is correct behaviour, and the page says so out loud.', tok: 'ink', build(s, u) {
+        const on = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:7px"><div style="' + S.lbl + '">prefers-reduced-motion</div><div style="font:600 15px var(--mono);color:' + (on ? 'var(--ink)' : 'var(--muted)') + '">' + (on ? 'reduce · honoured' : 'no-preference') + '</div><div style="font:400 10px/1.5 var(--sans);color:var(--muted)">' + (on ? 'Every card is showing its end state. Nothing here is broken.' : 'Set reduce in your OS and this canvas goes still — end states only, no timers left running.') + '</div></div>';
+        return () => { };
+      } }
+    ];
+
+    const sig = [
+      { name: 'The house knows you', why: 'Müdavim: the regular. When Bodega Álvaro\'s van appears the 14th Friday in a row, the house greets it in its own voice — serif, because the house is speaking.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div data-g style="font-family:var(--serif);font-size:17px;letter-spacing:-.01em">Bodega Álvaro, again.</div><div data-r style="width:60px;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2);height:3px;transform-origin:left"></div><div data-s style="' + S.sm + '">14th Friday in a row · usual dock, usual hour</div></div>';
+        const g = u.q('[data-g]'), r = u.q('[data-r]'), cap = u.q('[data-s]');
+        return () => {
+          u.a(g, { clipPath: ['inset(0 100% 0 0)', 'inset(0 0 0 0)'] }, 'turn', { duration: 600 });
+          u.a(r, { transform: ['scaleX(0)', 'scaleX(1)'] }, 'settle', { delay: 520 });
+          u.a(cap, { opacity: [0, 1] }, 'ink', { delay: 660 });
+        };
+      } },
+      { name: 'The day seals itself', why: 'Close of service: the night\'s orders compress into one line of record — the only moment the seal appears.', tok: 'stamp', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '">' + PO.slice(0, 3).map(p => '<div data-r style="' + S.row + '"><span style="' + S.mono + ';color:var(--muted)">' + p[0] + '</span><span style="' + S.nm + '">' + p[1] + '</span><span style="' + S.mono + '">' + p[2] + '</span></div>').join('') + '<div data-sum style="display:flex;align-items:center;gap:7px;padding:6px 8px;opacity:0"><span data-seal style="width:10px;height:10px;border-radius:50%;background:var(--seal);display:inline-block"></span><span style="' + S.mono + '">Friday sealed · 3 POs · $2,812</span></div></div>';
+        const rows = u.qa('[data-r]'), sum = u.q('[data-sum]'), seal = u.q('[data-seal]');
+        return () => {
+          rows.forEach(r => u.set(r, { opacity: '1', transform: 'none' }));
+          u.set(sum, { opacity: '0' });
+          rows.forEach((r, i) => u.a(r, { transform: ['none', 'translateY(' + ((3 - i) * 35 - 8) + 'px) scaleY(.08)'], opacity: [1, 0] }, 'settle', { delay: 300 + i * 90, duration: 460 }));
+          u.after(880, () => { u.a(sum, { opacity: [0, 1] }, 'ink'); u.a(seal, { transform: ['scale(2.4)', 'scale(1)'] }, 'stamp'); });
+        };
+      } },
+      { name: 'Mise en place', why: 'The prep list: a ragged edge is unfinished work. Done means flush — alignment is the completion state, no ticks needed.', tok: 'tuck', build(s, u) {
+        const items = [['citrus segmented', '9px'], ['stocks strained', '26px'], ['rioja decanted', '15px'], ['linens counted', '32px']];
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center;position:relative;padding-left:6px"><div data-edge style="position:absolute;left:0;top:8px;bottom:8px;width:1px;background:var(--seal);transform:scaleY(0);z-index:1"></div>' + items.map(x => '<div data-m style="' + S.row + ';margin-left:' + x[1] + '"><span style="' + S.nm + '">' + x[0] + '</span></div>').join('') + '</div>';
+        const ms = u.qa('[data-m]'), edge = u.q('[data-edge]');
+        return () => {
+          u.set(edge, { transform: 'scaleY(0)', transformOrigin: 'top' });
+          ms.forEach((m, i) => { u.set(m, { transform: 'none' }); u.a(m, { transform: ['none', 'translateX(-' + items[i][1] + ')'] }, 'tuck', { delay: 250 + i * 160 }); });
+          u.after(1250, () => u.a(edge, { transform: ['scaleY(0)', 'scaleY(1)'] }, 'settle'));
+        };
+      } },
+      { name: 'Scrub the day', why: 'Drag across the service line and the figures answer for that minute — the owner reads the night like a tape, not a summary.', tok: 'linear', build(s, u) {
+        const covers = [0, 8, 24, 61, 102, 148, 171, 184], labour = [42, 40, 37, 33, 30.5, 29.8, 30.4, 31.1];
+        s.innerHTML = '<div data-st style="height:100%;display:flex;flex-direction:column;gap:8px;cursor:ew-resize;touch-action:none"><div style="display:flex;gap:14px"><div><div style="' + S.lbl + '">covers</div><div data-c style="font:600 17px var(--mono)">0</div></div><div><div style="' + S.lbl + '">labour</div><div data-lb style="font:600 17px var(--mono)">42.0%</div></div><div style="margin-left:auto;text-align:right"><div style="' + S.lbl + '">time</div><div data-tm style="font:600 17px var(--mono)">17:00</div></div></div><div data-tr style="position:relative;flex:1;border-bottom:1px solid var(--line)"><svg width="100%" height="100%" viewBox="0 0 280 52" preserveAspectRatio="none"><polyline points="0,50 40,46 80,38 120,24 160,10 200,4 240,7 280,3" fill="none" stroke="var(--line2)" stroke-width="1.5"></polyline></svg><div data-ln style="position:absolute;top:0;bottom:0;left:0;width:1px;background:var(--ink)"></div></div></div>';
+        const c = u.q('[data-c]'), lb = u.q('[data-lb]'), tm = u.q('[data-tm]'), ln = u.q('[data-ln]'), tr = u.q('[data-tr]'), st2 = u.q('[data-st]');
+        const at = p => {
+          p = Math.max(0, Math.min(1, p));
+          const f = p * (covers.length - 1), i = Math.floor(f), fr = f - i, j = Math.min(covers.length - 1, i + 1);
+          u.txt(c, String(Math.round(covers[i] + (covers[j] - covers[i]) * fr)));
+          u.txt(lb, (labour[i] + (labour[j] - labour[i]) * fr).toFixed(1) + '%');
+          const m = Math.round(17 * 60 + p * 7 * 60);
+          u.txt(tm, String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'));
+          ln.style.left = (p * 100) + '%';
+        };
+        st2.onpointermove = e => { const r = tr.getBoundingClientRect(); at((e.clientX - r.left) / r.width); };
+        return () => u.tween(1600, 'linear', at);
+      } },
+      { name: 'The ticket rises', why: 'The pass at 20:40: a waiting ticket lifts off the rail as it ages — time made spatial, readable from across the kitchen.', tok: 'linear', build(s, u) {
+        const T = [['T4 · pulpo', '2 min', 0], ['T9 · arroz', '11 min', 7], ['T2 · lubina', '16 min', 14]];
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:flex-end;gap:8px;padding-bottom:4px">' + T.map((t, i) => '<div data-tk="' + i + '" style="flex:1;background:var(--surf);border:1px solid var(--line);border-radius:4px;padding:7px"><div style="font:600 9.5px var(--sans)">' + t[0] + '</div><div style="' + S.sm + ';margin-top:3px">' + t[1] + '</div></div>').join('') + '</div>';
+        const tks = u.qa('[data-tk]');
+        return () => tks.forEach((t, i) => {
+          const lift = T[i][2];
+          u.set(t, { transform: 'none', boxShadow: 'none', borderColor: 'var(--line)' });
+          u.a(t, { transform: ['none', 'translateY(-' + lift + 'px)'], boxShadow: ['0 0 0 transparent', '0 ' + (lift / 2 + 2) + 'px ' + (lift + 3) + 'px color-mix(in oklab, var(--sunk) 85%, transparent)'] }, 'linear', { duration: 900, delay: i * 120 });
+          if (i === 2) u.after(1150, () => u.set(t, { borderColor: 'var(--line2)' }));
+        });
+      } },
+      { name: 'The receipt tears', why: 'Voiding a comp at 1am: the record physically loses its bottom half. A void should feel irreversible, because it is.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;justify-content:center"><div style="width:156px"><div style="background:var(--surf);border:1px solid var(--line);border-bottom:0;padding:8px;' + S.mono + '"><div>table 9 · comp</div><div style="color:var(--muted);margin-top:2px">−$38.00</div></div><div data-half style="background:var(--surf);border:1px solid var(--line);border-top:1px dashed var(--line2);padding:8px;transform-origin:top left;' + S.mono + ';color:var(--muted)">crema catalana ×2<br>café ×2</div><div data-vd style="' + S.sm + ';padding-top:5px;opacity:0">voided 01:12 · Elif Kaya</div></div></div>';
+        const h = u.q('[data-half]'), vd = u.q('[data-vd]');
+        return () => {
+          u.set(h, { opacity: '1', transform: 'none' });
+          u.set(vd, { opacity: '0' });
+          u.a(h, { transform: ['none', 'rotate(4deg) translateY(9px)', 'rotate(-2deg) translateY(60px)'], opacity: [1, 1, 0] }, 'turn', { duration: 700, delay: 300 });
+          u.a(vd, { opacity: [0, 1] }, 'ink', { delay: 1050 });
+        };
+      } },
+      { name: 'The room dims', why: 'Closing: tables go dark in the order they were cleared, and the one still open is the only thing left lit.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;gap:9px"><div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:7px;align-content:center">' + [1, 2, 3, 4, 5, 6, 7, 9].map((t, i) => '<div data-tb="' + i + '" style="height:26px;border-radius:5px;background:var(--surf);border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;font:600 9px var(--mono)">' + t + '</div>').join('') + '</div><div data-cap style="' + S.sm + '">service · 8 tables open</div></div>';
+        const tb = u.qa('[data-tb]'), cap = u.q('[data-cap]');
+        const order = [0, 3, 1, 5, 2, 6, 4];
+        return () => {
+          tb.forEach(t => u.set(t, { opacity: '1' }));
+          u.txt(cap, 'service · 8 tables open');
+          order.forEach((o, i) => u.after(250 + i * 180, () => { u.a(tb[o], { opacity: [1, .22] }, 'ink'); u.txt(cap, 'closing · ' + (7 - i) + ' open'); }));
+          u.after(1760, () => { u.txt(cap, 'table 9 still open · 01:12'); u.a(tb[7], { transform: ['scale(1)', 'scale(1.08)', 'scale(1)'] }, 'settle', { duration: 500 }); });
+        };
+      } },
+      { name: 'The case splits', why: 'Splitting PO-1042 between two branches: 24 bottles becomes 16 and 8 in front of you — the division is witnessed, not announced.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="' + S.sm + '">PO-1042 · Rioja Crianza</div><div style="display:flex"><div data-a style="height:34px;flex:2;background:var(--surf);border:1px solid var(--line2);border-radius:4px 0 0 4px;display:flex;align-items:center;justify-content:center;font:600 13px var(--mono)">24</div><div data-b style="height:34px;flex:1;background:var(--surf);border:1px solid var(--line2);border-left:0;border-radius:0 4px 4px 0;display:flex;align-items:center;justify-content:center;font:600 13px var(--mono);color:var(--muted)"></div></div><div style="display:flex;' + S.sm + '"><span style="flex:2;text-align:center">Kadıköy</span><span data-l2 style="flex:1;text-align:center;opacity:0">Beşiktaş</span></div></div>';
+        const a = u.q('[data-a]'), b = u.q('[data-b]'), l2 = u.q('[data-l2]');
+        return () => {
+          u.set(b, { marginLeft: '0px', borderLeft: '0', borderRadius: '0 4px 4px 0' });
+          u.set(a, { borderRadius: '4px 0 0 4px' });
+          u.txt(a, '24'); u.txt(b, ''); u.set(l2, { opacity: '0' });
+          u.after(350, () => {
+            u.set(b, { borderLeft: '1px solid var(--line2)', borderRadius: '4px' });
+            u.set(a, { borderRadius: '4px' });
+            u.a(b, { marginLeft: ['0px', '8px'] }, 'settle');
+            u.tween(600, 'tally', p => { u.txt(a, String(Math.round(24 - p * 8))); u.txt(b, String(Math.round(p * 8))); });
+            u.a(l2, { opacity: [0, 1] }, 'ink', { delay: 200 });
+          });
+        };
+      } },
+      { name: 'Money has weight', why: 'Two approvals, same gesture: the larger amount presses visibly deeper before it commits. Consequence should be felt in the hand.', tok: 'stamp', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:9px">' + ['approve $212', 'approve $1,860'].map((x, i) => '<div data-p="' + i + '" style="position:relative;height:34px;border:1px solid var(--line2);border-radius:5px;background:var(--surf);overflow:hidden;display:flex;align-items:center;justify-content:center"><div data-f style="position:absolute;inset:0;transform-origin:left;transform:scaleX(0);background:color-mix(in oklab, var(--ink) 11%, transparent)"></div><span style="position:relative;' + S.mono + '">' + x + '</span></div>').join('') + '</div>';
+        const ps = u.qa('[data-p]'), fs = u.qa('[data-f]');
+        const depth = [1.5, 4];
+        return () => ps.forEach((p, i) => {
+          u.set(p, { transform: 'none' });
+          u.a(fs[i], { transform: ['scaleX(0)', 'scaleX(1)'] }, 'linear', { delay: 200 });
+          u.a(p, { transform: ['none', 'translateY(' + depth[i] + 'px) scale(' + (1 - depth[i] * .006) + ')'] }, 'linear', { duration: 620, delay: 200 });
+          u.after(850, () => u.a(p, { transform: ['translateY(' + depth[i] + 'px) scale(' + (1 - depth[i] * .006) + ')', 'none'] }, 'stamp'));
+        });
+      } },
+      { name: 'The proof grows', why: 'A rest timer in prep that grows instead of draining — readiness is something arriving, and the geometry says when it has.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:14px"><div style="position:relative;width:56px;height:56px;flex:none"><div style="position:absolute;inset:0;border:1px dashed var(--line2);border-radius:50%"></div><div data-b style="position:absolute;inset:0;border-radius:50%;background:color-mix(in oklab, var(--ink) 14%, transparent);transform:scale(.2)"></div></div><div style="' + S.col + ';gap:3px"><span data-t style="font:600 12px var(--mono)">focaccia · proofing</span><span data-r style="' + S.sm + '">34 min of 45</span></div></div>';
+        const b = u.q('[data-b]'), t = u.q('[data-t]'), r = u.q('[data-r]');
+        return () => {
+          u.set(b, { transform: 'scale(.2)' });
+          u.txt(t, 'focaccia · proofing');
+          u.a(b, { transform: ['scale(.2)', 'scale(1)'] }, 'linear', { duration: 1500 });
+          u.tween(1500, 'linear', p => u.txt(r, Math.round(34 + p * 11) + ' min of 45'));
+          u.after(1560, () => { u.txt(t, 'ready'); u.a(b, { transform: ['scale(1)', 'scale(1.05)', 'scale(1)'] }, 'settle', { duration: 400 }); });
+        };
+      } },
+      { name: 'The shift tide', why: 'Staffing as a waterline on the week: drop Yusuf into Friday and the level visibly rises to where the forecast needs it.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;gap:7px;align-items:stretch">' + [['THU', .55], ['FRI', .35], ['SAT', .7]].map((d, i) => '<div style="flex:1;display:flex;flex-direction:column;gap:4px"><span style="' + S.lbl + ';text-align:center">' + d[0] + '</span><div style="flex:1;position:relative;border:1px solid var(--line);border-radius:4px;overflow:hidden"><div data-w="' + i + '" style="position:absolute;left:0;right:0;bottom:0;height:100%;transform:scaleY(' + d[1] + ');transform-origin:bottom;background:color-mix(in oklab, var(--ink) 10%, transparent)"></div><div style="position:absolute;left:0;right:0;top:38%;border-top:1px dashed var(--line2)"></div></div></div>').join('') + '</div><div data-chip style="position:absolute;right:16px;top:34px;padding:3px 8px;border:1px solid var(--line2);border-radius:99px;background:var(--surf);font:500 9px var(--sans);z-index:1">Yusuf 17–23</div>';
+        const w = u.q('[data-w="1"]'), chip = u.q('[data-chip]');
+        return () => {
+          u.set(w, { transform: 'scaleY(.35)' });
+          u.set(chip, { opacity: '1', transform: 'none' });
+          const a = chip.getBoundingClientRect(), host = w.parentElement.getBoundingClientRect();
+          u.a(chip, { transform: ['none', 'translate(' + (host.left - a.left + 8) + 'px,' + (host.top - a.top + 30) + 'px) scale(.8)'], opacity: [1, 0] }, 'tuck', { delay: 250 });
+          u.after(650, () => u.a(w, { transform: ['scaleY(.35)', 'scaleY(.66)'] }, 'settle', { duration: 500 }));
+        };
+      } },
+      { name: 'The sign turns', why: 'End of day: the whole service card flips over like the sign on the door. The back is the record; the front was the work.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;perspective:700px"><div data-c style="position:relative;width:180px;height:96px;transform-style:preserve-3d"><div style="position:absolute;inset:0;backface-visibility:hidden;border:1px solid var(--line2);border-radius:7px;background:var(--surf);padding:11px;display:flex;flex-direction:column;gap:4px"><span style="font-family:var(--serif);font-size:13px">In service</span><span style="' + S.mono + ';color:var(--muted)">184 covers · 21 open checks</span></div><div style="position:absolute;inset:0;backface-visibility:hidden;transform:rotateY(180deg);border:1px solid var(--seal);border-radius:7px;background:var(--surf);padding:11px;display:flex;flex-direction:column;gap:4px"><span style="font-family:var(--serif);font-size:13px">Friday, sealed.</span><span style="' + S.mono + ';color:var(--muted)">$8,412 · 0 discrepancies</span></div></div></div>';
+        const c = u.q('[data-c]');
+        return () => { u.set(c, { transform: 'rotateY(0deg)' }); u.a(c, { transform: ['rotateY(0deg)', 'rotateY(180deg)'] }, 'turn', { duration: 760, delay: 250 }); };
+      } }
+    ];
+
+    const op = [
+      { name: 'Clock in', why: 'Elif taps in at 15:52. Her chip fills solid — present is a state you can see from the pass, not a row in a table.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:12px"><div data-ch style="position:relative;padding:8px 14px;border:1px dashed var(--line2);border-radius:99px;overflow:hidden"><div data-f style="position:absolute;inset:0;background:color-mix(in oklab, var(--ink) 12%, transparent);transform:scaleY(0);transform-origin:bottom"></div><span style="position:relative;font:500 11px var(--sans)">Elif Kaya</span></div><span data-t style="' + S.mono + ';color:var(--muted);opacity:0">in · 15:52</span></div>';
+        const ch = u.q('[data-ch]'), f = u.q('[data-f]'), t = u.q('[data-t]');
+        return () => {
+          u.set(ch, { borderStyle: 'dashed' }); u.set(t, { opacity: '0' });
+          u.a(f, { transform: ['scaleY(0)', 'scaleY(1)'] }, 'settle', { delay: 240 });
+          u.after(480, () => u.set(ch, { borderStyle: 'solid' }));
+          u.a(t, { opacity: [0, 1], transform: ['translateX(-6px)', 'none'] }, 'settle', { delay: 520 });
+        };
+      } },
+      { name: 'The float is counted', why: 'Opening the till: $200 counted in. The figure climbs while it is being counted and seals the moment the drawer closes.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:5px"><div style="' + S.lbl + '">till float</div><div data-v style="font:600 30px var(--mono);letter-spacing:-.03em">$0</div><div data-d style="' + S.mono + ';color:var(--muted);opacity:0">counted · drawer closed 16:40</div></div>';
+        const v = u.q('[data-v]'), d = u.q('[data-d]');
+        return () => { u.set(d, { opacity: '0' }); u.tween(800, 'tally', p => u.txt(v, '$' + Math.round(p * 200))); u.a(d, { opacity: [0, 1] }, 'ink', { delay: 900 }); };
+      } },
+      { name: 'Passcode, wrong then right', why: 'Sign-in at the host stand. A wrong code drains back un-eased — the field never shakes at a person holding plates.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:10px"><div style="display:flex;gap:8px">' + [0, 1, 2, 3].map(i => '<div data-d="' + i + '" style="width:11px;height:11px;border-radius:50%;border:1px solid var(--line2);background:transparent"></div>').join('') + '</div><div data-m style="' + S.sm + '">enter code</div></div>';
+        const dots = u.qa('[data-d]'), m = u.q('[data-m]');
+        const fill = (i, on) => u.set(dots[i], { background: on ? 'var(--ink)' : 'transparent', borderColor: on ? 'var(--ink)' : 'var(--line2)' });
+        return () => {
+          dots.forEach((_, i) => fill(i, false)); u.txt(m, 'enter code');
+          [0, 1, 2, 3].forEach(i => u.after(200 + i * 130, () => fill(i, true)));
+          u.after(820, () => { u.txt(m, 'not that one'); [3, 2, 1, 0].forEach((i, j) => u.after(j * 90, () => fill(i, false))); });
+          u.after(1450, () => u.txt(m, 'enter code'));
+          [0, 1, 2, 3].forEach(i => u.after(1550 + i * 130, () => fill(i, true)));
+          u.after(2200, () => { u.txt(m, 'Elif Kaya · in'); u.a(m, { opacity: [0, 1] }, 'ink'); });
+        };
+      } },
+      { name: 'Cold start paints in reading order', why: 'App launch on the floor: navigation lands first, then labels, then content — the skeleton is the promise, kept left to right.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;gap:9px"><div style="width:64px;display:flex;flex-direction:column;gap:6px">' + ['Orders', 'Deliver', 'Team', 'Reports'].map(t => '<div data-n style="height:16px;border-radius:3px;background:var(--surf);border:1px solid var(--line);font:500 8.5px var(--sans);color:var(--muted);display:flex;align-items:center;padding:0 5px"><span data-lb style="opacity:0">' + t + '</span></div>').join('') + '</div><div data-c style="flex:1;border:1px solid var(--line);border-radius:5px;background:var(--surf);opacity:0;padding:8px;' + S.sm + '">4 open POs · 2 deliveries due</div></div>';
+        const ns = u.qa('[data-n]'), lbs = u.qa('[data-lb]'), c = u.q('[data-c]');
+        return () => {
+          ns.forEach((e, i) => u.a(e, { opacity: [0, 1] }, 'ink', { delay: i * 70 }));
+          lbs.forEach((e, i) => u.a(e, { opacity: [0, 1] }, 'ink', { delay: 320 + i * 60 }));
+          u.a(c, { opacity: [0, 1], transform: ['translateY(6px)', 'none'] }, 'settle', { delay: 600 });
+        };
+      } },
+      { name: 'The handover is read', why: 'Start of shift: Thursday night\u2019s note slides into today\u2019s header and shrinks to a chip. What was written is provably carried.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;gap:8px"><div data-hd style="display:flex;align-items:center;gap:7px;padding:6px 8px;border-bottom:1px solid var(--line)"><span style="' + S.lbl + '">Friday</span><span data-chip style="padding:2px 7px;border:1px solid var(--line2);border-radius:99px;font:500 8.5px var(--sans);color:var(--muted);opacity:0">1 note from Thursday</span></div><div data-note style="padding:8px;border:1px solid var(--line2);border-radius:5px;background:var(--surf);font:400 10px/1.5 var(--sans);color:var(--muted)">Álvaro credits 2 bottles on the next albarán — check it lands.</div></div>';
+        const note = u.q('[data-note]'), chip = u.q('[data-chip]');
+        return () => {
+          u.set(note, { opacity: '1', transform: 'none' }); u.set(chip, { opacity: '0' });
+          u.a(note, { transform: ['none', 'translateY(-34px) scale(.28)'], opacity: [1, 0] }, 'settle', { delay: 500, duration: 460 });
+          u.a(chip, { opacity: [0, 1], transform: ['scale(.7)', 'none'] }, 'settle', { delay: 860 });
+        };
+      } },
+      { name: 'The dock window opens', why: 'Six-thirty: the receiving window for Vinos del Norte opens as space, not as a notification.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '">' + row('06:30', 'Panadería Sur', 'done') + '<div data-g style="display:grid;grid-template-rows:0fr"><div style="overflow:hidden;min-height:0"><div style="' + S.row + ';border-style:dashed;border-color:var(--line2)"><span style="' + S.mono + ';color:var(--muted)">07:00</span><span style="' + S.nm + '">Vinos del Norte · window open</span><span style="' + S.mono + '">24 btl</span></div></div></div>' + row('09:40', 'Bodega Álvaro', 'due') + '</div>';
+        const g = u.q('[data-g]');
+        return () => { u.set(g, { gridTemplateRows: '0fr' }); u.a(g, { gridTemplateRows: ['0fr', '1fr'] }, 'settle', { delay: 260 }); };
+      } },
+      { name: 'Prep clock starts', why: 'Marco takes the brunoise. The chip grows a running underline — work in progress is a line still being drawn.', tok: 'linear', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center"><div style="position:relative;padding:8px 11px;border:1px solid var(--line2);border-radius:5px;background:var(--surf)"><div style="font:500 10.5px var(--sans)">brunoise onions · Marco</div><div data-t style="' + S.sm + ';margin-top:3px">00:00</div><div data-u style="position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--ink);transform:scaleX(0);transform-origin:left"></div></div></div>';
+        const un = u.q('[data-u]'), t = u.q('[data-t]');
+        return () => { u.a(un, { transform: ['scaleX(0)', 'scaleX(.4)'] }, 'linear', { duration: 1600 }); u.tween(1600, 'linear', p => { const sec = Math.round(p * 96); u.txt(t, String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0')); }); };
+      } },
+      { name: 'First table seated', why: 'Table 4 takes two covers at 17:08. The floor map fills, the count admits them — the night has begun.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;gap:12px;align-items:center"><div style="display:grid;grid-template-columns:repeat(3,28px);gap:6px">' + [1, 2, 4, 5, 7, 9].map(t => '<div data-tb="' + t + '" style="height:28px;border:1px solid var(--line2);border-radius:4px;display:flex;align-items:center;justify-content:center;font:600 9px var(--mono);color:var(--muted)">' + t + '</div>').join('') + '</div><div style="' + S.col + ';gap:3px"><span data-c style="font:600 22px var(--mono)">0</span><span style="' + S.sm + '">covers · 17:08</span></div></div>';
+        const t4 = u.q('[data-tb="4"]'), c = u.q('[data-c]');
+        return () => {
+          u.set(t4, { background: 'transparent', color: 'var(--muted)' }); u.txt(c, '0');
+          u.after(300, () => { u.set(t4, { background: 'color-mix(in oklab, var(--ink) 14%, transparent)', color: 'var(--ink)' }); u.a(t4, { transform: ['scale(.85)', 'none'] }, 'settle'); u.tween(400, 'tally', p => u.txt(c, String(Math.round(p * 2)))); });
+        };
+      } },
+      { name: 'Order cutoff approaches', why: 'Vendor orders lock at 15:00. The remaining time drains un-eased — a manager deciding whether to add one more case needs the truth.', tok: 'linear', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="display:flex;' + S.mono + '"><span style="' + S.nm + ';color:var(--muted)">orders lock 15:00</span><span data-t>0:48 left</span></div><div style="height:2px;background:var(--line)"><div data-b style="height:2px;background:var(--muted);transform-origin:right;transform:scaleX(.4)"></div></div></div>';
+        const b = u.q('[data-b]'), t = u.q('[data-t]');
+        return () => { u.a(b, { transform: ['scaleX(.4)', 'scaleX(0)'] }, 'linear', { duration: 2000 }); u.tween(2000, 'linear', p => { const sec = Math.round((1 - p) * 48); u.txt(t, '0:' + String(sec).padStart(2, '0') + ' left'); }); };
+      } },
+      { name: 'The forecast lands', why: 'Friday\u2019s expected covers arrive with their honesty attached: the number settles first, the uncertainty band widens after.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:6px"><div style="' + S.lbl + '">forecast · Friday</div><div style="display:flex;align-items:baseline;gap:9px"><span data-v style="font:600 30px var(--mono);letter-spacing:-.03em">0</span><span data-band style="' + S.mono + ';color:var(--muted);opacity:0">±12</span></div><div style="position:relative;height:3px;background:var(--line);border-radius:2px"><div data-bb style="position:absolute;left:50%;top:0;bottom:0;background:var(--line2);width:0;transform:translateX(-50%)"></div><div style="position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--ink)"></div></div></div>';
+        const v = u.q('[data-v]'), band = u.q('[data-band]'), bb = u.q('[data-bb]');
+        return () => {
+          u.set(band, { opacity: '0' }); u.set(bb, { width: '0' });
+          u.tween(700, 'tally', p => u.txt(v, String(Math.round(p * 190))));
+          u.a(band, { opacity: [0, 1] }, 'ink', { delay: 780 });
+          u.a(bb, { width: ['0px', '84px'] }, 'settle', { delay: 780 });
+        };
+      } },
+      { name: 'Keys to the floor', why: 'Manager handoff at 16:00: the MGR mark travels from Elif to Marco. Authority moves like an object because it is one.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:24px;justify-content:center"><div style="position:relative;text-align:center"><div style="width:34px;height:34px;border-radius:50%;background:var(--line2);display:flex;align-items:center;justify-content:center;font:600 11px var(--sans);margin:0 auto">EK</div><div data-k style="position:absolute;top:-6px;right:-14px;padding:1px 5px;border:1px solid var(--line2);border-radius:3px;background:var(--surf);font:600 7.5px var(--mono)">MGR</div><div style="' + S.sm + ';margin-top:5px">Elif</div></div><div style="text-align:center"><div data-m style="width:34px;height:34px;border-radius:50%;background:var(--line);display:flex;align-items:center;justify-content:center;font:600 11px var(--sans);margin:0 auto;color:var(--muted)">MB</div><div style="' + S.sm + ';margin-top:5px">Marco</div></div></div>';
+        const k = u.q('[data-k]'), m = u.q('[data-m]');
+        return () => {
+          u.set(k, { transform: 'none' });
+          const a = k.getBoundingClientRect(), b = m.getBoundingClientRect();
+          u.a(k, { transform: ['none', 'translate(' + (b.right - a.left - 6) + 'px,' + (b.top - a.top - 4) + 'px)'] }, 'tuck', { delay: 350 });
+          u.after(800, () => { u.set(m, { background: 'var(--line2)', color: 'var(--ink)' }); });
+        };
+      } },
+      { name: 'Oven comes to temp', why: 'Ready is a threshold, not a feeling: the needle climbs to 240° and the word only appears at the number.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:12px"><svg width="66" height="66" viewBox="0 0 66 66"><circle cx="33" cy="33" r="26" fill="none" stroke="var(--line)" stroke-width="5"></circle><circle data-c cx="33" cy="33" r="26" fill="none" stroke="var(--ink)" stroke-width="5" stroke-dasharray="163" stroke-dashoffset="163" transform="rotate(-90 33 33)"></circle></svg><div style="' + S.col + ';gap:2px"><span data-v style="font:600 19px var(--mono)">21°</span><span data-r style="' + S.sm + '">heating · target 240°</span></div></div>';
+        const c = u.q('[data-c]'), v = u.q('[data-v]'), r = u.q('[data-r]');
+        return () => {
+          u.txt(r, 'heating · target 240°');
+          u.a(c, { strokeDashoffset: [163, 163 - 163 * .8] }, 'tally', { duration: 1300 });
+          u.tween(1300, 'tally', p => u.txt(v, Math.round(21 + p * 219) + '°'), () => { u.txt(r, 'ready'); });
+        };
+      } },
+      { name: 'Reservations wake', why: 'Tonight\u2019s book stacks in by hour — the shape of the night is visible before the first guest is.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';gap:5px">' + [['19:00', 'Aylin · 2'], ['19:30', 'Duarte · 4'], ['20:00', 'Ferran · 2'], ['21:00', 'walk-ins held']].map(x => '<div data-r style="display:flex;gap:8px;' + S.mono + '"><span style="color:var(--muted)">' + x[0] + '</span><span style="font-family:var(--sans);font-size:10.5px">' + x[1] + '</span></div>').join('') + '</div>';
+        const rs = u.qa('[data-r]');
+        return () => rs.forEach((r, i) => u.a(r, { opacity: [0, 1], transform: ['translateX(-10px)', 'none'] }, 'settle', { delay: i * 110 }));
+      } },
+      { name: 'Opening checklist strikes', why: 'Three lines between the house and the doors. Each strike is drawn — the list is not done until it looks done.', tok: 'turn', build(s, u) {
+        const items = ['fridge temps logged', 'float counted', 'specials on the board'];
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center">' + items.map(t => '<div style="position:relative;display:flex;align-items:center;gap:7px"><span data-tx style="font:400 11px var(--sans)">' + t + '</span><div data-st style="position:absolute;left:-2px;right:auto;width:0;top:50%;height:1px;background:var(--muted)"></div></div>').join('') + '<div data-c style="' + S.sm + ';margin-top:4px">0 of 3</div></div>';
+        const tx = u.qa('[data-tx]'), st2 = u.qa('[data-st]'), c = u.q('[data-c]');
+        return () => {
+          st2.forEach(e => u.set(e, { width: '0' })); tx.forEach(e => u.set(e, { color: 'var(--ink)' })); u.txt(c, '0 of 3');
+          tx.forEach((e, i) => u.after(250 + i * 420, () => {
+            u.a(st2[i], { width: ['0px', (e.offsetWidth + 4) + 'px'] }, 'turn', { duration: 300 });
+            u.set(e, { color: 'var(--muted)' }); u.txt(c, (i + 1) + ' of 3' + (i === 2 ? ' · doors can open' : ''));
+          }));
+        };
+      } },
+      { name: 'Doors open', why: 'Seventeen hundred: the day header unlocks. The rule draws, the stop lands — the house is receiving.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:7px"><div style="display:flex;align-items:baseline;gap:6px"><span data-w style="font-family:var(--serif);font-size:16px">Friday, in service</span><span data-dot style="font-family:var(--serif);font-size:16px;display:inline-block">.</span></div><div data-r style="width:56px;border-top:1px solid var(--line2);transform-origin:left"></div><div data-t style="' + S.sm + ';opacity:0">doors 17:00 · 6 on the floor</div></div>';
+        const w = u.q('[data-w]'), dot = u.q('[data-dot]'), r = u.q('[data-r]'), t = u.q('[data-t]');
+        return () => {
+          u.a(w, { clipPath: ['inset(0 100% 0 0)', 'inset(0 0 0 0)'] }, 'turn', { duration: 520 });
+          u.a(dot, { opacity: [0, 1], transform: ['scale(.4)', 'none'] }, 'stamp', { delay: 480 });
+          u.a(r, { transform: ['scaleX(0)', 'none'] }, 'settle', { delay: 560 });
+          u.a(t, { opacity: [0, 1] }, 'ink', { delay: 700 });
+        };
+      } },
+      { name: 'First ticket on the rail', why: 'The pass was clear; ticket 1 clips in under the rail line from the printer side. From here the night is a queue.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;position:relative;padding-top:10px"><div style="position:absolute;left:0;right:0;top:6px;height:1px;background:var(--line2)"></div><div data-e style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;' + S.sm + '">pass clear</div><div data-tk style="position:absolute;top:10px;left:10px;width:96px;background:var(--surf);border:1px solid var(--line2);border-radius:0 0 4px 4px;border-top:2px solid var(--ink);padding:7px"><div style="font:600 9.5px var(--mono)">nº 1 · 17:11</div><div style="' + S.sm + ';margin-top:3px">T4 · pulpo ×2</div></div></div>';
+        const e = u.q('[data-e]'), tk = u.q('[data-tk]');
+        return () => {
+          u.set(e, { opacity: '1' });
+          u.a(e, { opacity: [1, 0] }, 'ink', { delay: 240 });
+          u.a(tk, { transform: ['translateX(260px) translateY(-4px)', 'none'], opacity: [0, 1] }, 'tuck', { delay: 280 });
+        };
+      } },
+      { name: 'The board fills its 86 back in', why: 'Lubina is back at 06:40 when the boat delivers. The dimmed row relights — availability returning is worth seeing.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '">' + [['pulpo a la brasa', 1], ['lubina salvaje', 0], ['crema catalana', 1]].map(x => '<div data-r style="' + S.row + ';opacity:' + (x[1] ? 1 : .35) + '"><span style="' + S.nm + '">' + x[0] + '</span><span data-tag style="' + S.mono + ';color:var(--muted)">' + (x[1] ? '' : '86') + '</span></div>').join('') + '</div>';
+        const r = u.qa('[data-r]')[1], tag = r.querySelector('[data-tag]');
+        return () => {
+          u.set(r, { opacity: '.35' }); u.txt(tag, '86');
+          u.after(400, () => { u.a(r, { opacity: [.35, 1] }, 'ink', { duration: 300 }); u.txt(tag, 'back'); u.a(tag, { opacity: [0, 1] }, 'ink'); });
+        };
+      } }
+    ];
+
+    const clo = [
+      { name: 'Clock out', why: 'Elif taps out at 01:40. The chip hollows — the exact reverse of clocking in, because leaving is the same act undone.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:12px"><div data-ch style="position:relative;padding:8px 14px;border:1px solid var(--line2);border-radius:99px;overflow:hidden"><div data-f style="position:absolute;inset:0;background:color-mix(in oklab, var(--ink) 12%, transparent);transform-origin:top"></div><span style="position:relative;font:500 11px var(--sans)">Elif Kaya</span></div><span data-t style="' + S.mono + ';color:var(--muted);opacity:0">9h 48m · out 01:40</span></div>';
+        const ch = u.q('[data-ch]'), f = u.q('[data-f]'), t = u.q('[data-t]');
+        return () => {
+          u.set(ch, { borderStyle: 'solid' }); u.set(f, { transform: 'scaleY(1)' }); u.set(t, { opacity: '0' });
+          u.a(f, { transform: ['scaleY(1)', 'scaleY(0)'] }, 'settle', { delay: 260 });
+          u.after(520, () => u.set(ch, { borderStyle: 'dashed' }));
+          u.a(t, { opacity: [0, 1], transform: ['translateX(-6px)', 'none'] }, 'settle', { delay: 560 });
+        };
+      } },
+      { name: 'Last check folds in', why: 'Table 9 pays at 00:52. The check tucks into the day total and the total admits it — the night closes arithmetic first.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:10px"><div data-ck style="' + S.row + ';border-color:var(--line2);align-self:flex-start"><span>table 9</span><span style="' + S.mono + '">$184</span></div><div style="display:flex;' + S.mono + ';border-top:1px solid var(--line);padding-top:8px"><span style="' + S.nm + ';color:var(--muted)">Friday</span><span data-tot>$8,228</span></div></div>';
+        const ck = u.q('[data-ck]'), tot = u.q('[data-tot]');
+        return () => {
+          u.set(ck, { opacity: '1', transform: 'none' }); u.txt(tot, '$8,228');
+          const a = ck.getBoundingClientRect(), b = tot.getBoundingClientRect();
+          u.a(ck, { transform: ['none', 'translate(' + (b.left - a.left - 20) + 'px,' + (b.top - a.top - 4) + 'px) scale(.4)'], opacity: [1, 0] }, 'tuck', { delay: 300 });
+          u.after(640, () => u.tween(600, 'tally', p => u.txt(tot, '$' + Math.round(8228 + p * 184).toLocaleString())));
+        };
+      } },
+      { name: 'The drawer is counted', why: 'Expected against counted, converging live. The variance chip only exists once both numbers stop moving.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:7px"><div style="display:flex;gap:16px">' + [['expected', '$8,412', 'e'], ['counted', '$0', 'c']].map(x => '<div><div style="' + S.lbl + '">' + x[0] + '</div><div data-' + x[2] + ' style="font:600 17px var(--mono)">' + x[1] + '</div></div>').join('') + '</div><div data-var style="align-self:flex-start;padding:3px 8px;border:1px solid var(--neg);border-radius:99px;' + S.mono + ';color:var(--neg);opacity:0">−$8 short</div></div>';
+        const c = u.q('[data-c]'), vr = u.q('[data-var]');
+        return () => {
+          u.set(vr, { opacity: '0' }); u.txt(c, '$0');
+          u.tween(1100, 'tally', p => u.txt(c, '$' + Math.round(p * 8404).toLocaleString()), () => u.a(vr, { opacity: [0, 1], transform: ['translateY(4px)', 'none'] }, 'settle'));
+        };
+      } },
+      { name: 'The 86 board archives', why: 'What ran out tonight files itself under tomorrow — the kitchen\u2019s memory does the walking, not the manager.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;gap:10px"><div style="flex:1;' + S.col + '"><div style="' + S.lbl + '">tonight</div>' + ['86 lubina', '86 crema catalana'].map(t => '<div data-r style="' + S.row + '"><span style="' + S.nm + '">' + t + '</span></div>').join('') + '</div><div style="flex:1;' + S.col + '"><div style="' + S.lbl + '">tomorrow · order</div><div data-tm style="' + S.sm + ';padding:6px 0">—</div></div></div>';
+        const rs = u.qa('[data-r]'), tm = u.q('[data-tm]');
+        return () => {
+          rs.forEach(r => u.set(r, { opacity: '1', transform: 'none' })); u.txt(tm, '—');
+          rs.forEach((r, i) => u.a(r, { transform: ['none', 'translateX(120px)'], opacity: [1, 0] }, 'settle', { delay: 300 + i * 160 }));
+          u.after(760, () => { u.txt(tm, 'lubina · crema catalana'); u.a(tm, { opacity: [0, 1], transform: ['translateX(-8px)', 'none'] }, 'settle'); });
+        };
+      } },
+      { name: 'Lights down, Reports stays lit', why: 'After the seal, the nav dims room by room. The only door left open is the one the owner walks through at 1am.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center">' + ['Orders', 'Deliveries', 'Team', 'Inventory', 'Reports'].map(t => '<div data-n style="font:500 11px var(--sans);padding:2px 0">' + t + '</div>').join('') + '</div>';
+        const ns = u.qa('[data-n]');
+        return () => {
+          ns.forEach(e => u.set(e, { opacity: '1', color: 'var(--ink)' }));
+          [0, 1, 2, 3].forEach((i, j) => u.a(ns[i], { opacity: [1, .28] }, 'ink', { delay: 300 + j * 170 }));
+          u.after(1050, () => u.a(ns[4], { transform: ['none', 'translateX(4px)', 'none'] }, 'settle', { duration: 420 }));
+        };
+      } },
+      { name: 'The day locks', why: 'Sealed means sealed: input borders dissolve and the figures become ledger text. What could be edited now can only be read.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center">' + [['covers', '184'], ['net sales', '$8,412'], ['discrepancies', '0']].map(x => '<div style="display:flex;align-items:center;gap:8px"><span style="' + S.lbl + ';width:82px">' + x[0] + '</span><span data-f style="padding:4px 8px;border:1px solid var(--line2);border-radius:4px;' + S.mono + '">' + x[1] + '</span></div>').join('') + '<div data-lk style="' + S.sm + ';opacity:0;margin-top:2px">locked · Friday sealed 01:44</div></div>';
+        const fs = u.qa('[data-f]'), lk = u.q('[data-lk]');
+        return () => {
+          fs.forEach(f => u.set(f, { borderColor: 'var(--line2)' })); u.set(lk, { opacity: '0' });
+          fs.forEach((f, i) => u.a(f, { borderColor: ['var(--line2)', 'transparent'] }, 'ink', { delay: 300 + i * 140, duration: 400 }));
+          u.a(lk, { opacity: [0, 1] }, 'ink', { delay: 900 });
+        };
+      } },
+      { name: 'The export leaves the building', why: 'Friday\u2019s CSV departs for the accountant on a real arc, and a receipt line stays behind — data never just vanishes upward.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;position:relative"><div data-x style="position:absolute;left:10px;bottom:34px;padding:5px 9px;border:1px solid var(--line2);border-radius:4px;background:var(--surf);' + S.mono + '">friday.csv · 42 KB</div><div data-led style="position:absolute;left:0;right:0;bottom:6px;' + S.mono + ';color:var(--muted);clip-path:inset(0 100% 0 0)">01:45 · sent to gestoría · friday.csv</div></div>';
+        const x = u.q('[data-x]'), led = u.q('[data-led]');
+        return () => {
+          u.set(x, { opacity: '1', transform: 'none' }); u.set(led, { clipPath: 'inset(0 100% 0 0)' });
+          u.a(x, { transform: ['none', 'translate(70px,-30px) rotate(3deg)', 'translate(190px,-52px) rotate(6deg) scale(.8)'], opacity: [1, 1, 0] }, 'tuck', { delay: 280, duration: 620 });
+          u.a(led, { clipPath: ['inset(0 100% 0 0)', 'inset(0 0 0 0)'] }, 'turn', { delay: 820 });
+        };
+      } },
+      { name: 'The note goes under the door', why: 'The manager\u2019s handover folds and slips to tomorrow. Writing it is the last act of tonight, reading it the first of tomorrow.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:flex-start;gap:8px"><div data-n style="padding:8px;border:1px solid var(--line2);border-radius:5px;background:var(--surf);font:400 10px/1.5 var(--sans);color:var(--muted);transform-origin:center bottom">Watch the Álvaro credit. Table 9 comp explained in the log.</div><div style="margin-top:auto;border-top:1px solid var(--line2);position:relative"><div style="' + S.sm + ';padding-top:4px">Saturday</div><div data-got style="' + S.sm + ';position:absolute;right:0;top:4px;opacity:0">1 note waiting</div></div></div>';
+        const nnote = u.q('[data-n]'), got = u.q('[data-got]');
+        return () => {
+          u.set(nnote, { opacity: '1', transform: 'none' }); u.set(got, { opacity: '0' });
+          u.a(nnote, { transform: ['none', 'scaleY(.5) translateY(20px)', 'scaleY(.06) translateY(58px)'], opacity: [1, 1, 0] }, 'turn', { delay: 350, duration: 600 });
+          u.a(got, { opacity: [0, 1] }, 'ink', { delay: 1000 });
+        };
+      } },
+      { name: 'Sign out', why: 'The session card turns face-down. Nobody is erased — they are just no longer facing the room.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;perspective:600px"><div data-c style="position:relative;width:150px;height:78px;transform-style:preserve-3d"><div style="position:absolute;inset:0;backface-visibility:hidden;border:1px solid var(--line2);border-radius:6px;background:var(--surf);padding:10px"><div style="font:600 11px var(--sans)">Elif Kaya</div><div style="' + S.sm + ';margin-top:3px">manager · Kadıköy</div></div><div style="position:absolute;inset:0;backface-visibility:hidden;transform:rotateY(180deg);border:1px solid var(--line);border-radius:6px;background:var(--sunk);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px"><div style="width:36px;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2);height:3px"></div><div style="' + S.sm + '">signed out 01:42</div></div></div></div>';
+        const c = u.q('[data-c]');
+        return () => { u.set(c, { transform: 'rotateY(0deg)' }); u.a(c, { transform: ['rotateY(0deg)', 'rotateY(180deg)'] }, 'turn', { duration: 640, delay: 300 }); };
+      } },
+      { name: 'Fridge log, last entry', why: 'Three-a.m. reading logs itself: the trace draws flat — flat is the good news — and the timestamp inks.', tok: 'turn', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="' + S.lbl + '">walk-in · °C</div><svg width="100%" height="40" viewBox="0 0 260 40" preserveAspectRatio="none"><polyline data-p points="0,22 40,21 80,23 120,22 160,21 200,22 240,21 260,22" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="280" stroke-dashoffset="280"></polyline></svg><div data-t style="' + S.mono + ';color:var(--muted);opacity:0">03:00 · 3.8° · logged automatically</div></div>';
+        const p = u.q('[data-p]'), t = u.q('[data-t]');
+        return () => { u.a(p, { strokeDashoffset: [280, 0] }, 'turn', { duration: 800 }); u.a(t, { opacity: [0, 1] }, 'ink', { delay: 850 }); };
+      } },
+      { name: 'Waste is weighed in', why: 'The bin goes on the scale: the bar fills to 2.4 kg, the cost prints, and the line files itself into the ledger.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="display:flex;align-items:center;gap:9px"><div style="flex:1;height:9px;background:var(--line)"><div data-b style="height:9px;background:var(--muted);transform-origin:left;transform:scaleX(0)"></div></div><span data-w style="' + S.mono + ';width:52px;text-align:right">0.0 kg</span></div><div data-r style="display:flex;' + S.mono + ';color:var(--muted);opacity:0"><span style="' + S.nm + '">waste · Friday</span><span>2.4 kg · $18.40</span></div></div>';
+        const b = u.q('[data-b]'), w = u.q('[data-w]'), r = u.q('[data-r]');
+        return () => {
+          u.set(r, { opacity: '0' });
+          u.a(b, { transform: ['scaleX(0)', 'scaleX(.6)'] }, 'tally', { duration: 800 });
+          u.tween(800, 'tally', p => u.txt(w, (p * 2.4).toFixed(1) + ' kg'), () => u.a(r, { opacity: [0, 1], transform: ['translateY(6px)', 'none'] }, 'settle'));
+        };
+      } },
+      { name: 'Unfinished business carries', why: 'Two open discrepancies walk from Friday\u2019s column into Saturday\u2019s. Nothing sealed is allowed to hide an open question.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;gap:10px"><div style="flex:1;' + S.col + '"><div style="' + S.lbl + '">Friday</div>' + [['PO-1042', '−2 btl'], ['88-B', '$24']].map(x => '<div data-r style="' + S.row + '"><span style="' + S.nm + '">' + x[0] + '</span><span style="' + S.mono + ';color:var(--neg)">' + x[1] + '</span></div>').join('') + '</div><div data-sat style="flex:1;' + S.col + '"><div style="' + S.lbl + '">Saturday</div><div data-ct style="' + S.sm + ';padding:6px 0">carries 0</div></div></div>';
+        const rs = u.qa('[data-r]'), ct = u.q('[data-ct]'), sat = u.q('[data-sat]');
+        return () => {
+          rs.forEach(r => u.set(r, { opacity: '1', transform: 'none' })); u.txt(ct, 'carries 0');
+          rs.forEach((r, i) => {
+            const a = r.getBoundingClientRect(), b = sat.getBoundingClientRect();
+            u.a(r, { transform: ['none', 'translate(' + (b.left - a.left + 6) + 'px,' + (i * -29) + 'px) scale(.9)'], opacity: [1, 0] }, 'tuck', { delay: 320 + i * 200 });
+          });
+          u.after(1000, () => { u.txt(ct, 'carries 2 · owed an answer'); u.a(ct, { opacity: [0, 1] }, 'ink'); });
+        };
+      } },
+      { name: 'The team goes home', why: 'Avatars leave in clock-out order until one remains — and the last one out turns the key. Presence winds down; it does not blink off.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:12px"><div style="display:flex;gap:8px">' + ['MB', 'YD', 'RV', 'AK', 'EK'].map((x, i) => '<div data-av="' + i + '" style="width:30px;height:30px;border-radius:50%;background:var(--line2);display:flex;align-items:center;justify-content:center;font:600 10px var(--sans)">' + x + '</div>').join('') + '</div><div data-cap style="' + S.sm + '">5 on the floor</div></div>';
+        const av = u.qa('[data-av]'), cap = u.q('[data-cap]');
+        return () => {
+          av.forEach(a => u.set(a, { opacity: '1', transform: 'none' })); u.txt(cap, '5 on the floor');
+          [0, 1, 2, 3].forEach((i, j) => u.after(300 + j * 260, () => { u.a(av[i], { opacity: [1, 0], transform: ['none', 'translateY(9px)'] }, 'ink', { duration: 280 }); u.txt(cap, (4 - j) + ' on the floor'); }));
+          u.after(1400, () => { u.txt(cap, 'Elif locked up · 01:40'); u.a(av[4], { transform: ['none', 'scale(1.12)', 'none'] }, 'settle', { duration: 450 }); });
+        };
+      } },
+      { name: 'The float goes back to the safe', why: 'The $200 travels from the till line to the safe line — cash is an object with a home, even in the ledger.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center;gap:9px"><div style="display:flex;' + S.mono + '"><span style="' + S.nm + ';color:var(--muted)">till</span><span data-amt style="border:1px solid var(--line2);border-radius:3px;padding:1px 6px">$200</span></div><div style="display:flex;' + S.mono + ';border-top:1px solid var(--line);padding-top:8px"><span style="' + S.nm + ';color:var(--muted)">safe</span><span data-safe style="color:var(--muted)">—</span></div></div>';
+        const amt = u.q('[data-amt]'), safe = u.q('[data-safe]');
+        return () => {
+          u.set(amt, { opacity: '1', transform: 'none' }); u.txt(safe, '—'); u.set(safe, { color: 'var(--muted)' });
+          const a = amt.getBoundingClientRect(), b = safe.getBoundingClientRect();
+          u.a(amt, { transform: ['none', 'translate(' + (b.left - a.left - 14) + 'px,' + (b.top - a.top) + 'px) scale(.92)'], opacity: [1, 0] }, 'tuck', { delay: 350 });
+          u.after(750, () => { u.txt(safe, '$200 · 01:41'); u.set(safe, { color: 'var(--ink)' }); u.a(safe, { opacity: [0, 1] }, 'ink'); });
+        };
+      } },
+      { name: 'The snapshot drops on the stack', why: 'Friday compresses to a dated block and lands on the archive pile. Backups you can see are backups you trust at 1am.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:4px;padding-bottom:4px"><div data-new style="padding:6px 9px;border:1px solid var(--line2);border-radius:4px;background:var(--surf);' + S.mono + '">FRI 29 AUG · 1.2 MB</div>' + ['THU 28 AUG', 'WED 27 AUG'].map(t => '<div data-old style="padding:6px 9px;border:1px solid var(--line);border-radius:4px;background:var(--sunk);' + S.mono + ';color:var(--muted)">' + t + '</div>').join('') + '</div>';
+        const nw = u.q('[data-new]'), olds = u.qa('[data-old]');
+        return () => {
+          u.a(nw, { transform: ['translateY(-64px) scale(1.04)', 'none'], opacity: [0, 1] }, 'settle', { delay: 300, duration: 460 });
+          olds.forEach((o, i) => u.a(o, { transform: ['translateY(-3px)', 'none'] }, 'settle', { delay: 640 + i * 60 }));
+        };
+      } },
+      { name: 'Midnight rolls the date', why: 'At 00:00 the header advances like a ledger page: the day rolls up and out, the new one takes the exact same seat.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center;gap:8px"><div style="height:22px;overflow:hidden"><div data-roll><div style="height:22px;font:600 15px var(--mono);letter-spacing:.02em">FRIDAY 29</div><div style="height:22px;font:600 15px var(--mono);letter-spacing:.02em">SATURDAY 30</div></div></div><div data-tk style="width:34px;border-top:1px solid var(--line2)"></div><div style="' + S.sm + '">00:00 · the ledger turns</div></div>';
+        const roll = u.q('[data-roll]'), tk = u.q('[data-tk]');
+        return () => {
+          u.set(roll, { transform: 'translateY(0)' });
+          u.a(roll, { transform: ['translateY(0)', 'translateY(-22px)'] }, 'tally', { delay: 420 });
+          u.a(tk, { borderColor: ['var(--line2)', 'var(--ink)', 'var(--line2)'] }, 'ink', { delay: 420, duration: 500 });
+        };
+      } },
+      { name: 'Quiet hours hold the noise', why: 'After 23:00, three arrivals collapse into one held count. The house does not tap a sleeping owner on the shoulder three times.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center">' + ['Álvaro replied', 'delivery photo added', 'shift swap requested'].map(t => '<div data-r style="' + S.row + '"><span style="' + S.nm + '">' + t + '</span></div>').join('') + '<div data-h style="' + S.row + ';border-style:dashed;opacity:0"><span style="' + S.nm + ';color:var(--muted)">3 held until morning</span><span style="' + S.mono + ';color:var(--muted)">07:00</span></div></div>';
+        const rs = u.qa('[data-r]'), h = u.q('[data-h]');
+        return () => {
+          rs.forEach(r => { u.set(r, { opacity: '1', transform: 'none', position: 'static' }); });
+          u.set(h, { opacity: '0' });
+          rs.forEach((r, i) => u.a(r, { transform: ['none', 'translateY(' + ((2 - i) * 35 + 8) + 'px) scaleY(.1)'], opacity: [1, 0] }, 'settle', { delay: 350 + i * 90, duration: 420 }));
+          u.a(h, { opacity: [0, 1], transform: ['scaleY(.6)', 'none'] }, 'settle', { delay: 850 });
+        };
+      } }
+    ];
+
+    const micro = [
+      { name: 'Hover is a hairline', why: 'A row under the cursor brightens its edge, nothing else. 140ms — present before the hand notices, gone as fast.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center">' + row('PO-1042', 'Vinos del Norte', '$1,860') + '</div>';
+        const r = u.q('[style*="padding:6px"]');
+        r.onmouseenter = () => u.a(r, { borderColor: ['var(--line)', 'var(--line2)'] }, 'ink');
+        r.onmouseleave = () => u.a(r, { borderColor: ['var(--line2)', 'var(--line)'] }, 'ink');
+        return () => { u.a(r, { borderColor: ['var(--line)', 'var(--line2)'] }, 'ink', { delay: 250 }); u.a(r, { borderColor: ['var(--line2)', 'var(--line)'] }, 'ink', { delay: 950 }); };
+      } },
+      { name: 'Focus draws its ring', why: 'Keyboard focus is drawn on, not popped on — visible motion is what catches the eye that just tabbed.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center"><div data-f style="padding:7px 10px;border:1px solid var(--line2);border-radius:5px;background:var(--surf);' + S.mono + ';box-shadow:0 0 0 0 transparent">quantity · 24</div></div>';
+        const f = u.q('[data-f]');
+        return () => {
+          u.a(f, { boxShadow: ['0 0 0 0 transparent', '0 0 0 3px color-mix(in oklab, var(--ink) 18%, transparent)'] }, 'ink', { delay: 300 });
+          u.a(f, { boxShadow: ['0 0 0 3px color-mix(in oklab, var(--ink) 18%, transparent)', '0 0 0 0 transparent'] }, 'ink', { delay: 1300 });
+        };
+      } },
+      { name: 'Copy admits it copied', why: 'The PO number confirms in place — the eye never has to leave what it just took.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center"><div data-c style="position:relative;padding:5px 9px;border:1px solid var(--line);border-radius:4px;cursor:pointer;overflow:hidden"><span data-a style="' + S.mono + ';display:block">PO-1042</span><span data-b style="' + S.mono + ';color:var(--muted);position:absolute;inset:5px 9px;transform:translateY(16px)">copied</span></div></div>';
+        const a = u.q('[data-a]'), b = u.q('[data-b]'), c = u.q('[data-c]');
+        const go = () => {
+          u.a(a, { transform: ['none', 'translateY(-16px)'], opacity: [1, 0] }, 'ink');
+          u.a(b, { transform: ['translateY(16px)', 'none'], opacity: [0, 1] }, 'ink');
+          u.after(1100, () => { u.a(a, { transform: ['translateY(-16px)', 'none'], opacity: [0, 1] }, 'ink'); u.a(b, { transform: ['none', 'translateY(16px)'], opacity: [1, 0] }, 'ink'); });
+        };
+        c.onclick = go;
+        return () => { u.set(a, { transform: 'none', opacity: '1' }); u.set(b, { transform: 'translateY(16px)', opacity: '0' }); u.after(300, go); };
+      } },
+      { name: 'The tooltip waits its turn', why: 'It arrives after a held beat, from the element it belongs to — never from nowhere, never instantly.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center"><div style="position:relative"><span style="padding:4px 9px;border:1px solid var(--line2);border-radius:99px;' + S.mono + ';color:var(--muted)">net 30</span><div data-tip style="position:absolute;left:50%;bottom:calc(100% + 7px);transform:translateX(-50%) translateY(4px);opacity:0;background:var(--surf);border:1px solid var(--line2);border-radius:4px;padding:5px 8px;white-space:nowrap;font:400 9.5px var(--sans);color:var(--muted)">payment due 30 days after invoice</div></div></div>';
+        const tip = u.q('[data-tip]');
+        return () => { u.set(tip, { opacity: '0' }); u.a(tip, { opacity: [0, 1], transform: ['translateX(-50%) translateY(4px)', 'translateX(-50%) translateY(0)'] }, 'ink', { delay: 650 }); };
+      } },
+      { name: 'Long-press peeks', why: 'Pressure opens a two-line preview under the row — enough to decide whether opening is worth it, mid-service.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + '"><div data-r style="' + S.row + ';cursor:pointer"><span style="' + S.mono + ';color:var(--muted)">PO-1042</span><span style="' + S.nm + '">Vinos del Norte</span><div data-pf style="position:absolute;left:0;bottom:0;height:1px;background:var(--ink);width:0"></div></div><div data-g style="display:grid;grid-template-rows:0fr"><div style="overflow:hidden;min-height:0"><div style="' + S.mono + ';color:var(--muted);padding:5px 8px;line-height:1.6">24 btl Rioja · $1,860<br>window 07:00 · Marco receiving</div></div></div></div>';
+        const r = u.q('[data-r]'); r.style.position = 'relative'; r.style.overflow = 'hidden';
+        const g = u.q('[data-g]'), pf = u.q('[data-pf]');
+        return () => {
+          u.set(g, { gridTemplateRows: '0fr' }); u.set(pf, { width: '0' });
+          u.a(pf, { width: ['0%', '100%'] }, 'linear', { duration: 420, delay: 200 });
+          u.a(g, { gridTemplateRows: ['0fr', '1fr'] }, 'settle', { delay: 640 });
+          u.after(1900, () => { u.a(g, { gridTemplateRows: ['1fr', '0fr'] }, 'settle'); u.set(pf, { width: '0' }); });
+        };
+      } },
+      { name: 'Swipe resists past its action', why: 'The row gives one action\u2019s width willingly and fights past it — the resistance is the boundary of what a swipe can do.', tok: 'tuck', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center"><div style="position:relative;border-radius:5px;overflow:hidden"><div style="position:absolute;inset:0;display:flex;justify-content:flex-end;align-items:center;padding-right:10px;background:var(--line);' + S.mono + '">receive</div><div data-r style="position:relative;' + S.row + ';margin:0"><span style="' + S.nm + '">Vinos del Norte · 07:12</span></div></div></div>';
+        const r = u.q('[data-r]');
+        return () => {
+          u.set(r, { transform: 'none' });
+          u.a(r, { transform: ['none', 'translateX(-84px)'] }, 'settle', { duration: 320, delay: 240 });
+          u.a(r, { transform: ['translateX(-84px)', 'translateX(-96px)'] }, 'linear', { duration: 160, delay: 620 });
+          u.after(800, () => u.a(r, { transform: ['translateX(-96px)', 'translateX(-64px)'] }, 'tuck'));
+        };
+      } },
+      { name: 'Pull to refresh draws its arc', why: 'The arc fills with the pull — the gesture pays for the refresh visibly, and the new row lands on top.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;gap:7px"><div style="display:flex;justify-content:center;height:20px"><svg width="20" height="20" viewBox="0 0 20 20"><circle data-arc cx="10" cy="10" r="7" fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="44" stroke-dashoffset="44" transform="rotate(-90 10 10)"></circle></svg></div><div data-l style="' + S.col + '">' + row('09:40', 'Bodega Álvaro', '$740') + '</div></div>';
+        const arc = u.q('[data-arc]'), l = u.q('[data-l]');
+        return () => {
+          u.set(arc, { strokeDashoffset: '44' });
+          const fresh = l.querySelector('[data-fresh]'); if (fresh) fresh.remove();
+          u.a(l, { transform: ['none', 'translateY(8px)', 'none'] }, 'settle', { duration: 700 });
+          u.a(arc, { strokeDashoffset: [44, 0] }, 'linear', { duration: 500, delay: 100 });
+          u.after(700, () => {
+            const d = document.createElement('div'); d.setAttribute('data-fresh', ''); d.innerHTML = row('10:02', 'Mariscos Ría · new', '$1,105');
+            l.insertBefore(d, l.firstChild);
+            u.a(d, { opacity: [0, 1], transform: ['translateY(-8px)', 'none'] }, 'settle');
+            u.a(arc, { opacity: [1, 0] }, 'ink');
+            u.after(600, () => u.set(arc, { opacity: '1' }));
+          });
+        };
+      } },
+      { name: 'Focus walks the list', why: 'Arrow keys move a drawn edge down the queue — the keyboard user always knows which row will answer.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';position:relative">' + PO.slice(0, 3).map(p => row(p[0], p[1], p[2])).join('') + '<div data-ind style="position:absolute;left:0;top:0;bottom:auto;width:2px;height:29px;background:var(--ink)"></div></div>';
+        const ind = u.q('[data-ind]');
+        return () => { u.set(ind, { transform: 'translateY(0)' }); [1, 2, 1, 0].forEach((r, i) => u.after(350 + i * 380, () => u.a(ind, { transform: [getComputedStyle(ind).transform === 'none' ? 'translateY(0)' : getComputedStyle(ind).transform, 'translateY(' + r * 35 + 'px)'] }, 'settle', { duration: 240 }))); };
+      } },
+      { name: 'The chip leaves by its own width', why: 'Removing a filter: the space closes on settle, so the remaining chips walk rather than jump.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:6px"><span data-c1 style="padding:4px 9px;border:1px solid var(--line2);border-radius:99px;font:500 10px var(--sans)">Rioja</span><span data-c2 style="padding:4px 9px;border:1px solid var(--line2);border-radius:99px;font:500 10px var(--sans);white-space:nowrap;overflow:hidden">this week ×</span><span data-c3 style="padding:4px 9px;border:1px solid var(--line2);border-radius:99px;font:500 10px var(--sans)">unpaid</span></div>';
+        const c2 = u.q('[data-c2]'), c3 = u.q('[data-c3]');
+        return () => {
+          u.set(c2, { display: 'inline-block', opacity: '1' });
+          u.after(400, () => {
+            const w = c2.offsetWidth;
+            u.a(c2, { opacity: [1, 0], transform: ['none', 'scale(.85)'] }, 'ink');
+            u.a(c2, { maxWidth: [w + 'px', '0px'], paddingLeft: ['9px', '0px'], paddingRight: ['9px', '0px'], borderWidth: ['1px', '0px'], marginRight: ['0px', '-6px'] }, 'settle', { delay: 120 });
+          });
+          u.after(1500, () => u.set(c2, { maxWidth: 'none', padding: '4px 9px', borderWidth: '1px', marginRight: '0', opacity: '1', transform: 'none' }));
+        };
+      } },
+      { name: 'Rename underlines, never boxes', why: 'The vendor name becomes editable where it stands — an underline appears, a caret breathes, nothing reflows.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center"><div style="position:relative;display:inline-block"><span data-t style="font:600 13px var(--sans)">Vinos del Norte</span><span data-caret style="display:inline-block;width:1px;height:13px;background:var(--ink);vertical-align:-2px;opacity:0;margin-left:1px"></span><div data-u style="position:absolute;left:0;right:0;bottom:-3px;height:1px;background:var(--ink);transform:scaleX(0);transform-origin:left"></div></div></div>';
+        const un = u.q('[data-u]'), caret = u.q('[data-caret]');
+        return () => {
+          u.a(un, { transform: ['scaleX(0)', 'scaleX(1)'] }, 'ink', { delay: 250, duration: 200 });
+          u.a(caret, { opacity: [0, 1, 0, 1, 0] }, 'linear', { delay: 450, duration: 1200 });
+          u.a(un, { transform: ['scaleX(1)', 'scaleX(0)'] }, 'ink', { delay: 1750 });
+        };
+      } },
+      { name: 'The stepper rolls one step', why: 'Twenty-four becomes twenty-five: only the last digit rolls, one increment, no fanfare — counting is quiet work.', tok: 'tally', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;align-items:center;gap:10px"><button data-m style="' + S.btn + ';width:26px;padding:5px 0;text-align:center">−</button><div style="display:flex;font:600 17px var(--mono)"><span>2</span><span style="display:inline-block;height:20px;overflow:hidden"><span data-roll style="display:block"><span style="display:block;height:20px;line-height:20px">4</span><span style="display:block;height:20px;line-height:20px">5</span></span></span></div><button data-p style="' + S.btn + ';width:26px;padding:5px 0;text-align:center">+</button><span style="' + S.sm + '">bottles</span></div>';
+        const roll = u.q('[data-roll]'), pb = u.q('[data-p]'), mb = u.q('[data-m]');
+        let up = false;
+        const go = fwd => { up = fwd; u.a(roll, { transform: fwd ? ['translateY(0)', 'translateY(-20px)'] : ['translateY(-20px)', 'translateY(0)'] }, 'tally', { duration: 280 }); };
+        pb.onclick = () => go(true); mb.onclick = () => go(false);
+        return () => { u.set(roll, { transform: 'translateY(0)' }); u.after(350, () => go(true)); u.after(1250, () => go(false)); };
+      } },
+      { name: 'The handle wakes under the hand', why: 'Grip dots surface only when the row could actually be moved — affordance on approach, silence otherwise.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column;justify-content:center"><div data-r style="' + S.row + '"><span data-h style="' + S.mono + ';color:var(--muted);opacity:0;letter-spacing:-2px">⋮⋮</span><span style="' + S.nm + '">Friday dinner · Marco</span></div></div>';
+        const r = u.q('[data-r]'), h = u.q('[data-h]');
+        return () => {
+          u.a(h, { opacity: [0, 1] }, 'ink', { delay: 300 });
+          u.a(r, { transform: ['none', 'translateY(-1px)'], boxShadow: ['none', '0 2px 6px color-mix(in oklab, var(--sunk) 80%, transparent)'] }, 'ink', { delay: 300 });
+          u.after(1300, () => { u.a(h, { opacity: [1, 0] }, 'ink'); u.a(r, { transform: ['translateY(-1px)', 'none'], boxShadow: ['0 2px 6px color-mix(in oklab, var(--sunk) 80%, transparent)', 'none'] }, 'ink'); });
+        };
+      } },
+      { name: 'The header earns its shadow', why: 'The hairline under a sticky header exists only while content is actually beneath it — depth is information, not decoration.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="height:100%;overflow:hidden;position:relative"><div style="position:absolute;left:0;right:0;top:0;background:var(--sunk);z-index:1;padding-bottom:5px"><span style="' + S.lbl + '">deliveries</span><div data-hl style="position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--line2);opacity:0"></div></div><div data-l style="padding-top:22px;' + S.col + '">' + PO.map(p => row(p[0], p[1], p[2])).join('') + '</div></div>';
+        const hl = u.q('[data-hl]'), l = u.q('[data-l]');
+        return () => {
+          u.set(l, { transform: 'none' }); u.set(hl, { opacity: '0' });
+          u.a(l, { transform: ['none', 'translateY(-26px)'] }, 'settle', { duration: 700, delay: 300 });
+          u.a(hl, { opacity: [0, 1] }, 'ink', { delay: 450 });
+          u.after(1500, () => { u.a(l, { transform: ['translateY(-26px)', 'none'] }, 'settle', { duration: 600 }); u.a(hl, { opacity: [1, 0] }, 'ink', { delay: 300 }); });
+        };
+      } },
+      { name: 'No matches, one suggestion', why: 'A typo at 1am gets an answer, not a shrug: emptiness holds still in the centre, the correction settles in beneath it.', tok: 'settle', build(s, u) {
+        s.innerHTML = '<div style="height:100%;display:flex;flex-direction:column"><div style="padding:6px 9px;border:1px solid var(--line2);border-radius:5px;' + S.mono + '">ryoja<span style="color:var(--muted)">|</span></div><div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px"><span style="' + S.sm + '">no matches for “ryoja”</span><span data-sg style="' + S.mono + ';color:var(--ink);opacity:0">rioja — 3 matches</span></div></div>';
+        const sg = u.q('[data-sg]');
+        return () => u.a(sg, { opacity: [0, 1], transform: ['translateY(6px)', 'none'] }, 'settle', { delay: 550 });
+      } },
+      { name: 'The radio fills from centre', why: 'Choosing a payment term: the dot grows from the middle out — chosen, not switched.', tok: 'ink', build(s, u) {
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center;gap:9px">' + ['net 30', 'on delivery'].map((t, i) => '<div style="display:flex;align-items:center;gap:8px"><span style="width:13px;height:13px;border-radius:50%;border:1px solid var(--line2);display:inline-flex;align-items:center;justify-content:center"><span data-d="' + i + '" style="width:7px;height:7px;border-radius:50%;background:var(--ink);transform:scale(0)"></span></span><span data-l="' + i + '" style="font:500 10.5px var(--sans);color:var(--muted)">' + t + '</span></div>').join('') + '</div>';
+        const ds = u.qa('[data-d]'), ls = u.qa('[data-l]');
+        const pick = i => { ds.forEach((d, j) => u.a(d, { transform: [j === i ? 'scale(0)' : 'scale(1)', j === i ? 'scale(1)' : 'scale(0)'] }, 'ink')); ls.forEach((l, j) => u.a(l, { color: [l.style.color, j === i ? 'var(--ink)' : 'var(--muted)'] }, 'ink')); };
+        return () => { ds.forEach(d => u.set(d, { transform: 'scale(0)' })); ls.forEach(l => u.set(l, { color: 'var(--muted)' })); u.after(300, () => pick(0)); u.after(1200, () => pick(1)); };
+      } },
+      { name: 'Check all cascades', why: 'The parent tick flows down its children in order — a bulk action shown as the sequence it actually is.', tok: 'ink', build(s, u) {
+        const mk = t => '<div style="display:flex;align-items:center;gap:7px;' + S.mono + '"><span data-k style="width:12px;height:12px;border:1px solid var(--line2);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:8px;color:var(--sunk)">✓</span><span style="font-family:var(--sans);font-size:10.5px">' + t + '</span></div>';
+        s.innerHTML = '<div style="' + S.col + ';height:100%;justify-content:center">' + mk('receive all · Vinos del Norte') + '<div style="padding-left:16px;' + S.col + ';gap:5px;margin-top:2px">' + ['Rioja Crianza 24', 'Albariño 12', 'Cava brut 6'].map(mk).join('') + '</div></div>';
+        const ks = u.qa('[data-k]');
+        return () => {
+          ks.forEach(k => u.set(k, { background: 'transparent', borderColor: 'var(--line2)' }));
+          ks.forEach((k, i) => u.after(300 + i * 150, () => { u.set(k, { background: 'var(--ink)', borderColor: 'var(--ink)' }); u.a(k, { transform: ['scale(.7)', 'none'] }, 'ink'); }));
+        };
+      } }
+    ];
+
+    let n = 0;
+    const fams = [
+      { key: 'sig', title: 'Signatures — the unafraid set', blurb: 'The ideas products are usually too careful to ship: alignment as completion, time made spatial, consequence with weight. Each still answers to a real minute of service.', cards: sig },
+      { key: 'op', title: 'Openings — the day begins', blurb: 'Clock-in to first ticket: starting states given their own physics, because how a day arrives sets how it will be read.', cards: op },
+      { key: 'clo', title: 'Closings — the day is put away', blurb: 'Last check to midnight: ending is the most ceremonial work the product does, and the most audited.', cards: clo },
+      { key: 'ent', title: 'Entrances & reveals', blurb: 'Arrival is the first thing a manager reads. Nothing should push what they are already looking at.', cards: ent },
+      { key: 'state', title: 'State & feedback', blurb: 'Where hospitality and rigour meet: the brand mark and the most important interaction are the same object.', cards: st },
+      { key: 'num', title: 'Numbers & data', blurb: 'Figures correct, they never bounce. An unknown is a dash, and a threshold crossing is a decision.', cards: num },
+      { key: 'nav', title: 'Navigation & structure', blurb: 'A shared element that re-typesets is a cross-fade in costume. The record you open is the row you tapped.', cards: nav },
+      { key: 'prod', title: 'Product surfaces', blurb: 'The real screens: purchase orders, deliveries at the door, vendor threads, the week grid.', cards: prod },
+      { key: 'sys', title: 'System states', blurb: 'Offline, expired, failing. Failure has to be legible without colour, because the neutral skin has none.', cards: sys },
+      { key: 'micro', title: 'Small acts', blurb: 'Hovers, focus, copy, a chip leaving. The 140ms layer — felt in the hand more than seen by the eye.', cards: micro }
+    ];
+    fams.forEach(g => g.cards.forEach(c => { n++; c.num = String(n).padStart(2, '0'); c.fam = g.key; c._t = []; c._raf = []; }));
+    return fams;
+  }
+
+  renderVals() {
+    const TOK = this.TOK, fam = this.state.fam, skin = this.state.skin;
+    const on = { background: 'var(--surf)', color: 'var(--ink)', bc: 'var(--line2)' };
+    const off = { background: 'transparent', color: 'var(--muted)', bc: 'var(--line)' };
+    const groups = this.fams.filter(g => fam === 'all' || g.key === fam).map(g => ({
+      title: g.title, blurb: g.blurb, count: g.cards.length + ' demos',
+      cards: g.cards.map(c => {
+        c._mount = c._mount || (nd => this.mount(c, nd));
+        c._replay = c._replay || (() => this.play(c));
+        return { name: c.name, why: c.why, num: c.num, spec: (this.props.showSpec === false ? '' : (c.spec || TOK[c.tok].spec)), mount: c._mount, replay: c._replay };
+      })
+    }));
+    const chips = [{ key: 'all', label: 'All' }].concat(this.fams.map(g => ({ key: g.key, label: g.title })));
+    return {
+      groups,
+      countLabel: this.demos.length,
+      reduced: this.reduced,
+      speed: this.state.speed,
+      speedLabel: this.state.speed.toFixed(1) + '×',
+      brandedBg: skin === 'branded' ? 'var(--surf)' : 'transparent',
+      brandedFg: skin === 'branded' ? 'var(--ink)' : 'var(--muted)',
+      neutralBg: skin === 'neutral' ? 'var(--surf)' : 'transparent',
+      neutralFg: skin === 'neutral' ? 'var(--ink)' : 'var(--muted)',
+      chips: chips.map(ch => ({
+        label: ch.label,
+        bg: fam === ch.key ? on.background : off.background,
+        fg: fam === ch.key ? on.color : off.color,
+        bc: fam === ch.key ? on.bc : off.bc,
+        pick: () => this.setState({ fam: ch.key })
+      })),
+      tokenRows: [
+        { name: 'settle', phys: 'cubic-bezier(.16,1,.3,1) · 320ms', use: 'the house curve — rows, panels, page furniture' },
+        { name: 'tuck', phys: TOK.tuck.spec.replace('tuck · ', ''), use: 'objects moving under a finger, and their returns' },
+        { name: 'stamp', phys: TOK.stamp.spec.replace('stamp · ', ''), use: 'approvals only — the wax seal landing' },
+        { name: 'tally', phys: TOK.tally.spec.replace('tally · ', ''), use: 'figures correcting; never bounces' },
+        { name: 'ink', phys: 'ease-out · 150ms', use: 'micro-states, hovers, chips' },
+        { name: 'turn', phys: 'cubic-bezier(.32,.72,0,1) · 420ms', use: 'show-the-working; a page turning' },
+        { name: 'linear', phys: 'no easing · countdowns', use: 'a countdown that eases is lying about time' }
+      ],
+      setBranded: () => { document.body.dataset.skin = 'branded'; this.setState({ skin: 'branded' }); },
+      setNeutral: () => { document.body.dataset.skin = 'neutral'; this.setState({ skin: 'neutral' }); },
+      onSpeed: e => this.setState({ speed: +e.target.value }),
+      playAll: () => {
+        const set = this.fams.filter(g => fam === 'all' || g.key === fam).reduce((a, g) => a.concat(g.cards), []);
+        set.forEach(c => { c._played = true; });
+        this._q = []; set.forEach(c => this.enqueue(c));
+      }
+    };
+  }
+}
+
+</script>
+</body>
+</html>

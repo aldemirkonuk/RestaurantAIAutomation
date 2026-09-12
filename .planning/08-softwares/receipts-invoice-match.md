@@ -31,6 +31,16 @@ filed and read.
 - Documents tab in two lanes: needs review / verified
 - Open a document and see its stored image beside the extracted lines, side by side
 - Unknown values render "—", never as a pass
+- **The vendor is resolved from the paper, by identity** (ADR 0104 D15, 2026-09-11). Intake
+  normalises the seller's printed tax id (BT-31/BT-32 → `<COUNTRY>:<VALUE>`; TR VKN and TCKN
+  both checksum-verified, EU VAT prefixes honoured only from a real set, digits with no
+  country refused) and then: exactly one provider of this restaurant carrying it → `matched`;
+  none → the provider is **created** from the printed identity, provisional; anything weaker →
+  `unresolved`, in words, writing nothing. A failed read of ours is `unavailable`, which is a
+  fourth state and not a kind of `unresolved`. Every run appends to `document_vendor_resolutions`
+  — refusals as loudly as matches, so "did resolution ever look at this document" has an answer.
+  This is what makes the slice-4 mapping memory reachable at all: it is keyed on
+  (restaurant, provider), and 0 of 15 documents carried a provider before this.
 - Verify a document
 - Credits tab: the vendor credit-claim ledger with stats; move a claim through its states
 - Deep-linkable tab (`?tab=credits` — where `/credits` redirects, `App.tsx:314`)

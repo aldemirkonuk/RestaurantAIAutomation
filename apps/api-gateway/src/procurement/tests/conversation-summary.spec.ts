@@ -4,7 +4,9 @@
  * Tests the mapping logic that:
  * 1. Returns `direction` on every conversation row (OUTBOUND/INBOUND)
  * 2. Identifies whether a provider has replied (INBOUND entry exists)
- * 3. Derives the most recent rolling summary for the OrderApprovalModal
+ * 3. Derives the most recent rolling summary, and carries its provenance
+ *    (which engine read the answer, and when) for the responses sheet
+ *    `apps/web/src/pages/orders/next/ResponsesSheet.tsx`
  *
  * These are pure-logic tests — no NestJS DI or Supabase required.
  *
@@ -26,6 +28,12 @@ function mapConversationRow(row: Record<string, any>) {
     sentAt: row.sent_at ?? null,
     draftContent: row.content ?? row.message_text ?? null,
     rollingSummary: row.rolling_summary ?? null,
+    // Provenance for the summary, added 2026-09-05 so the sheet can say WHO
+    // wrote the sentence rather than letting it read as the house's own. Both
+    // were already persisted by the understand step
+    // (`inbound-responder.service.ts`) and read back by nothing.
+    summaryModel: row.conversation_context?.model ?? null,
+    summaryAnalyzedAt: row.conversation_context?.analyzed_at ?? null,
     orderNumber: row.procurement_orders?.order_number ?? null,
     quantity: row.procurement_orders?.quantity ?? null,
     quotedPrice: row.procurement_orders?.quoted_price ?? null,
@@ -244,44 +252,61 @@ describe("Negotiation approval summary visibility logic (handleApprove)", () => 
   });
 });
 
-// ─── OrderApprovalModal summary visibility ────────────────────────────────────
+// ─── The summary's provenance ─────────────────────────────────────────────────
 
-describe("OrderApprovalModal summary section visibility", () => {
-  it("shows summary section when hasNegotiation=true AND conversationSummary is non-empty", () => {
-    const orderData = {
-      hasNegotiation: true,
-      conversationSummary: "Provider agreed to $40/bottle.",
-    };
-    const shouldShow = !!(
-      orderData.hasNegotiation && orderData.conversationSummary
+/*
+ * WHAT USED TO BE HERE, AND WHY IT IS NOT A REGRESSION TO DELETE IT.
+ *
+ * Four cases asserted `OrderApprovalModal`'s visibility rule —
+ * `hasNegotiation && conversationSummary` — i.e. that an ABSENT summary made
+ * the whole section disappear. That component was deleted on 2026-09-05 and its
+ * rule was deliberately reversed with it: `pages/orders/next/ResponsesSheet`
+ * always shows the section and prints `NO_SUMMARY_WRITTEN` where the sentence
+ * would be. A panel that vanishes when nothing was written is read as "nothing
+ * to worry about" rather than "nobody wrote this down" — the
+ * absence-reported-as-health shape, on the one field that carries what a vendor
+ * actually said. Keeping the four cases would have left the gateway's own suite
+ * asserting a rule the house had just retired, about a file that no longer
+ * exists.
+ *
+ * What replaces them is the half this service is actually responsible for: the
+ * summary and its provenance survive the mapping unchanged, and an absent
+ * provenance maps to null rather than to a plausible-looking default.
+ */
+
+describe("the summary carries its provenance out of the mapping", () => {
+  it("passes the engine and the time it read, when the row records them", () => {
+    const result = mapConversationRow(
+      makeRow({
+        direction: "INBOUND",
+        rolling_summary: "Vendor holds $420 per case of 12 through Friday.",
+        conversation_context: {
+          model: "claude-haiku-4-5",
+          analyzed_at: "2026-09-03T11:02:00.000Z",
+        },
+      }),
     );
-    expect(shouldShow).toBe(true);
+    expect(result.rollingSummary).toBe(
+      "Vendor holds $420 per case of 12 through Friday.",
+    );
+    expect(result.summaryModel).toBe("claude-haiku-4-5");
+    expect(result.summaryAnalyzedAt).toBe("2026-09-03T11:02:00.000Z");
   });
 
-  it("hides summary section when hasNegotiation=false", () => {
-    const orderData = { hasNegotiation: false, conversationSummary: "" };
-    const shouldShow = !!(
-      orderData.hasNegotiation && orderData.conversationSummary
+  it("maps an absent provenance to null, never to a default engine name", () => {
+    const result = mapConversationRow(
+      makeRow({ direction: "INBOUND", rolling_summary: "Vendor replied." }),
     );
-    expect(shouldShow).toBe(false);
+    expect(result.rollingSummary).toBe("Vendor replied.");
+    expect(result.summaryModel).toBeNull();
+    expect(result.summaryAnalyzedAt).toBeNull();
   });
 
-  it("hides summary section when conversationSummary is empty even if hasNegotiation=true", () => {
-    const orderData = { hasNegotiation: true, conversationSummary: "" };
-    const shouldShow = !!(
-      orderData.hasNegotiation && orderData.conversationSummary
+  it("does not invent provenance for a row that has no summary", () => {
+    const result = mapConversationRow(
+      makeRow({ direction: "INBOUND", rolling_summary: null }),
     );
-    expect(shouldShow).toBe(false);
-  });
-
-  it("hides summary section when orderData has no hasNegotiation field (undefined)", () => {
-    const orderData = {
-      hasNegotiation: undefined,
-      conversationSummary: "Some summary",
-    };
-    const shouldShow = !!(
-      orderData.hasNegotiation && orderData.conversationSummary
-    );
-    expect(shouldShow).toBe(false);
+    expect(result.rollingSummary).toBeNull();
+    expect(result.summaryModel).toBeNull();
   });
 });

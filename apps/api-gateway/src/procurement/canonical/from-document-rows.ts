@@ -70,6 +70,16 @@ function snapshotNum(v: unknown): number | null {
 /** The document-level fields that live only in the `extracted` snapshot. */
 export interface SnapshotOnlyFields {
   vendorName: string | null;
+  /**
+   * ADR 0104 D15 — BT-31/BT-32, the seller's printed tax identity, and BT-48.
+   * They live only in the snapshot (no column), and they are read back here so
+   * the sheet can show what the PAGE said even when no provider resolved.
+   */
+  vendorTaxId: string | null;
+  vendorTaxOffice: string | null;
+  vendorAddress: string | null;
+  vendorCountry: string | null;
+  buyerTaxId: string | null;
   deliveredDate: string | null;
   taxBreakdown: ParsedTaxBreakdownRow[] | undefined;
 }
@@ -93,7 +103,16 @@ function asObject(v: unknown): Record<string, unknown> | null {
 export function readSnapshot(extracted: unknown): SnapshotOnlyFields {
   const snap = asObject(extracted);
   if (!snap)
-    return { vendorName: null, deliveredDate: null, taxBreakdown: undefined };
+    return {
+      vendorName: null,
+      vendorTaxId: null,
+      vendorTaxOffice: null,
+      vendorAddress: null,
+      vendorCountry: null,
+      buyerTaxId: null,
+      deliveredDate: null,
+      taxBreakdown: undefined,
+    };
 
   const rawRows = snap.taxBreakdown;
   const taxBreakdown = Array.isArray(rawRows)
@@ -116,6 +135,11 @@ export function readSnapshot(extracted: unknown): SnapshotOnlyFields {
 
   return {
     vendorName: snapshotStr(snap.vendorName),
+    vendorTaxId: snapshotStr(snap.vendorTaxId),
+    vendorTaxOffice: snapshotStr(snap.vendorTaxOffice),
+    vendorAddress: snapshotStr(snap.vendorAddress),
+    vendorCountry: snapshotStr(snap.vendorCountry),
+    buyerTaxId: snapshotStr(snap.buyerTaxId),
     deliveredDate: snapshotStr(snap.deliveredDate),
     taxBreakdown,
   };
@@ -215,8 +239,29 @@ export function parsedFromDocumentRows(
     referencesDocNumber: rowStr(document.references_doc_number),
     poNumber: null,
     vendorName: snapshot.vendorName,
+    vendorTaxId: snapshot.vendorTaxId,
+    vendorTaxOffice: snapshot.vendorTaxOffice,
+    vendorAddress: snapshot.vendorAddress,
+    vendorCountry: snapshot.vendorCountry,
+    buyerTaxId: snapshot.buyerTaxId,
     vendorAccount: null,
-    currency: rowStr(document.currency) ?? "USD",
+    /*
+     * WHAT THE ROW SAYS, or nothing — never `USD`.
+     *
+     * This read `?? "USD"` until 2026-09-06, and the founder's currency
+     * decision that day turned it from a latent defect into a live one: rules 1
+     * and 2 (`documents/invoice-currency.ts`) now write `currency = NULL` on
+     * every document whose money was REFUSED (neither the paper nor the house
+     * states a currency) or HELD (the model saw a different one). Read back
+     * through a `?? "USD"`, every one of those would reappear on the canonical
+     * face denominated in dollars — the exact claim the withholding exists to
+     * refuse, reconstructed one layer down.
+     *
+     * The empty string is what `canonical-invariants`' `str()` already reads as
+     * absent, so BR-5 reports "not testable: this document states no money at
+     * all" rather than asserting a currency nobody stated.
+     */
+    currency: rowStr(document.currency) ?? "",
     subtotal: rowNum(document.subtotal),
     freight: rowNum(document.freight),
     fuelSurcharge: rowNum(document.fuel_surcharge),

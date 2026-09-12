@@ -1,4 +1,6 @@
+import { NOT_CONTRIBUTED_ONLY } from "../price-register/visibility";
 import { VendorComparisonService } from "./vendor-comparison.service";
+import { MIN_OUTLIER_SAMPLE } from "./vendor-site-sighting";
 
 /**
  * The service is a thin adapter — its job is to hand database rows to the
@@ -10,6 +12,8 @@ import { VendorComparisonService } from "./vendor-comparison.service";
 interface Calls {
   or: string[];
   eq: Array<[string, any]>;
+  /** `.is(col, null)` -- the openMarketOnly scope's predicate (ADR 0117 addendum). */
+  is: Array<[string, any]>;
   inserted: any[];
 }
 
@@ -21,7 +25,7 @@ function makeService(
     insertError?: any;
   } = {},
 ) {
-  const calls: Calls = { or: [], eq: [], inserted: [] };
+  const calls: Calls = { or: [], eq: [], is: [], inserted: [] };
 
   // A PostgREST builder is thenable: every filter returns the builder and the
   // query only executes when it is awaited. The service chains .eq()/.or()
@@ -38,6 +42,10 @@ function makeService(
     },
     or: (clause: string) => {
       calls.or.push(clause);
+      return observations;
+    },
+    is: (col: string, val: any) => {
+      calls.is.push([col, val]);
       return observations;
     },
     insert: (payload: any) => {
@@ -198,16 +206,20 @@ describe("VendorComparisonService", () => {
       const { svc, calls } = makeService([row()]);
       await svc.compare({ masterWineId: WINE_ID });
 
-      expect(calls.or).toHaveLength(1);
-      expect(calls.or[0]).toContain(`master_wine_id.eq.${WINE_ID}`);
-      expect(calls.or[0]).toMatch(/signature_hash\.eq\.[0-9a-f]{64}/);
+      // The register's visibility clause is applied by
+      // `scopePriceRegisterRead` on every read (ADR 0117 addendum), so this
+      // assertion is about the PRODUCT-KEY `.or()` specifically.
+      const productOrs = calls.or.filter((c) => !c.startsWith("visibility."));
+      expect(productOrs).toHaveLength(1);
+      expect(productOrs[0]).toContain(`master_wine_id.eq.${WINE_ID}`);
+      expect(productOrs[0]).toMatch(/signature_hash\.eq\.[0-9a-f]{64}/);
     });
 
     it("falls back to the id alone when the wine is not in the library", async () => {
       const { svc, calls } = makeService([row()], null, { wine: null });
       await svc.compare({ masterWineId: WINE_ID });
 
-      expect(calls.or).toHaveLength(0);
+      expect(calls.or.filter((c) => !c.startsWith("visibility."))).toHaveLength(0);
       expect(calls.eq).toContainEqual(["master_wine_id", WINE_ID]);
     });
 
@@ -229,6 +241,40 @@ describe("VendorComparisonService", () => {
       await expect(
         svc.compare({ masterWineId: WINE_ID }),
       ).rejects.toMatchObject({ status: 400 });
+    });
+  });
+
+  describe("the register's tenancy boundary (ADR 0117 addendum)", () => {
+    it("adds this house's own rows to the open market when a house is named", async () => {
+      const { svc, calls } = makeService([]);
+      await svc.compare({ masterWineId: WINE_ID, restaurantId: "rest-1" });
+      expect(calls.or).toContain(NOT_CONTRIBUTED_ONLY);
+      expect(calls.or).toContain("restaurant_id.is.null,restaurant_id.eq.rest-1");
+      expect(calls.is).toEqual([]);
+    });
+
+    it("reads the OPEN MARKET ONLY when no house is named — it used to read everything", async () => {
+      // Measured against pre-fix code: with no restaurantId this read applied
+      // no tenancy clause at all, so "the market" was in fact every house's
+      // private paper. The branch is now `openMarketOnly`.
+      const { svc, calls } = makeService([]);
+      await svc.compare({ masterWineId: WINE_ID });
+      expect(calls.is).toContainEqual(["restaurant_id", null]);
+      expect(calls.or).toContain(NOT_CONTRIBUTED_ONLY);
+      expect(
+        calls.or.filter((c) => c.includes("restaurant_id.eq.")),
+      ).toEqual([]);
+    });
+
+    it("excludes a row contributed under a floor on both branches", async () => {
+      for (const args of [
+        { masterWineId: WINE_ID, restaurantId: "rest-1" },
+        { masterWineId: WINE_ID },
+      ]) {
+        const { svc, calls } = makeService([]);
+        await svc.compare(args);
+        expect(calls.or[0]).toBe(NOT_CONTRIBUTED_ONLY);
+      }
     });
   });
 
@@ -311,6 +357,125 @@ describe("VendorComparisonService", () => {
           observedAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
         }),
       ).rejects.toMatchObject({ status: 400 });
+    });
+
+    describe("the outlier screen, added 2026-09-04", () => {
+      // Until this pass, THIS writer was the only one of the three that let
+      // `is_outlier` take its column DEFAULT of false — a hand-typed price,
+      // trust tier 7, entered the ladder pre-certified as clean while tier-1
+      // invoices and tier-4 scrapes both took the test.
+      const quoted = (price: number) =>
+        row({ source_type: "quote", raw_price: price, pack_size: 1 });
+
+      it("flags a typed price that is deviant against its own class", async () => {
+        const { svc, calls } = makeService([
+          quoted(20),
+          quoted(20.5),
+          quoted(19.8),
+          quoted(20.2),
+        ]);
+        await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 2175,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+
+        const w = calls.inserted[0];
+        expect(w.is_outlier).toBe(true);
+        expect(w.outlier_basis).toBe("write_time");
+        expect(typeof w.outlier_judged_at).toBe("string");
+        expect(w.outlier_reason).toMatch(/Flagged at write time/);
+      });
+
+      it("is never a bound: the number is stored exactly as typed", async () => {
+        const { svc, calls } = makeService([
+          quoted(20),
+          quoted(20.5),
+          quoted(19.8),
+          quoted(20.2),
+        ]);
+        const out = await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 2175,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+
+        expect(calls.inserted[0].raw_price).toBe(2175);
+        // And the person who typed it is TOLD, rather than finding out later
+        // that their price never reached the ladder.
+        expect(out.isOutlier).toBe(true);
+        expect(out.outlierReason).toMatch(/stays visible/);
+      });
+
+      it("clears an ordinary typed price and records that it was judged", async () => {
+        const { svc, calls } = makeService([
+          quoted(20),
+          quoted(20.5),
+          quoted(19.8),
+          quoted(20.2),
+        ]);
+        await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 20.1,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+
+        expect(calls.inserted[0].is_outlier).toBe(false);
+        expect(calls.inserted[0].outlier_reason).toMatch(
+          /Judged clean at write time/,
+        );
+      });
+
+      it("below the floor it flags nothing AND does not claim the row is clean", async () => {
+        const { svc, calls } = makeService([quoted(20), quoted(20.5)]);
+        await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 2175,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+
+        expect(calls.inserted[0].is_outlier).toBe(false);
+        expect(calls.inserted[0].outlier_reason).toMatch(/^Not judged:/);
+        expect(calls.inserted[0].outlier_reason).toContain(
+          `floor of ${MIN_OUTLIER_SAMPLE}`,
+        );
+      });
+
+      it("never lets public-site prices judge a quoted one", async () => {
+        // ADR 0117's closing rule. Five scraped list prices near $20 must not
+        // make a $95 quote look deviant — they are not the same kind of
+        // number. The default `row()` is a website_scrape.
+        const { svc, calls } = makeService([row(), row(), row(), row(), row()]);
+        await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 95,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+
+        expect(calls.inserted[0].is_outlier).toBe(false);
+        expect(calls.inserted[0].outlier_reason).toMatch(/only 0 comparable/);
+      });
+
+      it("a register it could not read flags nothing and says so", async () => {
+        const { svc, calls } = makeService([], { message: "connection reset" });
+        await svc.recordManualObservation({
+          ...base,
+          sourceType: "quote",
+          price: 2175,
+        });
+        expect(calls.inserted[0].is_outlier).toBe(false);
+        expect(calls.inserted[0].outlier_reason).toMatch(/not claimed to be clean/);
+      });
     });
   });
 });

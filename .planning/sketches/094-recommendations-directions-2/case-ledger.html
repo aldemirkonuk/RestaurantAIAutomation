@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Case ledger — /recommendations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{ color-scheme: light }
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,0.10); --seal-ring:rgba(26,94,107,0.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#E7E2D8}
+.mudavym{background:var(--paper-0);color:var(--ink-1);min-height:100vh;
+  font-family:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.serif{font-family:"Fraunces",Georgia,serif;font-weight:420;letter-spacing:-0.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.ico{display:inline-block;vertical-align:-0.14em;flex:0 0 auto}
+.banner{background:var(--seal);color:#FAF7F1;font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;padding:7px 18px;font-family:"JetBrains Mono",ui-monospace,monospace;
+  display:flex;gap:14px;align-items:center;justify-content:space-between}
+.banner b{font-weight:600}
+.wrap{max-width:1400px;margin:0 auto;padding:20px 22px 48px}
+.kicker{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);
+  font-family:"JetBrains Mono",ui-monospace,monospace}
+h1.page{font-size:33px;line-height:1.07;margin:6px 0 3px}
+.voice{font-family:"Fraunces",Georgia,serif;font-size:16px;color:var(--ink-2);line-height:1.5;margin:0;max-width:760px}
+.readat{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;color:var(--ink-4);
+  letter-spacing:.06em;margin:7px 0 0}
+.rule2{border-top:1px solid var(--ink-4);box-shadow:0 3px 0 -2px var(--ink-4);margin:14px 0}
+.micro{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;font-weight:600;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--ink-4)}
+.micro.seal{color:var(--seal-deep)}
+.card{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:12px;padding:13px 15px}
+.note{font-size:11.5px;color:var(--ink-4);line-height:1.55}
+.said{font-size:11px;color:var(--ink-3);line-height:1.5;margin:4px 0 0}
+.num{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--ink-1)}
+.btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--paper-2);border-radius:7px;
+  background:transparent;color:var(--ink-2);font-size:11.5px;padding:4px 9px;font-family:inherit}
+.btn.seal{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep);font-weight:600}
+.btn.on{border-color:var(--seal-ring);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.dark{border-style:dashed;color:var(--ink-4);opacity:.72}
+.ctlrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:9px}
+.ctllab{flex:0 0 74px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:10.5px;color:var(--ink-4);margin-top:8px;align-items:center}
+.legend i{font-style:normal;display:inline-flex;align-items:center;gap:5px}
+.swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+.prop{border:1.5px dashed var(--seal-ring);border-radius:3px;padding:1px 5px;
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--seal-deep)}
+footer.sig{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  border-top:1px solid var(--paper-2);margin-top:28px;padding-top:12px}
+.wordmark{font-family:"Fraunces",Georgia,serif;font-size:15px;letter-spacing:.02em}
+.wordmark span{color:var(--seal)}
+/* an entry, shared by all three directions */
+.entry{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;padding:12px 0;
+  border-bottom:1px solid var(--paper-2)}
+.entry:last-child{border-bottom:0}
+.gut{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;color:var(--ink-4);padding-top:2px}
+.stamps{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px}
+.obs{font-family:"Fraunces",Georgia,serif;font-size:15.5px;line-height:1.35;margin:0;color:var(--ink-1)}
+.do{font-size:12.5px;color:var(--ink-2);line-height:1.5;margin:5px 0 0}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 18px;margin-top:9px;
+  border-top:1px dotted var(--paper-2);padding-top:7px}
+.facts>div>div:last-child{font-size:12px;color:var(--ink-2);margin-top:2px}
+.sheet{margin-top:9px;padding:12px 14px;border-radius:10px;border:1px solid var(--seal-ring);
+  background:var(--paper-0)}
+.sheet h3{font-family:"Fraunces",Georgia,serif;font-size:14.5px;font-weight:500;margin:0 0 2px}
+.sheet .blk{margin-top:9px}
+.scope{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--ink-2);line-height:1.4;margin-top:4px}
+.scope input{margin-top:2px;accent-color:var(--seal)}
+.field input{display:block;width:100%;max-width:300px;margin-top:4px;font:inherit;font-size:12.5px;
+  padding:5px 8px;border-radius:7px;border:1px solid var(--paper-2);background:var(--paper-1);color:var(--ink-1)}
+.promise{margin-top:10px;padding-top:8px;border-top:1px solid var(--paper-2);font-size:11.5px;
+  color:var(--ink-2);line-height:1.5}
+</style></head>
+<body><div class="mudavym">
+<div class="banner"><span><b>SKETCH</b> &nbsp;example data, not a tenant</span>
+<span>094 &middot; /recommendations &middot; direction C &middot; the case ledger</span>
+<span>every figure below is invented to show the full view</span></div>
+<div class="wrap">
+
+  <style>
+.ledgrid{display:grid;grid-template-columns:230px minmax(0,1fr);gap:20px;align-items:start;margin-top:16px}
+.spine{border:1px solid var(--paper-2);border-radius:12px;background:var(--paper-1);padding:6px 4px}
+.st{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:9px;align-items:center;
+  padding:9px 10px;border-radius:8px;position:relative}
+.st.on{background:var(--seal-tint);box-shadow:inset 2px 0 0 0 var(--seal)}
+.st .nm{font-size:12.5px;color:var(--ink-2)}
+.st.on .nm{color:var(--seal-deep);font-weight:600}
+.st .n{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-1)}
+.st .ic{color:var(--ink-4);display:flex}
+.st.on .ic{color:var(--seal-deep)}
+.stflow{height:12px;margin-left:20px;border-left:1px dotted var(--paper-2)}
+.case{border:1px solid var(--paper-2);border-radius:11px;background:var(--paper-1);padding:13px 15px;
+  margin-top:12px}
+.case.closed{background:var(--paper-0);border-style:dashed;border-color:var(--seal-ring)}
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:8.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid var(--paper-2);border-radius:3px;padding:2px 6px;color:var(--ink-4)}
+.chip.on{border-color:var(--seal-ring);color:var(--seal-deep);background:var(--seal-tint)}
+.tl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:6px 12px;margin-top:9px;
+  border-top:1px dotted var(--paper-2);padding-top:8px}
+.tl dt{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;color:var(--ink-4);
+  padding-top:2px}
+.tl dd{margin:0;font-size:12px;color:var(--ink-2);line-height:1.45}
+.result{margin-top:9px;padding:9px 11px;border-radius:8px;border:1.5px dashed var(--seal-ring);
+  background:var(--paper-0)}
+.result .v{font-family:"Fraunces",Georgia,serif;font-size:16px;color:var(--ink-1)}
+</style>
+  <div class="kicker">Mudavym &middot; sketch 094c</div>
+  <h1 class="page serif">Recommendations</h1>
+  <p class="voice">A card is read and gone. A <b>case</b> is opened, acted on, watched, and closed with a
+  result &mdash; and the house keeps the result. Nine cases stand, two are being watched, and this quarter
+  eleven closed: seven with a measured outcome, four with &ldquo;no comparable data&rdquo;, which is a
+  different answer from zero.</p>
+  <p class="readat">Read at 4:12 PM &middot; one case = one deterministic rule that fired &middot;
+  the outcome column is the only part of this page nothing writes yet</p>
+  <div class="rule2"></div>
+
+  <div class="ledgrid">
+    <aside>
+      <div class="spine">
+        <div class="st on"><span class="ic"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
+          <span class="nm">Open</span><span class="n">9</span></div>
+        <div class="stflow"></div>
+        <div class="st"><span class="ic"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <span class="nm">Acted</span><span class="n">3</span></div>
+        <div class="stflow"></div>
+        <div class="st"><span class="ic"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+          <span class="nm">Watching</span><span class="n">2</span></div>
+        <div class="stflow"></div>
+        <div class="st"><span class="ic"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg></span>
+          <span class="nm">Closed</span><span class="n">11</span></div>
+        <div class="stflow"></div>
+        <div class="st"><span class="ic"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg></span>
+          <span class="nm">Refused</span><span class="n">4</span></div>
+      </div>
+      <p class="note" style="margin-top:10px">A case only leaves <b>Acted</b> for <b>Watching</b> when
+      something is set to measure it &mdash; which is exactly what
+      <i>Make this a goal</i> does. That is the shape of this direction: the goal button is not a side
+      door, it is the instrument that lets a case close with a number.</p>
+      <p class="note" style="margin-top:10px"><b>Refused</b> is a state, not a bin. Four cases were
+      dismissed with a reason, and the reasons are the taxonomy: <span class="mono">already handled</span>
+      &times;2, <span class="mono">I disagree</span> &times;1,
+      <span class="mono">not relevant</span> &times;1. Google suppresses; AWS excludes; neither keeps
+      the reason where the rule can be judged by it.</p>
+      <div class="card" style="margin-top:12px">
+        <div class="micro">This quarter</div>
+        <p class="note" style="margin-top:6px">11 closed &middot; 7 measured &middot; 4
+        &ldquo;no comparable data&rdquo; &middot; median 9 days from open to seal.
+        <span class="prop">proposed</span></p>
+      </div>
+    </aside>
+
+    <section>
+      <div class="band" style="display:flex;align-items:center;gap:9px;margin:0 0 4px">
+        <span class="micro seal">Open &middot; 9</span></div>
+      
+    <article class="entry">
+      <div class="gut">01</div>
+      <div>
+        <div class="stamps"><span class="micro seal">Tonight</span>
+          <span class="micro">inventory</span>
+          <span class="micro">first fired Mon 25 Aug</span></div>
+        <p class="obs">Chablis 1er Cru 2021 has a 62% chance of stocking out before a 7-day replenishment (on hand: 4).</p>
+        <p class="do">Place the order today — the reorder point is 11 bottles. If the vendor is slow, split it across two.</p>
+        
+      <div class="facts">
+        <div><div class="micro">Would change</div><div>Stock</div></div>
+        <div><div class="micro">Whose hand</div><div>Yours, in Orders</div></div>
+        <div><div class="micro">Standing</div><div><span class="num">9 days</span></div></div>
+        <div><div class="micro">At stake</div><div><span class="num">$1,340</span>
+           <span class="prop">proposed</span></div></div>
+      </div>
+        
+      <div class="ctlrow"><span class="micro ctllab">Carry it out</span>
+        <button class="btn seal">Draft the PO <svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+        <button class="btn dark" disabled><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Make this a goal</button><button class="btn"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg> See it in reports</button>
+      </div>
+      <div class="ctlrow"><span class="micro ctllab">File it</span>
+        <button class="btn">The working</button><button class="btn">Snooze</button>
+        <button class="btn">Dismiss</button>
+        <button class="btn">Pin</button><button class="btn">Select</button>
+      </div>
+      <p class="said">A stockout is an availability event, not one of the six figures a goal can be held on. Reports draws it as &ldquo;<b>What to buy back</b>&rdquo; — the same register this rule read. It is not on an unarranged sheet — add it with &ldquo;Add a cutting&rdquo;.</p>
+      </div>
+    </article>
+      
+    <article class="entry">
+      <div class="gut">04</div>
+      <div>
+        <div class="stamps"><span class="micro seal">This month</span>
+          <span class="micro">inventory</span>
+          <span class="micro">first fired Sun 10 Aug</span></div>
+        <p class="obs">$6,480 is locked in inventory that has not moved in 90 days (top: Barolo Riserva 2016).</p>
+        <p class="do">Build a weekend flight from the top three idle wines; if untouched after two weeks, discount to cost.</p>
+        
+      <div class="facts">
+        <div><div class="micro">Would change</div><div>Stock</div></div>
+        <div><div class="micro">Whose hand</div><div>Yours, in Promotions</div></div>
+        <div><div class="micro">Standing</div><div><span class="num">24 days</span></div></div>
+        <div><div class="micro">At stake</div><div><span class="num">$6,480</span>
+           <span class="prop">proposed</span></div></div>
+      </div>
+        
+      <div class="ctlrow"><span class="micro ctllab">Carry it out</span>
+        <button class="btn seal">Create the promo <svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+        <button class="btn on"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Make this a goal</button><button class="btn"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg> See it in reports</button>
+      </div>
+      <div class="ctlrow"><span class="micro ctllab">File it</span>
+        <button class="btn">The working</button><button class="btn">Snooze</button>
+        <button class="btn">Dismiss</button>
+        <button class="btn">Pin</button><button class="btn">Select</button>
+      </div>
+      <p class="said">A goal from this entry is held on <b>Bottles sold</b>, at least. Reports draws it as &ldquo;<b>Figures of record</b>&rdquo; — the same register this rule read. It lies on the sheet already.</p>
+      </div>
+    </article>
+
+      <div class="rule2" style="margin:20px 0 6px"></div>
+      <div class="micro seal">Watching &middot; 2 &mdash; a goal is measuring these</div>
+
+      <div class="case">
+        <div class="stamps"><span class="chip on"><svg class="ico" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> watching</span>
+          <span class="chip">from entry 03 &middot; plowhorse_repricing</span>
+          <span class="chip">17 days open</span></div>
+        <p class="obs" style="margin-top:6px">6 wines sell fast but earn below-median margin.</p>
+        <dl class="tl">
+          <dt>Sun 17 Aug</dt><dd>Opened. The rule fired on the menu-engineering register.</dd>
+          <dt>Tue 19 Aug</dt><dd>Acted &mdash; the menu report was opened from this case.</dd>
+          <dt>Tue 19 Aug</dt><dd>Goal set: &ldquo;Wine revenue after the reprice&rdquo;, at least
+            $9,000 by Wed 2 Sep. <span class="mono">analytics_goals</span> holds it.</dd>
+          <dt>today</dt><dd>$8,410 of $9,000 &mdash; 93%, behind the linear pace by $590.
+            The case stays open while the goal does.</dd>
+        </dl>
+        <div class="ctlrow"><span class="micro ctllab">Carry it out</span>
+          <button class="btn seal">Open the goal <svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+          <button class="btn"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg> See it in reports</button>
+          <button class="btn"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg> Hold to close the case</button></div>
+        <p class="said">Everything above this line exists today: the goal is a real row, its progress is a
+        real read, and the acted stamp is <span class="mono">acted_at</span>. What does not exist is the
+        <i>join</i> &mdash; nothing records that this goal came from this case.</p>
+      </div>
+
+      <div class="rule2" style="margin:20px 0 6px"></div>
+      <div class="micro seal">Closed &middot; 11 this quarter</div>
+
+      <div class="case closed">
+        <div class="stamps"><span class="chip on"><svg class="ico" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg> closed with a result</span>
+          <span class="chip">vendor_concentration</span><span class="chip">sealed Thu 14 Aug</span></div>
+        <p class="obs" style="margin-top:6px">Purchasing was concentrated on one vendor (HHI 5,140).</p>
+        <div class="result">
+          <div class="micro">What actually happened, 21 days later <span class="prop">proposed</span></div>
+          <p class="v" style="margin:4px 0 0">The next three invoices from the new supplier came in
+          <span class="num">4.2%</span> under the incumbent&rsquo;s last quote on matched lines.</p>
+          <p class="note" style="margin-top:5px">Measured on 9 matched line items across 3 invoices.
+          Not a causal claim &mdash; the house also changed its order size in the same window.</p>
+        </div>
+        <div class="ctlrow"><button class="btn">Reopen the case</button>
+          <button class="btn"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg> See it in reports</button></div>
+      </div>
+
+      <div class="case closed">
+        <div class="stamps"><span class="chip"><svg class="ico" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg> closed</span>
+          <span class="chip">puzzle_activation</span><span class="chip">sealed Mon 4 Aug</span></div>
+        <p class="obs" style="margin-top:6px">Ch&acirc;teauneuf-du-Pape Blanc 2020 was put by the glass.</p>
+        <div class="result">
+          <div class="micro">What actually happened <span class="prop">proposed</span></div>
+          <p class="v" style="margin:4px 0 0">No comparable data.</p>
+          <p class="note" style="margin-top:5px">The by-the-glass line was not itemised on the till for
+          eleven of the twenty-one days, so there is no window to compare. This is what the field prints as
+          &ldquo;0% improvement&rdquo;; it is not zero, it is unmeasured, and the difference is the whole
+          reason this column is worth building.</p>
+        </div>
+        <div class="ctlrow"><button class="btn">Reopen the case</button></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="card" style="margin-top:24px">
+    <div class="micro"><svg class="ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> What this direction needs that does not exist</div>
+    <p class="note" style="margin-top:7px">
+      <span class="prop">proposed</span> <b>A case store.</b> Today the page has dispositions
+      (<span class="mono">recommendation_actions</span>: dismissed / snoozed / done / pinned / acted) which
+      is four-fifths of a state machine already &mdash; what is missing is <i>watching</i> and a closing
+      <i>reason</i>, both of which Stripe Radar models exactly
+      (<span class="mono">review.opened</span> / <span class="mono">review.closed</span> with a reason).<br>
+      <span class="prop">proposed</span> <b>The outcome measurement.</b> Nothing anywhere in the gateway
+      measures what happened after an entry was ruled off. It is a scheduled job over the same engine, and
+      it is the single largest piece of work of the three directions on this page.<br>
+      <span class="prop">proposed</span> <b>The goal &rarr; case join.</b>
+      <span class="mono">analytics_goals</span> has no column naming the recommendation a goal came from,
+      so the built button can say &ldquo;you already track this figure&rdquo; and can never say
+      &ldquo;this case is being watched&rdquo;. One nullable column closes it; it is a migration and a
+      founder&rsquo;s call.<br>
+      Google Search Console is the closest working model of this lifecycle in any product &mdash; an issue
+      is detected, you fix it, you <i>request validation</i>, and it passes or fails per URL and then
+      closes; and it stays closed for 90 days before the same fault counts as new.</p>
+  </div>
+
+<footer class="sig"><span class="wordmark">Mudavym<span>.</span></span>
+<p class="note" style="margin:0;max-width:640px">Example data throughout. No figure on this page
+came from a tenant. Every entry is one deterministic rule against a house&rsquo;s own numbers.
+No model wrote them.</p></footer>
+</div></div></body></html>

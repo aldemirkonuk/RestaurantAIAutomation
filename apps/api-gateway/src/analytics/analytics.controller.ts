@@ -3,6 +3,8 @@ import {
   Get,
   Post,
   Put,
+  Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -13,6 +15,7 @@ import {
 import {
   ApiTags,
   ApiOperation,
+  ApiHeader,
   ApiParam,
   ApiQuery,
   ApiResponse,
@@ -26,8 +29,13 @@ import {
 } from "./recommendation-actions.service";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
+import { goalScenarioBook } from "./goal-scenarios";
+import { GoalScenarioRequestsService } from "./goal-scenario-requests.service";
 import { ConsultantsService } from "./consultants.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
+import { Public } from "../auth/decorators/public.decorator";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
 import {
@@ -35,6 +43,7 @@ import {
   catalogCoverage,
 } from "./insights/insight-implementations";
 import { DataRequirement } from "./insights/insight-catalog";
+import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { Persona } from "./metric-registry";
 
 /**
@@ -88,9 +97,11 @@ export class AnalyticsController {
     private readonly recommendationActions: RecommendationActionsService,
     private readonly tableAnalytics: TableAnalyticsService,
     private readonly goalsService: GoalsService,
+    private readonly goalScenarioRequests: GoalScenarioRequestsService,
     private readonly consultantsService: ConsultantsService,
     private readonly insightGenerator: InsightGeneratorService,
     private readonly scheduler: InsightSchedulerService,
+    private readonly dayExclusions: DayExclusionsService,
   ) {}
 
   @Get("metrics")
@@ -478,6 +489,103 @@ export class AnalyticsController {
   // Goals — metric-linked, AI-assisted
   // ==========================================================================
 
+  /**
+   * The book of scenarios a house might set as a goal (ADR 0120).
+   *
+   *   *"we're going to create possible analytic scenarios a restaurant might
+   *    set as a goal"*                            — the founder, 2026-09-04
+   *
+   * Deliberately NOT tenant-scoped, and the path says so: no `:restaurantId`
+   * segment, no restaurant id read anywhere in `goalScenarioBook()`. It is a
+   * catalogue of what a goal CAN be, with the operator benchmark for each and
+   * the source that published it — never a reading of anyone's books, and never
+   * a suggested target.
+   *
+   * Declared before `goals/:restaurantId` for readability only; Nest matches on
+   * the literal path, and `goal-scenarios` cannot collide with `goals/…`.
+   */
+  @Get("goal-scenarios")
+  @ApiOperation({
+    summary: "The catalogue of goal scenarios a restaurant might set",
+    description:
+      "Static. No tenant data is read and no target is ever suggested — each scenario carries the operator benchmark RANGE with its source URL and date, plus one standing caveat that a range is a fact about the houses in that report and not about yours. A scenario the goals module cannot hold today says so, and names the measure it would need.",
+  })
+  getGoalScenarios() {
+    return goalScenarioBook();
+  }
+
+  /**
+   * A house asks for a scenario, in words (ADR 0120 Q4).
+   *
+   *   *"Not yet; request a scenario instead."*   — the founder, 2026-09-05
+   *
+   * The house may not author a scenario — the catalogue above stays one truth,
+   * because each of its rows carries an operator source a reader can check.
+   * This route stores the sentence and nothing else: no metric key is guessed
+   * from it, no model reads it, and `GET goal-scenarios` does not join it.
+   *
+   * A plain authenticated write, deliberately not sealed: it moves no money and
+   * sends nothing (ADR 0113). The actor is read from the token, never the body.
+   */
+  @Post("goal-scenarios/requests/:restaurantId")
+  @ApiOperation({
+    summary: "Ask Mudavym for a scenario the catalogue does not carry",
+    description:
+      "Body: { words }. Stores who asked, when, the words and the house. It does NOT create a scenario — the catalogue is Mudavym's, and a row on it must carry an operator source a reader can check. Refused with its reason when the words are empty, longer than 2000 characters, or the call carries no user.",
+  })
+  async requestGoalScenario(
+    @Param("restaurantId") restaurantId: string,
+    @Body() body: { words?: string },
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    try {
+      return await this.goalScenarioRequests.record({
+        restaurantId,
+        words: typeof body?.words === "string" ? body.words : "",
+        requestedBy: typeof user?.userId === "string" ? user.userId : null,
+      });
+    } catch (error) {
+      throw new HttpException(
+        error.message || "The request was not stored",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * Every house's requests — platform admin only (ADR 0099's ServiceKeyGuard,
+   * the same pattern the both-arms experiment report uses).
+   *
+   * `@Public()` short-circuits the class's JWT check so that `ServiceKeyGuard`
+   * — which FAILS CLOSED on an unset or empty `ADMIN_API_KEY` — is what
+   * decides. It authenticates a machine, not a user, so this handler derives
+   * neither a tenant nor a user from the request: the read is cross-tenant by
+   * design, which is exactly why no user token may reach it.
+   */
+  @Get("goal-scenarios/requests")
+  @Public()
+  @UseGuards(ServiceKeyGuard)
+  @ApiHeader({ name: "X-Admin-Key", required: true })
+  @ApiQuery({ name: "limit", required: false })
+  @ApiOperation({
+    summary: "What houses have asked to be able to hold themselves to",
+    description:
+      "Newest first, across every house, with the house's name and the asker's. Words a person typed — never parsed into a metric, never shown to a model, never read into the catalogue. A read that fails is an error with its reason, never an empty list.",
+  })
+  async listGoalScenarioRequests(@Query("limit") limit?: string) {
+    try {
+      const parsed = Number.parseInt(limit ?? "", 10);
+      return await this.goalScenarioRequests.listAll(
+        Number.isFinite(parsed) ? parsed : undefined,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to read the scenario requests",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get("goals/:restaurantId")
   @ApiOperation({
     summary: "List goals (status=active|all|achieved|missed|archived)",
@@ -494,7 +602,8 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Create a metric-linked goal",
     description:
-      "Body: { name, metricKey (wine_revenue|bottles_sold|purchase_spend|checks|avg_check|wine_attach_rate), targetValue, deadline?, period?, direction? }",
+      "Body: { name, metricKey (wine_revenue|bottles_sold|purchase_spend|checks|avg_check|wine_attach_rate), targetValue, deadline?, period?, direction?, sourceRuleKey? }. " +
+      "`sourceRuleKey` records which recommendation the goal came from; it is validated against the rule catalogue and an unknown key is a 400, never a stored string nothing resolves. Absent means a person typed it.",
   })
   async createGoal(
     @Param("restaurantId") restaurantId: string,
@@ -505,6 +614,79 @@ export class AnalyticsController {
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to create goal",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get("goals/:restaurantId/progress")
+  @ApiOperation({
+    summary: "Progress for every goal of one status, in one call",
+    description:
+      "listGoals alone cannot drive a progress bar: `current_value` is a stored column refreshed only when one goal's progress is opened, so a bar drawn off the list reads 0% for a goal that is half done. This recomputes each one. Capped at 6 goals and it reports the cap rather than applying it silently.",
+  })
+  @ApiQuery({ name: "status", required: false })
+  async listGoalsWithProgress(
+    @Param("restaurantId") restaurantId: string,
+    @Query("status") status?: string,
+  ) {
+    try {
+      return await this.goalsService.listGoalsWithProgress(
+        restaurantId,
+        status || "active",
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to compute goal progress",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Patch("goals/:restaurantId/:goalId")
+  @ApiOperation({
+    summary: "Edit a goal (name, targetValue, deadline, direction, period)",
+    description:
+      "metricKey is deliberately not editable: baseline_value was measured against the old metric and every progress figure is computed against that baseline. Archive and set a new goal instead.",
+  })
+  async updateGoal(
+    @Param("restaurantId") restaurantId: string,
+    @Param("goalId") goalId: string,
+    @Body() body: any,
+  ) {
+    try {
+      return await this.goalsService.updateGoal(restaurantId, goalId, body || {});
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to update goal",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post("goals/:restaurantId/:goalId/cutting-spec")
+  @ApiOperation({
+    summary: "Ask the assistant which catalogued analysis shows this goal",
+    description:
+      "The model CONFIGURES the deterministic engine — it returns an analysis id, a drawing and a window, every one of them validated against a closed catalogue server-side (report-cuttings.ts). It never writes a figure, a sentence on a chart, or a new analysis. Without ANTHROPIC_API_KEY the route answers `available:false` with the reason and proposes nothing.",
+  })
+  async proposeGoalCuttingSpec(
+    @Param("restaurantId") restaurantId: string,
+    @Param("goalId") goalId: string,
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    try {
+      return await this.goalsService.proposeCuttingSpec(
+        restaurantId,
+        goalId,
+        // Metered as `context.asked_by` (ADR 0120). Read from the token, never
+        // from the body: "who asked" is a fact about the session, and a
+        // client-supplied one would be an assertion about someone else.
+        typeof user?.userId === "string" ? user.userId : null,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to propose a cutting",
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -585,16 +767,21 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Run a consultant persona over the analytics evidence pack",
     description:
-      "Body: { persona: finance|economics|statistics|physics }. Returns weighted claims + simple resolutions, every claim citing evidence paths. Gated by the toggle (default off).",
+      "Body: { persona: finance|economics|statistics|physics }. Returns weighted claims + simple resolutions, every claim citing evidence paths. Gated by the toggle (default off). Metered as the `consult` task class (ADR 0120 Q2) — the ledger names this call apart from `compose`.",
   })
   async consult(
     @Param("restaurantId") restaurantId: string,
     @Body() body: { persona?: string },
+    @CurrentUser() user?: { userId?: string },
   ) {
     try {
       return await this.consultantsService.consult(
         restaurantId,
         body?.persona || "finance",
+        // Metered as `context.asked_by` (ADR 0120). Read from the token, never
+        // from the body: "who asked" is a fact about the session, and a
+        // client-supplied one would be an assertion about someone else.
+        typeof user?.userId === "string" ? user.userId : null,
       );
     } catch (error) {
       throw new HttpException(
@@ -887,6 +1074,68 @@ export class AnalyticsController {
       throw new HttpException(
         error.message || "Failed to load recommendation history",
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ---- Days the engine must not count (the exclusion store) ---------------
+  //
+  // The second half of "if the person says dismiss, it should be avoided at
+  // all costs": a dismissal silences an ENTRY, an exclusion removes a DAY from
+  // the arithmetic underneath every entry. A closure that dragged the Wednesday
+  // average down is not answered by hiding the sentence — the average is still
+  // wrong. Stored separately from `recommendation_actions` on purpose: one is
+  // what a manager did with a card, the other is what the analysis may look at.
+
+  @Get("exclusions/:restaurantId")
+  @ApiOperation({
+    summary: "Business dates excluded from the analytics baselines",
+    description:
+      "Closures, buyouts and outages the manager has ruled out. `readable:false` means the store could not be read AT ALL — which is not the same as an empty list, and the caller must not present its numbers as clean.",
+  })
+  async listDayExclusions(@Param("restaurantId") restaurantId: string) {
+    return this.dayExclusions.list(restaurantId);
+  }
+
+  @Post("exclusions/:restaurantId")
+  @ApiOperation({
+    summary: "Exclude a business date from every baseline",
+    description: "Body: { businessDate: 'YYYY-MM-DD', reason?, createdBy? }.",
+  })
+  async excludeDay(
+    @Param("restaurantId") restaurantId: string,
+    @Body()
+    body: { businessDate?: string; reason?: string | null; createdBy?: string },
+  ) {
+    try {
+      if (!body?.businessDate) throw new Error("businessDate is required");
+      return await this.dayExclusions.exclude(
+        restaurantId,
+        body.businessDate,
+        body.reason ?? null,
+        body.createdBy ?? null,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to exclude the day",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Delete("exclusions/:restaurantId/:businessDate")
+  @ApiOperation({ summary: "Put an excluded business date back in the analysis" })
+  async includeDay(
+    @Param("restaurantId") restaurantId: string,
+    @Param("businessDate") businessDate: string,
+  ) {
+    try {
+      await this.dayExclusions.include(restaurantId, businessDate);
+      return { restored: businessDate };
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to restore the day",
+        HttpStatus.BAD_REQUEST,
       );
     }
   }

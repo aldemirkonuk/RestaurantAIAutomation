@@ -9,6 +9,8 @@
  * responder stays the only place that decides what to do with the flags.
  */
 
+import { currencyCode } from "../iso-4217";
+
 export type TaxStatus = "included" | "excluded" | "unknown";
 
 export interface DiscountTier {
@@ -102,7 +104,11 @@ function normalizeCurrency(v: any): string | null {
   if (s.includes("$")) return "USD";
   if (s.includes("€") || s.includes("EUR")) return "EUR";
   if (s.includes("£") || s.includes("GBP")) return "GBP";
-  return s.length === 3 ? s : null;
+  // MEMBERSHIP, NOT SHAPE (2026-09-11, the gateway-wide sweep after the audit
+  // of b6d2e4b4): `length === 3` admitted any three characters (`ZZZ`, `TL.`)
+  // as the currency a vendor stated. A code this gateway does not hold as money
+  // is no currency stated, which is what `null` already means here.
+  return currencyCode(s);
 }
 
 function normalizeTax(v: any): TaxStatus {

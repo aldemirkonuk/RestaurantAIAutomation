@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { DatabaseService } from "../../database/database.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
 import { LineMappingService } from "./line-mapping.service";
+import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
 
 /**
  * ADR 0104 D12 slice 4 on the canonical object itself. All ids are SYNTHETIC.
@@ -153,6 +154,7 @@ describe("the remembered shelf on the canonical document", () => {
       providers: [
         CanonicalDocumentService,
         LineMappingService,
+        VendorResolutionService,
         { provide: DatabaseService, useValue: { getClient: () => client } },
       ],
     }).compile();
