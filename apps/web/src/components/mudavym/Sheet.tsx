@@ -170,19 +170,16 @@ export interface OverlayProps {
   /**
    * A wider right sheet — 640px instead of 440px. `Sheet` only.
    *
-   * 440px holds an object's FIELDS; the email composer holds a letter. A
-   * letter is prose that a person reads back as prose, and at 440px minus
-   * padding the body column is roughly 46 characters — narrow enough that
-   * the writer cannot see the paragraph they are judging. Sketch 100 asked
-   * for exactly this and nothing else about the shape ("The one thing this
-   * sketch asks of sketch 099: a `wide` sheet at 640px").
+   * ADR 0112 fixed one width on purpose, and this is the one exception it
+   * anticipated: 440px holds an object's FIELDS, and the email composer holds a
+   * letter. A letter is prose that a person reads back as prose, and at 440px
+   * minus padding the body column is roughly 46 characters — narrow enough that
+   * the writer cannot see the paragraph they are judging. Sketch 100 asked for
+   * exactly this and nothing else about the shape ("The one thing this sketch
+   * asks of sketch 099: a `wide` sheet at 640px").
    *
-   * It is a boolean rather than a number so it cannot become per-page
-   * freedom by increments: there are two widths, and a third is a decision
-   * to record, not a prop to widen. (This module ships ahead of the ADR
-   * that will eventually record the primitive's full policy — see the
-   * commit history for why — so this comment states only what the code
-   * does, not what any document says about it.)
+   * It is a boolean rather than a number so it cannot become per-page freedom
+   * by increments: there are two widths, and a third needs an ADR.
    */
   wide?: boolean;
   /** Stack order. Default 100. */
