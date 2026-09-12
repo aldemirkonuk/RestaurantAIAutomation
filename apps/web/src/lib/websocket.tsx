@@ -85,6 +85,70 @@ export interface StockUpdatedEvent {
   timestamp: string
 }
 
+/**
+ * Which cached queries a single `stock:updated` event genuinely invalidates.
+ *
+ * The handler used to blanket-invalidate `['inventory']`, `['dashboard']` and
+ * `['wines']`, so one bottle moving anywhere refetched the inventory table, the
+ * dashboard and the wine library — including the row a manager was mid-way
+ * through reading. This narrows it to what the payload can honestly justify.
+ *
+ * Shape of the rule, and why it is a deny-list rather than an allow-list: an
+ * `['inventory', …]` subtree nobody has classified yet returns `true` and gets
+ * refreshed. An unknown query must cost a refetch, never be silently skipped —
+ * skipping is how a stale row gets reported as a fresh one.
+ *
+ * What is deliberately NOT matched:
+ *  - `['wines', …]` — the master wine library (`master_wine_library`). Its read
+ *    model carries no stock and no restaurant scope (wines.service.ts `mapWine`,
+ *    services/api/types.ts `Wine`), so a stock change cannot alter a field of it.
+ *  - `['inventory','unmapped-toast', …]` — Toast GUID mapping, independent of stock.
+ *  - `['inventory','receipt-depth', …]` — procurement documents for an order.
+ *
+ * Restaurant scoping is applied only to key shapes known to carry a restaurant
+ * id at index 2. A client can sit in more than one `restaurant:*` room (the
+ * gateway joins the JWT's restaurant on connect *and* the active one on
+ * subscribe), so events for a restaurant the user is not looking at do arrive.
+ * When the payload has no `restaurant_id` the scope condition is dropped, not
+ * failed — a missing field must widen the refresh, never mute it.
+ */
+export function isQueryAffectedByStockUpdate(
+  queryKey: readonly unknown[],
+  data: Partial<StockUpdatedEvent['data']> | undefined,
+): boolean {
+  if (queryKey[0] !== 'inventory') return false
+
+  const segment = queryKey[1]
+  if (segment === 'unmapped-toast' || segment === 'receipt-depth') return false
+
+  const restaurantId =
+    typeof data?.restaurant_id === 'string' && data.restaurant_id.length > 0
+      ? data.restaurant_id
+      : null
+  const inventoryId =
+    typeof data?.inventory_id === 'string' && data.inventory_id.length > 0
+      ? data.inventory_id
+      : null
+
+  // `['inventory','list',restaurantId,filters]`, `['inventory','summary',restaurantId]`,
+  // `['inventory','low-stock',restaurantId]` — see lib/query-keys.ts.
+  if (segment === 'list' || segment === 'summary' || segment === 'low-stock') {
+    return restaurantId === null || queryKey[2] === restaurantId
+  }
+
+  // `['inventory','activity',inventoryId]` — the per-row ledger feed. This is the
+  // only query in the app keyed by a single inventory row; every other view of a
+  // row lives inside the one big list query, which is why a stock event still
+  // has to invalidate that whole list.
+  if (segment === 'activity') {
+    return inventoryId === null || queryKey[2] === inventoryId
+  }
+
+  // e.g. `['inventory','sommelier-context']` — derived from live stock but
+  // carrying no restaurant id, so it cannot be scoped any further than this.
+  return true
+}
+
 export interface LowStockAlertEvent {
   event: 'LowStockAlert'
   data: {
@@ -486,16 +550,37 @@ export function WebSocketProvider({
       console.log('📦 Stock updated:', data)
       incrementMessagesReceived()
       
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
+      // Proportionate invalidation — see `isQueryAffectedByStockUpdate`. The
+      // whole `['wines']` tree is deliberately gone: it is the master library,
+      // which has no stock column, so refetching it under a reader bought
+      // nothing. The inventory list/summary/low-stock queries DO change on a
+      // stock event and are still invalidated (scoped to the event's own
+      // restaurant) — they are one query holding every row, so there is no
+      // per-row key to invalidate instead.
+      //
+      // NOT patched into the cache from the payload, on purpose: `stock_after`
+      // is unreliable. `stock.state.changed` — the inventory engine's own
+      // publish — sends `stock_live`, and the bridge reads `stock_after ??
+      // current_stock ?? 0` (common/orchestrator/rabbitmq-bridge.service.ts),
+      // so the wire value is 0 for that producer. A `setQueryData` patch would
+      // write "0 bottles" into the row the manager is reading, and would leave
+      // the row's derived fields (wac, daysOfCover, reorderSuggested,
+      // locations) describing the old quantity.
+      queryClient.invalidateQueries({
+        predicate: (query) => isQueryAffectedByStockUpdate(query.queryKey, data?.data),
+      })
+      // Kept, and measured: no `useQuery` in apps/web registers a key under
+      // `['dashboard']` today, so this matches nothing and costs no refetch.
+      // The dashboard's real refresh path is the CustomEvent below. Left in
+      // place so a dashboard query added later is not silently missed.
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.wines.all })
-      
+
       window.dispatchEvent(new CustomEvent('inventory_change', {
         detail: { eventType: 'UPDATE', new: data.data, source: 'websocket' },
       }))
       window.dispatchEvent(new CustomEvent('ws:dashboard-invalidate'))
     })
-    
+
     newSocket.on('stock:low', (data: LowStockAlertEvent) => {
       console.log('🚨 Low stock alert:', data)
       incrementMessagesReceived()
