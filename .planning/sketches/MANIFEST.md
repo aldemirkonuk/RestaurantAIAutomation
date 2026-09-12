@@ -1,6 +1,12 @@
 # Sketch Manifest
 
 ## Design Direction
+
+> **Superseded 2026-08-26** by
+> [`06-pages/DESIGN-FOUNDATION.md`](../06-pages/DESIGN-FOUNDATION.md) as the home of
+> visual-language intent (retire-to-write). Note its primary #CD2D5B differs from the
+> app's shipped #9E4249 — that fork is OD-79. The paragraph below is kept as the
+> historical context the onboarding sketches were drawn against.
 Premium B2B SaaS onboarding for restaurant operators. The visual language is Stripe/Linear/Toast-inspired: glassmorphism card, wine-burgundy primary (#CD2D5B), Plus Jakarta Sans display font, generous spacing, and confident hierarchy. The goal is that a restaurant owner's first experience with WineOps AI feels trustworthy, modern, and effortless — not like a generic auth form.
 
 ## Reference Points

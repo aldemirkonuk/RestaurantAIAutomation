@@ -1124,6 +1124,7 @@ route that calls a tool**, by decision — see §1b and ADR 0107.
 The consent step is **not** a new endpoint: the Connect control links to the existing
 `/authorize/:integrationId?returnPath=/profile` page (`App.tsx:270`), which discloses the
 scopes from the server's own catalogue before the redirect.
+**Changed 2026-09-12 (ADR 0139).** `POST /auth/me/link/:provider` verifies the provider token through the same code the sign-in route uses (`linkOAuthProvider` -> `verifyGoogleToken` / `verifyMicrosoftToken`, `auth.service.ts:2223-2231`), and that code now FAILS CLOSED on unset configuration. So the Linked accounts buttons refuse with "Google sign-in is not configured on this server." when `GOOGLE_CLIENT_ID` is unset, and Microsoft refuses with "Microsoft sign-in is not configured on this server." whenever `MICROSOFT_CLIENT_ID` or the issuer configuration is unset - which is its state in production today. Linking Microsoft also now needs a real ID token (RS256 against the published JWKS, exact `aud`/`iss`, `xms_edov`), not a Graph access token. This page has no UI that distinguishes "not configured" from "you declined"; both surface as the raw message.
 
 ## 5. Signals
 **none.** Account deletion and restaurant-leave — churn events — are untracked.
@@ -1274,6 +1275,7 @@ above, closed. Mirror: `connections.md` §9 G-C9.
 
 - Restaurant section edits (`PATCH /organizations/locations/:id`) rely on server-side role enforcement; the page gate is client-side only.
 - The v3.0 UX catalog's "dashboard profile card with no handler" item (L102) was never located (`v3.0-TECH-DEBT.md:502`) — unverified, tracked there, not here.
+- **Linking can now fail for a reason the page cannot explain** (ADR 0139). An unset provider client id makes the link button refuse with a server sentence; nothing here pre-checks configuration or greys the button, so a misconfigured environment looks like a broken button. Microsoft is `enabled: false` in the registry and has no Azure app registration here, so its link button refuses today for exactly that reason.
 
 **Found while building the Mudavym redesign (2026-09-02), then revisited on 2026-09-03
 when the second pass was allowed to edit the gateway. Four of the eight are CLOSED — the
