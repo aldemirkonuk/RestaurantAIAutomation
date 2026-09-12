@@ -43,11 +43,11 @@ Follow the RUBRIC promotion protocol:
 | Workflow | Jobs / schedule | Role |
 |----------|-----------------|------|
 | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) | `test-typescript`, `test-python`, `test-e2e` | Unit + integration on push; local Playwright smoke |
-| [`.github/workflows/e2e-prod.yml`](../../.github/workflows/e2e-prod.yml) | cron `0 2 * * *` | Nightly cloud production E2E (Phase 25) |
+| [`.github/workflows/e2e-prod.yml`](../../.github/workflows/e2e-prod.yml) | cron `0 2 * * *` + `workflow_dispatch` | Nightly production E2E, rebuilt 2026-09-11 ([ADR 0135](../decisions/0135-the-nightly-reports-four-states-and-walks-the-gated-pages.md)): browser walk `apps/web/e2e/nightly/` over the 19-page manifest (override on / off), read-only Wave H `services/agent-orchestrator/tests/e2e_gateway/`, pinned backtests, `scripts/e2e/nightly_summary.py` — four states (`pass` · `fail` · `absent` · `cannot_check`), exit 2 on cannot_check. Required secrets: `API_GATEWAY_URL`, `E2E_TEST_EMAIL`, `E2E_TEST_PASSWORD`. Run by hand: Actions → Production E2E Tests → Run workflow (`expect_flags` report/on/off) |
 
 **Do not treat TFND-05 as green CI.** Black debt on `services/agent-orchestrator/api/studio_routes.py` as of **2026-07-27** may keep `main` red (Lint Python / Run Black). Downstream test jobs are not a trustworthy green signal until lint is green.
 
-**Nightly secrets status (names only, never values):** **secrets present? no as of 2026-07-27** (premortem / scorecard baseline from `gh run view` on a recent `e2e-prod` run — empty `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `E2E_TEST_EMAIL`, `E2E_TEST_PASSWORD`, etc.). No durable `test-results/` wave XML observed → TFND-05 = **schedule-present / capability-unverified** until one wave XML lands.
+**Nightly secrets status (names only, never values):** **as of 2026-09-11 the required set is `API_GATEWAY_URL` (set), `E2E_TEST_EMAIL` and `E2E_TEST_PASSWORD` (NOT set — the founder registers `aldemirkonuk@mudavym.com` and sets them; a session grants it a simulator house); the workflow exits 2 with the missing names until then.** Local proof of the suite lives in ADR 0135's Consequences. Earlier history: **secrets present? no as of 2026-07-27** (premortem / scorecard baseline from `gh run view` on a recent `e2e-prod` run — empty `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `E2E_TEST_EMAIL`, `E2E_TEST_PASSWORD`, etc.). No durable `test-results/` wave XML observed → TFND-05 = **schedule-present / capability-unverified** until one wave XML lands.
 
 TFND-05 = wiring documented; `main` may still be red; **do not promote scores from green-wishful thinking**.
 
