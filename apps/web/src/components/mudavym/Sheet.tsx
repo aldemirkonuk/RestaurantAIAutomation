@@ -87,6 +87,16 @@ function ensureFraunces(): void {
 let scrollLocks = 0;
 let restoreOverflow = '';
 
+/* ── overlay stack, topmost last ──────────────────────────────────────────
+   A window-level Escape listener on every open overlay is how each one
+   closes "from anywhere" (see below) — but that means a Sheet opened from
+   inside an open Panel has TWO listeners on the same target, and
+   `stopPropagation()` does nothing for sibling listeners registered
+   directly on `window`. One Escape press used to close both. This stack
+   is the shared source of truth for which overlay is topmost; only that
+   one's handler acts, regardless of listener registration order. */
+const openStack: string[] = [];
+
 function lockBodyScroll(): () => void {
   if (typeof document === 'undefined') return () => {};
   if (scrollLocks === 0) {
@@ -160,16 +170,19 @@ export interface OverlayProps {
   /**
    * A wider right sheet — 640px instead of 440px. `Sheet` only.
    *
-   * ADR 0112 fixed one width on purpose, and this is the one exception it
-   * anticipated: 440px holds an object's FIELDS, and the email composer holds a
-   * letter. A letter is prose that a person reads back as prose, and at 440px
-   * minus padding the body column is roughly 46 characters — narrow enough that
-   * the writer cannot see the paragraph they are judging. Sketch 100 asked for
-   * exactly this and nothing else about the shape ("The one thing this sketch
-   * asks of sketch 099: a `wide` sheet at 640px").
+   * 440px holds an object's FIELDS; the email composer holds a letter. A
+   * letter is prose that a person reads back as prose, and at 440px minus
+   * padding the body column is roughly 46 characters — narrow enough that
+   * the writer cannot see the paragraph they are judging. Sketch 100 asked
+   * for exactly this and nothing else about the shape ("The one thing this
+   * sketch asks of sketch 099: a `wide` sheet at 640px").
    *
-   * It is a boolean rather than a number so it cannot become per-page freedom
-   * by increments: there are two widths, and a third needs an ADR.
+   * It is a boolean rather than a number so it cannot become per-page
+   * freedom by increments: there are two widths, and a third is a decision
+   * to record, not a prop to widen. (This module ships ahead of the ADR
+   * that will eventually record the primitive's full policy — see the
+   * commit history for why — so this comment states only what the code
+   * does, not what any document says about it.)
    */
   wide?: boolean;
   /** Stack order. Default 100. */
@@ -329,8 +342,24 @@ function OverlayRoot({
     const panel = panelRef.current;
     if (!panel) return;
     if (shape === 'popover' && anchorRef?.current && !pos) return;
-    const target = initialFocusRef?.current ?? focusables(panel)[0] ?? panel;
-    target.focus();
+    // Try each candidate in turn and CONFIRM the move landed before stopping.
+    // A candidate that is genuinely hidden in the browser but not by the
+    // `hidden` ATTRIBUTE `focusables()` checks — a responsive Tailwind class
+    // like `hidden md:block`, invisible to jsdom because no compiled
+    // stylesheet is loaded in a unit test — silently no-ops `.focus()`
+    // rather than throwing, which used to leave focus on `<body>` with the
+    // trap gone entirely. Checking `document.activeElement` after each
+    // attempt needs no jsdom-vs-browser branch: jsdom and a real browser
+    // agree on whether a `.focus()` call actually moved it.
+    const candidates = [
+      ...(initialFocusRef?.current ? [initialFocusRef.current] : []),
+      ...focusables(panel),
+      panel,
+    ];
+    for (const candidate of candidates) {
+      candidate.focus();
+      if (document.activeElement === candidate) return;
+    }
   }, [open, initialFocusRef, shape, anchorRef, pos]);
 
   useEffect(() => {
@@ -347,19 +376,33 @@ function OverlayRoot({
     animate(panel, ENTER[shape], TOKEN[shape]);
   }, [open, reduced, shape]);
 
+  /* This overlay's place in the stack, kept live for as long as it is open.
+     `titleId` (from `useId()`, declared above) is a stable per-instance
+     identity — nothing here needs a second one. */
+  useEffect(() => {
+    if (!open) return;
+    openStack.push(titleId);
+    return () => {
+      const idx = openStack.lastIndexOf(titleId);
+      if (idx !== -1) openStack.splice(idx, 1);
+    };
+  }, [open, titleId]);
+
   /* Esc closes, from anywhere — an overlay whose Esc only works while focus is
-     inside is an overlay you can get stuck behind. */
+     inside is an overlay you can get stuck behind. Only the TOPMOST overlay
+     acts: every open overlay has its own listener on the same `window`
+     target, and without this check one Escape press closed all of them. */
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && openStack[openStack.length - 1] === titleId) {
         e.stopPropagation();
         onClose();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, onClose, titleId]);
 
   /* Tab cycles inside a modal shape. A popover does not trap: it is attached to
      a control on the page, and tabbing off it should leave it. */
