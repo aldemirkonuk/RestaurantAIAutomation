@@ -15,7 +15,7 @@ let me see those in actual files, in actual pages"* — with the standing instru
 to keep asking questions and keep documenting.
 
 The founder also uploaded his own curated motion canvas
-(`.planning/Mudavym Motion Canvas.dc.html`, 85 demos, 2026-08-29) and said it holds
+(`.planning/brand/Mudavym Motion Canvas.dc.html`, 85 demos, 2026-08-29) and said it holds
 *some* of the motions he really liked — making that file a curation signal, including
 twelve "unafraid" signature ideas that exist nowhere in the 087 set.
 

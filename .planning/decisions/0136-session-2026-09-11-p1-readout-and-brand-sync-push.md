@@ -94,7 +94,10 @@ downstream.
    run the new boot-check script; ignore entries for local scratch artifacts
    this session produced; a launch-config entry added during preview
    verification.
-7. **Brand/design corpus** (untracked, new): `.planning/BUILDPROMPT.md`
+7. **Brand/design corpus** (new, under `.planning/brand/` per §4 — moved there
+   after the pr-audit-gate compliance angle correctly BLOCKed the first pass
+   of this PR for landing six files at the top level; see the audit note at
+   the end of this ADR): `.planning/brand/BUILDPROMPT.md`
    (the overlay-packet build prompts derived from sketch 102's census —
    dispatched separately as packets 0–2, tracked in
    memory `go-live-2026-09-06`);
@@ -161,5 +164,17 @@ downstream.
   Mudavym go-live effort (`feat/mudavym-design-p4`, PR #289) tracked in the
   `go-live-2026-09-06` and `launch-orchestrator-2026-09-11` memories — that work lives in a different worktree/session and is out of
   scope here.
+
+**Update 2026-09-12 (pr-audit-gate, first pass):** the compliance angle
+correctly BLOCKed PR #353's first pass — item 7's six files landed at the top
+level of `.planning/`, which CLAUDE.md §4 forbids without a founder waiver and
+locked ADR 0032 exists specifically to prevent (the vault's 525-file cleanup
+that took top-level 35→30). No retire-to-write trade was named either. Fixed
+by moving all six into `.planning/brand/` (a new subdirectory, per §4's own
+prescribed remedy) with an index entry in `.planning/brand/README.md`, and
+citations in `0044` and sketch `087`'s notes updated to the new path. Re-ran
+the full three-angle audit + adversarial pass after the fix — this is exactly
+the kind of finding a green CI run cannot catch (no guard in this repo checks
+vault top-level shape) and the gate exists for.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
