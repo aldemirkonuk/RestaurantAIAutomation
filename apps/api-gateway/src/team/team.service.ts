@@ -359,7 +359,9 @@ export class TeamService {
           .eq("role", "owner");
 
         if (count && count <= 1) {
-          throw new ForbiddenException("Cannot remove the last owner of the restaurant.");
+          throw new ForbiddenException(
+            "Cannot remove the last owner of the restaurant.",
+          );
         }
       }
 

@@ -9,6 +9,22 @@
 .env.local
 .env.*.local
 
+# Google service-account keys. A real one (wineops-vertex-ai-*.json) has been
+# sitting untracked at the repo root since 2026-08-26 with no rule matching it,
+# in a checkout several sessions share — one `git add -A` publishes a private
+# key to a PUBLIC repository. Patterns, not one filename, because the next key
+# will be named something else.
+*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json
+*service-account*.json
+*serviceaccount*.json
+*-credentials.json
+gcp-*.json
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
 # Dependencies
 node_modules/
 
@@ -105,3 +121,6 @@ cursor_chat_backup/
 .planning/.obsidian/workspace-mobile.json
 .planning/.obsidian/cache/
 .planning/.obsidian/plugins/*/data.json
+
+# Ephemeral runner written by scripts/check_gateway_boots.sh
+apps/api-gateway/.gateway-boot-check.cjs

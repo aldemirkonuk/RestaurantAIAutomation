@@ -8,14 +8,16 @@
  *
  * Outside development this now refuses to start rather than running forgeable.
  */
-export const INSECURE_DEFAULT_JWT_SECRET = "your-secret-key-change-in-production";
+export const INSECURE_DEFAULT_JWT_SECRET =
+  "your-secret-key-change-in-production";
 
 export function resolveJwtSecret(
   configured: string | undefined,
   nodeEnv: string | undefined = process.env.NODE_ENV,
 ): string {
   const isDev = nodeEnv !== "production";
-  if (configured && configured !== INSECURE_DEFAULT_JWT_SECRET) return configured;
+  if (configured && configured !== INSECURE_DEFAULT_JWT_SECRET)
+    return configured;
 
   if (!isDev) {
     throw new Error(

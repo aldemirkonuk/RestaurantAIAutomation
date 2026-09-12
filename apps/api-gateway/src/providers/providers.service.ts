@@ -1052,8 +1052,14 @@ export class ProvidersService {
       isPrimary: row.is_primary,
       // Numeric columns arrive as strings over PostgREST; Number() here keeps
       // the API contract numeric so callers do not compare "40.7" to 40.7.
-      latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
-      longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+      latitude:
+        row.latitude === null || row.latitude === undefined
+          ? null
+          : Number(row.latitude),
+      longitude:
+        row.longitude === null || row.longitude === undefined
+          ? null
+          : Number(row.longitude),
       geocodedAt: row.geocoded_at ?? null,
       geocodeSource: row.geocode_source ?? null,
       createdAt: row.created_at,
@@ -1112,8 +1118,14 @@ export class ProvidersService {
       type: row.type,
       address: row.address,
       isPrimary: row.is_primary,
-      latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
-      longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+      latitude:
+        row.latitude === null || row.latitude === undefined
+          ? null
+          : Number(row.latitude),
+      longitude:
+        row.longitude === null || row.longitude === undefined
+          ? null
+          : Number(row.longitude),
       geocodedAt: row.geocoded_at ?? null,
       geocodeSource: row.geocode_source ?? null,
     };
@@ -1170,8 +1182,14 @@ export class ProvidersService {
       type: row.type,
       address: row.address,
       isPrimary: row.is_primary,
-      latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
-      longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+      latitude:
+        row.latitude === null || row.latitude === undefined
+          ? null
+          : Number(row.latitude),
+      longitude:
+        row.longitude === null || row.longitude === undefined
+          ? null
+          : Number(row.longitude),
       geocodedAt: row.geocoded_at ?? null,
       geocodeSource: row.geocode_source ?? null,
     };
@@ -1233,8 +1251,14 @@ export class ProvidersService {
       if (typeof direct === "string" && direct) return direct;
       // Otherwise assemble whatever parts are present rather than dropping the
       // address entirely — a partial address is more useful than none.
-      const parts = [o.street, o.line2, o.city, o.state, o.postalCode, o.country]
-        .filter((p): p is string => typeof p === "string" && p.length > 0);
+      const parts = [
+        o.street,
+        o.line2,
+        o.city,
+        o.state,
+        o.postalCode,
+        o.country,
+      ].filter((p): p is string => typeof p === "string" && p.length > 0);
       return parts.length ? parts.join(", ") : undefined;
     }
     return undefined;

@@ -157,7 +157,10 @@ export class AuthService {
    * bypass-awareness of its own.
    */
   async devBypassLogin(): Promise<TokenPair> {
-    if (process.env.NODE_ENV === "production" || process.env.DEV_AUTH_BYPASS !== "true") {
+    if (
+      process.env.NODE_ENV === "production" ||
+      process.env.DEV_AUTH_BYPASS !== "true"
+    ) {
       throw new UnauthorizedException("Dev auth bypass is not enabled");
     }
     const email = process.env.DEV_AUTH_BYPASS_EMAIL;

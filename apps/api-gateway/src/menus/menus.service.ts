@@ -336,7 +336,9 @@ export class MenusService {
       }));
     } catch (err) {
       this.logger.error(`Library resolution failed for menu: ${err.message}`);
-      throw new Error(`Menu import failed during library resolution: ${err.message}`);
+      throw new Error(
+        `Menu import failed during library resolution: ${err.message}`,
+      );
     }
 
     // Unlinked items are the ones a manager has to fix by hand, so say how

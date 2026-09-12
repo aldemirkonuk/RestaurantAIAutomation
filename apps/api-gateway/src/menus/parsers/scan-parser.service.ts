@@ -408,7 +408,12 @@ export class ScanParserService {
 
   private detectMediaType(
     base64: string,
-  ): "image/jpeg" | "image/png" | "image/webp" | "image/gif" | "application/pdf" {
+  ):
+    | "image/jpeg"
+    | "image/png"
+    | "image/webp"
+    | "image/gif"
+    | "application/pdf" {
     if (base64.startsWith("JVBERi0")) return "application/pdf";
     if (base64.startsWith("/9j/")) return "image/jpeg";
     if (base64.startsWith("iVBORw")) return "image/png";
@@ -443,7 +448,8 @@ export class ScanParserService {
   private keepNamedItems(parsed: unknown[]): WineExtractItem[] {
     return parsed.filter(
       (item: unknown): item is WineExtractItem =>
-        typeof (item as any)?.name === "string" && (item as any).name.length > 0,
+        typeof (item as any)?.name === "string" &&
+        (item as any).name.length > 0,
     );
   }
 

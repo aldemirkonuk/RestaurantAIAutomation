@@ -114,7 +114,9 @@ describeIfDb("WineSubmissionsService against the real database", () => {
   it("creates the row as a provisional stub", async () => {
     const { data } = await supabase
       .from("master_wine_library")
-      .select("library_tier, primary_type, source, signature_hash, normalized_name")
+      .select(
+        "library_tier, primary_type, source, signature_hash, normalized_name",
+      )
       .eq("id", createdWineIds[0])
       .single();
 
@@ -132,11 +134,19 @@ describeIfDb("WineSubmissionsService against the real database", () => {
       // already exists from the tests above — must link, not duplicate
       { ...wine },
       // genuinely new
-      { name: `Batch Cuvee ${suffix}`, producer: `Domaine ${suffix}`, vintage: "2021" },
+      {
+        name: `Batch Cuvee ${suffix}`,
+        producer: `Domaine ${suffix}`,
+        vintage: "2021",
+      },
       // the same wine twice, which is what a by-the-glass / by-the-bottle
       // listing looks like. A naive bulk insert touches one conflict target
       // twice and the whole statement fails.
-      { name: `Batch Cuvee ${suffix}`, producer: `Domaine ${suffix}`, vintage: "2021" },
+      {
+        name: `Batch Cuvee ${suffix}`,
+        producer: `Domaine ${suffix}`,
+        vintage: "2021",
+      },
     ];
 
     const results = await service.resolveLibraryWinesBatch(batch);
@@ -204,8 +214,12 @@ describeIfDb("WineSubmissionsService against the real database", () => {
     // "Dom." is Domaine. Bare "Dom" is Dom Perignon and must survive intact —
     // expanding it would fabricate a producer that does not exist.
     expect(service.normalizeText("Dom. Mandeliere")).toBe("domaine mandeliere");
-    expect(service.normalizeText("Ch. Clerc Milon")).toBe("chateau clerc milon");
-    expect(service.normalizeText("Az. Agr. Gini")).toBe("azienda agricola gini");
+    expect(service.normalizeText("Ch. Clerc Milon")).toBe(
+      "chateau clerc milon",
+    );
+    expect(service.normalizeText("Az. Agr. Gini")).toBe(
+      "azienda agricola gini",
+    );
     expect(service.normalizeText("St. Helena")).toBe("saint helena");
     expect(service.normalizeText("Dom Perignon")).toBe("dom perignon");
   });

@@ -74,8 +74,7 @@ export class WineSubmissionsService {
    *
    * Parity with the SQL function is asserted in the spec, not assumed.
    */
-  private static readonly DIACRITICS =
-    /[̀-ͯ᪰-᫿᷀-᷿︠-︯^`¨¯´·¸ʰ-˿ʹ͵ͺ΄΅]/g;
+  private static readonly DIACRITICS = /[̀-ͯ᪰-᫿᷀-᷿︠-︯^`¨¯´·¸ʰ-˿ʹ͵ͺ΄΅]/g;
 
   /**
    * Trade abbreviations a menu prints, expanded to the word they stand for.
@@ -117,7 +116,6 @@ export class WineSubmissionsService {
     [/\bst\.\s*/g, "saint "],
     [/\bmt\.\s*/g, "monte "],
   ];
-
 
   /**
    * Public because it is the ONLY correct implementation.
@@ -302,7 +300,10 @@ export class WineSubmissionsService {
 
       const best = (candidates ?? [])[0];
 
-      if (best && best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE) {
+      if (
+        best &&
+        best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+      ) {
         await this.dbService.supabase
           .from("master_wine_library_submissions")
           .update({
@@ -468,7 +469,10 @@ export class WineSubmissionsService {
     }
 
     const best = (candidates ?? [])[0];
-    if (best && best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE) {
+    if (
+      best &&
+      best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+    ) {
       return {
         masterWineId: best.id,
         matched: true,
