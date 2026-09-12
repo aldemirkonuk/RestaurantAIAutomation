@@ -241,18 +241,35 @@ beforeEach(() => {
 
   (axios.get as jest.Mock).mockReset();
   (axios.get as jest.Mock).mockImplementation(async (url: string) => {
+    /*
+     * Routed on the PARSED host, never on a substring of the URL.
+     * `url.includes("graph.microsoft.com")` also matches
+     * `https://graph.microsoft.com.example.invalid/`, which is the shape
+     * CodeQL calls `js/incomplete-url-substring-sanitization` - and a fixture
+     * for a file about refusing tokens that were not minted for us has no
+     * business modelling a host check that way, even in a mock.
+     */
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(`unexpected axios.get in this fixture: ${url}`);
+    }
     // The PRE-FIX Microsoft path. Present so the probe run reaches the
     // behaviour under test rather than dying on an unmocked call: pre-fix,
     // Graph answers for any token at all, which is the defect.
-    if (url.includes("graph.microsoft.com")) {
+    if (parsed.hostname === "graph.microsoft.com") {
       return {
         data: { id: "attacker-oid", mail: VICTIM_EMAIL, displayName: "Owner" },
       };
     }
-    if (url.includes("oauth2.googleapis.com/tokeninfo")) {
+    if (
+      parsed.hostname === "oauth2.googleapis.com" &&
+      parsed.pathname.endsWith("/tokeninfo")
+    ) {
       return { data: googleTokenInfo };
     }
-    if (url.includes("discovery/v2.0/keys")) {
+    if (parsed.pathname.endsWith("/discovery/v2.0/keys")) {
       return { data: { keys: KEY_SET } };
     }
     throw new Error(`unexpected axios.get in this fixture: ${url}`);
