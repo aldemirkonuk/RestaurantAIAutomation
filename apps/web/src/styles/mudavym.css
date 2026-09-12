@@ -85,3 +85,87 @@
     color-scheme: dark;
   }
 }
+
+/* ============================================================
+   Native date and time controls carry the house ink
+   ============================================================
+
+   MEASURED 2026-09-04 in the live browser, /calendar's New-event sheet on the
+   charcoal ground: the date read `04.09.2026` in near-black on the near-black
+   panel. Sampling the capture's pixels put the digits at exactly
+   `rgb(31, 41, 55)` — `styles/globals.css`'s `#1f2937`, on a `rgb(29, 24, 19)`
+   ground. The input's own computed `color` was `rgb(243, 244, 246)` and looked
+   right, because the value is not drawn with it: Chromium draws it in the
+   `::-webkit-datetime-edit-*` shadow parts, and `globals.css:411-430` forces
+   THOSE to `#1f2937 !important` with no dark counterpart (its `.dark` block at
+   `:441-460` covers the input, never its shadow parts). So on a dark ground the
+   border, the background and the placeholder all turned, and the one thing a
+   manager actually reads did not.
+
+   It is fixed here, at the house level, rather than in each create sheet: the
+   fault was one missing rule reproduced identically in six components
+   (calendar `EventSheet`, team `ShiftSheet`, providers `TermsSection`,
+   settings `NotifySection` and `VendorTermsSection`, reports
+   `rp-registers-goals`), and a seventh sheet written tomorrow would have
+   inherited it too.
+
+   WHY `html` LEADS EVERY SELECTOR, AND WHY EVERY ONE CARRIES `[type]`. This is
+   a specificity fight, and the first attempt at it LOST — measured, not
+   assumed. globals.css's rules are `!important`, so only `!important` can
+   answer them, and then specificity decides. `.mudavym input[type="date"]`
+   (0,2,1) merely TIES `.dark input[type="date"]` (0,2,1) and loses on source
+   order, and `.mudavym input::-webkit-datetime-edit-year-field` (0,1,2) ties
+   the plain `input[type="date"]::-webkit-datetime-edit-year-field` the same
+   way. The leading `html` and the `[type]` on every part put these at (0,2,2)
+   and above, which wins outright. They still lose to any page that says
+   otherwise with its own `.mudavym`-scoped `!important`, which is the right
+   order of authority.
+
+   `color-scheme: inherit` rather than a literal: the ground above already
+   declares `light` or `dark`, and inheriting it means the picker indicator and
+   the dropped calendar turn with the page through BOTH routes into charcoal —
+   the app's `.dark` class and a surface's own `data-ground="charcoal"` — with
+   one rule instead of two that can drift apart. globals.css pins every input to
+   `color-scheme: light !important`, which is why the second route needs saying
+   at all. */
+
+html .mudavym input[type="date"],
+html .mudavym input[type="time"],
+html .mudavym input[type="datetime-local"],
+html .mudavym input[type="month"],
+html .mudavym input[type="week"] {
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+  background-color: var(--paper-0) !important;
+  color-scheme: inherit !important;
+}
+
+/* The value itself — the part globals.css leaves near-black on every ground. */
+html .mudavym input[type]::-webkit-datetime-edit,
+html .mudavym input[type]::-webkit-datetime-edit-fields-wrapper,
+html .mudavym input[type]::-webkit-datetime-edit-year-field,
+html .mudavym input[type]::-webkit-datetime-edit-month-field,
+html .mudavym input[type]::-webkit-datetime-edit-day-field,
+html .mudavym input[type]::-webkit-datetime-edit-hour-field,
+html .mudavym input[type]::-webkit-datetime-edit-minute-field,
+html .mudavym input[type]::-webkit-datetime-edit-second-field,
+html .mudavym input[type]::-webkit-datetime-edit-millisecond-field,
+html .mudavym input[type]::-webkit-datetime-edit-ampm-field {
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+}
+
+/* The separators between the fields sit back, the way a rule sits back. */
+html .mudavym input[type]::-webkit-datetime-edit-text {
+  color: var(--ink-3) !important;
+  -webkit-text-fill-color: var(--ink-3) !important;
+}
+
+/* NOTHING for `::-webkit-calendar-picker-indicator`, deliberately. The obvious
+   next rule is `filter: invert(1)` on the charcoal ground; it was written, and
+   the capture proved it WRONG — the glyph's 188 pixels were already
+   `rgb(255, 255, 255)` on charcoal and `rgb(0, 0, 0)` on paper, because
+   `color-scheme` above already turns the UA's own icon. Inverting it painted a
+   black calendar on a black field: the exact defect this block exists to fix,
+   re-created one line lower. It is left alone because it was measured, not
+   because nobody thought about it. */

@@ -281,3 +281,8 @@ insight scheduler's real-but-invisible daily sweep) and **Money has weight** (si
 $1,860 presses 4px deep against $212's 1.5px on the same `approveOrder` POST).
 
 | 087 wave 4 | parts: sig-d | canvas 145 · shortlist 47 |
+
+
+## The founder's curation, committed 2026-09-06
+
+`founder-curation.dc.html` is the founder's own Claude Design export of this canvas (136 demos in ten families — Signatures: the unafraid set · Openings · Closings · Entrances & reveals · State & feedback · Numbers & data · Navigation & structure · Product surfaces · System states · Small acts). It was referenced as the curation since 2026-08-30 but never tracked; it is the record now. Parts stay the source for `index.html`; this file is a view the founder edited, not a build input.

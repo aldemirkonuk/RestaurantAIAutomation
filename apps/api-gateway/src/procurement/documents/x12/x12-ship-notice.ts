@@ -231,7 +231,11 @@ export function parse856(
     poNumber: lines.find((l) => l.poNumber)?.poNumber ?? refs.PO ?? null,
     vendorName: el(seller, 2),
     vendorAccount: refs.VN ?? null,
-    currency: "USD",
+    // A ship notice carries NO money — every figure below is null by
+    // construction. `"USD"` here was a claim about a currency on a document
+    // that states no amount at all, and it reached `procurement_documents.
+    // currency` as a real value. Empty is the honest word (2026-09-06).
+    currency: "",
     subtotal: null,
     freight: null,
     fuelSurcharge: null,

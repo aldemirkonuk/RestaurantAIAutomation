@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>091 · Settings directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:900px;margin:0 auto;padding:26px 20px 70px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:32px;font-weight:600;letter-spacing:-.015em;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:6px 0 0}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:16px 0 22px}
+a.card{display:block;text-decoration:none;color:inherit;border-top:1px solid var(--paper-2);padding:16px 0}
+a.card:hover{background:var(--paper-1)}
+.n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:2px 0 0}
+p{font-size:12.5px;line-height:1.6;color:var(--ink-2);margin:6px 0 0;max-width:720px}
+.meta{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:8px}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 091 · settings directions · example data, not a tenant</div>
+<div class="wrap">
+  <div class="wordmark">Mudavym</div>
+  <h1>091 · Settings directions<span class="dot">.</span></h1>
+  <p class="lede">Two things the founder asked to see: the alternative the rebuild did not take, and the "there should be more" that has no home yet.</p>
+  <div class="dbl"></div>
+
+  <a class="card" href="single-page-scroll.html">
+    <span class="n">Direction A · the alternative</span>
+    <h2>Everything visible at once</h2>
+    <p>The founder's alternative 1, drawn. All eleven registers stacked on one scroll with a sticky contents rail, so the whole page can be scanned and searched with the browser's own find. The one rule that makes it survivable: <strong>?tab= is read on arrival and never written again</strong> — the legacy page's scrollspy rewrote it as you scrolled, which destroyed the deep link a second after you followed it. The shipped rebuild opens one register at a time instead; this is what the other choice looks like.</p>
+    <p class="meta">renders at 1440 · no server needed · all eleven registers populated</p>
+  </a>
+
+  <a class="card" href="vendor-terms.html">
+    <span class="n">Direction B · what is missing</span>
+    <h2>Vendor terms, approval thresholds, and the ledger</h2>
+    <p>DESIGN-FOUNDATION §6 says vendor terms "have no home at all", that approval policy is configuration everywhere else in the field, and that a settings ledger is the exponential idea. Three registers that do not exist, drawn with real shape: cutoffs and delivery days and minimums with <em>stated · inferred from N orders · em dash</em> on every single field; the thresholds the hold-to-approve ceremony has no policy for; and the change log that turns "changed · 3 days ago" into "changed · 3 days ago · by Selin Kara".</p>
+    <p class="meta">renders at 1440 · no server needed · five vendors · nine ledger entries</p>
+  </a>
+</div>
+</body>
+</html>

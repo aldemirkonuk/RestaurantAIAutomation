@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import { ConflictException, NotFoundException } from "@nestjs/common";
 import { ScheduleService } from "./schedule.service";
 import { TeamService } from "./team.service";
@@ -74,11 +76,15 @@ function seed(): StubDb {
   });
 }
 
+/** The inbox funnel of the service built by the last `service()` call. */
+let lastNotifications: { persistForRestaurant: jest.Mock };
+
 function service(db: StubDb): ScheduleService {
   const team = new TeamService(asDatabaseService(db));
   const notifications = {
     persistForRestaurant: jest.fn(async () => ({ inserted: 0 })),
   } as any;
+  lastNotifications = notifications;
   const push = { sendToUsers: jest.fn(async () => undefined) } as any;
   return new ScheduleService(asDatabaseService(db), team, notifications, push);
 }
@@ -428,5 +434,47 @@ describe("ScheduleService — T7: destruction is in the contract, not a side eff
     const res: any = await service(db).publish(MANAGER, RID, "s1", {} as any);
     expect(res.receiptsCleared).toBe(0);
     expect(res.schedule.status).toBe("published");
+  });
+});
+
+/**
+ * T8 — the house's own voice carries no emoji into a stored row.
+ *
+ * Both of these titles used to be prefixed ("[calendar] Schedule published",
+ * "[siren] Shift call-out — cover needed"). A picture written into a
+ * `notifications` row is permanent, unstylable and restates nothing the row
+ * does not already carry in `priority` and `type`; the inbox draws the
+ * register's mark itself. See `notifications/notification-text-is-plain.spec.ts`
+ * for the rule and its scan.
+ */
+describe("ScheduleService — T8: no emoji reaches the inbox", () => {
+  const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+
+  it("publishes a schedule under a plain title that still says what happened", async () => {
+    const db = seed();
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status: "draft",
+      published_at: null,
+    });
+
+    await service(db).publish(MANAGER, RID, "s1", {} as any);
+
+    const payload = lastNotifications.persistForRestaurant.mock.calls[0][1];
+    expect(payload.title).toBe("Schedule published");
+    expect(payload.title).not.toMatch(EMOJI);
+    expect(payload.message).not.toMatch(EMOJI);
+  });
+
+  it("keeps the call-out's urgency in `priority`, not in a picture", async () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, "schedule.service.ts"),
+      "utf8",
+    );
+    // The urgency the siren emoji used to carry is carried by the row's own priority.
+    expect(src).toContain('title: "Shift call-out — cover needed"');
+    expect(src).toContain('priority: "critical"');
   });
 });

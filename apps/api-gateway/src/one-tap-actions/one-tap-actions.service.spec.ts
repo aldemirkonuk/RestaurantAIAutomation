@@ -64,9 +64,32 @@ const ACTION = {
 
 const ws = { emitRestaurantNotification: () => {}, server: null } as any;
 
+/**
+ * The two dependencies the first real workflow added (2026-09-05). Both THROW
+ * if this suite ever reaches them: every case here is about tenancy, and a
+ * tenancy test that silently booked a delivery or minted a seal would be
+ * testing the opposite of what it claims.
+ */
+const procurement = {
+  markDelivered: () => {
+    throw new Error("markDelivered must not be reached by a tenancy test");
+  },
+} as any;
+const seals = {
+  issue: () => {
+    throw new Error("a seal must not be issued by a tenancy test");
+  },
+  redeem: () => {
+    throw new Error("a seal must not be redeemed by a tenancy test");
+  },
+} as any;
+
 function svc(row: Record<string, unknown> | null) {
   const { db, captured } = makeDb(row);
-  return { service: new OneTapActionsService(db, ws), captured };
+  return {
+    service: new OneTapActionsService(db, ws, procurement, seals),
+    captured,
+  };
 }
 
 describe("one-tap actions tenancy", () => {

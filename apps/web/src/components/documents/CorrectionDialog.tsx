@@ -24,9 +24,20 @@
  * here — the correction an extraction that invented a figure needs — and it is
  * deliberately reachable rather than requiring an empty string that would be
  * stored as one.
+ *
+ * THE SUBMIT IS A HOLD, AND THE SEAL IS MINTED WHEN IT BEGINS (founder,
+ * 2026-09-11, batch 69: *"Seal corrections and fields/verify too"*). A
+ * correction appends revision n+1 carrying the whole corrected document to a
+ * pair of tables that refuse UPDATE and DELETE by trigger, so it cannot be taken
+ * back — and the gateway now refuses it without a redeemed seal. The value the
+ * hold was begun over is CAPTURED at that moment and is what gets sent, so the
+ * thing sealed and the thing written are the same by construction rather than by
+ * timing: the keyboard path arms on Enter and commits on a second Enter up to
+ * three seconds later, and a person can type in between.
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { HoldToApprove } from '../mudavym/HoldToApprove'
 import { MONO, SERIF } from './canonical-format'
 
 /**
@@ -63,7 +74,17 @@ export interface CorrectionDialogProps {
   error?: string | null
   busy?: boolean
   onCancel: () => void
-  onSubmit: (value: unknown, reason: string) => void
+  /**
+   * Mint the seal for THIS correction, at the moment the hold begins.
+   *
+   * It takes the value because the seal is taken over the correction about to be
+   * made, not over the field in general. If it resolves null or throws, the hold
+   * does not approve and nothing is sent — `HoldToApprove` says so in its own
+   * words. Absent = no seal is minted and the gateway's refusal is what the
+   * person reads, which is the honest outcome rather than a silent unsealed post.
+   */
+  onChallenge?: (value: unknown) => Promise<string | null>
+  onSubmit: (value: unknown, reason: string, challenge?: string | null) => void
 }
 
 export function CorrectionDialog({
@@ -73,6 +94,7 @@ export function CorrectionDialog({
   error,
   busy,
   onCancel,
+  onChallenge,
   onSubmit,
 }: CorrectionDialogProps) {
   const current = envelope?.value ?? null
@@ -84,23 +106,44 @@ export function CorrectionDialog({
   const [reason, setReason] = useState('')
   const [clearIt, setClearIt] = useState(false)
   const first = useRef<HTMLInputElement>(null)
+  /**
+   * The value the HOLD was begun over.
+   *
+   * Read once when the gesture starts and sent unchanged when it completes, so
+   * what the seal was minted over and what is posted are the same object. The
+   * two moments are genuinely apart — the keyboard path arms on Enter and
+   * commits on a second Enter up to three seconds later — and re-reading the
+   * input at the write would mean sealing one figure and writing another.
+   */
+  const held = useRef<unknown>(null)
 
   useEffect(() => {
     first.current?.focus()
   }, [])
 
-  const submit = () => {
-    if (clearIt) return onSubmit(null, reason)
+  /**
+   * What would be sent, or why it cannot be read.
+   *
+   * A number the browser cannot read is NOT sent as 0 — the gateway would take
+   * it, and a silent zero on a price is the most expensive kind of wrong there
+   * is. It used to be a submit handler that returned and did nothing, which is a
+   * button that looks alive and is not; behind a hold it disables the control
+   * and says why instead.
+   */
+  const reading = (): { ok: true; value: unknown } | { ok: false; why: string } => {
+    if (clearIt) return { ok: true, value: null }
     if (numeric) {
       const n = Number(text.replace(',', '.'))
-      // A number the browser cannot read is NOT sent as 0. The gateway would
-      // take it, and a silent zero on a price is the most expensive kind of
-      // wrong there is.
-      if (text.trim() === '' || !Number.isFinite(n)) return
-      return onSubmit(n, reason)
+      if (text.trim() === '')
+        return { ok: false, why: 'Type the figure the paper prints, or tick "states nothing here".' }
+      if (!Number.isFinite(n))
+        return { ok: false, why: `“${text}” is not a number this field can take.` }
+      return { ok: true, value: n }
     }
-    onSubmit(text, reason)
+    return { ok: true, value: text }
   }
+
+  const read = reading()
 
   return (
     <div
@@ -240,10 +283,51 @@ export function CorrectionDialog({
 
         <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--ink-3, #7C7365)' }}>
           This does not edit the document. It appends a new revision and keeps what was
-          there before, permanently.
+          there before, permanently — which is why it takes a hold rather than a click.
         </p>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+        {!read.ok && (
+          <p
+            data-testid="correction-unreadable"
+            style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}
+          >
+            {read.why}
+          </p>
+        )}
+
+        <div style={{ marginTop: 10 }} data-testid="correction-submit">
+          <HoldToApprove
+            label={
+              read.ok
+                ? `Hold to seal this correction to ${label}`
+                : 'Type a value this field can take'
+            }
+            approvedLabel={busy ? 'Recording…' : 'Correction sealed'}
+            disabled={!!busy || !read.ok}
+            onChallenge={
+              onChallenge
+                ? () => {
+                    const now = reading()
+                    if (!now.ok) return Promise.resolve(null)
+                    held.current = now.value
+                    return onChallenge(now.value)
+                  }
+                : undefined
+            }
+            onApprove={(challenge) =>
+              onSubmit(
+                // The value the hold was begun over when a seal was minted;
+                // otherwise whatever the form reads now, which is the unsealed
+                // path the gateway refuses in words.
+                onChallenge ? held.current : (reading() as { value: unknown }).value,
+                reason,
+                challenge,
+              )
+            }
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <button
             type="button"
             onClick={onCancel}
@@ -259,25 +343,6 @@ export function CorrectionDialog({
             }}
           >
             Cancel
-          </button>
-          <button
-            type="button"
-            data-testid="correction-submit"
-            onClick={submit}
-            disabled={busy}
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              padding: '5px 11px',
-              borderRadius: 8,
-              border: 0,
-              background: 'var(--seal, #1A5E6B)',
-              color: '#FFFDF8',
-              cursor: busy ? 'wait' : 'pointer',
-              opacity: busy ? 0.7 : 1,
-            }}
-          >
-            {busy ? 'Recording…' : 'Record the correction'}
           </button>
         </div>
       </div>

@@ -7,9 +7,24 @@ import {
   stripJsonFence,
 } from "./document-extractor.service";
 import { normalizeUom, SourceChannel, toBottles } from "./document-types";
+import {
+  applyCurrencyRules,
+  planRefile,
+  refilingSentence,
+  type DocumentMoney,
+  type RefilePlan,
+  type RefileSource,
+} from "./invoice-currency";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
+// A pure reader, no Nest dependency and no network: the 832 the document door
+// stores and the 832 `distributor-feed` prices are read by ONE parser, so a
+// catalogue cannot be classified one way here and another way there.
+import {
+  looksLikeEdi832,
+  readEdi832Header,
+} from "../../distributor-feed/parse-edi832";
 import { runWithNewCorrelationId } from "../../common/model-client/correlation";
 import {
   CanonicalDocumentService,
@@ -615,6 +630,17 @@ export class DocumentIntakeService {
    * the letters "ISA" somewhere). A PDF coerced through the EDI parser comes back
    * as a document with no lines and no total, which reads downstream as a vendor
    * who billed nothing rather than as a routing mistake.
+   *
+   * THE 832 IS ASKED ABOUT FIRST, AND IT IS NOT AN INVOICE (ADR 0126, batch 56).
+   * `looksLikeX12`'s `ST` alternation is `8[015][0-9]|997`, so a bare `ST*832`
+   * is not recognised at all, and an 832 inside an ISA envelope reaches
+   * `parseX12`'s `default` branch and comes back as "an unsupported set" — a
+   * house's real price catalogue stored as an unreadable document. It is a
+   * `price_list`, one of the twelve doc types this spine already admits, and it
+   * is stored as one. Its PRICES are a separate act with a separate failure
+   * mode: they are admitted only under the code meanings a manager of the house
+   * has stated (`distributor-feed/catalog-ingest.service.ts`), which is why
+   * this method reads the header and stops rather than returning lines.
    */
   private async route(
     input: IntakeInput,
@@ -622,13 +648,42 @@ export class DocumentIntakeService {
   ): Promise<ParsedDocument> {
     const mime = (input.mimeType || "").toLowerCase();
     const name = (input.filename || "").toLowerCase();
-    const isEdiName = /\.(edi|x12|810|856|812|txt|dat)$/.test(name);
+    const isEdiName = /\.(edi|x12|810|832|856|812|txt|dat)$/.test(name);
+
+    // What this HOUSE says its money is, read once for whichever parser runs.
+    // Founder, 2026-09-06: an 810 with no CUR takes the house's own currency.
+    // A read that FAILS is not an absent currency, and `houseCurrency` says
+    // which of the two it got (ADR 0067).
+    const house = await this.houseCurrency(input.restaurantId);
+    // B3 (founder, 2026-09-06 batch 65): the currency of the order this document
+    // is being filed against. Read here, beside the house's, so the EDI path and
+    // the model path get the same input and cannot answer differently.
+    const order = await this.matchedOrderCurrency(
+      input.restaurantId,
+      input.orderId,
+    );
 
     if (mime.startsWith("text/") || isEdiName || input.text != null) {
       const text = bytes.toString("utf8");
+      if (looksLikeEdi832(text)) return this.priceCatalogue(text);
       if (looksLikeX12(text)) {
-        const result = parseX12(text);
-        if (result.documents.length) return result.documents[0];
+        const result = parseX12(text, {
+          houseCurrency: house.code,
+          orderCurrency: order.code,
+          hasMatchedOrder: order.matched,
+          orderLabel: order.label,
+        });
+        if (result.documents.length) {
+          const failures = [house.failure, order.failure].filter(
+            (f): f is string => typeof f === "string",
+          );
+          return failures.length
+            ? {
+                ...result.documents[0],
+                warnings: [...result.documents[0].warnings, ...failures],
+              }
+            : result.documents[0];
+        }
         // Recognised as EDI but produced nothing usable — a 997 or an
         // unsupported set. Say so rather than silently returning an empty invoice.
         return this.unreadable(
@@ -645,11 +700,35 @@ export class DocumentIntakeService {
       );
 
     try {
-      return await this.extractor.extract(
+      const extracted = await this.extractor.extract(
         bytes.toString("base64"),
         input.mimeType,
         input.restaurantId,
       );
+      /*
+       * Rules 1 and 2, on the model path (founder, 2026-09-06).
+       *
+       * The SAME function the 810 runs, for the reason `ParsedDocument`'s
+       * header gives: a verdict that depends on the channel makes "we
+       * photographed it" and "they sent it electronically" produce different
+       * answers about one delivery. What differs is only the input — a
+       * photographed invoice has a `currencySeen` because a model read the
+       * page, and an 810 never does.
+       */
+      const ruled = applyCurrencyRules({
+        doc: extracted,
+        houseCurrency: house.code,
+        orderCurrency: order.code,
+        hasMatchedOrder: order.matched,
+        orderLabel: order.label,
+        fileField: "printed currency",
+      });
+      const failures = [house.failure, order.failure].filter(
+        (f): f is string => typeof f === "string",
+      );
+      return failures.length
+        ? { ...ruled, warnings: [...ruled.warnings, ...failures] }
+        : ruled;
     } catch (err: any) {
       /**
        * ADR 0104 D6 — "when extraction runs and FAILS, the template degrades to
@@ -680,6 +759,187 @@ export class DocumentIntakeService {
     }
   }
 
+  /**
+   * What currency this HOUSE says it reports in, and whether we could ask.
+   *
+   * `restaurants.currency` carries no default since
+   * `20260905120000_a_house_names_its_money.sql`, so NULL is a real and common
+   * state: it means the question has not been answered, and every reader must
+   * say "currency not recorded" rather than print a dollar sign.
+   *
+   * A FAILED READ IS NEVER AN EMPTY ONE (ADR 0067). supabase-js resolves
+   * `{ data, error }` and never throws, so a dead connection and a house that
+   * has stated nothing arrive here identically unless the error is looked at.
+   * They are not the same: the first must not be allowed to REFUSE an invoice's
+   * money on the strength of an answer nobody actually got. So a failed read
+   * returns `code: null` AND a sentence, and the sentence travels onto the
+   * document's warnings — the refusal that follows then says, in the document's
+   * own notes, that it may be a failure rather than a fact.
+   */
+  private async houseCurrency(
+    restaurantId: string,
+  ): Promise<{ code: string | null; failure: string | null }> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("restaurants")
+      .select("currency")
+      .eq("id", restaurantId)
+      .maybeSingle();
+
+    if (error) {
+      const failure =
+        `This house's own currency could not be read (${error.message}), so ` +
+        `a document that states none had nothing to fall back to. That is a ` +
+        `FAILED READ, not a house without a currency — re-upload once the ` +
+        `read works, or name the currency on the document.`;
+      this.logger.warn(`houseCurrency: ${failure}`);
+      return { code: null, failure };
+    }
+
+    const code = (data as { currency?: string | null } | null)?.currency ?? null;
+    return { code, failure: null };
+  }
+
+  /**
+   * B3 — the currency of the ORDER this document is being filed against, and
+   * whether there is an order at all.
+   *
+   * THE THREE OUTCOMES ARE ALL DIFFERENT AND ALL SAID OUT LOUD:
+   *   * `{ matched: false }` — no order was named on the intake. The house's
+   *     currency is then the next rung and the filed-from sentence says so.
+   *   * `{ matched: true, code: null }` — an order, which named no currency.
+   *     Also falls to the house, with a different sentence, because a person who
+   *     sees "the order it is matched to names no currency" knows where to fix
+   *     it and a person who sees "matched to no order" does not.
+   *   * `{ matched: true, code: "EUR" }` — the rung answers.
+   *
+   * A FAILED READ IS NEVER AN EMPTY ONE (ADR 0067), and here it is worse than
+   * usual: an outage that read as "the order names no currency" would let an
+   * invoice be filed under the HOUSE's currency when the order it belongs to
+   * says otherwise — silently converting a EUR purchase into a TRY one on the
+   * price ladder. So the failure returns `matched: false, code: null` and a
+   * sentence that travels onto the document's warnings.
+   *
+   * ONLY THE ORDER NAMED ON THE INTAKE IS READ. A document that is linked to an
+   * order LATER (by the auto-matcher, or by a person on the receipts screen) was
+   * already filed by then, and re-filing it is the restatement act, not this
+   * one. That is a real limit and it is stated in the page notes rather than
+   * papered over.
+   */
+  private async matchedOrderCurrency(
+    restaurantId: string,
+    orderId: string | null | undefined,
+  ): Promise<{
+    code: string | null;
+    matched: boolean;
+    label: string | null;
+    failure: string | null;
+  }> {
+    if (!orderId)
+      return { code: null, matched: false, label: null, failure: null };
+
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_orders")
+      .select("order_number, currency")
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+
+    if (error) {
+      const failure =
+        `The order this document was filed against could not be read ` +
+        `(${error.message}), so its currency was NOT used. That is a FAILED ` +
+        `READ, not an order without a currency: if this invoice states no ` +
+        `currency of its own it has been filed under this house's, which may ` +
+        `not be what the order was placed in. Check it, and restate the ` +
+        `currency if it is wrong.`;
+      this.logger.warn(`matchedOrderCurrency: ${failure}`);
+      return { code: null, matched: false, label: null, failure };
+    }
+
+    const row = data as {
+      order_number?: string | null;
+      currency?: string | null;
+    } | null;
+    // A document naming an order that does not belong to this house is not
+    // matched to anything this rule may read.
+    if (!row) return { code: null, matched: false, label: null, failure: null };
+
+    return {
+      code: row.currency ?? null,
+      matched: true,
+      label: row.order_number ?? null,
+      failure: null,
+    };
+  }
+
+  /**
+   * An EDI 832 price/sales catalogue, as a stored document.
+   *
+   * IT CARRIES NO LINES ON PURPOSE, and the warning says so. A `price_list`
+   * document's lines would be prices, and a price this house may see is one
+   * admitted under a code meaning a manager of the house has stated — a
+   * judgement `procurement_document_lines` has no column for and this parser
+   * has no standing to make. So the document records what the catalogue says
+   * about ITSELF (its number, its version, its sender, its currency, its
+   * effective date, how many lines it holds) and the prices are admitted
+   * separately, where the refusals can be named one by one.
+   *
+   * `currency` falls back to the empty string rather than "USD" when the file
+   * states none: `own-paper-sighting.ts`'s `?? "USD"` is the measured defect
+   * that stamps every Turkish and British sighting as dollars (ADR 0117), and a
+   * catalogue is exactly the document that would spread it. The warning names
+   * the absence.
+   */
+  private priceCatalogue(text: string): ParsedDocument {
+    const header = readEdi832Header(text);
+    const warnings = [
+      `This is an EDI 832 price/sales catalogue, not an invoice. It is stored as a price list and NOTHING on it has been priced by storing it: ${header.lineCount} catalogue ${header.lineCount === 1 ? "line was" : "lines were"} read, and each one is admitted to this house's price register only under a price code a manager of this house has stated the meaning of (ADR 0126).`,
+    ];
+    if (!header.currency)
+      warnings.push(
+        // A CUR02 that names no currency is not "no CUR" (2026-09-11, audit of
+        // b6d2e4b4): saying the file states none would be a false sentence
+        // about a file that states ZZZ.
+        header.currencyAsPrinted
+          ? `The catalogue's CUR segment states ${header.currencyAsPrinted}, which names no currency, so no currency was filed for it. Nothing was assumed and there is deliberately no USD default here; every line will be refused until the file is sent again with a real currency.`
+          : "The catalogue states no CUR currency segment. No currency was assumed — there is deliberately no USD default here — so every line will be refused until one is declared with the file.",
+      );
+    if (!header.catalogNumber)
+      warnings.push(
+        "The catalogue states no BCT02 number, so it cannot be told apart from another edition by its own header.",
+      );
+    return {
+      docType: "price_list",
+      docNumber: header.catalogNumber,
+      docDate: header.effectiveDate,
+      referencesDocNumber: null,
+      poNumber: null,
+      vendorName: header.senderName,
+      vendorAccount: null,
+      currency: header.currency ?? "",
+      subtotal: null,
+      freight: null,
+      fuelSurcharge: null,
+      splitCaseFee: null,
+      deliveryFee: null,
+      depositTotal: null,
+      tax: null,
+      otherCharges: null,
+      discountTotal: null,
+      total: null,
+      lines: [],
+      computedLinesTotal: null,
+      tieOutDelta: null,
+      tiesOut: null,
+      // Low, and it is about the PARSE, not the file: everything below the
+      // header was deliberately left unread here.
+      confidence: 0.4,
+      warnings,
+    };
+  }
+
   private unreadable(reason: string): ParsedDocument {
     return {
       docType: "unknown",
@@ -689,7 +949,11 @@ export class DocumentIntakeService {
       poNumber: null,
       vendorName: null,
       vendorAccount: null,
-      currency: "USD",
+      // A document nobody could read states no currency, and it never states
+      // dollars. This was the literal `"USD"` until 2026-09-06 — an unread
+      // file asserting a currency is a claim about a vendor made by a parser
+      // that read nothing at all.
+      currency: "",
       subtotal: null,
       freight: null,
       fuelSurcharge: null,
@@ -787,7 +1051,14 @@ export class DocumentIntakeService {
         // that was the defect.
         extraction_model: parsed.extractionModel ?? null,
         event_id: parsed.eventId ?? null,
-        currency: parsed.currency,
+        // NULL, not `''` and never `'USD'`, when the money was refused or held
+        // (founder, 2026-09-06; `invoice-currency.ts`). NULL is the state
+        // `restaurants.currency` and `price_history.currency` already use for
+        // "not recorded" and the one `formatMoney` renders as the sentence
+        // rather than a symbol. An explicit null in the payload overrides the
+        // column's `DEFAULT 'USD'`, which only applies to an OMITTED column —
+        // omitting it here would put the defect straight back.
+        currency: parsed.currency || null,
         subtotal: parsed.subtotal,
         freight: parsed.freight,
         fuel_surcharge: parsed.fuelSurcharge,
@@ -840,7 +1111,7 @@ export class DocumentIntakeService {
           extraction_confidence: parsed.confidence,
           extraction_model: parsed.extractionModel ?? null,
           event_id: parsed.eventId ?? null,
-          currency: parsed.currency,
+          currency: parsed.currency || null,
           subtotal: parsed.subtotal,
           freight: parsed.freight,
           fuel_surcharge: parsed.fuelSurcharge,
@@ -1274,7 +1545,7 @@ export class DocumentIntakeService {
         // extraction this gateway did not perform must never be attributable to
         // the model it would have used.
         extraction_model: model,
-        currency: parsed.currency,
+        currency: parsed.currency || null,
         subtotal: parsed.subtotal,
         freight: parsed.freight,
         fuel_surcharge: parsed.fuelSurcharge,
@@ -1886,6 +2157,265 @@ export class DocumentIntakeService {
     if (ingested)
       this.logger.log(`document backfill ingested ${ingested} attachment(s)`);
     return ingested;
+  }
+
+  /**
+   * WHAT a currency restatement would put back, and from WHERE — read only,
+   * nothing written.
+   *
+   * Exists because `documents.controller.ts` writes the append-only audit row
+   * BEFORE the change lands, and that row has to record what the re-filing was
+   * about to move and which reading it came from. Computing it here rather than
+   * on the controller keeps one implementation of the question; the controller
+   * would otherwise have to read the line table itself and decide the same
+   * thing a second way.
+   *
+   * A FAILED READ IS NEVER AN EMPTY ONE (ADR 0067). `supabase-js` resolves
+   * `{ data, error }` and never throws, so without the explicit `error` checks
+   * an outage would arrive here as "this document has no lines" — which is
+   * precisely the state that selects the withheld snapshot, and would therefore
+   * turn a database blip into a silent revert of a manager's corrections.
+   */
+  async planRefileForCurrency(
+    documentId: string,
+    restaurantId: string,
+  ): Promise<{
+    plan: RefilePlan | null;
+    previousTotal: number | null;
+    previousCurrency: string | null;
+  }> {
+    const client = this.db.getClient();
+
+    const { data: doc, error: readError } = await client
+      .from("procurement_documents")
+      .select(
+        "id, currency, extracted, subtotal, freight, fuel_surcharge, split_case_fee, delivery_fee, deposit_total, tax, other_charges, discount_total, total",
+      )
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (readError) throw new Error(`REFILE_READ_FAILED:${readError.message}`);
+    if (!doc) throw new Error("NOT_FOUND");
+
+    /*
+     * THE LINES AS THEY STAND, which is the whole of BLOCKER 2.
+     *
+     * The previous version re-derived every figure from
+     * `procurement_documents.extracted` — the parse as it was at INTAKE, which
+     * `editLine` never updates. A manager who corrected a line's price and then
+     * restated the currency had their correction silently overwritten with the
+     * original AI reading. These rows are what `editLine` writes, so they are
+     * what a re-filing carries across.
+     *
+     * `line_kind` and `price_base_qty` have no columns on this table, so the
+     * tie-out recompute sees exactly what `editLine`'s own recompute sees. The
+     * two paths agree by construction.
+     */
+    const { data: lines, error: linesError } = await client
+      .from("procurement_document_lines")
+      .select("line_no, qty, uom, pack_size, unit_price, line_total, allowance, deposit")
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .order("line_no", { ascending: true });
+    if (linesError) throw new Error(`REFILE_READ_FAILED:${linesError.message}`);
+
+    const row = doc as Record<string, unknown>;
+    return {
+      plan: planRefile({
+        row: {
+          subtotal: row.subtotal,
+          freight: row.freight,
+          fuel_surcharge: row.fuel_surcharge,
+          split_case_fee: row.split_case_fee,
+          delivery_fee: row.delivery_fee,
+          deposit_total: row.deposit_total,
+          tax: row.tax,
+          other_charges: row.other_charges,
+          discount_total: row.discount_total,
+          total: row.total,
+        },
+        lines: lines ?? [],
+        extracted: row.extracted,
+      }),
+      previousTotal: typeof row.total === "number" ? row.total : null,
+      previousCurrency:
+        typeof row.currency === "string" && row.currency.trim() !== ""
+          ? row.currency
+          : null,
+    };
+  }
+
+  /**
+   * Re-file a document's MONEY after a person has restated its currency.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THIS LIVES HERE AND NOT ON THE CONTROLLER
+   * ---------------------------------------------------------------------------
+   * `computed_lines_total`, `tie_out_delta` and `ties_out` are the MACHINE'S OWN
+   * PROPOSAL about a document, and ADR 0059's rule is that a proposal is written
+   * by the thing that proposed it — a human's answer is APPENDED, never
+   * substituted. `scripts/check_proposal_preservation.py` names this file as
+   * their declared writer and it FAILED the first version of the currency
+   * restatement, which wrote all three from `documents.controller.ts:820-822`.
+   *
+   * That failure was not a technicality. A controller computing a tie-out is a
+   * second implementation of the arithmetic every other path runs through
+   * `applyTieOut`, and the moment the two disagree the screen shows one verdict
+   * while the review queue sorts on another. The restatement is a HUMAN act
+   * (who, when, previous value — `procurement_document_currency_changes`); the
+   * arithmetic that follows it is the machine's, and it is re-derived here,
+   * through the same `applyTieOut` intake and `editLine` already use.
+   *
+   * ---------------------------------------------------------------------------
+   * WHERE THE FIGURES COME FROM — CORRECTED 2026-09-06
+   * ---------------------------------------------------------------------------
+   * From the document AS IT STANDS: its money columns and its current lines.
+   * Every amount is carried across exactly as it is, corrections included.
+   * **NOTHING IS CONVERTED.** There is no exchange rate anywhere in this system
+   * and inventing one would be inventing the answer
+   * (`20260905120000_a_house_names_its_money.sql`, rule 3). Only what the
+   * figures are denominated in has moved.
+   *
+   * The withheld snapshot (`extracted.moneyWithheld`) is used for each PART
+   * of the document whose money is not on the row: the header when the row's
+   * header columns are all null, and each line whose own money columns are
+   * (per part since 2026-09-11, per line since 2026-09-06). It was this
+   * method's only source until 2026-09-06, and it was wrong: `extracted` is
+   * written at intake and `editLine` never touches it, so restating the
+   * currency of a hand-corrected document put the original AI reading back and
+   * announced it as a re-filing. `planRefile`'s header carries the proof.
+   *
+   * It does NOT write `currency`, and it does not write the audit row. Those are
+   * the caller's: the currency is the person's answer and the log is the record
+   * of them giving it, and both must already have landed before this runs.
+   *
+   * `snapshotReadable: false` is returned rather than thrown, and NOTHING is
+   * written in that case. A document with no figures on its rows and no
+   * recoverable reading is left labelled and unpriced, which is honest; writing
+   * nulls instead would ERASE figures a document already carried, on an act
+   * that was only meant to re-label them.
+   */
+  async refileMoneyForCurrency(
+    documentId: string,
+    restaurantId: string,
+    currency: string,
+  ): Promise<{
+    snapshotReadable: boolean;
+    /** Which reading the figures came from, or `null` when nothing was written. */
+    source: RefileSource | null;
+    sentence: string;
+    document: DocumentMoney | null;
+    lineCount: number;
+    pricedLines: number;
+    linesRefiled: number;
+    lineFailures: string[];
+  }> {
+    const { plan, previousTotal } = await this.planRefileForCurrency(
+      documentId,
+      restaurantId,
+    );
+
+    if (!plan)
+      return {
+        snapshotReadable: false,
+        source: null,
+        sentence:
+          `The money could NOT be re-filed: this document carries no figures ` +
+          `on its own rows and no withheld reading to recover, so there is ` +
+          `nothing to put back. The currency now says ${currency} and the ` +
+          `figures are unchanged — nothing was erased, and nothing was ` +
+          `invented. Upload the document again to price it.`,
+        document: null,
+        lineCount: 0,
+        pricedLines: 0,
+        linesRefiled: 0,
+        lineFailures: [],
+      };
+
+    const pricedLines = plan.lines.filter(
+      (l) => l.unit_price != null || l.line_total != null,
+    ).length;
+
+    const sentence =
+      refilingSentence({
+        previous: null,
+        next: currency,
+        // WHAT was put back and WHAT was kept, part by part (2026-09-11, audit
+        // of b6d2e4b4). This passed `wasHeld: plan.source !== "current_rows"`,
+        // one bit, so a mixed document was told "the vendor's own figures were
+        // put back" while a corrected line had been kept and the header had
+        // been lost: a write the act did not make. The plan now names the
+        // header's source and every line's, and the sentence repeats exactly
+        // that.
+        provenance: plan.provenance,
+        documentTotal: plan.document.total,
+        lineCount: plan.lines.length,
+        pricedLines,
+      }) + ` The figures came from ${plan.sourceSaid}.`;
+
+    // Inline literal, never a spread: `check_order_capture_contract.py` can
+    // only read a write whose column names are literal, and a payload it
+    // cannot read is a payload it cannot check for a column the table does
+    // not have.
+    const { error: moneyError } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .update({
+        subtotal: plan.document.subtotal,
+        freight: plan.document.freight,
+        fuel_surcharge: plan.document.fuel_surcharge,
+        split_case_fee: plan.document.split_case_fee,
+        delivery_fee: plan.document.delivery_fee,
+        deposit_total: plan.document.deposit_total,
+        tax: plan.document.tax,
+        other_charges: plan.document.other_charges,
+        discount_total: plan.document.discount_total,
+        total: plan.document.total,
+        computed_lines_total: plan.document.computed_lines_total,
+        tie_out_delta: plan.document.tie_out_delta,
+        ties_out: plan.document.ties_out,
+      })
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (moneyError) throw new Error(`REFILE_WRITE_FAILED:${moneyError.message}`);
+
+    // The lines carry their own money and it was withheld with the header's.
+    // Written one at a time and each failure NAMED: a partial re-filing
+    // reported as a success would leave a document priced in the header and
+    // blank in the body, which reads as a vendor who billed a total for
+    // nothing.
+    const lineFailures: string[] = [];
+    for (const l of plan.lines) {
+      const { error } = await this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .update({
+          unit_price: l.unit_price,
+          line_total: l.line_total,
+          allowance: l.allowance,
+          deposit: l.deposit,
+        })
+        .eq("document_id", documentId)
+        .eq("restaurant_id", restaurantId)
+        .eq("line_no", l.line_no);
+      if (error) lineFailures.push(`line ${l.line_no}: ${error.message}`);
+    }
+
+    // `previousTotal` is read but deliberately not compared: a restatement that
+    // changes no figure is still a restatement, and "the total is the same"
+    // says nothing about the twelve lines under it.
+    void previousTotal;
+
+    return {
+      snapshotReadable: true,
+      source: plan.source,
+      sentence,
+      document: plan.document,
+      lineCount: plan.lines.length,
+      pricedLines,
+      linesRefiled: plan.lines.length - lineFailures.length,
+      lineFailures,
+    };
   }
 
   /**

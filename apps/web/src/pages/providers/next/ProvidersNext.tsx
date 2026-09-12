@@ -17,13 +17,29 @@
  * unreachable ≠ zero open orders); a vendor never contacted says so.
  */
 
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Wordmark } from '@/components/mudavym';
 import type { Provider } from '../../../services/api/providers';
 import { ink } from '../../../lib/mudavym/motion';
 import { EM, MONO, SANS, SERIF, fmtDays, fmtLastContact } from './pv-format';
 import { TwinSheet } from './TwinSheet';
+import { UsualCurrencyCoveragePanel } from './UsualCurrencyCoveragePanel';
 import { useProvidersNextData, type ProviderCardVM } from './useProvidersNextData';
+
+/**
+ * `?vendor=<id>` opens that vendor's sheet — where the currency control lives.
+ *
+ * Read from the URL once, at mount, rather than held in router state: the two
+ * callers are this page's own prompt panel (which opens the sheet directly) and
+ * the order sheet's empty currency field on another route, which arrives as a
+ * navigation. Nothing here writes the URL back, so a person who closes the sheet
+ * is not fighting a param to keep it closed.
+ */
+function vendorFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const asked = new URLSearchParams(window.location.search).get('vendor');
+  return asked && asked.trim() ? asked.trim() : null;
+}
 
 function BucketCard({
   vm,
@@ -102,6 +118,39 @@ function BucketCard({
 export default function ProvidersNext() {
   const data = useProvidersNextData();
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
+  /*
+   * A sheet opened FROM THE CURRENCY PROMPT — the panel's link or `?vendor=` —
+   * carries the reason it was opened, so `UsualCurrencySection` can put the
+   * person at the field rather than at the top of a sheet with four other
+   * sections above it. A sheet opened by clicking a card carries nothing and
+   * behaves as it always has: the panel exists to bring somebody to the
+   * control, and a sheet that lands them anywhere else is a link that only
+   * looks like it worked.
+   */
+  const [openedForCurrency, setOpenedForCurrency] = useState(false);
+
+  const knownIds = useMemo(
+    () => new Set(data.cards.map((vm) => vm.provider.id)),
+    [data.cards],
+  );
+  const openById = (id: string) => {
+    const found = data.cards.find((vm) => vm.provider.id === id);
+    if (!found) return;
+    setOpenedForCurrency(true);
+    setOpenProvider(found.provider);
+  };
+
+  // The deep link is honoured ONCE. Without the latch, closing the sheet on a
+  // page reached by `?vendor=` would reopen it on the next render.
+  const asked = useRef(vendorFromUrl());
+  useEffect(() => {
+    if (!asked.current) return;
+    const found = data.cards.find((vm) => vm.provider.id === asked.current);
+    if (!found) return;
+    asked.current = null;
+    setOpenedForCurrency(true);
+    setOpenProvider(found.provider);
+  }, [data.cards]);
 
   return (
     <div
@@ -171,6 +220,10 @@ export default function ProvidersNext() {
           </div>
         )}
 
+        {/* The prompt that keeps the order-currency chain alive (founder,
+            2026-09-06 batch 66). It counts and links; it pre-fills nothing. */}
+        <UsualCurrencyCoveragePanel knownIds={knownIds} onOpenVendor={openById} />
+
         {data.hasData && data.cards.length === 0 && !data.isError && (
           <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
             No vendors yet — the book is open and empty.
@@ -192,13 +245,25 @@ export default function ProvidersNext() {
               key={vm.provider.id}
               vm={vm}
               ordersKnown={data.ordersKnown}
-              onOpen={() => setOpenProvider(vm.provider)}
+              onOpen={() => {
+                setOpenedForCurrency(false);
+                setOpenProvider(vm.provider);
+              }}
             />
           ))}
         </div>
       </div>
 
-      {openProvider && <TwinSheet provider={openProvider} onClose={() => setOpenProvider(null)} />}
+      {openProvider && (
+        <TwinSheet
+          provider={openProvider}
+          focusUsualCurrency={openedForCurrency}
+          onClose={() => {
+            setOpenedForCurrency(false);
+            setOpenProvider(null);
+          }}
+        />
+      )}
     </div>
   );
 }

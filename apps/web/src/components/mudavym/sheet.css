@@ -1,0 +1,586 @@
+/* ============================================================
+   Mudavym overlays — one primitive, three shapes
+   ============================================================
+
+   Sheet   · slides from the right · one object's detail or edit
+   Panel   · centered              · asks, commands, confirmations
+   Popover · anchored to a trigger · menus, switchers, small pickers
+
+   Everything here is scoped under `.mdv-ovl`, which is ALSO a `.mudavym` root
+   (the component puts both classes on the same element) — that is what carries
+   the ADR-0042 token column across a portal into `document.body`, where no page
+   ancestor exists to inherit from.
+
+   The numbers are not new. They are the two hand-rolled overlays the rebuilt
+   pages already shipped, made shared:
+     · the sheet's 440px / -18px 0 48px shadow  — calendar-next.css:499,505
+     · the panel's min(620px, 100vw-32px) / 10vh — reports-next.css:656-657
+     · the paper scrim rgba(23,19,15,.28)        — calendar-next.css:488
+*/
+
+.mdv-ovl {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  --mdv-scrim: rgba(23, 19, 15, 0.28);
+  --mdv-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mdv-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --mdv-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Charcoal wants a heavier scrim: .28 of warm ink over a dark page is a haze,
+   not a separation. Both selectors, for the same reason mudavym.css carries
+   both — the app's resolved dark theme, and a page that forces the ground. */
+.dark .mdv-ovl,
+.mdv-ovl[data-ground='charcoal'],
+.dark .mdv-scrim,
+.mdv-scrim[data-ground='charcoal'] {
+  --mdv-scrim: rgba(0, 0, 0, 0.5);
+}
+
+/* The scrim colour on its own, for a surface that already owns its geometry —
+   the mobile nav backdrop is positioned by the shell and only needs the paint. */
+.mdv-scrim {
+  --mdv-scrim: rgba(23, 19, 15, 0.28);
+  background: var(--mdv-scrim);
+}
+
+/* The app ships a GLOBAL `*:focus-visible { ring-2 ring-wine-500 }`
+   (styles/globals.css:221-264) — a wine ring, which is not a colour this house
+   has. Tailwind's `ring` is a box-shadow, so `outline` alone does not replace
+   it; the shadow has to be cancelled explicitly. The ring then lands on a paper
+   gap (outline + offset) and never on the seal fill, where it measured 1.00:1.
+   This mirrors what the calendar page already does at calendar-next.css:37. */
+.mdv-ovl :focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  border-radius: 4px;
+  --tw-ring-shadow: 0 0 rgba(0, 0, 0, 0);
+  --tw-ring-offset-shadow: 0 0 rgba(0, 0, 0, 0);
+  box-shadow: none;
+}
+/* The palette/ask field is chrome, not a boxed control: its rule is the
+   hairline under it, so a ring around it would draw a box that is not there. */
+.mdv-field input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ── the scrim ───────────────────────────────────────────────────────────── */
+.mdv-ovl__scrim {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--mdv-scrim);
+  cursor: default;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* A popover does not dim the page — it only needs to catch the click that
+   dismisses it, which is what the header's own `fixed inset-0` catcher does
+   today (Header.tsx:143-146). Same behaviour, one implementation.
+   `data-modal` puts the dim back for the one anchored surface that is a form
+   rather than a picker — see the `modal` prop's note in Sheet.tsx. */
+.mdv-ovl--popover .mdv-ovl__scrim {
+  background: transparent;
+}
+.mdv-ovl--popover[data-modal='true'] .mdv-ovl__scrim {
+  background: var(--mdv-scrim);
+}
+
+/* ── the panel, all shapes ───────────────────────────────────────────────── */
+.mdv-ovl__panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: var(--mdv-sans);
+  outline: none;
+}
+
+.mdv-ovl--sheet {
+  display: block;
+}
+.mdv-ovl--sheet .mdv-ovl__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: 440px;
+  overflow-y: auto;
+  border-left: 1px solid var(--paper-2);
+  box-shadow: -18px 0 48px rgba(23, 19, 15, 0.14);
+}
+
+/* The one exception ADR 0112 anticipated: a sheet holding a LETTER rather than
+   an object's fields (sketch 100). 440px minus padding is a ~46-character body
+   column, which is too narrow for a writer to judge their own paragraph.
+   `width: 100%` above already collapses it below 640px viewports, so nothing
+   here needs a media query. */
+.mdv-ovl--sheet[data-wide='true'] .mdv-ovl__panel {
+  max-width: 640px;
+}
+
+/* `align-items: flex-start` is load-bearing, not tidiness: the default
+   `stretch` makes the panel fill from its 10vh margin to the bottom of the
+   viewport, so an overlay holding one sentence rendered as a 700px sheet of
+   empty paper. (`.rp-ask` in reports-next.css:640 has the same latent shape;
+   the ready patch that moves AskTheBook onto this primitive fixes it there.) */
+.mdv-ovl--panel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+.mdv-ovl--panel .mdv-ovl__panel {
+  position: relative;
+  margin-top: 10vh;
+  width: min(620px, calc(100vw - 32px));
+  max-height: 76vh;
+  border: 1px solid var(--paper-2);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.mdv-ovl--popover .mdv-ovl__panel {
+  position: fixed;
+  max-height: 72vh;
+  border: 1px solid var(--paper-2);
+  border-radius: 14px;
+  box-shadow: 0 18px 44px -22px rgba(0, 0, 0, 0.42);
+  overflow: hidden;
+}
+
+/* ── header ──────────────────────────────────────────────────────────────── */
+.mdv-ovl__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 11px;
+  border-bottom: 1px solid var(--paper-2);
+  flex: none;
+}
+.mdv-ovl__eyebrow {
+  display: block;
+  font-family: var(--mdv-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--seal-deep);
+}
+.mdv-ovl__title {
+  margin: 2px 0 0;
+  font-family: var(--mdv-serif);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.16;
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+}
+.mdv-ovl__headside {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* The close control is WORDS, not an X — the calendar idiom
+   (EventSheet.tsx:233-235). An icon-only close is the one place this system
+   would have had to invent a glyph, and it never needed to. */
+.mdv-ovl__close {
+  font-family: var(--mdv-sans);
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mdv-ovl__close:hover {
+  border-color: var(--seal-ring);
+  color: var(--ink-1);
+}
+/* The ring sits on the paper gap, never on a filled seal — a ring on the seal
+   fill measured 1.00:1 (p4 page brief, accessibility rule). */
+.mdv-ovl__close:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+/* `0 1 auto`, not `1 1 auto`: a Panel or Popover must be as tall as its
+   CONTENT and no taller — max-height then caps it and the body scrolls. With
+   `1 1 auto` an overlay holding one sentence ("No recent pages yet") still
+   stretched to the full 76vh, which reads as a page that failed to load rather
+   than an answer that is short. The Sheet is unaffected: it is pinned top-to-
+   bottom by its own rule, and scrolls on the panel. */
+.mdv-ovl__body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.mdv-ovl__foot {
+  flex: none;
+  padding: 9px 16px 12px;
+  border-top: 1px solid var(--paper-2);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-ovl__panel {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
+   Content vocabulary — what goes INSIDE an overlay
+   ============================================================
+   Small on purpose. Nine shell overlays and two shared dialogs migrate onto
+   these classes; if each had brought its own ink and spacing we would have
+   re-created the problem the primitive was written to end.
+*/
+
+.mdv-sect {
+  display: block;
+  font-family: var(--mdv-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 10px 16px 4px;
+}
+
+.mdv-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 16px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-1);
+  font-family: var(--mdv-sans);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mdv-item:hover {
+  background: var(--paper-1);
+}
+/* The seal marks the row you are on. One chromatic colour, ADR 0042. */
+.mdv-item[data-active='true'],
+.mdv-item[aria-selected='true'] {
+  background: var(--seal-tint);
+  border-left-color: var(--seal);
+}
+.mdv-item:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+}
+.mdv-item__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mdv-item__label {
+  display: block;
+  font-weight: 500;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mdv-item__sub {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mdv-item__icon {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.mdv-kbd {
+  flex: none;
+  font-family: var(--mdv-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-3);
+  background: var(--paper-1);
+  border: 1px solid var(--paper-2);
+  border-radius: 5px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.mdv-quiet {
+  margin: 0;
+  padding: 26px 16px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
+.mdv-note {
+  margin: 0;
+  padding: 8px 16px 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* The one field an ask-shaped overlay has. Fraunces, because typing a question
+   into the book is the product speaking. */
+.mdv-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--paper-2);
+}
+.mdv-field input {
+  flex: 1 1 auto;
+  width: 100%;
+  padding: 13px 0;
+  font-family: var(--mdv-serif);
+  font-size: 17px;
+  color: var(--ink-1);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.mdv-field input::placeholder {
+  color: var(--ink-3);
+  font-family: var(--mdv-sans);
+  font-size: 14px;
+}
+
+.mdv-link {
+  font-family: var(--mdv-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--seal-deep);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.mdv-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.mdv-link:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.mdv-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ink-3);
+  margin-top: 6px;
+  align-self: flex-start;
+}
+
+/* A palette's field is part of the chrome, not the content — no inset. */
+.mdv-ovl__body--flush {
+  padding: 0;
+}
+
+/* A refusal or a failure, said in words. Ink, not a semantic colour: the house
+   has exactly one chromatic colour and it is the seal (ADR 0042), so an alert
+   earns attention with a rule and a label, not with red. */
+.mdv-alert {
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+}
+.mdv-alert__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mdv-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0 0 3px;
+}
+.mdv-alert p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+/* A toggle chip. Ink label always; the seal marks "on", never the text. */
+.mdv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mdv-sans);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--paper-2);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.mdv-chip[aria-pressed='true'] {
+  border-color: var(--seal-ring);
+  background: var(--seal-tint);
+  color: var(--ink-1);
+}
+.mdv-chip[aria-pressed='false'] {
+  text-decoration: line-through;
+  color: var(--ink-3);
+}
+.mdv-chip:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+/* The nav-rail hint. Not an overlay — it takes nothing but the tokens, because
+   it is a hover hint on the shell rail, not a surface you interact with. */
+.mdv-hint {
+  border-color: var(--paper-2) !important;
+  background: var(--paper-0);
+  box-shadow: 0 12px 28px -18px rgba(0, 0, 0, 0.45);
+}
+.mdv-hint__title {
+  font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-1);
+  margin: 0;
+}
+.mdv-hint__badge {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--seal-deep);
+  background: var(--seal-tint);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+.mdv-hint__desc {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  margin: 2px 0 0;
+}
+
+/* ── form vocabulary — a shared dialog that asks for values ───────────────── */
+.mdv-form {
+  display: grid;
+  gap: 12px;
+  padding: 12px 16px 14px;
+}
+.mdv-label {
+  display: block;
+  font-family: var(--mdv-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 4px;
+}
+.mdv-input,
+.mdv-select {
+  display: block;
+  width: 100%;
+  font-family: var(--mdv-sans);
+  font-size: 13px;
+  padding: 7px 10px;
+  color: var(--ink-1);
+  background: var(--paper-0);
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  outline: none;
+}
+.mdv-input:focus-visible,
+.mdv-select:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+.mdv-hintline {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+.mdv-btn {
+  font-family: var(--mdv-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 7px 13px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2);
+  background: transparent;
+  color: var(--ink-1);
+  cursor: pointer;
+}
+.mdv-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.mdv-btn--seal {
+  border-color: var(--seal);
+  background: var(--seal);
+  color: var(--paper-0);
+}
+.mdv-btn:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+.mdv-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+/* A figure of record — an invite code, a total. Tabular mono, always. */
+.mdv-record {
+  font-family: var(--mdv-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--ink-1);
+  margin: 0;
+}
+.mdv-panelbox {
+  padding: 10px 12px;
+  background: var(--paper-1);
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+}

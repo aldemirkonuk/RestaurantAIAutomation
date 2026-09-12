@@ -308,3 +308,449 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
     });
   });
 });
+
+/**
+ * THE MACHINE'S OWN COLUMNS ARE WRITTEN BY THE MACHINE'S OWN WRITER.
+ *
+ * `computed_lines_total`, `tie_out_delta` and `ties_out` are the extraction's
+ * proposal about a document, and ADR 0059's rule is that a proposal is written
+ * by the thing that proposed it. `scripts/check_proposal_preservation.py`
+ * declares THIS file their writer, and it failed the first version of the
+ * currency restatement, which wrote all three from `documents.controller.ts`.
+ *
+ * The controller spec asserts the DELEGATION. These assert the write itself,
+ * and the one property that made the move worth making: the tie-out is
+ * re-derived through `applyTieOut`, so a restated document's arithmetic cannot
+ * disagree with an extracted one's.
+ */
+describe("DocumentIntakeService.refileMoneyForCurrency", () => {
+  /** One line's money as it was READ at intake. */
+  const KEPT_LINES = [
+    {
+      lineNo: 1,
+      unitPrice: 142,
+      lineTotal: 1704,
+      allowance: null,
+      deposit: 60,
+    },
+  ];
+
+  /**
+   * `procurement_documents.extracted` for a HELD document, as the intake
+   * actually stores it: the top-level money already nulled by `withholdMoney`,
+   * and the figures it stripped kept on `moneyWithheld`.
+   */
+  const HELD_SNAPSHOT = {
+    docType: "invoice",
+    currency: "",
+    subtotal: null,
+    freight: null,
+    depositTotal: null,
+    tax: null,
+    total: null,
+    // Deliberately WRONG on the snapshot, to prove they are not carried over.
+    computedLinesTotal: 999999,
+    tieOutDelta: 0,
+    tiesOut: true,
+    moneyHeld: "held for the test",
+    moneyWithheld: {
+      subtotal: 9172,
+      freight: 120,
+      fuelSurcharge: null,
+      splitCaseFee: null,
+      deliveryFee: null,
+      depositTotal: 180,
+      tax: 1834.4,
+      otherCharges: null,
+      discountTotal: null,
+      total: 11306.4,
+      lines: KEPT_LINES,
+    },
+    lines: [
+      {
+        lineNo: 1,
+        qty: 12,
+        uom: "bottle",
+        packSize: 1,
+        qtyBottles: 12,
+        freeGoodsQty: 0,
+        unitPrice: null,
+        lineTotal: null,
+        deposit: null,
+        allowance: null,
+        priceBaseQty: null,
+        priceBaseUom: null,
+      },
+    ],
+  };
+
+  /** The document row's money columns, as a HOLD leaves them. */
+  const HELD_ROW = {
+    id: "doc-9",
+    currency: null,
+    subtotal: null,
+    freight: null,
+    fuel_surcharge: null,
+    split_case_fee: null,
+    delivery_fee: null,
+    deposit_total: null,
+    tax: null,
+    other_charges: null,
+    discount_total: null,
+    total: null,
+    extracted: HELD_SNAPSHOT,
+  };
+
+  /** The line rows, as a HOLD leaves them: quantities kept, money gone. */
+  const HELD_LINE_ROWS = [
+    {
+      line_no: 1,
+      qty: 12,
+      uom: "bottle",
+      pack_size: 1,
+      unit_price: null,
+      line_total: null,
+      allowance: null,
+      deposit: null,
+    },
+  ];
+
+  function build(
+    opts: {
+      doc?: any;
+      lines?: any;
+      readError?: any;
+      linesError?: any;
+      writeError?: any;
+    } = {},
+  ) {
+    const updates: Array<{ table: string; row: any }> = [];
+    const client = {
+      from(table: string) {
+        const q: any = {
+          select: () => q,
+          eq: () => q,
+          // The LINE read. `planRefileForCurrency` orders by `line_no`, and the
+          // chain resolves here rather than on `maybeSingle`.
+          order: async () => ({
+            data: opts.lines === undefined ? HELD_LINE_ROWS : opts.lines,
+            error: opts.linesError ?? null,
+          }),
+          maybeSingle: async () => ({
+            data: opts.doc === undefined ? HELD_ROW : opts.doc,
+            error: opts.readError ?? null,
+          }),
+          update(row: any) {
+            updates.push({ table, row });
+            const u: any = {};
+            u.eq = () => u;
+            u.then = (res: any) => res({ error: opts.writeError ?? null });
+            return u;
+          },
+        };
+        return q;
+      },
+    };
+    const service = new DocumentIntakeService(
+      { getClient: () => client } as any,
+      { available: () => false, extract: jest.fn() } as any,
+      {} as any,
+      // VendorResolutionService (ADR 0104 D15, merged from main 2026-09-12).
+      // Stubbed: neither path below resolves a vendor - the tie-out test writes
+      // columns it re-derives itself, and the 832 catalogue never names a seller
+      // tax id. tsc -p tsconfig.spec.json counts the arguments.
+      {} as any,
+    );
+    return { service, updates };
+  }
+
+  it("writes the tie-out columns itself, re-derived and not carried over", async () => {
+    const { service, updates } = build();
+    const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+
+    const doc = updates.find((u) => u.table === "procurement_documents")!;
+    expect(doc.row.total).toBe(11306.4);
+    expect(doc.row.tax).toBe(1834.4);
+    // 1704 goods + 120 freight + 180 deposit + 1834.40 tax = 3838.40 against a
+    // stated 11306.40, so it does NOT tie out — and the snapshot's stale
+    // `computedLinesTotal: 999999` / `tiesOut: true` are gone.
+    expect(doc.row.computed_lines_total).toBe(1704);
+    expect(doc.row.ties_out).toBe(false);
+
+    const line = updates.find(
+      (u) => u.table === "procurement_document_lines",
+    )!;
+    expect(line.row.unit_price).toBe(142);
+    expect(line.row.deposit).toBe(60);
+
+    expect(out.snapshotReadable).toBe(true);
+    expect(out.source).toBe("withheld_snapshot");
+    expect(out.linesRefiled).toBe(1);
+    // Nothing was converted, and the sentence says so.
+    expect(out.sentence).toContain("no exchange rate");
+    // And it names where the figures came from.
+    expect(out.sentence).toContain("moneyWithheld");
+  });
+
+  /*
+   * BLOCKER 2, at the layer that writes.
+   *
+   * `procurement_documents.extracted` is written only at intake; `editLine`
+   * writes `procurement_document_lines` and the document's tie-out columns and
+   * never touches it. The previous version of this method re-derived every
+   * figure from `extracted`, so a corrected price was silently replaced by the
+   * original AI reading and the response announced a re-filing.
+   */
+  it("keeps a hand-corrected line's price instead of the stale extraction's", async () => {
+    const { service, updates } = build({
+      doc: {
+        ...HELD_ROW,
+        currency: "USD",
+        subtotal: 9666,
+        freight: 120,
+        deposit_total: 180,
+        tax: 1834.4,
+        total: 11930.4,
+        // The stale reading still says 142. It must not win.
+        extracted: HELD_SNAPSHOT,
+      },
+      lines: [
+        {
+          line_no: 1,
+          qty: 12,
+          uom: "bottle",
+          pack_size: 1,
+          unit_price: 194,
+          line_total: 2328,
+          allowance: null,
+          deposit: 60,
+        },
+      ],
+    });
+    const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+
+    const line = updates.find(
+      (u) => u.table === "procurement_document_lines",
+    )!;
+    expect(line.row.unit_price).toBe(194);
+    expect(line.row.unit_price).not.toBe(142);
+
+    const doc = updates.find((u) => u.table === "procurement_documents")!;
+    expect(doc.row.total).toBe(11930.4);
+    // The tie-out is recomputed FROM the corrected figures.
+    expect(doc.row.computed_lines_total).toBe(2328);
+    expect(out.source).toBe("current_rows");
+    expect(out.sentence).toContain("as it stands now");
+  });
+
+  it("writes NOTHING when there is nothing to put back", async () => {
+    const { service, updates } = build({
+      doc: { ...HELD_ROW, extracted: { docType: "invoice" } },
+    });
+    const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "EUR");
+
+    // The document keeps the figures it already had. Writing nulls here would
+    // ERASE money on an act that was only meant to re-label it.
+    expect(updates).toHaveLength(0);
+    expect(out.snapshotReadable).toBe(false);
+    expect(out.source).toBeNull();
+    expect(out.sentence).toContain("nothing was erased");
+  });
+
+  /*
+   * THE ROW SHAPE PRODUCTION HAS FOR A HELD DOCUMENT WITH ONE CORRECTED LINE
+   * (2026-09-11, audit of b6d2e4b4, BLOCKING). Header columns NULL, as intake
+   * writes them from the withheld parse; line 1 corrected by `editLine`, which
+   * never repairs the header; line 2 exactly as the hold left it. The old plan
+   * kept the null header because one line had money, wrote `total: null`, and
+   * said "the vendor's own figures were put back".
+   */
+  const TWO_LINE_SNAPSHOT = {
+    ...HELD_SNAPSHOT,
+    moneyWithheld: {
+      ...HELD_SNAPSHOT.moneyWithheld,
+      lines: [
+        KEPT_LINES[0],
+        { lineNo: 2, unitPrice: 99, lineTotal: 990, allowance: null, deposit: 40 },
+      ],
+    },
+  };
+  const CORRECTED_AND_HELD_LINES = [
+    {
+      line_no: 1,
+      qty: 12,
+      uom: "bottle",
+      pack_size: 1,
+      unit_price: 194,
+      line_total: 2328,
+      allowance: null,
+      deposit: 60,
+    },
+    {
+      line_no: 2,
+      qty: 10,
+      uom: "bottle",
+      pack_size: 1,
+      unit_price: null,
+      line_total: null,
+      allowance: null,
+      deposit: null,
+    },
+  ];
+
+  it("HELD ROW + one corrected line: keeps the correction AND writes the header back", async () => {
+    const { service, updates } = build({
+      doc: { ...HELD_ROW, extracted: TWO_LINE_SNAPSHOT },
+      lines: CORRECTED_AND_HELD_LINES,
+    });
+    const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+
+    const doc = updates.find((u) => u.table === "procurement_documents")!;
+    expect(doc.row.subtotal).toBe(9172);
+    expect(doc.row.freight).toBe(120);
+    expect(doc.row.deposit_total).toBe(180);
+    expect(doc.row.tax).toBe(1834.4);
+    expect(doc.row.total).toBe(11306.4);
+    expect(doc.row.computed_lines_total).toBe(3318);
+
+    const lines = updates
+      .filter((u) => u.table === "procurement_document_lines")
+      .map((u) => u.row);
+    expect(lines).toHaveLength(2);
+    expect(lines[0].unit_price).toBe(194);
+    expect(lines[1].unit_price).toBe(99);
+
+    expect(out.source).toBe("mixed");
+    expect(out.sentence).toContain(
+      "Put back from the reading withheld at intake: the header's subtotal, freight, deposit total, tax and total; and line 2.",
+    );
+    expect(out.sentence).toContain(
+      "Kept exactly as they stood on the document, corrections included: line 1.",
+    );
+    expect(out.sentence).not.toContain("the vendor's own figures were put back");
+    expect(out.sentence).not.toContain("states no total");
+  });
+
+  it("HELD ROW: a second restatement writes exactly what the first did", async () => {
+    const first = build({
+      doc: { ...HELD_ROW, extracted: TWO_LINE_SNAPSHOT },
+      lines: CORRECTED_AND_HELD_LINES,
+    });
+    await first.service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+    const docWrite = first.updates.find((u) => u.table === "procurement_documents")!.row;
+    const lineWrites = first.updates
+      .filter((u) => u.table === "procurement_document_lines")
+      .map((u) => u.row);
+
+    const second = build({
+      doc: { ...HELD_ROW, ...docWrite, currency: "TRY", extracted: TWO_LINE_SNAPSHOT },
+      lines: CORRECTED_AND_HELD_LINES.map((l, i) => ({ ...l, ...lineWrites[i] })),
+    });
+    const out = await second.service.refileMoneyForCurrency("doc-9", "rest-1", "EUR");
+    expect(second.updates.map((u) => u.row)).toEqual(first.updates.map((u) => u.row));
+    expect(out.source).toBe("current_rows");
+  });
+
+  it("HELD ROW: writes NOTHING when neither reading has money", async () => {
+    const { service, updates } = build({
+      doc: {
+        ...HELD_ROW,
+        extracted: {
+          ...HELD_SNAPSHOT,
+          moneyWithheld: {
+            subtotal: null,
+            freight: null,
+            fuelSurcharge: null,
+            splitCaseFee: null,
+            deliveryFee: null,
+            depositTotal: null,
+            tax: null,
+            otherCharges: null,
+            discountTotal: null,
+            total: null,
+            lines: [
+              { lineNo: 1, unitPrice: null, lineTotal: null, allowance: null, deposit: null },
+            ],
+          },
+        },
+      },
+      lines: HELD_LINE_ROWS,
+    });
+    const out = await service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+    expect(updates).toHaveLength(0);
+    expect(out.snapshotReadable).toBe(false);
+  });
+
+  it("tells a failed READ apart from a document with no reading (ADR 0067)", async () => {
+    const { service } = build({ doc: null, readError: { message: "connection reset" } });
+    await expect(
+      service.refileMoneyForCurrency("doc-9", "rest-1", "TRY"),
+    ).rejects.toThrow(/REFILE_READ_FAILED:connection reset/);
+  });
+
+  it("tells a failed LINE read apart from a document with no lines", async () => {
+    /*
+     * The most dangerous read in this method. A failed line read that came back
+     * as `[]` would look exactly like a held document — no money on any line —
+     * and would therefore select the withheld snapshot and REVERT every
+     * correction, on a database blip, silently. `supabase-js` resolves
+     * `{ data, error }` and never throws, so the check has to be explicit.
+     */
+    const { service, updates } = build({
+      linesError: { message: "connection reset" },
+    });
+    await expect(
+      service.refileMoneyForCurrency("doc-9", "rest-1", "TRY"),
+    ).rejects.toThrow(/REFILE_READ_FAILED:connection reset/);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("scopes both reads and writes to the tenant", async () => {
+    // The `.eq()` chain is what carries `restaurant_id`; a route that dropped
+    // it would re-file another house's document. Asserted by the write landing
+    // at all through a chain that requires two eq hops before it resolves.
+    const { service, updates } = build();
+    await service.refileMoneyForCurrency("doc-9", "rest-1", "TRY");
+    expect(updates.map((u) => u.table)).toEqual([
+      "procurement_documents",
+      "procurement_document_lines",
+    ]);
+  });
+});
+
+/*
+ * AN 832 CATALOGUE'S CURRENCY IS A MEMBER OR NOTHING (2026-09-11, audit of
+ * b6d2e4b4, iso-tables finding). `readEdi832Header` asked `/^[A-Z]{3}$/`, so a
+ * catalogue whose CUR02 said ZZZ was filed with `procurement_documents.currency`
+ * ZZZ through this door, and the warning beside it would have said the file
+ * stated no CUR at all.
+ */
+describe("DocumentIntakeService — an EDI 832 catalogue's currency", () => {
+  const service = () =>
+    new DocumentIntakeService(
+      { getClient: () => ({}) } as any,
+      { available: () => false, extract: jest.fn() } as any,
+      {} as any,
+      // VendorResolutionService (ADR 0104 D15, merged from main 2026-09-12).
+      // Stubbed: neither path below resolves a vendor - the tie-out test writes
+      // columns it re-derives itself, and the 832 catalogue never names a seller
+      // tax id. tsc -p tsconfig.spec.json counts the arguments.
+      {} as any,
+    );
+
+  it("files no currency for CUR*SE*ZZZ~ and says the file stated a code that names none", () => {
+    const doc = (service() as any).priceCatalogue(
+      "ST*832*0001~BCT*00*Q3-2026~CUR*SE*ZZZ~LIN**VN*1~SE*4*0001~",
+    );
+    expect(doc.currency).toBe("");
+    expect(doc.warnings.join(" ")).toContain("states ZZZ, which names no currency");
+    expect(doc.warnings.join(" ")).not.toContain("states no CUR currency segment");
+  });
+
+  it("still files a real code", () => {
+    const doc = (service() as any).priceCatalogue(
+      "ST*832*0001~BCT*00*Q3-2026~CUR*SE*eur~LIN**VN*1~SE*4*0001~",
+    );
+    expect(doc.currency).toBe("EUR");
+  });
+});

@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FileSpreadsheet, HardDrive, Loader2 } from 'lucide-react'
+import { FileSpreadsheet, HardDrive, Inbox, Loader2, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   integrationsApi,
@@ -17,9 +17,14 @@ import {
 } from '../../services/api/integrations'
 import { cn } from '../../lib/utils'
 
+// Exhaustive on purpose: `Record<IntegrationId, ...>` rather than a Partial,
+// so declaring a new integration on the gateway fails the web build here
+// instead of rendering `undefined` as a component at a Connect button.
 const ICONS: Record<IntegrationId, typeof FileSpreadsheet> = {
   excel: FileSpreadsheet,
   google_drive: HardDrive,
+  gmail_send: Send,
+  gmail_read: Inbox,
 }
 
 const CALLBACK_REASONS: Record<string, string> = {

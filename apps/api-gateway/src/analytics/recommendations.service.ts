@@ -9,6 +9,14 @@ import {
   RecommendationActionsService,
   RecommendationStatus,
 } from "./recommendation-actions.service";
+import {
+  SuppressionScope,
+  buildSuppressionKey,
+  effectiveScope,
+  isSuppressed,
+  parseSuppressionKey,
+  suppressionKeys,
+} from "./insights/suppression";
 
 export interface Recommendation {
   /** The observed number, restated ("Tuesday sales 12% below average Tuesdays"). */
@@ -22,6 +30,26 @@ export interface Recommendation {
   /** Rule that fired — auditable, deterministic. */
   ruleKey: string;
   score: number;
+  /** What the observation is ABOUT ("Wednesday"), when the rule names one. */
+  subject?: string | null;
+  /** The period it covers at its own grain ("d:2026-09-02"), when it has one. */
+  periodKey?: string | null;
+  /**
+   * How to silence this entry, and how wide that silence really is.
+   *
+   * `key` is what a dismissal writes by default (the exact finding). `scope`
+   * is what that key ACTUALLY silences — "rule" when the rule names no subject
+   * and no period, which the page is required to say out loud rather than let
+   * the manager believe they closed one line. `keys` carries all three scopes
+   * so the dismissal sheet can offer them without re-deriving a key client-side.
+   */
+  suppression?: {
+    key: string;
+    scope: SuppressionScope;
+    keys: Record<SuppressionScope, string>;
+  };
+  /** When this rule was FIRST shown, from `recommendation_impressions`. */
+  firstSeenAt?: string | null;
   // ---- Manager disposition (merged from recommendation_actions) ----------
   status?: RecommendationStatus;
   pinned?: boolean;
@@ -64,6 +92,8 @@ export class RecommendationsService {
     rulesEvaluated: number;
     generatedAt: string;
     stateCounts: Record<"active" | "snoozed" | "dismissed" | "done", number>;
+    suppressed: number;
+    suppressionsReadable: boolean;
   }> {
     const [
       financial,
@@ -126,6 +156,12 @@ export class RecommendationsService {
       category: "sales",
       urgency: "now",
       score: 3,
+      // Carried from the insight this rule restates, so a dismissal can be
+      // scoped to THIS Wednesday, to every Wednesday, or to the rule — see
+      // insights/suppression.ts. Without them the only scope representable is
+      // "this rule, for ever", which is what dismiss silently meant before.
+      subject: salesBaseline!.subject ?? null,
+      periodKey: salesBaseline!.periodKey ?? null,
     }));
 
     const demandDown = ctx.insights.find(
@@ -143,6 +179,8 @@ export class RecommendationsService {
       category: "sales",
       urgency: "this_week",
       score: 2.5,
+      subject: demandDown!.subject ?? null,
+      periodKey: demandDown!.periodKey ?? null,
     }));
 
     // ---- Inventory rules --------------------------------------------------
@@ -334,7 +372,30 @@ export class RecommendationsService {
     }
 
     // ---- Merge stored manager disposition (dismiss/snooze/done/pin) --------
-    const stateMap = await this.actions.getStateMap(restaurantId);
+    const dispositions = await this.actions.readDispositions(restaurantId);
+    const stateMap = dispositions.map;
+
+    // Every entry carries its own suppression keys, computed here because this
+    // is the only place that knows what each rule is about. Attaching them
+    // before the filter matters: the filter below uses the same target the UI
+    // will dismiss with, so what the page silences is exactly what the engine
+    // then withholds — one definition, both ends.
+    const suppressionKeySet = new Set<string>();
+    for (const [key, row] of stateMap)
+      if (row.status === "dismissed") suppressionKeySet.add(key);
+    for (const r of recs) {
+      const target = {
+        ruleId: r.ruleKey,
+        subject: r.subject ?? null,
+        periodKey: r.periodKey ?? null,
+      };
+      r.suppression = {
+        key: buildSuppressionKey(target, "insight"),
+        scope: effectiveScope(target, "insight"),
+        keys: suppressionKeys(target),
+      };
+    }
+
     for (const r of recs) {
       const s = stateMap.get(r.ruleKey);
       if (!s) continue;
@@ -351,14 +412,45 @@ export class RecommendationsService {
     // Counts are computed BEFORE filtering so the status tabs stay accurate
     // even for dismissed/done cards that no longer fire (they live only in the
     // actions table, so count those too).
+    // A dismissal has to hold at every scope it was written at, not just on
+    // the bare rule key. `status === 'active'` alone missed every scoped key —
+    // "this Wednesday" and "every Wednesday" are stored as their own rows, and
+    // the entry they silence still carries the bare rule key.
+    const suppressedKeys = new Set(
+      recs
+        .filter((r) =>
+          isSuppressed(
+            {
+              ruleId: r.ruleKey,
+              subject: r.subject ?? null,
+              periodKey: r.periodKey ?? null,
+            },
+            suppressionKeySet,
+          ),
+        )
+        .map((r) => r.ruleKey),
+    );
+    const suppressedCount = suppressedKeys.size;
+
     const firingKeys = new Set(recs.map((r) => r.ruleKey));
     const stateCounts = { active: 0, snoozed: 0, dismissed: 0, done: 0 };
     for (const r of recs) {
-      const st = (r.status ?? "active") as keyof typeof stateCounts;
+      // An entry silenced by a SCOPED key has no dismissed row under its own
+      // bare key, so its own `status` still reads "active". Counting it there
+      // would print "3 standing" over a list of 2 — the leaf tab and the book
+      // disagreeing about the same fact, which is the shape of bug this whole
+      // change exists to remove.
+      const st = suppressedKeys.has(r.ruleKey)
+        ? "dismissed"
+        : ((r.status ?? "active") as keyof typeof stateCounts);
       if (st in stateCounts) stateCounts[st]++;
     }
     for (const [key, s] of stateMap) {
       if (firingKeys.has(key)) continue; // already counted above
+      // A scoped suppression key whose entry IS firing is already counted on
+      // that entry; counting the row again would double it.
+      const parsed = parseSuppressionKey(key);
+      if (s.status === "dismissed" && firingKeys.has(parsed.ruleId)) continue;
       if (s.status === "dismissed") stateCounts.dismissed++;
       else if (s.status === "done") stateCounts.done++;
       else if (s.status === "snoozed") stateCounts.snoozed++;
@@ -366,7 +458,18 @@ export class RecommendationsService {
 
     const visible = opts.includeHidden
       ? recs
-      : recs.filter((r) => (r.status ?? "active") === "active");
+      : recs.filter(
+          (r) =>
+            (r.status ?? "active") === "active" &&
+            !isSuppressed(
+              {
+                ruleId: r.ruleKey,
+                subject: r.subject ?? null,
+                periodKey: r.periodKey ?? null,
+              },
+              suppressionKeySet,
+            ),
+        );
 
     // Pinned float to the top; then by score.
     visible.sort((a, b) => {
@@ -381,6 +484,13 @@ export class RecommendationsService {
     // would train on conversions alone and reinforce its own priors (arch
     // §10.6 M1). Fire-and-forget: telemetry must never slow or fail this
     // response, same posture as the low-stock alert dispatch in pos-hub.
+    // "How long has this stood" was an em dash on every untouched entry,
+    // because the feed carried no first-fired timestamp — while the answer had
+    // been accumulating in `recommendation_impressions` since 2026-08-17. This
+    // reads it BEFORE logging tonight's impression, so an entry's first sighting
+    // is the first time it was ever shown, not this request.
+    await this.attachFirstSeen(restaurantId, visible);
+
     void this.logImpressions(restaurantId, visible, opts.surface).catch(
       () => undefined,
     );
@@ -390,7 +500,56 @@ export class RecommendationsService {
       rulesEvaluated,
       generatedAt: new Date().toISOString(),
       stateCounts,
+      // How many rules fired and were then withheld because they had been
+      // dismissed, and whether the dismissal store was readable at all.
+      // `suppressionsReadable: false` means this list may contain things the
+      // manager already dismissed — the page has to say so rather than present
+      // it as clean (ADR 0020).
+      suppressed: suppressedCount,
+      suppressionsReadable: dispositions.readable,
     };
+  }
+
+  /**
+   * First impression per rule key, from `recommendation_impressions`.
+   *
+   * One indexed query per visible key rather than one wide scan: the table's
+   * `(restaurant_id, rule_key, shown_at desc)` index answers each in a single
+   * seek, and a `min()` aggregate is not available — PostgREST on this project
+   * answers `select=rule_key,created_at.min()` with PGRST123, "Use of aggregate
+   * functions is not allowed" (measured 2026-09-03). `shown_at` is the column
+   * used because it is the indexed one; it and `created_at` are written by the
+   * same insert and default to the same `now()`.
+   *
+   * A key with no impressions, or a failed read, leaves `firstSeenAt` null —
+   * which the page renders as an em dash. An unknown is never a date.
+   */
+  private async attachFirstSeen(
+    restaurantId: string,
+    visible: Recommendation[],
+  ): Promise<void> {
+    if (visible.length === 0) return;
+    const keys = Array.from(new Set(visible.map((r) => r.ruleKey))).slice(0, 40);
+    const found = new Map<string, string>();
+    await Promise.all(
+      keys.map(async (key) => {
+        try {
+          const { data, error } = await this.dbService.supabase
+            .from("recommendation_impressions")
+            .select("shown_at")
+            .eq("restaurant_id", restaurantId)
+            .eq("rule_key", key)
+            .order("shown_at", { ascending: true })
+            .limit(1);
+          if (error) throw new Error(error.message);
+          const first = (data || [])[0]?.shown_at;
+          if (first) found.set(key, first);
+        } catch (err: any) {
+          this.logger.warn(`firstSeenAt for ${key} failed: ${err?.message}`);
+        }
+      }),
+    );
+    for (const r of visible) r.firstSeenAt = found.get(r.ruleKey) ?? null;
   }
 
   private async logImpressions(

@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 092B — One Register, One Kind Facet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Mudavym tokens, copied inline from apps/web/src/styles/mudavym.css (ADR 0042).
+   Sketches render from file:// with no build, so the tokens are duplicated here
+   rather than imported. Do not re-derive values; copy them. */
+:root {
+  --seal: #1A5E6B;
+  --seal-deep: #14515C;
+  --seal-tint: rgba(26, 94, 107, 0.10);
+  --seal-ring: rgba(26, 94, 107, 0.32);
+  --paper-0: #FAF7F1;
+  --paper-1: #F3EFE6;
+  --paper-2: #EAE4D8;
+  --ink-1: #211C16;
+  --ink-2: #4F473C;
+  --ink-3: #7C7365;
+  --ink-4: #665D50;
+  color-scheme: light;
+  --sans: "DM Sans", "Plus Jakarta Sans", system-ui, sans-serif;
+  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+.sk-banner {
+  background: var(--ink-1);
+  color: var(--paper-0);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 7px 20px;
+}
+.wrap { max-width: 1400px; margin: 0 auto; padding: 22px 24px 56px; }
+.serif { font-family: var(--serif); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.dim { color: var(--ink-3); }
+h1.sk-h1 {
+  font-family: var(--serif);
+  font-size: 40px; line-height: 1.04; letter-spacing: -0.022em;
+  font-weight: 600; margin: 12px 0 0;
+}
+h2.sk-sec {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; margin: 30px 0 10px;
+}
+.sk-crumb { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.sk-standing { font-family: var(--serif); font-size: 16px; line-height: 1.5; color: var(--ink-2); margin: 10px 0 0; max-width: 74ch; }
+.sk-note { font-size: 11.5px; line-height: 1.5; color: var(--ink-3); margin: 9px 0 0; }
+.sk-said { font-size: 12.5px; line-height: 1.55; color: var(--ink-2); margin: 0; }
+.rule { border: 0; border-top: 1px solid var(--ink-1); border-bottom: 1px solid var(--paper-2); height: 3px; margin: 16px 0 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--paper-2); border-radius: 999px;
+  padding: 2px 9px; font-size: 11px; color: var(--ink-2); background: var(--paper-1);
+}
+.chip[data-seal="true"] { border-color: var(--seal-ring); background: var(--seal-tint); }
+.panel { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 14px 16px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1);
+  color: var(--ink-1); font: inherit; font-size: 12px; padding: 6px 11px; cursor: pointer;
+}
+.btn[data-on="true"] { border-color: var(--seal-ring); background: var(--seal-tint); }
+table.reg { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.reg th {
+  text-align: left; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; padding: 8px 10px;
+  border-bottom: 1px solid var(--ink-1);
+}
+table.reg td { padding: 8px 10px; border-bottom: 1px solid var(--paper-2); vertical-align: top; }
+table.reg tbody tr:nth-child(even) td { background: var(--paper-1); }
+</style>
+</head>
+<body>
+<div class="sk-banner">SKETCH &middot; 092 direction B &middot; one register, one kind facet &middot; example data, not a tenant</div>
+<div class="wrap">
+
+  <header style="display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;justify-content:space-between">
+    <div>
+      <p class="sk-crumb">What the house keeps &middot; Kadıköy Meyhane</p>
+      <h1 class="sk-h1">The Cellar<span style="color:var(--seal)">.</span></h1>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn">Register</button>
+      <button class="btn">Shelf</button>
+      <button class="btn" data-on="true">Read a menu</button>
+    </div>
+  </header>
+
+  <p class="sk-standing">
+    One book, every kind in it. &ldquo;See everything&rdquo; taken literally: no
+    child routes, no four cards to click through, one table of 1,184 bottles with
+    the kind as a facet at the top. The registers become a filter, and the filter
+    is built from what this house actually holds.
+  </p>
+
+  <hr class="rule" />
+
+  <!-- ── the kind facet ───────────────────────────────────────────── -->
+  <h2 class="sk-sec">Kind</h2>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn" data-on="true">All <span class="num" style="margin-left:5px">256</span></button>
+    <button class="btn">Wines <span class="num" style="margin-left:5px">149</span></button>
+    <button class="btn">Beer <span class="num" style="margin-left:5px">12</span></button>
+    <button class="btn">Spirits <span class="num" style="margin-left:5px">74</span></button>
+    <button class="btn">Non-alcoholic <span class="num" style="margin-left:5px">21</span></button>
+    <span style="width:14px"></span>
+    <span class="chip">Whiskey and Cocktails are off for this house</span>
+  </div>
+  <p class="sk-note">
+    Counted from <span class="num">master_wine_library.beverage_kind</span> and
+    <span class="num">beverages.beverage_type</span> &mdash; the library&rsquo;s own
+    classifier, not a guess from the name. 3 titles the classifier could not
+    place are listed under <em>Unclassified</em> at the foot of the table rather
+    than filed under a kind they might not be.
+  </p>
+
+  <!-- ── the controls ─────────────────────────────────────────────── -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px">
+    <input class="btn" style="min-width:260px;cursor:text" value="Search 256 titles: name, producer, grape, region" readonly />
+    <button class="btn">Style: all</button>
+    <button class="btn">Origin: all</button>
+    <button class="btn">Vintage: all</button>
+    <button class="btn">Format: all</button>
+    <button class="btn" data-on="true">Cellar: in the building</button>
+    <span class="sk-note" style="margin:0">Showing 12 of 256 titles</span>
+  </div>
+
+  <!-- ── the register ─────────────────────────────────────────────── -->
+  <div class="panel" style="padding:0;overflow:hidden;margin-top:14px">
+    <table class="reg">
+      <thead>
+        <tr>
+          <th>Bottle</th><th>Kind</th><th>Style</th><th style="text-align:right">Vintage</th>
+          <th>Origin</th><th style="text-align:right">Format</th>
+          <th style="text-align:right">List</th><th style="text-align:right">On hand</th><th style="text-align:right">Par</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>2019 Paşaeli Sıdalan</strong><span class="dim"> &middot; Paşaeli &middot; Sıdalan</span></td><td><span class="chip">Wine</span></td><td>white</td><td class="num" style="text-align:right">2019</td><td>Aegean, T&uuml;rkiye</td><td class="num" style="text-align:right">750ml</td><td class="num" style="text-align:right">$41.00</td><td class="num" style="text-align:right">18</td><td class="num" style="text-align:right">12</td></tr>
+        <tr><td><strong>2016 Gravner Ribolla</strong><span class="dim"> &middot; Gravner &middot; Ribolla Gialla</span></td><td><span class="chip">Wine</span></td><td>orange</td><td class="num" style="text-align:right">2016</td><td>Friuli, Italy</td><td class="num" style="text-align:right">750ml</td><td class="num" style="text-align:right">$92.00</td><td class="num" style="text-align:right">6</td><td class="num" style="text-align:right">4</td></tr>
+        <tr><td><strong>2004 Kavaklıdere Ancyra</strong><span class="dim"> &middot; Kavaklıdere &middot; Kalecik Karası</span></td><td><span class="chip">Wine</span></td><td>red</td><td class="num" style="text-align:right">2004</td><td>Ankara, T&uuml;rkiye</td><td class="num" style="text-align:right">750ml</td><td class="num" style="text-align:right">$58.00</td><td class="num" style="text-align:right">3</td><td class="num" style="text-align:right">2</td></tr>
+        <tr><td><strong>Efes Pilsen</strong><span class="dim"> &middot; Anadolu Efes</span></td><td><span class="chip" data-seal="true">Beer</span></td><td>pilsner</td><td class="num" style="text-align:right;color:var(--ink-3)">&mdash;</td><td>T&uuml;rkiye</td><td class="num" style="text-align:right">30L keg</td><td class="num" style="text-align:right">$118.00</td><td class="num" style="text-align:right">3</td><td class="num" style="text-align:right">2</td></tr>
+        <tr><td><strong>Gara Guzu Sarı</strong><span class="dim"> &middot; Gara Guzu</span></td><td><span class="chip" data-seal="true">Beer</span></td><td>golden ale</td><td class="num" style="text-align:right;color:var(--ink-3)">&mdash;</td><td>Muğla, T&uuml;rkiye</td><td class="num" style="text-align:right">33cl</td><td class="num" style="text-align:right">$4.20</td><td class="num" style="text-align:right">96</td><td class="num" style="text-align:right">72</td></tr>
+        <tr><td><strong>Bomonti Filtresiz</strong><span class="dim"> &middot; Bomonti</span></td><td><span class="chip" data-seal="true">Beer</span></td><td>unfiltered lager</td><td class="num" style="text-align:right;color:var(--ink-3)">&mdash;</td><td>T&uuml;rkiye</td><td class="num" style="text-align:right">50cl</td><td class="num" style="text-align:right">$5.10</td><td class="num" style="text-align:right">44</td><td class="num" style="text-align:right">48</td></tr>
+        <tr><td><strong>Yeni Rakı</strong><span class="dim"> &middot; Mey İçki</span></td><td><span class="chip">Spirit</span></td><td>anise</td><td class="num" style="text-align:right;color:var(--ink-3)">&mdash;</td><td>T&uuml;rkiye</td><td class="num" style="text-align:right">70cl</td><td class="num" style="text-align:right">$21.00</td><td class="num" style="text-align:right">7</td><td class="num" style="text-align:right">9</td></tr>
+        <tr><td><strong>Efe Tri&ccedil;k&uuml;p</strong><span class="dim"> &middot; Elda</span></td><td><span class="chip">Spirit</span></td><td>anise</td><td class="num" style="text-align:right;color:var(--ink-3)">&mdash;</td><td>T&uuml;rkiye</td><td class="num" style="text-align:right">70cl</td><td class="num" style="text-align:right">$23.50</td><td class="num" style="text-align:right">12</td><td class="num" style="text-align:right">6</td></tr>
+        <tr><td><strong>Tanqueray No. Ten</strong><span class="dim"> &middot; Tanqueray</span></td><td><span class="chip">Spirit</span></td><td>gin</td><td class="num" style="text-align:right;color:var(--ink-3)">&mdash;</td><td>Scotland</td><td class="num" style="text-align:right">70cl</td><td class="num" style="text-align:right">$34.00</td><td class="num" style="text-align:right">5</td><td class="num" style="text-align:right">3</td></tr>
+        <tr><td><strong>Amaro Nonino Quintessentia</strong><span class="dim"> &middot; Nonino</span></td><td><span class="chip">Spirit</span></td><td>amaro</td><td class="num" style="text-align:right;color:var(--ink-3)">&mdash;</td><td>Friuli, Italy</td><td class="num" style="text-align:right">70cl</td><td class="num" style="text-align:right">$46.00</td><td class="num" style="text-align:right">2</td><td class="num" style="text-align:right">2</td></tr>
+        <tr><td><strong>Şalgam Suyu</strong><span class="dim"> &middot; Doğanay</span></td><td><span class="chip">Non-alc</span></td><td>fermented</td><td class="num" style="text-align:right;color:var(--ink-3)">&mdash;</td><td>Adana, T&uuml;rkiye</td><td class="num" style="text-align:right">25cl</td><td class="num" style="text-align:right">$1.80</td><td class="num" style="text-align:right">48</td><td class="num" style="text-align:right">36</td></tr>
+        <tr><td><strong>Sütaş Ayran</strong><span class="dim"> &middot; Sütaş</span></td><td><span class="chip">Non-alc</span></td><td>yoghurt drink</td><td class="num" style="text-align:right;color:var(--ink-3)">&mdash;</td><td>Bursa, T&uuml;rkiye</td><td class="num" style="text-align:right">30cl</td><td class="num" style="text-align:right">$1.10</td><td class="num" style="text-align:right">60</td><td class="num" style="text-align:right">48</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sk-note">
+    A row whose vintage is absent shows the em dash, never &ldquo;NV&rdquo;:
+    missing asserts nothing, NV asserts non-vintage. Beer and spirits carry a
+    <strong>par and an on-hand</strong> here only because this sketch assumes the
+    inventory identity axis has been decided (OD-113). Until it is, those two
+    columns can only be honest for wine, and that is the single thing this
+    direction depends on.
+  </p>
+
+  <h2 class="sk-sec">Adapting to the house</h2>
+  <p class="sk-said" style="max-width:82ch">
+    In this direction the adaptation is invisible, which is its strongest
+    argument: there is nothing to hide, because there are no register cards.
+    The facet strip is built from the kinds present, so a house that pours one
+    kind sees one chip and never learns the others exist.
+  </p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px">
+
+    <div class="panel">
+      <p class="sk-crumb">Kahve Durağı &middot; non-alcoholic house</p>
+      <p class="serif" style="font-size:20px;font-weight:600;margin:6px 0 10px">One chip, one book.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" data-on="true">All <span class="num" style="margin-left:5px">52</span></button>
+        <button class="btn">Non-alcoholic <span class="num" style="margin-left:5px">34</span></button>
+        <button class="btn">Soft drinks <span class="num" style="margin-left:5px">18</span></button>
+      </div>
+      <table class="reg" style="margin-top:12px">
+        <thead><tr><th>Item</th><th>Kind</th><th style="text-align:right">Format</th><th style="text-align:right">On hand</th><th style="text-align:right">Par</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Coca-Cola</strong><span class="dim"> &middot; Coca-Cola İ&ccedil;ecek</span></td><td><span class="chip" data-seal="true">Soft</span></td><td class="num" style="text-align:right">33cl</td><td class="num" style="text-align:right">96</td><td class="num" style="text-align:right">72</td></tr>
+          <tr><td><strong>Limonata</strong><span class="dim"> &middot; house made</span></td><td><span class="chip" data-seal="true">Soft</span></td><td class="num" style="text-align:right">1L</td><td class="num" style="text-align:right;color:var(--seal-deep)">11</td><td class="num" style="text-align:right">24</td></tr>
+          <tr><td><strong>Rize &ccedil;ay</strong><span class="dim"> &middot; &Ccedil;aykur</span></td><td><span class="chip">Non-alc</span></td><td class="num" style="text-align:right">1kg</td><td class="num" style="text-align:right">31</td><td class="num" style="text-align:right">20</td></tr>
+          <tr><td><strong>Espresso blend</strong><span class="dim"> &middot; Kronotrop</span></td><td><span class="chip">Non-alc</span></td><td class="num" style="text-align:right">1kg</td><td class="num" style="text-align:right">24</td><td class="num" style="text-align:right">18</td></tr>
+          <tr><td><strong>Kombucha, ginger</strong><span class="dim"> &middot; Fermente</span></td><td><span class="chip">Non-alc</span></td><td class="num" style="text-align:right">33cl</td><td class="num" style="text-align:right">40</td><td class="num" style="text-align:right">24</td></tr>
+        </tbody>
+      </table>
+      <p class="sk-note">
+        No Wines chip, no Beer chip, no Spirits chip. Decided at onboarding from
+        96 menu lines and 642 counted units; the house confirmed it. Nothing on
+        this screen tells the owner that a wine register exists somewhere.
+      </p>
+    </div>
+
+    <div class="panel">
+      <p class="sk-crumb">The Malt Room &middot; whisky bar</p>
+      <p class="serif" style="font-size:20px;font-weight:600;margin:6px 0 10px">The facet becomes the region.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" data-on="true">All <span class="num" style="margin-left:5px">417</span></button>
+        <button class="btn">Whiskey <span class="num" style="margin-left:5px">388</span></button>
+        <button class="btn">Spirits <span class="num" style="margin-left:5px">29</span></button>
+        <button class="btn">Cocktails <span class="num" style="margin-left:5px">22</span></button>
+      </div>
+      <table class="reg" style="margin-top:12px">
+        <thead><tr><th>Expression</th><th>Region</th><th style="text-align:right">Age</th><th style="text-align:right">ABV</th><th style="text-align:right">On hand</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Lagavulin 16</strong><span class="dim"> &middot; Diageo</span></td><td>Islay</td><td class="num" style="text-align:right">16yr</td><td class="num" style="text-align:right">43.0%</td><td class="num" style="text-align:right">4</td></tr>
+          <tr><td><strong>Springbank 15</strong><span class="dim"> &middot; J&amp;A Mitchell</span></td><td>Campbeltown</td><td class="num" style="text-align:right">15yr</td><td class="num" style="text-align:right">46.0%</td><td class="num" style="text-align:right;color:var(--seal-deep)">1</td></tr>
+          <tr><td><strong>Yamazaki 12</strong><span class="dim"> &middot; Suntory</span></td><td>Japan</td><td class="num" style="text-align:right">12yr</td><td class="num" style="text-align:right">43.0%</td><td class="num" style="text-align:right">2</td></tr>
+          <tr><td><strong>Michter&rsquo;s US*1 Rye</strong><span class="dim"> &middot; Michter&rsquo;s</span></td><td>Kentucky</td><td class="num" style="text-align:right;color:var(--ink-3)">&mdash;</td><td class="num" style="text-align:right">42.4%</td><td class="num" style="text-align:right">6</td></tr>
+          <tr><td><strong>Port Ellen 1979</strong><span class="dim"> &middot; sealed, in the safe</span></td><td>Islay</td><td class="num" style="text-align:right">24yr</td><td class="num" style="text-align:right">57.3%</td><td class="num" style="text-align:right">1</td></tr>
+        </tbody>
+      </table>
+      <p class="sk-note">
+        Whiskey and Spirits are both on: one sits inside the other and the house
+        means both. The columns change with the facet &mdash; age and ABV replace
+        vintage and grape &mdash; which is the part of this direction that has to
+        be built once per kind and cannot be shared.
+      </p>
+    </div>
+  </div>
+
+  <h2 class="sk-sec">What this direction costs</h2>
+  <div class="panel">
+    <p class="sk-said">
+      It was blocked until this pass: <span class="num">beverage_kind</span> is
+      computed in the database and was dropped by
+      <span class="num">WinesService.mapWine</span> before it reached the browser,
+      so the facet had nothing to filter on. That field is now on the wire, and
+      <span class="num">/beverages</span> and <span class="num">/cocktails</span>
+      are served, so the facet is buildable today for browsing.
+      What it still needs is the harder half: one table with one row grammar
+      means one set of columns, and a whisky expression, a keg and a bottle of
+      Burgundy do not share one. The four-child IA the founder chose keeps each
+      kind&rsquo;s own vocabulary; this direction trades that for a single view of
+      everything. That is the fork, and it is the founder&rsquo;s to settle.
+    </p>
+  </div>
+</div>
+</body>
+</html>

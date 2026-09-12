@@ -1,7 +1,7 @@
 ---
 type: moc
 title: Software Map
-updated: 2026-09-01
+updated: 2026-09-03
 links: ["[[SOFTWARE-CONTRACT]]", "[[PAGES-MAP]]", "[[ORG-MAP]]", "[[HOME]]", "[[0052-software-catalog-layer]]", "[[0049-ecosystem-division-layer]]"]
 ---
 
@@ -22,7 +22,7 @@ division (8, ADR 0049)  →  software (this layer)  →  page (47, PAGES-MAP)  �
 Contract: [[SOFTWARE-CONTRACT]] · Decision: [ADR 0052](../decisions/0052-software-catalog-layer.md)
 
 <!-- ROSTER:BEGIN — generated from note frontmatter; regenerate rather than hand-edit -->
-## The roster — 25 small softwares
+## The roster — 26 small softwares
 
 | Software | Division | Status | Tier | Screens | Gateway modules | Agents | Owner |
 |---|---|---|---|---|---|---|---|
@@ -49,6 +49,7 @@ Contract: [[SOFTWARE-CONTRACT]] · Decision: [ADR 0052](../decisions/0052-softwa
 | **[[admin-health\|Admin & Health]]** | Platform/Admin | `partial` | internal | [[06-pages/admin\|admin]], [[06-pages/admin-health\|admin-health]], [[06-pages/dev-sandbox\|dev-sandbox]] | `health`, `database`, `logs` | 1 | [[observability-telemetry-plumbing-charter\|observability-telemetry-plumbing]] |
 | **[[app-shell-support\|App Shell & Support]]** | Platform/Admin | `partial` | core | [[06-pages/help\|help]], [[06-pages/privacy\|privacy]], [[06-pages/credits\|credits]] | — | — | **unowned — gap** |
 | **[[auth-onboarding\|Auth & Onboarding]]** | Platform/Admin | `partial` | core | [[06-pages/login\|login]], [[06-pages/register\|register]], [[06-pages/forgot-password\|forgot-password]], [[06-pages/reset-password\|reset-password]], [[06-pages/verify-email\|verify-email]], [[06-pages/invite-landing\|invite-landing]], [[06-pages/no-access\|no-access]], [[06-pages/get-started\|get-started]], [[06-pages/onboarding\|onboarding]], [[06-pages/profile\|profile]] | `auth`, `restaurants` | — | [[platform-api-charter\|platform-api]] |
+| **[[mudavym-mcp\|Mudavym MCP Server]]** | Platform/Admin | `planned` | internal | *backend-only* | — | — | **unowned — gap** |
 | **[[settings-integrations\|Settings & Integrations]]** | Platform/Admin | `partial` | core | [[06-pages/settings\|settings]], [[06-pages/services\|services]], [[06-pages/authorize-integration\|authorize-integration]] | `settings`, `integrations`, `user-preferences`, `restaurant-templates` | — | [[platform-api-charter\|platform-api]] |
 | **[[team-command\|Team Command]]** | Platform/Admin | `live` | core | [[06-pages/team\|team]] | `team`, `organizations` | — | [[platform-api-charter\|platform-api]] |
 
@@ -85,6 +86,7 @@ failure — the same convention the agent-stack layer uses.
 | [[wine-library-sommelier\|Wine Library & Sommelier]] | Four units hold a slice each — catalogue-identity, agent-fleet, corpora-enrichment, taste-fingerprint — and every one disclaims the product |
 | [[wine-studio\|Wine Studio]] | Backed by proxy controllers inside `common/orchestrator/`, which no charter owns; the Studio product itself is unclaimed |
 | [[reports-analytics\|Reports & Analytics]] | Four charters own four pieces and each disclaims the others; `reports` is claimed by no charter at all |
+| [[mudavym-mcp\|Mudavym MCP Server]] | No charter in `01-org/` mentions MCP, model context, or `mcp-connections` (grepped 2026-09-03, zero matches). It is **documented, not built** — the owning team is one of the forks the ADR in its §8 must settle, so it is recorded rather than assigned |
 | [[app-shell-support\|App Shell & Support]] | **By design, not a defect** — a shell/legal/support surface, not a product. Listed so the pages are visibly accounted for |
 <!-- GAPS:END -->
 

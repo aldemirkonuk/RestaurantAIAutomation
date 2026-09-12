@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>090b · /recommendations — the two-pane docket</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{ color-scheme: light }
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,0.10); --seal-ring:rgba(26,94,107,0.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#E7E2D8}
+.mudavym{background:var(--paper-0);color:var(--ink-1);
+  font-family:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.serif{font-family:"Fraunces",Georgia,serif;font-weight:420;letter-spacing:-0.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.ico{display:inline-block;vertical-align:-0.14em;flex:0 0 auto}
+.banner{background:var(--seal);color:#FAF7F1;font-size:11px;letter-spacing:.18em;
+  text-transform:uppercase;padding:7px 16px;font-family:"JetBrains Mono",ui-monospace,monospace;
+  display:flex;gap:14px;align-items:center;justify-content:space-between}
+.banner b{font-weight:600}
+.wrap{max-width:1400px;margin:0 auto;padding:18px 22px 40px}
+
+.kicker{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);
+  font-family:"JetBrains Mono",ui-monospace,monospace}
+.head{display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap}
+h1.page{font-size:32px;line-height:1.05;margin:6px 0 3px}
+.voice{font-family:"Fraunces",Georgia,serif;font-size:15.5px;color:var(--ink-2);margin:0;line-height:1.45;max-width:660px}
+.readat{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);
+  font-family:"JetBrains Mono",ui-monospace,monospace;margin:5px 0 0}
+.leaves{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.leaf{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;border:1px solid var(--paper-2);border-radius:6px;padding:5px 10px;
+  color:var(--ink-3);background:transparent;display:inline-flex;gap:7px;align-items:center;cursor:pointer}
+.leaf.on{background:var(--seal-tint);border-color:var(--seal-ring);color:var(--seal-deep)}
+.rule2{border-top:1px solid var(--ink-4);box-shadow:0 3px 0 -2px var(--ink-4);margin:13px 0 0}
+.withheld{font-size:11.5px;color:var(--ink-3);margin:10px 0 0;line-height:1.5}
+
+.pane{display:grid;grid-template-columns:196px 360px 1fr;gap:22px;margin-top:18px;align-items:start}
+
+/* register column */
+.reg h4,.mcard h4{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-4);margin:0 0 7px}
+.reg .note{font-size:10.5px;color:var(--ink-3);line-height:1.45;margin:0 0 9px}
+.r{display:flex;justify-content:space-between;gap:8px;width:100%;font-size:12.5px;color:var(--ink-2);
+  padding:6px 8px;border:1px solid transparent;border-radius:7px;background:transparent;cursor:pointer}
+.r.on{background:var(--seal-tint);border-color:var(--seal-ring);color:var(--seal-deep)}
+.mcard{border:1px solid var(--paper-2);border-radius:11px;padding:12px 13px;margin-top:16px;background:var(--paper-1)}
+.excl{font-size:11.5px;color:var(--ink-2);padding:5px 0;border-bottom:1px solid var(--paper-2)}
+.excl:last-child{border-bottom:0}
+.excl .d{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;color:var(--ink-1)}
+.excl .rr{font-size:10.5px;color:var(--ink-3);margin-top:1px}
+.why{font-size:10.5px;color:var(--ink-3);margin:5px 0 0;line-height:1.45}
+.dark{opacity:.55;cursor:not-allowed}
+
+/* the list */
+.list{border-left:1px solid var(--paper-2);border-right:1px solid var(--paper-2);padding:0 2px}
+.secthead{display:flex;align-items:baseline;gap:8px;padding:9px 10px 5px}
+.secthead h3{font-family:"Fraunces",Georgia,serif;font-size:14px;margin:0;font-weight:500}
+.secthead .n{margin-left:auto;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;color:var(--ink-4)}
+.item{display:grid;grid-template-columns:26px 1fr;gap:8px;padding:9px 10px;border-top:1px solid var(--paper-2);cursor:pointer}
+.item:hover{background:var(--paper-1)}
+.item.on{background:var(--paper-1);border-left:2px solid var(--seal);padding-left:8px}
+.item .g{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;color:var(--ink-4);padding-top:2px}
+.item .t{font-size:12.5px;line-height:1.35;color:var(--ink-1);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.item .m{display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap}
+.chip{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);border:1px solid var(--paper-2);
+  border-radius:3px;padding:2px 5px}
+.chip.seal{color:var(--seal-deep);border-color:var(--seal-ring)}
+.age{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;color:var(--ink-4);margin-left:auto}
+
+/* the working, pinned right */
+.work{position:sticky;top:16px}
+.stamps{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:7px}
+.obs{font-family:"Fraunces",Georgia,serif;font-size:19px;line-height:1.35;margin:0 0 6px}
+.do{font-size:13px;line-height:1.6;color:var(--ink-2);margin:0}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px;
+  padding:12px 0;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.fact .l{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-4)}
+.fact .v{font-size:12.5px;color:var(--ink-2);margin-top:2px;line-height:1.35}
+.fact .b{font-size:10px;color:var(--ink-4);margin-top:1px;line-height:1.3}
+.ctrls{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.q{font-size:11.5px;padding:4px 9px;border-radius:7px;border:1px solid var(--paper-2);
+  background:transparent;color:var(--ink-2);cursor:pointer}
+.act{font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;border:1px solid var(--seal);
+  background:var(--seal-tint);color:var(--seal-deep);cursor:pointer}
+.block{margin-top:15px}
+.lab{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-4);display:block;margin-bottom:5px}
+.prose{font-size:12.5px;line-height:1.6;color:var(--ink-2);margin:0}
+.rulekey{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;color:var(--ink-1);margin:3px 0 0;word-break:break-all}
+.said{font-size:11px;color:var(--ink-3);margin:3px 0 0;line-height:1.5}
+
+/* the dismissal sheet */
+.sheet{margin-top:14px;border:1px solid var(--seal-ring);background:var(--paper-1);border-radius:11px;padding:14px 16px}
+.sheet h3{font-family:"Fraunces",Georgia,serif;font-size:15px;margin:0 0 10px;font-weight:500}
+.grp{margin-bottom:12px}
+.opts{display:flex;gap:6px;flex-wrap:wrap}
+.scopes{display:grid;gap:5px}
+.scope{display:flex;gap:8px;align-items:flex-start;font-size:12.3px;color:var(--ink-2);line-height:1.4}
+.dot{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--ink-4);flex:0 0 auto;margin-top:2px;
+  display:inline-flex;align-items:center;justify-content:center}
+.dot.on{border-color:var(--seal)}
+.dot.on i{width:6px;height:6px;border-radius:50%;background:var(--seal);display:block}
+.box{width:12px;height:12px;border-radius:3px;border:1.5px solid var(--ink-4);flex:0 0 auto;margin-top:2px;
+  display:inline-flex;align-items:center;justify-content:center;color:#FAF7F1}
+.box.on{background:var(--seal);border-color:var(--seal)}
+.promise{margin-top:11px;padding-top:9px;border-top:1px solid var(--paper-2);
+  font-size:11.5px;color:var(--ink-2);line-height:1.5}
+.sheetfoot{display:flex;gap:8px;align-items:center;margin-top:11px}
+.seal-block{margin-top:16px;padding-top:12px;border-top:1px solid var(--paper-2);max-width:340px}
+.hold{margin-top:6px;border:1px solid var(--seal);border-radius:9px;padding:7px 12px;font-size:12px;
+  font-weight:600;color:var(--seal-deep);background:linear-gradient(90deg,var(--seal-tint) 34%,transparent 34%);
+  display:inline-flex;gap:8px;align-items:center}
+footer.sig{margin-top:32px;padding-top:14px;border-top:1px solid var(--paper-2);
+  display:flex;gap:12px;align-items:baseline;color:var(--ink-3);font-size:11.5px}
+.word{font-family:"Fraunces",Georgia,serif;font-size:15px;color:var(--ink-1);letter-spacing:-0.02em}
+</style></head>
+<body><div class="mudavym">
+
+<div class="banner"><span><b>SKETCH</b> — example data, not a tenant</span>
+<span>090b · the two-pane docket · list left, the working pinned right</span></div>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <div class="kicker">Mudavym · Recommendations</div>
+      <h1 class="page serif">The docket</h1>
+      <p class="voice">17 rules were read. 9 entries stand — the rest did not fire, or you have already ruled them off.</p>
+      <p class="readat">Read at 4:12 PM · one entry = one deterministic rule that fired</p>
+    </div>
+    <div class="leaves">
+      <button class="leaf on">Standing <span class="mono">9</span></button>
+      <button class="leaf">Snoozed <span class="mono">2</span></button>
+      <button class="leaf">Dismissed <span class="mono">3</span></button>
+      <button class="leaf">Ruled off <span class="mono">14</span></button>
+      <button class="leaf">History <span class="mono">31</span></button>
+    </div>
+  </div>
+  <div class="rule2"></div>
+  <p class="withheld">3 entries were withheld because you dismissed them. They are on the Dismissed leaf, and every one can be returned.</p>
+
+  <div class="pane">
+    <!-- ── the register ─────────────────────────────────────────── -->
+    <aside class="reg">
+      <h4>The register</h4>
+      <p class="note">What acting on an entry would change. Filed from the rule's own category.</p>
+      <button class="r on"><span>All</span><span class="mono">9</span></button>
+      <button class="r"><span>Money</span><span class="mono">3</span></button>
+      <button class="r"><span>Stock</span><span class="mono">3</span></button>
+      <button class="r"><span>Vendors</span><span class="mono">2</span></button>
+      <button class="r"><span>The floor</span><span class="mono">1</span></button>
+      <button class="r"><span>Unfiled</span><span class="mono">0</span></button>
+
+      <div class="mcard">
+        <h4>Out of the analysis</h4>
+        <div class="excl"><div class="d">Wed 2 Sep</div><div class="rr">closed for the holiday</div></div>
+        <div class="excl"><div class="d">Sun 17 Aug</div><div class="rr">private buyout, no à-la-carte</div></div>
+        <div class="excl"><div class="d">Mon 4 Aug</div><div class="rr">POS outage — no checks filed</div></div>
+        <p class="why">3 days are not counted in any baseline. Every one can be counted again.</p>
+      </div>
+
+      <div class="mcard">
+        <h4>Daily digest</h4>
+        <button class="q dark" style="width:100%">Stored: on, 7:00</button>
+        <p class="why">Disabled on purpose: the preference stores, but nothing sends it — no scheduler reads recommendation_digest_prefs.</p>
+      </div>
+    </aside>
+
+    <!-- ── the list ─────────────────────────────────────────────── -->
+    <div class="list">
+      <div class="secthead"><h3>Money</h3><span class="n">3</span></div>
+      <div class="item on">
+        <div class="g">01</div>
+        <div><div class="t">Wednesday sales came in 23% lower than your average Wednesday ($1,840 vs $2,390, over 11 past Wednesdays).</div>
+          <div class="m"><span class="chip seal">Tonight</span><span class="chip">sales</span><span class="age">6 days</span></div></div>
+      </div>
+      <div class="item">
+        <div class="g">02</div>
+        <div><div class="t">Goal "September average check ₺920" is behind its linear pace (78% done, 9 days left).</div>
+          <div class="m"><span class="chip">This week</span><span class="chip">goals</span><span class="age">12 days</span></div></div>
+      </div>
+      <div class="item">
+        <div class="g">03</div>
+        <div><div class="t">Ribeye and Malbec appear together 3.1× more often than chance across 412 checks.</div>
+          <div class="m"><span class="chip">This month</span><span class="chip">basket</span><span class="age">—</span></div></div>
+      </div>
+
+      <div class="secthead"><h3>Stock</h3><span class="n">3</span></div>
+      <div class="item">
+        <div class="g">04</div>
+        <div><div class="t">Chablis 1er Cru "Montmains" 2021 has a 68% chance of stocking out before a 7-day replenishment (on hand: 4).</div>
+          <div class="m"><span class="chip seal">Tonight</span><span class="chip">inventory</span><span class="age">2 days</span></div></div>
+      </div>
+      <div class="item">
+        <div class="g">05</div>
+        <div><div class="t">$7,340 is locked in inventory that has not moved in 90 days (top: Barolo "Bussia" 2016, 18 bottles).</div>
+          <div class="m"><span class="chip">This month</span><span class="chip">inventory</span><span class="age">1 month</span></div></div>
+      </div>
+      <div class="item">
+        <div class="g">06</div>
+        <div><div class="t">Bottles sold has been sliding about 7% per week over the last 28 days.</div>
+          <div class="m"><span class="chip">This week</span><span class="chip">sales</span><span class="age">5 days</span></div></div>
+      </div>
+
+      <div class="secthead"><h3>Vendors</h3><span class="n">2</span></div>
+      <div class="item">
+        <div class="g">07</div>
+        <div><div class="t">One vendor supplied 71% of the last 90 days of purchasing spend ($18.4k of $25.9k, HHI 5,412).</div>
+          <div class="m"><span class="chip seal">Tonight</span><span class="chip">risk</span><span class="age">3 weeks</span></div></div>
+      </div>
+      <div class="item">
+        <div class="g">08</div>
+        <div><div class="t">Purchasing spend rose 38% vs the previous 30 days ($9.1k vs $6.6k) with bottles sold flat.</div>
+          <div class="m"><span class="chip">This week</span><span class="chip">purchasing</span><span class="age">4 days</span></div></div>
+      </div>
+
+      <div class="secthead"><h3>The floor</h3><span class="n">1</span></div>
+      <div class="item">
+        <div class="g">09</div>
+        <div><div class="t">Deniz ranks #1 of 6 by average check, 34% above the group average ($187).</div>
+          <div class="m"><span class="chip seal">Tonight</span><span class="chip">staff</span><span class="age">1 day</span></div></div>
+      </div>
+    </div>
+
+    <!-- ── the working ──────────────────────────────────────────── -->
+    <div class="work">
+      <div class="stamps"><span class="chip seal">Tonight</span><span class="chip">sales</span><span class="chip seal">Deniz A.</span></div>
+      <p class="obs">Wednesday sales came in 23% lower than your average Wednesday ($1,840 vs $2,390, over 11 past Wednesdays).</p>
+      <p class="do">Brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section. A soft day is a staffing-and-suggestion problem before it's a demand problem.</p>
+
+      <div class="facts">
+        <div class="fact"><div class="l">Would change</div><div class="v">Money</div><div class="b">money taken across the pass</div></div>
+        <div class="fact"><div class="l">Whose hand</div><div class="v">Yours, in Reports</div><div class="b">the work lands on the menu report</div></div>
+        <div class="fact"><div class="l">Standing</div><div class="v mono">6 days</div><div class="b">since it was first shown to you</div></div>
+      </div>
+
+      <div class="ctrls">
+        <button class="act">Open the menu report →</button>
+        <button class="q">Snooze</button>
+        <button class="q" style="border-color:var(--seal-ring);color:var(--seal-deep)">Dismiss</button>
+        <button class="q">Pin</button><button class="q">Assign</button>
+      </div>
+
+      <div class="block">
+        <span class="lab">Why this follows</span>
+        <p class="prose">Same-weekday baselines remove day-of-week mix, so the gap is execution or traffic — the levers you control same-day are selling behaviour and features.</p>
+      </div>
+
+      <div class="block">
+        <span class="lab">The rule that fired</span>
+        <p class="rulekey">sales_below_weekday_baseline</p>
+        <p class="said">A deterministic rule, evaluated against your own numbers. No model wrote this sentence. The average excludes 2 Wednesdays with no records and 1 you ruled out.</p>
+      </div>
+
+      <!-- the dismissal dialogue, open in the right pane -->
+      <div class="sheet">
+        <h3>Dismiss it — and never show it again</h3>
+
+        <div class="grp">
+          <span class="lab">Why are you dismissing it?</span>
+          <div class="opts">
+            <button class="q">Not relevant</button>
+            <button class="q">Already handled</button>
+            <button class="q">I disagree</button>
+            <button class="q" style="background:var(--seal-tint);border-color:var(--seal-ring);color:var(--seal-deep)">Not right now</button>
+          </div>
+        </div>
+
+        <div class="grp">
+          <span class="lab">Never show me…</span>
+          <div class="scopes">
+            <div class="scope"><span class="dot"></span><span>This exact finding — Wed 2 Sep</span></div>
+            <div class="scope"><span class="dot on"><i></i></span><span>Every Wednesday, for this rule</span></div>
+            <div class="scope"><span class="dot"></span><span>This rule entirely, for this restaurant</span></div>
+          </div>
+        </div>
+
+        <div class="grp">
+          <div class="scope"><span class="box"></span><span>Also exclude Wed 2 Sep from the analysis</span></div>
+          <p class="why">A closure or an outage should not drag the average down. Excluding the day stops its numbers counting toward every baseline, on this page and everywhere else.</p>
+        </div>
+
+        <p class="promise">After this you will not see every Wednesday this rule ever finds — other subjects keep reporting. Undo it from the History leaf.</p>
+
+        <div class="sheetfoot">
+          <button class="act">Dismiss it</button>
+          <button class="q">Keep it standing</button>
+        </div>
+      </div>
+
+      <div class="seal-block">
+        <span class="lab">Rule it off</span>
+        <p class="said">Hold to close the entry: you are asserting the work was done, and the book rules it off.</p>
+        <div class="hold">
+          <svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          Hold to rule off
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="sig">
+    <span class="word">Mudavym.</span>
+    <span>Every entry is one deterministic rule against your own numbers. No model wrote them.</span>
+  </footer>
+</div>
+</div></body></html>

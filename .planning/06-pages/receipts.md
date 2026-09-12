@@ -46,9 +46,71 @@ documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
 - **Our own door count is the RECEIVED column, never the BILLED one** (v3.0-TECH-DEBT 2026-09-06, finding 3). A `receiving_advice` carries no money (D11), so its quantities land in `received` with `billed` NULL, and the verdict card says _counted N at the door_ rather than _billed —_. Fixed in the mapper so the page, the verdict sentences and the API say one thing.
 - **The same count twice is answered, not leaked** (finding 4). A repeated door count returns **409** — "this count was already recorded as document `<id>`" — and takes the receiver to the document that exists, rather than a 422 carrying the index name `uq_pd_restaurant_sha256`.
 - **Degraded is a state, not a blank** (ADR 0104 D6) — a document with no lines renders NOT EXTRACTED, the original, and the header fields that exist; the verdict block says "nothing was read, so nothing could be compared" rather than "nothing differs", and there is no line table and no totals, because `Lines 0.00` on an unread document is a claim nobody made
+- **An invoice's money names its own currency, and the house may restate it** (founder 2026-09-06, batch 63). Every figure on this page printed a hardcoded `$` until now, including on the two `TRY` invoices production already holds. Three rules, built in `apps/api-gateway/src/procurement/documents/invoice-currency.ts`: **(1)** an 810 with no `CUR` segment is filed under the HOUSE'S OWN `restaurants.currency` — never `USD` — and a house that has stated none, on a file that states none, has its **money refused** in a sentence naming both absences (the quantities stay; the header charges, the total, every line price and the tie-out all go to null). **(2)** the extraction states the currency it SEES with the location it saw it (`currencySeen`), and a sighting that disagrees with the currency the invoice would be filed under **HOLDS** the money under both until a person decides — the model flags, it never decides. **(3)** a manager or owner restates it here: a picker of ISO 4217 codes, an optional reason, an append-only audit row (`procurement_document_currency_changes`) written BEFORE the change lands, and the money re-filed off the stored reading with the server's own sentence saying what moved. **Nothing is converted** — there is no exchange rate in this system. **Staff see the control disabled with the sentence**, never hidden
+- **The currency control also CONFIRMS, not only changes** (founder 2026-09-06, batch 64:
+  *"let them approve if otherwise"*). `PATCH :id/currency` accepts `previous === next` and
+  records it as `change_kind = 'confirmed'` — the same author, the same role, the same
+  moment, the same `money_refiled` payload. It is what ends a hold when the currency the
+  document already carries is the right one, and it is what unlocks the price at
+  [[receiving]]. The database refuses the two lies the pair could tell: a confirmation
+  whose codes differ, and a restatement that restates nothing (`20260906180000`)
+- **The chain gained a rung: the ORDER's own currency** (founder 2026-09-06, batch 65 —
+  *"we will use the currency from where we order it"*). `filingCurrency` now reads: the
+  file's own statement, then `procurement_orders.currency` for the order this document is
+  matched to, then the house's — and the house's rung says WHICH of the two preconditions
+  held ("the order names none" vs "matched to no order"). A file CUR that DISAGREES with
+  the matched order's currency is HELD exactly like a model disagreement, naming both
+- **`?doc=<id>` opens a document directly**, so the receiving screen's refusal can link
+  to the control that clears it rather than to the queue
+- **A hold now KEEPS the figures it strips** (`ParsedDocument.moneyWithheld`). This
+  corrects a documented-but-untrue invariant: `moneyHeld`'s comment claimed the full
+  reading survived in `procurement_documents.extracted`, but the intake writes `extracted`
+  from the same object it writes the money columns from, so once the fields were nulled
+  the reading was gone from both — `refiledMoney` restored a document of nulls while
+  `refilingSentence` announced that the money "was held and is now filed"
+- **The three write acts each take a redeemed seal** (founder 2026-09-06, batch 64:
+  *"Decide as a module: seal all three"*). `POST :id/verify`, `PATCH :id/lines/:lineId`
+  and `PATCH :id/currency` are behind challenge-and-redeem, the same mechanism the order
+  approval and the payment-register acts use (`subject_kind 'procurement_document'`, acts
+  `verify` / `line_edit` / `currency_restate`; `20260906200000`). Each mint happens when
+  the GESTURE BEGINS and each token is spent exactly once. What each seal is taken OVER is
+  the point: **verify** hashes the whole transcription, so a line corrected between the
+  gesture and the write refuses it rather than putting a reviewer's name on a figure they
+  never read; **line_edit** hashes the line as it stands AND the exact patch, which turns
+  the last-write-wins collision this page could previously only report after the fact into
+  a refusal; **currency_restate** hashes the pair of codes, so a seal minted to move a held
+  invoice to EUR cannot be spent after somebody else filed it in USD. A moved cell is now a
+  PENDING correction stated in figures, not a write: the hold below it is what sends it.
+  **A failed mint is a failure in words and never a silent unsealed call.** The legacy
+  `/receipts` page (rendered whenever the flag is off) mints and carries the seal too.
+  **The canonical face's twin acts are sealed the same way** (founder 2026-09-11, batch 69:
+  *"Seal corrections and fields/verify too"*). On `/documents/:id`, `POST :id/corrections`
+  (act `field_correct`) and `POST :id/fields/verify` (act `field_verify`) take a seal minted
+  by `:id/corrections-seal-challenge` and `:id/fields/verify-seal-challenge` when the hold
+  begins. The correction's seal covers the REVISION being corrected (its number and its
+  whole layer-1 content) plus the path and value, so a correction written against a
+  superseded revision, or after a line was corrected on this page, is refused; the tick's
+  seal covers the field's path, the value as shown, whether the document carries that
+  field, and the verdict. The correction form's submit is a hold that seals the value
+  captured when the hold began; the tick left the provenance popover (which closes on blur)
+  for its own dialog with a hold. Neither act gained a role gate. The other five write
+  routes on the documents controller (upload, extraction, match, link, door count) are
+  deliberately NOT sealed; `scripts/check_money_routes_are_sealed.py` prints them under
+  DELIBERATELY UNSEALED, each with the reason true of that route (two of which say plainly
+  they are weak: link moves an invoice price between cost lots, door count books provisional
+  stock), and a write nobody has named still prints under NOT IN ANY SEAL CENSUS
 - **Pairing** — matcher suggestions carry their reason **and their confidence** for one-tap confirmation. The matcher **does** auto-write unambiguous vendor-SKU pairings server-side (`line-matcher.ts:282-296`); the page names them as written-without-asking, and every paired row has **Unlink**. The `Paired with` column names its target (ordered wine · quantity · order-line ref · method · confidence) and says "not paired" in words
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receipts`)
+
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
 
 Canonical source with curves: `apps/web/src/pages/receipts/next/MOTIONS.md` —
 this list is the note-side index (ADR 0044 §2).
@@ -98,6 +160,16 @@ charges or stock. Credits stay on the legacy tab (flag off) until a later
 pass; recorded in §9. E48/E49 carried throughout: tri-state nulls are
 untestable, never a pass.
 
+### Overlays, 2026-09-05 (sketch 102 · ADR 0112)
+
+<!-- sketch-102-overlays -->
+Generated by `.planning/sketches/102-modal-census/build.py --docs` from `census.py` — edit the census, not this table.
+The rule: an object gets a sheet, a question a panel, a choice a popover; the seal never sits in a popover.
+
+**`/receipts`** — No overlays. Editable-and-confirmable in one step wants no dialog; SwipeToConfirm is inline.
+
+Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
+
 ## 2. Entry
 
 - Sidebar "Receipts & Credits" (`components/layout/Sidebar.tsx:132`).
@@ -139,6 +211,7 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):378 (`procurement/documents`
 | POST | `/procurement/documents/:id/verify` | `ReceiptsPage.tsx:103` → `documents.ts:104` |
 | GET | `/procurement/credits` (+ `/stats`) | `ReceiptsPage.tsx:83,89` → `services/api/credits.ts:51,58` |
 | POST | `/procurement/credits/:id/transition` | `ReceiptsPage.tsx:140` → `credits.ts:71` |
+| PATCH | `/procurement/documents/:id/currency` | `ReceiptsNext.tsx` `CurrencyBlock` -> `documents.ts` `restateCurrency`. Managers and owners only (`OrganizationsService.resolveRestaurantRole` + `roleSatisfies`); 403 in words for anyone else, 400 for anything that is not an ISO 4217 alpha-3, 409 for a change to the currency already filed. Writes the audit row first and does NOT change the currency if the log fails. |
 | POST | `/procurement/documents/:id/extraction` | **No SPA call site** — the extraction door (`documents.controller.ts:351`). Fills a document ADR 0104 D6 stored unread with an extraction produced outside the gateway, because the configured Anthropic key has no credit. 409 once a document has lines or a real extraction. |
 
 ## 5. Signals
@@ -315,6 +388,192 @@ pass — the opposite of the fabricated-zero habit elsewhere in this cluster.
 chase never leaves the building (§10). "Claim → requested" reads as "we asked them".
 
 ## 13. Roadmap
+
+**2026-09-11 — a held invoice's header money now survives a restatement, and the sentence
+says which figures moved.** From the adversarial audit of `b6d2e4b4` (BLOCKING, three of
+three verifiers). **What was wrong:** for a held document the header columns on the row are
+NULL — intake writes them that way from the withheld parse, and `editLine` never repairs them
+— so as soon as ONE line carried money, `planRefile` chose that all-null header, and the
+withheld subtotal, freight, tax and total were never put back. `document.total` was written
+NULL, permanently: every later restatement saw priced lines and took the same branch. The
+page then showed a sentence that said the money *"was held and is now filed … the vendor's
+own figures were put back"* beside *"The document states no total"* — a claim about a write
+that had not happened. **What it does now** (`invoice-currency.ts:780`): the header comes
+from the row only when the row's own header carries money, otherwise from the withheld
+reading; each line keeps its own figures or recovers them; the tie-out is recomputed.
+**What a person is shown** (`document-intake.service.ts:2240`): the sentence names the parts
+— *"Put back from the reading withheld at intake: the header's subtotal, freight, deposit
+total, tax and total; and line 2. Kept exactly as they stood on the document, corrections
+included: line 1."* — and it no longer says the vendor's figures were put back when some were
+kept. A restatement that puts nothing back says so and drops the "was held" claim entirely.
+Pinned at `invoice-currency.spec.ts:1070` and `document-intake.service.spec.ts:591`; of the
+five held-row cases added, three fail on the pre-fix code and two pass it (they pin
+invariants that already held). Not verified in a browser: no ceremony was captured this pass.
+
+**2026-09-06 (batch 67) — the currency vocabulary is now all of ISO 4217, and a typed
+receiving price states its code or is refused.** Two founder decisions, one pass. (1) The
+gateway's currency list went 96 → 157 — every ACTIVE ISO 4217 code, minus the 22 in list
+A1 that are not money a vendor bills in (metals, test, bond units, units of account, funds
+codes) — mirrored against `apps/web/src/lib/currency.ts` by `iso-4217.spec.ts`, which
+reads that file as text and fails on a one-code difference either way. *"A Hong Kong or
+Macau vendor's invoice files instead of being held."* HKD, MOP, XOF, XAF, XCD, XPF and
+about 55 others were HELD for one day and now file; ZZZ, XTS, the metals, the funds codes
+and every WITHDRAWN currency (HRK, CUC, SLL, ZWL, MRO, STD, VEF) are still refused, by
+name. The web table gained each currency's MINOR-UNIT count, so a figure prints with the
+decimal places its money actually has. (2) `verifyReceipt` and `VerifyReceiptDto` refuse a
+`invoiceUnitPrice` with no `invoiceCurrency`, before any write — the three pinning tests
+p4bt wrote on 2026-09-06 for the currency-null row are flipped, and the sentence names the
+three ways to state a code (the order's, the house's, one typed here) and what still
+records without one (the count, the rejection, the stock movement). Also in this pass, from
+the Sonnet audit of `4abd03ff`: the two Stripe-backed message-credit gates
+(`communications/text/credits/text-credits.controller.ts`,
+`communications/text/text-usage.service.ts`) were still shape-only and now check
+membership; and `planRefile` decides `current_rows` vs `withheld_snapshot` PER LINE
+(source `mixed`, with per-line counts), which stops a two-line held document losing line
+2's recoverable figures when a manager edits line 1.
+
+**Both halves of that last sentence were corrected on 2026-09-11**, by the audit of
+`b6d2e4b4`. (a) PER LINE was not far enough: the HEADER was still decided by the lines, so a
+held document's header money was erased by the first corrected line — see the 2026-09-11
+entry at the top of this section. (b) "Now check membership" was true and not sufficient:
+both credit gates upper-cased without trimming while `isIso4217` trims, so `" try"` passed
+the gate as `" TRY"` and was bound into the seal in one spelling and written in another. Both
+now normalise through `currencyCode(...)` before the check
+(`text-credits.controller.ts:187`, `text-usage.service.ts:514`).
+
+**2026-09-06 — the invoice's money, and who may change it.** The founder, batch 63,
+asked what an 810 with no `CUR` should do and answered verbatim:
+
+> "take the houses own currency, but AI needs to or otherwise house delibaretly
+> chnage it to other currency if the invoice is other than their default"
+
+Built as three rules (see the §1a entry). What it replaced, measured on this tree by
+a probe spec run against `git show HEAD:apps/api-gateway/src/procurement/documents/
+x12/*.ts` and then deleted: a CUR-less 810 came back `currency: "USD"` with
+`total: 528` beside it and **no warning of any kind**, indistinguishable from an
+invoice a vendor had denominated in dollars; and `parseX12` took one argument, so a
+caller that knew the house was in Turkiye had nowhere to say so. Three sibling
+defects were found and closed in the same pass: `x12-credit.ts` pinned the literal
+`"USD"` on an 812 that carries a real `totalCredit` and settles against the 810;
+`x12-ship-notice.ts` did the same on a document with no money at all; and
+`canonical/from-document-rows.ts` read a NULL currency back as `USD`, which would
+have re-dollarised on the canonical face every document rule 1 had just refused.
+
+**2026-09-06, batch 64 — the founder answered all four questions. Decided, not open.**
+
+1. **A held invoice blocks the PRICE at receiving only** — never the stock movement —
+   and, verbatim: *"let them approve if otherwise"*. A person may approve past the hold.
+   The founder also asked for **a default-currency section on each vendor's profile**.
+   **BUILT (2026-09-06, p4br).** `verifyReceipt` refuses a keyed-in `invoiceUnitPrice`
+   while an attached invoice's money is not filed, before any write, in a sentence naming
+   the hold's reason and the act that clears it; the stock movement is untouched and that
+   is measured (`receiving-price-held.spec.ts` compares what a priceless receipt writes on
+   a held document against a settled one). The approve-past IS the restatement act:
+   `PATCH :id/currency` now accepts `previous === next` and logs it as
+   `change_kind = 'confirmed'` with the same author and the same audit row
+   (`20260906180000`). Before that, a manager who decided the currency the file already
+   carried was right got a 409, and the only way past the refusal was to name a currency
+   they did not believe in. See [[receiving]] §1a and [[providers]] §1a.
+2. **Rule 2's evidence is shown only on a disagreement** — as built. The agreeing and
+   unreadable cases are recorded on the document and not surfaced.
+3. **Procurement's three writes will be sealed as a module in a later pass.** Not sealed
+   now, and deliberately not one route at a time. ~~Later pass~~ — **BUILT the same day,
+   see the block below.**
+4. **Invoices already filed under the `USD` nobody chose are left alone** — as built.
+   Nothing in this pass touches an existing row; rule 3 restates the ones a person
+   disputes, and the audit log says who did.
+
+**2026-09-06, batch 66 — the four follow-up questions, answered verbatim.**
+
+> **"Keep: house currency for an unmatched invoice"**
+> **"Add the prompt panel"**
+> **"Keep it open on every invoice"**
+> **"Two screens, for now"**
+
+1. **The house's currency stays the last rung** for an invoice matched to no order. It was
+   marked as an assumption in this file, in [[providers]] §13 and in ADR 0104 until this
+   answer; it is now the founder's own call and those markings are replaced. An unmatched
+   invoice is filed under the house's stated currency rather than refused.
+2. **The prompt panel is to be built** — *"N of your M vendors have stated a usual
+   currency"* — because with no vendor profiles filled in the order rung is inert and the
+   chain silently falls back to the house exactly as before. It belongs to **p4bu** and is
+   not in the tree as of this line.
+3. **Confirmation stays open on EVERY invoice**, held or not. A manager may certify a
+   currency before a dispute; the cost — rows that record nothing but somebody clicking —
+   is accepted.
+4. **Clearing a held price stays two screens.** [[receiving]] refuses and links to
+   `/receipts?doc=<id>`, which opens that document (pinned by a router test in
+   `ReceiptsNext.test.tsx`); the manager decides here and goes back. *"For now"* is the
+   founder's own hedge and is recorded as one.
+
+**2026-09-06, batch 64 — procurement's three writes are sealed as a module. BUILT.**
+
+Asked whether procurement's write routes should be sealed, the founder answered verbatim:
+
+> **"Decide as a module: seal all three (Recommended)"**
+
+The option read: *"One policy for the corridor: verify, line edit and currency
+restatement each take a redeemed seal like the payment and register acts do. Its own
+pass; the receiving flow gains one ceremony per act."*
+
+Built as ONE subject kind with three acts rather than three mechanisms — the same
+`SealChallengeService` the order approval, the payment register and the credit purchase
+redeem through (`common/seal/`), extended by
+`supabase/migrations/20260906200000_a_document_act_takes_a_redeemed_seal.sql`, which
+widens the seal's `subject_kind` CHECK by READING it and appending, never by a hand-typed
+literal (four passes touched that one constraint this week). What each seal is taken over
+is in `apps/api-gateway/src/procurement/documents/document-seal.ts` and in the §1a entry.
+
+What this REPLACED, measured on this tree: all three routes wrote behind the JWT and, for
+the restatement only, a role check — which answers *may this role* and cannot answer *did
+a person*. The guard was run against `git show HEAD:` of the controller (copied to a probe
+tree under `$SP`, no git state change) and named all three UNSEALED, exit 1.
+
+Two costs, accepted and stated. **A moved cell is no longer a write**: correcting a
+quantity now stages a pending correction and a hold sends it, which is one gesture per
+correction where there used to be none. And the **other seven** write routes on this
+controller (upload, extraction, match, link, field correction, field tick, door count) are
+still unsealed; the founder's decision named three acts and nothing more, so the guard
+PRINTS the seven as outside every census rather than either failing on them or passing
+over them in silence. Whether the whole controller should join the money modules' rule is
+a founder question, filed in p4bs's report.
+
+**2026-09-11, batch 69 — four answers, verbatim. Decided, not open.**
+
+The session asked these as "batch 68" by mistake; they are recorded as **batch 69**. The
+real batch 68 (2026-09-06, recorded in commit `b6d2e4b4`'s message) had ALREADY chosen to
+seal the canonical face's twin acts as a follow-up pass, to keep one ceremony per
+correction until real use says otherwise, and to seal the receiving door as its own kind in
+its own pass. The first answer below confirms that choice rather than making it.
+
+> **"Seal corrections and fields/verify too"** — *"The decision then holds on both faces of
+> the document; the guard's census becomes five acts."*
+> **"Keep it: the picker offers what the gateway accepts"**
+> **"Invoice's filed code first, then the order's"** — *"A reading of the document, like
+> the quantities and prices on that screen already are; when the two disagree the
+> comparison banner already says so. One line."*
+> **"Keep as built; a held old code is a bug report, not a list entry"**
+
+1. **The twins are sealed. BUILT (2026-09-11, p4bx).** `field_correct` and `field_verify`
+   join `verify`, `line_edit` and `currency_restate` on the one `procurement_document`
+   kind; the §1a entry says what each seal covers. No migration: the ACT lives in
+   `mcp_seal_challenges.tool_name` under a non-empty CHECK only (`20260904170000`), and
+   `20260906200000` already admits the kind. `check_money_routes_are_sealed.py`'s
+   `SEALED_ACTS` census is five rows; the five other writes print under DELIBERATELY
+   UNSEALED with a reason each (added after the audit of `b6d2e4b4`, which found the twins
+   printed as "no decision names" while this note called all seven deliberate).
+   What it replaced, measured: a probe spec run against `git show HEAD:` of the controller,
+   then deleted, showed both routes completing their write with no seal and never touching
+   the seal service. Not captured in a browser (see p4bx's report).
+2. **The currency picker stays at all 157 active codes** — the gateway's list, the web
+   table and the picker are one set (`apps/web/src/lib/currency.ts` header).
+3. **The receiving price pre-fills from the invoice's filed code first**, then the
+   order's, then nothing — see [[receiving]] §13.
+4. **Withdrawn ISO codes stay refused.** An invoice naming HRK, CUC, SLL, ZWL, MRO, STD or
+   VEF is held, and a held old code is reported as a defect, never answered by adding the
+   code (`apps/api-gateway/src/common/iso-4217.ts` header). ANG stays beside XCG; VED and
+   VES are both listed.
+
 
 1. **Send the claim.** `→ requested` should draft the vendor email through the same
    approve-then-send path procurement already uses — the guardrail is decided
