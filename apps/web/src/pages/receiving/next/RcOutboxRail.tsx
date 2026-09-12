@@ -245,7 +245,13 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                   style={{
                     display: 'block',
                     fontSize: 10.5,
-                    color: r.stranded ? 'var(--seal-1, #B23A48)' : 'var(--ink-3, #7C7365)',
+                    // Not a token: the ground's palette has no alarm colour —
+                    // `--seal` is the teal accent, and this is the one row on
+                    // the page that must not read as an accent. Literal, and
+                    // the same rose the two door screens use for the same
+                    // condition, so one delivery does not change colour
+                    // between screens.
+                    color: r.stranded ? '#E7A6A6' : 'var(--ink-3, #7C7365)',
                   }}
                 >
                   saved {r.queuedAt ? timeShort.format(new Date(r.queuedAt)) : EM}

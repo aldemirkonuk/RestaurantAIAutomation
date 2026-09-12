@@ -29,7 +29,6 @@ import {
   dismissDroppedDoorReceipt,
   flushDoorOutbox,
   readDroppedDoorReceipts,
-  readStrandedDoorReceipts,
   watchDoorOutbox,
   type DoorFlushResult,
 } from './doorOutbox'
@@ -449,117 +448,16 @@ describe('H1 — a drop with no house recorded is still shown to someone', () =>
   })
 })
 
-/**
- * The `stranded` counter re-created, in the path that fixed `dropped`, the
- * defect it was written to remove.
+/*
+ * The `stranded` suite that used to sit here moved to `doorOutbox.strand.test.ts`
+ * and `doorOutbox.orphan.test.ts`, which mock nothing but the network.
  *
- * A stranded entry is deliberately KEPT in the queue — that is the whole point
- * of H2 — so every later pass re-enters the same branch, fails to write the
- * record again, and returns `stranded: 1` again. Both door screens were adding
- * those numbers up (`setStranded((n) => n + r.stranded)`), so one lost receipt
- * read as "2 deliveries", then "3", once per screen unlock at the dock, on the
- * screen the founder's house actually renders. The fix is the same one this
- * module already applied to `dropped`: identity, not arithmetic. Here the queue
- * ENTRY is the identity, because there is no drop record to key on.
+ * Not a tidy-up. These tests mocked `./offline-storage` with a store that always
+ * applies the patch, and that mock cannot express the state the whole feature
+ * exists for — storage REFUSING the write. It is why 920 green tests did not see
+ * an alarm that had gone silent. A strand test that mocks the store is a test of
+ * the mock.
  */
-describe('readStrandedDoorReceipts — one stranded receipt is one, however many passes run', () => {
-  // The outbox's strand ledger is module state that ONLY an observed resolve
-  // empties — deliberately, because a read that comes back empty cannot prove
-  // the queue was readable, and pruning against one erased the only witness to
-  // a mark-less strand. So it is drained here the way production drains it: one
-  // pass over an empty queue with storage working settles every orphan into a
-  // drop record. The records are then wiped.
-  beforeEach(async () => {
-    store.getPendingMutationsByType.mockResolvedValue([])
-    await flushDoorOutbox()
-    window.localStorage.clear()
-    expect(await readStrandedDoorReceipts('rest-A')).toEqual([])
-  })
-
-  /** A queue that behaves like the real one: the flush's parking update sticks. */
-  const liveQueue = (entries: ReturnType<typeof pendingAt>[]) => {
-    const rows = [...entries]
-    store.getPendingMutationsByType.mockImplementation(async () => rows)
-    store.updatePendingMutation.mockImplementation(async (id: string, patch: object) => {
-      const i = rows.findIndex((r) => r.id === id)
-      if (i >= 0) rows[i] = { ...rows[i], ...patch }
-    })
-    store.removePendingMutation.mockImplementation(async (id: string) => {
-      const i = rows.findIndex((r) => r.id === id)
-      if (i >= 0) rows.splice(i, 1)
-    })
-    return rows
-  }
-
-  const brokenStorage = () =>
-    vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
-      const e = new Error('The quota has been exceeded.')
-      e.name = 'QuotaExceededError'
-      throw e
-    })
-
-  it('reports the same single strand after three passes, where the counter reported three', async () => {
-    liveQueue([pendingAt('m-1', 'rest-A', 0, 'PO-1')])
-    recordDoorReceipt.mockRejectedValue(httpError(400))
-    const setItem = brokenStorage()
-
-    const passes = [await flushDoorOutbox(), await flushDoorOutbox(), await flushDoorOutbox()]
-    setItem.mockRestore()
-
-    // Every pass is honest about ITSELF: this pass could not record it either.
-    expect(passes.map((p) => p.stranded)).toEqual([1, 1, 1])
-    // Summing those is what the screens used to do. Reading does not.
-    expect(await readStrandedDoorReceipts('rest-A')).toMatchObject([
-      { id: 'm-1', orderLabel: 'PO-1', restaurantId: 'rest-A' },
-    ])
-  })
-
-  it('stops reporting a strand that heals, instead of leaving an alarm beside its own drop pin', async () => {
-    liveQueue([pendingAt('m-2', 'rest-A', 0, 'PO-2')])
-    recordDoorReceipt.mockRejectedValue(httpError(400))
-
-    const setItem = brokenStorage()
-    const first = await flushDoorOutbox()
-    setItem.mockRestore()
-    expect(first.stranded).toBe(1)
-    expect(await readStrandedDoorReceipts('rest-A')).toHaveLength(1)
-
-    // Storage frees up. The next pass writes the record and the entry goes.
-    const healed = await flushDoorOutbox()
-    expect(healed.dropped).toBe(1)
-    expect(await readStrandedDoorReceipts('rest-A')).toEqual([])
-    expect(readDroppedDoorReceipts('rest-A')).toMatchObject([{ id: 'm-2' }])
-  })
-
-  it('says nothing rather than all-clear when the queue cannot be read', async () => {
-    store.getPendingMutationsByType.mockRejectedValue(new Error('IndexedDB unavailable'))
-    // `null`, not `[]`: an unreadable queue is not an empty one, and a screen
-    // that cannot tell them apart clears a standing alarm for a lost delivery.
-    expect(await readStrandedDoorReceipts('rest-A')).toBeNull()
-  })
-
-  it('returns an unattributed strand to every house rather than hiding it', async () => {
-    liveQueue([pendingAt('m-3', '', 0, 'PO-3')])
-    recordDoorReceipt.mockRejectedValue(httpError(400))
-    const setItem = brokenStorage()
-    await flushDoorOutbox()
-    setItem.mockRestore()
-
-    expect(await readStrandedDoorReceipts('rest-A')).toHaveLength(1)
-    expect(await readStrandedDoorReceipts('rest-B')).toHaveLength(1)
-  })
-
-  it('does not count another house\'s strand', async () => {
-    liveQueue([pendingAt('m-4', 'rest-B', 0, 'PO-4')])
-    recordDoorReceipt.mockRejectedValue(httpError(400))
-    const setItem = brokenStorage()
-    await flushDoorOutbox()
-    setItem.mockRestore()
-
-    expect(await readStrandedDoorReceipts('rest-A')).toEqual([])
-    expect(await readStrandedDoorReceipts('rest-B')).toHaveLength(1)
-  })
-})
 
 /**
  * Acknowledging a drop with no active house told the caller it was gone and

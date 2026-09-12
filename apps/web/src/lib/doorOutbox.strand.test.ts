@@ -54,29 +54,45 @@ const jamStorage = () =>
 beforeEach(async () => {
   vi.clearAllMocks()
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
-  // The outbox's strand ledger is module state that only an OBSERVED resolve
-  // empties — that is the property these tests exist to protect, so it cannot
-  // be reached around here either. Drain the queue, then run one working pass:
-  // storage is healthy, so the pass settles every orphan into a drop record and
-  // the ledger empties exactly as it does in production. Then wipe the records.
-  for (const m of await offlineStorage.getPendingMutationsByType('receiving.door'))
-    await offlineStorage.removePendingMutation(m.id)
+  // The strand ledger is module state that ONLY an observed resolve empties —
+  // that is the property these tests exist to protect, so it is not reached
+  // around here either. Deliver whatever the last test left queued: the pass
+  // walks it, the server takes it, and the ledger clears exactly as it does in
+  // production. (A test that ORPHANS a strand — removes its entry behind the
+  // module's back — therefore cannot be cleaned up this way, and lives in its
+  // own file, where the module registry gives it a fresh ledger.)
+  recordDoorReceipt.mockResolvedValue({ alreadyRecorded: false })
   await flushDoorOutbox()
   expect(await readStrandedDoorReceipts(RID)).toEqual([])
+  for (const m of await offlineStorage.getPendingMutationsByType('receiving.door'))
+    await offlineStorage.removePendingMutation(m.id)
   window.localStorage.clear()
+  recordDoorReceipt.mockReset()
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
 })
 
+/**
+ * Queue one receipt and return the entry that was actually just added.
+ *
+ * By label, not by `[0]`: the queue is real storage and its order is not
+ * guaranteed, so indexing into it made these tests depend on each other — one
+ * run in three failed under `--sequence.shuffle.tests`, which is exactly the
+ * order dependence the shuffle exists to find.
+ */
 const queueOne = async (orderLabel = 'PO-1') => {
   await offlineStorage.addPendingMutation({
     type: 'receiving.door',
     data: { orderId: 'o-1', orderLabel, restaurantId: RID, body: {} },
     timestamp: new Date(),
   })
-  const [m] = await offlineStorage.getPendingMutationsByType('receiving.door')
+  const all = await offlineStorage.getPendingMutationsByType('receiving.door')
+  const m = all.find(
+    (x) => (x.data as { orderLabel?: string } | undefined)?.orderLabel === orderLabel,
+  )
+  if (!m) throw new Error(`queueOne: ${orderLabel} did not reach the queue`)
   return m
 }
 
@@ -137,8 +153,7 @@ describe('a strand survives the disk that caused it', () => {
     // later pass then records the drop — and its delete fails, leaving a
     // marked entry and a drop record for one receipt. Without the read
     // excluding recorded ids, the porter sees both alarms for one delivery.
-    await queueOne('PO-4')
-    const [seeded] = await offlineStorage.getPendingMutationsByType('receiving.door')
+    const seeded = await queueOne('PO-4')
     await offlineStorage.updatePendingMutation(seeded.id, {
       retryCount: 8,
       lastError: MARK,
@@ -158,11 +173,10 @@ describe('a strand survives the disk that caused it', () => {
   })
 
   it('never calls a delivery the server accepted a lost one', async () => {
-    await queueOne('PO-3')
+    const m = await queueOne('PO-3')
     recordDoorReceipt.mockRejectedValueOnce(httpError(500))
 
     // Strand it first: a 500 at the attempt ceiling with the disk refusing.
-    const [m] = await offlineStorage.getPendingMutationsByType('receiving.door')
     await offlineStorage.updatePendingMutation(m.id, { retryCount: 7 })
     const jam = jamStorage()
     const first = await flushDoorOutbox()
@@ -196,8 +210,7 @@ describe('a strand survives the disk that caused it', () => {
 describe('a strand stops when the receipt stops being lost', () => {
   /** Park an entry exactly as the strand branch does when the mark DOES land. */
   const seedMarkedStrand = async (orderLabel = 'PO-M') => {
-    await queueOne(orderLabel)
-    const [m] = await offlineStorage.getPendingMutationsByType('receiving.door')
+    const m = await queueOne(orderLabel)
     await offlineStorage.updatePendingMutation(m.id, { retryCount: 8, lastError: MARK })
     expect(await readStrandedDoorReceipts(RID)).toHaveLength(1)
     return m.id
@@ -272,57 +285,89 @@ describe('an unreadable queue never becomes an all-clear', () => {
 })
 
 /**
- * The orphan: a strand whose queue entry is gone without this module seeing it
- * go. `sync-manager` clears the whole pending queue (its own register entry —
- * "SyncManager silently deletes every queued door receipt"), and a person can
- * clear site data.
+ * A queue read that came back empty proves nothing.
  *
- * The strand alarm is undismissable on purpose, so an orphan that can never
- * resolve is a permanent alert on a shared dock tablet — which is exactly how a
- * real alarm gets trained out of the people it is for. It resolves by BECOMING
- * a drop: the receipt was given up on, so that is the correct record, and it is
- * one the porter can acknowledge. The only reason it was not written at the
- * time is that storage refused, and storage recovers.
+ * An earlier version converted an apparently-orphaned strand into a dismissible
+ * drop record. It was WITHDRAWN: the only way to know an entry is gone is a
+ * queue read, and that read cannot report failure, so one IndexedDB blip
+ * recorded a permanent loss for a receipt that was still queued — and which
+ * then delivered. This pins the withdrawal.
  */
-describe('a strand that can never resolve becomes one the porter can acknowledge', () => {
-  it('settles an orphaned strand into a dismissible drop once storage recovers', async () => {
+describe('a queue read that came back empty is not evidence of anything', () => {
+  it('does not record a loss for a receipt that is merely unreadable this pass', async () => {
     await queueOne('PO-8')
     recordDoorReceipt.mockRejectedValue(httpError(400))
     const jam = jamStorage()
     await flushDoorOutbox()
     jam.mockRestore()
     expect(await readStrandedDoorReceipts(RID)).toMatchObject([{ orderLabel: 'PO-8' }])
+
+    // One blip: the queue reads as empty although the receipt is still in it.
+    const blind = vi.spyOn(offlineStorage, 'getPendingMutationsByType').mockResolvedValue([])
+    const blip = await flushDoorOutbox()
+    blind.mockRestore()
+
+    // Nothing was recorded as lost, and nothing was reported as resolved.
     expect(readDroppedDoorReceipts(RID)).toEqual([])
+    expect(blip.dropped).toBe(0)
+    // The receipt is still queued, and still shouting.
+    const still = await offlineStorage.getPendingMutationsByType('receiving.door')
+    expect(still).toHaveLength(1)
+    expect(await readStrandedDoorReceipts(RID)).toMatchObject([{ orderLabel: 'PO-8' }])
 
-    // The queue is emptied from outside this module — nothing here observed it.
-    for (const m of await offlineStorage.getPendingMutationsByType('receiving.door'))
-      await offlineStorage.removePendingMutation(m.id)
-
-    await flushDoorOutbox()
-
+    // And it can still be delivered, under its original idempotency key.
+    recordDoorReceipt.mockResolvedValue({ alreadyRecorded: false })
+    const recovery = await flushDoorOutbox()
+    expect(recovery.sent).toBe(1)
+    expect(readDroppedDoorReceipts(RID)).toEqual([])
     expect(await readStrandedDoorReceipts(RID)).toEqual([])
-    // Not forgotten — converted. Named, and dismissible.
-    const drops = readDroppedDoorReceipts(RID)
-    expect(drops).toMatchObject([{ orderLabel: 'PO-8' }])
-    dismissDroppedDoorReceipt(RID, drops[0].id)
-    expect(readDroppedDoorReceipts(RID)).toEqual([])
   })
 
-  it('keeps the alarm while storage is still refusing to record it', async () => {
-    await queueOne('PO-9')
+})
+
+/**
+ * Scoping. The banners are label-free, so a count crossing houses costs no
+ * order name — but a strand hidden from the house it belongs to costs the
+ * delivery, which is the asymmetry these two encode.
+ */
+describe('a strand belongs to a house, and an unstamped one belongs to all of them', () => {
+  const queueFor = async (restaurantId: string, orderLabel: string) => {
+    await offlineStorage.addPendingMutation({
+      type: 'receiving.door',
+      data: { orderId: `o-${orderLabel}`, orderLabel, restaurantId, body: {} },
+      timestamp: new Date(),
+    })
+  }
+
+  it('does not report another house\'s strand', async () => {
+    await queueFor('rest-B', 'PO-B')
     recordDoorReceipt.mockRejectedValue(httpError(400))
-    let jam = jamStorage()
-    await flushDoorOutbox()
-    jam.mockRestore()
-    for (const m of await offlineStorage.getPendingMutationsByType('receiving.door'))
-      await offlineStorage.removePendingMutation(m.id)
-
-    jam = jamStorage()
+    const jam = jamStorage()
     await flushDoorOutbox()
     jam.mockRestore()
 
-    // The record still could not be written, so it is still a strand — the one
-    // outcome that is never allowed is the screen going quiet about it.
-    expect(await readStrandedDoorReceipts(RID)).toMatchObject([{ orderLabel: 'PO-9' }])
+    expect(await readStrandedDoorReceipts('rest-A')).toEqual([])
+    expect(await readStrandedDoorReceipts('rest-B')).toMatchObject([{ orderLabel: 'PO-B' }])
+  })
+
+  it('reports an unstamped strand to every house rather than hiding it', async () => {
+    await queueFor('', 'PO-U')
+    recordDoorReceipt.mockRejectedValue(httpError(400))
+    const jam = jamStorage()
+    await flushDoorOutbox()
+    jam.mockRestore()
+
+    expect(await readStrandedDoorReceipts('rest-A')).toHaveLength(1)
+    expect(await readStrandedDoorReceipts('rest-B')).toHaveLength(1)
+  })
+
+  it('says nothing rather than all-clear when the queue read REJECTS', async () => {
+    const blind = vi
+      .spyOn(offlineStorage, 'getPendingMutationsByType')
+      .mockRejectedValue(new Error('IndexedDB unavailable'))
+    const answer = await readStrandedDoorReceipts('rest-A')
+    blind.mockRestore()
+    // `null`, not `[]`. Both screens keep what they last knew on a null.
+    expect(answer).toBeNull()
   })
 })

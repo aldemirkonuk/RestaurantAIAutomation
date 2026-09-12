@@ -75,6 +75,18 @@ const STRANDED_MARKER =
  * What it deliberately over-reports: a receipt delivered by a SECOND tab stays
  * on the alarm in this one until this tab's own flush sees the queue entry go.
  * Loud and wrong beats quiet and wrong, for a delivery.
+ *
+ * AN ORPHAN — a strand whose queue entry disappeared without this module seeing
+ * it go, which today means `sync-manager` clearing the whole pending queue (its
+ * own entry in `v3.0-TECH-DEBT.md`) — stays on the alarm for the rest of the
+ * session and goes when the tab does. A previous version converted orphans into
+ * dismissible drop records, and it was withdrawn: the only way to know an entry
+ * is gone is a queue read, that read CANNOT report failure, and so one
+ * IndexedDB blip wrote a permanent "we gave up on this delivery" record for a
+ * receipt that was still queued and went on to be accepted by the server —
+ * sending the porter to re-enter by hand what the server already had, under a
+ * NEW idempotency key, booking the stock twice. The fix for a queue that
+ * vanishes is the queue that vanishes it; it is not available here.
  */
 const strandedThisSession = new Map<string, StrandedDoorReceipt>()
 
@@ -778,31 +790,6 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
     // The walk itself came apart. Whatever was counted stands; the pass says
     // it cannot vouch for the rest.
     return result(true)
-  }
-
-  // Settle the ledger's orphans: strands whose queue entry is no longer in the
-  // list this pass walked.
-  //
-  // A strand is UNDISMISSABLE by design — nothing on the screen makes it untrue
-  // — so one that can never be resolved is a permanent alarm on a shared dock
-  // tablet, which is how a real alarm gets trained out of people. It resolves
-  // by BECOMING a drop: the receipt was given up on, so the drop record is the
-  // right record, and unlike the strand it is a pin the porter can acknowledge.
-  // The only reason it was not written at the time is that storage refused, and
-  // storage recovers. Writing it here costs one attempt per orphan per pass and
-  // converts the alarm the moment it can.
-  const walked = new Set(pending.map((m) => m.id))
-  for (const d of [...strandedThisSession.values()]) {
-    if (walked.has(d.id)) continue
-    if (
-      recordDrop(d.restaurantId, {
-        id: d.id,
-        orderLabel: d.orderLabel,
-        droppedAt: new Date().toISOString(),
-        reason: 'retries',
-      })
-    )
-      strandedThisSession.delete(d.id)
   }
 
   return result(false)
