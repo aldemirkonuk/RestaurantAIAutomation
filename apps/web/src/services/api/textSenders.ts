@@ -71,3 +71,19 @@ export async function withdrawTextConsent() {
   const { data } = await apiClient.delete('/communications/text-senders/consent')
   return data as { withdrawn: number; words: string }
 }
+
+/**
+ * A manager stops the house using this sender (ADR 0114: the attachment is the
+ * house's, and a manager may end it).
+ *
+ * The reason is REQUIRED by the gateway and is not defaulted here: a sender
+ * stopped without one is a fact nobody can act on later, and a client-side
+ * placeholder would satisfy the validator while destroying what it is for.
+ */
+export async function revokeTextSender(body: {
+  senderId: string
+  reason: string
+}): Promise<unknown> {
+  const { data } = await apiClient.post('/communications/text-senders/revoke', body)
+  return data
+}
