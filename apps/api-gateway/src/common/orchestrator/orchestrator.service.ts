@@ -22,6 +22,20 @@ export function isSafeStudioSubPath(subPath: string): boolean {
   return isSafeRelativePath(subPath);
 }
 
+/** How long the orchestrator's `/health` may take before it is called unreachable. */
+export const ORCHESTRATOR_PROBE_TIMEOUT_MS = 4000;
+
+export interface OrchestratorProbe {
+  /** `AGENT_ORCHESTRATOR_URL` is set on the gateway. */
+  configured: boolean;
+  /** `GET /health` answered 200 within {@link ORCHESTRATOR_PROBE_TIMEOUT_MS}. */
+  reachable: boolean;
+  /** The measured round trip, or null when nothing was sent. */
+  latencyMs: number | null;
+  /** Fixed vocabulary; never a URL. */
+  detail: string;
+}
+
 @Injectable()
 export class OrchestratorService implements OnModuleDestroy {
   private readonly logger = new Logger(OrchestratorService.name);
@@ -229,6 +243,56 @@ export class OrchestratorService implements OnModuleDestroy {
       headers: this.getAdminHeaders(),
     });
     return response.data;
+  }
+
+  /**
+   * Is the orchestrator process there? A measured answer for `/health/infra`.
+   *
+   * `GET /health` on the orchestrator is its unauthenticated liveness route
+   * (`services/agent-orchestrator/main.py:159`, `{"status": "ok"}`), so this
+   * sends no admin key and reads no agent. Not configured is its own state and
+   * is NOT probed: the client's fallback base URL is localhost, and a probe
+   * against a fallback would be measuring the wrong process.
+   */
+  async probe(): Promise<OrchestratorProbe> {
+    if (!this.orchestratorConfigured) {
+      return {
+        configured: false,
+        reachable: false,
+        latencyMs: null,
+        detail: "AGENT_ORCHESTRATOR_URL is not set on the gateway",
+      };
+    }
+    const started = Date.now();
+    try {
+      const response = await this.httpClient.get("/health", {
+        timeout: ORCHESTRATOR_PROBE_TIMEOUT_MS,
+        validateStatus: () => true,
+      });
+      const latencyMs = Date.now() - started;
+      const ok = response.status === 200;
+      return {
+        configured: true,
+        reachable: ok,
+        latencyMs,
+        detail: ok
+          ? `GET /health answered 200 in ${latencyMs} ms`
+          : `GET /health answered ${response.status}`,
+      };
+    } catch (error) {
+      const code = axios.isAxiosError(error) ? error.code : undefined;
+      return {
+        configured: true,
+        reachable: false,
+        latencyMs: Date.now() - started,
+        detail:
+          code === "ECONNABORTED" || code === "ETIMEDOUT"
+            ? `GET /health did not answer within ${ORCHESTRATOR_PROBE_TIMEOUT_MS} ms`
+            : code === "ECONNREFUSED"
+              ? "GET /health was refused; nothing is listening at AGENT_ORCHESTRATOR_URL"
+              : "GET /health failed before an answer arrived",
+      };
+    }
   }
 
   async onModuleDestroy() {

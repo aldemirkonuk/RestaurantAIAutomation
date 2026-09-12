@@ -73,7 +73,14 @@ export type SettingsRegister =
    * The founder, 2026-09-05 batch 59: *"Twice a year, and the house types its
    * carrying cost."*
    */
-  | "carrying-cost";
+  | "carrying-cost"
+  /**
+   * The house's default low-stock threshold — `restaurants.default_threshold_min`,
+   * the number a menu item takes when it has none of its own. Written from
+   * `/admin` (ADR 0133 rebuild, 2026-09-11); until then its only writer was the
+   * get-started step, which recorded nobody.
+   */
+  | "house-defaults";
 
 /**
  * The action strings this service writes, and the ones it reads back.
@@ -101,6 +108,12 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * clause is gated on the answer.
    */
   "carrying_cost_changed",
+  /**
+   * The house changed its default low-stock threshold. Added 2026-09-11: the
+   * get-started step wrote the column without a trail, and `/admin` drew the
+   * same knob saving to one browser.
+   */
+  "low_stock_threshold_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

@@ -19,12 +19,16 @@ import { StudioProxyController } from "./studio-proxy.controller";
 import { StudioInviteController } from "./studio-invite.controller";
 import { OnboardingProxyController } from "./onboarding-proxy.controller";
 import { CommunicationsModule } from "../../communications/communications.module";
+import { CacheModule } from "../cache/cache.module";
 
 @Module({
   imports: [
     WebsocketModule,
     forwardRef(() => AuthModule),
     forwardRef(() => CommunicationsModule),
+    // `GET /health/infra` asks the Redis client whether it is there. CacheModule
+    // is not global (`common/cache/cache.module.ts`), so it is named here.
+    CacheModule,
   ],
   controllers: [
     HealthProxyController,

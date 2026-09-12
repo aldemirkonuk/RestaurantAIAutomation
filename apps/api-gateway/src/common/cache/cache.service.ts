@@ -95,4 +95,78 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     await this.client.del(keys);
     return keys.length;
   }
+
+  /**
+   * Is Redis actually there? A measured answer for `/health/infra`.
+   *
+   * `/admin` used to print a "Cache — Running" row that no code had ever
+   * checked (`pages/AdminPanel.tsx:258`, hard-coded `healthy: true`). This is
+   * the check. Three states, never two: not configured (no `REDIS_URL`, and
+   * the service said so at boot), connected (a `PING` came back within the
+   * bound, and the round trip is stated), disconnected (a client exists but
+   * `PING` failed or timed out — the reason is a fixed phrase, never the
+   * driver's message, which can carry the URL).
+   */
+  async probe(): Promise<RedisProbe> {
+    const configured = Boolean(this.configService.get<string>("REDIS_URL", ""));
+    if (!this.client) {
+      return {
+        configured,
+        connected: false,
+        latencyMs: null,
+        detail: configured
+          ? "REDIS_URL is set, but no client survived start-up; caching is off"
+          : "REDIS_URL is not set; caching is off",
+      };
+    }
+    const started = Date.now();
+    let timer: NodeJS.Timeout | null = null;
+    try {
+      const answer = await Promise.race<string>([
+        this.client.ping(),
+        new Promise<string>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("timeout")),
+            REDIS_PROBE_TIMEOUT_MS,
+          );
+        }),
+      ]);
+      const latencyMs = Date.now() - started;
+      return {
+        configured,
+        connected: answer === "PONG",
+        latencyMs,
+        detail:
+          answer === "PONG"
+            ? `PING answered PONG in ${latencyMs} ms`
+            : "PING answered something other than PONG",
+      };
+    } catch (error) {
+      const timedOut = error instanceof Error && error.message === "timeout";
+      return {
+        configured,
+        connected: false,
+        latencyMs: Date.now() - started,
+        detail: timedOut
+          ? `PING did not answer within ${REDIS_PROBE_TIMEOUT_MS} ms`
+          : "PING failed; the client is open but the server did not answer",
+      };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+}
+
+/** How long `PING` may take before Redis is called unreachable. */
+export const REDIS_PROBE_TIMEOUT_MS = 2000;
+
+export interface RedisProbe {
+  /** `REDIS_URL` is set on this process. */
+  configured: boolean;
+  /** A `PING` came back `PONG` within {@link REDIS_PROBE_TIMEOUT_MS}. */
+  connected: boolean;
+  /** The measured round trip, or null when nothing was sent. */
+  latencyMs: number | null;
+  /** Fixed vocabulary; never the driver's own message. */
+  detail: string;
 }
