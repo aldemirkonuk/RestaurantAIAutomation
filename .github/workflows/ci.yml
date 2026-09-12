@@ -801,6 +801,27 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_route_exposure.py
 
+      # ADR 0146. Ask AI turns an utterance into a model call and then into a
+      # purchase order, so it is the one surface where a caller sets the pace
+      # of the spending. Four faults were measured on it on 2026-09-12 and all
+      # four were of the shape this repository keeps meeting: the defence
+      # LOOKED present. A global ValidationPipe validated nothing there because
+      # an inline `@Body()` type erases and leaves the pipe no metatype; the
+      # global rate limiter is an APP_GUARD and so runs before JwtAuthGuard,
+      # keys on the IP, and let this route fall through to 100/minute; the
+      # spend ceiling was consulted only in the two retry branches; and the
+      # controller's only guard was JwtAuthGuard, so any member could confirm
+      # any other member's proposal.
+      #
+      # A careful pass would close all four and survive until the next
+      # refactor. This is the guard instead. Every check in it was proven to
+      # go red by mutating exactly the thing it protects -- seventeen of them,
+      # including one that initially did NOT fire and was tightened because a
+      # substring matched a call site after the declaration was renamed.
+      - name: Ask AI is bounded, not merely guarded
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_ask_ai_is_gated.py
+
       # ADR 0110's addendum. The seal on a card-on-file change was added to
       # `payment-methods/**` and stopped at that module's edge: an instrument is
       # actually attached through `billing/**`, which ran a role check and
