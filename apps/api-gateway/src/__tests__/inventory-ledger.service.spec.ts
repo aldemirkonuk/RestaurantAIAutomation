@@ -23,6 +23,10 @@ describe("InventoryLedgerService", () => {
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
     single: jest.fn(),
+    // ADR 0141 added two maybeSingle() reads to this path: the ownership probe
+    // that runs BEFORE the RPC, and the read-back that runs after it. Both are
+    // answered here; the per-test overrides below say what each one sees.
+    maybeSingle: jest.fn(),
     rpc: jest.fn(),
   };
 
@@ -91,6 +95,15 @@ describe("InventoryLedgerService", () => {
       });
 
       mockSupabaseClient.single.mockResolvedValue({
+        data: mockTransaction,
+        error: null,
+      });
+
+      // ADR 0141. Two maybeSingle() reads now bracket the RPC: the ownership
+      // probe before it (the item is this restaurant's) and the read-back after
+      // it. The transaction row answers both — it is truthy, which is all the
+      // probe asks — so one default covers the pair.
+      mockSupabaseClient.maybeSingle.mockResolvedValue({
         data: mockTransaction,
         error: null,
       });
@@ -168,6 +181,15 @@ describe("InventoryLedgerService", () => {
       });
 
       mockSupabaseClient.single.mockResolvedValue({
+        data: mockTransaction,
+        error: null,
+      });
+
+      // ADR 0141. Two maybeSingle() reads now bracket the RPC: the ownership
+      // probe before it (the item is this restaurant's) and the read-back after
+      // it. The transaction row answers both — it is truthy, which is all the
+      // probe asks — so one default covers the pair.
+      mockSupabaseClient.maybeSingle.mockResolvedValue({
         data: mockTransaction,
         error: null,
       });
@@ -447,6 +469,8 @@ describe("InventoryLedgerService", () => {
     });
 
     it("goes through record_stock_count, not apply_stock_movement", async () => {
+      // ADR 0141, Correction: reconcileInventory now checks ownership first.
+      mockSupabaseClient.maybeSingle.mockResolvedValueOnce({ data: { id: "owned" }, error: null });
       mockSupabaseClient.rpc.mockResolvedValue({
         data: {
           count_id: "count-3",
@@ -485,9 +509,31 @@ describe("InventoryLedgerService", () => {
       // The old path SELECTed restaurant_inventory.stock_live with no lock and
       // diffed against it in JS — the A11 race. The expected quantity is now read
       // inside the RPC, under the row lock.
-      expect(mockSupabaseClient.from).not.toHaveBeenCalledWith(
+      //
+      // Narrowed 2026-09-12 (ADR 0141, Correction), not weakened. This used to
+      // forbid ANY read of restaurant_inventory, which was a proxy for the real
+      // rule. The ownership check that now runs before the RPC reads that table
+      // too -- but it selects only `id`, to prove the item belongs to the house.
+      // What the A11 race needs forbidden is reading a QUANTITY in JS, so that
+      // is what is asserted: no select on this path names a stock or quantity
+      // column.
+      const selectedColumns = mockSupabaseClient.select.mock.calls.map((c) =>
+        String(c[0] ?? ""),
+      );
+      //
+      // Tightened 2026-09-12 (ADR 0141, second correction): `select("*")` names
+      // no column and returns every one, stock_live included, so a filter on
+      // column NAMES let the A11 race back in through a star -- the
+      // adversarial pass added a `select("*")` read before the RPC and this
+      // test stayed green. A star, bare or inside an embedded relation, is
+      // refused as well.
+      expect(
+        selectedColumns.filter((cols) => /stock|qty|quantity|\*/i.test(cols)),
+      ).toEqual([]);
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith(
         "restaurant_inventory",
       );
+      expect(selectedColumns).toContain("id");
     });
 
     it("refuses to report success when the RPC returns no payload", async () => {
@@ -536,7 +582,12 @@ describe("InventoryLedgerService", () => {
         .mockResolvedValueOnce({ data: "txn-1", error: null })
         .mockResolvedValueOnce({ data: "txn-2", error: null });
 
-      mockSupabaseClient.single
+      // ADR 0141. Each transaction now makes TWO maybeSingle() reads, in this
+      // order: the ownership probe before the RPC, then the read-back after it
+      // (which is no longer `getTransaction`, because a row that a committed
+      // write returned is not something that can be "not found").
+      mockSupabaseClient.maybeSingle
+        .mockResolvedValueOnce({ data: { id: "inv-1" }, error: null })
         .mockResolvedValueOnce({
           data: {
             id: "txn-1",
@@ -556,6 +607,7 @@ describe("InventoryLedgerService", () => {
           },
           error: null,
         })
+        .mockResolvedValueOnce({ data: { id: "inv-2" }, error: null })
         .mockResolvedValueOnce({
           data: {
             id: "txn-2",

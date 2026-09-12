@@ -458,6 +458,12 @@ export class ReceivingService {
           // One movement per EVENT, so two trucks book twice and eight retries
           // of one truck book once.
           p_idempotency_key: `door-receipt:${eventId}`,
+          // ADR 0141 — the house this receipt is for. `order.inventory_id` was
+          // read off an order selected with `.eq("restaurant_id", ...)`, so the
+          // ORDER belongs here; the column it carries has no tenant constraint,
+          // so the ITEM does not follow from that. The primitive is told which
+          // house the movement is for and refuses if the item is not its.
+          p_restaurant_id: input.restaurantId,
         });
       if (rpcErr) {
         // THE FAILURE IS MADE REAL, AND IT IS MADE RETRYABLE.
