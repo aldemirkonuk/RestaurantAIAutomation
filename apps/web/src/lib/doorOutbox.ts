@@ -25,6 +25,79 @@ const MUTATION_TYPE = 'receiving.door'
 /** Give up after this many attempts and surface it, rather than retrying forever. */
 const MAX_ATTEMPTS = 8
 
+/**
+ * A receipt the outbox GAVE UP ON, kept after the receipt itself is gone.
+ *
+ * The queue entry is deleted on a drop, so without this the only record of a
+ * permanent loss was a counter in one component's state, on one phone, erased
+ * by the next navigation. It is written here, from the flush that caused it,
+ * so it survives a remount and can still name the order it lost.
+ */
+export interface DroppedDoorReceipt {
+  /**
+   * The queue entry's id. The record is keyed on it, so recording the same
+   * drop twice — two passes racing, a re-read after a reload — cannot turn one
+   * lost receipt into two.
+   */
+  id: string
+  orderLabel: string
+  droppedAt: string
+  /**
+   * Why it was given up on, kept because the REMEDY differs and a notice that
+   * names the wrong one wastes the only minutes in which anything can be done:
+   *   auth    — 401/403. The app was signed out; the next move is signing in
+   *             again, not walking upstairs.
+   *   refused — any other 4xx. The server understood and said no.
+   *   retries — the attempt budget ran out.
+   * None of these recovers the receipt. They only stop the notice sending a
+   * porter after the wrong fix.
+   */
+  reason: 'auth' | 'refused' | 'retries'
+}
+
+const DROPS_KEY = 'mudavym.door.drops.v1'
+
+/** Every receipt this phone has lost, oldest first. */
+export function readDroppedDoorReceipts(): DroppedDoorReceipt[] {
+  try {
+    const raw = window.localStorage.getItem(DROPS_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as DroppedDoorReceipt[]) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Forget the records. The PORTER acknowledging the notice — nothing in the
+ * flush path calls this, and no successful send clears it, because a later
+ * delivery does not make an earlier loss untrue. It exists at all because a
+ * warning on a shared dock phone that can never be cleared is one nobody reads
+ * by the third delivery.
+ */
+export function clearDroppedDoorReceipts(): void {
+  try {
+    window.localStorage.removeItem(DROPS_KEY)
+  } catch {
+    /* storage blocked — there was nothing persisted to clear */
+  }
+}
+
+/**
+ * Not capped. A record is ~90 bytes, and evicting the oldest to make room
+ * would be this same defect one layer down: a loss disappearing quietly.
+ */
+function recordDrop(drop: DroppedDoorReceipt): void {
+  try {
+    const all = readDroppedDoorReceipts()
+    if (all.some((d) => d.id === drop.id)) return
+    window.localStorage.setItem(DROPS_KEY, JSON.stringify([...all, drop]))
+  } catch {
+    /* storage blocked — the flush result still carries the count */
+  }
+}
+
 export interface QueuedDoorReceipt {
   orderId: string
   orderLabel: string
@@ -115,10 +188,36 @@ export interface DoorFlushResult {
 }
 
 /**
- * Push everything queued. Safe to call repeatedly and concurrently — the
- * idempotency key makes a double-send a no-op on the server.
+ * The pass currently running, handed to every caller that arrives while it is
+ * in flight.
+ *
+ * Three triggers fire a flush — mount, 'online', 'visibilitychange' — and the
+ * walk from the dock to the office raises the last two in the same tick.
+ * Without this each pass read the whole pending list BEFORE any of them
+ * removed anything, so a single lost receipt was attempted once per pass and
+ * reported as one drop per pass: one loss, counted twice.
  */
-export async function flushDoorOutbox(): Promise<DoorFlushResult> {
+let inFlight: Promise<DoorFlushResult> | null = null
+
+/**
+ * Push everything queued. Safe to call repeatedly and concurrently: a caller
+ * that arrives mid-pass joins that pass rather than starting a second one over
+ * the same items. (The idempotency key already made a double SEND harmless on
+ * the server; what it could not make harmless was double COUNTING the loss on
+ * the client.) A receipt queued after the running pass read the list waits for
+ * the next trigger — the watcher below fires one on every state change that
+ * could have produced it.
+ */
+export function flushDoorOutbox(): Promise<DoorFlushResult> {
+  if (inFlight) return inFlight
+  const pass = runFlush()
+  inFlight = pass.finally(() => {
+    inFlight = null
+  })
+  return inFlight
+}
+
+async function runFlush(): Promise<DoorFlushResult> {
   if (!navigator.onLine) return { sent: 0, failed: 0, dropped: 0 }
 
   const pending = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
@@ -143,6 +242,19 @@ export async function flushDoorOutbox(): Promise<DoorFlushResult> {
       // hides behind the stuck one.
       if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS) {
         await offlineStorage.removePendingMutation(m.id)
+        // Written before the counters and keyed on the queue id: the count
+        // alone cannot say WHICH order left, and after this line nothing
+        // anywhere else in the app can.
+        recordDrop({
+          id: m.id,
+          orderLabel: entry?.orderLabel || entry?.orderId || 'Door receipt',
+          droppedAt: new Date().toISOString(),
+          reason: permanent
+            ? status === 401 || status === 403
+              ? 'auth'
+              : 'refused'
+            : 'retries',
+        })
         failed++
         dropped++
         continue
@@ -171,17 +283,33 @@ export async function flushDoorOutbox(): Promise<DoorFlushResult> {
 export function watchDoorOutbox(
   onChange?: (result: DoorFlushResult) => void,
 ): () => void {
+  /**
+   * The pass already reported. Two triggers firing together join ONE pass and
+   * would otherwise hand the caller its single result twice — and a caller that
+   * accumulates `dropped` would then show two lost receipts where one was lost.
+   * Identity is the whole test: a genuinely later pass is a different promise.
+   */
+  let reported: Promise<DoorFlushResult> | null = null
   const run = () => {
-    void flushDoorOutbox().then((result) => onChange?.(result))
+    const pass = flushDoorOutbox()
+    if (pass === reported) return
+    reported = pass
+    void pass.then((result) => onChange?.(result))
   }
-  window.addEventListener('online', run)
+  const onOnline = () => run()
   // Coming back to the tab is the other moment a receiver is likely to be
   // somewhere with signal — the walk from the loading dock to the office.
-  document.addEventListener('visibilitychange', () => {
+  const onVisible = () => {
     if (document.visibilityState === 'visible') run()
-  })
+  }
+  window.addEventListener('online', onOnline)
+  document.addEventListener('visibilitychange', onVisible)
   run()
+  // Both listeners, named for that reason: the visibility one used to be an
+  // anonymous function the cleanup could not name, so every mount of the door
+  // screen left one behind, flushing for a component that no longer exists.
   return () => {
-    window.removeEventListener('online', run)
+    window.removeEventListener('online', onOnline)
+    document.removeEventListener('visibilitychange', onVisible)
   }
 }

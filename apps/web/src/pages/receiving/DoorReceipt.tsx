@@ -3,10 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Camera, Check, CloudOff, Loader2, Minus, Plus, X } from 'lucide-react'
 import { receivingApi } from '../../services/api/receiving'
 import {
+  clearDroppedDoorReceipts,
   newIdempotencyKey,
   pendingDoorCount,
+  readDroppedDoorReceipts,
   submitDoorReceipt,
   watchDoorOutbox,
+  type DroppedDoorReceipt,
 } from '../../lib/doorOutbox'
 import { cn } from '../../lib/utils'
 import { SCAN_ACCEPT, resolveMimeType } from '../../lib/uploadAccept'
@@ -60,15 +63,24 @@ export default function DoorReceipt() {
   const [online, setOnline] = useState(navigator.onLine)
   const [error, setError] = useState<string | null>(null)
   /**
-   * Receipts the outbox gave up on while this screen was open.
+   * Receipts the outbox gave up on — read from the outbox's own record, not
+   * counted up here.
    *
-   * Only ever grows. A drop is permanent — the receipt has been deleted from
-   * the queue and exists nowhere — so nothing that happens afterwards, least of
-   * all a later successful send, makes it untrue. Clearing this on the next
-   * good flush would be the same fault in a new place: the loss would once
-   * again be visible only as a number going down.
+   * It used to be a counter in this component's state, which meant the only
+   * trace of a permanent loss lived on one screen and died the moment the
+   * porter tapped Finish (:navigate below unmounts this). It also double-counted
+   * a single loss when two flush triggers overlapped, because each pass
+   * reported the same drop and both were added.
+   *
+   * Both are the same mistake — a count where a record belongs. The outbox
+   * writes each dropped receipt down, keyed on its queue id, so this survives a
+   * remount, names the order, and cannot count one loss twice. Nothing removes
+   * an entry except the porter acknowledging it: a later successful send does
+   * not make an earlier loss untrue.
    */
-  const [dropped, setDropped] = useState(0)
+  const [drops, setDrops] = useState<DroppedDoorReceipt[]>(() =>
+    readDroppedDoorReceipts(),
+  )
 
   const fileRef = useRef<HTMLInputElement>(null)
   // Generated once per screen, not per attempt: retrying the same delivery must
@@ -80,10 +92,11 @@ export default function DoorReceipt() {
     const refresh = () => void pendingDoorCount().then(setPending)
     const stop = watchDoorOutbox((result) => {
       // A discarded receipt leaves the queue exactly as a delivered one does,
-      // so `pending` falls by one either way. This is the only place the two
-      // are distinguishable, and the porter is the only person who can still
-      // act on it — they are holding the paper.
-      if (result.dropped > 0) setDropped((n) => n + result.dropped)
+      // so `pending` falls by one either way. The flush is the only place the
+      // two are distinguishable, and the porter is the only person who can
+      // still act on it — they are holding the paper. The count says a drop
+      // happened; the record says which one, so re-read it rather than adding.
+      if (result.dropped > 0) setDrops(readDroppedDoorReceipts())
       refresh()
     })
     const on = () => setOnline(true)
@@ -127,6 +140,18 @@ export default function DoorReceipt() {
       setUploading(false)
       setStep('count')
     }
+  }
+
+  /**
+   * The porter saying they have the paper in hand. It clears the NOTICE, not
+   * the fact: the receipt was deleted from the queue by the flush and nothing
+   * here brings it back. The alternative is a red strip that can never be
+   * dismissed on a shared dock phone, which is a strip nobody reads by the
+   * third delivery — and an unread warning is the same loss, later.
+   */
+  function acknowledgeDrops() {
+    clearDroppedDoorReceipts()
+    setDrops([])
   }
 
   async function submit() {
@@ -185,26 +210,57 @@ export default function DoorReceipt() {
       </div>
 
       {/*
-        A receipt the outbox gave up on. Outside the step panels on purpose, so
+        Receipts the outbox gave up on. Outside the step panels on purpose, so
         it is on screen wherever the porter is in the flow, and it stays there:
         a strip, not a modal — this is a phone held one-handed on a dock, and a
         dialog they have to dismiss to keep working is a dialog they dismiss
-        without reading. It names the one thing they can still do about it,
-        which is only true while they are standing there with the paperwork.
+        without reading. It names the orders and the one thing they can still do
+        about them, which is only true while they are standing there with the
+        paperwork.
       */}
-      {dropped > 0 && (
-        <p
+      {drops.length > 0 && (
+        <div
           role="alert"
           data-ux-key="door:dropped"
           className="mx-4 mt-3 rounded-xl border border-rose-400/50 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"
         >
-          {dropped === 1
-            ? 'A delivery saved on this phone was never sent'
-            : `${dropped} deliveries saved on this phone were never sent`}
-          {' — the app has given up on '}
-          {dropped === 1 ? 'it' : 'them'}
-          {'. Keep the paperwork and tell a manager: the count is not on the server.'}
-        </p>
+          <p>
+            {drops.length === 1
+              ? `Delivery ${drops[0].orderLabel} was saved on this phone and never sent.`
+              : `${drops.length} deliveries saved on this phone were never sent.`}{' '}
+            {/*
+              The remedy, and only a remedy the cause supports. An expired
+              session is the one cause this screen can tell apart (the outbox
+              records a 401/403 drop as `auth`), and it is the one where "tell a
+              manager" sends the porter up a flight of stairs for something they
+              could fix at the door in ten seconds. When the drops are mixed or
+              the cause is anything else, no cause is claimed at all.
+            */}
+            {drops.every((d) => d.reason === 'auth')
+              ? 'The app was signed out. Sign in again before recording another — and keep the paperwork: the count is not on the server.'
+              : 'The app has given up. Keep the paperwork and tell a manager: the count is not on the server.'}
+          </p>
+          {drops.length > 1 && (
+            <ul className="mt-2 space-y-1 text-rose-200/90">
+              {drops.map((d) => (
+                <li key={d.id}>
+                  {d.orderLabel} · {shortTime(d.droppedAt)}
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={acknowledgeDrops}
+            data-ux-key="door:dropped-ack"
+            className={cn(
+              TAP,
+              'mt-2 w-full rounded-lg bg-white/10 active:bg-white/20 text-xs font-semibold',
+            )}
+          >
+            I have the paperwork
+          </button>
+        </div>
       )}
 
       {step === 'photo' && (
@@ -332,7 +388,7 @@ export default function DoorReceipt() {
             </div>
             <p className="text-center text-gray-300 max-w-xs">
               {queued
-                ? dropped > 0
+                ? drops.length > 0
                   ? // Still "saved", because it is — but the unqualified promise
                     // that it sends itself cannot stand on a phone that has
                     // already had one thrown away. Which receipt was dropped is
@@ -445,6 +501,15 @@ function Stepper({
       </div>
     </div>
   )
+}
+
+/** Clock time only. The date is noise: a drop the porter can still act on
+ *  happened during the shift they are standing in. */
+function shortTime(iso: string): string {
+  const at = new Date(iso)
+  return Number.isNaN(at.getTime())
+    ? 'time not recorded'
+    : at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 /** File to bare base64 (no data: prefix, which the API does not want). */

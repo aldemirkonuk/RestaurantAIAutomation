@@ -118,6 +118,26 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
     expect(quiet()?.textContent).toContain('still trying')
   })
 
+  it('counts ONE lost report once when two triggers join the same pass', async () => {
+    // The walk from the dock to the office raises 'online' and
+    // 'visibilitychange' in the same tick, and the outbox hands both callers
+    // the SAME in-flight pass (lib/doorOutbox.ts, `inFlight`) — so this returns
+    // one promise, not two. Adding its `dropped` once per caller reported two
+    // lost reports where one was lost.
+    const pass = Promise.resolve({ sent: 0, failed: 1, dropped: 1 })
+    flushDoorOutbox.mockReturnValue(pass)
+    renderPage()
+    await waitFor(() => expect(alarm()).not.toBeNull())
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(alarm()?.textContent).toContain('A door report saved on this phone was never sent')
+    expect(alarm()?.textContent).not.toContain('2 door reports')
+  })
+
   it('stays silent when nothing failed at all', async () => {
     flushDoorOutbox.mockResolvedValue({ sent: 2, failed: 0, dropped: 0 })
     renderPage()

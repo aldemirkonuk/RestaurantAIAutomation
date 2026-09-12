@@ -218,8 +218,22 @@ export default function DoorNext() {
   useEffect(() => {
     let alive = true;
     const refresh = () => void pendingDoorCount().then((n) => alive && setPendingQueue(n));
-    const flush = () =>
-      void flushDoorOutbox().then((r) => {
+    /**
+     * The pass already accounted for.
+     *
+     * `onOnline` and `onVis` below fire in the SAME tick on the dock-to-office
+     * walk, and the outbox hands both callers the one in-flight pass
+     * (lib/doorOutbox.ts, `inFlight`). Adding that single result twice told the
+     * receiver two reports were lost when one was — the accumulator cannot tell
+     * a second pass from the same pass reported twice, so identity does it
+     * here. A genuinely later flush is a different promise.
+     */
+    let counted: Promise<DoorFlushResult> | null = null;
+    const flush = () => {
+      const pass = flushDoorOutbox();
+      if (pass === counted) return;
+      counted = pass;
+      void pass.then((r) => {
         if (!alive) return;
         if (r.sent > 0 || r.failed > 0) setLastFlush(r);
         // A discarded receipt leaves the queue exactly as a delivered one does,
@@ -228,6 +242,7 @@ export default function DoorNext() {
         if (r.dropped > 0) setDropped((n) => n + r.dropped);
         refresh();
       });
+    };
     const onOnline = () => {
       setOnline(true);
       flush();
