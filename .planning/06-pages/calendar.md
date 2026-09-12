@@ -972,7 +972,7 @@ reason a slice in §13 is where it is. Detail in §1b *Quant overlay* and
 9. 🟡 **`analytics_day_exclusions` does not exist in production.** The table that lets a
    manager rule a closure out of every baseline is on this branch only
    (`20260903091000_days_the_engine_must_not_count.sql`); a `select` against it on the live
-   database returns `42P01`. The month grid's hatched "closed" cell depends on it.
+   database returns `42P01`. The month grid's hatched "closed" cell depends on it. **[CORRECTED 2026-09-12: no longer true -- `to_regclass('public.analytics_day_exclusions')` returns NOT NULL, measured that day. PR #289's 19 blocked migrations were applied through the connector on 2026-09-12 after a defect in `20260906020000` was fixed. The finding above is kept as the dated observation it was; do not infer from it that a missing table is guarding anything. `20260903091000` was in PR #289's first 53 and applied when it merged.]**
 
 ### Found while building the weather overlay, 2026-09-03
 
