@@ -96,7 +96,7 @@ book.
 rationed to the commitment that does not reverse in one click, which is the batch
 entering the book; every sketch's "two roads not taken" rejected a seal per
 register for the same reason, and he confirmed it by naming the gesture rather
-than the count.
+than the count. [CLARIFIED 2026-09-12 by the founder, asked because ADR 0144:31 has folio 0's proposals "confirmed in place", a different moment from this one: **only what Mudavym proposed waits for the seal.** What a person typed posts at once. See the founder answers below.]
 
 What this inherits from the sketches, unchanged: a skip is a **recorded fact**,
 not an absence; the assistant proposes and only the seal applies (ADR 0113);
@@ -114,7 +114,7 @@ The honest gaps the sketches drew in mono are gaps in the build, not in this
 decision: `config.propose_batch` is not built, `configuration_step_skipped` is
 not an audit action, producers cannot be held one by one, a vendor's usual
 currency has no field on the terms DTO, and the speech provider is open (ADR 0113
-Q6/Q7). Each is a build task under this record, and each must read as
+Q6/Q7) [CORRECTED 2026-09-12: the founder answered Q6 and Q7. Recognition is on-device and only the rows are kept; see "Founder answers, 2026-09-12 — the voice, what the seal covers, and the emails at the door" below]. Each is a build task under this record, and each must read as
 "not yet answered" rather than silently doing nothing.
 
 ### 5. `/dev-sandbox` and `/dev/truth` stay as they are
@@ -226,6 +226,63 @@ in the tree -- so a link to `/` would only bounce a stranger. When a real landin
 page exists the link moves to it in one line. Rejected: linking `/` (a redirect,
 and a "home" that lands on a login wall); a footer link with no wordmark link.
 
+## Founder answers, 2026-09-12 — the voice, what the seal covers, and the emails at the door
+
+**The voice. This closes ADR 0113 Q6 and Q7.** Section 4 lets a person speak a folio
+instead of typing it. **Answered: recognition happens on the device, and only the rows
+are kept.** The browser's own speech recognition turns speech into text, the same
+recognition `SpotCountPanel.tsx:84-86` already uses. No audio and no transcript leave the
+device, and nothing new is billed. The record is the result: each row lands marked
+`spoken`, exactly like a typed row apart from that provenance. The transcript is not
+stored. Where the browser offers no recognition (Safari and Firefox may not), the control
+says it is unavailable rather than silently doing nothing.
+
+Rejected:
+- on-device recognition that also keeps the transcript, a new store of a person's own
+  words that would need a retention rule;
+- a hosted model, which sends voice off the device, spends per use against the house's
+  allowance and needs a disclosure on `/privacy`;
+- typing only for now.
+
+**What the one held seal covers.** Section 4 says the seal lands once, on the batch
+entering the book (0143:95). ADR 0144 says folio 0's invoice proposals are confirmed in
+place (0144:31). Those were two different moments, and nothing said which entries wait.
+**Answered: only what Mudavym proposed waits.** Anything the person typed posts
+immediately, because they wrote it. Anything Mudavym proposed waits in one batch and enters
+the book only when the seal is held. That covers a spoken entry it interpreted, an entry it
+inferred, and a suggestion read off the invoice. The seal therefore means "I have read what
+Mudavym put here", and typing never waits on a ceremony.
+
+Rejected:
+- everything waits for the one seal: closing the tab loses the draft, or needs a draft
+  store, and C was chosen partly because it survives a closed tab;
+- invoice proposals join the batch while hand-typed folios post: spoken entries would then
+  post unsealed even though Mudavym interpreted them.
+
+**The emails that bring a stranger to these doors. OD-27 is partly lifted.** The seven
+public doors say Mudavym, but the emails that deliver people to them said "WineOps AI".
+Measured on `origin/main` beb00db4 when this was written:
+- the verification email: `auth.service.ts:986`, `:1011`, `:1033`;
+- the password reset: `auth.service.ts:2077` and `email-templates/password-reset.template.ts:49,54`;
+- the Studio invite: `email-templates/studio-invite.template.ts:19`.
+
+A reset link from WineOps AI that opens a Mudavym page reads like phishing. **Answered:
+rename the auth emails only.** For verification, password reset and team invite, the
+sender name, subject, heading and footer say Mudavym. Every other WineOps string waits
+for the planned migration, as OD-27 decided on 2026-08-24. `git grep -c "WineOps"
+origin/main -- apps/api-gateway/src` counted 133 lines on beb00db4. (The question put to the
+founder said 106; that was a different count, and 133 is the one measured here.)
+
+Rejected:
+- keep deferring, so every sign-up and every reset crosses brands at the moment trust
+  matters most;
+- lift OD-27 wholesale now, which would do the full recalibration as a hotfix in one large
+  diff.
+
+**`/login` and `/register`.** This ruling had been recorded only in a build brief: both
+pages are improved in place behind the public design switch (`publicDesign.ts`), not
+redrawn. With the switch off, each renders exactly as main does. Built in 78910028.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -233,3 +290,4 @@ and a "home" that lands on a login wall); a footer link with no wordmark link.
 | 2026-09-12 | Aldemir | Four calls: the shared shell, the merged admin page, the sommelier routed to the real assistant, onboarding held for his pick |
 | 2026-09-12 | Aldemir | Two more: the arrival is C plus the held seal plus talking; the two dev routes stay as internal legacy |
 | 2026-09-12 | — | Renumbered 0140 to 0143 after a peer claimed 0140 on a pushed ref |
+| 2026-09-12 | Aldemir | Three more: on-device speech keeping only the rows (closes 0113 Q6/Q7); only what Mudavym proposed waits for the seal; the auth emails renamed, OD-27 partly lifted |

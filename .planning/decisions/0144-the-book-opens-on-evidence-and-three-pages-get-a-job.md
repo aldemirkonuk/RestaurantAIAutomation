@@ -28,7 +28,7 @@ better"*), `/vendor-prices` (*"KEEP+ / more functional"*), and `/promotions`
 The contents page opens with a folio that is not a setting: **the last invoice
 through the door**. A house that photographs one gets its registers *proposed*
 with a provenance — currency, the vendor, terms, what the house pours — and
-confirms them in place, so nothing is asked that the paper already answered and
+confirms them in place [CLARIFIED 2026-09-12 by the founder, in ADR 0143's founder answers: a proposal confirmed in place still enters the book with the one held seal, together with everything else Mudavym proposed; only what the person typed posts at once], so nothing is asked that the paper already answered and
 nothing is guessed, which is what [[0108-a-register-is-the-houses-own-books-first]] demands
 in general and this makes literal at the arrival.
 
