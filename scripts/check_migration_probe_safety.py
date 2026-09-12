@@ -79,20 +79,47 @@ excluded by loosening the pattern:
     fix edits the file without rewriting what already ran in production
     (see the migration's own header note and that commit's disclosure).
 
-  Rule 1 (magic-string DELETE), untouched by this fix -- eight files, each a
-  `DELETE FROM public.<table> WHERE <col> = '<literal>'` inside a DO-block
-  probe/rollback:
-    20260903110000_billing_stripe_provider.sql
-    20260905080000_a_posting_says_whose_date_it_carries.sql
-    20260905160000_an_uploaded_book_names_who_carried_it.sql
-    20260905180000_a_carried_book_waits_for_a_second_pair_of_eyes.sql
-    20260905225000_a_message_is_metered_before_it_is_billed.sql
-    20260905235000_an_index_series_is_not_a_price.sql
+  Rule 1 (magic-string DELETE) -- the original eight-file sweep, reassessed
+  2026-09-12 file by file rather than fixed or left as one block. Three were
+  genuinely risky (the DELETE runs against `price_index_postings.source_ref`,
+  a column that carries a real external reference string, using a short
+  hyphenated probe name a real source_ref could plausibly collide with) and
+  are now fixed with the `RETURNING <key> INTO <var>` pattern, proven against
+  a throwaway Postgres seeded with a genuine colliding row (see that commit
+  for the measurement) -- removed from this list:
+    20260905080000_a_posting_says_whose_date_it_carries.sql ('constraint-probe')
+    20260905160000_an_uploaded_book_names_who_carried_it.sql ('upload-probe')
+    20260905180000_a_carried_book_waits_for_a_second_pair_of_eyes.sql ('admit-probe')
+
+  The remaining five stay grandfathered because each literal is namespaced
+  distinctively enough that a genuine collision is not practically possible,
+  not merely because they were out of an earlier change's scope:
+    20260903110000_billing_stripe_provider.sql -- `event_id = 'evt_migration_
+      assertion'` on `billing_webhook_events`. Stripe mints every real
+      event_id itself as an opaque random token; it never emits English
+      words, so no genuine webhook delivery can ever carry this exact string.
+    20260905225000_a_message_is_metered_before_it_is_billed.sql -- one hit is
+      `plan_code = '__migration_probe__'` (a dunder-wrapped token no curated
+      plan code would ever be assigned); the other two are double-scoped
+      (`restaurant_id = <probe row> AND detail/billable_reason = 'migration
+      probe, must be refused'`, a full diagnostic sentence, not a value a
+      real credit/meter note would ever contain verbatim).
+    20260905235000_an_index_series_is_not_a_price.sql -- four `series_key`
+      values in the same dotted `probe.<word>.<word>` convention as
+      20260906130000 below (e.g. `probe.index.with.currency`); this file
+      established that convention.
     20260906080000_a_purchase_is_charged_once_and_a_house_may_have_its_own_allowance.sql
-    20260906130000_a_series_behind_a_key_says_so.sql
+      -- `detail = 'migration probe, must be refused'` on
+      `house_message_credits`, the same full diagnostic sentence as above.
+    20260906130000_a_series_behind_a_key_says_so.sql -- `series_key` values
+      `probe.key.no.var`, `probe.key.pasted`, `probe.keyless.with.var`,
+      `probe.zero.budget`: the dotted probe.* convention this repo already
+      uses for `commodity_index_series` test keys, distinct in shape from a
+      genuine series key (`brent-crude`, `us-corn-no2`, ...).
 
 A file leaves this list only by being fixed, never by widening the pattern to
-stop seeing it. If a listed file no longer trips the rule it is grandfathered
+stop seeing it, and never by being judged safe without that judgment recorded
+here by name. If a listed file no longer trips the rule it is grandfathered
 under, the guard fails anyway (see `run_default` and the self-test) -- the
 list is a debt ledger, not a permanent exemption, and a stale row printing OK
 silently is the same "absence reported as health" fault this guard exists to
@@ -134,9 +161,6 @@ MIGRATIONS_DIR = "supabase/migrations"
 
 GRANDFATHERED_DELETE_BY_LITERAL = {
     "20260903110000_billing_stripe_provider.sql",
-    "20260905080000_a_posting_says_whose_date_it_carries.sql",
-    "20260905160000_an_uploaded_book_names_who_carried_it.sql",
-    "20260905180000_a_carried_book_waits_for_a_second_pair_of_eyes.sql",
     "20260905225000_a_message_is_metered_before_it_is_billed.sql",
     "20260905235000_an_index_series_is_not_a_price.sql",
     "20260906080000_a_purchase_is_charged_once_and_a_house_may_have_its_own_allowance.sql",
