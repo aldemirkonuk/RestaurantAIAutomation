@@ -44,9 +44,11 @@ import {
   newIdempotencyKey,
   pendingDoorCount,
   readDroppedDoorReceipts,
+  readStrandedDoorReceipts,
   submitDoorReceipt,
   type DoorFlushResult,
   type DroppedDoorReceipt,
+  type StrandedDoorReceipt,
 } from '@/lib/doorOutbox';
 import { useActiveRestaurantId } from './useReceivingNextData';
 import { SCAN_ACCEPT, resolveMimeType } from '@/lib/uploadAccept';
@@ -168,10 +170,17 @@ export default function DoorNext() {
   );
   /**
    * Gave up on, and the record could NOT be written — so the outbox kept the
-   * queue entry instead of deleting it. There is no record to read; that is
-   * the condition. Louder than a drop, and never silent.
+   * queue ENTRY instead of deleting it. Louder than a drop, and never silent.
+   *
+   * Read from the queue, not counted up. `DoorFlushResult.stranded` describes
+   * one pass, and the entry is still there on the next one, so every later
+   * flush reports the same strand again — accumulating them read "3 deliveries
+   * could not be sent" after three screen unlocks with one receipt at stake,
+   * and a `useState(0)` total died on the navigate Finish triggers. The queue
+   * is the record; reading it makes one strand one strand, and lets a strand
+   * that heals disappear instead of standing next to its own drop pin.
    */
-  const [stranded, setStranded] = useState(0);
+  const [stranded, setStranded] = useState<StrandedDoorReceipt[]>([]);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
@@ -241,16 +250,27 @@ export default function DoorNext() {
   // connectivity reason above is the whole reason now.)
   useEffect(() => {
     let alive = true;
-    const refresh = () => void pendingDoorCount().then((n) => alive && setPendingQueue(n));
+    const refresh = () => {
+      void pendingDoorCount().then((n) => alive && setPendingQueue(n));
+      // Both records re-read on every pass rather than patched from the
+      // result: this is also what makes the `[rid]` note below true, since a
+      // lazy `useState` initializer does not re-run on a house switch.
+      setDrops(readDroppedDoorReceipts(rid));
+      // `null` is "the queue could not be read", never "nothing is stranded" —
+      // keep what we last knew rather than sounding an all-clear.
+      void readStrandedDoorReceipts(rid).then(
+        (s) => alive && setStranded((prev) => s ?? prev),
+      );
+    };
     /**
      * The pass already accounted for.
      *
      * `onOnline` and `onVis` below fire in the SAME tick on the dock-to-office
      * walk, and the outbox hands both callers the one in-flight pass
-     * (lib/doorOutbox.ts, `inFlight`). Adding that single result twice told the
-     * receiver two reports were lost when one was — the accumulator cannot tell
-     * a second pass from the same pass reported twice, so identity does it
-     * here. A genuinely later flush is a different promise.
+     * (lib/doorOutbox.ts, `inFlight`). This no longer guards a miscount — both
+     * loss counts are read from storage now, so reporting one pass twice
+     * cannot inflate them — it just stops the same result doing the same two
+     * reads twice. A genuinely later flush is a different promise.
      */
     let counted: Promise<DoorFlushResult> | null = null;
     const flush = () => {
@@ -261,10 +281,9 @@ export default function DoorNext() {
         if (!alive) return;
         if (r.sent > 0 || r.failed > 0) setLastFlush(r);
         // A discarded receipt leaves the queue exactly as a delivered one does,
-        // so `pendingQueue` falls by one either way. This accumulator is the
-        // only place the two are distinguishable on this screen.
-        if (r.dropped > 0) setDrops(readDroppedDoorReceipts(rid));
-        if (r.stranded > 0) setStranded((n) => n + r.stranded);
+        // so `pendingQueue` falls by one either way. What tells them apart is
+        // on disk — the drop record and the parked queue entry — so the pass
+        // result is not consulted for either; the reads are.
         refresh();
       });
     };
@@ -486,15 +505,15 @@ export default function DoorNext() {
           loss could not be written. Nothing on the server, nothing on disk.
           Not dismissible — nothing here makes it untrue, and the next flush
           raises it again anyway. */}
-      {stranded > 0 && (
+      {stranded.length > 0 && (
         <p
           role="alert"
           data-ux-key="door:stranded"
           className="mx-4 mt-3 rounded-xl border border-rose-400/60 bg-rose-500/20 px-3 py-2 text-sm text-rose-200"
         >
-          {stranded === 1
+          {stranded.length === 1
             ? 'A delivery could not be sent, and this phone could not save a record of it.'
-            : `${stranded} deliveries could not be sent, and this phone could not save a record of them.`}
+            : `${stranded.length} deliveries could not be sent, and this phone could not save a record of them.`}
           {' The count is held in this app and nowhere else. Photograph the paperwork and tell a manager before closing this page.'}
         </p>
       )}

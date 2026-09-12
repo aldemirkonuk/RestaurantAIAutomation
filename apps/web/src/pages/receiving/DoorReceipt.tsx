@@ -7,9 +7,11 @@ import {
   newIdempotencyKey,
   pendingDoorCount,
   readDroppedDoorReceipts,
+  readStrandedDoorReceipts,
   submitDoorReceipt,
   watchDoorOutbox,
   type DroppedDoorReceipt,
+  type StrandedDoorReceipt,
 } from '../../lib/doorOutbox'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
@@ -94,13 +96,19 @@ export default function DoorReceipt() {
    * Receipts the flush gave up on and could NOT write down, so it KEPT them in
    * the queue rather than destroying them.
    *
-   * Separate from `drops` because there is no record to read — that is the
-   * whole condition. The receipt still exists here and nowhere else, so this
-   * screen is the only thing that can say so, and saying nothing is the one
-   * outcome that is never allowed. It re-appears on every later flush until
-   * the record can be written, which is the self-correcting part.
+   * Separate from `drops` because there is no drop record to read — the queue
+   * ENTRY is the record instead. The receipt exists here and nowhere else, so
+   * this screen is the only thing that can say so, and saying nothing is the
+   * one outcome that is never allowed.
+   *
+   * Read from the queue, not added up. The entry stays put until the record
+   * can be written, so every later pass reports the same strand again and a
+   * running total told the receiver two deliveries were gone when one was —
+   * the same count-where-a-record-belongs mistake as the paragraph above.
+   * Reading also means a strand that heals stops being reported instead of
+   * standing forever beside the drop pin for the same receipt.
    */
-  const [stranded, setStranded] = useState(0)
+  const [stranded, setStranded] = useState<StrandedDoorReceipt[]>([])
 
   const fileRef = useRef<HTMLInputElement>(null)
   // Generated once per screen, not per attempt: retrying the same delivery must
@@ -109,15 +117,21 @@ export default function DoorReceipt() {
   const idempotencyKey = useRef(newIdempotencyKey(orderId))
 
   useEffect(() => {
-    const refresh = () => void pendingDoorCount().then(setPending)
-    const stop = watchDoorOutbox((result) => {
+    const refresh = () => {
+      void pendingDoorCount().then(setPending)
+      // Re-read, never patched from the pass result. This is also what re-seeds
+      // both records on a house switch — a lazy `useState` initializer does not
+      // re-run when `rid` changes, so the previous house's loss stayed on screen.
+      setDrops(readDroppedDoorReceipts(rid))
+      // `null` is "the queue could not be read", never "nothing is stranded":
+      // keep what was last known rather than sounding an all-clear.
+      void readStrandedDoorReceipts(rid).then((s) => setStranded((prev) => s ?? prev))
+    }
+    const stop = watchDoorOutbox(() => {
       // A discarded receipt leaves the queue exactly as a delivered one does,
-      // so `pending` falls by one either way. The flush is the only place the
-      // two are distinguishable, and the porter is the only person who can
-      // still act on it — they are holding the paper. The count says a drop
-      // happened; the record says which one, so re-read it rather than adding.
-      if (result.dropped > 0) setDrops(readDroppedDoorReceipts(rid))
-      if (result.stranded > 0) setStranded((n) => n + result.stranded)
+      // so `pending` falls by one either way. What tells them apart is on disk
+      // — the drop record, and the queue entry parked at its ceiling — so the
+      // pass result is not consulted for either; both are read.
       refresh()
     })
     const on = () => setOnline(true)
@@ -247,15 +261,15 @@ export default function DoorReceipt() {
         nothing on disk. It is not dismissible — nothing here makes it untrue,
         and the next flush re-raises it anyway.
       */}
-      {stranded > 0 && (
+      {stranded.length > 0 && (
         <div
           role="alert"
           data-ux-key="door:stranded"
           className="mx-4 mt-3 rounded-xl border border-rose-400/50 bg-rose-500/20 px-3 py-2 text-sm text-rose-100"
         >
-          {stranded === 1
+          {stranded.length === 1
             ? 'A delivery could not be sent, and this phone could not save a record of it.'
-            : `${stranded} deliveries could not be sent, and this phone could not save a record of them.`}{' '}
+            : `${stranded.length} deliveries could not be sent, and this phone could not save a record of them.`}{' '}
           The count is still held in this app and nowhere else. Photograph the
           paperwork and tell a manager before closing this page.
         </div>

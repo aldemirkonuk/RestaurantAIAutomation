@@ -4,9 +4,9 @@ import { MemoryRouter } from 'react-router-dom'
 import DoorReceipt from './DoorReceipt'
 
 /**
- * The legacy door page — the one every porter actually hits, because the
- * rebuilt DoorNext sits behind `mudavym_design_receiving_door` and production
- * has no feature-flag rows.
+ * The legacy door page — still the one most porters hit: the rebuilt DoorNext
+ * sits behind `mudavym_design_receiving_door`, and as of 2026-09-12 exactly one
+ * house in production has that row switched on.
  *
  * It used to read the pending count and nothing else. `flushDoorOutbox` deletes
  * a receipt it gives up on (a 4xx, or eight failed attempts), so that count
@@ -27,11 +27,13 @@ const watchDoorOutbox = vi.hoisted(() => vi.fn())
 const pendingDoorCount = vi.hoisted(() => vi.fn())
 const readDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 const clearDroppedDoorReceipts = vi.hoisted(() => vi.fn())
+const readStrandedDoorReceipts = vi.hoisted(() => vi.fn())
 vi.mock('../../lib/doorOutbox', () => ({
   watchDoorOutbox,
   pendingDoorCount,
   readDroppedDoorReceipts,
   clearDroppedDoorReceipts,
+  readStrandedDoorReceipts,
   submitDoorReceipt: vi.fn(),
   newIdempotencyKey: () => 'door:o1:test',
 }))
@@ -54,7 +56,7 @@ vi.mock('react-router-dom', async () => {
 })
 
 /** The flush callback the page hands the watcher, so a flush can be simulated. */
-type Flush = { sent: number; failed: number; dropped: number }
+type Flush = { sent: number; failed: number; dropped: number; stranded?: number }
 let onFlush: (r: Flush) => void
 
 /** Stands in for the outbox's durable record, which the flush writes. */
@@ -66,9 +68,14 @@ const drop = (id: string, reason: Drop['reason'] = 'refused'): Drop => ({
   reason,
 })
 
+/** Stands in for the QUEUE — the record for a strand, since the entry is kept. */
+let strandedQueue: Array<{ id: string; orderLabel: string; restaurantId: string }> = []
+
 beforeEach(() => {
   vi.clearAllMocks()
   record = []
+  strandedQueue = []
+  readStrandedDoorReceipts.mockImplementation(async () => strandedQueue)
   pendingDoorCount.mockResolvedValue(0)
   readDroppedDoorReceipts.mockImplementation(() => record)
   clearDroppedDoorReceipts.mockImplementation(() => {
@@ -201,5 +208,41 @@ describe('DoorReceipt — a dropped receipt is not a delivered one', () => {
 
     expect(dropNotice()).toBeNull()
     expect(await screen.findByText('1 to send')).toBeTruthy()
+  })
+})
+
+/**
+ * The strand, on the legacy screen. Same shape as DoorNext's: the outbox kept
+ * the queue entry because it could not write the drop record, so every later
+ * pass re-reports it — honestly — and adding those up told the porter two
+ * deliveries were gone when one was.
+ */
+describe('DoorReceipt — a re-reported strand is the same strand', () => {
+  const strand = () => document.querySelector('[data-ux-key="door:stranded"]')
+
+  it('does not grow the count across passes', async () => {
+    strandedQueue = [{ id: 'm-1', orderLabel: 'order-a', restaurantId: 'rest-A' }]
+    renderPage()
+    await flush({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
+    expect(strand()?.textContent).toContain('A delivery could not be sent')
+
+    await flush({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
+    await flush({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
+
+    expect(strand()?.textContent).toContain('A delivery could not be sent')
+    expect(strand()?.textContent).not.toContain('3 deliveries')
+  })
+
+  it('stops shouting once the strand heals into an ordinary drop', async () => {
+    strandedQueue = [{ id: 'm-2', orderLabel: 'order-b', restaurantId: 'rest-A' }]
+    renderPage()
+    await flush({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
+    expect(strand()).not.toBeNull()
+
+    strandedQueue = []
+    await flush({ sent: 0, failed: 1, dropped: 1, stranded: 0 }, [drop('b')])
+
+    expect(strand()).toBeNull()
+    expect(dropNotice()?.textContent).toContain('never sent')
   })
 })

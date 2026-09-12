@@ -17,8 +17,10 @@
  *   claim       only on a credit memo (D2).
  *
  * The sheet stays LIGHT (D9): it carries `data-ground="paper"`, the one escape
- * from the decided charcoal ground. `canonical-document.css` gives that
- * attribute the light token column in every app theme.
+ * from the decided charcoal ground. `styles/mudavym.css` gives that attribute
+ * the light token column in every app theme — it lives beside the ground it
+ * escapes, not in `canonical-document.css`, which is imported by one lazily
+ * loaded page and so left every other `data-ground="paper"` surface charcoal.
  */
 
 import { useMemo } from 'react'

@@ -172,8 +172,12 @@ but a per-surface decision written into the markup.
   around that rather than fixing it, and the non-Mudavym app is still affected.
 - **What is NOT fixed here.** `scripts/flip_mudavym_design_flags.py` still does
   not exist on `origin/main`; today's row was written directly, and the rollout
-  that ADR 0131 describes still has no instrument on the trunk. The twelve other
-  live houses and the sim houses remain un-flipped by deliberate choice.
+  that ADR 0131 describes still has no instrument on the trunk. The other
+  thirteen houses remain un-flipped by deliberate choice — **nine** non-simulator
+  houses and the **four** simulator houses (`Sim Bistro`, `Sim Meyhouse` ×2,
+  `Sim Vanilla Kaleiçi`), re-measured against `restaurants` on 2026-09-12 rather
+  than restated: an earlier draft of this line said "twelve other live houses",
+  which no count in this record supports.
 - **What would trigger revisiting.** D1: the founder reporting the light→charcoal
   seam as jarring in real use, or a Mudavym page needing to render on paper for a
   reason `[data-ground="paper"]` cannot express. D2: the ALDEMIR house running

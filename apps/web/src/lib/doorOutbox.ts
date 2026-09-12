@@ -26,6 +26,19 @@ const MUTATION_TYPE = 'receiving.door'
 const MAX_ATTEMPTS = 8
 
 /**
+ * Stamped on a queue entry the flush gave up on but could NOT write a record
+ * for. It is the on-disk MARK of a stranded receipt: the entry is parked at the
+ * attempt ceiling and deliberately kept, and this string is what tells it apart
+ * from an entry that merely ran out of retries and is about to be dropped.
+ *
+ * Written in one place and matched in one place (`readStrandedDoorReceipts`) on
+ * purpose — reworded in the flush alone, every standing strand goes invisible,
+ * which is this file's own fault class wearing a copy-editor's hat.
+ */
+const STRANDED_MARKER =
+  'Given up on, and this device could not save a record of it. Kept here so the delivery is not lost — keep the paperwork.'
+
+/**
  * A receipt the outbox GAVE UP ON, kept after the receipt itself is gone.
  *
  * The queue entry is deleted on a drop, so without this the only record of a
@@ -216,7 +229,37 @@ export function dismissDroppedDoorReceipt(
   } catch {
     /* storage blocked — the caller still renders `next` this session */
   }
+  // And out of any legacy key it may still be sitting in. Without this half, an
+  // acknowledgement made with no active house wrote the survivors to
+  // `…outboxDrops.unscoped` and touched nothing else — but the read it was
+  // based on came from the legacy key, which adoption deliberately leaves alone
+  // when there is no house to adopt into. The caller was handed a list without
+  // the record on it while the record was still on disk, and it came back on
+  // the next read: told gone, not gone.
+  forgetFromLegacyKeys(restaurantId, (d) => d.id !== id)
   return next
+}
+
+/**
+ * Rewrite every legacy key, keeping only what `keep` allows. A key that empties
+ * is removed outright so the adoption path stops finding it.
+ */
+function forgetFromLegacyKeys(
+  restaurantId: string,
+  keep: (d: DroppedDoorReceipt) => boolean,
+): void {
+  for (const key of LEGACY_DROPS_KEYS) {
+    if (key === dropsKey(restaurantId)) continue
+    try {
+      const raw = window.localStorage.getItem(key)
+      if (!raw) continue
+      const left = parseDrops(raw).filter(keep)
+      if (left.length === 0) window.localStorage.removeItem(key)
+      else window.localStorage.setItem(key, JSON.stringify(left))
+    } catch {
+      /* storage blocked — nothing was persisted to change */
+    }
+  }
 }
 
 /**
@@ -232,6 +275,11 @@ export function clearDroppedDoorReceipts(restaurantId: string): void {
   } catch {
     /* storage blocked — there was nothing persisted to clear */
   }
+  // The legacy keys too. What the porter acknowledged is what the screen showed
+  // them, and the screen shows the inherited records as well — marked, but
+  // shown. Clearing only this house's key left them on disk to be re-read, or,
+  // with no active house at all, cleared a key the read was never using.
+  forgetFromLegacyKeys(restaurantId, () => false)
 }
 
 /**
@@ -343,6 +391,62 @@ async function queue(entry: QueuedDoorReceipt): Promise<void> {
 export async function pendingDoorCount(): Promise<number> {
   const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
   return all.length
+}
+
+/**
+ * A receipt the outbox gave up on and could NOT write a record for, so it kept
+ * the queue ENTRY instead of deleting it. The entry is the record here.
+ */
+export interface StrandedDoorReceipt {
+  /** The queue entry's id — the identity that makes one strand count once. */
+  id: string
+  orderLabel: string
+  /** Empty when the entry was queued before the tenant stamp existed. */
+  restaurantId: string
+}
+
+/**
+ * Every receipt currently STRANDED on this device, derived from the queue.
+ *
+ * READ, never accumulated. `DoorFlushResult.stranded` is a statement about one
+ * pass, and a strand is re-reported by every later pass because the entry is
+ * deliberately still there — so adding those numbers up turned ONE lost receipt
+ * into "3 deliveries could not be sent" by the third screen unlock, while
+ * holding the total in component state turned it back into nothing on the
+ * navigate that Finish triggers. Both halves are the mistake this module
+ * already fixed for `dropped`: a count where a record belongs. The queue is
+ * that record — the strand exists exactly as long as the entry does, which also
+ * means one that HEALS clears itself on the next read instead of leaving a
+ * permanent alarm standing beside the drop pin for the same receipt.
+ *
+ * `null` means the queue could not be READ — not that nothing is stranded. A
+ * caller must keep what it last knew rather than render the absence as an
+ * all-clear.
+ *
+ * An entry with no house stamped on it is returned for every house. It costs a
+ * count with no order label attached to it; hiding it would lose the only thing
+ * on this device that says a delivery is gone.
+ */
+export async function readStrandedDoorReceipts(
+  restaurantId: string,
+): Promise<StrandedDoorReceipt[] | null> {
+  let pending
+  try {
+    pending = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
+  } catch {
+    return null
+  }
+  return pending
+    .filter((m) => m.retryCount >= MAX_ATTEMPTS && m.lastError === STRANDED_MARKER)
+    .map((m) => {
+      const entry = m.data as QueuedDoorReceipt | undefined
+      return {
+        id: m.id,
+        orderLabel: entry?.orderLabel || entry?.orderId || 'Door receipt',
+        restaurantId: entry?.restaurantId ?? '',
+      }
+    })
+    .filter((d) => !restaurantId || !d.restaurantId || d.restaurantId === restaurantId)
 }
 
 export interface DoorFlushResult {
@@ -515,8 +619,7 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
             try {
               await offlineStorage.updatePendingMutation(m.id, {
                 retryCount: MAX_ATTEMPTS,
-                lastError:
-                  'Given up on, and this device could not save a record of it. Kept here so the delivery is not lost — keep the paperwork.',
+                lastError: STRANDED_MARKER,
               })
             } catch {
               /* even the queue update failed; the entry itself survives, which
