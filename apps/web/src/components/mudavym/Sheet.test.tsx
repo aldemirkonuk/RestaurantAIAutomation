@@ -301,3 +301,117 @@ describe('the wide sheet', () => {
     expect(document.querySelector('.mdv-ovl--panel')).not.toHaveAttribute('data-wide');
   });
 });
+
+describe('Escape — only the topmost overlay closes', () => {
+  // A window-level Escape listener on every open overlay is how each one
+  // closes "from anywhere" — but that means a Sheet opened from inside an
+  // open Panel has two listeners on the same target, and stopPropagation()
+  // does nothing for sibling listeners registered directly on `window`. One
+  // Escape press used to close both.
+  it('a Sheet opened from inside an open Panel: Escape closes the Sheet, not the Panel underneath', () => {
+    const onClosePanel = vi.fn();
+    const onCloseSheet = vi.fn();
+
+    const panel = render(
+      <Panel open onClose={onClosePanel} label="Approval">
+        <p>Panel body</p>
+      </Panel>,
+    );
+    try {
+      const sheet = render(
+        <Sheet open onClose={onCloseSheet} label="Vendor detail">
+          <p>Sheet body</p>
+        </Sheet>,
+      );
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(onCloseSheet).toHaveBeenCalledTimes(1);
+      expect(onClosePanel).not.toHaveBeenCalled();
+
+      // The Sheet is gone (unmounted, as a real close would do) — the Panel
+      // is topmost now, and its own Escape handler should act.
+      sheet.unmount();
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(onClosePanel).toHaveBeenCalledTimes(1);
+    } finally {
+      panel.unmount();
+    }
+  });
+
+  it('three deep: each Escape closes exactly one, innermost first', () => {
+    const calls: string[] = [];
+    const a = render(
+      <Panel open onClose={() => calls.push('a')} label="A">
+        <p>a</p>
+      </Panel>,
+    );
+    try {
+      const b = render(
+        <Panel open onClose={() => calls.push('b')} label="B">
+          <p>b</p>
+        </Panel>,
+      );
+      try {
+        const c = render(
+          <Panel open onClose={() => calls.push('c')} label="C">
+            <p>c</p>
+          </Panel>,
+        );
+
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(calls).toEqual(['c']);
+        c.unmount();
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(calls).toEqual(['c', 'b']);
+      } finally {
+        b.unmount();
+      }
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(calls).toEqual(['c', 'b', 'a']);
+    } finally {
+      a.unmount();
+    }
+  });
+});
+
+describe('focus on open — cascades past a candidate that does not actually take it', () => {
+  it('skips an inline-hidden first control and focuses the next real one', () => {
+    // jsdom's own HTMLElement.focus() is more permissive than a real
+    // browser's — it moves activeElement onto a `display:none` element
+    // without complaint, which is exactly the gap `focusables()`'s own
+    // comment names (jsdom reports no layout for anything, so a filter on
+    // computed visibility would pass tests for the wrong reason). That gap
+    // is why this defect was invisible to a unit test in the first place —
+    // so this test stubs `.focus()` to the one rule a real browser actually
+    // enforces (a `display:none` element cannot become
+    // `document.activeElement`) and checks that the open-focus cascade
+    // — try, verify, move to the next candidate — reacts correctly when a
+    // `.focus()` call silently does nothing.
+    const nativeFocus = HTMLElement.prototype.focus;
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function (this: HTMLElement, ...args) {
+        if (this.style.display === 'none') return;
+        nativeFocus.apply(this, args as never);
+      });
+    const rendered = render(
+      // showClose=false: this test is about the CHILD candidate order, not
+      // the header's own Close control (which would otherwise be the first
+      // focusable element, and correctly so).
+      <Panel open onClose={() => {}} label="Form" showClose={false}>
+        {/* A first child styled invisible by an inline style — the same
+            observable effect a compiled Tailwind `hidden md:block` utility
+            has in a real browser, and the one case `focusables()` cannot
+            see (it checks the `hidden` ATTRIBUTE, not computed display). */}
+        <button style={{ display: 'none' }}>invisible first</button>
+        <button>real target</button>
+      </Panel>,
+    );
+    try {
+      expect(document.activeElement).toBe(screen.getByText('real target'));
+    } finally {
+      rendered.unmount();
+      spy.mockRestore();
+    }
+  });
+});

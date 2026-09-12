@@ -29,10 +29,9 @@ class E2EReportGenerator:
             "wave_a_api_contracts": "A",
             "wave_b_agent_health": "B",
             "wave_c_agent_triggers": "C",
-            "wave_d_toast_pipeline": "D",
-            "wave_e_gmail_pipeline": "E",
+            # D, E, G retired 2026-09-12 (ADR 0137) — tested schema with no
+            # production consumer; see the ADR before reusing these letters.
             "prod_smoke": "F",
-            "wave_g_calendar": "G",
         }
         for key, letter in wave_map.items():
             if key in nodeid:
