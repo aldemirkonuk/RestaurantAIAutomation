@@ -24,8 +24,10 @@
  *
  * The page keeps the legacy screen's essence — one job, one hand, one minute,
  * full-screen outside DashboardLayout, no prices anywhere — on the Warm
- * Charcoal ground (data-ground="charcoal"; ADR 0042 gives loading-dock
- * surfaces charcoal first-class).
+ * Charcoal ground. It states that ground out loud (data-ground="charcoal"),
+ * which the input rules below hang off; since 2026-09-12 charcoal is also the
+ * `.mudavym` default in every app theme, so the attribute confirms rather than
+ * forces.
  */
 
 import { useEffect, useRef, useState } from 'react';

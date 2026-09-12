@@ -16,8 +16,9 @@
  *               advice prints no prices, and a zero there would invent one.
  *   claim       only on a credit memo (D2).
  *
- * The sheet stays LIGHT in dark mode (D9): it carries `data-ground="paper"`, and
- * `mudavym.css` gives that the light token column even under `.dark`.
+ * The sheet stays LIGHT (D9): it carries `data-ground="paper"`, the one escape
+ * from the decided charcoal ground. `canonical-document.css` gives that
+ * attribute the light token column in every app theme.
  */
 
 import { useMemo } from 'react'

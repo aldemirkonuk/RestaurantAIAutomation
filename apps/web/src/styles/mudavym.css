@@ -4,84 +4,59 @@
 
    Scope: everything is under `.mudavym`, NEVER `:root`. Old pages must render
    byte-identically; these variables exist only inside an element that opts in
-   (PageGate wraps the `next` tree in one — see components/mudavym/PageGate.tsx).
+   (every Mudavym page carries the class on its own root — see
+   components/mudavym/PageGate.tsx for why the gate does not add a second one).
 
-   The values are the canonical ADR-0042 token table (sketch 059's token block
-   with `--paper-0` dark overridden to Warm Charcoal #15130F). Do not re-derive.
+   THE GROUND IS DECIDED, NOT PREFERRED — founder, 2026-09-12.
 
-   Dark ground ("Warm Charcoal") applies in three honest ways, mirroring how
-   the app already does dark mode (tailwind `darkMode:['class']`; ThemeContext
-   stamps `light`/`dark` on <html> — contexts/ThemeContext.tsx:74-76 — and
-   resolves theme 'system' into one of those two classes itself):
+   Inside `.mudavym` the tokens resolve to the Warm Charcoal column in EVERY
+   app theme. The light/dark toggle does not reach into this scope: the brand
+   decision holds on the pages that were designed for it. Outside the scope
+   nothing changed — the legacy app still follows the user's theme exactly as
+   it did before, because these variables are inert there.
 
-   1. `.dark .mudavym`            — the app's resolved dark theme.
-   2. `.mudavym[data-ground="charcoal"]` — a surface that is charcoal by
-      decision regardless of app theme (cellar floor, receiving door, POS).
-   3. `@media (prefers-color-scheme: dark)` guarded by `:root:not(.light)` —
-      only for the instant before ThemeContext has stamped a class (first
-      paint). Once it runs, <html> always carries `light` or `dark`, so the
-      class rules above are authoritative and this block can never fight an
-      explicit light choice.
+   What this replaced, and why: the charcoal column used to hang off
+   `.dark .mudavym` plus a `prefers-color-scheme` block. ThemeContext
+   force-migrates every first-time browser to `light`
+   (contexts/ThemeContext.tsx:40-44), so `.dark` was never on <html> for a new
+   user and the decided ground had never rendered for anyone.
+
+   Why the base selector rather than an override rule: a custom property
+   declared directly on an element always wins over one inherited from an
+   ancestor, independent of selector specificity (the trap PageGate's header
+   records). Putting the decided column on the bare `.mudavym` selector means
+   every element that opts in carries it itself — nested or not — with no
+   ancestor race to lose.
+
+   One escape remains, and it is explicit: `[data-ground="paper"]`, a surface
+   that is a sheet of paper by decision (the canonical document, ADR 0104 D9).
+   It takes the light column back on the ONE element that carries it, in
+   pages/documents/next/canonical-document.css. At (0,2,0) it outranks this
+   file's (0,1,0) base on specificity, not on source order.
+
+   `[data-ground="charcoal"]` is kept as a synonym of the base so that a page
+   may still state its ground out loud (DoorNext does, and hangs input rules
+   off it). It no longer changes anything on its own.
 */
 
-.mudavym {
-  /* seal — İznik */
-  --seal: #1A5E6B;
-  --seal-deep: #14515C;
-  --seal-tint: rgba(26, 94, 107, 0.10);
-  --seal-ring: rgba(26, 94, 107, 0.32);
-
-  /* grounds — warm paper */
-  --paper-0: #FAF7F1;
-  --paper-1: #F3EFE6;
-  --paper-2: #EAE4D8;
-
-  /* ink */
-  --ink-1: #211C16;
-  --ink-2: #4F473C;
-  --ink-3: #7C7365;
-  --ink-4: #665D50;
-
-  color-scheme: light;
-}
-
-.dark .mudavym,
+.mudavym,
 .mudavym[data-ground="charcoal"] {
+  /* seal — İznik, the dark-ground pair */
   --seal: #5FB0BC;
   --seal-deep: #7DC3CD;
   --seal-tint: rgba(95, 176, 188, 0.14);
   --seal-ring: rgba(95, 176, 188, 0.38);
 
-  /* Warm Charcoal ground (ADR 0042: #15130F overrides 059's #16120E) */
+  /* grounds — Warm Charcoal (ADR 0042: #15130F overrides sketch 059's #16120E) */
   --paper-0: #15130F;
   --paper-1: #1D1813;
   --paper-2: #262019;
 
+  /* ink — the companions of the charcoal ground; they move as one set */
   --ink-1: #EFE7D9;
   --ink-2: #C0B6A5;
   --ink-3: #8E8576;
   --ink-4: #ABA294;
 
   color-scheme: dark;
-}
-
-/* Pre-hydration only — see header note 3. */
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) .mudavym:not([data-ground="paper"]) {
-    --seal: #5FB0BC;
-    --seal-deep: #7DC3CD;
-    --seal-tint: rgba(95, 176, 188, 0.14);
-    --seal-ring: rgba(95, 176, 188, 0.38);
-
-    --paper-0: #15130F;
-    --paper-1: #1D1813;
-    --paper-2: #262019;
-
-    --ink-1: #EFE7D9;
-    --ink-2: #C0B6A5;
-    --ink-3: #8E8576;
-    --ink-4: #ABA294;
-
-    color-scheme: dark;
-  }
 }

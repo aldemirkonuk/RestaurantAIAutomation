@@ -4,20 +4,22 @@
    flattened into a footnote column).
    ============================================================ */
 
-/* D9 — THE PAPER STAYS LIGHT IN DARK MODE.
+/* D9 — THE PAPER STAYS LIGHT. THE ONE ESCAPE FROM THE DECIDED GROUND.
 
    The sheet is a sheet of paper on a dark desk: the scan beside it is light
-   anyway, and print must equal screen. `mudavym.css` gives `.dark .mudavym` the
-   Warm Charcoal column, so a sheet nested inside a dark page would inherit it;
-   this rule takes the light column back on the ONE element that carries
+   anyway, and print must equal screen. `mudavym.css` now gives the bare
+   `.mudavym` selector the Warm Charcoal column in EVERY app theme (founder,
+   2026-09-12 — the ground is decided, not preferred), so a sheet would
+   inherit charcoal on a light-themed browser as well as a dark one. This rule
+   takes the light column back on the ONE element that carries
    `data-ground="paper"`.
 
-   The selector is `.dark .mudavym[data-ground="paper"]` (0,3,0) rather than the
-   bare attribute (0,2,0) so it beats `.dark .mudavym` on specificity and not
-   merely on source order — the same trap PageGate's header records. */
-.mudavym[data-ground='paper'],
-.dark .mudavym[data-ground='paper'],
-.mudavym[data-ground='charcoal'] .mudavym[data-ground='paper'] {
+   It needs no `.dark` variant any more, and no descendant-of-charcoal variant:
+   the base it has to beat is a bare `.mudavym` at (0,1,0), and this selector
+   is (0,2,0). It wins on specificity, not on source order — which matters,
+   because Vite decides when this file is injected relative to globals.css.
+   (That tie is the trap PageGate's header records.) */
+.mudavym[data-ground='paper'] {
   --seal: #1a5e6b;
   --seal-deep: #14515c;
   --seal-tint: rgba(26, 94, 107, 0.1);
