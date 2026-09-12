@@ -45,6 +45,16 @@ vendor conversation list shared with `/communications`.
 - **Reports** tab: the generated-report archive — open a report, copy a share deep link, delete; new reports appear live as they land
 - **History** tab: classified vendor conversation list (same component as `/communications`)
 - Share links (`?doc=`) open the page with that document selected
+- **Who sent this, and how we know** (ADR 0104 D15, 2026-09-11): a document's vendor is
+  resolved from the seller's printed tax identity at intake, and the canonical sheet carries
+  one line under the seller saying which of five things happened — *"Matched on VKN
+  1234567890"*, *"New vendor, created from this document's VKN … · provisional until the first
+  order"*, the refusal's own sentence when nothing verifiable was printed, *"Vendor not looked
+  for — …"* when OUR read failed, or **nothing at all** when resolution never ran on that
+  document. The last case is the load-bearing one: a line invented for it would say "no vendor"
+  in the same words as a document we looked at and refused, and only one of those is something
+  a person can act on. BT-31 (the seller's VAT identifier) is filled at last — from the
+  resolved provider where one exists, else from what the page printed, with its glyphs.
 
 Behind `mudavym_design_documents_reports` (OFF — the Sorting Office, §1b):
 - **Waiting on you** drawer: vendor paper needing review + AI drafts awaiting approval + deliveries counted by the case and never counted by bottle, one queue, oldest debt first (never by arrival); opens only when every register behind it has answered. That third source is **not** "no paperwork" — the endpoint behind it knows nothing about invoices (`receiving.service.ts:43-44`, *"a delivery with a case count and no bottle count is unverified"*); the debt is somebody breaking the cases and counting bottles, and the page said the wrong one until ADR 0086

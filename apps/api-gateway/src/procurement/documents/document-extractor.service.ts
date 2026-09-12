@@ -95,6 +95,11 @@ EXTRACT, transcribing only what is printed:
 - docNumber (invoice/slip number), docDate (ISO), poNumber, referencesDocNumber (an invoice a credit memo adjusts, or the packing slip an invoice bills)
 - deliveredDate (ISO) — the date the GOODS WERE DELIVERED, transcribe only if printed
 - vendorName
+- vendorTaxId — the SELLER's tax identification number exactly as printed ("VKN 1234567890", "Vergi No: 123 456 7890", "EIN 12-3456789", "USt-IdNr. DE811569869", "VAT GB123456789"). Transcribe the NUMBER and any country prefix that is part of it; you may keep or drop the label word. This is the seller's, never the buyer's — on a Turkish invoice the seller block is the one at the TOP with the logo, and the buyer ("SAYIN", "ALICI") is a different block with a different number.
+- vendorTaxOffice — the tax office or registering authority printed beside it ("Vergi Dairesi: Kadıköy", "Kadıköy V.D."). Null when none is printed.
+- vendorAddress — the seller's address as printed, on one line
+- vendorCountry — ISO-3166 alpha-2 for the SELLER's country ("TR", "US", "DE"), only when the address or the document states it. Null otherwise; do not infer it from the language or the currency.
+- buyerName and buyerTaxId — the same two fields for the BUYER (the "SAYIN"/"BILL TO" block), when printed
 - header money: subtotal, freight, fuelSurcharge, splitCaseFee, deliveryFee, depositTotal, tax, otherCharges, discountTotal, total
 - taxBreakdown: one row per printed tax rate — {rate, taxableBase, amount, category}
 - lines: vendorSku, description, vintage, formatMl, qty, uom, packSize (bottles per case), unitPrice, priceBaseQty, priceBaseUom, lineTotal, allowance, deposit, lineKind
@@ -111,10 +116,11 @@ RULES
 - Free goods: only set a line's allowance/zero price if the document itself says so.
 - Money as plain numbers, no currency symbols or thousands separators.
 - "printed": alongside each line and alongside the document totals, return the LITERAL text the page shows for money and quantity fields, exactly as printed — keep the vendor's own grouping and decimal marks ("1.704,00" stays "1.704,00", "142,00 / KS(12)" stays whole). Line keys: qty, unitPrice, lineTotal, allowance, deposit. Document keys: subtotal, tax, freight, total. Omit a key you did not read; never write "" and never rewrite the number into our format.
+- vendorTaxId / buyerTaxId: transcribe, NEVER construct. If the page prints no tax number, return null — a resolved vendor keyed on a number you assembled would put a guess under every price we ever record for them. If you cannot tell which of two printed numbers belongs to the seller, return null for both and say so in "unreadable".
 - Anything illegible: null, and say so in "unreadable".
 
 OUTPUT only valid JSON:
-{"docType":"invoice","docNumber":null,"docDate":null,"deliveredDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"taxBreakdown":[],"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"lineKind":"goods","printed":{}}],"unreadable":[]}`;
+{"docType":"invoice","docNumber":null,"docDate":null,"deliveredDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"vendorTaxId":null,"vendorTaxOffice":null,"vendorAddress":null,"vendorCountry":null,"buyerName":null,"buyerTaxId":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"taxBreakdown":[],"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"lineKind":"goods","printed":{}}],"unreadable":[]}`;
 
 /**
  * The fence-stripping `normalize` applies before `JSON.parse`.
@@ -293,6 +299,12 @@ export class DocumentExtractorService {
         poNumber: null,
         vendorName: null,
         vendorAccount: null,
+        vendorTaxId: null,
+        vendorTaxOffice: null,
+        vendorAddress: null,
+        vendorCountry: null,
+        buyerName: null,
+        buyerTaxId: null,
         currency: "USD",
         subtotal: null,
         freight: null,
@@ -411,6 +423,15 @@ export class DocumentExtractorService {
       poNumber: str(parsed.poNumber),
       vendorName: str(parsed.vendorName),
       vendorAccount: null,
+      // ADR 0104 D15 — BT-31/BT-32. Transcribed, never assembled: these are the
+      // only fields a vendor is resolved from, so a value we invented here
+      // becomes a guess underneath every price, lot and remembered pairing.
+      vendorTaxId: str(parsed.vendorTaxId),
+      vendorTaxOffice: str(parsed.vendorTaxOffice),
+      vendorAddress: str(parsed.vendorAddress),
+      vendorCountry: str(parsed.vendorCountry),
+      buyerName: str(parsed.buyerName),
+      buyerTaxId: str(parsed.buyerTaxId),
       currency: str(parsed.currency) ?? "USD",
       subtotal: num(parsed.subtotal),
       freight: num(parsed.freight),
