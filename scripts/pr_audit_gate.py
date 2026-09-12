@@ -840,7 +840,7 @@ def run_self_test() -> int:
     failures = []
 
     # `ran` is COUNTED, not written down. Until 2026-09-12 the summary line
-    # below printed a hardcoded "35 invariants held" -- a number nothing
+    # below printed a hardcoded count of the invariants -- a number nothing
     # re-derived, which had to be hand-edited every time a case was added and
     # was therefore wrong the moment somebody forgot. A count that does not come
     # from the thing it counts is the same shape as a check that cannot fail.
