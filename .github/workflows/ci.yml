@@ -1325,18 +1325,64 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+      # trivy is PINNED, and installed once for both invocations below.
+      #
+      # This job used `aquasecurity/trivy-action@master`, which is a moving
+      # target: the gate's verdict must not change under us on someone else's
+      # release schedule. v0.74.0 is the version this gate's proof was run with
+      # (ADR 0142).
+      - name: Install trivy
+        uses: aquasecurity/setup-trivy@v0.3.1
         with:
-          scan-type: "fs"
-          scan-ref: "."
-          format: "sarif"
-          output: "trivy-results.sarif"
+          version: v0.74.0
+
+      # The database download is its OWN step, and that separation is the point.
+      #
+      # trivy exits 1 for a fatal error as readily as for a finding: measured
+      # 2026-09-12, a vulnerability-database download that timed out exited 1,
+      # and so did an unknown flag. Fused into the scan, "a new critical
+      # advisory landed" and "the scanner could not run" are the same red -- and
+      # the second kind teaches people to ignore the first. Split, a download
+      # failure fails under its own name. Both scans below therefore run with
+      # --skip-db-update, so neither can re-enter this path and fail as itself.
+      - name: Fetch the vulnerability database
+        run: trivy fs --download-db-only --timeout 15m
+
+      # Publishing findings. This one must NOT fail: its job is to keep the
+      # Security tab complete, at every severity, which is why it carries no
+      # --severity and no --exit-code.
+      - name: Run Trivy vulnerability scanner
+        run: trivy fs --format sarif --output trivy-results.sarif --skip-db-update .
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: "trivy-results.sarif"
+
+      # THE STEP THAT CAN ACTUALLY FAIL.
+      #
+      # Until 2026-09-12 the scanning step above was the only one, and it sets
+      # neither exit-code nor severity -- correct for a publisher, and it meant
+      # this job, one of main's five REQUIRED checks, could not fail. Measured on
+      # a clean archive of 941d9cb4 that day: 143 high-or-critical finding rows
+      # across 107 distinct advisories, and this job green over all of them on
+      # every run it has ever had.
+      #
+      # `.trivyignore` carries the advisories that were already open when the
+      # gate was armed, so a red here is about something NEW. That file may only
+      # shrink; its header says how it was generated and why an earlier draft of
+      # it was wrong. scripts/check_security_gate_can_fail.py refuses a build
+      # that disarms any of this.
+      - name: Fail on a new high or critical advisory
+        run: |
+          trivy fs \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --ignorefile .trivyignore \
+            --skip-db-update \
+            --exit-code 1 \
+            --format table \
+            .
 
   # Summary
   #
@@ -1422,6 +1468,28 @@ jobs:
           echo "::notice::THE HOOK CAN NO LONGER SAY UNKNOWN means useStorageLocations lost its nullable capacity or its locationsUnavailable flag, or names one of the four invented zones in code. A capacity nobody entered is unknown, not 100 -- it is the denominator of the cellar map's fill bar."
           echo "::notice::Exit 2 is CANNOT CHECK, not a skip: a scan root moved, a root holds no source file, the pinned hook is gone, or a file would not parse. Repoint the anchor; do not delete the step."
 
+  security-gate-can-fail:
+    name: The security gate can fail
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: The guard fires on the shapes it exists to catch
+        run: python3 scripts/check_security_gate_can_fail.py --self-test
+
+      - name: The gate can fail, and the baseline it forgives has not grown
+        run: python3 scripts/check_security_gate_can_fail.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::NO FAILING EXIT CODE means the security job is back to advisory. It was exactly that until 2026-09-12: green over 143 high-or-critical findings, while being one of main's five REQUIRED checks."
+          echo "::notice::THE DOWNLOAD IS NOT ITS OWN STEP means a database failure and a new critical advisory produce the same red. trivy exits 1 for both. The second kind teaches people to ignore the first."
+          echo "::notice::.trivyignore HAS GROWN means a line was added to silence a NEW advisory, which is the one thing the gate exists to refuse. Lowering the ceiling is how the backlog is paid down; raising it needs a founder decision and its own record."
+          echo "::notice::@master means an action in the security job is unpinned. The gate's verdict must not change under us on someone else's release schedule."
+          echo "::notice::Exit 2 is CANNOT CHECK, not a skip: ci.yml or .trivyignore could not be read, or the security job was renamed. Repoint the guard; do not delete the step."
+
   ci-complete:
     name: CI Complete
     runs-on: ubuntu-latest
@@ -1429,6 +1497,7 @@ jobs:
     needs:
       [
         build,
+        security-gate-can-fail,
         decision-claims,
         gateway-boot,
         schema-code-parity,
