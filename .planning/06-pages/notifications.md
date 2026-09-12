@@ -1938,7 +1938,7 @@ never announced as a drinks list. A source with no `display` renders exactly as
 it did, which a test asserts.
 
 **Nothing is showing yet, and the box says why.** `price_index_postings` is
-absent from the project this deployment reaches, and the Defra fetch is off
+absent from the project this deployment reaches, and the Defra fetch is off **[CORRECTED 2026-09-12: no longer true -- `to_regclass('public.price_index_postings')` returns NOT NULL, measured that day. PR #289's 19 blocked migrations were applied through the connector on 2026-09-12 after a defect in `20260906020000` was fixed. The finding above is kept as the dated observation it was; do not infer from it that a missing table is guarding anything.]**
 until **`PRICE_INDEX_FETCH_ENABLED`** is set on the deployment — a switch the
 founder flips, not a code change and not a toggle in the product. Until then the
 box prints the endpoint's own sentence naming the produce list and that variable

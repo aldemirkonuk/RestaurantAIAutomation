@@ -1,5 +1,9 @@
-# Logs
-logs
+# Logs — root-scoped (2026-09-11): an unscoped `logs` pattern silently
+# swallowed apps/web/src/pages/logs/ (the /logs page rebuild) because
+# gitignore patterns without a leading slash match at any depth. No build
+# tool here ever wrote a top-level apps/web/logs/, so root-scoping loses
+# nothing and stops a page directory from vanishing from `git status`.
+/logs
 *.log
 npm-debug.log*
 yarn-debug.log*

@@ -241,7 +241,32 @@ export class RateLimitGuard implements CanActivate {
   }
 
   /**
-   * Generate rate limit key
+   * Generate rate limit key.
+   *
+   * MEASURED 2026-09-12, and worth knowing before reading the branches below:
+   * **in practice this always keys on the IP.** This guard is registered as an
+   * `APP_GUARD` in `app.module.ts`, Nest runs global guards before
+   * controller-level ones, and `JwtAuthGuard` is controller-level everywhere in
+   * this gateway — so `request.user` is undefined every time this runs, on
+   * every route, authenticated or not.
+   *
+   * That is not a fault to fix here. An IP is the only handle that exists
+   * before authentication, and being the layer that can see an unauthenticated
+   * caller is this guard's job. The two authenticated branches are kept because
+   * they are correct for any future call site that runs this guard AFTER
+   * authentication (`@UseGuards(JwtAuthGuard, RateLimitGuard)` on a controller),
+   * and they cost nothing when they do not fire.
+   *
+   * `userId` is spelled correctly here as of this reading. It previously read
+   * `request.user?.id`, which no strategy in this gateway ever sets — the JWT,
+   * Google and Microsoft strategies all return `userId` — so even a call site
+   * that DID run this guard after authentication would have silently fallen
+   * through to the restaurant branch. That was invisible precisely because the
+   * global registration meant neither branch was reachable anyway.
+   *
+   * For a per-person or per-house limit on an authenticated route, use
+   * `AuthedRateLimitGuard` in this folder, which is listed after `JwtAuthGuard`
+   * and fails closed if it ever is not.
    */
   private generateKey(request: any, prefix?: string): string {
     const parts: string[] = [];
@@ -252,8 +277,8 @@ export class RateLimitGuard implements CanActivate {
     }
 
     // Add user ID if authenticated
-    if (request.user?.id) {
-      parts.push(`user:${request.user.id}`);
+    if (request.user?.userId) {
+      parts.push(`user:${request.user.userId}`);
     }
     // Add restaurant ID if available
     else if (request.user?.restaurantId) {
