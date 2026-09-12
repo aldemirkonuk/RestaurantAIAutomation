@@ -1325,54 +1325,56 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      # trivy is PINNED, and installed once for both invocations below.
+      # trivy itself is PINNED, installed once for every invocation below.
       #
-      # This job used `aquasecurity/trivy-action@master`, which is a moving
-      # target: the gate's verdict must not change under us on someone else's
-      # release schedule. v0.74.0 is the version this gate's proof was run with
+      # This job used `aquasecurity/trivy-action@master`, a moving target: the
+      # gate's verdict must not change under us on someone else's release
+      # schedule. v0.74.0 is the version this gate's proof was run with
       # (ADR 0142).
       - name: Install trivy
         uses: aquasecurity/setup-trivy@v0.3.1
         with:
           version: v0.74.0
 
-      # The database download is its OWN step, and that separation is the point.
+      # THE GATE'S DATABASE IS PINNED TOO, and that is the founder's decision of
+      # 2026-09-12 (ADR 0142, Correction).
       #
-      # trivy exits 1 for a fatal error as readily as for a finding: measured
-      # 2026-09-12, a vulnerability-database download that timed out exited 1,
-      # and so did an unknown flag. Fused into the scan, "a new critical
-      # advisory landed" and "the scanner could not run" are the same red -- and
-      # the second kind teaches people to ignore the first. Split, a download
-      # failure fails under its own name. Both scans below therefore run with
-      # --skip-db-update, so neither can re-enter this path and fail as itself.
-      - name: Fetch the vulnerability database
-        run: trivy fs --download-db-only --timeout 15m
-
-      # Publishing findings. This one must NOT fail: its job is to keep the
-      # Security tab complete, at every severity, which is why it carries no
-      # --severity and no --exit-code.
-      - name: Run Trivy vulnerability scanner
-        run: trivy fs --format sarif --output trivy-results.sarif --skip-db-update .
-
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: "trivy-results.sarif"
+      # Pinning the binary was not enough, and the first version of this job said
+      # it was. trivy fetches the vulnerability database separately, and that
+      # database is rebuilt daily (measured locally that day: UpdatedAt
+      # 2026-09-12 13:01 UTC, NextUpdate 2026-09-13 13:01 UTC). Scanned against
+      # the latest copy, a new high or critical advisory published overnight
+      # against a package already in our lockfiles turns this required check red
+      # on main and on every open PR at once, with no code change -- the same
+      # shape as the production-lag wedge that stopped fifteen PRs the same day.
+      #
+      # So the gate scans against one snapshot, fetched BY DIGEST into its own
+      # cache directory: the same tree always gets the same verdict. New
+      # advisories reach the gate when somebody moves this digest, in a PR where
+      # a red is expected and gets triaged. Proven before it was written: a
+      # download by this digest exits 0; the gate command against that cache
+      # exits 0 with the baseline and 1 over 143 finding rows without it.
+      #
+      # The download is its OWN step for the reason it always was: trivy exits 1
+      # for a fatal error as readily as for a finding, so a database that cannot
+      # be fetched must fail under its own name and never look like an advisory.
+      # If GHCR ever stops serving this digest, this is the step that goes red.
+      - name: Fetch the pinned vulnerability database, for the gate
+        run: trivy fs --download-db-only --timeout 15m --cache-dir "$RUNNER_TEMP/trivy-pinned" --db-repository "ghcr.io/aquasecurity/trivy-db@sha256:b4779c2096e6efeef8f266ca6488ad64fabd8bc02b35c5e39f3c04b893a831dd"
 
       # THE STEP THAT CAN ACTUALLY FAIL.
       #
-      # Until 2026-09-12 the scanning step above was the only one, and it sets
-      # neither exit-code nor severity -- correct for a publisher, and it meant
-      # this job, one of main's five REQUIRED checks, could not fail. Measured on
-      # a clean archive of 941d9cb4 that day: 143 high-or-critical finding rows
-      # across 107 distinct advisories, and this job green over all of them on
-      # every run it has ever had.
+      # Until 2026-09-12 this job had no failing step at all, and it is one of
+      # main's five required checks. Measured on a clean archive of 941d9cb4 that
+      # day: 143 high-or-critical finding rows across 107 distinct advisories,
+      # and this job green over all of them on every run it had ever had.
       #
       # `.trivyignore` carries the advisories that were already open when the
       # gate was armed, so a red here is about something NEW. That file may only
-      # shrink; its header says how it was generated and why an earlier draft of
-      # it was wrong. scripts/check_security_gate_can_fail.py refuses a build
-      # that disarms any of this.
+      # shrink, and only toward the baseline recorded in
+      # scripts/trivy-baseline-2026-09-12.txt. scripts/check_security_gate_can_fail.py
+      # refuses a build that disarms any of this, and it reads the step's real
+      # command rather than its prose.
       - name: Fail on a new high or critical advisory
         run: |
           trivy fs \
@@ -1380,9 +1382,47 @@ jobs:
             --severity HIGH,CRITICAL \
             --ignorefile .trivyignore \
             --skip-db-update \
+            --cache-dir "$RUNNER_TEMP/trivy-pinned" \
             --exit-code 1 \
             --format table \
             .
+
+      # Publishing runs AFTER the gate, and runs even when the gate is red
+      # (`!cancelled()`), so a failing build still updates the Security tab and
+      # a publishing failure can never skip the verdict above.
+      #
+      # Publishing uses the LATEST database, deliberately unpinned: the people
+      # reading the Security tab should see an advisory the day it is published,
+      # even though the gate only acts on it once the pin moves.
+      - name: Fetch the latest vulnerability database, for the Security tab
+        if: ${{ !cancelled() }}
+        run: trivy fs --download-db-only --timeout 15m --cache-dir "$RUNNER_TEMP/trivy-latest"
+
+      # This step must NOT fail: it keeps the Security tab complete, at every
+      # severity, which is why it carries no --severity and no --exit-code.
+      #
+      # And it names an EMPTY ignore file, explicitly. trivy reads `.trivyignore`
+      # from the working directory whether or not a flag names it, so the first
+      # version of this step -- no --ignorefile at all -- silently applied the
+      # gate's 107-id baseline to the Security tab. Measured 2026-09-12 on a clean
+      # archive of this branch with that exact command: 136 results and ZERO
+      # error-level, against 279 results, 143 error-level and all 107 baselined ids
+      # present with an empty file. GitHub closes an alert when a later upload
+      # from the same tool no longer carries it, so the first push to main would
+      # have marked 107 open advisories fixed. The baseline forgives them for the
+      # purpose of FAILING a build; it must never hide them. Found by the
+      # adversarial pass on PR #362.
+      - name: Run Trivy vulnerability scanner
+        if: ${{ !cancelled() }}
+        run: |
+          : > "$RUNNER_TEMP/empty.trivyignore"
+          trivy fs --format sarif --output trivy-results.sarif --skip-db-update --cache-dir "$RUNNER_TEMP/trivy-latest" --ignorefile "$RUNNER_TEMP/empty.trivyignore" .
+
+      - name: Upload Trivy results to GitHub Security
+        if: ${{ !cancelled() }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results.sarif"
 
   # Summary
   #

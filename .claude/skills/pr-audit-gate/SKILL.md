@@ -71,7 +71,7 @@ individually while what they don't cover reaches production — this gate exists
    verification workflow ADR 0097 built — a PR that weakens what it checks
    would otherwise be evaluated as ordinary and could self-merge; found by
    PR #291's security audit, 2026-09-03, see ADR 0090's eighth Correction).
-   Keep this list in sync with `_GATE_OWNED_PATHS` in `scripts/pr_audit_gate.py` — a
+   Also `.trivyignore`, `scripts/check_security_gate_can_fail.py` and `scripts/trivy-baseline-2026-09-12.txt` (ADR 0142's baseline, its guard, and the pinned list the guard checks it against: a PR that swaps one advisory id for another silences a new advisory at the same line count, found by PR #362's adversarial pass, 2026-09-12). Keep this list in sync with `_GATE_OWNED_PATHS` in `scripts/pr_audit_gate.py` — a
    third real audit (2026-09-03, compliance angle) found the CI side had
    `CLAUDE.md` in its owned-paths list and this step didn't, so a
    `CLAUDE.md`-only PR could steer the compliance angle's own reading of

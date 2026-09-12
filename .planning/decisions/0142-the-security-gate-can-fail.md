@@ -103,16 +103,97 @@ thing**, not merely that it can fail.
   still blocks the merge — a scanner that could not run must not report health —
   but nobody has to guess which kind of red it is.
 - The 107 inherited advisories are **not** judged by this decision. They stay
-  open and stay exempt until somebody pays them down. The most material line is
+  open and stay exempt until somebody pays them down. [CORRECTED 2026-09-12: as first built they would NOT have stayed open where anyone looks. The publishing step named no ignore file, trivy loads `.trivyignore` by default, and the first push to main would have closed all 107 in the Security tab. Fixed; see the Correction below.] The most material line is
   `nodemailer` 8.0.1 in the production gateway, whose vulnerable path is
   genuinely used and whose only fix is a major bump ([[codeql-alerts-2026-09-06]]).
 - Pinning trivy means the gate does not pick up new detections until somebody
-  bumps the pin. That is the trade: a gate whose verdict moves on its own is a
+  bumps the pin. [CORRECTED 2026-09-12: false as written. Pinning the binary did not pin the vulnerability database, which `trivy fs --download-db-only` fetched fresh on every run and which is rebuilt daily (measured: UpdatedAt 2026-09-12 13:01 UTC, NextUpdate 2026-09-13 13:01 UTC). The gate's database is now pinned by digest -- see the Correction below.] That is the trade: a gate whose verdict moves on its own is a
   gate people stop believing. The signal to revisit is a pinned version more than
   two minor releases behind, or a `.trivyignore` that has not shrunk in a quarter.
 - `.github/workflows/ci.yml` is a **gate-owned path** under [[0090-pre-merge-audit-gate]],
   so the PR carrying this cannot self-merge: it escalates to the founder by
   design, which is correct for a change to what CI is allowed to pass.
+
+
+## Correction — 2026-09-12, the adversarial pass on PR #362 overturned it
+
+No angle had audited this PR. The adversarial pass returned **OVERTURNED** with
+one blocking defect and two serious ones, and every one was re-measured here
+before being fixed.
+
+**1. The Security tab would have lost every baselined alert.** trivy reads
+`.trivyignore` from the working directory whether or not a flag names it
+(`trivy fs --help`: `--ignorefile ... (default ".trivyignore")`), and `origin/main`
+had no such file, so this PR is what changed the publishing step's output.
+Measured with trivy v0.74.0 on a clean archive of the head, the exact step
+command: **136 results, 0 error-level** as committed; **279 results, 143
+error-level, all 107 baselined ids present** (the three criticals included)
+with an explicitly empty ignore file. GitHub closes an alert when a later upload
+from the same tool no longer carries it. The publishing step now empties a file
+in `$RUNNER_TEMP` and names it.
+
+**2. The gate's verdict moved on its own.** The Consequences above said pinning
+trivy meant new detections waited for a bump. The binary was pinned; the
+database was not, and it is rebuilt daily. A new high or critical advisory
+against a package already in a lockfile would have turned this required check
+red on main and on every open PR at once, with no code change -- and the only
+exit, adding the id, trips the ceiling that needs the founder. 93 of the 107
+baselined ids are CVE-2026, so this is not rare.
+
+Put to the founder with four options -- pin the database; let the baseline grow
+with a dated reason per line; keep it strict and block until he decides; block
+only PRs that change dependencies. **His answer: "do option 1 pin the db".**
+Rejected: a reasoned baseline (silencing a new advisory becomes a line whose
+reason the guard cannot check); strict blocking (the overnight wedge, on a day
+he may not be there); dependency-diff blocking (a new critical in an untouched
+dependency would never block anything).
+
+So the gate now scans against **one database snapshot fetched by digest** into
+its own cache directory, and the same tree always gets the same verdict. New
+advisories reach the gate when somebody moves the digest, in a PR where a red is
+expected. Publishing uses the latest database, deliberately, so the Security tab
+shows an advisory the day it lands. **Proven before it was written:** a download
+by `ghcr.io/aquasecurity/trivy-db@sha256:b4779c2096e6efeef8f266ca6488ad64fabd8bc02b35c5e39f3c04b893a831dd`
+exits 0; the gate command against that cache exits 0 with the baseline and exits
+1 over 143 finding rows with an empty ignore file.
+
+The job's order changed with it: checkout, install, pinned download, gate -- and
+only then the publishing steps, under `!cancelled()`. A publishing failure can no
+longer skip the verdict, and a red gate still updates the Security tab.
+
+**3. The guard missed 14 of 21 single-property mutations.** It matched flags as
+substrings anywhere in the job, so a `name:` field, an `echo`, `--exit-code 1
+--exit-code 0` (trivy honours the last), `if: false` or `continue-on-error` all
+satisfied it; and it counted `.trivyignore` lines, so a swapped id passed. It is
+rewritten to read what GitHub executes: the `security` job is parsed into steps,
+each `run:` joined into logical commands and tokenised with shlex, every step
+identified by its trivy invocation rather than its name. It also now refuses a
+database not pinned by digest, a gate reading any other cache, any step before
+the gate other than checkout/install/pinned download, a publishing step that does
+not name an emptied ignore file, `TRIVY_*` environment variables and a root
+trivy config file (both of which trivy reads as configuration), and a
+`.trivyignore` that is not a **subset** of `scripts/trivy-baseline-2026-09-12.txt`
+-- which is itself pinned by sha256 in the guard. No PyYAML: the job that runs the
+guard installs nothing. `--self-test` covers 36 invariants, every mutation applied
+exactly once or the case fails; and against copies of the REAL workflow and
+baseline, **25 of 25 mutations exit 1** and the restored control exits 0.
+
+`.trivyignore`, the guard and the baseline file are added to the audit gate's
+owned paths (`scripts/pr_audit_gate.py` and the skill's step 4), so a PR that
+edits any of them escalates rather than self-merges.
+
+**Not verified, stated rather than implied:**
+
+- **How long GHCR keeps an old `trivy-db` digest.** Reading the package's
+  versions needs `read:packages` and returned 403. If the pinned digest is pruned,
+  "Fetch the pinned vulnerability database, for the gate" fails under its own
+  name -- a red that says the database could not be fetched, never one that looks
+  like an advisory. No scheduled job opens the bump PR yet; moving the digest is a
+  manual edit to a gate-owned file.
+- Whether a job-level `continue-on-error` reports `success` to `CI Complete`. Moot
+  in practice: the guard now refuses it.
+- The residual supply-chain risk of floating action tags is unchanged by this
+  record; every action in the repository uses one.
 
 ## Review trail
 
@@ -121,3 +202,4 @@ thing**, not merely that it can fail.
 | 2026-09-12 | Aldemir | "Make it fail on high and critical" — locked |
 | 2026-09-12 | — | Draft baseline from Dependabot alerts found wrong-sourced; regenerated from trivy itself |
 | 2026-09-12 | — | Measured that trivy exits 1 on fatal errors too; database download split into its own step |
+| 2026-09-12 | pr-merge-adversary (Opus subagent), the only audit this PR had | **OVERTURNED** -- the SARIF step would have closed 107 alerts in the Security tab; the unpinned database made the gate's verdict move overnight; the guard missed 14 of 21 mutations. All re-measured and fixed the same day; the founder chose to pin the database |
