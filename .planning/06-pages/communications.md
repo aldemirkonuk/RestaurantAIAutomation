@@ -6,22 +6,13 @@ softwares: [communications-hub]
 component: apps/web/src/pages/Communications.tsx
 audience: owner
 tier: core
-<<<<<<< HEAD
-archetype: list+detail # proposed 2026-08-26 (OD-79)
-=======
 archetype: list+detail # proposed 2026-08-26 (OD-106)
->>>>>>> origin/main
 signals_today: none
 rebrand_strings: 3
 maturity: hollow
 status: documented
-<<<<<<< HEAD
-updated: 2026-08-26
-links: ["[[PAGE-CONTRACT]]"]
-=======
 updated: 2026-09-02
 links: ["[[PAGE-CONTRACT]]", "[[documents-reports]]"]
->>>>>>> origin/main
 ---
 
 # /communications — Communications
@@ -50,8 +41,6 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 - **Procurement History** tab: audit trail of outbound procurement emails, labelled by type
 - Filter by channel: all / email / SMS
 
-<<<<<<< HEAD
-=======
 ### Redesign feature summary (behind the flag)
 
 - **Mudavym redesign behind `mudavym_design_communications` (OFF)**: four-figure glance strip (threads · drafts waiting · sent-30d · report schedules), the conversation book as a short-row ledger with prose inside the expansion, honest channel-state line (Gmail inbound watch queried, never asserted), template workshops behind a what's-going-on banner, scheduled-reports rail
@@ -119,7 +108,6 @@ DRAFT/PENDING_APPROVAL exchange wears a dashed "AI draft · not sent" chip and
 its body renders in a dashed frame. Legacy page untouched; flag defaults OFF;
 override `mudavym.design.communications`.
 
->>>>>>> origin/main
 ## 2. Entry
 
 - Sidebar (`components/layout/Sidebar.tsx:120`); command palette

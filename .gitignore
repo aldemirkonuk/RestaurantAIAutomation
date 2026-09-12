@@ -9,13 +9,6 @@
 .env.local
 .env.*.local
 
-<<<<<<< HEAD
-# Google service-account keys. A real one (wineops-vertex-ai-*.json) has been
-# sitting untracked at the repo root since 2026-08-26 with no rule matching it,
-# in a checkout several sessions share — one `git add -A` publishes a private
-# key to a PUBLIC repository. Patterns, not one filename, because the next key
-# will be named something else.
-=======
 # Google service-account keys. A real one (wineops-vertex-ai-*.json) sat
 # untracked at the repo root on 2026-08-26 with no rule matching it, in a
 # checkout several sessions share — one `git add -A` would have published a
@@ -23,7 +16,6 @@
 # all refs), so nothing leaked; this closes the door before it does.
 # Patterns rather than one filename, because the next key will be named
 # something else.
->>>>>>> origin/main
 *-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json
 *service-account*.json
 *serviceaccount*.json

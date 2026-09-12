@@ -6,22 +6,13 @@ softwares: [dashboard-home]
 component: apps/web/src/pages/Dashboard.tsx
 audience: owner
 tier: core
-<<<<<<< HEAD
-archetype: canvas # proposed 2026-08-26 (OD-79)
-=======
 archetype: canvas # proposed 2026-08-26 (OD-106)
->>>>>>> origin/main
 signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-<<<<<<< HEAD
-updated: 2026-08-26
-links: ["[[PAGE-CONTRACT]]"]
-=======
 updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[reports]]", "[[inventory]]", "[[orders]]", "[[calendar]]", "[[wines]]"]
->>>>>>> origin/main
 ---
 
 # / — Dashboard
@@ -59,8 +50,6 @@ plainly: "Today's KPIs, alerts, and the actions worth doing first"
 - Switch between restaurants/branches
 - Live updates while the page is open (realtime calendar/inventory events)
 
-<<<<<<< HEAD
-=======
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_dashboard`)
 
 Canonical source with curves: `apps/web/src/pages/dashboard/next/MOTIONS.md` —
@@ -80,7 +69,6 @@ this list is the note-side index (ADR 0044 §2).
 Deliberate non-motions: unknowns never animate; month navigation does not slide;
 scrubbed figures do not tween.
 
->>>>>>> origin/main
 ## 2. Entry
 
 Most-linked page after `/login` — in-degree 5 ([PAGE_MAP](../foundation/PAGE_MAP.md):139):

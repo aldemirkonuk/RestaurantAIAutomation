@@ -1,13 +1,8 @@
 ---
 type: plan
 title: Design Foundation
-<<<<<<< HEAD
-status: proposed — workstream DEFERRED by founder 2026-08-26; documentation only, nothing builds
-updated: 2026-08-26
-=======
 status: active — implementation underway since ADR 0044 (2026-08-30); mark decided (ADR 0047, OD-111 resolved); 10 of 47 pages built and flagged, in a page-by-page review-and-fix pass — see §0b
 updated: 2026-09-02
->>>>>>> origin/main
 links: ["[[PAGE-CONTRACT]]", "[[PAGES-MAP]]", "[[OPEN-DECISIONS]]"]
 ---
 
@@ -17,27 +12,12 @@ links: ["[[PAGE-CONTRACT]]", "[[PAGES-MAP]]", "[[OPEN-DECISIONS]]"]
 > liked it at the time … each is very different from one another." Before anything
 > is rebuilt, document what a shared design/sketch/foundation would look like so
 > every page carries the same design understanding. **Do not build anything yet.**
-<<<<<<< HEAD
-> The founder will co-design the direction; the fork is registered as **OD-79**.
-=======
 > The founder will co-design the direction; the fork is registered as **OD-106**.
->>>>>>> origin/main
 >
 > *Retire-to-write (CLAUDE.md §4): this document supersedes the "Design Direction"
 > header of [`sketches/MANIFEST.md`](../sketches/MANIFEST.md) as the home of
 > visual-language intent; the MANIFEST keeps the sketch registry only.*
 
-<<<<<<< HEAD
-## 0. Decision state (founder consulted 2026-08-26)
-
-| Fork | State |
-|---|---|
-| Direction A/B/C (§4) | **Open** — founder: no preference yet; sketch bake-off remains the offered path when the workstream wakes |
-| Brand primary #9E4249 vs #CD2D5B | **Open** — founder: no preference yet; side-by-side mock offered |
-| First co-design step | **Decided: archetype map of all 50** — done as documentation: `archetype:` frontmatter on every page doc + Archetype column in [[PAGES-MAP]] (proposed assignments, founder to adjust) |
-| Scope | **Decided: web first, mobile-aware** — tokens/archetypes written to port; 043–046 motion specs parked until mobile's turn |
-| Workstream | **Deferred** — founder will not focus on this now; documentation only, no sketches/tokens/builds until the founder reopens it |
-=======
 ## 0. Decision state (founder consulted 2026-08-26; kickoff 2026-08-27)
 
 | Fork | State |
@@ -167,7 +147,6 @@ written. It is not the current state. What changed:
   pass clears, not run against flagged pages with known holes underneath.
 - **Wine-agent is the one page from the original claim list still
   unstarted.**
->>>>>>> origin/main
 
 ## 1. What exists today (evidence, not judgment)
 
@@ -230,11 +209,7 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
 3. **Page anatomy archetypes** — ✅ *proposed map exists (2026-08-26, founder's
    chosen first step)*: seven product archetypes (`command` · `list+detail` ·
    `canvas` · `form` · `calendar` · `chat` · `document`) + three structural buckets
-<<<<<<< HEAD
-   (`focused` · `redirect`/`placeholder` · `dev`), assigned per route in
-=======
    (`focused` · `redirect` · `dev`), assigned per route in
->>>>>>> origin/main
    [[PAGES-MAP]] and each page's `archetype:` frontmatter. Founder review pending.
    This is the sentence "each page has the same design understanding" made
    mechanical.
@@ -247,11 +222,7 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
 6. **Motion signature** — adopt/reject the 043–046 specs per moment.
 7. **Density, responsiveness, accessibility baselines.**
 
-<<<<<<< HEAD
-## 4. Candidate directions (fork — founder call, OD-79)
-=======
 ## 4. Candidate directions (fork — founder call, OD-106)
->>>>>>> origin/main
 
 - **A. Command-surface first.** Ratify the 037/038 lineage as the default
   archetype; retrofit list pages toward it. Cheapest coherence — two flagship pages
@@ -273,8 +244,4 @@ Sketch-first (the existing `gsd-sketch` flow): one sketch series per §3 item,
 founder picks winners, each ratified choice lands as a short spec doc in this
 directory and an ADR when it locks. Per-page migration notes then go into each
 page doc; the §1a Features lists are the inventory of what must survive any
-<<<<<<< HEAD
-redesign. Until OD-79: **document, never build.**
-=======
 redesign. Until OD-106: **document, never build.**
->>>>>>> origin/main

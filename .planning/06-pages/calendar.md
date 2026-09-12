@@ -6,11 +6,7 @@ softwares: [calendar]
 component: apps/web/src/pages/CalendarModular.tsx
 audience: owner
 tier: core
-<<<<<<< HEAD
-archetype: calendar # proposed 2026-08-26 (OD-79)
-=======
 archetype: calendar # proposed 2026-08-26 (OD-106)
->>>>>>> origin/main
 signals_today: none
 rebrand_strings: 0
 maturity: partial

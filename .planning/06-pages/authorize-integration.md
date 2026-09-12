@@ -6,21 +6,13 @@ softwares: [settings-integrations]
 component: apps/web/src/pages/AuthorizeIntegration.tsx
 audience: owner
 tier: core
-<<<<<<< HEAD
-archetype: focused # proposed 2026-08-26 (OD-79)
-=======
 archetype: focused # proposed 2026-08-26 (OD-106)
->>>>>>> origin/main
 signals_today: none
 rebrand_strings: 3
 maturity: complete
 status: documented
 updated: 2026-08-26
-<<<<<<< HEAD
-links: ["[[PAGE-CONTRACT]]"]
-=======
 links: ["[[PAGE-CONTRACT]]", "[[settings]]"]
->>>>>>> origin/main
 ---
 
 # /authorize/:integrationId

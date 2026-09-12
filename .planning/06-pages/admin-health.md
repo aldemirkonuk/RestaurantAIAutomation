@@ -6,11 +6,7 @@ softwares: [admin-health-sw]
 component: apps/web/src/pages/AdminHealth.tsx
 audience: dev
 tier: core
-<<<<<<< HEAD
-archetype: list+detail # proposed 2026-08-26 (OD-79)
-=======
 archetype: list+detail # proposed 2026-08-26 (OD-106)
->>>>>>> origin/main
 signals_today: none
 rebrand_strings: 0
 maturity: partial

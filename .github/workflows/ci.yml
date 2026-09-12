@@ -260,8 +260,6 @@ jobs:
           echo "::notice::Exit 2 means the guard could not check what it claims to (missing wrapper, or a rotted pattern). That is a failure, not a skip: see the NEVER VACUOUS section in scripts/check_model_calls_logged.sh."
           echo "::notice::The pre-P1 debt list in that script is shrink-only. A new unlogged call site does not belong on it."
 
-<<<<<<< HEAD
-=======
   # Does the decision register still describe reality?
   #
   # Added 2026-08-25, after five OPEN-DECISIONS entries were acted on in one day
@@ -826,7 +824,6 @@ jobs:
           echo "::notice::'is on the debt list but supabase/migrations now declares it' means someone FIXED it — delete that line. That is the handshake, not a collision."
           echo "::notice::Exit 2 means the guard could not check what it claims to (a root moved, or the SQL/call-site patterns rotted). That is a failure, not a skip."
 
->>>>>>> origin/main
   # Does the gateway's dependency graph actually resolve?
   #
   # Added 2026-08-24 after the api-gateway crash-looped in production on the P1
@@ -845,15 +842,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-<<<<<<< HEAD
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-=======
         uses: actions/checkout@v7
 
       - name: Setup pnpm
@@ -861,7 +849,6 @@ jobs:
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
->>>>>>> origin/main
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -1291,13 +1278,9 @@ jobs:
     needs:
       [
         build,
-<<<<<<< HEAD
-        gateway-boot,
-=======
         decision-claims,
         gateway-boot,
         schema-code-parity,
->>>>>>> origin/main
         test-typescript,
         test-e2e,
         test-python,

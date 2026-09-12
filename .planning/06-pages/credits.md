@@ -6,21 +6,13 @@ softwares: [app-shell-support]
 component: none (inline <Navigate> redirect)
 audience: owner
 tier: core
-<<<<<<< HEAD
-archetype: redirect # proposed 2026-08-26 (OD-79)
-=======
 archetype: redirect # proposed 2026-08-26 (OD-106)
->>>>>>> origin/main
 signals_today: none
 rebrand_strings: 0
 maturity: complete
 status: documented
 updated: 2026-08-26
-<<<<<<< HEAD
-links: ["[[PAGE-CONTRACT]]"]
-=======
 links: ["[[PAGE-CONTRACT]]", "[[receipts]]"]
->>>>>>> origin/main
 ---
 
 # /credits — redirect → /receipts?tab=credits
