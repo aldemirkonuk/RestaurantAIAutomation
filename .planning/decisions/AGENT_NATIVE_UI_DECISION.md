@@ -1,4 +1,4 @@
- # Agent-Native UI — Decision Document
+# Agent-Native UI — Decision Document
 
 **Date:** 2026-07-27
 **Status:** ⛔ **RECOMMENDATION: DO NOT BUILD** the proposed agent-native UI.

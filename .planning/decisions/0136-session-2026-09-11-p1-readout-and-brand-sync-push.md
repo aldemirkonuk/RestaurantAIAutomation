@@ -177,4 +177,26 @@ the full three-angle audit + adversarial pass after the fix — this is exactly
 the kind of finding a green CI run cannot catch (no guard in this repo checks
 vault top-level shape) and the gate exists for.
 
+**Update 2026-09-12 (pr-audit-gate, second pass — adversarial overturn):** the
+three angles all leaned APPROVE on the re-audit, but the mandatory adversarial
+pass (ADR 0090) overturned them: the first-pass fix addressed only §4's
+placement clause, not its retire-to-write clause — nine substantive new
+documents (the six above, plus three color-audit docs at
+`.planning/06-pages/COLOR-AUDIT-PLATFORM.md`, `COLOR-AUDIT-WEB.md`,
+`COLOR-CONTRAST-REPORT.md`, which the compliance angle's diff-filter scope
+never surfaced) landed with zero retirements. Correctly BLOCKed per §5 ("a
+locked decision is binding… propose superseding it, do not quietly work
+around it") — posted to the PR, not silently fixed. **Founder resolution
+2026-09-12:** waive retire-to-write for these nine files specifically — none
+duplicates or supersedes an existing doc, so no real trade exists to name.
+Recorded as a waiver row in
+[0032](0032-vault-cleanup-cut-line.md#retire-to-write-waiver--pr-353-2026-09-12),
+not a silent workaround, per the founder's explicit instruction to keep this
+traceable. Also folding in the adversarial pass's two secondary corrections:
+reverted the stray one-byte leading-space edit to `AGENT_NATIVE_UI_DECISION.md`,
+and noted in `.planning/brand/README.md` that the four canvases carry an inert
+`./support.js` reference (the file does not exist in this repo and
+`.planning/` is not served — inert by absence, not by content, so this is
+noted rather than left as an unverified "no script" claim).
+
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
