@@ -15,8 +15,9 @@
  *     shown calm, explicitly unsent, a manager approves it later;
  *  5. offline is the assumption — the tap always succeeds locally ("saved on
  *     this phone, will send when you're back inside"), and a send that
- *     permanently failed is VISIBLY different from a sent one (the flush's
- *     `failed` count is surfaced here; the legacy page discarded it);
+ *     PERMANENTLY failed is VISIBLY different from a sent one. The flush's
+ *     `dropped` count carries that — not `failed`, which counts a retryable
+ *     pass the queue will send itself;
  *  6. who signed — initials, no ceremony.
  *
  * The one thing deliberately NOT here: a line-item editor. Line-by-line
@@ -42,6 +43,7 @@ import {
   newIdempotencyKey,
   pendingDoorCount,
   submitDoorReceipt,
+  type DoorFlushResult,
 } from '@/lib/doorOutbox';
 import { SCAN_ACCEPT, resolveMimeType } from '@/lib/uploadAccept';
 import {
@@ -136,7 +138,20 @@ export default function DoorNext() {
   const [sealAttempt, setSealAttempt] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [pendingQueue, setPendingQueue] = useState(0);
-  const [lastFlush, setLastFlush] = useState<{ sent: number; failed: number } | null>(null);
+  const [lastFlush, setLastFlush] = useState<DoorFlushResult | null>(null);
+  /**
+   * Receipts the outbox GAVE UP ON while this screen was open.
+   *
+   * Only ever grows, and is the ONLY thing the red banner is allowed to fire
+   * on. `failed` counts a retryable pass too — the receipt is still in the
+   * queue and will send itself — so alarming on it tells a receiver to go find
+   * a manager about a delivery that is about to arrive on the server by itself.
+   * `dropped` is the permanent subset: the item has been deleted from the queue
+   * and exists nowhere (lib/doorOutbox.ts:143-150). Nothing that happens later,
+   * least of all a successful flush, makes a drop untrue, so this never resets.
+   * The legacy page pins the same distinction (DoorReceipt.test.tsx:92).
+   */
+  const [dropped, setDropped] = useState(0);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
@@ -189,8 +204,9 @@ export default function DoorNext() {
   }, [orderId]);
 
   // The outbox, watched by hand rather than via watchDoorOutbox, because that
-  // helper discards the flush result — and the `failed` count is exactly what
-  // point 5 requires this page to surface. Flushing twice is safe (idempotent).
+  // helper discards the flush result — and the `dropped`/`failed` split is
+  // exactly what point 5 requires this page to surface. Flushing twice is safe
+  // (idempotent).
   useEffect(() => {
     let alive = true;
     const refresh = () => void pendingDoorCount().then((n) => alive && setPendingQueue(n));
@@ -198,6 +214,10 @@ export default function DoorNext() {
       void flushDoorOutbox().then((r) => {
         if (!alive) return;
         if (r.sent > 0 || r.failed > 0) setLastFlush(r);
+        // A discarded receipt leaves the queue exactly as a delivered one does,
+        // so `pendingQueue` falls by one either way. This accumulator is the
+        // only place the two are distinguishable on this screen.
+        if (r.dropped > 0) setDropped((n) => n + r.dropped);
         refresh();
       });
     const onOnline = () => {
@@ -409,14 +429,32 @@ export default function DoorNext() {
       </div>
 
       {/* A send that permanently failed is NOT a sent one — said loudly,
-          wherever the receiver is in the flow (point 5). */}
-      {lastFlush !== null && lastFlush.failed > 0 && (
+          wherever the receiver is in the flow (point 5). Loud is reserved for
+          `dropped`: the app has given up, and the person holding the paper is
+          the only one who can still act on it. */}
+      {dropped > 0 && (
         <p
           role="alert"
+          data-ux-key="door:dropped"
           className="mx-4 mt-3 rounded-xl border border-rose-400/50 bg-rose-500/10 px-3 py-2 text-sm text-rose-300"
         >
-          {lastFlush.failed} door {lastFlush.failed === 1 ? 'report' : 'reports'} did not send —
-          tell a manager before the paper is lost.
+          {dropped === 1
+            ? 'A door report saved on this phone was never sent'
+            : `${dropped} door reports saved on this phone were never sent`}
+          {' — the app has given up on '}
+          {dropped === 1 ? 'it' : 'them'}
+          {'. Keep the paperwork and tell a manager: the count is not on the server.'}
+        </p>
+      )}
+
+      {/* A retryable failure is not a loss — the receipt is still queued and
+          the next flush sends it. Said quietly, in the chrome's own voice, so
+          it never reads as the alarm above. */}
+      {lastFlush !== null && lastFlush.failed - lastFlush.dropped > 0 && (
+        <p data-ux-key="door:retrying" className="mx-4 mt-2 text-xs text-inkm-3">
+          {lastFlush.failed - lastFlush.dropped}{' '}
+          {lastFlush.failed - lastFlush.dropped === 1 ? 'report' : 'reports'} did not send yet —
+          still on this phone, still trying.
         </p>
       )}
 
