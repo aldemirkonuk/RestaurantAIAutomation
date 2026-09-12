@@ -5,6 +5,22 @@ ADR exists per CLAUDE.md §0.4 ("work that is not documented did not happen")
 to hand off a large, otherwise-undocumented working-tree diff to the next
 session with the reasoning attached.
 
+**Update 2026-09-11 (post-merge):** by the time this branch merged
+`origin/main` to prepare for the PR to main, main (341 commits ahead) had
+already independently absorbed every code fix described below — the
+AuthModule DI-boot fix, `is_priced_model()`/`runWithNewCorrelationId()`, the
+`email_intel_agent` measurement gaps, the `nf_a` readout migration + CLI,
+`scripts/check_gateway_boots.sh` — each with more polish than this branch's
+version (more call sites threaded, more parameters). Every conflicting file
+was resolved to main's version; **none of items 1–6 below survive in the
+merged tree**, only as documented history. What did survive and is genuinely
+net-new on top of main: items 7–10 (the brand/motion/overlay canvases,
+`BUILDPROMPT.md`, the color-audit docs, `PITCHING IDEAS.md`, ADR 0046) plus
+this ADR. Item 11 (page-doc sync) also did not survive — main's page-notes
+vault was already newer. Read the rest of this ADR as *what this session did
+and why*, not as *what is currently in the tree* — the merge commit
+(`7f20533f`) is the authoritative record of what won each conflict.
+
 ## Goal for this session
 
 The founder asked to push everything sitting in the working tree on
