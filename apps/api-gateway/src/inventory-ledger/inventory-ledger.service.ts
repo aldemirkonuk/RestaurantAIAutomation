@@ -614,6 +614,21 @@ export class InventoryLedgerService {
       ? `reconcile:${inventoryId}:${clientCountId}`
       : `reconcile:${inventoryId}:${Date.now()}`;
 
+    // ADR 0141, Correction 2026-09-12. The route names only an inventory id,
+    // and record_stock_count derives the house from that item and calls
+    // apply_stock_movement without p_restaurant_id -- so neither database-side
+    // refusal runs. Measured by the adversarial pass: a probe calling it for
+    // house B on house A's item took A's lots from 9 to 0 and wrote a count
+    // stamped A, and the scoped getTransaction below then answered 'not
+    // found' for a write that had committed. Checked BEFORE the RPC.
+    await assertInventoryBelongsToRestaurant(
+      this.databaseService.supabase,
+      restaurantId,
+      inventoryId,
+      "reconcileInventory",
+      this.logger,
+    );
+
     const { data: raw, error: rpcError } =
       await this.databaseService.supabase.rpc("record_stock_count", {
         p_inventory_id: inventoryId,

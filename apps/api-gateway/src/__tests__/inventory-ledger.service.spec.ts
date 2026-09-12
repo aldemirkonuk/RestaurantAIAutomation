@@ -469,6 +469,8 @@ describe("InventoryLedgerService", () => {
     });
 
     it("goes through record_stock_count, not apply_stock_movement", async () => {
+      // ADR 0141, Correction: reconcileInventory now checks ownership first.
+      mockSupabaseClient.maybeSingle.mockResolvedValueOnce({ data: { id: "owned" }, error: null });
       mockSupabaseClient.rpc.mockResolvedValue({
         data: {
           count_id: "count-3",
@@ -507,9 +509,24 @@ describe("InventoryLedgerService", () => {
       // The old path SELECTed restaurant_inventory.stock_live with no lock and
       // diffed against it in JS — the A11 race. The expected quantity is now read
       // inside the RPC, under the row lock.
-      expect(mockSupabaseClient.from).not.toHaveBeenCalledWith(
+      //
+      // Narrowed 2026-09-12 (ADR 0141, Correction), not weakened. This used to
+      // forbid ANY read of restaurant_inventory, which was a proxy for the real
+      // rule. The ownership check that now runs before the RPC reads that table
+      // too -- but it selects only `id`, to prove the item belongs to the house.
+      // What the A11 race needs forbidden is reading a QUANTITY in JS, so that
+      // is what is asserted: no select on this path names a stock or quantity
+      // column.
+      const selectedColumns = mockSupabaseClient.select.mock.calls.map((c) =>
+        String(c[0] ?? ""),
+      );
+      expect(
+        selectedColumns.filter((cols) => /stock|qty|quantity/i.test(cols)),
+      ).toEqual([]);
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith(
         "restaurant_inventory",
       );
+      expect(selectedColumns).toContain("id");
     });
 
     it("refuses to report success when the RPC returns no payload", async () => {

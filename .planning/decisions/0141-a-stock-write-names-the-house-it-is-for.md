@@ -60,7 +60,7 @@ exactly why. It was the only one.
 1. **The gateway asserts ownership before the write.** The check
    `applyReceiptAdjustment` already carried is extracted to
    `apps/api-gateway/src/common/tenant/assert-inventory-belongs-to-restaurant.ts`
-   and called by every path that takes an inventory id from a request:
+   and called by every path that takes an inventory id from a request: [CORRECTED 2026-09-12 by the adversarial pass on PR #361: false as first written. Four live routes took an inventory id from a request and reached stock through SQL wrappers that derive the house from the item and call `apply_stock_movement` without `p_restaurant_id`, so neither database refusal ran: `POST /inventory-ledger/inventory/:inventoryId/reconcile` and `/inventory/:restaurantId/item/:itemId/count` via `record_stock_count`, `/pour` via `record_glass_pour`, and `/transfer` via `transfer_stock`. A PGlite probe on this tree's migrations took a foreign house's lots from 9 to 0. All four now call this check before their RPC, with a spec per route that pairs the refusal with a control.]
    `InventoryLedgerService.createTransaction`, `ProcurementService.createOrder`
    (before the order row exists, so a foreign item is never persisted on
    `procurement_orders.inventory_id` and never reaches
@@ -109,7 +109,7 @@ the old gateway still books against the new function (10 → 12 bottles).
 **The residual is real and is recorded.** NULL is still admitted afterwards, so
 a future caller that forgets gets the old behaviour. A second migration must
 make NULL refuse — and it cannot be written yet, because
-`services/agent-orchestrator/core/database.py:996` calls this RPC and **cannot
+`services/agent-orchestrator/core/database.py:1077` calls this RPC and **cannot
 name a restaurant**: `update_stock(inventory_id, new_stock, …)` takes only an
 inventory id. Filed in `.planning/v3.0-TECH-DEBT.md` as the one thing this
 change leaves open.
@@ -130,7 +130,7 @@ included, so the "a DROP silently discards the baseline ACL" warning in
   Every stock write made by the old gateway during the window would 404 at
   PostgREST — every POS sale, every door receipt, every inventory add — and two
   callers OUTSIDE this deploy unit would break for longer than the window: the
-  Python orchestrator (`services/agent-orchestrator/core/database.py:996`) and
+  Python orchestrator (`services/agent-orchestrator/core/database.py:1077`) and
   the sim seed, which ship on their own cadence. A fix whose first act is to
   stop the floor is not a fix. It remains the destination, via the follow-up
   migration named above.
@@ -158,7 +158,7 @@ included, so the "a DROP silently discards the baseline ACL" warning in
 ## Consequences
 
 - A cross-tenant stock write through the gateway is refused with a sentence
-  naming the item, and nothing is attempted. Measured: `rejects` with
+  naming the item, and nothing is attempted. [CORRECTED 2026-09-12: true only after the four wrapper routes named under Decision 1 were gated; before that correction a cross-tenant write still succeeded through them.] Measured: `rejects` with
   `ForbiddenException` and **zero** `apply_stock_movement` calls.
 - A cross-tenant write that reached the database anyway is refused by the
   database, with `42501` and no rows. Measured in the probe: lots 7 → 7, ledger
