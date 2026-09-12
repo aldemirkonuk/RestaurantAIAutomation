@@ -729,34 +729,59 @@ from quietly becoming "NEUTRAL is fine everywhere". Proven by mutation: revertin
 the tuple alone makes the suite exit 1 with "fallback waits only on checks that
 can gate a merge: got ['CI Complete', 'CodeQL', 'Dependabot', ...]".
 
-**A COULD NOT RUN now names its cause.** Added the same day, raised by a peer
-session while this branch was waiting on `main`: the gate had TWO distinct
-reasons to be red on every PR at once, and the check's red square is identical
-for both. This Correction's cause is one of them; the other was measured live
-the same afternoon by a sibling session -- the account behind the repo's
-`ANTHROPIC_API_KEY` had run out of credit, so `_run_audit_inner` raised, the
-catch-all reached `_fail_closed`, and the PR got a `COULD NOT RUN` comment
-whose prose carried "credit balance is too low" but whose headline did not.
-
-The two want opposite responses. An upstream wait clears itself and a rerun is
-the fix. An out-of-credit key never clears and a rerun is an hour wasted. A
-reader with one red square and a paragraph of prose cannot tell which they
-have, and both are a **CANNOT CHECK** -- never a BLOCK, and never a pass;
-nothing was audited either way. That last sentence is now in the comment body
-as well, because the failure mode is a reader treating a red gate as a finding
-about their diff.
+**A COULD NOT RUN now names its cause -- and the first version of this paragraph was wrong.**
+Added the same day, raised by a peer session while this branch waited on `main`.
+The account behind the repository's `ANTHROPIC_API_KEY` ran out of credit that
+afternoon, so `_run_audit_inner` raised, the catch-all reached `_fail_closed`,
+and the PR got a `COULD NOT RUN` comment whose prose carried "credit balance is
+too low" but whose headline said nothing about it. An out-of-credit key never
+clears and a rerun is an hour wasted; a rate limit clears on its own and a rerun
+is the fix. A reader holding the headline alone cannot tell which they have.
 
 `classify_cannot_check()` maps the reason to one of `no-credit`, `no-key`,
-`rate-limited`, `upstream-wait`, `empty-diff`, or **`unclassified`**, and the
-tag goes in the local report, the PR comment headline and the stderr line. The
-sixth tag is the load-bearing one: an unrecognised cause says it is
-unrecognised and that a rerun may or may not help, rather than being sorted
-into the nearest known bucket -- a wrong cause confidently named is worse than
-an admitted unknown, which is this repo's standing rule about absence and
-health. `--self-test` grows 39 -> 46. Proven by mutation: breaking only the
-credit pattern makes the suite report `an out-of-credit key is named as
-no-credit: got 'unclassified', want 'no-credit'`, and the hint invariant fails
-with it.
+`rate-limited`, `empty-diff`, or **`unclassified`**, and the tag goes in the
+local report, the PR comment headline and the stderr line. The comment body also
+states outright that a COULD NOT RUN is a CANNOT CHECK -- not a BLOCK, not a
+pass, nothing audited -- because the failure mode is a reader treating a red
+gate as a finding about their own diff. `unclassified` is the load-bearing tag:
+an unrecognised cause says it is unrecognised and that a rerun may or may not
+help, rather than being sorted into the nearest known bucket.
+
+**What the adversarial pass overturned, and it was right on all three.** The
+first version of this change was committed as `0284c387` and an adversary
+audited that commit alone. OVERTURNED:
+
+1. **An `upstream-wait` tag that could never fire.** This paragraph first said
+   the NEUTRAL-CodeQL red above and the credit red were two COULD NOT RUNs that
+   the tag now told apart. False. `wait_upstream` never calls `_fail_closed` and
+   never raises: on a confirmed-red or timed-out upstream it prints, writes
+   `upstream_red`, returns 1, and the workflow skips the audit step -- **so no
+   comment is posted at all.** The two were already distinguishable, by whether
+   a comment exists. The tag was removed rather than kept as decoration, and the
+   self-test's claim that "the wait string is what the upstream poller raises"
+   went with it; nothing in the code produces that string.
+2. **A bare `"429"` substring.** `_gh_json` builds its error from
+   `' '.join(cmd)`, which carries the PR number, and a `TimeoutExpired` carries
+   the command too. So a gh failure on PR #429, #1429, or #4290-4299 would have
+   been named `rate-limited` with "rerunning after a pause is the fix" -- the
+   exact confident misnaming the change existed to prevent. Every pattern is now
+   anchored to text the failing library emits: `error code: 429` and
+   `rate_limit_error` from the Anthropic SDK, `credit balance is too low` as
+   measured, and two strings this script emits itself. A speculative one-word
+   `billing` rule, which ranked above the rest and matched eighteen tracked
+   files' paths, was removed because no measured message had ever produced it.
+3. **An invariant that could not fail.** "Every classified cause is still a
+   non-zero exit" compared the list of tag NAMES and never called `_fail_closed`;
+   changing its `return 1` to `return 0` still printed 46/46 and the CLAIMS row
+   stayed green. It now drives the real function once per cause and once for an
+   unknown, with the PR comment and the report file stubbed so nothing touches
+   the network or the tree.
+
+`--self-test` 39 -> 47. **Every new invariant proven by mutation** against the
+corrected code: `_fail_closed` returning 0, un-anchoring `429`, and breaking the
+credit, no-key, rate-limit and unknown-cause rules each make the suite report
+the specific invariant it broke. The corrected CLAIMS row exits 1 with `429`
+un-anchored and 0 when restored.
 
 ## Review trail
 
@@ -776,4 +801,5 @@ with it.
 | 2026-09-04 | Live production incidents, not an audit round (PRs #288, #290, #291, #294) | `wait_upstream`'s red branch had no debounce, unlike its green branch — a single poll catching the `CodeQL` check-run's real but transient `neutral` conclusion (self-corrects to `success` ~10s later, confirmed by direct Checks-API capture) was enough to declare upstream red on four separate PRs. Fixed same day: red branch now requires the same failed set on two consecutive polls; `--self-test` grown 29 → 35, see seventh Correction above. Fix PR [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297) — touches this ADR's own `_GATE_OWNED_PATHS`, needs the founder to merge directly |
 | 2026-09-06 | Aldemir (chat, direct authorization) | PR #297 modifies `_GATE_OWNED_PATHS` itself, same as #261, so `touches_own_gate` force-escalates it to BLOCK by design and `require_pr_audit.py` correctly refused a plain `gh pr merge 297`. Founder authorized completing the merge directly in chat. Merged via `gh api .../pulls/297/merge`, SHA-pinned to `c53cee6f7f8e0aea3c7dc7e7873e0f68dec4f646`, all five of `main`'s actual required contexts green (`PR Audit Gate` itself is not one of them); squash commit `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec`. `--self-test` 35/35 re-confirmed on the merged tree pre-merge |
 | 2026-09-06 | Aldemir (chat, direct authorization) | PR #299 (the eighth Correction's `deploy.yml` fix) modifies `_GATE_OWNED_PATHS` itself, same shape as #261 and #297; `require_pr_audit.py` correctly refused `gh pr merge 299`. The branch needed four separate `git merge origin/main` rebases in ~15 minutes (main was unusually active — a sibling session running the identical #297 escalation concurrently, plus PR #291 itself landing mid-flight) before all five required contexts held green together; each rebase re-resolved real content conflicts in this same ADR file and `decisions/README.md` (PR #297's own "seventh Correction" collided in name with this PR's, resolved by renumbering this one eighth — the same collision rule this repo applies to a duplicated OD or ADR id). Founder authorized completing the merge directly in chat. Merged via `gh api .../pulls/299/merge`, SHA-pinned to `5b2ce4bf7b04a58f8e7c1701cddb09f61324b527`, all five of `main`'s actual required contexts green; squash commit `78a8f46fe2617ab26dd75ce70e12a25793563ff1`. `--self-test` 35/35 re-confirmed on the merged tree pre-merge |
+| 2026-09-12 | pr-merge-adversary (Opus subagent), auditing commit `0284c387` only | **OVERTURNED** -- an `upstream-wait` tag that could never fire because `wait_upstream` never reaches `_fail_closed` (so the ADR paragraph describing it was false); a bare `\"429\"` match that would name any gh failure on PR #429 a rate limit; and an exit-code invariant that compared tag names and passed on `return 0`. All three reproduced by the adversary with commands, all three fixed the same day, every new invariant re-proven by mutation, `--self-test` 39 -> 47. Nothing it found changed a merge decision: 313 inputs to `_fail_closed` all returned 1 |
 | 2026-09-12 | Live symptom across every open PR, not an audit round | `PR Audit Gate` red on every PR from a `NEUTRAL` `CodeQL` — a check that has never been required and cannot block a merge, reached only because branch protection is unreadable and the fallback waits for everything. Fixed by narrowing the FALLBACK wait list, never the state allow-list; `_fallback_names()` extracted so the self-test exercises the real selection; `--self-test` grown 35 → 39 and proven to fail on the pre-fix tuple. Touches `scripts/pr_audit_gate.py` and this ADR, so it escalates to the founder — same shape as PRs #297 and #299. |

@@ -812,33 +812,47 @@ def _redact(text: str) -> str:
     return text[:2000] + ("... [truncated]" if len(text) > 2000 else "")
 
 
-# A COULD NOT RUN is a single red square whatever caused it, and the causes
-# want different responses: an outage of the account behind ANTHROPIC_API_KEY
-# is fixed by topping the account up and reruns forever until someone does,
-# while a wait on an upstream check clears itself. A session that reads a
-# credit outage as a flaky wait reruns the job for an hour; a session that
-# reads a flaky wait as an outage goes looking at billing. So the cause is
-# classified and named, rather than left for a reader to infer from prose.
+# A COULD NOT RUN is a single red square whatever caused it, and its causes
+# want different responses: an account behind ANTHROPIC_API_KEY that is out of
+# credit never clears and reruns forever until someone tops it up, while a rate
+# limit clears on its own. So the cause is classified and named, rather than
+# left for a reader to infer from prose.
 #
-# Ordered most-specific first; the first pattern whose every term appears in
-# the lowercased reason wins. `hint` is what to DO, never a restatement.
+# What this table deliberately does NOT cover: a red from `wait_upstream`. That
+# path never reaches _fail_closed -- on a confirmed-red or timed-out upstream it
+# prints, writes `upstream_red`, returns 1, and the workflow skips the audit
+# step, so NO comment is posted at all. A wait failure and a COULD NOT RUN are
+# therefore already told apart by whether a comment exists. An earlier version
+# of this table carried an `upstream-wait` tag for that case; it could never
+# fire, and the adversarial pass that found it was right to overturn it.
+#
+# Every pattern here is ANCHORED to text the failing library actually emits,
+# never a bare token. A bare "429" was the first version, and `_gh_json` puts
+# the whole command -- PR number included -- into its error string, so any gh
+# failure on PR #429 or #4290-4299 would have been named `rate-limited` with
+# "rerunning is the fix". A confident wrong cause is the one outcome this table
+# exists to prevent, so a pattern that cannot be traced to a real message is
+# left out rather than guessed.
+#
+# Ordered most-specific first; first match wins. `hint` is what to DO.
 _CANNOT_CHECK_CAUSES: tuple[tuple[str, tuple[str, ...], str], ...] = (
-    ("no-credit", ("credit balance",),
+    # Measured 2026-09-12 on this repository's own key: the Anthropic SDK
+    # raised BadRequestError carrying "Your credit balance is too low to access
+    # the Anthropic API".
+    ("no-credit", ("credit balance is too low",),
      "The account behind ANTHROPIC_API_KEY is out of credit. Top it up; "
      "rerunning changes nothing until then."),
-    ("no-credit", ("billing",),
-     "A billing error stopped the audit. Check the account behind "
-     "ANTHROPIC_API_KEY; rerunning changes nothing until it is resolved."),
-    ("no-key", ("anthropic_api_key", "not set"),
+    # Emitted by _run_audit_inner itself, so the wording is ours and stable.
+    ("no-key", ("anthropic_api_key is not set",),
      "The secret is absent. Add it with `gh secret set ANTHROPIC_API_KEY`."),
-    ("rate-limited", ("rate_limit",),
+    # The Anthropic SDK formats an APIStatusError as "Error code: <status> -",
+    # and a rate-limit body carries "type": "rate_limit_error". Either anchor
+    # is specific to the API's own response; a PR number cannot produce them.
+    ("rate-limited", ("error code: 429",),
      "The API rate-limited this run. Rerunning after a pause is the fix."),
-    ("rate-limited", ("429",),
+    ("rate-limited", ("rate_limit_error",),
      "The API rate-limited this run. Rerunning after a pause is the fix."),
-    ("upstream-wait", ("waiting on",),
-     "An upstream check had not settled. Rerun once those checks finish."),
-    ("upstream-wait", ("timed out waiting",),
-     "An upstream check had not settled. Rerun once those checks finish."),
+    # Emitted by _run_audit_inner itself.
     ("empty-diff", ("returned nothing to review",),
      "There is no diff to audit. Check the PR still has commits against its base."),
 )
@@ -1025,29 +1039,52 @@ def run_self_test() -> int:
     red, prev = _confirmed_red(["CodeQL"], prev)
     check("a shrinking failed set (one check recovered) does not confirm either", red, False)
 
-    # classify_cannot_check: a COULD NOT RUN is one red square whatever caused
-    # it, and the two causes seen live want opposite responses. The credit
-    # string is the literal one the repo key produced on 2026-09-12
-    # ("credit balance is too low"); the wait string is what the upstream
-    # poller raises. A rerun fixes the second and never the first.
+    # classify_cannot_check. The credit string is the literal one this
+    # repository's own key produced on 2026-09-12. Every invariant below was
+    # proven to fail by breaking exactly the code it names.
     tag, hint = classify_cannot_check(
-        "BadRequestError: Your credit balance is too low to access the Anthropic API")
+        "BadRequestError: Error code: 400 - Your credit balance is too low to access the Anthropic API")
     check("an out-of-credit key is named as no-credit", tag, "no-credit")
     check("...and its hint says a rerun will not help", "rerunning changes nothing" in hint, True)
-    tag, _ = classify_cannot_check("TimeoutError: timed out waiting for upstream checks")
-    check("an upstream wait is named as upstream-wait, not no-credit", tag, "upstream-wait")
     tag, _ = classify_cannot_check(
         "ANTHROPIC_API_KEY is not set. Add it with `gh secret set ANTHROPIC_API_KEY`")
     check("an absent secret is its own cause, not a credit outage", tag, "no-key")
+    tag, _ = classify_cannot_check(
+        "RateLimitError: Error code: 429 - {'type': 'error', 'error': {'type': 'rate_limit_error'}}")
+    check("a real Anthropic 429 is named rate-limited", tag, "rate-limited")
+    # The regression the adversarial pass demonstrated. _gh_json builds its
+    # error from ' '.join(cmd), which carries the PR number, so a gh timeout on
+    # PR #429 must NOT come out as a rate limit with "rerunning is the fix".
+    tag, _ = classify_cannot_check(
+        "RuntimeError: gh pr view 429 --json headRefOid failed: "
+        "Command '['gh', 'pr', 'view', '429']' timed out after 60 seconds")
+    check("a PR numbered 429 is not mistaken for an HTTP 429", tag, "unclassified")
     tag, hint = classify_cannot_check("ValueError: something nobody has seen before")
     check("an unrecognised cause admits it rather than guessing", tag, "unclassified")
     check("...and says so in the hint instead of implying a rerun works",
           "may or may not help" in hint, True)
-    # The classifier must never turn a CANNOT CHECK into a verdict: every tag
-    # it can return still leaves _fail_closed returning 1.
-    check("every classified cause is still a non-zero exit, never a pass",
-          sorted({t for t, _, _ in _CANNOT_CHECK_CAUSES} | {"unclassified"}),
-          ["empty-diff", "no-credit", "no-key", "rate-limited", "unclassified", "upstream-wait"])
+
+    # The property the classifier must never break: a CANNOT CHECK stays a
+    # non-zero exit whatever it is tagged. The first version of this invariant
+    # compared the list of tag NAMES and never called _fail_closed, so changing
+    # its `return 1` to `return 0` still passed -- a test that cannot fail. This
+    # one drives the real function once per tag, with the two side effects
+    # (the PR comment and the report file) stubbed so nothing touches the
+    # network or the tree, and records every exit code it saw.
+    import tempfile as _tempfile
+    _saved_run, _saved_dir = globals()["_run"], globals()["REPORT_DIR"]
+    _exits = []
+    try:
+        with _tempfile.TemporaryDirectory() as _tmp:
+            globals()["_run"] = lambda *a, **k: None
+            globals()["REPORT_DIR"] = pathlib.Path(_tmp)
+            _samples = [terms[0] for _, terms, _ in _CANNOT_CHECK_CAUSES] + ["nobody knows"]
+            for _reason in _samples:
+                _exits.append(_fail_closed("0", "selftst", _reason))
+    finally:
+        globals()["_run"], globals()["REPORT_DIR"] = _saved_run, _saved_dir
+    check("_fail_closed returns 1 for every cause it can name, and for an unknown one",
+          sorted(set(_exits)), [1])
 
     # Escalation logic (round 4): touches_own_gate and a still-truncated diff
     # must both force BLOCK even when every angle/adversary leaned PASS --
