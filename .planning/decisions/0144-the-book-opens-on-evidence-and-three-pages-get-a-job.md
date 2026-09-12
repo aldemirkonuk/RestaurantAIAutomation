@@ -132,6 +132,7 @@ the page would stay the least finished surface in the product indefinitely.
   than here.
 - `/authorize/:integrationId` — answered the same day (the seal ceremony with the
   server's verbatim words held intact), likewise.
+  [ANSWERED FURTHER 2026-09-12 by the founder: the seal on `/authorize` is a **server challenge, redeemed at authorize** -- minted when the hold starts and spent once by the authorize call, bound to the integration id, a digest of the exact words the person was shown, and the retention figure. The provider URL is bound to the browser that sealed it, so a leaked link cannot complete the grant elsewhere. That is a third seal kind and a migration, and it extends the founder's 2026-09-04 decision -- challenge-and-redeem for sealing an order and changing how the house pays, ordinary sealed settings left as a logged assertion -- by one place: a grant that opens the house's documents to an outside provider. Rejected: a deliberate hold, logged only (anything holding a session could post authorize without one); the passkey-backed house seal of ADR 0112 (its ledger, authority rule and step-up are not built).]
 - `/ask` — [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]]
   defers the assistant's design to its own record *after a research fan-out*. The
   fan-out has not run. Nothing about `/ask` is decided here and nothing should be
