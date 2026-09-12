@@ -106,18 +106,23 @@ restaurants have no row at all and therefore take the `NOT NULL DEFAULT false`
 path into the legacy pages — absence of a row is the off switch, which is why no
 back-out write is needed to undo this.
 
-> **Amended 2026-09-12, on merging design wave 4 (#289) rather than left to
-> rot.** The table no longer carries eleven `mudavym_design_*` columns; it
-> carries **nineteen**. Wave 4 added eight after this row was written —
-> `20260902230000_mudavym_design_flags_p4.sql` (reports, notifications,
+> **Amended 2026-09-12, when this branch took main — not left to rot.** The
+> table no longer carries eleven `mudavym_design_*` columns; it carries
+> **twenty**. Counted three ways that agree: `ADD COLUMN` across the migrations,
+> `MUDAVYM_PAGES` in the web registry, and `feature-flag-registry.ts` in the
+> gateway. Nine were added after this row was written — eight by design wave 4
+> (#289), `20260902230000_mudavym_design_flags_p4.sql` (reports, notifications,
 > recommendations, calendar, settings, profile, cellar) and
-> `20260903150000_mudavym_design_flags_connections.sql` — and
-> `MUDAVYM_PAGES` lists all nineteen. The measurement above stands as measured:
-> ALDEMIR's row was written against the eleven that existed, so **eleven are
-> true and the eight wave-4 pages are `DEFAULT false` for every house including
-> his**. D2 is unchanged in substance — one house, and absence is still the off
-> switch — but "all eleven" now means *eleven of nineteen*, and anyone reading
-> this to decide what the founder is actually looking at needs that number.
+> `20260903150000_mudavym_design_flags_connections.sql`, and one by #355,
+> `20260912080000_mudavym_design_flag_logs.sql`. The measurement above stands as
+> measured: ALDEMIR's row was written against the eleven that existed, so
+> **eleven are true and the nine later pages are `DEFAULT false` for every house
+> including his**. D2 is unchanged in substance — one house, and absence is still
+> the off switch — but "all eleven" now means *eleven of twenty*, and anyone
+> reading this to decide what the founder is actually looking at needs that
+> number. (The first version of this amendment said nineteen. It counted the tree
+> before #355 merged, and was committed after — the same stale-count fault it was
+> written to correct.)
 
 *The audit's figure is corrected on the record rather than copied forward:* zero
 rows was true when the audit measured it; the count is **1** as of this writing,
