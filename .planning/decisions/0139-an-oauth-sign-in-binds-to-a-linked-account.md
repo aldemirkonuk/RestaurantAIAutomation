@@ -64,12 +64,22 @@ Six arms, all in this PR:
    NULL for 9 of 10 production users, including the one who genuinely had a
    linked Google account).
 
-   **Every branch compares a subject.** Where the stored row carries a
-   `provider_user_id`, the provider's own subject id must match it; both
-   providers supply one — Google's `sub`, Microsoft's `oid`. A row with a blank
-   `provider_user_id` is matched on the provider alone, because that is a row
-   this codebase could have written and locking a real user out over our own gap
-   is not a security gain.
+   **Every branch compares a subject — with no exception.** The stored row's
+   `provider_user_id` must equal the token's own subject id; both providers
+   supply one — Google's `sub`, Microsoft's `oid`.
+
+   The first version of this ADR carved out a row with a BLANK
+   `provider_user_id`, matching it on the provider alone, on the grounds that it
+   was "a row this codebase could have written". The merge gate's re-audit was
+   right that this made the universal above false, and checking the assumption
+   killed the carve-out rather than the sentence: `provider_user_id` is
+   `text NOT NULL`
+   (`supabase/migrations/20260805000000_baseline_from_production.sql:5768`, and
+   no later migration alters it), and the only insert in this repo is
+   `linkOAuthProvider`'s upsert, whose subject comes from a verified token that
+   both verifiers now refuse without one. No writer here can produce a blank, so
+   the branch protected nobody while being the one path that could authorise on
+   an address alone. **Removed**, which is what lets this read as a rule.
 
    The **legacy branch compares `users.oauth_id`** — the column
    `linkOAuthProvider` writes beside `oauth_provider` and which nothing had ever
@@ -120,10 +130,25 @@ Six arms, all in this PR:
    correctness angle on PR #357, which measured rows `[]`, provider `google`,
    and a subsequent Google sign-in for a **different `sub`** resolving that
    account. Arm 1's subject comparison closes the sign-in side; this closes the
-   write side, so the state cannot be created in the first place. It also
+   write side, so the state is not created on any path that completes. It also
    carries `oauth_id` over from a surviving row instead of nulling it, which the
    old code did even when it kept a provider name — the same unbound pair from
    the other direction.
+
+   Two corrections the merge gate's re-audit forced, both in this PR. **The
+   recompute is no longer unconditional:** with zero rows it rewrites the legacy
+   pair only when the pair names the provider just unlinked. Recomputing
+   unconditionally meant a user with no rows and a legacy pair of (google, sub)
+   who unlinked MICROSOFT got `survivors = []` and both columns nulled — their
+   Google binding destroyed by an operation about a provider they never had, and
+   for a password-less account a lockout delivered *through* the pre-flight
+   guard that exists to prevent one (that guard computes `linked` before the
+   delete and cannot see the write that follows). **And the write's error is
+   bound and refused:** it was awaited un-destructured, so a failure left the
+   delete done, the caller answered 200, and the columns still naming the
+   revoked account. Note for whoever edits this next:
+   `check_read_errors_not_swallowed.py` cannot see an un-destructured
+   `.update()`, so nothing mechanical guards this class.
 
 6. **The Microsoft endpoint configuration is validated, not merely read.**
    `MICROSOFT_ISSUER` and `MICROSOFT_JWKS_URI` are operator overrides; an
@@ -231,8 +256,10 @@ exactly the fabrication ADR 0024 removed.
 - **Harder / given up:** linking a provider is now a prerequisite for signing in
   with it, so the "sign in with Google and it just works" path requires a link
   first (`POST /auth/me/link/:provider`, `auth.controller.ts:286-289`, already built). Enabling Microsoft now also
-  requires a concrete tenant and the `xms_edov` optional claim in the Azure app
-  registration, not just a client id.
+  requires a concrete tenant and **two** optional claims in the Azure app
+  registration, not just a client id: `xms_edov`, and `email` itself — there is
+  no `preferred_username` substitute any more, so an operator who enables only
+  `xms_edov` still has every token refused. Both are off by default.
 - **Operationally:** with `MICROSOFT_CLIENT_ID` unset — its state in production
   today — the route refuses every call. That is the intended resting state.
 - **Revisit when:** a second tenant needs to sign in (the multi-tenant fork

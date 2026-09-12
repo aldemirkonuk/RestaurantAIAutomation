@@ -671,6 +671,21 @@ describe("loginWithMicrosoft — the account must actually use Microsoft", () =>
     ).toBe(REFUSED_MS);
   });
 
+  it("refuses a row whose provider_user_id is blank — no subject, no sign-in", async () => {
+    // Pins the removal of the "blank subject matches on the provider alone"
+    // carve-out. `provider_user_id` is `text NOT NULL` and the one insert in
+    // this repo writes a subject out of a verified token, so this row cannot
+    // be produced here; the branch protected nobody and was the only path that
+    // could authorise on an address alone.
+    const { svc } = makeService({
+      userByEmail: linkedUser,
+      oauthRows: [{ provider: "microsoft", provider_user_id: "" }],
+    });
+    expect(
+      await refusalFrom(svc.loginWithMicrosoft(signToken(msPayload()))),
+    ).toBe(REFUSED_MS);
+  });
+
   it("refuses when only a Google link exists", async () => {
     const { svc } = makeService({
       userByEmail: linkedUser,
@@ -936,6 +951,8 @@ describe("unlinkOAuthProvider — leaves no unbound legacy claim", () => {
   interface Store {
     rows: { provider: string; provider_user_id: string | null }[];
     user: Record<string, unknown>;
+    /** A FAILED write to `users` — supabase-js resolves this, never throws. */
+    failUsersUpdate?: { message: string } | null;
   }
 
   /**
@@ -948,6 +965,7 @@ describe("unlinkOAuthProvider — leaves no unbound legacy claim", () => {
     const state: Store = {
       rows: seed.rows.map((r) => ({ ...r })),
       user: { ...seed.user },
+      failUsersUpdate: seed.failUsersUpdate ?? null,
     };
 
     const from = jest.fn((table: string) => {
@@ -984,6 +1002,9 @@ describe("unlinkOAuthProvider — leaves no unbound legacy claim", () => {
         }
         if (table === "users") {
           if (chain._op === "update") {
+            if (state.failUsersUpdate) {
+              return { data: null, error: state.failUsersUpdate };
+            }
             Object.assign(state.user, chain._patch ?? {});
             return { data: null, error: null };
           }
@@ -1096,5 +1117,89 @@ describe("unlinkOAuthProvider — leaves no unbound legacy claim", () => {
     // manufacturing the same unbound pair from the other direction.
     expect(state.user.oauth_provider).toBe("microsoft");
     expect(state.user.oauth_id).toBe("ms-oid-1");
+  });
+
+  /**
+   * Unlinking a provider the account never had must not touch the one it has.
+   *
+   * The merge gate's re-audit found this as a REGRESSION introduced by the
+   * first version of the unlink fix: recomputing unconditionally meant a user
+   * with zero rows and a legacy pair of (google, sub) who unlinked MICROSOFT
+   * got survivors `[]` and both columns nulled. These fail against `2815c742`
+   * AND against the first round-2 version of this method - they are not
+   * evidence against main, and the note in the header applies.
+   */
+  describe("unlinking a provider that is not linked", () => {
+    const legacyOnly = {
+      user_id: "u-owner",
+      email: VICTIM_EMAIL,
+      name: "Owner",
+      role: "owner",
+      password_hash: "$2b$10$hash",
+      oauth_provider: "google",
+      oauth_id: "google-sub-1",
+    };
+
+    it("leaves the other provider's legacy binding untouched", async () => {
+      const { svc, state } = makeStatefulService({
+        rows: [],
+        user: { ...legacyOnly },
+      });
+
+      await svc.unlinkOAuthProvider("u-owner", "microsoft");
+
+      expect(state.user.oauth_provider).toBe("google");
+      expect(state.user.oauth_id).toBe("google-sub-1");
+    });
+
+    it("and the Google sign-in it authorises still works afterwards", async () => {
+      // The lockout this prevents: password-less, only a legacy Google pair,
+      // unlinks a Microsoft they never had. The pre-flight guard computes
+      // `linked` BEFORE the delete and cannot see the write that follows, so
+      // nulling here would have stranded them through the guard meant to
+      // protect them.
+      const { svc } = makeStatefulService({
+        rows: [],
+        user: { ...legacyOnly, password_hash: null },
+      });
+
+      await svc.unlinkOAuthProvider("u-owner", "microsoft");
+
+      await expect(
+        svc.loginWithGoogle("google-id-token"),
+      ).resolves.toMatchObject({ accessToken: "signed-token" });
+    });
+
+    it("does not touch a surviving row's binding either", async () => {
+      const { svc, state } = makeStatefulService({
+        rows: [{ provider: "google", provider_user_id: "google-sub-1" }],
+        user: { ...legacyOnly },
+      });
+
+      await svc.unlinkOAuthProvider("u-owner", "microsoft");
+
+      expect(state.rows).toEqual([
+        { provider: "google", provider_user_id: "google-sub-1" },
+      ]);
+      expect(state.user.oauth_provider).toBe("google");
+      expect(state.user.oauth_id).toBe("google-sub-1");
+    });
+  });
+
+  it("refuses when the legacy rewrite itself fails, instead of answering 200", async () => {
+    // ADR 0139 arm 5 rests on this write. A silent failure would leave the
+    // columns naming the account the user just revoked, with a success reply.
+    const { svc, state } = makeStatefulService({
+      rows: [{ provider: "google", provider_user_id: "google-sub-1" }],
+      user: { ...seededUser },
+      failUsersUpdate: { message: "permission denied for table users" },
+    });
+
+    await expect(svc.unlinkOAuthProvider("u-owner", "google")).rejects.toThrow(
+      /saved sign-in details may still name that account/,
+    );
+    // The delete still happened; the refusal is what tells the caller the rest
+    // did not.
+    expect(state.rows).toEqual([]);
   });
 });

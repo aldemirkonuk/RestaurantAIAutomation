@@ -95,7 +95,7 @@ Public — upstream of every scenario; no `S..` touches it directly. Tiering run
 - `AuthShell.tsx:64` — footer `© 2026 WineOps AI. All rights reserved.`
 - `BrandMark.tsx:17` — default `alt = 'WineOps'` (screen-reader visible via AuthShell)
 
-Adjacent server-side leaks surfaced *on* this page as error copy: `auth.service.ts:2234` ("OAuth account email must match your WineOps email"), rendered verbatim by `Login.tsx:158-170`. The second one — "No WineOps account uses that address…" — **is gone as of ADR 0139**: it was replaced by a brand-free sentence shared with the not-linked refusal, so this rebrand surface closed itself.
+Adjacent server-side leaks surfaced *on* this page as error copy: `auth.service.ts:2245` ("OAuth account email must match your WineOps email"), rendered verbatim by `Login.tsx:158-170`. The second one — "No WineOps account uses that address…" — **is gone as of ADR 0139**: it was replaced by a brand-free sentence shared with the not-linked refusal, so this rebrand surface closed itself.
 
 ## 8. State & config
 - `VITE_GOOGLE_CLIENT_ID` (`lib/googleIdentity.ts:74`) — without it the Google button/One Tap can't initialise.
@@ -103,7 +103,7 @@ Adjacent server-side leaks surfaced *on* this page as error copy: `auth.service.
 - No feature flags or per-restaurant toggles.
 
 ## 9. Gaps
-- No Microsoft sign-in button, though the backend has `POST /auth/oauth/microsoft` (`AuthContext.tsx:682`). Microsoft is **declared and disabled** in the registry rather than silently absent: an account with a linked Microsoft identity gets a stated reason plus the set-password path, not a Google button. **ADR 0139 made that endpoint safe; it did not make the provider shippable** — `enabled` stays `false`, and enabling it now needs a button, a *concrete* `MICROSOFT_TENANT_ID` (`common`/`organizations`/`consumers` are refused, since with them `iss` names whatever tenant the caller belongs to) and the `xms_edov` optional claim in the Azure app registration, not just a registry field.
+- No Microsoft sign-in button, though the backend has `POST /auth/oauth/microsoft` (`AuthContext.tsx:682`). Microsoft is **declared and disabled** in the registry rather than silently absent: an account with a linked Microsoft identity gets a stated reason plus the set-password path, not a Google button. **ADR 0139 made that endpoint safe; it did not make the provider shippable** — `enabled` stays `false`, and enabling it now needs a button, a *concrete* `MICROSOFT_TENANT_ID` (`common`/`organizations`/`consumers` are refused, since with them `iss` names whatever tenant the caller belongs to) and **two** Azure optional claims — `xms_edov` *and* `email` itself, since the `preferred_username` substitute was removed — not just a registry field. Both are off by default, so satisfying only part of this list still refuses every token.
 - **An OAuth sign-in now requires an existing link** (ADR 0139). "Sign in with Google" no longer works for an account that has never linked Google — the user signs in another way and links from their profile (`POST /auth/me/link/:provider` (`auth.controller.ts:286-289`)). Production on 2026-09-12: 8 users, all 8 with a password, so nobody is locked out; but this is a real change to the first-time path and there is no UI that explains it yet.
 - Apple is declared and disabled too, and **cannot be enabled without a migration** — `user_oauth_accounts.provider` carries a CHECK admitting only `google|microsoft` (`baseline_from_production.sql:5771`). `identity-first-signin.spec.ts` fails the build if that is forgotten.
 - "Remember me" deliberately removed 2026-07-31 (v3.0 task 44.15) — rationale preserved in `Login.tsx`.
@@ -131,10 +131,10 @@ Fixed in the same pass:
 
 | Method | Path | Auth posture | Gateway controller | Returns |
 |---|---|---|---|---|
-| POST | `/api/v1/auth/sign-in-methods` | `@Public()`, `@RateLimit({limit:10, windowSeconds:600})` — tighter than the `/auth/` default | `auth.controller.ts:489` | `{success, email, methods[], unavailable[], declared[], noSignInMethod}` (`auth.service.ts:1890`) |
+| POST | `/api/v1/auth/sign-in-methods` | `@Public()`, `@RateLimit({limit:10, windowSeconds:600})` — tighter than the `/auth/` default | `auth.controller.ts:514-521` | `{success, email, methods[], unavailable[], declared[], noSignInMethod}` (`auth.service.ts:1890`) |
 | POST | `/api/v1/auth/login` | **anonymous** — no `@Public()`, no `@UseGuards`; `JwtAuthGuard` is never a global guard (only `RateLimitGuard` + `TenantGuard` are, `app.module.ts:143-151`), so an undecorated route is open | `auth.controller.ts:53-64` | `{success, accessToken, refreshToken}`; payload carries `sub, email, role, restaurantId, emailVerified, app_metadata.roles` (`auth.service.ts:601-615`) |
-| POST | `/api/v1/auth/oauth/google` | anonymous, same reason | `auth.controller.ts:103-113` | same token pair via `findOrCreateOAuthUser` (`auth.service.ts:1332`) |
-| GET | `/api/v1/auth/me` | Bearer (`@UseGuards(JwtAuthGuard)`) | `auth.controller.ts:166-176` | `{userId, email, name, phone, role, restaurantId, hasPassword, linkedProviders}` (`auth.service.ts:1421-1430`) — **note: no `emailVerified`** |
+| POST | `/api/v1/auth/oauth/google` | anonymous, same reason | `auth.controller.ts:112-123` | same token pair via `findOrCreateOAuthUser` (`auth.service.ts:1624`) |
+| GET | `/api/v1/auth/me` | Bearer (`@UseGuards(JwtAuthGuard)`) | `auth.controller.ts:181-188` | `{userId, email, name, phone, role, restaurantId, hasPassword, linkedProviders}` (`auth.service.ts:1817-1833`) — **note: no `emailVerified`** |
 | GET | `/api/v1/organizations/branches` | Bearer | `organizations.controller.ts:33,40` | branch list, via `refreshBranches` (`AuthContext.tsx:306`) |
 
 Rate limiting: every `/auth/` path falls into the `auth` bucket, **10 requests / 60s** (`rate-limit.guard.ts:29,227-229`), keyed per-IP-per-route (`:246-273`). The store is an in-memory `Map` (`:69-121`) — per process, lost on redeploy, and multiplied by replica count. The guard's own sibling documents this caveat explicitly (`password-reset-throttle.guard.ts:20-28`).
@@ -162,7 +162,7 @@ Note: an earlier revision of this section cited a normalising regex at `Login.ts
 | Empty | n/a (form) | — |
 | Resolving | yes | "Checking…" disables Continue, `Login.tsx:175-198` |
 | Loading | yes | `loading` disables submit, `Login.tsx:61,89` |
-| Error | yes, verbatim from the gateway | `Login.tsx:133-146` — the backend's message is now the honest one, so normalising it would lose information |
+| Error | yes, verbatim from the gateway | `Login.tsx:158-170` — the backend's message is now the honest one, so normalising it would lose information |
 | No sign-in method | **yes, stated** | `Login.tsx:236-263` — amber panel + "Set a password" → `/forgot-password?email=…` |
 | Provider linked but unusable | yes, stated with reason | `Login.tsx:294-310`, fed by `unavailable[]` |
 | Gateway unreachable / 429 | yes, degrades | `AuthContext.tsx:627-655` falls back to `password + google`, marked `assumed`; the page never claims anything about the address |

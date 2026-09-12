@@ -1689,15 +1689,25 @@ export class AuthService {
    *
    * Three differences from `resolveLinkedProviderIds`, all deliberate:
    *
-   *   1. It reads `provider_user_id` as well, and when the stored row carries
-   *      one, the token's own subject id must match it. The address is not the
-   *      identity: two different Microsoft accounts can present the same
-   *      address over time, and only the provider's subject id distinguishes
-   *      them. Both providers supply one — Google's `sub` and Microsoft's
-   *      `oid` — so both arms are enforced. A row with a blank
-   *      `provider_user_id` is matched on the provider alone rather than
-   *      refused, because that is a row this codebase could have written, and
-   *      locking a real user out over our own gap is not a security gain.
+   *   1. It reads `provider_user_id` as well, and the token's own subject id
+   *      must match it — ALWAYS, with no branch that settles for the provider
+   *      name. The address is not the identity: two different Microsoft
+   *      accounts can present the same address over time, and only the
+   *      provider's subject id distinguishes them. Both providers supply one —
+   *      Google's `sub` and Microsoft's `oid`.
+   *
+   *      An earlier version of this method matched a row with a BLANK
+   *      `provider_user_id` on the provider alone, justified as "a row this
+   *      codebase could have written". That justification was an assumption,
+   *      and checking it killed it: `provider_user_id` is `text NOT NULL`
+   *      (`20260805000000_baseline_from_production.sql:5768`, unaltered by any
+   *      later migration), and the ONE insert in this repo
+   *      (`linkOAuthProvider`'s upsert) writes a subject that came out of a
+   *      verified token — both verifiers now refuse a token with no subject.
+   *      So no writer here can produce a blank, the carve-out protected nobody,
+   *      and it was the one branch that could authorise on an address alone.
+   *      Removed, which is what makes the rule above a rule rather than a
+   *      tendency.
    *   2. **The legacy branch compares a subject too**, against `users.oauth_id`
    *      — the column `linkOAuthProvider` writes beside `oauth_provider` and
    *      which nothing had ever read back. Without this, `oauth_provider =
@@ -1746,17 +1756,18 @@ export class AuthService {
       const forProvider = linkRows.filter((row) => row.provider === provider);
       if (forProvider.length === 0) return false;
 
-      const withSubject = forProvider.filter(
-        (row) =>
-          typeof row.provider_user_id === "string" &&
-          row.provider_user_id.length > 0,
-      );
-      if (withSubject.length === 0) return true;
-
+      // No `withSubject.length === 0 -> return true` escape. A row that will
+      // not say WHICH account it is does not authorise a sign-in; see the note
+      // above on why that branch protected nobody.
       return (
         typeof providerId === "string" &&
         providerId.length > 0 &&
-        withSubject.some((row) => row.provider_user_id === providerId)
+        forProvider.some(
+          (row) =>
+            typeof row.provider_user_id === "string" &&
+            row.provider_user_id.length > 0 &&
+            row.provider_user_id === providerId,
+        )
       );
     }
 
@@ -2281,7 +2292,7 @@ export class AuthService {
     const linked = await this.getLinkedProviders(userId);
     const { data: user } = await this.databaseService.supabase
       .from("users")
-      .select("password_hash")
+      .select("password_hash, oauth_provider")
       .eq("user_id", userId)
       .single();
 
@@ -2315,11 +2326,30 @@ export class AuthService {
     // probe; the regression test is "unlink leaves no unbound legacy claim" in
     // oauth-provider-binding.spec.ts.
     //
-    // The rows are the source of truth, so the rows are what this reads. It
-    // runs on every unlink, not only when the column happens to name the
-    // provider being removed — a column naming a provider whose row is already
-    // gone is the same defect, just older. `oauth_id` is carried over from the
-    // surviving row rather than nulled, which is what keeps the pair bound.
+    // The rows are the source of truth, so the rows are what this reads.
+    //
+    // THE ONE THING IT MUST NOT DO is touch a binding that belongs to another
+    // provider. The first version of this fix recomputed unconditionally, and
+    // that was a regression the merge gate's re-audit caught: a user with ZERO
+    // rows and a legacy pair of (google, sub) who unlinks MICROSOFT — a
+    // provider they never had — computed survivors `[]` and nulled BOTH
+    // columns, destroying the Google binding. Worse, the pre-flight guard above
+    // computes `linked` BEFORE the delete and could not see it, so a
+    // password-less account in that state would have been locked out through
+    // the very guard that exists to prevent that.
+    //
+    // So the rule has two cases, and the second is "not mine to touch":
+    //
+    //   rows survive   -> mirror one of them. `oauth_id` is carried over from
+    //                     that row rather than nulled, which is what keeps the
+    //                     pair bound (the old code nulled it even when it kept
+    //                     a provider name — the same unbound pair from the
+    //                     other direction).
+    //   no rows at all -> the legacy pair IS the only binding. Clear it only if
+    //                     it names the provider just unlinked. If it names the
+    //                     other provider, leave it alone: this operation has no
+    //                     business deciding anything about it, and an unbound
+    //                     pair is already refused on the read side.
     const { data: remainingRows, error: remainingError } =
       await this.databaseService.supabase
         .from("user_oauth_accounts")
@@ -2349,14 +2379,32 @@ export class AuthService {
         row.provider !== provider,
     );
     const next = survivors[0] ?? null;
+    const legacyNamesThisProvider = user?.oauth_provider === provider;
 
-    await this.databaseService.supabase
-      .from("users")
-      .update({
-        oauth_provider: next?.provider ?? null,
-        oauth_id: next?.provider_user_id ?? null,
-      })
-      .eq("user_id", userId);
+    if (next || legacyNamesThisProvider) {
+      const { error: legacyError } = await this.databaseService.supabase
+        .from("users")
+        .update({
+          oauth_provider: next?.provider ?? null,
+          oauth_id: next?.provider_user_id ?? null,
+        })
+        .eq("user_id", userId);
+
+      // Bound and acted on, because ADR 0139 arm 5 RESTS on this write. If it
+      // fails silently the delete has already happened, the caller gets a 200,
+      // and the columns still name the account the user just revoked — so that
+      // subject keeps signing in. Note for whoever reads this next:
+      // `check_read_errors_not_swallowed.py` cannot see an un-destructured
+      // `.update()`, so no guard catches this class. It has to be written.
+      if (legacyError) {
+        this.logger.error(
+          `unlinkOAuthProvider could not rewrite the legacy pair for ${userId}: ${legacyError.message}`,
+        );
+        throw new BadRequestException(
+          "Unlinked, but your saved sign-in details may still name that account. Reload and check before linking again.",
+        );
+      }
+    }
 
     return this.getLinkedProviders(userId);
   }
