@@ -100,7 +100,7 @@ function response(over: Record<string, unknown> = {}) {
         },
         vatBreakdown: [],
       },
-      layer2: { providerId: null, lines: [] },
+      layer2: { providerId: null, vendorResolution: null, lines: [] },
       layer3: {
         lines: [
           {

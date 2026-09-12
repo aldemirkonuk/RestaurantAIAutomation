@@ -4,6 +4,7 @@ import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
+import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
 
 /**
  * ADR 0059 — a machine proposal shown to a human is written before the human
@@ -135,6 +136,7 @@ async function buildService(db: ReturnType<typeof makeDb>, extractor: any) {
       // under test reaches it, and a stub would have to pretend otherwise.
       CanonicalDocumentService,
       LineMappingService,
+      VendorResolutionService,
     ],
   }).compile();
   return module.get<DocumentIntakeService>(DocumentIntakeService);
