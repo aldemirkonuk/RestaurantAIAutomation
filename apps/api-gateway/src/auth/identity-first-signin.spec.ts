@@ -546,9 +546,22 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
   function makeOAuthService(opts: {
     row?: Record<string, unknown> | null;
     defaultRestaurantId?: string;
+    /**
+     * Rows in `user_oauth_accounts` for the resolved user. ADR 0139: an OAuth
+     * sign-in now returns an account only when that account is actually linked
+     * to the provider, so the tests that expect a resolution must say so.
+     */
+    oauthRows?: { provider: string; provider_user_id: string | null }[];
   }) {
     const inserts: unknown[] = [];
     const from = jest.fn((table: string) => {
+      if (table === "user_oauth_accounts") {
+        const chain: any = {
+          select: () => chain,
+          eq: () => Promise.resolve({ data: opts.oauthRows ?? [], error: null }),
+        };
+        return chain;
+      }
       if (table !== "users") throw new Error(`unexpected table: ${table}`);
       const chain: any = {
         select: () => chain,
@@ -619,6 +632,7 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
     const { svc } = makeOAuthService({
       row: { user_id: "u1", email: "known@gmail.com" },
       defaultRestaurantId: "550e8400-e29b-41d4-a716-446655440000",
+      oauthRows: [{ provider: "google", provider_user_id: "google-123" }],
     });
 
     await expect(
@@ -632,6 +646,7 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
     const { svc, from } = makeOAuthService({
       row: { user_id: "u1" },
       defaultRestaurantId: "550e8400-e29b-41d4-a716-446655440000",
+      oauthRows: [{ provider: "google", provider_user_id: "google-123" }],
     });
 
     await svc.findOrCreateOAuthUser({ ...params, email: "  Known@GMAIL.com " });
@@ -645,7 +660,27 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
       fs.readFileSync(path.join(__dirname, "auth.service.ts"), "utf8"),
     );
     const fn = src.slice(src.indexOf("async findOrCreateOAuthUser"));
-    const body = fn.slice(0, fn.indexOf("\n  async ", 1));
+
+    // Terminate on ANY next member at class-indent, not just `async`. The
+    // original terminator was "\n  async ", which `private async
+    // oauthAccountIsLinked` does not match — so when that method landed
+    // between this one and the next `async`, the slice silently grew to 127
+    // lines spanning two methods and a JSDoc. It still passed, and it no
+    // longer meant what its name says. A scan whose region can quietly widen
+    // is a scan that stops proving anything.
+    const nextMember = fn.slice(1).search(/\n {2}(?:private |protected |public |static )*(?:async )?[A-Za-z_$][\w$]*\s*[(<]/);
+    expect(nextMember).toBeGreaterThan(0);
+    const body = fn.slice(0, nextMember + 1);
+
+    // The region must be THIS method and no more: it ends at the function's
+    // own closing brace, and never reaches the next member's name.
+    expect(body).toContain("async findOrCreateOAuthUser");
+    // The CALL to the link check belongs here; its DECLARATION does not.
+    expect(body).toContain("this.oauthAccountIsLinked(");
+    expect(body).not.toContain("private async oauthAccountIsLinked");
+    expect(body).not.toContain("async checkEmailExists");
+    expect(body.split("\n").length).toBeLessThan(60);
+
     expect(body).not.toContain("DEFAULT_RESTAURANT_ID");
     expect(body).not.toContain(".insert(");
   });

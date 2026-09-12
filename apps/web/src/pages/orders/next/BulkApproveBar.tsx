@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Seal } from '@/components/mudavym';
 import { animate, pour, stamp, tuck, useReducedMotion } from '@/lib/mudavym/motion';
 import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
+import * as ordersApi from '@/services/api/orders';
 import { MONO, SANS, fmtMoney } from './format';
 import type { OrderRowVM } from './useOrdersNextData';
 
@@ -38,7 +39,19 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   const [phase, setPhase] = useState<Phase>('idle');
   const [note, setNote] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [result, setResult] = useState<{ ok: number; refused: number } | null>(null);
+  const [result, setResult] = useState<{
+    ok: number;
+    refused: number;
+    /**
+     * The distinct reasons the gateway gave, in the order first seen.
+     *
+     * A count alone taught nothing: "3 refused" reads as a bug. Since ADR 0116
+     * a refusal carries a whole sentence naming the rule and the number, and a
+     * bulk run over one house usually hits the SAME rule repeatedly, so the
+     * distinct set is short and is the useful thing to print.
+     */
+    reasons: string[];
+  } | null>(null);
 
   const fillRef = useRef<HTMLDivElement | null>(null);
   const embossRef = useRef<HTMLDivElement | null>(null);
@@ -49,6 +62,34 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   const runningRef = useRef(false);
   /** Selection size expected after a finished run (the refused stay selected). */
   const expectedAfterDoneRef = useRef(0);
+  /**
+   * One seal per selected order, minted when the GESTURE BEGINS.
+   *
+   * ===================================================================
+   * WHY N SEALS AND NOT ONE
+   * ===================================================================
+   * The dry emboss is one impression on the GROUP, and that is a rule
+   * about ritual, not about authority. Each order is still an
+   * independent commitment of the house's money, and a challenge is
+   * bound to (actor, order, act, that order's own total) — so a single
+   * token could not name fourteen orders without meaning "whatever this
+   * person selected", which is precisely the open-ended approval the
+   * mechanism exists to prevent. Fourteen approvals need fourteen
+   * proofs; what is rationed is the wax, not the evidence.
+   *
+   * A mint that fails for ANY row aborts the whole run: the alternative
+   * is approving the subset that happened to mint, which would make the
+   * bar's count a lie about what the operator agreed to.
+   */
+  const sealsRef = useRef<Map<string, string> | null>(null);
+  /**
+   * The IN-FLIGHT mint. Held separately from the result because `run()` waits
+   * for the same mint `startHold()` began: without this, the hold completing
+   * before the network answered would start a SECOND set of challenges, and the
+   * first set would sit unspent until it expired. One gesture, one mint.
+   */
+  const sealMintRef = useRef<Promise<boolean> | null>(null);
+  const [sealNote, setSealNote] = useState<string | null>(null);
 
   const count = selectedRows.length;
   const knownTotal = selectedRows.reduce((s, r) => s + (r.total ?? 0), 0);
@@ -79,8 +120,45 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     progressRef.current = p;
   };
 
+  /**
+   * Mint every seal, once per gesture. Resolves false when any of them failed,
+   * and the caller then approves NOTHING.
+   */
+  const beginSeals = (): Promise<boolean> => {
+    if (sealMintRef.current) return sealMintRef.current;
+    const rows = selectedRows.map((r) => r.id);
+    const mint = (async () => {
+      try {
+        const tokens = await Promise.all(rows.map((id) => ordersApi.mintOrderSeal(id)));
+        if (tokens.some((t) => !t)) throw new Error('a seal was not issued');
+        sealsRef.current = new Map(rows.map((id, i) => [id, tokens[i] as string]));
+        return true;
+      } catch {
+        sealsRef.current = null;
+        return false;
+      }
+    })();
+    sealMintRef.current = mint;
+    return mint;
+  };
+
+  /** The gesture ended without approval, so the seals it began are abandoned. */
+  const abandonSeals = () => {
+    sealsRef.current = null;
+    sealMintRef.current = null;
+  };
+
   const run = async () => {
     if (runningRef.current) return;
+    // The seals were begun when the gesture began; this only waits for them.
+    // Nothing is approved if any of them failed, and the bar says so.
+    const sealed = await beginSeals();
+    if (!sealed) {
+      setPhase('idle');
+      setFill(0);
+      setSealNote('The seals could not be issued — nothing approved.');
+      return;
+    }
     runningRef.current = true;
     onRunningChange(true);
     setPhase('running');
@@ -89,17 +167,29 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     const ids = selectedRows.map((r) => r.id);
     const okIds: string[] = [];
     let refused = 0;
+    const reasons: string[] = [];
     for (let i = 0; i < ids.length; i++) {
       setProgress({ done: i, total: ids.length });
       try {
-        await approve.mutateAsync(ids[i]);
+        await approve.mutateAsync({
+          orderId: ids[i],
+          challenge: sealsRef.current?.get(ids[i]) ?? null,
+        });
         okIds.push(ids[i]);
-      } catch {
+      } catch (err) {
         refused += 1;
+        // Only a 403 carries an explanation. A network error's message is not
+        // one, and printing it as a reason would attribute a policy decision to
+        // a dropped connection.
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        const msg = (err as { message?: string })?.message;
+        if (status === 403 && msg && !reasons.includes(msg)) reasons.push(msg);
       }
     }
     setProgress({ done: ids.length, total: ids.length });
-    setResult({ ok: okIds.length, refused });
+    // Spent or refused, every seal from this gesture is done.
+    abandonSeals();
+    setResult({ ok: okIds.length, refused, reasons });
     expectedAfterDoneRef.current = refused;
     setPhase('done');
     onApproved(okIds);
@@ -123,6 +213,8 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
 
   const startHold = () => {
     setNote(null);
+    setSealNote(null);
+    void beginSeals();
     setPhase('holding');
     startRef.current = performance.now();
     const tick = (now: number) => {
@@ -138,6 +230,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     if (phase !== 'holding') return;
     cancelAnimationFrame(rafRef.current);
     const p = progressRef.current;
+    abandonSeals();
     setPhase('idle');
     setNote(`Released at ${Math.round(p * 100)}% — nothing approved.`);
     if (fillRef.current) {
@@ -147,6 +240,8 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   };
 
   const arm = () => {
+    setSealNote(null);
+    void beginSeals();
     setPhase('armed');
     if (armTimerRef.current) clearTimeout(armTimerRef.current);
     armTimerRef.current = setTimeout(() => setPhase((ph) => (ph === 'armed' ? 'idle' : ph)), ARM_WINDOW_MS);
@@ -211,6 +306,22 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
                 : 'The rows settle; the seal stays rationed.'
               : `${fmtMoney(knownTotal)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
           </span>
+          {phase === 'done' && result && result.reasons.length > 0 && (
+            <span
+              role="status"
+              style={{
+                display: 'block',
+                fontFamily: SANS,
+                fontSize: 11,
+                lineHeight: 1.55,
+                color: 'var(--ink-2, #4F473C)',
+                marginTop: 3,
+                maxWidth: 520,
+              }}
+            >
+              {result.reasons.join(' ')}
+            </span>
+          )}
         </div>
 
         {phase !== 'done' && (
@@ -285,7 +396,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
       </div>
 
       <div aria-live="polite" style={{ minHeight: 16, marginTop: 2, fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
-        {note ?? (phase === 'armed' ? 'Press Enter again to approve — Esc cancels.' : '')}
+        {sealNote ?? note ?? (phase === 'armed' ? 'Press Enter again to approve — Esc cancels.' : '')}
       </div>
 
       {/* the dry emboss — bottom-right, where a clerk stamps a batch sheet */}

@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>099 &middot; The sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens (ADR 0042), copied inline from apps/web/src/styles/mudavym.css ── */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --mdv-scrim:rgba(23,19,15,.28);
+  color-scheme:light;
+}
+/* Warm Charcoal — mudavym.css:48-66. A specimen that carries the ground itself
+   stays charcoal on a paper page: that is the whole point of the portal rule. */
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --mdv-scrim:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    --mdv-scrim:rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:35px;font-weight:600;letter-spacing:-.018em;line-height:1.07;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+
+/* ── the specimen numbers strip ── */
+.nums{display:flex;flex-wrap:wrap;gap:0;margin:16px 0 0;padding:12px 0 2px;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.nums div{padding:0 16px 10px 0;margin-right:16px;border-right:1px solid var(--paper-2)}
+.nums div:last-child{border-right:0}
+.nums .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+
+/* ══ THE STAGE — an app viewport, the page beneath, the overlay on top ══ */
+.stage{position:relative;overflow:hidden;border:1px solid var(--paper-2);background:var(--paper-0);margin:14px 0 0}
+.stage.xl{height:730px}
+.stage.tall{height:560px}
+.stage.mid{height:470px}
+.stage.short{height:400px}
+.under{position:absolute;inset:0;padding:16px 20px;overflow:hidden}
+.scrim{position:absolute;inset:0;background:var(--mdv-scrim)}
+
+/* the page beneath — deliberately plain; it exists to prove it stays legible */
+.u-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.u-h{font-family:var(--serif);font-size:21px;font-weight:600;margin:2px 0 10px;color:var(--ink-1)}
+.u-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.u-card{border:1px solid var(--paper-2);background:var(--paper-1);padding:10px 12px}
+.u-card .t{font-weight:600;font-size:12.5px;color:var(--ink-1)}
+.u-card .s{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.u-row{display:grid;grid-template-columns:1.6fr 1fr 1fr .8fr;gap:10px;padding:7px 0;border-top:1px solid var(--paper-2);font-size:12px;color:var(--ink-2)}
+.u-row .t{color:var(--ink-1);font-weight:500}
+.u-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--paper-2);border:1px solid var(--paper-2)}
+.u-cal div{background:var(--paper-0);min-height:52px;padding:4px 5px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.u-cal div .e{display:block;font-family:var(--sans);font-size:9.5px;color:var(--ink-2);margin-top:3px;border-left:2px solid var(--seal);padding-left:4px;line-height:1.25}
+
+/* the app header bar — popovers hang off it */
+.bar{position:absolute;top:0;left:0;right:0;height:52px;background:var(--paper-0);border-bottom:1px solid var(--paper-2);display:flex;align-items:center;gap:10px;padding:0 16px}
+.bar .sp{flex:1}
+.ctl{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:9px;color:var(--ink-2);font-size:12px}
+.ctl.hot{background:var(--paper-1);box-shadow:inset 0 0 0 1px var(--paper-2)}
+.ctl .nm{font-weight:600;color:var(--ink-1);font-size:12.5px}
+.ctl .sub{font-family:var(--mono);font-size:9px;color:var(--ink-3);display:block}
+.av{width:26px;height:26px;border-radius:999px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);color:var(--seal-deep);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px}
+.dotmark{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:999px;background:var(--seal)}
+
+/* ══ THE OVERLAY SURFACES — numbers from sheet.css ══ */
+.ovl{background:var(--paper-0);color:var(--ink-1);display:flex;flex-direction:column;font-family:var(--sans)}
+/* sheet.css:72-82 */
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14);overflow:hidden}
+.sheet.wide{max-width:640px}
+/* sheet.css:88-97 */
+.panel{position:absolute;left:50%;transform:translateX(-50%);top:10%;width:min(620px,100% - 32px);max-height:76%;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.5);overflow:hidden}
+/* sheet.css:99-106 */
+.pop{position:absolute;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42);overflow:hidden}
+/* sheet.css:109-141 */
+.oh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--paper-2);flex:none}
+.oh-eyebrow{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.oh-title{margin:2px 0 0;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.16;letter-spacing:-.01em;color:var(--ink-1)}
+.oh-side{display:flex;align-items:center;gap:8px;flex:none}
+/* sheet.css:146-162 — the close control is WORDS */
+.oclose{font-family:var(--sans);font-size:12px;line-height:1.2;padding:5px 10px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.obody{flex:1 1 auto;min-height:0;overflow:hidden}
+.ofoot{flex:none;padding:9px 16px 12px;border-top:1px solid var(--paper-2);font-size:11px;line-height:1.5;color:var(--ink-3);display:flex;justify-content:space-between;gap:12px}
+
+/* content vocabulary — sheet.css:198-351 */
+.sect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:10px 16px 4px}
+.item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border-left:2px solid transparent;font-size:13px;color:var(--ink-1)}
+.item.on{background:var(--seal-tint);border-left-color:var(--seal)}
+.item .txt{flex:1 1 auto;min-width:0}
+.item .lab{display:block;font-weight:500;color:var(--ink-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .sub{display:block;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .ico{flex:none;color:var(--ink-3)}
+.item.on .ico{color:var(--seal)}
+.kbd{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink-3);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.quiet{margin:0;padding:8px 16px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+.field{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--paper-2)}
+.field .fin{flex:1 1 auto;padding:13px 0;font-family:var(--serif);font-size:17px;color:var(--ink-1)}
+.field .fph{color:var(--ink-3);font-family:var(--sans);font-size:14px}
+.lnk{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--seal-deep)}
+
+/* sheet body furniture */
+.fact{display:grid;grid-template-columns:118px 1fr;gap:10px;padding:6px 16px;font-size:12.5px}
+.fact .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding-top:3px}
+.fact .v{color:var(--ink-1)}
+.fact .v.em{color:var(--ink-3)}
+.frow{padding:8px 16px 0}
+.flab{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.fin2{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:7px;padding:7px 9px;font-size:12.5px;color:var(--ink-1);min-height:31px}
+.fin2.ph{color:var(--ink-3)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 16px 0}
+.two .frow{padding:0}
+.chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.chip{font-family:var(--sans);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--paper-2);color:var(--ink-2);display:inline-flex;align-items:center;gap:5px}
+.chip.on{color:var(--ink-1);background:var(--seal-tint);border-color:var(--seal-ring)}
+.sw{width:8px;height:8px;border-radius:2px;display:inline-block}
+.notice{margin:10px 16px 0;padding:9px 11px;background:var(--paper-1);border-left:2px solid var(--ink-4);font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.notice b{color:var(--ink-1)}
+.hta{margin:12px 16px 0;position:relative;border:1px solid var(--seal);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--seal-deep);font-weight:500;display:flex;align-items:center;gap:9px;overflow:hidden;background:linear-gradient(90deg,var(--seal-tint) 38%,transparent 38%)}
+.hta .sealdot{width:18px;height:18px;border-radius:999px;background:var(--seal);color:var(--paper-0);display:flex;align-items:center;justify-content:center;flex:none}
+.btnrow{display:flex;gap:8px;padding:12px 16px 0}
+.btn{font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--paper-2);color:var(--ink-1);background:transparent}
+.btn.pri{border-color:var(--ink-4)}
+.btn[data-disabled]{color:var(--ink-3);border-color:var(--paper-2)}
+
+/* callouts and lists on the page itself */
+.callout{border-left:2px solid var(--seal);padding:11px 0 11px 15px;margin:16px 0 0;font-size:12.5px;line-height:1.66;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 62%);max-width:960px}
+.never{margin:16px 0 0;padding:0;list-style:none;max-width:960px}
+.never li{padding:8px 0;border-top:1px solid var(--paper-2);font-size:12.5px;line-height:1.6;color:var(--ink-2);display:grid;grid-template-columns:150px 1fr;gap:14px}
+.never li .h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
+.never li b{color:var(--ink-1)}
+.cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:7px 0 0}
+.foot{margin:42px 0 0;padding-top:14px;border-top:1px solid var(--ink-1);font-size:11.5px;line-height:1.72;color:var(--ink-3);max-width:980px}
+.foot b{color:var(--ink-2)}
+.foot a{color:var(--seal-deep)}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 099 &middot; the sheet &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<a class="back" href="index.html">&larr; 099 index</a>
+<div class="wordmark">Mudavym</div>
+<h1>The sheet &mdash; one object, arriving from the right<span class="dot">.</span></h1>
+<p class="lede">A record you came to read or change. The list you came from stays legible on the left, which is the entire reason this shape exists.</p>
+<div class="dbl"></div>
+
+<div class="nums">
+  <div><span class="n">440px</span><span class="k">max width</span></div>
+  <div><span class="n">tuck &middot; 300ms</span><span class="k">motion token</span></div>
+  <div><span class="n">translateX 28&rarr;0</span><span class="k">enter keyframe</span></div>
+  <div><span class="n">rgba(23,19,15,.28)</span><span class="k">scrim on paper</span></div>
+  <div><span class="n">rgba(0,0,0,.5)</span><span class="k">scrim on charcoal</span></div>
+  <div><span class="n">&minus;18px 0 48px</span><span class="k">shadow</span></div>
+  <div><span class="n">aria-modal</span><span class="k">focus trapped, scroll locked</span></div>
+  <div><span class="n">&ldquo;Close&rdquo;</span><span class="k">words, never an X</span></div>
+</div>
+<p class="cap">every number above is read from <code>components/mudavym/sheet.css:72-82</code> and <code>Sheet.tsx:173-189</code></p>
+
+<div class="sec-h"><span class="sec-n">Purpose I</span><h2>A vendor &mdash; the twin</h2></div>
+<p class="sec-k">from <code>pages/providers/next/TwinSheet.tsx:69</code> &middot; the record, then what the platform has learned</p>
+<p>The vendor book is a grid of twenty-two cards. Open one and you are not leaving the book &mdash; you are looking closer at one row of it. Everything the sheet covers is a card you were not reading; everything it leaves visible is the comparison you opened it to make.</p>
+<div class="stage tall">
+  
+<div class="under">
+  <div class="u-eyebrow">The vendor book</div>
+  <div class="u-h">Twenty-two houses supply this one.</div>
+  <div class="u-grid">
+    <div class="u-card"><div class="t">Fikri Tar&#305;m G&#305;da</div><div class="s">produce &middot; 2 day lead</div></div>
+    <div class="u-card"><div class="t">Marmara &#304;&ccedil;ecek</div><div class="s">beverage &middot; 1 day lead</div></div>
+    <div class="u-card"><div class="t">Kavakl&#305;dere Ticaret</div><div class="s">wine &middot; 4 day lead</div></div>
+    <div class="u-card"><div class="t">Anadolu Et</div><div class="s">butcher &middot; same day</div></div>
+    <div class="u-card"><div class="t">Ege Zeytiny&#97;&#287;&#305;</div><div class="s">oil &middot; 7 day lead</div></div>
+    <div class="u-card"><div class="t">S&#252;t&ccedil;&#252; Mehmet</div><div class="s">dairy &middot; daily</div></div>
+  </div>
+  <div style="margin-top:12px">
+    <div class="u-row"><span class="t">Deniz Bal&#305;k&ccedil;&#305;l&#305;k</span><span>fish</span><span>net 14</span><span>&#8378;18,400</span></div>
+    <div class="u-row"><span class="t">Trakya Un</span><span>flour</span><span>net 30</span><span>&#8378;6,210</span></div>
+    <div class="u-row"><span class="t">Bo&#287;azi&ccedil;i Kahve</span><span>coffee</span><span>on delivery</span><span>&#8378;9,780</span></div>
+    <div class="u-row"><span class="t">Sel&ccedil;uk Peynir</span><span>cheese</span><span>net 14</span><span>&#8378;12,050</span></div>
+  </div>
+</div>
+
+  <div class="scrim"></div>
+  <div class="ovl sheet">
+    <div class="oh"><div><span class="oh-eyebrow">Produce &middot; wholesale</span><h3 class="oh-title">Fikri Tar&#305;m G&#305;da</h3></div><div class="oh-side"><span class="oclose">Close</span></div></div>
+    <div class="obody">
+      <div class="fact"><span class="k">Contact</span><span class="v">siparis@fikritarim.com.tr</span></div>
+      <div class="fact"><span class="k">Phone</span><span class="v">+90 212 555 0114</span></div>
+      <div class="fact"><span class="k">Lead time</span><span class="v">2 days</span></div>
+      <div class="fact"><span class="k">Payment terms</span><span class="v">Net 14</span></div>
+      <div class="fact"><span class="k">Minimum order</span><span class="v">&#8378;2,500</span></div>
+      <div class="fact"><span class="k">Regions</span><span class="v">Marmara, Trakya</span></div>
+      <div class="fact"><span class="k">Last contact</span><span class="v">4 days ago &middot; price inquiry</span></div>
+      <div style="border-top:1px solid var(--paper-2);margin-top:10px">
+        <span class="sect">What the platform has learned</span>
+        <p class="quiet">Eleven orders in the last ninety days, all delivered. <b>Two arrived a day late</b>, both in the week of 9 February. Quoted price has moved twice this quarter, both times upward, both times before a public produce-index rise.</p>
+        <p class="quiet">Average invoice &#8378;3,180 &middot; largest &#8378;7,420 &middot; disputes 0.</p>
+        <div class="btnrow"><span class="btn">Write to this vendor</span><span class="btn">Open the order book</span></div>
+      </div>
+    </div>
+    <div class="ofoot"><span>Read on open. Nothing here is fetched for the grid.</span></div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">Purpose II</span><h2>A calendar entry &mdash; and a write the gateway refused</h2></div>
+<p class="sec-k">from <code>pages/calendar/next/EventSheet.tsx:218</code> &middot; the failed save is said in words, on a <code>role="status"</code></p>
+<p>The month stays on screen because the entry you are editing only makes sense against the days around it. The refusal below is not a toast that disappears and not a red border: it is a sentence that says what the gateway did and what did not happen, and it stays until the form changes.</p>
+<div class="stage xl">
+  
+<div class="under">
+  <div class="u-eyebrow">The book of days &middot; March 2026</div>
+  <div class="u-h">Nine entries this week.</div>
+  <div class="u-cal">
+    <div>16<span class="e">Produce &mdash; Fikri</span></div>
+    <div>17<span class="e">Stocktake</span></div>
+    <div>18<span class="e">Wine &mdash; Kavakl&#305;dere</span><span class="e">Payment due</span></div>
+    <div>19<span class="e">Private party 40p</span></div>
+    <div>20<span class="e">Fish &mdash; Deniz</span></div>
+    <div>21<span class="e">Menu change</span></div>
+    <div>22</div>
+    <div>23<span class="e">Produce &mdash; Fikri</span></div>
+    <div>24</div>
+    <div>25<span class="e">Coffee &mdash; Bo&#287;azi&ccedil;i</span></div>
+    <div>26<span class="e">Staff meeting</span></div>
+    <div>27<span class="e">Wine list review</span></div>
+    <div>28<span class="e">Supplier audit</span></div>
+    <div>29</div>
+  </div>
+</div>
+
+  <div class="scrim"></div>
+  <div class="ovl sheet">
+    <div class="oh"><div><span class="oh-eyebrow">The entry</span><h3 class="oh-title">Wine &mdash; Kavakl&#305;dere</h3></div><div class="oh-side"><span class="oclose">Close</span></div></div>
+    <div class="obody">
+      <div class="frow"><span class="flab">Title</span><div class="fin2">Wine delivery &mdash; Kavakl&#305;dere Ticaret</div></div>
+      <div class="frow"><span class="flab">Type</span>
+        <div class="chiprow">
+          <span class="chip"><span class="sw" style="background:#7C7365"></span>Delivery</span>
+          <span class="chip on"><span class="sw" style="background:#1A5E6B"></span>Wine order</span>
+          <span class="chip"><span class="sw" style="background:#8C6A33"></span>Payment</span>
+          <span class="chip"><span class="sw" style="background:#4F473C"></span>Stocktake</span>
+        </div>
+      </div>
+      <div class="two">
+        <div class="frow"><span class="flab">Date</span><div class="fin2">18 March 2026</div></div>
+        <div class="frow"><span class="flab">Ends on</span><div class="fin2 ph">optional</div></div>
+      </div>
+      <div class="two">
+        <div class="frow"><span class="flab">Starts</span><div class="fin2">09:30</div></div>
+        <div class="frow"><span class="flab">Ends</span><div class="fin2">11:00</div></div>
+      </div>
+      <div class="frow"><span class="flab">Vendor</span><div class="fin2">Kavakl&#305;dere Ticaret</div></div>
+      <div class="frow"><span class="flab">Note</span><div class="fin2">Six cases. Ask for the 2021 &Ouml;k&uuml;zg&ouml;z&uuml; allocation while the driver is here.</div></div>
+      <div class="notice" role="status">
+        <b>The gateway refused this write (409 &mdash; the series was changed by someone else while this sheet was open). Nothing was saved.</b>
+        Your text is still here. Close and reopen the entry to see the version that won, or press save again to overwrite it.
+      </div>
+      <div class="btnrow"><span class="btn pri">Save the entry</span></div>
+      <div style="margin:16px 16px 0;border-top:1px solid var(--ink-4);border-bottom:1px solid var(--ink-4);height:3px;opacity:.4"></div>
+      <p class="quiet">Deleting removes the whole repeating series &mdash; every occurrence, past and future.</p>
+      <div class="hta"><span class="sealdot"><svg class="" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M14 13V8.5C14 7 15 7 15 5a3 3 0 0 0-6 0c0 2 1 2 1 3.5V13"/><path d="M20 15.5a2.5 2.5 0 0 0-2.5-2.5h-11A2.5 2.5 0 0 0 4 15.5V17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1z"/><path d="M5 22h14"/></svg></span>Hold to delete the series</div>
+    </div>
+    <div class="ofoot"><span>Esc closes. The month keeps its scroll position.</span></div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">Purpose III</span><h2>A team member &mdash; ten fields, on the charcoal ground</h2></div>
+<p class="sec-k">fields from <code>pages/team/command/editors.tsx:143</code> &middot; the specimen carries <code>data-ground="charcoal"</code> itself</p>
+<p>This one is drawn on charcoal on purpose. A sheet is portalled to <code>document.body</code>, where no page ancestor exists to inherit from &mdash; so the overlay's own root must carry both <code>.mudavym</code> and the page's ground, or it renders unstyled over a dark page. The scrim changes with it: <code>.28</code> of warm ink over charcoal is a haze, not a separation, so charcoal gets <code>rgba(0,0,0,.5)</code>.</p>
+<div class="stage tall mudavym" data-ground="charcoal">
+  
+<div class="under">
+  <div class="u-eyebrow">The roster</div>
+  <div class="u-h">Nineteen people work here.</div>
+  <div style="margin-top:6px">
+    <div class="u-row"><span class="t">Hasan Demir</span><span>General manager</span><span>full time</span><span>active</span></div>
+    <div class="u-row"><span class="t">Ay&#351;e Y&#305;lmaz</span><span>Sommelier</span><span>full time</span><span>active</span></div>
+    <div class="u-row"><span class="t">Mert Kaya</span><span>Server</span><span>part time</span><span>active</span></div>
+    <div class="u-row"><span class="t">Zeynep Ar&#305;</span><span>Bar lead</span><span>full time</span><span>active</span></div>
+    <div class="u-row"><span class="t">Emre &Ouml;zt&uuml;rk</span><span>Line cook</span><span>full time</span><span>trial</span></div>
+    <div class="u-row"><span class="t">Selin Ayd&#305;n</span><span>Host</span><span>part time</span><span>active</span></div>
+    <div class="u-row"><span class="t">Burak &#350;ahin</span><span>Dishwasher</span><span>full time</span><span>active</span></div>
+    <div class="u-row"><span class="t">Deniz Ko&ccedil;</span><span>Server</span><span>seasonal</span><span>inactive</span></div>
+  </div>
+</div>
+
+  <div class="scrim"></div>
+  <div class="ovl sheet">
+    <div class="oh"><div><span class="oh-eyebrow">On the roster</span><h3 class="oh-title">Ay&#351;e Y&#305;lmaz</h3></div><div class="oh-side"><span class="oclose">Close</span></div></div>
+    <div class="obody">
+      <div class="frow"><span class="flab">Name</span><div class="fin2">Ay&#351;e Y&#305;lmaz</div></div>
+      <div class="two">
+        <div class="frow"><span class="flab">Email</span><div class="fin2">ayse@lokantamudavim.com</div></div>
+        <div class="frow"><span class="flab">Phone</span><div class="fin2">+90 533 555 0192</div></div>
+      </div>
+      <div class="two">
+        <div class="frow"><span class="flab">Position</span><div class="fin2">Sommelier</div></div>
+        <div class="frow"><span class="flab">Employment</span><div class="fin2">full time</div></div>
+      </div>
+      <div class="two">
+        <div class="frow"><span class="flab">Home location</span><div class="fin2">Karak&ouml;y</div></div>
+        <div class="frow"><span class="flab">Hourly wage</span><div class="fin2">&#8378;185.00</div></div>
+      </div>
+      <div class="frow"><span class="flab">Skills &amp; qualifications</span><div class="fin2">somm_l3, bar_trained, closer, cellar_key</div></div>
+      <div class="two">
+        <div class="frow"><span class="flab">Status</span><div class="fin2">active</div></div>
+        <div class="frow"><span class="flab">Started</span><div class="fin2">14 May 2024</div></div>
+      </div>
+      <div class="frow"><span class="flab">Notes</span><div class="fin2">Runs the Tuesday tasting. Prefers the early close on Sundays.</div></div>
+      <div class="btnrow"><span class="btn pri">Save</span><span class="btn">Remove from roster</span></div>
+    </div>
+    <div class="ofoot"><span>Wage is visible to you because you are an owner.</span><span>Focus returns to the row</span></div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">The boundary</span><h2>What a sheet may never be</h2></div>
+<ul class="never">
+  <li><span class="h">Never a question</span><span>A sheet that asks &ldquo;are you sure?&rdquo; wastes 440 pixels on one word and puts the answer where the eye is not. <b>An ask is a panel.</b> The only question a sheet may carry is one about the object it already holds &mdash; the hold-to-delete above.</span></li>
+  <li><span class="h">Never a menu</span><span>A sheet is not attached to the control that opened it, so a list of choices in one loses its anchor and its meaning. <b>A choice is a popover.</b></span></li>
+  <li><span class="h">Never a second object</span><span>Opening a vendor from inside a calendar entry's sheet stacks two records of different kinds and leaves no way back. Close, then open. If two objects must be seen together, that is a page, not an overlay.</span></li>
+  <li><span class="h">Never the page</span><span>If the thing under the scrim is never useful while the sheet is open, the sheet should have been a route. <b>The test: can you still read the list?</b> If not, it is a page wearing a scrim.</span></li>
+</ul>
+
+<div class="foot">
+  <b>Drawn from, and verified against:</b>
+  <code>apps/web/src/components/mudavym/sheet.css:72-82,109-141,146-162</code> (widths, shadow, header, the words-not-an-X close) &middot;
+  <code>components/mudavym/Sheet.tsx:173-189</code> (shape&rarr;token map, enter keyframes) &middot;
+  <code>Sheet.tsx:284-307</code> (opener remembered, focus in, scroll locked) &middot;
+  <code>lib/mudavym/motion.ts:103-112</code> (<code>settle</code> 320ms, <code>ink</code> 160ms, <code>tuck</code> 300ms) &middot;
+  <code>pages/providers/next/TwinSheet.tsx:69,140</code> &middot;
+  <code>pages/calendar/next/EventSheet.tsx:218,522</code> (the refusal sentence) &middot;
+  <code>pages/team/command/editors.tsx:143</code> (the ten fields) &middot;
+  <code>styles/mudavym.css:48-66</code> (Warm Charcoal).
+  <br><b>Example data, not a tenant.</b> Every figure on this page is invented for the drawing.
+</div>
+</div>
+</body>
+</html>

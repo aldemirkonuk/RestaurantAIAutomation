@@ -152,6 +152,15 @@ export interface OrderConversationDto {
   detectedSentiment?: string | null
   aiGenerated?: boolean | null
   specialConditions?: string[]
+  /**
+   * Provenance for `rollingSummary`: which engine read this answer, and when.
+   *
+   * `conversation_context.model` / `.analyzed_at`, written beside the summary by
+   * the understand step. Null on outbound rows and on inbound rows written
+   * before the field existed — UNKNOWN, never "the house wrote it".
+   */
+  summaryModel?: string | null
+  summaryAnalyzedAt?: string | null
   /** Triage classification for an inbound row (P6). Null on outbound / pre-triage rows. */
   classification?: {
     email_class?: string | null

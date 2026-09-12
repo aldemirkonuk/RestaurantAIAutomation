@@ -1,0 +1,620 @@
+# 0116 — A threshold stops an order, and a default is not an answer
+
+- **Status:** Locked — the founder decided all three on 2026-09-03, in session
+- **Date:** 2026-09-03
+- **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
+- **Keywords:** approval thresholds, enforcement, approveOrder, manager_ceiling, new_vendor, price_jump, role gate, owner, manager, column default, lead_time_days, payment_terms, timezone, delivery days, regions_covered, vendor terms, absence-reported-as-health
+- **Links:** [[0020-honesty-first]], [[0051-rebuilt-pages-show-live-data-only]],
+  [[0088-record-do-not-restrict]], [[0070-a-quantity-states-its-own-unit]],
+  [[0016-ledgers-must-express-unknown]], [[0022-scheduled-jobs-serve-every-tenant]],
+  [[0077-accounts-payable-is-a-module-not-a-column]],
+  `supabase/migrations/20260903170000_a_default_is_not_an_answer.sql`,
+  `supabase/migrations/20260904190000_a_report_has_no_default_clock.sql`,
+  `.planning/06-pages/settings.md` §13.32 (drop the snapshot, 2026-10-04),
+  `apps/api-gateway/src/procurement/order-approval-gate.ts`,
+  `scripts/list_weekdays_in_regions_covered.py`,
+  `.planning/06-pages/settings.md` §9.12–9.14 / §13.23 / §13.25 / §13.26,
+  `.planning/06-pages/providers.md`, `.planning/06-pages/orders.md` §9
+
+## Context
+
+Three findings from the settings register's fourth pass were filed rather than
+built, because each was outside that pass's paths. The founder decided all three
+in one sitting on 2026-09-03. They are one ADR because they are one fault seen
+from three sides: **a value nobody stated, treated as though somebody had.**
+
+**1. The thresholds enforced nothing.** `/settings` `?tab=thresholds` shipped on
+2026-09-03 with `restaurant_approval_thresholds`, a `decideApproval` pure
+function and a retrospective counting how often each rule would have fired over
+the house's own orders. Its opening sentence, rendered from
+`enforcement.enforcedBy` being empty, said that nothing read any of it:
+`ProcurementService.approveOrder` wrote `status`, `approved_at` and `approved_by`
+and consulted neither a role nor an amount, and
+`POST /procurement/orders/:id/approve` carried `JwtAuthGuard` alone. Anyone who
+could reach the endpoint could seal any figure, and `/orders` rendered
+`HoldToApprove` on every pending row. The founder's phrase for the register when
+it was built was *"the hold-to-approve ceremony exists and has no policy behind
+it — this is the policy"*; the policy still had nothing behind IT.
+
+Worse than absent: `PUT /settings/approval-thresholds` had no role check either,
+so the person a ceiling stopped could raise the ceiling. That is not a weaker
+policy than none — it is a policy that reports itself as holding while it is not.
+
+**2. Three column defaults asserted facts nobody stated.** Measured against
+`supabase/migrations/20260805000000_baseline_from_production.sql`:
+`providers.lead_time_days DEFAULT 7` (`:4864`),
+`providers.payment_terms DEFAULT 'Net 30'` (`:4897`),
+`restaurants.timezone DEFAULT 'America/Los_Angeles'` (`:3575`). Each makes every
+row carry an answer to a question nobody was asked, and **none can be told apart
+from a real answer** — which is the definition of the fault, not a side effect of
+it. `restaurant_vendor_terms` (migration 20260903140000) was built *around* this
+rather than fixing it: `leadTimeCell` and `paymentCell` compared the stored value
+against the default and reported a match as UNKNOWN.
+
+**3. The delivery-days checkbox wrote into the geography column.**
+`AddProviderModal.tsx` collected weekdays; `pages/Providers.tsx` sent them as
+`statesOrRegionsServed`; `services/api/providers.ts` mapped that to
+`regionsCovered`; the gateway wrote `providers.regions_covered` — the column the
+provider map and the territory filters read. The sibling `deliverySchedule` field
+was declared on the web DTO and never reached a payload at all. Ticking "Monday,
+Wednesday, Friday" had exactly one persisted effect: three weekday names joined
+the list of regions the vendor covers. And `EditProviderModal` read
+`regionsCovered` back INTO the delivery-days picker, so opening and saving the
+dialog wrote them again.
+
+### What was measured, and where
+
+Local Postgres (`supabase_db_exzueerziesmczwlhomd`, the full 113-migration tree),
+the migration applied inside a transaction and rolled back:
+
+| Probe | Result |
+|---|---|
+| The three defaults, before | `lead_time_days` → `7`; `payment_terms` → `'Net 30'::text`; `timezone` → `'America/Los_Angeles'::character varying` |
+| The three defaults, after | all three `NULL`, all three columns still `is_nullable = YES` |
+| Rows the UPDATE touches, empty DB | `0 / 0 / 0` |
+| Rows the UPDATE touches, 3 seeded providers + 1 restaurant | `2 provider row(s)`, `2 provider row(s)`, `1 restaurant row` — and the provider seeded with a stated `21` days / `'2% 10 net 30'` **kept both** |
+
+**Production counts were NOT measured.** This session had no production database
+access; the migration counts what it clears and raises it as a `NOTICE` at apply
+time, which is where the real number will appear.
+
+**`payment_terms` does not currently reach a vendor's inbox.**
+`06-pages/settings.md` §9.12 named
+`communications/email-templates/payment-due.template.ts:108` as the escape route
+and that was the strongest argument for the migration — but two things are true
+of it that were not stated before: the field was already `string | undefined` and
+already emitted only when truthy (an absent term has always printed nothing), and
+**nothing calls the mailer**. `GmailService.sendPaymentDueReminder`'s only
+invocation in the repository is `tests/email-e2e.spec.ts`; the cron that would
+have called it was deleted and the note where it stood is
+`communications/scheduled-tasks.service.ts:596-619`. Both facts are now pinned in
+`payment-terms-are-not-fabricated.spec.ts`.
+
+## Options considered
+
+### On enforcement
+
+1. **Warn only.** Let the seal go through and file a notice that a rule was
+   exceeded. Appeals because it can never block a kitchen at 6pm on a Friday.
+   **Rejected**, and it is the option worth arguing with: a warning that does not
+   stop anything trains people to ignore it within a week, and the register would
+   still be describing a gate that is not a gate. It also cannot answer the
+   question the founder actually asked — *"only certain high tier like manager or
+   owner can adjust it"* — because a warning has no notion of who may proceed.
+2. **Enforce at the endpoint, refuse with a generic 403.** **Rejected**: a person
+   told only "forbidden" learns exactly one thing — split the order in two. The
+   refusal has to name the rule, the number and who may sign, or the policy
+   teaches evasion.
+3. **Enforce, refuse with the whole sentence, park the order where it is
+   waiting.** **Chosen.** The founder's words: *"do option 1"*.
+
+### On the defaults
+
+1. **Leave them and keep comparing.** The vendor-terms register already reported
+   a value equal to a default as unknown, which was honest. **Rejected**: it is
+   honest only where somebody wrote that comparison. `providers.service.ts:1374`
+   and `:1382` map both columns straight onto the API, and every future reader
+   would have to remember. The fault has to be removed at source, not routed
+   around at each site.
+2. **Drop the defaults, keep the existing rows.** **Rejected**: it fixes new rows
+   and leaves every existing one asserting a fabricated answer forever, with no
+   query that can ever separate the fabricated from the real.
+3. **Drop the defaults and NULL every row that equals one.** **Chosen**, with the
+   cost stated plainly rather than buried: this erases real answers too — a
+   vendor who genuinely quoted seven days, a house genuinely in Los Angeles. It
+   is the only honest option available, because a default is indistinguishable
+   from an answer and there is no query that separates them. Dropping is
+   recoverable (a person states the term again, and `restaurant_vendor_terms` now
+   records who and when, so the second telling is provable in a way the first
+   never was); keeping is not.
+
+   **Amended 2026-09-04, at the founder's instruction: take a snapshot first.**
+   The migration now photographs the pre-change values into
+   `public.tmp_dropped_column_defaults_20260903` before the UPDATE, and asserts
+   per column that the photograph caught exactly the rows the UPDATE then
+   cleared. This does **not** weaken the decision and is not a restore path — a
+   value equal to a default is unattributable, so the snapshot cannot separate
+   the real from the fabricated either, and restoring it wholesale would restore
+   the fault. It buys one thing: the erasure becomes **inspectable**. A person
+   can ask "which vendors lost a lead time, and do any look deliberate?" and get
+   an answer, rather than a count in an apply log and no way back to the
+   question. The counter-argument that carried it: the snapshot costs nothing and
+   its absence is irreversible, while its presence is reversible on a date.
+
+### On delivery days
+
+1. **Delete the control.** Filed as a live option in §13.25. **Rejected**: the
+   days are real information a person is trying to record, and deleting the field
+   loses the intent along with the bug.
+2. **Repoint it at `PUT /vendor-terms/:providerId`.** **Chosen.**
+3. **Clean up `regions_covered` in the same change.** **Rejected**, deliberately.
+   `regions_covered` is free text and nobody can prove from the database that a
+   "Sunday" in it came from the picker rather than from a person who meant a
+   place — Sunday is a town in Louisiana. Removing an entry would be destroying a
+   row of somebody's data on an inference. A **listing** was built instead:
+   `scripts/list_weekdays_in_regions_covered.py` proposes and has no `--apply`.
+
+## Decision
+
+**One.** `approveOrder` reads the order, reads this house's thresholds through
+the same `decideApproval` the settings register renders, resolves the actor's
+role at this restaurant, and refuses the seal when the actor ranks below what the
+rule demands — with the rule, the number and who may sign in one sentence, as a
+403 the page prints verbatim. The refused order is parked in `APPROVAL_NEEDED`
+(an existing `ProcurementOrderStatus` member; the column is a plain `varchar(50)`
+with no CHECK, so no migration), and the refusal is filed in `system_audit_log`
+as `order_approval_refused`. **A house with no rule keeps exactly today's
+behaviour**, and says `"no threshold is set for this house"` rather than implying
+a policy. An **unreadable** policy REFUSES: a table that cannot be read has not
+said "anyone, any amount".
+
+**Two.** Only an owner or a manager may write a threshold, checked server-side in
+`SettingsController.setApprovalThreshold` via the existing
+`OrganizationsService.assertCanManageRestaurant`. This is the opposite call from
+the one vendor terms made under ADR 0088 (*record it, do not restrict it*), and
+it is opposite on purpose: a cutoff is knowledge about the world that whoever
+phones the vendor should be able to write down; a threshold is the house's own
+limit on what may be spent without a second signature, and a limit anybody may
+raise is not a limit.
+
+**Three.** The three column defaults are dropped and every row carrying one is
+set to NULL. An unset value reads as unknown everywhere.
+
+**Four.** The provider form's delivery-days picker writes
+`PUT /vendor-terms/:providerId` and nothing else; `regions_covered` stops
+receiving weekdays; the edit dialog seeds the picker from the terms register
+rather than from the geography column.
+
+## Consequences
+
+### What becomes easier
+
+- The thresholds register's opening sentence flips itself. It renders from
+  `enforcement.enforcedBy`, which is MEASURED — the day the gate is removed, the
+  page goes back to admitting nothing stops an order.
+- A term on a vendor record now means something. A `7` in `lead_time_days` is a
+  seven somebody typed, so `leadTimeCell` and `paymentCell` lost their
+  default-equality branches entirely.
+- Delivery days have a home that records who said them and when, and the calendar
+  / orders contract (§13.24) has real data to read when it is built.
+
+### What becomes harder, or is given up
+
+- **The first reader sweep claimed four runtimes and covered three, and the
+  omission was an outage.** Corrected 2026-09-04 by the audit. The sweep grepped
+  the three TypeScript trees for the COLUMN NAMES and read
+  `services/agent-orchestrator`'s two hits as inert. They were not: the
+  orchestrator does not read these columns by name, it validates rows into a
+  Pydantic model, and **that model is a reader of every column it names**.
+  `Provider.lead_time_days` was declared `int = 7` — non-Optional, unlike
+  `payment_terms` two lines below — so after this migration a NULL lead time
+  raises `ValidationError` in `model_validate`;
+  `BaseRepository.find_many`/`get_by_id` catch **only `APIError`**, so it escaped
+  the repository; and `RFQAgent._select_competitor_vendors` swallowed it in a bare
+  `except Exception` and returned `[]`. Symptom: **every restaurant reports no
+  active vendors, permanently**, behind one ERROR line. Proven against a HEAD
+  copy of the model (`Input should be a valid integer … input_value=None`).
+  Fixed at both levels — the fields are Optional, and `find_many` now validates
+  per row and names the row it drops, so the next model/schema disagreement
+  costs one row rather than the whole query. 17 tests in
+  `services/agent-orchestrator/tests/test_dropped_column_defaults.py`.
+- **The same funnel had a second mouth, and it is closed too** (re-audit,
+  2026-09-04). `RFQAgent._select_competitor_vendors` still caught bare
+  `Exception` and returned `[]`. The `ValidationError` could no longer reach it,
+  but a dropped connection, an expired service key or a PostgREST 500 still
+  could — and each was reported to the caller as an empty vendor list and logged
+  as *"No vendors found for X"*, which is a claim about the HOUSE rather than
+  about the request. It now raises `VendorSelectionUnavailable` (a type, so a
+  caller cannot forget to check it) carrying the cause and its class;
+  `_build_rfq_plan` catches it, fails closed exactly as before — this agent is
+  propose-only and contacts nobody either way — and logs which of the two
+  happened. 6 tests in `tests/test_rfq_vendor_selection_failure.py`, one of
+  which executes the pre-fix shape to show it still swallows the failure, so
+  the fix cannot quietly stop being a fix.
+  **The lesson is the one above, restated:** fixing the loudest way into a
+  funnel is not fixing the funnel.
+
+### The test figures, corrected
+
+The commit message for the blocker fix quoted **1,336** orchestrator tests. That
+was the marker-filtered run (`-m "not e2e and not prod_e2e and not slow"`:
+1,336 passed, 4 skipped, 53 deselected) reported as though it were the whole
+suite. The re-audit's full run was **1,339 passed, 54 skipped**, and it was
+right. With this pass's six additions the full run is **1,345 passed, 54
+skipped** (`python3 -m pytest tests/ -q`, no deselection). Recorded here rather
+than left in a commit message because a number quoted outside its own scope is
+how a true figure becomes a false claim.
+  **The durable lesson:** a reader sweep that greps for column names is blind to
+  a runtime that reads columns through a schema.
+- **Real answers equal to a default were erased.** Stated in the migration, in
+  its `NOTICE`, and here. There is no way to recover which were real — the
+  snapshot below records WHAT was erased, not WHICH of it was deliberate.
+- **The two report-timezone defaults went too** (founder, 2026-09-04, after
+  reading the reader list): `manager_preferences.report_timezone` and
+  `manager_report_profiles.timezone`, migration
+  `20260904190000_a_report_has_no_default_clock.sql`, same snapshot shape. They
+  were **not the same case**: the second has zero readers of the column and 0
+  rows in production, so it was free; the first had the fabricated answer
+  hard-coded twice more in Python, and dropping the column default alone would
+  have been cosmetic. `agents/reporting_agent.py:_should_generate_report` — the
+  line that decides **whether a manager's report fires now** — now refuses in
+  words rather than assuming California. `ManagerPreferencesRepository.is_quiet_hours`
+  is **dead code** (zero callers; the only other `is_quiet_hours` in the tree is
+  `NotificationAgent._is_quiet_hours`, a different method reading a different
+  table) and was made safe and recorded as dead rather than quietly repaired.
+- **The weekday cleanup became a MOVE** (founder, 2026-09-04). The listing was
+  read and the days are recovered rather than deleted:
+  `scripts/list_weekdays_in_regions_covered.py --apply-move` writes them into
+  `restaurant_vendor_terms.delivery_weekdays` with `notes = "recovered from the
+  regions column"` and `stated_by` left ABSENT — nobody said this, it was mined,
+  and attributing it to an operator would invent a witness — then clears them
+  from `regions_covered`. **It is two writes, not a transaction**, because
+  PostgREST exposes none; the ordering is the guarantee (term first, so a
+  failure loses nothing and re-running retries) and the header says exactly that
+  rather than claiming atomicity. Still dry-run by default; 24 tests pin the
+  matcher and the payload, including that the upsert can never carry a key that
+  would erase a cutoff, a minimum, a lead time or payment terms.
+- **A temporary table now exists and must be dropped on 2026-10-04.**
+  `public.tmp_dropped_column_defaults_20260903` (RLS on, service_role only,
+  `anon`/`authenticated` revoked, no column defaults of its own — all asserted in
+  the migration). Filed as `.planning/06-pages/settings.md` §13.32 with the
+  date and the one-line chore. **Left in place it becomes a second copy of the
+  fabricated answers** — one no reader sweep covers, no guard checks, and the
+  next person to find it will reasonably mistake for data. That is strictly worse
+  than never having taken it, which is why the expiry is a filed item and a date
+  rather than an intention. If the record is wanted beyond a month, the answer is
+  a deliberate export stored outside the database, not an un-dropped table.
+- **A manager can now be stopped at 6pm.** That is the point, and it is also the
+  cost. The mitigation is that the refusal names the rule and the approver rather
+  than saying "forbidden", and that the register shows a house how often each
+  threshold WOULD have fired over its own last year before it sets one.
+- **`vendor-terms.service.ts` is only correct on a migrated database.** Removing
+  the default-equality test means a gateway running against an un-migrated
+  database would report fabricated defaults as terms. Code and schema move
+  together on merge (migrations auto-apply) and the migration asserts the dropped
+  defaults in its own transaction, so this fails loudly at deploy rather than
+  quietly at read — but it is a real coupling and it is named here.
+- **A NULL timezone now propagates.** `ScheduledTenantsService` used to
+  substitute `"America/New_York"`; it now carries `TIMEZONE_NOT_SET` (the empty
+  string, which is not a valid IANA zone), so both consumers' existing
+  unknown-zone branches fire and log before running that house's per-tenant work
+  in UTC. More houses will hit that path after the migration than before.
+- **`regions_covered` still holds whatever weekdays were already written.** The
+  listing proposes; a person decides. Nothing was cleaned up.
+
+### What would trigger revisiting this
+
+- A house reports that an order was blocked by a rule nobody remembers setting.
+  The `order_approval_refused` rows are what make that findable; if they are not
+  enough to reconstruct why, the audit payload is wrong.
+- The retrospective on a real tenant shows a threshold that would have fired on a
+  large fraction of orders. That is a threshold set against the wrong house, and
+  it is an argument for the per-vendor override the register deliberately does
+  not draw.
+- Somebody needs a lead time of exactly 7 or terms of exactly Net 30 restored in
+  bulk. There is no way to do it — that is the cost accepted above, and if it
+  bites hard enough the answer is a fresh statement per vendor, not a backfill.
+- `manager_preferences.report_timezone` (`baseline:3692`) and
+  `manager_report_profiles.timezone` (`baseline:3729`) carry the same fault and
+  were NOT touched — they were not named in the decision. Filed in
+  `06-pages/settings.md` §13.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-09-03 | Aldemir (founder) | Decided all three in session; "do option 1" on enforcement, "only certain high tier like manager or owner can adjust it" on the write gate |
+| 2026-09-04 | — | Written up; migration proven on local Postgres in a rolled-back transaction; production row counts NOT measured |
+| 2026-09-04 | Sonnet re-audit | Two nits: the bare `except Exception -> []` in `_select_competitor_vendors` still turned a network or auth failure into "no vendors"; and the commit message's 1,336 was the marker-filtered run, not the suite. Both taken |
+| 2026-09-04 | Sonnet audit | BLOCKER: the reader sweep missed `services/agent-orchestrator` — `Provider.lead_time_days: int = 7` would have made every restaurant report zero vendors. Fixed at the model AND the repository; proven against a HEAD copy |
+| 2026-09-04 | Aldemir (founder) | Drop both report-timezone defaults and their two Python defaults; make the weekday cleanup a MOVE with provenance |
+| 2026-09-04 | Aldemir (founder) | Asked for a pre-change snapshot before the UPDATE. Added with a per-column assertion; re-proven on local Postgres (3/3/2 cleared, snapshot matched exactly) and the assertion proven to FIRE against a deliberately broken snapshot. Expiry filed as settings.md §13.32 |
+
+---
+
+## Addendum — 2026-09-04: the seal on an order is REDEEMED, not asserted
+
+**Status, 2026-09-04 (later the same day): CLOSED — the legacy sites hold too.**
+Both call sites this addendum left unsealed now mint through the same hold, so
+no approve control anywhere in the web app reaches `/approve` without a
+redeemed seal. See "What is NOT sealed yet" below, which is kept and answered
+rather than deleted, and the three measurements that correct it.
+
+**Status, 2026-09-05 (later the same day): EXTENDED AGAIN — a THIRD act, and the
+fork this addendum left open is closed.** [ADR 0125](0125-an-order-changes-state-through-a-sealed-transition.md)
+adds `cancel` to `approve` and `deliver` on the one `procurement_order` subject
+kind, again without editing `common/seal/**`. It also answers the question this
+addendum recorded and could not settle — whether `DELETE orders/:id` should be
+sealed when doing so would refuse the legacy desk's only Reject: the legacy desk
+was given the hold in the same pass (`components/orders/SealedRejectDie.tsx`), so
+nothing is left lying to keep it working. The research behind it found nine
+further flaws in how an order ends, including one with a money consequence larger
+than the missing seal: a cancellation of a DELIVERED order reversed nothing and
+removed its cost from every spend and delivery figure in the house. See ADR 0125
+for the census, the transition table, and four open founder questions.
+
+**Status, 2026-09-05 (later the same day): BOUNDED — a hold that is not a seal now
+exists on the same screen, and it says so.** The founder asked for the written
+note's closing control to be tried both ways — *"lets try both, 80 percent simple
+20 percent signature"* — so twenty per cent of houses see a `HoldToApprove` on a
+one-tap NOTE. **That die is a gesture, not a seal, and nothing about this
+addendum is loosened by it:** no `onChallenge` is passed, no challenge is minted,
+nothing is redeemed, and the card carries the distinction in words ("this die is
+a gesture rather than a seal — nothing is minted and nothing is redeemed"). The
+seal still means exactly one thing: a one-time token bound to an actor and an
+act, spent by the write. The reason this is worth a status line rather than a
+footnote is measured and visible in the captures
+(`$SP/shots-note-experiment/panel-die-*.png`): **the two holds are identical at
+rest** and only the sentence above each tells them apart, which is the founder's
+own original objection now on screen. It is the strongest argument for ending
+that experiment on the plain arm. See ADR 0127 for the arms, the counts, and what
+would end it.
+
+**Status, 2026-09-05: EXTENDED — the seal now covers a second act on an order.**
+The founder: *"extend the seal to it when the first real action lands, but RUN the
+ecosystem to run the first real action."* The dashboard's one-tap desk had a
+`HoldToApprove` on a control whose backend was three `// TODO` branches; the first
+of them is now real, and it is sealed by this mechanism rather than by a second
+one. Confirming a delivery from a one-tap card mints through
+`POST /one-tap-actions/:id/seal-challenge` and redeems before
+`ProcurementService.markDelivered` runs
+(`apps/api-gateway/src/one-tap-actions/one-tap-actions.service.ts`).
+
+Two things about that are decisions, not details:
+
+1. **It needed no new subject kind.** The subject is the ORDER
+   (`subject_kind: "procurement_order"`), not the card — a card is a piece of paper
+   pointing at an order, and two cards pointing at one order must not be two
+   independent permissions to book its stock. The act is `deliver`, so an order seal
+   minted for `approve` is refused here with the sentence this addendum already
+   wrote: *"That seal was issued for a different act on this order."* `common/seal/**`
+   was not edited.
+
+   *Proven literally, 2026-09-05 (added after an audit found this claim resting on a
+   generic `cancel` case in `seal-challenge.service.spec.ts`).* Five cases at the end
+   of `apps/api-gateway/src/one-tap-actions/one-tap-execute.spec.ts` drive the REAL
+   `SealChallengeService` over an in-memory `mcp_seal_challenges` table with a
+   GENUINE approval seal — `tool_name: ORDER_SEAL_ACT`, `args_hash` from
+   `orderSealArgs(...)`, the row `issueOrderSealChallenge` writes — and assert the
+   delivery path refuses it with the act sentence, calls no `markDelivered`, records
+   nothing, leaves the approval seal unspent, and files one `seal_refused` audit row
+   with `refusal: "other_action"` and `act: "deliver"`. The mirror is asserted in the
+   same block: the seal this path mints IS accepted, is spent exactly once, and a
+   replay is refused. Against a scratch copy of the service with the act comparison
+   deleted, **3 of those 5 fail** — the two that do not are a constant assertion and
+   the mirror, which is the point of a mirror. Note what the probe showed: with the
+   act check gone a 403 still arrives, carrying *"this order changed after the seal
+   was issued"*, so the test asserts the SENTENCE and not merely the status.
+2. **What the args hash covers is the STOCK, not the money.** An approval's seal is
+   over the total and the vendor (`order-seal.ts`); a delivery's is over the card,
+   the order, the quantity and bottles about to be booked, and the order's state
+   (`one-tap-workflow.ts`). Refusing a delivery because a price note changed would
+   teach operators to mash the control; refusing it because the quantity changed is
+   the whole point.
+
+**Not proven live, and why.** The tenant the local gateway reaches holds zero
+one-tap actions (`GET /one-tap-actions` → `{"actions":[],"total":0,...}`, curl
+2026-09-05) and that gateway points at production, so creating one to redeem a seal
+would be a production write. Exercised read-only that day: the mint route answers
+401 unauthenticated and 404 for an action the house does not own, and the execute
+route answers 404 the same way — so both exist, are class-guarded, and refuse before
+any write. The 400 and 403 refusals are proven by spec.
+
+**Status, 2026-09-05 (later the same day): the delivery refusal this addendum owned
+alone is now the SERVICE's, and this one is kept for the reason it exists.** The
+founder: *"harden it in the procurement service for every caller."* When this addendum
+was written, `deliverableOrderFor`'s DELIVERED check was the whole defence against an
+order being delivered twice, and its comment said so — *"`markDelivered` has no
+already-delivered guard of its own"*. That was true and it was one caller deep: the
+Orders desk, the legacy desk, the Action Center's locally-derived card and the mobile
+outbox all posted to `POST /procurement/orders/:id/deliver` and reached
+`markDelivered` unguarded. The service now refuses a second delivery for every caller
+with a 409 naming the order and when it arrived, and the same rule is the UPDATE's own
+`status=not.in.(...)` WHERE clause so a race loses at the database
+(`apps/api-gateway/src/procurement/delivered-once.ts`,
+`procurement/tests/delivered-once.spec.ts`, [[orders]] §9 and §13.18).
+
+**This addendum's check is kept, and kept FIRST, for a reason the service cannot
+cover.** The seal is minted and redeemed *before* `markDelivered` is called, so a
+refusal arriving only from the service would burn a one-shot seal on an act the house
+was always going to decline, and the card could not be retried. It is widened from
+DELIVERED to the whole goods-arrived set for exactly that reason: a
+PARTIALLY_RECEIVED or COMPLETED order used to pass the mint and would now be refused
+downstream, after the seal was spent. **Open, and a founder's call rather than a
+builder's:** the mint and execute routes answer **400** where the deliver route answers
+**409** for the same fact, because changing `deliverableOrderFor`'s exception class
+would change a contract this addendum shipped in `be80f8b5`.
+
+**Founder decision, 2026-09-04.** Challenge-and-redeem — built for MCP tool
+writes in ADR 0107's addendum of the same day — is extended to **order approval**
+and to **payments** (ADR 0110's addendum). Ordinary sealed settings deliberately
+stay a logged assertion.
+
+**What this addendum closes.** The gate above answers *may this ROLE seal this
+figure*. It has no way to answer *did a PERSON do this*. The hold-to-approve
+gesture lived entirely in the browser and left no trace the server could check,
+so anything holding a manager's session — a stolen token, a script, an agent with
+more autonomy than anybody granted it — could seal an order by calling
+`POST /procurement/orders/:id/approve`. ADR 0114 was explicit that its seal was
+"an assertion by an authenticated manager, recorded with their id — not a
+cryptographic proof of the gesture". This is that sentence being acted on.
+
+**The mechanism.** The binding from 0107's addendum is restated one level up, so
+the MCP case becomes an instance of the rule rather than the shape of it:
+
+    (actor, SUBJECT KIND, SUBJECT ID, act, args_hash)
+
+- `POST /procurement/orders/:id/seal-challenge` mints a one-time, 120-second
+  token when the **hold begins**. A token fetched at the moment of approval would
+  be one more thing the same request asked for itself.
+- `POST /procurement/orders/:id/approve` carries it back in `X-Seal-Challenge`
+  and redeems it exactly once. Single use is a property of the redeeming
+  `UPDATE`'s own `redeemed_at IS NULL` filter, not of the code path.
+- **The order's own money is hashed into the seal** (`procurement/order-seal.ts`):
+  a token minted over an order of 2,000 cannot be spent after somebody made it
+  20,000. That is the property the assertion model could not express.
+- The ROLE and the POLICY are checked when the seal is ISSUED **and** again when
+  it is redeemed, so a manager demoted between the two cannot spend a token they
+  were legitimately given — and nobody is handed a seal that will be refused two
+  seconds later, which is what teaches people the seal is decoration.
+- Every refusal names what did not match — spent, other actor, other order,
+  other act, arguments changed, expired — and is **filed** in `system_audit_log`
+  as `seal_refused` before it is thrown. A filing that fails is logged loudly and
+  does NOT turn the 403 into a 500.
+
+**What was rejected.**
+
+- *A second challenge table for orders.* Two tables of one-time seals is two
+  implementations of "exactly once", which is the property that has to be
+  singular or it is nothing. `mcp_seal_challenges` grew a subject instead
+  (`20260904210000`, additive; `20260904170000` is not edited).
+- *Hashing nothing.* The seal would then prove only that somebody held the
+  gesture on this order at some point, leaving the edit-after-approval hole open.
+- *Hashing the whole row.* The seal would break on a `synced_at` nobody
+  approved, and a control that refuses for invisible reasons teaches operators
+  to mash it until it works.
+- *One seal for a bulk approval.* The dry emboss is one impression on the group,
+  but that is a rule about ritual, not about authority: fourteen orders are
+  fourteen commitments of the house's money. `BulkApproveBar` mints one seal per
+  selected order at gesture start and approves NOTHING if any mint fails.
+
+**What is NOT sealed yet, and why that is visible rather than silent.** Two
+approval call sites were outside this pass's scope and still send no seal: the
+legacy `apps/web/src/pages/Orders.tsx` (via `hooks/useOrdersData.ts`) and
+`pages/dashboard/next/WaitingOnYou.tsx`. **The `mudavym_design_orders` flag is
+OFF in production, so the legacy page is what a house sees today** — meaning
+approval from it is now refused, in words ("a seal must be proven rather than
+asserted… nothing was changed"), until those two call sites mint. That is a
+deliberate, explained refusal rather than a silent approval, but it is a
+user-visible change and it is the one thing here a founder should look at before
+this merges. See `06-pages/orders.md` §9.
+
+### Answered — 2026-09-04: "give both legacy call sites the hold gesture"
+
+**Founder decision.** Shown that the legacy orders page and the dashboard's
+Waiting-on-you card send no seal and would be refused on merge, the founder
+chose the hold rather than a one-click mint-and-approve: **approval stays
+proven everywhere.**
+
+**What was built.** One control — `components/orders/SealedApproveDie.tsx` —
+used by both surfaces, so there is exactly one mint path outside
+`pages/orders/next`. It mints when the gesture BEGINS (`HoldToApprove`'s
+`onChallenge`), one seal per order even in bulk, approves NOTHING if any mint
+fails, prints a 403 as itself and keeps the generic wrapper only for a failure
+that carries no decision. `pages/dashboard/next/WaitingOnYou.tsx` and the
+legacy `pages/Orders.tsx` render it; `hooks/useOrdersData.ts` takes a challenge
+and exposes the mint. `pages/Orders.tsx` now contains no `/approve` POST of its
+own, and Cmd/Ctrl+Shift+A moves focus to the hold instead of approving
+fourteen orders on one keystroke.
+
+**Three things this addendum said that measurement contradicted.** Each was
+believed when written and is corrected here rather than quietly fixed:
+
+1. **"the legacy `apps/web/src/pages/Orders.tsx` (via `hooks/useOrdersData.ts`)"**
+   — it was not via that hook. `grep -rn useOrdersData apps packages` finds the
+   definition and one barrel re-export (`hooks/index.ts:9`) and **no
+   consumers at all**. The legacy page posted `/approve` through `apiClient`
+   directly. The hook was still given the seal, because an exported approve
+   that sends no seal is a refusal waiting for whoever imports it next.
+2. **"approval from it is now refused, in words"** — worse than that, and in
+   the other direction. The only REACHABLE approve control on the legacy page
+   was the bulk bar's `handleBulkApprove`, and **it called no endpoint at
+   all**: it rewrote local state to `approved`, cleared the selection and
+   alerted "N order(s) approved!". Nothing was sent and success was reported —
+   [[absence-reported-as-health]] pointed at the house's money. The two paths
+   that did POST (`confirmApproval` and `OrderApprovalModal`'s Confirm) were
+   unreachable: nothing in the repo set `showApprovalModal` or
+   `showOrderApprovalModal` to true. Both were still sealed, since dead code
+   that wakes up unsealed is the same hole on a delay.
+3. **the `finalPrice` those two modals posted was read by nothing.**
+   `POST orders/:id/approve` takes no body — the controller reads the id and
+   the `X-Seal-Challenge` header. The field is now disabled with one line
+   saying the approval writes no price and that the seal is taken over the
+   order's own total.
+
+**Status of the two sealed modals, 2026-09-05 — BOTH NOW DELETED.** The founder's rule
+was: if the rebuilt page recreated everything a dead modal offered, delete it. The inline
+"Approve Order" modal went first — its only real act, approving one order, is
+`pages/orders/next/LedgerRow.tsx`'s `HoldToApprove`. `OrderApprovalModal` was held back
+that morning because three of its acts existed nowhere on the rebuilt page: rejecting an
+order, comparing several vendors' responses to one order, and reading the AI negotiation
+summary. **The founder's call the same day was to rebuild all three as a responses
+sheet** — `pages/orders/next/ResponsesSheet.tsx`, a house `Sheet` per order — and delete
+the modal, which is done: file, import, render, `showOrderApprovalModal`,
+`orderApprovalData`, `allProviderResponses`, `currentApprovalIndex`, the
+`OrderApprovalData` interface, and the `sealTarget` hand-over overlay this addendum
+introduced, whose only two setters were that modal's Confirm.
+`pages/__tests__/OrdersLegacySeal.test.ts` now asserts the absence of the file and of
+every reference to it.
+
+Point 3's "the field is now disabled" no longer describes anything in the tree: that
+input lived only in the deleted inline modal (`OrderApprovalModal` displayed the agreed
+price and never had an input), so the `finalPrice` it named has nowhere left to be typed
+at all.
+
+**The seal did NOT travel with the acts, and that is filed rather than fudged.** Confirm
+on the sheet is this decision's mechanism unchanged — minted at the start of the hold,
+redeemed once on `POST orders/:id/approve`. Reject is the same gesture over
+`DELETE orders/:id`, **which redeems nothing**; `seal-subject.ts` already names `cancel`
+as its own act, so the mechanism exists, but requiring it would refuse the LEGACY desk's
+only Reject control (`pages/Orders.tsx handleReject`, three live call sites, and with the
+flag off that desk is what production shows), and an optional seal is decoration. The
+sheet therefore prints one line saying the hold records a decision rather than proving
+one. Which of the three ways out to take is the founder's — [[orders]] §13.14.
+See [[orders]] §13.13 for the whole retirement.
+
+**The ground.** The legacy page renders outside the Mudavym shell, and a grep
+("zero `dark:` classes in `Orders.tsx`") suggested it was permanently light, so
+the control's own light fallbacks would always be right. Measured in the
+running app instead — the die's inline styles injected into the live page,
+computed colours read back — that was wrong: under `html.dark` the legacy page
+IS charcoal, because `styles/globals.css:163-177` repaints its Tailwind
+utilities (`.dark .bg-white → #1D1813`), while an unwrapped die stayed
+`#F3EFE6`. The control therefore carries `mudavym` on its own root: tokens
+scoped to the control, never to `:root`, and `.dark .mudavym`'s `--paper-1` is
+byte-identical to the surface the legacy dark ground already uses.
+
+**How the sealing of these two was proven.** `vitest src/components/orders
+src/pages/dashboard/next src/pages/__tests__` — 87 passed, 0 failed, including
+15 cases in `SealedApproveDie.test.tsx` and 9 in `WaitingOnYou.seal.test.tsx`.
+Against `git show HEAD:` copies (no git state change in the shared worktree):
+6 of 8 render cases fail on the pre-fix `WaitingOnYou` and 9 of 10 source-
+contract cases fail on the pre-fix `Orders.tsx`/`useOrdersData.ts`. **NOT
+proven live, again:** the tenant the local dev-bypass session lands on has zero
+orders (`GET /procurement/orders` → `total: 0`), and the local gateway points
+at production, so no order was approved. Both routes were exercised read-only
+against a non-existent id and answered 404 with the gate's own sentence — which
+also means the seal's refusal sentences are still proven only by the specs.
+
+**How it was proven.** `jest src/procurement src/payment-methods src/billing
+src/mcp-runtime src/common/seal src/mcp-connections` — 859 passed, 3 skipped, 0
+failed, including 16 cases in `common/seal/seal-challenge.service.spec.ts` and 9
+in `procurement/order-seal.spec.ts` that fail against the pre-pass tree because
+that tree accepts an approval with no seal at all. `vitest src/pages/orders/next
+src/components/mudavym` — 107 passed. Live on `:4000`: the challenge route
+answers a nonexistent order with the gate's own 404, and a payment write with no
+seal answers 403 with the whole sentence. **NOT proven live: a successful
+redemption** — the local Supabase this gateway points at has neither
+`mcp_seal_challenges` nor `payment_methods` ("not found in the schema cache"),
+so the migrations behind both are unapplied there. The redemption path is proven
+only by the specs.

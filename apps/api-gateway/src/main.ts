@@ -5,6 +5,7 @@ import { NestExpressApplication } from "@nestjs/platform-express";
 import * as fs from "fs";
 import { AppModule } from "./app.module";
 import { buildCorsOrigins } from "./cors-origins";
+import { maybeExportOpenApi } from "./openapi-export";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -133,11 +134,13 @@ Events:
 
   const document = SwaggerModule.createDocument(app, config);
 
-  // Export OpenAPI spec to file (for CI/CD and external tools)
-  if (process.env.NODE_ENV !== "production") {
-    fs.writeFileSync("./openapi.json", JSON.stringify(document, null, 2));
-    console.log("📄 OpenAPI spec exported to openapi.json");
-  }
+  // The spec is exported by command, never by boot (ADR 0123 / OD-89):
+  // `pnpm --filter @wineops/api-gateway openapi:export` sets EXPORT_OPENAPI=1.
+  // A plain boot leaves openapi.json untouched.
+  maybeExportOpenApi(document, {
+    write: (path, contents) => fs.writeFileSync(path, contents),
+    log: (message) => console.log(message),
+  });
 
   SwaggerModule.setup("api/docs", app, document, {
     customSiteTitle: "WineOps AI API Documentation",

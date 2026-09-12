@@ -3,7 +3,6 @@ import { ToastService } from "./toast.service";
 import { DatabaseService } from "../database/database.service";
 import { ToastUpstream, TOAST_UPSTREAM_ROUTES } from "./toast-upstream";
 import {
-  orchestratorServesToast,
   toastServiceOrchestratorCalls,
 } from "./orchestrator-routes";
 

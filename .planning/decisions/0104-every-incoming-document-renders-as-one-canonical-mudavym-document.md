@@ -1,6 +1,6 @@
 # 0104 — Every incoming document renders as one canonical Mudavym document
 
-- **Status:** Locked on the forks the founder answered in session on 2026-09-03 (one canonical schema and template; delivery entity in slice 1; confidence never a number; paper stays light in dark mode; hybrid PDF/A-3 as the export target — _"the most SOTA way, quality first"_); D8 (retention, churn and bring-your-own-storage) and D14 (signed XML as the primary Turkish source) locked on the founder's answers later the same day; D13 **locked by the founder on 2026-09-03: the C-led synthesis leads** (C's delivery spine, collapsed when a delivery has two or fewer documents; A's typeset sheet as the selected frame; B's verdict block on top). Slice 1 build authorised the same day. Design only — nothing here is built.
+- **Status:** Locked on the forks the founder answered in session on 2026-09-03 (one canonical schema and template; delivery entity in slice 1; confidence never a number; paper stays light in dark mode; hybrid PDF/A-3 as the export target — _"the most SOTA way, quality first"_); D8 (retention, churn and bring-your-own-storage) and D14 (signed XML as the primary Turkish source) locked on the founder's answers later the same day; D13 **locked by the founder on 2026-09-03: the C-led synthesis leads** (C's delivery spine, collapsed when a delivery has two or fewer documents; A's typeset sheet as the selected frame; B's verdict block on top). Slice 1 build authorised the same day. **Extended 2026-09-06 by two dated class-E amendments and LOCKED on the founder's batch 63, 64, 65 and 66 answers** — an invoice's money names the currency it is in (no `CUR` takes the house's own, never `USD`), the reader states the money it saw and may refute but never choose, a manager restates or confirms it in writing against an append-only log with nothing converted, the ORDER's currency sits between the file's and the house's, a vendor states a usual currency that files nothing by itself, and a held invoice refuses a keyed-in price at the receiving door while the stock movement proceeds. Batch 66 closed the last four forks (house currency for an unmatched invoice; build the vendor-currency prompt panel; confirmation open on every invoice; clearing a held price stays two screens). Built and shipped, not design-only, for the currency amendments; the 2026-09-03 canonical-document decisions above remain as they were. **Extended 2026-09-11 by a fourth dated class-E amendment on the founder's batch 69 answers** (asked in session as "batch 68" by mistake): the canonical face's field correction and field tick take a redeemed seal like the three document acts (five acts, one kind), the currency picker stays at all 157 active codes, the receiving price pre-fills from the invoice's filed code before the order's, and withdrawn ISO codes stay refused.
 - **Date:** 2026-09-03
 - **Keywords:** invoice, template, canonical document, EN 16931, Peppol, provenance, as_printed, confidence, extraction, OCR, original, signed URL, content addressing, retention, tiering, PDF/A-3, Factur-X, print, dark mode, credit memo, delivery note, irsaliye, receiving advice, duplicate detection, commercial event, sketches
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
@@ -320,6 +320,365 @@ founder-locked answer; each names what it changes.
   load-bearing on door capture (ADR 0103 A6); a design that ships it last would have
   measured itself as an invoice-centric three-way match for four slices.
 
+## Amendment 2026-09-06 — an invoice's money names its currency, and the house may restate it (class E)
+
+**Founder, batch 63, verbatim**, asked what an EDI 810 with no `CUR` segment should do
+(`x12-invoice.ts:254-257` read `currency: el(CUR, 2) ?? "USD"`, so a Turkish house's
+invoice with no `CUR` filed its totals as dollars, silently):
+
+> "take the houses own currency, but AI needs to or otherwise house delibaretly chnage
+> it to other currency if the invoice is other than their default"
+
+Filed here rather than under ADR 0117 because 0117 is about a PRICE SIGHTING'S source,
+date and unit, while this is about the **document's own denomination** — the currency
+`procurement_documents.currency` holds, which is this ADR's layer-1 `currency` field
+(D1) and the one BR-5 checks. 0117 Q25 is the sibling decision one level down (what a
+recorded PRICE is in) and is unchanged by this.
+
+**The three rules, and where they live.**
+
+1. **No stated currency takes the HOUSE'S own** (`restaurants.currency`, itself
+   defaultless since `20260905120000_a_house_names_its_money.sql`). A house that has
+   stated none, on a document that states none, has its **money refused**: the header
+   charges, the total, every line's price/allowance/deposit and all three tie-out
+   fields go to `null`, with one sentence naming BOTH absences. The quantities stay —
+   what shipped is real evidence and a delivery note is useful without a price. There
+   is no `USD` anywhere on this path. This is `parse-edi832.ts`'s rule (a default is
+   not an answer, ADR 0083) with the one difference the founder named: an 810 has a
+   house behind it, and a house's stated currency IS an answer where a distributor
+   connection's default is not.
+2. **The model states what it SEES, and it never decides.** The extraction prompt now
+   asks for `currencySeen: {code, asPrinted, where}` — a code, a glyph or a word, with
+   the location on the page — or `null` for "the page shows none", which is a real
+   answer it must give rather than guess. A sighting whose possible codes do not
+   include the currency the document would be filed under **HOLDS** the money: nothing
+   is filed under either, and the sentence names which currency the file would take,
+   which the model saw, and where. A glyph maps to a SET of codes, never one — `$` is
+   seven currencies, and resolving it to `USD` is the move this whole pass deletes — so
+   a sighting can REFUTE a filing currency and can never choose one. A glyph this
+   gateway cannot read is recorded as evidence and is deliberately **not** a hold.
+3. **The house may deliberately change it.** `PATCH /procurement/documents/:id/currency`
+   (managers and owners; staff refused in words and shown the control disabled, never
+   hidden). It writes an append-only row to
+   `procurement_document_currency_changes` (`20260906160000`) naming who, when, the
+   previous value, the document's status at the time and what the re-filing moved —
+   **before** the change lands, so a restatement nobody recorded never happens — then
+   re-files the money off `procurement_documents.extracted`, which is why the full
+   parse is stored whole. **Nothing converts**: there is no exchange rate in this
+   system, and only the denomination moves.
+
+**NOT SEALED, and the reason is a census not a preference.**
+`scripts/check_money_routes_are_sealed.py` scopes the seal to `payment-methods`,
+`billing` and `communications/text/credits` — routes that change what the HOUSE IS
+CHARGED. No procurement route redeems a seal today, `POST :id/verify` included, and
+sealing one route inside an unsealed module reads as a policy while leaving the other
+six non-GET routes on the same controller open. The gate here is role plus the append-only log. Whether
+procurement as a whole should be sealed is a founder question, not a decision to take
+one route at a time.
+
+**Three sibling defects found and closed in the same pass**, each measured on this
+tree: `x12-credit.ts` pinned the literal `"USD"` on an 812 that carries a real
+`totalCredit` (BCD04) and settles against the 810 — a credit in dollars against a lira
+invoice, from our own parser; `x12-ship-notice.ts` did the same on a document that
+states no money at all; and `canonical/from-document-rows.ts:219` read a NULL currency
+back as `USD`, which would have re-dollarised **on this ADR's own canonical face**
+every document rule 1 had just refused.
+
+**The pre-fix behaviour, measured rather than remembered.** A probe spec built from
+`git show HEAD:apps/api-gateway/src/procurement/documents/x12/*.ts`, run, and then
+deleted: a CUR-less 810 came back `currency: "USD"` with `total: 528` beside it and no
+warning of any kind, and `parseX12` took one argument, so a caller that knew the house
+was in Turkiye had nowhere to say so.
+
+**Answered by the founder the same day, batch 64. All four are DECIDED.**
+
+1. A held invoice **blocks the PRICE at receiving only**, never the delivery's stock
+   movement, and — verbatim — *"let them approve if otherwise"*: a person may approve
+   past the hold. Alongside it the founder asked for **a default-currency section on each
+   vendor's profile**. Both are a later builder's (p4br); this pass builds neither, and
+   `verifyReceipt` still takes its price and currency from what a person keys in.
+2. Rule 2's evidence is shown **only on a disagreement** — as built.
+3. Procurement's three writes **will be sealed as a module in a later pass**, not one
+   route at a time. This route stays unsealed until then, as argued above.
+4. Invoices already filed under an unchosen `USD` are **left alone** — as built.
+
+**One correction made after the founder's answers, 2026-09-06 (p4bp follow-up).** The
+first version of rule 3 wrote `computed_lines_total`, `tie_out_delta` and `ties_out` from
+`documents.controller.ts`, and `scripts/check_proposal_preservation.py` failed it: those
+three are the machine's own proposal and ADR 0059 gives their write to the thing that
+proposed them, `DocumentIntakeService`. The re-filing now lives there
+(`refileMoneyForCurrency`), re-deriving the tie-out through the same `applyTieOut` intake
+and `editLine` run; the controller writes only the audit row and the currency, which are
+the person's half. This was not a technicality — a controller computing a tie-out is a
+second implementation of the arithmetic, and the moment the two disagree the screen shows
+one verdict while the review queue sorts on another.
+
+## Amendment 2026-09-06 (later the same day) — the order's currency, the vendor's usual one, and a price refused at the door (class E)
+
+Three founder statements, two batches after the one above, and they change the SHAPE of
+the currency chain rather than adding to it.
+
+**Batch 64, verbatim:** *"do option 1 recomemneded, stock proceeds refuse the price at
+receving, and let them approve if otherwise, also add a section to each vendor's profile
+that what are their currency default"*.
+
+**Batch 65, verbatim:** *"maybe Every vendor and their profile will show their default
+currency, but we won't use that as the invoice... definitely invoice receipt. However, we
+will use the currency from where we order it. We will show the user the currency the
+vendor always uses, and they have the ability to change it or not in the orders page. And
+after that, we will have time To make sure that the invoice is good with the order we had.
+and we... or the user or the manager are able to change the invoice if needed. Makes
+sense?"*
+
+**Rule 1's chain gains a rung.** `filingCurrency` now reads: the file's own statement,
+then `procurement_orders.currency` for the order this document is matched to, then the
+house's `restaurants.currency`, then a refusal naming every absence. The order outranks
+the house because the order is what somebody agreed with this vendor for these goods,
+while the house's currency is what it REPORTS in — when the two differ, the order is right
+and the house is a coincidence. The file still outranks the order, because no purchase
+order restates a vendor's bill; but a file that DISAGREES with its order is HELD exactly
+as a model sighting holds one, naming both codes and the order's number.
+
+**The house rung says which of its two preconditions held.** "The order it is matched to
+names no currency" and "it is matched to no order" send a manager to two different places,
+and a single sentence covering both would send them to neither.
+
+**A vendor's usual currency is a fact about a VENDOR, and it files nothing.**
+`providers.usual_currency`, typed by a manager on the vendor's profile with the author and
+the moment enforced as one fact. Its only consumer is the order sheet's starting value.
+The founder said so twice in one sentence and the reason is the defect this whole line of
+work exists to end: `restaurants.currency DEFAULT 'USD'` put a currency nobody chose under
+fourteen houses' money, and a vendor-level default wired into invoice filing would be the
+same mistake one table over.
+
+**This NARROWS ADR 0117 Q31, and the narrowing is recorded rather than smoothed over.**
+Q31 (2026-09-05) defaulted the agreement line's currency from *"the vendor's terms or the
+house"*. Batch 65 names one source for the ORDER. `procurement_orders.currency_source`
+admits `vendor_usual` and `typed` and nothing else, so a field pre-filled from the house
+and submitted untouched would be recorded as `typed` — a provenance column saying a person
+chose something nobody chose, which is the [[absence-reported-as-health]] shape inside the
+one column built to prevent it. So `orderCurrencyOffer` pre-fills only the vendor's stated
+currency and SHOWS the house's and the vendor's last invoice as evidence beside the field.
+`agreementCurrencyDefault` is untouched and keeps Q31's behaviour for the line.
+
+**A held invoice refuses the PRICE at the receiving door, and only the price.**
+`verifyReceipt` throws before any write when a unit price was submitted against an invoice
+whose money is not filed. The count, the rejection and the stock movement are unaffected —
+measured, by running the same priceless receipt against a held and a settled document and
+comparing what each wrote. A delivery that physically happened is not made un-happened by
+a bookkeeping question.
+
+**Confirming is the same act as changing.** `PATCH :id/currency` accepts
+`previous === next` and records `change_kind = 'confirmed'` with the same author, role,
+moment and payload (`20260906180000`). Without it a manager who read a held invoice, saw
+the model had misread a glyph, and decided the currency the file already carried was right
+got a 409 — and the only way past the refusal was to name a currency they did not believe
+in. The no-op protection did not go away; it moved onto the kind, and the database now
+refuses the two lies the pair could tell.
+
+**A correction to the amendment above.** `moneyHeld`'s own comment claimed the full
+reading survived in `procurement_documents.extracted` so that a restatement could put it
+back. It did not: `document-intake.service.ts` writes `extracted` from the same object it
+writes the money columns from, and `withholdMoney` had nulled both — so the restatement
+restored a document of nulls while `refilingSentence` announced that the money "was held
+and is now filed". A restatement that reports a re-filing it did not perform is worse than
+one that refuses, because the manager stops looking. `ParsedDocument.moneyWithheld` now
+keeps the stripped figures.
+
+**A second correction, 2026-09-11 — the same shape, on the HEADER** (audit of `b6d2e4b4`,
+BLOCKING, three of three verifiers). The fix above gave each LINE its own decision and left
+the header deciding with them: `headerFromCurrent = headerHasMoney || linesHaveMoney`. That
+is wrong in exactly the row shape production has for a held document — the header columns
+are NULL, written from the withheld parse at intake, and `editLine` never repairs them
+because it writes only `computed_lines_total`, `tie_out_delta` and `ties_out`. So one
+corrected line selected the all-null CURRENT header, the snapshot's subtotal, freight, tax
+and total were never put back, `total` was written NULL, and no later restatement could
+recover them: by then every line carries money, so the branch is permanent. The code's own
+justification — *"a document whose header states nothing but whose lines are priced was
+never held"* — is false in this case, and a line recovered from `moneyWithheld` is itself
+the proof that the document WAS held. **The header and the lines are now decided
+independently** (`invoice-currency.ts:780`): the header comes from the row only when the
+row's own header carries money and otherwise from the withheld reading; each line keeps what
+its row carries or recovers from the snapshot; the tie-out is recomputed over the result.
+The header is still ONE set of figures — never assembled field by field out of two readings.
+
+**And the sentence stopped claiming what it had not done.** `refilingSentence` took a
+`wasHeld` boolean, so a mixed document was told *"the vendor's own figures were put back"*
+while a manager's correction had in fact been KEPT and the header had been lost — a write
+the act did not make (ADR 0083). It now takes a `RefileProvenance`
+(`invoice-currency.ts:629`, passed at `document-intake.service.ts:2240`) and names each
+part: what was put back from the reading withheld at intake, what was kept exactly as it
+stood with corrections included, and which lines neither reading prices. Pinned in the held
+row shape at `invoice-currency.spec.ts:1070` and `document-intake.service.spec.ts:591`.
+Stated plainly rather than sold: of the five held-row cases added, **three** fail against the
+pre-fix module and **two** pass it — those two pin invariants that already held, and are not
+evidence of this fix.
+
+**2026-09-06, batch 66 — DECIDED, in the founder's own words.**
+
+> **"Keep: house currency for an unmatched invoice"**
+> **"Add the prompt panel"**
+> **"Keep it open on every invoice"**
+> **"Two screens, for now"**
+
+This paragraph previously read *"One assumption is STATED, not decided … the founder did
+not say what an unmatched invoice should do, and this is our inference"*. It is now
+decided. The HOUSE's currency stays the last rung for an invoice with no matched order
+**and** for one whose matched order named none — the sentence says which of the two held —
+and the vendor's usual currency still files nothing by itself. The other three: the
+"N of your M vendors have stated a usual currency" prompt panel is to be BUILT (by p4bu,
+not in this pass, and not in the tree as of this line); a CONFIRMATION stays available on
+every invoice, held or not; and clearing a held price stays TWO screens — the receiving
+door refuses and links to `/receipts?doc=<id>`, and *"for now"* is the founder's own hedge,
+recorded as one.
+
+**One limit, stated.** The order's currency reaches the filing chain only for a document
+whose intake NAMED an order (`IntakeInput.orderId`). A document linked to an order later —
+by the auto-matcher, or by a person on the receipts screen — was already filed by then,
+and re-filing it is the restatement act rather than intake.
+
+Migrations: `20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql`,
+`20260906180000_confirming_a_currency_is_the_same_logged_act_as_changing_it.sql`. Both
+proven on PGlite, applied twice, with every CHECK adversarially probed — which is how a
+three-valued-logic hole in one of them was found before it shipped: `currency_source IN
+(...)` against a NULL evaluates to NULL, and a CHECK that evaluates to NULL PASSES, so the
+constraint read correctly in English and enforced nothing in exactly the case it was
+written for.
+
+## Amendment 2026-09-06 (batch 64) — the three document write acts take a redeemed seal (class E)
+
+**The founder's answer, verbatim**, to whether procurement's write routes should be
+sealed:
+
+> **"Decide as a module: seal all three (Recommended)"**
+
+The option read: *"One policy for the corridor: verify, line edit and currency restatement
+each take a redeemed seal like the payment and register acts do. Its own pass; the
+receiving flow gains one ceremony per act."*
+
+**What it replaces.** `documents.controller.ts` argued in writing against sealing the
+currency restatement alone — *"Sealing this one alone would read as a policy while leaving
+the other six non-GET routes on this controller open"* — and named the corridor-wide
+question as the founder's. It was asked and answered; that paragraph is now a record of
+the question rather than a decision, and the header says so. The receipts page note's
+batch-64 item 3 (*"will be sealed as a module in a later pass"*) is struck the same way.
+
+**The shape.** ONE subject kind, `procurement_document`, with three acts in `tool_name`:
+`verify`, `line_edit`, `currency_restate`. Not three mechanisms — the redemption policy
+lives once, in `common/seal/seal-challenge.service.ts`, the same service the order
+approval, the payment register and the credit purchase spend through. The subject of all
+three is the DOCUMENT, including the line edit, whose line is named in `args_hash`
+instead: a refusal reading *"that seal was issued for a different line"* would name a row
+rather than the paper, and putting a second table's uuids under one kind is the collision
+`subject_kind` exists to stop.
+
+**What each seal is taken OVER**, which is the half that makes it more than a second
+click (`apps/api-gateway/src/procurement/documents/document-seal.ts`):
+
+| act | args_hash covers | the failure it closes |
+|---|---|---|
+| `verify` | the whole transcription — the document's own figures and every line, sorted by id | a line corrected between the gesture and the write would otherwise put a reviewer's name on a figure they never read, on the record a dispute leans on, with no un-verify |
+| `line_edit` | the line AS IT STANDS plus the exact patch | `procurement_document_lines` has no `updated_at`, so last-write-wins was unavoidable and the page could only report a collision AFTER it landed; the seal makes it a refusal |
+| `currency_restate` | the code being written and the code the document carries now | a seal minted to move a held invoice to EUR being spent after somebody else filed it in USD |
+
+The restatement's free-text `reason` is deliberately not hashed: it is what a person types
+ABOUT the decision, not the decision, and binding it would refuse an honest act because a
+typo was fixed.
+
+**The migration widens the CHECK by reading it.**
+`20260906200000_a_document_act_takes_a_redeemed_seal.sql` selects
+`pg_get_constraintdef`, parses the admitted kinds, appends one and writes the union back —
+never a hand-typed literal. Four passes touched that one constraint this week, and a
+DROP/CREATE from a list typed an hour earlier deletes whatever landed in between: the
+gateway then declares a kind the database refuses, which reads as a code bug. Proven on
+PGlite (`p4-scratch/pglite-probe/p4bs-document-seal-kind.mjs`): all eight prior kinds
+survive, the new one is admitted for all three acts, a document seal carrying a
+`connection_id` is refused 23514, and a second apply changes nothing.
+
+**Corrected 2026-09-11** (audit of `b6d2e4b4`, SHOULD-FIX, three of three verifiers).
+"Parses the admitted kinds" was doing it with `'''([a-z_]+)'''`, a character class that
+silently DROPS any existing kind holding a digit or a capital: the parse skips it, the union
+is written back without it, and this file's own header sentence — *"It cannot drop a peer's
+kind"* — was false for that class. The parse now takes **every quoted literal**, unescaping a
+doubled quote (`20260906200000_a_document_act_takes_a_redeemed_seal.sql:71`, and the same at
+`:161`), and the migration reads the rebuilt constraint back and RAISEs unless it holds
+exactly the kinds it read plus its own (`:108`). **Did the defect ever fire? No.** A scan of
+every `subject_kind` literal across `supabase/migrations/*.sql` finds 8 distinct kinds
+(`house_mail_export`, `mcp_tool`, `mcp_tool_grant`, `payment_method`, `price_index_upload`,
+`procurement_document`, `procurement_order`, `text_credit_purchase`) and **none holds a digit
+or a capital**, so no real kind was ever dropped — it was latent. That is precisely why the
+probe now proves the parse BEHAVIOURALLY instead of textually: it adds one fixture kind with
+a digit (`fixture_kind_2`, `p4bs-document-seal-kind.mjs:44`, added by a statement in the probe
+alone and never by a migration) and INSERTS one row of every older kind after the migration
+(`:147`), because a text check sharing the migration's own character class cannot see the one
+drop the migration is capable of. Three peer migrations still carry the old parse at five
+sites; filed as OPEN in `v3.0-TECH-DEBT.md`.
+
+**Two costs, accepted and stated.** A moved cell on `/receipts` is no longer a write — it
+stages a pending correction stated in figures, and a hold sends it; that is one gesture
+per correction where there used to be none. And the OTHER seven write routes on this
+controller (upload, extraction, match, link, field correction, field tick, door count)
+remain unsealed: the decision named three acts, and inventing exemption sentences for seven
+routes would be filing seven decisions the founder never made.
+`scripts/check_money_routes_are_sealed.py` therefore grew a second census — routes a
+decision REQUIRES to be sealed, checked by name — and PRINTS the seven as outside every
+census rather than passing over them. That is a stated soft spot: a fourth write act added
+to this controller tomorrow lands in that printed list rather than failing the build, which
+a fourth MONEY route would not.
+
+## Amendment 2026-09-11 (batch 69) — the canonical face's twin acts take a redeemed seal, and three currency answers (class E)
+
+**The founder's answers, verbatim.** The session asked these as "batch 68" by mistake; they
+are batch 69. The earlier batch 68 (2026-09-06, recorded in commit `b6d2e4b4`'s message)
+had already chosen to seal the twins as a follow-up pass, one ceremony per correction
+revisited after real use, and the receiving door as its own kind in its own pass.
+
+> **"Seal corrections and fields/verify too"** — *"The decision then holds on both faces of
+> the document; the guard's census becomes five acts."*
+> **"Keep it: the picker offers what the gateway accepts"**
+> **"Invoice's filed code first, then the order's"** — *"A reading of the document, like the
+> quantities and prices on that screen already are; when the two disagree the comparison
+> banner already says so. One line."*
+> **"Keep as built; a held old code is a bug report, not a list entry"**
+
+**The shape.** The `procurement_document` kind gains two acts in `tool_name`,
+`field_correct` (`POST :id/corrections`) and `field_verify` (`POST :id/fields/verify`), each
+with a mint route beside it (`:id/corrections-seal-challenge`,
+`:id/fields/verify-seal-challenge`) and redeemed before the write in the same words.
+Named object-then-verb like `line_edit` and `currency_restate`; `correction` and
+`verification`, the names `document_corrections.kind` uses, were rejected because
+`verification` sits one suffix away from the document-wide `verify` on the same kind.
+
+| act | args_hash covers | the failure it closes |
+|---|---|---|
+| `field_correct` | the revision being corrected — its number AND its whole layer-1 content — plus the path and value | a correction appended against a superseded revision (the 409 the append path could only report after the fact), and a document moved on the /receipts face between the hold and the write, which appends no revision row and so leaves the number unchanged |
+| `field_verify` | the field's path, the value as shown, whether the document carries that field, and the verdict | a name put against a figure the person never read; deliberately NOT bound to the rest of the document, so a correction to another field does not refuse it |
+
+Both ends read the canonical object through `CanonicalDocumentService.buildFromDocumentId`,
+the same call the correction service appends against. A correction's `reason` is not
+hashed, for the restatement's reason. **No migration**: the act column is not enumerated in
+SQL (`tool_name` carries a non-empty CHECK only) and `20260906200000` already admits the
+kind. **No role gate was added** to either act; neither had one. The census in
+`scripts/check_money_routes_are_sealed.py` is five acts. The five other writes (upload,
+extraction, match, link, door count) now print under DELIBERATELY UNSEALED, the words this
+ADR and `receipts.md` use, each with the reason true of that route — two of them stated as
+weak: `linkLine` is a person's act that moves an invoice price between cost lots, and
+`doorCount` books provisional stock at the door since ADR 0103's merge while its own
+ApiOperation still says it writes none. A write nobody has named still lands under NOT IN
+ANY SEAL CENSUS: the soft spot the batch-64 amendment states, unchanged in kind.
+
+**On the page.** The correction form's submit is a `HoldToApprove` whose `onChallenge`
+mints over the value captured when the hold began; the field tick moved out of the
+provenance popover, which closes on blur, into its own dialog with a hold. A failed mint
+says so and sends nothing. The mobile app calls neither route.
+
+**The three currency answers.** The picker stays the full 157-code active list
+(`apps/web/src/lib/currency.ts` header). The receiving price field pre-fills from the
+matched invoice's filed code, then the order's, then nothing, and the refusal sentence now
+names the four rungs it offers (`receiving.md` §13). Withdrawn codes stay refused, and a
+held one is a defect report rather than a list entry
+(`apps/api-gateway/src/common/iso-4217.ts` header).
+
 ## Review trail
 
 | Date       | Reviewer                                                                                                                                            | Outcome                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -338,9 +697,14 @@ founder-locked answer; each names what it changes.
 | 2026-09-05 | Fable — second render of `b1e02edf` after #304 (`fix/canonical-deposit-line-readback`) | **Two defects, both FIXED failing-first (3 gateway + 1 web assertion proven red against `origin/main` first).** (1) BT-106 carried the deposit line — and `lineKind` was NOT what lost it: the snapshot holds it, `applyTieOut` excludes it, `computedLinesTotal` was 9172. `from-parsed-document.ts` preferred the STATED subtotal unconditionally, and this paper's subtotal (₺9.352,00) CONTAINS the deposit, so BT-106 double-counted what BG-21 was already carrying and the ladder printed ₺11.366,40 under a stated ₺11.186,40. `linesNetTotal()` now subtracts a deposit line only when `stated − depositLines === computedLinesTotal` MEASURES that the subtotal contains it, marks the result `computed` and drops its `as_printed`; a subtotal matching neither is left alone. (2) The route and `scripts/canonical_corpus_run.py` had two row→`ParsedDocument` mappings and the runner's never opened `extracted` — hence `vat_breakdown_present` named as failing on documents whose page rendered the VAT row. One function now (`from-document-rows.ts`), and the runner selects `extracted`. (3) D4's verdict block now checks the LADDER it prints (BT-109 + BT-110 vs BT-112), not only the door's tie-out, and names the delta. Surfaced while fixing (2) and fixed with it: BR-S-08 filtered lines by BT-151/BT-152, which the contract never asks for, so it reported "covers lines worth 0.00" — now UNTESTABLE. Corpus run on the same database, read-only: **9 named failures → 5**; `b1e02edf` and `5c7d4801` clean, `d0b96d4a` (4) and `e34a5b9f` (1) keep their historical v1 failures unchanged. STILL OPEN: no per-line VAT category in the extraction contract, so BR-S-08 is untestable on every document this gateway reads. |
 | 2026-09-05 | Fable — slice 3 stop 1: the correction door (D5) | **Built.** `POST /procurement/documents/:id/corrections` and `POST :id/fields/verify`, a CLOSED registry of correctable layer-1 paths with a declared type per field (`canonical/correctable-paths.ts` — `__proto__`, a computed total and a line that does not exist are all 400s before any write), migration `20260905231500` adding `document_corrections.reason` and `kind ∈ {correction, verification}` (proven failing-first on a control database built from the 99 migrations before it, then green on 100; T16–T19), 23 gateway tests and 7 web tests. **A correction is replayed through the SAME mapper the read path uses**, so the bottle-equivalent, the tie-out and every EN 16931 invariant follow the corrected number — a cosmetic overlay would have left layer 3 grading figures the page no longer shows, and both that and the swallowed-log-read were sabotage-proven to turn the new tests red. The first correction writes the PRE-correction document down as revision 1 before taking revision 2, so the log opens with what the machine read. **Two deviations, both stated in `v3.0-TECH-DEBT.md`:** a correction that CHANGES a value clears that field's `verified_by` (carrying it would print a human assertion nobody made; the old tick survives in the append-only `before`), and the builder replays the correction LOG rather than serving the stored `layer1` blob, so a later re-extraction stays visible. Slice 4's mapping memory is a named seam (`learnableKey`) that nothing reads. |
 | 2026-09-05 | Fable — slice 3 stop 2: the delivery spine writes | **Built.** D7's delivery is now created, linked and moved by real doors (see ADR 0103's trail for the gates). On the page: the proposal thread on the ONE delivery a document sits on — a document on several has no single event to agree, so the gates are not offered rather than guessing — the two gates with what each NEEDS printed before anything is pressed, and D11's door frame turned into a WRITE: a stepper per line, and a line nobody touches is not submitted, so `received` keeps saying "not counted". S5's many-to-many is exercised by the link door; S6's `direction` is what tells our own door count from the vendor's invoice when D3 asks whose position is on the record. A failed proposals read renders as a failure, never as "nobody has disputed anything". |
+| 2026-09-06 | Fable (p4bp, p4br) — the invoice's money names its currency (commits `356ffdfa`, `6c0933d3`) | **Built, and recorded here as two class-E amendments above.** Rule 1 (no `CUR` takes the house's own currency, never `USD`), rule 2 (the reader states the money it saw and can refute but never choose), rule 3 (`PATCH :id/currency`, manager or owner, append-only log, nothing converted); then the order's currency between the file's and the house's, the vendor's usual currency on the profile, and a held invoice refusing a keyed-in price at the receiving door. |
+| 2026-09-06 | Sonnet audits of `356ffdfa` and `6c0933d3` (`p4-scratch/audit-356ffdfa-invoice-currency.md`, `audit-6c0933d3-vendor-order-currency.md`) | **Two BLOCKERS and five smaller findings, all filed against passing suites — the point being that everything green stayed green.** (1) Every currency gate asked `/^[A-Z]{3}$/` and called it ISO 4217, so `filingCurrency({ fileStated: "ZZZ" })` filed a whole invoice's total under a denomination that does not exist, silently; the migration's own probe wrote ISO's reserved test codes `XTS`/`XTT` past the table's CHECK for the same reason. (2) `refileMoneyForCurrency` re-derived every figure from `procurement_documents.extracted`, which is written only at intake and which `editLine` never touches — so a hand-corrected line price followed by a currency restatement silently reverted the correction and reported it as a re-filing. Also: this ADR's own amendment had no review-trail row and no status-line update; the commit message narrated a batch-66 doc update that had not been made; the house-rung comment was narrower than the code; and two behaviours were true only by inspection. |
+| 2026-09-06 | Fable (p4bt) — the two blockers closed, and batch 66 recorded | **Fixed.** `apps/api-gateway/src/common/iso-4217.ts` holds the 96 codes the product's own picker offers, `isIso4217` replaces the regex at every currency gate in the gateway (invoice filing, the model's sighting, the order/agreement rungs, `price_history`, the vendor's usual currency, the house's own currency, the restatement route and four DTOs), and `iso-4217.spec.ts` reads `apps/web/src/lib/currency.ts` AS TEXT and fails if the two sets differ by one code, so the copy cannot become a second table. The migration's CHECKs stay SHAPE, with a comment saying why a code list frozen in an append-only table's constraint would start refusing real money the day ISO publishes one. `planRefile` replaces `refiledMoney`: a restatement re-files from the document's CURRENT rows, carries every amount exactly as it stands, and reaches for `extracted.moneyWithheld` ONLY when there is no money on the row at all — the state a hold leaves — and the audit row records WHICH reading it used. The house rung's precondition comment is corrected to what the code does. **Batch 66 is now recorded, verbatim, in the amendment above and in `receipts.md`, `receiving.md` and `providers.md` §13.** One thing is disclosed rather than fixed: a receipt whose order has NO linked document accepts a typed price into `price_history` with no cross-check, error-free, and is pinned by a test and written up in `receiving.md` §13 as a founder question. |
 | 2026-09-06 | Fable — slice 3 stop 3: the canonical face against a real delivery | **Rendered, with two faults.** The spine finally has cards: the invoice `b1e02edf` sits on two deliveries and D13's spine draws each with its three documents, the `UNORDERED · permanent` mark and the state ladder ending `VERIFIED`; the gates and the thread render on the door count's page with the agreed rule and the verify sentence in words. Two faults measured. (a) **On a `receiving_advice` the counted quantities render under `Billed` while `Received` reads "not counted" on every line**, and the verdict cards say "NOT COMPARED … Nothing was ordered, despatched or counted against it" about the document that IS the count — the four-way column map has no place for our own count. (b) The gates and thread appear only where `soleDelivery` resolves, so a consolidated invoice's page — the face a reader is most likely to open — offers no way to act, by design (D5/D7's ambiguity rule) but with nothing on the page saying why. Also: a repeated door count returns 422 carrying the raw constraint name `uq_pd_restaurant_sha256` instead of "this exact count is already recorded". All three filed in `v3.0-TECH-DEBT.md` (2026-09-06); evidence in `06-pages/receipts.md` §9/§10 and `08-softwares/receipts-invoice-match.md` §9. |
 | 2026-09-11 | Fable — D12 slice 4: the line-to-item mapping memory | **Built.** A person links an invoice line to a shelf once and the product remembers the pairing **per (restaurant, provider)**, proposing it on the next document as a tick with a sentence — *"Remembered from N earlier documents from this vendor, last confirmed by &lt;name&gt; on &lt;date&gt;"* — and never a number (D12, and the confidence rule). Migration `20260907120000` adds `document_line_mappings` as an **append-only EVENT LOG, not a row per pairing**: the memory must FORGET rather than average (the founder's rule for a pairing that was wrong once), and a mutable `times_confirmed` counter can only either destroy the history that shows the mistake or keep voting for the wrong shelf. The current memory for a key is its LATEST row; an `unlinked` row is an ANSWER ("no memory here"), not the absence of one; `times_confirmed` is DERIVED, counted only since the last un-link. The same `refuse_append_only_mutation` trigger `document_corrections` uses enforces it (D5). **The key, and why:** `vendor_sku` folded with the printed vintage, else the normalised description folded with format and vintage. A distributor re-using one SKU across vintages is two shelves with two cost lots, so keying on the SKU alone would confidently propose last year's shelf — folded in, the new vintage is simply a key we have never seen and there is NO proposal. A vendor that changes a SKU likewise gets silence. Both are the safe direction, and neither is a guess. **S8 holds by test:** a wrong-then-right pair seeded, the suggestion follows the latest, and the two earlier ticks for the wrong shelf neither out-vote it nor inflate its count. **New doors:** `POST …/:id/lines/:lineId/link-item` (`source` records `chosen` vs `remembered`; `inventoryId: null` is "not this one" and the memory forgets) and `GET …/:id/line-mappings` (the log; a failed read is a 500, never an empty log). `GET …/canonical` now carries `lineId`, `inventoryIdSource`, `proposedInventoryId`, `proposedSentence` and **`proposalUnavailable`** — a memory that could not be READ says so, because it otherwise draws identically to "nothing remembered" and only one of them is true. **A defect closed on the way:** `procurement_document_lines.inventory_id` had been written by the door since `20260906233000` and was never read back, so a line a person HAD linked still rendered unlinked and they were asked twice. **Measured:** 12 SQL assertions failing or erroring on a 107-migration control and passing on the 108-migration build; 735 gateway tests and 66 web document tests green; **eleven assertions proven failing-first by sabotage** (average-instead-of-forget, a failed read resolving to an empty memory, a read missing the tenant filter, a SKU key dropping the vintage, a memory failure losing the link already on the line, the page ignoring the door's shelf, a failed memory read rendering as "no suggestion", the page never asking the memory, "unavailable" collapsing into "nothing remembered", the tick reporting itself as a fresh choice, and a confidence number appended to the sentence). |
 | 2026-09-11 | Fable — slice 4 re-driven live on the sim tenant (doors only, gateway :4030 from this branch) | **The doors hold, the honest-absence rules hold, and the drive found that the memory is INERT on this tenant.** Sim Meyhouse `a229f22b…`, invoice `b1e02edf…` (SYN-TR-0002) and `5c7d4801…` (SYN-US-0002). Confirmed live: `GET …/canonical` **200** carrying `lineId`, `inventoryIdSource` and the proposal fields on every line; `link-item` with a real shelf **201**, and the canonical read then answered `inventoryId=a23a4595…` with `inventoryIdSource=line` — **the read-back defect is fixed live**, on a column that needed no migration; `link-item` naming another restaurant's shelf **404** *"That item does not belong to this restaurant, so the line was not linked"* and nothing was written; `link-item` on a line that does not exist **404**; `inventoryId: null` **201** and the line read back empty; `GET …/line-mappings` **500** naming the missing table — **a failed read refused rather than answering with an empty log** (ADR 0067), which is exactly the shape this route was built for. **The finding (0 of 15):** every `procurement_document` on this tenant has `provider_id` NULL, so the memory is consulted on none of them and proposes nothing — the link door answered *"this document names no vendor, so there is nobody to remember the pairing for"*. The cause is upstream: `provider_id` comes only from the caller (`document-intake.service.ts:320/726/790`) and intake never resolves a vendor from the seller party, although the canonical read shows *"SENTETİK ŞARAP DAĞITIM A.Ş."* beside `layer2.providerId: null`. Filed in `v3.0-TECH-DEBT.md`; deliberately NOT fixed here, because guessing a vendor to key a memory on would put a guess underneath every future proposal. **What waited for the merge, exactly:** every assertion needing a ROW in `document_line_mappings` — a remembered pairing proposed on a second document, the sentence, forget-on-unlink, `times_confirmed` since the last un-link, latest-wins (S8), cross-tenant scoping, and `proposalUnavailable` on a document that DOES name a vendor. All are proven on the 108-migration Docker build and in 35 unit tests; **none of them live**. Log: session scratchpad `lens-slice4/slice4-live.json`. |
 | 2026-09-11 | Fable — slice 4 (#347) re-driven live AFTER merge (main `a1e69559` on :4010, sim tenant, doors only) | **The memory remembers, proposes, and forgets — measured.** A synthetic provider was created through `POST /providers`; two synthetic invoices (same vendor, printed SKU `WCB-1001`) uploaded with `providerId` and extracted; `provider_id` lands on the row at extraction (the upload response shows none). Doc 1 line 1 linked `chosen` → 201 `remembered: true`. Doc 2's canonical read then carried `proposedInventoryId` + *"Remembered from 1 earlier document from this vendor, last confirmed by someone here on 2026-09-11."* Tick `remembered` → 201; `line-mappings` shows one `linked` entry with `source: remembered`, who and when. `inventoryId: null` → 201, the proposal on doc 2 is gone, doc 1's own link is untouched. **Found:** the sentence says *"someone here"* although `linkedBy` is a known user (the name is not rendered); `GET /providers/<a non-provider id>` answers **500** "Cannot coerce the result to a single JSON object" instead of 404; `link-item` with a malformed `lineId` answers **500** with a Postgres sentence instead of 400. Logs: session scratchpad `lens-vendor/slice4-live-2.json`. |
 | 2026-09-11 | Fable — D15: a document's vendor is resolved by identity (`feat/canonical-document-slice-4b-vendor-identity`, PR #351) | **Built, and filed as D15 because D13 and D14 were already taken.** Three rules on the seller's printed tax id, and the uniqueness rule 1 depends on is a PARTIAL UNIQUE INDEX on `(restaurant_id, tax_id_normalized)` rather than a claim the service makes about a list it just read — which is also what makes rule 2's race safe (23505 → re-read → one vendor, not two). Migration `20260911120000`: the identity and the two born-from-a-document columns on `providers`, the venue's own identity on `restaurants`, and `document_vendor_resolutions` as an append-only log under D5's trigger — a re-extraction RE-RUNS resolution and appends, because a column would let the later run erase the run that wrote the provider a year of cost lots sits under. **`unavailable` is a fourth state and deliberately not a kind of `unresolved`.** Six refusals, each because the alternative is unrecoverable: two providers sharing an id (never "take the first"); an identity with no seller NAME (a row named after its own tax number reads as fabricated); a self-billed document, caught three independent ways (direction, type 389, the seller id equalling the buyer's or the venue's own); a document already filed under another vendor (kept — the disagreement is logged); `applyToDocument` writing only where `provider_id IS NULL`. **The normaliser refuses rather than approximating**: TR VKN and TCKN checksums both verified, EU prefixes honoured only from a real set, digits with no country refused outright, separators stripped but never parsed as a number (`01-2345678` keeps its zero) — and `No` is NOT on the label-strip list because it is Norway's VAT prefix, a pitfall a test found and reasoning had missed. **BT-31 finally has a value** — it was NULL since 2026-09-05 only because no table had the column, and the mapper comment recording that is replaced by the behaviour it was waiting for. **Measured:** 15 SQL assertions passing on the 109-migration Docker build and FALSE-then-erroring on the 108-migration control (`scripts/sql/d15_vendor_identity_assertions.sql`); **13 sabotage passes** proving the suites failing-first (strip-and-hope normaliser 15 red; take-the-first; `unavailable` collapsed 4; no self-billed check; create-without-a-name; log-only-the-successes 2; overwrite-a-named-vendor; the rejected name fallback; failed-log-read-as-never-resolved; glyph-borrowing; BT-31 left NULL 2; the web line removed 4; the invented line); 797 gateway procurement tests and 122 web document tests green. **What waited for the merge:** every live assertion needing the new columns — `matched`, `created`, the second document reusing the first's row, and BT-31 rendering from a provider row — because the sim database does not carry them until the migration applies. **Live on :4030 from this worktree, pre-merge, 8 of 8 as designed** (`scripts/live/d15_live_drive.py`, log in the session scratchpad `lens-slice4b/d15-live.json`): six SYNTHETIC documents through the real upload + extraction doors on sim tenant `a229f22b…` — a printed VKN and a printed EIN both **`unavailable`**, naming the column this database does not have yet, because answering `unresolved` would have blamed the paper for a migration WE have not applied; and four **`unresolved`**, each with its own sentence — nothing printed, a VKN failing its check digit, a seller id equal to the buyer's (self-billed), and digits with no country anywhere. The canonical read of invoice `b1e02edf` answers `vendorResolution.state: unavailable` naming the missing log table rather than drawing a blank, and **BT-31 rendered live** — `"VKN: 1234567890"`, `as_printed` intact, `source: extracted` — on a document whose vendor did not resolve, which is the fallback half of the rule. **`matched` and `created` were NOT exercised live and are not claimed to have been:** they need `providers.tax_id_normalized` and `document_vendor_resolutions`, which reach the sim database only when this merges. They are proven on the Docker build and in 49 unit tests, and nowhere else. |
 | 2026-09-11 | Fable — #350 (three read shapes) read back live on main `e29c8dd4` :4010, sim tenant | **All three hold.** `GET /providers/<a restaurant id>` → **404** "No provider with id … belongs to this restaurant."; `link-item` with `lineId = None` → **400** "The line id in this address is not an id we can read"; after re-teaching the memory on a third document, a fourth same-vendor invoice proposes the shelf with *"…last confirmed by **Sim Owner** on 2026-09-11"* — the person is named. Note for readers of the earlier row: the third document had proposed nothing because the second's "not this one" had rightly made the memory forget. Logs: `lens-vendor/s4reads-live.json`, `s4reads-live-2.json`. |
+| 2026-09-11 | Opus (p4bx) — batch 69 recorded and built | **Built, and recorded as the class-E amendment above.** `field_correct` and `field_verify` sealed on the canonical face with two mint routes; the guard's `SEALED_ACTS` census at five; the correction's seal over the whole revision and the tick's over the value shown; pre-fix behaviour proven by a deleted probe spec against `git show HEAD:` (both routes wrote with no seal); the receiving price pre-fills invoice-first and the refusal sentence names four rungs; the four answers recorded verbatim here and in `receipts.md` and `receiving.md` §13. From the audit of `b6d2e4b4`: the guard's five other writes print under DELIBERATELY UNSEALED with a reason each, the currency seal's previous code moving under it is pinned at controller level, the currency write's role-before-seal ordering is pinned, and the receiving panel imports the refusal's shared sentence. Not verified in a browser: neither hold was captured. |
+| 2026-09-11 | Opus (p4by) — the `b6d2e4b4` audit's defects OUTSIDE p4bx's files | **Fixed, and recorded in the two corrections above.** Five items. **(A)** `planRefile` decides the header and the lines independently (`invoice-currency.ts:780`), so a held document's header money survives a restatement instead of being erased for good by the first corrected line, and the sentence takes a `RefileProvenance` naming what was put back and what was kept rather than a `wasHeld` boolean that claimed the vendor's figures were restored when they were not. **(B)** The mixed-document block gained five cases in the held row shape it had never used (`invoice-currency.spec.ts:1064`). **(C)** The EDI 832 catalogue path asks `isIso4217` of every code — the file's own `CUR` and the connection's declaration — and refuses the whole file naming the code (`parse-edi832.ts:404`, `:412`); the gateway-wide sweep the brief required found one further shape-only site, `common/orchestrator/commercial-terms.ts:111`, fixed the same way. **(D)** Both message-credit gates normalise through `currencyCode(...)` before the check, the seal binding and the write (`text-credits.controller.ts:187`, `text-usage.service.ts:514`), so `" try"` can no longer be bound into a seal in one spelling and written in another. **(E)** The seal migration's read-and-append keeps every quoted kind and asserts the rebuilt constraint; no kind in the chain holds a digit or a capital, so the defect was latent and never fired. **Verified on this tree:** `npx jest` over the five touched areas, 61 suites / 1074 tests passed, exit 0; both gateway `tsc` projects and `eslint --quiet` clean, exit 0; five repo guards exit 0; the PGlite probe 12 passed / 0 failed; `find_emoji.py` 0 over every touched file. Pre-fix probes (same-depth copies, deleted after the run) failed 16 tests across 6 suites with 0 compile errors. **Not verified, and said rather than skipped:** nothing was executed against Supabase or in a browser; the three intake-level tests were not separately probed against pre-fix code; and two of the five held-row cases pass on the pre-fix module, so they pin invariants that already held rather than this fix. |

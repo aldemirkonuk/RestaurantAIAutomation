@@ -212,13 +212,15 @@ export class SimposService {
     id: string;
     name: string | null;
     timezone: string | null;
+    /** ISO 4217 the house stated (ADR 0117 Q25), or null: never a default. */
+    currency: string | null;
     operating_hours: unknown;
     open_now: { open: boolean | null; reason: string | null };
   }> {
     await this.assertSimRestaurant(restaurantId);
     const { data, error } = await this.dbService.supabase
       .from("restaurants")
-      .select("id, name, timezone, operating_hours")
+      .select("id, name, timezone, operating_hours, currency")
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -236,6 +238,7 @@ export class SimposService {
       id: restaurantId,
       name: data?.name ?? null,
       timezone: data?.timezone ?? null,
+      currency: typeof data?.currency === "string" ? data.currency : null,
       operating_hours: data?.operating_hours ?? null,
       open_now: { open: state.open, reason: state.reason ?? null },
     };

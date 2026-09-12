@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>097 · Where the outward connections live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:940px;margin:0 auto;padding:26px 20px 70px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:33px;font-weight:600;letter-spacing:-.015em;margin:4px 0 0;line-height:1.1}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:16px 0 20px}
+.verdict{padding:14px 18px;background:var(--paper-1);border-left:2px solid var(--seal);margin:0 0 6px}
+.verdict p{margin:0;font-size:12.5px;line-height:1.68;color:var(--ink-2);max-width:800px}
+.verdict p+p{margin-top:8px}
+.verdict b{color:var(--ink-1);font-weight:600}
+.rule{font-family:var(--serif);font-size:17px;line-height:1.45;color:var(--ink-1);margin:0 0 4px}
+a.card{display:block;text-decoration:none;color:inherit;border-top:1px solid var(--paper-2);padding:17px 0}
+a.card:hover{background:var(--paper-1)}
+.n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:2px 0 0}
+p{font-size:12.5px;line-height:1.62;color:var(--ink-2);margin:6px 0 0;max-width:790px}
+.meta{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:8px}
+.q{margin:30px 0 0;padding-top:14px;border-top:1px solid var(--ink-1)}
+.q h3{font-family:var(--serif);font-size:19px;font-weight:600;margin:0 0 8px}
+.q ol{margin:0;padding-left:19px;font-size:12.5px;line-height:1.75;color:var(--ink-2);max-width:820px}
+.q li{margin-bottom:7px}
+.q b{color:var(--ink-1)}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 097 · integrations home · example data, not a tenant</div>
+<div class="wrap">
+  <div class="wordmark">Mudavym</div>
+  <h1>097 · Where the outward connections live<span class="dot">.</span></h1>
+  <p class="lede">The founder's note on /profile: &ldquo;be definite about comprehensiveness of design, MCP's to connectors, to third-party apps. Maybe not in profile you're right.&rdquo;</p>
+  <div class="dbl"></div>
+
+  <div class="verdict">
+    <p class="rule">You are right. Three of /profile's seven registers are about the house, not the person &mdash; and one of them is the house's cards on file, on a page every member reaches.</p>
+    <p><b>The rule the field agrees on</b>, from ten products: placement follows <em>whose credential it is and in whose name the action is taken</em>, never what the thing is called. A credential that authenticates a <b>person</b> and whose acts are attributed to that person is personal. A credential that authenticates the <b>business</b> and whose acts are attributed to the business belongs to the house, behind a role gate. Where both are true &mdash; the org permits an app, each person connects their own account &mdash; every one of them builds <b>two tiers with a governance link</b>, and never one.</p>
+    <p><b>The recommendation, definitely:</b> a house-scoped surface called <b>Connections</b>, opening on the line &ldquo;What acts for this house&rdquo;, holding the till, the payment provider, the sender identity, the calendar feed, the public page and the model-context servers &mdash; plus a named-but-not-revocable row for every personal grant that acts inside the house. /profile keeps who you are, what protects you, and what is attached to you. <b>No page note is created</b> for this; it is described in <code>profile.md</code> §13a and the parent decides the route.</p>
+  </div>
+
+  <a class="card" href="connections.html">
+    <span class="n">The recommended surface</span>
+    <h2>Connections &mdash; what acts for this house</h2>
+    <p>Fourteen attachments in four registers, every one real: the Toast feed, Stripe unkeyed with its three named secrets, the deployment-wide sender identity that is the largest gap on the page, the public iCal token with four subscribers, the vendor page, three model-context servers with their probes and advertised tools &mdash; and Register III, the personal grants this page can <em>name but not revoke</em>. Opens on the ledger line the founder's brief asked for: how many things can act, how many can spend, how many may call a tool.</p>
+    <p class="meta">renders at 1440 &middot; no server needed &middot; one row component draws all fourteen</p>
+  </a>
+
+  <a class="card" href="profile-after.html">
+    <span class="n">The other half of the cut</span>
+    <h2>Profile after the split &mdash; what stays personal</h2>
+    <p>Proof that nothing is orphaned. Who you are, what protects this account (five rows, three of them measured as <em>Not built</em> with the grep that measured them), what is attached to you, and the exit. Ends with an explicit note naming the three registers that left, where they went, and why each was about the house while living on a page about a person.</p>
+    <p class="meta">renders at 1440 &middot; no server needed &middot; the seal is pressed once, on the exit</p>
+  </a>
+
+  <a class="card" href="checklist.html">
+    <span class="n">The comprehensiveness answer</span>
+    <h2>What a connections page must have &mdash; 28 items, measured</h2>
+    <p>Drawn from what Stripe, Linear, Notion, Slack, Vercel, GitHub, Zapier, Claude, Toast and Square actually ship, in four groups: the list itself, scope and governance, trust and forensics, and acting. Each item says who does it, whether Mudavym has it, and the <code>file:line</code> that proves the claim. <b>Eight have it, eight are a shape, nine are absent, three are the founder's decision.</b> Mudavym is ahead of the field on the two hardest items and behind on the two cheapest.</p>
+    <p class="meta">renders at 1440 &middot; no server needed &middot; every claim carries its file and line</p>
+  </a>
+
+  <div class="q">
+    <h3>What only the founder can decide</h3>
+    <ol>
+      <li><b>Does Connections get its own route, or a Settings section?</b> Toast and Zapier put it top-level because connections are the substance of the product; Notion, Slack, Square and Linear make it a settings section because they are not. The founder's own words this pass &mdash; <em>&ldquo;we need to keep the customer inside the app&hellip; so MCP or API connections is a must&rdquo;</em> &mdash; argue for top-level. The cost is one nav row, role-gated so staff never see it.</li>
+      <li><b>Whose is a model-context server?</b> The table's comment says it &ldquo;acts with the user's authority&rdquo;; the register calls them &ldquo;servers the house agents may call&rdquo;. Today a row is keyed to one person <em>and</em> one restaurant, so the owner cannot see the GM's server and deleting the GM deletes the house's Toast bridge. Claude, Notion, Slack and Claude Code all answer: the house declares, the person consents.</li>
+      <li><b>May a model-context tool ever be called, and what is the human step?</b> The seal, a draft to approve, or a per-tool grant. One server in the sketch advertises <code>place_order</code>. ADR 0013 has never been extended to this.</li>
+      <li><b>Does the house get its own sending address?</b> Every vendor letter leaves from one mailbox the whole deployment shares, with <code>notifications@wineops.ai</code> as the hardcoded fallback. Fixing it is a domain, a DNS record and a provider decision &mdash; not a page.</li>
+      <li><b>Can a manager see what a member has connected?</b> A GM's personal Drive grant currently receives the house's exports and no owner can see that it exists. Naming it on Connections is the minimum; requiring approval before it is made is the stronger answer, and it is a policy call.</li>
+    </ol>
+  </div>
+</div>
+</body>
+</html>

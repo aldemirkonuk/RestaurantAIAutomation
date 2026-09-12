@@ -21,7 +21,7 @@ from enum import Enum
 import redis.asyncio as redis
 from supabase import create_client, Client
 from postgrest.exceptions import APIError
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, ValidationError
 
 from utils.logger import setup_logger
 
@@ -106,8 +106,32 @@ class Provider(BaseEntity):
     )
     alternative_contacts: Optional[List[Dict[str, Any]]] = None
 
-    lead_time_days: int = 7
-    minimum_order_quantity: int = 12
+    # NONE OF THESE THREE MAY BE NON-OPTIONAL, AND THE REASON IS A REAL OUTAGE.
+    #
+    # Migration `20260903170000_a_default_is_not_an_answer.sql` (ADR 0116)
+    # dropped `providers.lead_time_days DEFAULT 7` and
+    # `providers.payment_terms DEFAULT 'Net 30'` and NULLed every row that
+    # carried them, and `providers.service.ts:201` already writes an explicit
+    # NULL for an unstated lead time. So `lead_time_days` arrives as `None`.
+    #
+    # It used to be declared `int = 7` — non-Optional, unlike `payment_terms`
+    # below. `BaseRepository.find_many` and `.get_by_id` call
+    # `model_validate` and catch **only `APIError`**, so a
+    # `pydantic.ValidationError` from a single NULL row escaped the repository
+    # entirely; `RFQAgent._select_competitor_vendors` then swallowed it in a bare
+    # `except Exception` and returned `[]`. The visible symptom would have been
+    # *"this house has no active vendors"* for every restaurant, permanently,
+    # with a single ERROR line and nothing else — absence reported as health,
+    # one type annotation deep. Proven by validating a HEAD copy of this model
+    # against `{'lead_time_days': None}`: `Input should be a valid integer`.
+    #
+    # `minimum_order_quantity` is the same class with a different tell: the
+    # column it appears to mirror does not exist. `providers` has
+    # `minimum_order` (baseline:4863) and nothing maps it here, so the `12`
+    # was fabricated for every provider ever loaded. It has zero readers in the
+    # repository, so making it unknown costs nothing and stops it asserting.
+    lead_time_days: Optional[int] = None
+    minimum_order_quantity: Optional[int] = None
     payment_terms: Optional[str] = None
 
     is_active: bool = True
@@ -267,7 +291,15 @@ class ManagerPreferences(BaseEntity):
     # Report Preferences
     report_frequency: Optional[str] = None  # 'DAILY', 'WEEKLY', 'MONTHLY', 'NONE'
     report_delivery_time: Optional[str] = "07:00:00"
-    report_timezone: str = "America/Los_Angeles"
+    # Same fault as `Provider.lead_time_days`, and the founder dropped this
+    # column's default on 2026-09-04 for the same reason: a house that was never
+    # asked which wall clock it runs on had "America/Los_Angeles" answered on its
+    # behalf, and nothing downstream could tell that from a choice. The column
+    # default is gone (migration `20260904190000_a_report_has_no_default_clock`),
+    # so this must be able to hold the absence — and, because it is non-Optional
+    # today, a NULL row would raise `ValidationError` inside `model_validate`
+    # exactly as the provider one did.
+    report_timezone: Optional[str] = None
 
     # Notification Channels
     notification_channels: Dict[str, bool] = Field(
@@ -627,7 +659,18 @@ class BaseRepository(ABC, Generic[ModelT]):
             )
 
             if response.data:
-                entity = self.model.model_validate(response.data)
+                try:
+                    entity = self.model.model_validate(response.data)
+                except ValidationError as e:
+                    # A row the model cannot read is NOT a row that is absent.
+                    # See `find_many` below for the full account; the same rule
+                    # applies here, minus the blast radius: one id, one None.
+                    logger.error(
+                        f"{self.table_name}.get_by_id({id}) returned a row this model "
+                        f"cannot validate, so it is being reported as NOT FOUND. "
+                        f"This is a schema/model disagreement, not a missing row: {e}"
+                    )
+                    return None
 
                 # Populate caches
                 if use_cache:
@@ -676,7 +719,45 @@ class BaseRepository(ABC, Generic[ModelT]):
             response = query.execute()
 
             if response.data:
-                return [self.model.model_validate(item) for item in response.data]
+                # ONE UNREADABLE ROW MUST NOT ERASE THE OTHER NINETY-NINE.
+                #
+                # This was a list comprehension calling `model_validate`
+                # directly, and the `except` below catches only `APIError`. A
+                # `pydantic.ValidationError` from ONE row therefore escaped this
+                # method entirely, and `RFQAgent._select_competitor_vendors` swallowed it in
+                # a bare `except Exception` and returned `[]` — so a single bad
+                # row read to the caller as "this house has no vendors at all".
+                # The immediate cause was `Provider.lead_time_days: int = 7`
+                # meeting a NULL (see the model), but the SHAPE is the fault: a
+                # per-row failure was allowed to be a whole-query failure, and
+                # then a whole-query failure was allowed to look like an empty
+                # result.
+                #
+                # Now each row is validated on its own. A row that cannot be read
+                # is logged WITH ITS PRIMARY KEY and skipped, and the count of
+                # skipped rows is logged too, so "94 of 96" is visible rather
+                # than being silently reported as 94. It is still a loss — but a
+                # named, bounded, findable one rather than a total blackout.
+                entities: List[ModelT] = []
+                skipped = 0
+                for item in response.data:
+                    try:
+                        entities.append(self.model.model_validate(item))
+                    except ValidationError as e:
+                        skipped += 1
+                        logger.error(
+                            f"{self.table_name}.find_many skipped one row this model "
+                            f"cannot validate (id={item.get('id') if isinstance(item, dict) else '?'}). "
+                            f"The other rows are unaffected. This is a schema/model "
+                            f"disagreement, not missing data: {e}"
+                        )
+                if skipped:
+                    logger.error(
+                        f"{self.table_name}.find_many returned {len(entities)} of "
+                        f"{len(response.data)} rows — {skipped} could not be validated. "
+                        f"The caller is receiving an INCOMPLETE list."
+                    )
+                return entities
 
             return []
 
@@ -1427,6 +1508,24 @@ class ManagerPreferencesRepository(BaseRepository[ManagerPreferences]):
 
         from datetime import datetime
         import pytz
+
+        # DEAD CODE, and stated as such rather than quietly repaired.
+        #
+        # `ManagerPreferencesRepository.is_quiet_hours` has **zero callers**
+        # anywhere in this repository — grep for the name and the only other hit
+        # is `NotificationAgent._is_quiet_hours`, a different private method that
+        # reads a different table (`notification_preferences`). It is left in
+        # place because deleting a method is not this change's business, but it
+        # is made SAFE: `report_timezone` is now nullable (see the model), and
+        # `pytz.timezone(None)` raises. A house with no recorded zone is not
+        # quiet — refusing to answer is the honest result, and it is logged.
+        if not prefs.report_timezone:
+            logger.error(
+                f"is_quiet_hours({manager_id}): this manager has no report_timezone "
+                "recorded, so quiet hours cannot be evaluated on any wall clock. "
+                "Returning False (not quiet) rather than assuming a zone."
+            )
+            return False
 
         tz = pytz.timezone(prefs.report_timezone)
         now = datetime.now(tz).time()

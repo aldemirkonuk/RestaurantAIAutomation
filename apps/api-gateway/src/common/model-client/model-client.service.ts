@@ -27,6 +27,13 @@ const MODEL_PRICING_USD_PER_MTOK: Record<
   { input: number; output: number }
 > = {
   "claude-haiku-4-5": { input: 1.0, output: 5.0 },
+  // Added 2026-09-04 with `model-routing.ts`, and NOT optional: the founder's
+  // routing decision sends the two `compose` sites to Sonnet 5, and an
+  // unrecognised model writes `cost_usd = NULL`. The spend ceiling below sums
+  // `cost_usd`, so an unpriced model would have made those calls invisible to
+  // the valve that exists to bound them — a model swap silently disarming a
+  // safety check. Rate from the Anthropic model table: $2.00 in / $10.00 out.
+  "claude-sonnet-5": { input: 2.0, output: 10.0 },
   "claude-opus-4-8": { input: 5.0, output: 25.0 },
 };
 
@@ -581,6 +588,20 @@ export class ModelClientService {
       return null;
     }
   }
+}
+
+/**
+ * Whether this model would write a real `cost_usd` rather than NULL.
+ *
+ * Exported so `model-routing.spec.ts` can assert the thing that is easy to get
+ * wrong once routing exists: a task class pointed at a model nobody priced
+ * still WORKS — the call succeeds, the row is written, the tokens are recorded
+ * — and only `cost_usd` is NULL, which sums as nothing, which silently removes
+ * those calls from the spend ceiling. A disarmed safety valve that passes every
+ * other test is exactly the "absence reported as health" shape.
+ */
+export function isModelPriced(model: string): boolean {
+  return resolvePricing(model) !== null;
 }
 
 /** Exact match first, then prefix (dated pins like claude-haiku-4-5-20251001). */

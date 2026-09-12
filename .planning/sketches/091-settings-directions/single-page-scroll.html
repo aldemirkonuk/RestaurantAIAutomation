@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>091 · Settings — everything visible at once</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Mudavym tokens — ADR 0042, copied inline from apps/web/src/styles/mudavym.css */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px;position:sticky;top:0;z-index:40}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 20px 80px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:34px;font-weight:600;letter-spacing:-.015em;line-height:1.1;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:6px 0 0}
+.standing{font-size:12px;line-height:1.6;color:var(--ink-3);margin:8px 0 0;max-width:680px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:16px 0 18px}
+
+/* the sticky contents rail — the whole point of this direction */
+.layout{display:grid;grid-template-columns:214px minmax(0,1fr);gap:30px;align-items:start}
+.rail{position:sticky;top:46px;max-height:calc(100vh - 70px);overflow:auto}
+.rail ol{list-style:none;margin:0;padding:0}
+.rail a{display:flex;gap:9px;align-items:baseline;padding:6px 9px;border-radius:8px;text-decoration:none;color:var(--ink-2)}
+.rail a:hover{background:var(--paper-1);color:var(--ink-1)}
+.rail a.on{background:var(--seal-tint);color:var(--ink-1)}
+.rail .n{font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+.rail a.on .n{color:var(--seal-deep)}
+.rail .lbl{font-weight:500;display:block}
+.rail .kept{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.railnote{font-size:11px;line-height:1.5;color:var(--ink-3);margin:14px 9px 0;border-top:1px solid var(--paper-2);padding-top:10px}
+
+section{scroll-margin-top:56px;padding-bottom:8px}
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:26px 0 0;border-top:1px solid var(--paper-2);padding-top:18px}
+section:first-of-type .sec-h{border-top:0;margin-top:0;padding-top:0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+h2{font-family:var(--serif);font-size:22px;font-weight:600;letter-spacing:-.01em;margin:0}
+.sec-d{font-size:12.5px;line-height:1.6;color:var(--ink-2);margin:5px 0 0}
+.sec-k{font-size:11.5px;line-height:1.55;color:var(--ink-3);margin:4px 0 12px}
+
+.row{display:flex;align-items:flex-start;gap:16px;padding:12px 0;border-top:1px solid var(--paper-2)}
+.row .body{flex:1;min-width:0}
+.lab{font-size:13.5px;font-weight:600;margin:0}
+.con{font-size:12px;line-height:1.55;color:var(--ink-2);margin:3px 0 0}
+.prov{font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:5px 0 0}
+.ctl{flex-shrink:0;padding-top:2px}
+.grave{background:var(--seal-tint)}
+
+.sw{position:relative;width:40px;height:22px;border-radius:999px;border:1px solid var(--paper-2);background:var(--paper-2);display:inline-block}
+.sw.on{border-color:var(--seal);background:var(--seal)}
+.sw i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:var(--paper-0);box-shadow:0 1px 2px rgba(23,19,15,.25)}
+.sw.on i{left:20px}
+.chip{font-family:var(--sans);font-size:12px;font-weight:500;padding:5px 12px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);display:inline-block}
+.chip.on{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep);font-weight:600}
+.btn{font-size:12px;font-weight:600;padding:6px 13px;border-radius:8px;border:1px solid var(--seal-ring);background:transparent;color:var(--seal-deep);display:inline-block}
+.btn.q{border-color:var(--ink-3);color:var(--ink-2)}
+.btn.seal{background:var(--seal-tint)}
+.dead{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);border:1px dashed var(--paper-2);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.why{font-size:11.5px;line-height:1.5;color:var(--ink-3);margin:5px 0 0}
+.fig{font-family:var(--mono);font-size:16px;font-variant-numeric:tabular-nums}
+.micro{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);display:block;margin:16px 0 0}
+.micro.seal{color:var(--seal-deep)}
+code{font-family:var(--mono);font-size:11}
+.hold{border:1px solid var(--seal-ring);border-radius:10px;padding:9px 12px;max-width:330px;position:relative;overflow:hidden;background:var(--paper-1)}
+.hold .fill{position:absolute;inset:0;width:38%;background:var(--seal-tint)}
+.hold span{position:relative;font-size:12px;font-weight:600;color:var(--seal-deep)}
+.url{font-family:var(--mono);font-size:11px;word-break:break-all;color:var(--ink-2);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:8px;padding:7px 9px;margin:9px 0 0}
+.callout{border-left:2px solid var(--seal);padding:9px 0 9px 13px;margin:14px 0 0;font-size:12px;line-height:1.6;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 60%)}
+@media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;max-height:none}}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 091 · single-page scroll · example data, not a tenant</div>
+<div class="wrap">
+
+<div class="wordmark">Mudavym</div>
+<h1>Settings<span class="dot">.</span></h1>
+<p class="lede">Eleven registers — seven kept for this restaurant, three on your account, one in this browser only.</p>
+<p class="standing">Nothing here records <em>who</em> changed a setting — no table on this page carries an author column. Where a change is dated the date is shown, with the word for what it is a date of; where nothing dates it, the line is an em dash that names the file it was checked against.</p>
+<div class="dbl"></div>
+
+<div class="layout">
+  <nav class="rail">
+    <ol>
+      <li><a class="on" href="#team"><span class="n">01</span><span><span class="lbl">Team</span><span class="kept">this restaurant</span></span></a></li>
+      <li><a href="#services"><span class="n">02</span><span><span class="lbl">Services</span><span class="kept">your account</span></span></a></li>
+      <li><a href="#email"><span class="n">03</span><span><span class="lbl">Email</span><span class="kept">this restaurant</span></span></a></li>
+      <li><a href="#notifications"><span class="n">04</span><span><span class="lbl">Notifications</span><span class="kept">your account</span></span></a></li>
+      <li><a href="#locations"><span class="n">05</span><span><span class="lbl">Locations</span><span class="kept">this restaurant</span></span></a></li>
+      <li><a href="#measurement"><span class="n">06</span><span><span class="lbl">Measurement</span><span class="kept">this browser</span></span></a></li>
+      <li><a href="#map"><span class="n">07</span><span><span class="lbl">Map</span><span class="kept">your account</span></span></a></li>
+      <li><a href="#features"><span class="n">08</span><span><span class="lbl">Features</span><span class="kept">this restaurant</span></span></a></li>
+      <li><a href="#pos"><span class="n">09</span><span><span class="lbl">POS</span><span class="kept">this restaurant</span></span></a></li>
+      <li><a href="#calendar"><span class="n">10</span><span><span class="lbl">Calendar</span><span class="kept">this restaurant</span></span></a></li>
+      <li><a href="#cellar"><span class="n">11</span><span><span class="lbl">Cellar</span><span class="kept">this restaurant</span></span></a></li>
+    </ol>
+    <p class="railnote"><strong>The rule of this direction:</strong> <code>?tab=</code> is read on arrival and never written again. The rail highlights as you scroll; the URL does not move, so the link you followed still works when you send it on.</p>
+  </nav>
+
+  <main>
+
+  <section id="team">
+    <div class="sec-h"><span class="sec-n">Register 01</span><h2>Team</h2></div>
+    <p class="sec-d">Who can reach this restaurant, and what each of them may change.</p>
+    <p class="sec-k">Kept on the restaurant. Everyone who works here gets the same answer.</p>
+    <span class="btn seal">Invite someone</span>
+    <span class="micro seal">Members · 4</span>
+    <div class="row"><div class="body">
+      <p class="lab">Deniz Aksoy (you)</p>
+      <p class="con">deniz@meyhouse.example · may change every setting on this page, including roles and chains.</p>
+      <p class="prov">kept · this restaurant — granted · 14 Mar 2026</p>
+    </div><div class="ctl"><span class="chip on">Owner</span> <span class="btn q">Leave</span></div></div>
+    <div class="row"><div class="body">
+      <p class="lab">Berk Yilmaz</p>
+      <p class="con">berk@meyhouse.example · may invite, order and receive; may not change roles or chains.</p>
+      <p class="prov">kept · this restaurant — granted · 2 days ago</p>
+    </div><div class="ctl"><span class="chip">Manager</span> <span class="btn q">Remove</span></div></div>
+    <div class="row"><div class="body">
+      <p class="lab">Selin Kara</p>
+      <p class="con">selin@meyhouse.example · may invite, order and receive; may not change roles or chains.</p>
+      <p class="prov">kept · this restaurant — granted · 11 Jan 2026</p>
+    </div><div class="ctl"><span class="chip">Manager</span> <span class="btn q">Remove</span></div></div>
+    <div class="row"><div class="body">
+      <p class="lab">Mert Ozkan</p>
+      <p class="con">mert@meyhouse.example · may not open restaurant settings at all — only their own profile.</p>
+      <p class="prov">kept · this restaurant — granted · 28 Aug 2026</p>
+    </div><div class="ctl"><span class="chip">Staff</span> <span class="btn q">Remove</span></div></div>
+    <p class="why">“Granted” is when the access row was written, not when the role last changed — no column records a later change to this access. A role change <em>is</em> filed, in <code>system_audit_log</code> as <code>member_role_changed</code>, with the actor and the before/after.</p>
+    <span class="micro seal">Pending invites · 2</span>
+    <div class="row"><div class="body">
+      <p class="lab">K7QP-2M9X</p><p class="con">Joins as manager. Expires in 5 days.</p>
+      <p class="prov">kept · this restaurant — issued · 2 days ago</p>
+    </div><div class="ctl"><span class="btn q">Revoke</span></div></div>
+    <div class="row"><div class="body">
+      <p class="lab">B3RN-8T4L</p><p class="con">Joins as staff. Expires tomorrow.</p>
+      <p class="prov">kept · this restaurant — issued · 6 days ago</p>
+    </div><div class="ctl"><span class="btn q">Revoke</span></div></div>
+  </section>
+
+  <section id="services">
+    <div class="sec-h"><span class="sec-n">Register 02</span><h2>Services &amp; permissions</h2></div>
+    <p class="sec-d">What the product is allowed to do with your data, and which apps you have connected.</p>
+    <p class="sec-k">Kept on your account. It follows you to another browser and to the phone.</p>
+    <span class="micro">Recorded, not enforced</span>
+    <div class="row"><div class="body">
+      <p class="lab">Email access</p>
+      <p class="con">Operational email — invites and digests — is governed by the notification preferences and by the gateway's own sender configuration, not by this record.</p>
+      <p class="why">No switch: nothing in the product reads this. Only writers are this page and the mobile guidance provider; no code branches on it in any of the four runtimes.</p>
+    </div><div class="ctl"><span class="dead">stored: allowed</span></div></div>
+    <div class="row"><div class="body">
+      <p class="lab">Web &amp; connected apps</p>
+      <p class="con">Calendar feeds and vendor links are governed by the feed token and by each app's own connection, not by this record.</p>
+      <p class="why">No switch: nothing in the product reads this.</p>
+    </div><div class="ctl"><span class="dead">stored: allowed</span></div></div>
+    <div class="row"><div class="body">
+      <p class="lab">Product analytics</p>
+      <p class="con">The reporter this would govern is unreachable twice over: its entry points return early unless <code>VITE_UX_OPTIMIZER</code> is “true”, and the only hook that imports it has no call sites.</p>
+      <p class="why">No switch: nothing about how you move through the app is being collected, and this consent does not gate it either way.</p>
+    </div><div class="ctl"><span class="dead">stored: on</span></div></div>
+    <div class="row"><div class="body">
+      <p class="lab">Data sharing with partners</p>
+      <p class="con">Sharing happens only through a partner you connect, on that partner's own path. This record gates nothing.</p>
+      <p class="why">No switch: nothing in the product reads this.</p>
+    </div><div class="ctl"><span class="dead">stored: not sharing</span></div></div>
+    <span class="micro seal">Connected apps</span>
+    <div class="row"><div class="body">
+      <p class="lab">Google Calendar</p><p class="con">Two-way sync of orders and deliveries. Connected as deniz@meyhouse.example.</p>
+      <p class="prov">kept · your account — connected · 19 Aug 2026</p>
+    </div><div class="ctl"><span class="btn q">Disconnect</span></div></div>
+    <div class="row"><div class="body">
+      <p class="lab">Gmail</p><p class="con">Reads vendor replies so the AI can draft an answer. Connected as orders@meyhouse.example.</p>
+      <p class="prov">kept · your account — connected · 6 days ago</p>
+    </div><div class="ctl"><span class="btn q">Disconnect</span></div></div>
+    <div class="row"><div class="body">
+      <p class="lab">Microsoft 365</p><p class="con">Calendar and mail for houses on Outlook. Unavailable: no client credentials configured on this deployment.</p>
+      <p class="prov">kept · your account — connected · — not connected</p>
+    </div><div class="ctl"><span class="btn q">Connect</span></div></div>
+  </section>
+
+  <section id="email">
+    <div class="sec-h"><span class="sec-n">Register 03</span><h2>Email sign-off</h2></div>
+    <p class="sec-d">The name every vendor email is signed with.</p>
+    <p class="sec-k">Kept on the restaurant. Everyone who works here gets the same answer.</p>
+    <div class="row"><div class="body">
+      <p class="lab">Sign-off name</p>
+      <p class="con">Every outbound vendor email ends “Best regards, Deniz Aksoy, Meyhouse Kadıköy”. The gateway substitutes it at send time in place of the old “[Manager Name]” placeholder — so an empty field is not a neutral default, it is a letter signed by nobody.</p>
+      <p class="prov">kept · this restaurant — changed · 4 days ago</p>
+      <div class="url">Deniz Aksoy, Meyhouse Kadıköy</div>
+    </div><div class="ctl"><span class="btn">Save</span></div></div>
+    <div class="row"><div class="body">
+      <p class="lab">Test the email pipeline</p>
+      <p class="con">Sends one message through the real pipeline to the gateway's configured manager recipients — not to the sign-off name above, and not to you unless you are one of them.</p>
+      <p class="prov">kept · this restaurant — changed · — a test send is not recorded</p>
+    </div><div class="ctl"><span class="btn">Send a test</span></div></div>
+  </section>
+
+  <section id="notifications">
+    <div class="sec-h"><span class="sec-n">Register 04</span><h2>Notifications</h2></div>
+    <p class="sec-d">Which alerts leave the building, and through which door.</p>
+    <p class="sec-k">Kept on your account. It follows you to another browser and to the phone.</p>
+    <p class="con">These are yours, but the senders read every member’s together: an alert goes out if <em>anyone</em> here wants it, and the earliest digest time wins. Turning yours off quiets your inbox, not the restaurant. Last written 3 days ago.</p>
+    <span class="micro seal">Doors</span>
+    <div class="row"><div class="body"><p class="lab">Email</p>
+      <p class="con">Team broadcasts and scheduled digests reach you by email. Read by the broadcast recipient list.</p>
+      <p class="prov">kept · your account — changed · 3 days ago</p></div>
+      <div class="ctl"><span class="sw on"><i></i></span></div></div>
+    <div class="row"><div class="body"><p class="lab">SMS</p>
+      <p class="con">Team broadcasts may also go to your phone number, where one is on file.</p>
+      <p class="prov">kept · your account — changed · 3 days ago</p></div>
+      <div class="ctl"><span class="sw"><i></i></span></div></div>
+    <div class="row"><div class="body"><p class="lab">Push</p>
+      <p class="con">Nothing in the product sends a push notification to your phone, and this preference would not be what decided it if something did.</p>
+      <p class="why">No switch: the channel chooser picks by urgency and never consults it; the device register is absent from production; the gateway has no push path.</p></div>
+      <div class="ctl"><span class="dead">stored: on</span></div></div>
+    <span class="micro seal">Low stock</span>
+    <div class="row"><div class="body"><p class="lab">Low-stock alerts</p>
+      <p class="con">The alerting engine runs for this restaurant when any member has this on.</p>
+      <p class="prov">kept · your account — changed · 3 days ago</p></div>
+      <div class="ctl"><span class="sw on"><i></i></span></div></div>
+    <div class="row"><div class="body"><p class="lab">Digest</p>
+      <p class="con">Everything that is not urgent is gathered and sent once, at 12:00. Off means only the instant alerts ever arrive.</p>
+      <p class="prov">kept · your account — changed · 3 days ago</p></div>
+      <div class="ctl"><span class="chip on">Daily</span> <span class="chip">Off</span> <span class="chip">12:00</span></div></div>
+    <span class="micro seal">Quiet hours</span>
+    <div class="row"><div class="body"><p class="lab">Hold non-critical alerts overnight</p>
+      <p class="con">Honoured by the alerting agent: inside this window it drops every channel for anything below <strong>critical</strong>, so the alert is suppressed rather than delayed. Critical still goes out. The gateway’s own scheduled mail does <strong>not</strong> consult this window.</p>
+      <p class="prov">kept · your account — changed · 3 days ago</p></div>
+      <div class="ctl"><span class="sw on"><i></i></span></div></div>
+    <div class="row"><div class="body"><p class="lab">The window</p>
+      <p class="con">From the first time to the second, read on the alerting agent's clock. A window that ends before it starts is read as running overnight.</p>
+      <p class="prov">kept · your account — changed · 3 days ago</p></div>
+      <div class="ctl"><span class="chip">23:00</span> to <span class="chip">07:00</span></div></div>
+    <span class="micro">Recorded, not enforced</span>
+    <div class="row"><div class="body"><p class="lab">Inventory category</p>
+      <p class="con">Category filtering is written to your preferences, but no sender branches on it.</p>
+      <p class="why">No switch: nothing in the product reads this.</p></div><div class="ctl"><span class="dead">stored: on</span></div></div>
+    <div class="row"><div class="body"><p class="lab">Orders category</p>
+      <p class="con">Category filtering is written to your preferences, but no sender branches on it.</p>
+      <p class="why">No switch: nothing in the product reads this.</p></div><div class="ctl"><span class="dead">stored: off</span></div></div>
+  </section>
+
+  <section id="locations">
+    <div class="sec-h"><span class="sec-n">Register 05</span><h2>Locations &amp; chains</h2></div>
+    <p class="sec-d">The branches on this account and how they group.</p>
+    <p class="sec-k">Kept on the restaurant. Everyone who works here gets the same answer.</p>
+    <span class="btn seal">Add a location</span> <span class="btn">Create a chain</span>
+    <div class="row"><div class="body"><p class="lab">Meyhouse Group</p><p class="con">3 branches in this chain.</p>
+      <p class="prov">kept · this restaurant — changed · 9 days ago</p></div><div class="ctl"><span class="btn">Assign a branch</span></div></div>
+    <span class="micro seal">Branches · 4</span>
+    <div class="row"><div class="body"><p class="lab">Meyhouse Kadıköy</p>
+      <p class="con">Istanbul · in Meyhouse Group · the branch you are working in now</p>
+      <p class="prov">kept · this restaurant — changed · yesterday</p></div><div class="ctl"><span class="btn">Edit</span></div></div>
+    <div class="row"><div class="body"><p class="lab">Meyhouse Beşiktaş</p>
+      <p class="con">Istanbul · in Meyhouse Group</p>
+      <p class="prov">kept · this restaurant — changed · 12 days ago</p></div><div class="ctl"><span class="btn">Edit</span></div></div>
+    <div class="row"><div class="body"><p class="lab">Meyhouse Alaçatı</p>
+      <p class="con">İzmir · in Meyhouse Group</p>
+      <p class="prov">kept · this restaurant — changed · 3 Jun 2026</p></div><div class="ctl"><span class="btn">Edit</span></div></div>
+    <div class="row"><div class="body"><p class="lab">Pier Sixty-One</p>
+      <p class="con">— no city on the record · standalone</p>
+      <p class="prov">kept · this restaurant — changed · — this branch reached your session without one</p></div><div class="ctl"><span class="btn">Edit</span></div></div>
+  </section>
+
+  <section id="measurement">
+    <div class="sec-h"><span class="sec-n">Register 06</span><h2>Measurement &amp; recipes</h2></div>
+    <p class="sec-d">Units, the default glass pour, and whether recipes are tracked.</p>
+    <p class="sec-k">Kept in this browser only. Nobody else sees it, it does not reach the phone, and clearing site data forgets it.</p>
+    <div class="row"><div class="body"><p class="lab">Display unit</p>
+      <p class="con">How every volume in the product is written out for you. It changes nothing about what is stored.</p>
+      <p class="prov">kept · this browser — changed · — this browser keeps the value, not a history of it</p></div>
+      <div class="ctl"><span class="chip on">Metric (ml/L)</span> <span class="chip">US (oz)</span></div></div>
+    <div class="row"><div class="body"><p class="lab">Default glass pour</p>
+      <p class="con">Used wherever a pour is assumed rather than measured. Currently 150 ml (5.1 oz). Any wine may override it.</p>
+      <p class="prov">kept · this browser — changed · — this browser keeps the value, not a history of it</p></div>
+      <div class="ctl"><span class="chip on">150 ml</span></div></div>
+    <div class="row"><div class="body"><p class="lab">Recipes</p>
+      <p class="con">Shows recipe yields and pour deductions in the product on this machine.</p>
+      <p class="prov">kept · this browser — changed · — this browser keeps the value, not a history of it</p></div>
+      <div class="ctl"><span class="sw on"><i></i></span></div></div>
+  </section>
+
+  <section id="map">
+    <div class="sec-h"><span class="sec-n">Register 07</span><h2>Map</h2></div>
+    <p class="sec-d">How wide Find distributors frames you when it opens.</p>
+    <p class="sec-k">Kept on your account. It follows you to another browser and to the phone.</p>
+    <div class="row"><div class="body"><p class="lab">Default view</p>
+      <p class="con">How wide Find distributors frames your restaurant when it opens. Zooming on the map never changes this — it is the frame you come back to.</p>
+      <p class="prov">kept · your account — changed · 21 days ago</p></div>
+      <div class="ctl"><span class="chip">Continent</span> <span class="chip on">Country</span> <span class="chip">State</span> <span class="chip">City</span></div></div>
+  </section>
+
+  <section id="features">
+    <div class="sec-h"><span class="sec-n">Register 08</span><h2>Features</h2></div>
+    <p class="sec-d">The switches that change what the system does on its own.</p>
+    <p class="sec-k">Kept on the restaurant. Everyone who works here gets the same answer.</p>
+    <span class="micro seal">Autonomy</span>
+    <div class="row grave"><div class="body"><p class="lab">Send AI replies without my approval</p>
+      <p class="con">ON means an AI-written reply leaves for your vendor with nobody having read it. You get two minutes to cancel each one; a guardrail still holds a reply back for commitment language, a price above target, a quantity or budget change, an unverified sender, or unclear terms.</p>
+      <p class="prov">kept · this restaurant — changed · — the settings row has no changed-at column</p>
+      <div class="hold" style="margin-top:10px"><span class="fill"></span><span>Hold to allow AI to send</span></div>
+    </div><div class="ctl"></div></div>
+    <div class="row"><div class="body"><p class="lab">Let AI handle vendor email at all</p>
+      <p class="con">AI reads vendor replies, works out what they mean, and drafts your answer. Off stops it reading and answering vendor email entirely — including the switch above.</p>
+      <p class="prov">kept · this restaurant — changed · — the settings row has no changed-at column</p></div>
+      <div class="ctl"><span class="sw on"><i></i></span></div></div>
+    <span class="micro seal">Mudavym redesign · 17 pages</span>
+    <div class="row"><div class="body"><p class="lab">Settings</p>
+      <p class="con">Renders the Mudavym design of this page for everyone at this restaurant. <code>mudavym_design_settings</code></p>
+      <p class="prov">kept · this restaurant — changed · — the settings row has no changed-at column</p></div>
+      <div class="ctl"><span class="sw on"><i></i></span></div></div>
+    <div class="row"><div class="body"><p class="lab">Calendar</p>
+      <p class="con">Renders the Mudavym design of this page for everyone at this restaurant. <code>mudavym_design_calendar</code></p>
+      <p class="prov">kept · this restaurant — changed · — the settings row has no changed-at column</p></div>
+      <div class="ctl"><span class="sw on"><i></i></span></div></div>
+    <div class="row"><div class="body"><p class="lab">Cellar</p>
+      <p class="con">Renders the Mudavym design of this page for everyone at this restaurant. <code>mudavym_design_cellar</code></p>
+      <p class="prov">kept · this restaurant — changed · — the settings row has no changed-at column</p></div>
+      <div class="ctl"><span class="sw"><i></i></span></div></div>
+    <span class="micro">No switch · 11 capabilities</span>
+    <div class="row"><div class="body"><p class="lab">Receiving door</p>
+      <p class="con">Photo count, verification and the pinned receipt task. On for everyone who can reach them.</p></div>
+      <div class="ctl"><span class="dead">no switch</span></div></div>
+    <div class="row"><div class="body"><p class="lab">Analytics insights</p>
+      <p class="con">347 insight types generated nightly. There is no per-restaurant gate behind it.</p></div>
+      <div class="ctl"><span class="dead">no switch</span></div></div>
+  </section>
+
+  <section id="pos">
+    <div class="sec-h"><span class="sec-n">Register 09</span><h2>Point of sale</h2></div>
+    <p class="sec-d">The till connection and what it has actually sent.</p>
+    <p class="sec-k">Kept on the restaurant. Everyone who works here gets the same answer.</p>
+    <span class="micro seal">What the till has sent</span>
+    <div class="row"><div class="body"><p class="lab">Checks received</p>
+      <p class="con">Toast: 14,208 · SimPOS: 361</p>
+      <p class="prov">kept · this restaurant — last check · 41 min ago</p></div>
+      <div class="ctl"><span class="fig">14,569</span></div></div>
+    <span class="micro">Which connector you are reading about</span>
+    <div class="row"><div class="body"><p class="lab">Connector</p>
+      <p class="con">This records which connector’s documentation you are looking at. It does <strong>not</strong> connect anything and nothing in the ingest path reads it. 7 connectors are described. The date beside it is your preference record’s, shared with every other setting kept on your account.</p>
+      <p class="prov">kept · your account — changed · 21 days ago</p></div>
+      <div class="ctl"><span class="chip on">Toast</span></div></div>
+  </section>
+
+  <section id="calendar">
+    <div class="sec-h"><span class="sec-n">Register 10</span><h2>Calendar subscription</h2></div>
+    <p class="sec-d">The feed another calendar can read.</p>
+    <p class="sec-k">Kept on the restaurant. Everyone who works here gets the same answer.</p>
+    <p class="con">This address serves your calendar as an <code>.ics</code> feed and needs no login — the token in it <em>is</em> the credential. Treat it as one.</p>
+    <div class="row"><div class="body"><p class="lab">Feed address</p>
+      <p class="con">Anyone holding this address can read this restaurant's calendar.</p>
+      <p class="prov">kept · this restaurant — changed · — the token has no date of its own</p>
+      <div class="url">https://app.mudavym.com/api/v1/calendar/feed/8f3c1ba9d6e04a77b2c5e0198d4f7a3169bc2ed58a04f712.ics</div>
+    </div><div class="ctl"><span class="btn">Copy</span></div></div>
+    <div class="row"><div class="body"><p class="lab">Start again with a new token</p>
+      <p class="con">Every calendar already subscribed to the old address stops receiving anything, silently and without warning them. There is no undo.</p>
+      <p class="prov">kept · this restaurant — changed · — no table records a regeneration</p></div>
+      <div class="ctl"><span class="btn q">Regenerate</span></div></div>
+    <span class="micro">Untested</span>
+    <p class="why">No external calendar client has ever been observed subscribing to this feed. The gateway serves it as <code>Content-Disposition: attachment</code>, which most clients read as “download this file once”. The steps are what <em>should</em> work, not what has been seen to.</p>
+  </section>
+
+  <section id="cellar">
+    <div class="sec-h"><span class="sec-n">Register 11</span><h2>Cellar registers</h2></div>
+    <p class="sec-d">Which drinks registers this house actually carries.</p>
+    <p class="sec-k">Kept on the restaurant. Everyone who works here gets the same answer.</p>
+    <p class="con">A house that pours no spirits should not be shown a spirits register — drawing one says the programme exists, and then says it is empty.</p>
+    <div class="row"><div class="body"><p class="lab">Wines</p><p class="con">1,284 bottles across 4 zones. Carried.</p>
+      <p class="prov">kept · this restaurant — confirmed · 14 Mar 2026</p></div><div class="ctl"><span class="sw on"><i></i></span></div></div>
+    <div class="row"><div class="body"><p class="lab">Beer</p><p class="con">61 lines. Carried.</p>
+      <p class="prov">kept · this restaurant — confirmed · 14 Mar 2026</p></div><div class="ctl"><span class="sw on"><i></i></span></div></div>
+    <div class="row"><div class="body"><p class="lab">Whiskey</p><p class="con">Inferred from 38 menu lines and 12 invoices — nobody has confirmed it.</p>
+      <p class="prov">kept · this restaurant — confirmed · — inferred, never written</p></div><div class="ctl"><span class="sw"><i></i></span></div></div>
+    <div class="row"><div class="body"><p class="lab">Soft drinks</p><p class="con">No rows found. Switching this on will ask you to confirm before the register is drawn.</p>
+      <p class="prov">kept · this restaurant — confirmed · — nobody has said</p></div><div class="ctl"><span class="sw"><i></i></span></div></div>
+    <div class="callout"><strong>The rule behind this register:</strong> an inferred answer is never written down. A guess that is stored is indistinguishable from an answer a week later, so only a person’s own statement becomes a row — and the evidence the machine had at that moment is kept beside it.</div>
+  </section>
+
+  </main>
+</div>
+</div>
+<script>
+// Rail highlight follows the scroll. The URL deliberately does not.
+const links = [...document.querySelectorAll('.rail a')];
+const secs = links.map(a => document.querySelector(a.getAttribute('href')));
+const mark = () => {
+  let i = 0;
+  secs.forEach((s, n) => { if (s.getBoundingClientRect().top <= 120) i = n; });
+  links.forEach((a, n) => a.classList.toggle('on', n === i));
+};
+addEventListener('scroll', mark, { passive: true }); mark();
+</script>
+</body>
+</html>

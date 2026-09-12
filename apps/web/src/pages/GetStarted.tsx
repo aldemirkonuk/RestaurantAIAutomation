@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -30,6 +30,13 @@ import type { MenuImportResult } from '../services/api/menus'
 import { trackGuidance } from '../guidance/analytics'
 import { cn } from '../lib/utils'
 import { BrandMark } from '../components/brand/BrandMark'
+import { useMudavymDesign } from '../lib/mudavym/useMudavymDesign'
+
+// Flag-gated and lazy: with `mudavym_design_cellar` off this chunk is never
+// requested, so the legacy onboarding bundle is unchanged.
+const CellarRegistersOnboarding = lazy(
+  () => import('../components/onboarding/CellarRegistersOnboarding'),
+)
 
 type ImportMethod = 'scan' | 'csv' | 'manual'
 type TabId = 'activate' | 'use'
@@ -161,6 +168,14 @@ export default function GetStarted() {
   const [result, setResult] = useState<MenuImportResult | null>(null)
   const { progress, isLoading } = useOnboardingProgress()
 
+  // The house's registers are inferred, then CONFIRMED AT ONBOARDING (founder
+  // decision; `.planning/06-pages/wines.md` §13 "Roadmap for the adaptation"
+  // item 1). Gated on the cellar flag so the legacy page is byte-for-byte
+  // unchanged when it is off, and never a gate on the flow either way.
+  const cellarNext = useMudavymDesign('cellar')
+  const [registersFor, setRegistersFor] = useState<MenuImportResult | null>(null)
+  const [registersDoneInTab, setRegistersDoneInTab] = useState(false)
+
   const isStaff = user?.role === 'staff'
 
   const tabParam = searchParams.get('tab')
@@ -220,19 +235,41 @@ export default function GetStarted() {
     return <StaffWelcome />
   }
 
+  // Where the review step hands off: to the registers question when the cellar
+  // flag is on, otherwise straight on as before.
+  const afterReview = (r: MenuImportResult) => {
+    if (cellarNext) setRegistersFor(r)
+    else setPendingResult(r)
+    setReviewResult(null)
+  }
+
   if (reviewResult) {
     return (
       <MenuReviewScreen
         result={reviewResult}
-        onConfirm={() => {
-          setPendingResult(reviewResult)
-          setReviewResult(null)
-        }}
-        onSkip={() => {
-          setPendingResult(reviewResult)
-          setReviewResult(null)
-        }}
+        onConfirm={() => afterReview(reviewResult)}
+        onSkip={() => afterReview(reviewResult)}
       />
+    )
+  }
+
+  // Step 2b (flag-gated): immediately after the menu review, confirm what this
+  // house pours. Skippable, and self-skipping when there is nothing to ask —
+  // `onDone` always continues to the existing threshold/success path.
+  if (registersFor) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center px-4 py-12">
+        <div className="w-full max-w-2xl">
+          <Suspense fallback={null}>
+            <CellarRegistersOnboarding
+              onDone={() => {
+                setPendingResult(registersFor)
+                setRegistersFor(null)
+              }}
+            />
+          </Suspense>
+        </div>
+      </div>
     )
   }
 
@@ -392,6 +429,16 @@ export default function GetStarted() {
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {cellarNext && progress?.menu_uploaded && !registersDoneInTab && (
+                <div className="w-full mt-8" data-testid="activate-cellar-registers">
+                  <Suspense fallback={null}>
+                    <CellarRegistersOnboarding
+                      onDone={() => setRegistersDoneInTab(true)}
+                    />
+                  </Suspense>
+                </div>
+              )}
 
               <div className="flex justify-center gap-4 mt-6">
                 <button

@@ -1,0 +1,938 @@
+/* ============================================================
+   ReportsNext page styles. Every class is prefixed `rp-` and used
+   only inside pages/reports/next/** — nothing shared. Colours come
+   exclusively from the .mudavym tokens (ADR 0042), so both grounds
+   (paper / warm charcoal) resolve without a second rule.
+   ============================================================ */
+
+/* The page root. `--rp-mono` is declared once here so every figure of record
+   below can be tabular mono without repeating the stack. The palette used to
+   share this declaration (it floats outside `.rp-page` and needed the same
+   vars but not the ground); since ADR 0112 it is the house `Panel`, whose own
+   root carries `.mudavym`, so it no longer rides on this selector. */
+.rp-page {
+  --rp-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: 'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
+}
+.rp-page {
+  min-height: 100%;
+  background: var(--paper-0);
+  color: var(--ink-1);
+}
+.rp-page__inner {
+  margin: 0 auto;
+  max-width: 1280px;
+  padding: 24px 16px 40px;
+}
+
+/* ── the sheet, and its ruling ─────────────────────────────────────────────
+   The 12-column grid is the paper's FEINT RULING: invisible while reading,
+   drawn while arranging. That is the whole idea of the page — the ruling is
+   the promise that a cutting will land square when you let go of it. */
+.rp-sheet {
+  position: relative;
+}
+.rp-sheet::before {
+  content: '';
+  position: absolute;
+  inset: -4px -2px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  /* Twelve hairlines, one per column. No `background-size` on purpose: the
+     repeating gradient's own period is already 1/12 of the sheet, and tiling
+     it as well would draw 144 lines. */
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--seal-ring) 0 1px,
+    transparent 1px calc(100% / 12)
+  );
+}
+.rp-sheet[data-arranging='true']::before {
+  opacity: 1;
+}
+
+/* ── a cutting ─────────────────────────────────────────────────────────────
+   `--rp-tuck` is set on .rp-sheet from the `tuck` token in lib/mudavym/
+   motion.ts, so the curve that runs here IS the token's sampled spring rather
+   than a hand-written approximation of it. */
+/* `height: 100%` is load-bearing, not tidiness: react-grid-layout sizes the
+   grid ITEM and leaves its child alone, so a cutting without it grows past the
+   box the reader gave it and paints over the cuttings below. */
+.rp-grid-item {
+  height: 100%;
+}
+.rp-cut {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow var(--rp-tuck, 300ms cubic-bezier(0.16, 1, 0.3, 1));
+}
+.rp-cut:hover {
+  border-color: var(--seal-ring);
+}
+/* A cutting's body scrolls when the reader sized it smaller than its content.
+   The fade tells a clipped line apart from a finished one; over a short block
+   it is invisible, because it fades to the ground it sits on. */
+.rp-cut::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  height: 18px;
+  pointer-events: none;
+  border-radius: 0 0 9px 9px;
+  background: linear-gradient(to bottom, transparent, var(--paper-1));
+}
+.rp-cut {
+  position: relative;
+}
+.rp-sheet[data-arranging='true'] .rp-cut {
+  border-style: dashed;
+  border-color: var(--seal-ring);
+  cursor: grab;
+  box-shadow: 0 2px 0 0 var(--paper-2);
+}
+.rp-sheet[data-arranging='true'] .react-draggable-dragging.rp-grid-item .rp-cut {
+  cursor: grabbing;
+  box-shadow: 0 6px 18px -8px var(--seal-ring);
+}
+.rp-cut__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 4px;
+}
+
+/* The window under the title — every cutting states the period it speaks
+   about, ALWAYS, because only one of the eleven registers takes a window from
+   the reader and the other ten are fixed by the server. */
+.rp-cut__window {
+  margin: 2px 0 0;
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+/* The two questions a cutting is asked while the sheet is being arranged:
+   what it shows, and how it is drawn. Never present while reading. */
+.rp-cut__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 4px 12px 8px;
+  border-bottom: 1px dashed var(--paper-2);
+}
+.rp-field {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.rp-field .rp-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* A global rule in the app's own stylesheet paints EVERY select
+   `background: white !important; color: #1F2937 !important`
+   (`src/styles/globals.css:433-438`, with a charcoal counterpart at `:464-468`),
+   which lands a raw white control on the paper ground and ignores the house
+   tokens entirely. Measured in the browser, 2026-09-03. The
+   two `!important`s below are the local answer — with both declarations
+   important, the more specific selector wins — and the global is filed in the
+   page note §9 as a foundation smell to fix once, outside this page's paths.
+   Contrast is not lost by the override: ink-1 on paper-0 measures well past
+   AA on both grounds. */
+.rp-select {
+  font-family: inherit;
+  font-size: 11.5px;
+  max-width: 190px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--paper-2);
+  cursor: pointer;
+}
+.rp-page .rp-select {
+  background: var(--paper-0) !important;
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+}
+.rp-arrange {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.rp-cut__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* A chart takes the room the reader gave the cutting when they resized it.
+   The inner container is taken OUT of flow on purpose: recharts' own
+   ResponsiveContainer measures its parent, so leaving it in a flex column
+   makes parent and child chase each other — the chart grows the card, the
+   card grows the chart, and the axis labels end up outside the cutting.
+   Absolute-inside-relative breaks that loop and pins the plot to the box the
+   reader sized. */
+.rp-plot {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 130px;
+  width: 100%;
+  overflow: hidden;
+}
+.rp-plot > .recharts-responsive-container {
+  position: absolute;
+  inset: 0;
+}
+
+/* ── the hover detail on a plot ────────────────────────────────────────────
+   One tooltip shape for every drawing: what you are hovering, then the value
+   with its unit spelled out. A number with no unit is a number the reader has
+   to guess at. */
+.rp-tip {
+  display: grid;
+  gap: 1px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-0);
+  box-shadow: 0 10px 24px -18px rgba(0, 0, 0, 0.6);
+}
+.rp-tip__head {
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.rp-tip__row {
+  font-size: 11.5px;
+  color: var(--ink-1);
+}
+.rp-tip__row b {
+  font-family: var(--rp-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ── "one figure": the analysis reduced to its headline number ─────────── */
+.rp-big {
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  flex: 1 1 auto;
+  min-height: 84px;
+}
+.rp-big__value {
+  font-family: var(--rp-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: 30px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink-1);
+}
+.rp-big__value[data-unknown='true'] {
+  color: var(--ink-3);
+}
+
+/* ── the heat map: a real table, so a header is a header ────────────────
+   The ramp is ONE hue — the seal at an opacity proportional to the largest
+   cell. A cell with no recorded row is blank paper with a hairline, because
+   "nobody rang anything up" and "the quietest service of the quarter" must not
+   look like each other. */
+.rp-heat-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.rp-heat {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  color: var(--ink-3);
+}
+.rp-heat__col,
+.rp-heat__row {
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-align: right;
+  padding: 0 3px;
+}
+.rp-heat__col {
+  text-align: center;
+}
+.rp-heat__corner {
+  text-align: left;
+}
+.rp-heat__cell {
+  width: 17px;
+  height: 15px;
+  padding: 0;
+  border-radius: 3px;
+  background: var(--paper-2);
+}
+.rp-heat__cell[data-blank='true'] {
+  background: transparent;
+  border: 1px dashed var(--paper-2);
+}
+.rp-heat__cell span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--seal);
+}
+
+/* ── the plain register, as rows ───────────────────────────────────────── */
+.rp-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.rp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.rp-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-family: var(--rp-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--paper-1);
+  padding: 2px 6px 3px 0;
+  border-bottom: 1px solid var(--paper-2);
+}
+.rp-table td {
+  padding: 3px 6px 3px 0;
+  border-bottom: 1px solid var(--paper-2);
+  color: var(--ink-1);
+}
+.rp-table th[data-numeric='true'],
+.rp-table td[data-numeric='true'] {
+  text-align: right;
+  padding-right: 0;
+  font-family: var(--rp-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.rp-table td[data-unknown='true'] {
+  color: var(--ink-3);
+}
+
+/* The double rule — "the account is ruled off" (059 / 057 Ledger). */
+.rp-rule {
+  border: 0;
+  border-top: 1px solid var(--ink-1);
+  border-bottom: 1px solid var(--ink-1);
+  height: 3px;
+  margin: 0;
+  opacity: 0.5;
+}
+
+/* ── micro-states: nothing moves more than 2px, 160ms house curve ──────── */
+.rp-ink {
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── "show the working": the basis line the SERVER wrote ──────────────── */
+.rp-working {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 420ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.rp-working[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+.rp-working > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── skeletons: a register in flight. NEVER shown for an unknown. ─────── */
+.rp-skel {
+  position: relative;
+  overflow: hidden;
+  background: var(--paper-2);
+  border-radius: 3px;
+}
+.rp-skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--paper-1), transparent);
+  animation: rp-sheen 1.9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes rp-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ── focus rings land on paper, never on the seal fill (1.00:1) ───────── */
+.rp-focus:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* react-grid-layout's own placeholder, in house colours. */
+.rp-sheet .react-grid-placeholder {
+  background: var(--seal-tint);
+  border: 1px dashed var(--seal-ring);
+  border-radius: 10px;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-sheet::before,
+  .rp-cut,
+  .rp-ink,
+  .rp-working {
+    transition: none !important;
+  }
+  .rp-skel::after {
+    animation: none !important;
+  }
+}
+
+/* ── the page's small typographic parts ────────────────────────────────────
+   These were inline style objects on every cutting. Moved here because the
+   page already owns a stylesheet, and because a token that appears eleven
+   times should be declared once — the same argument the ruling makes about
+   the grid. */
+.rp-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.rp-cap {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+.rp-quiet {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+/* The one `.rp-*` rule that also renders OUTSIDE `.rp-page`: the palette's
+   rows are portalled to `document.body` inside the house Panel, where
+   `--rp-mono` is not declared. The stack is repeated as the var's fallback
+   rather than re-declared on the overlay, so nothing this page owns leaks onto
+   a primitive every other page shares. */
+.rp-eyebrow {
+  font-family: var(--rp-mono, 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.rp-tag {
+  font-family: var(--rp-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  border: 1px solid var(--paper-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+.rp-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.rp-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 7px;
+}
+.rp-dl {
+  margin: 0;
+  display: grid;
+  gap: 3px;
+}
+.rp-fig {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rp-fig dt {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.rp-fig dd {
+  margin: 0;
+  font-family: var(--rp-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-1);
+}
+.rp-fig dd[data-unknown='true'] {
+  color: var(--ink-3);
+}
+.rp-sentence {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+/* ── buttons and links ────────────────────────────────────────────────────
+   Focus rings land on a paper gap via `.rp-focus`; a ring drawn on the seal
+   fill measured 1.00:1 and is never used. */
+.rp-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--paper-2);
+  background: transparent;
+  color: var(--ink-2);
+}
+.rp-btn[data-strong='true'] {
+  border-color: var(--seal);
+  background: var(--seal-tint);
+  color: var(--seal-deep);
+}
+.rp-btn[disabled] {
+  border-style: dashed;
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+.rp-mini {
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid var(--seal-ring);
+  background: transparent;
+  color: var(--seal-deep);
+}
+.rp-chip {
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--ink-1);
+  border: 1px solid var(--paper-2);
+  background: transparent;
+}
+.rp-chip[aria-pressed='true'] {
+  border-color: var(--seal-ring);
+  background: var(--seal-tint);
+}
+.rp-link {
+  justify-self: start;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--seal-deep);
+  text-decoration: none;
+  border-bottom: 1px solid var(--seal-ring);
+}
+
+/* ── the opening, and the signature ────────────────────────────────────────
+   Fraunces speaks only when the PRODUCT speaks (DESIGN-FOUNDATION §0a) — and
+   on this page the product's only voice is the engine's own sentence, printed
+   verbatim in `.rp-voice`. */
+.rp-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.rp-title {
+  margin: 2px 0 0;
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-weight: 420;
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+.rp-title span {
+  color: var(--seal);
+}
+.rp-voice {
+  margin: 6px 0 0;
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  max-width: 62ch;
+}
+.rp-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.rp-foot {
+  margin-top: 28px;
+  padding-top: 12px;
+  border-top: 1px solid var(--paper-2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rp-foot p {
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  max-width: 620px;
+  text-align: right;
+}
+
+.rp-cut__title {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+}
+
+/* ── "Ask the book" — the ⌘K palette ────────────────────────────────────
+   RETIRED 2026-09-04 (ADR 0112): `.rp-ask`, `.rp-ask__scrim`, `.rp-ask__panel`,
+   `.rp-ask__field` and `.rp-ask__foot` are gone. The palette is the house
+   `Panel` now (components/mudavym/Sheet.tsx + sheet.css), which owns the
+   positioner, the scrim, the 620px card, the `settle` motion, the footer rule,
+   the Fraunces field (`.mdv-field`) and — new — the focus trap, the returned
+   focus and the scroll lock. Only the scrolling body's padding below is still
+   this page's, because the list inside it is. */
+.rp-ask__body {
+  overflow: auto;
+  padding: 8px 14px 4px;
+}
+/* ══ FOURTH PASS, 2026-09-03 ═══════════════════════════════════════════════
+   Arranging without a pointer, and the goals desk.
+
+   Two rules govern everything below.
+
+   (1) A control that exists for the keyboard must be VISIBLE, or it is a
+       secret. The grip and the placing bar are ordinary ink-on-paper controls
+       that appear while the sheet is being arranged — nothing here is a
+       screen-reader-only affordance, because WCAG 2.5.7 is about people who
+       use a pointer and cannot drag, and they need to SEE the alternative.
+
+   (2) The ghost is drawn from react-grid-layout's own position maths, so it
+       lands on the same pixel the cutting left. It is an outline, never a
+       fill: a filled rectangle would read as a second cutting. */
+
+/* ── the grip ─────────────────────────────────────────────────────────────
+   Same weight as "Take off" so neither reads as the primary act, but it sits
+   first in the tab order because moving is the common one. */
+.rp-grip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 5px;
+  cursor: grab;
+  border: 1px solid var(--paper-2);
+  background: transparent;
+  color: var(--ink-2);
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-grip[aria-pressed='true'] {
+  cursor: grabbing;
+  border-color: var(--seal);
+  background: var(--seal-tint);
+  color: var(--seal-deep);
+}
+
+/* A cutting that is being placed reads as lifted — the same `tuck` shadow a
+   dragged one takes, so the two paths look like one interaction. */
+.rp-cut[data-held='true'] {
+  border-style: solid;
+  border-color: var(--seal);
+  box-shadow: 0 6px 18px -8px var(--seal-ring);
+}
+
+/* ── the placing bar: the single-pointer path (WCAG 2.2 SC 2.5.7) ───────── */
+.rp-placing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--paper-2);
+  background: var(--seal-tint);
+}
+.rp-placing__set {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.rp-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--rp-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid var(--seal-ring);
+  background: var(--paper-0);
+  color: var(--ink-1);
+}
+.rp-step[data-strong='true'] {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}
+
+/* ── the ghost: where a held cutting started ──────────────────────────────
+   `Escape puts it back` names a place, so the place is drawn. */
+.rp-ghost {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border: 1px dashed var(--seal);
+  border-radius: 10px;
+  background: transparent;
+  opacity: 0.55;
+}
+
+/* The live region carries the running position. Clipped rather than
+   `display: none`, which removes it from the accessibility tree entirely. */
+.rp-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.rp-arrange__help {
+  margin: 0;
+}
+
+/* ── small button states the page had not needed until now ─────────────── */
+.rp-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rp-mini[data-strong='true'] {
+  background: var(--seal-tint);
+  color: var(--seal-deep);
+  border-color: var(--seal);
+}
+.rp-mini[disabled],
+.rp-step[disabled] {
+  border-style: dashed;
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+/* ── the goals desk ───────────────────────────────────────────────────── */
+.rp-goals {
+  display: grid;
+  gap: 10px;
+}
+.rp-goals__error {
+  color: var(--seal-deep);
+}
+.rp-goals__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.rp-goal {
+  display: grid;
+  gap: 5px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--paper-2);
+}
+.rp-goal:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.rp-goal__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rp-goal__name {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-1);
+}
+.rp-goal__line {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.rp-mono {
+  font-family: var(--rp-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-1);
+}
+
+/* A progress bar is drawn ONLY from the server's own progressPct. An unknown
+   draws no track at all — an empty track reads as "nothing has happened". */
+.rp-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--paper-2);
+  overflow: hidden;
+}
+.rp-bar span {
+  display: block;
+  height: 100%;
+  background: var(--seal);
+}
+
+.rp-goalform {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed var(--seal-ring);
+  border-radius: 8px;
+}
+.rp-goalform > .rp-row,
+.rp-goalform > .rp-cap {
+  grid-column: 1 / -1;
+}
+.rp-input {
+  width: 100%;
+  font-size: 12px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-0);
+  color: var(--ink-1);
+}
+.rp-page .rp-input {
+  background: var(--paper-0) !important;
+  color: var(--ink-1) !important;
+}
+
+/* The assistant's proposal. Dashed, because nothing has been committed. */
+.rp-proposal {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px dashed var(--seal);
+  border-radius: 8px;
+  background: var(--seal-tint);
+}
+.rp-proposal .rp-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The scenario reading under "Start from a scenario". A ruled block rather than
+   a tinted one: the proposal card above it is the seal's, because a model wrote
+   it; this is quoted from an operator report, and the house rule is that the
+   seal is the ONE chromatic colour and belongs to what the product says itself
+   (ADR 0042). Ink and paper, with a left rule to mark it as quoted matter. */
+.rp-scenario-note {
+  display: grid;
+  gap: 4px;
+  padding: 6px 0 6px 10px;
+  border-left: 2px solid var(--ink-4);
+}
+.rp-scenario-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The picker owns a whole row of the form grid: its label and the reading
+   under it are one statement, and auto-fit would otherwise put them in
+   adjacent columns with the next field's label between them. */
+.rp-goalform > .rp-scenario {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+
+/* "Ask for a scenario" (ADR 0120 Q4). Ruled off ABOVE rather than boxed: it is
+   the same statement as the picker, continued — the book is Mudavym's, and this
+   is what a house does about a scenario that is not in it. No tint, because the
+   seal belongs to what the product says itself and this is a form control. */
+.rp-scenario__ask {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding-top: 8px;
+  border-top: 1px solid var(--ink-4);
+}
+.rp-scenario__ask .rp-field,
+.rp-scenario__ask textarea {
+  width: 100%;
+}
+.rp-scenario__ask textarea {
+  resize: vertical;
+  min-height: 3.4em;
+  font: inherit;
+}

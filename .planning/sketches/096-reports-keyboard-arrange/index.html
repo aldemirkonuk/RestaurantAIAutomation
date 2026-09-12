@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>096 · Reports keyboard arrange</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1360px;margin:0 auto;padding:22px 24px 70px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+.eyebrow{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+h1{font-family:var(--serif);font-size:30px;font-weight:600;letter-spacing:-.015em;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:6px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.45;margin:16px 0 18px}
+p{font-size:12.5px;line-height:1.6;color:var(--ink-2);margin:6px 0 0;max-width:860px}
+.cap{font-size:10.5px;line-height:1.45;color:var(--ink-3);margin:4px 0 0}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.btn{font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.btn.strong{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.mini{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:5px;border:1px solid var(--seal-ring);background:transparent;color:var(--seal-deep);display:inline-flex;align-items:center;gap:4px}
+
+/* ── the sheet: a twelve-column ruling, drawn because we are arranging ── */
+.sheet{position:relative;margin-top:14px;display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:34px;gap:14px}
+.sheet::before{content:"";position:absolute;inset:-4px -2px;pointer-events:none;
+  background-image:repeating-linear-gradient(to right,var(--seal-ring) 0 1px,transparent 1px calc(100% / 12));}
+.cut{position:relative;z-index:2;border:1px dashed var(--seal-ring);border-radius:10px;background:var(--paper-1);padding:9px 12px 10px;overflow:hidden;display:flex;flex-direction:column;gap:5px}
+.cut h2{font-family:var(--serif);font-size:14px;font-weight:600;margin:0;color:var(--ink-1)}
+.cut .win{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--ink-3);margin:0}
+.cut .head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.grip{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:5px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);white-space:nowrap}
+.grip.pressed{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.focusring{outline:2px solid var(--seal);outline-offset:2px;border-radius:6px}
+.held{border-style:solid;border-color:var(--seal);box-shadow:0 6px 18px -8px var(--seal-ring);z-index:5}
+/* The ghost paints ABOVE the cuttings, as it does in the built page: the
+   square a cutting left is usually filled by the ruling closing behind it,
+   so an outline underneath would be invisible exactly when it matters. */
+.ghost{position:relative;z-index:7;border:1.5px dashed var(--seal);border-radius:10px;background:rgba(26,94,107,.07);pointer-events:none;display:flex;align-items:flex-end;justify-content:flex-start;padding:6px 8px}
+.ghost span{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--seal-deep);background:var(--paper-0);padding:2px 5px;border-radius:4px;border:1px solid var(--seal-ring)}
+
+/* charts, drawn in CSS so the file needs nothing */
+.bars{display:flex;align-items:flex-end;gap:5px;height:100%;min-height:40px}
+.bars i{display:block;flex:1;background:var(--seal);opacity:.75;border-radius:2px 2px 0 0}
+.spark{display:flex;align-items:flex-end;gap:3px;height:38px}
+.spark i{display:block;width:7px;background:var(--seal);opacity:.6;border-radius:2px 2px 0 0}
+.fig{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--ink-3)}
+.fig b{font-family:var(--mono);font-weight:400;font-size:12.5px;color:var(--ink-1);font-variant-numeric:tabular-nums}
+.sent{font-size:11.5px;line-height:1.5;color:var(--ink-1);margin:0}
+.bar{height:6px;border-radius:3px;background:var(--paper-2);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--seal)}
+
+/* the live region, made VISIBLE for the sketch */
+.heard{margin-top:18px;border:1px solid var(--seal-ring);border-radius:10px;background:var(--seal-tint);padding:10px 13px}
+.heard .eyebrow{color:var(--seal-deep)}
+.heard p{color:var(--ink-1);font-size:12.5px;margin:4px 0 0;max-width:none}
+.keys{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+kbd{font-family:var(--mono);font-size:10px;padding:2px 6px;border:1px solid var(--paper-2);border-bottom-width:2px;border-radius:4px;background:var(--paper-0);color:var(--ink-1)}
+.note{border-left:2px solid var(--seal);padding-left:12px;margin-top:20px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:8px}
+table.k{border-collapse:collapse;width:100%;margin-top:8px}
+table.k th,table.k td{text-align:left;font-size:11.5px;padding:5px 8px;border-bottom:1px solid var(--paper-2);vertical-align:top}
+table.k th{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+a.back{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+
+a.card{display:block;text-decoration:none;color:inherit;border-top:1px solid var(--paper-2);padding:16px 0}
+a.card:hover{background:var(--paper-1)}
+.n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+h2{font-family:var(--serif);font-size:22px;font-weight:600;margin:2px 0 0}
+.meta{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:8px}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 096 · reports keyboard arrange · example data, not a tenant</div>
+<div class="wrap" style="max-width:940px">
+  <div class="wordmark">Mudavym</div>
+  <h1>096 · Moving a cutting without a pointer<span class="dot">.</span></h1>
+  <p class="lede">&ldquo;Keyboard drag and resize are not supported by the grid library &hellip; research web
+  find a way to be able to do that, engineering part is important research and analyze &mdash; if found
+  ways create me a sketch for it.&rdquo;</p>
+
+  <div class="dbl"></div>
+
+  <p><b>A way was found, and it is not a new library.</b> react-grid-layout still exposes no keyboard
+  affordance &mdash; its own request for one (issue #936, 2019) went stale and was closed unimplemented
+  &mdash; but its layout is a <b>controlled prop</b>, and this page already holds it. Measured in the
+  installed package: the responsive grid re-derives its internal layout whenever the <code>layouts</code>
+  prop stops deep-equalling the previous one, and the library's own pointer path is exactly two exported
+  functions, <code>moveElement</code> then <code>compact</code>. The keyboard runs the same two. A
+  keyboard move and a dragged move to the same square produce a bit-identical layout, because they are
+  the same function.</p>
+
+  <p class="cap">Grafana's dashboard is built on this same library and is recorded as unable to move a
+  panel from the keyboard (grafana#79627). The interaction model below is dnd-kit's KeyboardSensor
+  (Space/Enter to start and end, Escape to cancel) and react-aria's &ldquo;drag affordance&rdquo;; the
+  button path exists because WCAG 2.2 SC 2.5.7 asks for a single-POINTER alternative and is evaluated
+  independently of keyboard access.</p>
+
+  <div class="dbl"></div>
+
+  <a class="card" href="grip-and-placing-bar.html">
+    <span class="n">Direction A &middot; built</span>
+    <h2>The grip and the placing bar</h2>
+    <p>A named Move grip on every cutting while arranging. Space picks it up, arrows move one grid unit,
+    Shift and an arrow resize, Enter places, Escape puts it back. A bar of ordinary buttons does the same
+    ten things for a pointer that cannot drag. Shows the focus ring, the ghost outline and the announcement.</p>
+    <p class="meta">Ships behind mudavym_design_reports &middot; no new dependency</p>
+  </a>
+
+  <a class="card" href="compass-card.html">
+    <span class="n">Direction B &middot; not built</span>
+    <h2>The compass card</h2>
+    <p>The same handlers behind a floating three-by-three pad anchored to the held cutting, with four
+    named outcomes underneath. Calmer inside a small cutting; costs a floating layer that must chase a
+    cutting which moves on every keystroke.</p>
+    <p class="meta">A swap, not a rewrite &mdash; same arrange engine</p>
+  </a>
+
+  <a class="card" href="move-to-menu.html">
+    <span class="n">Direction C &middot; not built, and why</span>
+    <h2>The move-to menu</h2>
+    <p>The pattern the strongest counter-argument recommends: no arrow keys at all, a menu of named
+    outcomes per cutting. Right for a board with nameable destinations; on a free twelve-column canvas
+    the outcomes are coordinates, and the menu can only ever offer less than the pointer can.</p>
+    <p class="meta">Its announcement discipline was taken; its shape was not</p>
+  </a>
+</div>
+</body>
+</html>
