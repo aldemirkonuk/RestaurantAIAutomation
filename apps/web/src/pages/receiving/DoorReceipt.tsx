@@ -108,11 +108,11 @@ export default function DoorReceipt() {
     const stop = watchDoorOutbox(() => {
       // A discarded receipt leaves the queue exactly as a delivered one does,
       // so `pending` falls by one either way. What tells them apart is ASKED
-      // FOR rather than inferred from the pass result: the drop record, and
-      // `readStrandedDoorReceipts`, which is the outbox's in-memory ledger
-      // unioned with a mark on the queue entry. Not the ceiling and not the
-      // mark alone — the strand's own cause is the disk refusing writes, so on
-      // the device this matters on there is usually nothing on disk to read.
+      // FOR rather than inferred from the pass result: the drop RECORD, read
+      // back from storage. There is deliberately nothing to read for a receipt
+      // the outbox gave up on but could not record — ADR 0140 — because the
+      // fact to be recorded is that recording failed. That one stays in the
+      // queue and shows on the rail as what it is: a receipt still here.
       refresh()
     })
     const on = () => setOnline(true)

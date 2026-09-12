@@ -19,7 +19,7 @@
  * that (0,2,0 over 0,1,0).
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
@@ -159,6 +159,108 @@ describe('the one escape still escapes', () => {
     );
     const sheet = document.querySelector('.cd-sheet') as HTMLElement;
     expect(tokens(sheet, Object.keys(PAPER))).toEqual(PAPER);
+  });
+});
+
+/**
+ * EVERY REAL SCOPE ROOT, not a synthetic one.
+ *
+ * The suite above mounts `<div class="mudavym">` and proves the token VALUES.
+ * That is worth having and it is not enough: it can see none of the ~27 real
+ * roots in the app, which is how `components/onboarding/CellarRegistersOnboarding`
+ * shipped a bare `.mudavym` section onto `/get-started`'s white page. Measured
+ * there: the register title inherited the host's #111827 onto a `--paper-1`
+ * #1D1813 panel — **1.01:1**, i.e. gone — while the standing lines went the
+ * other way, `--ink-2` #C0B6A5 on white at 2.00:1. Before ADR 0138 the tokens
+ * resolved light and the section was invisible against the page, which is
+ * exactly why nobody had looked at it.
+ *
+ * THE RULE. Declaring the scope changes what every token underneath resolves
+ * to. A root that declares it must therefore also SAY what ground it is on —
+ * either by painting `--paper-*` / `--ink-*` itself (inline, or through a class
+ * whose stylesheet does), or by carrying `data-ground`. What is forbidden is
+ * declaring the scope and painting nothing: the tokens then move while the
+ * surface behind them does not.
+ *
+ * Read from source rather than rendered, because the failure is a missing
+ * attribute on an element whose page needs auth, a router and three query
+ * providers to mount. The CSS half matters — `TeamNext`'s roots paint through
+ * `.tm-page { background: var(--paper-0) }`, so a check that looked only at
+ * inline styles would call two correct roots defects.
+ */
+describe('every .mudavym scope root says what ground it is on', () => {
+  /** The opening tag containing `idx`, braces and strings respected. */
+  const elementSpan = (s: string, idx: number): string => {
+    let i = idx;
+    while (i > 0 && !(s[i] === '<' && /[A-Za-z_]/.test(s[i + 1] ?? ''))) i -= 1;
+    let depth = 0;
+    let q: string | null = null;
+    for (let j = i; j < s.length; j += 1) {
+      const c = s[j];
+      if (q) {
+        if (c === q && s[j - 1] !== '\\') q = null;
+      } else if (c === '"' || c === "'" || c === '`') q = c;
+      else if (c === '{') depth += 1;
+      else if (c === '}') depth -= 1;
+      else if (c === '>' && depth === 0) return s.slice(i, j + 1);
+    }
+    return s.slice(i);
+  };
+
+  const WORD = /(^|[^\w-])mudavym([^\w-]|$)/;
+
+  /** Every file under `dir` with `ext`. `readdirSync` rather than a glob helper,
+   *  so this runs on whatever Node the machine has. */
+  const walk = (dir: string, ext: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) return e.name === 'node_modules' ? [] : walk(full, ext);
+      return e.isFile() && e.name.endsWith(ext) ? [full] : [];
+    });
+
+  it('paints a ground, or names one — never neither', () => {
+    const tsx = walk(ROOT, '.tsx').filter(
+      (f) => !f.includes('__tests__') && !f.includes('.test.'),
+    );
+    expect(tsx.length).toBeGreaterThan(100); // a glob that found nothing must not pass
+
+    const css = walk(ROOT, '.css')
+      .map((f) => readFileSync(f, 'utf8'))
+      .join('\n');
+    /** Classes whose stylesheet paints a ground for them. */
+    const paintedByCss = new Set<string>();
+    for (const m of css.matchAll(/\.([a-zA-Z][\w-]*)\s*(?:,[^{]*)?\{([^}]*)\}/g)) {
+      if (/background(-color)?\s*:/.test(m[2])) paintedByCss.add(m[1]);
+    }
+
+    const ungrounded: string[] = [];
+    let roots = 0;
+    for (const file of tsx) {
+      const src = readFileSync(file, 'utf8');
+      const seen = new Set<number>();
+      for (const m of src.matchAll(/(^|[^\w-])mudavym([^\w-]|$)/g)) {
+        const tag = elementSpan(src, m.index ?? 0);
+        const at = (m.index ?? 0) - tag.length;
+        if (seen.has(at)) continue;
+        seen.add(at);
+        if (!tag.includes('className')) continue;
+        const after = tag.split('className')[1] ?? '';
+        if (!WORD.test(after)) continue;
+        roots += 1;
+        const named = tag.includes('data-ground');
+        const inline = /background(Color)?\s*:/.test(tag);
+        const viaCss = [...tag.matchAll(/["'\s]([a-z][\w-]*)["'\s]/g)].some((c) =>
+          paintedByCss.has(c[1]),
+        );
+        if (!named && !inline && !viaCss) {
+          ungrounded.push(`${file.slice(ROOT.length + 1)} — ${tag.split('\n')[0].trim()}`);
+        }
+      }
+    }
+
+    // A scan that found nothing is a broken scan, not a clean tree.
+    expect(roots).toBeGreaterThan(20);
+    expect(ungrounded).toEqual([]);
   });
 });
 

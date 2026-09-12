@@ -618,8 +618,11 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
                 lastError: STRANDED_MARKER,
               })
             } catch {
-              /* the entry itself survives, and the ledger above already holds
-                 the strand for this session */
+              /* The mark is a courtesy for the rail's `last error` line and
+                 nothing reads it as a witness (ADR 0140), so a failure here
+                 costs a sentence, never the receipt. THE ENTRY SURVIVES, which
+                 is the whole property: it is still in the queue, still counted
+                 by `pendingDoorCount`, still listed on the receiving rail. */
             }
             failed++
             stranded++

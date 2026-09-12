@@ -21,7 +21,7 @@
  *    "accumulates `dropped`" from the flush result. Neither describes the
  *    tree. State the mechanism instead: grep `watchDoorOutbox(` in
  *    DoorReceipt.tsx — that page consults NO field of the result; it re-reads
- *    `readDroppedDoorReceipts` and `readStrandedDoorReceipts` on every pass,
+ *    `readDroppedDoorReceipts` on every pass,
  *    and it names the orders, as this rail does. What is left to this rail
  *    alone is the QUEUE: the entries still waiting, with their attempt count
  *    and last error, which neither door screen shows.)

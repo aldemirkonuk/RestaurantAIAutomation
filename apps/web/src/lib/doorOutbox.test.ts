@@ -449,8 +449,10 @@ describe('H1 — a drop with no house recorded is still shown to someone', () =>
 })
 
 /*
- * The `stranded` suite that used to sit here moved to `doorOutbox.strand.test.ts`
- * and `doorOutbox.orphan.test.ts`, which mock nothing but the network.
+ * The `stranded` suite that used to sit here is gone: ADR 0140 withdrew the
+ * durable strand witness entirely. What replaced it is
+ * `doorOutbox.durability.test.ts`, which mocks nothing but the network and
+ * asserts the property that actually matters — the receipt is never destroyed.
  *
  * Not a tidy-up. These tests mocked `./offline-storage` with a store that always
  * applies the patch, and that mock cannot express the state the whole feature
