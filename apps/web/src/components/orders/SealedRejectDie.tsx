@@ -57,6 +57,7 @@
 
 import { useId, useRef, useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
+import { useStandaloneGround } from './useStandaloneGround';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCancelOrder } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
@@ -206,8 +207,14 @@ export function SealedRejectDie({
     color: 'var(--ink-2, #4F473C)',
   } as const;
 
+  const { rootRef, ground } = useStandaloneGround();
+
   return (
-    <div className={className ? `mudavym ${className}` : 'mudavym'}>
+    <div
+      ref={rootRef}
+      className={className ? `mudavym ${className}` : 'mudavym'}
+      data-ground={ground}
+    >
       <label
         htmlFor={reasonId}
         style={{

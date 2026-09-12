@@ -208,6 +208,11 @@ SCAN_ROOTS = [
     # figure on it is a count of something the gateway measured, and a seeded
     # one would be a claim about what can act for the house.
     Path("apps/web/src/pages/connections/next"),
+    # New-pages wave (ADR 0133, 2026-09-11): `/logs`, rebuilt behind
+    # `mudavym_design_logs`. Every figure on it is a per-register count of
+    # rows the gateway returned; a seeded row would be a fabricated entry in
+    # the house's own ledger of what happened.
+    Path("apps/web/src/pages/logs/next"),
 ]
 
 # Hooks that back those surfaces. These are data hooks, so a fabricated row set

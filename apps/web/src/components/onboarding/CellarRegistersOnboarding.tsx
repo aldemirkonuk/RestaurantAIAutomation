@@ -50,7 +50,25 @@ export default function CellarRegistersOnboarding({
   if (nothingToAsk) return null
 
   return (
-    <section className="mudavym" data-testid="onboarding-cellar-registers">
+    /*
+      `data-ground="paper"` because this step is a guest on somebody else's
+      page: `/get-started` is a white onboarding sheet (GetStarted.tsx, a
+      `min-h-screen bg-white` shell) and this section paints no background of
+      its own — it only declares the scope so `CellarRegistersStep` can read
+      Mudavym tokens.
+
+      Before ADR 0138 those tokens resolved light and the section was invisible
+      against the white page, which is why nobody noticed. After the flip the
+      bare `.mudavym` selector paints charcoal in every app theme, so the panel
+      took `--paper-1` #1D1813 while the register title still inherited
+      GetStarted's #111827: measured 1.01:1, i.e. gone. The standing lines went
+      the other way — `--ink-2` #C0B6A5 on white, 2.00:1 — and `color-scheme:
+      dark` reached the step's checkbox on a white page.
+
+      The escape also restores `color-scheme: light`. It must sit on the SAME
+      element as the class: (0,2,0) beats (0,1,0) only there.
+    */
+    <section className="mudavym" data-ground="paper" data-testid="onboarding-cellar-registers">
       <CellarRegistersStep
         readout={data}
         loading={loading}

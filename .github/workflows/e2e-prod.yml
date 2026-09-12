@@ -20,7 +20,8 @@
 #
 # D-12: Nightly 02:00 UTC — observability only
 # D-13: workflow_dispatch from Vercel deploy hook — blocking gate
-# D-15: Continue-all-waves — all 7 waves run regardless of failures
+# D-15: Continue-all-waves — the 4 surviving waves (A, B, C, F) run regardless
+#        of failures. D, E, G retired 2026-09-12 (ADR 0137).
 # D-19: Full suite in < 10 minutes — timeout-minutes: 15 hard cap
 #
 # CRITICAL: PYTEST_RUNNING is NEVER set here.
@@ -65,9 +66,9 @@ jobs:
       ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
       RAILWAY_ORCHESTRATOR_URL: ${{ secrets.RAILWAY_ORCHESTRATOR_URL }}
       RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
-      TOAST_WEBHOOK_SECRET: ${{ secrets.TOAST_WEBHOOK_SECRET }}
-      GMAIL_USER: ${{ secrets.GMAIL_USER }}
-      GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+      # TOAST_WEBHOOK_SECRET, GMAIL_USER, GMAIL_PASSWORD removed 2026-09-12 (ADR 0137)
+      # -- their only readers (waves D, E) are retired; least-privilege: an unused
+      # secret mapped into a job env is readable by every step and action in it.
       # Sentry (TEST-PROD-09)
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       GITHUB_SHA: ${{ github.sha }}
@@ -90,36 +91,48 @@ jobs:
       # reason in the step name and in the first line of the log.
       #
       # REQUIRED — without any one of these the run asserts NOTHING about
-      # production, so its absence must fail, not skip:
-      #   RAILWAY_ORCHESTRATOR_URL   tests/e2e/conftest_prod.py:104 (prod_base_url)      -> Waves A,B,C,D
-      #   ADMIN_API_KEY              tests/e2e/conftest_prod.py:179 (prod_admin_headers) -> Wave B entirely
-      #   SUPABASE_URL               tests/e2e/conftest_prod.py:132 and :197             -> prod_jwt + prod_supabase
-      #   SUPABASE_ANON_KEY          tests/e2e/conftest_prod.py:133 (prod_jwt)
-      #   SUPABASE_SERVICE_ROLE_KEY  tests/e2e/conftest_prod.py:198 (prod_supabase)      -> Waves D,E,G
-      #   E2E_TEST_EMAIL             tests/e2e/conftest_prod.py:134, apps/web/e2e/prod-smoke.spec.ts:33
-      #   E2E_TEST_PASSWORD          tests/e2e/conftest_prod.py:135, apps/web/e2e/prod-smoke.spec.ts:34
-      #   E2E_BASE_URL               apps/web/playwright.prod.config.ts:21-26 — the config
+      # production, so its absence must fail, not skip. Full "which fixture reads
+      # which secret, at which line" table lives in ONE place —
+      # .planning/v3.0-TECH-DEBT.md, "What the founder must set" — not copied here,
+      # after four rounds of this comment block and that table drifting apart on
+      # exact line numbers every time either file was touched (see ADR 0137's
+      # review trail). Fixture/variable NAMES below are stable across edits; line
+      # numbers are not, so they live in exactly one document, not two.
+      #   RAILWAY_ORCHESTRATOR_URL   conftest_prod.py, prod_base_url fixture      -> Waves A,B,C
+      #   ADMIN_API_KEY              conftest_prod.py, prod_admin_headers fixture -> Wave B entirely
+      #   SUPABASE_URL               conftest_prod.py, prod_jwt + prod_supabase fixtures
+      #   SUPABASE_ANON_KEY          conftest_prod.py, prod_jwt fixture
+      #   SUPABASE_SERVICE_ROLE_KEY  conftest_prod.py, prod_supabase fixture — this one is
+      #                              autouse via teardown_e2e_records (session-scoped,
+      #                              autouse=True), so its absence skips EVERY test in
+      #                              the session, not just the teardown step. Waves A,B,C
+      #                              all depend on it, same as SUPABASE_URL/ANON_KEY.
+      #   E2E_TEST_EMAIL             conftest_prod.py + apps/web/e2e/prod-smoke.spec.ts
+      #   E2E_TEST_PASSWORD          conftest_prod.py + apps/web/e2e/prod-smoke.spec.ts
+      #   E2E_BASE_URL               apps/web/playwright.prod.config.ts — the config
       #                              THROWS without it, so Wave F cannot start at all
       #
       # OPTIONAL — each gates exactly one wave, and a partial run is a legitimate
       # result, so these warn and never fail:
-      #   RABBITMQ_URL          tests/e2e/wave_c_agent_triggers.py:100  -> skips Wave C
-      #   TOAST_WEBHOOK_SECRET  tests/e2e/wave_d_toast_pipeline.py:68   -> skips Wave D
-      #   GMAIL_USER            tests/e2e/wave_e_gmail_pipeline.py:40   -> skips Wave E
-      #   SENTRY_DSN            tests/e2e/conftest_prod.py:36           -> failure alerting only
+      #   RABBITMQ_URL          tests/e2e/wave_c_agent_triggers.py, rabbitmq_url fixture -> skips Wave C
+      #   SENTRY_DSN            conftest_prod.py -> failure alerting only
       #
-      # Two mapping defects this comment records but this change does not fix:
-      #   * Wave G's gate reads GOOGLE_CALENDAR_CREDENTIALS / GOOGLE_CLIENT_ID /
-      #     CALENDAR_REFRESH_TOKEN (tests/e2e/wave_g_calendar.py:52-54) and NONE of
-      #     the three is mapped into this job's env — Wave G can never run as written.
-      #   * GMAIL_PASSWORD is mapped in the env block above but read by no wave
-      #     (only services/agent-orchestrator/config/settings.py:48, the runtime).
+      # Waves D (Toast), E (Gmail) and G (Calendar) were RETIRED 2026-09-12
+      # (ADR 0137), not merely gated — each tested a table or endpoint with zero
+      # production consumer (pos_webhook_logs / inventory_stock never existed in
+      # production; Google Calendar sync was investigated and cut 2026-08-26).
+      # TOAST_WEBHOOK_SECRET and GMAIL_USER are consequently no longer read by
+      # anything in this suite. GMAIL_PASSWORD (previously mapped but read by
+      # no wave here either -- only by the runtime service's own config, not this
+      # job) is removed above too.
       #
       # Secret VALUES are never printed — only presence.
       - name: Required secrets are present
         run: |
           REQUIRED="RAILWAY_ORCHESTRATOR_URL ADMIN_API_KEY SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY E2E_TEST_EMAIL E2E_TEST_PASSWORD E2E_BASE_URL"
-          OPTIONAL="RABBITMQ_URL TOAST_WEBHOOK_SECRET GMAIL_USER SENTRY_DSN"
+          # TOAST_WEBHOOK_SECRET / GMAIL_USER dropped 2026-09-12 (ADR 0137) --
+          # waves D and E, the only readers, are retired; nothing gates on them now.
+          OPTIONAL="RABBITMQ_URL SENTRY_DSN"
 
           MISSING=""
           for name in $REQUIRED; do
@@ -242,37 +255,20 @@ jobs:
           wait $WAVE_C_PID || true
 
       # -----------------------------------------------------------------------
-      # WAVE D — Toast pipeline (depends on A + B completing)
+      # WAVES D, E, G — RETIRED 2026-09-12 (ADR 0137)
       # -----------------------------------------------------------------------
-      - name: Wave D — Toast Pipeline
-        working-directory: services/agent-orchestrator
+      # wave_d_toast_pipeline.py / wave_e_gmail_pipeline.py / wave_g_calendar.py
+      # are deleted, not skipped: each tested a table or endpoint with zero
+      # production consumer (measured 2026-09-11 via information_schema.columns
+      # on the live Supabase project). Repointing any of them would mean
+      # BUILDING new production wiring to make an E2E test pass, not repairing
+      # drift — see ADR 0137 for the per-wave evidence. This step is a no-op so
+      # the job's log states the reason instead of a bare "file not found".
+      - name: Waves D, E, G — retired
         run: |
-          pytest tests/e2e/wave_d_toast_pipeline.py \
-            --junitxml=test-results/wave_d.xml \
-            -v --tb=short -q \
-            2>&1 | tee test-results/wave_d.log || true
+          echo "::notice::Waves D (Toast), E (Gmail), G (Calendar) retired 2026-09-12 (ADR 0137) -- see .planning/decisions/0137-legacy-e2e-waves-d-e-g-are-retired-not-repointed.md"
+          echo "retired: no production consumer for the schema each tested (pos_webhook_logs, inventory_stock, Google Calendar sync)"
 
-      # -----------------------------------------------------------------------
-      # WAVE E — Gmail pipeline (independent)
-      # -----------------------------------------------------------------------
-      - name: Wave E — Gmail Pipeline
-        working-directory: services/agent-orchestrator
-        run: |
-          pytest tests/e2e/wave_e_gmail_pipeline.py \
-            --junitxml=test-results/wave_e.xml \
-            -v --tb=short -q \
-            2>&1 | tee test-results/wave_e.log || true
-
-      # -----------------------------------------------------------------------
-      # WAVE G — Calendar scheduling (D-17: depends on E)
-      # -----------------------------------------------------------------------
-      - name: Wave G — Calendar DB Assertion
-        working-directory: services/agent-orchestrator
-        run: |
-          pytest tests/e2e/wave_g_calendar.py \
-            --junitxml=test-results/wave_g.xml \
-            -v --tb=short -q \
-            2>&1 | tee test-results/wave_g.log || true
 
       # -----------------------------------------------------------------------
       # WAVE F — Playwright frontend smoke tests (independent — D-17)

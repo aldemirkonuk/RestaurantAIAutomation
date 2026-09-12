@@ -407,7 +407,7 @@ either arm contains real traffic. A ratio is honoured; a sample is not guarantee
 **Nothing has recorded a single row yet, and the table does not exist in
 production.** `GET /ux/experiments/note_close_control/report` against the live
 gateway answered **500 — "Could not find the table
-'public.ux_experiment_assignments' in the schema cache"** (curl, 2026-09-05),
+'public.ux_experiment_assignments' in the schema cache"** (curl, 2026-09-05), **[CORRECTED 2026-09-12: no longer true -- `to_regclass('public.ux_experiment_assignments')` returns NOT NULL, measured that day. PR #289's 19 blocked migrations were applied through the connector on 2026-09-12 after a defect in `20260906020000` was fixed. The finding above is kept as the dated observation it was; do not infer from it that a missing table is guarding anything.]**
 which is the read failing as a failure rather than as an empty report. Both halves
 also need §13.13's producer before a real card is ever raised: `custom` notes are
 written by people, so the note arm can be exercised today, but the desk is empty.
@@ -799,7 +799,7 @@ the two or three actions worth doing before service, each of which actually happ
    sweep. The address still never touches the row. All of it stays behind the one
    switch.
 24. **`ux_experiment_state` cannot be applied to production from here, and the
-   both-arms report is therefore unproven against real data.** Same standing
+   both-arms report is therefore unproven against real data.** **[CORRECTED 2026-09-12: no longer true -- `to_regclass('public.ux_experiment_state')` returns NOT NULL, measured that day. PR #289's 19 blocked migrations were applied through the connector on 2026-09-12 once a defect in `20260906020000` was fixed. The finding above is kept as the dated observation it was; do not infer from it that a missing table is guarding anything.]** Same standing
    blocker as item 11 and as ADR 0127's own: the local gateway points at production,
    so no migration may be applied and no assignment may be created from it. The
    table and its write-once trigger are proven on PGlite
