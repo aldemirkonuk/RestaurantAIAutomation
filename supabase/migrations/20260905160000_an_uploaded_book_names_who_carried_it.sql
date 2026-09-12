@@ -129,6 +129,7 @@ DECLARE
   c record;
   admits_partial boolean;
   admits_auth_fk boolean;
+  probe_posting_id uuid;
 BEGIN
   IF to_regclass('public.price_index_postings') IS NULL THEN
     RAISE EXCEPTION 'price_index_postings does not exist; this migration is out of order';
@@ -196,13 +197,18 @@ BEGIN
         ('upload-probe', 'posted_wholesale_list', 'US-MI', 'probe', DATE '2026-01-01',
          'probe', 'probe', 1, 'per bottle', 'https://example.invalid',
          'upload-probe', repeat('0', 64), '8-3-25-PRICE-BOOK-EXCEL.xlsx')
-    $q$;
+      RETURNING id
+    $q$ INTO probe_posting_id;
     admits_partial := true;
   EXCEPTION WHEN check_violation THEN
     admits_partial := false;
   END;
   IF admits_partial THEN
-    DELETE FROM public.price_index_postings WHERE source_ref = 'upload-probe';
+    -- Scoped by the id the INSERT itself just returned, never by source_ref:
+    -- a magic string is not a key, and price_index_postings is a real, live
+    -- table -- it would delete any genuine posting that happened to share
+    -- this source_ref, not only this probe's row.
+    DELETE FROM public.price_index_postings WHERE id = probe_posting_id;
     RAISE EXCEPTION
       'a row with a file name and no uploader was admitted; a half-provenanced row looks provenanced';
   END IF;
