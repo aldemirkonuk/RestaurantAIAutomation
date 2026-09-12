@@ -116,6 +116,7 @@ const Communications = lazyWithRefresh(() => import('./pages/Communications'))
 const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
 const ReceiptsPage = lazyWithRefresh(() => import('./pages/ReceiptsPage'))
 const LogsTimelinePage = lazyWithRefresh(() => import('./pages/LogsTimelinePage'))
+const LogsNext = lazyWithRefresh(() => import('./pages/logs/next/LogsNext'))
 const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
 const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
 const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
@@ -382,7 +383,7 @@ function App() {
                       />
                     }
                   />
-                  <Route path="/logs" element={<LogsTimelinePage />} />
+                  <Route path="/logs" element={<PageGate page="logs" legacy={<LogsTimelinePage />} next={<LogsNext />} />} />
                   <Route path="/notifications" element={<PageGate page="notifications" legacy={<Notifications />} next={<NotificationsNext />} />} />
                   <Route path="/settings" element={<PageGate page="settings" legacy={<Settings />} next={<SettingsNext />} />} />
                   <Route path="/profile" element={<PageGate page="profile" legacy={<Profile />} next={<ProfileNext />} />} />
