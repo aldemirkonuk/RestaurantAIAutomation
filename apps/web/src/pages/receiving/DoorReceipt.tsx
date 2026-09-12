@@ -59,6 +59,16 @@ export default function DoorReceipt() {
   const [pending, setPending] = useState(0)
   const [online, setOnline] = useState(navigator.onLine)
   const [error, setError] = useState<string | null>(null)
+  /**
+   * Receipts the outbox gave up on while this screen was open.
+   *
+   * Only ever grows. A drop is permanent — the receipt has been deleted from
+   * the queue and exists nowhere — so nothing that happens afterwards, least of
+   * all a later successful send, makes it untrue. Clearing this on the next
+   * good flush would be the same fault in a new place: the loss would once
+   * again be visible only as a number going down.
+   */
+  const [dropped, setDropped] = useState(0)
 
   const fileRef = useRef<HTMLInputElement>(null)
   // Generated once per screen, not per attempt: retrying the same delivery must
@@ -68,7 +78,14 @@ export default function DoorReceipt() {
 
   useEffect(() => {
     const refresh = () => void pendingDoorCount().then(setPending)
-    const stop = watchDoorOutbox(refresh)
+    const stop = watchDoorOutbox((result) => {
+      // A discarded receipt leaves the queue exactly as a delivered one does,
+      // so `pending` falls by one either way. This is the only place the two
+      // are distinguishable, and the porter is the only person who can still
+      // act on it — they are holding the paper.
+      if (result.dropped > 0) setDropped((n) => n + result.dropped)
+      refresh()
+    })
     const on = () => setOnline(true)
     const off = () => setOnline(false)
     window.addEventListener('online', on)
@@ -166,6 +183,29 @@ export default function DoorReceipt() {
           )}
         </div>
       </div>
+
+      {/*
+        A receipt the outbox gave up on. Outside the step panels on purpose, so
+        it is on screen wherever the porter is in the flow, and it stays there:
+        a strip, not a modal — this is a phone held one-handed on a dock, and a
+        dialog they have to dismiss to keep working is a dialog they dismiss
+        without reading. It names the one thing they can still do about it,
+        which is only true while they are standing there with the paperwork.
+      */}
+      {dropped > 0 && (
+        <p
+          role="alert"
+          data-ux-key="door:dropped"
+          className="mx-4 mt-3 rounded-xl border border-rose-400/50 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"
+        >
+          {dropped === 1
+            ? 'A delivery saved on this phone was never sent'
+            : `${dropped} deliveries saved on this phone were never sent`}
+          {' — the app has given up on '}
+          {dropped === 1 ? 'it' : 'them'}
+          {'. Keep the paperwork and tell a manager: the count is not on the server.'}
+        </p>
+      )}
 
       {step === 'photo' && (
         <Panel
@@ -292,9 +332,16 @@ export default function DoorReceipt() {
             </div>
             <p className="text-center text-gray-300 max-w-xs">
               {queued
-                ? // True, and the only thing they need to know. Saying "failed"
-                  // here would send them back to the clipboard for good.
-                  'Saved on this phone. It will send itself when you have signal.'
+                ? dropped > 0
+                  ? // Still "saved", because it is — but the unqualified promise
+                    // that it sends itself cannot stand on a phone that has
+                    // already had one thrown away. Which receipt was dropped is
+                    // not knowable from here, so this does not claim it was
+                    // this one.
+                    'Saved on this phone. A delivery on this phone has already been given up on, so keep the paperwork until a manager confirms this one landed.'
+                  : // True, and the only thing they need to know. Saying "failed"
+                    // here would send them back to the clipboard for good.
+                    'Saved on this phone. It will send itself when you have signal.'
                 : 'Recorded. Someone will count the bottles and check it against the invoice.'}
             </p>
             <button

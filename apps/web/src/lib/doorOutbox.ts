@@ -99,19 +99,32 @@ export async function pendingDoorCount(): Promise<number> {
   return all.length
 }
 
+export interface DoorFlushResult {
+  sent: number
+  /** Did not reach the server this pass — retryable ones included. */
+  failed: number
+  /**
+   * How many receipts this pass GAVE UP ON: a 4xx, or the retry budget spent.
+   * A subset of `failed`, and the only permanent part of it — the item is
+   * deleted from the queue, so the pending badge decrements exactly as it does
+   * on a delivery. Reported separately because a caller that sees only `failed`
+   * cannot tell a receipt that will be retried from one nobody will ever send,
+   * and a screen that cannot tell them apart renders a loss as a success.
+   */
+  dropped: number
+}
+
 /**
  * Push everything queued. Safe to call repeatedly and concurrently — the
  * idempotency key makes a double-send a no-op on the server.
  */
-export async function flushDoorOutbox(): Promise<{
-  sent: number
-  failed: number
-}> {
-  if (!navigator.onLine) return { sent: 0, failed: 0 }
+export async function flushDoorOutbox(): Promise<DoorFlushResult> {
+  if (!navigator.onLine) return { sent: 0, failed: 0, dropped: 0 }
 
   const pending = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
   let sent = 0
   let failed = 0
+  let dropped = 0
 
   for (const m of pending) {
     const entry = m.data as QueuedDoorReceipt
@@ -131,6 +144,7 @@ export async function flushDoorOutbox(): Promise<{
       if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS) {
         await offlineStorage.removePendingMutation(m.id)
         failed++
+        dropped++
         continue
       }
 
@@ -142,16 +156,23 @@ export async function flushDoorOutbox(): Promise<{
     }
   }
 
-  return { sent, failed }
+  return { sent, failed, dropped }
 }
 
 /**
  * Flush when the network returns and when the tab regains focus.
  * Returns a cleanup function.
+ *
+ * `onChange` is handed the flush result rather than called empty: a watcher
+ * that only says "something changed" leaves the caller to re-read the pending
+ * count, which falls by one whether the receipt was delivered or discarded.
+ * The difference exists only here, so it is passed on.
  */
-export function watchDoorOutbox(onChange?: () => void): () => void {
+export function watchDoorOutbox(
+  onChange?: (result: DoorFlushResult) => void,
+): () => void {
   const run = () => {
-    void flushDoorOutbox().then(() => onChange?.())
+    void flushDoorOutbox().then((result) => onChange?.(result))
   }
   window.addEventListener('online', run)
   // Coming back to the tab is the other moment a receiver is likely to be
