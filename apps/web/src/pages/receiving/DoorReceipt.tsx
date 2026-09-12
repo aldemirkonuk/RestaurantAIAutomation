@@ -11,6 +11,7 @@ import {
   watchDoorOutbox,
   type DroppedDoorReceipt,
 } from '../../lib/doorOutbox'
+import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
 import { SCAN_ACCEPT, resolveMimeType } from '../../lib/uploadAccept'
 
@@ -50,6 +51,14 @@ const TAP = 'min-h-[56px] min-w-[56px]'
 export default function DoorReceipt() {
   const { orderId = '' } = useParams()
   const navigate = useNavigate()
+  /**
+   * The house this delivery is being taken at. Stamped onto the queued receipt
+   * and used to read the drop record, because the record is per-restaurant: a
+   * shared door tablet switches houses, and a global record showed one house's
+   * order label to the next.
+   */
+  const { activeRestaurantId, user } = useAuth()
+  const rid = activeRestaurantId || user?.restaurantId || ''
 
   const [step, setStep] = useState<Step>('photo')
   const [cases, setCases] = useState(1)
@@ -79,8 +88,19 @@ export default function DoorReceipt() {
    * not make an earlier loss untrue.
    */
   const [drops, setDrops] = useState<DroppedDoorReceipt[]>(() =>
-    readDroppedDoorReceipts(),
+    readDroppedDoorReceipts(rid),
   )
+  /**
+   * Receipts the flush gave up on and could NOT write down, so it KEPT them in
+   * the queue rather than destroying them.
+   *
+   * Separate from `drops` because there is no record to read — that is the
+   * whole condition. The receipt still exists here and nowhere else, so this
+   * screen is the only thing that can say so, and saying nothing is the one
+   * outcome that is never allowed. It re-appears on every later flush until
+   * the record can be written, which is the self-correcting part.
+   */
+  const [stranded, setStranded] = useState(0)
 
   const fileRef = useRef<HTMLInputElement>(null)
   // Generated once per screen, not per attempt: retrying the same delivery must
@@ -96,7 +116,8 @@ export default function DoorReceipt() {
       // two are distinguishable, and the porter is the only person who can
       // still act on it — they are holding the paper. The count says a drop
       // happened; the record says which one, so re-read it rather than adding.
-      if (result.dropped > 0) setDrops(readDroppedDoorReceipts())
+      if (result.dropped > 0) setDrops(readDroppedDoorReceipts(rid))
+      if (result.stranded > 0) setStranded((n) => n + result.stranded)
       refresh()
     })
     const on = () => setOnline(true)
@@ -109,7 +130,7 @@ export default function DoorReceipt() {
       window.removeEventListener('online', on)
       window.removeEventListener('offline', off)
     }
-  }, [])
+  }, [rid])
 
   /**
    * Send the photograph for classification.
@@ -150,7 +171,7 @@ export default function DoorReceipt() {
    * third delivery — and an unread warning is the same loss, later.
    */
   function acknowledgeDrops() {
-    clearDroppedDoorReceipts()
+    clearDroppedDoorReceipts(rid)
     setDrops([])
   }
 
@@ -161,6 +182,7 @@ export default function DoorReceipt() {
       const res = await submitDoorReceipt({
         orderId,
         orderLabel: orderId,
+        restaurantId: rid,
         body: {
           countedQty: cases,
           countedUom: 'case',
@@ -218,6 +240,26 @@ export default function DoorReceipt() {
         about them, which is only true while they are standing there with the
         paperwork.
       */}
+      {/*
+        The louder of the two, and deliberately first: a stranded receipt is a
+        delivery that exists ONLY in this device's queue because the record of
+        its loss could not be written. There is nothing on the server and
+        nothing on disk. It is not dismissible — nothing here makes it untrue,
+        and the next flush re-raises it anyway.
+      */}
+      {stranded > 0 && (
+        <div
+          role="alert"
+          data-ux-key="door:stranded"
+          className="mx-4 mt-3 rounded-xl border border-rose-400/50 bg-rose-500/20 px-3 py-2 text-sm text-rose-100"
+        >
+          {stranded === 1
+            ? 'A delivery could not be sent, and this phone could not save a record of it.'
+            : `${stranded} deliveries could not be sent, and this phone could not save a record of them.`}{' '}
+          The count is still held in this app and nowhere else. Photograph the
+          paperwork and tell a manager before closing this page.
+        </div>
+      )}
       {drops.length > 0 && (
         <div
           role="alert"

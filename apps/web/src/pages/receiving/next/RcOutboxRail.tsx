@@ -34,15 +34,13 @@ const timeShort = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2
 function PinnedDrop({
   label,
   droppedAt,
-  exact,
   tenantUnknown,
   isNew,
   onDismiss,
 }: {
   label: string;
   droppedAt: string;
-  exact: boolean;
-  /** Inherited from the pre-scoping global key — restaurant never recorded. */
+  /** Inherited from a pre-scoping key — restaurant never recorded. */
   tenantUnknown?: boolean;
   isNew: boolean;
   onDismiss: () => void;
@@ -132,13 +130,10 @@ function PinnedDrop({
         The server refused it or eight attempts failed, and the outbox gave up on{' '}
         {fmtDate(droppedAt)}. The count exists only on the phone that took it — re-enter it from
         the paper record, or the stock it booked never happened.
-        {!exact && (
-          <em>
-            {' '}
-            (A sync that same moment also delivered receipts, so the name above is the queue's best
-            candidate, not a certainty.)
-          </em>
-        )}
+        {/* No "best candidate" hedge any more: the outbox writes the record
+            from the flush that caused the drop, keyed on the queue id, so the
+            name above is the order that was lost — not the closest match a
+            before/after diff could find. */}
         {tenantUnknown && (
           <em>
             {' '}
@@ -184,7 +179,6 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
               key={d.id}
               label={d.label}
               droppedAt={d.droppedAt}
-              exact={d.exact}
               tenantUnknown={d.tenantUnknown}
               isNew={newIds.has(d.id)}
               onDismiss={() => dismissDrop(d.id)}

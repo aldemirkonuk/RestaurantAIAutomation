@@ -22,12 +22,19 @@ import DoorNext from './DoorNext'
 
 const flushDoorOutbox = vi.hoisted(() => vi.fn())
 const pendingDoorCount = vi.hoisted(() => vi.fn())
+const readDroppedDoorReceipts = vi.hoisted(() => vi.fn())
+const clearDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/doorOutbox', () => ({
   flushDoorOutbox,
   pendingDoorCount,
+  readDroppedDoorReceipts,
+  clearDroppedDoorReceipts,
   submitDoorReceipt: vi.fn(),
   newIdempotencyKey: () => 'door:o1:test',
 }))
+
+/** The page scopes the drop record by the active house. */
+vi.mock('./useReceivingNextData', () => ({ useActiveRestaurantId: () => 'rest-A' }))
 
 vi.mock('@/services/api/orders', () => ({ getOrder: vi.fn().mockResolvedValue(null) }))
 vi.mock('@/services/api/receiving', () => ({
@@ -42,12 +49,53 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => vi.fn(), useParams: () => ({ orderId: 'o1' }) }
 })
 
-type Flush = { sent: number; failed: number; dropped: number }
+type Flush = {
+  sent: number
+  failed: number
+  dropped: number
+  stranded?: number
+  unreachable?: boolean
+}
+
+type Drop = {
+  id: string
+  orderLabel: string
+  droppedAt: string
+  reason: 'auth' | 'refused' | 'retries'
+}
+
+/**
+ * Stands in for the outbox's durable record — the thing this page now reads
+ * instead of keeping a count in state that died on the Finish navigate.
+ */
+let record: Drop[] = []
+
+/**
+ * A pass, mirrored the way the real outbox behaves: it writes one record per
+ * dropped receipt, from the flush that caused it, BEFORE returning the count.
+ * The page reads the record; the count only tells it to re-read.
+ */
+const pass = (r: Flush): Flush => {
+  for (let i = 0; i < r.dropped; i += 1) {
+    record.push({
+      id: `d${record.length + 1}`,
+      orderLabel: `PO-${record.length + 1}`,
+      droppedAt: '2026-09-12T09:15:00.000Z',
+      reason: 'refused',
+    })
+  }
+  return { stranded: 0, unreachable: false, ...r }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
+  record = []
   pendingDoorCount.mockResolvedValue(0)
-  flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 0, dropped: 0 })
+  readDroppedDoorReceipts.mockImplementation(() => record)
+  clearDroppedDoorReceipts.mockImplementation(() => {
+    record = []
+  })
+  flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 0, dropped: 0 }))
 })
 
 const renderPage = () =>
@@ -59,7 +107,7 @@ const renderPage = () =>
 
 /** The page flushes on mount and on `online`; this drives a second pass. */
 const flushAgain = async (r: Flush) => {
-  flushDoorOutbox.mockResolvedValue(r)
+  flushDoorOutbox.mockResolvedValue(pass(r))
   await act(async () => {
     window.dispatchEvent(new Event('online'))
   })
@@ -70,7 +118,7 @@ const quiet = () => document.querySelector('[data-ux-key="door:retrying"]')
 
 describe('DoorNext — a dropped door report is not a retried one', () => {
   it('does NOT cry wolf over a retryable failure — that one is still queued', async () => {
-    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 1, dropped: 0 })
+    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 0 }))
     renderPage()
 
     // The quiet line proves the flush was actually observed, so the absent
@@ -81,11 +129,13 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
   })
 
   it('says so, in words a receiver can act on, when the outbox gives one up', async () => {
-    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 1, dropped: 1 })
+    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 1 }))
     renderPage()
 
     await waitFor(() => expect(alarm()).not.toBeNull())
     const notice = alarm()
+    // Named, because the record carries the order label — a count could not.
+    expect(notice?.textContent).toContain('PO-1')
     expect(notice?.textContent).toContain('never sent')
     // The two things only the person standing at the door can still do.
     expect(notice?.textContent).toContain('Keep the paperwork')
@@ -95,7 +145,7 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
   })
 
   it('stays on screen after a later flush succeeds — a drop is permanent', async () => {
-    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 1, dropped: 1 })
+    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 1 }))
     renderPage()
     await waitFor(() => expect(alarm()).not.toBeNull())
 
@@ -105,7 +155,7 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
   })
 
   it('accumulates, so a second drop does not overwrite the first', async () => {
-    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 1, dropped: 1 })
+    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 1 }))
     renderPage()
     await waitFor(() => expect(alarm()).not.toBeNull())
 
@@ -113,7 +163,7 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
     // two drops (plus the first), the quiet line counts the one still queued.
     await flushAgain({ sent: 1, failed: 3, dropped: 2 })
 
-    expect(alarm()?.textContent).toContain('3 door reports saved on this phone were never sent')
+    expect(alarm()?.textContent).toContain('3 deliveries saved on this phone were never sent')
     expect(quiet()?.textContent).toContain('1 report did not send yet')
     expect(quiet()?.textContent).toContain('still trying')
   })
@@ -124,8 +174,8 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
     // the SAME in-flight pass (lib/doorOutbox.ts, `inFlight`) — so this returns
     // one promise, not two. Adding its `dropped` once per caller reported two
     // lost reports where one was lost.
-    const pass = Promise.resolve({ sent: 0, failed: 1, dropped: 1 })
-    flushDoorOutbox.mockReturnValue(pass)
+    const onePass = Promise.resolve(pass({ sent: 0, failed: 1, dropped: 1 }))
+    flushDoorOutbox.mockReturnValue(onePass)
     renderPage()
     await waitFor(() => expect(alarm()).not.toBeNull())
 
@@ -134,12 +184,14 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
       document.dispatchEvent(new Event('visibilitychange'))
     })
 
-    expect(alarm()?.textContent).toContain('A door report saved on this phone was never sent')
-    expect(alarm()?.textContent).not.toContain('2 door reports')
+    // The page re-READS the record rather than adding the count, so a pass
+    // reported to two callers cannot turn one lost delivery into two.
+    expect(alarm()?.textContent).toContain('was saved on this phone and never sent')
+    expect(alarm()?.textContent).not.toContain('2 deliveries')
   })
 
   it('stays silent when nothing failed at all', async () => {
-    flushDoorOutbox.mockResolvedValue({ sent: 2, failed: 0, dropped: 0 })
+    flushDoorOutbox.mockResolvedValue(pass({ sent: 2, failed: 0, dropped: 0 }))
     renderPage()
 
     await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())

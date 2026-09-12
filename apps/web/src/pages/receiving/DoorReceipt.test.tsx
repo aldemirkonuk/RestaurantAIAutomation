@@ -38,6 +38,16 @@ vi.mock('../../lib/doorOutbox', () => ({
 
 vi.mock('../../services/api/receiving', () => ({ receivingApi: { uploadDocument: vi.fn() } }))
 
+/**
+ * The drop record is scoped per restaurant — a door tablet is shared, and one
+ * global key showed one house's order label to the next house it switched to.
+ * The page reads the active house from auth to scope both the record and the
+ * receipt it queues.
+ */
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRestaurantId: 'rest-A', user: { restaurantId: 'rest-A' } }),
+}))
+
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
   return { ...actual, useNavigate: () => vi.fn(), useParams: () => ({ orderId: 'o1' }) }
