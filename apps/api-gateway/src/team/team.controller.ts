@@ -18,8 +18,7 @@ import { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ExpoPushService } from "../push/expo-push.service";
-import { GmailService } from "../communications/gmail.service";
-import { SmsService } from "../communications/sms.service";
+import { NotesService } from "./notes.service";
 import { TeamService } from "./team.service";
 import { ScheduleService } from "./schedule.service";
 import { PerformanceService } from "./performance.service";
@@ -33,6 +32,7 @@ import {
   CreateScheduleDto,
   CreateShiftDto,
   CreateTeamMemberDto,
+  CreateTeamNoteDto,
   CreateTimeOffDto,
   IngestSalesDto,
   IngestSalesBatchDto,
@@ -60,8 +60,7 @@ export class TeamController {
     private readonly performance: PerformanceService,
     private readonly notifications: NotificationsService,
     private readonly push: ExpoPushService,
-    private readonly gmail: GmailService,
-    private readonly sms: SmsService,
+    private readonly notes: NotesService,
   ) {}
 
   private uid(req: Request & { user: AuthedUser }): string {
@@ -391,48 +390,66 @@ export class TeamController {
       );
     }
 
+    /**
+     * Which channels this send may use. An omitted `channels` is today's
+     * behaviour. What a caller declined is reported separately from what the
+     * RECIPIENTS declined, so a smaller number is never mistaken for a smaller
+     * audience.
+     *
+     * THREE CHANGES OF DEFAULT, 2026-09-04 (founder). All affect EVERY caller,
+     * the legacy desk included, and all are stated on the surfaces that send.
+     *
+     * 1. **A crew message never sends email.** It is not that the send was
+     *    unreliable — it worked. It left through `GmailService`, which is the
+     *    house's single configured mailbox (`GMAIL_SENDER_EMAIL`,
+     *    `communications/gmail.service.ts:78-80`), the same address procurement
+     *    writes to vendors from. A staff member replying to "Saturday moved to
+     *    seven" landed in the vendor thread.
+     * 2. **A crew message never sends SMS**, for the same reason one layer
+     *    over: the SMS sender is a shared account too, and a text from an
+     *    unknown shared number is a worse version of the same problem. Both
+     *    return when a house has senders of its own, "as long as the
+     *    third-party connections are well built" (founder) — see team.md §13.7c.
+     * 3. **The channel set is `["inbox", "push"]`, and that is all there is.**
+     *    An omitted `channels` used to mean "every channel this person has an
+     *    address for" — the same absence-read-as-intent shape ADR 0088 T3
+     *    removed from the audience.
+     *
+     * NAMING A REMOVED CHANNEL IS REPORTED, NEVER SILENTLY DROPPED. A caller
+     * that asks for `email` or `sms` gets the count of people it would have
+     * reached back under `withheldByProduct`, with the reason. A gate that
+     * quietly shrinks a send is how "we told everyone" becomes untrue.
+     *
+     * AND THE OPT-OUT MOVED ONTO PUSH. It used to govern the two legs that are
+     * now gone; push is the only outbound channel left, and a channel nobody
+     * can decline is one they will eventually resent.
+     * `notification_preferences.push_enabled` exists and says exactly that
+     * (baseline `:3929`).
+     */
+    const DEFAULT_CHANNELS: Array<"inbox" | "push"> = ["inbox", "push"];
+    const allowed = dto.channels ?? DEFAULT_CHANNELS;
+    /** The channels this house has no sender of its own for. */
+    const NO_SENDER: ReadonlyArray<"email" | "sms"> = ["email", "sms"];
+    const may = (channel: "inbox" | "push" | "email" | "sms"): boolean =>
+      // A gate a caller can open is not a gate: neither removed channel is
+      // permitted however it is asked for.
+      !NO_SENDER.includes(channel as "email" | "sms") && allowed.includes(channel);
+
     const roster = await this.team.listMembers(userId, rid);
     const targets = named
       ? roster.filter((m: any) => dto.memberIds!.includes(m.id))
       : roster.filter((m: any) => m.status === "active" && m.accountLinked);
     const audience: "everyone" | "selected" = named ? "selected" : "everyone";
-
-    // Always land in the in-app inbox — but ONLY the addressed members' inboxes
-    // when the caller named targets. A renewal request addressed to one person
-    // must never read as a restaurant-wide announcement (team-audit.md).
-    await this.notifications.persistForRestaurant(
-      rid,
-      {
-        type: "system",
-        title: dto.title ?? "📣 Team broadcast",
-        message: dto.message,
-        priority: "high",
-        actionUrl: "/team",
-        actionLabel: "Open Team",
-      },
-      named
-        ? { onlyUserIds: targets.map((m: any) => m.user_id).filter(Boolean) }
-        : {},
-    );
-
     const userIds = targets.map((m: any) => m.user_id).filter(Boolean);
-    if (userIds.length) {
-      await this.push.sendToUsers(userIds, {
-        title: dto.title ?? "Message from your manager",
-        body: dto.message,
-        priority: "high",
-        data: { type: "team_broadcast", actionUrl: "/team" },
-      });
-    }
 
-    // The same opt-out register the scheduled jobs read. `null` means the read
-    // FAILED, which is not the same as "nobody opted out" — so the email and
-    // SMS legs are skipped and said out loud rather than sent to people who may
-    // have declined ([[absence-reported-as-health]]).
+    // Read BEFORE anything is sent, because push is now governed by it. `null`
+    // means the read FAILED, which is not the same as "nobody opted out" — the
+    // push leg is then skipped and said out loud rather than sent to people who
+    // may have declined ([[absence-reported-as-health]]).
     const optOuts = await this.team.channelOptOuts(userIds);
     const preferencesUnavailable = optOuts === null;
 
-    const wants = (m: any, channel: "email" | "sms"): boolean => {
+    const wants = (m: any, channel: "push"): boolean => {
       if (!optOuts) return false;
       // An account-less roster entry has no user id and therefore no
       // preferences row it could ever have written. It has not opted out.
@@ -440,61 +457,181 @@ export class TeamController {
       return !optOuts.optedOut[channel].has(m.user_id);
     };
 
-    const allEmails = targets
-      .map((m: any) => [m, m.email || m.linkedUser?.email] as const)
-      .filter((pair): pair is readonly [any, string] => !!pair[1]);
-    const allPhones = targets
-      .map((m: any) => [m, m.phone] as const)
-      .filter((pair): pair is readonly [any, string] => !!pair[1]);
+    // Always land in the in-app inbox — but ONLY the addressed members' inboxes
+    // when the caller named targets. A renewal request addressed to one person
+    // must never read as a restaurant-wide announcement (team-audit.md).
+    if (may("inbox"))
+      await this.notifications.persistForRestaurant(
+        rid,
+        {
+          type: "system",
+          title: dto.title ?? "Team broadcast",
+          message: dto.message,
+          priority: "high",
+          actionUrl: "/team",
+          actionLabel: "Open Team",
+        },
+        named ? { onlyUserIds: userIds } : {},
+      );
 
-    const emails = allEmails
-      .filter(([m]) => wants(m, "email"))
-      .map(([, e]) => e);
-    const phones = allPhones.filter(([m]) => wants(m, "sms")).map(([, p]) => p);
+    const pushable = may("push")
+      ? targets.filter((m: any) => m.user_id && wants(m, "push"))
+      : [];
+    const pushIds = pushable.map((m: any) => m.user_id);
+    /**
+     * WHAT THE PUSH ACTUALLY DID, 2026-09-05 (ADR 0121 P0).
+     *
+     * Until today this call was fire-and-forget and the route returned
+     * `notified: pushIds.length` — a count of ROSTER ENTRIES that had a user id
+     * and had not opted out. `ExpoPushService.sendToUsers` returned silently
+     * when the device read came back empty AND when it FAILED, so a broadcast
+     * to the eleven-person crew reported **notified: 11** against
+     * `mobile_devices` holding **0 rows**, and delivered nothing. Measured
+     * against production on 2026-09-04 (ADR 0121, §"What the numbers say").
+     *
+     * `sendToUsers` now returns its outcome and this route reports THAT. The
+     * strongest claim available is `accepted_by_service`: Expo took the ticket.
+     * Nothing here knows whether a handset showed it, and `notified` must never
+     * again mean "we counted the roster".
+     */
+    const pushResult = pushIds.length
+      ? await this.push.sendToUsers(pushIds, {
+          title: dto.title ?? "Message from your manager",
+          body: dto.message,
+          priority: "high",
+          data: { type: "team_broadcast", actionUrl: "/team" },
+        })
+      : {
+          outcome: may("push")
+            ? ("no_recipients" as const)
+            : ("no_recipients" as const),
+          tokens: 0,
+          detail: may("push")
+            ? "Nobody on this send has an account that could carry a push, or everybody addressed has switched push off."
+            : "The caller did not ask for push.",
+        };
+
+    // Counted, not sent: how many people COULD have been reached on a removed
+    // channel is the size of what this decision withholds, and reporting 0
+    // would hide it.
+    const allEmails = targets.filter((m: any) => m.email || m.linkedUser?.email);
+    const allPhones = targets.filter((m: any) => m.phone);
+
+    // Three different reasons a person did not get something, kept apart.
+    // Folding them would let "the house has no sender" read as "nobody wanted
+    // a message", which is a different fact about the house.
     const suppressed = {
-      email: allEmails.length - emails.length,
-      sms: allPhones.length - phones.length,
+      email: 0,
+      sms: 0,
+      push: may("push") ? userIds.length - pushIds.length : 0,
+    };
+    const withheldByCaller = {
+      email: 0,
+      sms: 0,
+      push: may("push") ? 0 : userIds.length,
+    };
+    const withheldByProduct = {
+      email: allEmails.length,
+      sms: allPhones.length,
+      reason:
+        "a crew message would leave through the house's shared mailbox and shared SMS number, the ones vendors are written from; both return when this house has senders of its own",
     };
 
-    let emailed = 0;
-    let texted = 0;
-    if (emails.length) {
-      try {
-        const res = await this.gmail.sendEmail({
-          to: emails,
-          subject: dto.title ?? "Message from your manager",
-          html: `<p>${dto.message.replace(/</g, "&lt;")}</p>`,
-          text: dto.message,
-        });
-        if (res?.success) emailed = emails.length;
-      } catch {
-        /* soft-fail */
-      }
-    }
-    if (phones.length) {
-      for (const phone of phones) {
-        try {
-          const res = await this.sms.sendSms({
-            to: phone,
-            message: dto.message,
-          });
-          if (res?.success) texted += 1;
-        } catch {
-          /* soft-fail */
-        }
-      }
-    }
+    const emailed = 0;
+    const texted = 0;
+
+    /**
+     * `notified` IS NOW A DELIVERY FACT, NOT A ROSTER COUNT.
+     *
+     * It is the number of registered DEVICES the payload was handed to — zero
+     * whenever nobody has one, whenever the device read failed, and whenever
+     * push was not asked for. The old value (`pushIds.length`) counted people
+     * who might in principle have had a device, which on this deployment was
+     * eleven people and zero devices.
+     *
+     * `addressedForPush` keeps the old number available under a name that says
+     * what it is, so nothing that legitimately wanted "how many were aimed at"
+     * has to go back to reading `notified` for it.
+     */
+    const notified = pushResult.tokens;
 
     return {
       audience,
-      recipients: { targeted: targets.length, notified: userIds.length },
+      recipients: {
+        targeted: targets.length,
+        addressedForPush: pushIds.length,
+        notified,
+      },
       suppressed,
+      withheldByCaller,
+      withheldByProduct,
+      channels: allowed.filter((c) => !NO_SENDER.includes(c as "email" | "sms")),
       preferencesUnavailable,
-      notified: userIds.length,
+      notified,
+      addressedForPush: pushIds.length,
+      /**
+       * The whole outcome, in the four words that are actually different:
+       * `accepted_by_service` | `no_device_registered` | `read_failed` |
+       * `no_recipients`. A surface that prints only a number cannot say "the
+       * device list could not be read", and that sentence is the difference
+       * between a quiet crew and a broken one.
+       */
+      push: {
+        outcome: pushResult.outcome,
+        devices: pushResult.tokens,
+        detail: pushResult.detail,
+        delivered: false,
+        deliveredNote:
+          "Nothing here proves delivery. A push service accepting a ticket is not a handset showing a notification, and this route will not claim one.",
+      },
       emailed,
       texted,
-      inbox: true,
+      inbox: may("inbox"),
     };
+  }
+
+  // ── Crew notes ───────────────────────────────────────────────────────────
+  /**
+   * A note about the week, as a record rather than a send.
+   *
+   * `POST …/broadcast` reaches people and leaves nothing a manager can read
+   * back, which is why the week strip could only report what the page had just
+   * done. These three routes give the note an author, an audience captured at
+   * send time and a per-person `opened_at` (`team_notes`,
+   * `team_note_recipients`, migration 20260904180000). Delivery is the inbox
+   * and the phone; there is no email leg here either, for the same reason.
+   */
+  @Get("notes")
+  listNotes(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Query("weekStart") weekStart: string,
+  ) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart ?? "")) {
+      throw new BadRequestException(
+        `weekStart must be a date like 2026-09-04; got "${weekStart}".`,
+      );
+    }
+    return this.notes.list(this.uid(req), rid, weekStart);
+  }
+
+  @Post("notes")
+  createNote(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Body() dto: CreateTeamNoteDto,
+  ) {
+    return this.notes.create(this.uid(req), rid, dto);
+  }
+
+  /** The caller has opened it. Their own row, and only the first time. */
+  @Post("notes/:noteId/opened")
+  openNote(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Param("noteId") noteId: string,
+  ) {
+    return this.notes.markOpened(this.uid(req), rid, noteId);
   }
 
   // ── Settings (labor toggle) ──────────────────────────────────────────────

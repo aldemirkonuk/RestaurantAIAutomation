@@ -130,8 +130,16 @@ reads as *"nothing to report"* forever.
 |---|---|---|
 | At 1f4717cc, before this work | **215** | 47 |
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
-| **Remaining, baselined and non-growing** | **193 of 215** | 43 |
+| **Remaining, baselined and non-growing** | **192 of 215** | 43 |
 
+> **192 as of 2026-09-12** (`check_read_errors_not_swallowed.py` on this tree:
+> 1061 files scanned, 192 sites, 192 baselined, 0 allowlisted). ADR 0139 removed
+> one — `auth.service.ts`'s `users::legacy`, the read inside
+> `unlinkOAuthProvider` that fetched `oauth_provider` in order to decide whether
+> to replace it. The whole read is gone: the legacy pair is now recomputed from
+> the rows in `user_oauth_accounts`, which is what it should have derived from
+> all along. Row removed rather than lowered, per the shrink-only rule.
+>
 > **193 as of 2026-09-04** (`check_read_errors_not_swallowed.py`: 1039 files
 > scanned, 193 sites, 193 baselined, 0 allowlisted). ADR 0104 slice 2 removed one
 > — `documents.controller.ts`'s `vendor-attachments::signed`, whose `catch {}`
@@ -170,15 +178,41 @@ reads as *"nothing to report"* forever.
 > the baseline with them, but did not update this table. The number
 > above is re-derived from `scripts/read_error_baseline.json`
 > (`total_sites: 195`, `total_files: 43`); the guard is the authority and this
-> row follows it, never the other way round. **Superseded: the table now reads
-> 193** — see the 2026-09-04 note above; the guard on this tree measures 193.
+> row follows it, never the other way round. **Superseded twice: the table now
+> reads 192** — see the 2026-09-12 and 2026-09-04 notes above; the guard on this
+> tree measures 192.
 
 Plus **37** further sites that bind `data`, discard `error`, and immediately refuse on a
 falsy value (`if (!x) throw NotFoundException`). Those report a failed read as a *missing
 row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: see
 [ADR 0067](../decisions/0067-a-failed-read-is-never-an-empty-one.md) §Consequences.
 
-The 193 are recorded in `scripts/read_error_baseline.json` and held by
+> **2026-09-05, measured, not carried over.** `python3
+> scripts/check_read_errors_not_swallowed.py` on `feat/mudavym-design-p4` prints
+> **193 found / 193 baselined / 0 allowlisted** — the ratchet has moved on from
+> the 199 below and this line is the current number. Four sites that landed on
+> this branch the same day were FIXED rather than baselined (the baseline only
+> shrinks): `procurement.service.ts` own-paper dedup probe,
+> `approval-thresholds.service.ts` and `vendor-terms.service.ts` actor-name
+> lookups, `vendor-terms.service.ts` `readStatedOne` before-state. In the same
+> run the guard failed on a baseline row that no longer described the tree —
+> `team.service.ts::users::users` had been fixed from 2 sites to 1 by a
+> concurrent session — and the row was lowered to match.
+>
+> **2026-09-05, later the same day (ADR 0125).** **191 found / 191 baselined / 0
+> allowlisted**, my own run of the same command on the same branch. One more row
+> was RETIRED rather than lowered: `procurement.service.ts::procurement_orders::
+> preCancelRow` — `cancelOrder`'s pre-cancel status read, whose `{ data }`-only
+> destructure meant an unreadable order looked exactly like one in no reserved
+> state. It is now `assertStatusTransition`, which refuses on `error` in words
+> and 404s on a missing row, so there is no swallowed read left to baseline.
+> Noted while retiring it: the file's stored `total_sites` said 195 where the
+> rows summed to 192, so it was already three stale before this change; both
+> totals are now RECOMPUTED from the rows rather than decremented, which is why
+> 192 − 1 reads as 191.
+
+The 191 are recorded in `scripts/read_error_baseline.json` and held by
+The 192 are recorded in `scripts/read_error_baseline.json` and held by
 `scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the
 baseline fails the build, and a baseline row the tree no longer contains **also** fails it
 — so the number above can only shrink, and it cannot rot in prose the way the "~29" did.

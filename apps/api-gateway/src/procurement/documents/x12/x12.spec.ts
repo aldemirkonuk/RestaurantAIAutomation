@@ -188,8 +188,28 @@ describe("numeric conversion", () => {
   });
 });
 
+/**
+ * The house this fixture's 810 arrived at, and it now has to be STATED.
+ *
+ * `INVOICE_810` carries no `CUR` segment — which is the ordinary case for a
+ * domestic 810 and was, until 2026-09-06, filed as `USD` by
+ * `x12-invoice.ts`'s `?? "USD"` whoever sent it and whoever received it. Rule 1
+ * of the founder's currency decision replaced that default with the HOUSE'S
+ * OWN stated currency, so a fixture that wants its money read has to say what
+ * the house answered. Passing nothing is now a document whose money is REFUSED,
+ * which is asserted directly in `../invoice-currency.spec.ts`.
+ *
+ * The value is `USD` because this fixture is a Southern Glazer's invoice to a
+ * US bar. It is an ANSWER here, not a default: the test states it.
+ *
+ * `CREDIT_812` takes it too. An 812 carries a real `totalCredit` (BCD04) and it
+ * settles AGAINST the 810 above, so a credit read in one currency and an
+ * invoice in another is the disagreement the decision exists to prevent.
+ */
+const HOUSE = { houseCurrency: "USD" } as const;
+
 describe("810 invoice", () => {
-  const doc = parseX12(INVOICE_810).documents[0];
+  const doc = parseX12(INVOICE_810, HOUSE).documents[0];
 
   it("reads the invoice number from BIG02, not BIG01", () => {
     // Off-by-one on a 1-based spec yields a date where a number belongs —
@@ -230,14 +250,14 @@ describe("810 invoice", () => {
 
   it("fails the tie-out when a total is inconsistent", () => {
     const broken = INVOICE_810.replace("TDS*110400", "TDS*120000");
-    const d = parseX12(broken).documents[0];
+    const d = parseX12(broken, HOUSE).documents[0];
     expect(d.tiesOut).toBe(false);
     expect(d.warnings.join(" ")).toMatch(/off by/);
   });
 
   it("warns rather than guessing when a charge code is unmapped", () => {
     const odd = INVOICE_810.replace("SAC*C*D240***4800", "SAC*C*Z999***4800");
-    const d = parseX12(odd).documents[0];
+    const d = parseX12(odd, HOUSE).documents[0];
     expect(d.otherCharges).toBe(48);
     expect(d.warnings.join(" ")).toMatch(/Z999/);
   });
@@ -246,7 +266,7 @@ describe("810 invoice", () => {
     // Inferring free goods would net the quantity out of the billable
     // comparison and hide a real overbill — the expensive direction to be wrong.
     const freebie = INVOICE_810.replace("IT1*1*24*BT*22.00", "IT1*1*24*BT*0");
-    const d = parseX12(freebie).documents[0];
+    const d = parseX12(freebie, HOUSE).documents[0];
     expect(d.lines[0].freeGoodsQty).toBe(0);
     expect(d.warnings.join(" ")).toMatch(/billed at zero/);
   });
@@ -286,7 +306,7 @@ describe("856 ship notice", () => {
 });
 
 describe("812 credit memo", () => {
-  const doc = parseX12(CREDIT_812).documents[0];
+  const doc = parseX12(CREDIT_812, HOUSE).documents[0];
 
   it("references the invoice it settles", () => {
     // Without BCD07 a credit cannot be tied to the claim it resolves, and
@@ -347,7 +367,7 @@ describe("routing", () => {
  */
 describe("810 against 856 — the self-evidencing claim", () => {
   it("proves the overbill from the vendor's own two documents", () => {
-    const invoice = parseX12(INVOICE_810).documents[0];
+    const invoice = parseX12(INVOICE_810, HOUSE).documents[0];
     const ship = parseX12(SHIP_856).documents[0];
 
     const invoiceLine = invoice.lines[0];
@@ -367,11 +387,11 @@ describe("810 against 856 — the self-evidencing claim", () => {
     expect(r.selfEvidenced).toBe(true);
     expect(r.creditAmount).toBe(44);
     // And the 812 that settles it agrees to the penny.
-    expect(parseX12(CREDIT_812).documents[0].total).toBe(r.creditAmount);
+    expect(parseX12(CREDIT_812, HOUSE).documents[0].total).toBe(r.creditAmount);
   });
 
   it("reports a clean match on the case line despite the unit mismatch", () => {
-    const invoice = parseX12(INVOICE_810).documents[0];
+    const invoice = parseX12(INVOICE_810, HOUSE).documents[0];
     const ship = parseX12(SHIP_856).documents[0];
 
     // Invoice says 2 CS, ship notice says 2 CS, both 24 bottles. Compared as

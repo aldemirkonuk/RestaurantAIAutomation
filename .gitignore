@@ -134,3 +134,8 @@ cursor_chat_backup/
 
 # Ephemeral runner written by scripts/check_gateway_boots.sh
 apps/api-gateway/.gateway-boot-check.cjs
+
+# Generated OpenAPI spec — a command, not a commit (ADR 0123, OD-89).
+# `pnpm --filter @wineops/api-gateway openapi:export` writes it; nothing in the
+# repo reads it, and booting the gateway no longer touches it.
+apps/api-gateway/openapi.json

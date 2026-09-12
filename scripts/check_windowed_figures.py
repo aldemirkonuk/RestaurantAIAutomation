@@ -351,8 +351,19 @@ PAGES = (
         # replaces it shipped three bare keys. Listing only the half being
         # rebuilt would have made a green run mean "the half that was already
         # right is still right".
+        # The parity build (2026-09-04) split the redesigned half into files;
+        # every one of them is listed, because W6 can only see the files this
+        # tuple names and a query in an unlisted renderer would be a bucket
+        # nobody checks while the run still prints "clean".
         renderers=(
             _TEAM_NEXT / "TeamNext.tsx",
+            _TEAM_NEXT / "WeekGrid.tsx",
+            _TEAM_NEXT / "RosterSheet.tsx",
+            _TEAM_NEXT / "ShiftSheet.tsx",
+            _TEAM_NEXT / "TeamOverlays.tsx",
+            _TEAM_NEXT / "TeamRecord.tsx",
+            _TEAM_NEXT / "PerformanceCard.tsx",
+            _TEAM_NEXT / "MyShiftsNext.tsx",
             _TEAM_CMD / "ManagerShiftDesk.tsx",
             _TEAM_CMD / "MyShifts.tsx",
             _TEAM_CMD / "OpsRulesPanel.tsx",
@@ -376,9 +387,12 @@ PAGES = (
         tenant_tokens=("rid", "restaurantId", "activeRestaurantId"),
         tenant_keyed=True,
         # W7 checks shared hooks a page DECLARES. /team declares none: every
-        # query it reads is a `useQuery` in one of its own five files above, so
-        # W6 sees all of them. That is a measurement, not an omission, and it is
-        # printed on every clean run so it cannot be read as "checked and fine".
+        # query it reads is a `useQuery` in one of the TWELVE files above —
+        # eight on the rebuilt half since the 2026-09-04 parity build split it,
+        # four on the legacy one — so W6 sees all of them. That is a
+        # measurement, not an omission, and it is printed on every clean run so
+        # it cannot be read as "checked and fine". Keep this count honest: it is
+        # the sentence a reader trusts instead of counting the tuple.
         imported_query_hooks=(),
     ),
 )
@@ -1177,11 +1191,22 @@ def _scaffold(tmp: Path) -> None:
     (tmp / _TEAM_CMD).mkdir(parents=True, exist_ok=True)
     (tmp / GATEWAY_ROOT / "team").mkdir(parents=True, exist_ok=True)
     (tmp / _TEAM.hooks).write_text(CLEAN_TEAM_HOOKS, encoding="utf-8")
-    for rel, body in zip(
-        _TEAM.renderers,
-        (CLEAN_TEAM_NEXT, CLEAN_TEAM_DESK, CLEAN_TEAM_MYSHIFTS, CLEAN_TEAM_OPS, CLEAN_TEAM_PERF),
-    ):
-        (tmp / rel).write_text(body, encoding="utf-8")
+    # Every renderer the /team tuple names gets a clean body: `zip` against a
+    # five-body tuple silently stopped at the fifth file once the parity build
+    # (0bc70f76) grew the tuple to twelve, and the self-test then reported
+    # `cannot-check: anchor file is missing` for a file that exists on disk.
+    _team_bodies = {
+        "TeamNext.tsx": CLEAN_TEAM_NEXT,
+        "ManagerShiftDesk.tsx": CLEAN_TEAM_DESK,
+        "MyShifts.tsx": CLEAN_TEAM_MYSHIFTS,
+        "MyShiftsNext.tsx": CLEAN_TEAM_MYSHIFTS,
+        "OpsRulesPanel.tsx": CLEAN_TEAM_OPS,
+        "PerformancePanel.tsx": CLEAN_TEAM_PERF,
+        "PerformanceCard.tsx": CLEAN_TEAM_PERF,
+    }
+    for rel in _TEAM.renderers:
+        (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp / rel).write_text(_team_bodies.get(rel.name, CLEAN_TEAM_NEXT), encoding="utf-8")
     (tmp / GATEWAY_ROOT / "team" / "performance.service.ts").write_text(
         CLEAN_PERF_GATEWAY, encoding="utf-8"
     )

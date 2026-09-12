@@ -383,6 +383,53 @@ export function htmlToText(html: string, maxChars = 60_000): string {
  * decoration: a vendor whose site we hammer is a vendor who blocks us, and
  * losing a price source to impatience is a worse outcome than a slower crawl.
  */
+/**
+ * The `Crawl-delay` a robots.txt asks for, in seconds, or null when it asks
+ * for none.
+ *
+ * ADR 0117 §"Terms, rate limits and attribution" makes this binding: *"robots.txt
+ * is honoured, and the crawl delay in it is the floor."* Until 2026-09-04
+ * nothing in this repo read the directive at all — `isPathAllowed` reads
+ * `Disallow`/`Allow` and stops there — so a host asking for 10 seconds got the
+ * sweep's flat 2. The floor is the LARGER of our own interval and this value,
+ * never the smaller: a publisher who states a delay has told us their limit,
+ * and our default is a guess.
+ *
+ * Group selection matches `isPathAllowed`: the named agent's group if present,
+ * otherwise `*`. A malformed or negative value is null, not zero — an
+ * unreadable directive must not read as "no delay requested".
+ */
+export function parseCrawlDelay(
+  robotsTxt: string,
+  userAgent = "*",
+): number | null {
+  if (typeof robotsTxt !== "string") return null;
+  const lines = robotsTxt.split("\n").map((l) => l.replace(/#.*$/, "").trim());
+  let applies = false;
+  let named: number | null = null;
+  let wildcard: number | null = null;
+  let inNamedGroup = false;
+
+  for (const line of lines) {
+    const [rawKey, ...rest] = line.split(":");
+    if (!rawKey || !rest.length) continue;
+    const key = rawKey.trim().toLowerCase();
+    const value = rest.join(":").trim();
+
+    if (key === "user-agent") {
+      inNamedGroup = value.toLowerCase() === userAgent.toLowerCase();
+      applies = value === "*" || inNamedGroup;
+    } else if (applies && key === "crawl-delay") {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0) continue;
+      if (inNamedGroup) named = named === null ? n : Math.max(named, n);
+      else wildcard = wildcard === null ? n : Math.max(wildcard, n);
+    }
+  }
+  // A group naming us wins over the wildcard, exactly as it does for Disallow.
+  return named ?? wildcard;
+}
+
 export function isPathAllowed(
   robotsTxt: string,
   path: string,

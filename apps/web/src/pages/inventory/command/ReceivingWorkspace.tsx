@@ -20,6 +20,7 @@
  * not a decision. Rules mirrored from lib/invoiceMatch.ts (the backend is authoritative).
  */
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, Check, AlertTriangle, Plus, Receipt, FileText, ShieldCheck } from 'lucide-react'
 import { verifyOrderReceipt } from '../../../services/api/orders'
@@ -28,7 +29,20 @@ import {
   documentsApi,
   pickDocuments,
 } from '../../../services/api/documents'
+import { settingsApi } from '../../../services/api/settings'
 import { useNotificationStore } from '../../../stores'
+import { CURRENCY_CODES } from '../../../lib/currency'
+/*
+ * THE FIRST PRODUCTION IMPORT FROM THE GATEWAY IN THIS APP (2026-09-11, audit of
+ * b6d2e4b4). The receiving refusal's shared sentence is imported, not restated,
+ * so the DTO, verifyReceipt and this panel cannot say two different things about
+ * a price with no code. It builds because Vercel builds the web from the monorepo
+ * root; it stays CURRENT only because `scripts/vercel_should_build.sh` and
+ * `turbo.json` now name this file and the one it imports (`common/iso-4217.ts`)
+ * as inputs of the web build. Without that, a gateway-only edit to the sentence
+ * would skip the preview and hit the web's turbo cache, and ship yesterday's words.
+ */
+import { RECEIVING_PRICE_CURRENCY_RUNGS } from '../../../../../api-gateway/src/procurement/price-currency'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { computeMatch, verdictStyle, money } from '../../../lib/invoiceMatch'
 import { cn } from '../../../lib/utils'
@@ -167,6 +181,22 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   // nobody had checked.
   const [invoiceQty, setInvoiceQty] = useState<number | null>(null)
   const [invoiceUnitPrice, setInvoiceUnitPrice] = useState<number | null>(null)
+  /*
+   * WHAT THE PRICE IS IN — required beside it since 2026-09-06 (founder batch
+   * 67: "a price without money is not a price").
+   *
+   * `''` and never a default. Four rungs can fill it and all four are OFFERED
+   * rather than applied, nearest paper first: the code the matched INVOICE is
+   * filed in, the currency the ORDER was placed in, the HOUSE's own reporting
+   * currency, or a code chosen here. The first two pre-fill, in that order
+   * (founder, 2026-09-11, batch 69); the house's is only ever a labelled chip.
+   * The gateway refuses the pair (`VerifyReceiptDto.priceStatesItsCurrency`), so
+   * a screen that assumed one would be putting words in the desk's mouth AND
+   * passing them a server check.
+   */
+  const [invoiceCurrency, setInvoiceCurrency] = useState<string>('')
+  /** True once a rung filled the code, so a re-fetch never clobbers a choice. */
+  const [currencyPrefilled, setCurrencyPrefilled] = useState(false)
   const [shippedQty, setShippedQty] = useState<number | null>(null)
   const [freeGoodsQty, setFreeGoodsQty] = useState<number>(0)
   // The physical count DOES start from what was stocked — that number came from a human at the
@@ -199,12 +229,37 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   const [extras, setExtras] = useState<ExtraLine[]>([])
   const [addingId, setAddingId] = useState('')
 
-  const { data: documents = [] } = useQuery({
+  /*
+   * A + B4 (founder, 2026-09-06 batch 64/65). The same request now also brings
+   * back what the ORDER was placed in, so the two halves of the invoice-versus-
+   * order comparison come from ONE moment: an invoice read now against an order
+   * read a second later can show a mismatch a restatement in between had already
+   * resolved.
+   */
+  const { data: docsAndOrder } = useQuery({
     queryKey: ['procurement-documents', order.id],
-    queryFn: () => documentsApi.forOrder(order.id),
+    queryFn: () => documentsApi.forOrderWithCurrency(order.id),
     enabled: !!order.id,
     staleTime: 30_000,
   })
+  const documents = docsAndOrder?.documents ?? []
+  const orderCurrency = docsAndOrder?.order ?? null
+
+  /*
+   * ITEM B (founder, 2026-09-06 batch 67) — the house's own reporting currency,
+   * as the SECOND rung the price field can be filled from.
+   *
+   * Read here rather than derived: `restaurants.currency` is nullable and a
+   * house that has never answered the question must show as unanswered, not as
+   * USD. `readable: false` is a third state again — a failed read is never
+   * rendered as "no currency recorded" (ADR 0083).
+   */
+  const { data: house } = useQuery({
+    queryKey: ['settings', 'currency'],
+    queryFn: () => settingsApi.houseCurrency(),
+    staleTime: 5 * 60_000,
+  })
+  const houseCurrency = house?.readable ? (house.code ?? null) : null
 
   const { invoice, packingSlip } = useMemo(() => pickDocuments(documents), [documents])
   const allocatedCharges = useMemo(() => allocatedChargesFor(invoice), [invoice])
@@ -289,6 +344,104 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
     ],
   )
 
+  /*
+   * ITEM A — THE PRICE IS REFUSED WHILE THE INVOICE'S MONEY IS HELD.
+   *
+   * `moneyState` is the gateway's own verdict, computed by the SAME function
+   * `verifyReceipt` refuses the price with, so this field is disabled exactly
+   * when the server would reject it. Deriving the verdict here instead would
+   * eventually show an enabled box over a request that 409s.
+   *
+   * The count, the rejection and the stock movement are untouched: only this one
+   * input is closed, and the sentence says so.
+   */
+  const moneyHold =
+    invoice && invoice.moneyState && invoice.moneyState.priced === false
+      ? invoice.moneyState.reason
+      : null
+
+  /*
+   * B4 — the invoice's currency beside the order's. NOTHING IS CONVERTED and
+   * nothing is judged: the two codes are printed as they are, and a screen that
+   * shows them differing has said the useful thing.
+   */
+  const currencyMismatch =
+    !!orderCurrency?.currency &&
+    !!invoice?.currency &&
+    orderCurrency.currency !== invoice.currency
+
+  /*
+   * ITEM B — THE CODE IS OFFERED, ONCE: THE INVOICE'S FILED CODE FIRST, THEN
+   * THE ORDER'S, THEN NOTHING. Never from the house.
+   *
+   * THE FOUNDER, 2026-09-11 (batch 69): *"Invoice's filed code first, then the
+   * order's"* — *"A reading of the document, like the quantities and prices on
+   * that screen already are; when the two disagree the comparison banner already
+   * says so. One line."*
+   *
+   * The field is literally the INVOICE's unit price, so the invoice's own filed
+   * code is a reading of the paper in front of the desk — the same kind of act
+   * as the quantity and the price this screen already pre-fills from that
+   * document. The order's currency is one step further away: a fact about what
+   * somebody intended to buy, which a vendor is free to bill differently. Both
+   * are still only OFFERED — the desk confirms or changes what is in the field
+   * before anything records.
+   *
+   * NOTHING IS HIDDEN WHEN THE TWO DISAGREE. The comparison banner below already
+   * prints "the order was placed in X; this invoice states Y" whenever both are
+   * known and differ, and it is unchanged: pre-filling the invoice's code makes
+   * that banner MORE useful, because the figure and the code in the cell now
+   * come from the same piece of paper.
+   *
+   * The house's reporting currency is a fact about the HOUSE and says nothing
+   * about what a vendor billed — offered below as a one-tap choice, with its
+   * provenance on the label, never written into the field for somebody. That
+   * distinction is the whole of ADR 0117 Q25 and it is untouched.
+   *
+   * Runs once, like the document pre-fill above and for the same reason: a
+   * background re-fetch must not overwrite a manager's correction.
+   */
+  useEffect(() => {
+    if (currencyPrefilled || readOnly) return
+    // In order. A rung that names a code this product cannot offer is skipped,
+    // not written: the picker would not hold it and the gateway would refuse it.
+    const rungs = [invoice?.currency as string | undefined, orderCurrency?.currency]
+    const filled = rungs.find(
+      (code): code is string =>
+        typeof code === 'string' && CURRENCY_CODES.includes(code),
+    )
+    // No `else` that invents one. A delivery whose paper and whose order both
+    // state nothing leaves the field empty, the Accept button reads "Currency
+    // required", and the chips offer the house's code with its provenance.
+    if (filled) {
+      setInvoiceCurrency(filled)
+      setCurrencyPrefilled(true)
+    }
+  }, [invoice, orderCurrency, currencyPrefilled, readOnly])
+
+  /**
+   * The codes this desk can take in one tap, each labelled with where it came
+   * from. A chip that did not say "the house reports in this" would be a code
+   * appearing from nowhere, which is the same defect as a default.
+   */
+  const currencyOffers = useMemo(() => {
+    const seen = new Set<string>()
+    const out: Array<{ code: string; from: string }> = []
+    const offer = (code: string | null | undefined, from: string) => {
+      if (typeof code !== 'string') return
+      if (!CURRENCY_CODES.includes(code) || seen.has(code)) return
+      seen.add(code)
+      out.push({ code, from })
+    }
+    offer(invoice?.currency as string | undefined, 'this invoice is filed in')
+    offer(orderCurrency?.currency, 'the order was placed in')
+    offer(houseCurrency, 'this house reports in')
+    return out.filter((o) => o.code !== invoiceCurrency)
+  }, [invoice, orderCurrency, houseCurrency, invoiceCurrency])
+
+  /** The server refuses this pair; so does the button, with the same reason. */
+  const priceNeedsCurrency = invoiceUnitPrice != null && invoiceCurrency === ''
+
   const style = verdictStyle(match.verdict)
   const priceDiffers =
     poUnitPrice != null &&
@@ -322,6 +475,10 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         // to write to rather than a bare number nobody can interpret.
         invoiceQuantityInInvoiceUom: invoiceQty ?? undefined,
         invoiceUnitPrice: invoiceUnitPrice ?? undefined,
+        // Sent whenever it is set, price or no price. The gateway refuses the
+        // PAIR (a price with no code) and accepts a code with no price, so a
+        // desk that picks the currency before typing the figure is not fought.
+        invoiceCurrency: invoiceCurrency || undefined,
         shippedQuantityInShippedUom: shippedQty ?? undefined,
         freeGoodsQuantityInCountedUom: freeGoodsQty || undefined,
         allocatedCharges: allocatedCharges || undefined,
@@ -362,8 +519,13 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
       toast.error('Verification failed', e?.response?.data?.message || e?.message),
   })
 
-  const blocked = match.requiresOverride
-  const primaryLabel = blocked
+  // The gateway refuses a price with no code before it writes anything, so the
+  // button refuses it too rather than sending a request that 400s. Both refusals
+  // exist: this one is courtesy, the server's is the rule.
+  const blocked = match.requiresOverride || priceNeedsCurrency
+  const primaryLabel = priceNeedsCurrency
+    ? 'Currency required'
+    : blocked
     ? 'Reason required'
     : match.backorderQty > 0
       ? 'Accept & keep open'
@@ -479,7 +641,33 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
 
           {/* prices — exact match, no tolerance band */}
           <div className="grid grid-cols-[1fr_74px_74px_280px] gap-1.5 items-center py-3 border-t border-gray-50">
-            <div className="text-xs text-gray-500">Unit price</div>
+            <div className="text-xs text-gray-500">
+              Unit price
+              {/* The code travels WITH the figure, in the same cell, because a
+                  currency picked three rows away from a number is a currency
+                  people stop reading. */}
+              <select
+                aria-label="Invoice currency"
+                data-testid="receiving-invoice-currency"
+                disabled={readOnly || !!moneyHold}
+                value={invoiceCurrency}
+                onChange={(e) => {
+                  setInvoiceCurrency(e.target.value)
+                  setCurrencyPrefilled(true)
+                }}
+                className={cn(
+                  'ml-2 h-6 px-1 text-[11px] font-mono border rounded-md bg-white outline-none focus:ring-2 focus:ring-wine-500 disabled:bg-gray-50',
+                  priceNeedsCurrency ? 'border-rose-300 bg-rose-50/40' : 'border-gray-200',
+                )}
+              >
+                <option value="">currency?</option>
+                {CURRENCY_CODES.map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="text-center font-mono text-sm text-gray-500">
               {poUnitPrice != null ? money(poUnitPrice) : '—'}
             </div>
@@ -488,10 +676,11 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 type="number"
                 min={0}
                 step="0.01"
-                disabled={readOnly}
+                disabled={readOnly || !!moneyHold}
                 aria-label="Invoice unit price"
+                title={moneyHold ?? undefined}
                 placeholder="—"
-                value={invoiceUnitPrice ?? ''}
+                value={moneyHold ? '' : (invoiceUnitPrice ?? '')}
                 onChange={(e) =>
                   setInvoiceUnitPrice(
                     e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
@@ -504,7 +693,11 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               />
             </div>
             <div className="text-right">
-              {poUnitPrice == null ? (
+              {moneyHold ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                  <AlertTriangle className="w-3 h-3" /> Price held — currency not filed
+                </span>
+              ) : poUnitPrice == null ? (
                 <span className="text-[11px] text-gray-400">No agreed price on this order</span>
               ) : priceDiffers ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
@@ -519,6 +712,115 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               )}
             </div>
           </div>
+
+          {/* B (batch 67) — a price with no code, said in words, with the codes
+              this desk can take in one tap and where each comes from. Shown only
+              when a price has actually been typed: an empty price field asks no
+              currency question, and a screen that nagged about one before there
+              was a figure would train people to ignore it. */}
+          {priceNeedsCurrency && !readOnly && (
+            <div
+              data-testid="receiving-price-needs-currency"
+              className="mt-1 mb-2 p-3 rounded-lg bg-rose-50/60 ring-1 ring-rose-200"
+            >
+              <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700 mb-1.5">
+                This price does not say what it is in
+              </p>
+              {/* THE GATEWAY'S OWN SENTENCE, imported rather than restated. The
+                  DTO, verifyReceipt and this panel say one thing about a price
+                  with no code: what it costs, the four rungs that state one, and
+                  what still records without it. This panel used to carry its own
+                  wording and named no rung, so in the state with no chip to offer
+                  the desk was told a code was needed and not where to find one. */}
+              <p
+                data-testid="receiving-price-currency-rungs"
+                className="text-[11.5px] leading-relaxed text-rose-900/90"
+              >
+                {RECEIVING_PRICE_CURRENCY_RUNGS}
+              </p>
+              {currencyOffers.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  {currencyOffers.map((o) => (
+                    <button
+                      key={o.code}
+                      type="button"
+                      onClick={() => {
+                        setInvoiceCurrency(o.code)
+                        setCurrencyPrefilled(true)
+                      }}
+                      className="h-6 px-2 rounded-md border border-rose-200 bg-white text-[11px] font-semibold text-rose-800 hover:bg-rose-50"
+                    >
+                      {o.from} <span className="font-mono">{o.code}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* A — the refusal, in words, with the act that clears it. Never hidden
+              and never a bare disabled box: a person who cannot do something has
+              to learn who can and how. */}
+          {moneyHold && (
+            <div
+              data-testid="receiving-money-hold"
+              className="mt-1 mb-2 p-3 rounded-lg bg-amber-50/70 ring-1 ring-amber-200"
+            >
+              <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800 mb-1.5">
+                The unit price is not accepted on this delivery
+              </p>
+              <p className="text-[11.5px] leading-relaxed text-amber-900/90">{moneyHold}</p>
+              <p className="text-[11.5px] leading-relaxed text-amber-900/90 mt-1.5">
+                Everything else here still stands — the count, the rejection and the
+                stock movement are unaffected, and this receipt can be submitted now
+                without a price.{' '}
+                <Link
+                  to={`/receipts?doc=${invoice?.id ?? ''}`}
+                  className="underline font-semibold"
+                >
+                  Restate or confirm this invoice’s currency
+                </Link>{' '}
+                — a manager’s or an owner’s decision, recorded with their name — and
+                the price is accepted as it stands.
+              </p>
+            </div>
+          )}
+
+          {/* B4 — the invoice's money beside the order's. Nothing is converted. */}
+          {(orderCurrency?.failure || currencyMismatch) && (
+            <div
+              data-testid="receiving-currency-compare"
+              className={cn(
+                'mt-1 mb-2 p-3 rounded-lg ring-1',
+                currencyMismatch
+                  ? 'bg-rose-50/60 ring-rose-200'
+                  : 'bg-gray-50 ring-gray-200',
+              )}
+            >
+              {orderCurrency?.failure ? (
+                <p className="text-[11.5px] leading-relaxed text-gray-700">
+                  {orderCurrency.failure}
+                </p>
+              ) : (
+                <p className="text-[11.5px] leading-relaxed text-rose-800">
+                  <span className="font-semibold">
+                    The order was placed in {orderCurrency?.currency}; this invoice states{' '}
+                    {invoice?.currency}.
+                  </span>{' '}
+                  Nothing has been converted — there is no exchange rate in this
+                  system — so the figures above are not comparable until one of the
+                  two is right.{' '}
+                  <Link
+                    to={`/receipts?doc=${invoice?.id ?? ''}`}
+                    className="underline font-semibold"
+                  >
+                    Restate or confirm the invoice’s currency
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
+          )}
 
           {/* price override — the only way past an exact-match failure */}
           {priceDiffers && !readOnly && (
@@ -686,7 +988,13 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 onClick={() => verify.mutate()}
                 data-ux-key="receiving:verify"
                 disabled={verify.isPending || blocked}
-                title={blocked ? 'Give a reason for the price difference first' : undefined}
+                title={
+                  priceNeedsCurrency
+                    ? 'Say what the price is in, or clear it — the count still records either way'
+                    : blocked
+                      ? 'Give a reason for the price difference first'
+                      : undefined
+                }
                 className="h-9 px-5 bg-wine-600 hover:bg-wine-700 text-white text-xs font-bold rounded-lg disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {verify.isPending ? 'Verifying...' : primaryLabel}

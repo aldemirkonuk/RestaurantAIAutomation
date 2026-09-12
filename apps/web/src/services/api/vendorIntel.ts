@@ -126,3 +126,85 @@ export function apiErrorMessage(error: unknown, fallback = 'Unknown error'): str
   const plain = (error as { message?: string })?.message
   return plain || fallback
 }
+
+// ---------------------------------------------------------------------------
+// The identity decision log (ADR 0124 Q2)
+// ---------------------------------------------------------------------------
+
+/**
+ * The founder, 2026-09-05: "staff may confirm, log the decisions."
+ *
+ * These calls are open to staff where the rest of this module is owner/manager,
+ * because an identity is not a price: it says whether two bottles are the same
+ * bottle, and it carries no vendor, no number and no terms. Undoing is the
+ * manager's, and the gateway enforces that as well as the route decorator.
+ */
+
+export type IdentityDecisionAction = 'confirmed' | 'rejected' | 'undone'
+
+export interface IdentityDecision {
+  id: string
+  candidateId: string
+  restaurantId: string | null
+  action: IdentityDecisionAction
+  /** Null when the person has since been removed; the label still names them. */
+  decidedBy: string | null
+  decidedByLabel: string
+  decidedByRole: string
+  decidedAt: string
+  /** What the SERVER showed the person, captured at the moment they decided. */
+  evidenceShown: Record<string, unknown>
+  note: string | null
+  linkWritten: string | null
+  undoesDecisionId: string | null
+}
+
+export interface IdentityDecisionLog {
+  items: IdentityDecision[]
+  scope: string
+  limit: number
+  /**
+   * False when the page came back full: the count is then a FLOOR, and the view
+   * must say so rather than printing it as a total.
+   */
+  complete: boolean
+}
+
+/** A failed read REJECTS. An empty list here would claim nobody ever decided. */
+export async function fetchIdentityDecisions(limit = 50): Promise<IdentityDecisionLog> {
+  const { data } = await apiClient.get('/vendor-intel/identity/decisions', {
+    params: { limit },
+  })
+  const rows: any[] = Array.isArray(data?.items) ? data.items : []
+  return {
+    items: rows.map((r) => ({
+      id: r.id,
+      candidateId: r.candidate_id,
+      restaurantId: r.restaurant_id ?? null,
+      action: r.action,
+      decidedBy: r.decided_by ?? null,
+      decidedByLabel: r.decided_by_label,
+      decidedByRole: r.decided_by_role,
+      decidedAt: r.decided_at,
+      evidenceShown: r.evidence_shown ?? {},
+      note: r.note ?? null,
+      linkWritten: r.link_written ?? null,
+      undoesDecisionId: r.undoes_decision_id ?? null,
+    })),
+    scope: typeof data?.scope === 'string' ? data.scope : '',
+    limit: typeof data?.limit === 'number' ? data.limit : limit,
+    // Absent rather than false: if the gateway did not say, we do not claim the
+    // page was complete.
+    complete: data?.complete === true,
+  }
+}
+
+export async function undoIdentityDecision(input: { decisionId: string; note?: string }) {
+  const { data } = await apiClient.post('/vendor-intel/identity/decisions/undo', input)
+  return data as {
+    decisionId: string
+    undid: string
+    candidateId: string
+    linkCleared: string | null
+  }
+}

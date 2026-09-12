@@ -37,15 +37,23 @@ describe("documents: :id and :lineId must be uuids before any read", () => {
       },
     ) as never;
 
+  // Eleven collaborators on the merged branch, in constructor order: the
+  // feature branch added CatalogIngestService, OrganizationsService and
+  // SealChallengeService (merged 2026-09-11). Each proxy is named for the
+  // parameter it fills, because the passthrough case below asserts the NAME
+  // of the collaborator it reached.
   const controller = new DocumentsController(
     forbidden("DocumentIntakeService"),
     forbidden("DatabaseService"),
     forbidden("CanonicalDocumentService"),
     forbidden("DeliverySpineService"),
     forbidden("DocumentCorrectionService"),
+    forbidden("CatalogIngestService"),
+    forbidden("OrganizationsService"),
     forbidden("DeliveryService"),
     forbidden("DeliveryStockService"),
     forbidden("LineMappingService"),
+    forbidden("SealChallengeService"),
   );
 
   const BAD = "not-a-uuid";

@@ -46,7 +46,16 @@ export function fmtCadence(frequency: string, dayOfWeek?: number | null, timeOfD
  * (prc-02; same reading as conversationGrouping.ts and the receiving spine).
  * Only AUTO_SENT / SENT / DELIVERED may ever look sent.
  */
-export type SendState = 'draft' | 'sending' | 'sent' | 'unconfirmed' | 'closed' | 'other';
+export type SendState =
+  | 'draft'
+  | 'queued'
+  | 'cancelled'
+  | 'failed'
+  | 'sending'
+  | 'sent'
+  | 'unconfirmed'
+  | 'closed'
+  | 'other';
 
 /**
  * NULL-TOLERANT ON PURPOSE. `procurement_conversations.status` is
@@ -62,6 +71,16 @@ export type SendState = 'draft' | 'sending' | 'sent' | 'unconfirmed' | 'closed' 
  */
 export function sendState(status: string | null | undefined): SendState {
   const s = String(status ?? '').toUpperCase();
+  // The house composer's own lifecycle (ADR 0118). A queued letter is NOT a
+  // draft — a draft is something nobody has decided about, and this is a letter
+  // a person has already pressed Send on, still inside its undo window. It is
+  // also emphatically not 'sent': the whole point of the window is that the
+  // letter has not left, and the 30-day sent figure must not count it.
+  if (s === 'HOUSE_QUEUED') return 'queued';
+  if (s === 'HOUSE_CANCELLED') return 'cancelled';
+  // Definitely NOT sent, which is a different fact from 'unconfirmed' (the
+  // vendor may hold it and we could not confirm). This letter did not leave.
+  if (s === 'HOUSE_FAILED') return 'failed';
   if (s === 'DRAFT' || s === 'PENDING_APPROVAL' || s === 'APPROVED') return 'draft';
   // A send is in flight and the row is claimed. Not a draft — nobody may act
   // on it — and not yet sent, so it gets its own state rather than falling
