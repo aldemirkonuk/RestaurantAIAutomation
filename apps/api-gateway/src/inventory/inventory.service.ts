@@ -16,6 +16,7 @@ import { NfEventRef } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
 import { mapStockCountResult } from "./stock-count-result";
+import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { classifyStock } from "../common/stock-status";
 import {
   CreateInventoryItemDto,
@@ -253,6 +254,19 @@ export class InventoryService {
     performedBy?: string | null,
   ) {
     const client = this.dbService.getClient();
+    // ADR 0141, Correction 2026-09-12. This path takes an inventory id from
+    // the URL and hands it to a SQL wrapper that derives the house from the
+    // item itself, so without this check a caller could move another
+    // house's stock -- the adversarial pass drained a foreign house's lots
+    // 9 to 0 through the same shape. It runs BEFORE the RPC: a check that
+    // ran afterwards would refuse the response after the stock had moved.
+    await assertInventoryBelongsToRestaurant(
+      client,
+      restaurantId,
+      inventoryId,
+      "transferStock",
+      this.logger,
+    );
     const { error } = await client.rpc("transfer_stock", {
       p_inventory_id: inventoryId,
       p_from_location_id: dto.fromLocationId ?? null,
@@ -316,6 +330,19 @@ export class InventoryService {
     const idempotencyKey =
       dto.idempotencyKey ??
       `pour:${inventoryId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    // ADR 0141, Correction 2026-09-12. This path takes an inventory id from
+    // the URL and hands it to a SQL wrapper that derives the house from the
+    // item itself, so without this check a caller could move another
+    // house's stock -- the adversarial pass drained a foreign house's lots
+    // 9 to 0 through the same shape. It runs BEFORE the RPC: a check that
+    // ran afterwards would refuse the response after the stock had moved.
+    await assertInventoryBelongsToRestaurant(
+      client,
+      restaurantId,
+      inventoryId,
+      "recordPour",
+      this.logger,
+    );
     const { data: pourResult, error } = await client.rpc("record_glass_pour", {
       p_inventory_id: inventoryId,
       p_pours: dto.pours ?? 1,
@@ -419,6 +446,19 @@ export class InventoryService {
     // from it.
     const idempotencyKey = `count:${inventoryId}:${dto.clientCountId}`;
 
+    // ADR 0141, Correction 2026-09-12. This path takes an inventory id from
+    // the URL and hands it to a SQL wrapper that derives the house from the
+    // item itself, so without this check a caller could move another
+    // house's stock -- the adversarial pass drained a foreign house's lots
+    // 9 to 0 through the same shape. It runs BEFORE the RPC: a check that
+    // ran afterwards would refuse the response after the stock had moved.
+    await assertInventoryBelongsToRestaurant(
+      client,
+      restaurantId,
+      inventoryId,
+      "recordSpotCount",
+      this.logger,
+    );
     const { data: countResult, error: rpcErr } = await client.rpc(
       "record_stock_count",
       {
@@ -854,6 +894,11 @@ export class InventoryService {
             p_unit_cost: unitCost,
             p_location_id: dto.storageLocationId ?? null,
             p_cost_provenance: provenance,
+            // ADR 0141 — the house this stock is for. `existing.id` came from a
+            // read scoped to this restaurant, so this agrees by construction;
+            // the primitive is told anyway, because the guarantee must not rest
+            // on each caller having remembered.
+            p_restaurant_id: restaurantId,
           });
         }
 
@@ -940,6 +985,11 @@ export class InventoryService {
         p_unit_cost: unitCost,
         p_location_id: dto.storageLocationId ?? null,
         p_cost_provenance: provenance,
+        // ADR 0141 — the house this stock is for. `data.id` is the row this
+        // method just INSERTed with `restaurant_id: restaurantId`, so the two
+        // cannot disagree; the argument is passed so the primitive never has to
+        // take that on trust.
+        p_restaurant_id: restaurantId,
       });
       if (rpcErr) {
         this.logger.warn(
@@ -1245,6 +1295,10 @@ export class InventoryService {
         p_location_id: line.storageLocationId ?? null,
         p_cost_provenance:
           line.costProvenance ?? (unitCost !== null ? "manual" : null),
+        // ADR 0141 — the house this line is being received into. `inventoryId`
+        // here is either a row this method just INSERTed under `restaurantId`
+        // or one it read back with `.eq("restaurant_id", restaurantId)`.
+        p_restaurant_id: restaurantId,
       });
 
       if (rpcError) {
@@ -1339,6 +1393,23 @@ export class InventoryService {
     performedBy?: string | null,
   ) {
     const client = this.dbService.getClient();
+
+    // ADR 0141, second correction 2026-09-12. `stockLive` / `shadowStock` below
+    // hand this item id to set_stock_absolute, a SQL wrapper that derives the
+    // house from the item and calls apply_stock_movement WITHOUT
+    // p_restaurant_id, so neither database-side refusal runs. The scoped read
+    // that follows kept `data` and never refused on null, so a PATCH naming
+    // another house's item moved that house's stock: a PGlite probe on this
+    // tree's migrations took its lots from 9 to empty. Checked FIRST, before
+    // any write in this method -- the plain UPDATE of non-stock fields
+    // included -- so a foreign item is refused whole, never half-applied.
+    await assertInventoryBelongsToRestaurant(
+      client,
+      restaurantId,
+      itemId,
+      "updateInventoryItem",
+      this.logger,
+    );
 
     // Fetch old values for the event payload only (informational — the actual
     // stock delta is computed inside set_stock_absolute against a locked

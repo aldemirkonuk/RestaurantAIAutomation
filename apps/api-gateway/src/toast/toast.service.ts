@@ -585,6 +585,56 @@ export class ToastService {
         continue;
       }
 
+      // ADR 0141, second correction 2026-09-12. A mapping row read for this
+      // restaurant does not make the item it names this restaurant's:
+      // `pos_item_mappings.inventory_id` is a plain FK with no tenant
+      // constraint, and `record_glass_pour` below takes no restaurant, so a
+      // mapping stored wrongly poured another house's shelf on every glass.
+      // Only an id that a read SCOPED TO THIS HOUSE returns may move stock. A
+      // foreign id is queued for review, never poured; a FAILED read cannot
+      // say yes either, so it moves nothing and says why.
+      const { data: ownedItem, error: ownedError } = await db
+        .from("restaurant_inventory")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
+        .maybeSingle();
+      if (ownedError) {
+        this.logger.error(
+          `Toast line ${line.name}: could not confirm that item ${inventoryId} ` +
+            `belongs to restaurant ${restaurantId}, so no stock was moved: ${ownedError.message}`,
+        );
+        continue;
+      }
+      if (!ownedItem) {
+        this.logger.warn(
+          `Toast line ${line.name}: its mapping names item ${inventoryId}, which ` +
+            `is not this restaurant's -- queued for review, not poured`,
+        );
+        const { error: foreignQueueError } = await db
+          .from("pos_unresolved_lines")
+          .insert({
+            restaurant_id: restaurantId,
+            source: "toast",
+            external_check_id: order.guid,
+            external_item_id: menuGuid,
+            item_name: line.name ?? mapping?.item_name ?? "unknown",
+            qty,
+            price: line.unitPrice ?? null,
+            raw: {
+              ...line,
+              unresolved_detail: `the mapping names inventory item ${inventoryId}, which does not belong to this restaurant, so no stock was moved`,
+            },
+          });
+        if (foreignQueueError && foreignQueueError.code !== "23505") {
+          this.logger.warn(
+            `Failed to queue foreign-item Toast line ${line.name}: ${foreignQueueError.message}`,
+          );
+        }
+        continue;
+      }
+      inventoryId = ownedItem.id as string;
+
       const unit: "glass" | "bottle" = saleUnit ?? "bottle";
       // B15-equivalent idempotency key for the Toast door specifically.
       const idem = `toast_${isVoid ? "void" : "sale"}_${order.guid}_${menuGuid}`;
@@ -609,6 +659,14 @@ export class ToastService {
               p_source: "pos",
               p_reason: `POS void (glass): ${line.name}`,
               p_idempotency_key: idem,
+              // ADR 0141 — the house this POS line is for. `inventoryId` is
+              // resolved from `pos_item_mappings` (or the legacy
+              // `toast_item_guid` column) read with
+              // `.eq("restaurant_id", restaurantId)`; the mapping ROW belongs
+              // here, and its `inventory_id` column carries no tenant
+              // constraint, so a stale or mis-seeded mapping could point at
+              // another house's shelf. It now refuses instead of moving it.
+              p_restaurant_id: restaurantId,
             }));
           } else {
             ({ error: rpcError } = await db.rpc("record_glass_pour", {
@@ -630,6 +688,8 @@ export class ToastService {
             p_source: "pos",
             p_reason: `POS ${isVoid ? "void" : "sale"}: ${line.name}`,
             p_idempotency_key: idem,
+            // ADR 0141 — same mapping-derived id, same refusal.
+            p_restaurant_id: restaurantId,
           }));
         }
         if (rpcError) {
