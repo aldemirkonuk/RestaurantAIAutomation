@@ -10,7 +10,10 @@ import { hashCallArgs } from "../../common/seal/seal-token";
 import {
   DOCUMENT_SEAL_ACTS,
   DOCUMENT_SEAL_SUBJECT_KIND,
+  FIELD_VERIFY_VERDICT,
   documentCurrencySealArgs,
+  documentFieldCorrectSealArgs,
+  documentFieldVerifySealArgs,
   documentLineEditPatchArgs,
   documentLineEditSealArgs,
   documentSealLine,
@@ -59,12 +62,25 @@ const LINE_A = {
 const LINE_B = { ...LINE_A, id: "line-b", line_no: 2, description: "Okuzgozu" };
 
 describe("document-seal — the acts and the kind", () => {
-  it("declares exactly the three acts the founder's decision names", () => {
+  it("declares exactly the five acts the founder's two decisions name", () => {
+    // Three from batch 64 on the /receipts face, two from batch 69 on ADR
+    // 0104's canonical face. The list is asserted BY NAME rather than by count
+    // so a rename cannot pass as a widening.
     expect([...DOCUMENT_SEAL_ACTS]).toEqual([
       "verify",
       "line_edit",
       "currency_restate",
+      "field_correct",
+      "field_verify",
     ]);
+  });
+
+  it("keeps the field tick one word away from nothing — `field_verify`, never `verification`", () => {
+    // The names are load-bearing: `verify` on this same kind is the
+    // DOCUMENT-WIDE act, and an act called `verification` beside it would be
+    // two authorities separated by a suffix.
+    expect([...DOCUMENT_SEAL_ACTS]).not.toContain("verification");
+    expect([...DOCUMENT_SEAL_ACTS]).not.toContain("correction");
   });
 
   it("names a kind the seal service actually admits", () => {
@@ -78,6 +94,9 @@ describe("document-seal — the acts and the kind", () => {
   it("recognises its own acts and nothing else", () => {
     expect(isDocumentSealAct("verify")).toBe(true);
     expect(isDocumentSealAct("currency_restate")).toBe(true);
+    expect(isDocumentSealAct("field_correct")).toBe(true);
+    expect(isDocumentSealAct("field_verify")).toBe(true);
+    expect(isDocumentSealAct("verification")).toBe(false);
     // An ORDER's acts are a different subject kind's vocabulary.
     expect(isDocumentSealAct("approve")).toBe(false);
     expect(isDocumentSealAct(undefined)).toBe(false);
@@ -324,5 +343,343 @@ describe("the seal's fields and the controller's .select() lists", () => {
     expect(
       [...columnSet(DOCUMENT_SEAL_LINE_COLUMNS)].filter((c) => !read.has(c)),
     ).toEqual([]);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * THE CANONICAL FACE (founder, 2026-09-11, batch 69).
+ * ------------------------------------------------------------------------- */
+
+/** A layer-1 field envelope, in the shape the canonical builder produces. */
+const fieldEnv = (value: unknown) => ({
+  value,
+  source: "extracted",
+  confidence: null,
+  revision: 1,
+});
+
+const LAYER1 = () => ({
+  documentNumber: fieldEnv("INV-1"),
+  issueDate: fieldEnv("2026-09-01"),
+  lines: [{ netPrice: fieldEnv(10), quantity: fieldEnv(12) }],
+  totals: { linesNetTotal: fieldEnv(120) },
+});
+
+const correctArgs = (over: Record<string, unknown> = {}) =>
+  documentFieldCorrectSealArgs({
+    documentId: "doc-1",
+    revision: 1,
+    layer1: LAYER1(),
+    path: "lines[0].netPrice",
+    value: 132,
+    ...over,
+  });
+
+describe("document-seal — a field correction is sealed against the revision it was read on", () => {
+  it("refuses a correction written against a superseded revision", () => {
+    // The 409 the append path can only report AFTER a revision has landed.
+    expect(hashCallArgs(correctArgs())).not.toBe(
+      hashCallArgs(correctArgs({ revision: 2 })),
+    );
+  });
+
+  it("refuses a correction after the OTHER face moved the document, revision unchanged", () => {
+    // A document nobody has corrected has no `document_revisions` row at all
+    // and is rebuilt from its columns on every read, so a `line_edit` made on
+    // /receipts moves the content while the number stands at 1. The revision
+    // alone cannot see this; the content hash is why both are in the arguments.
+    const moved = LAYER1();
+    moved.lines[0].netPrice.value = 99;
+    expect(hashCallArgs(correctArgs())).not.toBe(
+      hashCallArgs(correctArgs({ layer1: moved })),
+    );
+  });
+
+  it("binds the path and the value, so one correction's seal cannot buy another", () => {
+    expect(hashCallArgs(correctArgs())).not.toBe(
+      hashCallArgs(correctArgs({ path: "documentNumber" })),
+    );
+    expect(hashCallArgs(correctArgs())).not.toBe(
+      hashCallArgs(correctArgs({ value: 1320 })),
+    );
+  });
+
+  it("keeps `null` and an absent value the same correction, and nothing else", () => {
+    // `value: null` IS a correction ("the document states nothing here") and
+    // the controller sends `body.value ?? null`, so the two have to agree.
+    expect(hashCallArgs(correctArgs({ value: null }))).toBe(
+      hashCallArgs(correctArgs({ value: undefined })),
+    );
+    // ...and a string "132" is NOT the number 132. The value comes from the
+    // request body at both ends, so there is no PostgREST drift to absorb and
+    // collapsing the two would be the helpfulness `hashCallArgs` refuses.
+    expect(hashCallArgs(correctArgs({ value: "132" }))).not.toBe(
+      hashCallArgs(correctArgs({ value: 132 })),
+    );
+  });
+
+  it("hashes the same document read twice to the same seal", () => {
+    // Two builds of an unchanged document must agree, or every honest
+    // correction is refused and operators learn the seal is decoration.
+    expect(hashCallArgs(correctArgs())).toBe(hashCallArgs(correctArgs()));
+  });
+
+  it("is a different seal from the line edit on the other face", () => {
+    expect(hashCallArgs(correctArgs())).not.toBe(
+      hashCallArgs(
+        documentLineEditSealArgs({
+          documentId: "doc-1",
+          lineId: "line-a",
+          status: "needs_review",
+          line: LINE_A,
+          patch: { unitPrice: 132 },
+        }),
+      ),
+    );
+  });
+});
+
+const tickArgs = (over: Record<string, unknown> = {}) =>
+  documentFieldVerifySealArgs({
+    documentId: "doc-1",
+    path: "lines[0].netPrice",
+    fieldPresent: true,
+    value: 10,
+    verdict: FIELD_VERIFY_VERDICT,
+    ...over,
+  });
+
+describe("document-seal — a field tick is sealed against the value it was shown", () => {
+  it("refuses a tick after the figure moved underneath it", () => {
+    expect(hashCallArgs(tickArgs())).not.toBe(
+      hashCallArgs(tickArgs({ value: 132 })),
+    );
+  });
+
+  it("keeps a field the document does not carry apart from one stating nothing", () => {
+    // Both render as "nothing" on screen and are different facts. Hashed as
+    // one, a tick minted on a path this document had no row for could be spent
+    // after the path appeared carrying null.
+    expect(hashCallArgs(tickArgs({ fieldPresent: false, value: null }))).not.toBe(
+      hashCallArgs(tickArgs({ fieldPresent: true, value: null })),
+    );
+  });
+
+  it("binds the field, so a tick on one figure cannot stand for another", () => {
+    expect(hashCallArgs(tickArgs())).not.toBe(
+      hashCallArgs(tickArgs({ path: "documentNumber" })),
+    );
+  });
+
+  it("names the verdict, so a second verdict cannot spend this one's seal", () => {
+    expect(FIELD_VERIFY_VERDICT).toBe("verified");
+    expect(hashCallArgs(tickArgs())).not.toBe(
+      hashCallArgs(tickArgs({ verdict: "disputed" })),
+    );
+  });
+
+  it("is deliberately NOT bound to the rest of the document", () => {
+    // The asymmetry with `field_correct`, stated as a measurement. A tick
+    // asserts one thing about one field; refusing it because line 9 moved would
+    // fire at random from the operator's side and teach them to ignore it.
+    const a = tickArgs();
+    const b = tickArgs();
+    expect(hashCallArgs(a)).toBe(hashCallArgs(b));
+    expect(Object.keys(a).sort()).toEqual([
+      "documentId",
+      "fieldPresent",
+      "path",
+      "value",
+      "verdict",
+    ]);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * IS THAT HASH STABLE OVER A REAL BUILD? (auditor, 2026-09-11)
+ * ---------------------------------------------------------------------------
+ * Every case above hashes a hand-built fixture, which proves the arguments are
+ * chosen well and proves nothing about the object the gateway actually hashes.
+ * `field_correct` binds the WHOLE canonical document, built by
+ * `CanonicalDocumentService.buildFromDocumentId` at the mint and again at the
+ * redemption. If that builder emits anything that differs between two reads of
+ * an unchanged document — a regenerated timestamp, a re-derived float, a set
+ * iterated in insertion order that is not stable — then EVERY honest correction
+ * is refused with "this document changed after the seal was issued", operators
+ * learn the seal fires at random, and nothing else in this suite would catch it.
+ *
+ * So the real service is built here over a fake client (no database, no Nest
+ * container, no production row) and the same document is read twice. The second
+ * case is the one that keeps the first honest: a stability test that passed
+ * because both builds produced nothing would be this repository's
+ * absence-reported-as-health fault wearing a seal's badge.
+ * ------------------------------------------------------------------------- */
+
+import { CanonicalDocumentService } from "../canonical/canonical-document.service";
+
+const BUILD_DOC_ROW = {
+  id: "doc-1",
+  restaurant_id: "rest-1",
+  provider_id: "prov-1",
+  doc_type: "invoice",
+  doc_number: "SYN-1001",
+  doc_date: "2026-08-20",
+  references_doc_number: null,
+  currency: "USD",
+  subtotal: 660,
+  freight: 48,
+  fuel_surcharge: null,
+  split_case_fee: null,
+  delivery_fee: null,
+  deposit_total: null,
+  tax: null,
+  other_charges: null,
+  discount_total: null,
+  total: 708,
+  extraction_confidence: 0.91,
+  extraction_model: "synthetic-model",
+  direction: "issued_by_vendor",
+  jurisdiction: "US-CA",
+  source_channel: "email",
+  notes: null,
+};
+
+// Numerics arrive from PostgREST as STRINGS, written that way deliberately: a
+// fixture handing back numbers would hide exactly the coercion this measures.
+const buildLineRows = () => [
+  {
+    line_no: 1,
+    vendor_sku: "SKU-1",
+    description: "SYNTHETIC Sancerre",
+    vintage: 2023,
+    format_ml: 750,
+    qty: "24",
+    uom: "bottle",
+    pack_size: 1,
+    qty_bottles: "24",
+    free_goods_qty: "0",
+    unit_price: "22.0000",
+    line_total: "528.00",
+    allowance: null,
+    deposit: null,
+    order_line_id: "ol-1",
+    match_method: "vendor_sku",
+    match_confidence: "0.980",
+  },
+  {
+    line_no: 2,
+    vendor_sku: null,
+    description: "SYNTHETIC Barolo",
+    vintage: 2019,
+    format_ml: 750,
+    qty: "6",
+    uom: "bottle",
+    pack_size: 1,
+    qty_bottles: "6",
+    free_goods_qty: "0",
+    unit_price: "22.0000",
+    line_total: "132.00",
+    allowance: null,
+    deposit: null,
+    order_line_id: null,
+    match_method: null,
+    match_confidence: null,
+  },
+];
+
+/** A supabase-shaped chain that answers per table. Reads only. */
+function fakeClient(answers: Record<string, { data: unknown; error: null }>) {
+  let table = "";
+  const makeChain = () => {
+    const chain: Record<string, unknown> = {};
+    const self = () => chain;
+    for (const verb of ["select", "eq", "in", "order", "limit"]) {
+      chain[verb] = () => self();
+    }
+    for (const verb of ["single", "maybeSingle"]) {
+      chain[verb] = () => {
+        const a = answers[table];
+        const data = Array.isArray(a?.data) ? (a.data[0] ?? null) : a?.data;
+        return Promise.resolve({ data: data ?? null, error: null });
+      };
+    }
+    (chain as { then: unknown }).then = (resolve: (v: unknown) => unknown) =>
+      Promise.resolve({ data: answers[table]?.data ?? null, error: null }).then(
+        resolve,
+      );
+    return chain;
+  };
+  return {
+    from: (t: string) => {
+      table = t;
+      return makeChain();
+    },
+  };
+}
+
+describe("document-seal — the correction seal over a REAL canonical build", () => {
+  const buildTwice = async (lineRows: unknown[]) => {
+    const client = fakeClient({
+      procurement_documents: { data: BUILD_DOC_ROW, error: null },
+      procurement_document_lines: { data: lineRows, error: null },
+      procurement_order_items: {
+        data: [{ id: "ol-1", inventory_id: "inv-1", master_wine_id: "mw-1" }],
+        error: null,
+      },
+      providers: {
+        data: {
+          id: "prov-1",
+          name: "SYNTHETIC Glazers",
+          company_name: "SYNTHETIC Glazers Wine & Spirits",
+        },
+        error: null,
+      },
+      restaurants: {
+        data: { id: "rest-1", name: "SYNTHETIC Meyhane" },
+        error: null,
+      },
+      document_corrections: { data: [], error: null },
+      document_revisions: { data: [], error: null },
+    });
+    const service = new CanonicalDocumentService({
+      getClient: () => client,
+    } as never);
+    const read = await service.buildFromDocumentId("rest-1", "doc-1");
+    if (!read.ok) throw new Error(`the fixture did not build: ${read.error}`);
+    return read.value;
+  };
+
+  const sealOf = (built: { revision: number; layer1: unknown }) =>
+    hashCallArgs(
+      documentFieldCorrectSealArgs({
+        documentId: "doc-1",
+        revision: built.revision,
+        layer1: built.layer1,
+        path: "lines[0].netPrice",
+        value: 132,
+      }),
+    );
+
+  it("hashes two builds of the same unchanged document to the SAME seal", async () => {
+    const first = await buildTwice(buildLineRows());
+    const second = await buildTwice(buildLineRows());
+    // If this ever goes red, every honest correction is being refused in
+    // production and the named field in the diff is the one that moved.
+    expect(sealOf(second)).toBe(sealOf(first));
+  });
+
+  it("and the fixture is not empty, so the case above cannot pass vacuously", async () => {
+    const built = await buildTwice(buildLineRows());
+    const l1 = built.layer1 as { lines?: unknown[] };
+    expect(Array.isArray(l1.lines)).toBe(true);
+    expect(l1.lines).toHaveLength(2);
+  });
+
+  it("MOVES when the document moves, so the hash is reading the document", async () => {
+    const moved = buildLineRows();
+    (moved[0] as { unit_price: string }).unit_price = "23.0000";
+    expect(sealOf(await buildTwice(moved))).not.toBe(
+      sealOf(await buildTwice(buildLineRows())),
+    );
   });
 });

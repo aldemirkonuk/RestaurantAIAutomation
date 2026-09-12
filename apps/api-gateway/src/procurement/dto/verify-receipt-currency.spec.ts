@@ -10,6 +10,7 @@
  * Validated the way Nest's `ValidationPipe` validates: `plainToInstance` and
  * then `validate`, on a plain object shaped like the JSON body.
  */
+import { RECEIVING_PRICE_CURRENCY_RUNGS } from "../price-currency";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 import { VerifyReceiptDto } from "./procurement.dto";
@@ -30,11 +31,14 @@ describe("VerifyReceiptDto — a price on the wire states its currency", () => {
   it("REFUSES a unit price with no currency, in one sentence", async () => {
     const said = await check({ ...COUNT, invoiceUnitPrice: 40 });
     expect(said).toHaveLength(1);
-    // The three ways to state a code, and what is not lost by resubmitting.
+    // The four ways to state a code, and what is not lost by resubmitting.
     expect(said[0]).toContain("no currency");
+    expect(said[0]).toContain("the matched invoice is filed in");
     expect(said[0]).toContain("this order was placed in");
     expect(said[0]).toContain("house's own reporting currency");
     expect(said[0]).toContain("typed on the spot");
+    // The shared half the receiving screen imports, verbatim (audit of b6d2e4b4).
+    expect(said[0]).toContain(RECEIVING_PRICE_CURRENCY_RUNGS);
     expect(said[0]).toContain("the count, the rejection and the stock movement");
     // It names the figure it refused, so a person knows WHICH price.
     expect(said[0]).toContain("40");

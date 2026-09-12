@@ -113,6 +113,32 @@ export function priceCurrency(claim: PriceCurrencyClaim): PriceCurrencyResolutio
 }
 
 /**
+ * THE SHARED HALF OF THE REFUSAL: what a price with no currency costs, the four
+ * rungs that state one, and what still records without it.
+ *
+ * ONE STRING, THREE SURFACES, since 2026-09-11 (audit of b6d2e4b4, 3 of 3
+ * verifiers). `VerifyReceiptDto` and `verifyReceipt` compose their refusal from
+ * it below, and the receiving workspace IMPORTS it
+ * (`apps/web/src/pages/inventory/command/ReceivingWorkspace.tsx`) rather than
+ * restating it. b6d2e4b4's message said all three shared "one shared sentence
+ * naming the three rungs"; the screen had in fact printed its own wording and
+ * named no rung at all.
+ *
+ * It is worded to be true BEFORE anything is sent, because the screen shows it
+ * while the desk is still typing. The parts that describe a submission that has
+ * already happened ("was submitted", "nothing was recorded", "send it again")
+ * stay in `receivingPriceNeedsACurrency`, which only a refusal says.
+ */
+export const RECEIVING_PRICE_CURRENCY_RUNGS =
+  `A price without a currency is not a price: it cannot be compared with the ` +
+  `agreed price, cannot join the price ladder, and prints on every screen as a ` +
+  `number with a caveat. The receiving screen offers four ways to state it: the ` +
+  `code the matched invoice is filed in, the currency this order was placed in, ` +
+  `this house's own reporting currency, or a code typed on the spot. Everything ` +
+  `else on this receipt still stands: submit it without a price and the count, ` +
+  `the rejection and the stock movement all record exactly as they would have.`;
+
+/**
  * A TYPED RECEIVING PRICE STATES ITS CURRENCY OR IS REFUSED.
  *
  * Founder, 2026-09-06 batch 67: *"Refuse a typed price with no currency — a
@@ -131,12 +157,19 @@ export function priceCurrency(claim: PriceCurrencyClaim): PriceCurrencyResolutio
  * producing more of them.
  *
  * WHY A REFUSAL AND NOT A DEFAULT. Every rung that could have filled it in is a
- * claim about somebody else's paper: the ORDER's currency is what this house
- * agreed to pay in, the HOUSE's is what it reports in, and neither is a
- * statement about what the vendor's invoice says. So the screen puts a code
- * beside the field and the person confirms it (`ReceivingWorkspace.tsx`); the
- * gateway takes the answer and never derives one. That is ADR 0083's shape:
- * the offer is visible before it is recorded.
+ * claim about a piece of paper, and they are not equally close to the figure
+ * being typed: the matched INVOICE's filed code is the vendor's own statement
+ * about this very price, the ORDER's currency is what this house agreed to pay
+ * in, and the HOUSE's is what it reports in. So the screen puts a code beside
+ * the field and the person confirms it (`ReceivingWorkspace.tsx`); the gateway
+ * takes the answer and never derives one. That is ADR 0083's shape: the offer is
+ * visible before it is recorded.
+ *
+ * THE SENTENCE NAMES FOUR RUNGS, and said three until 2026-09-11. The invoice's
+ * filed code has been offered on that screen as a labelled chip since batch 67
+ * and PRE-FILLS the field ahead of the order's since batch 69 (founder:
+ * *"Invoice's filed code first, then the order's"*), so a refusal naming three
+ * was undercounting what the desk can actually reach in one tap.
  *
  * The count is deliberately untouched. A delivery that physically happened is
  * not made un-happened by a bookkeeping doubt, and the sentence says so.
@@ -144,14 +177,8 @@ export function priceCurrency(claim: PriceCurrencyClaim): PriceCurrencyResolutio
 export function receivingPriceNeedsACurrency(unitPrice: number): string {
   return (
     `A unit price of ${unitPrice} was submitted with no currency, so nothing ` +
-    `was recorded. A price without a currency is not a price: it cannot be ` +
-    `compared with the agreed price, cannot join the price ladder, and prints ` +
-    `on every screen as a number with a caveat. State the code and send it ` +
-    `again — the receiving screen offers three: the currency this order was ` +
-    `placed in, this house's own reporting currency, or a code typed on the ` +
-    `spot. Everything else on this receipt still stands: submit it without a ` +
-    `price and the count, the rejection and the stock movement all record ` +
-    `exactly as they would have.`
+    `was recorded. ${RECEIVING_PRICE_CURRENCY_RUNGS} State the code and send ` +
+    `it again.`
   );
 }
 

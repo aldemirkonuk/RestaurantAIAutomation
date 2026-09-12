@@ -29,8 +29,14 @@
  * person — with the name and the MINOR-UNIT count its formatter needs, which is
  * the half a gateway does not care about and a screen cannot print without.
  * The gateway CANNOT import it — the two apps are separate builds with no
- * shared package between them, and the web must not import the gateway
- * either — so the set is COPIED here.
+ * shared package between them — so the set is COPIED here. (This sentence used
+ * to add "and the web must not import the gateway either". Since 2026-09-11 one
+ * production web file does: `ReceivingWorkspace.tsx` imports the receiving
+ * refusal's shared sentence from `procurement/price-currency.ts`, which imports
+ * this file, so the web build resolves both. It builds because Vercel builds the
+ * web from the monorepo root, and it stays current only because
+ * `scripts/vercel_should_build.sh` and `turbo.json` name both files as inputs of
+ * the web build.)
  *
  * A copy is a second thing to keep true, and three files in this repo argued in
  * writing that copying it would be worse than not checking membership at all
@@ -80,12 +86,18 @@
  * defect, and adding one is a two-line change (here and the web table) that the
  * mirror spec forces you to make on both sides at once.
  *
- * WITHDRAWN CODES ARE NOT HERE and that is a judgement worth stating: HRK
- * (euro, 2023), CUC (2021), SLL (superseded by SLE), ZWL (superseded by ZWG),
- * MRO, STD, VEF and the other retired codes are absent, so paper old enough to
- * name one is HELD rather than filed. ANG is the one transitional code kept —
- * XCG replaced it for Curacao and Sint Maarten, and invoices predating the
- * changeover still say ANG.
+ * WITHDRAWN CODES ARE REFUSED, BY DECISION. HRK (euro, 2023), CUC (2021), SLL
+ * (superseded by SLE), ZWL (superseded by ZWG), MRO, STD, VEF and the other
+ * retired codes are absent, so paper old enough to name one is HELD rather than
+ * filed. This began as a builder's judgement on 2026-09-06 and is now the
+ * founder's own call: asked on 2026-09-11 (batch 69) to confirm the policy, he
+ * answered *"Keep as built; a held old code is a bug report, not a list
+ * entry"*. So a held invoice naming a withdrawn code is a defect to look into --
+ * the paper, the vendor, the extraction -- and never a reason to add the code
+ * back here: a list that grows every time old paper arrives is a list that
+ * never shrinks. ANG is the one transitional code kept — XCG replaced it for
+ * Curacao and Sint Maarten, and invoices predating the changeover still say ANG
+ * — and VED and VES are both listed because ISO lists both.
  *
  * NOTHING HERE CONVERTS ANYTHING. There is no exchange rate in this system and
  * this file does not introduce one; it answers exactly one question, which is

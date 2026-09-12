@@ -32,6 +32,17 @@ import {
 import { settingsApi } from '../../../services/api/settings'
 import { useNotificationStore } from '../../../stores'
 import { CURRENCY_CODES } from '../../../lib/currency'
+/*
+ * THE FIRST PRODUCTION IMPORT FROM THE GATEWAY IN THIS APP (2026-09-11, audit of
+ * b6d2e4b4). The receiving refusal's shared sentence is imported, not restated,
+ * so the DTO, verifyReceipt and this panel cannot say two different things about
+ * a price with no code. It builds because Vercel builds the web from the monorepo
+ * root; it stays CURRENT only because `scripts/vercel_should_build.sh` and
+ * `turbo.json` now name this file and the one it imports (`common/iso-4217.ts`)
+ * as inputs of the web build. Without that, a gateway-only edit to the sentence
+ * would skip the preview and hit the web's turbo cache, and ship yesterday's words.
+ */
+import { RECEIVING_PRICE_CURRENCY_RUNGS } from '../../../../../api-gateway/src/procurement/price-currency'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { computeMatch, verdictStyle, money } from '../../../lib/invoiceMatch'
 import { cn } from '../../../lib/utils'
@@ -174,11 +185,14 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
    * WHAT THE PRICE IS IN — required beside it since 2026-09-06 (founder batch
    * 67: "a price without money is not a price").
    *
-   * `''` and never a default. Three rungs can fill it and all three are OFFERED
-   * rather than applied: the currency the order was placed in, the house's own
-   * reporting currency, or a code chosen here. The gateway refuses the pair
-   * (`VerifyReceiptDto.priceStatesItsCurrency`), so a screen that assumed one
-   * would be putting words in the desk's mouth AND passing them a server check.
+   * `''` and never a default. Four rungs can fill it and all four are OFFERED
+   * rather than applied, nearest paper first: the code the matched INVOICE is
+   * filed in, the currency the ORDER was placed in, the HOUSE's own reporting
+   * currency, or a code chosen here. The first two pre-fill, in that order
+   * (founder, 2026-09-11, batch 69); the house's is only ever a labelled chip.
+   * The gateway refuses the pair (`VerifyReceiptDto.priceStatesItsCurrency`), so
+   * a screen that assumed one would be putting words in the desk's mouth AND
+   * passing them a server check.
    */
   const [invoiceCurrency, setInvoiceCurrency] = useState<string>('')
   /** True once a rung filled the code, so a re-fetch never clobbers a choice. */
@@ -357,27 +371,53 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
     orderCurrency.currency !== invoice.currency
 
   /*
-   * ITEM B — THE CODE IS OFFERED, ONCE, FROM THE ORDER. Never from the house.
+   * ITEM B — THE CODE IS OFFERED, ONCE: THE INVOICE'S FILED CODE FIRST, THEN
+   * THE ORDER'S, THEN NOTHING. Never from the house.
    *
-   * The order's currency is a fact about THIS purchase that somebody already
-   * stated (`procurement_orders.currency`, with a `currency_source`), so
-   * pre-filling it puts a real answer in front of the desk to confirm or
-   * change. The house's reporting currency is a fact about the HOUSE and says
-   * nothing about what a vendor billed — offered below as a one-tap choice,
-   * with its provenance on the label, never written into the field for
-   * somebody. That distinction is the whole of ADR 0117 Q25.
+   * THE FOUNDER, 2026-09-11 (batch 69): *"Invoice's filed code first, then the
+   * order's"* — *"A reading of the document, like the quantities and prices on
+   * that screen already are; when the two disagree the comparison banner already
+   * says so. One line."*
+   *
+   * The field is literally the INVOICE's unit price, so the invoice's own filed
+   * code is a reading of the paper in front of the desk — the same kind of act
+   * as the quantity and the price this screen already pre-fills from that
+   * document. The order's currency is one step further away: a fact about what
+   * somebody intended to buy, which a vendor is free to bill differently. Both
+   * are still only OFFERED — the desk confirms or changes what is in the field
+   * before anything records.
+   *
+   * NOTHING IS HIDDEN WHEN THE TWO DISAGREE. The comparison banner below already
+   * prints "the order was placed in X; this invoice states Y" whenever both are
+   * known and differ, and it is unchanged: pre-filling the invoice's code makes
+   * that banner MORE useful, because the figure and the code in the cell now
+   * come from the same piece of paper.
+   *
+   * The house's reporting currency is a fact about the HOUSE and says nothing
+   * about what a vendor billed — offered below as a one-tap choice, with its
+   * provenance on the label, never written into the field for somebody. That
+   * distinction is the whole of ADR 0117 Q25 and it is untouched.
    *
    * Runs once, like the document pre-fill above and for the same reason: a
    * background re-fetch must not overwrite a manager's correction.
    */
   useEffect(() => {
     if (currencyPrefilled || readOnly) return
-    const fromOrder = orderCurrency?.currency
-    if (typeof fromOrder === 'string' && CURRENCY_CODES.includes(fromOrder)) {
-      setInvoiceCurrency(fromOrder)
+    // In order. A rung that names a code this product cannot offer is skipped,
+    // not written: the picker would not hold it and the gateway would refuse it.
+    const rungs = [invoice?.currency as string | undefined, orderCurrency?.currency]
+    const filled = rungs.find(
+      (code): code is string =>
+        typeof code === 'string' && CURRENCY_CODES.includes(code),
+    )
+    // No `else` that invents one. A delivery whose paper and whose order both
+    // state nothing leaves the field empty, the Accept button reads "Currency
+    // required", and the chips offer the house's code with its provenance.
+    if (filled) {
+      setInvoiceCurrency(filled)
       setCurrencyPrefilled(true)
     }
-  }, [orderCurrency, currencyPrefilled, readOnly])
+  }, [invoice, orderCurrency, currencyPrefilled, readOnly])
 
   /**
    * The codes this desk can take in one tap, each labelled with where it came
@@ -686,13 +726,17 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700 mb-1.5">
                 This price does not say what it is in
               </p>
-              <p className="text-[11.5px] leading-relaxed text-rose-900/90">
-                A price without a currency is not a price: nothing can compare it
-                with the agreed price and every screen prints it as a number with a
-                caveat. Pick the code beside the figure.{' '}
-                {/* The promise the gateway's own refusal makes, made here too. */}
-                Nothing else is blocked — clear the price and this receipt still
-                records the count, the rejection and the stock movement in full.
+              {/* THE GATEWAY'S OWN SENTENCE, imported rather than restated. The
+                  DTO, verifyReceipt and this panel say one thing about a price
+                  with no code: what it costs, the four rungs that state one, and
+                  what still records without it. This panel used to carry its own
+                  wording and named no rung, so in the state with no chip to offer
+                  the desk was told a code was needed and not where to find one. */}
+              <p
+                data-testid="receiving-price-currency-rungs"
+                className="text-[11.5px] leading-relaxed text-rose-900/90"
+              >
+                {RECEIVING_PRICE_CURRENCY_RUNGS}
               </p>
               {currencyOffers.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 mt-2">

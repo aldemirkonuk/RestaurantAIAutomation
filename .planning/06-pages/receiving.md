@@ -407,7 +407,8 @@ read or write, and `VerifyReceiptDto` refuses the same pair on the wire
 code and what still records without one. The receiving workspace carries the code beside
 the price field, pre-filled from the order's own currency when it has one, with the
 invoice's filed code and the house's reporting currency offered as labelled one-tap
-choices — offered, never applied. Two of the three tests that pinned the old behaviour are
+choices — offered, never applied. (Superseded 2026-09-11, batch 69: the invoice's filed
+code now pre-fills AHEAD of the order's — see the block below.) Two of the three tests that pinned the old behaviour are
 flipped and the typed-code one is kept
 (`receiving-price-held.spec.ts`, `dto/verify-receipt-currency.spec.ts`).
 
@@ -417,6 +418,50 @@ whose unlinked invoice is in TRY still writes `USD`. The currency-null row is go
 this door; the wrong-currency row is not. Closing it means running the held-invoice check
 when a document is LINKED to an order that already has priced receipts — new behaviour, not
 a narrowing of this one, and not built.
+
+**2026-09-11, batch 69 — the price field reads the invoice's own code first.** Asked in
+session as "batch 68" by mistake (recorded as batch 69), the founder answered verbatim:
+
+> **"Invoice's filed code first, then the order's"** — *"A reading of the document, like the
+> quantities and prices on that screen already are; when the two disagree the comparison
+> banner already says so. One line."*
+
+**BUILT (2026-09-11, p4bx).** The receiving workspace pre-fills the price's currency from the
+matched invoice's filed code; when the invoice states none, or a code the product cannot
+offer (a withdrawn one), from the order's; and otherwise leaves it empty, the house's code
+still only a labelled chip. The comparison banner (*"The order was placed in X; this invoice
+states Y"*) is unchanged and still prints whenever both are known and differ. With the field
+cleared, the chips offer the invoice's, the order's and the house's codes in that order. The
+shared refusal sentence (`price-currency.ts` `receivingPriceNeedsACurrency`) said the screen
+"offers three" while the invoice's chip had been on screen since batch 67; it now names four.
+The batch's other three answers (the twin acts sealed, the 157-code picker kept, withdrawn
+codes kept refused) are in [[receipts]] §13. The twins were first chosen by the earlier batch
+68 (2026-09-06), which this batch's first answer confirms.
+
+**2026-09-11 — the currency-null `price_history` rows: nothing to count yet.** p4bv asked
+whether existing `price_history` rows with `currency: null` should be counted or left. The
+parent measured production read-only that day (Supabase connector, project
+`exzueerziesmczwlhomd`): `public.price_history` holds **0 rows**, and the production table
+has **no `currency` column yet** (its columns are id, restaurant_id, master_wine_id,
+provider_id, price, quantity, unit, effective_date, source, order_id, notes, created_at; the
+branch's migration adds the column on merge). So there is nothing to backfill and nothing to
+count until the branch merges. **The count must be re-taken after the first merge to main.**
+
+**2026-09-11 — two findings from the audit of `b6d2e4b4` closed on this page.** (1) That
+commit's message said the DTO, `verifyReceipt` AND this workspace refuse a code-less price
+"with one shared sentence naming the three rungs"; the workspace in fact printed its own
+wording and named no rung, so in the state with no chip to offer (no order code, no invoice,
+an unreadable house) the desk was told a code was needed and not where to find one. The
+shared half of the sentence is now one exported constant in `price-currency.ts`
+(`RECEIVING_PRICE_CURRENCY_RUNGS`, worded to be true before anything is sent); the refusal
+composes from it and this panel IMPORTS it — the first production import from the gateway in
+the web app. It builds because Vercel builds the web from the monorepo root, and it stays
+current only because `scripts/vercel_should_build.sh` and `turbo.json` now list
+`price-currency.ts` and `common/iso-4217.ts` as web-build inputs: without that, a gateway-only
+edit to the sentence would skip the preview and hit the web's turbo cache. (2) The second
+receipt on an order that already carries a price from an earlier verify, submitted with counts
+and no price, is now pinned: no price is written from the stored row and nothing is refused
+(`receiving-price-held.spec.ts`).
 
 
 1. **Fix the staff query.** Use `getOrders({ status: … })` from `services/api/orders.ts`

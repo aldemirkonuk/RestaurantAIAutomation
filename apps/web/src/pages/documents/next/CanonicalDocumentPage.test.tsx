@@ -16,12 +16,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const documentMock = vi.fn()
 const correctMock = vi.fn()
 const verifyMock = vi.fn()
+const mintCorrectMock = vi.fn()
+const mintVerifyMock = vi.fn()
+/** Every call, in order, so the mint's TIMING is asserted rather than assumed. */
+const calls: string[] = []
 vi.mock('../../../services/api/canonical', () => ({
   canonicalApi: {
     document: (id: string) => documentMock(id),
     delivery: vi.fn(),
-    correctField: (id: string, body: unknown) => correctMock(id, body),
-    verifyField: (id: string, path: string) => verifyMock(id, path),
+    correctField: (id: string, body: unknown, challenge?: string | null) => {
+      calls.push('correctField')
+      return correctMock(id, body, challenge)
+    },
+    verifyField: (id: string, path: string, challenge?: string | null) => {
+      calls.push('verifyField')
+      return verifyMock(id, path, challenge)
+    },
+    mintCorrectFieldSeal: (id: string, body: unknown) => {
+      calls.push('mintCorrectFieldSeal')
+      return mintCorrectMock(id, body)
+    },
+    mintVerifyFieldSeal: (id: string, path: string) => {
+      calls.push('mintVerifyFieldSeal')
+      return mintVerifyMock(id, path)
+    },
   },
 }))
 
@@ -162,6 +180,11 @@ describe('CanonicalDocumentPage', () => {
     documentMock.mockReset()
     correctMock.mockReset()
     verifyMock.mockReset()
+    mintCorrectMock.mockReset()
+    mintVerifyMock.mockReset()
+    calls.length = 0
+    mintCorrectMock.mockResolvedValue('seal-correct')
+    mintVerifyMock.mockResolvedValue('seal-tick')
   })
 
   it('renders the verdict, the sheet and the not-counted words', async () => {
@@ -218,6 +241,20 @@ describe('CanonicalDocumentPage', () => {
   // ADR 0104 D5, slice 3 — the correction door.
   // -------------------------------------------------------------------------
 
+  /**
+   * Complete the hold on a `HoldToApprove`.
+   *
+   * The keyboard path: Enter arms it, a second Enter within three seconds
+   * approves. Used rather than a pointer hold because jsdom has no
+   * requestAnimationFrame clock worth timing a thumb against — the same helper
+   * `ReceiptsSeal.test.tsx` uses for the other three acts.
+   */
+  const hold = (name: RegExp) => {
+    const control = screen.getByRole('button', { name })
+    fireEvent.keyDown(control, { key: 'Enter' })
+    fireEvent.keyDown(control, { key: 'Enter' })
+  }
+
   /** Open the popover on line 1's unit price and press "Correct this". */
   const openCorrectionOnUnitPrice = async () => {
     const cells = await screen.findAllByLabelText(/Where Unit price, line 1 came from/)
@@ -225,6 +262,14 @@ describe('CanonicalDocumentPage', () => {
     const button = await screen.findByTestId('correct-field')
     fireEvent.mouseDown(button)
     return screen.findByTestId('correction-dialog')
+  }
+
+  /** Open the popover on line 1's unit price and press "I have checked this". */
+  const openTickOnUnitPrice = async () => {
+    const cells = await screen.findAllByLabelText(/Where Unit price, line 1 came from/)
+    fireEvent.focus(cells[0])
+    fireEvent.mouseDown(await screen.findByTestId('verify-field'))
+    return screen.findByTestId('field-verify-dialog')
   }
 
   it('opens the correction form on a field and sends path, value and reason', async () => {
@@ -237,16 +282,20 @@ describe('CanonicalDocumentPage', () => {
     fireEvent.change(screen.getByTestId('correction-reason'), {
       target: { value: 'the paper says 132,00' },
     })
-    fireEvent.click(screen.getByTestId('correction-submit'))
+    hold(/Hold to seal this correction/)
 
     await waitFor(() => expect(correctMock).toHaveBeenCalledTimes(1))
-    expect(correctMock).toHaveBeenCalledWith('doc-syn', {
-      path: 'lines[0].netPrice',
-      // A NUMBER, not the string the input held: the gateway types this field
-      // and would refuse "132" with a 400.
-      value: 132,
-      reason: 'the paper says 132,00',
-    })
+    expect(correctMock).toHaveBeenCalledWith(
+      'doc-syn',
+      {
+        path: 'lines[0].netPrice',
+        // A NUMBER, not the string the input held: the gateway types this field
+        // and would refuse "132" with a 400.
+        value: 132,
+        reason: 'the paper says 132,00',
+      },
+      'seal-correct',
+    )
   })
 
   it('shows what was there before, and the glyphs the paper printed', async () => {
@@ -265,7 +314,7 @@ describe('CanonicalDocumentPage', () => {
     mount()
     await openCorrectionOnUnitPrice()
     fireEvent.click(screen.getByTestId('correction-clear'))
-    fireEvent.click(screen.getByTestId('correction-submit'))
+    hold(/Hold to seal this correction/)
     await waitFor(() => expect(correctMock).toHaveBeenCalledTimes(1))
     expect(correctMock.mock.calls[0][1].value).toBeNull()
   })
@@ -283,7 +332,7 @@ describe('CanonicalDocumentPage', () => {
     mount()
     await openCorrectionOnUnitPrice()
     fireEvent.change(screen.getByTestId('correction-value'), { target: { value: '132' } })
-    fireEvent.click(screen.getByTestId('correction-submit'))
+    hold(/Hold to seal this correction/)
     await waitFor(() => expect(screen.getByTestId('correction-error')).toBeTruthy())
     expect(screen.getByTestId('correction-error').textContent).toMatch(
       /landed first/,
@@ -331,14 +380,111 @@ describe('CanonicalDocumentPage', () => {
     expect(screen.queryByTestId('correct-field')).toBeNull()
   })
 
-  it('ticks a field as verified without opening the correction form', async () => {
+  it('opens the tick as its OWN hold, never the correction form', async () => {
     documentMock.mockResolvedValue(response())
     verifyMock.mockResolvedValue({ revision: 2, entry: {}, document: {} })
     mount()
-    const cells = await screen.findAllByLabelText(/Where Unit price, line 1 came from/)
-    fireEvent.focus(cells[0])
-    fireEvent.mouseDown(await screen.findByTestId('verify-field'))
-    await waitFor(() => expect(verifyMock).toHaveBeenCalledWith('doc-syn', 'lines[0].netPrice'))
+    await openTickOnUnitPrice()
+    // The value the person is standing behind is on screen, and it is the
+    // document's, not a placeholder.
+    expect(screen.getByTestId('field-verify-value').textContent).toMatch(/142/)
     expect(screen.queryByTestId('correction-dialog')).toBeNull()
+
+    hold(/Hold to stand behind Unit price, line 1/)
+    await waitFor(() =>
+      expect(verifyMock).toHaveBeenCalledWith('doc-syn', 'lines[0].netPrice', 'seal-tick'),
+    )
+  })
+
+  // -------------------------------------------------------------------------
+  // Batch 69 (founder, 2026-09-11): "Seal corrections and fields/verify too."
+  //
+  // Two things only the browser can get wrong, and the gateway's own specs
+  // cannot see: the TIMING of the mint, and the fallback that must not exist.
+  // -------------------------------------------------------------------------
+
+  it('mints the correction seal BEFORE the correction is sent', async () => {
+    documentMock.mockResolvedValue(response())
+    correctMock.mockResolvedValue({ revision: 2, entry: {}, document: {} })
+    mount()
+    await openCorrectionOnUnitPrice()
+    fireEvent.change(screen.getByTestId('correction-value'), { target: { value: '132' } })
+    hold(/Hold to seal this correction/)
+    await waitFor(() => expect(correctMock).toHaveBeenCalled())
+    expect(calls).toEqual(['mintCorrectFieldSeal', 'correctField'])
+    // The mint is taken over the SAME correction the write carries, or the
+    // gateway's args_hash would refuse every honest one.
+    expect(mintCorrectMock).toHaveBeenCalledWith('doc-syn', {
+      path: 'lines[0].netPrice',
+      value: 132,
+    })
+  })
+
+  it('mints the tick seal BEFORE the tick is sent', async () => {
+    documentMock.mockResolvedValue(response())
+    verifyMock.mockResolvedValue({ revision: 2, entry: {}, document: {} })
+    mount()
+    await openTickOnUnitPrice()
+    hold(/Hold to stand behind Unit price, line 1/)
+    await waitFor(() => expect(verifyMock).toHaveBeenCalled())
+    expect(calls).toEqual(['mintVerifyFieldSeal', 'verifyField'])
+  })
+
+  it('does not correct a field when the mint refuses', async () => {
+    documentMock.mockResolvedValue(response())
+    mintCorrectMock.mockRejectedValue(
+      Object.assign(new Error('This document changed after the seal was issued'), {
+        response: { status: 403 },
+      }),
+    )
+    mount()
+    await openCorrectionOnUnitPrice()
+    fireEvent.change(screen.getByTestId('correction-value'), { target: { value: '132' } })
+    hold(/Hold to seal this correction/)
+    expect(await screen.findByText(/The seal could not be issued/)).toBeTruthy()
+    expect(correctMock).not.toHaveBeenCalled()
+  })
+
+  it('does not tick a field when the mint resolves null', async () => {
+    documentMock.mockResolvedValue(response())
+    mintVerifyMock.mockResolvedValue(null)
+    mount()
+    await openTickOnUnitPrice()
+    hold(/Hold to stand behind Unit price, line 1/)
+    expect(await screen.findByText(/The seal could not be issued/)).toBeTruthy()
+    expect(verifyMock).not.toHaveBeenCalled()
+  })
+
+  it('seals the figure the HOLD was begun over, not one typed during it', async () => {
+    // The keyboard path arms on Enter and commits on a second Enter up to three
+    // seconds later. A dialog that re-read its input at the write would seal one
+    // figure and post another, which is the whole mechanism defeated in the UI.
+    documentMock.mockResolvedValue(response())
+    correctMock.mockResolvedValue({ revision: 2, entry: {}, document: {} })
+    mount()
+    await openCorrectionOnUnitPrice()
+    fireEvent.change(screen.getByTestId('correction-value'), { target: { value: '132' } })
+    const control = screen.getByRole('button', { name: /Hold to seal this correction/ })
+    fireEvent.keyDown(control, { key: 'Enter' })
+    fireEvent.change(screen.getByTestId('correction-value'), { target: { value: '1320' } })
+    fireEvent.keyDown(control, { key: 'Enter' })
+    await waitFor(() => expect(correctMock).toHaveBeenCalled())
+    expect(mintCorrectMock.mock.calls[0][1].value).toBe(132)
+    expect(correctMock.mock.calls[0][1].value).toBe(132)
+  })
+
+  it('refuses to hold at all on a figure the field cannot take', async () => {
+    // A number the browser cannot read is not sent as 0, and the control says
+    // why rather than looking alive and doing nothing.
+    documentMock.mockResolvedValue(response())
+    mount()
+    await openCorrectionOnUnitPrice()
+    fireEvent.change(screen.getByTestId('correction-value'), { target: { value: 'abc' } })
+    expect(screen.getByTestId('correction-unreadable').textContent).toMatch(/not a number/)
+    const control = screen.getByRole('button', { name: /Type a value this field can take/ })
+    expect((control as HTMLButtonElement).disabled).toBe(true)
+    hold(/Type a value this field can take/)
+    expect(mintCorrectMock).not.toHaveBeenCalled()
+    expect(correctMock).not.toHaveBeenCalled()
   })
 })

@@ -1,10 +1,13 @@
 /**
- * The three procurement document write acts are REDEEMED, not asserted.
+ * The five procurement document write acts are REDEEMED, not asserted.
  *
  * Founder, 2026-09-06 (batch 64), asked whether procurement's write routes
  * should be sealed: **"Decide as a module: seal all three"** — verify, line edit
  * and currency restatement each take a redeemed seal like the payment and
- * register acts do.
+ * register acts do. Founder, 2026-09-11 (batch 69), asked about the two acts on
+ * the OTHER face of the same paper: **"Seal corrections and fields/verify
+ * too"** — *"the decision then holds on both faces of the document; the guard's
+ * census becomes five acts."* Cases 17-25 are that second answer.
  *
  * WHAT THIS FILE MEASURES, AND WHY EACH CASE EXISTS
  * ------------------------------------------------
@@ -23,13 +26,27 @@
  *   7-9.  a seal minted for one act cannot be spent on another;
  *  10-12. a seal minted over one state cannot be spent after that state moved:
  *         a corrected line for verify, a different patch for the line edit, a
- *         different currency for the restatement;
+ *         different currency for the restatement -- both the code SENT and the
+ *         code the document carried UNDER the seal (added after the audit of
+ *         b6d2e4b4);
  *  13.    a seal is one person's approval and cannot be spent by another;
  *  14.    the restatement's audit row is still written BEFORE the currency
  *         lands, behind the seal rather than instead of it;
  *  15-16. the mint refuses what the write would refuse — staff, and a code that
  *         is not a currency — so a seal is never issued for an act this house
  *         will not perform.
+ *  17-25. THE CANONICAL FACE (batch 69). The same five properties for
+ *         `field_correct` and `field_verify`: refused with no seal and nothing
+ *         appended, admitted once with a good one, refused across acts, and
+ *         refused when the state moved — for the correction, a STALE REVISION
+ *         (somebody else appended one in between) and a document corrected on
+ *         the other face while the revision number stood still; for the tick,
+ *         the value moving underneath it.
+ *  26-28. ROLE BEFORE SEAL on the currency write (audit of b6d2e4b4): a manager
+ *         demoted between the mint and the write is refused in the ROLE's words
+ *         with the seal unspent, no seal refusal filed and no audit row; staff
+ *         with no seal hear the role, not the seal; and the two canonical-face
+ *         acts consult no role at all, so the seal is their first refusal.
  */
 
 import { HttpException } from "@nestjs/common";
@@ -122,6 +139,14 @@ function fakeClient(tables: Record<string, Row[]>, ops: string[]) {
   };
 }
 
+/** A layer-1 field envelope, in the shape `CORRECTABLE_PATHS` reads. */
+const env = (value: unknown) => ({
+  value,
+  source: "extracted",
+  confidence: null,
+  revision: 1,
+});
+
 function build(
   opts: { role?: string | null; docCurrency?: string | null } = {},
 ) {
@@ -208,12 +233,72 @@ function build(
     }),
   } as unknown as OrganizationsService;
 
+  /**
+   * The CANONICAL face's state, as one mutable object the cases move (batch 69).
+   *
+   * Not derived from `tables` above, and deliberately so: the real
+   * `buildFromDocumentId` replays every appended correction over the columns and
+   * re-runs the mapper, which is a different object from the raw rows the
+   * /receipts acts hash. Modelling it as its own state is what lets a case move
+   * the canonical document WITHOUT moving the rows — the exact case the seal's
+   * content hash exists for, since a document nobody has corrected carries no
+   * revision row and its number stands still while the sheet changes.
+   */
+  const canonicalState = {
+    revision: 1,
+    layer1: {
+      documentNumber: env("INV-1"),
+      issueDate: env("2026-09-01"),
+      currency: env(opts.docCurrency ?? null),
+      seller: { name: env("SYNTHETIC Vendor"), vatIdentifier: env(null) },
+      buyer: { name: env("SYNTHETIC House"), vatIdentifier: env(null) },
+      lines: [
+        {
+          description: env("Kavaklidere Yakut"),
+          quantity: env(12),
+          netPrice: env(10),
+          netAmount: env(120),
+        },
+      ],
+      totals: { linesNetTotal: env(120), taxAmount: env(null) },
+    } as Record<string, unknown>,
+  };
+
+  const canonical = {
+    buildFromDocumentId: jest.fn(
+      async (restaurantId: string, documentId: string) =>
+        restaurantId === HOUSE && documentId === DOC
+          ? {
+              ok: true as const,
+              value: {
+                revision: canonicalState.revision,
+                layer1: canonicalState.layer1,
+              },
+            }
+          : {
+              ok: false as const,
+              error: `document ${documentId} not found for restaurant ${restaurantId}`,
+            },
+    ),
+  };
+
+  const corrections = {
+    correct: jest.fn(async () => ({
+      ok: true as const,
+      value: { revision: 2, entry: {}, document: {} },
+    })),
+    verifyField: jest.fn(async () => ({
+      ok: true as const,
+      value: { revision: 2, entry: {}, document: {} },
+    })),
+  };
+
   const controller = new DocumentsController(
     intake,
     db,
+    canonical as never,
     {} as never,
-    {} as never,
-    {} as never,
+    corrections as never,
     {} as never,
     organizations,
     {} as never,
@@ -223,7 +308,16 @@ function build(
     new SealChallengeService(db),
   );
 
-  return { controller, tables, ops, intake, organizations };
+  return {
+    controller,
+    tables,
+    ops,
+    intake,
+    organizations,
+    canonical,
+    canonicalState,
+    corrections,
+  };
 }
 
 type H = ReturnType<typeof build>;
@@ -245,7 +339,7 @@ async function mintCurrency(h: H, currency: string, user: Authed = manager) {
   ).challenge;
 }
 
-describe("DocumentsController — the three write acts carry a redeemed seal", () => {
+describe("DocumentsController — the five write acts carry a redeemed seal", () => {
   // 1-3. Refused without a seal, and NOTHING is written.
   it("refuses `verify` with no seal, and does not verify the document", async () => {
     const h = build();
@@ -397,6 +491,28 @@ describe("DocumentsController — the three write acts carry a redeemed seal", (
     expect(currencyOf(h)).toBeNull();
   });
 
+  it("refuses a currency seal minted while the invoice was unfiled, after somebody else filed it in USD", async () => {
+    // `document-seal.ts`'s own promise, pinned at controller level (audit of
+    // b6d2e4b4): the seal hashes the code the document carries NOW as well as
+    // the code being written. The case above moves the code being SENT; this
+    // one moves the code UNDER the seal -- a second manager files the held
+    // invoice in USD between this manager's hold and their write.
+    const h = build();
+    expect(currencyOf(h)).toBeNull();
+    const token = await mintCurrency(h, "EUR");
+    h.tables.procurement_documents[0].currency = "USD";
+    await expect(
+      h.controller.restateCurrency(
+        DOC,
+        { currency: "EUR" },
+        manager as never,
+        token,
+      ),
+    ).rejects.toThrow(/changed after the seal was issued/i);
+    expect(h.tables.procurement_document_currency_changes).toHaveLength(0);
+    expect(currencyOf(h)).toBe("USD");
+  });
+
   // 13. One person's approval.
   it("refuses a seal issued to somebody else", async () => {
     const h = build();
@@ -445,6 +561,313 @@ describe("DocumentsController — the three write acts carry a redeemed seal", (
       h.controller.mintCurrencySeal(DOC, { currency: "ZZZ" }, manager as never),
     ).rejects.toThrow(HttpException);
     expect(h.tables.mcp_seal_challenges).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // 17-25. THE CANONICAL FACE (founder, 2026-09-11, batch 69).
+  // -------------------------------------------------------------------------
+
+  // 17-18. Refused without a seal, and NOTHING is appended.
+  it("refuses a field correction with no seal, and appends no revision", async () => {
+    const h = build();
+    await expect(
+      h.controller.correctField(
+        DOC,
+        { path: "documentNumber", value: "INV-2" } as never,
+        manager as never,
+      ),
+    ).rejects.toThrow(/must be proven rather than asserted/i);
+    expect(h.corrections.correct).not.toHaveBeenCalled();
+    // The document is not even READ when no seal was sent: the cheap, certain
+    // refusal comes first, so a caller with no seal never gets a 500 about
+    // Postgres instead of the sentence telling them to begin the hold.
+    expect(h.canonical.buildFromDocumentId).not.toHaveBeenCalled();
+  });
+
+  it("refuses a field tick with no seal, and records no verified_by", async () => {
+    const h = build();
+    await expect(
+      h.controller.verifyFieldTick(
+        DOC,
+        { path: "lines[0].netPrice" } as never,
+        manager as never,
+      ),
+    ).rejects.toThrow(/must be proven rather than asserted/i);
+    expect(h.corrections.verifyField).not.toHaveBeenCalled();
+  });
+
+  // 19-20. A good seal lets each act through, exactly once.
+  it("lets a good field-correction seal through, exactly once", async () => {
+    const h = build();
+    const body = { path: "lines[0].netPrice", value: 132 };
+    const token = (
+      await h.controller.mintFieldCorrectSeal(DOC, body as never, manager as never)
+    ).challenge;
+    await h.controller.correctField(DOC, body as never, manager as never, token);
+    expect(h.corrections.correct).toHaveBeenCalledTimes(1);
+
+    await expect(
+      h.controller.correctField(DOC, body as never, manager as never, token),
+    ).rejects.toThrow(/already been spent/i);
+    expect(h.corrections.correct).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a good field-tick seal through, exactly once", async () => {
+    const h = build();
+    const body = { path: "lines[0].netPrice" };
+    const token = (
+      await h.controller.mintFieldVerifySeal(DOC, body as never, manager as never)
+    ).challenge;
+    await h.controller.verifyFieldTick(
+      DOC,
+      body as never,
+      manager as never,
+      token,
+    );
+    expect(h.corrections.verifyField).toHaveBeenCalledTimes(1);
+
+    await expect(
+      h.controller.verifyFieldTick(DOC, body as never, manager as never, token),
+    ).rejects.toThrow(/already been spent/i);
+    expect(h.corrections.verifyField).toHaveBeenCalledTimes(1);
+  });
+
+  // 21-22. One seal, one act — across the two faces as well as within one.
+  it("refuses a field-tick seal spent on a field correction", async () => {
+    const h = build();
+    const token = (
+      await h.controller.mintFieldVerifySeal(
+        DOC,
+        { path: "lines[0].netPrice" } as never,
+        manager as never,
+      )
+    ).challenge;
+    await expect(
+      h.controller.correctField(
+        DOC,
+        { path: "lines[0].netPrice", value: 132 } as never,
+        manager as never,
+        token,
+      ),
+    ).rejects.toThrow(/different act/i);
+    expect(h.corrections.correct).not.toHaveBeenCalled();
+  });
+
+  it("refuses the DOCUMENT-WIDE verify seal spent on a single field's tick", async () => {
+    // The reason `field_verify` is not called `verification`: these two acts are
+    // one word apart in the operator's language and mean very different things.
+    const h = build();
+    const token = await mintVerify(h);
+    await expect(
+      h.controller.verifyFieldTick(
+        DOC,
+        { path: "lines[0].netPrice" } as never,
+        manager as never,
+        token,
+      ),
+    ).rejects.toThrow(/different act/i);
+    expect(h.corrections.verifyField).not.toHaveBeenCalled();
+  });
+
+  // 23-25. What was approved and what is sent have to be the same thing.
+  it("refuses a correction seal minted against a STALE revision", async () => {
+    const h = build();
+    const body = { path: "documentNumber", value: "INV-2" };
+    const token = (
+      await h.controller.mintFieldCorrectSeal(DOC, body as never, manager as never)
+    ).challenge;
+    // Somebody else's correction lands in between: layer 1 is append-only, so
+    // the revision the hold was begun against is no longer the current one.
+    h.canonicalState.revision = 2;
+    await expect(
+      h.controller.correctField(DOC, body as never, manager as never, token),
+    ).rejects.toThrow(/changed after the seal was issued/i);
+    expect(h.corrections.correct).not.toHaveBeenCalled();
+  });
+
+  it("refuses a correction seal when the OTHER face moved the document under it", async () => {
+    const h = build();
+    const body = { path: "documentNumber", value: "INV-2" };
+    const token = (
+      await h.controller.mintFieldCorrectSeal(DOC, body as never, manager as never)
+    ).challenge;
+    // A `line_edit` on /receipts. It appends no revision row, so the revision
+    // number stands at 1 and only the CONTENT hash can see this.
+    (
+      (h.canonicalState.layer1.lines as Record<string, unknown>[])[0]
+        .netPrice as Record<string, unknown>
+    ).value = 99;
+    expect(h.canonicalState.revision).toBe(1);
+    await expect(
+      h.controller.correctField(DOC, body as never, manager as never, token),
+    ).rejects.toThrow(/changed after the seal was issued/i);
+    expect(h.corrections.correct).not.toHaveBeenCalled();
+  });
+
+  it("refuses a field-tick seal minted while the field showed another figure", async () => {
+    const h = build();
+    const body = { path: "lines[0].netPrice" };
+    const token = (
+      await h.controller.mintFieldVerifySeal(DOC, body as never, manager as never)
+    ).challenge;
+    (
+      (h.canonicalState.layer1.lines as Record<string, unknown>[])[0]
+        .netPrice as Record<string, unknown>
+    ).value = 132;
+    await expect(
+      h.controller.verifyFieldTick(DOC, body as never, manager as never, token),
+    ).rejects.toThrow(/changed after the seal was issued/i);
+    expect(h.corrections.verifyField).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // 26-28. ROLE BEFORE SEAL (audit of b6d2e4b4). `restateCurrency` asserts the
+  // role and THEN redeems the seal, and the order is the point: a person who may
+  // not restate anything is told so rather than told their seal is wrong, and a
+  // demoted manager's token is neither spent nor filed as a seal refusal -- it
+  // simply buys nothing. No harness change: `build()`'s organizations methods
+  // are jest.fn, so a demotion is staged with the Once variants.
+  // -------------------------------------------------------------------------
+
+  const sealRefusals = (h: H) =>
+    h.tables.system_audit_log.filter((r) => r.action === "seal_refused");
+
+  it("refuses a manager demoted between the mint and the write in the ROLE's words, spending nothing", async () => {
+    const h = build();
+    const token = await mintCurrency(h, "EUR");
+    expect(h.tables.mcp_seal_challenges).toHaveLength(1);
+
+    // The demotion lands between the hold and the write.
+    (
+      h.organizations.resolveRestaurantRole as unknown as jest.Mock
+    ).mockResolvedValueOnce("staff");
+    (
+      h.organizations.assertCanManageRestaurant as unknown as jest.Mock
+    ).mockRejectedValueOnce(new Error("Only managers and owners"));
+
+    const err = await h.controller
+      .restateCurrency(DOC, { currency: "EUR" }, manager as never, token)
+      .catch((e: Error) => e);
+    expect(err).toBeInstanceOf(HttpException);
+    const said = String((err as Error).message);
+    expect(said).toMatch(/manager's or an owner's decision/i);
+    expect(said).toMatch(/signed in as staff/i);
+    expect(said).not.toMatch(/must be proven rather than asserted/i);
+
+    // The seal was never consulted: still unspent, and nothing filed against it.
+    expect(h.tables.mcp_seal_challenges[0].redeemed_at ?? null).toBeNull();
+    expect(sealRefusals(h)).toHaveLength(0);
+    // And nothing about the money moved.
+    expect(h.tables.procurement_document_currency_changes).toHaveLength(0);
+    expect(currencyOf(h)).toBeNull();
+  });
+
+  it("tells staff with NO seal about the role, not about the seal", async () => {
+    const h = build({ role: "staff" });
+    const err = await h.controller
+      .restateCurrency(DOC, { currency: "EUR" }, manager as never)
+      .catch((e: Error) => e);
+    const said = String((err as Error).message);
+    expect(said).toMatch(/manager's or an owner's decision/i);
+    expect(said).not.toMatch(/must be proven rather than asserted/i);
+    // The seal service was never asked, so no seal refusal sits on this
+    // person's record for an act their role could never have performed.
+    expect(sealRefusals(h)).toHaveLength(0);
+    expect(h.tables.procurement_document_currency_changes).toHaveLength(0);
+  });
+
+  it("the two canonical-face acts check NO role, so their first refusal is the seal's", async () => {
+    // The audit's third case is conditional: "the same two for the new acts IF
+    // their writes check the role before the seal". They check no role at all --
+    // neither route has had one beyond the token and the house scope, and batch
+    // 69 sealed them without adding one -- so the demotion case cannot arise.
+    // Pinned so that adding a role gate later is a visible change to this file.
+    const h = build({ role: "staff" });
+    await expect(
+      h.controller.correctField(
+        DOC,
+        { path: "documentNumber", value: "INV-2" } as never,
+        manager as never,
+      ),
+    ).rejects.toThrow(/must be proven rather than asserted/i);
+    await expect(
+      h.controller.verifyFieldTick(
+        DOC,
+        { path: "lines[0].netPrice" } as never,
+        manager as never,
+      ),
+    ).rejects.toThrow(/must be proven rather than asserted/i);
+    expect(h.organizations.resolveRestaurantRole).not.toHaveBeenCalled();
+    expect(h.organizations.assertCanManageRestaurant).not.toHaveBeenCalled();
+    expect(h.corrections.correct).not.toHaveBeenCalled();
+    expect(h.corrections.verifyField).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // 29-31. A MINT REFUSES WHAT THE WRITE WOULD REFUSE (auditor, 2026-09-11).
+  //
+  // `mintCurrencySeal` states the rule for the /receipts face: "EVERYTHING THAT
+  // WOULD REFUSE THE WRITE REFUSES THE SEAL FIRST ... a manager handed a seal
+  // that is going to be refused a second and a half later learns that the seal
+  // is decoration." The two canonical-face mints did not follow it: a path
+  // outside the closed correctable registry was minted happily and then refused
+  // 400 by the write, so a person could be asked to hold a gesture that could
+  // never be spent. The path is validated against the SAME registry the write
+  // validates against (`CORRECTABLE_PATHS`/`splitPath`), so the two cannot drift.
+  // -------------------------------------------------------------------------
+
+  it("refuses to MINT a field-correction seal for a path the write would refuse", async () => {
+    const h = build();
+    await expect(
+      h.controller.mintFieldCorrectSeal(
+        DOC,
+        { path: "constructor.prototype", value: 1 } as never,
+        manager as never,
+      ),
+    ).rejects.toThrow(/not a correctable field|not a field path/i);
+    // Nothing was issued: no token exists for an act that could never be spent.
+    expect(h.tables.mcp_seal_challenges).toHaveLength(0);
+    // ...and it says so, the way the currency mint does.
+    const err = await h.controller
+      .mintFieldCorrectSeal(
+        DOC,
+        { path: "constructor.prototype", value: 1 } as never,
+        manager as never,
+      )
+      .catch((e: Error) => e);
+    expect(String((err as Error).message)).toMatch(/[Nn]othing was sealed/);
+  });
+
+  it("refuses to MINT a field-tick seal for a path the write would refuse", async () => {
+    const h = build();
+    await expect(
+      h.controller.mintFieldVerifySeal(
+        DOC,
+        { path: "lines[0].nope" } as never,
+        manager as never,
+      ),
+    ).rejects.toThrow(/not a verifiable field|not a field path/i);
+    expect(h.tables.mcp_seal_challenges).toHaveLength(0);
+  });
+
+  it("still lets the WRITE refuse a token minted before the state moved", async () => {
+    // The other half of the pairing: refusing early at the mint must not soften
+    // the redemption. A seal minted for a path the registry DOES hold is issued,
+    // and the write still refuses it once the document moves underneath it.
+    // (Case 23 is the fuller version of this; it is restated here so the two
+    // halves of "a mint refuses what the write refuses" sit together.)
+    const h = build();
+    const body = { path: "documentNumber", value: "INV-2" };
+    const token = (
+      await h.controller.mintFieldCorrectSeal(DOC, body as never, manager as never)
+    ).challenge;
+    expect(h.tables.mcp_seal_challenges).toHaveLength(1);
+
+    h.canonicalState.revision = 2;
+    await expect(
+      h.controller.correctField(DOC, body as never, manager as never, token),
+    ).rejects.toThrow(/changed after the seal was issued/i);
+    expect(h.corrections.correct).not.toHaveBeenCalled();
   });
 
   it("files every refusal in system_audit_log before it throws", async () => {

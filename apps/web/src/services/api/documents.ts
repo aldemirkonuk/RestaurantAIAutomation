@@ -6,40 +6,18 @@
  * transcribing them.
  */
 
-import axios from 'axios'
-import { apiClient, getErrorMessage } from './client'
+import { apiClient } from './client'
 
 /**
- * The header every sealed write in this product carries its proof back in.
+ * The seal header, the request config that carries it, and the rule that keeps
+ * the gateway's refusal sentence alive across the trip.
  *
- * One name, one shape, across orders, payment methods, text credits and — since
- * 2026-09-06 (batch 64) — the three procurement document acts. The seal is not
- * one of the arguments it is a seal OVER, so it never travels in the body.
+ * All three moved to `./seal.ts` on 2026-09-11 (batch 69), unchanged, when the
+ * two acts on ADR 0104's canonical face were sealed in `canonical.ts` and this
+ * file's own note — "this is that rule, not a second copy of the policy" —
+ * would otherwise have stopped being true.
  */
-const SEAL_HEADER = 'X-Seal-Challenge'
-
-const sealed = (challenge?: string | null) =>
-  challenge ? { headers: { [SEAL_HEADER]: challenge } } : undefined
-
-/**
- * THE REFUSAL HAS TO SURVIVE THE TRIP.
- *
- * The gateway answers a refused seal with a whole sentence naming what did not
- * match and saying that nothing was changed. An axios error carries that in
- * `response.data.message` and puts "Request failed with status code 403" in
- * `.message`, which is what every call site here reads. So the server's sentence
- * is promoted onto `.message` and the SAME error object is rethrown — `response`,
- * `status` and `isAxiosError` all intact, because callers branch on
- * `err.response?.status` elsewhere. (`orders.ts` states the same rule for the
- * order seal; this is that rule, not a second copy of the policy.)
- */
-function rethrowSpoken(error: unknown): never {
-  if (axios.isAxiosError(error)) {
-    const spoken = getErrorMessage(error)
-    if (spoken) error.message = spoken
-  }
-  throw error
-}
+import { sealed, rethrowSpoken } from './seal'
 
 export interface ProcurementDocument {
   id: string

@@ -1,4 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
+import { RECEIVING_PRICE_CURRENCY_RUNGS } from "./price-currency";
 import { DocumentsController } from "./documents/documents.controller";
 import { ProcurementService } from "./procurement.service";
 import { DatabaseService } from "../database/database.service";
@@ -109,6 +110,12 @@ const ORDER_ROW = {
 function makeDb(opts: {
   /** Documents attached to the order. */
   documents?: Row[];
+  /**
+   * The order row as the gateway reads it. Defaults to `ORDER_ROW`; the
+   * second-receipt case passes one that already carries a price an EARLIER
+   * verify wrote, which is the only state that path can be tested in.
+   */
+  orderRow?: Row;
   linkError?: any;
   docError?: any;
 }) {
@@ -139,16 +146,17 @@ function makeDb(opts: {
           return { data: opts.documents ?? [], error: null };
         }
         if (table === "procurement_orders") {
+          const order = opts.orderRow ?? ORDER_ROW;
           if (op === "update")
             return {
               data: {
-                ...ORDER_ROW,
+                ...order,
                 ...calls.orderUpdates[calls.orderUpdates.length - 1],
                 inventory: { wine_name: "Barolo Riserva" },
               },
               error: null,
             };
-          return { data: ORDER_ROW, error: null };
+          return { data: order, error: null };
         }
         if (table === "procurement_order_items")
           return { data: null, error: null };
@@ -442,12 +450,18 @@ describe("verifyReceipt — a held invoice refuses the PRICE, never the stock", 
       .catch((e: Error) => e);
 
     const said = String((err as { message?: string }).message ?? err);
-    // The three rungs the screen offers, named rather than implied.
+    // The four rungs the screen offers, named rather than implied. The
+    // invoice's own filed code is first, because it is the vendor's statement
+    // about this very price (founder, 2026-09-11, batch 69).
+    expect(said).toContain("the matched invoice is filed in");
     expect(said).toContain("this order was placed in");
     expect(said).toContain("house's own reporting currency");
     expect(said).toContain("typed on the spot");
     // ...and what is NOT lost by resubmitting without a price.
     expect(said).toContain("the count, the rejection and the stock movement");
+    // ...and it is the SAME shared half the receiving screen imports, not a
+    // wording that merely mentions the same phrases (audit of b6d2e4b4).
+    expect(said).toContain(RECEIVING_PRICE_CURRENCY_RUNGS);
   });
 
   it("the same receipt WITHOUT the price records the delivery in full", async () => {
@@ -459,6 +473,38 @@ describe("verifyReceipt — a held invoice refuses the PRICE, never the stock", 
     ).resolves.toBeDefined();
     expect(calls.orderUpdates.length).toBeGreaterThan(0);
     expect(calls.priceHistoryInserts).toEqual([]);
+  });
+
+  it("a SECOND, count-only receipt on an order that already carries a price writes no price from the stored row, and is not refused", async () => {
+    // Pinned after the audit of b6d2e4b4. An earlier verify left a price on the
+    // order row (`invoice_unit_price`, `price_verified`); the desk now submits
+    // the counts with no price. This holds today only because `matchInput` and
+    // the order update read `body.invoiceUnitPrice ?? null` and never the row's
+    // stored figure -- so a future "keep the last price" fallback would put a
+    // price back on the ladder with no currency anyone stated on THIS receipt,
+    // and nothing else would notice.
+    const { db, calls } = makeDb({
+      documents: [],
+      orderRow: {
+        ...ORDER_ROW,
+        invoice_quantity: 10,
+        invoice_unit_price: 40,
+        price_verified: true,
+        match_status: "matched",
+      },
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, receipt(false)),
+    ).resolves.toBeDefined();
+
+    // Nothing refused, and the count still records.
+    expect(calls.orderUpdates.length).toBeGreaterThan(0);
+    // No price from the stored row: none on the ladder...
+    expect(calls.priceHistoryInserts).toEqual([]);
+    // ...and the order update does not carry the earlier figure forward.
+    const priced = calls.orderUpdates.filter((u) => "invoice_unit_price" in u);
+    expect(priced.length).toBeGreaterThan(0);
+    for (const u of priced) expect(u.invoice_unit_price).toBeNull();
   });
 
   it("KEPT: a hand-typed currency is written as given, with no document cross-check", async () => {

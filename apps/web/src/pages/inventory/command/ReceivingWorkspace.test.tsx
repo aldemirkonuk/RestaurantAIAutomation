@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { RECEIVING_PRICE_CURRENCY_RUNGS } from '../../../../../api-gateway/src/procurement/price-currency'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -588,7 +589,7 @@ describe('ReceivingWorkspace — a price says what it is in', () => {
     )
   })
 
-  it('PRE-FILLS the code from the order, when the order names one', async () => {
+  it('PRE-FILLS the code from the order, when only the order names one', async () => {
     orderBlock = {
       id: 'order-1',
       currency: 'GBP',
@@ -603,6 +604,114 @@ describe('ReceivingWorkspace — a price says what it is in', () => {
     await user.type(invoicePriceInput(), '22')
     // Nothing to ask: the order already said it, and the desk can change it.
     expect(screen.queryByTestId('receiving-price-needs-currency')).toBeNull()
+  })
+
+  /* ---------------------------------------------------------------------
+   * THE ORDER OF THE RUNGS (founder, 2026-09-11, batch 69):
+   * "Invoice's filed code first, then the order's" — "A reading of the
+   * document, like the quantities and prices on that screen already are;
+   * when the two disagree the comparison banner already says so."
+   * ------------------------------------------------------------------- */
+
+  it('PRE-FILLS the INVOICE\u2019s filed code ahead of the order\u2019s', async () => {
+    // The rung that changed. The field is literally the invoice's unit price,
+    // so the code the invoice is filed in is a reading of the paper in front of
+    // the desk rather than a fact about what was ordered.
+    orderBlock = {
+      id: 'order-1',
+      currency: 'GBP',
+      currencySource: 'typed',
+      orderNumber: 'PO-1042',
+      failure: null,
+    }
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24 }], {
+        currency: 'EUR',
+        moneyState: { priced: true },
+      }),
+    ])
+    renderWorkspace()
+
+    await screen.findByDisplayValue('EUR')
+    expect(currencySelect().value).toBe('EUR')
+  })
+
+  it('still says the two disagree, with the invoice\u2019s code in the field', async () => {
+    // The comparison banner is what makes the invoice-first pre-fill safe: the
+    // desk sees the code it is about to submit AND that the order named another.
+    orderBlock = {
+      id: 'order-1',
+      currency: 'GBP',
+      currencySource: 'typed',
+      orderNumber: 'PO-1042',
+      failure: null,
+    }
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24 }], {
+        currency: 'EUR',
+        moneyState: { priced: true },
+      }),
+    ])
+    renderWorkspace()
+
+    await screen.findByDisplayValue('EUR')
+    const panel = await screen.findByTestId('receiving-currency-compare')
+    expect(panel).toHaveTextContent('The order was placed in GBP')
+    expect(panel).toHaveTextContent('this invoice states EUR')
+  })
+
+  it('falls to the ORDER when the invoice states no code of its own', async () => {
+    orderBlock = {
+      id: 'order-1',
+      currency: 'GBP',
+      currencySource: 'typed',
+      orderNumber: 'PO-1042',
+      failure: null,
+    }
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24 }], { currency: null }),
+    ])
+    renderWorkspace()
+
+    await screen.findByDisplayValue('GBP')
+    expect(currencySelect().value).toBe('GBP')
+  })
+
+  it('pre-fills NOTHING when neither the invoice nor the order states one', async () => {
+    // Rung three is not a rung. The house reports in TRY (the beforeEach stub)
+    // and that is still only ever a labelled chip, never the field.
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24 }], { currency: null }),
+    ])
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await screen.findByText(/Read from their paperwork/)
+    await user.type(invoicePriceInput(), '22')
+    expect(currencySelect().value).toBe('')
+    expect(
+      await screen.findByRole('button', { name: /this house reports in TRY/ }),
+    ).toBeTruthy()
+  })
+
+  it('skips a rung naming a code this product cannot offer', async () => {
+    // A withdrawn code is HELD, never filed as live money (batch 67). Writing it
+    // into the field would offer a value the picker does not hold and the
+    // gateway refuses, so the next rung answers instead.
+    orderBlock = {
+      id: 'order-1',
+      currency: 'GBP',
+      currencySource: 'typed',
+      orderNumber: 'PO-1042',
+      failure: null,
+    }
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24 }], { currency: 'HRK' }),
+    ])
+    renderWorkspace()
+
+    await screen.findByDisplayValue('GBP')
+    expect(currencySelect().value).toBe('GBP')
   })
 
   it('NEVER assumes the house currency — it offers it, labelled', async () => {
@@ -621,7 +730,18 @@ describe('ReceivingWorkspace — a price says what it is in', () => {
     expect(screen.queryByTestId('receiving-price-needs-currency')).toBeNull()
   })
 
-  it('offers the code the INVOICE is filed in, above the house', async () => {
+  it('offers every rung as a labelled chip, nearest paper first, once the desk clears the field', async () => {
+    // Since batch 69 the invoice's code pre-fills, so the chips appear only when
+    // the desk CLEARS it (they live inside the "does not say what it is in"
+    // panel) -- and they are offered in the same order the pre-fill tries them:
+    // the invoice's filed code, then the order's, then the house's.
+    orderBlock = {
+      id: 'order-1',
+      currency: 'GBP',
+      currencySource: 'typed',
+      orderNumber: 'PO-1042',
+      failure: null,
+    }
     forOrder.mockResolvedValue([
       doc('invoice', [{ qtyBottles: 24 }], {
         currency: 'EUR',
@@ -631,12 +751,16 @@ describe('ReceivingWorkspace — a price says what it is in', () => {
     const user = userEvent.setup()
     renderWorkspace()
 
-    await screen.findByText(/Read from their paperwork/)
+    await screen.findByDisplayValue('EUR')
+    await user.selectOptions(currencySelect(), '')
     await user.type(invoicePriceInput(), '22')
-    const offer = await screen.findByRole('button', {
-      name: /this invoice is filed in EUR/,
-    })
-    await user.click(offer)
+    const panel = await screen.findByTestId('receiving-price-needs-currency')
+    expect(within(panel).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'this invoice is filed in EUR',
+      'the order was placed in GBP',
+      'this house reports in TRY',
+    ])
+    await user.click(within(panel).getByRole('button', { name: /this invoice is filed in EUR/ }))
     expect(currencySelect().value).toBe('EUR')
   })
 
@@ -665,6 +789,36 @@ describe('ReceivingWorkspace — a price says what it is in', () => {
       'order-1',
       expect.objectContaining({ invoiceCurrency: 'HKD' }),
     )
+  })
+
+  it('prints the SAME sentence the gateway refuses with, naming every rung, even with no chip to offer', async () => {
+    // Pinned after the audit of b6d2e4b4 (3 of 3 verifiers): the commit said the
+    // DTO, verifyReceipt AND this screen share one sentence naming the rungs, and
+    // this screen printed its own, naming none. It now renders the gateway's
+    // shared half by import. The state below has NO chip (no order code, no
+    // invoice, an unreadable house), which is exactly where the chips could
+    // never name a rung and the sentence has to.
+    houseCurrency.mockResolvedValue({
+      restaurantId: 'rest-1',
+      code: null,
+      country: null,
+      readable: false,
+      reason: 'connection reset',
+      statedAt: null,
+    })
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await user.type(invoicePriceInput(), '22')
+    const panel = await screen.findByTestId('receiving-price-needs-currency')
+    expect(within(panel).queryAllByRole('button')).toHaveLength(0)
+    const said = within(panel).getByTestId('receiving-price-currency-rungs').textContent ?? ''
+    expect(said).toBe(RECEIVING_PRICE_CURRENCY_RUNGS)
+    expect(said).toContain('the matched invoice is filed in')
+    expect(said).toContain('this order was placed in')
+    expect(said).toContain("house's own reporting currency")
+    expect(said).toContain('typed on the spot')
+    expect(said).toContain('the count, the rejection and the stock movement')
   })
 
   it('a house whose currency could not be READ is not offered as a choice', async () => {

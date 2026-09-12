@@ -20,9 +20,24 @@
  * on this controller rather than passing over it in silence.
  *
  * ---------------------------------------------------------------------------
- * ONE SUBJECT KIND, THREE ACTS
+ * THE SECOND FACE (founder, 2026-09-11, batch 69)
  * ---------------------------------------------------------------------------
- * The subject of all three is the DOCUMENT (`subject_kind
+ * Asked whether the canonical face's twin acts should be sealed too, the founder
+ * answered: *"Seal corrections and fields/verify too"* — *"The decision then
+ * holds on both faces of the document; the guard's census becomes five acts."*
+ *
+ * The same document is worked on through two screens. `/receipts` corrects a
+ * transcribed LINE and confirms the whole transcription; `/documents/:id` — ADR
+ * 0104's canonical face — corrects one layer-1 FIELD (`POST :id/corrections`)
+ * and ticks one field as checked by a human (`POST :id/fields/verify`). Batch 64
+ * sealed the first face. Leaving the second open would have meant the decision
+ * held on one face of the same paper and not on the other, which is not a policy
+ * but an accident of which screen somebody opened.
+ *
+ * ---------------------------------------------------------------------------
+ * ONE SUBJECT KIND, FIVE ACTS
+ * ---------------------------------------------------------------------------
+ * The subject of all five is the DOCUMENT (`subject_kind
  * 'procurement_document'`, `subject_id` the document's own uuid) — including the
  * line edit, whose line is named in the ARGUMENTS instead. Two reasons, both
  * about what a refusal can then say:
@@ -40,6 +55,23 @@
  * order, `set_default` and `remove` on a payment method, `purchase` on credits.
  * The kind disambiguates; prefixing them `document.` would have been a second
  * naming scheme in one column.
+ *
+ * THE TWO NEW ACTS ARE `field_correct` AND `field_verify`, and the names follow
+ * that same rule rather than the domain's other vocabulary. Three names were
+ * available and two were rejected in writing:
+ *
+ *   * `correction` / `verification` are what `document_corrections.kind` calls
+ *     the ROWS these acts write, which is the tempting mirror. Rejected because
+ *     `verification` sits one letter away from `verify`, the DOCUMENT-WIDE act
+ *     already in this column under this very kind — two acts whose whole
+ *     difference is a suffix, where confusing them would let a seal for one
+ *     field stand for the whole transcription. A vocabulary that can be mistyped
+ *     into a stronger authority is the wrong vocabulary.
+ *   * A bare `correct` would not say WHICH correction: `line_edit` already
+ *     corrects a line on the other face. `field_correct` and `field_verify` name
+ *     their object the way `line_edit` and `currency_restate` name theirs, and
+ *     every act on this kind then reads object-then-verb or bare-verb with
+ *     nothing ambiguous between them.
  *
  * ---------------------------------------------------------------------------
  * THE ARGUMENTS ARE WHAT THE PERSON WAS LOOKING AT
@@ -64,9 +96,30 @@
  *     carries now. A seal minted to move a document from NOT RECORDED to EUR
  *     cannot be spent after somebody else already filed it in USD.
  *
+ *   * FIELD_CORRECT hashes the REVISION THE PERSON WAS LOOKING AT — its number
+ *     and its whole layer-1 content — plus the path and the value about to be
+ *     written. Both halves are load-bearing and neither is redundant. The
+ *     revision number refuses a correction written against a revision somebody
+ *     else has already superseded, which is the 409 the append path can only
+ *     report AFTER the fact. The content refuses the case the number cannot see:
+ *     a document nobody has corrected has NO revision row at all and is rebuilt
+ *     from its columns on every read, so a `line_edit` made on the /receipts
+ *     face between the hold and the write moves what the canonical sheet says
+ *     while the revision number stays at 1.
+ *   * FIELD_VERIFY hashes the field's path, the value AS SHOWN, whether the
+ *     document carries that field at all, and the verdict. A tick asserts one
+ *     thing about one field — "I looked at this value and I stand behind it" —
+ *     so it is bound to that value and deliberately NOT to the rest of the
+ *     document: a correction to line 9 does not make a person's word about the
+ *     invoice date untrue, and refusing it would teach operators that the seal
+ *     fires at random. The verdict is in the arguments because there is exactly
+ *     one today; naming it is what stops a second verdict, the day one exists,
+ *     being spendable on a token minted for this one.
+ *
  * The restatement's free-text `reason` is deliberately NOT hashed: it is what a
  * person types about the decision, not the decision, and binding it would refuse
- * an honest approval because a typo was fixed in the box.
+ * an honest approval because a typo was fixed in the box. A field correction's
+ * `reason` is left out for the same reason, and the same one only.
  *
  * ---------------------------------------------------------------------------
  * EVERY NUMBER IS A FIXED-PRECISION STRING
@@ -86,11 +139,19 @@ import { normaliseSealTotal } from "../order-seal";
 /** The subject kind, named once. Mirrored by `common/seal/seal-subject.ts`. */
 export const DOCUMENT_SEAL_SUBJECT_KIND = "procurement_document" as const;
 
-/** The three acts the founder's decision names, and nothing else. */
+/**
+ * The five acts the founder's two decisions name, and nothing else.
+ *
+ * Three from batch 64 (2026-09-06) on the /receipts face, two from batch 69
+ * (2026-09-11) on ADR 0104's canonical face. `scripts/check_money_routes_are_
+ * sealed.py`'s `SEALED_ACTS` census holds the same five, one row per handler.
+ */
 export const DOCUMENT_SEAL_ACTS = [
   "verify",
   "line_edit",
   "currency_restate",
+  "field_correct",
+  "field_verify",
 ] as const;
 
 export type DocumentSealAct = (typeof DOCUMENT_SEAL_ACTS)[number];
@@ -297,5 +358,105 @@ export function documentCurrencySealArgs(input: {
     status: text(input.status),
     previous: input.previous ?? null,
     next: input.next,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// THE CANONICAL FACE (ADR 0104 D5). Founder, 2026-09-11, batch 69.
+// ---------------------------------------------------------------------------
+
+/**
+ * The one verdict a field tick records today, named once.
+ *
+ * `POST :id/fields/verify` writes `verified_by`/`verified_at` and nothing else —
+ * there is no "disputed" and no "could not read it". That is a fact about today,
+ * so it is a CONSTANT rather than a caller's argument: a seal minted for this
+ * verdict cannot be spent on a second one the day a second one exists, and the
+ * refusal a person then reads names the act rather than shrugging.
+ */
+export const FIELD_VERIFY_VERDICT = "verified" as const;
+
+/**
+ * A correction's value, canonicalised for the hash — which here means NOT
+ * coerced.
+ *
+ * `normaliseSealTotal` exists because PostgREST returns `numeric` as a string
+ * and `float` as a number, so a figure read at the mint and the same figure read
+ * at the write can differ in type. That cannot happen to this value: it comes
+ * from the REQUEST BODY at both ends, typed by the caller, and never passes
+ * through the database in between. Running it through a money normaliser would
+ * buy nothing and cost two real things — it would round a three-decimal quantity
+ * to two, making a seal minted for 12.005 spendable on 12.004, and it would
+ * collapse the string "12" and the number 12 into one argument, which is exactly
+ * the helpfulness `hashCallArgs`'s own header refuses ("a string '6' and a
+ * number 6 are different arguments").
+ *
+ * So: `undefined` becomes `null`, because the DTO's absent value and an explicit
+ * `null` are the same correction ("the document states nothing here") and the
+ * controller sends `body.value ?? null` to the write. Everything else is passed
+ * through exactly as it arrived.
+ */
+function correctionValue(value: unknown): unknown {
+  return value === undefined ? null : value;
+}
+
+/**
+ * The arguments a FIELD CORRECTION seal is taken over: the revision the person
+ * was reading, in full, plus the correction about to be appended to it.
+ *
+ * `layer1` IS THE REVISION'S CONTENT, passed through rather than summarised.
+ * `hashCallArgs` sorts keys at every level and walks arrays in order, so the
+ * whole nested object hashes stably — and summarising it here would mean
+ * choosing which parts of a document a person is allowed not to have read,
+ * which is a judgement this file has no business making.
+ *
+ * BOTH ENDS READ IT THROUGH ONE READER (`CanonicalDocumentService.
+ * buildFromDocumentId`, called by `documents.controller.ts` at the mint and at
+ * the redemption). That is what makes the hash comparable at all: two different
+ * readers of the same document is how issue and redemption learn to disagree.
+ *
+ * `revision` is `null` when the document could not be read. It hashes
+ * identically at both ends and the route's own error is what the person sees.
+ */
+export function documentFieldCorrectSealArgs(input: {
+  documentId: string;
+  revision: number | null;
+  layer1: unknown;
+  path: string;
+  value: unknown;
+}): Record<string, unknown> {
+  return {
+    documentId: input.documentId,
+    revision: input.revision ?? null,
+    content: input.layer1 ?? null,
+    path: input.path,
+    value: correctionValue(input.value),
+  };
+}
+
+/**
+ * The arguments a FIELD TICK seal is taken over: the field, the value as shown,
+ * whether the document carries the field at all, and the verdict.
+ *
+ * `fieldPresent` IS A SEPARATE FACT FROM `value`, and collapsing the two would
+ * be the absence-as-health shape at seal granularity. A field this document does
+ * not carry and a field that carries `null` both read as "nothing" on screen and
+ * are different things: the first is a path the sheet has no row for, the second
+ * is the paper stating nothing there. Hashed as one, a seal minted on a path the
+ * document did not have could be spent after the path appeared carrying null.
+ */
+export function documentFieldVerifySealArgs(input: {
+  documentId: string;
+  path: string;
+  fieldPresent: boolean;
+  value: unknown;
+  verdict: string;
+}): Record<string, unknown> {
+  return {
+    documentId: input.documentId,
+    path: input.path,
+    fieldPresent: input.fieldPresent,
+    value: input.value === undefined ? null : input.value,
+    verdict: input.verdict,
   };
 }

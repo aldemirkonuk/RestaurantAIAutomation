@@ -47,6 +47,19 @@
  *     against a copy of the table below, and `iso-4217.spec.ts` reads this file
  *     as text so the copy cannot drift. "TL" and "$" cannot be typed in on
  *     either side.
+ *
+ * THE PICKER IS THE FULL ACTIVE LIST, BY DECISION
+ * -----------------------------------------------
+ * `CURRENCY_CODES` below is every code in `CURRENCIES` -- all 157 active ISO
+ * 4217 codes -- rather than the 96 the country table can reach, and that is the
+ * founder's call rather than a default nobody revisited. Asked on 2026-09-11
+ * (batch 69) whether a picker that long was in scope, he answered *"Keep it: the
+ * picker offers what the gateway accepts"*. The alternative was the
+ * disagreement running the other way: the gateway accepting money the product
+ * could not name, so a house billed in HKD could have the invoice filed and
+ * still not choose HKD anywhere itself. If the select's length is ever the
+ * objection, the fix p4bv's report names is a type-ahead on the control; a
+ * narrower list is not one.
  */
 
 // RETIRED 2026-09-05, ADR 0117 Q33 (retire-to-write, CLAUDE.md §4).
@@ -289,7 +302,9 @@ const CURRENCIES: Readonly<Record<string, CurrencyRow>> = {
 
 /**
  * Every code a manager may choose, sorted. Exactly the table above — no free
- * text, and nothing the gateway would refuse.
+ * text, and nothing the gateway would refuse. The full list by decision
+ * (founder, 2026-09-11, batch 69: *"Keep it: the picker offers what the gateway
+ * accepts"*); see this file's header.
  *
  * IT USED TO BE THE COUNTRY TABLE'S 96 (`COUNTRIES[].currency`), which made the
  * picker narrower than the money this product accepts: a house billed in HKD

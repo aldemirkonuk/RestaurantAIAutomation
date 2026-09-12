@@ -1,6 +1,6 @@
 # 0104 — Every incoming document renders as one canonical Mudavym document
 
-- **Status:** Locked on the forks the founder answered in session on 2026-09-03 (one canonical schema and template; delivery entity in slice 1; confidence never a number; paper stays light in dark mode; hybrid PDF/A-3 as the export target — _"the most SOTA way, quality first"_); D8 (retention, churn and bring-your-own-storage) and D14 (signed XML as the primary Turkish source) locked on the founder's answers later the same day; D13 **locked by the founder on 2026-09-03: the C-led synthesis leads** (C's delivery spine, collapsed when a delivery has two or fewer documents; A's typeset sheet as the selected frame; B's verdict block on top). Slice 1 build authorised the same day. **Extended 2026-09-06 by two dated class-E amendments and LOCKED on the founder's batch 63, 64, 65 and 66 answers** — an invoice's money names the currency it is in (no `CUR` takes the house's own, never `USD`), the reader states the money it saw and may refute but never choose, a manager restates or confirms it in writing against an append-only log with nothing converted, the ORDER's currency sits between the file's and the house's, a vendor states a usual currency that files nothing by itself, and a held invoice refuses a keyed-in price at the receiving door while the stock movement proceeds. Batch 66 closed the last four forks (house currency for an unmatched invoice; build the vendor-currency prompt panel; confirmation open on every invoice; clearing a held price stays two screens). Built and shipped, not design-only, for the currency amendments; the 2026-09-03 canonical-document decisions above remain as they were.
+- **Status:** Locked on the forks the founder answered in session on 2026-09-03 (one canonical schema and template; delivery entity in slice 1; confidence never a number; paper stays light in dark mode; hybrid PDF/A-3 as the export target — _"the most SOTA way, quality first"_); D8 (retention, churn and bring-your-own-storage) and D14 (signed XML as the primary Turkish source) locked on the founder's answers later the same day; D13 **locked by the founder on 2026-09-03: the C-led synthesis leads** (C's delivery spine, collapsed when a delivery has two or fewer documents; A's typeset sheet as the selected frame; B's verdict block on top). Slice 1 build authorised the same day. **Extended 2026-09-06 by two dated class-E amendments and LOCKED on the founder's batch 63, 64, 65 and 66 answers** — an invoice's money names the currency it is in (no `CUR` takes the house's own, never `USD`), the reader states the money it saw and may refute but never choose, a manager restates or confirms it in writing against an append-only log with nothing converted, the ORDER's currency sits between the file's and the house's, a vendor states a usual currency that files nothing by itself, and a held invoice refuses a keyed-in price at the receiving door while the stock movement proceeds. Batch 66 closed the last four forks (house currency for an unmatched invoice; build the vendor-currency prompt panel; confirmation open on every invoice; clearing a held price stays two screens). Built and shipped, not design-only, for the currency amendments; the 2026-09-03 canonical-document decisions above remain as they were. **Extended 2026-09-11 by a fourth dated class-E amendment on the founder's batch 69 answers** (asked in session as "batch 68" by mistake): the canonical face's field correction and field tick take a redeemed seal like the three document acts (five acts, one kind), the currency picker stays at all 157 active codes, the receiving price pre-fills from the invoice's filed code before the order's, and withdrawn ISO codes stay refused.
 - **Date:** 2026-09-03
 - **Keywords:** invoice, template, canonical document, EN 16931, Peppol, provenance, as_printed, confidence, extraction, OCR, original, signed URL, content addressing, retention, tiering, PDF/A-3, Factur-X, print, dark mode, credit memo, delivery note, irsaliye, receiving advice, duplicate detection, commercial event, sketches
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
@@ -426,6 +426,35 @@ and is now filed". A restatement that reports a re-filing it did not perform is 
 one that refuses, because the manager stops looking. `ParsedDocument.moneyWithheld` now
 keeps the stripped figures.
 
+**A second correction, 2026-09-11 — the same shape, on the HEADER** (audit of `b6d2e4b4`,
+BLOCKING, three of three verifiers). The fix above gave each LINE its own decision and left
+the header deciding with them: `headerFromCurrent = headerHasMoney || linesHaveMoney`. That
+is wrong in exactly the row shape production has for a held document — the header columns
+are NULL, written from the withheld parse at intake, and `editLine` never repairs them
+because it writes only `computed_lines_total`, `tie_out_delta` and `ties_out`. So one
+corrected line selected the all-null CURRENT header, the snapshot's subtotal, freight, tax
+and total were never put back, `total` was written NULL, and no later restatement could
+recover them: by then every line carries money, so the branch is permanent. The code's own
+justification — *"a document whose header states nothing but whose lines are priced was
+never held"* — is false in this case, and a line recovered from `moneyWithheld` is itself
+the proof that the document WAS held. **The header and the lines are now decided
+independently** (`invoice-currency.ts:780`): the header comes from the row only when the
+row's own header carries money and otherwise from the withheld reading; each line keeps what
+its row carries or recovers from the snapshot; the tie-out is recomputed over the result.
+The header is still ONE set of figures — never assembled field by field out of two readings.
+
+**And the sentence stopped claiming what it had not done.** `refilingSentence` took a
+`wasHeld` boolean, so a mixed document was told *"the vendor's own figures were put back"*
+while a manager's correction had in fact been KEPT and the header had been lost — a write
+the act did not make (ADR 0083). It now takes a `RefileProvenance`
+(`invoice-currency.ts:629`, passed at `document-intake.service.ts:2240`) and names each
+part: what was put back from the reading withheld at intake, what was kept exactly as it
+stood with corrections included, and which lines neither reading prices. Pinned in the held
+row shape at `invoice-currency.spec.ts:1070` and `document-intake.service.spec.ts:591`.
+Stated plainly rather than sold: of the five held-row cases added, **three** fail against the
+pre-fix module and **two** pass it — those two pin invariants that already held, and are not
+evidence of this fix.
+
 **2026-09-06, batch 66 — DECIDED, in the founder's own words.**
 
 > **"Keep: house currency for an unmatched invoice"**
@@ -507,6 +536,25 @@ PGlite (`p4-scratch/pglite-probe/p4bs-document-seal-kind.mjs`): all eight prior 
 survive, the new one is admitted for all three acts, a document seal carrying a
 `connection_id` is refused 23514, and a second apply changes nothing.
 
+**Corrected 2026-09-11** (audit of `b6d2e4b4`, SHOULD-FIX, three of three verifiers).
+"Parses the admitted kinds" was doing it with `'''([a-z_]+)'''`, a character class that
+silently DROPS any existing kind holding a digit or a capital: the parse skips it, the union
+is written back without it, and this file's own header sentence — *"It cannot drop a peer's
+kind"* — was false for that class. The parse now takes **every quoted literal**, unescaping a
+doubled quote (`20260906200000_a_document_act_takes_a_redeemed_seal.sql:71`, and the same at
+`:161`), and the migration reads the rebuilt constraint back and RAISEs unless it holds
+exactly the kinds it read plus its own (`:108`). **Did the defect ever fire? No.** A scan of
+every `subject_kind` literal across `supabase/migrations/*.sql` finds 8 distinct kinds
+(`house_mail_export`, `mcp_tool`, `mcp_tool_grant`, `payment_method`, `price_index_upload`,
+`procurement_document`, `procurement_order`, `text_credit_purchase`) and **none holds a digit
+or a capital**, so no real kind was ever dropped — it was latent. That is precisely why the
+probe now proves the parse BEHAVIOURALLY instead of textually: it adds one fixture kind with
+a digit (`fixture_kind_2`, `p4bs-document-seal-kind.mjs:44`, added by a statement in the probe
+alone and never by a migration) and INSERTS one row of every older kind after the migration
+(`:147`), because a text check sharing the migration's own character class cannot see the one
+drop the migration is capable of. Three peer migrations still carry the old parse at five
+sites; filed as OPEN in `v3.0-TECH-DEBT.md`.
+
 **Two costs, accepted and stated.** A moved cell on `/receipts` is no longer a write — it
 stages a pending correction stated in figures, and a hold sends it; that is one gesture
 per correction where there used to be none. And the OTHER seven write routes on this
@@ -518,6 +566,59 @@ decision REQUIRES to be sealed, checked by name — and PRINTS the seven as outs
 census rather than passing over them. That is a stated soft spot: a fourth write act added
 to this controller tomorrow lands in that printed list rather than failing the build, which
 a fourth MONEY route would not.
+
+## Amendment 2026-09-11 (batch 69) — the canonical face's twin acts take a redeemed seal, and three currency answers (class E)
+
+**The founder's answers, verbatim.** The session asked these as "batch 68" by mistake; they
+are batch 69. The earlier batch 68 (2026-09-06, recorded in commit `b6d2e4b4`'s message)
+had already chosen to seal the twins as a follow-up pass, one ceremony per correction
+revisited after real use, and the receiving door as its own kind in its own pass.
+
+> **"Seal corrections and fields/verify too"** — *"The decision then holds on both faces of
+> the document; the guard's census becomes five acts."*
+> **"Keep it: the picker offers what the gateway accepts"**
+> **"Invoice's filed code first, then the order's"** — *"A reading of the document, like the
+> quantities and prices on that screen already are; when the two disagree the comparison
+> banner already says so. One line."*
+> **"Keep as built; a held old code is a bug report, not a list entry"**
+
+**The shape.** The `procurement_document` kind gains two acts in `tool_name`,
+`field_correct` (`POST :id/corrections`) and `field_verify` (`POST :id/fields/verify`), each
+with a mint route beside it (`:id/corrections-seal-challenge`,
+`:id/fields/verify-seal-challenge`) and redeemed before the write in the same words.
+Named object-then-verb like `line_edit` and `currency_restate`; `correction` and
+`verification`, the names `document_corrections.kind` uses, were rejected because
+`verification` sits one suffix away from the document-wide `verify` on the same kind.
+
+| act | args_hash covers | the failure it closes |
+|---|---|---|
+| `field_correct` | the revision being corrected — its number AND its whole layer-1 content — plus the path and value | a correction appended against a superseded revision (the 409 the append path could only report after the fact), and a document moved on the /receipts face between the hold and the write, which appends no revision row and so leaves the number unchanged |
+| `field_verify` | the field's path, the value as shown, whether the document carries that field, and the verdict | a name put against a figure the person never read; deliberately NOT bound to the rest of the document, so a correction to another field does not refuse it |
+
+Both ends read the canonical object through `CanonicalDocumentService.buildFromDocumentId`,
+the same call the correction service appends against. A correction's `reason` is not
+hashed, for the restatement's reason. **No migration**: the act column is not enumerated in
+SQL (`tool_name` carries a non-empty CHECK only) and `20260906200000` already admits the
+kind. **No role gate was added** to either act; neither had one. The census in
+`scripts/check_money_routes_are_sealed.py` is five acts. The five other writes (upload,
+extraction, match, link, door count) now print under DELIBERATELY UNSEALED, the words this
+ADR and `receipts.md` use, each with the reason true of that route — two of them stated as
+weak: `linkLine` is a person's act that moves an invoice price between cost lots, and
+`doorCount` books provisional stock at the door since ADR 0103's merge while its own
+ApiOperation still says it writes none. A write nobody has named still lands under NOT IN
+ANY SEAL CENSUS: the soft spot the batch-64 amendment states, unchanged in kind.
+
+**On the page.** The correction form's submit is a `HoldToApprove` whose `onChallenge`
+mints over the value captured when the hold began; the field tick moved out of the
+provenance popover, which closes on blur, into its own dialog with a hold. A failed mint
+says so and sends nothing. The mobile app calls neither route.
+
+**The three currency answers.** The picker stays the full 157-code active list
+(`apps/web/src/lib/currency.ts` header). The receiving price field pre-fills from the
+matched invoice's filed code, then the order's, then nothing, and the refusal sentence now
+names the four rungs it offers (`receiving.md` §13). Withdrawn codes stay refused, and a
+held one is a defect report rather than a list entry
+(`apps/api-gateway/src/common/iso-4217.ts` header).
 
 ## Review trail
 
@@ -541,3 +642,5 @@ a fourth MONEY route would not.
 | 2026-09-06 | Sonnet audits of `356ffdfa` and `6c0933d3` (`p4-scratch/audit-356ffdfa-invoice-currency.md`, `audit-6c0933d3-vendor-order-currency.md`) | **Two BLOCKERS and five smaller findings, all filed against passing suites — the point being that everything green stayed green.** (1) Every currency gate asked `/^[A-Z]{3}$/` and called it ISO 4217, so `filingCurrency({ fileStated: "ZZZ" })` filed a whole invoice's total under a denomination that does not exist, silently; the migration's own probe wrote ISO's reserved test codes `XTS`/`XTT` past the table's CHECK for the same reason. (2) `refileMoneyForCurrency` re-derived every figure from `procurement_documents.extracted`, which is written only at intake and which `editLine` never touches — so a hand-corrected line price followed by a currency restatement silently reverted the correction and reported it as a re-filing. Also: this ADR's own amendment had no review-trail row and no status-line update; the commit message narrated a batch-66 doc update that had not been made; the house-rung comment was narrower than the code; and two behaviours were true only by inspection. |
 | 2026-09-06 | Fable (p4bt) — the two blockers closed, and batch 66 recorded | **Fixed.** `apps/api-gateway/src/common/iso-4217.ts` holds the 96 codes the product's own picker offers, `isIso4217` replaces the regex at every currency gate in the gateway (invoice filing, the model's sighting, the order/agreement rungs, `price_history`, the vendor's usual currency, the house's own currency, the restatement route and four DTOs), and `iso-4217.spec.ts` reads `apps/web/src/lib/currency.ts` AS TEXT and fails if the two sets differ by one code, so the copy cannot become a second table. The migration's CHECKs stay SHAPE, with a comment saying why a code list frozen in an append-only table's constraint would start refusing real money the day ISO publishes one. `planRefile` replaces `refiledMoney`: a restatement re-files from the document's CURRENT rows, carries every amount exactly as it stands, and reaches for `extracted.moneyWithheld` ONLY when there is no money on the row at all — the state a hold leaves — and the audit row records WHICH reading it used. The house rung's precondition comment is corrected to what the code does. **Batch 66 is now recorded, verbatim, in the amendment above and in `receipts.md`, `receiving.md` and `providers.md` §13.** One thing is disclosed rather than fixed: a receipt whose order has NO linked document accepts a typed price into `price_history` with no cross-check, error-free, and is pinned by a test and written up in `receiving.md` §13 as a founder question. |
 | 2026-09-06 | Fable — slice 3 stop 3: the canonical face against a real delivery | **Rendered, with two faults.** The spine finally has cards: the invoice `b1e02edf` sits on two deliveries and D13's spine draws each with its three documents, the `UNORDERED · permanent` mark and the state ladder ending `VERIFIED`; the gates and the thread render on the door count's page with the agreed rule and the verify sentence in words. Two faults measured. (a) **On a `receiving_advice` the counted quantities render under `Billed` while `Received` reads "not counted" on every line**, and the verdict cards say "NOT COMPARED … Nothing was ordered, despatched or counted against it" about the document that IS the count — the four-way column map has no place for our own count. (b) The gates and thread appear only where `soleDelivery` resolves, so a consolidated invoice's page — the face a reader is most likely to open — offers no way to act, by design (D5/D7's ambiguity rule) but with nothing on the page saying why. Also: a repeated door count returns 422 carrying the raw constraint name `uq_pd_restaurant_sha256` instead of "this exact count is already recorded". All three filed in `v3.0-TECH-DEBT.md` (2026-09-06); evidence in `06-pages/receipts.md` §9/§10 and `08-softwares/receipts-invoice-match.md` §9. |
+| 2026-09-11 | Opus (p4bx) — batch 69 recorded and built | **Built, and recorded as the class-E amendment above.** `field_correct` and `field_verify` sealed on the canonical face with two mint routes; the guard's `SEALED_ACTS` census at five; the correction's seal over the whole revision and the tick's over the value shown; pre-fix behaviour proven by a deleted probe spec against `git show HEAD:` (both routes wrote with no seal); the receiving price pre-fills invoice-first and the refusal sentence names four rungs; the four answers recorded verbatim here and in `receipts.md` and `receiving.md` §13. From the audit of `b6d2e4b4`: the guard's five other writes print under DELIBERATELY UNSEALED with a reason each, the currency seal's previous code moving under it is pinned at controller level, the currency write's role-before-seal ordering is pinned, and the receiving panel imports the refusal's shared sentence. Not verified in a browser: neither hold was captured. |
+| 2026-09-11 | Opus (p4by) — the `b6d2e4b4` audit's defects OUTSIDE p4bx's files | **Fixed, and recorded in the two corrections above.** Five items. **(A)** `planRefile` decides the header and the lines independently (`invoice-currency.ts:780`), so a held document's header money survives a restatement instead of being erased for good by the first corrected line, and the sentence takes a `RefileProvenance` naming what was put back and what was kept rather than a `wasHeld` boolean that claimed the vendor's figures were restored when they were not. **(B)** The mixed-document block gained five cases in the held row shape it had never used (`invoice-currency.spec.ts:1064`). **(C)** The EDI 832 catalogue path asks `isIso4217` of every code — the file's own `CUR` and the connection's declaration — and refuses the whole file naming the code (`parse-edi832.ts:404`, `:412`); the gateway-wide sweep the brief required found one further shape-only site, `common/orchestrator/commercial-terms.ts:111`, fixed the same way. **(D)** Both message-credit gates normalise through `currencyCode(...)` before the check, the seal binding and the write (`text-credits.controller.ts:187`, `text-usage.service.ts:514`), so `" try"` can no longer be bound into a seal in one spelling and written in another. **(E)** The seal migration's read-and-append keeps every quoted kind and asserts the rebuilt constraint; no kind in the chain holds a digit or a capital, so the defect was latent and never fired. **Verified on this tree:** `npx jest` over the five touched areas, 61 suites / 1074 tests passed, exit 0; both gateway `tsc` projects and `eslint --quiet` clean, exit 0; five repo guards exit 0; the PGlite probe 12 passed / 0 failed; `find_emoji.py` 0 over every touched file. Pre-fix probes (same-depth copies, deleted after the run) failed 16 tests across 6 suites with 0 compile errors. **Not verified, and said rather than skipped:** nothing was executed against Supabase or in a browser; the three intake-level tests were not separately probed against pre-fix code; and two of the five held-row cases pass on the pre-fix module, so they pin invariants that already held rather than this fix. |

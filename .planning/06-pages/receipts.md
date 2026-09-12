@@ -83,9 +83,22 @@ documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
   PENDING correction stated in figures, not a write: the hold below it is what sends it.
   **A failed mint is a failure in words and never a silent unsealed call.** The legacy
   `/receipts` page (rendered whenever the flag is off) mints and carries the seal too.
-  The other seven write routes on the documents controller are deliberately NOT sealed and
-  `scripts/check_money_routes_are_sealed.py` PRINTS them as outside every census rather
-  than passing over them
+  **The canonical face's twin acts are sealed the same way** (founder 2026-09-11, batch 69:
+  *"Seal corrections and fields/verify too"*). On `/documents/:id`, `POST :id/corrections`
+  (act `field_correct`) and `POST :id/fields/verify` (act `field_verify`) take a seal minted
+  by `:id/corrections-seal-challenge` and `:id/fields/verify-seal-challenge` when the hold
+  begins. The correction's seal covers the REVISION being corrected (its number and its
+  whole layer-1 content) plus the path and value, so a correction written against a
+  superseded revision, or after a line was corrected on this page, is refused; the tick's
+  seal covers the field's path, the value as shown, whether the document carries that
+  field, and the verdict. The correction form's submit is a hold that seals the value
+  captured when the hold began; the tick left the provenance popover (which closes on blur)
+  for its own dialog with a hold. Neither act gained a role gate. The other five write
+  routes on the documents controller (upload, extraction, match, link, door count) are
+  deliberately NOT sealed; `scripts/check_money_routes_are_sealed.py` prints them under
+  DELIBERATELY UNSEALED, each with the reason true of that route (two of which say plainly
+  they are weak: link moves an invoice price between cost lots, door count books provisional
+  stock), and a write nobody has named still prints under NOT IN ANY SEAL CENSUS
 - **Pairing** — matcher suggestions carry their reason **and their confidence** for one-tap confirmation. The matcher **does** auto-write unambiguous vendor-SKU pairings server-side (`line-matcher.ts:282-296`); the page names them as written-without-asking, and every paired row has **Unlink**. The `Paired with` column names its target (ordered wine · quantity · order-line ref · method · confidence) and says "not paired" in words
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receipts`)
@@ -376,6 +389,27 @@ chase never leaves the building (§10). "Claim → requested" reads as "we asked
 
 ## 13. Roadmap
 
+**2026-09-11 — a held invoice's header money now survives a restatement, and the sentence
+says which figures moved.** From the adversarial audit of `b6d2e4b4` (BLOCKING, three of
+three verifiers). **What was wrong:** for a held document the header columns on the row are
+NULL — intake writes them that way from the withheld parse, and `editLine` never repairs them
+— so as soon as ONE line carried money, `planRefile` chose that all-null header, and the
+withheld subtotal, freight, tax and total were never put back. `document.total` was written
+NULL, permanently: every later restatement saw priced lines and took the same branch. The
+page then showed a sentence that said the money *"was held and is now filed … the vendor's
+own figures were put back"* beside *"The document states no total"* — a claim about a write
+that had not happened. **What it does now** (`invoice-currency.ts:780`): the header comes
+from the row only when the row's own header carries money, otherwise from the withheld
+reading; each line keeps its own figures or recovers them; the tie-out is recomputed.
+**What a person is shown** (`document-intake.service.ts:2240`): the sentence names the parts
+— *"Put back from the reading withheld at intake: the header's subtotal, freight, deposit
+total, tax and total; and line 2. Kept exactly as they stood on the document, corrections
+included: line 1."* — and it no longer says the vendor's figures were put back when some were
+kept. A restatement that puts nothing back says so and drops the "was held" claim entirely.
+Pinned at `invoice-currency.spec.ts:1070` and `document-intake.service.spec.ts:591`; of the
+five held-row cases added, three fail on the pre-fix code and two pass it (they pin
+invariants that already held). Not verified in a browser: no ceremony was captured this pass.
+
 **2026-09-06 (batch 67) — the currency vocabulary is now all of ISO 4217, and a typed
 receiving price states its code or is refused.** Two founder decisions, one pass. (1) The
 gateway's currency list went 96 → 157 — every ACTIVE ISO 4217 code, minus the 22 in list
@@ -397,6 +431,15 @@ the Sonnet audit of `4abd03ff`: the two Stripe-backed message-credit gates
 membership; and `planRefile` decides `current_rows` vs `withheld_snapshot` PER LINE
 (source `mixed`, with per-line counts), which stops a two-line held document losing line
 2's recoverable figures when a manager edits line 1.
+
+**Both halves of that last sentence were corrected on 2026-09-11**, by the audit of
+`b6d2e4b4`. (a) PER LINE was not far enough: the HEADER was still decided by the lines, so a
+held document's header money was erased by the first corrected line — see the 2026-09-11
+entry at the top of this section. (b) "Now check membership" was true and not sufficient:
+both credit gates upper-cased without trimming while `isIso4217` trims, so `" try"` passed
+the gate as `" TRY"` and was bound into the seal in one spelling and written in another. Both
+now normalise through `currencyCode(...)` before the check
+(`text-credits.controller.ts:187`, `text-usage.service.ts:514`).
 
 **2026-09-06 — the invoice's money, and who may change it.** The founder, batch 63,
 asked what an 810 with no `CUR` should do and answered verbatim:
@@ -494,6 +537,42 @@ still unsealed; the founder's decision named three acts and nothing more, so the
 PRINTS the seven as outside every census rather than either failing on them or passing
 over them in silence. Whether the whole controller should join the money modules' rule is
 a founder question, filed in p4bs's report.
+
+**2026-09-11, batch 69 — four answers, verbatim. Decided, not open.**
+
+The session asked these as "batch 68" by mistake; they are recorded as **batch 69**. The
+real batch 68 (2026-09-06, recorded in commit `b6d2e4b4`'s message) had ALREADY chosen to
+seal the canonical face's twin acts as a follow-up pass, to keep one ceremony per
+correction until real use says otherwise, and to seal the receiving door as its own kind in
+its own pass. The first answer below confirms that choice rather than making it.
+
+> **"Seal corrections and fields/verify too"** — *"The decision then holds on both faces of
+> the document; the guard's census becomes five acts."*
+> **"Keep it: the picker offers what the gateway accepts"**
+> **"Invoice's filed code first, then the order's"** — *"A reading of the document, like
+> the quantities and prices on that screen already are; when the two disagree the
+> comparison banner already says so. One line."*
+> **"Keep as built; a held old code is a bug report, not a list entry"**
+
+1. **The twins are sealed. BUILT (2026-09-11, p4bx).** `field_correct` and `field_verify`
+   join `verify`, `line_edit` and `currency_restate` on the one `procurement_document`
+   kind; the §1a entry says what each seal covers. No migration: the ACT lives in
+   `mcp_seal_challenges.tool_name` under a non-empty CHECK only (`20260904170000`), and
+   `20260906200000` already admits the kind. `check_money_routes_are_sealed.py`'s
+   `SEALED_ACTS` census is five rows; the five other writes print under DELIBERATELY
+   UNSEALED with a reason each (added after the audit of `b6d2e4b4`, which found the twins
+   printed as "no decision names" while this note called all seven deliberate).
+   What it replaced, measured: a probe spec run against `git show HEAD:` of the controller,
+   then deleted, showed both routes completing their write with no seal and never touching
+   the seal service. Not captured in a browser (see p4bx's report).
+2. **The currency picker stays at all 157 active codes** — the gateway's list, the web
+   table and the picker are one set (`apps/web/src/lib/currency.ts` header).
+3. **The receiving price pre-fills from the invoice's filed code first**, then the
+   order's, then nothing — see [[receiving]] §13.
+4. **Withdrawn ISO codes stay refused.** An invoice naming HRK, CUC, SLL, ZWL, MRO, STD or
+   VEF is held, and a held old code is reported as a defect, never answered by adding the
+   code (`apps/api-gateway/src/common/iso-4217.ts` header). ANG stays beside XCG; VED and
+   VES are both listed.
 
 
 1. **Send the claim.** `→ requested` should draft the vendor email through the same

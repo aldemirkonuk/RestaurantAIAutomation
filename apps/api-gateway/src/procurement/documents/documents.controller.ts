@@ -45,10 +45,14 @@ import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
+  FIELD_VERIFY_VERDICT,
   documentCurrencySealArgs,
+  documentFieldCorrectSealArgs,
+  documentFieldVerifySealArgs,
   documentLineEditSealArgs,
   documentVerifySealArgs,
 } from "./document-seal";
+import { CORRECTABLE_PATHS, splitPath } from "../canonical/correctable-paths";
 
 /**
  * The document columns a verify seal is taken over, as ONE literal string.
@@ -328,6 +332,99 @@ export class DocumentsController {
   }
 
   /**
+   * The canonical document, for a seal on one of the two canonical-face acts.
+   *
+   * ONE READER, and it is the SAME ONE the write uses.
+   * `DocumentCorrectionService.append` opens with this exact call, so what the
+   * seal hashes and what the correction is appended to are the same object built
+   * the same way. A second reader here — a raw `.select()` on the columns, say —
+   * would hash something adjacent to what gets corrected, and the two would
+   * disagree the first time a replayed correction moved a derived figure.
+   *
+   * A FAILED READ IS NEVER AN EMPTY DOCUMENT (ADR 0067). `buildFromDocumentId`
+   * resolves `{ ok: false, error }` and never throws, so this maps the two
+   * outcomes apart in the same words the correction door itself uses: the
+   * tenant-scoped miss is a 404, everything else is a 500 that says nothing was
+   * sealed and nothing was changed.
+   */
+  private async readCanonicalForSeal(
+    documentId: string,
+    restaurantId: string,
+  ): Promise<{ revision: number | null; layer1: unknown }> {
+    const built = await this.canonical.buildFromDocumentId(
+      restaurantId,
+      documentId,
+    );
+    if (!built.ok) {
+      if (built.error.includes("not found"))
+        throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+      throw new HttpException(
+        `This document could not be read, so nothing was sealed and nothing was changed: ${built.error}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    return { revision: built.value.revision, layer1: built.value.layer1 };
+  }
+
+  /**
+   * The facts a FIELD CORRECTION seal is taken over: the revision being
+   * corrected, in full, plus the path and value about to be appended to it.
+   */
+  private async readFieldCorrectSealArgs(
+    documentId: string,
+    restaurantId: string,
+    path: string,
+    value: unknown,
+  ): Promise<Record<string, unknown>> {
+    const { revision, layer1 } = await this.readCanonicalForSeal(
+      documentId,
+      restaurantId,
+    );
+    return documentFieldCorrectSealArgs({
+      documentId,
+      revision,
+      layer1,
+      path,
+      value,
+    });
+  }
+
+  /**
+   * The facts a FIELD TICK seal is taken over: the field's path, the value the
+   * person was looking at, whether the document carries that field at all, and
+   * the verdict.
+   *
+   * The envelope is read through `CORRECTABLE_PATHS` — the same closed registry
+   * `verifyField` validates the path against — rather than by walking the object
+   * with a dotted string, which is the prototype-pollution door that registry
+   * exists to keep shut. A path the registry does not hold is `fieldPresent:
+   * false` here and a 400 from the write; the seal invents no field to hash.
+   */
+  private async readFieldVerifySealArgs(
+    documentId: string,
+    restaurantId: string,
+    path: string,
+  ): Promise<Record<string, unknown>> {
+    const { layer1 } = await this.readCanonicalForSeal(documentId, restaurantId);
+    const parsed = splitPath(path);
+    const spec = parsed ? CORRECTABLE_PATHS[parsed.template] : undefined;
+    const envelope =
+      parsed && spec
+        ? spec.read(
+            layer1 as Parameters<typeof spec.read>[0],
+            parsed.line,
+          )
+        : null;
+    return documentFieldVerifySealArgs({
+      documentId,
+      path,
+      fieldPresent: !!envelope,
+      value: envelope ? (envelope.value ?? null) : null,
+      verdict: FIELD_VERIFY_VERDICT,
+    });
+  }
+
+  /**
    * Sign the stored original for viewing, or say why it could not be signed.
    *
    * Shared by `GET :id` and `GET :id/canonical` so the two panes cannot drift:
@@ -491,17 +588,111 @@ export class DocumentsController {
    * Class-level `@UseGuards(JwtAuthGuard)` covers it; `restaurantId` comes from
    * the token and scopes the document read, so another tenant's id is a 404.
    */
+  /**
+   * Begin the hold on a field correction. Returns a one-time seal, once.
+   *
+   * THE PATH AND THE VALUE ARE IN THE BODY HERE TOO, and that is the point
+   * rather than an inconvenience: the seal is taken over the correction about to
+   * be made, so a token obtained to change the issue date cannot be spent to
+   * change a unit price. The page sends the SAME body to both routes.
+   *
+   * `reason` may differ between the two calls and deliberately does not refuse
+   * anything — it is what a person types ABOUT the decision, not the decision.
+   */
+  /**
+   * MAY A SEAL BE MINTED FOR THIS PATH AT ALL — asked at the mint, in the
+   * write's own words (auditor, 2026-09-11).
+   *
+   * `mintCurrencySeal` states the rule this restores: *"EVERYTHING THAT WOULD
+   * REFUSE THE WRITE REFUSES THE SEAL FIRST ... A manager handed a seal that is
+   * going to be refused a second and a half later learns that the seal is
+   * decoration."* The two canonical-face mints shipped without it: a path
+   * outside the closed registry minted a real token, and the write then refused
+   * it 400 — so a person could be asked to hold a gesture that could never be
+   * spent, which teaches exactly the lesson the ceremony exists to prevent.
+   *
+   * THE REGISTRY IS SHARED, THE SENTENCE IS THIS ROUTE'S. `splitPath` and
+   * `CORRECTABLE_PATHS` are the same two the write validates against
+   * (`DocumentCorrectionService.correct` / `.verifyField`), so the two ends
+   * cannot drift apart as fields are added. The wording mirrors the write's and
+   * adds the mint's own tail, the way the currency mint does, because "nothing
+   * was sealed" is a different fact from "nothing was written".
+   */
+  private assertSealablePath(
+    path: string | undefined,
+    act: "field_correct" | "field_verify",
+  ): void {
+    const asked = String(path ?? "");
+    const parsed = splitPath(asked);
+    if (parsed && CORRECTABLE_PATHS[parsed.template]) return;
+    const why = !parsed
+      ? `\`${asked}\` is not a field path. Use a layer-1 field name (\`documentNumber\`, \`seller.name\`, \`totals.taxInclusiveAmount\`) or \`lines[n].field\`.`
+      : act === "field_correct"
+        ? `\`${asked}\` is not a correctable field. Correctable fields are: ${Object.keys(
+            CORRECTABLE_PATHS,
+          ).join(", ")}.`
+        : `\`${asked}\` is not a verifiable field.`;
+    throw new HttpException(
+      `${why} Nothing was sealed and nothing was changed: a seal names the act it approves, and there is no act here to approve.`,
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+
+  @Post(":id/corrections-seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal a field correction has to carry back",
+    description:
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `field_correct`, so this token cannot be spent on `POST :id/fields/verify`, on a line correction or on a verification. It is bound to this actor, this document, the REVISION being corrected in full, and the exact path and value asked for: a correction somebody else appended in between, or a line corrected on the /receipts face in between, refuses it.",
+  })
+  async mintFieldCorrectSeal(
+    @Param("id") id: string,
+    @Body() body: CorrectFieldDto,
+    @CurrentUser() user: AuthedUser,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    // Before the document is read and before anything is issued: a path the
+    // write would refuse never becomes a token somebody can be asked to hold.
+    this.assertSealablePath(body?.path, "field_correct");
+    return this.mintSeal(
+      user,
+      id,
+      "field_correct",
+      await this.readFieldCorrectSealArgs(
+        id,
+        user.restaurantId,
+        body?.path,
+        body?.value ?? null,
+      ),
+    );
+  }
+
   @Post(":id/corrections")
   @ApiOperation({
-    summary: "Correct one field of the canonical document (ADR 0104 D5)",
+    summary:
+      "Correct one field of the canonical document, behind a redeemed seal (ADR 0104 D5)",
     description:
-      "Appends a new revision and an append-only correction row. The corrected value is replayed through the same mapper the read path uses, so the bottle-equivalent, the tie-out and every EN 16931 invariant follow it — a correction is never a cosmetic overlay. 400 names the field when the path is not in the closed correctable list; 409 means another correction landed first and nothing was written.",
+      "Appends a new revision and an append-only correction row. The corrected value is replayed through the same mapper the read path uses, so the bottle-equivalent, the tie-out and every EN 16931 invariant follow it — a correction is never a cosmetic overlay. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/corrections-seal-challenge` when the hold begins and redeemed exactly once here (founder, 2026-09-11, batch 69). 400 names the field when the path is not in the closed correctable list; 409 means another correction landed first and nothing was written.",
   })
   async correctField(
     @Param("id") id: string,
     @Body() body: CorrectFieldDto,
     @CurrentUser() user: AuthedUser,
+    // The same header the other four document acts carry, and the same header
+    // the order and payment writes carry. One thing for a caller to learn; the
+    // act the token was minted for is what keeps them apart, not the shape.
+    @Headers("x-seal-challenge") challenge?: string,
   ) {
+    // BEFORE the write. An absent seal is refused before the document is read,
+    // so a caller with no seal gets the sentence telling them to begin the hold
+    // rather than whatever the read happened to say.
+    await this.assertSealed(user, id, "field_correct", challenge, () =>
+      this.readFieldCorrectSealArgs(
+        id,
+        user.restaurantId,
+        body?.path,
+        body?.value ?? null,
+      ),
+    );
+
     const result = await this.corrections.correct(
       user.restaurantId,
       id,
@@ -519,17 +710,53 @@ export class DocumentsController {
    * stays whatever it was — an extracted number that a manager confirmed is
    * still an extracted number, now with a name against it.
    */
+  /**
+   * Begin the hold on a field tick. Returns a one-time seal, once.
+   *
+   * The seal is taken over the value AS SHOWN, because that is the whole content
+   * of the assertion: a tick says a human looked at THIS number and stands
+   * behind it. A token minted while the field read 142,00 cannot be spent after
+   * somebody corrected it to 132,00 — the person's name would otherwise stand
+   * against a figure they never saw, which is the same hole the document-wide
+   * `verify` seal closes at document granularity.
+   */
+  @Post(":id/fields/verify-seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal a field tick has to carry back",
+    description:
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `field_verify`, so this token cannot be spent on a correction or on the document-wide verification. Bound to this actor, this document, the field's path, the value it shows now, whether the document carries that field at all, and the verdict being recorded.",
+  })
+  async mintFieldVerifySeal(
+    @Param("id") id: string,
+    @Body() body: VerifyFieldDto,
+    @CurrentUser() user: AuthedUser,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    this.assertSealablePath(body?.path, "field_verify");
+    return this.mintSeal(
+      user,
+      id,
+      "field_verify",
+      await this.readFieldVerifySealArgs(id, user.restaurantId, body?.path),
+    );
+  }
+
   @Post(":id/fields/verify")
   @ApiOperation({
-    summary: "Tick one field as verified by a human (ADR 0104 D5)",
+    summary:
+      "Tick one field as verified by a human, behind a redeemed seal (ADR 0104 D5)",
     description:
-      "Records `verified_by` and `verified_at` on one field's envelope as a new revision, with an append-only row of kind `verification`. The value and its `source` are unchanged.",
+      "Records `verified_by` and `verified_at` on one field's envelope as a new revision, with an append-only row of kind `verification`. The value and its `source` are unchanged. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/fields/verify-seal-challenge` when the hold begins and redeemed exactly once here (founder, 2026-09-11, batch 69): the value somebody is standing behind has to be the one they read.",
   })
   async verifyFieldTick(
     @Param("id") id: string,
     @Body() body: VerifyFieldDto,
     @CurrentUser() user: AuthedUser,
+    @Headers("x-seal-challenge") challenge?: string,
   ) {
+    await this.assertSealed(user, id, "field_verify", challenge, () =>
+      this.readFieldVerifySealArgs(id, user.restaurantId, body?.path),
+    );
+
     const result = await this.corrections.verifyField(
       user.restaurantId,
       id,

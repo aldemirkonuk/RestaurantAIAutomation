@@ -53,8 +53,9 @@ WHAT IT DOES NOT CATCH, STATED
 NEVER VACUOUS
 -------------
 Exit 2 when it cannot do its job: a scanned module missing, no controllers, no
-routes parsed, the seal service's primitives not found, or an ALLOWLIST entry
-naming a route that no longer exists. A stale exemption is the
+routes parsed, the seal service's primitives not found, an ALLOWLIST entry
+naming a route that no longer exists, or a DELIBERATELY_UNSEALED row naming a
+route that no longer exists or that now redeems a seal. A stale exemption is the
 absence-reported-as-health shape wearing this guard's own badge — an allow-list
 row that stopped matching anything still reads, to a person skimming it, like a
 decision that is still in force.
@@ -94,19 +95,22 @@ MONEY_MODULES = ("payment-methods", "billing", "communications/text/credits")
 # It is the wrong shape for `procurement/documents`. On 2026-09-06 (batch 64) the
 # founder was asked whether procurement's write routes should be sealed and
 # answered "Decide as a module: seal all three" — naming THREE acts: verify, line
-# edit and currency restatement. The controller they live on has seven other
-# non-GET routes (upload, extraction, match, link, correction, field tick, door
-# count) that the decision did not name, and inventing an exemption sentence for
-# each of them would be filing seven decisions the founder never made.
+# edit and currency restatement. On 2026-09-11 (batch 69) the founder confirmed
+# the canonical face's two twins, field correction and field tick ("Seal
+# corrections and fields/verify too ... the guard's census becomes five acts"),
+# which batch 68 (2026-09-06, b6d2e4b4's message) had already chosen.
 #
 # So this census names the routes a decision REQUIRES to be sealed, one row per
-# route, each carrying the decision that made it true. Everything else on a
-# census file is reported `not-in-census` and PRINTED — never counted as a pass.
-# That is the honest statement of this census's own soft spot, and it is stated
-# again in the output: a FOURTH write act added to one of these files tomorrow is
-# not caught here the way a fourth money route would be. Whether the whole
-# controller should join the whole-module rule is a founder question, recorded in
-# p4bs's report rather than decided by this file.
+# route, each carrying the decision that made it true. A second registry below,
+# `DELIBERATELY_UNSEALED`, names the writes a decision LEFT unsealed, each with
+# the reason true of that route, printed under the words the docs use. Anything
+# else on a census file is reported `not-in-census` and PRINTED — never counted
+# as a pass. That is the honest statement of this census's own soft spot, and it
+# is stated again in the output: a write act added to one of these files
+# tomorrow is not caught here the way a new money route would be; it lands under
+# NOT IN ANY SEAL CENSUS. Whether the whole controller should join the
+# whole-module rule is a founder question, recorded in p4bs's report rather than
+# decided by this file.
 SEALED_ACTS: dict[tuple[str, str], str] = {
     (
         "procurement/documents/documents.controller.ts",
@@ -136,6 +140,90 @@ SEALED_ACTS: dict[tuple[str, str], str] = {
         "denomination and is what ends a receiving hold; its gate was role plus "
         "an append-only log, and a role answers 'may this role' rather than 'did "
         "a person'."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "correctField",
+    ): (
+        "Founder, 2026-09-11 (batch 69): \"Seal corrections and fields/verify "
+        "too\" — \"the decision then holds on both faces of the document; the "
+        "guard's census becomes five acts.\" A field correction is a line edit "
+        "arriving through ADR 0104's canonical face: it appends revision n+1 "
+        "carrying the WHOLE corrected document, and both tables refuse UPDATE and "
+        "DELETE by trigger, so nothing can be taken back once it has landed."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "verifyFieldTick",
+    ): (
+        "Founder, 2026-09-11 (batch 69): \"Seal corrections and fields/verify "
+        "too.\" The per-field tick is `verify` at field granularity — a human "
+        "standing behind a value they did not change — and the same argument "
+        "applies: there is no un-tick, and a name against a figure the person "
+        "never read is a fabricated human assertion, which is worse than none."
+    ),
+}
+
+# ---------------------------------------------------------------------------
+# DELIBERATELY UNSEALED — the writes on a census file a decision LEFT unsealed.
+# ---------------------------------------------------------------------------
+# p4bs's Q1 (2026-09-06, p4-scratch/p4bs-report.md) recommended sealing the two
+# canonical-face acts and leaving these five unsealed; the founder's batch 68
+# chose the twins and named no further act (b6d2e4b4's message), and batch 69
+# confirmed the twins. `receipts.md` and ADR 0104 call these routes "deliberately
+# NOT sealed", so they print under that name — each with the reason true of THAT
+# route rather than one blanket sentence, and two of the five reasons say plainly
+# that they are weak. A row is a RECORD, not a requirement: nothing here must stay
+# unsealed. What is enforced is that the record stays true in the two ways this
+# guard can see: a row naming a route that no longer exists exits 2, and so does a
+# row whose route now redeems a seal.
+DELIBERATELY_UNSEALED: dict[tuple[str, str], str] = {
+    (
+        "procurement/documents/documents.controller.ts",
+        "upload",
+    ): (
+        "Intake. It stores the bytes and the reading of them for review and, by "
+        "its own contract, writes no stock, cost or order. What a person later "
+        "stands behind is `verify` or a field correction, and both are sealed."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "applyExtraction",
+    ): (
+        "Fills a document stored UNREAD with an extraction performed elsewhere and "
+        "refuses (409) to overwrite one already read, so it cannot replace a "
+        "manager's correction. It records a reading, not a person's decision; the "
+        "decision about that reading is `verify`, which is sealed."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "match",
+    ): (
+        "The matcher. It persists only unambiguous exact vendor-SKU pairings and "
+        "returns every other pairing as a suggestion it does not write. A machine "
+        "proposal carries no person's word for a seal to bind."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "linkLine",
+    ): (
+        "WEAK, stated plainly: a person confirming or unlinking a pairing, appended "
+        "beside the machine's proposal and never substituted (ADR 0059). It IS a "
+        "person's act with a money consequence -- a wrong link puts one wine's "
+        "invoice price on another's cost lot -- and it is unsealed because no "
+        "decision has named it, not because a seal would bind nothing. `verify`'s "
+        "seal deliberately excludes pairings (document-seal.ts, order_line_id)."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "doorCount",
+    ): (
+        "WEAK, stated plainly: a count recorded as the house's OWN document "
+        "(receiving_advice, issued_by_us). On a delivery it books stock at the door "
+        "(deliveryStock.bookAtTheDoor, ADR 0103, merged 2026-09-11) as PROVISIONAL "
+        "lots carrying no unit cost, so it moves quantity and no money. Its own "
+        "ApiOperation still says it writes no stock, which stopped being true at "
+        "that merge. Unsealed because no decision has named it."
     ),
 }
 
@@ -245,6 +333,27 @@ ALLOWLIST: dict[tuple[str, str], str] = {
         "inserts one short-lived challenge row behind the SAME manager-or-owner "
         "check and the SAME ISO 4217 membership check the write runs, so a seal "
         "is never issued for a restatement this house would refuse."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "mintFieldCorrectSeal",
+    ): (
+        "The mint itself, for the same circular reason as the rows above. It "
+        "appends no revision and writes no correction row: it inserts one "
+        "short-lived challenge row bound to this actor, this document, the "
+        "REVISION being corrected in full, and the exact path and value asked "
+        "for. Binding the revision is what stops a gesture obtained against one "
+        "state of the document being spent against another."
+    ),
+    (
+        "procurement/documents/documents.controller.ts",
+        "mintFieldVerifySeal",
+    ): (
+        "The mint itself. It ticks nothing and appends no revision: it inserts "
+        "one short-lived challenge row bound to this actor, this document, the "
+        "field's path and the value that field shows NOW. Binding the value is "
+        "what stops a tick obtained while a figure read 142,00 being spent after "
+        "somebody corrected it."
     ),
 }
 
@@ -511,7 +620,8 @@ def route_verdict(
 
     `whole_module` is the difference between the two censuses. In a money module
     every non-GET route must seal or carry an exemption. In a file reached by the
-    ACT census, only the handlers `SEALED_ACTS` names must seal; the rest are
+    ACT census, only the handlers `SEALED_ACTS` names must seal; the ones
+    `DELIBERATELY_UNSEALED` records are `deliberately-unsealed`; the rest are
     `not-in-census` — reported, printed, and never counted as a pass.
     """
     if verb not in WRITE_METHODS:
@@ -522,6 +632,8 @@ def route_verdict(
         return "allow-listed"
     if whole_module or (rel, handler) in SEALED_ACTS:
         return "UNSEALED"
+    if (rel, handler) in DELIBERATELY_UNSEALED:
+        return "deliberately-unsealed"
     return "not-in-census"
 
 
@@ -758,6 +870,24 @@ export class XController {
 @Controller("x")
 export class XController {
   @Post("a")
+  async somethingNew() {
+    return 1;
+  }
+}
+""",
+        "procurement/documents/documents.controller.ts",
+        "somethingNew",
+        "not-in-census",
+    ),
+    (
+        # The docs' own wording (receipts.md, ADR 0104): a write a decision LEFT
+        # unsealed prints as deliberately unsealed with its reason. A record, not
+        # a pass, and never the same line as a write nobody has named.
+        "a write the deliberately-unsealed record names is deliberately-unsealed",
+        """
+@Controller("x")
+export class XController {
+  @Post("a")
   async upload() {
     return 1;
   }
@@ -765,7 +895,7 @@ export class XController {
 """,
         "procurement/documents/documents.controller.ts",
         "upload",
-        "not-in-census",
+        "deliberately-unsealed",
     ),
 ]
 
@@ -927,7 +1057,7 @@ def main() -> int:
         f"{', '.join(MONEY_MODULES)}; named acts in {', '.join(CENSUS_FILES)}"
     )
     for r in all_routes:
-        print(f"  {r['verdict']:13} {r['verb']:6} {r['file']}:{r['line']} {r['handler']}")
+        print(f"  {r['verdict']:21} {r['verb']:6} {r['file']}:{r['line']} {r['handler']}")
 
     # A stale exemption is worse than a missing one: it reads like a live
     # decision. Exit 2, not 1 — the guard cannot check what it claims to. Both
@@ -956,6 +1086,35 @@ def main() -> int:
             print(f"  {f} :: {h}", file=sys.stderr)
         return 2
 
+    stale_unsealed = [k for k in DELIBERATELY_UNSEALED if k not in live]
+    if stale_unsealed:
+        print(
+            "\nFATAL: the deliberately-unsealed record names route(s) that no longer "
+            "exist. A reason printed beside nothing still reads as a decision in "
+            "force:",
+            file=sys.stderr,
+        )
+        for f, h in stale_unsealed:
+            print(f"  {f} :: {h}", file=sys.stderr)
+        return 2
+
+    now_sealed = [
+        (r["file"], r["handler"])
+        for r in all_routes
+        if (r["file"], r["handler"]) in DELIBERATELY_UNSEALED
+        and r["verdict"] == "sealed"
+    ]
+    if now_sealed:
+        print(
+            "\nFATAL: route(s) recorded as DELIBERATELY UNSEALED now redeem a seal, "
+            "so the reason printed beside them is false. Move the row to "
+            "SEALED_ACTS with the decision that sealed it:",
+            file=sys.stderr,
+        )
+        for f, h in now_sealed:
+            print(f"  {f} :: {h}", file=sys.stderr)
+        return 2
+
     if unresolved:
         print("\nHops this guard could not follow (listed, not assumed safe):")
         for u in sorted(set(unresolved)):
@@ -967,6 +1126,19 @@ def main() -> int:
         for r in allowed:
             print(f"  {r['file']}:{r['line']} {r['handler']}")
             print(f"    {ALLOWLIST[(r['file'], r['handler'])]}")
+
+    deliberate = [r for r in all_routes if r["verdict"] == "deliberately-unsealed"]
+    if deliberate:
+        print(
+            f"\nDELIBERATELY UNSEALED — {len(deliberate)} write(s) on a census file "
+            "that the founder's decisions left unsealed (p4bs's Q1 recommendation; "
+            "batch 68 sealed the twins and named no further act; batch 69 confirmed), "
+            "each with the reason true of that route. A record, not a requirement: "
+            "this guard catches a row only when its route disappears or gains a seal:"
+        )
+        for r in deliberate:
+            print(f"  {r['file']}:{r['line']} {r['verb']} {r['handler']}")
+            print(f"    {DELIBERATELY_UNSEALED[(r['file'], r['handler'])]}")
 
     # THE SOFT SPOT, PRINTED. These are writes on a file the act census reaches
     # into that no census row names. They are NOT checked and NOT exempt — they
@@ -1000,7 +1172,8 @@ def main() -> int:
     print(
         f"\nPASS — {sealed} write(s) redeem a seal ({named} of them required by "
         f"the act census), {len(allowed)} are allow-listed with a reason, "
-        f"{len(outside)} are outside every census and are listed above."
+        f"{len(deliberate)} are deliberately unsealed with a reason, and "
+        f"{len(outside)} are outside every census."
     )
     return 0
 

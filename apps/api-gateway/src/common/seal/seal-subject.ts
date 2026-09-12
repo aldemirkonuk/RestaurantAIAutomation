@@ -92,25 +92,39 @@
  * the seal would go.
  */
 /**
- * `procurement_document` (added 2026-09-06, batch 64) is the seal on the three
- * write acts of the receiving corridor: confirming a transcription
- * (`verify`), correcting one extracted line (`line_edit`) and restating or
- * confirming what currency an invoice's money is in (`currency_restate`).
+ * `procurement_document` (added 2026-09-06, batch 64; widened 2026-09-11, batch
+ * 69) is the seal on the FIVE write acts of the receiving corridor, across both
+ * faces of the same paper.
+ *
+ * On the /receipts face: confirming a transcription (`verify`), correcting one
+ * extracted line (`line_edit`) and restating or confirming what currency an
+ * invoice's money is in (`currency_restate`). On ADR 0104's canonical face:
+ * correcting one layer-1 field (`field_correct`) and ticking one field as
+ * checked by a human (`field_verify`).
  *
  * The founder's answer to "should procurement's write routes be sealed" was
- * *"Decide as a module: seal all three"*, and this is that decision as one kind
- * with three acts rather than three mechanisms. Its subject is the DOCUMENT for
- * all three — the line edit names its line in the arguments instead, because a
- * refusal reading "a different line" would name a row rather than the paper, and
- * because putting a second table's uuids under one kind is the collision
- * `subject_kind` exists to stop.
+ * *"Decide as a module: seal all three"*, and then, asked about the twins on the
+ * other face, *"Seal corrections and fields/verify too — the decision then holds
+ * on both faces of the document"*. This is those two decisions as ONE kind with
+ * five acts rather than five mechanisms. Its subject is the DOCUMENT for all
+ * five — the line edit names its line, and the two field acts name their path,
+ * in the arguments instead, because a refusal reading "a different line" would
+ * name a row rather than the paper, and because putting a second table's uuids
+ * under one kind is the collision `subject_kind` exists to stop.
+ *
+ * The ACT is not enumerated in SQL. `tool_name` carries it under a
+ * `btrim(tool_name) <> ''` CHECK and nothing narrower (20260904170000), so the
+ * two acts added in batch 69 needed no migration; the SUBJECT KIND is the
+ * enumerated column, and 20260906200000 already admits this one.
  *
  * It is sealed rather than role-gated because a verification is the record a
  * vendor dispute leans on and there is deliberately no un-verify; because a line
  * edit changes what the paper is claimed to say, with no `updated_at` on
- * `procurement_document_lines` to precondition on; and because a restatement
- * re-files a whole invoice's money. See `procurement/documents/document-seal.ts`
- * for what each act's arguments cover and why.
+ * `procurement_document_lines` to precondition on; because a restatement
+ * re-files a whole invoice's money; and because layer 1 is append-only, so a
+ * correction or a tick written against a superseded revision cannot be taken
+ * back once it has landed. See `procurement/documents/document-seal.ts` for what
+ * each act's arguments cover and why.
  */
 export const SEAL_SUBJECT_KINDS = [
   "mcp_tool",
