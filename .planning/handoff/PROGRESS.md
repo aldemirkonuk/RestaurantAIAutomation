@@ -12,6 +12,69 @@ disagrees with the tree, the tree wins. Re-measure before acting on any line her
 marked "agent died" has partial or no edits in its worktree. Inspect `git status` there
 before continuing.
 
+## 0. Latest state (supersedes section 3 wherever they differ)
+
+Written while API credit was down to its last $15. Subagents failed on the weekly limit on
+every launch after the first wave. Re-measure everything below before acting on it.
+
+**Merged to main today:**
+- #363 (the audit gate waits only on gating checks), beb00db4
+- #366 (Ask AI bounded, daily cap), b76243e9
+- #361 (a stock write names its house), round 3
+
+**In flight: the merge train.** Branch `train/2026-09-12`, worktree `wt-train`, script
+`scratchpad/train.sh`, log `p4-scratch/train.out`. It merges the ready branches into one PR
+so that strict main needs one CI cycle, not eight:
+- docs/handoff-2026-09-12 (this file)
+- #367 parity self-test
+- #328 go-live docs
+- #365 ledger guard
+- #364 probe safety, with the two stacked sibling commits
+- #370 p4 work since #289 (publicDesign, PublicShell, /login and /register, ADRs 0143-0145)
+- #368 text-sender port
+- #369 MCP port, with migration 20260912200000
+- the endpoint-faults branch, ADR 0147, **only if** its verify_index run was green
+
+Check the train PR. If CI is green, post the PASS marker on the founder's word, run
+`gh pr merge <n> --squash` in a separate call, then close the individual PRs as landed. If
+the train left a branch out, the log says why.
+
+**Endpoint faults (wt-endpoint-faults), the one known risk.** The wine-search fix tripped
+`check_read_columns_exist.py`: 3 unreadable reads against a shrink-only ceiling of 2. The
+new unreadable site is the suggestions query in `apps/api-gateway/src/wines/wines.service.ts`
+(getWineSuggestions). Several shapes were tried and the probe still counted it. The probe
+that lists unreadable sites is `scratchpad/rc_probe.py`: copy it into scripts/ and run it.
+If the train log says endpoint faults were left out, fix that one read (or split the fix
+out), re-verify, commit, and land it alone.
+
+**Not landed, and why:**
+- **#362 (the security gate can fail).** The PyYAML rewrite of
+  `scripts/check_security_gate_can_fail.py` was never done. The agent died twice, leaving 1
+  changed file in wt-secgate; inspect it. The full brief is in section 3.
+- **#349 (nightly E2E).** c1221a9f is pushed (trace off, gateway URL guard, loader). The
+  merge of main is IN PROGRESS in wt-e2e with 6 conflicts:
+  - e2e-prod.yml and conftest_prod.py (apply ADR 0137: waves D/E/G retired, their secrets
+    removed)
+  - EXISTING-TEST-INVENTORY.md
+  - TECH-DEBT
+  - README
+  - CLAIMS
+
+  `p4-scratch/e2e-merge.md` may hold a partial analysis.
+- **Ports of the 2026-09-06 branches:** calpush, ov0, ov1, ov2 and motions. Their worktrees
+  hold the 3-way apply with conflicts unresolved (section 4 lists what each needs). The
+  founder chose to land all of them.
+- **The pages build (section 5)** did not start, for lack of credit.
+- **Dependabot:** left out by the founder.
+
+**New findings from the ports, not fixed anywhere:**
+- Main's `GET /logs` accepts a `correlationId` that reads `event_store` rows across houses
+  for any signed-in user. The MCP port removed the same argument from its own tool; see
+  p4-scratch/ports/mcp.md.
+- The database allows two houses to hold the same Meta phone number id. The text-sender
+  port refuses that case in code, but the unique index needs its own migration; see
+  p4-scratch/ports/text.md.
+
 ## 1. Rules a continuing session must keep
 
 - Read CLAUDE.md, then `.planning/decisions/README.md`, then this file.
