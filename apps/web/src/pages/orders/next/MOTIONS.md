@@ -1,7 +1,7 @@
 # OrdersNext — motion map
 
 Per-page motion inventory for `/orders` (Mudavym redesign). Every motion below
-runs on a token from `lib/mudavym/motion.ts` (sketch 059's vocabulary, sampled
+runs on a token from `lib/mudavym/motion.ts` (sketch 083's vocabulary, sampled
 springs included) except the two deliberately un-eased time rulers, which are
 `linear` by contract. Reduced motion collapses every entry to its end state
 (the `animate()` wrapper and each component's own reduced path); the

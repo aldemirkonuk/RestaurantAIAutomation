@@ -76,6 +76,7 @@
 
 import { useRef, useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
+import { useStandaloneGround } from './useStandaloneGround';
 import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
 
@@ -191,8 +192,14 @@ export function SealedApproveDie({
 
   const noun = orderIds.length === 1 ? 'order' : 'orders';
 
+  const { rootRef, ground } = useStandaloneGround();
+
   return (
-    <div className={className ? `mudavym ${className}` : 'mudavym'}>
+    <div
+      ref={rootRef}
+      className={className ? `mudavym ${className}` : 'mudavym'}
+      data-ground={ground}
+    >
       <HoldToApprove
         key={`die-${orderIds.join(',')}-${attempt}`}
         label={label}
