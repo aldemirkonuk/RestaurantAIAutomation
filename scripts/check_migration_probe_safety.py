@@ -67,16 +67,17 @@ fix does not touch. Per ADR 0072's rule ("narrowed by name in this ADR, never
 by deleting the category quietly"), they are named here, not silently
 excluded by loosening the pattern:
 
-  Rule 2 (absolute count assertion), untouched by this fix:
-    20260905140000_a_bottle_has_one_identity.sql:417-419,461-462 -- the
+  Rule 2 (absolute count assertion): no grandfathered files remain.
+    20260905140000_a_bottle_has_one_identity.sql:417-419,461-462 carried the
     exact same shape as 20260906030000, on tables the same feature writes to
     (`beverage_identities`, `beverage_identity_keys`,
-    `beverage_identity_candidates`). Also already applied to production
-    (`supabase_migrations.schema_migrations`, measured 2026-09-11 while
-    fixing the neighboring reopen-history defect). This is a live, unfixed
-    instance of the class this guard exists to catch -- flagged as a
-    follow-up, not fixed here, because it was out of the two-file scope this
-    change was given.
+    `beverage_identity_candidates`), and was already applied to production.
+    Fixed the same way, in the follow-up that removed it from
+    GRANDFATHERED_ABSOLUTE_COUNT -- three before/after locals capture the
+    counts on all three tables ahead of the probe and after it rolls back,
+    and the assertion is a delta on each, never an absolute value. That
+    fix edits the file without rewriting what already ran in production
+    (see the migration's own header note and that commit's disclosure).
 
   Rule 1 (magic-string DELETE), untouched by this fix -- eight files, each a
   `DELETE FROM public.<table> WHERE <col> = '<literal>'` inside a DO-block
@@ -143,10 +144,12 @@ GRANDFATHERED_DELETE_BY_LITERAL = {
 }
 
 # --- Rule 2: an absolute-value row-count assertion -------------------------
+#
+# Empty. 20260905140000_a_bottle_has_one_identity.sql was the last entry --
+# see the module docstring's "GRANDFATHERED, BY NAME" section for how it was
+# fixed and why the fix does not touch what already ran in production.
 
-GRANDFATHERED_ABSOLUTE_COUNT = {
-    "20260905140000_a_bottle_has_one_identity.sql",
-}
+GRANDFATHERED_ABSOLUTE_COUNT: set[str] = set()
 
 DO_BLOCK_RE = re.compile(r"DO\s+(\$[A-Za-z_]*\$)", re.IGNORECASE)
 DELETE_RE = re.compile(r"DELETE\s+FROM\s+(public\.\w+)\b(.*?);", re.IGNORECASE | re.DOTALL)
@@ -408,17 +411,34 @@ def run_self_test() -> int:
             )
 
     # 3. A grandfathered file with the violation it is listed for is silent.
+    # Rule 2's grandfather list is currently empty (its last entry, the
+    # bottle-identity migration, was fixed) -- exercised only when the list
+    # is non-empty, so this self-test does not depend on that list staying
+    # populated forever.
     with tempfile.TemporaryDirectory() as td:
         grand_delete = next(iter(GRANDFATHERED_DELETE_BY_LITERAL))
-        grand_count = next(iter(GRANDFATHERED_ABSOLUTE_COUNT))
         _write(td, grand_delete, FIXTURE_MAGIC_DELETE)
-        _write(td, grand_count, FIXTURE_ABSOLUTE_COUNT)
+        if GRANDFATHERED_ABSOLUTE_COUNT:
+            grand_count = next(iter(GRANDFATHERED_ABSOLUTE_COUNT))
+            _write(td, grand_count, FIXTURE_ABSOLUTE_COUNT)
         proc = _run_guard(td)
         if proc.returncode != 0:
             failures.append(
                 "a grandfathered file carrying exactly the violation it is "
                 f"listed for should pass: exit {proc.returncode}, want 0. "
                 f"Output: {(proc.stdout + proc.stderr)[:400]}"
+            )
+
+    # 3b. A fresh absolute-count violation is still caught even though rule
+    # 2's grandfather list is empty -- an empty exemption list must not be
+    # mistaken for the rule itself being disabled.
+    with tempfile.TemporaryDirectory() as td:
+        _write(td, "20260101000200_fresh_absolute.sql", FIXTURE_ABSOLUTE_COUNT)
+        proc = _run_guard(td)
+        if proc.returncode != 1:
+            failures.append(
+                "a fresh (non-grandfathered) absolute-count violation must "
+                f"still fail: exit {proc.returncode}, want 1"
             )
 
     # 4. A grandfathered file that no longer has the violation must fail --
