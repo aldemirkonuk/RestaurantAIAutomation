@@ -64,6 +64,25 @@ Most-linked page in the app — in-degree 6 per [PAGE_MAP](../foundation/PAGE_MA
 | POST | `/api/v1/auth/login` | `AuthContext.tsx:432` | ENDPOINTS.md:64 |
 | GET | `/api/v1/auth/me` | `AuthContext.tsx:443` (after login) | ENDPOINTS.md:67 |
 | POST | `/api/v1/auth/oauth/google` | `AuthContext.tsx:535` via `GoogleSignInButton` → `loginWithGoogle` (`GoogleSignInButton.tsx:81`) | ENDPOINTS.md:75 |
+| POST | `/api/v1/auth/oauth/microsoft` | `AuthContext.tsx:560` (`loginWithMicrosoft`) — **no button calls it**; see §9 | ENDPOINTS.md |
+
+**Both OAuth routes changed on 2026-09-12 (ADR 0139).** They are still `@Public()`
+(ADR 0096: by decision, the provider token in the body is the credential), but:
+
+- The account must be **linked** to the provider — a row in `user_oauth_accounts`
+  for `(user_id, provider)`, or, only when there are no rows at all, the legacy
+  `users.oauth_provider` hint ADR 0024 already treats as a hint. Where the stored
+  row carries a `provider_user_id`, the token's own subject (`sub` / `oid`) must
+  match it. Resolving by address alone let a token for a matching address sign
+  the holder in as that user.
+- Microsoft now verifies an **ID token** itself — RS256 against the published
+  JWKS, `aud` = `MICROSOFT_CLIENT_ID`, exact `iss`, `exp`/`nbf`, and a verified
+  address (`xms_edov`) — instead of replaying the body string to
+  `https://graph.microsoft.com/v1.0/me`, which answered for any Graph token.
+- Unknown address and "account does not use this provider" return **the same
+  sentence**, so the public route stops answering which addresses have accounts.
+  A failed read of the link table returns a third, distinct sentence: "we could
+  not check" is never collapsed into "not linked".
 
 ## 5. Signals
 **none.** No tracking, NF events, or uxSignals are emitted from this page (grep of `Login.tsx` and its tree).
@@ -76,7 +95,7 @@ Public — upstream of every scenario; no `S..` touches it directly. Tiering run
 - `AuthShell.tsx:64` — footer `© 2026 WineOps AI. All rights reserved.`
 - `BrandMark.tsx:17` — default `alt = 'WineOps'` (screen-reader visible via AuthShell)
 
-Adjacent server-side leaks surfaced *on* this page as error copy: `auth.service.ts:1360` ("No WineOps account uses that address…"), `auth.service.ts:1741` ("OAuth account email must match your WineOps email") — both rendered verbatim by `Login.tsx:63`.
+Adjacent server-side leaks surfaced *on* this page as error copy: `auth.service.ts:1741` ("OAuth account email must match your WineOps email"), rendered verbatim by `Login.tsx:63`. The second one — "No WineOps account uses that address…" — **is gone as of ADR 0139**: it was replaced by a brand-free sentence shared with the not-linked refusal, so this rebrand surface closed itself.
 
 ## 8. State & config
 - `VITE_GOOGLE_CLIENT_ID` (`lib/googleIdentity.ts:74`) — without it the Google button/One Tap can't initialise.
@@ -84,7 +103,8 @@ Adjacent server-side leaks surfaced *on* this page as error copy: `auth.service.
 - No feature flags or per-restaurant toggles.
 
 ## 9. Gaps
-- No Microsoft sign-in button, though the backend supports `POST /auth/oauth/microsoft` (`AuthContext.tsx:560`). Microsoft is now **declared and disabled** in the registry rather than silently absent: an account with a linked Microsoft identity gets a stated reason plus the set-password path, not a Google button. Enabling it is one registry field plus a button component.
+- No Microsoft sign-in button, though the backend has `POST /auth/oauth/microsoft` (`AuthContext.tsx:560`). Microsoft is **declared and disabled** in the registry rather than silently absent: an account with a linked Microsoft identity gets a stated reason plus the set-password path, not a Google button. **ADR 0139 made that endpoint safe; it did not make the provider shippable** — `enabled` stays `false`, and enabling it now needs a button, a *concrete* `MICROSOFT_TENANT_ID` (`common`/`organizations`/`consumers` are refused, since with them `iss` names whatever tenant the caller belongs to) and the `xms_edov` optional claim in the Azure app registration, not just a registry field.
+- **An OAuth sign-in now requires an existing link** (ADR 0139). "Sign in with Google" no longer works for an account that has never linked Google — the user signs in another way and links from their profile (`POST /auth/link-provider`). Production on 2026-09-12: 8 users, all 8 with a password, so nobody is locked out; but this is a real change to the first-time path and there is no UI that explains it yet.
 - Apple is declared and disabled too, and **cannot be enabled without a migration** — `user_oauth_accounts.provider` carries a CHECK admitting only `google|microsoft` (`baseline_from_production.sql:5771`). `identity-first-signin.spec.ts` fails the build if that is forgotten.
 - "Remember me" deliberately removed 2026-07-31 (v3.0 task 44.15) — rationale preserved in `Login.tsx`.
 - The extra round-trip is not cached: revisiting `/login` re-resolves. Acceptable at 10/10min per IP; would matter if the page ever polls.
@@ -153,7 +173,7 @@ Note: an earlier revision of this section cited a normalising regex at `Login.ts
 ## 13. Roadmap
 
 1. ~~Fold `OAUTH_ONLY` into the generic error~~ — **retired by ADR 0024.** Answered the other way: the message is made *true* rather than generic, and enumeration on this route is now a recorded decision.
-2. Add the Microsoft button — the endpoint and the context method already exist (`auth.controller.ts:118`, `AuthContext.tsx:560`); this is UI plus flipping `enabled` in `identity-providers.ts`.
+2. Add the Microsoft button — the endpoint and the context method already exist (`auth.controller.ts:118`, `AuthContext.tsx:560`). No longer "UI plus flipping `enabled`": ADR 0139 makes the endpoint fail closed, so shipping it also needs an Azure app registration with a concrete tenant and the `xms_edov` optional claim, plus a founder decision on multi-tenant sign-in (a placeholder tenant is refused by design).
 3. ~~Let a Gmail user fall through to password login~~ — **retired by ADR 0024**, the interception is gone.
 4. Move the rate-limit store off in-memory `Map` before running >1 gateway replica (`rate-limit.guard.ts:69-121`). *Blocked:* no shared cache reachable from a guard today — the same blocker is written up at `password-reset-throttle.guard.ts:20-28`. **Now load-bearing for two routes**, not one.
 5. Emit sign-in success/failure/method signals — §5 is `none` and this is the top of every funnel. *Blocked:* no signal sink exists (see [[get-started]] §11).

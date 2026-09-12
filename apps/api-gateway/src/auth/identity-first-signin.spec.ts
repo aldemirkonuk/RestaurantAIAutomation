@@ -546,9 +546,22 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
   function makeOAuthService(opts: {
     row?: Record<string, unknown> | null;
     defaultRestaurantId?: string;
+    /**
+     * Rows in `user_oauth_accounts` for the resolved user. ADR 0139: an OAuth
+     * sign-in now returns an account only when that account is actually linked
+     * to the provider, so the tests that expect a resolution must say so.
+     */
+    oauthRows?: { provider: string; provider_user_id: string | null }[];
   }) {
     const inserts: unknown[] = [];
     const from = jest.fn((table: string) => {
+      if (table === "user_oauth_accounts") {
+        const chain: any = {
+          select: () => chain,
+          eq: () => Promise.resolve({ data: opts.oauthRows ?? [], error: null }),
+        };
+        return chain;
+      }
       if (table !== "users") throw new Error(`unexpected table: ${table}`);
       const chain: any = {
         select: () => chain,
@@ -619,6 +632,7 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
     const { svc } = makeOAuthService({
       row: { user_id: "u1", email: "known@gmail.com" },
       defaultRestaurantId: "550e8400-e29b-41d4-a716-446655440000",
+      oauthRows: [{ provider: "google", provider_user_id: "google-123" }],
     });
 
     await expect(
@@ -632,6 +646,7 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
     const { svc, from } = makeOAuthService({
       row: { user_id: "u1" },
       defaultRestaurantId: "550e8400-e29b-41d4-a716-446655440000",
+      oauthRows: [{ provider: "google", provider_user_id: "google-123" }],
     });
 
     await svc.findOrCreateOAuthUser({ ...params, email: "  Known@GMAIL.com " });

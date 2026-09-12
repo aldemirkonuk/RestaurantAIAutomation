@@ -28,6 +28,10 @@ import {
   isKnownIdentityProviderId,
   sortForDisplay,
 } from "./identity-providers";
+import {
+  MicrosoftIdTokenVerifier,
+  resolveMicrosoftOidcConfig,
+} from "./microsoft-id-token";
 
 /**
  * What `POST /auth/sign-in-methods` answers: the ways this identity can
@@ -112,12 +116,54 @@ function formatList(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
+/**
+ * The ONE sentence an OAuth sign-in gets when it does not resolve to an account
+ * it is allowed to use.
+ *
+ * It is deliberately the same for "no account uses that address" and for "that
+ * account does not use this provider". `POST /auth/oauth/{provider}` is
+ * `@Public()`, so anyone on the internet can call it with any address; two
+ * different sentences would turn it into an address oracle that answers
+ * "someone here uses that address" to a stranger holding a token for their own
+ * account. ADR 0024 made the enumeration on `sign-in-methods` deliberate,
+ * narrow and rate-limited; this route was never part of that grant.
+ *
+ * It also names no brand, so it survives the WineOps -> Mudavym rename that the
+ * string it replaces ("No WineOps account uses that address...") was filed
+ * under in `.planning/06-pages/login.md` section 7.
+ */
+function oauthSignInRefused(provider: IdentityProviderId): string {
+  const label = getIdentityProvider(provider)?.label ?? provider;
+  return `We could not sign you in with ${label}. If you already have an account, sign in another way and link ${label} from your profile first.`;
+}
+
+/**
+ * What a FAILED READ of the link table says. Distinct from the refusal above on
+ * purpose: "we could not check" is not "you are not linked", and collapsing the
+ * two is precisely the absence-reported-as-health fault this repo tracks.
+ * supabase-js RESOLVES `{ data, error }` rather than throwing, so without this
+ * branch an unreachable table reads as an empty link list, which reads as "not
+ * linked" — an answer, produced by a question that was never answered.
+ */
+const LINK_CHECK_UNAVAILABLE =
+  "We could not check your sign-in methods just now. Please try again.";
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly SALT_ROUNDS = 10;
   private readonly jwtSecret: string;
   private readonly jwtRefreshSecret: string;
+
+  /**
+   * Verifies Microsoft ID tokens against Microsoft's published JWKS.
+   *
+   * A plain field rather than a constructor parameter: every existing spec
+   * builds `new AuthService(...)` with five arguments, and a sixth injected
+   * dependency would rewrite all of them for no gain. Tests that need a stub
+   * key set replace this field with a verifier over a stub fetcher.
+   */
+  private microsoftIdTokens = new MicrosoftIdTokenVerifier();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -593,9 +639,20 @@ export class AuthService {
       const response = await axios.get(tokenInfoUrl);
       const data = response.data;
 
-      const expectedClientId =
-        this.configService.get<string>("GOOGLE_CLIENT_ID");
-      if (expectedClientId && data.aud !== expectedClientId) {
+      const expectedClientId = (
+        this.configService.get<string>("GOOGLE_CLIENT_ID") ?? ""
+      ).trim();
+      // Fail closed, as the Microsoft path now does. This used to read
+      // `if (expectedClientId && data.aud !== expectedClientId)` — so an unset
+      // GOOGLE_CLIENT_ID silently removed the audience check entirely, and any
+      // Google ID token minted for any application would have been accepted.
+      // An unconfigured provider must refuse, never wave through.
+      if (!expectedClientId) {
+        throw new UnauthorizedException(
+          "Google sign-in is not configured on this server.",
+        );
+      }
+      if (data.aud !== expectedClientId) {
         throw new UnauthorizedException("Invalid Google token audience");
       }
 
@@ -612,6 +669,13 @@ export class AuthService {
         throw new UnauthorizedException("Google token missing email");
       }
 
+      // `sub` is what binds the token to a row in `user_oauth_accounts`. The
+      // address is not the identity, so a token that will not say WHICH Google
+      // account it is cannot be matched against a link.
+      if (typeof data.sub !== "string" || data.sub.length === 0) {
+        throw new UnauthorizedException("Google token missing subject");
+      }
+
       return {
         sub: data.sub,
         email: data.email,
@@ -625,33 +689,34 @@ export class AuthService {
   }
 
   /**
-   * Verify Microsoft OAuth token
+   * Verify a Microsoft ID token.
+   *
+   * This used to send the body string to `https://graph.microsoft.com/v1.0/me`
+   * as a Bearer token and trust whatever address came back. Graph answers for
+   * ANY valid Microsoft access token, including one minted by an unrelated
+   * Azure application: no audience, no issuer, no signature, no verified
+   * address. Combined with resolving the account by email alone, that let a
+   * token for one of our users' addresses sign the holder in as that user.
+   *
+   * The verification now lives in `microsoft-id-token.ts` and does the work
+   * itself — RS256 against the published JWKS, `aud` equal to
+   * MICROSOFT_CLIENT_ID, exact `iss`, expiry, and a verified address. It fails
+   * closed on every unset piece of configuration; see that file's header.
    */
-  private async verifyMicrosoftToken(token: string): Promise<any> {
-    try {
-      const response = await axios.get("https://graph.microsoft.com/v1.0/me", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const data = response.data;
-      const email = data.mail || data.userPrincipalName;
-
-      if (!email) {
-        throw new UnauthorizedException("Microsoft token missing email");
-      }
-
-      return {
-        oid: data.id,
-        email,
-        name: data.displayName || email,
-      };
-    } catch (error) {
-      if (error instanceof UnauthorizedException) throw error;
-      this.logger.error(`Microsoft token verification failed: ${error}`);
-      throw new UnauthorizedException("Failed to verify Microsoft token");
-    }
+  private async verifyMicrosoftToken(token: string): Promise<{
+    oid: string;
+    email: string;
+    name: string;
+  }> {
+    const config = resolveMicrosoftOidcConfig((key) =>
+      this.configService.get<string>(key),
+    );
+    const identity = await this.microsoftIdTokens.verify(token, config);
+    return {
+      oid: identity.oid,
+      email: identity.email,
+      name: identity.name,
+    };
   }
 
   /**
@@ -1580,12 +1645,103 @@ export class AuthService {
       this.logger.warn(
         `Rejected ${provider} sign-in for unknown email; no account exists`,
       );
-      throw new UnauthorizedException(
-        "No WineOps account uses that address. Create an account or use your invite code first.",
+      throw new UnauthorizedException(oauthSignInRefused(provider));
+    }
+
+    // An address is not an authorisation. Resolving by email alone is what let
+    // a Microsoft token for an address sign the holder in as the user who owns
+    // it — including a password-only user who had never used Microsoft. The
+    // account must actually USE this provider.
+    const linked = await this.oauthAccountIsLinked(user, params);
+    if (!linked) {
+      this.logger.warn(
+        `Rejected ${provider} sign-in for ${user.user_id}; account is not linked to that provider`,
       );
+      // Same sentence as the unknown-address branch above, on purpose: this
+      // route is public, and two sentences would tell a stranger which
+      // addresses have accounts.
+      throw new UnauthorizedException(oauthSignInRefused(provider));
     }
 
     return user;
+  }
+
+  /**
+   * Does this account actually use this provider?
+   *
+   * Follows `resolveLinkedProviderIds` rather than forming a second opinion:
+   * `user_oauth_accounts` is the source of truth, and `users.oauth_provider` is
+   * a legacy hint consulted ONLY when there are no rows at all. That fallback
+   * is deliberate — it is NULL for 9 of 10 production users including the one
+   * who genuinely has a linked Google account, so treating the column as the
+   * answer is what produced the fabricated "this account uses Google" message
+   * (ADR 0024). Measured on production 2026-09-12 before this change: 8 users,
+   * all 8 with a password hash, 1 link row (google), 0 microsoft links, 1 user
+   * carrying the legacy column, and ZERO users with no password, no row and no
+   * legacy value. So requiring a link locks nobody out.
+   *
+   * Two differences from `resolveLinkedProviderIds`, both deliberate:
+   *
+   *   1. It reads `provider_user_id` as well, and when the stored row carries
+   *      one, the token's own subject id must match it. The address is not the
+   *      identity: two different Microsoft accounts can present the same
+   *      address over time, and only the provider's subject id distinguishes
+   *      them. Both providers supply one — Google's `sub` and Microsoft's
+   *      `oid` — so both arms are enforced. A row with a blank
+   *      `provider_user_id` is matched on the provider alone rather than
+   *      refused, because that is a row this codebase could have written, and
+   *      locking a real user out over our own gap is not a security gain.
+   *   2. A FAILED READ REFUSES. `resolveLinkedProviderIds` answers a display
+   *      question, where an empty list is a survivable wrong answer; this
+   *      answers an authorisation question, where "I could not read the table"
+   *      must never resolve to either "linked" or "not linked".
+   */
+  private async oauthAccountIsLinked(
+    user: { user_id: string; oauth_provider?: string | null },
+    params: { provider: "google" | "microsoft"; providerId: string },
+  ): Promise<boolean> {
+    const { provider, providerId } = params;
+
+    const { data: rows, error } = await this.databaseService.supabase
+      .from("user_oauth_accounts")
+      .select("provider, provider_user_id")
+      .eq("user_id", user.user_id);
+
+    if (error) {
+      // supabase-js RESOLVES `{ data, error }`; it does not throw. Without this
+      // branch an unreachable table would arrive as `rows: null`, read as "no
+      // links", and be reported as "not linked" — an answer manufactured out
+      // of a question that was never answered.
+      this.logger.error(
+        `Link check failed for ${provider} sign-in: ${error.message}`,
+      );
+      throw new UnauthorizedException(LINK_CHECK_UNAVAILABLE);
+    }
+
+    const linkRows = (rows ?? []) as {
+      provider: string | null;
+      provider_user_id: string | null;
+    }[];
+
+    if (linkRows.length > 0) {
+      const forProvider = linkRows.filter((row) => row.provider === provider);
+      if (forProvider.length === 0) return false;
+
+      const withSubject = forProvider.filter(
+        (row) =>
+          typeof row.provider_user_id === "string" &&
+          row.provider_user_id.length > 0,
+      );
+      if (withSubject.length === 0) return true;
+
+      return (
+        typeof providerId === "string" &&
+        providerId.length > 0 &&
+        withSubject.some((row) => row.provider_user_id === providerId)
+      );
+    }
+
+    return user.oauth_provider === provider;
   }
 
   /**
