@@ -74,11 +74,13 @@ repoint to — the wave tests a path with no product behind it, not a path that 
 (`agents/notification_agent.py`) that calls a real SMTP client
 (`services/email_client.py:135`, `_send_via_gmail`) when unmocked — the underlying
 *feature* is live. But this wave's method of triggering it — a raw Supabase `.upsert()`
-into an inventory table — was **never wired to anything**: the only publisher of
-`stock.threshold.breached` is `BufferManager._evaluate_buffer`
-(`agents/buffer_manager.py:365-460`), which only runs against buffers populated by
-`add_sale()`, itself reachable only from a `pos.sale.completed` RabbitMQ message
-(`buffer_manager.py:161-167`). **No Supabase database trigger or webhook connects a raw
+into an inventory table — was **never wired to anything**: the only two publishers of
+`stock.threshold.breached` are `BufferManager._evaluate_buffer`
+(`agents/buffer_manager.py:365-495`, routing key at `:451`) and
+`_handle_manual_override` (`:225-323`, routing key at `:284`) — and BOTH are reachable
+only from a RabbitMQ message (`pos.sale.completed` via `add_sale()`, or
+`stock.manual_override` directly; subscriptions listed at `buffer_manager.py:160-166`),
+never from a raw table write. **No Supabase database trigger or webhook connects a raw
 table write to this chain anywhere in `supabase/migrations/` or `supabase/`.** The
 wave's own docstring calls this a bare assumption ("the trigger assumes InventoryEngine
 (or a Supabase webhook) publishes the event") — one the codebase does not support. Even
@@ -174,6 +176,27 @@ compliance-angle catch). `.planning/testing/TESTING-SCORECARD.md`'s three
 citations of the deleted files; and one sentence in `.planning/08-softwares/pos-bridge.md`
 that named this wave as one of only three callers of a now-partially-dead endpoint.
 
+**Round 3 and 4, after this same list drifted three more times** (see the Review
+trail): four `CLAIMS.jsonl` rows added (`ADR-0137-a` through `-d`) so this decision has
+a re-checkable footprint, unlike its first draft; `ADR-0137-d`'s check widened to cover
+all three wave names, not just D's; `.planning/07-reference/REQUIREMENTS.md`'s
+TEST-PROD-04/05/07 annotated with a pointer here (a closed ledger, not rewritten); the
+`v3.0-TECH-DEBT.md` "What the founder must set" secrets table — present-tense
+operational guidance, not a dated measurement, and the one place this decision's
+consequences are most load-bearing — re-derived from scratch rather than patched
+(it had drifted on both wave-gate content and, separately, on `conftest_prod.py` line
+numbers that a different edit in this same PR had already shifted); its
+`SUPABASE_SERVICE_ROLE_KEY` row corrected to say what it actually gates (all of Waves
+A/B/C via the `teardown_e2e_records` autouse session fixture, not "the teardown sweep
+only" as an earlier draft understated it); `.github/workflows/e2e-prod.yml`'s own copy
+of that same table collapsed to fixture/variable NAMES with no line numbers, pointing
+at the `v3.0-TECH-DEBT.md` table as the single source for exact citations — three
+copies of one fact was the actual mechanism behind every round of this drift, not any
+one round's carelessness; and two citations in this ADR's own Wave E section corrected
+(`buffer_manager.py` has TWO publishers of `stock.threshold.breached`, not one, and one
+line range was off by 60 lines; the `teardown_sim(...)` call citation pointed at its
+`import` line, two lines above the actual call).
+
 **If genuine E2E coverage of low-stock alerting or calendar reminders is wanted later,
 it needs a fresh design against the real live event chain** (`pos.sale.completed` →
 `BufferManager` → `InventoryEngine` → `NotificationAgent`'s actual consumer path, or
@@ -198,7 +221,7 @@ design, not a repair of these three files, and is filed as a future item in
 - **Out of scope, deliberately:** Wave C's live-broker-publish behavior (already
   classified separately, gated on `RABBITMQ_URL`); the `RAILWAY_ORCHESTRATOR_URL`
   orchestrator-host secret (PR #349's territory — not touched by this branch); the
-  `conftest_prod.py:293` `teardown_sim(client=prod_supabase, apply=True)` landmine
+  `conftest_prod.py:295` `teardown_sim(client=prod_supabase, apply=True)` landmine
   (also PR #349's territory — this PR does drop the wave count that shares its
   session-teardown fixture from six pytest sessions to three, so that destructive
   teardown fires fewer times as a side effect, but the landmine itself is untouched);
@@ -212,3 +235,7 @@ design, not a repair of these three files, and is filed as a future item in
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-12 | — | Created, per the founder's direct delegation to decide per wave; three parallel research passes performed before deciding (see Context); awaits founder review to move to Locked |
+| 2026-09-12 | pr-audit-gate round 1 (PR #354, head `7263195f`) | BLOCK — correctness + compliance both caught `cascading_report.py`'s missed fourth wave-letter map (would have permanently misreported Wave E as a root cause); compliance also caught a stray blank line detaching this ADR's own index row from its table. Security: APPROVE WITH NOTES. Fixed in `c890ddcc`. |
+| 2026-09-12 | pr-audit-gate round 2 (head `b0f0a514`, after a merge of `origin/main`) | BLOCK — compliance caught the round-1 fix commit leaving two stale copies of the very claim it had just falsified (`GMAIL_PASSWORD`'s mapping status, in `v3.0-TECH-DEBT.md` and `e2e-prod.yml`'s own comment), plus two smaller citation survivors. Correctness + security: APPROVE WITH NOTES, confirmed the round-1 fixes by reproduction. Fixed in `842d7144`. |
+| 2026-09-12 | pr-audit-gate round 3 (head `424312e5`) | BLOCK — compliance found a THIRD instance: the founder-facing "What the founder must set" secrets table in `v3.0-TECH-DEBT.md` still described the pre-retirement wave set, 20 lines above the text prior rounds had touched. Re-derived the whole table from the tree rather than patching cells; fixed a citation drift in this ADR's own `pos-bridge.md` reference. Fixed in `20dc0796`. |
+| 2026-09-12 | pr-audit-gate round 4, exhaustive re-derivation (head `987fff01`) | BLOCK — a fourth instance (the re-derived table's `SUPABASE_SERVICE_ROLE_KEY` row was itself wrong: it gates all of Waves A/B/C via the `teardown_e2e_records` autouse fixture, not "the teardown sweep only"), plus `e2e-prod.yml`'s independent copy of the same table had gone stale on `conftest_prod.py` line numbers this PR's own earlier edit had shifted. Structural fix, not another patch: collapsed `e2e-prod.yml`'s copy to fixture/variable names with no line numbers, pointing at `v3.0-TECH-DEBT.md` as the single source; also fixed two citation errors in this ADR's own Wave E section found by the same exhaustive pass (two publishers of `stock.threshold.breached`, not one; a line-range and a call-site citation each off by a small amount). Correctness + security unchanged (APPROVE WITH NOTES). |

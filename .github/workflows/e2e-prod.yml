@@ -91,21 +91,31 @@ jobs:
       # reason in the step name and in the first line of the log.
       #
       # REQUIRED — without any one of these the run asserts NOTHING about
-      # production, so its absence must fail, not skip:
-      #   RAILWAY_ORCHESTRATOR_URL   tests/e2e/conftest_prod.py:104 (prod_base_url)      -> Waves A,B,C
-      #   ADMIN_API_KEY              tests/e2e/conftest_prod.py:179 (prod_admin_headers) -> Wave B entirely
-      #   SUPABASE_URL               tests/e2e/conftest_prod.py:132 and :197             -> prod_jwt + prod_supabase
-      #   SUPABASE_ANON_KEY          tests/e2e/conftest_prod.py:133 (prod_jwt)
-      #   SUPABASE_SERVICE_ROLE_KEY  tests/e2e/conftest_prod.py:198 (prod_supabase)      -> the teardown sweep only, since waves D/E/G retired 2026-09-12 (ADR 0137)
-      #   E2E_TEST_EMAIL             tests/e2e/conftest_prod.py:134, apps/web/e2e/prod-smoke.spec.ts:33
-      #   E2E_TEST_PASSWORD          tests/e2e/conftest_prod.py:135, apps/web/e2e/prod-smoke.spec.ts:34
-      #   E2E_BASE_URL               apps/web/playwright.prod.config.ts:21-26 — the config
+      # production, so its absence must fail, not skip. Full "which fixture reads
+      # which secret, at which line" table lives in ONE place —
+      # .planning/v3.0-TECH-DEBT.md, "What the founder must set" — not copied here,
+      # after four rounds of this comment block and that table drifting apart on
+      # exact line numbers every time either file was touched (see ADR 0137's
+      # review trail). Fixture/variable NAMES below are stable across edits; line
+      # numbers are not, so they live in exactly one document, not two.
+      #   RAILWAY_ORCHESTRATOR_URL   conftest_prod.py, prod_base_url fixture      -> Waves A,B,C
+      #   ADMIN_API_KEY              conftest_prod.py, prod_admin_headers fixture -> Wave B entirely
+      #   SUPABASE_URL               conftest_prod.py, prod_jwt + prod_supabase fixtures
+      #   SUPABASE_ANON_KEY          conftest_prod.py, prod_jwt fixture
+      #   SUPABASE_SERVICE_ROLE_KEY  conftest_prod.py, prod_supabase fixture — this one is
+      #                              autouse via teardown_e2e_records (session-scoped,
+      #                              autouse=True), so its absence skips EVERY test in
+      #                              the session, not just the teardown step. Waves A,B,C
+      #                              all depend on it, same as SUPABASE_URL/ANON_KEY.
+      #   E2E_TEST_EMAIL             conftest_prod.py + apps/web/e2e/prod-smoke.spec.ts
+      #   E2E_TEST_PASSWORD          conftest_prod.py + apps/web/e2e/prod-smoke.spec.ts
+      #   E2E_BASE_URL               apps/web/playwright.prod.config.ts — the config
       #                              THROWS without it, so Wave F cannot start at all
       #
       # OPTIONAL — each gates exactly one wave, and a partial run is a legitimate
       # result, so these warn and never fail:
-      #   RABBITMQ_URL          tests/e2e/wave_c_agent_triggers.py:100  -> skips Wave C
-      #   SENTRY_DSN            tests/e2e/conftest_prod.py:36           -> failure alerting only
+      #   RABBITMQ_URL          tests/e2e/wave_c_agent_triggers.py, rabbitmq_url fixture -> skips Wave C
+      #   SENTRY_DSN            conftest_prod.py -> failure alerting only
       #
       # Waves D (Toast), E (Gmail) and G (Calendar) were RETIRED 2026-09-12
       # (ADR 0137), not merely gated — each tested a table or endpoint with zero
@@ -113,8 +123,8 @@ jobs:
       # production; Google Calendar sync was investigated and cut 2026-08-26).
       # TOAST_WEBHOOK_SECRET and GMAIL_USER are consequently no longer read by
       # anything in this suite. GMAIL_PASSWORD (previously mapped but read by
-      # no wave here either -- only by services/agent-orchestrator/config/
-      # settings.py:48, the RUNTIME service, not this job) is removed above too.
+      # no wave here either -- only by the runtime service's own config, not this
+      # job) is removed above too.
       #
       # Secret VALUES are never printed — only presence.
       - name: Required secrets are present
