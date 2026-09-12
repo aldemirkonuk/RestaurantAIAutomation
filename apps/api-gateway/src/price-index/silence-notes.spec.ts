@@ -79,8 +79,8 @@ describe("silence notes", () => {
     expect(note?.sentence).not.toMatch(/a connection this house declares/i);
     expect(note?.sentence).toMatch(/forbids every automated reader/i);
     expect(note?.sentence).toMatch(/they are the licensee price list/i);
-    expect(note?.evidence.join(" ")).toMatch(/now\.breakthrubev\.com\/robots\.txt/);
-    expect(note?.evidence.join(" ")).toMatch(/southernglazers\.com\/terms-of-use/);
+    expect(note?.evidence.join(" ")).toContain("now.breakthrubev.com/robots.txt");
+    expect(note?.evidence.join(" ")).toContain("southernglazers.com/terms-of-use");
   });
 
   it("every note states the day its evidence was measured", () => {
