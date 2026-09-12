@@ -13,6 +13,7 @@ Supabase_SQL_Files/supabase_sql_file_v2.sql
 datasets/library/repair-2026-09-05.sql
 scripts/fix_uuid_migration.sql
 scripts/init_database_local.sql
+scripts/sql/d15_vendor_identity_assertions.sql
 services/database/migrations_archive/000_migration_tracker.sql
 services/database/migrations_archive/001_add_advanced_features.sql
 services/database/migrations_archive/002_add_one_tap_actions.sql

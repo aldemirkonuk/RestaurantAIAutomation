@@ -20,6 +20,7 @@ import { CreditsController } from "./documents/credits.controller";
 import { DeliveriesController } from "./deliveries.controller";
 import { CanonicalDocumentService } from "./canonical/canonical-document.service";
 import { LineMappingService } from "./canonical/line-mapping.service";
+import { VendorResolutionService } from "./vendor-identity/vendor-resolution.service";
 import { DeliverySpineService } from "./canonical/delivery-spine.service";
 import { DocumentCorrectionService } from "./canonical/document-correction.service";
 import { DeliveryService } from "./canonical/delivery.service";
@@ -56,6 +57,7 @@ import { DeliveryClockService } from "./canonical/delivery-clock.service";
     // would have failed at boot with a DI error CI cannot see.
     CanonicalDocumentService,
     LineMappingService,
+    VendorResolutionService,
     DeliverySpineService,
     // ADR 0104 D12 slice 3 — the correction door. Registered here for the same
     // reason slice 1's two classes had to be: an unregistered provider is a DI
