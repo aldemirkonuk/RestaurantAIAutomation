@@ -462,6 +462,11 @@ def _run_audit_inner(pr_number: str) -> int:
                                             # angle -- keep .claude/skills/pr-audit-gate/SKILL.md
                                             # step 4's list in sync with this one; they drifted
                                             # once already over CLAUDE.md.)
+        ".trivyignore",  # ADR 0142: the security gate's baseline. Swapping one advisory id for
+                          # another silences a NEW advisory at the same line count, so a PR that
+                          # touches it must escalate, not self-merge (PR #362's adversarial pass).
+        "scripts/check_security_gate_can_fail.py",  # the guard that refuses a disarmed gate
+        "scripts/trivy-baseline-2026-09-12.txt",  # the recorded baseline that guard pins by sha256
         ".github/workflows/ci.yml",  # carries the workflow_dispatch: trigger the merge step
                                        # below depends on to re-enter the CI/deploy chain a
                                        # GITHUB_TOKEN merge would otherwise silently skip -- a
