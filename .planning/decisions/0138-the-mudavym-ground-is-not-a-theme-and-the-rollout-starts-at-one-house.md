@@ -4,7 +4,7 @@
 - **Date:** 2026-09-12
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** mudavym, warm charcoal, 15130F, ground, theme, ThemeContext, dark mode, prefers-color-scheme, feature flags, restaurant_feature_flags, mudavym_design, rollout, one house, ALDEMIR, go-live
-- **Links:** [[0042-brand-color-system]] (the ground this makes real) · [[0044-mudavym-implementation-kickoff]] (the per-page flag mechanics) · [[0104-every-incoming-document-renders-as-one-canonical-mudavym-document]] (D9, the `[data-ground="paper"]` escape) · [[0131-the-new-house-goes-live-dark-then-one-house-at-a-time]] (**narrowed by D2 below — and not yet on `main`**) · `.planning/06-pages/DESIGN-FOUNDATION.md` ("Decided — the dark ground") · `CLAIMS.jsonl` id `ADR-0138`
+- **Links:** [[0042-iznik-seal-and-warm-charcoal]] (the ground this makes real — **narrowed by D1; see "This narrows ADR 0042" below**) · [[0044-mudavym-implementation-kickoff]] (the per-page flag mechanics) · [[0104-every-incoming-document-renders-as-one-canonical-mudavym-document]] (D9, the `[data-ground="paper"]` escape) · [[0131-the-new-house-goes-live-dark-then-one-house-at-a-time]] (**narrowed by D2 below — and not yet on `main`**) · `.planning/06-pages/DESIGN-FOUNDATION.md` ("Decided — the dark ground") · `CLAIMS.jsonl` id `ADR-0138`
 
 ## Context
 
@@ -78,7 +78,7 @@ reachable from the trunk, so the rollout had no mechanism either.
 light/dark toggle; the rest of the app still respects the user's theme.**
 
 The charcoal column moves onto the bare `.mudavym` selector
-(`apps/web/src/styles/mudavym.css:42-43`, `--paper-0: #15130F` at `:51`) and the
+(`apps/web/src/styles/mudavym.css:45-46`, `--paper-0: #15130F` at `:54`) and the
 theme-qualified rules are deleted. The **base** selector is the right home rather
 than an ancestor-qualified override, because a custom property declared directly
 on an element always beats one inherited from an ancestor whatever the
@@ -117,6 +117,46 @@ houses first"; today the founder chose ALDEMIR alone, and the sim houses were pu
 to him and declined. ADR 0131 is not on `origin/main` — it exists only on
 `feat/mudavym-go-live` — so this is not a superseding edit to a trunk record but a
 narrowing that its branch must pick up when it lands.
+
+## This narrows ADR 0042, openly
+
+D1 overturns a **locked** clause of
+[[0042-iznik-seal-and-warm-charcoal]], and saying so is not optional: CLAUDE.md §5
+requires a locked decision be superseded in the open, never quietly worked around.
+This section states the boundary. ADR 0042's own text is left exactly as written —
+it records what was decided on 2026-08-29.
+
+**What no longer applies.** 0042 §Decision reads: *"**Both grounds ship.** This is
+not a light-mode palette with a dark option bolted on"*, and its token table has two
+columns. Inside the `.mudavym` scope that is no longer true. On `origin/main` the
+bare `.mudavym` selector carried the **light** column
+(`--paper-0: #FAF7F1`, `apps/web/src/styles/mudavym.css:27,35` at `origin/main`), so
+0042's light ground was what a Mudavym page rendered by default and charcoal was the
+`.dark`-qualified alternative. After D1 there is no light column under `.mudavym` at
+all. **One ground ships inside the scope, in every app theme, and it is charcoal.**
+
+**What survives, precisely.** Both *columns* are still canonical values; only their
+reachability changed.
+
+- The İznik seal — both pairs, `#1A5E6B`/`#14515C` and `#5FB0BC`/`#7DC3CD` — stands.
+- The whole dark column ships verbatim on the bare `.mudavym` selector
+  (`styles/mudavym.css:45-65`).
+- Ten of 0042's eleven light values still render, but only on the one escape,
+  `.mudavym[data-ground="paper"]` (`styles/mudavym.css:78-94`): the four seal
+  tokens, `--paper-1`/`--paper-2`, and `--ink-1..4`, each byte-identical to 0042's
+  light column.
+- **One light value now renders nowhere:** `--paper-0` `#FAF7F1`. The escape
+  declares `#fffdf8` — the canonical document's sheet (ADR 0104 D9), which is where
+  that block came from and which never used 0042's figure. This is stated rather
+  than silently reconciled; changing either value is a decision, not a cleanup.
+- 0042's supersession of [[0041-makeover-canvas-and-conflicted-palette]]'s
+  `#CD2D5B` is untouched.
+
+**What is NOT claimed.** This does not re-open the palette, and it does not retire
+the light column — a future surface that must be paper takes `[data-ground="paper"]`
+and gets 0042's light tokens. The founder's 2026-08-29 answer was *both* grounds;
+what D1 changes is that the choice between them is no longer a user's theme toggle
+but a per-surface decision written into the markup.
 
 ## Consequences
 
