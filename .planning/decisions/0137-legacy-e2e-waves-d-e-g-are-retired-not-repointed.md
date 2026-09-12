@@ -59,7 +59,7 @@ target — not guessed):
 and `.planning/08-softwares/pos-bridge.md:96-108,144` documents it as **deliberately
 omitted** from the current POS-bridge design. The endpoint the wave calls
 (`POSIntegrationAgent` via `/api/v1/pos/webhook/toast`) has **zero product callers** —
-grepping `/api/v1/pos/webhook` across `apps/` returns nothing; the only three callers in
+grepping `/api/v1/pos/webhook` across `apps/` returns only comments (`toast.service.ts:769,783`, its spec, and `orchestrator-routes.ts:78`, guarded by a `stripComments` check at `orchestrator-routes.ts:74-89`) — no live call site; the only three callers in
 the whole repo were `scripts/simulate/bridge.py:47`, `scripts/ngrok_live_test.py`, and
 this wave. Real production Toast traffic goes through a completely different service
 and route (`apps/api-gateway/src/toast/toast.service.ts`, `POST /toast/webhook`),
@@ -94,8 +94,9 @@ a table-write-to-event-bus path that has never existed, purely to make an E2E te
 
 ### Wave G — the feature it names was investigated and explicitly cut
 
-`apps/api-gateway/src/settings/feature-flag-registry.ts:254-257` (deleted 2026-08-26)
-states outright: *"no Google Calendar sync exists (only a credential-gated e2e that
+`apps/api-gateway/src/settings/feature-flag-registry.ts:254-257` — the file is live on
+`main` today; what was removed on 2026-08-26 is the `enable_calendar_sync` flag itself
+(`:273`, `REMOVED_FEATURE_FLAGS`) — states outright: *"no Google Calendar sync exists (only a credential-gated e2e that
 skips)"* — naming **this exact test** as the only thing keeping a Google-Calendar-sync
 illusion alive. No `googleapis`/OAuth2 Google Calendar client exists anywhere in
 `calendar_agent.py` or the repo; "calendar" here means a real, substantially-built
@@ -150,10 +151,26 @@ same three files: the wave-letter maps in `conftest_prod.py` and `report_generat
 `calendar_events`, `pos_webhook_logs` removed — confirmed no remaining wave writes to
 any of the three); `.github/workflows/e2e-prod.yml`'s three `pytest tests/e2e/wave_*`
 steps, replaced with one no-op step that states the retirement reason in the job log
-(so a secret being set later produces a clear notice, not a bare "file not found");
-`.planning/testing/EXISTING-TEST-INVENTORY.md`'s three now-nonexistent-file rows and its
-Summary counts (pytest 67→64, total 142→139, and the `4-pos`/`6-comms`/`7-calendar`
-group + T1-eligible counts, each −1); `.planning/testing/TESTING-SCORECARD.md`'s three
+(so a secret being set later produces a clear notice, not a bare "file not found"), plus
+its now-meaningless `OPTIONAL` secret gates and the unused `TOAST_WEBHOOK_SECRET` /
+`GMAIL_USER` / `GMAIL_PASSWORD` env mappings (least-privilege: an unused secret mapped
+into a job env is readable by every step and action in it);
+`services/agent-orchestrator/scripts/cascading_report.py` — **a fourth wave-letter
+structure this ADR's first pass missed** (caught by both the correctness and compliance
+audit angles on PR #354): its `wave_files`/`WAVE_DEPS`/`SUGGESTED_FIXES` still named D/E/G
+and, since a missing JUnit file reads as `status: "missing"` and `"missing"` counts as
+failed, the report would have permanently named Wave E a root cause and printed
+"Fix GMAIL_USER/GMAIL_PASSWORD on Railway orchestrator" for a wave that no longer
+exists — the exact absence-reported-as-illness shape this ADR retires the waves to stop.
+Reproduced pre-fix and re-verified post-fix with synthetic green `wave_{a,b,c,f}.xml`
+files: prints "✅ All Waves Passed" now, printed a fictional root-cause cluster before.
+Also swept: `.planning/testing/EXISTING-TEST-INVENTORY.md`'s three now-nonexistent-file
+rows and its Summary counts (pytest 67→64, total 142→139, and the
+`4-pos`/`6-comms`/`7-calendar` group + T1-eligible counts, each −1);
+`.planning/testing/SYNTHETIC-TENANT.md`'s "eight tables" claim (now five); a stale
+`inventory_stock` docstring example in `conftest_prod.py`; and one stray blank line in
+`decisions/README.md` that detached this ADR's own index row from its table (a
+compliance-angle catch). `.planning/testing/TESTING-SCORECARD.md`'s three
 citations of the deleted files; and one sentence in `.planning/08-softwares/pos-bridge.md`
 that named this wave as one of only three callers of a now-partially-dead endpoint.
 

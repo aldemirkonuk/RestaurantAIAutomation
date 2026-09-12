@@ -20,7 +20,8 @@
 #
 # D-12: Nightly 02:00 UTC — observability only
 # D-13: workflow_dispatch from Vercel deploy hook — blocking gate
-# D-15: Continue-all-waves — all 7 waves run regardless of failures
+# D-15: Continue-all-waves — the 4 surviving waves (A, B, C, F) run regardless
+#        of failures. D, E, G retired 2026-09-12 (ADR 0137).
 # D-19: Full suite in < 10 minutes — timeout-minutes: 15 hard cap
 #
 # CRITICAL: PYTEST_RUNNING is NEVER set here.
@@ -65,9 +66,9 @@ jobs:
       ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
       RAILWAY_ORCHESTRATOR_URL: ${{ secrets.RAILWAY_ORCHESTRATOR_URL }}
       RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
-      TOAST_WEBHOOK_SECRET: ${{ secrets.TOAST_WEBHOOK_SECRET }}
-      GMAIL_USER: ${{ secrets.GMAIL_USER }}
-      GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+      # TOAST_WEBHOOK_SECRET, GMAIL_USER, GMAIL_PASSWORD removed 2026-09-12 (ADR 0137)
+      # -- their only readers (waves D, E) are retired; least-privilege: an unused
+      # secret mapped into a job env is readable by every step and action in it.
       # Sentry (TEST-PROD-09)
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       GITHUB_SHA: ${{ github.sha }}
@@ -91,7 +92,7 @@ jobs:
       #
       # REQUIRED — without any one of these the run asserts NOTHING about
       # production, so its absence must fail, not skip:
-      #   RAILWAY_ORCHESTRATOR_URL   tests/e2e/conftest_prod.py:104 (prod_base_url)      -> Waves A,B,C,D
+      #   RAILWAY_ORCHESTRATOR_URL   tests/e2e/conftest_prod.py:104 (prod_base_url)      -> Waves A,B,C
       #   ADMIN_API_KEY              tests/e2e/conftest_prod.py:179 (prod_admin_headers) -> Wave B entirely
       #   SUPABASE_URL               tests/e2e/conftest_prod.py:132 and :197             -> prod_jwt + prod_supabase
       #   SUPABASE_ANON_KEY          tests/e2e/conftest_prod.py:133 (prod_jwt)
@@ -119,7 +120,9 @@ jobs:
       - name: Required secrets are present
         run: |
           REQUIRED="RAILWAY_ORCHESTRATOR_URL ADMIN_API_KEY SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY E2E_TEST_EMAIL E2E_TEST_PASSWORD E2E_BASE_URL"
-          OPTIONAL="RABBITMQ_URL TOAST_WEBHOOK_SECRET GMAIL_USER SENTRY_DSN"
+          # TOAST_WEBHOOK_SECRET / GMAIL_USER dropped 2026-09-12 (ADR 0137) --
+          # waves D and E, the only readers, are retired; nothing gates on them now.
+          OPTIONAL="RABBITMQ_URL SENTRY_DSN"
 
           MISSING=""
           for name in $REQUIRED; do

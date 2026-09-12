@@ -208,7 +208,7 @@ def e2e_created_ids() -> List[Dict[str, str]]:
     """Mutable session registry of {table, id} pairs created during this run.
 
     Populated by individual test fixtures. Consumed by teardown_e2e_records.
-    Format: [{"table": "inventory_stock", "id": "e2e-stock-001"}, ...]
+    Format: [{"table": "notification_deliveries", "id": "e2e-notif-001"}, ...]
     """
     return []
 
