@@ -46,6 +46,10 @@ export const MUDAVYM_PAGES = [
   // default like every other page here; the gate's `legacy` branch redirects
   // to /receipts, which is this view's other face.
   'document',
+  // ADR 0133 (2026-09-06), new-pages wave. `/logs` only — the other nine
+  // pages that ADR covers are not part of this addition; see the migration
+  // 20260912080000's own note for why they arrive separately.
+  'logs',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
