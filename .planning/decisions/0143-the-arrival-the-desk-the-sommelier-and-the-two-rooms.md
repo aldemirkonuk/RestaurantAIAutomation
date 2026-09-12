@@ -75,7 +75,7 @@ by talking features, skyleaf, organized view yet with details."* That is not one
 of the five as drawn; it is three of them, and the parts he named say exactly
 which three.
 
-**C is the spine.** "Skyleaf" is C's flyleaf — the opening page at `/register`
+**C is the spine.** "Skyleaf" is C's flyleaf — the opening page at `/register` [CORRECTED 2026-09-12 by the founder, asked because this contradicted his ruling that `/register` is improved in place with no redraw: **the flyleaf opens `/get-started`**, as the first spread of the book straight after sign-up, and `/register` is untouched and keeps its currency field. Folio 1 shows the currency given at sign-up as already posted, marked as stated, so nothing is asked twice. Rejected: building the flyleaf at `/register` (the redraw refused twice); flyleaf wording on today's form (a flyleaf in words only, with currency still at the door).]
 that asks who keeps the book and which house, and deliberately does NOT ask for a
 currency, because a register belongs on its own folio with its own state.
 "Organized view yet with details" is C's contents page: five ruled folios, each
@@ -199,6 +199,32 @@ happening. Rejected: owners restarting behind the held seal — today that lets 
 restart every house's agent, and doing it properly means running agents per house
 first, which is a multi-tenancy build and not a button; no control on any screen — the
 desk would show a problem it offers no way to act on, including to us.
+
+## Founder answers, 2026-09-12 — who an operator is, and where home is
+
+**Who counts as a platform operator.** The restart answer above assumed an
+identity this codebase does not have: `RolesGuard` knows owner, manager and
+staff (`roles.guard.ts:5`), the ux-optimizer controller says "this codebase has no
+platform-admin role" (`ux-optimizer.controller.ts:68`), and ADR 0124 declined to
+invent one. Asked, and then asked again to remove an ambiguity in the first
+answer, the founder chose: **an operator needs BOTH a platform flag that only SQL
+can set AND Studio's `developer` role.** The role says what kind of person they
+are; the flag, which no API can write, says they may act on the whole platform.
+Being invited as a Studio developer -- an API path, through invite tokens -- is
+never enough by itself. Today that is the founder alone. This builds what ADR
+0124 chose not to, so the build carries its own migration, guard and a registry of
+the routes that require it. Rejected: either one alone being enough (anyone ever
+invited as a Studio developer could restart every house's agents); an allowlist
+of user ids in the environment (outside the database and outside review); no
+operator screen at all.
+
+**Where "home" is for a stranger.** The PublicShell wordmark on the seven
+signed-out pages and the `/v/:slug` footer line "Published on Mudavym." both link
+to **`/login`**. Measured first: `mudavym.com` answers 200 with the app itself,
+whose `/` is the dashboard behind a login, and there is no separate landing page
+in the tree -- so a link to `/` would only bounce a stranger. When a real landing
+page exists the link moves to it in one line. Rejected: linking `/` (a redirect,
+and a "home" that lands on a login wall); a footer link with no wordmark link.
 
 ## Review trail
 
