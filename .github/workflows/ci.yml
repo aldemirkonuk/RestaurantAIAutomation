@@ -771,6 +771,28 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_fk_targets_exist.py --self-test
 
+      # Added 2026-09-12. Two migrations applied to production that day passed
+      # only because production happened to be empty in the two specific ways
+      # each one's own DO $$ block assumed: an absolute "this table has 0
+      # rows" assertion, and a DELETE scoped by a magic string rather than a
+      # returned key. Both assumptions broke the moment real data existed.
+      # Measured against a tree holding the pre-fix files, this guard exits 1
+      # naming both; against the fixed tree it exits 0. Eight further files
+      # carry the magic-string DELETE shape and one more carries the absolute
+      # count shape, all pre-existing and out of this fix's scope -- named in
+      # the script's own docstring as a grandfather list, not silently
+      # excluded by loosening the pattern.
+      #
+      # Exit 2 = could not check: no migrations directory, or zero .sql files
+      # found. Never a silent pass.
+      - name: A migration's own probe cannot corrupt a populated table
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_migration_probe_safety.py
+
+      - name: ...and that guard's own failure path fires
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_migration_probe_safety.py --self-test
+
       # OD-72/OD-73 ratchet, added 2026-08-26. Both were closed by one-time
       # sweeps, and the class came back the NEXT DAY: OD-73's row records
       # "0 public tables remain RLS-off", verified against the live database,
