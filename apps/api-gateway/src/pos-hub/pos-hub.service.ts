@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
+import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { CanonicalCheck } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
@@ -608,14 +609,21 @@ export class PosHubService {
    * so a 20-line check costs one query rather than twenty.
    */
   private async loadInventoryVolumes(
+    restaurantId: string,
     inventoryIds: string[],
-  ): Promise<Map<string, InventoryVolumes>> {
+  ): Promise<{ volumes: Map<string, InventoryVolumes>; error: string | null }> {
     const out = new Map<string, InventoryVolumes>();
-    if (!inventoryIds.length) return out;
+    if (!inventoryIds.length) return { volumes: out, error: null };
+    // ADR 0141, second correction 2026-09-12: SCOPED TO THE HOUSE. This read
+    // had no restaurant filter, so it answered for another house's item as
+    // readily as for this one's, and the caller poured whatever it returned.
+    // An id it does not return is now, by construction, not this house's --
+    // `applyStockEffects` queues it rather than pouring it.
     const { data, error } = await this.dbService
       .getClient()
       .from("restaurant_inventory")
       .select("id, bottle_size_ml, pour_size_ml, menu_price_current")
+      .eq("restaurant_id", restaurantId)
       .in("id", inventoryIds);
     // An empty map is the safe degrade — resolveSaleVolume queues the line
     // rather than guessing a volume (ADR 0011) — but it must not be silent:
@@ -638,7 +646,7 @@ export class PosHubService {
         menuPrice: positive(row.menu_price_current),
       });
     }
-    return out;
+    return { volumes: out, error: error ? error.message : null };
   }
 
   /**
@@ -724,13 +732,14 @@ export class PosHubService {
 
     // One read for the whole check (ADR 0011): resolving a sale volume needs
     // the inventory row's bottle/pour sizes before any RPC is issued.
-    const inventories = await this.loadInventoryVolumes([
+    const inventoryRead = await this.loadInventoryVolumes(restaurantId, [
       ...new Set(
         items
           .filter((it) => it.is_wine && it.inventory_id)
           .map((it) => it.inventory_id as string),
       ),
     ]);
+    const inventories = inventoryRead.volumes;
 
     for (let lineNo = 0; lineNo < items.length; lineNo++) {
       const it = items[lineNo];
@@ -753,6 +762,25 @@ export class PosHubService {
             reason: "unmapped",
             mappedInventoryId: null,
             detail: "no pos_item_mappings row resolves this line to stock",
+          });
+          continue;
+        }
+
+        // ADR 0141, second correction 2026-09-12. `it.inventory_id` comes from
+        // a mapping row read for this restaurant, but the row belonging here
+        // does not make the item it names belong here -- the column is a plain
+        // FK -- and `record_glass_pour` below takes no restaurant. A mapping
+        // stored wrongly poured another house's shelf on every glass. Only an
+        // id the house-scoped read above returned may move stock: anything
+        // else is not this house's and is queued, never poured. A FAILED read
+        // cannot say yes either, so it moves nothing and the queue says why.
+        if (inventoryRead.error || !inventories.has(it.inventory_id)) {
+          await this.queueUnresolvedLine(restaurantId, source, check, it, {
+            reason: inventoryRead.error ? "no_sale_volume" : "unmapped",
+            mappedInventoryId: null,
+            detail: inventoryRead.error
+              ? `could not confirm that inventory item ${it.inventory_id} belongs to this restaurant, so no stock was moved: ${inventoryRead.error}`
+              : `the mapping names inventory item ${it.inventory_id}, which does not belong to this restaurant, so no stock was moved`,
           });
           continue;
         }
@@ -840,6 +868,12 @@ export class PosHubService {
             p_source: "pos",
             p_reason: `POS ${isVoid ? "void" : "sale"} (${label}): ${it.name}`,
             p_idempotency_key: isVoid ? `${idem}:void` : idem,
+            // ADR 0141 — the house this check belongs to. `it.inventory_id`
+            // comes from a `pos_item_mappings` row read for this restaurant;
+            // the row belonging here does not make the item it names belong
+            // here, and a mis-seeded mapping used to move another house's
+            // shelf on every sale.
+            p_restaurant_id: restaurantId,
           }));
         }
 
@@ -1131,6 +1165,23 @@ export class PosHubService {
     };
     if (!row.external_item_id && !row.item_name)
       throw new Error("Mapping needs external_item_id or item_name");
+    // ADR 0141, second correction 2026-09-12. `inventory_id` is a plain FK to
+    // restaurant_inventory: nothing ties the item's house to this row's. This
+    // is the ONE writer of the column -- POST /pos-hub/mappings, the catalog
+    // matcher's auto-map and approve, and the sale-unit review all come here --
+    // and it stored whatever id it was handed, so a mapping could point a POS
+    // button at another house's shelf and every sale of it poured from there.
+    // Checked before the upsert, and only when an item is named: a mapping
+    // with no inventory id moves no stock.
+    if (row.inventory_id) {
+      await assertInventoryBelongsToRestaurant(
+        this.dbService.getClient(),
+        restaurantId,
+        row.inventory_id,
+        "upsertItemMapping",
+        this.logger,
+      );
+    }
     const { data, error } = await this.dbService
       .getClient()
       .from("pos_item_mappings")

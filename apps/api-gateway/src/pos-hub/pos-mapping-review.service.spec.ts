@@ -64,8 +64,24 @@ function makeDb(opts: {
 
       if (table === "restaurant_inventory") {
         const q: any = {
+          _eqs: {} as Row,
           select: () => q,
-          eq: () => q,
+          eq: (col: string, val: any) => {
+            q._eqs[col] = val;
+            return q;
+          },
+          // ADR 0141, second correction: upsertItemMapping proves a named item
+          // belongs to the house before it writes, with a scoped maybeSingle.
+          // Honours both filters, so a row of another restaurant is not found.
+          maybeSingle: async () => ({
+            data:
+              (opts.inventory ?? []).find(
+                (i) =>
+                  i.id === q._eqs.id &&
+                  i.restaurant_id === q._eqs.restaurant_id,
+              ) ?? null,
+            error: null,
+          }),
           in: async (_col: string, ids: string[]) => {
             calls.inQueries.push(ids);
             return {
@@ -416,9 +432,13 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
   });
 });
 
+// ADR 0141, second correction: the item every fixture mapping names is this
+// restaurant's own, so the ownership check in upsertItemMapping admits it.
+const HOUSE_ITEMS: Row[] = [{ id: "inv-1", restaurant_id: RESTAURANT }];
+
 describe("PosMappingReviewService.setSaleUnit — write validation", () => {
   it("writes the unit the human sent, and only that column", async () => {
-    const { service, calls } = makeService({ mappings: [mapping()] });
+    const { service, calls } = makeService({ inventory: HOUSE_ITEMS, mappings: [mapping()] });
 
     const result = await service.setSaleUnit(RESTAURANT, "map-1", "glass");
 
@@ -453,7 +473,7 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
   // rejected is input that is malformed rather than merely unusual — a blank
   // label renders as "mapped" in this very UI while meaning nothing.
   it("accepts an open label, and still rejects a malformed one", async () => {
-    const { service, calls } = makeService({ mappings: [mapping()] });
+    const { service, calls } = makeService({ inventory: HOUSE_ITEMS, mappings: [mapping()] });
 
     await expect(
       service.setSaleUnit(RESTAURANT, "map-1", "half_bottle" as any),
@@ -471,6 +491,7 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
 
   it("refuses to write a mapping belonging to another restaurant", async () => {
     const { service, calls } = makeService({
+      inventory: HOUSE_ITEMS,
       mappings: [mapping({ restaurant_id: "someone-else" })],
     });
 
@@ -481,7 +502,7 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
   });
 
   it("refuses an unknown mapping id instead of creating a row", async () => {
-    const { service, calls } = makeService({ mappings: [mapping()] });
+    const { service, calls } = makeService({ inventory: HOUSE_ITEMS, mappings: [mapping()] });
 
     await expect(
       service.setSaleUnit(RESTAURANT, "map-missing", "bottle"),
@@ -491,6 +512,7 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
 
   it("reports the previous unit when an answer is corrected", async () => {
     const { service } = makeService({
+      inventory: HOUSE_ITEMS,
       mappings: [mapping({ sale_unit: "bottle" })],
     });
 
@@ -504,6 +526,7 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
 describe("PosMappingReviewService.setSaleUnitBatch", () => {
   it("applies each answer independently and reports per-entry outcomes", async () => {
     const { service, calls } = makeService({
+      inventory: HOUSE_ITEMS,
       mappings: [
         mapping(),
         mapping({ id: "map-2", external_item_id: "ext-2" }),

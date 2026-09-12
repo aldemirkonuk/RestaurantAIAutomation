@@ -1,5 +1,11 @@
-import { Injectable, Logger, BadRequestException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  InternalServerErrorException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { EventsService } from "../events/events.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
@@ -88,6 +94,26 @@ export class InventoryLedgerService {
       throw new BadRequestException("Quantity change cannot be zero");
     }
 
+    // TENANCY, BEFORE THE WRITE (ADR 0141).
+    //
+    // `dto.inventoryId` is chosen by the caller. Until this check existed,
+    // `restaurantId` — which arrives from the authenticated token — was logged
+    // and then never used: not as a filter, not as a comparison, not as an
+    // argument. `apply_stock_movement` derived the tenant from the inventory
+    // row itself, so a well-formed UUID belonging to another house wrote that
+    // house's lot and that house's ledger row. The DTO's @IsUUID cannot see
+    // this; a foreign id is perfectly UUID-shaped.
+    //
+    // This runs BEFORE the RPC on purpose. A check that ran afterwards would
+    // have refused the response while the stock had already moved.
+    await assertInventoryBelongsToRestaurant(
+      this.databaseService.supabase,
+      restaurantId,
+      dto.inventoryId,
+      "createTransaction",
+      this.logger,
+    );
+
     // record_inventory_transaction referenced a `live_stock` column that does
     // not exist on restaurant_inventory and 500'd against the real database
     // (spine repair, decision A5) — every call now goes through
@@ -115,6 +141,11 @@ export class InventoryLedgerService {
         p_pos_transaction_id: dto.posTransactionId || null,
         p_notes: dto.notes || null,
         p_metadata: dto.metadata || {},
+        // ADR 0141: the movement names the house it is for, so the primitive
+        // refuses a mismatch instead of trusting this caller to have checked.
+        // The check above and this argument are not redundant — one gives the
+        // caller a sentence, the other holds when a future caller forgets.
+        p_restaurant_id: restaurantId,
       },
     );
 
@@ -139,8 +170,19 @@ export class InventoryLedgerService {
       );
     }
 
-    // Fetch the created transaction
-    const transaction = await this.getTransaction(restaurantId, data);
+    // Fetch the created transaction.
+    //
+    // NOT `getTransaction` (ADR 0141). That method answers a READ — "show me
+    // transaction X" — where an empty result genuinely means not found. Here
+    // the id came back from a write that committed, so an empty result is not
+    // a missing row: it is a contradiction between what the database returned
+    // and what this restaurant can see. Reporting it as "Transaction not
+    // found" is what made the tenant hole look like a failure to the caller
+    // while the other house's ledger had already been written.
+    const transaction = await this.readBackCreatedTransaction(
+      restaurantId,
+      data,
+    );
 
     // Emit event to event ingestion system
     try {
@@ -219,6 +261,72 @@ export class InventoryLedgerService {
       createdIds,
       errors,
     };
+  }
+
+  // ==========================================================================
+  // READ-BACK AFTER A WRITE (ADR 0141)
+  // ==========================================================================
+
+  /**
+   * The read that follows a COMMITTED write, which is a different question
+   * from `getTransaction`'s.
+   *
+   * `apply_stock_movement` returned an id. The row therefore exists. Three
+   * outcomes are possible here and they are three different facts:
+   *
+   *  - the row comes back → the ordinary case;
+   *  - the read FAILS (`error`) → we do not know; say so, and do not invent an
+   *    answer either way (ADR 0051);
+   *  - the read succeeds and finds NOTHING → the row exists but is not visible
+   *    under this restaurant. That is a contradiction, not a missing row, and
+   *    it is what the tenant hole looked like from the caller's side: a
+   *    committed write reported as "Transaction not found".
+   *
+   * Since the ownership assertion in `createTransaction` this last state
+   * should be unreachable through that path. It is still reported as what it
+   * is, because the next way to reach it will not announce itself.
+   */
+  private async readBackCreatedTransaction(
+    restaurantId: string,
+    transactionId: string,
+  ): Promise<InventoryTransactionResponseDto> {
+    const { data, error } = await this.databaseService.supabase
+      .from("inventory_transactions")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", transactionId)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error({
+        message: "Stock moved, but the ledger row could not be read back",
+        restaurantId,
+        transactionId,
+        error: error.message,
+      });
+      throw new InternalServerErrorException(
+        `The stock movement was written as transaction ${transactionId}, but ` +
+          `reading it back failed (${error.message}). The movement stands — ` +
+          `nothing was rolled back — and this response could not describe it.`,
+      );
+    }
+
+    if (!data) {
+      this.logger.error({
+        message:
+          "Stock moved under a restaurant this caller cannot see — tenant contradiction",
+        restaurantId,
+        transactionId,
+      });
+      throw new InternalServerErrorException(
+        `apply_stock_movement committed transaction ${transactionId}, but no ` +
+          `such row is visible under this restaurant. The write HAPPENED and ` +
+          `it did not happen here. This is a contradiction, not a missing ` +
+          `transaction, and it is reported rather than shown as "not found".`,
+      );
+    }
+
+    return this.mapTransaction(data);
   }
 
   // ==========================================================================
@@ -505,6 +613,21 @@ export class InventoryLedgerService {
     const idempotencyKey = clientCountId
       ? `reconcile:${inventoryId}:${clientCountId}`
       : `reconcile:${inventoryId}:${Date.now()}`;
+
+    // ADR 0141, Correction 2026-09-12. The route names only an inventory id,
+    // and record_stock_count derives the house from that item and calls
+    // apply_stock_movement without p_restaurant_id -- so neither database-side
+    // refusal runs. Measured by the adversarial pass: a probe calling it for
+    // house B on house A's item took A's lots from 9 to 0 and wrote a count
+    // stamped A, and the scoped getTransaction below then answered 'not
+    // found' for a write that had committed. Checked BEFORE the RPC.
+    await assertInventoryBelongsToRestaurant(
+      this.databaseService.supabase,
+      restaurantId,
+      inventoryId,
+      "reconcileInventory",
+      this.logger,
+    );
 
     const { data: raw, error: rpcError } =
       await this.databaseService.supabase.rpc("record_stock_count", {

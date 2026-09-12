@@ -121,6 +121,9 @@ function webhookDto(
 describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
   it("resolves via pos_item_mappings (not toast_item_mappings) and depletes a bottle sale", async () => {
     const { service, calls } = makeService({
+      // ADR 0141, second correction: a mapped item pours only when a read
+      // scoped to this restaurant returns it -- the fixture's item is the house's own.
+      inventory: { id: "inv-1" },
       mapping: {
         inventory_id: "inv-1",
         sale_unit: "bottle",
@@ -143,6 +146,9 @@ describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
 
   it("never infers glass from the item name — only the mapping's sale_unit (B36)", async () => {
     const { service, calls } = makeService({
+      // ADR 0141, second correction: a mapped item pours only when a read
+      // scoped to this restaurant returns it -- the fixture's item is the house's own.
+      inventory: { id: "inv-1" },
       mapping: {
         inventory_id: "inv-1",
         sale_unit: "bottle",
@@ -167,6 +173,9 @@ describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
 
   it("reverses a glass void via apply_stock_movement instead of skipping it (B19)", async () => {
     const { service, calls } = makeService({
+      // ADR 0141, second correction: a mapped item pours only when a read
+      // scoped to this restaurant returns it -- the fixture's item is the house's own.
+      inventory: { id: "inv-1" },
       mapping: {
         inventory_id: "inv-1",
         sale_unit: "glass",
@@ -561,6 +570,9 @@ describe("Defect A — no silently-swallowed forward to the orchestrator", () =>
 
   it("processes an order webhook without POSTing to the non-existent /api/v1/toast/webhooks route", async () => {
     const { service, calls } = makeService({
+      // ADR 0141, second correction: a mapped item pours only when a read
+      // scoped to this restaurant returns it -- the fixture's item is the house's own.
+      inventory: { id: "inv-1" },
       mapping: {
         inventory_id: "inv-1",
         sale_unit: "bottle",
