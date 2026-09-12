@@ -575,6 +575,14 @@ export function WebSocketProvider({
       // place so a dashboard query added later is not silently missed.
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
 
+      // The narrowing above is only half of it. `useInventory` listens for this
+      // CustomEvent (hooks/queries/useInventoryQueries.ts) and used to
+      // blanket-invalidate the whole `['inventory']` tree on it, which undid
+      // the predicate three lines up: everything refetched anyway. That
+      // listener now runs `isQueryAffectedByStockUpdate` on `detail.new`, which
+      // is why the payload is carried on the event rather than a bare ping.
+      // Changing this detail shape changes what that consumer can narrow on —
+      // useInventoryQueries.realtime.test.ts pins the pair together.
       window.dispatchEvent(new CustomEvent('inventory_change', {
         detail: { eventType: 'UPDATE', new: data.data, source: 'websocket' },
       }))
