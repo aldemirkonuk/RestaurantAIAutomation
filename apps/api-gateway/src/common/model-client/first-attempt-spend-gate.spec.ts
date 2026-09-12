@@ -1,6 +1,7 @@
 import {
   ModelClientService,
   ModelSpendCeilingError,
+  untilUtcMidnight,
 } from "./model-client.service";
 
 /**
@@ -38,6 +39,9 @@ describe("the spend ceiling can gate a FIRST attempt, but only where asked", () 
       eq: () => query,
       gte: () => query,
       is: () => query,
+      gt: () => query,
+      order: () => query,
+      limit: () => query,
       then: (resolve: any) =>
         resolve({ data: [{ cost_usd: spendUsd }], error: null }),
     };
@@ -135,6 +139,9 @@ describe("the spend ceiling can gate a FIRST attempt, but only where asked", () 
       eq: () => query,
       gte: () => query,
       is: () => query,
+      gt: () => query,
+      order: () => query,
+      limit: () => query,
       then: (resolve: any) =>
         resolve({ data: null, error: { message: "ledger unreachable" } }),
     };
@@ -143,5 +150,111 @@ describe("the spend ceiling can gate a FIRST attempt, but only where asked", () 
     } as any);
     await expect(svc.call(opts(true))).resolves.toBeDefined();
     expect(fetchCalls).toBe(1);
+  });
+
+  // ---- ADR 0146, second pass: the cap resets daily, and the sum is whole ----
+
+  function midnightIso(): string {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    return d.toISOString();
+  }
+
+  function ledger(
+    pages: Array<Array<{ id: string; cost_usd: number }>>,
+    seen: { gte: string[]; gt: string[]; reads: number },
+  ) {
+    const query: any = {
+      select: () => query,
+      eq: () => query,
+      is: () => query,
+      order: () => query,
+      limit: () => query,
+      gte: (_c: string, v: string) => {
+        seen.gte.push(v);
+        return query;
+      },
+      gt: (_c: string, v: string) => {
+        seen.gt.push(v);
+        return query;
+      },
+      then: (resolve: any) => {
+        const data = pages[seen.reads] ?? [];
+        seen.reads++;
+        resolve({ data, error: null });
+      },
+    };
+    return { supabase: { from: () => query } } as any;
+  }
+
+  const fiveDollars = {
+    get: (k: string) =>
+      k === "ANTHROPIC_API_KEY"
+        ? "test-key"
+        : k === "MODEL_DAILY_SPEND_CEILING_USD"
+          ? "5"
+          : undefined,
+  } as any;
+
+  it("reads only TODAY on a lifetime-credit tier, so the refusal can pass", async () => {
+    // Every production house is on pilot, which resolves to a LIFETIME credit.
+    // Read lifetime here and a refusal never lifts while its message says it will.
+    const seen = { gte: [] as string[], gt: [] as string[], reads: 0 };
+    const svc = new ModelClientService(
+      fiveDollars,
+      ledger([[{ id: "a", cost_usd: 0.01 }]], seen),
+    );
+    const before = midnightIso();
+    await svc.call(opts(true));
+    const after = midnightIso();
+    expect(seen.gte).toHaveLength(1);
+    expect([before, after]).toContain(seen.gte[0]);
+  });
+
+  it("the refusal says midnight UTC, and never 'resets on its own'", async () => {
+    const svc = serviceWith(999, "5");
+    const err = await svc.call(opts(true)).catch((e) => e);
+    expect(err).toBeInstanceOf(ModelSpendCeilingError);
+    expect(err.message).toMatch(/midnight UTC/);
+    expect(err.message).not.toMatch(/resets on its own/i);
+  });
+
+  it("names the time left until midnight UTC truthfully", () => {
+    expect(untilUtcMidnight(new Date("2026-09-12T22:30:00Z"))).toBe("about 2 hours");
+    expect(untilUtcMidnight(new Date("2026-09-12T23:50:00Z"))).toBe("10 minutes");
+    expect(untilUtcMidnight(new Date("2026-09-12T23:59:30Z"))).toBe("1 minute");
+    expect(untilUtcMidnight(new Date("2026-09-12T00:00:00Z"))).toBe("about 24 hours");
+  });
+
+  it("reads past PostgREST's 1000-row page, so a busy house cannot hide its spend", async () => {
+    // Two full pages at $0.003 a row is $6 against a $5 allowance. The first
+    // page alone is $3, which a single capped read would have admitted.
+    const rows = (prefix: string) =>
+      Array.from({ length: 1000 }, (_, i) => ({
+        id: `${prefix}-${String(i).padStart(4, "0")}`,
+        cost_usd: 0.003,
+      }));
+    const seen = { gte: [] as string[], gt: [] as string[], reads: 0 };
+    const svc = new ModelClientService(
+      fiveDollars,
+      ledger([rows("a"), rows("b"), []], seen),
+    );
+    await expect(svc.call(opts(true))).rejects.toBeInstanceOf(
+      ModelSpendCeilingError,
+    );
+    expect(fetchCalls).toBe(0);
+    expect(seen.gt).toEqual(["a-0999", "b-0999"]);
+  });
+
+  it("keeps today's sum and the lifetime sum in separate cache entries", async () => {
+    // A lifetime total cached under today's key would answer the wrong question.
+    const seen = { gte: [] as string[], gt: [] as string[], reads: 0 };
+    const svc = new ModelClientService(
+      fiveDollars,
+      ledger([[{ id: "a", cost_usd: 0.01 }], [{ id: "a", cost_usd: 0.01 }]], seen),
+    );
+    await svc.call(opts(true)); // the daily question
+    await (svc as any).retryAllowedBySpendCeiling("r1"); // the tier's question
+    expect(seen.reads).toBe(2);
   });
 });

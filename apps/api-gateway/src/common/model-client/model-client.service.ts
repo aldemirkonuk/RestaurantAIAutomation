@@ -53,6 +53,26 @@ const MODEL_PRICING_USD_PER_MTOK: Record<
  * NUMBER for incident response, never the mode.
  */
 const SPEND_CACHE_TTL_MS = 60_000;
+/** PostgREST's `max_rows` (supabase/config.toml:18). A response never holds more. */
+const SPEND_PAGE_ROWS = 1000;
+/** A ceiling on pages read per check, so a runaway ledger cannot stall a call. */
+const SPEND_MAX_PAGES = 200;
+
+/**
+ * How long until the next 00:00 UTC, in words a person reads. Exported so the
+ * refusal's promise is tested against a clock rather than trusted.
+ */
+export function untilUtcMidnight(now: Date = new Date()): string {
+  const next = new Date(now.getTime());
+  next.setUTCHours(24, 0, 0, 0);
+  const minutes = Math.max(
+    1,
+    Math.ceil((next.getTime() - now.getTime()) / 60_000),
+  );
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.ceil(minutes / 60);
+  return `about ${hours} hour${hours === 1 ? "" : "s"}`;
+}
 const TIER_CACHE_TTL_MS = 300_000;
 
 /**
@@ -265,11 +285,19 @@ export class ModelClientService {
     // It throws BEFORE any NF row is emitted, deliberately: nothing was spent,
     // so writing a zero-cost row would put a call in the ledger that never
     // happened and make the ledger disagree with the bill.
+    //
+    // It counts TODAY's spend (UTC) against the tier's number, whatever the
+    // tier's own mode (ADR 0146, founder's answer 2026-09-12). Every house in
+    // production is on `pilot`, which resolves to a lifetime credit that never
+    // resets, so a lifetime read here made the refusal permanent while its
+    // message said it would pass. Reading today only is what makes "it resets
+    // at midnight UTC" true.
     if (opts.gateFirstAttempt === true) {
-      if (!(await this.allowedBySpendCeiling(opts.nf.restaurantId))) {
+      if (!(await this.allowedBySpendCeiling(opts.nf.restaurantId, "daily"))) {
         throw new ModelSpendCeilingError(
-          "This restaurant has reached its AI allowance for now. " +
-            "It resets on its own; nothing was charged for this request.",
+          "This restaurant has used today's AI allowance. " +
+            `It resets at midnight UTC, ${untilUtcMidnight()} from now; ` +
+            "nothing was charged for this request.",
         );
       }
     }
@@ -589,6 +617,7 @@ export class ModelClientService {
    */
   private async allowedBySpendCeiling(
     restaurantId?: string | null,
+    window: "tier" | "daily" = "tier",
   ): Promise<boolean> {
     const key = restaurantId ?? "__unattributed__";
     try {
@@ -601,34 +630,33 @@ export class ModelClientService {
       const limit = Number.isFinite(override) ? override : allowance.limitUsd;
       if (limit <= 0) return true; // 0 or negative disables the gate
 
-      const cached = this.spendCache.get(key);
+      // credit = lifetime sum (it depletes); daily = today only (it resets).
+      // The first-attempt gate always asks the daily question (see call()).
+      const since = windowStartIso(
+        window === "daily" ? "daily" : allowance.mode,
+      );
+      // One cache entry PER WINDOW. A lifetime sum cached under the same key
+      // as today's would answer the other question for up to a minute, and
+      // the day's key carries its date, so it rolls over at midnight by itself.
+      const cacheKey = `${key}|${since ?? "lifetime"}`;
+      const cached = this.spendCache.get(cacheKey);
       let spendUsd: number;
       if (cached && Date.now() - cached.at < SPEND_CACHE_TTL_MS) {
         spendUsd = cached.spendUsd;
       } else {
-        let query = this.databaseService.supabase
-          .from("neural_footprint_event")
-          .select("cost_usd")
-          .eq("subject_type", "agent");
-        // credit = lifetime sum (it depletes); daily = today only (it resets).
-        const since = windowStartIso(allowance.mode);
-        if (since) query = query.gte("occurred_at", since);
-        query = restaurantId
-          ? query.eq("restaurant_id", restaurantId)
-          : query.is("restaurant_id", null);
-        const { data, error } = await query;
-        if (error) return true;
-        spendUsd = (data ?? []).reduce(
-          (sum: number, row: any) => sum + (Number(row.cost_usd) || 0),
-          0,
-        );
-        this.spendCache.set(key, { at: Date.now(), spendUsd });
+        const read = await this.sumAgentSpend(restaurantId, since);
+        if (read === null) return true;
+        spendUsd = read;
+        this.spendCache.set(cacheKey, { at: Date.now(), spendUsd });
       }
 
       if (spendUsd >= limit) {
         this.logger.warn(
-          `Spend allowance reached for ${key} [${allowance.label}] ` +
-            `($${spendUsd.toFixed(4)} >= $${limit.toFixed(2)}) — transport retry suppressed`,
+          `Spend allowance reached for ${key} [${allowance.label}, ${since ? "since " + since : "lifetime"}] ` +
+            `($${spendUsd.toFixed(4)} >= $${limit.toFixed(2)}) — ` +
+            (window === "daily"
+              ? "first attempt refused"
+              : "transport retry suppressed"),
         );
         return false;
       }
@@ -636,6 +664,50 @@ export class ModelClientService {
     } catch {
       return true;
     }
+  }
+
+  /**
+   * The restaurant's agent spend since `since` (all time when null), summed
+   * over EVERY page. PostgREST caps a response at `max_rows = 1000`
+   * (supabase/config.toml:18) and says nothing when it does, so one read
+   * undercounts a busy house and admits it past its allowance. Pages are keyset
+   * on `id`, so a row written during the read cannot shift an offset and be
+   * counted twice; such a row may be missed, which a 60-second cache already
+   * tolerates. Returns null when a page cannot be read, so the caller applies
+   * its own failure policy instead of a partial sum passing for a whole one.
+   * At SPEND_MAX_PAGES it stops and returns what it has, which is a LOWER
+   * bound: a house already over is still refused, and the log says it stopped.
+   */
+  private async sumAgentSpend(
+    restaurantId: string | null | undefined,
+    since: string | null,
+  ): Promise<number | null> {
+    let total = 0;
+    let after: string | null = null;
+    for (let page = 0; page < SPEND_MAX_PAGES; page++) {
+      let query = this.databaseService.supabase
+        .from("neural_footprint_event")
+        .select("id, cost_usd")
+        .eq("subject_type", "agent");
+      if (since) query = query.gte("occurred_at", since);
+      query = restaurantId
+        ? query.eq("restaurant_id", restaurantId)
+        : query.is("restaurant_id", null);
+      if (after) query = query.gt("id", after);
+      const { data, error } = await query
+        .order("id", { ascending: true })
+        .limit(SPEND_PAGE_ROWS);
+      if (error) return null;
+      const rows = (data ?? []) as Array<{ id: unknown; cost_usd: unknown }>;
+      for (const row of rows) total += Number(row.cost_usd) || 0;
+      if (rows.length < SPEND_PAGE_ROWS) return total;
+      after = String(rows[rows.length - 1].id);
+    }
+    this.logger.error(
+      `Spend read for ${restaurantId ?? "__unattributed__"} stopped at ` +
+        `${SPEND_MAX_PAGES} pages; $${total.toFixed(4)} is a lower bound`,
+    );
+    return total;
   }
 
   /** Reads restaurants.subscription_tier. Unknown/unreadable resolves to core. */

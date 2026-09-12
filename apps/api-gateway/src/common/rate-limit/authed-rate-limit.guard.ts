@@ -136,9 +136,13 @@ export class AuthedRateLimitGuard implements CanActivate {
     >();
     for (const rule of rules) {
       const scope: AuthedRateLimitScope = rule.scope ?? "user";
+      // A restaurant-scoped rule for a caller with no house counts that PERSON.
+      // It used to fall back to the literal key `r:none`, which every
+      // tenantless caller in the gateway shared, so one of them could spend the
+      // house allowance of all the others (ADR 0146, second adversarial pass).
       const subject =
-        scope === "restaurant"
-          ? `r:${String(user.restaurantId ?? "none")}`
+        scope === "restaurant" && user.restaurantId
+          ? `r:${String(user.restaurantId)}`
           : `u:${String(user.userId)}`;
       const key = `${route}|${scope}|${subject}`;
       const windowMs = rule.windowSeconds * 1000;

@@ -114,7 +114,7 @@ proposal into a real order.
   row would put a call in the ledger that never happened. The service answers
   **429 with the ceiling's own words**, not 503 "temporarily unavailable": a
   spend refusal is not an outage, and dressing it as one sends an operator
-  looking for a fault that does not exist.
+  looking for a fault that does not exist. [CORRECTED 2026-09-12, second adversarial pass: as first built, the gate read the TIER's window, and every production house is on `pilot`, a lifetime $5 credit, so once spent the refusal was permanent while its message said "it resets on its own". The founder chose a daily cap that really resets; see "Correction, 2026-09-12" below.]
 
 - **Who.** `@Roles("owner", "manager")` on `confirm`, with `RolesGuard`.
   Founder's call, over signing-instead-of-gating and over owner-only. Production
@@ -172,6 +172,63 @@ the rest of the page wave will need.
 - The gateway running more than one instance in production. That is the moment
   the per-process caveat stops being theoretical.
 
+## Correction, 2026-09-12 — the cap resets daily, because nothing else was true
+
+The second adversarial pass overturned the cost defence as first built. Each point
+below was measured before it was written.
+
+- **The refusal was permanent on every production house.** Read-only on production, all
+  15 restaurants have `subscription_tier = 'pilot'`. `spend-tiers.ts:45` resolves `pilot`
+  to CORE, a $5 **credit** that sums all time and never resets. The first-attempt gate
+  read that window, so a house that spent $5 in total was refused from then on, while the
+  message said *"It resets on its own"*. Background model work (menu upload, invoice
+  extraction) spends from the same ledger, so a house could be shut out of Ask AI by work
+  it never asked for.
+- **The founder's answer, 2026-09-12: "A daily cap that really resets."** The first-attempt
+  gate now asks the daily question whatever the tier's own mode. It sums today's agent
+  spend in UTC against the tier's number, or `MODEL_DAILY_SPEND_CEILING_USD` when that is
+  set. The refusal says *"It resets at midnight UTC, about N hours from now"*, which
+  `untilUtcMidnight()` computes and a spec pins against fixed clocks. Retry suppression on
+  background paths is unchanged and still honours the tier's mode. Rejected: honouring
+  `pilot` as a lifetime credit (a permanent shutoff set by a number nobody chose as a
+  price, OD-23); removing the spend cap and keeping only the rate limits (rate limits are
+  per process, and the ledger is the only fleet-wide bound). The cost the founder accepted:
+  a `pilot` house can spend up to $5 a day on Ask AI until pricing is decided.
+- **One cache entry per window.** The spend cache was keyed by restaurant alone, so a
+  lifetime sum and today's sum could answer each other's question for up to 60 seconds.
+  The key now carries the window start, so the day's entry also rolls over at midnight.
+- **The sum reads every page.** `supabase/config.toml:18` sets `max_rows = 1000`, and
+  PostgREST truncates silently, so a house with more than 1000 agent rows in the window
+  was undercounted and admitted past its allowance. `sumAgentSpend` pages on `id` until a
+  short page arrives. It stops at 200 pages and logs that the figure is a lower bound, so
+  a house already over its allowance is still refused.
+- **A restaurant-scoped limit for a caller with no house** fell back to the literal key
+  `r:none`, shared by every tenantless caller in the gateway, so one of them could spend
+  everyone's allowance. It now counts that person.
+- **The guard read proxies, not the claim.** `check_ask_ai_is_gated.py` now requires each
+  of the following:
+  - the literal `gateFirstAttempt: true` inside the model call;
+  - the gate asking the `"daily"` question, with a message that says midnight UTC;
+  - a paged sum;
+  - integer bounds on every rate-limit rule;
+  - `@Roles("owner", "manager")` on every handler in the gateway that calls Ask AI's
+    confirm, where before it checked one route sliced to end of file;
+  - a 429 thrown inside the `instanceof ModelSpendCeilingError` branch.
+
+  Each check was proven red by mutating its target in a copy of the tree. The third
+  ADR-0146 CLAIMS row grepped `INTERNAL_SERVER_ERROR` anywhere in the file and survived
+  deleting the refusal. It is re-anchored to the branch and proven the same way.
+
+**Named and not fixed here: a role is the person's, not the house's.** `RolesGuard` reads
+`user.role` (`roles.guard.ts`). `JwtStrategy` sets it from the `public.users` row
+(`jwt.strategy.ts:59`, `role: user.role ?? payload.role`), and that row carries one role
+for the person. The same strategy takes `restaurantId` from the token when present
+(`jwt.strategy.ts:29-32`). So "owner or manager" means the person's single role, not
+their standing in the house the request names. Production today has one real tenant and
+no `staff` role, so this changes nothing yet. It becomes a real gap the day one person
+belongs to two houses with different standing, and it is recorded here so that day is
+not a surprise.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -179,3 +236,5 @@ the rest of the page wave will need.
 | 2026-09-12 | 18-agent `/ask` research fan-out (2,981,593 subagent tokens) | Surfaced all four as blockers on any `/ask` build; each re-verified by hand at `file:line` before being reported, rather than taken on the research's word |
 | 2026-09-12 | Aldemir (chat) | "Fix all four now, before any /ask build"; chose owner-or-manager for the confirm role over signing, over owner-only, and over proposer-plus-owner |
 | 2026-09-12 | This session, correcting itself | The rate-limiting finding as first reported ("zero throttler anywhere in the gateway") was WRONG — the grep was for the wrong word and a real global limiter exists. Corrected in Context above with the measurement. The file was briefly overwritten before the mistake was caught and was restored byte-identical to `origin/main` |
+| 2026-09-12 | Adversarial pass (second) | OVERTURNED: the lifetime credit on `pilot` made the refusal permanent under a message promising it would lift; plus the 1000-row page, the shared cache key, the `r:none` bucket, and four guard checks that read a proxy |
+| 2026-09-12 | Aldemir (chat) | "A daily cap that really resets", chosen over honouring the lifetime credit and over removing the cap |

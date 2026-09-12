@@ -138,15 +138,35 @@ def main() -> int:
         want("RolesGuard" in names, "RolesGuard is not on the controller")
 
     # --- 4. Confirm is the act that writes, so it takes standing ----------
-    confirm_block = controller[controller.find("@Post(\"actions/:id/confirm\")") :]
+    #
+    # Checked per HANDLER, on every controller in the gateway, not on the one
+    # named route: the first version sliced the controller from the confirm
+    # route to END OF FILE, so an @Roles on any later handler satisfied it, and
+    # a second route calling confirm was never looked at. A handler here is the
+    # text from one route decorator to the next, which assumes @Roles sits
+    # below its route decorator, as every handler in this controller does.
     want(
         '@Post("actions/:id/confirm")' in controller,
         "the confirm route is gone or renamed; this guard no longer describes the tree",
     )
+    route = re.compile(r"@(?:Get|Post|Put|Patch|Delete)\(")
+    roles = re.compile(r'@Roles\(\s*"owner"\s*,\s*"manager"\s*\)')
+    callers = 0
+    for ctrl in sorted(GW.rglob("*.controller.ts")):
+        text = source(ctrl)
+        starts = [m.start() for m in route.finditer(text)] + [len(text)]
+        for a, b in zip(starts, starts[1:]):
+            handler = text[a:b]
+            if re.search(r"\.confirm\(", handler) and re.search(r"askAi\w*\.confirm\(", handler):
+                callers += 1
+                want(
+                    roles.search(handler) is not None,
+                    f"a handler in {ctrl.relative_to(ROOT)} calls Ask AI's confirm without "
+                    '@Roles("owner", "manager") -- confirming is what WRITES',
+                )
     want(
-        re.search(r'@Roles\(\s*"owner"\s*,\s*"manager"\s*\)', confirm_block) is not None,
-        'confirm is not @Roles("owner", "manager") -- any member of a house could '
-        "confirm any other member's proposal, and confirming is what WRITES",
+        callers >= 1,
+        "no handler calls askAi.confirm( any more; this guard no longer describes the tree",
     )
 
     # --- 5. propose declares a per-person AND a per-house limit -----------
@@ -171,12 +191,61 @@ def main() -> int:
         "propose has no per-house limit -- several members would each run at their "
         "own per-person limit",
     )
+    # A present limit is not a bound if its number is not. Every rule on the
+    # controller must be integer literals with 1 <= limit <= 1000, a window of
+    # 1s to 1 day, and a rate of at most one request per second. The first
+    # version checked only that the words `scope: "user"` appeared.
+    rules = re.findall(
+        r"\{\s*limit:\s*([^,\s]+)\s*,\s*windowSeconds:\s*([^,\s]+)\s*,", controller
+    )
+    want(len(rules) >= 3, f"expected at least 3 limit rules on the controller, found {len(rules)}")
+    for limit_s, window_s in rules:
+        if not (limit_s.isdigit() and window_s.isdigit()):
+            failures.append(
+                f"a rate-limit rule is not integer literals (limit: {limit_s}, "
+                f"windowSeconds: {window_s}) -- a bound this guard cannot read is not a bound"
+            )
+            continue
+        lim, win = int(limit_s), int(window_s)
+        want(
+            1 <= lim <= 1000 and 1 <= win <= 86400 and lim <= win,
+            f"rate-limit rule {lim} per {win}s is outside the bounds ADR 0146 sets "
+            "(1-1000 requests, a 1s-1d window, at most one request per second)",
+        )
 
     # --- 6. The spend ceiling sees propose's FIRST call -------------------
     want(
-        "gateFirstAttempt: true" in service,
-        "ask-ai.service.ts does not set gateFirstAttempt -- the ceiling would be "
-        "consulted only on a retry, so a caller who never retries is never metered",
+        re.search(
+            r"this\.modelClient\.call\(\s*\{[^;]{0,1500}?\bgateFirstAttempt:\s*true\s*,", service
+        )
+        is not None,
+        "ask-ai.service.ts does not pass the literal `gateFirstAttempt: true` in its "
+        "model call -- the ceiling would be consulted only on a retry, so a caller "
+        "who never retries is never metered",
+    )
+    gate_block = re.search(
+        r"if\s*\(\s*opts\.gateFirstAttempt\s*===\s*true\s*\)\s*\{([\s\S]{0,800}?)\n    \}", client
+    )
+    want(
+        gate_block is not None
+        and re.search(r"allowedBySpendCeiling\([^)]*,\s*\"daily\"\s*\)", gate_block.group(1)) is not None,
+        "the first-attempt gate does not ask the DAILY question -- every production "
+        "house is on pilot, a lifetime credit, so a lifetime read makes the refusal "
+        "permanent (ADR 0146, founder's answer 2026-09-12)",
+    )
+    want(
+        gate_block is not None
+        and "midnight UTC" in gate_block.group(1)
+        and "resets on its own" not in client,
+        "the spend refusal does not say it resets at midnight UTC, or still says "
+        "'resets on its own' -- the message must be the promise the code keeps",
+    )
+    want(
+        re.search(r"\.order\(\s*\"id\"", client) is not None
+        and "SPEND_PAGE_ROWS" in client
+        and re.search(r"rows\.length\s*<\s*SPEND_PAGE_ROWS", client) is not None,
+        "the spend sum reads one page -- PostgREST caps a response at max_rows = 1000, "
+        "so a busy house's spend is undercounted and it is admitted past its allowance",
     )
     want(
         "gateFirstAttempt?: boolean" in client,
@@ -200,10 +269,19 @@ def main() -> int:
         "model-client.service.ts, so a spend refusal has no type of its own and "
         "would be reported as a transport outage and retried",
     )
+    branch = re.search(
+        r"if\s*\(\s*\w+\s+instanceof\s+ModelSpendCeilingError\s*\)\s*\{([\s\S]{0,600}?)\n      \}",
+        service,
+    )
     want(
-        re.search(r"instanceof\s+ModelSpendCeilingError", service) is not None,
-        "ask-ai.service.ts does not branch on ModelSpendCeilingError, so a spend "
-        "refusal falls into the generic catch and is answered as an outage",
+        branch is not None
+        and re.search(
+            r"throw\s+new\s+HttpException\([\s\S]*HttpStatus\.TOO_MANY_REQUESTS", branch.group(1)
+        )
+        is not None,
+        "ask-ai.service.ts does not branch on ModelSpendCeilingError with a 429 thrown "
+        "INSIDE that branch, so a spend refusal falls into the generic catch and is "
+        "answered as an outage",
     )
 
     # --- 7. The refusal is honest about what happened --------------------

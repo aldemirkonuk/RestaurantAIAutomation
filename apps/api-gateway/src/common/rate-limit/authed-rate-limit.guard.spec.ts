@@ -92,6 +92,18 @@ describe("AuthedRateLimitGuard", () => {
     expect(() => g.canActivate(ctx(rules, a).context)).toThrow();
   });
 
+  it("a restaurant-scoped rule with no house counts the person, never one shared bucket", () => {
+    // Until the second adversarial pass this fell back to the key `r:none`,
+    // shared by every caller without a restaurant: one of them spent everyone's.
+    const g = guard();
+    const rules: AuthedRateLimitRule[] = [
+      { limit: 1, windowSeconds: 60, scope: "restaurant" },
+    ];
+    expect(g.canActivate(ctx(rules, { userId: "u1" }).context)).toBe(true);
+    expect(g.canActivate(ctx(rules, { userId: "u2" }).context)).toBe(true);
+    expect(() => g.canActivate(ctx(rules, { userId: "u1" }).context)).toThrow();
+  });
+
   it("separates routes, so a limit on one does not spend another's", () => {
     const g = guard();
     const rules = [{ limit: 1, windowSeconds: 60 }];
