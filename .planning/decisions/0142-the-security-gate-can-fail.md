@@ -182,6 +182,20 @@ baseline, **25 of 25 mutations exit 1** and the restored control exits 0.
 owned paths (`scripts/pr_audit_gate.py` and the skill's step 4), so a PR that
 edits any of them escalates rather than self-merges.
 
+**And a second adversarial pass, on the rewrite, overturned it again.** The
+rewritten guard read every flag the gate step carried, and none of the things
+GitHub applies to that step from outside it. `working-directory: .github/workflows`
+on the gate step -- or the same key under a job-level or workflow-level
+`defaults.run` -- makes GitHub `cd` there first, so the gate's `.` scans a
+directory with no lockfiles: trivy v0.74.0 exits 0 there, measured, while the repo
+root still carries 143 finding rows. `shell:` on the step, or under
+`defaults.run`, can likewise swallow the exit code. The guard passed all of them.
+It now refuses `working-directory` or `shell` on any trivy step, and either key
+under a job-level or workflow-level `defaults` block. `--self-test` 36 -> 42
+invariants; against the real workflow all four new mutations -- step
+`working-directory`, job `defaults`, workflow `defaults`, step `shell` -- exit 1
+and the restored control exits 0. That makes 29 real-file mutations in all.
+
 **Not verified, stated rather than implied:**
 
 - **How long GHCR keeps an old `trivy-db` digest.** Reading the package's
@@ -203,3 +217,4 @@ edits any of them escalates rather than self-merges.
 | 2026-09-12 | — | Draft baseline from Dependabot alerts found wrong-sourced; regenerated from trivy itself |
 | 2026-09-12 | — | Measured that trivy exits 1 on fatal errors too; database download split into its own step |
 | 2026-09-12 | pr-merge-adversary (Opus subagent), the only audit this PR had | **OVERTURNED** -- the SARIF step would have closed 107 alerts in the Security tab; the unpinned database made the gate's verdict move overnight; the guard missed 14 of 21 mutations. All re-measured and fixed the same day; the founder chose to pin the database |
+| 2026-09-12 | pr-merge-adversary (Opus subagent), second pass on the rewrite `b925a81a` | **OVERTURNED** -- `working-directory`, `defaults.run` and `shell:` re-point or re-shell the gate from outside its own flags, and the guard read none of them; trivy exits 0 on a subdirectory. Closed the same day, self-test 36 -> 42, four real-file mutations added |

@@ -248,6 +248,18 @@ def failures_for(ci, ignore_lines, baseline_lines, baseline_sha, config_files_pr
     if re.search(r"^    (continue-on-error|if):", job, re.M):
         out.append("the `security` job itself carries `if:` or `continue-on-error:`, so it can be skipped or allowed to fail")
 
+    # `defaults.run` re-points or re-shells EVERY run step beneath it without a
+    # word appearing on the gate itself. Found by the second adversarial pass on
+    # PR #362: `working-directory: .github/workflows` made the gate's `.` scan a
+    # directory with no lockfiles, trivy exited 0, and this guard passed.
+    stripped_ci = _strip_comments(ci)
+    wf_defaults = re.search(r"^defaults:[ \t]*\n((?:[ \t]+.*\n?)*)", stripped_ci, re.M)
+    if wf_defaults and re.search(r"working-directory|shell", wf_defaults.group(1)):
+        out.append("the workflow sets defaults.run working-directory or shell, which silently re-points or re-shells the gate")
+    job_defaults = re.search(r"^    defaults:[ \t]*\n((?:      .*\n?)*)", job, re.M)
+    if job_defaults and re.search(r"working-directory|shell", job_defaults.group(1)):
+        out.append("the `security` job sets defaults.run working-directory or shell, which silently re-points or re-shells the gate")
+
     if re.search(r"^\s*TRIVY_[A-Z0-9_]+\s*:", _strip_comments(ci), re.M):
         out.append("ci.yml sets a TRIVY_* environment variable; trivy reads those as configuration and can skip or re-scope the scan")
 
@@ -268,6 +280,11 @@ def failures_for(ci, ignore_lines, baseline_lines, baseline_sha, config_files_pr
         for k in st["env"]:
             if k.startswith("TRIVY_"):
                 out.append("step %r sets %s, which trivy reads as configuration" % (st.get("name"), k))
+
+    for st in steps:
+        if st.get("trivy") and (st.get("working-directory") is not None or st.get("shell") is not None):
+            out.append("trivy step %r sets working-directory or shell; the gate's `.` must be the repository "
+                       "root and its exit code must reach the job" % st.get("name"))
 
     # --- install ---------------------------------------------------------
     installs = [s for s in steps if (s.get("uses") or "").startswith("aquasecurity/setup-trivy@")]
@@ -478,6 +495,12 @@ JOB_MUTATIONS = [
     ("--skip-db-update removed from the gate", [("            --skip-db-update \\\n", "")]),
     ("--scanners changed to secret", [("--scanners vuln", "--scanners secret")]),
     ("a second run: key on the gate step", [(GATE_NAME, GATE_NAME + "        run: echo hello\n")]),
+    ("working-directory on the gate step", [(GATE_NAME, GATE_NAME + "        working-directory: .github/workflows\n")]),
+    ("job-level defaults.run.working-directory", [("    name: Security Scan\n", "    name: Security Scan\n    defaults:\n      run:\n        working-directory: .github/workflows\n")]),
+    ("workflow-level defaults.run.working-directory", [("\njobs:\n", "\ndefaults:\n  run:\n    working-directory: .github/workflows\njobs:\n")]),
+    ("shell: on the gate step", [(GATE_NAME, GATE_NAME + "        shell: bash --noprofile --norc {0} || true\n")]),
+    ("job-level defaults.run.shell", [("    name: Security Scan\n", "    name: Security Scan\n    defaults:\n      run:\n        shell: sh\n")]),
+    ("working-directory on the pinned download", [("      - name: Fetch the pinned vulnerability database, for the gate\n", "      - name: Fetch the pinned vulnerability database, for the gate\n        working-directory: /tmp\n")]),
 ]
 
 
