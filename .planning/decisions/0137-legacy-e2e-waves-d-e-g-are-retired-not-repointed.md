@@ -56,7 +56,7 @@ target — not guessed):
 `pos_webhook_logs` is defined only in an **archived** pre-baseline migration
 (`supabase/migrations_archive/20260208024921_baseline_schema.sql:265-272`), absent from
 `supabase/migrations/20260805000000_baseline_from_production.sql` (the live snapshot),
-and `.planning/08-softwares/pos-bridge.md:96-108,144` documents it as **deliberately
+and `.planning/08-softwares/pos-bridge.md:96-110,147` documents it as **deliberately
 omitted** from the current POS-bridge design. The endpoint the wave calls
 (`POSIntegrationAgent` via `/api/v1/pos/webhook/toast`) has **zero product callers** —
 grepping `/api/v1/pos/webhook` across `apps/` returns only comments (`toast.service.ts:769,783`, its spec, and `orchestrator-routes.ts:78`, guarded by a `stripComments` check at `orchestrator-routes.ts:74-89`) — no live call site; the only three callers in
@@ -197,9 +197,13 @@ design, not a repair of these three files, and is filed as a future item in
   is the pointer to what NOT to reuse, not a starting point to repair.
 - **Out of scope, deliberately:** Wave C's live-broker-publish behavior (already
   classified separately, gated on `RABBITMQ_URL`); the `RAILWAY_ORCHESTRATOR_URL`
-  orchestrator-host secret (PR #349's territory — not touched by this branch); and
-  `.github/workflows/e2e-prod.yml`'s pre-existing, unrelated flaw that every wave step
-  swallows its own exit code (`|| true`) so the job's overall pass/fail does not
+  orchestrator-host secret (PR #349's territory — not touched by this branch); the
+  `conftest_prod.py:293` `teardown_sim(client=prod_supabase, apply=True)` landmine
+  (also PR #349's territory — this PR does drop the wave count that shares its
+  session-teardown fixture from six pytest sessions to three, so that destructive
+  teardown fires fewer times as a side effect, but the landmine itself is untouched);
+  and `.github/workflows/e2e-prod.yml`'s pre-existing, unrelated flaw that every wave
+  step swallows its own exit code (`|| true`) so the job's overall pass/fail does not
   actually reflect any wave's result — noted here because it was seen while editing this
   file, not fixed, since it is a different defect than the one this ADR addresses.
 
