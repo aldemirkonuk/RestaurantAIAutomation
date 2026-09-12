@@ -107,7 +107,14 @@ BEGIN
       ADD CONSTRAINT price_index_upload_reviews_reopen_has_history
       CHECK (
         reopened_at IS NULL
-        OR (jsonb_typeof(decision_history) = 'array'
+        -- `decision_history IS NOT NULL` FIRST, and it is load-bearing:
+        -- `jsonb_typeof(NULL)` is NULL, `NULL = 'array'` is NULL, and a CHECK
+        -- whose expression is NULL PASSES. Without this conjunct the constraint
+        -- admits exactly the row it exists to refuse -- a reopen carrying no
+        -- history -- and the assertion below catches it (measured on production
+        -- 2026-09-12: the insert succeeded and the migration refused itself).
+        OR (decision_history IS NOT NULL
+            AND jsonb_typeof(decision_history) = 'array'
             AND jsonb_array_length(decision_history) > 0)
       );
   END IF;
@@ -176,6 +183,38 @@ BEGIN
        AND ns.nspname <> 'public'
   ) THEN
     RAISE EXCEPTION 'reopened_by points outside public; auth.users and public.users are disjoint';
+  END IF;
+
+  -- STRUCTURAL, AND IT RUNS EVERYWHERE. The behavioural probe below needs a
+  -- `public.users` row, so on a fresh database -- which is what CI builds -- it
+  -- is skipped and the migration reports success without ever exercising the
+  -- CHECK. That is how a constraint that admitted a historyless reopen passed
+  -- every test and failed only against production. This assertion reads the
+  -- constraint's own definition and needs no data at all.
+  --
+  -- The ABSENCE of the constraint is checked separately and first, because
+  -- `pg_get_constraintdef` is strict: with no matching row its argument is NULL,
+  -- it returns NULL, `NULL NOT LIKE '...'` is NULL, and PL/pgSQL treats
+  -- `IF NULL` as false -- so a missing constraint would have passed this
+  -- assertion silently. That is the same fault the assertion exists to catch,
+  -- one level up, and it is written out here rather than fixed quietly.
+  IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+        WHERE conname = 'price_index_upload_reviews_reopen_has_history'
+          AND conrelid = to_regclass('public.price_index_upload_reviews')
+     ) THEN
+    RAISE EXCEPTION
+      'the history CHECK does not exist on price_index_upload_reviews; this migration creates it ninety lines above, so reaching here means it was dropped or renamed';
+  END IF;
+
+  IF COALESCE(
+       pg_get_constraintdef(
+         (SELECT oid FROM pg_constraint
+           WHERE conname = 'price_index_upload_reviews_reopen_has_history'
+             AND conrelid = to_regclass('public.price_index_upload_reviews'))
+       ), '') NOT LIKE '%decision_history IS NOT NULL%' THEN
+    RAISE EXCEPTION
+      'the history CHECK has no NULL guard: jsonb_typeof(NULL) is NULL, a NULL CHECK PASSES, and the constraint would admit the reopen it exists to refuse';
   END IF;
 
   SELECT user_id INTO probe_user FROM public.users LIMIT 1;
@@ -247,7 +286,28 @@ BEGIN
       'no user row exists here, so the reopen CHECKs were created but not exercised. They are exercised against the same predicates by the jest suite.';
   END IF;
 
-  RAISE NOTICE
-    'price_index_upload_reviews: reopened_at/reopened_by/reopen_reason/reopen_seal_id/decision_history added; a reasonless reopen and a historyless reopen both proven refused; RLS and grants untouched.';
+  -- The closing line says which of the two things happened, because until
+  -- 2026-09-12 it said BOTH unconditionally: on a fresh database it printed
+  -- 'both proven refused' four lines after correctly printing that the probes
+  -- had not run. That is this migration's own defect in miniature -- a check
+  -- that could not run, reporting as health -- and it sat inside the block that
+  -- exists to prove the constraint works.
+  --
+  -- This edit is text inside a RAISE NOTICE, and the structural assertion above
+  -- gained an existence check the same day. Neither creates, alters or drops
+  -- anything, so the SCHEMA this file builds is what production already has from
+  -- the 2026-09-12 apply -- schema-identical, no longer byte-identical. The
+  -- ledger's stored `statements[1]` is the text that RAN that day and is
+  -- deliberately not rewritten: the ledger records what ran, not what the file
+  -- says now. The file has FOUR distinct blobs across this branch, not three as
+  -- an earlier version of this comment said; only the first is the one in the
+  -- ledger, and equality was checked at that commit.
+  IF probe_user IS NOT NULL THEN
+    RAISE NOTICE
+      'price_index_upload_reviews: reopened_at/reopened_by/reopen_reason/reopen_seal_id/decision_history added; a reasonless reopen and a historyless reopen both proven refused against real rows; RLS and grants untouched.';
+  ELSE
+    RAISE NOTICE
+      'price_index_upload_reviews: reopened_at/reopened_by/reopen_reason/reopen_seal_id/decision_history added; the two behavioural probes did NOT run here (no user row), so nothing about refusal is claimed -- only the structural assertion above held; RLS and grants untouched.';
+  END IF;
 END
 $$;

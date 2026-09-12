@@ -618,3 +618,5 @@ redemption** — the local Supabase this gateway points at has neither
 `mcp_seal_challenges` nor `payment_methods` ("not found in the schema cache"),
 so the migrations behind both are unapplied there. The redemption path is proven
 only by the specs.
+
+**[CORRECTED 2026-09-12: BOTH tables EXIST now. The migrations behind them were applied on 2026-09-12. The redemption path is still proven only by the specs -- nobody has re-run that probe -- but the REASON given here for not proving it live has gone. Verified that day by query: `to_regclass('public.ux_experiment_assignments')`, `to_regclass('public.mcp_seal_challenges')` and `to_regclass('public.payment_methods')` all return NOT NULL. The observation above is kept as the dated finding it was; do not read it as the current state, and do not infer that a missing table is guarding anything.]**

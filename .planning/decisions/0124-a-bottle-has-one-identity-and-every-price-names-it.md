@@ -1,7 +1,7 @@
 # 0124 — A bottle has one identity, and every price names it
 
 - **Status:** Proposed — **BUILT on `feat/mudavym-design-p4`, 2026-09-05, and the
-  migration is NOT applied anywhere.** The register, the keys table, the candidate
+  migration is NOT applied anywhere.** **CORRECTED 2026-09-12:** all four ARE applied to production. Verified by query that day: `20260905140000`, `20260906030000`, `20260906050000` and `20260906060000` each have a row in `supabase_migrations.schema_migrations`. `20260905140000` went with PR #289's first 53; the other three were in the 19 that a defect in `20260906020000` had blocked, applied through the connector on 2026-09-12. Their in-file `DO $$` assertions have therefore RUN against real data. Note for anyone re-running them: `20260906030000` asserts three tables at zero rows after its probe cleanup, which held on 2026-09-12 and will not hold once those tables carry data.  The register, the keys table, the candidate
   queue, the nullable `identity_id` on three price/stock registers, the exact-key
   joiner, the candidate generator, the confirm/reject/undo routes with their
   decision log (Q2, answered by the founder 2026-09-05 and built the same day) and
