@@ -1445,7 +1445,7 @@ export function Register() {
   const isRestaurantForm = path === 'create' && pathBStep === 2
 
   return (
-    <div className={on ? 'mudavym mdv-auth relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-paper-0' : 'relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]'}>
+    <div data-ground="paper" className={on ? 'mudavym mdv-auth relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-paper-0' : 'relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]'}>
       <div
         aria-hidden
         className={on ? 'pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,var(--seal-tint),transparent_50%),radial-gradient(ellipse_at_100%_100%,var(--seal-tint),transparent_45%)]' : 'pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(26,94,107,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(26,94,107,0.07),transparent_45%)]'}
