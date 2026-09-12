@@ -1,6 +1,6 @@
 # 0133 — A public page has no house, so the public door has one switch
 
-- **Status:** Locked 2026-09-06 — the founder's four answers in session (the public pages ship in place behind one deployment switch; the general assistant is a page plus the Ask AI panel, named **Mudavym**; `/no-access` is wired, not retired). The assistant's design is NOT decided here — it becomes its own record after the research fan-out (see §Consequences).
+- **Status:** Locked 2026-09-06 — the founder's four answers in session (the public pages ship in place behind one deployment switch; the general assistant is a page plus the Ask AI panel, named **Mudavym**; `/no-access` is wired, not retired). The assistant's design is NOT decided here — it becomes its own record after the research fan-out (see §Consequences). **Amended 2026-09-11: the `/sommelier` HOLD clause is lifted — see Review trail.** Everything else in this record stands.
 - **Date:** 2026-09-06
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** public pages, login, register, feature flags, mudavym_design, VITE_MUDAVYM_PUBLIC, dark launch, no-access, wine-agent, Ask Mudavym, onboarding, sketch 104, ADR 0044, ADR 0131
@@ -13,7 +13,7 @@ ADR 0131 forked "the pages not yet rebuilt" to their own session (Stream G): `/l
 `/reset-password`, `/verify-email`, `/invite/:code`, `/no-access`), `/promotions`,
 `/vendor-prices`, `/recommendations/catalog`, `/logs`, `/help`, `/privacy`, `/admin`,
 `/admin/health`, `/v/:slug`, `/authorize/:integrationId`, `/distributors`, and `/wine-agent`
-as the general chatbot. `/sommelier` stays HOLD.
+as the general chatbot. `/sommelier` stays HOLD (**amended 2026-09-11 — see Review trail: the HOLD is lifted, `/sommelier` moves to the feat/mudavym-design-p4 session**).
 
 Every page rebuilt so far turns on per house: `mudavym_design_<page>` is a boolean column on
 the `restaurant_feature_flags` row, read through `useMudavymDesign(page)`
@@ -108,7 +108,9 @@ Wire it (a house-less person lands there; the fabricated house goes) · retire i
   after the edit because appending slugs moves the anchor line.
 - `/onboarding` is not built until the founder picks from sketch 104's five directions;
   `/get-started` carries whatever he picks. `/distributors` stays a redirect and is not
-  touched. `/sommelier` stays HOLD.
+  touched. `/sommelier` stayed HOLD until 2026-09-11, when the founder lifted it directly
+  (amendment below) and assigned it to the feat/mudavym-design-p4 session — it was never
+  in the new-pages fork's scope either before or after the amendment.
 - Every overlay on the `Sheet` / `Panel` / `Popover` primitive; the close control is words;
   no emoji; one chromatic colour; absence is never health.
 
@@ -142,3 +144,4 @@ Wire it (a house-less person lands there; the fabricated house goes) · retire i
 |---|---|---|
 | 2026-09-06 | parent session (new-pages fork) | Measured the gate's dependence on a restaurant id (`useMudavymDesign.ts:141-143`); framed the four forks; asked. |
 | 2026-09-06 | founder, in session | Four answers recorded above. |
+| 2026-09-11 | founder, in the feat/mudavym-design-p4 session (relayed cross-session, then confirmed directly with the founder in the new-pages fork's own session before this row was written) | **AMENDMENT: `/sommelier` HOLD is lifted.** Founder's ruling on a same-night route-ownership collision between the two Mudavym-design sessions: the new-pages fork keeps only `/logs` (its one finished, wired page) going forward; the feat/mudavym-design-p4 session takes over every other route this ADR forked to the new-pages session (once that session's completed work is confirmed), *and* `/sommelier` — previously HOLD, not forked to either session — is released to feat/mudavym-design-p4 to build. Every design decision that session applies must come from a locked record; where one is missing, the founder is asked before a new one is added. This is the only clause 0133 had authority over; the ownership handoff itself is a working-allocation call, not a design decision, and is not recorded as an ADR. |
