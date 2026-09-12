@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { DocumentIntakeService } from "./document-intake.service";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
+import { getCorrelationId } from "../../common/model-client/correlation";
 
 describe("DocumentIntakeService — original bytes persistence (decision E47)", () => {
   let service: DocumentIntakeService;
@@ -157,5 +158,77 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
     expect(result.error).toBeUndefined();
     const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
     expect(insertCall.storage_path).toBeNull();
+  });
+
+  /**
+   * The sweep is a @Cron, so there is no HTTP request to inherit a correlation
+   * id from — and `ingest` reaches DocumentExtractorService -> the model client
+   * -> neural_footprint_event. Before the wrap, every email-sourced extraction
+   * wrote correlation_id NULL (confirmed against the live table on 2026-08-24),
+   * which is most of them: the HTTP path is manual upload.
+   */
+  describe("sweepUningestedAttachments — correlation scope", () => {
+    const attachment = (id: string) => ({
+      id,
+      restaurant_id: "rest-1",
+      provider_id: "prov-1",
+      order_id: null,
+      filename: `${id}.pdf`,
+      mime_type: "application/pdf",
+      storage_path: `rest-1/${id}.pdf`,
+      sha256: null,
+    });
+
+    beforeEach(() => {
+      mockSupabaseChain.limit.mockResolvedValueOnce({
+        data: [attachment("att-1"), attachment("att-2")],
+        error: null,
+      });
+      mockSupabaseChain.storage.from.mockReturnValue({
+        upload: mockStorageUpload,
+        download: jest.fn().mockResolvedValue({
+          data: { arrayBuffer: async () => new ArrayBuffer(8) },
+          error: null,
+        }),
+      });
+    });
+
+    it("opens a correlation scope around each attachment, so NF rows are joinable", async () => {
+      const seen: (string | null)[] = [];
+      jest.spyOn(service, "ingest").mockImplementation(async () => {
+        seen.push(getCorrelationId());
+        return { documentId: "doc-x", duplicate: false } as any;
+      });
+
+      expect(getCorrelationId()).toBeNull(); // no ambient scope: a cron has none
+      await service.sweepUningestedAttachments();
+
+      expect(seen).toHaveLength(2);
+      expect(seen.every((id) => typeof id === "string" && id.length > 0)).toBe(
+        true,
+      );
+    });
+
+    it("gives each attachment its OWN id, so one id never spans two documents", async () => {
+      const seen: (string | null)[] = [];
+      jest.spyOn(service, "ingest").mockImplementation(async () => {
+        seen.push(getCorrelationId());
+        return { documentId: "doc-x", duplicate: false } as any;
+      });
+
+      await service.sweepUningestedAttachments();
+
+      expect(new Set(seen).size).toBe(2);
+    });
+
+    it("does not leak the scope past the sweep", async () => {
+      jest
+        .spyOn(service, "ingest")
+        .mockResolvedValue({ documentId: "doc-x", duplicate: false } as any);
+
+      await service.sweepUningestedAttachments();
+
+      expect(getCorrelationId()).toBeNull();
+    });
   });
 });

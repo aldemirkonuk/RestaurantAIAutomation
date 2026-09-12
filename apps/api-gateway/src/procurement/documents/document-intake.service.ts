@@ -7,6 +7,7 @@ import { SourceChannel } from "./document-types";
 import { ParsedDocument } from "./parsed-document";
 import { matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
+import { runWithNewCorrelationId } from "../../common/model-client/correlation";
 
 /**
  * DocumentIntakeService — the single door every vendor document comes through.
@@ -618,17 +619,25 @@ export class DocumentIntakeService {
       if (file.error || !file.data) continue;
 
       const buffer = Buffer.from(await file.data.arrayBuffer());
-      const result = await this.ingest({
-        restaurantId: a.restaurant_id,
-        providerId: a.provider_id,
-        orderId: a.order_id,
-        source: "email",
-        buffer,
-        filename: a.filename,
-        mimeType: a.mime_type,
-        sourceRef: `conversation_attachment:${a.id}`,
-        storagePath: a.storage_path,
-      });
+      // One correlation scope PER ATTACHMENT. `ingest` reaches
+      // DocumentExtractorService -> ModelClientService, and a cron has no
+      // request to inherit an id from, so without this the NF row for every
+      // email-sourced extraction lands with correlation_id NULL — which is
+      // most of them, since the HTTP path is manual upload. Per-attachment
+      // rather than per-sweep so one id still means one document.
+      const result = await runWithNewCorrelationId(() =>
+        this.ingest({
+          restaurantId: a.restaurant_id,
+          providerId: a.provider_id,
+          orderId: a.order_id,
+          source: "email",
+          buffer,
+          filename: a.filename,
+          mimeType: a.mime_type,
+          sourceRef: `conversation_attachment:${a.id}`,
+          storagePath: a.storage_path,
+        }),
+      );
       if (result.documentId && !result.duplicate) ingested++;
     }
 

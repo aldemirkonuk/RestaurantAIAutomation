@@ -427,7 +427,10 @@ export class ModelClientService {
     waitMs += Math.floor(Math.random() * waitMs); // full jitter, 1x–2x
     const retryAfterSec = Number(retryAfterHeader);
     if (retryAfterHeader && Number.isFinite(retryAfterSec)) {
-      waitMs = Math.max(waitMs, Math.min(retryAfterSec * 1000, RETRY_AFTER_CAP_MS));
+      waitMs = Math.max(
+        waitMs,
+        Math.min(retryAfterSec * 1000, RETRY_AFTER_CAP_MS),
+      );
     }
     await new Promise((r) => setTimeout(r, waitMs));
   }
@@ -495,7 +498,8 @@ export class ModelClientService {
   private async tierFor(restaurantId?: string | null): Promise<string | null> {
     if (!restaurantId) return null;
     const cached = this.tierCache.get(restaurantId);
-    if (cached && Date.now() - cached.at < TIER_CACHE_TTL_MS) return cached.tier;
+    if (cached && Date.now() - cached.at < TIER_CACHE_TTL_MS)
+      return cached.tier;
     try {
       const { data, error } = await this.databaseService.supabase
         .from("restaurants")
@@ -516,7 +520,8 @@ function resolvePricing(
   model: string,
 ): { input: number; output: number } | null {
   if (!model) return null;
-  if (MODEL_PRICING_USD_PER_MTOK[model]) return MODEL_PRICING_USD_PER_MTOK[model];
+  if (MODEL_PRICING_USD_PER_MTOK[model])
+    return MODEL_PRICING_USD_PER_MTOK[model];
   for (const key of Object.keys(MODEL_PRICING_USD_PER_MTOK)) {
     if (model.startsWith(`${key}-`)) return MODEL_PRICING_USD_PER_MTOK[key];
   }

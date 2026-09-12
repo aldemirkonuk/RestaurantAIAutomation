@@ -37,6 +37,32 @@ export function runWithCorrelationId<T>(correlationId: string, fn: () => T): T {
 }
 
 /**
+ * Establish a FRESH correlation scope for a unit of work that has no upstream
+ * id — a `@Cron` sweep, a bootstrap task, a queue consumer whose message did
+ * not carry one.
+ *
+ * Why this exists: the middleware below only covers HTTP. Outside a request
+ * `getCorrelationId()` returns null, so every NF row the work emits lands with
+ * `correlation_id` NULL and drops out of the cross-runtime join P1 exists to
+ * enable — silently, because a null column is not an error. Verified against
+ * the live table on 2026-08-24: a model call made outside any request wrote
+ * neural_footprint_event row 7adb9aea with correlation_id NULL.
+ *
+ * Scope it per UNIT OF WORK (one document, one message), NOT per sweep, so the
+ * id means on this path exactly what it means on the HTTP path: one id groups
+ * the rows of one thing that happened. Wrapping a whole sweep would file
+ * unrelated documents under a single id and make the join lie.
+ *
+ * Do NOT use this where an id already exists — inside a request (the
+ * middleware has already opened a scope) or on the RabbitMQ path (which passes
+ * Python's own correlation_id explicitly). Minting a new one there REPLACES
+ * the real id and breaks the join it is meant to preserve.
+ */
+export function runWithNewCorrelationId<T>(fn: () => T): T {
+  return runWithCorrelationId(randomUUID(), fn);
+}
+
+/**
  * Express-style functional middleware registered by ModelClientModule for all
  * routes. Honors a caller-supplied `x-correlation-id` (so a web client or an
  * upstream service can pre-correlate), otherwise mints one — matching the
