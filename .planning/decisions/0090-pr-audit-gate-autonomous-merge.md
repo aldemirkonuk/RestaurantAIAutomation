@@ -676,6 +676,59 @@ editing `_GATE_OWNED_PATHS` itself, force-escalates under its own new rule —
 per ADR 0090's design, it is not self-merged; the founder reviews and merges
 it directly, the same path PR #261 and PR #297 both needed.
 
+## Correction — 2026-09-12, found by the gate going red on every PR in the repository
+
+**The symptom.** Every PR opened on 2026-09-12 carried a red `PR Audit Gate`,
+for a reason that had nothing to do with any diff: `Upstream red: ['CodeQL']`,
+confirmed on two consecutive polls. A gate that is red on everything is a gate
+nobody reads, which is the same failure as one that is green on everything.
+
+**The cause is two correct decisions meeting.** First, the seventh Correction
+above fixed a real bug by making only an explicit `SUCCESS` green — the third
+audit had found `TIMED_OUT`, `ACTION_REQUIRED`, `STARTUP_FAILURE`, `NEUTRAL` and
+`STALE` all falling through to green by default. Second, `wait_upstream` cannot
+read branch protection (`GITHUB_TOKEN` is deliberately never grantable
+`administration` scope) and falls back to waiting for **every reported check**.
+Put together: the `CodeQL` aggregate check-run concluded `NEUTRAL` — which is
+what code scanning returns when the analysis ran and had nothing to say — and a
+check that has never been a required context, and cannot block a merge, made this
+job red. The seventh Correction's two-poll debounce did not help, because the
+conclusion was not transient this time; it was simply what CodeQL had to say.
+
+**Not fixed by softening the state allow-list.** A `TIMED_OUT` on a check that
+really does gate a merge must still be red; that is the whole of the third
+audit's finding and it stands. Fixed instead by not WAITING, **in fallback mode
+only**, on checks that cannot block a merge in the first place: `CodeQL` and
+`Dependabot` join `Vercel` and `Supabase` in `_FALLBACK_IGNORE_PREFIXES`. When
+the required-contexts list is readable it is used verbatim and that tuple is not
+consulted at all, so nothing here can hide a check that genuinely gates a merge.
+
+The required list was **re-measured** the same day rather than carried forward,
+and recorded in the code as a dated reading rather than as the state — it is a
+dashboard setting, one person and one click, no commit and no diff:
+
+```
+["CI Complete", "Beverage identity key — SQL matches Python",
+ "Guest merge policy — zero false merges", "Fresh database equals remote",
+ "Code queries only relations production has"]
+```
+
+Neither `CodeQL` nor `Dependabot` appears. If either is ever made required it
+must be removed from that tuple in the same change, and the comment beside it
+says so.
+
+**The selection is now a function, so the self-test runs the real thing.**
+`_fallback_names()` was extracted from the inline comprehension for the same
+reason `_classify_poll` was extracted in the seventh round: a hand-retyped mirror
+in the test agrees with the code by construction rather than by sharing it.
+`--self-test` grows 35 → 39, and the four new invariants pin both halves —
+that fallback waits only on gating checks, that it never waits on itself, that a
+`NEUTRAL` `CodeQL` no longer makes the gate red, **and that a `NEUTRAL` on a
+check that IS waited for is still failed**. The last one is what stops this fix
+from quietly becoming "NEUTRAL is fine everywhere". Proven by mutation: reverting
+the tuple alone makes the suite exit 1 with "fallback waits only on checks that
+can gate a merge: got ['CI Complete', 'CodeQL', 'Dependabot', ...]".
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -694,3 +747,4 @@ it directly, the same path PR #261 and PR #297 both needed.
 | 2026-09-04 | Live production incidents, not an audit round (PRs #288, #290, #291, #294) | `wait_upstream`'s red branch had no debounce, unlike its green branch — a single poll catching the `CodeQL` check-run's real but transient `neutral` conclusion (self-corrects to `success` ~10s later, confirmed by direct Checks-API capture) was enough to declare upstream red on four separate PRs. Fixed same day: red branch now requires the same failed set on two consecutive polls; `--self-test` grown 29 → 35, see seventh Correction above. Fix PR [#297](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/297) — touches this ADR's own `_GATE_OWNED_PATHS`, needs the founder to merge directly |
 | 2026-09-06 | Aldemir (chat, direct authorization) | PR #297 modifies `_GATE_OWNED_PATHS` itself, same as #261, so `touches_own_gate` force-escalates it to BLOCK by design and `require_pr_audit.py` correctly refused a plain `gh pr merge 297`. Founder authorized completing the merge directly in chat. Merged via `gh api .../pulls/297/merge`, SHA-pinned to `c53cee6f7f8e0aea3c7dc7e7873e0f68dec4f646`, all five of `main`'s actual required contexts green (`PR Audit Gate` itself is not one of them); squash commit `9a23abb6889dfcc6af443b8ccdd03ca1bbb694ec`. `--self-test` 35/35 re-confirmed on the merged tree pre-merge |
 | 2026-09-06 | Aldemir (chat, direct authorization) | PR #299 (the eighth Correction's `deploy.yml` fix) modifies `_GATE_OWNED_PATHS` itself, same shape as #261 and #297; `require_pr_audit.py` correctly refused `gh pr merge 299`. The branch needed four separate `git merge origin/main` rebases in ~15 minutes (main was unusually active — a sibling session running the identical #297 escalation concurrently, plus PR #291 itself landing mid-flight) before all five required contexts held green together; each rebase re-resolved real content conflicts in this same ADR file and `decisions/README.md` (PR #297's own "seventh Correction" collided in name with this PR's, resolved by renumbering this one eighth — the same collision rule this repo applies to a duplicated OD or ADR id). Founder authorized completing the merge directly in chat. Merged via `gh api .../pulls/299/merge`, SHA-pinned to `5b2ce4bf7b04a58f8e7c1701cddb09f61324b527`, all five of `main`'s actual required contexts green; squash commit `78a8f46fe2617ab26dd75ce70e12a25793563ff1`. `--self-test` 35/35 re-confirmed on the merged tree pre-merge |
+| 2026-09-12 | Live symptom across every open PR, not an audit round | `PR Audit Gate` red on every PR from a `NEUTRAL` `CodeQL` — a check that has never been required and cannot block a merge, reached only because branch protection is unreadable and the fallback waits for everything. Fixed by narrowing the FALLBACK wait list, never the state allow-list; `_fallback_names()` extracted so the self-test exercises the real selection; `--self-test` grown 35 → 39 and proven to fail on the pre-fix tuple. Touches `scripts/pr_audit_gate.py` and this ADR, so it escalates to the founder — same shape as PRs #297 and #299. |

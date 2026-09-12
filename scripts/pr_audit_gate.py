@@ -172,7 +172,34 @@ def _required_contexts() -> list[str] | None:
 # Checks known to be cosmetic/external and never required — confirmed by hand
 # against branch protection on 2026-09-02, used only in fallback mode (never
 # to filter when the real required-contexts list was actually read).
-_FALLBACK_IGNORE_PREFIXES = ("Vercel", "Supabase")
+#
+# `CodeQL` and `Dependabot` added 2026-09-12. Both are app-produced aggregate
+# check-runs (github-advanced-security, dependabot), neither has ever been a
+# required context, and both report terminal states that are not failures:
+# `CodeQL` concludes NEUTRAL when the analysis ran and had nothing to say, and
+# `Dependabot` reports a failure whenever an update branch cannot be built. The
+# state allow-list above is deliberately strict — only an explicit SUCCESS is
+# green, because the third audit found TIMED_OUT and friends falling through to
+# green by default — so a NEUTRAL `CodeQL` made this job red on EVERY PR opened
+# on 2026-09-12, which is how a gate stops being read.
+#
+# The right fix is not to soften the state allow-list: a TIMED_OUT on a check
+# that really does gate a merge must still be red. It is to stop waiting, in
+# FALLBACK MODE ONLY, on checks that cannot block a merge in the first place.
+# When the required-contexts list is actually readable this tuple is not
+# consulted at all, so nothing here can hide a real required check.
+#
+# Re-measured 2026-09-12, and this is a dated reading rather than the state
+# (the list is a dashboard setting — one person, one click, no commit):
+#   gh api repos/<owner>/<repo>/branches/main/protection \
+#     --jq '.required_status_checks.contexts'
+#   -> ["CI Complete", "Beverage identity key — SQL matches Python",
+#       "Guest merge policy — zero false merges", "Fresh database equals remote",
+#       "Code queries only relations production has"]
+# Neither `CodeQL` nor `Dependabot` appears. If either is ever made required,
+# REMOVE it from here in the same change, or this gate will stop waiting for a
+# check that now gates merges.
+_FALLBACK_IGNORE_PREFIXES = ("Vercel", "Supabase", "CodeQL", "Dependabot")
 
 # This workflow's own check name (jobs.audit.name in pr-audit-gate.yml). MUST
 # be excluded in fallback mode: confirmed live, run 33693914388 — "waiting for
@@ -181,6 +208,19 @@ _FALLBACK_IGNORE_PREFIXES = ("Vercel", "Supabase")
 # converge and burns the full MAX_WAIT_SECONDS on a guaranteed deadlock every
 # single run. Not a race, not a timing fluke — structural, every time.
 _SELF_CHECK_NAME = "PR Audit Gate"
+
+
+def _fallback_names(by_name: dict[str, str]) -> list[str]:
+    """Which reported checks to wait for when branch protection could NOT be
+    read. Extracted 2026-09-12 so --self-test exercises this exact selection
+    rather than a hand-retyped mirror of it -- the same gap the seventh round
+    found in the poll classifier.
+
+    Used ONLY in fallback mode. When the required-contexts list is readable it
+    is used verbatim and nothing here is consulted, so this cannot hide a check
+    that genuinely gates a merge."""
+    return [n for n in by_name
+            if not n.startswith(_FALLBACK_IGNORE_PREFIXES) and n != _SELF_CHECK_NAME]
 
 
 def _classify_poll(names: list[str], by_name: dict[str, str]) -> tuple[list[str], list[str], list[str]]:
@@ -250,8 +290,7 @@ def wait_upstream(pr_number: str) -> int:
         if required is not None:
             names = [c for c in required if c != _SELF_CHECK_NAME]
         else:
-            names = [n for n in by_name
-                     if not n.startswith(_FALLBACK_IGNORE_PREFIXES) and n != _SELF_CHECK_NAME]
+            names = _fallback_names(by_name)
 
         missing, pending, failed = _classify_poll(names, by_name)
         reported = {c: by_name[c] for c in names if c in by_name}
@@ -874,6 +913,27 @@ def run_self_test() -> int:
     check("unlisted terminal state (NEUTRAL) is 'failed', not silently green", f, ["C"])
     m, p, f = _classify_poll(names, {"A": "SUCCESS", "B": "SUCCESS", "C": "SUCCESS"})
     check("all SUCCESS -> nothing missing or failed", (m, f), ([], []))
+
+    # FALLBACK-MODE SELECTION (added 2026-09-12). The live failure: `CodeQL`
+    # concluded NEUTRAL, the state allow-list correctly called that "not
+    # SUCCESS, therefore failed", and this job went red on every PR opened that
+    # day -- over a check that has never been a required context and cannot
+    # block a merge. Fixed by not WAITING on it in fallback mode, not by
+    # softening the state allow-list: the two cases below pin both halves.
+    fb = {"CI Complete": "SUCCESS", "CodeQL": "NEUTRAL", "Dependabot": "FAILURE",
+          "Vercel - web": "FAILURE", "Supabase Preview": "SKIPPED",
+          "PR Audit Gate": "IN_PROGRESS", "Fresh database equals remote": "SUCCESS"}
+    check("fallback waits only on checks that can gate a merge",
+          sorted(_fallback_names(fb)), ["CI Complete", "Fresh database equals remote"])
+    check("fallback never waits on itself (structural deadlock, run 33693914388)",
+          _SELF_CHECK_NAME in _fallback_names(fb), False)
+    check("a NEUTRAL CodeQL no longer makes the gate red in fallback mode",
+          _classify_poll(_fallback_names(fb), fb)[2], [])
+    # ...and the state allow-list is NOT softened: the same NEUTRAL on a check
+    # that IS waited for is still failed. This is the case that stops the fix
+    # above from becoming "NEUTRAL is fine everywhere".
+    m2, p2, f2 = _classify_poll(["CI Complete"], {"CI Complete": "NEUTRAL"})
+    check("NEUTRAL on a gating check is still failed", f2, ["CI Complete"])
 
     # _confirmed_red's two-consecutive-poll debounce (Correction, seventh
     # round): reproduces the exact CodeQL incident confirmed live on PRs
