@@ -112,9 +112,9 @@ jobs:
       # production consumer (pos_webhook_logs / inventory_stock never existed in
       # production; Google Calendar sync was investigated and cut 2026-08-26).
       # TOAST_WEBHOOK_SECRET and GMAIL_USER are consequently no longer read by
-      # anything in this suite; GMAIL_PASSWORD remains mapped above and, as
-      # before, read only by services/agent-orchestrator/config/settings.py:48
-      # (the runtime, not this test suite).
+      # anything in this suite. GMAIL_PASSWORD (previously mapped but read by
+      # no wave here either -- only by services/agent-orchestrator/config/
+      # settings.py:48, the RUNTIME service, not this job) is removed above too.
       #
       # Secret VALUES are never printed — only presence.
       - name: Required secrets are present
