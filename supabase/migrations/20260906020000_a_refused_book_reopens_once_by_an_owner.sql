@@ -191,11 +191,28 @@ BEGIN
   -- CHECK. That is how a constraint that admitted a historyless reopen passed
   -- every test and failed only against production. This assertion reads the
   -- constraint's own definition and needs no data at all.
-  IF pg_get_constraintdef(
-       (SELECT oid FROM pg_constraint
-         WHERE conname = 'price_index_upload_reviews_reopen_has_history'
-           AND conrelid = to_regclass('public.price_index_upload_reviews'))
-     ) NOT LIKE '%decision_history IS NOT NULL%' THEN
+  --
+  -- The ABSENCE of the constraint is checked separately and first, because
+  -- `pg_get_constraintdef` is strict: with no matching row its argument is NULL,
+  -- it returns NULL, `NULL NOT LIKE '...'` is NULL, and PL/pgSQL treats
+  -- `IF NULL` as false -- so a missing constraint would have passed this
+  -- assertion silently. That is the same fault the assertion exists to catch,
+  -- one level up, and it is written out here rather than fixed quietly.
+  IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+        WHERE conname = 'price_index_upload_reviews_reopen_has_history'
+          AND conrelid = to_regclass('public.price_index_upload_reviews')
+     ) THEN
+    RAISE EXCEPTION
+      'the history CHECK does not exist on price_index_upload_reviews; this migration creates it ninety lines above, so reaching here means it was dropped or renamed';
+  END IF;
+
+  IF COALESCE(
+       pg_get_constraintdef(
+         (SELECT oid FROM pg_constraint
+           WHERE conname = 'price_index_upload_reviews_reopen_has_history'
+             AND conrelid = to_regclass('public.price_index_upload_reviews'))
+       ), '') NOT LIKE '%decision_history IS NOT NULL%' THEN
     RAISE EXCEPTION
       'the history CHECK has no NULL guard: jsonb_typeof(NULL) is NULL, a NULL CHECK PASSES, and the constraint would admit the reopen it exists to refuse';
   END IF;

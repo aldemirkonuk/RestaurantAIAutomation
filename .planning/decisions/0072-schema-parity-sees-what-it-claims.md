@@ -584,6 +584,27 @@ its only schema residue is `attnum` order, so on those three tables it would now
 pass. It still fails on every other table. This is the loss; it is not
 hypothetical and it is not zero.
 
+**And on two of the three the reset direction is fail-OPEN, not fail-closed.**
+Worth saying because "destroys the column's data" reads as a loss of function and
+on these two it is a grant:
+
+- `restaurant_feature_flags.enable_ai_negotiation` is `boolean NOT NULL DEFAULT
+  true` (`20260826120000_od86_feature_flag_settings_row.sql:24-25`) -- the only
+  fail-open flag on that table, since every `mudavym_design_*` flag and
+  `enable_ai_autonomous_send` default `false`. A drop-and-re-add backfills `true`
+  into every row, so a house that deliberately turned autonomous negotiation OFF
+  has it back ON, and nothing on that table would notice: its only index is on
+  `restaurant_id`, and it carries no constraint, no view and no CLAIMS row.
+- `providers.agent_permissions` is `jsonb` defaulting to a permissive tier-1
+  object, so a drop-and-re-add discards whatever narrowing a house had set on a
+  vendor's agent envelope.
+
+On `restaurants` the worst case is `deleted_at`: nothing indexes it, so nothing
+cascades, and every soft-deleted house returns into every `deleted_at IS NULL`
+read. `is_active` and `calendar_ical_token` ARE indexed, so dropping either
+cascades an index and the `index` category still catches it -- which is the
+shape of the accidental protection the other columns lack.
+
 ### Why it is safe for these three, checked rather than assumed
 
 Physical column order is load-bearing only for positional SQL. Every shape was
@@ -597,7 +618,7 @@ swept on `941d9cb4`:
 | indexed row access (`rows[N][M]`, `fetchone()[0]`, `rowMode: 'array'`) | none |
 | `%ROWTYPE` | two, both `SELECT * INTO` from the same table the rowtype is derived from, so both sides reorder together; neither table is on the list |
 | `RETURNS SETOF <table>` with an explicit column list | none |
-| `SELECT *` against the three listed tables | none |
+| `SELECT *` against the three listed tables | **ten**, and none of them positional: six on `providers` (`apps/api-gateway/src/providers/providers.service.ts:217,276,383,765,810` and `apps/api-gateway/src/procurement/procurement.service.ts:665`) and four on `restaurants` (four `services/agent-orchestrator/demo/*.py` scripts). Every one goes through PostgREST or supabase-py, which return objects keyed by column NAME, so physical order reaches none of them. An earlier draft of this table said "none", which was false; the conclusion it supported is unchanged, and the row now says what is actually there. |
 
 The orchestrator reaches the database only through supabase-py's builder, which
 names columns; the gateway only through the Supabase client, which does the same.

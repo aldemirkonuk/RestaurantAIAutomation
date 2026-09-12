@@ -343,7 +343,7 @@ SQL
 # Categories that CANNOT legitimately be empty in this repo's schema. If one of
 # them returns zero rows on BOTH sides, the query is broken or the database is
 # not the database we think it is — either way the run proved nothing.
-REQUIRED_CATEGORIES="server relation column constraint index function"
+REQUIRED_CATEGORIES="server relation column column-order constraint index function"
 
 BAK_Q="SELECT c.relname||' ('||count(*)||' cols)'
        FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
@@ -410,8 +410,11 @@ PARITY_REORDERED_COUNT=0
 # and production without failing the build. Declared here, at file level, so
 # `--self-test-offline` can read it without first running a comparison -- an
 # earlier version declared it inside compare() and the offline suite died on an
-# unbound variable while still exiting 0, which is the exact shape this file
-# exists to refuse. See the block in compare() for why these three and no others.
+# unbound variable. Under bash 3.2 -- macOS, where this was written -- the EXIT
+# trap clobbers $? and it still exited 0, which is the exact shape this file
+# exists to refuse. Under bash 5.3, which ubuntu-latest runs, the same mutation
+# exits 1: CI would have caught it, the local shell would not have.
+# See the block in compare() for why these three and no others.
 REORDERED_BY_THE_2026_09_12_APPLY="public.providers public.restaurants public.restaurant_feature_flags"
 
 compare() {
@@ -469,8 +472,15 @@ compare() {
   # with no column list, `INSERT ... SELECT` with no column list, `COPY` with no
   # column list, reading a row by index, `%ROWTYPE`, or `RETURNS SETOF <table>`
   # with an explicit column list. Every one of those was swept on 941d9cb4 and
-  # every one returns nothing, or returns only same-table `SELECT * INTO` whose
-  # two sides reorder together. Recorded as commands in CLAIMS.jsonl.
+  # every one returns nothing, or returns only a same-table `SELECT * INTO` whose
+  # two sides reorder together, or a `select("*")` through PostgREST, which
+  # returns objects keyed by column NAME and is therefore order-insensitive
+  # (there are ten of those against these three tables; "none" would be false).
+  # The sweep is written out shape by shape in ADR 0072's 2026-09-12 amendment,
+  # as PROSE, not as executable claims -- nothing re-runs it, so it is the part
+  # of this exception most likely to rot. The CLAIMS rows cover what a command
+  # can check: that the list is still exactly these three, and that the guard
+  # still runs in CI.
   #
   # TO REMOVE A ROW: rebuild that table in migration order, or accept that its
   # order is now production's. Removing a row is always safe; ADDING one needs a
@@ -497,7 +507,7 @@ compare() {
           print $1 "\t" $2 "\t" L[k] "\t" $3 > CH } }
     END { for (k in L) if (!(k in R)) {
             split(k, p, SUBSEP); print p[1] "\t" p[2] "\t" L[k] > OL } }
-  ' "$lf" "$rf"
+  ' "$lf" "$rf" || cannot_check "the comparison awk failed -- its four output files are empty, and an empty diff reads as agreement"
 
   touch "$d.only_local" "$d.only_remote" "$d.changed" "$d.reordered"
   local n_ol n_or n_ch n_ro
@@ -926,7 +936,8 @@ if compare "$WORK/local" "$WORK/remote"; then
     echo "PASS — local and remote agree on every compared object."
   fi
   echo "       Compared: relations (incl. materialized views), columns with full"
-  echo "       type/nullability/default, column order, constraints, indexes,"
+  echo "       type/nullability/default, column order (except for the three"
+  echo "       tables named in the NOT-compared list below), constraints, indexes,"
   echo "       function signatures and bodies, view bodies, triggers, RLS"
   echo "       policies, enum/domain types, sequences."
   echo "       NOT compared: grants and role membership, table/column comments,"
