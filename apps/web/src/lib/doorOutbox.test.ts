@@ -463,6 +463,19 @@ describe('H1 — a drop with no house recorded is still shown to someone', () =>
  * ENTRY is the identity, because there is no drop record to key on.
  */
 describe('readStrandedDoorReceipts — one stranded receipt is one, however many passes run', () => {
+  // The outbox's strand ledger is module state that ONLY an observed resolve
+  // empties — deliberately, because a read that comes back empty cannot prove
+  // the queue was readable, and pruning against one erased the only witness to
+  // a mark-less strand. So it is drained here the way production drains it: one
+  // pass over an empty queue with storage working settles every orphan into a
+  // drop record. The records are then wiped.
+  beforeEach(async () => {
+    store.getPendingMutationsByType.mockResolvedValue([])
+    await flushDoorOutbox()
+    window.localStorage.clear()
+    expect(await readStrandedDoorReceipts('rest-A')).toEqual([])
+  })
+
   /** A queue that behaves like the real one: the flush's parking update sticks. */
   const liveQueue = (entries: ReturnType<typeof pendingAt>[]) => {
     const rows = [...entries]

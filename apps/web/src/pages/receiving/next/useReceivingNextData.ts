@@ -19,6 +19,7 @@ import {
   dismissDroppedDoorReceipt,
   flushDoorOutbox,
   readDroppedDoorReceipts,
+  readStrandedDoorReceipts,
   type DroppedDoorReceipt,
   type QueuedDoorReceipt,
 } from '@/lib/doorOutbox';
@@ -600,6 +601,18 @@ export interface QueuedReceiptVM {
   /** Attempt N of 8 (doorOutbox MAX_ATTEMPTS). 0 = not yet tried. */
   retryCount: number;
   lastError: string | null;
+  /**
+   * The outbox GAVE UP on this one and could not write the record, so it kept
+   * the entry. It is not waiting for anything; it is a lost delivery sitting in
+   * a queue that looks like it is still working.
+   *
+   * Read from `readStrandedDoorReceipts`, not inferred from `retryCount` or
+   * `lastError`: the common case is the mark never landing, because the write
+   * that parks it is refused by the same storage that caused the strand. An
+   * entry in exactly that state reads `0/8` with no error — an ordinary waiting
+   * receipt — which is what this rail rendered for it until 2026-09-12.
+   */
+  stranded: boolean;
 }
 
 export interface DroppedReceiptVM {
@@ -653,7 +666,7 @@ export interface OutboxData {
   flushNow: () => void;
 }
 
-function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
+function toQueuedVM(m: PendingMutation, stranded = false): QueuedReceiptVM {
   const entry = m.data as QueuedDoorReceipt | undefined;
   return {
     id: m.id,
@@ -661,6 +674,7 @@ function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
     queuedAt: m.timestamp ? new Date(m.timestamp).toISOString() : null,
     retryCount: m.retryCount ?? 0,
     lastError: m.lastError ?? null,
+    stranded,
   };
 }
 
@@ -733,7 +747,19 @@ export function useDoorOutbox(): OutboxData {
   const refreshQueue = useCallback(async () => {
     try {
       const pending = await offlineStorage.getPendingMutationsByType(DOOR_MUTATION_TYPE);
-      setQueued(pending.filter((m) => belongsToRestaurant(m, rid)).map(toQueuedVM));
+      // Which of these the outbox has GIVEN UP on. Asked, not inferred: a
+      // strand whose mark could not be written is indistinguishable from a
+      // waiting receipt by anything on the entry itself. `null` means the read
+      // could not say, and an unknown is not a no — the rows keep whatever the
+      // last known answer was rather than all flipping to "still trying".
+      const strands = await readStrandedDoorReceipts(rid);
+      const strandedIds = strands && new Set(strands.map((s) => s.id));
+      setQueued((prev) => {
+        const known = new Map((prev ?? []).map((q) => [q.id, q.stranded]));
+        return pending
+          .filter((m) => belongsToRestaurant(m, rid))
+          .map((m) => toQueuedVM(m, strandedIds ? strandedIds.has(m.id) : (known.get(m.id) ?? false)));
+      });
     } catch {
       setQueued(null); // unknown, and rendered as unknown — never as empty
     }
@@ -779,9 +805,13 @@ export function useDoorOutbox(): OutboxData {
       // is nothing left to infer from a before/after diff — and nothing that
       // can point at the wrong receipt when a pass both sends and drops.
       //
-      // A `stranded` receipt deliberately produces no pin: it was NOT dropped,
-      // it is still in the queue, and it renders above as a queued entry
-      // sitting at its attempt ceiling with the reason on it.
+      // A `stranded` receipt deliberately produces no drop PIN: it was not
+      // dropped, it is still in the queue. It renders in the queue list above,
+      // marked `given up` — asked for by `readStrandedDoorReceipts` in
+      // `refreshQueue`, because the attempt count and last error on the entry
+      // cannot show it: the write that would have set them is refused by the
+      // same storage that caused the strand, so the common case reads `0/8`
+      // with no error and looked exactly like an ordinary waiting receipt.
       if (res !== null && res.dropped > 0) {
         setDrops(readDroppedDoorReceipts(rid).map(toDroppedVM));
       }

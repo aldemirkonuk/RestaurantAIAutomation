@@ -241,13 +241,31 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                 >
                   {r.label}
                 </span>
-                <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: 10.5,
+                    color: r.stranded ? 'var(--seal-1, #B23A48)' : 'var(--ink-3, #7C7365)',
+                  }}
+                >
                   saved {r.queuedAt ? timeShort.format(new Date(r.queuedAt)) : EM}
-                  {r.lastError ? ` · last error: ${r.lastError}` : ''}
+                  {/* A strand is not waiting for anything. Said in words, not in
+                      the attempt count beside it, because the count reads `0/8`
+                      for the common case — the mark that would have raised it
+                      is refused by the same storage that caused the strand. */}
+                  {r.stranded
+                    ? ' · GIVEN UP ON, and not recorded — the count is held here and nowhere else'
+                    : r.lastError
+                      ? ` · last error: ${r.lastError}`
+                      : ''}
                 </span>
               </span>
               <span
-                title="Attempts made of the 8 the outbox allows before giving up"
+                title={
+                  r.stranded
+                    ? 'The outbox gave up on this delivery and could not write a record of it'
+                    : 'Attempts made of the 8 the outbox allows before giving up'
+                }
                 style={{
                   flex: 'none',
                   fontFamily: MONO,
@@ -257,7 +275,7 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                   transition: `color ${ink.ms}ms ${ink.easing}`,
                 }}
               >
-                {r.retryCount}/8
+                {r.stranded ? 'given up' : `${r.retryCount}/8`}
               </span>
             </div>
           ))}
