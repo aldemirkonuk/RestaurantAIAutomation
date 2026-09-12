@@ -2,28 +2,88 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>082 — Mudavym · 3D Brand Marks</title>
 <style>
-  :root{--bg:#141114;--ink:#EAE4DC;--mut:#9a908a;--rule:#2c2528}
+  :root{--bg:#141114;--ink:#EAE4DC;--mut:#9a908a;--rule:#2c2528;--warn:#C9A227}
   *{box-sizing:border-box;margin:0}
   body{background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,system-ui,sans-serif;padding:48px 24px;max-width:1080px;margin:0 auto}
   .kicker{font:600 11px/1 ui-monospace,monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--mut)}
   h1{font-size:34px;margin:10px 0 6px;font-weight:650}
+  h2{font-size:15px;font-weight:650;margin:44px 0 4px;letter-spacing:.01em}
+  h2 .n{font:600 11px/1 ui-monospace,monospace;color:var(--mut);letter-spacing:.14em;text-transform:uppercase;margin-left:10px}
   p.lede{color:var(--mut);max-width:64ch;margin-bottom:36px}
+  p.sub{color:var(--mut);font-size:14px;max-width:68ch;margin-bottom:18px}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
   figure{border:1px solid var(--rule);border-radius:10px;overflow:hidden;background:#0e0b0e}
   img{width:100%;display:block}
   figcaption{padding:14px 16px 18px}
+  figcaption i{font-style:italic}
   figcaption b{display:block;font-size:15px;margin-bottom:4px}
   figcaption span{font-size:13.5px;color:var(--mut)}
+  figcaption em{display:block;margin-top:8px;font-size:12.5px;font-style:normal;color:var(--warn);opacity:.85}
+  .tag{display:inline-block;font:600 10px/1 ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);border:1px solid var(--rule);border-radius:4px;padding:4px 6px;margin-left:8px;vertical-align:2px}
+  footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--rule);color:var(--mut);font-size:13.5px;max-width:68ch}
+  a{color:var(--ink)}
 </style></head><body>
-<div class="kicker">Mudavym · OD-106 · Blender renders · sketch, not production</div>
-<h1>Three marks in the third dimension</h1>
-<p class="lede">Physical readings of three direction motifs — rendered in Blender (Cycles) as brand-asset explorations: hero images, empty states, loading moments, or the seed of a real mark. Each belongs to one of the five direction boards (077–081).</p>
+<div class="kicker">Mudavym · OD-106 · Blender + generated renders · sketch, not production</div>
+<h1>Eleven renders in the third dimension</h1>
+<p class="lede">Every PNG this directory ships, on the board — six marks rebuilt in Blender
+(Cycles) after the founder's <em>"these are super simple put more effort"</em>, three scenes
+generated where the renderer could not reach, and two superseded renders from the first pass,
+kept only so the comparison can be made. Each mark belongs to one of the five direction boards
+(077–081); most feed the synthesis board 083. Captions describe what is actually in frame —
+where a render falls short of its own description in
+<a href="notes.md">notes.md</a>, the caption says so.</p>
+
+<h2>The six rebuilt marks<span class="n">Blender 5.2.1 · Cycles/Metal · 220–280 samples · denoised</span></h2>
+<p class="sub">Framing computed from subject width and lens FOV rather than eyeballed; subsurface
+wax, brushed anisotropic metal, porcelain, and object-space paper noise. Method and the full
+list of declared shortcomings: <a href="notes.md">notes.md</a>.</p>
 <div class="grid">
-  <figure><img src="seal.png" alt="Burgundy wax seal with relief M on warm paper">
-    <figcaption><b>The Seal</b><span>081 The Ledger — the act-of-record made physical: burgundy wax, relief M (Georgia), warm paper. The approve moment.</span></figcaption></figure>
-  <figure><img src="ember.png" alt="Lit candle in darkness, teardrop flame">
-    <figcaption><b>The Ember</b><span>079 The Cellar — the one glowing thing in the dark is always the next decision. Candlelight as attention semantics.</span></figcaption></figure>
-  <figure><img src="meter.png" alt="Five square bars, one amber, forming an abstract M">
-    <figcaption><b>The Meter M</b><span>078 The Instrument — five radius-0 bars dip into an M; grayscale data, one amber anomaly. The logo obeys the chart rule.</span></figcaption></figure>
+  <figure><img src="seal-teal.png" alt="Teal wax blob on a pale ground, a serif M in relief above two thin rules">
+    <figcaption><b>The Seal — teal</b><span>081 The Ledger → 083. Wax pressed with the serif M over the double rule, in a candidate seal colour. The colour question is open; this is a candidate, not a decision.</span>
+    <em>The two rules press faint — they read as scored lines rather than the confident double rule of the wordmark.</em></figcaption></figure>
+  <figure><img src="seal-oxblood.png" alt="The same wax press rendered in deep oxblood instead of teal">
+    <figcaption><b>The Seal — oxblood</b><span>081 The Ledger → 083. The identical press, identical light, deep oxblood — so the colour decision is judged on one object and not on two photographs.</span></figcaption></figure>
+  <figure><img src="fullstop.png" alt="Cream slab with Mudavym in serif ink and a round debossed dimple to its right">
+    <figcaption><b>The Full Stop</b><span>081 The Ledger → 083. The wordmark printed in matte ink, its full stop debossed into the stock under one hard raking light — the only lighting in which a deboss exists at all.</span>
+    <em>The deboss sits well clear of the word and is round and oversized, so it reads as a separate dot rather than as the wordmark's full stop; the stock reads as a solid slab, not cotton paper.</em></figcaption></figure>
+  <figure><img src="meter.png" alt="Five upright bars on a dark floor, four in brushed steel and the fourth in brass">
+    <figcaption><b>The Meter</b><span>078 The Instrument — the one element kept from that board. Five bars, four brushed steel and one brass: the logo obeying the chart rule, grayscale data with chroma reserved for the anomaly.</span>
+    <em>The silhouette reads as a valley, not as an M — the letterform the mark is named for is not legible at this framing.</em></figcaption></figure>
+  <figure><img src="rule.png" alt="Warm tan slab with MUDAVYM in gold letterforms above a gold double rule">
+    <figcaption><b>The Double Rule</b><span>081 The Ledger → 083. Brass inlaid in a slab — the rule that closes a ledger column, as an object rather than a border.</span>
+    <em>notes.md calls this a dark slab; it rendered warm tan. The walnut also reads glossier than wood should and its grain is absent — the object-space noise fix applied to the paper was never applied here.</em></figcaption></figure>
+  <figure><img src="table.png" alt="White plate with a faint engraved M, two brass bars laid either side like cutlery">
+    <figcaption><b>Set the Table</b><span>079 The Cellar → 083. <i>"Set the table. We'll keep the books."</i> — porcelain and the two rules laid as cutlery.</span>
+    <em>The linen has no visible weave (same missing noise fix), and the M engraved in the plate is barely legible at this exposure.</em></figcaption></figure>
 </div>
+
+<h2>Three generated scenes<span class="n">higgsfield z_image · 0.15 credits each · 0.45 total</span></h2>
+<p class="sub">Paper tooth, real wax and a real room — three things Cycles did not give us at this
+budget. Generated, not rendered: treat them as mood evidence, not as brand assets.</p>
+<div class="grid">
+  <figure><img src="ledger-scene.png" alt="Open notebook on a dark wooden desk, a teal wax seal bearing a serif M, a pen alongside">
+    <figcaption><b>The ledger at closing time</b><span class="tag">generated</span><span>A teal wax seal bearing a serif M, set on the page of an open ledger. Unprompted, it reached for the 083 register — İznik teal wax on warm paper.</span>
+    <em>notes.md says it drew the 083 lockup "exactly"; the M is there, but the two rules beneath it are not legible in the render.</em></figcaption></figure>
+  <figure><img src="seal-press.png" alt="A hand pressing a brass stamp into fresh teal wax on cream paper">
+    <figcaption><b>The press, mid-contact</b><span class="tag">generated</span><span>The brass stamp at the moment of contact, wax still wet and beaded at the rim — hold-to-approve made physical. The reference for 080's one-tap/hold-to-approve interaction.</span></figcaption></figure>
+  <figure><img src="back-office.png" alt="Warm dark back office after service: desk lamp, open book, laptop with a teal screen, wine shelves behind">
+    <figcaption><b>Back office, after service</b><span class="tag">generated</span><span>A warm-charcoal room with exactly one teal glow in it — the laptop. This became the evidence behind the founder's Warm Charcoal <code>#15130F</code> dark-ground decision.</span></figcaption></figure>
+</div>
+
+<h2>Two superseded — the first pass<span class="n">kept only until the comparison has been seen</span></h2>
+<p class="sub">These are the renders the founder called "super simple". They are on the board so the
+rebuild can be judged against them, and for no other reason. Do not cite them as marks.</p>
+<div class="grid">
+  <figure><img src="seal.png" alt="Glossy burgundy dome cropped to fill the frame, a thin M in relief across it">
+    <figcaption><b>The Seal, first pass</b><span class="tag">superseded</span><span>081 The Ledger. Superseded by <code>seal-teal.png</code> / <code>seal-oxblood.png</code>.</span>
+    <em>The camera sat 1.9 units from a subject needing 6.3, so the seal arrives as a macro of one letter: no paper is in frame, the surface reads ceramic rather than wax, and the M is a thin scratch across a dome.</em></figcaption></figure>
+  <figure><img src="ember.png" alt="A plain candle with a single teardrop flame in near-total darkness">
+    <figcaption><b>The Ember, first pass</b><span class="tag">superseded</span><span>079 The Cellar — candlelight as attention semantics: the one glowing thing in the dark is the next decision. No rebuilt counterpart exists; the idea did not survive into the six.</span>
+    <em>A smooth primitive under one light — the premise is legible, the object is not a brand mark.</em></figcaption></figure>
+</div>
+
+<footer>Eleven files, eleven figures. The earlier version of this board showed three of the
+eleven and called itself "Three marks in the third dimension", which is how a directory ends up
+shipping work no reviewer ever sees. Materials, the higgsfield budget, and every declared
+shortcoming: <a href="notes.md">notes.md</a>.</footer>
 </body></html>
