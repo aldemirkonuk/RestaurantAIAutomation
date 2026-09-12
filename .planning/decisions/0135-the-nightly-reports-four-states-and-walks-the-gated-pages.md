@@ -4,7 +4,7 @@
 - **Date:** 2026-09-11
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** e2e-prod, nightly, playwright, wave-h, backtest, canned-day, forecast-fixture, four-state, absent, cannot_check, mudavym_design flags, teardown_sim, rate-limit
-- **Links:** [[0089-absence-reported-as-health]], [[0093-a-scenario-is-replayed-and-verified-against-its-own-expectation]], [[0097-deploy-audit-reads-the-build-it-verified]], [[0106-every-dependabot-pr-resolved-by-measurement]], [[0131-the-new-house-goes-live]], `.planning/v3.0-TECH-DEBT.md` "CI — the nightly production E2E…", `.planning/testing/README.md`, PR for `test/nightly-e2e-modernised`
+- **Links:** [[0089-a-page-can-start-the-engine-it-reports-on]], [[0093-a-scenario-is-replayed-and-verified-against-its-own-expectation]], [[0097-the-gateway-says-which-build-it-is]], [[0106-every-dependabot-pr-resolved-by-measurement]], ADR 0131 "the new house goes live" (unmerged as of 2026-09-11 — not a wikilink, since it is not yet a file on `main`; see the audit note below), `.planning/v3.0-TECH-DEBT.md` "CI — the nightly production E2E…", `.planning/testing/README.md`, PR #349 for `test/nightly-e2e-modernised`
 
 ## Context
 
@@ -16,15 +16,26 @@ was deleted on his word.
 
 Measured on 2026-09-11 before a line was written:
 
-- `.github/workflows/e2e-prod.yml` had 120 runs, 118 red, **none with credentials** (the
-  2026-09-02 tech-debt entry). Its browser wave asserted **≥7 "Active" agent cards** on
+- `.github/workflows/e2e-prod.yml` had 120 runs, 118 red as of the **2026-09-02**
+  tech-debt entry, **none with credentials**. Re-measured fresh on **2026-09-11**
+  (`gh api repos/.../actions/workflows/e2e-prod.yml/runs --paginate`, per §5b — never
+  copied forward): **130 runs, 127 failure, 3 success.** The 118/120 pair had been
+  carried into an earlier draft of this ADR and into `decisions/README.md:126` as if
+  freshly measured on 2026-09-11; both are corrected in this amendment. Its browser wave
+  asserted **≥7 "Active" agent cards** on
   `/admin/health` and **wrote** an `onboarding_sessions` row through `/studio`
   (`prod-smoke.spec.ts` F-2, F-4) — a suite for a product that no longer exists in that
   shape, with a write on the production path.
-- The orchestrator every Python wave targets answered **404 "Application not found"** at
-  the URL the planning corpus records (`agent-orchestrator-production.up.railway.app`);
-  the `RAILWAY_ORCHESTRATOR_URL` secret exists but is unreadable, so the true target is
-  unknown. Six waves would have been six reds with no reason in them.
+- The orchestrator answered **404 "Application not found"** at the URL the planning
+  corpus recorded (`agent-orchestrator-production.up.railway.app`). **Correction
+  (2026-09-11, this session's own error, caught by a peer session and re-verified
+  directly):** that hostname was wrong, not the service — `.railway/railway.ts:28-32`
+  names the live host as `servicesagent-orchestrator-production.up.railway.app`, which
+  answers **200** on `/health` (re-curled while writing this amendment). The
+  `RAILWAY_ORCHESTRATOR_URL` secret's *value* is unreadable from here, so whether it
+  already points at the live host or still at the stale one stays unknown without a run
+  — that is fork F2 below; see "Founder's answers" for the resolution. Six waves would
+  have been six reds with no reason in them only if the secret was in fact stale.
 - The retired Playwright config asked for `channel: 'chrome'` while the workflow installed
   only bundled Chromium — Wave F could never have launched a browser even with secrets.
 - **`tests/e2e/conftest_prod.py` ends every session by calling
@@ -155,8 +166,82 @@ corpus.** Concretely:
 | F4 | Seed one order and one incoming document into the e2e house so `/receiving/:id/door` and `/documents/:id` can be walked? | `absent` until then | his call — it is production data, even in a sim house |
 | F5 | The 2026-09-06 memory reads "sims kept AND flipped"; production shows no flag row at all. Flip them? | reported as OFF | `scripts/flip_mudavym_design_flags.py`, his keystrokes |
 
+**F2, F3 and F4 are answered — see "Founder's answers (relayed), 2026-09-11" below.
+F1 and F5 remain open**, unaddressed by anything relayed to this session.
+
+## Founder's answers (relayed, 2026-09-11)
+
+**Provenance, stated plainly:** these four answers reached this session as a relay from
+the peer session coordinating the mudavym.com go-live across the fleet (session
+`restaurant-ai-automation-7e`, the "launch-orchestrator" session — see
+[[launch-orchestrator-2026-09-11]]), not as something the founder said directly in this
+session's own chat. They are recorded here because the launch-orchestrator session is the
+one this session was told to synchronize with (`SLOT?`/`GO` protocol), and treating a
+relayed founder answer as undecided would stall the launch coordination this ADR is part
+of — but the provenance is explicit so a later session can go verify it directly with the
+founder if anything here is acted on further.
+
+- **F2 — orchestrator waves A–E, G.** Retarget `RAILWAY_ORCHESTRATOR_URL` to
+  `servicesagent-orchestrator-production.up.railway.app` (the corrected host, above).
+  Waves C, D, E, G stay **unarmed** — `RABBITMQ_URL`, `TOAST_WEBHOOK_SECRET`,
+  `GMAIL_USER` stay unset, so those four waves keep reporting `cannot_check` rather than
+  attempting a write. The schema disagreements underneath D, E and G (Wave E's Gmail
+  pipeline in particular — `wave_e_gmail_pipeline.py:33,65,137-138` upserts to a trigger
+  that sends a real low-stock email) are **not repaired in #349**; they are filed as
+  their own tech-debt unit in `v3.0-TECH-DEBT.md`, separate from this ADR.
+- **F3 — legacy pass house.** A second sim house via `E2E_LEGACY_RESTAURANT_ID`, not the
+  same-house-override default this ADR shipped with.
+- **F4 — door/document routes.** Leave `/receiving/:id/door` and `/documents/:id`
+  `absent`; seed nothing into the e2e house. It is production data, even in a sim house,
+  and seeding it is not this PR's call.
+- **Escalation approval.** The founder's answer is also the escalation approval the
+  pr-audit-gate skill's step 4 requires for this PR's `.planning/decisions/README.md`
+  index-row edit (a gate-owned path) — landing under the ordinary flow rather than forcing
+  a founder-only merge, on the understanding that **#349 lands only after #289 serves**
+  in the single-lane merge order, on a `GO #349` from the launch-orchestrator session.
+
+## Audit result (2026-09-11, pr-audit-gate on PR #349)
+
+Three parallel angles + a possible adversarial pass, per the skill (ADR 0090):
+
+| Angle | Verdict |
+|---|---|
+| Correctness & regression risk | APPROVE WITH NOTES |
+| CLAUDE.md-and-ADR compliance | APPROVE WITH NOTES |
+| Security & production blast-radius | **BLOCK** |
+
+**Overall verdict: BLOCK.** Per the skill's step 6, any angle returning BLOCK skips the
+adversarial pass — this PR did not reach one. Full report, all three angles' findings in
+full, and what could not be checked: `.planning/07-reference/pr-audits/349-dd51f235.md`,
+also posted to the PR as the durable, SHA-stamped record the skill requires.
+
+**Why BLOCK, in one sentence:** `playwright.nightly.config.ts:49` sets
+`trace: 'retain-on-failure'`, and a Playwright trace captures the full network log — this
+session proved it holds the plaintext test password and session JWTs with a sentinel run
+(`E2E_TEST_PASSWORD='PW_SENTINEL_ZQ7X_DO_NOT_MATCH'`, `--grep precondition`, failed at
+login as designed) that put the sentinel into `test.trace`, `0-trace.trace` and a
+`resources/*.json` blob — and the workflow uploads that directory as a 30-day CI artifact
+on a repository this session confirmed is **PUBLIC** (`gh repo view` → `visibility:
+PUBLIC`). The leaked local traces from that test were purged
+(`rm -rf apps/web/test-results/nightly-traces apps/web/test-results/nightly`); nothing
+was pushed. Three lower-severity security findings and the correctness/compliance notes
+are all in the full report — this ADR does not restate them, per CLAUDE.md §2.
+
+**Corrected in this same amendment, as compliance-angle findings:** the copied-forward
+118/120 run count (above), the `EXISTING-TEST-INVENTORY.md` summary-count drift the PR's
+own row edit introduced (jest 41→42, pytest 67→68, total 142→144, `11-platform` 30→32,
+its stale layer-inference sentence naming the retired `prod-smoke.spec.ts`), three broken
+`[[wikilink]]` targets in this ADR's own Links line (above), and `ADR-0135-b`'s brittle
+negative-only claim (`CLAIMS.jsonl` now asserts the positive call positionally). **Not
+yet fixed, carried to the next session together with the security fix list:**
+`ADR-0135-f` holds `open` for a reason unrelated to the debt it names (this PR deleted
+the comment its `verify` greps for) and the wrong `Co-Authored-By: Claude Fable 5.1`
+trailer on commit `5e4f21f1` (CLAUDE.md §7 wants `Claude Opus 5`; the trailer that
+actually lands is whatever the eventual squash-merge body carries).
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-11 | — | Created; measured locally as above; awaits the founder's secrets for the first production verdict |
+| 2026-09-11 | pr-audit-gate (3 Opus auditor angles) | **BLOCK** — security angle (trace-file credential leak on a public repo); correctness and compliance both APPROVE WITH NOTES; adversarial pass skipped per step 6. See "Audit result" above and the full report. |

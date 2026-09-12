@@ -12,7 +12,7 @@
 - **`runs?=yes`** only if a named CI job invokes that runner on push ([`ci.yml`](../../.github/workflows/ci.yml): `test-typescript`, `test-python`, `test-e2e`) or schedule ([`e2e-prod.yml`](../../.github/workflows/e2e-prod.yml): `e2e-prod`).
 - **`passes?` default `unknown`** unless this phase has a green local run artifact. **Never claim CI green** from file presence alone.
 - **Do not treat TFND-05 as green CI (H5).** As of 2026-07-27, push CI fails Black on `services/agent-orchestrator/api/studio_routes.py` (recent failing run `30299009969`). Lint gates `test-python` / `test-typescript` — test jobs are not trustworthy until lint is green.
-- **Layer inference:** path + `pytest.ini` markers (`unit`, `integration`, `e2e`, `prod_e2e`). Nest/Vitest default `unit` unless path/name clearly integration (`*.e2e.spec.ts`, reports integration folders). `wave_*.py` → `prod_e2e` + `ci_job=e2e-prod`. Local Playwright → `e2e` + `test-e2e`. `prod-smoke.spec.ts` notes Wave F / `e2e-prod`.
+- **Layer inference:** path + `pytest.ini` markers (`unit`, `integration`, `e2e`, `prod_e2e`). Nest/Vitest default `unit` unless path/name clearly integration (`*.e2e.spec.ts`, reports integration folders). `wave_*.py` → `prod_e2e` + `ci_job=e2e-prod`. Local Playwright → `e2e` + `test-e2e`. `apps/web/e2e/nightly/nightly.spec.ts` notes Wave F / `e2e-prod` (ADR 0135, 2026-09-11 — replaced the retired `prod-smoke.spec.ts`).
 - **`test-e2e` (local Playwright on push) ≠ `e2e-prod` (nightly/cloud waves).** Do not conflate them.
 - **T1-eligible evidence excludes `passes?=stale-suspect`** (C3/M1). Rows remain inventoried; scorecard must not count them toward T1.
 - **Group column** uses locked N-shortname slugs only, matching [FUNCTIONALITY-REGISTRY.md](./FUNCTIONALITY-REGISTRY.md) primaries (H1).
@@ -23,11 +23,11 @@
 
 | Runner | Files |
 |--------|------:|
-| jest | 41 |
+| jest | 42 |
 | vitest | 30 |
 | playwright | 4 |
-| pytest | 67 |
-| **Total** | **142** |
+| pytest | 68 |
+| **Total** | **144** |
 
 | Group slug | Rows | T1-eligible (`runs?=yes` ∧ not stale-suspect) |
 |------------|-----:|----------------------------------------------:|
@@ -41,10 +41,10 @@
 | `8-analytics` | 25 | 25 |
 | `9-notifications` | 6 | 6 |
 | `10-ai` | 0 | 0 |
-| `11-platform` | 30 | 29 |
+| `11-platform` | 32 | 31 |
 
 - **stale-suspect rows:** 1 (excluded from T1-eligible)  
-- **T1-eligible row total:** 141  
+- **T1-eligible row total:** 143  
 - **Corpus floors (2026-07-27 find):** api-gateway `*.spec.ts`=41 · web `src` Vitest=30 · `e2e/*.spec.ts`=4 · orch `test_*.py`+`wave_*.py`=67
 
 ---
