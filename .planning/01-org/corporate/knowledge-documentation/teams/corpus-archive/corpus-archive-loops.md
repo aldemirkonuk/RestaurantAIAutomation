@@ -99,7 +99,7 @@ Two checks:
 1. **Every archived document declares itself** — `status: archived` plus `superseded_by`.
    An archive entry without a superseder is indistinguishable from a live document.
    `.planning/archive/` held v2.0 phase documents with no such marker until it was
-   deleted on 2026-08-24 ([[VAULT_CLEANUP_AUDIT]]) — the marker requirement now
+   deleted on 2026-08-24 ([[0032-vault-cleanup-cut-line]]) — the marker requirement now
    applies to whatever archive replaces it, before it accumulates.
 2. **Every archived-out-of-tree artifact has a manifest row.** Applies to the gitignored
    content — 10.8 MB of chat log across two trees — where git provides no undo. A gap

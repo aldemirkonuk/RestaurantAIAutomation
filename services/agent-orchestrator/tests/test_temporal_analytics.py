@@ -32,8 +32,16 @@ UNKNOWN_WINE_ID = "550e8400-e29b-41d4-a716-446655440001"
 
 @pytest.fixture
 async def client():
+    # Analytics routes now require X-Admin-Key; conftest's autouse fixture puts
+    # the matching key in the environment.
+    from conftest import TEST_ADMIN_API_KEY
+
     transport = httpx.ASGITransport(app=_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"X-Admin-Key": TEST_ADMIN_API_KEY},
+    ) as c:
         yield c
 
 

@@ -5,6 +5,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
 import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosHubController } from "./pos-hub.controller";
 import { PosHubService } from "./pos-hub.service";
+import { PosMappingReviewService } from "./pos-mapping-review.service";
 
 /**
  * POS Hub Module — the multiPOS foundation.
@@ -19,7 +20,7 @@ import { PosHubService } from "./pos-hub.service";
   // app fails to boot — not just this route. AuthModule is not @Global().
   imports: [AuthModule, DatabaseModule, forwardRef(() => NotificationsModule)],
   controllers: [PosHubController],
-  providers: [PosHubService, CatalogMatcherService],
-  exports: [PosHubService, CatalogMatcherService],
+  providers: [PosHubService, CatalogMatcherService, PosMappingReviewService],
+  exports: [PosHubService, CatalogMatcherService, PosMappingReviewService],
 })
 export class PosHubModule {}

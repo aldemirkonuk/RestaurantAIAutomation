@@ -63,7 +63,7 @@ export function ResetPassword() {
 
   if (!token) {
     return (
-      <AuthShell title="WineOps AI" subtitle="Reset your password">
+      <AuthShell title="Mudavym" subtitle="Reset your password">
         <AuthCard>
           <div className="flex flex-col items-center text-center gap-4 py-4">
             <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
@@ -89,7 +89,7 @@ export function ResetPassword() {
 
   if (success) {
     return (
-      <AuthShell title="WineOps AI" subtitle="Password reset">
+      <AuthShell title="Mudavym" subtitle="Password reset">
         <AuthCard>
           <div className="flex flex-col items-center text-center gap-4 py-4">
             <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
@@ -108,7 +108,7 @@ export function ResetPassword() {
   }
 
   return (
-    <AuthShell title="WineOps AI" subtitle="Choose a new password">
+    <AuthShell title="Mudavym" subtitle="Choose a new password">
       <AuthCard>
         {error && (
           <motion.div

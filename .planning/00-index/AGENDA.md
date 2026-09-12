@@ -2,68 +2,79 @@
 type: agenda
 title: Agenda
 status: live
-updated: 2026-08-24
-links: ["[[PLAN]]", "[[HOME]]", "[[OPEN-DECISIONS]]"]
+updated: 2026-08-27
+links: ["[[PLAN]]", "[[HOME]]", "[[OPEN-DECISIONS]]", "[[0029-p3-plan-of-record]]"]
 ---
 
 # Agenda — what is happening now
 
 > **Live.** Updated every session per CLAUDE.md §7. If this file is stale, the session
 > that left it stale did not finish. Companion: [[PLAN]] — what gates what.
+>
+> **Design change 2026-08-25:** this file no longer copies register rows. The 08-24
+> version listed OD-54 as blocking a day after it was resolved (and OD-56 as a
+> dependency-merge task when it had been re-scoped: Python half fixed, Node half
+> still open) — prose that duplicates [[OPEN-DECISIONS]] rots against it, so now
+> it points instead.
+
+**Current milestone: P3 — Grade, then scale** ([ADR 0029](../decisions/0029-p3-plan-of-record.md)).
+Stage table: [STATE.md](../STATE.md). **P2 closed 2026-08-26** — five stages deployed
+and verified, both held items resolved.
+
+**The shape, in one line:** one gate (P3.0 doneability coverage), two lanes that run
+alongside it because they depend on nothing it produces (P3.A mobile, P3.B kitchen
+expansion), two stages behind it (P3.C Ask AI, P3.D model registry), and one candidate
+**held** rather than queued (NF-B guests — blocked on OD-05/OD-07, a decision, not work).
 
 ## 🔴 Waiting on the founder
 
-Nothing below can move without a decision or an action only Aldemir can take.
+Canonical list: the 🔴 rows of [[OPEN-DECISIONS]]. Headlines only:
 
-| # | Item | Why it is blocked on you | Cost of waiting |
-|---|---|---|---|
-| **OD-54** | 🔴 **SSRF** — `vendor-page-extractor.service.ts:142` fetches a user-controlled URL server-side (CodeQL critical). Pre-existing on main, not introduced by P1. | Needs an egress allowlist decision | Gateway can be pointed at internal addresses |
-| **OD-56** | **22 Dependabot PRs open**, 9 CVEs flagged (node-tar, PostCSS, js-yaml, image-size) | Merging dependency bumps is yours | Known-vulnerable deps before customer data |
-| OD-23 | Revenue target + pricing — the tier ceilings ($5 credit / $5 / $10) are placeholders I chose | No ADR records a price | Commercial stays provisional |
-| OD-23 | Revenue target + pricing | Price is unrecorded in any ADR; the source doc is not in this repo; `PROJECT.md:135` contradicts a revenue sprint | All of Commercial stays provisional |
-| OD-05 | Voice-agent audience (guest / staff / owner) | One sentence unblocks scoping | Cannot be scoped at all |
-| OD-07 | Beli — build independently or partner | Strategic | Guest-app work cannot be classified |
-| **OD-11** | **Pick a path in [P1 spec §4](../04-specs/P1-NF-A-INSTRUMENTATION.md)** — A (recommended), B, or C | The column contract is a schema decision, and P1 cannot start without it | **P1 is the bottleneck for 476 of 482 loops** |
-| OD-01 | `.planning/` clean-slate restructure | Target shape is yours; end goal already agreed | Navigation tax every session |
+| Item | One line |
+|---|---|
+| ~~**Page retirements**~~ | ✅ **Closed 2026-08-26** — all four retired, each after a parity port ([ADR 0019](../decisions/0019-p2-build-scope.md) §B, [[RETIRED]]) |
+| ~~**Gmail push enforcement**~~ | ✅ **Closed 2026-08-26** — enforcement is ON in production; OD-78's premise was wrong (the entry, not the config) |
+| **OD-05 / OD-07** | Voice-agent audience · Beli build-vs-partner. **These two now block a built asset:** the 564-line guest slice has zero callers because they are unanswered ([ADR 0029](../decisions/0029-p3-plan-of-record.md) §3) |
+| OD-73 | 12 tables with RLS off and full `anon` DML — **being worked by another session** (PR #119) |
+| OD-72 | The other 142 RLS-on-zero-policy tables — policies, gateway, or RLS off |
+| OD-64/66/67 · OD-68 | Toast-side defect cluster · `provider_important_dates` absent from production. Carried alongside P3, not behind it |
+| OD-23 / OD-01 / OD-106 | Pricing · `.planning` restructure · design foundation (deferred by you 2026-08-26; P4 candidate) |
 
 ## 🟡 In flight
 
 | Item | State |
 |---|---|
-| PR #35 — P1 instrumentation + docs corpus | ✅ **Merged** 2026-08-24 |
-| PR #33 — CI connectivity | ✅ **Merged** |
-| PRs #31, #32 — security | ✅ **Merged.** All five holes verified closed on `main` |
-| Everything is on `main` | 848 corpus docs · migration applied · guard green |
+| **P3.0** | ✅ **Shipped 2026-08-27.** 7/7 gateway task types graded; 26 of 38 across both runtimes carry a real basis, 12 knowingly exempt with reasons; `check_task_types_are_graded.py` blocks a regression. **One migration awaits production** — `20260827100000_photo_count_suggestions.sql`; schema-parity is red until applied |
+| **P3.C · P3.D** | Unblocked — the gate they sat behind is closed |
+| **P3.A · P3.B** | Open and startable; never gated |
+| Main | PRs #68–#118 merged 2026-08-26. Latest: #118 rescued the §1a Features layer (47/47 page notes) and re-scoped ADR-0018's Surface claim, which had been selecting page notes by filename |
+| Other sessions | #119 OD-73 RLS relock · #113 prose corrections · #86 studio.md self-contradiction (**stale** — needs a rebase past #118) |
 
 ## 🟢 Next actions (no approval needed)
 
-0. **First traffic** — everything emits; `nf_a.cost_per_completed_task` needs one real model call to produce its first number. That is the P1 done-gate.
-0b. **Rebrand planning** — assigned to Media & Brand `brand-identity` (founder 2026-08-24):
-   write the full plan (name map, mobile-slug install hazard, email/OAuth/domain sequencing)
-   against the measured 336-line / 178-file surface. **Execution holds** until brand direction exists.
+1. **Apply `20260827100000_photo_count_suggestions.sql` to production.** Until
+   then the code writes to a table production does not have — the exact phantom
+   class ADR 0028 exists for — and schema-parity stays red.
+2. **P3.A / P3.B / P3.C / P3.D** — all four are now startable; the P3.0 gate is
+   closed.
+3. **`DocumentsPage` `?doc=` deep link** — the copy-link button builds a param the
+   page never reads, so a shared link silently loses its target.
+4. **Per-item inventory ledger view** — `inventory-ledger.controller.ts:210` serves
+   the data and nothing renders it; this is why "View ledger" had to drop its param.
+5. Mechanical register items (OD-30/32/33 cluster) — **verify each against the
+   register before starting**; half-closed entries are the norm, not the exception.
 
+**The gate is closed, so §6.1 is the live risk now**, not §6.3: P3.0 must not be
+called done on the cheap census rows alone. It is not — but the deferred
+`ontology_v1` join (census §4 row 12, four task types) is real work still
+outstanding, and it is named in the exemption list rather than quietly counted.
 
-1. ~~P1 instrumentation~~ — **spec written** ([[P1-NF-A-INSTRUMENTATION]]). Now blocked on OD-11 above.
-2. **OD-30/OD-42** — reconcile fork numbering. 7 namespaces; 30% of docs cite an
-   ambiguous ID. Decision Office's first assignment, mechanical.
-3. **OD-32** — 171 documents write an unresolvable `[[README]]` across 45 same-named files.
-4. **OD-47** — normalise 102 `close_time` values to a closed vocabulary.
-5. **OD-33** — pin the insight count in a test. Four values circulate (348/375/573/`>=200`);
-   the shipped UI says 375, the measured truth is **573**, and the only assertion is `>= 200`
-   so all of them pass.
-
-## 📌 Standing watch — nobody is watching these yet
+## 📌 Standing watch
 
 | Date | What fires | Watcher |
 |---|---|---|
-| **2026-10-23** | All **198** agendas hit the 60-day staleness rule **together** — they share one `updated` date | ✅ `watch_loops.py` |
-| **2026-11-24** | **7 units** must judge whether they should still exist (Skills, Sales, Architecture Review, Red Team + 2 teams) | ✅ `watch_loops.py` |
-
-**Now watched** (2026-08-24): `scripts/watch_loops.py` runs weekly via `.github/workflows/loop-watcher.yml`,
-reports to the job summary, and never edits the corpus — a finding belongs in a unit's `questions.md`,
-written by a person. This is the **6th running loop of 482**, and the first this chapter produced.
-Earlier counts of "194 agendas" and "four triggers" came from an agent summary and were wrong;
-the measured figures are 198 and 7.
+| **2026-10-23** | All **198** agendas hit the 60-day staleness rule together — they share one `updated` date | ✅ `watch_loops.py` (weekly, `.github/workflows/loop-watcher.yml`) |
+| **2026-11-24** | **7 units** must judge whether they should still exist | ✅ `watch_loops.py` |
 
 ## Live queries
 
@@ -72,13 +83,4 @@ TABLE open_questions AS "Open", updated
 FROM "01-org" OR "02-advisory"
 WHERE type = "questions" AND open_questions > 0
 SORT open_questions DESC
-```
-
-Units whose agenda has gone stale (fires from 2026-10-23):
-
-```dataview
-TABLE updated, status
-FROM "01-org" OR "02-advisory"
-WHERE type = "agenda-full" AND date(updated) < date(today) - dur(60 days)
-SORT updated ASC
 ```

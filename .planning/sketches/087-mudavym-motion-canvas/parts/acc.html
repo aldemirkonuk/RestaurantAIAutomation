@@ -1,0 +1,1293 @@
+<style>
+/* ══ acc — Access, team & setup ══════════════════════════════════════════
+   How people get in, get set up, and get scheduled. Every selector is
+   prefixed .mx-acc; every colour comes from a host variable.              */
+
+.mx-acc{
+  font-family:var(--m-sans);
+  font-size:11px;line-height:1.4;color:var(--m-ink);
+  position:relative;width:100%;
+  -webkit-font-smoothing:antialiased;
+}
+.mx-acc *{box-sizing:border-box}
+.mx-acc .a-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.mx-acc .a-k{font:500 8.5px/1.2 var(--m-mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--m-mut);white-space:nowrap;transition:color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-acc .a-k.ac{color:var(--m-accent)}
+.mx-acc .a-k.ok{color:var(--m-ok)}
+.mx-acc .a-k.wn{color:var(--m-warn)}
+.mx-acc .a-k.no{color:var(--m-no)}
+.mx-acc .a-n{font-family:var(--m-mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mx-acc .a-cap{font:500 8.5px/1.3 var(--m-mono);letter-spacing:.08em;color:var(--m-mut);
+  margin-top:6px;opacity:0}
+.mx-acc .a-shim{
+  background:linear-gradient(90deg,var(--m-mut) 12%,var(--m-ink) 46%,var(--m-mut) 80%);
+  background-size:240% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:acc-shim 1900ms cubic-bezier(.45,0,.55,1) infinite}
+@keyframes acc-shim{from{background-position:120% 0}to{background-position:-120% 0}}
+
+/* ── 01 · invite code resolves ──────────────────────────────────────── */
+.mx-acc-01 .o-slots{display:flex;gap:3px;margin-bottom:7px}
+.mx-acc-01 .o-s{flex:1;height:28px;border:1px solid var(--m-line2);border-radius:3px;
+  background:var(--m-surface);display:grid;place-items:center;
+  transition:border-color 160ms cubic-bezier(.16,1,.3,1),background-color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-01 .o-s i{font:500 12.5px/1 var(--m-mono);font-style:normal;color:var(--m-ink);opacity:0}
+.mx-acc-01 .o-s.fill{border-color:var(--m-mut)}
+.mx-acc-01 .o-s.ok{border-color:var(--m-accent);
+  background:color-mix(in srgb, var(--m-accent) 12%, var(--m-surface))}
+.mx-acc-01 .o-meter{height:2px;background:var(--m-line);border-radius:1px;overflow:hidden;margin-bottom:8px}
+.mx-acc-01 .o-meter i{display:block;height:100%;background:var(--m-accent);
+  transform:scaleX(0);transform-origin:0 50%}
+.mx-acc-01 .o-card{display:grid;grid-template-rows:0fr}
+.mx-acc-01 .o-in{overflow:hidden;min-height:0}
+.mx-acc-01 .o-pad{border-top:1px solid var(--m-line);padding-top:6px}
+.mx-acc-01 .o-name{font-family:var(--m-serif);font-size:15px;font-weight:600;letter-spacing:-.012em;
+  line-height:1.15}
+.mx-acc-01 .o-city{font-size:10px;color:var(--m-mut);margin-bottom:5px}
+.mx-acc-01 .o-row{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  font-size:10px;color:var(--m-mut);height:15px}
+.mx-acc-01 .o-row b{color:var(--m-ink);font-weight:600}
+.mx-acc-01 .o-role{font-style:normal;font:500 9px/1 var(--m-mono);letter-spacing:.1em;
+  text-transform:uppercase;color:var(--m-accent-ink);background:var(--m-accent);
+  padding:3px 6px;border-radius:3px;display:inline-block}
+
+/* ── 02 · refused, or unreachable ───────────────────────────────────── */
+.mx-acc-02 .t-slots{display:flex;gap:3px;margin-bottom:8px}
+.mx-acc-02 .t-s{flex:1;height:24px;border:1px solid var(--m-line2);border-radius:3px;
+  background:var(--m-surface);display:grid;place-items:center;
+  font:500 11px/1 var(--m-mono);color:var(--m-ink);
+  transition:border-color 220ms cubic-bezier(.16,1,.3,1),color 220ms cubic-bezier(.16,1,.3,1),
+             background-color 220ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-02 .t-s.no{border-color:var(--m-no);color:var(--m-no);
+  background:color-mix(in srgb, var(--m-no) 12%, var(--m-surface))}
+.mx-acc-02 .t-s.unk{border-style:dashed;border-color:var(--m-line2);color:var(--m-mut)}
+.mx-acc-02 .t-verdict{position:relative;height:15px;margin-bottom:2px}
+.mx-acc-02 .t-vtx{font-size:10.5px;color:var(--m-no);opacity:0;display:inline-block;
+  transition:color 240ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-02 .t-vtx.gone{color:var(--m-mut)}
+.mx-acc-02 .t-strike{position:absolute;left:0;top:8px;height:1px;width:100%;
+  background:var(--m-mut);transform:scaleX(0);transform-origin:0 50%}
+.mx-acc-02 .t-fix{display:grid;grid-template-rows:0fr}
+.mx-acc-02 .t-in{overflow:hidden;min-height:0}
+.mx-acc-02 .t-pad{border-top:1px solid var(--m-line);padding-top:6px}
+.mx-acc-02 .t-line{font-size:10.5px;color:var(--m-warn);margin-bottom:6px;opacity:0}
+.mx-acc-02 .t-acts{display:flex;gap:5px}
+.mx-acc-02 .t-b{font:500 9.5px/1 var(--m-sans);color:var(--m-mut);border:1px solid var(--m-line2);
+  border-radius:4px;padding:5px 8px;opacity:0}
+.mx-acc-02 .t-b2{color:var(--m-accent);border-color:var(--m-accent)}
+
+/* ── 03 · verified, and the app opens ───────────────────────────────── */
+.mx-acc-03 .v-body{display:flex;gap:9px;align-items:stretch}
+.mx-acc-03 .v-left{width:70px;flex:none;display:flex;flex-direction:column;justify-content:center;
+  align-items:center;gap:7px;border:1px solid var(--m-line);border-radius:5px;
+  background:var(--m-surface);padding:7px 5px}
+.mx-acc-03 .v-tok{font:500 8.5px/1.2 var(--m-mono);color:var(--m-mut);letter-spacing:.04em}
+.mx-acc-03 .v-seal{width:22px;height:22px;border-radius:50%;background:var(--m-accent);
+  color:var(--m-accent-ink);display:grid;place-items:center;font-size:12px;font-weight:700;
+  opacity:0;transform:scale(.4)}
+.mx-acc-03 .v-app{flex:1;min-width:0;position:relative;display:flex;gap:6px;
+  border:1px solid var(--m-line);border-radius:5px;background:var(--m-surface);padding:7px}
+.mx-acc-03 .v-rail{width:34px;flex:none;display:flex;flex-direction:column;gap:4px}
+.mx-acc-03 .v-item{display:block;height:7px;border-radius:2px;background:var(--m-line2);opacity:.3}
+.mx-acc-03 .v-item.on{background:var(--m-accent)}
+.mx-acc-03 .v-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;justify-content:center}
+.mx-acc-03 .v-main i{display:block;height:6px;border-radius:2px;background:var(--m-line2);opacity:0}
+.mx-acc-03 .v-main i:nth-child(1){width:74%}
+.mx-acc-03 .v-main i:nth-child(2){width:96%}
+.mx-acc-03 .v-main i:nth-child(3){width:58%}
+.mx-acc-03 .v-hatch{position:absolute;inset:0;border-radius:5px;pointer-events:none;
+  background:repeating-linear-gradient(135deg,transparent 0 5px,var(--m-line2) 5px 6px);
+  opacity:.9}
+
+/* ── 04 · the code becomes a person ─────────────────────────────────── */
+.mx-acc-04 .m-lbl{font:500 8px/1.2 var(--m-mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--m-mut);margin:0 0 3px}
+.mx-acc-04 .m-sec{margin-bottom:6px}
+.mx-acc-04 .m-pend{display:grid;grid-template-rows:1fr}
+.mx-acc-04 .m-pw{overflow:hidden;min-height:0}
+.mx-acc-04 .m-list{border-top:1px solid var(--m-line)}
+.mx-acc-04 .m-row{display:flex;align-items:center;gap:6px;height:23px;padding:0 4px;
+  border-bottom:1px solid var(--m-line);background:var(--m-surface)}
+.mx-acc-04 .m-av{width:15px;height:15px;border-radius:50%;flex:none;display:grid;place-items:center;
+  font:600 7.5px/1 var(--m-sans);background:var(--m-line2);color:var(--m-ink)}
+.mx-acc-04 .m-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:10.5px}
+.mx-acc-04 .m-rl{font:500 8.5px/1 var(--m-mono);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--m-mut)}
+.mx-acc-04 .m-inv .m-av{opacity:0;transform:scale(.7)}
+.mx-acc-04 .m-inv .m-nm{opacity:0}
+.mx-acc-04 .m-code{font:500 10.5px/1 var(--m-mono);letter-spacing:.16em;color:var(--m-ink);
+  position:absolute;left:25px;top:0;bottom:0;display:flex;align-items:center}
+.mx-acc-04 .m-code i{font-style:normal;display:inline-block}
+.mx-acc-04 .m-inv{position:relative}
+
+/* ── 05 · expiring, then expired ────────────────────────────────────── */
+.mx-acc-05 .c-cert{border:1px solid var(--m-line);border-radius:5px;background:var(--m-surface);
+  padding:6px 7px;margin-bottom:7px}
+.mx-acc-05 .c-top{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px}
+.mx-acc-05 .c-nm{font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mx-acc-05 .c-pill{font:500 8px/1 var(--m-mono);letter-spacing:.11em;text-transform:uppercase;
+  border:1px solid var(--m-ok);color:var(--m-ok);border-radius:3px;padding:3px 5px;flex:none;
+  transition:color 160ms cubic-bezier(.16,1,.3,1),border-color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-05 .c-pill.wn{border-color:var(--m-warn);color:var(--m-warn)}
+.mx-acc-05 .c-pill.no{border-color:var(--m-no);color:var(--m-no)}
+.mx-acc-05 .c-bar{height:3px;border-radius:2px;background:var(--m-sunk);overflow:hidden;margin-bottom:4px}
+.mx-acc-05 .c-bar i{display:block;height:100%;background:var(--m-ok);transform-origin:0 50%;
+  transition:background-color 240ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-05 .c-bar.wn i{background:var(--m-warn)}
+.mx-acc-05 .c-bar.no i{background:var(--m-no)}
+.mx-acc-05 .c-days{font-size:9.5px;color:var(--m-mut)}
+.mx-acc-05 .c-days b{color:var(--m-ink);font-family:var(--m-mono);font-variant-numeric:tabular-nums}
+.mx-acc-05 .c-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.mx-acc-05 .c-d{font:500 7.5px/1 var(--m-mono);letter-spacing:.08em;color:var(--m-mut);
+  text-align:center;margin-bottom:3px}
+.mx-acc-05 .c-chip{position:relative;height:15px;border-radius:3px;background:var(--m-surface);
+  border:1px solid var(--m-line2);border-left:2px solid var(--m-line2);
+  display:grid;place-items:center;font:500 8px/1 var(--m-mono);color:var(--m-mut);overflow:hidden;
+  transition:border-left-color 240ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-05 .c-chip.flag{border-left-color:var(--m-no)}
+.mx-acc-05 .c-chip em{position:absolute;inset:0;font-style:normal;opacity:0;
+  background:repeating-linear-gradient(135deg,transparent 0 3px,var(--m-no) 3px 4px);
+  background-size:200% 100%}
+
+/* ── 06 · menu resolves into reviewable lines ───────────────────────── */
+.mx-acc-06 .r-hd b{font-family:var(--m-mono);font-variant-numeric:tabular-nums;color:var(--m-warn)}
+.mx-acc-06 .r-list{border-top:1px solid var(--m-line)}
+.mx-acc-06 .r-r{position:relative;display:flex;align-items:center;gap:6px;height:18px;
+  padding:0 5px 0 6px;border-bottom:1px solid var(--m-line);background:var(--m-surface)}
+.mx-acc-06 .r-rule{position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--m-warn);
+  transform:scaleY(0);transform-origin:50% 50%}
+.mx-acc-06 .r-c1{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:10px;opacity:0}
+.mx-acc-06 .r-c2{width:30px;flex:none;font:400 9.5px/1 var(--m-mono);color:var(--m-mut);opacity:0}
+.mx-acc-06 .r-c3{width:36px;flex:none;text-align:right;font:400 9.5px/1 var(--m-mono);
+  font-variant-numeric:tabular-nums;opacity:0}
+.mx-acc-06 .r-sk{position:absolute;height:7px;border-radius:2px;top:5px;opacity:0;
+  background:linear-gradient(90deg,var(--m-sunk) 8%,var(--m-line2) 42%,var(--m-sunk) 78%);
+  background-size:240% 100%;animation:acc-shim 1900ms cubic-bezier(.45,0,.55,1) infinite;
+  animation-play-state:paused}
+.mx-acc-06.is-load .r-sk{animation-play-state:running}
+.mx-acc-06 .r-sk.k1{left:6px;right:74px}
+.mx-acc-06 .r-sk.k2{width:24px;right:44px}
+.mx-acc-06 .r-sk.k3{width:30px;right:5px}
+
+/* ── 07 · asked once, then never ────────────────────────────────────── */
+.mx-acc-07 .h-flow{display:grid;grid-template-columns:1fr 11px 1fr 11px 1fr;align-items:stretch;
+  margin-bottom:7px}
+.mx-acc-07 .h-node{position:relative;overflow:hidden;min-width:0;border:1px solid var(--m-line2);
+  border-radius:4px;background:var(--m-surface);padding:5px 6px;
+  transition:border-color 240ms cubic-bezier(.16,1,.3,1),opacity 240ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-07 .h-node b{display:block;font-size:10px;font-weight:600;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.mx-acc-07 .h-node i{display:block;font-style:normal;font:400 9px/1.3 var(--m-mono);
+  color:var(--m-mut);white-space:nowrap;overflow:hidden}
+.mx-acc-07 .h-node.on{border-color:var(--m-accent)}
+.mx-acc-07 .h-n3{opacity:.35}
+.mx-acc-07 .h-fill{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--m-accent);
+  transform:scaleX(0);transform-origin:0 50%}
+.mx-acc-07 .h-link{align-self:center;height:1px;background:var(--m-line2)}
+.mx-acc-07 .h-nudge{display:grid;grid-template-rows:1fr}
+.mx-acc-07 .h-nw{overflow:hidden;min-height:0}
+.mx-acc-07 .h-nin{border:1px solid var(--m-line);border-left:2px solid var(--m-warn);border-radius:4px;
+  background:var(--m-sunk);padding:6px 7px;font-size:10px;color:var(--m-mut)}
+.mx-acc-07 .h-nin span{color:var(--m-mut);opacity:.7;display:block;font-size:9px;margin-top:2px}
+
+/* ── 08 · published, and seen ───────────────────────────────────────── */
+.mx-acc-08 .p-days{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px}
+.mx-acc-08 .p-days span{font:500 7.5px/1 var(--m-mono);letter-spacing:.06em;color:var(--m-mut);
+  text-align:center}
+.mx-acc-08 .p-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:9px}
+.mx-acc-08 .p-col{display:flex;flex-direction:column;gap:3px}
+.mx-acc-08 .p-c{height:12px;border-radius:2px;border:1px dashed var(--m-line2);
+  background:var(--m-sunk);overflow:hidden;
+  transition:border-style 260ms cubic-bezier(.16,1,.3,1),border-color 260ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-08 .p-c.pub{border-style:solid;border-color:var(--m-line2)}
+.mx-acc-08 .p-c i{display:block;height:100%;background:var(--m-accent);opacity:.5;
+  transform:scaleY(0);transform-origin:50% 100%}
+.mx-acc-08 .p-rec{display:flex;align-items:center;gap:7px}
+.mx-acc-08 .p-dots{display:flex;gap:4px;flex:none}
+.mx-acc-08 .p-dot{width:7px;height:7px;border-radius:50%;border:1px solid var(--m-line2);
+  background:transparent;transition:background-color 200ms cubic-bezier(.16,1,.3,1),
+  border-color 200ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-08 .p-dot.seen{background:var(--m-accent);border-color:var(--m-accent)}
+.mx-acc-08 .p-dot.wait{animation:acc-breathe 2400ms ease-in-out infinite}
+@keyframes acc-breathe{0%,100%{opacity:1}50%{opacity:.32}}
+.mx-acc-08 .p-cnt{font-size:9.5px;color:var(--m-mut)}
+.mx-acc-08 .p-cnt b{font-family:var(--m-mono);font-variant-numeric:tabular-nums;color:var(--m-ink)}
+
+/* ── 09 · a call-out, and the cover ─────────────────────────────────── */
+.mx-acc-09 .g-col{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.mx-acc-09 .g-sl{position:relative;display:flex;align-items:center;gap:7px;height:22px;
+  padding:0 7px;border-radius:4px;border:1px solid var(--m-line2);background:var(--m-surface);
+  transition:background-color 320ms cubic-bezier(.16,1,.3,1),
+             border-color 320ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-09 .g-sl.open{background:transparent;border-style:dashed;border-color:var(--m-no)}
+.mx-acc-09 .g-who{flex:1;min-width:0;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.mx-acc-09 .g-tm{font:400 9.5px/1 var(--m-mono);color:var(--m-mut);flex:none}
+.mx-acc-09 .g-open{position:absolute;left:7px;top:0;bottom:0;display:flex;align-items:center;
+  font:500 8.5px/1 var(--m-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--m-no);
+  opacity:0;pointer-events:none}
+.mx-acc-09 .g-ring{position:absolute;inset:-1px;border-radius:5px;border:1px solid var(--m-no);
+  opacity:0;pointer-events:none}
+.mx-acc-09 .g-mark{position:absolute;left:9px;top:50%;width:1px;height:1px}
+.mx-acc-09 .g-offer{display:flex;align-items:center;gap:7px}
+.mx-acc-09 .g-dots{display:flex;gap:5px;flex:none}
+.mx-acc-09 .g-dt{width:13px;height:13px;border-radius:50%;background:var(--m-line2);
+  color:var(--m-ink);display:grid;place-items:center;font:600 6.5px/1 var(--m-sans);
+  opacity:0;transform:scale(.4);
+  transition:background-color 200ms cubic-bezier(.16,1,.3,1),opacity 240ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-09 .g-dt.pick{background:var(--m-accent);color:var(--m-accent-ink)}
+.mx-acc-09 .g-lbl{font-size:9.5px;color:var(--m-mut);opacity:0}
+
+/* ── 10 · connect the POS ───────────────────────────────────────────── */
+.mx-acc-10 .s-body{display:flex;gap:8px;align-items:stretch;margin-bottom:6px}
+.mx-acc-10 .s-left{width:88px;flex:none;display:flex;flex-direction:column;gap:5px}
+.mx-acc-10 .s-prov{border:1px solid var(--m-line2);border-radius:4px;background:var(--m-surface);
+  padding:5px 6px;transition:border-color 240ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-10 .s-prov.on{border-color:var(--m-accent)}
+.mx-acc-10 .s-prov b{display:block;font-size:11px;font-weight:600}
+.mx-acc-10 .s-prov i{display:block;font-style:normal;font:400 8.5px/1.3 var(--m-mono);color:var(--m-mut)}
+.mx-acc-10 .s-btn{border:1px solid var(--m-line2);border-radius:4px;text-align:center;
+  padding:5px 4px;font:500 9.5px/1 var(--m-sans);color:var(--m-mut);
+  transition:border-color 160ms cubic-bezier(.16,1,.3,1),color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-10 .s-btn.on{border-color:var(--m-accent);color:var(--m-accent)}
+.mx-acc-10 .s-right{flex:1;min-width:0;position:relative;padding-left:9px}
+.mx-acc-10 .s-wire{position:absolute;left:0;top:2px;bottom:2px;width:1px;background:var(--m-accent);
+  transform:scaleY(0);transform-origin:50% 0}
+.mx-acc-10 .s-f{display:flex;align-items:center;gap:5px;height:15px;font-size:9.5px;
+  color:var(--m-ink);opacity:.28}
+.mx-acc-10 .s-f i{display:block;width:5px;height:1px;background:var(--m-line2);flex:none;
+  transition:background-color 200ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-10 .s-f.on i{background:var(--m-accent)}
+.mx-acc-10 .s-foot{font-size:9.5px;color:var(--m-mut);border-top:1px solid var(--m-line);padding-top:5px}
+.mx-acc-10 .s-foot b{font-family:var(--m-mono);font-variant-numeric:tabular-nums;color:var(--m-ink)}
+.mx-acc-10 .s-pill{font:500 8px/1 var(--m-mono);letter-spacing:.1em;text-transform:uppercase;
+  background:var(--m-accent);color:var(--m-accent-ink);border-radius:3px;padding:3px 5px;
+  opacity:0;transform:scale(.7);display:inline-block}
+
+/* ── 11 · a switch with nothing behind it ───────────────────────────── */
+.mx-acc-11 .x-row{display:flex;align-items:center;gap:9px;border:1px solid var(--m-line);
+  border-radius:5px;background:var(--m-surface);padding:7px;margin-bottom:8px}
+.mx-acc-11 .x-tx{flex:1;min-width:0}
+.mx-acc-11 .x-tx b{display:block;font-size:10.5px;font-weight:600}
+.mx-acc-11 .x-tx i{display:block;font-family:var(--m-serif);font-size:9.5px;color:var(--m-mut);
+  line-height:1.25}
+.mx-acc-11 .x-sw{flex:none;width:34px;height:19px;border-radius:10px;border:1px solid var(--m-line2);
+  background:var(--m-sunk);padding:0;position:relative;cursor:pointer;
+  transition:border-color 200ms cubic-bezier(.16,1,.3,1),background-color 200ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-11 .x-sw:focus-visible{outline:2px solid var(--m-accent);outline-offset:2px}
+.mx-acc-11 .x-sw.lit{border-color:var(--m-accent);
+  background:color-mix(in srgb, var(--m-accent) 24%, var(--m-sunk))}
+.mx-acc-11 .x-th{position:absolute;left:2px;top:2px;width:13px;height:13px;border-radius:50%;
+  background:var(--m-mut);transition:background-color 200ms cubic-bezier(.16,1,.3,1)}
+.mx-acc-11 .x-sw.lit .x-th{background:var(--m-accent)}
+.mx-acc-11 .x-wire{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.mx-acc-11 .x-node{font:500 8px/1 var(--m-mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--m-mut);border:1px solid var(--m-line2);border-radius:3px;padding:4px 5px;flex:none}
+.mx-acc-11 .x-end{border-style:dashed}
+.mx-acc-11 .x-end.live{border-style:solid;border-color:var(--m-accent);color:var(--m-accent)}
+.mx-acc-11 .x-l{position:relative;flex:1;height:1px;background:var(--m-line2)}
+.mx-acc-11 .x-p{position:absolute;top:-2px;left:0;width:5px;height:5px;border-radius:50%;
+  background:var(--m-accent);opacity:0}
+.mx-acc-11 .x-note{font-size:9.5px;color:var(--m-warn);min-height:14px}
+.mx-acc-11 .x-note.ok{color:var(--m-ok)}
+.mx-acc-11 .x-try{font:500 8.5px/1 var(--m-mono);letter-spacing:.08em;color:var(--m-accent);
+  border-bottom:1px dashed var(--m-accent);cursor:pointer;display:inline-block;margin-top:4px}
+
+@media (prefers-reduced-motion: reduce){
+  .mx-acc *, .mx-acc *::before, .mx-acc *::after{
+    animation-duration:1ms !important;animation-iteration-count:1 !important;
+    transition-duration:1ms !important;
+  }
+}
+</style>
+
+<script>
+(function(){
+  var FAM = 'Access, team & setup';
+  window.MUDAVYM_MOTIONS = window.MUDAVYM_MOTIONS || [];
+  function push(o){ o.family = FAM; window.MUDAVYM_MOTIONS.push(o); }
+
+  var RM = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function rate(){
+    var r = window.MUDAVYM_RATE && window.MUDAVYM_RATE();
+    return (typeof r === 'number' && r > 0) ? r : 1;
+  }
+  /* Every duration and delay in this file goes through T(): the canvas speed
+     control scales them, and reduced motion collapses them to zero. */
+  function T(ms){ return RM ? 0 : ms / rate(); }
+
+  /* ── Spring sampler ────────────────────────────────────────────────────
+     Integrates a real mass-spring-damper at 600Hz and samples it into a CSS
+     linear() easing. Overshoot and rest time on the cards are MEASURED off
+     these runs, not asserted.                                             */
+  function spring(k, c, m, rest){
+    m = m || 1; rest = rest || 0.0005;
+    var dt = 1/600, x = 1, v = 0, t = 0, raw = [0], peak = 0, guard = 0;
+    while (t < 4 && guard++ < 24000){
+      var a = (-k * x - c * v) / m;
+      v += a * dt; x += v * dt; t += dt;
+      var p = 1 - x;
+      if (p > peak) peak = p;
+      raw.push(p);
+      if (Math.abs(x) < rest && Math.abs(v) < rest) break;
+    }
+    var n = 48, pts = [];
+    for (var i = 0; i <= n; i++) pts.push(raw[Math.round(i / n * (raw.length - 1))]);
+    pts[0] = 0; pts[n] = 1;
+    return {
+      pts: pts,
+      css: 'linear(' + pts.map(function(p){ return Math.round(p * 10000) / 10000; }).join(',') + ')',
+      ms: Math.round(t * 1000),
+      over: Math.round((peak - 1) * 1000) / 10
+    };
+  }
+  var SPR = {
+    latch: spring(420, 34),   /* a slot, an avatar, a person arriving   */
+    tuck:  spring(380, 32),   /* the house "under a finger" spring      */
+    stamp: spring(520, 26),   /* the seal — the one permitted overshoot */
+    tally: spring(120, 26)    /* number tickers, overdamped             */
+  };
+  /* linear() is Chrome 113 / Safari 17.4 / Firefox 112. Older engines throw on
+     an unknown easing, so fall back to the house bezier rather than break. */
+  var LINEAR_OK = (function(){
+    try { document.createElement('div').animate([{opacity:0},{opacity:1}],
+          {duration:1, easing:'linear(0,0.5,1)'}); return true; }
+    catch(e){ return false; }
+  })();
+  var EASE = {
+    settle:'cubic-bezier(.16,1,.3,1)',
+    turn:  'cubic-bezier(.32,.72,0,1)',
+    lin:   'linear'
+  };
+  function E(name){ return LINEAR_OK ? SPR[name].css : EASE.settle; }
+  function spec(name, label){
+    var s = SPR[name];
+    return label + ' · spring ' + (name === 'latch' ? '420/34' : name === 'tuck' ? '380/32'
+      : name === 'stamp' ? '520/26' : '120/26') + ' sampled to linear() 49pt · '
+      + s.over.toFixed(1) + '% overshoot, at rest ' + s.ms + 'ms';
+  }
+
+  /* ── Runner: cancels the previous pass so play() is idempotent ─────── */
+  function runner(root){
+    var prev = root.__accRun;
+    if (prev){
+      prev.dead = true;
+      prev.anims.forEach(function(a){ try { a.cancel(); } catch(e){} });
+      prev.timers.forEach(clearTimeout);
+      prev.rafs.forEach(function(id){ cancelAnimationFrame(id); });
+    }
+    var st = { dead:false, anims:[], timers:[], rafs:[] };
+    root.__accRun = st;
+    return {
+      an: function(el, kf, o){
+        if (!el) return null;
+        var a = el.animate(kf, o); st.anims.push(a); return a;
+      },
+      at: function(ms, fn){
+        var id = setTimeout(function(){ if (!st.dead) fn(); }, T(ms));
+        st.timers.push(id); return id;
+      },
+      rf: function(fn){
+        function step(ts){
+          if (st.dead) return;
+          if (fn(ts) !== false) st.rafs.push(requestAnimationFrame(step));
+        }
+        st.rafs.push(requestAnimationFrame(step));
+      }
+    };
+  }
+  function opt(dur, ease, extra){
+    var o = { duration: Math.max(1, T(dur)), easing: ease || EASE.settle, fill:'none' };
+    if (extra) for (var k in extra) o[k] = extra[k];
+    return o;
+  }
+  function q(root, sel){ return root.querySelector(sel); }
+  function qa(root, sel){ return Array.prototype.slice.call(root.querySelectorAll(sel)); }
+  /* grid-template-rows / -columns interpolate reliably through a CSS
+     transition, so the expand/collapse motions drive them that way. */
+  function grid(el, prop, to, dur, ease){
+    if (!el) return;
+    el.style.transition = prop + ' ' + Math.max(1, T(dur)) + 'ms ' + (ease || EASE.settle);
+    el.style[prop === 'grid-template-rows' ? 'gridTemplateRows' : 'gridTemplateColumns'] = to;
+  }
+  function gridReset(el, prop, to){
+    if (!el) return;
+    el.style.transition = 'none';
+    el.style[prop === 'grid-template-rows' ? 'gridTemplateRows' : 'gridTemplateColumns'] = to;
+  }
+  /* Number ticker on the overdamped tally spring — figures arrive, they never
+     bounce past and correct themselves. */
+  function tick(r, el, from, to, dur, fmt){
+    if (!el) return;
+    fmt = fmt || function(v){ return String(Math.round(v)); };
+    var ms = T(dur);
+    if (!ms){ el.textContent = fmt(to); return; }
+    var pts = SPR.tally.pts, t0 = null;
+    r.rf(function(ts){
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / ms);
+      var i = p * (pts.length - 1), lo = Math.floor(i), hi = Math.ceil(i);
+      var v = pts[lo] + (pts[hi] - pts[lo]) * (i - lo);
+      el.textContent = fmt(from + (to - from) * v);
+      return p < 1;
+    });
+  }
+  function rise(r, el, dist, dur, ease){
+    if (!el) return;
+    el.style.opacity = '1'; el.style.transform = 'none';
+    r.an(el, [{ opacity:0, transform:'translateY(' + (dist||6) + 'px)' },
+              { opacity:1, transform:'none' }], opt(dur || 320, ease || EASE.settle));
+  }
+  function cls(el, add, rm){
+    if (!el) return;
+    if (rm) el.classList.remove(rm);
+    if (add) el.classList.add(add);
+  }
+  function slots(code, cls2){
+    var out = '';
+    for (var i = 0; i < code.length; i++) out += '<b class="' + cls2 + '"><i>' + code[i] + '</i></b>';
+    return out;
+  }
+
+  /* ══ 01 · Eight characters, then a restaurant ════════════════════════ */
+  push({
+    id:'acc-01',
+    name:'Eight characters, then a restaurant',
+    purpose:'/register Path A. The invite field validates itself: eight characters land, the real 400ms debounce runs as a visible dwell, then the restaurant unfolds — name, city, who invited you, your role. The point of the motion is that a code stops being a string and becomes a place you are expected at.',
+    spec:'8 latches ' + SPR.latch.over.toFixed(1) + '% overshoot · 400ms linear debounce (real) · settle 320ms · role stamp ' + SPR.stamp.over.toFixed(1) + '%',
+    source:'apps/web/src/pages/Register.tsx:148',
+    html:
+      '<div class="mx-acc mx-acc-01">' +
+        '<div class="a-h"><span class="a-k">Invite code</span><span class="a-k o-st">Waiting</span></div>' +
+        '<div class="o-slots">' + slots('K7QM2XPD', 'o-s') + '</div>' +
+        '<div class="o-meter"><i></i></div>' +
+        '<div class="o-card"><div class="o-in"><div class="o-pad">' +
+          '<div class="o-name">Bodega Álvaro</div>' +
+          '<div class="o-city">Madrid · Chamberí</div>' +
+          '<div class="o-row"><span>Invited by</span><b>Rosa Marín</b></div>' +
+          '<div class="o-row"><span>Role</span><em class="o-role">Manager</em></div>' +
+        '</div></div></div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var ss = qa(root, '.o-s'), meter = q(root, '.o-meter i'), card = q(root, '.o-card');
+      var st = q(root, '.o-st'), rows = qa(root, '.o-row'), role = q(root, '.o-role');
+      var name = q(root, '.o-name'), city = q(root, '.o-city');
+      /* reset */
+      ss.forEach(function(s){ s.className = 'o-s'; s.firstChild.style.opacity = '0'; });
+      meter.style.transform = 'scaleX(0)';
+      gridReset(card, 'grid-template-rows', '0fr');
+      [name, city].concat(rows).forEach(function(el){ if (el){ el.style.opacity = '0'; el.style.transform = 'translateY(6px)'; } });
+      role.style.transform = 'scale(1)';
+      st.textContent = 'Waiting'; st.className = 'a-k o-st';
+      void root.offsetWidth;
+
+      ss.forEach(function(s, i){
+        r.at(110 + i * 88, function(){
+          s.classList.add('fill');
+          s.firstChild.style.opacity = '1';
+          r.an(s.firstChild, [{ opacity:0, transform:'scale(.72) translateY(-3px)' },
+                              { opacity:1, transform:'none' }], opt(260, E('latch')));
+        });
+      });
+      r.at(110 + 7 * 88 + 40, function(){ st.textContent = 'Checking'; st.className = 'a-k o-st a-shim'; });
+      r.at(110 + 7 * 88 + 70, function(){
+        meter.style.transform = 'scaleX(1)';
+        /* linear on purpose: this is a 400ms timer in Register.tsx, not an easing */
+        r.an(meter, [{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }], opt(400, EASE.lin));
+      });
+      r.at(1130, function(){
+        st.textContent = 'Valid'; st.className = 'a-k o-st ac';
+        ss.forEach(function(s, i){ r.at(i * 22, function(){ s.classList.add('ok'); }); });
+      });
+      r.at(1190, function(){
+        grid(card, 'grid-template-rows', '1fr', 320, EASE.settle);
+        [name, city, rows[0], rows[1]].forEach(function(el, i){
+          r.at(i * 28, function(){ rise(r, el, 6, 420); });
+        });
+      });
+      r.at(1560, function(){
+        r.an(role, [{ transform:'scale(.84)' }, { transform:'scale(1)' }], opt(360, E('stamp')));
+      });
+    }
+  });
+
+  /* ══ 02 · Refused, or unreachable ═══════════════════════════════════ */
+  push({
+    id:'acc-02',
+    name:'Refused, or unreachable',
+    purpose:'GAP — register.md §9: the invite check fetches a relative /api path, so on a host with no rewrite the request fails and the catch paints "not_found". A network failure is rendered as a rejected code. The motion is the verdict being WITHDRAWN: red drains back out of the slots and a third state arrives, because the app was never entitled to call that code dead.',
+    spec:'refuse 320ms settle · strike 280ms turn · un-refusal drains right-to-left, 32ms stagger · fix panel 420ms turn',
+    source:'apps/web/src/pages/Register.tsx:157 · 06-pages/register.md §9',
+    html:
+      '<div class="mx-acc mx-acc-02">' +
+        '<div class="a-h"><span class="a-k">Invite check</span><span class="a-k t-st">Checking</span></div>' +
+        '<div class="t-slots">' + slots('K7QM2XPD', 't-s') + '</div>' +
+        '<div class="t-verdict"><span class="t-vtx">This invite code has expired.</span><i class="t-strike"></i></div>' +
+        '<div class="t-fix"><div class="t-in"><div class="t-pad">' +
+          '<div class="t-line">We could not reach the check.</div>' +
+          '<div class="t-acts"><span class="t-b">Retry</span><span class="t-b t-b2">Continue anyway</span></div>' +
+        '</div></div></div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var ss = qa(root, '.t-s'), st = q(root, '.t-st'), vtx = q(root, '.t-vtx');
+      var strike = q(root, '.t-strike'), fix = q(root, '.t-fix');
+      var line = q(root, '.t-line'), btns = qa(root, '.t-b');
+      ss.forEach(function(s){ s.className = 't-s'; });
+      st.textContent = 'Checking'; st.className = 'a-k t-st a-shim';
+      vtx.style.opacity = '0'; vtx.style.transform = 'translateY(6px)'; vtx.classList.remove('gone');
+      strike.style.transform = 'scaleX(0)';
+      gridReset(fix, 'grid-template-rows', '0fr');
+      line.style.opacity = '0'; btns.forEach(function(b){ b.style.opacity = '0'; });
+      void root.offsetWidth;
+
+      r.at(700, function(){
+        st.textContent = 'Refused'; st.className = 'a-k t-st no';
+        ss.forEach(function(s, i){ r.at(i * 20, function(){ s.classList.add('no'); }); });
+        rise(r, vtx, 6, 320);
+      });
+      /* the pause is the point: the manager has already believed it */
+      r.at(1900, function(){
+        strike.style.transform = 'scaleX(1)';
+        r.an(strike, [{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }], opt(280, EASE.turn));
+        vtx.classList.add('gone');
+      });
+      r.at(2140, function(){
+        st.textContent = 'Unreachable'; st.className = 'a-k t-st wn';
+        ss.slice().reverse().forEach(function(s, i){
+          r.at(i * 32, function(){ s.classList.remove('no'); s.classList.add('unk'); });
+        });
+      });
+      r.at(2420, function(){
+        grid(fix, 'grid-template-rows', '1fr', 420, EASE.turn);
+        rise(r, line, 5, 320);
+        btns.forEach(function(b, i){ r.at(120 + i * 60, function(){ rise(r, b, 5, 300); }); });
+      });
+    }
+  });
+
+  /* ══ 03 · Verified, and the app opens ═══════════════════════════════ */
+  push({
+    id:'acc-03',
+    name:'Verified, and the app opens',
+    purpose:'GAP — verify-email.md §9: today the success path waits 1500ms then does window.location.href, a full reload with a white frame in the middle. Proposed instead: the seal lands on the token and the shell lights in place, nav item by nav item. Turning the lights on in a room you have just been let into, not slamming a door and opening another.',
+    spec:'seal ' + SPR.stamp.over.toFixed(1) + '% overshoot 360ms · lock hatch 300ms settle · rail lights 38ms apart, 200ms ink each',
+    source:'apps/web/src/pages/VerifyEmail.tsx:50 · 06-pages/verify-email.md §9',
+    html:
+      '<div class="mx-acc mx-acc-03">' +
+        '<div class="a-h"><span class="a-k">Verify email</span><span class="a-k v-st">Verifying</span></div>' +
+        '<div class="v-body">' +
+          '<div class="v-left"><div class="v-tok">tok_9f3c…4e1</div><div class="v-seal">✓</div></div>' +
+          '<div class="v-app">' +
+            '<div class="v-rail"><i class="v-item"></i><i class="v-item"></i><i class="v-item"></i>' +
+            '<i class="v-item"></i><i class="v-item"></i><i class="v-item"></i></div>' +
+            '<div class="v-main"><i></i><i></i><i></i></div>' +
+            '<div class="v-hatch"></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="a-cap">no reload · no white frame</div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var tok = q(root, '.v-tok'), seal = q(root, '.v-seal'), st = q(root, '.v-st');
+      var app = q(root, '.v-app'), hatch = q(root, '.v-hatch');
+      var items = qa(root, '.v-item'), lines = qa(root, '.v-main i'), cap = q(root, '.a-cap');
+      tok.className = 'v-tok a-shim';
+      seal.style.opacity = '0'; seal.style.transform = 'scale(.4)';
+      app.style.opacity = '.34'; hatch.style.opacity = '.9';
+      items.forEach(function(it){ it.className = 'v-item'; it.style.opacity = '.3'; it.style.transform = 'none'; });
+      lines.forEach(function(l){ l.style.opacity = '0'; l.style.transform = 'translateY(4px)'; });
+      st.textContent = 'Verifying'; st.className = 'a-k v-st';
+      cap.style.opacity = '0';
+      void root.offsetWidth;
+
+      r.at(620, function(){
+        tok.className = 'v-tok';
+        seal.style.opacity = '1'; seal.style.transform = 'none';
+        r.an(seal, [{ opacity:0, transform:'scale(.4) rotate(-9deg)' },
+                    { opacity:1, transform:'none' }], opt(360, E('stamp')));
+        st.textContent = 'Verified'; st.className = 'a-k v-st ok';
+      });
+      r.at(770, function(){
+        hatch.style.opacity = '0';
+        r.an(hatch, [{ opacity:.9 }, { opacity:0 }], opt(300));
+        app.style.opacity = '1';
+        r.an(app, [{ opacity:.34 }, { opacity:1 }], opt(300));
+      });
+      items.forEach(function(it, i){
+        r.at(800 + i * 38, function(){
+          if (i === 0) it.classList.add('on');
+          it.style.opacity = '1';
+          r.an(it, [{ opacity:.3, transform:'translateX(-3px)' },
+                    { opacity:1, transform:'none' }], opt(200));
+        });
+      });
+      lines.forEach(function(l, i){
+        r.at(1080 + i * 30, function(){ rise(r, l, 4, 320); });
+      });
+      r.at(1300, function(){
+        cap.style.opacity = '1';
+        r.an(cap, [{ opacity:0 }, { opacity:1 }], opt(320));
+      });
+    }
+  });
+
+  /* ══ 04 · The code becomes a person ═════════════════════════════════ */
+  push({
+    id:'acc-04',
+    name:'The code becomes a person',
+    purpose:'Settings → Team. A pending invite is a mono string with an expiry date; a member is a face with a name. When the invite is accepted the row does not blink out of one list and blink into another — the code dissolves upward, the person arrives in its place, and the row itself travels into the roster while the pending list closes behind it.',
+    spec:'code dissolves 24ms apart · person latches ' + SPR.latch.over.toFixed(1) + '% · FLIP across lists 460ms turn · pending closes 320ms settle',
+    source:'apps/web/src/pages/Settings.tsx:1196',
+    html:
+      '<div class="mx-acc mx-acc-04">' +
+        '<div class="a-h"><span class="a-k">Settings · Team</span><span class="a-k m-count">2 members</span></div>' +
+        '<div class="m-sec"><div class="m-lbl">Members</div>' +
+          '<div class="m-list m-members">' +
+            '<div class="m-row"><span class="m-av">AK</span><span class="m-nm">Aldemir Konuk</span><span class="m-rl">Owner</span></div>' +
+            '<div class="m-row"><span class="m-av">DS</span><span class="m-nm">Diego Salas</span><span class="m-rl">Manager</span></div>' +
+          '</div></div>' +
+        '<div class="m-sec m-pend"><div class="m-pw"><div class="m-lbl">Pending invites</div>' +
+          '<div class="m-list m-pinv">' +
+            '<div class="m-row m-inv"><span class="m-av">RM</span><span class="m-nm">Rosa Marín</span>' +
+            '<span class="m-code"><i>K</i><i>7</i><i>Q</i><i>M</i><i>2</i><i>X</i><i>P</i><i>D</i></span>' +
+            '<span class="m-rl">Manager</span></div>' +
+          '</div></div></div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var row = q(root, '.m-inv'), members = q(root, '.m-members'), pinv = q(root, '.m-pinv');
+      var pend = q(root, '.m-pend'), lbl = qa(root, '.m-pend .m-lbl')[0];
+      var code = q(root, '.m-code'), chars = qa(root, '.m-code i');
+      var av = q(root, '.m-inv .m-av'), nm = q(root, '.m-inv .m-nm'), count = q(root, '.m-count');
+      /* reset — the row may be living in the members list from a previous pass */
+      pinv.appendChild(row);
+      row.style.transform = 'none';
+      code.style.opacity = '1';
+      chars.forEach(function(c){ c.style.opacity = '1'; c.style.transform = 'none'; });
+      av.style.opacity = '0'; av.style.transform = 'scale(.7)';
+      nm.style.opacity = '0';
+      if (lbl) lbl.style.opacity = '1';
+      gridReset(pend, 'grid-template-rows', '1fr');
+      count.textContent = '2 members';
+      void root.offsetWidth;
+
+      chars.forEach(function(c, i){
+        r.at(360 + i * 24, function(){
+          c.style.opacity = '0'; c.style.transform = 'translateY(-6px)';
+          r.an(c, [{ opacity:1, transform:'none' },
+                   { opacity:0, transform:'translateY(-6px)' }], opt(220));
+        });
+      });
+      r.at(600, function(){
+        av.style.opacity = '1'; av.style.transform = 'none';
+        r.an(av, [{ opacity:0, transform:'scale(.62)' }, { opacity:1, transform:'none' }],
+             opt(320, E('latch')));
+        nm.style.opacity = '1';
+        r.an(nm, [{ opacity:0, transform:'translateX(-5px)' },
+                  { opacity:1, transform:'none' }], opt(320, E('latch')));
+      });
+      r.at(940, function(){
+        /* FLIP: measure, move, invert, play */
+        var a = row.getBoundingClientRect();
+        members.appendChild(row);
+        var b = row.getBoundingClientRect();
+        var dx = Math.round(a.left - b.left), dy = Math.round(a.top - b.top);
+        r.an(row, [{ transform:'translate(' + dx + 'px,' + dy + 'px)' },
+                   { transform:'none' }], opt(460, EASE.turn));
+      });
+      r.at(1080, function(){
+        if (lbl){ lbl.style.opacity = '0'; r.an(lbl, [{opacity:1},{opacity:0}], opt(200)); }
+        grid(pend, 'grid-template-rows', '0fr', 320, EASE.settle);
+      });
+      r.at(1180, function(){
+        count.textContent = '3 members';
+        r.an(count, [{ opacity:.4, transform:'translateY(2px)' },
+                     { opacity:1, transform:'none' }], opt(220));
+      });
+    }
+  });
+
+  /* ══ 05 · Expiring, then expired ════════════════════════════════════ */
+  push({
+    id:'acc-05',
+    name:'Expiring, then expired',
+    purpose:'Team → compliance. A certification does not fail at a moment, it runs out over weeks — so the bar drains LINEARLY, because a calendar has no easing. The two states the desk actually reads are the discrete ones: valid to expiring, expiring to expired, each a 160ms ink. Only when it hits zero do that member’s upcoming shifts pick up the compliance hatch.',
+    spec:'drain linear 1300ms + 700ms · pill ink 160ms · hatch sweep 400ms · lens tally 120/26 overdamped, 0.0% overshoot',
+    source:'apps/web/src/pages/team/command/ManagerShiftDesk.tsx:179',
+    html:
+      '<div class="mx-acc mx-acc-05">' +
+        '<div class="a-h"><span class="a-k">Team · compliance lens</span><span class="a-k c-lens"><b>0</b> flagged</span></div>' +
+        '<div class="c-cert">' +
+          '<div class="c-top"><span class="c-nm">Rosa Marín · Alcohol service</span><span class="c-pill">Valid</span></div>' +
+          '<div class="c-bar"><i></i></div>' +
+          '<div class="c-days"><b>31</b> days to 12 Sep</div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="c-grid"><span class="c-d">MON</span><span class="c-d">TUE</span><span class="c-d">WED</span><span class="c-d">THU</span><span class="c-d">FRI</span></div>' +
+          '<div class="c-grid">' +
+            '<div class="c-chip">DS</div>' +
+            '<div class="c-chip c-r">RM<em></em></div>' +
+            '<div class="c-chip">DS</div>' +
+            '<div class="c-chip c-r">RM<em></em></div>' +
+            '<div class="c-chip">AK</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var bar = q(root, '.c-bar'), fill = q(root, '.c-bar i'), pill = q(root, '.c-pill');
+      var days = q(root, '.c-days b'), lens = q(root, '.c-lens b'), lensK = q(root, '.c-lens');
+      var chips = qa(root, '.c-r');
+      fill.style.transform = 'scaleX(1)';
+      bar.className = 'c-bar';
+      pill.className = 'c-pill'; pill.textContent = 'Valid';
+      days.textContent = '31';
+      lens.textContent = '0'; lensK.className = 'a-k c-lens';
+      chips.forEach(function(c){ c.classList.remove('flag'); c.querySelector('em').style.opacity = '0'; });
+      void root.offsetWidth;
+
+      r.at(200, function(){
+        fill.style.transform = 'scaleX(.22)';
+        r.an(fill, [{ transform:'scaleX(1)' }, { transform:'scaleX(.22)' }], opt(1300, EASE.lin));
+        var t0 = null, ms = T(1300);
+        if (!ms){ days.textContent = '7'; return; }
+        r.rf(function(ts){
+          if (t0 === null) t0 = ts;
+          var p = Math.min(1, (ts - t0) / ms);
+          days.textContent = String(Math.round(31 - 24 * p));
+          return p < 1;
+        });
+      });
+      r.at(1500, function(){
+        pill.className = 'c-pill wn'; pill.textContent = 'Expiring';
+        bar.className = 'c-bar wn';
+        r.an(pill, [{ opacity:.35, transform:'translateY(-1px)' },
+                    { opacity:1, transform:'none' }], opt(160));
+      });
+      r.at(1560, function(){
+        fill.style.transform = 'scaleX(0)';
+        r.an(fill, [{ transform:'scaleX(.22)' }, { transform:'scaleX(0)' }], opt(700, EASE.lin));
+        var t0 = null, ms = T(700);
+        if (!ms){ days.textContent = '0'; return; }
+        r.rf(function(ts){
+          if (t0 === null) t0 = ts;
+          var p = Math.min(1, (ts - t0) / ms);
+          days.textContent = String(Math.round(7 - 7 * p));
+          return p < 1;
+        });
+      });
+      r.at(2280, function(){
+        pill.className = 'c-pill no'; pill.textContent = 'Expired';
+        bar.className = 'c-bar no';
+        r.an(pill, [{ opacity:.35, transform:'translateY(-1px)' },
+                    { opacity:1, transform:'none' }], opt(160));
+      });
+      chips.forEach(function(c, i){
+        r.at(2380 + i * 90, function(){
+          c.classList.add('flag');
+          var em = c.querySelector('em');
+          em.style.opacity = '.45';
+          r.an(em, [{ opacity:0, backgroundPosition:'100% 0' },
+                    { opacity:.45, backgroundPosition:'0 0' }], opt(400, EASE.settle));
+          r.an(c, [{ transform:'translateY(2px)' }, { transform:'none' }], opt(280, E('tuck')));
+        });
+      });
+      r.at(2600, function(){
+        lensK.className = 'a-k c-lens no';
+        tick(r, lens, 0, 2, 840);
+      });
+    }
+  });
+
+  /* ══ 06 · Twenty-four lines, three to check ═════════════════════════ */
+  push({
+    id:'acc-06',
+    name:'Twenty-four lines, three to check',
+    purpose:'The menu-import review screen. The scan resolves column by column rather than row by row — names first, then vintages, then prices — because that is the order an owner reads a wine list. Then the three lines the extractor is unsure about lift out and the twenty-one it got right recede: the app is not asking you to check its work, it is asking you to check three lines.',
+    spec:'skeleton shimmer 1900ms · column paint 240ms each, rows 26ms apart · flagged lift 3px, 70ms apart · headline tally 840ms',
+    source:'apps/web/src/components/onboarding/MenuReviewScreen.tsx:169',
+    html:
+      '<div class="mx-acc mx-acc-06">' +
+        '<div class="a-h"><span class="a-k">Menu review</span><span class="a-k r-hd"><b>0</b> of 24 flagged</span></div>' +
+        '<div class="r-list">' +
+          [['Muga Reserva','2019','38'],['Ch. Musar','2016','54'],['Tignanello','2020','96'],
+           ['Viña Tondonia','2011','72'],['Sancerre Vacheron','2022','44'],['Barolo Rinaldi','2018','88']]
+            .map(function(w, i){
+              return '<div class="r-r' + (i === 1 || i === 3 || i === 4 ? ' r-f' : '') + '">' +
+                '<i class="r-rule"></i>' +
+                '<span class="r-c1">' + w[0] + '</span>' +
+                '<span class="r-c2">' + w[1] + '</span>' +
+                '<span class="r-c3">€' + w[2] + '</span>' +
+                '<b class="r-sk k1"></b><b class="r-sk k2"></b><b class="r-sk k3"></b></div>';
+            }).join('') +
+        '</div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var demo = q(root, '.mx-acc-06') || root.firstElementChild;
+      var rows = qa(root, '.r-r'), sks = qa(root, '.r-sk'), hd = q(root, '.r-hd b');
+      rows.forEach(function(row){
+        qa(row, '.r-c1,.r-c2,.r-c3').forEach(function(c){ c.style.opacity = '0'; c.style.transform = 'none'; });
+        row.style.opacity = '1'; row.style.transform = 'none';
+        row.querySelector('.r-rule').style.transform = 'scaleY(0)';
+      });
+      sks.forEach(function(s){ s.style.opacity = '1'; });
+      if (demo) demo.classList.add('is-load');
+      hd.textContent = '0';
+      void root.offsetWidth;
+
+      r.at(760, function(){ if (demo) demo.classList.remove('is-load'); });
+      ['.r-c1', '.r-c2', '.r-c3'].forEach(function(sel, col){
+        rows.forEach(function(row, i){
+          r.at(760 + col * 250 + i * 26, function(){
+            var c = row.querySelector(sel), sk = row.querySelectorAll('.r-sk')[col];
+            if (sk){ sk.style.opacity = '0'; r.an(sk, [{opacity:1},{opacity:0}], opt(180)); }
+            c.style.opacity = '1';
+            r.an(c, [{ opacity:0, transform:'translateY(3px)' },
+                     { opacity:1, transform:'none' }], opt(240));
+          });
+        });
+      });
+      r.at(1620, function(){
+        var f = 0;
+        rows.forEach(function(row){
+          if (row.classList.contains('r-f')){
+            var d = f++ * 70;
+            r.at(d, function(){
+              var rule = row.querySelector('.r-rule');
+              rule.style.transform = 'scaleY(1)';
+              r.an(rule, [{ transform:'scaleY(0)' }, { transform:'scaleY(1)' }], opt(320, EASE.settle));
+              r.an(row, [{ transform:'translateY(3px)' }, { transform:'none' }], opt(320, E('tuck')));
+            });
+          } else {
+            r.at(120, function(){
+              row.style.opacity = '.55';
+              r.an(row, [{ opacity:1 }, { opacity:.55 }], opt(320));
+            });
+          }
+        });
+      });
+      r.at(1860, function(){ tick(r, hd, 0, 3, 840); });
+    }
+  });
+
+  /* ══ 07 · Asked once, then never ════════════════════════════════════ */
+  push({
+    id:'acc-07',
+    name:'Asked once, then never',
+    purpose:'GAP — get-started.md §9. Setting the low-stock threshold flips activated (menu_uploaded AND threshold_configured), which retires the finish-setup nudge for good. On every later import the step is skipped — but today that skip is a `return null` blank screen. Proposed: the step’s own column collapses to zero and the flow closes over it, so a question that has already been answered leaves no hole.',
+    spec:'save fill 420ms linear · activated stamp ' + SPR.stamp.over.toFixed(1) + '% · nudge 1fr→0fr 320ms settle · elision grid-columns 1fr→0fr 460ms turn',
+    source:'apps/web/src/pages/GetStarted.tsx:255 · 06-pages/get-started.md §9',
+    html:
+      '<div class="mx-acc mx-acc-07">' +
+        '<div class="a-h"><span class="a-k">Get started</span><span class="a-k h-act">not activated</span></div>' +
+        '<div class="h-flow">' +
+          '<div class="h-node h-n1"><b>Menu</b><i>24 wines</i></div>' +
+          '<div class="h-link"></div>' +
+          '<div class="h-node h-n2"><b>Threshold</b><i>6 bottles</i><span class="h-fill"></span></div>' +
+          '<div class="h-link h-l2"></div>' +
+          '<div class="h-node h-n3"><b>Live</b><i>inventory</i></div>' +
+        '</div>' +
+        '<div class="h-nudge"><div class="h-nw"><div class="h-nin">Finish setting up Mudavym.' +
+          '<span>Upload your list and set a threshold.</span></div></div></div>' +
+        '<div class="a-cap">second import · step elided, no blank frame</div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var flow = q(root, '.h-flow'), n2 = q(root, '.h-n2'), n3 = q(root, '.h-n3');
+      var fillEl = q(root, '.h-fill'), act = q(root, '.h-act');
+      var nudge = q(root, '.h-nudge'), nin = q(root, '.h-nin'), cap = q(root, '.a-cap');
+      var n2in = qa(root, '.h-n2 b, .h-n2 i');
+      gridReset(flow, 'grid-template-columns', '1fr 11px 1fr 11px 1fr');
+      n2.className = 'h-node h-n2'; n2.style.opacity = '1';
+      n2in.forEach(function(e){ e.style.opacity = '1'; });
+      n3.style.opacity = '.35';
+      fillEl.style.transform = 'scaleX(0)';
+      act.textContent = 'not activated'; act.className = 'a-k h-act';
+      act.style.transform = 'none';
+      gridReset(nudge, 'grid-template-rows', '1fr');
+      nin.style.opacity = '1';
+      cap.style.opacity = '0';
+      void root.offsetWidth;
+
+      r.at(280, function(){
+        n2.classList.add('on');
+        fillEl.style.transform = 'scaleX(1)';
+        r.an(fillEl, [{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }], opt(420, EASE.lin));
+      });
+      r.at(740, function(){
+        n3.style.opacity = '1';
+        r.an(n3, [{ opacity:.35, transform:'translateX(-4px)' },
+                  { opacity:1, transform:'none' }], opt(320));
+      });
+      r.at(900, function(){
+        act.textContent = 'activated'; act.className = 'a-k h-act ac';
+        r.an(act, [{ transform:'scale(.8)' }, { transform:'scale(1)' }], opt(360, E('stamp')));
+      });
+      r.at(1120, function(){
+        nin.style.opacity = '0';
+        r.an(nin, [{ opacity:1 }, { opacity:0 }], opt(160));
+        grid(nudge, 'grid-template-rows', '0fr', 320, EASE.settle);
+      });
+      /* second pass — the same flow, minus a question already answered */
+      r.at(1800, function(){
+        n2in.forEach(function(e){
+          e.style.opacity = '0';
+          r.an(e, [{ opacity:1 }, { opacity:0 }], opt(200));
+        });
+        grid(flow, 'grid-template-columns', '1fr 11px 0fr 0px 1fr', 460, EASE.turn);
+        n2.style.opacity = '0';
+        r.an(n2, [{ opacity:1 }, { opacity:0 }], opt(300));
+      });
+      r.at(2100, function(){
+        cap.style.opacity = '1';
+        r.an(cap, [{ opacity:0 }, { opacity:1 }], opt(320));
+      });
+    }
+  });
+
+  /* ══ 08 · Published, and seen ═══════════════════════════════════════ */
+  push({
+    id:'acc-08',
+    name:'Published, and seen',
+    purpose:'The manager’s 11pm question is never "did I publish" — it is "has everyone looked". Publishing sweeps the week solid; then acknowledgement receipts land on the cadence people actually open their phones (irregular, 90ms to 1.4s apart), the counter steps discretely because a person is a whole number, and the two who have not looked keep breathing.',
+    spec:'publish sweep 44ms/col, 14ms/row, 260ms fills · receipts irregular 90–1420ms · unread breathe 2400ms loop',
+    source:'apps/web/src/pages/team/command/ManagerShiftDesk.tsx:177',
+    html: (function(){
+      var days = ['M','T','W','T','F','S','S'], h = '', g = '';
+      for (var i = 0; i < 7; i++){
+        h += '<span>' + days[i] + '</span>';
+        g += '<div class="p-col"><div class="p-c"><i></i></div><div class="p-c"><i></i></div>' +
+             '<div class="p-c"><i></i></div></div>';
+      }
+      var dots = '';
+      for (var j = 0; j < 7; j++) dots += '<span class="p-dot"></span>';
+      return '<div class="mx-acc mx-acc-08">' +
+        '<div class="a-h"><span class="a-k">Week of 1 Sep</span><span class="a-k p-pill">Draft</span></div>' +
+        '<div class="p-days">' + h + '</div>' +
+        '<div class="p-grid">' + g + '</div>' +
+        '<div class="p-rec"><span class="p-dots">' + dots + '</span>' +
+        '<span class="p-cnt"><b>0</b> of 7 have seen it</span></div>' +
+      '</div>';
+    })(),
+    play: function(root){
+      var r = runner(root);
+      var cols = qa(root, '.p-col'), pill = q(root, '.p-pill');
+      var dots = qa(root, '.p-dot'), cnt = q(root, '.p-cnt b');
+      qa(root, '.p-c').forEach(function(c){ c.classList.remove('pub'); });
+      qa(root, '.p-c i').forEach(function(i){ i.style.transform = 'scaleY(0)'; });
+      pill.textContent = 'Draft'; pill.className = 'a-k p-pill wn';
+      dots.forEach(function(d){ d.className = 'p-dot'; });
+      cnt.textContent = '0';
+      void root.offsetWidth;
+
+      cols.forEach(function(col, ci){
+        qa(col, '.p-c').forEach(function(chip, ri){
+          r.at(250 + ci * 44 + ri * 14, function(){
+            chip.classList.add('pub');
+            var f = chip.querySelector('i');
+            f.style.transform = 'scaleY(1)';
+            r.an(f, [{ transform:'scaleY(0)' }, { transform:'scaleY(1)' }], opt(260, EASE.settle));
+          });
+        });
+      });
+      r.at(700, function(){
+        pill.textContent = 'Published'; pill.className = 'a-k p-pill ok';
+        r.an(pill, [{ opacity:.4, transform:'translateY(-1px)' },
+                    { opacity:1, transform:'none' }], opt(160));
+      });
+      /* real people, real cadence: two of the seven never open it tonight */
+      var when = [0, 140, 660, 870, 1850], seen = 0;
+      when.forEach(function(delay, i){
+        r.at(950 + delay, function(){
+          var d = dots[i];
+          d.classList.add('seen');
+          r.an(d, [{ transform:'scale(.45)' }, { transform:'scale(1)' }], opt(300, E('latch')));
+          seen += 1;
+          cnt.textContent = String(seen);
+          r.an(cnt, [{ opacity:.35, transform:'translateY(2px)' },
+                     { opacity:1, transform:'none' }], opt(160));
+        });
+      });
+      r.at(3100, function(){
+        dots.slice(5).forEach(function(d){ d.classList.add('wait'); });
+      });
+    }
+  });
+
+  /* ══ 09 · A call-out, and the cover ═════════════════════════════════ */
+  push({
+    id:'acc-09',
+    name:'A call-out, and the cover',
+    purpose:'The single most consequential thing that happens to a schedule. A call-out does not delete a shift, it HOLLOWS one — the fill drains, the border goes dashed, the name leaves and OPEN arrives. Then the offer ripples out, one person takes it, and their marker travels into the hole and fills it. Coverage never jumps; you watch it break and you watch it close.',
+    spec:'hollow 320ms settle · offer ripple 46ms apart · ring 700ms · cover travels 460ms turn · refill latches ' + SPR.latch.over.toFixed(1) + '%',
+    source:'apps/web/src/services/api/team.ts:177 (reportCallout → offerCover → assignCover)',
+    html:
+      '<div class="mx-acc mx-acc-09">' +
+        '<div class="a-h"><span class="a-k">Fri 5 Sep · dinner</span><span class="a-k g-cov ok">7/7 covered</span></div>' +
+        '<div class="g-col">' +
+          '<div class="g-sl"><span class="g-who">Diego Salas</span><span class="g-tm">4p–10p</span></div>' +
+          '<div class="g-sl g-hole"><i class="g-mark"></i><span class="g-who">Rosa Marín</span>' +
+            '<span class="g-tm">5p–11p</span><span class="g-open">Open</span><span class="g-ring"></span></div>' +
+          '<div class="g-sl"><span class="g-who">Aldemir Konuk</span><span class="g-tm">6p–12a</span></div>' +
+        '</div>' +
+        '<div class="g-offer"><span class="g-dots">' +
+          '<span class="g-dt">JP</span><span class="g-dt">LC</span><span class="g-dt g-pick">MD</span><span class="g-dt">SV</span>' +
+        '</span><span class="g-lbl">offered to 4</span></div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var hole = q(root, '.g-hole'), who = q(root, '.g-hole .g-who'), tm = q(root, '.g-hole .g-tm');
+      var openL = q(root, '.g-open'), ring = q(root, '.g-ring'), mark = q(root, '.g-mark');
+      var cov = q(root, '.g-cov'), dots = qa(root, '.g-dt'), pick = q(root, '.g-pick');
+      var lbl = q(root, '.g-lbl');
+      hole.classList.remove('open');
+      who.textContent = 'Rosa Marín'; who.style.opacity = '1'; who.style.transform = 'none';
+      tm.style.opacity = '1'; tm.style.transform = 'none';
+      openL.style.opacity = '0'; openL.style.transform = 'translateY(6px)';
+      ring.style.opacity = '0'; ring.style.transform = 'none';
+      cov.textContent = '7/7 covered'; cov.className = 'a-k g-cov ok';
+      dots.forEach(function(d){ d.style.opacity = '0'; d.style.transform = 'scale(.4)'; d.classList.remove('pick'); });
+      pick.classList.add('pick');
+      lbl.style.opacity = '0'; lbl.textContent = 'offered to 4';
+      void root.offsetWidth;
+
+      r.at(420, function(){
+        hole.classList.add('open');
+        who.style.opacity = '0'; who.style.transform = 'translateX(-5px)';
+        r.an(who, [{ opacity:1, transform:'none' },
+                   { opacity:0, transform:'translateX(-5px)' }], opt(240));
+        r.at(120, function(){ rise(r, openL, 6, 320); });
+      });
+      r.at(720, function(){
+        cov.textContent = '6/7 · gap'; cov.className = 'a-k g-cov no';
+        r.an(cov, [{ opacity:.35 }, { opacity:1 }], opt(160));
+      });
+      r.at(1000, function(){
+        lbl.style.opacity = '1';
+        r.an(lbl, [{ opacity:0 }, { opacity:1 }], opt(240));
+        dots.forEach(function(d, i){
+          r.at(i * 46, function(){
+            d.style.opacity = '1'; d.style.transform = 'none';
+            r.an(d, [{ opacity:0, transform:'scale(.4)' }, { opacity:1, transform:'none' }],
+                 opt(300, E('latch')));
+          });
+        });
+      });
+      r.at(1400, function(){
+        r.an(ring, [{ opacity:.55, transform:'scale(1)' },
+                    { opacity:0,   transform:'scale(1.05)' }], opt(700, EASE.settle));
+      });
+      r.at(1900, function(){
+        dots.forEach(function(d){
+          if (d !== pick){
+            d.style.opacity = '.22';
+            r.an(d, [{ opacity:1 }, { opacity:.22 }], opt(240));
+          }
+        });
+      });
+      r.at(2120, function(){
+        var a = pick.getBoundingClientRect(), b = mark.getBoundingClientRect();
+        var dx = Math.round(b.left - a.left), dy = Math.round(b.top - a.top);
+        pick.style.opacity = '0';
+        r.an(pick, [{ transform:'none', opacity:1 },
+                    { transform:'translate(' + dx + 'px,' + dy + 'px) scale(.55)', opacity:0 }],
+             opt(460, EASE.turn));
+      });
+      r.at(2560, function(){
+        hole.classList.remove('open');
+        openL.style.opacity = '0';
+        r.an(openL, [{ opacity:1 }, { opacity:0 }], opt(180));
+        who.textContent = 'Marco Díaz';
+        who.style.opacity = '1'; who.style.transform = 'none';
+        r.an(who, [{ opacity:0, transform:'translateY(4px)' },
+                   { opacity:1, transform:'none' }], opt(300, E('latch')));
+      });
+      r.at(2760, function(){
+        cov.textContent = '7/7 covered'; cov.className = 'a-k g-cov ok';
+        r.an(cov, [{ opacity:.35 }, { opacity:1 }], opt(200));
+        lbl.style.opacity = '0';
+        r.an(lbl, [{ opacity:1 }, { opacity:0 }], opt(240));
+        /* the offer is over — the people who did not take it leave too */
+        dots.forEach(function(d, i){
+          if (d === pick) return;
+          r.at(i * 30, function(){
+            var from = d.style.opacity || '1';
+            d.style.opacity = '0';
+            r.an(d, [{ opacity:+from }, { opacity:0 }], opt(280));
+          });
+        });
+      });
+    }
+  });
+
+  /* ══ 10 · Connect the POS ═══════════════════════════════════════════ */
+  push({
+    id:'acc-10',
+    name:'Connect the POS',
+    purpose:'Settings → POS: one selection that unlocks more of the product than any other switch in it. The six dependent surfaces do not simply fade up together — a line draws down the column and each lights as the current reaches it, 46ms apart. Deliberately slower than the house 28ms list stagger, because these are capabilities to be read, not rows to be skimmed.',
+    spec:'wire draws 640ms turn · surfaces light 46ms apart, 240ms ink · checks tally 120/26 overdamped 840ms, tabular-nums',
+    source:'apps/web/src/components/settings/PosSettingsSection.tsx:118',
+    html: (function(){
+      var f = ['Predictive analytics','Profit margin tracking','Pour cost optimizer',
+               'Shrinkage detective','Guest CRM','Sales performance'];
+      return '<div class="mx-acc mx-acc-10">' +
+        '<div class="a-h"><span class="a-k s-none">no POS connected</span><span class="s-pill">Active: Toast</span></div>' +
+        '<div class="s-body">' +
+          '<div class="s-left">' +
+            '<div class="s-prov"><b>Toast</b><i>cloud · ready</i></div>' +
+            '<div class="s-btn">Set active</div>' +
+          '</div>' +
+          '<div class="s-right"><span class="s-wire"></span>' +
+            f.map(function(n){ return '<div class="s-f"><i></i>' + n + '</div>'; }).join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="s-foot"><b>0</b> checks ingested</div>' +
+      '</div>';
+    })(),
+    play: function(root){
+      var r = runner(root);
+      var prov = q(root, '.s-prov'), btn = q(root, '.s-btn'), pill = q(root, '.s-pill');
+      var none = q(root, '.s-none'), wire = q(root, '.s-wire');
+      var feats = qa(root, '.s-f'), foot = q(root, '.s-foot b');
+      prov.classList.remove('on'); btn.classList.remove('on');
+      pill.style.opacity = '0'; pill.style.transform = 'scale(.7)';
+      none.style.opacity = '1';
+      wire.style.transform = 'scaleY(0)';
+      feats.forEach(function(f){ f.classList.remove('on'); f.style.opacity = '.28'; f.style.transform = 'none'; });
+      foot.textContent = '0';
+      void root.offsetWidth;
+
+      r.at(300, function(){
+        btn.classList.add('on');
+        r.an(btn, [{ transform:'scale(1)' }, { transform:'scale(.965)' },
+                   { transform:'scale(1)' }], opt(280, E('tuck')));
+      });
+      r.at(430, function(){
+        prov.classList.add('on');
+        none.style.opacity = '0';
+        r.an(none, [{ opacity:1 }, { opacity:0 }], opt(160));
+        pill.style.opacity = '1'; pill.style.transform = 'none';
+        r.an(pill, [{ opacity:0, transform:'scale(.7)' }, { opacity:1, transform:'none' }],
+             opt(360, E('stamp')));
+      });
+      r.at(580, function(){
+        wire.style.transform = 'scaleY(1)';
+        r.an(wire, [{ transform:'scaleY(0)' }, { transform:'scaleY(1)' }], opt(640, EASE.turn));
+      });
+      feats.forEach(function(f, i){
+        r.at(650 + i * 46, function(){
+          f.classList.add('on');
+          f.style.opacity = '1';
+          r.an(f, [{ opacity:.28, transform:'translateX(-4px)' },
+                   { opacity:1, transform:'none' }], opt(240));
+        });
+      });
+      r.at(1400, function(){
+        tick(r, foot, 0, 1284, 840, function(v){ return Math.round(v).toLocaleString(); });
+      });
+    }
+  });
+
+  /* ══ 11 · A switch with nothing behind it ═══════════════════════════ */
+  push({
+    id:'acc-11',
+    name:'A switch with nothing behind it',
+    purpose:'GAP — settings.md §9: the usage-analytics consent promises to "find the screens that slow people down", but uxSignals ships dark unless VITE_UX_OPTIMIZER is true, so today the switch turns on and nothing happens. Proposed: consent cannot complete without a receiver. The thumb travels, finds nothing at the other end, and RETURNS. Click the switch to try it; "try it live" arms the sink and the same gesture latches.',
+    spec:'thumb ' + spec('tuck', 'tuck').slice(7) + ' · return 300ms · packets 90ms apart along the wire',
+    source:'apps/web/src/components/settings/ServicesPermissions.tsx:31 + lib/uxSignals.ts:15',
+    html:
+      '<div class="mx-acc mx-acc-11">' +
+        '<div class="a-h"><span class="a-k">Settings · Services</span><span class="a-k x-mode">receiver: dark</span></div>' +
+        '<div class="x-row">' +
+          '<div class="x-tx"><b>Usage analytics</b><i>“find the screens that slow people down”</i></div>' +
+          '<button class="x-sw" type="button" aria-label="Usage analytics"><span class="x-th"></span></button>' +
+        '</div>' +
+        '<div class="x-wire"><span class="x-node">page</span>' +
+          '<span class="x-l"><i class="x-p"></i><i class="x-p"></i><i class="x-p"></i></span>' +
+          '<span class="x-node x-end">sink</span></div>' +
+        '<div class="x-note">no receiver — the switch returns</div>' +
+        '<span class="x-try">try it live</span>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var sw = q(root, '.x-sw'), th = q(root, '.x-th'), mode = q(root, '.x-mode');
+      var end = q(root, '.x-end'), pkts = qa(root, '.x-p'), note = q(root, '.x-note');
+      var line = q(root, '.x-l'), tryB = q(root, '.x-try');
+      var live = root.__accLive === true;
+
+      /* one-time wiring: the motion IS a gesture, so it must be tryable */
+      if (!root.__accWired){
+        root.__accWired = true;
+        sw.addEventListener('click', function(){
+          var m = window.MUDAVYM_MOTIONS.filter(function(x){ return x.id === 'acc-11'; })[0];
+          if (m) m.play(root);
+        });
+        tryB.addEventListener('click', function(){
+          root.__accLive = !root.__accLive;
+          var m = window.MUDAVYM_MOTIONS.filter(function(x){ return x.id === 'acc-11'; })[0];
+          if (m) m.play(root);
+        });
+      }
+
+      sw.classList.remove('lit');
+      th.style.transform = 'none';
+      end.classList.remove('live');
+      pkts.forEach(function(p){ p.style.opacity = '0'; p.style.transform = 'none'; });
+      mode.textContent = 'receiver: ' + (live ? 'live' : 'dark');
+      mode.className = 'a-k x-mode ' + (live ? 'ok' : '');
+      note.textContent = '';
+      note.className = 'x-note';
+      tryB.textContent = live ? 'try it dark' : 'try it live';
+      void root.offsetWidth;
+
+      var travel = 34 - 2 - 13 - 2; /* track - padding - thumb */
+      r.at(360, function(){
+        sw.classList.add('lit');
+        th.style.transform = 'translateX(' + travel + 'px)';
+        r.an(th, [{ transform:'none' }, { transform:'translateX(' + travel + 'px)' }],
+             opt(260, E('tuck')));
+      });
+
+      if (!live){
+        /* the switch reaches the end of its travel, finds no receiver, and comes back */
+        r.at(780, function(){
+          sw.classList.remove('lit');
+          th.style.transform = 'none';
+          r.an(th, [{ transform:'translateX(' + travel + 'px)' }, { transform:'none' }],
+               opt(300, E('tuck')));
+        });
+        r.at(900, function(){
+          note.textContent = 'no receiver — the switch returns';
+          rise(r, note, 4, 320);
+        });
+      } else {
+        r.at(680, function(){
+          end.classList.add('live');
+          r.an(end, [{ opacity:.4, transform:'scale(.9)' }, { opacity:1, transform:'none' }],
+               opt(360, E('stamp')));
+        });
+        var w = (line ? line.getBoundingClientRect().width : 90) - 5;
+        pkts.forEach(function(p, i){
+          r.at(820 + i * 90, function(){
+            p.style.opacity = '0';
+            r.an(p, [{ opacity:0, transform:'translateX(0)' },
+                     { opacity:1, transform:'translateX(4px)' },
+                     { opacity:1, transform:'translateX(' + (w - 6) + 'px)' },
+                     { opacity:0, transform:'translateX(' + w + 'px)' }], opt(520, EASE.turn));
+          });
+        });
+        r.at(1120, function(){
+          note.textContent = '3 signals · rage-click, dead-click, TTI';
+          note.className = 'x-note ok';
+          rise(r, note, 4, 320);
+        });
+      }
+    }
+  });
+})();
+</script>

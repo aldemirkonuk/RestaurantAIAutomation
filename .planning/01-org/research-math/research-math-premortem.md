@@ -50,7 +50,8 @@ revocation visible and it stops being free.
 ### M2 — Four metrics, all unmeasurable, and a year of proxies
 
 Every primary metric this department owns starts at *unmeasurable* —
-`cost_per_completed_task` (no cost events on NestJS, no verdict anywhere),
+`cost_per_completed_task` (no cost events on NestJS, no verdict anywhere — *corrected
+2026-08-25: both shipped; the metric is still unmeasurable on coverage, not existence*),
 `harness_overhead_ms` (no instrument), `verified_task_success_rate` (no criteria),
 `event_completeness` (0% on the NestJS surface). Under pressure to report *something*,
 each team substitutes the nearest thing it can read: API calls made, tokens spent, evals
@@ -88,7 +89,7 @@ exist.
 contains no latency table (`intelligence.md:96-99`). A second, earlier tell: the OD-03
 session is scheduled before `harness_overhead_ms` has a first reading.
 
-**Counter-pressure.** Three, in order. (1) `OPEN-DECISIONS.md:14` already carries the rule
+**Counter-pressure.** Three, in order. (1) `OD-03 (OPEN-DECISIONS.md:28)` already carries the rule
 — *"A scoped bake-off on this repo's actual workloads. No pick from repute."* — so the
 counter-pressure is enforcement, not invention: [[decision-office-charter]] rejects an
 OD-03 ADR whose evidence section has no measurements from this repo. (2) The bake-off

@@ -6,9 +6,10 @@ interface CountryComboboxProps {
   value: string
   onChange: (value: string) => void
   className?: string
+  id?: string
 }
 
-export function CountryCombobox({ value, onChange, className }: CountryComboboxProps) {
+export function CountryCombobox({ value, onChange, className, id }: CountryComboboxProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState(value)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -37,6 +38,7 @@ export function CountryCombobox({ value, onChange, className }: CountryComboboxP
     <div ref={containerRef} className={`relative ${className ?? ''}`}>
       <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
       <input
+        id={id}
         type="text"
         value={query}
         onChange={(e) => {

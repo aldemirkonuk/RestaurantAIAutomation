@@ -28,7 +28,7 @@ jobs:
     name: Dated rules and loop activation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Report
         # Never fails a pull request. A dated rule firing is information for a

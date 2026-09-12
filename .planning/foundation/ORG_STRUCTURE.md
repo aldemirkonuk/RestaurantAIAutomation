@@ -33,7 +33,16 @@ one point, and so the loop graph (§4) has readable clusters instead of a dense 
 | **Commercial** | Growth · Sales · Media & Brand | Finance & Pricing *(under Growth)* |
 | **Corporate** | Legal · Knowledge & Documentation · Compliance & Privacy · People & Agent Ops · Strategy & Fundraising | — |
 
-**7 divisions · 19 departments · 2 sub-layers · 3 advisory · 75 teams.**
+**7 divisions · 19 departments · 2 sub-layers · 3 advisory · 76 teams.**
+
+> Correction 2026-08-27 ([ADR 0035](../decisions/0035-wave2-seam-reconciliation.md)):
+> the team count is **76**, not the 75 this line carried at lock. `backtests`
+> (Research & Math) was chartered after the team-layer docs froze at RM-1/2/3 —
+> trigger-gated, and its entry trigger is **confirmed met** (checked 2026-08-28:
+> NF rows with `outcome_basis: call_level_v0` exist since P1 — `model-client.service.ts:413`,
+> `STATE.md:98-105`; recorded in [[backtests-agent-stack]] §6). The founder accepted
+> the roster at 76; `teams/intelligence.md`
+> `team_count: 9` is the stale remnant and is superseded by this note.
 
 > **Research & Math is a division, not a department** (promoted 2026-08-24). When the
 > founder's two-company proposal was declined ([ADR 0001](../decisions/0001-mudavym-single-entity.md)),
@@ -41,6 +50,22 @@ one point, and so the loop graph (§4) has readable clusters instead of a dense 
 > of this document contradicted that by filing it under Intelligence. The promise is now
 > honoured: it is a division of one department, deliberately — the point is insulation
 > from shipping priorities, not span of control.
+>
+> *Trailing correction 2026-08-31:* `research-math-charter.md` still opened with
+> "Parent division: **Intelligence**" and carried a fork box asking which reading was
+> right. There was no live contradiction — only this file's earlier draft, already
+> corrected above — so the charter was made to agree rather than the fork decided.
+> Recorded because it stood for two months and was cited as open.
+
+> **Scope widened 2026-08-31 — [ADR 0048](../decisions/0048-domain-quant-under-research-math.md).**
+> Research & Math now also owns **domain quantitative research** — the founder's
+> "turn food into math": yield and portion costing, demand forecasting, inventory
+> optimisation, menu engineering and pricing science. Folded in rather than given its
+> own division, because this division already carries the four structural compensations
+> such work needs and already contains the **Backtests** team, whose mandate covers
+> forecast accuracy unchanged. The division's subject is now *how well we reason* over
+> two objects: the agent, and the restaurant. **The team carve is open (OD-116)** —
+> until it closes this is department-level work, so the counts below are unchanged.
 
 > Correction 2026-08-24: earlier drafts said "20 departments". The list has always
 > been 19 (5+3+3+3+5); the count was wrong, not the roster. Technology was split into
@@ -203,4 +228,4 @@ qualify; that number moves by building the loop, never by relabelling it.
 
 | ID | Fork |
 |---|---|
-| OD-18 | Division count: 5, or split Technology into Platform + Applied AI? **Deferred pending team-layer evidence.** (§2) |
+| OD-18 | Division count — **resolved by [ADR 0007](../decisions/0007-org-structure.md) the day it was filed** (split taken: Platform + Applied AI; register Resolved table, moved 2026-08-27). This deferral note had outlived the decision. (§2) |

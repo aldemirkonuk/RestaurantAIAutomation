@@ -33,7 +33,13 @@ export type FacetSelection = Record<string, string[]>;
 export function parseFacets(facets?: string[]): FacetSelection | null {
   if (!facets?.length) return null;
 
-  const out: FacetSelection = {};
+  // Null prototype: `kind` is caller-supplied, so with a normal object literal
+  // a facet of `__proto__:x` (or `constructor:`, `toString:`, any
+  // Object.prototype member) makes `out[kind] ??= []` read the inherited value
+  // instead of assigning, and the next line throws
+  // "bucket.includes is not a function" — an unhandled 500 from a query
+  // string. Object.create(null) has no inherited members to collide with.
+  const out: FacetSelection = Object.create(null) as FacetSelection;
   for (const raw of facets) {
     const idx = raw.indexOf(":");
     if (idx <= 0 || idx === raw.length - 1) continue;

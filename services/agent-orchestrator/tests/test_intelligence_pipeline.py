@@ -413,3 +413,85 @@ async def test_unknown_sender_fires_notification(email_agent):
                 "rest1", "new@vendor.com", {"subject": "Price list"}
             )
         mock_notify.assert_called_once()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# OD-75: ProviderConversationAgent._extract_intelligence grades on the PARSE
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _conversation_agent():
+    from agents.provider_conversation_agent import ProviderConversationAgent
+
+    a = ProviderConversationAgent(
+        agent_name="provider_conversation_agent",
+        message_bus=AsyncMock(),
+        database=MagicMock(),
+        config={"mock_mode": False},
+    )
+    a.logger = MagicMock()
+    return a
+
+
+def _legacy_gemini_client(text: str):
+    """Legacy-SDK Gemini client returning a canned completion."""
+    resp = MagicMock()
+    resp.text = text
+    resp.usage_metadata = MagicMock(
+        prompt_token_count=500,
+        candidates_token_count=100,
+        thoughts_token_count=25,
+    )
+    client = MagicMock()
+    client.generate_content.return_value = resp
+    return client
+
+
+@pytest.mark.asyncio
+async def test_extract_intelligence_prose_answer_records_partial_not_success():
+    """
+    OD-75: a prose answer falls to _fallback_extract — a keyword heuristic, not
+    an extraction — yet the shared _log_gemini_spend helper booked it as a
+    completed task. It must now record 'partial' on the parse_v1 basis, exactly
+    once, with the spend intact (the tokens were billed before the parse).
+    """
+    agent = _conversation_agent()
+    agent.llm_client = _legacy_gemini_client("Sure! They sound quite happy about it.")
+
+    spend = MagicMock()
+    with patch(
+        "agents.provider_conversation_agent.get_spend_logger", return_value=spend
+    ):
+        result = await agent._extract_intelligence("hi there", "prov-1")
+
+    assert result is not None  # fallback still answers the caller
+    assert spend.log.call_count == 1
+    kwargs = spend.log.call_args.kwargs
+    assert kwargs["outcome"] == "partial"
+    assert kwargs["outcome"] != "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is True
+    assert kwargs["input_tokens"] == 500
+    assert kwargs["output_tokens"] == 125  # thinking tokens bill as output
+
+
+@pytest.mark.asyncio
+async def test_extract_intelligence_json_answer_records_success_on_parse_basis():
+    """OD-75: the parsed path keeps 'success', now on the parse_v1 basis."""
+    agent = _conversation_agent()
+    agent.llm_client = _legacy_gemini_client(
+        json.dumps({"sentiment": "positive", "sentiment_score": 0.7})
+    )
+
+    spend = MagicMock()
+    with patch(
+        "agents.provider_conversation_agent.get_spend_logger", return_value=spend
+    ):
+        result = await agent._extract_intelligence("great news", "prov-1")
+
+    assert result.sentiment == "positive"
+    assert spend.log.call_count == 1
+    kwargs = spend.log.call_args.kwargs
+    assert kwargs["outcome"] == "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is False

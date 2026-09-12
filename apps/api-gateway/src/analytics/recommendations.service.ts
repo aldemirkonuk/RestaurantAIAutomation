@@ -166,7 +166,11 @@ export class RecommendationsService {
       (ctx.financial?.deadStockCapital ?? 0) > 0 &&
         (ctx.financial?.deadStockTop?.length ?? 0) > 0,
       () => ({
-        observation: `$${Math.round(ctx.financial.deadStockCapital).toLocaleString()} is locked in slow inventory (top: ${ctx.financial.deadStockTop[0].name}).`,
+        // The number behind this sentence is now a consumption join, not a
+        // stock-depth test — see AnalyticsService.getFinancialSummary. Naming
+        // the window keeps the claim checkable, and keeps the discount advice
+        // below pointed at bottles that genuinely are not selling.
+        observation: `$${Math.round(ctx.financial.deadStockCapital).toLocaleString()} is locked in inventory that has not moved in 90 days (top: ${ctx.financial.deadStockTop[0].name}).`,
         recommendation:
           "Build a weekend flight or staff-pick feature from the top three idle wines; if untouched after two weeks, discount to cost and reinvest the cash in A-class movers.",
         rationale:

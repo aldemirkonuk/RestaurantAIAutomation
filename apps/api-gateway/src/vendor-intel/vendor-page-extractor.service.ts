@@ -2,7 +2,12 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
-import { ModelClientService } from "../common/model-client/model-client.service";
+import {
+  ModelClientService,
+  NfEventRef,
+} from "../common/model-client/model-client.service";
+import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import { PARSE_YIELD_BASIS, parseYieldVerdict } from "./parse-yield-verdict";
 import {
   ExtractedItem,
   htmlToText,
@@ -10,6 +15,11 @@ import {
   normalizeExtraction,
 } from "./vendor-page-extraction";
 import { hashWineIdentity } from "./wine-identity";
+import {
+  SsrfBlockedError,
+  assertPublicHttpTarget,
+  safeFetch,
+} from "../common/net/ssrf-guard";
 
 /** Identifies us in request logs so a vendor can allow or block us deliberately. */
 const USER_AGENT =
@@ -63,6 +73,7 @@ export class VendorPageExtractorService {
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
     private readonly modelClient: ModelClientService,
+    private readonly nfVerdicts: NfVerdictService,
   ) {}
 
   private model(): string {
@@ -81,7 +92,10 @@ export class VendorPageExtractorService {
   private async isAllowed(target: URL): Promise<boolean> {
     try {
       const robotsUrl = `${target.origin}/robots.txt`;
-      const res = await fetch(robotsUrl, {
+      // Guarded too, not just the page fetch below. This request is derived from
+      // the same user-supplied host, so leaving it on bare `fetch` would keep a
+      // blind SSRF open that merely returns less data (OD-54).
+      const res = await safeFetch(robotsUrl, {
         headers: { "user-agent": USER_AGENT },
         signal: AbortSignal.timeout(8000),
       });
@@ -131,6 +145,21 @@ export class VendorPageExtractorService {
       return result;
     }
 
+    // OD-54. robots.txt below is politeness, not a security control — it was the
+    // only thing standing between a user-supplied URL and the cloud metadata
+    // endpoint. Refused before the robots probe, so a blocked host costs no
+    // outbound request at all.
+    try {
+      await assertPublicHttpTarget(target);
+    } catch (err: any) {
+      if (err instanceof SsrfBlockedError) {
+        result.skippedReason = err.reason;
+        this.logger.warn(`Refusing ${url} — ${err.reason}`);
+        return result;
+      }
+      throw err;
+    }
+
     if (!(await this.isAllowed(target))) {
       result.skippedReason = "Disallowed by robots.txt";
       this.logger.log(`Skipping ${url} — robots.txt disallows it`);
@@ -139,7 +168,10 @@ export class VendorPageExtractorService {
 
     let html: string;
     try {
-      const res = await fetch(target.toString(), {
+      // safeFetch re-validates every redirect hop. The pre-flight check above is
+      // not enough on its own: a public URL that 302s to 169.254.169.254 defeats
+      // it entirely, and that is the hole most SSRF fixes leave open.
+      const res = await safeFetch(target.toString(), {
         headers: { "user-agent": USER_AGENT, accept: "text/html" },
         signal: AbortSignal.timeout(20_000),
       });
@@ -175,6 +207,10 @@ export class VendorPageExtractorService {
     }
 
     let rawText: string;
+    // OD-59 / P3.0: this call grades itself. The ref carries the NF row id back
+    // once the fire-and-forget emit lands, so the verdict below attaches to it
+    // without the extraction ever waiting on the instrument.
+    const eventRef = new NfEventRef();
     try {
       // P1 NF-A: model client owns transport (same 120s budget as before) and
       // emits the footprint row. HTTP errors throw as `Anthropic <status>: …`,
@@ -194,6 +230,7 @@ export class VendorPageExtractorService {
           choice: "extracted_items",
           restaurantId: params.restaurantId ?? null,
           context: { url },
+          eventRef,
         },
       });
       rawText =
@@ -208,6 +245,16 @@ export class VendorPageExtractorService {
     result.itemsFound = extraction.items.length;
     result.rejected = extraction.rejected.length;
     result.warnings = extraction.warnings;
+
+    // The judgement already exists in `normalizeExtraction` — the >50%-rejected
+    // warning has always said "treat this page's parser as broken". This only
+    // carries it into the footprint, where until now a page that returned
+    // unparseable text still recorded `success` because HTTP said 200.
+    this.nfVerdicts.record(
+      eventRef,
+      PARSE_YIELD_BASIS,
+      parseYieldVerdict(extraction),
+    );
 
     for (const r of extraction.rejected.slice(0, 10)) {
       this.logger.debug(`Rejected row from ${url}: ${r.reason}`);

@@ -1,0 +1,101 @@
+[
+  {
+    "name": "nib",
+    "kind": "bezier",
+    "params": { "ease": [0.2, 0.8, 0.2, 1], "maxTravelPx": 3 },
+    "durationMs": 150,
+    "purpose": "Micro-states: hover, focus, chip and row highlights. Nothing travels more than 3px; the pen touches down and lifts.",
+    "demoSelector": "#mock-orders .entry"
+  },
+  {
+    "name": "leaf",
+    "kind": "spring",
+    "params": {
+      "stiffness": 260,
+      "damping": 30,
+      "mass": 1,
+      "cssApprox": "340ms cubic-bezier(.2,.9,.25,1)"
+    },
+    "durationMs": 340,
+    "purpose": "House default. Toggles, chips, small entrances, anything that changes state under the finger. Critically damped — settles, never oscillates.",
+    "demoSelector": "#tglDemo"
+  },
+  {
+    "name": "turn",
+    "kind": "bezier",
+    "params": { "ease": [0.22, 0.85, 0.24, 1] },
+    "durationMs": 400,
+    "purpose": "A page turning: row expands onto its history, drawers, sheet detail, route changes. Fast out, long settle, no overshoot.",
+    "demoSelector": "#xrowDemo"
+  },
+  {
+    "name": "ruleDraw",
+    "kind": "bezier",
+    "params": { "ease": [0.25, 1, 0.3, 1], "property": "scaleX", "from": 0, "to": 1, "origin": "left center" },
+    "durationMs": 300,
+    "purpose": "The ruled line drawing itself left-to-right under a recognised name. First beat of the Recall.",
+    "demoSelector": "#recallDemo .rdraw"
+  },
+  {
+    "name": "markSet",
+    "kind": "spring",
+    "params": {
+      "stiffness": 520,
+      "damping": 22,
+      "mass": 1,
+      "staggerMs": 60,
+      "delayMs": 300,
+      "property": "pathLength",
+      "cssApprox": "300ms cubic-bezier(.2,1.5,.35,1) on stroke-dashoffset 1 -> 0"
+    },
+    "durationMs": 300,
+    "purpose": "Each return-mark landing, one per previous visit, 60ms apart. The only motion in the system allowed a touch of overshoot — being counted again should feel like something.",
+    "demoSelector": "#recallDemo .tally-draw line"
+  },
+  {
+    "name": "noteSurface",
+    "kind": "bezier",
+    "params": { "ease": [0.2, 0.8, 0.2, 1], "delayMs": 560, "translateYPx": 6 },
+    "durationMs": 260,
+    "purpose": "The marginal note the house kept about you, surfacing after the marks have finished landing. Last beat of the Recall.",
+    "demoSelector": "#recallDemo .rnote"
+  },
+  {
+    "name": "recall",
+    "kind": "bezier",
+    "params": {
+      "ease": [0.25, 1, 0.3, 1],
+      "orchestration": ["ruleDraw", "markSet", "noteSurface"],
+      "staggerChildrenMs": 60,
+      "delayChildrenMs": 300,
+      "fires": "once per familiar name per session; never on a first-time entry"
+    },
+    "durationMs": 880,
+    "purpose": "This direction's signature moment. A name is set, the house draws its line under it, the returns stamp in one at a time, and the note it kept surfaces last — 'the house remembers you', performed in under a second.",
+    "demoSelector": "#recallDemo"
+  },
+  {
+    "name": "reckon",
+    "kind": "bezier",
+    "params": { "ease": "easeOutCubic", "cubic": [0.33, 1, 0.68, 1], "figures": "tabular-nums, per-digit" },
+    "durationMs": 760,
+    "purpose": "Number tickers and KPI counts. The column never shivers because every figure is monospaced; the remembered comparison fades in only once the count has settled.",
+    "demoSelector": "#tickNum"
+  },
+  {
+    "name": "signStroke",
+    "kind": "bezier",
+    "params": { "ease": [0.32, 0.72, 0, 1], "property": "pathLength", "from": 0, "to": 1 },
+    "durationMs": 620,
+    "purpose": "The signature drawing itself when an order is approved. Fires once per approval, on one element, and is the only place in the product where a hand-drawn stroke animates.",
+    "demoSelector": "#sigPath"
+  },
+  {
+    "name": "arrive",
+    "kind": "bezier",
+    "params": { "ease": [0.2, 0.8, 0.2, 1], "staggerMs": 45, "translateYPx": 6 },
+    "durationMs": 380,
+    "purpose": "First paint of a list, a tile row or a page of entries. First paint only — a working list never animates again while the user is reading it.",
+    "demoSelector": "#kpis .kpi"
+  }
+]

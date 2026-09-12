@@ -146,13 +146,39 @@ def sample_notification_data() -> dict:
     }
 
 
-@pytest.fixture
-def test_client():
-    """FastAPI TestClient wrapping the main app.
+# Every orchestrator route that spends money, writes data, or reads tenant data
+# now requires the X-Admin-Key header (api/auth.py). Tests get a known key in the
+# environment via the autouse fixture below, and `test_client` sends it by
+# default so behaviour tests keep testing behaviour rather than the auth gate.
+# `anon_client` is the deliberately-unauthenticated counterpart, for tests that
+# assert the gate itself.
+TEST_ADMIN_API_KEY = "test-admin-key"
 
-    Applies a compatibility shim for starlette 0.35.1 + httpx 0.28: httpx 0.28
-    removed the `app` parameter from Client.__init__, but starlette still passes it.
-    The shim absorbs the keyword arg so the real transport kwarg is used instead.
+
+@pytest.fixture(autouse=True)
+def _admin_api_key_env():
+    """Put a known ADMIN_API_KEY in the environment for the duration of a test.
+
+    Without this, `verify_admin_key` rejects every request (it 401s when the env
+    var is unset), so protected routes would be untestable rather than tested.
+    """
+    old = os.environ.get("ADMIN_API_KEY")
+    os.environ["ADMIN_API_KEY"] = TEST_ADMIN_API_KEY
+    try:
+        yield TEST_ADMIN_API_KEY
+    finally:
+        if old is None:
+            os.environ.pop("ADMIN_API_KEY", None)
+        else:
+            os.environ["ADMIN_API_KEY"] = old
+
+
+def _make_test_client(headers):
+    """Build a TestClient over main.app with the starlette/httpx shim applied.
+
+    Shim: httpx 0.28 removed the `app` parameter from Client.__init__ but
+    starlette 0.35.1 still passes it. The shim absorbs the keyword arg so the
+    real transport kwarg is used instead.
     """
     import httpx
     from fastapi.testclient import TestClient
@@ -165,10 +191,21 @@ def test_client():
 
     httpx.Client.__init__ = _shim  # type: ignore[method-assign]
     try:
-        client = TestClient(app)
-        yield client
+        yield TestClient(app, headers=headers)
     finally:
         httpx.Client.__init__ = _orig_client_init  # type: ignore[method-assign]
+
+
+@pytest.fixture
+def test_client():
+    """TestClient over the main app, authenticated as an admin-key caller."""
+    yield from _make_test_client({"X-Admin-Key": TEST_ADMIN_API_KEY})
+
+
+@pytest.fixture
+def anon_client():
+    """TestClient over the main app with NO credentials — for auth-gate tests."""
+    yield from _make_test_client(None)
 
 
 @pytest.fixture

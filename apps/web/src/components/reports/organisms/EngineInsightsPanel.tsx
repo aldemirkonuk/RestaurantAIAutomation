@@ -23,8 +23,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
-
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
+import { apiClient, getErrorMessage } from "../../../services/api/client";
 
 interface EngineInsight {
   sentence: string;
@@ -112,6 +111,7 @@ export function EngineInsightsPanel({
   >({});
   const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [goalForm, setGoalForm] = useState({
@@ -144,27 +144,32 @@ export function EngineInsightsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const base = `${API_URL}/api/v1/analytics`;
+  const base = "/analytics";
 
   const loadAll = useCallback(
     async (refresh = false) => {
       if (!restaurantId) return;
       if (refresh) setRefreshing(true);
+      setError(null);
       try {
-        const [insRes, goalsRes, dispRes] = await Promise.all([
-          fetch(
+        // allSettled, not all: goals/disposition failing must not blank the
+        // insight list (fetch never rejected on 4xx — axios does).
+        const [insRes, goalsRes, dispRes] = await Promise.allSettled([
+          apiClient.get<any>(
             `${base}/insights/${restaurantId}${refresh ? "?refresh=true" : "?limit=12"}`,
           ),
-          fetch(`${base}/goals/${restaurantId}`),
-          fetch(`${base}/recommendations/${restaurantId}/actions?status=all`),
+          apiClient.get<Goal[]>(`${base}/goals/${restaurantId}`),
+          apiClient.get<any>(
+            `${base}/recommendations/${restaurantId}/actions?status=all`,
+          ),
         ]);
 
         // Manager disposition on insight cards (hidden + pinned).
         const hidden = new Set<string>();
         const pinnedSet = new Set<string>();
-        if (dispRes.ok) {
+        if (dispRes.status === "fulfilled") {
           const now = Date.now();
-          const items: any[] = (await dispRes.json()).items ?? [];
+          const items: any[] = dispRes.value.data?.items ?? [];
           for (const it of items) {
             if (!String(it.ruleKey ?? "").startsWith("insight:")) continue;
             if (it.pinned) pinnedSet.add(it.ruleKey);
@@ -177,8 +182,9 @@ export function EngineInsightsPanel({
           }
         }
 
-        if (insRes.ok) {
-          const body = await insRes.json();
+        if (insRes.status === "rejected") throw insRes.reason;
+        {
+          const body = insRes.value.data ?? {};
           const rows: any[] = body.insights ?? [];
           const mapped = rows
             .map((r) => {
@@ -208,9 +214,10 @@ export function EngineInsightsPanel({
           );
           setInsights(mapped);
         }
-        if (goalsRes.ok) setGoals(await goalsRes.json());
-      } catch {
-        // panel is additive — fail quiet
+        if (goalsRes.status === "fulfilled") setGoals(goalsRes.value.data);
+      } catch (e) {
+        setInsights([]);
+        setError(getErrorMessage(e));
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -231,13 +238,10 @@ export function EngineInsightsPanel({
     setExpandedGoal(goalId);
     if (!progressByGoal[goalId] && restaurantId) {
       try {
-        const res = await fetch(
+        const { data: p } = await apiClient.get<GoalProgress>(
           `${base}/goals/${restaurantId}/${goalId}/progress`,
         );
-        if (res.ok) {
-          const p = await res.json();
-          setProgressByGoal((prev) => ({ ...prev, [goalId]: p }));
-        }
+        setProgressByGoal((prev) => ({ ...prev, [goalId]: p }));
       } catch {
         /* quiet */
       }
@@ -248,28 +252,23 @@ export function EngineInsightsPanel({
     if (!restaurantId || !goalForm.name || !Number(goalForm.targetValue))
       return;
     try {
-      const res = await fetch(`${base}/goals/${restaurantId}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: goalForm.name,
-          metricKey: goalForm.metricKey,
-          targetValue: Number(goalForm.targetValue),
-          deadline: goalForm.deadline || undefined,
-        }),
+      await apiClient.post(`${base}/goals/${restaurantId}`, {
+        name: goalForm.name,
+        metricKey: goalForm.metricKey,
+        targetValue: Number(goalForm.targetValue),
+        deadline: goalForm.deadline || undefined,
       });
-      if (res.ok) {
-        setShowGoalForm(false);
-        setGoalForm({
-          name: "",
-          metricKey: "wine_revenue",
-          targetValue: "",
-          deadline: "",
-        });
-        loadAll();
-      }
-    } catch {
-      /* quiet */
+      setShowGoalForm(false);
+      setGoalForm({
+        name: "",
+        metricKey: "wine_revenue",
+        targetValue: "",
+        deadline: "",
+      });
+      loadAll();
+    } catch (e) {
+      // The form used to just sit there when the POST failed.
+      toast.error(`Couldn't save that goal — ${getErrorMessage(e)}`);
     }
   };
 
@@ -278,10 +277,9 @@ export function EngineInsightsPanel({
     async (ins: EngineInsight, patch: Record<string, unknown>) => {
       if (!restaurantId) return;
       try {
-        await fetch(`${base}/recommendations/${restaurantId}/action`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
+        await apiClient.post(
+          `${base}/recommendations/${restaurantId}/action`,
+          {
             ruleKey: ins.ruleKey,
             ...patch,
             snapshot: {
@@ -289,8 +287,8 @@ export function EngineInsightsPanel({
               recommendation: ins.sentence,
               category: ins.category,
             },
-          }),
-        });
+          },
+        );
       } catch {
         toast.error("Couldn't save that");
       }
@@ -306,11 +304,12 @@ export function EngineInsightsPanel({
 
   const restoreInsight = async (ruleKey: string) => {
     setUndo(null);
-    await fetch(`${base}/recommendations/${restaurantId}/action`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ruleKey, status: "active" }),
-    }).catch(() => {});
+    await apiClient
+      .post(`${base}/recommendations/${restaurantId}/action`, {
+        ruleKey,
+        status: "active",
+      })
+      .catch(() => {});
     loadAll();
   };
 
@@ -386,6 +385,17 @@ export function EngineInsightsPanel({
               />
             ))}
           </div>
+        ) : error ? (
+          /* A failed request must never read as "nothing to report yet". */
+          <p className="text-sm text-red-700">
+            Couldn't load insights — {error}
+            <button
+              onClick={() => void loadAll()}
+              className="ml-1 font-medium underline hover:no-underline"
+            >
+              Retry
+            </button>
+          </p>
         ) : insights.length === 0 ? (
           <p className="text-sm text-gray-500">
             Conclusions appear as sales, pours, and orders accumulate — the

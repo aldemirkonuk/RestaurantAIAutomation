@@ -5,6 +5,7 @@ import { Link2, X, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
+import { apiClient, getErrorMessage } from '../../services/api/client'
 
 interface StandaloneLocation {
   id: string
@@ -19,7 +20,6 @@ interface CreateChainDialogProps {
   standaloneLocations: StandaloneLocation[]
 }
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
 export function CreateChainDialog({
   open,
@@ -50,25 +50,18 @@ export function CreateChainDialog({
     if (!name.trim()) return
     setIsSubmitting(true)
     try {
-      const token = localStorage.getItem('accessToken')
-
       // Create the chain
-      const resp = await fetch(`${API_URL}/api/v1/organizations/chains`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: name.trim() }),
-      })
-      if (!resp.ok) throw new Error('Failed to create chain')
-      const created = await resp.json()
+      const { data: created } = await apiClient.post<{ id: string; name: string }>(
+        '/organizations/chains',
+        { name: name.trim() },
+      )
 
       // Assign selected locations
       const ids = Array.from(selectedIds)
       await Promise.all(
         ids.map((locationId) =>
-          fetch(`${API_URL}/api/v1/organizations/locations/${locationId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ chainId: created.id }),
+          apiClient.patch(`/organizations/locations/${locationId}`, {
+            chainId: created.id,
           }),
         ),
       )
@@ -80,8 +73,8 @@ export function CreateChainDialog({
       )
       onCreated({ id: created.id, name: created.name })
       handleClose()
-    } catch {
-      toast.error('Could not create chain — try again')
+    } catch (e) {
+      toast.error(`Could not create chain — ${getErrorMessage(e)}`)
     } finally {
       setIsSubmitting(false)
     }

@@ -34,8 +34,9 @@ export function WineAgentFab() {
       type="button"
       onClick={() => {
         trackGuidance('wine_agent_fab_clicked')
-        // /wineagent is still a placeholder (App.tsx) — Sommelier AI is the
-        // real inventory & ordering help surface today.
+        // Sommelier AI is the inventory & ordering help surface. The old
+        // `/wineagent` placeholder route is retired (ADR 0019 §B) — this FAB
+        // never pointed at it.
         navigate('/sommelier')
       }}
       aria-label="Wine Agent — inventory & ordering help"
@@ -43,9 +44,9 @@ export function WineAgentFab() {
       data-guidance="wine-agent-fab"
       className={cn(
         'fixed z-[40] right-5 w-12 h-12 rounded-full',
-        'bg-[#9E4249] text-white shadow-lg shadow-[#9E4249]/25',
+        'bg-[#1A5E6B] text-white shadow-lg shadow-[#1A5E6B]/25',
         'flex items-center justify-center',
-        'hover:bg-[#B85055] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9E4249] focus-visible:ring-offset-2',
+        'hover:bg-[#14515C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A5E6B] focus-visible:ring-offset-2',
         'transition-all duration-200',
         offsetForTip ? 'bottom-24' : 'bottom-5',
         'mb-[env(safe-area-inset-bottom)]',

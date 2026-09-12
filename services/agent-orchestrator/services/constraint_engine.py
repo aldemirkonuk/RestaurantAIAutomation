@@ -4,6 +4,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from core.commitment_patterns import (
+    COMMITMENT_PATTERNS as SHARED_COMMITMENT_PATTERNS,
+)
+
 # ──────────────────────────────────────────────────────────────────────────
 # Module-level regex patterns (D-32-14)
 # ──────────────────────────────────────────────────────────────────────────
@@ -16,12 +20,32 @@ WINE_TOPIC_PATTERNS = [
     r"distributor|importer|broker|allocation|sommelier|winery|cellar|vintage)\b",
 ]
 
-# C-02 COMMITMENT_GUARD: copied verbatim from provider_conversation_agent.py
-COMMITMENT_PATTERNS = [
+# C-02 COMMITMENT_GUARD (OD-44).
+#
+# The comment here used to read "copied verbatim from provider_conversation_agent.py".
+# It never was: that agent carried a list of exact commitment phrases, this carries
+# three broad co-occurrence heuristics. Two different guardrails asserting parity —
+# the same defect OD-44 records for the TypeScript/Python pair.
+#
+# Resolved as a UNION, not a replacement. SHARED_COMMITMENT_PATTERNS (imported at the
+# top of this file) is the generated cross-runtime list whose canon is
+# apps/api-gateway/src/common/orchestrator/commitment-patterns.ts; the three heuristics
+# below are kept on top of it. C-02 therefore becomes strictly stronger and never
+# weaker: nothing it blocks today stops being blocked, and the phrases the other two
+# runtimes treat as contract-forming are now blocked here as well.
+
+#: Broad co-occurrence heuristics unique to C-02 — catch commitment shapes the exact
+#: phrase list cannot ("we agree to buy 6 cases at the offered price").
+COMMITMENT_HEURISTIC_PATTERNS = [
     r"\b(agree|commit|confirm|purchase|buy|order|proceed|close|accept|finalize)\b"
     r".*\b(deal|offer|price|quantity|terms)\b",
     r"\bwe will\b.*\b(buy|purchase|take|order)\b",
     r"\b(confirmed?|accepted?|agreed?)\b.*\b(price|quantity|terms|offer)\b",
+]
+
+COMMITMENT_PATTERNS = [
+    *SHARED_COMMITMENT_PATTERNS,
+    *COMMITMENT_HEURISTIC_PATTERNS,
 ]
 
 # C-08 / C-21 PII_PAYMENT_GUARD

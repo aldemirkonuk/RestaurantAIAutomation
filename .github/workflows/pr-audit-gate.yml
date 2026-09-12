@@ -1,0 +1,144 @@
+name: PR Audit Gate
+
+# ADR 0090. The CI-side half of the pre-merge audit — the backstop that holds
+# even when no Claude Code session (and therefore no PreToolUse hook) is driving
+# the merge. Advisory today: it posts a verdict and, on PASS, attempts an
+# immediate, SHA-pinned merge (never `--auto` — see scripts/pr_audit_gate.py's
+# merge step for why) — but it is NOT yet in main's required status contexts
+# (that PATCH needs the founder's explicit go, see ADR 0090 "What this does NOT
+# yet do"), so nothing here stops a merge that bypasses this workflow entirely.
+#
+# SECURITY (rewritten 2026-09-03 after this gate's own first real audit, PR
+# #261 run 33695630472, security angle BLOCK): this was `on: pull_request`
+# with `actions/checkout` defaulting to the PR's own merge ref and
+# `contents: write` + the live ANTHROPIC_API_KEY in env. For a same-repo
+# branch (not a fork — forks are already denied secrets on `pull_request`,
+# which is the case the old header comment reasoned about), that meant the
+# script auditing a PR was THE PR'S OWN, POSSIBLY MODIFIED, COPY of
+# scripts/pr_audit_gate.py, running with write access and the key. A PR
+# editing that script could make the verdict parser always return PASS,
+# self-merge, and exfiltrate the key on the way — a same-repo mirror of the
+# OAuth self-provisioning hole this ADR cites, one layer up in CI. Fixed with
+# the standard GitHub-documented pattern for exactly this ("pwn request"):
+#
+#   - `pull_request_target` instead of `pull_request` — the workflow
+#     DEFINITION that runs is always the one committed on the BASE branch
+#     (main), never the PR's copy. A PR editing this very file has zero
+#     effect on how its own run behaves.
+#   - `actions/checkout` pinned explicitly to the base commit (never the PR's
+#     tree) — so scripts/pr_audit_gate.py, the agent definitions, and
+#     CLAUDE.md that the audit actually reads and executes are always main's
+#     trusted versions too. The PR's content is read ONLY as inert diff text
+#     via `gh pr diff`, never checked out, never executed.
+#   - Belt and suspenders inside the (now-trusted) script itself: any diff
+#     touching the gate's own files force-BLOCKs with an explicit escalation
+#     note, regardless of what the angles/adversary conclude — a PR that
+#     changes what FUTURE audits do still needs a human, even once the
+#     "audit itself" attack is closed.
+#
+# One consequence, stated rather than hidden: the very first PR to ADD this
+# workflow (this one) cannot see it run under pull_request_target, because
+# GitHub loads that trigger's workflow definition from the base branch, and
+# main does not have this file yet. It starts actually auditing PRs once this
+# merges — the correct trade for a same-repo pwn-request fix, not a bug.
+#
+# Needs the ANTHROPIC_API_KEY secret — added 2026-09-02.
+#
+# CORRECTED 2026-09-03 (security angle, second live-audit run): this repo is
+# PUBLIC (gh repo view: visibility PUBLIC, 0 forks). The line that used to be
+# here — "fork PRs cannot see this secret" — was true of the trigger this
+# replaced (`pull_request` denies secrets to fork PRs) and was carried over
+# unchanged; it is FALSE for `pull_request_target`, which runs with the base
+# repo's full token and secrets for EVERY pull_request_target event,
+# including one opened by an arbitrary GitHub account with no relationship
+# to this repo. That is the whole reason pull_request_target demands the
+# checkout discipline above in the first place. Exposure is bounded, not
+# zero: no external code ever executes (checkout is pinned to base, the PR's
+# content is read only as inert diff text) and even a successful merge attempt
+# still can't get past branch protection for someone without merge rights — but an
+# outside account CAN, at will, trigger a job that spends the Anthropic
+# API budget. Closed below with an author-association gate rather than left
+# as an accepted cost: `github.event.pull_request.author_association` is
+# evaluated from the base repo's own event payload (not the PR content), so
+# a PR cannot forge its own way into OWNER/MEMBER/COLLABORATOR.
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# One run per PR NUMBER (not per head SHA, despite how that reads) — a new
+# push supersedes an in-flight audit of the old commit on the same PR.
+concurrency:
+  group: pr-audit-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write        # sha-pinned merge (gh api .../merge) on PASS
+  pull-requests: write    # gh pr comment
+  checks: read            # read the required contexts (fetched fresh from branch protection, never hardcoded)
+  actions: write          # `gh workflow run ci.yml` after a PASS merge -- GitHub's documented
+                           # scope for triggering a workflow run via API. Added same round as
+                           # the dispatch call itself: without this the call 403s every time,
+                           # which the code handles (fails loud, doesn't block the already-done
+                           # merge) but the actual fix would never have worked. Self-caught before
+                           # a fifth audit round had to find it.
+
+jobs:
+  audit:
+    name: PR Audit Gate
+    runs-on: ubuntu-latest
+    # Public repo + pull_request_target = any GitHub account can trigger this
+    # job (see the SECURITY comment above). Refuse to spend the API budget
+    # (or the checks: read / contents: write / pull-requests: write token)
+    # on a PR from outside the people already trusted with write access.
+    # Confirmed live (third audit, security angle): this repo's collaborator
+    # list is exactly one account (the founder, admin). OWNER only, not the
+    # MEMBER/COLLABORATOR this originally shipped with — COLLABORATOR
+    # includes read-only and triage collaborators, not only write access as
+    # a stricter reading might assume, and MEMBER is org-scoped and becomes
+    # a much wider door if this repo is ever transferred to an org. Widen
+    # deliberately if real collaborators are ever added, not by default.
+    if: github.event.pull_request.author_association == 'OWNER'
+    steps:
+      - name: Checkout the TRUSTED base commit (never the PR's own tree)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Self-test the verdict/push-pattern/state-classifier logic
+        run: python3 scripts/pr_audit_gate.py --self-test
+
+      - name: Wait for the existing required checks
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/pr_audit_gate.py --wait-upstream
+
+      - name: Explain a skip
+        if: steps.upstream.outputs.status == 'upstream_red'
+        run: |
+          echo "::notice::Upstream CI is red or still pending — nothing for the audit to review yet. This is not a PASS; it is a no-op until CI turns green on its own."
+
+      - name: Run the PR audit gate
+        if: steps.upstream.outputs.status == 'upstream_green'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/pr_audit_gate.py --audit
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::The audit either returned BLOCK, or could not run (missing ANTHROPIC_API_KEY, an API error, or an unreadable report bundle). Either way this job fails rather than reporting green — see the PR comment scripts/pr_audit_gate.py posted for which one, and never treat this job's absence of a green check as the PR being fine."

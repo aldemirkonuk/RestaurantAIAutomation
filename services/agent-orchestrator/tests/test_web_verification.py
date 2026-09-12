@@ -502,3 +502,78 @@ def test_e2e_web_verify_flow():
         f"E2E test: region verification_status must be 'web_verified', "
         f"got {updated_region.get('verification_status')!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# OD-75: parse-graded outcomes on the Gemini snippet parse
+# ---------------------------------------------------------------------------
+
+
+def _gemini_response(text: str) -> MagicMock:
+    resp = MagicMock()
+    resp.text = text
+    resp.usage_metadata = MagicMock(
+        prompt_token_count=900,
+        candidates_token_count=140,
+        thoughts_token_count=60,
+    )
+    return resp
+
+
+def _run_parse(response_text: str, logger_mock: MagicMock):
+    """Drive parse_search_results with a canned Gemini answer."""
+    client = MagicMock()
+    client.models.generate_content.return_value = _gemini_response(response_text)
+
+    from services.web_verification_service import parse_search_results
+
+    with patch(
+        "services.web_verification_service.get_settings",
+        return_value=MagicMock(google_api_key="test-key"),
+    ), patch(
+        "services.web_verification_service.genai.Client", return_value=client
+    ), patch(
+        "services.web_verification_service.get_spend_logger",
+        return_value=logger_mock,
+    ):
+        return asyncio.run(
+            parse_search_results(
+                snippets=[{"title": "t", "snippet": "s", "link": "http://x"}],
+                wine_name="Château Test 2015",
+            )
+        )
+
+
+def test_unparseable_gemini_snippet_parse_records_partial():
+    """
+    OD-75: parse_search_results returns None on an unparseable answer, so the
+    failure was silent in both directions — the caller got no verification and
+    NF got 'success' on the call_level_v0 basis, proving only that Gemini
+    replied. The row must now say 'partial' on the parse_v1 basis, and must
+    still be written once because the tokens were billed regardless.
+    """
+    logger_mock = MagicMock()
+    result = _run_parse("Sorry, I could not find that wine.", logger_mock)
+
+    assert result is None
+    assert logger_mock.log.call_count == 1
+    kwargs = logger_mock.log.call_args.kwargs
+    assert kwargs["outcome"] == "partial"
+    assert kwargs["outcome"] != "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is True
+    assert kwargs["input_tokens"] == 900
+    assert kwargs["output_tokens"] == 200  # thinking tokens bill as output
+
+
+def test_valid_gemini_snippet_parse_records_success_on_parse_basis():
+    """OD-75: a schema-valid answer keeps 'success', now on the parse_v1 basis."""
+    logger_mock = MagicMock()
+    result = _run_parse('{"region": "Pauillac", "source_confidence": 0.9}', logger_mock)
+
+    assert result is not None
+    assert logger_mock.log.call_count == 1
+    kwargs = logger_mock.log.call_args.kwargs
+    assert kwargs["outcome"] == "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is False

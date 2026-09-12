@@ -231,6 +231,16 @@ class SyncManagerService {
       console.log(`[SyncManager] Processing ${mutations.length} pending mutations`)
 
       for (const mutation of mutations) {
+        // Mutations whose type has no handler here belong to another owner
+        // (doorOutbox's 'receiving.door', spotCountOutbox's
+        // 'inventory.spotCount' — both flush the shared queue themselves,
+        // with their own idempotency keys and attempt budgets). Leave them
+        // untouched: processing them throws, and three throws used to
+        // DELETE a door receipt that was never sent.
+        if (!(mutation.type in mutationHandlers)) {
+          continue
+        }
+
         // Skip and discard mutations that already exhausted retries
         if (mutation.retryCount >= this.MAX_RETRIES) {
           console.warn(`[SyncManager] Discarding dead mutation ${mutation.id} (type: ${mutation.type}, retries: ${mutation.retryCount})`)

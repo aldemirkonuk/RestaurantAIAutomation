@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 070 · Knowledge &amp; Documentation — Agenda Canvas</title>
+<style>
+  :root{
+    --paper:#f7f4ef; --ink:#1b1815; --ink-2:#4c453e; --ink-3:#7d746a;
+    --rule:#ddd5c9; --card:#fffdfa; --wine:#9e4249; --wine-2:#cd2d5b;
+    --slate:#3f5a6b; --moss:#4a6a4f; --amber:#a5761f;
+    --shadow:0 1px 2px rgba(27,24,21,.06), 0 8px 24px -14px rgba(27,24,21,.35);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#14120f; --ink:#eee7dd; --ink-2:#b7ada0; --ink-3:#8a8075;
+      --rule:#332e29; --card:#1c1915; --wine:#d4737a; --wine-2:#e86a90;
+      --slate:#7ea6bd; --moss:#84ad8a; --amber:#d3a54e;
+      --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 28px -16px rgba(0,0,0,.8);
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1280px;margin:0 auto;padding:40px 28px 72px}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86em}
+
+  /* ---- header ---- */
+  header{border-bottom:2px solid var(--ink);padding-bottom:20px;margin-bottom:28px}
+  .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3)}
+  h1{font-size:clamp(28px,4vw,42px);line-height:1.08;margin:.28em 0 .1em;letter-spacing:-.02em}
+  h1 em{font-style:normal;color:var(--wine)}
+  .sub{color:var(--ink-2);max-width:74ch;font-size:16px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .pill{font-size:11px;letter-spacing:.05em;padding:4px 10px;border:1px solid var(--rule);
+        border-radius:999px;color:var(--ink-2);background:var(--card)}
+  .pill.hot{border-color:var(--wine);color:var(--wine)}
+
+  /* ---- the ledger ---- */
+  .ledger{display:grid;grid-template-columns:1.15fr 1fr;gap:22px;margin:0 0 34px}
+  @media (max-width:860px){.ledger{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;
+         padding:20px 22px;box-shadow:var(--shadow)}
+  .panel h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
+            margin:0 0 14px;font-weight:600}
+  .eq{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  .big{font-size:52px;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .big.add{color:var(--wine)}
+  .big.ret{color:var(--ink-3)}
+  .op{font-size:26px;color:var(--ink-3)}
+  .eqlabel{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+           display:block;margin-top:6px}
+  .note{margin-top:14px;font-size:13px;color:var(--ink-2);border-top:1px dashed var(--rule);padding-top:12px}
+  .bar{height:9px;border-radius:5px;background:var(--rule);overflow:hidden;margin:8px 0 4px}
+  .bar > i{display:block;height:100%;background:var(--wine)}
+  .rows{display:grid;gap:9px}
+  .row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:baseline;
+       font-size:13px;border-bottom:1px dotted var(--rule);padding-bottom:7px}
+  .row:last-child{border-bottom:0}
+  .row b{font-weight:600;font-variant-numeric:tabular-nums}
+  .warn{color:var(--wine)}
+  .ok{color:var(--moss)}
+
+  /* ---- timeline ---- */
+  .tl{margin:0 0 34px}
+  .tl svg{width:100%;height:auto;display:block}
+  .tl .cap{font-size:12.5px;color:var(--ink-2);margin-top:10px}
+
+  /* ---- tracks ---- */
+  .tracks{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  @media (max-width:1100px){.tracks{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:640px){.tracks{grid-template-columns:1fr}}
+  .track{border-top:3px solid var(--accent,var(--ink));padding-top:12px}
+  .track.t1{--accent:var(--wine)} .track.t2{--accent:var(--wine-2)}
+  .track.t3{--accent:var(--slate)} .track.t4{--accent:var(--moss)}
+  .track > h3{margin:0 0 3px;font-size:14px;letter-spacing:-.01em}
+  .track > p{margin:0 0 12px;font-size:12px;color:var(--ink-3);min-height:2.6em}
+  .task{background:var(--card);border:1px solid var(--rule);border-left:3px solid var(--accent);
+        border-radius:7px;padding:11px 12px;margin-bottom:9px;box-shadow:var(--shadow)}
+  .task .id{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--accent)}
+  .task .ttl{font-size:13.5px;line-height:1.35;margin:3px 0 7px}
+  .task .foot{display:flex;justify-content:space-between;gap:8px;align-items:center;
+              font-size:10.5px;letter-spacing:.04em;color:var(--ink-3);text-transform:uppercase}
+  .task .when{font-variant-numeric:tabular-nums;color:var(--ink-2);font-weight:600}
+  .task .when.pre{color:var(--wine)}
+  .own{display:inline-block;padding:2px 7px;border-radius:4px;border:1px solid var(--rule)}
+  .own.dept{border-color:var(--wine);color:var(--wine)}
+  .own.ca{border-color:var(--amber);color:var(--amber)}
+  .own.gr{border-color:var(--slate);color:var(--slate)}
+  .own.sv{border-color:var(--moss);color:var(--moss)}
+
+  /* ---- lower grid ---- */
+  .lower{display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;margin-top:34px}
+  @media (max-width:980px){.lower{grid-template-columns:1fr}}
+  .lower li{margin-bottom:10px;font-size:13px;color:var(--ink-2)}
+  .lower li b{color:var(--ink)}
+  ul{padding-left:18px;margin:0}
+  .grade{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--wine);
+         display:block;margin-top:3px}
+  footer{margin-top:40px;border-top:1px solid var(--rule);padding-top:14px;
+         font-size:12px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Sketch 070 · Corporate ▸ Knowledge &amp; Documentation · ADR 0039 Track B</div>
+  <h1>The department can measure everything it&nbsp;adds<br>and <em>nothing it retires</em>.</h1>
+  <p class="sub">Agenda canvas, 2026-08-28. Sixteen tasks, four tracks, three teams — all of
+  them serving one of two ends: closing the retirement half of the ledger, or keeping
+  <strong>this wave's own growth</strong> honest. Every number on this page was measured on
+  disk today, not forecast.</p>
+  <div class="meta">
+    <span class="pill">corpus-archive · where does it live</span>
+    <span class="pill">graph-retrieval · can it be found</span>
+    <span class="pill">standards-verification · is it still true</span>
+    <span class="pill hot">kd-ledger · runs since 2026-08-28</span>
+  </div>
+</header>
+
+<!-- ============ THE LEDGER ============ -->
+<section class="ledger">
+  <div class="panel">
+    <h2>The ratio the rule watches</h2>
+    <div class="eq">
+      <div>
+        <div class="big add">+108</div>
+        <span class="eqlabel">added · 1,090 → 1,198 in one day</span>
+      </div>
+      <div class="op">÷</div>
+      <div>
+        <div class="big ret">0</div>
+        <span class="eqlabel">retired · machine-readable</span>
+      </div>
+      <div class="op">=</div>
+      <div>
+        <div class="big">∞</div>
+        <span class="eqlabel">kd.docs_added_vs_retired_ratio</span>
+      </div>
+    </div>
+    <div class="bar"><i style="width:100%"></i></div>
+    <p class="note"><strong>Both halves exist. Only one has a reader.</strong>
+    <code>kd_ledger()</code> counts files on disk (<code>run_card.py:314-330</code>).
+    Retirements live in ADR 0032's tombstone index — a hand-written markdown table with no
+    parser and no guard, and conflict markers were observed inside it on 2026-08-28.
+    <strong>KD-1</strong> gives the denominator a reader; <strong>KD-3</strong> gives the
+    retirement an event.</p>
+  </div>
+
+  <div class="panel">
+    <h2>What this wave itself adds</h2>
+    <div class="rows">
+      <div class="row"><span>Canvases + canvas READMEs (wave 3)</span><b class="warn">+48 files</b></div>
+      <div class="row"><span>Agenda files rewritten to <code>updated: 2026-08-28</code></span><b>38 of 200 <span style="font-weight:400;opacity:.6">mid-wave</span></b></div>
+      <div class="row"><span>Staleness cliffs in <code>watch_loops.py</code></span><b class="warn">1 → 2</b></div>
+      <div class="row"><span><code>README.md</code> under <code>.planning/</code> · 41 in <code>sketches/</code></span><b>46 → <span class="warn">70</span></b></div>
+      <div class="row"><span>Fired watcher events at 2026-10-24 · 6 name this unit, all false</span><b class="warn">3 → 13</b></div>
+      <div class="row"><span>Retirements named by the wave</span><b class="warn">0 so far</b></div>
+      <div class="row"><span>Loops running, org-wide</span><b>5 of 485</b></div>
+    </div>
+    <p class="note">The retire-to-write rule binds <em>this department alone</em>
+    (<code>directive.md:60-77</code>). This department is a participant in the wave, not an
+    observer of it — so <strong>KD-7</strong> books the delta with both raw counts and
+    either names retirements or records an explicit ADR 0039 exemption. Silence is a fail.</p>
+  </div>
+</section>
+
+<!-- ============ TIMELINE ============ -->
+<section class="tl panel">
+  <h2>Close-times, and the two dates this wave created</h2>
+  <svg viewBox="0 0 1180 220" role="img" aria-label="Timeline of task close-times from September to late October 2026, with staleness cliffs on 2026-10-23 and 2026-10-27">
+    <defs>
+      <marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+        <path d="M0,0 L7,3.5 L0,7 z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <g font-family="ui-monospace,Menlo,monospace" font-size="11">
+      <!-- axis -->
+      <line x1="60" y1="150" x2="1130" y2="150" stroke="currentColor" stroke-opacity=".25" stroke-width="1.5" marker-end="url(#ar)"/>
+      <g fill="currentColor" fill-opacity=".55">
+        <text x="60"  y="176">Sep 04</text>
+        <text x="215" y="176">Sep 11</text>
+        <text x="370" y="176">Sep 18</text>
+        <text x="525" y="176">Sep 25</text>
+        <text x="680" y="176">Oct 02</text>
+        <text x="835" y="176">Oct 09</text>
+        <text x="960" y="176">Oct 16</text>
+        <text x="1055" y="176">Oct 23 · 27</text>
+      </g>
+      <g stroke="currentColor" stroke-opacity=".18">
+        <line x1="78" y1="142" x2="78" y2="158"/><line x1="233" y1="142" x2="233" y2="158"/>
+        <line x1="388" y1="142" x2="388" y2="158"/><line x1="543" y1="142" x2="543" y2="158"/>
+        <line x1="698" y1="142" x2="698" y2="158"/><line x1="853" y1="142" x2="853" y2="158"/>
+        <line x1="978" y1="142" x2="978" y2="158"/>
+      </g>
+
+      <!-- cliffs -->
+      <g>
+        <rect x="1058" y="26" width="4" height="124" fill="#cd2d5b" opacity=".85"/>
+        <rect x="1092" y="26" width="4" height="124" fill="#cd2d5b" opacity=".45"/>
+        <text x="1040" y="18" fill="#cd2d5b" font-size="10.5">162 stale</text>
+        <text x="1078" y="112" fill="#cd2d5b" font-size="10.5" opacity=".8">38 stale</text>
+      </g>
+      <g stroke="#cd2d5b" stroke-opacity=".35" stroke-dasharray="3 4">
+        <line x1="978" y1="60" x2="1056" y2="60"/>
+      </g>
+      <text x="820" y="56" fill="#cd2d5b" font-size="10.5">KD-5 lands 7 days before the first cliff</text>
+
+      <!-- task chips -->
+      <g font-size="10.5">
+        <g fill="currentColor">
+          <rect x="60"  y="96" width="74" height="20" rx="4" fill="#9e4249" fill-opacity=".14" stroke="#9e4249" stroke-opacity=".5"/>
+          <text x="68"  y="110" fill="#9e4249">KD-7 · 15</text>
+
+          <rect x="215" y="96" width="96" height="20" rx="4" fill="#9e4249" fill-opacity=".14" stroke="#9e4249" stroke-opacity=".5"/>
+          <text x="223" y="110" fill="#9e4249">KD-1 · 2 · 14</text>
+
+          <rect x="370" y="96" width="96" height="20" rx="4" fill="#3f5a6b" fill-opacity=".14" stroke="#3f5a6b" stroke-opacity=".5"/>
+          <text x="378" y="110" fill="#3f5a6b">KD-6 · 12 · 13</text>
+
+          <rect x="525" y="96" width="74" height="20" rx="4" fill="#4a6a4f" fill-opacity=".16" stroke="#4a6a4f" stroke-opacity=".55"/>
+          <text x="533" y="110" fill="#4a6a4f">KD-3 · 8</text>
+
+          <rect x="680" y="96" width="52" height="20" rx="4" fill="#9e4249" fill-opacity=".14" stroke="#9e4249" stroke-opacity=".5"/>
+          <text x="688" y="110" fill="#9e4249">KD-4</text>
+
+          <rect x="835" y="96" width="74" height="20" rx="4" fill="#3f5a6b" fill-opacity=".14" stroke="#3f5a6b" stroke-opacity=".5"/>
+          <text x="843" y="110" fill="#3f5a6b">KD-9 · 11</text>
+
+          <rect x="960" y="96" width="74" height="20" rx="4" fill="#cd2d5b" fill-opacity=".16" stroke="#cd2d5b" stroke-opacity=".6"/>
+          <text x="968" y="110" fill="#cd2d5b">KD-5 · 16</text>
+
+          <rect x="1006" y="66" width="48" height="20" rx="4" fill="#4a6a4f" fill-opacity=".16" stroke="#4a6a4f" stroke-opacity=".55"/>
+          <text x="1014" y="80" fill="#4a6a4f">KD-10</text>
+        </g>
+      </g>
+    </g>
+  </svg>
+  <p class="cap"><strong>Measured, not assumed.</strong>
+  <code>python3 scripts/watch_loops.py --asof 2026-10-24</code> prints
+  <em>“200 agendas share updated:2026-08-24 and go stale together”</em>. Wave 3 splits that
+  single group into <strong>152 firing 2026-10-23</strong> and <strong>48 firing 2026-10-27</strong>,
+  because the cliff rule groups by <code>updated:</code> and flags any group of ≥10
+  (<code>watch_loops.py:83-96</code>). The watcher's own docstring says it best:
+  <em>“a rule that condemns everything condemns nothing.”</em></p>
+</section>
+
+<!-- ============ TRACKS ============ -->
+<h2 style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:34px 0 14px">
+  Sixteen tasks · doneability and close_time on every one · full text in <code>knowledge-documentation-agenda-full.md</code></h2>
+
+<section class="tracks">
+
+  <div class="track t1">
+    <h3>1 · Automate the accounting</h3>
+    <p>The §8.3 seed. The numerator runs; the denominator has no reader.</p>
+
+    <div class="task"><div class="id">KD-1</div>
+      <div class="ttl">Teach <code>kd_ledger()</code> the retirement half — parse the tombstone index</div>
+      <div class="foot"><span class="own dept">dept</span><span class="when">2026-09-11</span></div></div>
+
+    <div class="task"><div class="id">KD-2</div>
+      <div class="ttl">Settle the grain: per-change, per-month, or per-quarter — one, named once</div>
+      <div class="foot"><span class="own dept">dept</span><span class="when">2026-09-11</span></div></div>
+
+    <div class="task"><div class="id">KD-3</div>
+      <div class="ttl">Publish the missing <code>doc.retired</code> event as a CI guard that exits 2 when it cannot check</div>
+      <div class="foot"><span class="own ca">dept + archive</span><span class="when">2026-09-25</span></div></div>
+
+    <div class="task"><div class="id">KD-4</div>
+      <div class="ttl">The growth-ratio board: no number on it is hand-typed</div>
+      <div class="foot"><span class="own dept">dept</span><span class="when">2026-10-02</span></div></div>
+  </div>
+
+  <div class="track t2">
+    <h3>2 · Keep this wave honest</h3>
+    <p>Wave 3 is the largest addition since the founding 28. This department owns the cost.</p>
+
+    <div class="task"><div class="id">KD-5</div>
+      <div class="ttl">Defuse the cliff this wave splits in two — per-unit rolling staleness</div>
+      <div class="foot"><span class="own sv">dept + standards</span><span class="when pre">2026-10-16</span></div></div>
+
+    <div class="task"><div class="id">KD-6</div>
+      <div class="ttl">The 24 new <code>README.md</code>: settle the naming rule, land <code>link-lint</code></div>
+      <div class="foot"><span class="own gr">graph</span><span class="when">2026-09-18</span></div></div>
+
+    <div class="task"><div class="id">KD-7</div>
+      <div class="ttl">Book the wave in the ledger — retirements named, or exemption recorded</div>
+      <div class="foot"><span class="own dept">dept</span><span class="when">2026-09-04</span></div></div>
+  </div>
+
+  <div class="track t3">
+    <h3>3 · Verify it</h3>
+    <p>Three guards PASS at register scope. The corpus is prose.</p>
+
+    <div class="task"><div class="id">KD-8</div>
+      <div class="ttl">First value for <code>standards.stale_claim_rate</code> — N=30 prose claims, weekly</div>
+      <div class="foot"><span class="own sv">standards</span><span class="when">2026-09-25</span></div></div>
+
+    <div class="task"><div class="id">KD-9</div>
+      <div class="ttl">Pin the insight count — 375 / 573 / 348 all pass the only assertion</div>
+      <div class="foot"><span class="own sv">standards</span><span class="when">2026-10-09</span></div></div>
+
+    <div class="task"><div class="id">KD-10</div>
+      <div class="ttl">Contract self-compliance: grade a foundation doc against its own rule</div>
+      <div class="foot"><span class="own sv">standards + graph</span><span class="when">2026-10-23</span></div></div>
+  </div>
+
+  <div class="track t4">
+    <h3>4 · Find it · place it</h3>
+    <p>Every board renders in one person's Obsidian and in no agent's context.</p>
+
+    <div class="task"><div class="id">KD-11</div>
+      <div class="ttl">Materialize the boards to text — <code>--check</code> fails on a stale block</div>
+      <div class="foot"><span class="own gr">graph</span><span class="when">2026-10-09</span></div></div>
+
+    <div class="task"><div class="id">KD-12</div>
+      <div class="ttl"><code>graph.*</code> from the CLI, split new-vs-legacy</div>
+      <div class="foot"><span class="own gr">graph</span><span class="when">2026-09-18</span></div></div>
+
+    <div class="task"><div class="id">KD-13</div>
+      <div class="ttl">Land <code>corpus-census</code> in <code>.claude/skills/</code> through the §3.3 gate</div>
+      <div class="foot"><span class="own ca">archive</span><span class="when">2026-09-18</span></div></div>
+
+    <div class="task"><div class="id">KD-14</div>
+      <div class="ttl">Ship the placement guard — nothing stops the 7th top-level doc</div>
+      <div class="foot"><span class="own ca">archive</span><span class="when">2026-09-11</span></div></div>
+
+    <div class="task"><div class="id">KD-15</div>
+      <div class="ttl">Close DO-5 — its subject file was deleted by ADR 0032 three days ago</div>
+      <div class="foot"><span class="own ca">archive</span><span class="when">2026-09-04</span></div></div>
+
+    <div class="task"><div class="id">KD-16</div>
+      <div class="ttl">Watcher precision: an age-out date is not a unit-dissolution trigger</div>
+      <div class="foot"><span class="own dept">dept + DO</span><span class="when">2026-10-16</span></div></div>
+  </div>
+
+</section>
+
+<!-- ============ LOWER ============ -->
+<section class="lower">
+  <div class="panel">
+    <h2>Reach — graded</h2>
+    <ul>
+      <li><b>R1 · <code>corpus.json</code></b> — the corpus as one generated, queryable object every KD metric reads instead of walking the tree three times.
+        <span class="grade">Aspiration pending KD-11/12/13 — the shape has three working precedents (<code>cards.json</code>, <code>loops.json</code>, <code>atlas-graph.json</code>); the timing is speculative</span></li>
+      <li><b>R2 · retire-to-write org-wide</b> — CORP-F8.
+        <span class="grade">Aspiration pending the founder — the department has not yet held the rule itself</span></li>
+      <li><b>R3 · a provenance-graded corpus</b> — every spine number machine-checkable.
+        <span class="grade">Aspiration — KD-8 and KD-9 are the first two rungs of a long ladder</span></li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>Findings — recorded, not scheduled</h2>
+    <ul>
+      <li><b>F1</b> — conflict markers on disk inside the tombstone index and <code>07-reference/INDEX.md</code>, 2026-08-28. Verify against <code>origin/main</code> before filing; either way the retirement ledger has no parser and no guard.</li>
+      <li><b>F2</b> — the department's own totals moved 1,118 → 1,090 → 1,198 in four days. No cadence fixes a daily number; only KD-4 does.</li>
+      <li><b>F3</b> — 5 loops running of 485. This agenda mechanises L-KD-1 and L-KD-2 only; L-KD-3 and L-KD-4 stay proposed <em>and are named here so the gap is not silent</em>.</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>Seams &amp; forks</h2>
+    <ul>
+      <li><b>→ decision-office</b> · KD-16, and every correction aged past 30 days (L-KD-4, no mechanism this quarter)</li>
+      <li><b>→ strategy / fundraise</b> · the insight count in the YC narrative is <em>routed, never decided</em> here (directive trigger 5)</li>
+      <li><b>→ media &amp; brand</b> · legacy branding in <em>documents</em> is ours; in <em>product surfaces</em> is theirs — visuals stay <b>held</b></li>
+      <li><b>→ red team</b> · a convention false at birth is a decision defect (directive trigger 4) — KD-10's output amends contracts, not documents</li>
+      <li><b>Founder forks</b> · CORP-F8 (org-wide?) · the ledger grain · does wave 3 take an exemption? · CORP-F6 (does standards-verification belong here?) · sketch README naming</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <span>Sketch 070 · thinking surface, not a product</span>
+  <span>Source: <code>.planning/01-org/corporate/knowledge-documentation/knowledge-documentation-agenda-full.md</code></span>
+  <span>Locks respected: pricing deferred · brand visuals held</span>
+</footer>
+
+</div>
+</body>
+</html>

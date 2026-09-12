@@ -1,0 +1,768 @@
+<style>
+/* ══ ent — Entrances & reveals ═══════════════════════════════════════════
+   Every selector is prefixed .mx-ent. Colours come only from host vars.   */
+
+.mx-ent{
+  font-family:var(--m-sans);
+  font-size:11px;line-height:1.4;color:var(--m-ink);
+  position:relative;width:100%;
+  -webkit-font-smoothing:antialiased;
+}
+.mx-ent .e-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.mx-ent .e-k{font:500 8.5px/1.2 var(--m-mono);letter-spacing:.13em;text-transform:uppercase;color:var(--m-mut);white-space:nowrap}
+.mx-ent .e-k.on{color:var(--m-accent)}
+.mx-ent .e-f{font-family:var(--m-mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mx-ent .e-list{border-top:1px solid var(--m-line)}
+.mx-ent .e-r{
+  display:flex;align-items:center;gap:7px;height:23px;padding:0 7px;
+  border-bottom:1px solid var(--m-line);background:var(--m-surface);
+}
+.mx-ent .e-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px}
+.mx-ent .e-am{font-size:10px;color:var(--m-mut)}
+.mx-ent .e-dot{width:5px;height:5px;border-radius:50%;background:var(--m-accent);flex:none}
+.mx-ent .e-dot.w{background:var(--m-warn)}
+.mx-ent .e-dot.n{background:var(--m-no)}
+.mx-ent .e-dot.o{background:var(--m-ok)}
+
+/* ── 01 · staggered arrival ─────────────────────────────────────────── */
+.mx-ent-01 .e-r{will-change:transform,opacity,clip-path}
+
+/* ── 02 · skeleton resolve ──────────────────────────────────────────── */
+.mx-ent-02 .e-ln{position:relative;display:flex;align-items:center;justify-content:space-between;
+  height:19px;border-bottom:1px solid var(--m-line);padding:0 1px}
+.mx-ent-02 .e-tx{font-size:10.5px}
+.mx-ent-02 .e-vl{font-size:10.5px;color:var(--m-ink)}
+.mx-ent-02 .e-sk{position:absolute;top:5px;height:9px;border-radius:2px;opacity:0;pointer-events:none;
+  background:linear-gradient(90deg,var(--m-sunk) 8%,var(--m-line2) 42%,var(--m-sunk) 78%);
+  background-size:240% 100%;animation:ent-shim 1900ms cubic-bezier(.45,0,.55,1) infinite;animation-play-state:paused}
+.mx-ent-02 .e-sk.l{left:0}
+.mx-ent-02 .e-sk.r{right:0}
+.mx-ent-02.is-load .e-sk{animation-play-state:running}
+@keyframes ent-shim{from{background-position:120% 0}to{background-position:-120% 0}}
+
+/* ── 03 · scroll-into-view ──────────────────────────────────────────── */
+.mx-ent-03 .e-scroll{height:114px;overflow-y:auto;overflow-x:hidden;border-top:1px solid var(--m-line);
+  scrollbar-width:none}
+.mx-ent-03 .e-scroll::-webkit-scrollbar{width:0}
+.mx-ent-03 .e-stub{height:96px;padding:8px 2px;color:var(--m-mut);font-size:10px;
+  border-bottom:1px solid var(--m-line)}
+.mx-ent-03 .e-sec{padding:12px 2px 40px}
+.mx-ent-03 .e-rule{height:1px;background:var(--m-accent);transform-origin:0 50%;margin-bottom:8px}
+.mx-ent-03 .e-sh{font-family:var(--m-serif);font-size:14px;font-weight:600;letter-spacing:-.01em;margin-bottom:5px}
+.mx-ent-03 .e-sl{font-size:10px;color:var(--m-mut);margin-bottom:3px}
+
+/* ── 04 · empty → first item ────────────────────────────────────────── */
+.mx-ent-04 .e-lane{position:relative;height:34px;display:flex;align-items:center;padding:0 8px 0 11px;
+  background:var(--m-surface)}
+.mx-ent-04 .e-dash{position:absolute;inset:0;border:1px dashed var(--m-line2);border-radius:2px;pointer-events:none;opacity:0}
+.mx-ent-04 .e-solid{position:absolute;inset:0;border-top:1px solid var(--m-line);border-bottom:1px solid var(--m-line);pointer-events:none}
+.mx-ent-04 .e-acc{position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--m-accent);transform-origin:50% 50%}
+.mx-ent-04 .e-void{position:absolute;left:11px;right:8px;font-size:10px;color:var(--m-mut);opacity:0}
+.mx-ent-04 .e-real{display:flex;align-items:center;gap:7px;width:100%}
+.mx-ent-04 .e-sub{margin-top:7px;height:12px;position:relative;overflow:hidden}
+.mx-ent-04 .e-sub span{position:absolute;left:0;top:0;font:500 8.5px/1.3 var(--m-mono);letter-spacing:.12em;text-transform:uppercase}
+.mx-ent-04 .e-sub .a{color:var(--m-mut)}
+.mx-ent-04 .e-sub .b{color:var(--m-ok)}
+
+/* ── 05 · card enters a grid ────────────────────────────────────────── */
+.mx-ent-05 .e-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.mx-ent-05 .e-tile{height:38px;border:1px solid var(--m-line);background:var(--m-surface);border-radius:2px;
+  padding:4px 5px;overflow:hidden}
+.mx-ent-05 .e-tile.e-new{border-color:var(--m-accent)}
+.mx-ent-05 .e-tn{font-size:9.5px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mx-ent-05 .e-tv{font-size:9px;color:var(--m-mut);margin-top:2px}
+
+/* ── 06 · late row slots in ─────────────────────────────────────────── */
+.mx-ent-06 .e-slot{display:grid;grid-template-rows:1fr}
+.mx-ent-06 .e-in{overflow:hidden;min-height:0}
+.mx-ent-06 .e-r.e-anchor{box-shadow:inset 2px 0 0 var(--m-line2)}
+.mx-ent-06 .e-mark{position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--m-accent);opacity:0}
+.mx-ent-06 .e-r{position:relative}
+
+/* ── 07 · dense table first paint ───────────────────────────────────── */
+.mx-ent-07 .e-tbl{position:relative;display:grid;grid-template-columns:1fr 32px 32px 34px;
+  border-top:1px solid var(--m-line)}
+.mx-ent-07 .e-c{padding:2.5px 4px;font-size:9.5px;border-bottom:1px solid var(--m-line);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-ent-07 .e-c.num{text-align:right;font-family:var(--m-mono);font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.mx-ent-07 .e-c.hd{font:500 8px/1.5 var(--m-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--m-mut)}
+.mx-ent-07 .e-c.d{color:var(--m-mut)}
+.mx-ent-07 .e-c.d.neg{color:var(--m-no)}
+.mx-ent-07 .e-c.d.pos{color:var(--m-ok)}
+.mx-ent-07 .e-vr{position:absolute;top:0;bottom:0;width:1px;background:var(--m-line);transform-origin:50% 0}
+
+/* ── 08 · thumbnail resolves ────────────────────────────────────────── */
+.mx-ent-08 .e-wrap{display:flex;gap:10px;align-items:flex-start}
+.mx-ent-08 .e-doc{position:relative;width:72px;height:98px;flex:none;overflow:hidden;
+  background:var(--m-surface);border:1px solid var(--m-line)}
+.mx-ent-08 .e-page{position:absolute;inset:6px}
+.mx-ent-08 .e-page i{position:absolute;left:0;right:0;height:1.5px;background:var(--m-line2);display:block}
+.mx-ent-08 .e-page b{position:absolute;left:0;top:0;width:58%;height:8px;background:var(--m-line2)}
+.mx-ent-08 .e-page u{position:absolute;right:0;bottom:0;width:44%;height:9px;background:var(--m-accent)}
+.mx-ent-08 .e-scan{position:absolute;left:0;right:0;height:2px;background:var(--m-accent);opacity:0}
+.mx-ent-08 .e-meta{flex:1;min-width:0}
+.mx-ent-08 .e-mf{border-bottom:1px solid var(--m-line);padding:4px 0 3px;font-size:10px;
+  display:flex;justify-content:space-between;gap:6px}
+.mx-ent-08 .e-mf span:first-child{color:var(--m-mut);font:500 8px/1.6 var(--m-mono);letter-spacing:.1em;text-transform:uppercase}
+
+/* ── 09 · new since you left ────────────────────────────────────────── */
+.mx-ent-09 .e-stack{position:relative}
+.mx-ent-09 .e-r{height:19px;font-size:10px}
+.mx-ent-09 .e-wash{position:absolute;left:0;right:0;top:0;height:0;pointer-events:none;
+  background:color-mix(in srgb,var(--m-accent) 14%,transparent)}
+.mx-ent-09 .e-edge{position:absolute;left:0;right:0;bottom:0;height:1.5px;background:var(--m-accent)}
+.mx-ent-09 .e-mk{position:absolute;left:0;top:2px;bottom:2px;width:2px;background:var(--m-accent);transform-origin:50% 50%}
+.mx-ent-09 .e-div{display:flex;align-items:center;gap:6px;height:14px}
+.mx-ent-09 .e-div .ln{flex:1;height:1px;background:var(--m-line2);transform-origin:50% 50%}
+.mx-ent-09 .e-div .lb{font:500 8px/1 var(--m-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--m-mut)}
+
+/* ── 10 · sheet arrival ─────────────────────────────────────────────── */
+.mx-ent-10{overflow:hidden}
+.mx-ent-10 .e-stage{position:relative;height:126px;overflow:hidden}
+.mx-ent-10 .e-under{position:absolute;inset:0;transform-origin:50% 40%}
+.mx-ent-10 .e-r{cursor:pointer}
+.mx-ent-10 .e-chev{color:var(--m-mut);font-size:10px}
+.mx-ent-10 .e-scrim{position:absolute;inset:0;opacity:0;pointer-events:none}
+.mx-ent-10 .e-scrim.is-on{pointer-events:auto}
+.mx-ent-10 .e-sheet{position:absolute;left:8px;right:8px;bottom:6px;opacity:0;
+  background:var(--m-surface);border:1px solid var(--m-line2);border-radius:3px;padding:8px 9px;
+  box-shadow:0 0 0 1px var(--m-line),0 12px 30px -14px var(--m-sunk)}
+.mx-ent-10 .e-sh-t{font-family:var(--m-serif);font-size:13px;font-weight:600;margin-bottom:4px}
+.mx-ent-10 .e-sh-l{display:flex;justify-content:space-between;font-size:10px;color:var(--m-mut);margin-bottom:2px}
+.mx-ent-10 .e-btn{margin-top:7px;text-align:center;font:500 9px/1 var(--m-mono);letter-spacing:.12em;
+  text-transform:uppercase;padding:6px;border-radius:2px;background:var(--m-accent);color:var(--m-accent-ink);cursor:pointer}
+
+/* ── 11 · route change ──────────────────────────────────────────────── */
+.mx-ent-11 .e-shell{display:flex;gap:9px;height:126px}
+.mx-ent-11 .e-rail{position:relative;width:66px;flex:none;border-right:1px solid var(--m-line);padding-right:6px}
+.mx-ent-11 .e-ri{height:21px;display:flex;align-items:center;padding-left:9px;font-size:10px;
+  color:var(--m-mut);cursor:pointer}
+.mx-ent-11 .e-ri.is-at{color:var(--m-ink)}
+.mx-ent-11 .e-mkr{position:absolute;left:0;width:2px;height:13px;background:var(--m-accent);top:4px}
+.mx-ent-11 .e-pane{flex:1;min-width:0}
+.mx-ent-11 .e-ttl{position:relative;height:20px;overflow:hidden;margin-bottom:6px}
+.mx-ent-11 .e-ttl span{position:absolute;left:0;top:0;font-family:var(--m-serif);font-size:15px;
+  font-weight:600;letter-spacing:-.012em;white-space:nowrap}
+.mx-ent-11 .e-bd{border-top:1px solid var(--m-line)}
+.mx-ent-11 .e-bl{display:flex;justify-content:space-between;gap:6px;font-size:10px;padding:3.5px 0;
+  border-bottom:1px solid var(--m-line);color:var(--m-mut)}
+.mx-ent-11 .e-bl b{font-weight:400;color:var(--m-ink)}
+
+/* ── 12 · offline flush ─────────────────────────────────────────────── */
+.mx-ent-12 .e-deck{position:relative;height:105px;border-top:1px solid var(--m-line)}
+.mx-ent-12 .e-r{position:absolute;left:0;right:0;height:20px;font-size:10px;border:1px solid var(--m-line);
+  border-radius:2px;padding:0 6px}
+.mx-ent-12 .e-pip{width:11px;height:11px;border-radius:50%;background:var(--m-ok);flex:none;
+  display:flex;align-items:center;justify-content:center;color:var(--m-accent-ink);font-size:7px;line-height:1}
+.mx-ent-12 .e-chip{font:500 8px/1 var(--m-mono);letter-spacing:.11em;text-transform:uppercase;
+  color:var(--m-ok);border:1px solid var(--m-ok);border-radius:2px;padding:3px 5px}
+
+/* ── reduced motion: land on the end state ──────────────────────────── */
+@media (prefers-reduced-motion:reduce){
+  .mx-ent *,.mx-ent *::before,.mx-ent *::after{
+    animation-duration:1ms!important;animation-delay:0ms!important;
+    transition-duration:1ms!important;transition-delay:0ms!important;
+  }
+  .mx-ent-02 .e-sk{display:none}
+}
+</style>
+<script>
+(function(){
+  var M = window.MUDAVYM_MOTIONS = window.MUDAVYM_MOTIONS || [];
+  var FAM = 'Entrances & reveals';
+  var REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  /* ── real spring: integrate, then sample into a CSS linear() easing ──
+     a = (-k(x-1) - c·v)/m, 1ms Euler-Cromer steps, stop at restDelta.   */
+  var LINEAR_OK = (function(){ try{ return CSS.supports('animation-timing-function','linear(0, 0.5, 1)'); }catch(e){ return false; } })();
+  function spring(k, c, m, restDelta){
+    m = m || 1; restDelta = restDelta || 0.005;
+    var dt = 1/1000, x = 0, v = 0, t = 0, tr = [0], peak = 0, cap = 3;
+    while (t < cap){
+      v += ((-k*(x-1) - c*v)/m)*dt; x += v*dt; t += dt;
+      tr.push(x); if (x > peak) peak = x;
+      if (Math.abs(1-x) < restDelta && Math.abs(v) < restDelta*8) break;
+    }
+    var n = 44, pts = [], i, idx;
+    for (i=0;i<=n;i++){ idx = Math.round(i/n*(tr.length-1)); pts.push(+tr[idx].toFixed(4)); }
+    pts[0] = 0; pts[n] = 1;
+    return {
+      k:k, c:c,
+      duration: Math.round(t*1000),
+      overshoot: +(Math.max(0,peak-1)*100).toFixed(1),
+      easing: LINEAR_OK ? 'linear('+pts.join(',')+')' : 'cubic-bezier(.16,1,.3,1)'
+    };
+  }
+  var SP = {
+    land : spring(380,32),   // house "tuck" — weight, not bounce
+    seat : spring(300,34),   // near-critical: a figure that must not wobble
+    deal : spring(420,30),   // a held queue landing
+    stamp: spring(520,26)    // house "stamp" — the one permitted ceremony
+  };
+  function sp(s, label){ return label+' spring '+s.k+'/'+s.c+' → '+s.duration+'ms, '+s.overshoot+'% overshoot'; }
+
+  var EZ = {
+    settle:'cubic-bezier(.16,1,.3,1)',   // house
+    turn  :'cubic-bezier(.32,.72,0,1)',  // house
+    exit  :'cubic-bezier(.4,0,.9,1)'
+  };
+
+  /* cubic-bezier evaluator — used to drive a real rAF sweep in ent-09 */
+  function bez(x1,y1,x2,y2){
+    var A=function(a,b){return 1-3*b+3*a}, B=function(a,b){return 3*b-6*a}, C=function(a){return 3*a};
+    function cx(t){return ((A(x1,x2)*t+B(x1,x2))*t+C(x1))*t}
+    function cy(t){return ((A(y1,y2)*t+B(y1,y2))*t+C(y1))*t}
+    function dx(t){return 3*A(x1,x2)*t*t+2*B(x1,x2)*t+C(x1)}
+    return function(x){
+      var t=x,i,e,d;
+      for(i=0;i<8;i++){ e=cx(t)-x; if(Math.abs(e)<1e-5) break; d=dx(t); if(Math.abs(d)<1e-6) break; t-=e/d; }
+      return cy(t<0?0:t>1?1:t);
+    };
+  }
+
+  /* per-root bookkeeping so play() is idempotent under repeat calls */
+  function ctl(root){
+    (root._et||[]).forEach(clearTimeout);
+    (root._ea||[]).forEach(function(a){ try{ a.cancel(); }catch(e){} });
+    if (root._eio){ root._eio.disconnect(); root._eio = null; }
+    if (root._er){ cancelAnimationFrame(root._er); root._er = null; }
+    root._et = []; root._ea = [];
+    void root.offsetWidth;
+    return {
+      at: function(ms, fn){ root._et.push(setTimeout(fn, REDUCED?0:ms)); },
+      an: function(el, kf, o){
+        o = o || {};
+        var opt = { duration: o.duration||300, delay: o.delay||0, easing: o.easing||EZ.settle,
+                    fill: o.fill||'both', composite: o.composite };
+        if (REDUCED){ opt.duration = 1; opt.delay = 0; }
+        var a = el.animate(kf, opt); root._ea.push(a); return a;
+      },
+      raf: function(fn){ root._er = requestAnimationFrame(fn); },
+      io : function(o){ root._eio = o; return o; }
+    };
+  }
+  function cssv(root, n){ return getComputedStyle(root).getPropertyValue(n).trim(); }
+  function q(root, s){ return Array.prototype.slice.call(root.querySelectorAll(s)); }
+
+  /* ══ ent-01 · staggered arrival ═════════════════════════════════════ */
+  M.push({
+    id:'ent-01', name:'Staggered arrival', family:FAM,
+    purpose:'The 07:00 open — purchase orders land one after another so the eye reads down the list instead of being handed a wall; the interval decays so the head is deliberate and the tail keeps up.',
+    spec:'clip wipe + 7px rise, cubic-bezier(.16,1,.3,1) 420ms · interval 34ms decaying ×0.84 · money lags its own name by 70ms',
+    html:'<div class="mx-ent mx-ent-01">'+
+      '<div class="e-h"><span class="e-k">Purchase orders</span><span class="e-k">07:04</span></div>'+
+      '<div class="e-list">'+
+      [['Bodega Álvaro','€1,284'],['Mercabarna Fruits','€612'],['Casa Pujol Carns','€2,050'],
+       ['Peix del Port','€478'],['Forn Sant Jordi','€196']].map(function(r,i){
+        return '<div class="e-r"><span class="e-dot'+(i===2?' w':'')+'"></span>'+
+               '<span class="e-nm">'+r[0]+'</span><span class="e-am e-f">'+r[1]+'</span></div>';
+      }).join('')+'</div></div>',
+    play:function(root){
+      var c = ctl(root), rows = q(root,'.e-r'), d = 0, gap = 34;
+      rows.forEach(function(r,i){
+        c.an(r, [{opacity:0, transform:'translateY(7px)', clipPath:'inset(0 100% 0 0)'},
+                 {opacity:1, transform:'none',            clipPath:'inset(0 0 0 0)'}],
+              {duration:420, delay:d, easing:EZ.settle});
+        c.an(r.querySelector('.e-am'), [{opacity:0},{opacity:1}], {duration:260, delay:d+70});
+        d += gap; gap *= 0.84;
+      });
+    }
+  });
+
+  /* ══ ent-02 · skeleton resolves ═════════════════════════════════════ */
+  M.push({
+    id:'ent-02', name:'Placeholder becomes the value', family:FAM,
+    purpose:'Invoice match while the OCR is still running: the skeleton bar does not fade out and get replaced — it contracts to the exact width of the real figure and unblurs into it, so nothing reflows under a manager mid-read.',
+    spec:'width → measured text width, cubic-bezier(.32,.72,0,1) 420ms · text blur 4px→0 240ms at +230ms · shimmer 1900ms cubic-bezier(.45,0,.55,1)',
+    html:'<div class="mx-ent mx-ent-02">'+
+      '<div class="e-h"><span class="e-k">Invoice 6612</span><span class="e-k e-st">Reading…</span></div>'+
+      [['Bodega Álvaro','€1,284.60',96],['12 lines matched','11 / 12',58],['Delivery note','DN-4471',74]]
+        .map(function(r){
+          return '<div class="e-ln"><span class="e-tx">'+r[0]+'</span><span class="e-vl e-f">'+r[1]+'</span>'+
+                 '<span class="e-sk l" data-w="'+r[2]+'"></span><span class="e-sk r" data-w="'+Math.round(r[2]*0.5)+'"></span></div>';
+        }).join('')+'</div>',
+    play:function(root){
+      var c = ctl(root), st = root.querySelector('.e-st');
+      root.classList.add('is-load');
+      st.textContent = 'Reading…'; st.classList.remove('on');
+      q(root,'.e-ln').forEach(function(ln,i){
+        var tx = ln.querySelector('.e-tx'), vl = ln.querySelector('.e-vl'),
+            sl = ln.querySelector('.e-sk.l'), sr = ln.querySelector('.e-sk.r'),
+            dl = 700 + i*90;
+        [[sl,tx],[sr,vl]].forEach(function(p){
+          var sk = p[0], el = p[1], stub = +sk.dataset.w, real = Math.round(el.getBoundingClientRect().width);
+          c.an(sk, [{width:stub+'px'},{width:real+'px'}], {duration:420, delay:dl, easing:EZ.turn});
+          c.an(sk, [{opacity:1,offset:0},{opacity:1,offset:.55},{opacity:0,offset:1}],
+                   {duration:420+240, delay:dl, easing:'linear'});
+          c.an(el, [{opacity:0,filter:'blur(4px)'},{opacity:1,filter:'blur(0px)'}],
+                   {duration:240, delay:dl+230, easing:EZ.settle});
+        });
+      });
+      c.at(1180, function(){ root.classList.remove('is-load'); st.textContent = 'Matched'; st.classList.add('on'); });
+    }
+  });
+
+  /* ══ ent-03 · scroll-into-view ══════════════════════════════════════ */
+  M.push({
+    id:'ent-03', name:'Section reveal on scroll-in', family:FAM,
+    purpose:'Month-end reports are long; a section must not have already played by the time you reach it — a real IntersectionObserver fires at 45% and the seal rule draws before the heading, so the page feels ruled rather than animated.',
+    spec:'IntersectionObserver threshold .45 (root = the scroller) · rule scaleX 0→1 520ms cubic-bezier(.32,.72,0,1) · heading +130ms, lines +210/+250ms',
+    html:'<div class="mx-ent mx-ent-03">'+
+      '<div class="e-h"><span class="e-k">Reports · August</span><span class="e-k">scroll ↓</span></div>'+
+      '<div class="e-scroll">'+
+        '<div class="e-stub">Covers, spend and waste for the month. Keep scrolling for the vendor breakdown.</div>'+
+        '<div class="e-sec"><div class="e-rule"></div>'+
+          '<div class="e-sh">Vendor spend</div>'+
+          '<div class="e-sl">Bodega Álvaro &nbsp;·&nbsp; €14,204 &nbsp;·&nbsp; +6.2%</div>'+
+          '<div class="e-sl">Casa Pujol Carns &nbsp;·&nbsp; €9,870 &nbsp;·&nbsp; −1.4%</div>'+
+        '</div>'+
+      '</div></div>',
+    play:function(root){
+      var c = ctl(root), sc = root.querySelector('.e-scroll'),
+          rule = root.querySelector('.e-rule'), h = root.querySelector('.e-sh'),
+          lines = q(root,'.e-sl');
+      function hide(){
+        rule.style.transform = 'scaleX(0)';
+        h.style.opacity = 0; lines.forEach(function(l){ l.style.opacity = 0; });
+      }
+      function show(){
+        rule.style.transform = ''; h.style.opacity = ''; lines.forEach(function(l){ l.style.opacity=''; });
+        c.an(rule, [{transform:'scaleX(0)'},{transform:'scaleX(1)'}], {duration:520, easing:EZ.turn});
+        c.an(h, [{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'none'}],
+                {duration:380, delay:130, easing:EZ.settle});
+        lines.forEach(function(l,i){
+          c.an(l, [{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'none'}],
+                  {duration:340, delay:210+i*40, easing:EZ.settle});
+        });
+      }
+      hide(); sc.scrollTop = 0;
+      var io = c.io(new IntersectionObserver(function(en){
+        en.forEach(function(e){ if(e.isIntersecting){ io.disconnect(); show(); } });
+      }, {root:sc, threshold:0.45}));
+      io.observe(root.querySelector('.e-sec'));
+      // drive the scroll so the demo plays unattended; the observer is what fires
+      c.at(320, function(){
+        var t0 = 0, from = 0, to = sc.scrollHeight - sc.clientHeight, ease = bez(.32,.72,0,1);
+        function step(now){
+          if(!t0) t0 = now;
+          var p = Math.min(1,(now-t0)/900);
+          sc.scrollTop = from + (to-from)*ease(p);
+          if(p<1) c.raf(step);
+        }
+        if (REDUCED){ sc.scrollTop = sc.scrollHeight; } else { c.raf(step); }
+      });
+    }
+  });
+
+  /* ══ ent-04 · empty → first item ════════════════════════════════════ */
+  M.push({
+    id:'ent-04', name:'Empty state becomes the first row', family:FAM,
+    purpose:'The first delivery of a new site: the dashed placeholder is not swapped out for a row, it converts into one — the dashes dissolve, a solid rule draws, the seal bar sprouts, so the operator sees the lane they were promised get filled.',
+    spec:'dashes dissolve 200ms · rules scaleX 320ms cubic-bezier(.32,.72,0,1) · '+sp(SP.seat,'accent scaleY')+' · caption rolls 260ms',
+    html:'<div class="mx-ent mx-ent-04">'+
+      '<div class="e-h"><span class="e-k">Receiving · door</span><span class="e-k">12:42</span></div>'+
+      '<div class="e-lane">'+
+        '<div class="e-dash"></div><div class="e-solid"></div><div class="e-acc"></div>'+
+        '<div class="e-void">No deliveries logged today</div>'+
+        '<div class="e-real"><span class="e-dot o"></span><span class="e-nm">Casa Pujol · 4 cases pork loin</span>'+
+        '<span class="e-am e-f">18.4 kg</span></div>'+
+      '</div>'+
+      '<div class="e-sub"><span class="a">Waiting for the first scan</span><span class="b">1 delivery · signed by M. Oller</span></div>'+
+      '</div>',
+    play:function(root){
+      var c = ctl(root),
+          dash = root.querySelector('.e-dash'), solid = root.querySelector('.e-solid'),
+          acc = root.querySelector('.e-acc'), voidT = root.querySelector('.e-void'),
+          real = root.querySelector('.e-real'),
+          capA = root.querySelector('.e-sub .a'), capB = root.querySelector('.e-sub .b');
+      // empty state held, then converted
+      c.an(dash, [{opacity:1,offset:0},{opacity:1,offset:.42},{opacity:0,offset:.58},{opacity:0,offset:1}],
+                 {duration:1200, easing:'linear'});
+      c.an(voidT,[{opacity:1,transform:'none',offset:0},{opacity:1,transform:'none',offset:.42},
+                  {opacity:0,transform:'translateY(-6px)',offset:.58},{opacity:0,transform:'translateY(-6px)',offset:1}],
+                 {duration:1200, easing:EZ.settle});
+      c.an(solid,[{opacity:0,transform:'scaleX(.2)'},{opacity:1,transform:'scaleX(1)'}],
+                 {duration:320, delay:520, easing:EZ.turn});
+      solid.style.transformOrigin = '0 50%';
+      c.an(acc,  [{transform:'scaleY(0)'},{transform:'scaleY(1)'}],
+                 {duration:SP.seat.duration, delay:600, easing:SP.seat.easing});
+      c.an(real, [{opacity:0,transform:'translateY(5px)'},{opacity:1,transform:'none'}],
+                 {duration:360, delay:660, easing:EZ.settle});
+      c.an(real.querySelector('.e-am'), [{opacity:0},{opacity:1}], {duration:260, delay:780});
+      c.an(capA, [{opacity:1,transform:'none',offset:0},{opacity:1,transform:'none',offset:.5},
+                  {opacity:0,transform:'translateY(-11px)',offset:1}], {duration:1000, easing:EZ.settle});
+      c.an(capB, [{opacity:0,transform:'translateY(11px)',offset:0},{opacity:0,transform:'translateY(11px)',offset:.5},
+                  {opacity:1,transform:'none',offset:1}], {duration:1000, easing:EZ.settle});
+    }
+  });
+
+  /* ══ ent-05 · card enters a grid ════════════════════════════════════ */
+  M.push({
+    id:'ent-05', name:'Card lands in a grid (FLIP)', family:FAM,
+    purpose:'A vendor finishes onboarding while you are looking at Providers: the grid measurably reflows first (real First/Last rects, inverted and released) and only then does the new card land in the gap — nothing ever teleports under the cursor.',
+    spec:'FLIP on siblings from getBoundingClientRect · '+sp(SP.land,'reflow')+' · newcomer scale .92→1 at +120ms',
+    html:'<div class="mx-ent mx-ent-05">'+
+      '<div class="e-h"><span class="e-k">Providers</span><span class="e-k e-ct">5 active</span></div>'+
+      '<div class="e-grid">'+
+      [['Bodega Álvaro','wine · 42'],['Peix del Port','fish · 18'],['Forn Sant Jordi','bread · 9'],
+       ['Mercabarna','produce · 61'],['Gelats Nord','frozen · 7']].map(function(t){
+        return '<div class="e-tile"><div class="e-tn">'+t[0]+'</div><div class="e-tv">'+t[1]+'</div></div>';
+      }).join('')+'</div></div>',
+    play:function(root){
+      var c = ctl(root), g = root.querySelector('.e-grid'), ct = root.querySelector('.e-ct');
+      var old = g.querySelector('.e-new'); if (old) old.remove();
+      ct.textContent = '5 active';
+      c.at(420, function(){
+        var tiles = Array.prototype.slice.call(g.children);
+        var first = tiles.map(function(t){ return t.getBoundingClientRect(); });
+        var el = document.createElement('div');
+        el.className = 'e-tile e-new';
+        el.innerHTML = '<div class="e-tn">Casa Pujol Carns</div><div class="e-tv">meat · new</div>';
+        g.insertBefore(el, g.children[1]);
+        var last = tiles.map(function(t){ return t.getBoundingClientRect(); });
+        tiles.forEach(function(t,i){
+          var dx = first[i].left - last[i].left, dy = first[i].top - last[i].top;
+          if (dx || dy) c.an(t, [{transform:'translate('+dx+'px,'+dy+'px)'},{transform:'none'}],
+                               {duration:SP.land.duration, easing:SP.land.easing});
+        });
+        c.an(el, [{opacity:0, transform:'scale(.92)'},{opacity:1, transform:'none'}],
+                 {duration:SP.land.duration, delay:120, easing:SP.land.easing});
+        ct.textContent = '6 active';
+      });
+    }
+  });
+
+  /* ══ ent-06 · late row slots in ═════════════════════════════════════ */
+  M.push({
+    id:'ent-06', name:'Late row slots in, no shove', family:FAM,
+    purpose:'A vendor price lands after the sorted list has painted; the gap is opened first (grid-rows 0fr→1fr) and the row only appears once the space exists, so the line you were reading never jumps out from under you.',
+    spec:'grid-template-rows 0fr→1fr 320ms cubic-bezier(.16,1,.3,1) · content +150ms, 4px rise · seal marker fades over 900ms',
+    html:'<div class="mx-ent mx-ent-06">'+
+      '<div class="e-h"><span class="e-k">Vendor prices · sorted</span><span class="e-k e-lt">4 quoted</span></div>'+
+      '<div class="e-list">'+
+      [['Bodega Álvaro','€8.40'],['Celler Roure','€7.95'],['Vins Grau','€6.10'],['Cava Duran','€5.55']]
+        .map(function(r,i){
+          return '<div class="e-r'+(i===0?' e-anchor':'')+'"><span class="e-nm">'+r[0]+'</span>'+
+                 '<span class="e-am e-f">'+r[1]+'</span></div>';
+        }).join('')+'</div></div>',
+    play:function(root){
+      var c = ctl(root), list = root.querySelector('.e-list'), lt = root.querySelector('.e-lt');
+      var prev = list.querySelector('.e-slot'); if (prev) prev.remove();
+      lt.textContent = '4 quoted';
+      c.at(520, function(){
+        var slot = document.createElement('div');
+        slot.className = 'e-slot';
+        slot.style.gridTemplateRows = '0fr';
+        slot.innerHTML = '<div class="e-in"><div class="e-r"><span class="e-mark"></span>'+
+                         '<span class="e-nm">Bodegues Terra Alta</span><span class="e-am e-f">€7.20</span></div></div>';
+        list.insertBefore(slot, list.children[2]);   // belongs 3rd by price
+        var row = slot.querySelector('.e-r'), mk = slot.querySelector('.e-mark');
+        c.an(slot, [{gridTemplateRows:'0fr'},{gridTemplateRows:'1fr'}], {duration:320, easing:EZ.settle});
+        c.an(row,  [{opacity:0, transform:'translateY(4px)'},{opacity:1, transform:'none'}],
+                   {duration:300, delay:150, easing:EZ.settle});
+        c.an(mk,   [{opacity:0,offset:0},{opacity:1,offset:.18},{opacity:1,offset:.45},{opacity:0,offset:1}],
+                   {duration:900, delay:150, easing:'linear'});
+        lt.textContent = '5 quoted';
+      });
+    }
+  });
+
+  /* ══ ent-07 · dense table first paint ═══════════════════════════════ */
+  M.push({
+    id:'ent-07', name:'Dense table paints by column', family:FAM,
+    purpose:'The 01:00 discrepancy queue is read down a column, not across a row — so the rules draw first, the columns fill left to right, and the deltas only take their alarm colour once the grid is legible.',
+    spec:'column rules scaleY 260ms 40ms apart · column lanes 300ms, 46ms apart, 3px rise · deltas recolour +220ms after their lane',
+    html:'<div class="mx-ent mx-ent-07">'+
+      '<div class="e-h"><span class="e-k">Discrepancies · 01:12</span><span class="e-k">DN-4471</span></div>'+
+      '<div class="e-tbl">'+
+        ['Item','Ord','Recv','Δ'].map(function(h,i){
+          return '<div class="e-c hd'+(i?' num':'')+'" data-c="'+i+'">'+h+'</div>'; }).join('')+
+        [['Pork loin','24','24','0'],['Cava brut','36','30','−6'],['Lemons 5kg','8','8','0'],
+         ['Cod fillet','12','14','+2'],['Butter 2kg','10','7','−3']].map(function(r){
+          return r.map(function(v,i){
+            var cls = i? ' num':'', d = '';
+            if (i===3){ cls += ' d'; if (v.charAt(0)==='−') cls += ' neg'; else if (v.charAt(0)==='+') cls += ' pos'; }
+            return '<div class="e-c'+cls+'" data-c="'+i+'"'+d+'>'+v+'</div>';
+          }).join(''); }).join('')+
+        '<div class="e-vr" data-v="0"></div><div class="e-vr" data-v="1"></div><div class="e-vr" data-v="2"></div>'+
+      '</div></div>',
+    play:function(root){
+      var c = ctl(root), tbl = root.querySelector('.e-tbl'),
+          rules = q(root,'.e-vr'), tb = tbl.getBoundingClientRect(),
+          mut = cssv(root,'--m-mut'), no = cssv(root,'--m-no'), ok = cssv(root,'--m-ok');
+      // place the rules on the measured column boundaries
+      [1,2,3].forEach(function(ci,i){
+        var cell = tbl.querySelector('.e-c[data-c="'+ci+'"]');
+        rules[i].style.left = Math.round(cell.getBoundingClientRect().left - tb.left) + 'px';
+        c.an(rules[i], [{transform:'scaleY(0)'},{transform:'scaleY(1)'}],
+                       {duration:260, delay:i*40, easing:EZ.turn});
+      });
+      [0,1,2,3].forEach(function(ci){
+        var lane = 120 + ci*46;
+        q(root,'.e-c[data-c="'+ci+'"]').forEach(function(cell){
+          c.an(cell, [{opacity:0, transform:'translateY(3px)'},{opacity:1, transform:'none'}],
+                     {duration:300, delay:lane, easing:EZ.settle});
+        });
+        if (ci===3){
+          q(root,'.e-c.d').forEach(function(cell){
+            var to = cell.classList.contains('neg') ? no : cell.classList.contains('pos') ? ok : mut;
+            if (to !== mut) c.an(cell, [{color:mut},{color:to}], {duration:260, delay:lane+220, easing:EZ.settle});
+          });
+        }
+      });
+    }
+  });
+
+  /* ══ ent-08 · thumbnail resolves ════════════════════════════════════ */
+  M.push({
+    id:'ent-08', name:'Document thumbnail resolves', family:FAM,
+    purpose:'The porter photographs the delivery note on a phone at 12%: the tile has to say "we have it and it is legible" before the OCR returns, so it unblurs while a scan edge walks down it and each extracted field appears as the edge passes its line.',
+    spec:'blur 9px→0 + scale 1.05→1, 560ms cubic-bezier(.32,.72,0,1) · clip inset(0 0 100% 0)→0 640ms linear with a 2px seal edge · fields at 200/340/500ms',
+    html:'<div class="mx-ent mx-ent-08">'+
+      '<div class="e-h"><span class="e-k">Delivery note</span><span class="e-k e-ok">Scanning…</span></div>'+
+      '<div class="e-wrap"><div class="e-doc"><div class="e-page"><b></b>'+
+        [22,32,42,52,62,72].map(function(t){ return '<i style="top:'+t+'px"></i>'; }).join('')+
+        '<u></u></div><div class="e-scan"></div></div>'+
+      '<div class="e-meta">'+
+        [['Vendor','Casa Pujol'],['No.','DN-4471'],['Total','€2,050.00']].map(function(f){
+          return '<div class="e-mf"><span>'+f[0]+'</span><span class="e-f">'+f[1]+'</span></div>'; }).join('')+
+      '</div></div></div>',
+    play:function(root){
+      var c = ctl(root), doc = root.querySelector('.e-doc'), page = root.querySelector('.e-page'),
+          scan = root.querySelector('.e-scan'), fields = q(root,'.e-mf'), ok = root.querySelector('.e-ok');
+      ok.textContent = 'Scanning…'; ok.classList.remove('on');
+      c.an(doc,  [{filter:'blur(9px)', transform:'scale(1.05)'},{filter:'blur(0px)', transform:'none'}],
+                 {duration:560, easing:EZ.turn});
+      c.an(page, [{clipPath:'inset(0 0 100% 0)'},{clipPath:'inset(0 0 0% 0)'}],
+                 {duration:640, easing:'linear'});
+      c.an(scan, [{top:'0px', opacity:0, offset:0},{top:'6px', opacity:1, offset:.08},
+                  {top:'92px', opacity:1, offset:.94},{top:'98px', opacity:0, offset:1}],
+                 {duration:640, easing:'linear'});
+      fields.forEach(function(f,i){
+        c.an(f, [{opacity:0, transform:'translateX(-4px)'},{opacity:1, transform:'none'}],
+                {duration:300, delay:200+i*150, easing:EZ.settle});
+      });
+      c.at(760, function(){ ok.textContent = 'Legible'; ok.classList.add('on'); });
+    }
+  });
+
+  /* ══ ent-09 · new since you left ════════════════════════════════════ */
+  M.push({
+    id:'ent-09', name:'“New since you left” marks itself', family:FAM,
+    purpose:'The owner opens the app at 07:00: one continuous wash walks down the batch that arrived overnight and each row\'s marker is triggered by the wash edge actually reaching it (rAF-driven, not a timer), then the tint decays so it stops nagging once it has been seen.',
+    spec:'wash height 0→3 rows, 560ms on cubic-bezier(.32,.72,0,1) sampled per frame · markers fire when the edge passes 55% of a row, '+sp(SP.land,'')+' · tint decays to 0 over 1400ms',
+    html:'<div class="mx-ent mx-ent-09">'+
+      '<div class="e-h"><span class="e-k">Since 18:40</span><span class="e-k e-nc">3 new</span></div>'+
+      '<div class="e-stack"><div class="e-wash"><div class="e-edge"></div></div>'+
+      [['Peix del Port confirmed','06:12'],['Invoice 6612 matched','04:55'],['Low stock · cava brut','23:31']]
+        .map(function(r){ return '<div class="e-r e-nw"><span class="e-mk"></span><span class="e-nm">'+r[0]+
+          '</span><span class="e-am e-f">'+r[1]+'</span></div>'; }).join('')+
+      '</div>'+
+      '<div class="e-div"><span class="ln"></span><span class="lb">seen</span><span class="ln"></span></div>'+
+      [['Order PO-1038 sent','18:22'],['Shift swap approved','17:40']]
+        .map(function(r){ return '<div class="e-r"><span class="e-nm">'+r[0]+'</span>'+
+          '<span class="e-am e-f">'+r[1]+'</span></div>'; }).join('')+
+      '</div>',
+    play:function(root){
+      var c = ctl(root), wash = root.querySelector('.e-wash'), news = q(root,'.e-nw'),
+          divs = q(root,'.e-div .ln'), lb = root.querySelector('.e-div .lb'),
+          RH = news[0] ? news[0].getBoundingClientRect().height : 19, H = RH*news.length;
+      news.forEach(function(r){ r._on = false; r.querySelector('.e-mk').style.transform = 'scaleY(0)'; });
+      wash.style.height = '0px'; wash.style.opacity = '1';
+      divs.forEach(function(d){ c.an(d, [{transform:'scaleX(0)'},{transform:'scaleX(1)'}], {duration:300, easing:EZ.turn}); });
+      c.an(lb, [{opacity:0},{opacity:1}], {duration:240, delay:180});
+
+      var ease = bez(.32,.72,0,1), t0 = 0, DUR = 560;
+      function frame(now){
+        if (!t0) t0 = now;
+        var p = Math.min(1,(now-t0)/DUR), y = ease(p)*H;
+        wash.style.height = y + 'px';
+        news.forEach(function(r,i){
+          if (!r._on && y >= i*RH + RH*0.55){         // the edge really got here
+            r._on = true;
+            var mk = r.querySelector('.e-mk');
+            mk.style.transform = '';
+            c.an(mk, [{transform:'scaleY(0)'},{transform:'scaleY(1)'}],
+                     {duration:SP.land.duration, easing:SP.land.easing});
+            c.an(r.querySelector('.e-nm'), [{opacity:.45},{opacity:1}], {duration:220});
+          }
+        });
+        if (p < 1) c.raf(frame);
+        else c.an(wash, [{opacity:1},{opacity:0}], {duration:1400, delay:260, easing:EZ.exit});
+      }
+      if (REDUCED){
+        wash.style.height = H+'px'; wash.style.opacity = '0';
+        news.forEach(function(r){ r.querySelector('.e-mk').style.transform = ''; });
+      } else c.at(260, function(){ c.raf(frame); });
+    }
+  });
+
+  /* ══ ent-10 · sheet arrival ═════════════════════════════════════════ */
+  M.push({
+    id:'ent-10', name:'Sheet grows from what you touched', family:FAM,
+    purpose:'Approving money from a list: the sheet scales out of the exact row you tapped (transform-origin measured from the trigger) and the scrim opens radially from the same point, so you can never lose track of which order you are about to approve. Tap a row to try it.',
+    spec:'transform-origin = trigger centre, scale .72→1, '+sp(SP.land,'')+' · scrim radial 220ms · under-layer scale .985 + blur 1.5px · close 180ms cubic-bezier(.4,0,.9,1)',
+    html:'<div class="mx-ent mx-ent-10">'+
+      '<div class="e-h"><span class="e-k">Approvals</span><span class="e-k">tap a row</span></div>'+
+      '<div class="e-stage">'+
+        '<div class="e-under"><div class="e-list">'+
+        [['PO-1038 · Bodega Álvaro','€1,284'],['PO-1039 · Peix del Port','€478'],['PO-1040 · Mercabarna','€612']]
+          .map(function(r){ return '<div class="e-r e-trg"><span class="e-nm">'+r[0]+'</span>'+
+            '<span class="e-am e-f">'+r[1]+'</span><span class="e-chev">›</span></div>'; }).join('')+
+        '</div></div>'+
+        '<div class="e-scrim"></div>'+
+        '<div class="e-sheet"><div class="e-sh-t">PO-1038</div>'+
+          '<div class="e-sh-l"><span>Bodega Álvaro</span><span class="e-f">€1,284.60</span></div>'+
+          '<div class="e-sh-l"><span>12 lines · due Fri</span><span class="e-f">+6.2%</span></div>'+
+          '<div class="e-btn">Hold to approve</div>'+
+        '</div>'+
+      '</div></div>',
+    play:function(root){
+      var c = ctl(root), stage = root.querySelector('.e-stage'),
+          under = root.querySelector('.e-under'), scrim = root.querySelector('.e-scrim'),
+          sheet = root.querySelector('.e-sheet'), bg = cssv(root,'--m-bg');
+      function close(){
+        scrim.classList.remove('is-on');
+        c.an(scrim, [{opacity:.86},{opacity:0}], {duration:180, easing:EZ.exit});
+        c.an(sheet, [{opacity:1, transform:'none'},{opacity:0, transform:'scale(.86)'}], {duration:180, easing:EZ.exit});
+        c.an(under, [{transform:'scale(.985)', filter:'blur(1.5px)', opacity:.55},
+                     {transform:'none', filter:'blur(0px)', opacity:1}], {duration:220, easing:EZ.settle});
+      }
+      function open(trg){
+        var tr = trg.getBoundingClientRect(), sr = sheet.getBoundingClientRect(),
+            st = stage.getBoundingClientRect(),
+            cx = tr.left + tr.width/2, cy = tr.top + tr.height/2;
+        sheet.style.transformOrigin = (cx - sr.left)+'px '+(cy - sr.top)+'px';
+        scrim.style.background = 'radial-gradient(150% 120% at '+Math.round(cx-st.left)+'px '+
+                                  Math.round(cy-st.top)+'px, transparent 0%, '+bg+' 68%)';
+        scrim.classList.add('is-on');
+        c.an(scrim, [{opacity:0},{opacity:.86}], {duration:220, easing:EZ.settle});
+        c.an(under, [{transform:'none', filter:'blur(0px)', opacity:1},
+                     {transform:'scale(.985)', filter:'blur(1.5px)', opacity:.55}], {duration:260, easing:EZ.settle});
+        c.an(sheet, [{opacity:0, transform:'scale(.72)'},{opacity:1, transform:'none'}],
+                    {duration:SP.land.duration, easing:SP.land.easing});
+        c.an(sheet, [{opacity:0},{opacity:1}], {duration:110, easing:'linear'});
+      }
+      root.onclick = function(e){
+        var t = e.target.closest ? e.target.closest('.e-trg') : null;
+        if (t){ ctl(root); open(t); return; }
+        if (e.target.closest && e.target.closest('.e-scrim')) close();
+      };
+      // unattended run
+      scrim.style.opacity = 0; scrim.classList.remove('is-on'); sheet.style.opacity = 0;
+      c.at(420, function(){ open(q(root,'.e-trg')[0]); });
+      c.at(2200, close);
+    }
+  });
+
+  /* ══ ent-11 · route change ══════════════════════════════════════════ */
+  M.push({
+    id:'ent-11', name:'Route change on a shared spine', family:FAM,
+    purpose:'The rail is the spine of the app: the marker travels (FLIP-measured) instead of teleporting, the title rolls inside a mask, and the body crosses in the direction you moved down the rail — so a page change reads as travel, not as a repaint. The rail is clickable.',
+    spec:'marker FLIP '+sp(SP.land,'')+' · title roll ±100% inside overflow mask 380ms cubic-bezier(.16,1,.3,1) · body out 160ms / in 300ms with 60ms overlap, 26ms per line, direction from rail order',
+    html:'<div class="mx-ent mx-ent-11">'+
+      '<div class="e-shell">'+
+        '<div class="e-rail"><div class="e-mkr"></div>'+
+          ['Orders','Inventory','Receiving'].map(function(n,i){
+            return '<div class="e-ri'+(i===0?' is-at':'')+'" data-i="'+i+'">'+n+'</div>'; }).join('')+
+        '</div>'+
+        '<div class="e-pane"><div class="e-ttl"><span class="a">Orders</span><span class="b"></span></div>'+
+        '<div class="e-bd"></div></div>'+
+      '</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          ROUTES = [
+            {t:'Orders',    rows:[['PO-1038','€1,284'],['PO-1039','€478'],['PO-1040','€612']]},
+            {t:'Inventory', rows:[['Cava brut','30 btl'],['Pork loin','18.4 kg'],['Lemons','8 crates']]},
+            {t:'Receiving', rows:[['Casa Pujol','12:42'],['Peix del Port','07:20'],['Forn Sant Jordi','06:05']]}
+          ],
+          rail = root.querySelector('.e-rail'), mkr = root.querySelector('.e-mkr'),
+          items = q(root,'.e-ri'), ttl = root.querySelector('.e-ttl'),
+          A = ttl.querySelector('.a'), B = ttl.querySelector('.b'),
+          bd = root.querySelector('.e-bd'), cur = 0, flip = false;
+
+      function paint(i){
+        bd.innerHTML = ROUTES[i].rows.map(function(r){
+          return '<div class="e-bl"><b>'+r[0]+'</b><span class="e-f">'+r[1]+'</span></div>'; }).join('');
+        return q(bd,'.e-bl');
+      }
+      function markerTo(i, animate){
+        var rr = rail.getBoundingClientRect(), ir = items[i].getBoundingClientRect();
+        var from = mkr.getBoundingClientRect();
+        mkr.style.top = Math.round(ir.top - rr.top + (ir.height-13)/2) + 'px';
+        if (animate){
+          var to = mkr.getBoundingClientRect(), dy = from.top - to.top;
+          if (dy) c.an(mkr, [{transform:'translateY('+dy+'px)'},{transform:'none'}],
+                            {duration:SP.land.duration, easing:SP.land.easing});
+        }
+      }
+      function go(i){
+        if (i === cur) return;
+        var dir = i > cur ? 1 : -1;
+        items.forEach(function(el,k){ el.classList.toggle('is-at', k===i); });
+        markerTo(i, true);
+        // masked title roll
+        var out = flip ? B : A, inn = flip ? A : B;
+        inn.textContent = ROUTES[i].t;
+        c.an(out, [{transform:'none', opacity:1},{transform:'translateY('+(-100*dir)+'%)', opacity:0}],
+                  {duration:380, easing:EZ.settle});
+        c.an(inn, [{transform:'translateY('+(100*dir)+'%)', opacity:0},{transform:'none', opacity:1}],
+                  {duration:380, easing:EZ.settle});
+        flip = !flip;
+        // body crosses, overlapping by 60ms
+        q(bd,'.e-bl').forEach(function(l,k){
+          c.an(l, [{opacity:1, transform:'none'},{opacity:0, transform:'translateY('+(-7*dir)+'px)'}],
+                  {duration:160, delay:k*18, easing:EZ.exit});
+        });
+        c.at(100, function(){
+          paint(i).forEach(function(l,k){
+            c.an(l, [{opacity:0, transform:'translateY('+(10*dir)+'px)'},{opacity:1, transform:'none'}],
+                    {duration:300, delay:k*26, easing:EZ.settle});
+          });
+        });
+        cur = i;
+      }
+      // reset to route 0 with no motion, then travel
+      cur = 0; flip = false;
+      items.forEach(function(el,k){ el.classList.toggle('is-at', k===0); });
+      A.textContent = ROUTES[0].t; A.style.transform=''; A.style.opacity=1;
+      B.textContent = ''; B.style.opacity = 0;
+      paint(0); markerTo(0,false);
+      rail.onclick = function(e){ var t = e.target.closest && e.target.closest('.e-ri'); if (t) go(+t.dataset.i); };
+      c.at(560, function(){ go(1); });
+      c.at(1900, function(){ go(2); });
+    }
+  });
+
+  /* ══ ent-12 · wildcard: offline flush ═══════════════════════════════ */
+  M.push({
+    id:'ent-12', name:'Queued scans flush on reconnect', family:FAM,
+    purpose:'There is no signal in the walk-in. The porter scans five cases anyway; when the phone reconnects the held queue must be seen to arrive — it lands as one deck and deals into the log, each row stamped as it seats, or nobody trusts offline mode again.',
+    spec:sp(SP.deal,'deal')+', 52ms apart, rotation −1.6°…+1.2° → 0 · '+sp(SP.stamp,'confirm pip')+' at +60ms per row · chip 220ms',
+    html:'<div class="mx-ent mx-ent-12">'+
+      '<div class="e-h"><span class="e-k">Receiving log</span><span class="e-chip">Reconnected</span></div>'+
+      '<div class="e-deck">'+
+      [['Cava brut · 6','12:38'],['Pork loin · 4','12:39'],['Lemons 5kg · 2','12:40'],
+       ['Cod fillet · 3','12:41'],['Butter 2kg · 5','12:42']].map(function(r,i){
+        return '<div class="e-r" style="top:'+(i*21)+'px;z-index:'+(9-i)+'">'+
+               '<span class="e-nm">'+r[0]+'</span><span class="e-am e-f">'+r[1]+'</span>'+
+               '<span class="e-pip">✓</span></div>';
+      }).join('')+'</div></div>',
+    play:function(root){
+      var c = ctl(root), rows = q(root,'.e-r'), chip = root.querySelector('.e-chip'),
+          ROT = [-1.6, 0.9, -0.7, 1.2, 0], DECKY = 3;
+      c.an(chip, [{opacity:0, transform:'scale(.9)'},{opacity:1, transform:'none'}],
+                 {duration:220, easing:EZ.settle});
+      rows.forEach(function(r,i){
+        // held in the deck (visible, stacked, tilted) until it is dealt
+        var y = i*21, dy = DECKY + i*1.6 - y, pip = r.querySelector('.e-pip'), t = 420 + i*52,
+            held = 'translateY('+dy+'px) rotate('+ROT[i]+'deg) scale(.97)';
+        c.an(r, [{transform:held},{transform:'none'}],
+                {duration:SP.deal.duration, delay:t, easing:SP.deal.easing});
+        c.an(pip, [{transform:'scale(0)', opacity:0},{transform:'none', opacity:1}],
+                  {duration:SP.stamp.duration, delay:t+60, easing:SP.stamp.easing});
+      });
+    }
+  });
+})();
+</script>

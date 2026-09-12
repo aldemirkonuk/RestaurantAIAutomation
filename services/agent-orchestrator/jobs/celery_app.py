@@ -38,6 +38,7 @@ def _set_task_log_context(task_id=None, task=None, **_kwargs):
 def _clear_task_log_context(**_kwargs):
     clear_log_context()
 
+
 celery_app = Celery(
     "wineops_jobs",
     broker=settings.celery_broker_url,

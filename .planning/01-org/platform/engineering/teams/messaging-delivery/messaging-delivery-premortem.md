@@ -85,7 +85,7 @@ are pruned on an evidence rule, not on a provider error alone.
 
 ### M4 — Threading merged two conversations, or split one
 
-`.planning/CONVERSATION_THREADING_PLAN.md` and `inbound-address.service.ts` route inbound
+`.planning/07-reference/CONVERSATION_THREADING_PLAN.md` and `inbound-address.service.ts` route inbound
 mail into threads. Threading is identity work wearing a different hat: two vendor replies
 merged into one thread put the wrong context in front of an agent; one conversation split
 across three threads loses the history that made the reply sensible. Because

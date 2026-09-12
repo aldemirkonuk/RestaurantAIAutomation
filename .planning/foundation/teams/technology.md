@@ -86,7 +86,7 @@ deploy. No other team's errors have that shape.
 - Guest identity: `supabase/migrations/20260819000000_guest_identity_minimal_slice.sql`; guard `scripts/check_no_guest_name_matching.sh`
 - Runtime: `services/agent-orchestrator/services/wine_matcher.py`, `producer_normalization.py`, `ontology_normalization.py`
 - Parity guards: `scripts/check_beverage_identity_parity.py`, `scripts/check_display_name_parity.py`
-- Design corpus: `.planning/BEVERAGE_CATALOGUE_ARCHITECTURE.md`, `.planning/DISH_IDENTITY_DESIGN.md`
+- Design corpus: `.planning/07-reference/BEVERAGE_CATALOGUE_ARCHITECTURE.md`, `.planning/07-reference/DISH_IDENTITY_DESIGN.md`
 
 **Primary metric.** **False-merge count against the labelled identity set — target
 zero, never traded against false splits.** The asymmetry is already written into
@@ -113,7 +113,7 @@ and the fix is architectural, not a bug queue.
 - `apps/api-gateway/src/inventory-ledger/LEDGER_V1_DEPRECATED.md` — the deprecation is already written down
 - CI guard `scripts/check_no_direct_stock_writes.sh:1-13`, wired into `.github/workflows/ci.yml`
 - `supabase/migrations/20260805130000_extend_apply_stock_movement.sql`, `…20260805131000_stock_race_and_pour_idempotency.sql`
-- `.planning/INVENTORY_SOTA_PLAN.md`, `.planning/INVENTORY_ADD_REMOVE_SCENARIOS.md`
+- `.planning/07-reference/INVENTORY_SOTA_PLAN.md`, `.planning/07-reference/INVENTORY_ADD_REMOVE_SCENARIOS.md`
 - `services/agent-orchestrator/services/inventory_count_service.py`, `agents/inventory_engine.py`
 
 **Primary metric.** **Projection divergence: rows where `stock_live` ≠ sum of lots,
@@ -168,7 +168,7 @@ meant to send it."
 - `apps/api-gateway/src/common/orchestrator/rabbitmq-bridge.service.ts:35` — the TS↔Python message bridge, incl. `handleInboundEmail` at `:528`
 - `apps/api-gateway/src/common/orchestrator/inbound-address.service.ts`, `email-triage.ts`, `priority.ts`, `sender-reputation.service.ts`
 - `services/agent-orchestrator/agents/buffer_manager.py` — 30-minute LIFO anti-spam window
-- `.planning/CONVERSATION_THREADING_PLAN.md`, `.planning/INBOUND_EMAIL_INTELLIGENCE_PLAN.md`
+- `.planning/07-reference/CONVERSATION_THREADING_PLAN.md`, `.planning/07-reference/INBOUND_EMAIL_INTELLIGENCE_PLAN.md`
 
 **Primary metric.** **Duplicate-delivery rate and drop rate per channel** (email, push,
 in-app, websocket), measured against `notification_id` rather than user reports.
@@ -198,7 +198,7 @@ should be; this team owns whether the built screen matches, renders, and perform
 - `apps/web/src/pages/` — 40 page components + 11 sub-route directories; `.planning/foundation/PAGE_MAP.md` records the navigation graph
 - `apps/mobile/app/` — `(tabs)`, `wine-agent.tsx`, `get-started.tsx`, `lock.tsx`, …
 - `packages/ui/src/components/{charts,layout,notifications,primitives}`; `apps/web/src/stories/` (4 Storybook stories — thin)
-- 34 web test files; `.planning/UX_PATHS_CATALOG.md` (154KB burn-down corpus)
+- 34 web test files; `.planning/07-reference/UX_PATHS_CATALOG.md` (154KB burn-down corpus)
 
 **Primary metric.** **Reachable-route ratio** — routes with at least one inbound
 in-app link. [[README]] §0 records **24 routes with no inbound link and 13 route
@@ -284,7 +284,7 @@ whole repo, which is the strongest possible argument for a named owner.
 - `supabase/migrations/` — 62 files; baseline `20260805000000_baseline_from_production.sql`
 - `scripts/check_schema_parity.sh:6-11` records the incident verbatim: production carried **27 tables, 403 columns and 13 functions created by no migration**; `restaurant_inventory` alone had 37 such columns; `calculate_sales_velocity` and `resolve_sku_to_inventory` were business logic with no source in the repo
 - `packages/database/src/types/database.types.ts` and siblings (generated)
-- `scripts/concat_migrations.py`, `scripts/run_migration.sh`, `.planning/SCHEMA_DRIFT_INVENTORY.txt`
+- `scripts/concat_migrations.py`, `scripts/run_migration.sh`, `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt`
 
 **Primary metric.** **Days since last hand-applied DDL reached production** — i.e. the
 schema-parity job's green streak.
@@ -573,7 +573,7 @@ machine-generated, confidence-scored, never an oracle.
 - `services/agent-orchestrator/services/haiku_enrichment_service.py`, `wine_research_service.py`, `wine_book_scraper.py`, `critic_score_service.py`, `web_verification_service.py`, `auction_wine_service.py`
 - `services/agent-orchestrator/data/master_wine_library_seed.json`; `datasets/{wine_labels,wine_menus,wine_invoices,menu_corpus,scraped}/`
 - Demand-driven prioritization: `supabase/migrations/20260813170000_enrichment_demand_priority.sql`
-- `.planning/PRODUCER_REPUTATION_PLAN.md`, `.planning/MENU_EXTRACTION_SCALE_PLAN.md`
+- `.planning/07-reference/PRODUCER_REPUTATION_PLAN.md`, `.planning/07-reference/MENU_EXTRACTION_SCALE_PLAN.md`
 - Live progress in git history: `ef19b81 data(a10): enrich 79 more wines in-session (144/1,448)`, `f7e0ea1 data(producer-reputation): reach 100% coverage on the menu corpus`
 - Adjacent and deliberately *not* its own team: `scripts/populate_embeddings.py` (one script) sits inside this team until retrieval work justifies otherwise
 
@@ -634,7 +634,7 @@ can be systematically unrepresentative.
 - `scripts/simulate/` — `bridge.py`, `payloads.py`, `detection.py`, `mappings.py`, `service.py`
 - `datasets/sim/{archetypes,documents,menus}` + `manifest.json`; `scripts/e2e_crawl_harness.py`, `scripts/e2e_restaurants.json`
 - Product-side counterpart: `apps/api-gateway/src/simpos/` (11 routes) and `supabase/migrations/20260805134000_simpos_schema.sql`; namespace guard `sim-` slug prefix (decision C31, cited in `agents/drift_agent.py:4-6`)
-- `.planning/SYNTHETIC_DATA_AND_DOCS_PLAN.md`
+- `.planning/07-reference/SYNTHETIC_DATA_AND_DOCS_PLAN.md`
 
 **Primary metric.** **Backtest fidelity** — agreement between model performance on
 synthetic documents and on the real annotated gold set. Synthetic data whose scores do
@@ -820,7 +820,7 @@ Resilience handles things that break loudly; this team handles things that are w
 - `agents/inequality_detector.py:1-10` — POS/inventory mismatch: fat-finger, fraud, system error
 - Stubs it should own but cannot yet: `agents/ghost_inventory_agent.py`, `agents/shrinkage_detective_agent.py`
 - Gates: `.github/workflows/schema-parity.yml` (incl. daily cron, `:26-28`), `scripts/check_schema_parity.sh`, `scripts/check_no_direct_stock_writes.sh`, `scripts/check_no_direct_type_attributes_access.sh`, `scripts/check_no_raw_guest_channels.sh`, `scripts/check_no_guest_name_matching.sh`
-- `.planning/SCHEMA_DRIFT_INVENTORY.txt`
+- `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt`
 
 **Primary metric.** **Mean time to detection for silent corruption** — from a violating
 write to a raised finding. Schema drift is currently ≤24h (daily cron); tenant leakage

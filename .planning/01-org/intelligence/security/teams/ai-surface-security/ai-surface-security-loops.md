@@ -104,9 +104,17 @@ Counters **M3**. `status: blocked` is set in the frontmatter deliberately, and
 loop is that a blocked dependency accrues a visible integer instead of becoming prose in a
 status update.
 
-`sec.model_callsites_emitting_cost` is **0 of 7**. The contract is named at
-`intelligence.md:488`: *"SEC-3's primary metric is unmeasurable until NestJS model calls
-emit cost events. **Hard dependency, not a nice-to-have.**"*
+`sec.model_callsites_emitting_cost` was **0 of 7**; it is **25 of 25** as of 2026-08-24.
+The contract named at `intelligence.md:488` — *"SEC-3's primary metric is unmeasurable
+until NestJS model calls emit cost events. **Hard dependency, not a nice-to-have.**"* — is
+discharged, and `scripts/check_model_calls_logged.sh` now fails the build if a new call
+site skips the ledger.
+
+**The dependency that remains is narrower and should be re-dated, not closed.**
+`nf_a.unauthenticated_inference_spend` still has no instrument: the event knows which
+agent spent the money, not whether an authenticated caller triggered it. Emitting caller
+auth state is a one-field change to the gateway wrapper, and it belongs to this team to
+ask for rather than to assume.
 
 **The loop still closes monthly while blocked**, and what it reports is the day count plus
 the crude substitute from L-AIS-2. A blocked loop with a close-time is a functioning

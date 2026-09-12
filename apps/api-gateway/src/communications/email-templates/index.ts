@@ -10,6 +10,9 @@ export * from "./base-template";
 // Onboarding
 export * from "./onboarding.template";
 
+// Studio invite (ADR 0020)
+export * from "./studio-invite.template";
+
 // Password reset
 export * from "./password-reset.template";
 

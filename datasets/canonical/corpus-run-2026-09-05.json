@@ -1,0 +1,271 @@
+{
+  "corpus_is_empty": false,
+  "counts": {
+    "procurement_document_lines": 18,
+    "procurement_documents": 5,
+    "vendor_attachments_objects": 5
+  },
+  "documents": [
+    {
+      "doc_type": "invoice",
+      "document_id": "5c7d4801-884c-482b-97eb-3b7d405b39cb",
+      "jurisdiction": null,
+      "line_count": 3,
+      "summary": {
+        "fails": 1,
+        "holds": 15,
+        "untestable": 6
+      }
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "b1e02edf-e696-4c93-8c41-a3433873c8dd",
+      "jurisdiction": null,
+      "line_count": 4,
+      "summary": {
+        "fails": 3,
+        "holds": 17,
+        "untestable": 6
+      }
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "d0b96d4a-bb8e-4e81-83f5-7664cd14bf8b",
+      "jurisdiction": null,
+      "line_count": 4,
+      "summary": {
+        "fails": 4,
+        "holds": 16,
+        "untestable": 6
+      }
+    },
+    {
+      "doc_type": "delivery_note",
+      "document_id": "dac9a3e8-de11-4a4f-95a7-799c4fd293e9",
+      "jurisdiction": null,
+      "line_count": 4,
+      "summary": {
+        "fails": 0,
+        "holds": 10,
+        "untestable": 15
+      }
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "e34a5b9f-9165-44c1-aca0-3bcb8e6be673",
+      "jurisdiction": null,
+      "line_count": 3,
+      "summary": {
+        "fails": 1,
+        "holds": 15,
+        "untestable": 6
+      }
+    }
+  ],
+  "documents_read": 5,
+  "headline": "5 documents read; 9 named invariant failure(s); 6 of 16 invariants UNTESTABLE on every document (18 lines extracted in total)",
+  "intake_statistics": {
+    "bytes_max": 74103,
+    "bytes_median": 72397,
+    "bytes_min": 67790,
+    "content_types": {
+      "application/pdf": 5
+    },
+    "doc_types": {
+      "delivery_note": 1,
+      "invoice": 4
+    },
+    "documents": 5,
+    "duplicate_sha256_documents": 0,
+    "duplicate_sha256_groups": 0,
+    "page_count": "not recorded in procurement_documents; needs the stored object",
+    "sha256_present": 5,
+    "sha256_present_share": 1.0,
+    "source_channels": {
+      "upload": 5
+    },
+    "statuses": {
+      "needs_review": 2,
+      "received": 3
+    }
+  },
+  "named_failures": [
+    {
+      "doc_type": "invoice",
+      "document_id": "5c7d4801-884c-482b-97eb-3b7d405b39cb",
+      "expected": "at least one VAT breakdown row",
+      "explanation": "The document states 253.58 of VAT with no breakdown, so no category's base can be checked.",
+      "found": 0,
+      "invariant": "vat_breakdown_present",
+      "path": null,
+      "rule": "BR-CO-18"
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "b1e02edf-e696-4c93-8c41-a3433873c8dd",
+      "expected": 11366.4,
+      "explanation": "9532.00 plus VAT 1834.40 gives 11366.40, but the document states 11186.40.",
+      "found": 11186.4,
+      "invariant": "total_with_vat",
+      "path": null,
+      "rule": "BR-CO-15"
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "b1e02edf-e696-4c93-8c41-a3433873c8dd",
+      "expected": "at least one VAT breakdown row",
+      "explanation": "The document states 1834.40 of VAT with no breakdown, so no category's base can be checked.",
+      "found": 0,
+      "invariant": "vat_breakdown_present",
+      "path": null,
+      "rule": "BR-CO-18"
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "b1e02edf-e696-4c93-8c41-a3433873c8dd",
+      "expected": "a document-level charge (BG-21) with a UNCL7161 reason code",
+      "explanation": "Line 4 reads as a deposit but is billed as a goods line, so it is inside the goods total and will inflate beverage cost every month it recurs.",
+      "found": "an invoice line inside BT-106",
+      "invariant": "deposits_coded_and_excluded",
+      "path": "lines[3]",
+      "rule": null
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "d0b96d4a-bb8e-4e81-83f5-7664cd14bf8b",
+      "expected": 360,
+      "explanation": "Line 4: 2 \u00d7 90 \u00f7 1 with charges 180.00 and allowances 0.00 comes to 360.00, but the line states 180.00.",
+      "found": 180,
+      "invariant": "line_net_amount",
+      "path": "lines[3]",
+      "rule": "PEPPOL-EN16931-R120"
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "d0b96d4a-bb8e-4e81-83f5-7664cd14bf8b",
+      "expected": 11366.4,
+      "explanation": "9532.00 plus VAT 1834.40 gives 11366.40, but the document states 11186.40.",
+      "found": 11186.4,
+      "invariant": "total_with_vat",
+      "path": null,
+      "rule": "BR-CO-15"
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "d0b96d4a-bb8e-4e81-83f5-7664cd14bf8b",
+      "expected": "at least one VAT breakdown row",
+      "explanation": "The document states 1834.40 of VAT with no breakdown, so no category's base can be checked.",
+      "found": 0,
+      "invariant": "vat_breakdown_present",
+      "path": null,
+      "rule": "BR-CO-18"
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "d0b96d4a-bb8e-4e81-83f5-7664cd14bf8b",
+      "expected": "a document-level charge (BG-21) with a UNCL7161 reason code",
+      "explanation": "Line 4 reads as a deposit but is billed as a goods line, so it is inside the goods total and will inflate beverage cost every month it recurs.",
+      "found": "an invoice line inside BT-106",
+      "invariant": "deposits_coded_and_excluded",
+      "path": "lines[3]",
+      "rule": null
+    },
+    {
+      "doc_type": "invoice",
+      "document_id": "e34a5b9f-9165-44c1-aca0-3bcb8e6be673",
+      "expected": "at least one VAT breakdown row",
+      "explanation": "The document states 253.58 of VAT with no breakdown, so no category's base can be checked.",
+      "found": 0,
+      "invariant": "vat_breakdown_present",
+      "path": null,
+      "rule": "BR-CO-18"
+    }
+  ],
+  "per_invariant": {
+    "amount_due": {
+      "fails": 0,
+      "holds": 4,
+      "untestable": 1
+    },
+    "as_printed_not_mutated": {
+      "fails": 0,
+      "holds": 5,
+      "untestable": 0
+    },
+    "credit_memo_references_invoice": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 5
+    },
+    "currency_present_when_money": {
+      "fails": 0,
+      "holds": 5,
+      "untestable": 0
+    },
+    "deposits_coded_and_excluded": {
+      "fails": 2,
+      "holds": 4,
+      "untestable": 1
+    },
+    "document_lines_total": {
+      "fails": 0,
+      "holds": 4,
+      "untestable": 1
+    },
+    "free_goods_zero_net": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 5
+    },
+    "line_net_amount": {
+      "fails": 1,
+      "holds": 13,
+      "untestable": 4
+    },
+    "price_base_quantity": {
+      "fails": 0,
+      "holds": 18,
+      "untestable": 0
+    },
+    "received_never_assumed": {
+      "fails": 0,
+      "holds": 18,
+      "untestable": 0
+    },
+    "total_with_vat": {
+      "fails": 2,
+      "holds": 2,
+      "untestable": 1
+    },
+    "total_without_vat": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 5
+    },
+    "vat_breakdown_present": {
+      "fails": 4,
+      "holds": 0,
+      "untestable": 1
+    },
+    "vat_category_tax_amount": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 5
+    },
+    "vat_category_taxable_base": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 5
+    },
+    "vat_total_matches_breakdown": {
+      "fails": 0,
+      "holds": 0,
+      "untestable": 5
+    }
+  },
+  "price_base_columns_missing": false,
+  "project_ref": "exzueerziesmczwlhomd.supabase.co",
+  "run_date": "2026-09-05",
+  "synthetic_fixture_count": 9,
+  "wrote_to_database": false
+}

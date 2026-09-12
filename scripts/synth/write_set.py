@@ -12,6 +12,10 @@ Notes
 - ``users``: seed upserts shared SIM_* persona mirror rows; teardown must
   NO-OP delete of SIM_* Auth users (D-13 / D-17). Auth users are durable.
 - Never include ``inventory_stock`` (absent in live cloud).
+- ADR 0093 additions carry a note saying whether an FK already cascades them.
+  They are listed regardless: a cascade lives in a migration nobody connects to
+  this file, and "it is covered by a cascade" is exactly the assumption that
+  leaves simulated rows in a real tenant when the migration changes.
 """
 
 from __future__ import annotations
@@ -52,6 +56,41 @@ SYNTH_WRITE_SET: list[str] = [
     "simpos_tables",
     "simpos_checks",
     "simpos_check_lines",
+    # ── ADR 0093 harness (D-11/D-12) ────────────────────────────────────────
+    # The scenario harness writes rows the sim seed never wrote. Every one of
+    # these is listed EXPLICITLY even where an FK already cascades: the rule
+    # here is an explicit list, not implicit cascade (teardown.py:41). A
+    # cascade is a property of the schema and can be changed by a migration
+    # nobody connects to this file; an entry cannot.
+    #
+    # Written DIRECTLY by seed.py's apply path (ADR 0093 D4): opening stock is
+    # materialised through apply_stock_movement, which writes one lot and one
+    # ledger row per stocked SKU. Before this, seed_sim_restaurant set
+    # `stock_live` directly and created NO lots — and `stock_live` is a
+    # projection of `inventory_lots`, so a seeded tenant showed 12 bottles and
+    # raised `no stock to pour` on the first glass.
+    "inventory_lots",  # cascade-covered via restaurant_inventory; listed anyway
+    "inventory_transactions",  # cascade-covered via restaurants; listed anyway
+    # Written INDIRECTLY by a scenario run: the POS hub's depletion path and
+    # the glass-pour RPC.
+    "pour_events",  # NO FK to restaurants — nothing cascades these
+    "wine_consumption_log",  # cascade-covered via restaurants and inventory
+    # Written INDIRECTLY: the hub resolves POS lines against these, and the
+    # catalog matcher proposes new ones.
+    "pos_item_mappings",  # NO FK to restaurants (only inventory_id, cascading)
+    "pos_catalog_match_proposals",  # candidate_inventory_id is SET NULL, not cascade
+    # Written INDIRECTLY: a check carries a table, and pos_checks.table_id
+    # references restaurant_tables with NO on-delete action — so pos_checks
+    # MUST be deleted first or this delete fails. See DELETE_ORDER.
+    "restaurant_tables",  # NO FK to restaurants
+    # Written INDIRECTLY by the user-side path a scenario exercises on demand:
+    # the low-stock sweep persists an inbox row per member, and the insight
+    # generator writes analytics_insights.
+    "notifications",  # cascade-covered via restaurants; listed anyway
+    "analytics_insights",  # NO FK to restaurants
+    # Written DIRECTLY by the scenario runner: one row per run, holding the
+    # expectation the verifier compares against (ADR 0093 D2).
+    "sim_scenario_runs",  # cascade-covered via restaurants; listed anyway
 ]
 
 TEARDOWN_TABLES: list[str] = list(SYNTH_WRITE_SET)

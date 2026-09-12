@@ -1,9 +1,24 @@
+/**
+ * ReportGenerator — catalogue of the report templates the platform plans to
+ * produce. Generation itself is NOT available, and the UI says so.
+ *
+ * Why it is not wired: `POST /reports/generate` exists
+ * (apps/api-gateway/src/reports/reports.service.ts) but it only inserts a
+ * `generated_reports` row with `status: "pending"` and NULL `pdf_url` /
+ * `excel_url` / `csv_url`. Nothing in the repo — gateway, agent-orchestrator or
+ * a scheduled job — ever renders a file or advances that status, so a wired
+ * button would fill the archive with rows that can never be opened.
+ *
+ * What used to be here was worse than an unwired button: `handleGenerate`
+ * simulated the whole thing client-side — a 2.5s wait, a status flipped to
+ * "ready", a file size from `Math.random()`, and a Download button that popped
+ * an alert. The user was told a report existed when no report had been created.
+ */
+
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText,
-  Download,
-  Clock,
   ChevronDown,
   ChevronUp,
   Check,
@@ -13,13 +28,8 @@ import {
   Package,
   Users,
   Sparkles,
-  Wand2,
-  Printer,
-  Mail,
-  Eye,
   List,
-  AlertCircle,
-  Loader2,
+  Info,
   Settings,
 } from 'lucide-react'
 
@@ -32,16 +42,6 @@ interface ReportTemplate {
   charts: string[]
   estimatedPages: number
   icon: React.ElementType
-}
-
-interface GeneratedReport {
-  id: string
-  templateId: string
-  name: string
-  generatedAt: Date
-  format: 'pdf' | 'excel' | 'html'
-  status: 'ready' | 'generating' | 'failed'
-  size?: string
 }
 
 const reportTemplates: ReportTemplate[] = [
@@ -105,8 +105,8 @@ const categoryColors = {
 }
 
 interface ReportGeneratorProps {
-  onGenerate?: (templateId: string, options: ReportOptions) => void
-  salesData?: any[]
+  /** Daily PURCHASE-order rows (vendor spend), not POS sales. */
+  purchaseDayData?: any[]
   metrics?: any
 }
 
@@ -119,10 +119,8 @@ interface ReportOptions {
   pageSize: 'letter' | 'a4'
 }
 
-export function ReportGenerator({ onGenerate, salesData: _salesData, metrics: _metrics }: ReportGeneratorProps) {
+export function ReportGenerator({ purchaseDayData: _purchaseDayData, metrics: _metrics }: ReportGeneratorProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [generatedReports, setGeneratedReports] = useState<GeneratedReport[]>([])
   const [showOptions, setShowOptions] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   
@@ -140,52 +138,7 @@ export function ReportGenerator({ onGenerate, salesData: _salesData, metrics: _m
     return reportTemplates.filter(t => t.category === categoryFilter)
   }, [categoryFilter])
 
-  const handleGenerate = async () => {
-    if (!selectedTemplate) return
-
-    setIsGenerating(true)
-    
-    const template = reportTemplates.find(t => t.id === selectedTemplate)
-    if (!template) return
-
-    // Add to generated reports with "generating" status
-    const newReport: GeneratedReport = {
-      id: `report-${Date.now()}`,
-      templateId: selectedTemplate,
-      name: `${template.name} - ${new Date().toLocaleDateString()}`,
-      generatedAt: new Date(),
-      format: options.format,
-      status: 'generating',
-    }
-    
-    setGeneratedReports(prev => [newReport, ...prev])
-
-    // Simulate generation
-    await new Promise(resolve => setTimeout(resolve, 2500))
-
-    // Update status to ready
-    setGeneratedReports(prev => 
-      prev.map(r => 
-        r.id === newReport.id 
-          ? { ...r, status: 'ready' as const, size: `${Math.floor(Math.random() * 500 + 200)}KB` }
-          : r
-      )
-    )
-
-    setIsGenerating(false)
-
-    if (onGenerate) {
-      onGenerate(selectedTemplate, options)
-    }
-  }
-
-  const handleDownload = (report: GeneratedReport) => {
-    // Simulate download
-    console.log('Downloading report:', report.name)
-    alert(`Downloading ${report.name}...`)
-  }
-
-  const selectedTemplateData = selectedTemplate 
+  const selectedTemplateData = selectedTemplate
     ? reportTemplates.find(t => t.id === selectedTemplate) 
     : null
 
@@ -201,12 +154,14 @@ export function ReportGenerator({ onGenerate, salesData: _salesData, metrics: _m
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold text-gray-900">Report Generator</h2>
-                <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-bold rounded-full flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  AI-Powered
+                <span className="px-2 py-0.5 bg-gray-200 text-gray-700 text-xs font-bold rounded-full flex items-center gap-1">
+                  Not available yet
                 </span>
               </div>
-              <p className="text-sm text-gray-600">Generate professional PDF reports with charts and AI insights</p>
+              <p className="text-sm text-gray-600">
+                Preview of the report templates being built. File generation is not
+                live yet.
+              </p>
             </div>
           </div>
           <button
@@ -325,6 +280,18 @@ export function ReportGenerator({ onGenerate, salesData: _salesData, metrics: _m
       </div>
 
       <div className="p-5">
+        {/* Stated once, up front — before the user picks a template and looks
+            for a button that will not work. */}
+        <div className="mb-4 flex items-start gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+          <Info className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-gray-600 leading-relaxed">
+            Report file generation is not available yet — nothing here produces a
+            PDF, spreadsheet or download. The templates below are a preview of what
+            is being built. For figures you can use today, see the KPIs and insights
+            on this page.
+          </p>
+        </div>
+
         {/* Category Filter */}
         <div className="flex items-center gap-2 mb-4">
           <span className="text-sm font-medium text-gray-600">Filter:</span>
@@ -406,21 +373,12 @@ export function ReportGenerator({ onGenerate, salesData: _salesData, metrics: _m
                   <p className="text-sm text-gray-600">{selectedTemplateData.description}</p>
                 </div>
                 <button
-                  onClick={handleGenerate}
-                  disabled={isGenerating}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-lg shadow-lg shadow-purple-600/30 hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled
+                  title="Report file generation is not available yet"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gray-200 text-gray-500 font-semibold rounded-lg cursor-not-allowed"
                 >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 className="w-4 h-4" />
-                      Generate Report
-                    </>
-                  )}
+                  <FileText className="w-4 h-4" />
+                  Generate Report
                 </button>
               </div>
 
@@ -470,16 +428,10 @@ export function ReportGenerator({ onGenerate, salesData: _salesData, metrics: _m
 
               {/* Preview Info */}
               <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between text-sm">
-                <div className="flex items-center gap-4 text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <FileText className="w-4 h-4" />
-                    ~{selectedTemplateData.estimatedPages} pages
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-4 h-4" />
-                    ~30 seconds to generate
-                  </span>
-                </div>
+                <span className="flex items-center gap-1 text-gray-500">
+                  <FileText className="w-4 h-4" />
+                  ~{selectedTemplateData.estimatedPages} pages when this ships
+                </span>
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500">Format:</span>
                   <span className="font-medium text-gray-700 uppercase">{options.format}</span>
@@ -489,79 +441,14 @@ export function ReportGenerator({ onGenerate, salesData: _salesData, metrics: _m
           )}
         </AnimatePresence>
 
-        {/* Generated Reports */}
-        {generatedReports.length > 0 && (
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Recently Generated</h3>
-            <div className="space-y-2">
-              {generatedReports.slice(0, 5).map((report) => {
-                const template = reportTemplates.find(t => t.id === report.templateId)
-                const TemplateIcon = template?.icon || FileText
-
-                return (
-                  <div
-                    key={report.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-white rounded-lg border border-gray-200">
-                        <TemplateIcon className="w-4 h-4 text-gray-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm">{report.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {report.generatedAt.toLocaleString()} • {report.format.toUpperCase()}
-                          {report.size && ` • ${report.size}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {report.status === 'generating' ? (
-                        <div className="flex items-center gap-2 text-purple-600">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span className="text-sm font-medium">Generating...</span>
-                        </div>
-                      ) : report.status === 'ready' ? (
-                        <>
-                          <button
-                            onClick={() => handleDownload(report)}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors"
-                          >
-                            <Download className="w-4 h-4" />
-                            Download
-                          </button>
-                          <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">
-                            <Mail className="w-4 h-4" />
-                          </button>
-                          <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">
-                            <Printer className="w-4 h-4" />
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-sm text-rose-600 flex items-center gap-1">
-                          <AlertCircle className="w-4 h-4" />
-                          Failed
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Empty State */}
-        {!selectedTemplate && generatedReports.length === 0 && (
+        {!selectedTemplate && (
           <div className="text-center py-8">
-            <div className="w-16 h-16 bg-purple-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-              <FileText className="w-8 h-8 text-purple-400" />
+            <div className="w-16 h-16 bg-gray-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+              <FileText className="w-8 h-8 text-gray-400" />
             </div>
-            <p className="text-gray-600 font-medium mb-2">Select a Report Template</p>
-            <p className="text-sm text-gray-400">Choose a template above to generate a professional report</p>
+            <p className="text-gray-600 font-medium mb-2">Select a template to see what it will contain</p>
+            <p className="text-sm text-gray-400">Generating the file itself is not available yet</p>
           </div>
         )}
       </div>

@@ -82,7 +82,7 @@ Owned outright:
 | `skills.firing_rate_30d` | Share of registered skills invoked at least once in 30 days | **unmeasurable** — no telemetry exists |
 | `skills.deletions_per_quarter` | Skills deleted or deprecated | 0, and a quarter with additions and zero deletions is a failing quarter |
 | `skills.script_to_skill_ratio` | New procedures landing in `scripts/` vs `.claude/skills/` | ~59:0 — the bypass path is currently the only path |
-| `nf_a.*` dependency | A `skill_id` on the NF-A event is the cheapest firing signal we will get | not emitted ([[README]] §1, L4 "emits nothing yet") |
+| `nf_a.*` dependency | A `skill_id` on the NF-A event is the cheapest firing signal we will get | `nf_a.*` emits since P1 (corrected 2026-08-25); `skill_id` is still not a column, so the firing signal is still unavailable |
 
 ## Evidence today
 

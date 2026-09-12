@@ -37,14 +37,36 @@ DELETE_ORDER: list[str] = [
     "pos_checks",
     # Same reasoning — nothing references pos_unresolved_lines.
     "pos_unresolved_lines",
+    # AFTER pos_checks, and this is not cosmetic: `pos_checks.table_id`
+    # references `restaurant_tables(id)` with NO on-delete action (verified in
+    # the baseline migration), so deleting the tables first raises 23503 and
+    # the whole teardown for that tenant reports an orphan.
+    "restaurant_tables",
     # SimPOS testbed tables. Children before parents even though the FKs are
     # ON DELETE CASCADE/SET NULL — explicit order, not implicit cascade.
     "simpos_check_lines",
     "simpos_checks",
     "simpos_tables",
     "simpos_catalog",
+    # ADR 0093: one row per scenario run, holding that run's expectation.
+    "sim_scenario_runs",
     "sim_ground_truth_facts",
     "sim_ground_truth_runs",
+    # ADR 0093: the user-side rows a scenario causes. Neither is referenced by
+    # anything, so they can sit anywhere before `restaurants`.
+    "notifications",
+    "analytics_insights",
+    # ── the inventory chain, children first ─────────────────────────────────
+    # Everything that points at a lot or an inventory row goes before the lots,
+    # and the lots before restaurant_inventory. inventory_lots cascades from
+    # restaurant_inventory, but the cascade is a schema fact this file cannot
+    # see; the explicit delete is what makes the coverage checkable.
+    "pour_events",
+    "wine_consumption_log",
+    "inventory_transactions",
+    "pos_catalog_match_proposals",
+    "pos_item_mappings",
+    "inventory_lots",
     "restaurant_inventory",
     "menu_items",
     "restaurant_menus",
@@ -269,6 +291,23 @@ TEARDOWN_HANDLERS: dict[str, Callable[..., None]] = {
     "simpos_catalog": _handler_by_restaurant("simpos_catalog"),
     "sim_ground_truth_facts": _handler_by_restaurant("sim_ground_truth_facts"),
     "sim_ground_truth_runs": _handler_by_restaurant("sim_ground_truth_runs"),
+    # ADR 0093 harness. Every one of these carries a NOT NULL `restaurant_id`
+    # (checked against supabase/migrations/20260805000000_baseline_from_production.sql
+    # and 20260805133000_pos_unresolved_lines_and_review_queues.sql for
+    # pos_catalog_match_proposals), so the by-restaurant handler is correct for
+    # all of them and no bespoke resolver is needed.
+    "sim_scenario_runs": _handler_by_restaurant("sim_scenario_runs"),
+    "restaurant_tables": _handler_by_restaurant("restaurant_tables"),
+    "pour_events": _handler_by_restaurant("pour_events"),
+    "wine_consumption_log": _handler_by_restaurant("wine_consumption_log"),
+    "inventory_transactions": _handler_by_restaurant("inventory_transactions"),
+    "inventory_lots": _handler_by_restaurant("inventory_lots"),
+    "pos_item_mappings": _handler_by_restaurant("pos_item_mappings"),
+    "pos_catalog_match_proposals": _handler_by_restaurant(
+        "pos_catalog_match_proposals"
+    ),
+    "notifications": _handler_by_restaurant("notifications"),
+    "analytics_insights": _handler_by_restaurant("analytics_insights"),
     "restaurant_inventory": _handler_by_restaurant("restaurant_inventory"),
     "menu_items": _handler_by_restaurant("menu_items"),
     "restaurant_menus": _handler_by_restaurant("restaurant_menus"),
@@ -299,6 +338,33 @@ def assert_teardown_coverage() -> None:
         if table not in DELETE_ORDER:
             raise WriteSetTeardownCoverageError(
                 f"DELETE_ORDER missing non-noop table: {table}"
+            )
+    # ORDER, not just membership. A table listed but deleted after its parent
+    # raises 23503 and is reported as an orphan — which reads, from the outside,
+    # exactly like a table nobody listed. These pairs are the ones with a real
+    # FK or a real dependency (ADR 0093 D-11/D-12).
+    for child, parent in (
+        ("pos_checks", "restaurant_tables"),  # pos_checks.table_id, no on-delete
+        ("pour_events", "inventory_lots"),
+        ("wine_consumption_log", "inventory_lots"),
+        ("inventory_transactions", "inventory_lots"),
+        ("pos_catalog_match_proposals", "inventory_lots"),
+        ("pos_item_mappings", "inventory_lots"),
+        ("inventory_lots", "restaurant_inventory"),  # FK, ON DELETE CASCADE
+        ("restaurant_inventory", "restaurants"),
+        ("sim_scenario_runs", "restaurants"),
+        ("notifications", "restaurants"),
+        ("analytics_insights", "restaurants"),
+    ):
+        if child not in DELETE_ORDER or parent not in DELETE_ORDER:
+            raise WriteSetTeardownCoverageError(
+                f"DELETE_ORDER missing {child!r} or {parent!r}"
+            )
+        if DELETE_ORDER.index(child) > DELETE_ORDER.index(parent):
+            raise WriteSetTeardownCoverageError(
+                f"DELETE_ORDER deletes {parent!r} before {child!r}; "
+                "children come first or the delete raises 23503 and the row "
+                "survives teardown inside a real tenant"
             )
     if "restaurant_menus" not in DELETE_ORDER:
         raise WriteSetTeardownCoverageError(

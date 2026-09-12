@@ -115,7 +115,11 @@ export interface TeamSettings {
 export interface MemberPerformance {
   hasData: boolean
   metrics?: { salesPerShift: number; avgCheck: number; wineAttachPct: number }
-  analytic?: { unit: string; series: number[]; median: number; band: [number, number] }
+  // median/band are null when the peer benchmark is UNKNOWN — either the
+  // server_sales read failed or the restaurant has no other servers with
+  // covers. They used to arrive as 0, which drew the peer line at the bottom
+  // of the chart and put every server above it. ADR 0067.
+  analytic?: { unit: string; series: number[]; median: number | null; band: readonly [number, number] | null }
   services?: Array<{ date: string; covers: number }>
 }
 
@@ -149,12 +153,48 @@ export async function createSchedule(weekStart: string, rid?: string): Promise<S
   const { data } = await apiClient.post<Schedule>(`${base(rid)}/schedules`, { weekStart })
   return data
 }
-export async function copyWeek(fromWeekStart: string, toWeekStart: string, rid?: string) {
-  const { data } = await apiClient.post(`${base(rid)}/schedules/copy-week`, { fromWeekStart, toWeekStart })
+/**
+ * The client half of ADR 0088 (gateway) + ADR 0089 (page), completed once both
+ * landed on `main` (#256 and #257, 2026-09-02).
+ *
+ * The gateway REFUSES an unqualified request on the three destructive/fan-out
+ * verbs: copy-week 409s without `replaceTarget: true` when the target week is
+ * not empty (`schedule.service.ts:260-265`), publish 409s without
+ * `resetReceipts: true` when receipts exist (`schedule.service.ts:352-362`),
+ * and broadcast 400s unless it carries exactly one of `memberIds` or
+ * `audience: "everyone"` (`team.controller.ts:381-392`).
+ *
+ * #257 shipped the confirmations without these fields because the gateway DTO
+ * did not know them yet and `forbidNonWhitelisted: true`
+ * (`apps/api-gateway/src/main.ts:54`) 400s an unknown field. #256 then landed
+ * the DTOs — which left the two halves inverted: the flags were required and
+ * nobody sent them, so "Copy last week", "Re-publish" and "Broadcast crew"
+ * failed on every click. The flag is passed ONLY from the branch that has
+ * already shown the user what it destroys, so the 409 keeps guarding the
+ * unconfirmed path.
+ */
+export async function copyWeek(
+  fromWeekStart: string,
+  toWeekStart: string,
+  opts: { replaceTarget?: boolean } = {},
+  rid?: string,
+) {
+  const { data } = await apiClient.post(`${base(rid)}/schedules/copy-week`, {
+    fromWeekStart,
+    toWeekStart,
+    ...(opts.replaceTarget ? { replaceTarget: true } : {}),
+  })
   return data
 }
-export async function publishSchedule(scheduleId: string, rid?: string) {
-  const { data } = await apiClient.post(`${base(rid)}/schedules/${scheduleId}/publish`)
+export async function publishSchedule(
+  scheduleId: string,
+  opts: { resetReceipts?: boolean } = {},
+  rid?: string,
+) {
+  const { data } = await apiClient.post(
+    `${base(rid)}/schedules/${scheduleId}/publish`,
+    opts.resetReceipts ? { resetReceipts: true } : {},
+  )
   return data
 }
 export async function acknowledgeSchedule(scheduleId: string, rid?: string) {
@@ -246,7 +286,20 @@ export async function ingestSalesBatch(rows: Record<string, any>[], rid?: string
 }
 
 // ── Broadcast ───────────────────────────────────────────────────────────
-export async function broadcast(body: { message: string; title?: string; memberIds?: string[] }, rid?: string) {
+/**
+ * Exactly one of `memberIds` or `audience: "everyone"` — the gateway 400s a
+ * body carrying both or neither (`team.controller.ts:381-392`, ADR 0088 T3).
+ * An omitted `memberIds` used to mean "everybody" by default, which is how a
+ * control labelled "Message {name}" reached the whole restaurant; saying it
+ * out loud is the fix, so this signature will not let a caller stay silent.
+ */
+export async function broadcast(
+  body: { message: string; title?: string } & (
+    | { memberIds: string[]; audience?: never }
+    | { audience: 'everyone'; memberIds?: never }
+  ),
+  rid?: string,
+) {
   const { data } = await apiClient.post(`${base(rid)}/broadcast`, body)
   return data
 }

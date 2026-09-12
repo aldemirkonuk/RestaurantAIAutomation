@@ -1,0 +1,69 @@
+[
+  {
+    "name": "strike",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.16,
+        1,
+        0.3,
+        1
+      ]
+    },
+    "durationMs": 140,
+    "purpose": "The match strike — fastest token, state changes only.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "settle",
+    "kind": "spring",
+    "params": {
+      "stiffness": 260,
+      "damping": 32
+    },
+    "durationMs": null,
+    "purpose": "Candle-steady settle; near-critical, no visible bounce.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "hearth",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.16,
+        1,
+        0.3,
+        1
+      ]
+    },
+    "durationMs": 420,
+    "purpose": "The slow warm one — ambient glow and panel reveals.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "pour",
+    "kind": "spring",
+    "params": {
+      "stiffness": 90,
+      "damping": 22
+    },
+    "durationMs": null,
+    "purpose": "The slowest physics in the set; long, liquid travel.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "drift",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.25,
+        1,
+        0.5,
+        1
+      ]
+    },
+    "durationMs": 380,
+    "purpose": "Ambient drift for atmosphere layers.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  }
+]

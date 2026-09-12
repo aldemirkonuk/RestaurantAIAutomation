@@ -46,8 +46,16 @@ def _make_supabase_mock(wine_data=None, inventory_data=None):
 
 @pytest.fixture
 async def client():
+    # These analytics routes now require X-Admin-Key (they expose per-restaurant
+    # markup data). conftest's autouse fixture puts the matching key in the env.
+    from conftest import TEST_ADMIN_API_KEY
+
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"X-Admin-Key": TEST_ADMIN_API_KEY},
+    ) as c:
         yield c
 
 

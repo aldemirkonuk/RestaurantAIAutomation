@@ -4,7 +4,13 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ModelClientService } from "../../common/model-client/model-client.service";
+import {
+  ModelClientService,
+  NfEventRef,
+} from "../../common/model-client/model-client.service";
+import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
+import { PARSE_YIELD_BASIS } from "../../common/model-client/verdict-bases";
+import { menuScanVerdict } from "./menu-scan-verdict";
 import { WineExtractItem } from "../wine-extract-item.interface";
 
 /**
@@ -77,6 +83,7 @@ export class ScanParserService {
   constructor(
     private readonly configService: ConfigService,
     private readonly modelClient: ModelClientService,
+    private readonly nfVerdicts: NfVerdictService,
   ) {}
 
   /**
@@ -267,6 +274,10 @@ export class ScanParserService {
     isPdf: boolean,
     restaurantId?: string,
   ): Promise<{ items: WineExtractItem[]; truncated: boolean }> {
+    // OD-59 / P3.0: an unreadable response and a menu page with no wines on it
+    // are different outcomes that used to record identically — see
+    // ./menu-scan-verdict.ts.
+    const eventRef = new NfEventRef();
     try {
       // P1 NF-A: routed through the model client, which returns the RAW
       // payload — the stop_reason read below is this parser's truncation
@@ -319,12 +330,14 @@ export class ScanParserService {
           // The request-scoped correlation id (ALS) already groups every
           // chunk of one import under one id — the "one menu cost $X across
           // 9 calls" query the schema could never answer before.
+          eventRef,
         },
       });
 
       const content: string = payload?.content?.[0]?.text ?? "";
       const stopReason: string = payload?.stop_reason ?? "";
-      const items = this.parseJsonResponse(content);
+      const parsed = this.parseJsonResponseGraded(content);
+      const items = parsed.items;
 
       // Truncation used to be invisible: the cut-off array failed JSON.parse
       // and the caller got an empty list indistinguishable from "this menu had
@@ -337,6 +350,16 @@ export class ScanParserService {
             `${items.length} wine(s) from a truncated response`,
         );
       }
+      this.nfVerdicts.record(
+        eventRef,
+        PARSE_YIELD_BASIS,
+        menuScanVerdict({
+          parseStatus: parsed.parseStatus,
+          itemCount: items.length,
+          truncated,
+          responseChars: content.length,
+        }),
+      );
       return { items, truncated };
     } catch (error) {
       this.logger.error(`Scan parser LLM call failed: ${error.message}`);
@@ -379,9 +402,31 @@ export class ScanParserService {
       const pageCount = doc.getPageCount();
       if (pageCount <= SPLIT_THRESHOLD_PAGES) return [base64];
 
+      // OD-55 — loop-bound injection (CodeQL `js/loop-bound-injection`, high).
+      // `pageCount` is read straight out of an UPLOADED PDF, and parseChunks
+      // makes one PAID MODEL CALL per chunk. A 50,000-page PDF is ~8,300 calls
+      // from a single upload. MAX_SPLIT_DEPTH bounds recursion depth; nothing
+      // bounded breadth, which is the cheaper attack.
+      //
+      // The P1 per-restaurant spend ceiling limits the blast radius but does not
+      // fix this: it stops the bill, after the loop has already been running.
+      //
+      // 120 pages is far past any real menu — the densest in the corpus is ~40 —
+      // so the cap is unreachable by legitimate use and is announced rather than
+      // applied silently. Truncating a real 200-page document without saying so
+      // would be its own bug.
+      const MAX_PAGES = 120;
+      const effectivePages = Math.min(pageCount, MAX_PAGES);
+      if (pageCount > MAX_PAGES) {
+        this.logger.error(
+          `Menu PDF reports ${pageCount} pages — refusing to parse beyond ${MAX_PAGES}. ` +
+            `Importing the first ${MAX_PAGES} page(s) only; the rest are skipped.`,
+        );
+      }
+
       const chunks: string[] = [];
-      for (let start = 0; start < pageCount; start += PAGES_PER_CHUNK) {
-        const end = Math.min(start + PAGES_PER_CHUNK, pageCount);
+      for (let start = 0; start < effectivePages; start += PAGES_PER_CHUNK) {
+        const end = Math.min(start + PAGES_PER_CHUNK, effectivePages);
         const out = await PDFDocument.create();
         const pages = await out.copyPages(
           doc,
@@ -422,11 +467,36 @@ export class ScanParserService {
   }
 
   private parseJsonResponse(text: string): WineExtractItem[] {
+    return this.parseJsonResponseGraded(text).items;
+  }
+
+  /**
+   * The same parse, plus HOW it ended.
+   *
+   * OD-59 / P3.0: `parseJsonResponse` returns `[]` for three different things —
+   * a model that answered "no wines", a model that returned prose, and a model
+   * that returned an object instead of an array. The comment at the call site
+   * has always named this ambiguity as the historical bug; the doneability
+   * verdict is the first consumer that has to act on the difference, and it
+   * cannot recover it from an empty array after the fact.
+   */
+  private parseJsonResponseGraded(text: string): {
+    items: WineExtractItem[];
+    parseStatus:
+      | "parsed_array"
+      | "parsed_not_array"
+      | "salvaged"
+      | "unparseable";
+  } {
     const cleaned = text.replace(/```(?:json)?\n?/g, "").trim();
     try {
       const parsed = JSON.parse(cleaned);
-      if (!Array.isArray(parsed)) return [];
-      return this.keepNamedItems(parsed);
+      if (!Array.isArray(parsed))
+        return { items: [], parseStatus: "parsed_not_array" };
+      return {
+        items: this.keepNamedItems(parsed),
+        parseStatus: "parsed_array",
+      };
     } catch {
       // A truncated array is the common failure (output token cap), and it is
       // recoverable: every element before the cut is still well-formed JSON.
@@ -436,12 +506,12 @@ export class ScanParserService {
         this.logger.warn(
           `LLM JSON response was truncated — salvaged ${salvaged.length} complete item(s)`,
         );
-        return salvaged;
+        return { items: salvaged, parseStatus: "salvaged" };
       }
       this.logger.warn(
         `Failed to parse LLM JSON response: ${cleaned.slice(0, 200)}`,
       );
-      return [];
+      return { items: [], parseStatus: "unparseable" };
     }
   }
 

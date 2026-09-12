@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Plus, Trash2, X, ShieldCheck, LayoutGrid } from 'lucide-react'
 import { cn } from '../../../lib/utils'
+import { useAuth } from '../../../contexts/AuthContext'
 import {
   getCoverageTemplates,
   createCoverageTemplate,
@@ -67,9 +68,14 @@ export function OpsRulesPanel({
 
 function CoverageRules() {
   const qc = useQueryClient()
+  // Tenant-keyed like every other query on this page. Unkeyed, a branch switch
+  // left the previous restaurant's rules on screen and a delete then fired with
+  // the old tenant's id — a no-op server-side that still toasted "Rule removed".
+  const { activeRestaurantId } = useAuth()
   const { data: templates = [] } = useQuery({
-    queryKey: ['team', 'coverage-templates'],
+    queryKey: ['team', 'coverage-templates', activeRestaurantId],
     queryFn: () => getCoverageTemplates(),
+    enabled: !!activeRestaurantId,
   })
   const [form, setForm] = useState({
     dayOfWeek: '' as string,
@@ -91,6 +97,8 @@ function CoverageRules() {
       setForm({ dayOfWeek: '', shiftPeriod: 'pm', role: '', minStaff: '1' })
       qc.invalidateQueries({ queryKey: ['team', 'coverage-templates'] })
       qc.invalidateQueries({ queryKey: ['team', 'week'] })
+      qc.invalidateQueries({ queryKey: ['team-next-coverage-rules'] })
+      qc.invalidateQueries({ queryKey: ['team-next-week'] })
     },
     onError: () => toast.error('Could not add rule'),
   })
@@ -100,7 +108,10 @@ function CoverageRules() {
       toast.success('Rule removed')
       qc.invalidateQueries({ queryKey: ['team', 'coverage-templates'] })
       qc.invalidateQueries({ queryKey: ['team', 'week'] })
+      qc.invalidateQueries({ queryKey: ['team-next-coverage-rules'] })
+      qc.invalidateQueries({ queryKey: ['team-next-week'] })
     },
+    onError: () => toast.error('Could not remove the rule — it is still in force'),
   })
 
   return (
@@ -167,9 +178,11 @@ function CoverageRules() {
 
 function CertRules({ members }: { members: TeamMember[] }) {
   const qc = useQueryClient()
+  const { activeRestaurantId } = useAuth()
   const { data: certs = [] } = useQuery({
-    queryKey: ['team', 'certs'],
+    queryKey: ['team', 'certs', activeRestaurantId],
     queryFn: () => getCertifications(),
+    enabled: !!activeRestaurantId,
   })
   const membersById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
   const [form, setForm] = useState({
@@ -192,6 +205,7 @@ function CertRules({ members }: { members: TeamMember[] }) {
       toast.success('Certification added')
       setForm({ ...form, certType: '', issuedAt: '', expiresAt: '' })
       qc.invalidateQueries({ queryKey: ['team', 'certs'] })
+      qc.invalidateQueries({ queryKey: ['team-next-certs'] })
     },
     onError: () => toast.error('Could not add certification'),
   })
@@ -214,7 +228,9 @@ function CertRules({ members }: { members: TeamMember[] }) {
     onSuccess: () => {
       toast.success('Certification removed')
       qc.invalidateQueries({ queryKey: ['team', 'certs'] })
+      qc.invalidateQueries({ queryKey: ['team-next-certs'] })
     },
+    onError: () => toast.error('Could not remove the certification — it is still on file'),
   })
 
   return (

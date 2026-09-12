@@ -232,7 +232,15 @@ callsites, so L4 has no single place to attach to. AR-4 is the direct consequenc
 
 → [[model-routing-inference-economics-charter]], [[platform-api-charter]].
 
-### AR-4 · Sev-1 · L4 emits nothing here, and cannot be joined there
+### AR-4 · Sev-1 · L4 emits nothing here, and cannot be joined there — **CLOSED 2026-08-25**
+
+> **Corrected 2026-08-25 (P1).** Both halves below are fixed and the finding is
+> historical: the NestJS side emits `neural_footprint_event` from all seven callsites
+> via `common/model-client` (`model-client.service.ts:413`), and the Python side now
+> carries the join keys — `SpendLogger.log()` takes `agent` and `correlation_id`
+> (`services/agent-orchestrator/services/spend_logger.py:269,276`) and writes the same
+> NF store (`:406`). See `.planning/STATE.md`. What remains open is verdict coverage
+> ([[0017-doneability-verdicts-are-sidecar-claims]]), not emission or joinability.
 
 [[README]] §1 grades L4 *"emits nothing yet."* Verified two ways, and the second is worse
 than the first:
@@ -275,7 +283,10 @@ The comment is honest and the code does what it says. The **architectural** cons
 is that multi-tenant isolation holds only where a second, independent decorator was
 remembered. [[ENDPOINTS]] measures the result: **137 of 448 endpoints carry no
 `JwtAuthGuard`**; after subtracting 32 webhook routes and 11 explicit `@Public()`, **94
-are unguarded by omission** — 39 of them in `analytics` alone.
+are unguarded by omission** — 39 of them in `analytics` alone. *Corrected 2026-08-25:
+stale as a present count — the primary controllers of all six named modules now carry a
+class-level `@UseGuards(JwtAuthGuard)` (`analytics.controller.ts:51` and peers). Not
+recounted route-by-route, so no replacement figure is asserted.*
 
 **This is the shape of defect this function exists to catch, and it is worth being exact
 about the division of labour.** OD-19 and OD-20 already track the *security* question:
@@ -320,8 +331,8 @@ rebuild from the source of truth, diff against reality, exit non-zero.
 - **The evaluation seam** — [[agent-evaluation-gates-charter]] (AI Orchestration,
   operations) vs [[evaluation-doneability-charter]] / [[research-math-charter]]
   (Research & Math, methodology). Numbered **OD-21** at `teams/technology.md:845`, which
-  **collided** with the real OD-21 (Obsidian structural workflow,
-  `OPEN-DECISIONS.md:25`, already locked); now **TECH-F3** ([[FORK-REGISTRY]]). This function's position: the seam is a
+  **collided** with the real OD-21 (Obsidian structural workflow, `OPEN-DECISIONS.md:147`,
+  already locked); now **TECH-F3** ([[FORK-REGISTRY]]). This function's position: the seam is a
   **layer-ownership question about L4**, it is exactly the kind of overlap that resolves
   into duplication if left alone, and the instruction already on record is the right one —
   **if the line fails, merge; never duplicate.** We do not pick which side absorbs the
@@ -331,5 +342,8 @@ rebuild from the source of truth, diff against reality, exit non-zero.
   ([[architecture-review-premortem]] #1) and believes the symmetric rule should be
   standing. We are a natural test case: an advisory function that produces no closed
   decisions is pure overhead.
-- **OD-11 / L4 schema detail** — AR-4 is unfixable until the NF column contract exists.
+- **OD-11 / L4 schema detail** — AR-4 was unfixable until the NF column contract existed;
+  that fork has since closed on Path C (OD-11, `OPEN-DECISIONS.md:126`).
 - **OD-19 / OD-20** — AR-5's incident half. Not ours; named so the seam is legible.
+  Half of it has since closed (OD-20, `OPEN-DECISIONS.md:120` — already fixed and never
+  closed); OD-19 (`OPEN-DECISIONS.md:33`) stays open.

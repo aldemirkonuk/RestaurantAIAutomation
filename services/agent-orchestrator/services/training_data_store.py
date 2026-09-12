@@ -23,7 +23,23 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
+from services.log_safety import sanitize_for_log
+
 logger = logging.getLogger(__name__)
+
+
+def _default_model_version() -> str:
+    """
+    Model id stamped onto stored training rows.
+
+    Was hardcoded to "gemini-2.0-flash" in three signatures, so every row named a
+    model shut down 2026-06-01 as its own provenance (OD-57). Resolved at call
+    time so the label follows the model in use; callers that know better should
+    pass model_version explicitly.
+    """
+    from config.settings import get_settings
+
+    return get_settings().gemini_model
 
 
 class TrainingDataStore:
@@ -42,7 +58,7 @@ class TrainingDataStore:
         dataset_type: str,
         input_data: Dict[str, Any],
         output_data: Dict[str, Any],
-        model_version: str = "gemini-2.0-flash",
+        model_version: Optional[str] = None,
         confidence: float = 0.0,
         human_verified: bool = False,
         restaurant_id: Optional[str] = None,
@@ -66,7 +82,7 @@ class TrainingDataStore:
             "dataset_type": dataset_type,
             "input_data": input_data,
             "output_data": output_data,
-            "model_version": model_version,
+            "model_version": model_version or _default_model_version(),
             "confidence": round(confidence, 3),
             "human_verified": human_verified,
             "restaurant_id": restaurant_id,
@@ -76,8 +92,11 @@ class TrainingDataStore:
         if self.mock_mode or not self.supabase:
             # Buffer in memory
             self._buffer.append(record)
+            # dataset_type reaches here from the request body (scan_routes document_type).
             logger.debug(
-                f"Training data buffered (mock/no-db): {dataset_type}, buffer size: {len(self._buffer)}"
+                "Training data buffered (mock/no-db): %s, buffer size: %d",
+                sanitize_for_log(dataset_type),
+                len(self._buffer),
             )
             return f"buffered_{len(self._buffer)}"
 
@@ -85,7 +104,11 @@ class TrainingDataStore:
             result = self.supabase.table("training_datasets").insert(record).execute()
             if result.data:
                 record_id = result.data[0].get("id")
-                logger.info(f"Training data saved: {dataset_type} (id: {record_id})")
+                logger.info(
+                    "Training data saved: %s (id: %s)",
+                    sanitize_for_log(dataset_type),
+                    record_id,
+                )
                 return record_id
         except Exception as e:
             logger.warning(f"Failed to save training data: {e}")
@@ -99,7 +122,7 @@ class TrainingDataStore:
         image_base64: str,
         detected_wines: List[Dict[str, Any]],
         user_corrections: Optional[List[Dict[str, Any]]] = None,
-        model_version: str = "gemini-2.0-flash",
+        model_version: Optional[str] = None,
         restaurant_id: Optional[str] = None,
     ) -> Optional[str]:
         """
@@ -144,7 +167,7 @@ class TrainingDataStore:
         wine_name: str,
         enrichment_input: Dict[str, Any],
         enrichment_output: Dict[str, Any],
-        model_version: str = "gemini-2.0-flash",
+        model_version: Optional[str] = None,
         human_corrections: Optional[Dict[str, Any]] = None,
         restaurant_id: Optional[str] = None,
     ) -> Optional[str]:

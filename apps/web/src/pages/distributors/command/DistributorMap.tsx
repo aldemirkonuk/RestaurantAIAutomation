@@ -36,7 +36,7 @@ export interface DistributorMapProps {
   className?: string
 }
 
-const WINE = '#9E4249'
+const WINE = '#1A5E6B'
 const WINE_DARK = '#7C3339'
 const SLATE = '#8A817C'
 const CUSTOM = '#D97706'

@@ -123,7 +123,7 @@ export type OnboardingStep =
   | 'complete'
 
 export const ONBOARDING_STEPS: { id: OnboardingStep; title: string; description: string }[] = [
-  { id: 'welcome', title: 'Welcome', description: 'Get started with WineOps' },
+  { id: 'welcome', title: 'Welcome', description: 'Get started with Mudavym' },
   { id: 'restaurant', title: 'Restaurant Profile', description: 'Tell us about your restaurant' },
   { id: 'manager', title: 'Your Profile', description: 'Set up your account preferences' },
   { id: 'team', title: 'Team Setup', description: 'Invite your team members' },

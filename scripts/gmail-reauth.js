@@ -128,6 +128,9 @@ try {
   execSync(`${cmd} "${authUrl}"`, { stdio: 'ignore' });
 } catch { /* ignore — user can paste the URL */ }
 
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   if (parsed.pathname !== '/oauth2callback') {
@@ -140,9 +143,20 @@ const server = http.createServer(async (req, res) => {
   const errParam = parsed.query.error;
 
   if (errParam) {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`<h2>❌ Authorization denied: ${errParam}</h2><p>Close this tab and check the terminal.</p>`);
-    console.error(`\n❌  Authorization denied: ${errParam}`);
+    // `errParam` is a query-string value, so it is attacker-supplied whenever
+    // someone can get this short-lived localhost server to load a crafted URL.
+    // Escaping it keeps the reflected value out of the DOM (js/reflected-xss);
+    // stripping control characters keeps it from forging terminal lines
+    // (js/log-injection).
+    const safeHtml = escapeHtml(String(errParam));
+    // JSON.stringify rather than a control-character strip: it escapes CR/LF
+    // into \r\n literals, quotes the result so the boundary of the untrusted
+    // value is visible in the terminal, and is a form both a reader and a
+    // static analyser recognise as encoded.
+    const safeLog = JSON.stringify(String(errParam).slice(0, 200));
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<h2>❌ Authorization denied: ${safeHtml}</h2><p>Close this tab and check the terminal.</p>`);
+    console.error(`\n❌  Authorization denied: ${safeLog}`);
     server.close();
     return;
   }

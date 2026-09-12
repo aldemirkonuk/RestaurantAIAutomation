@@ -56,7 +56,7 @@ Owns outright:
 | Guest taste fingerprints, personalization, the guest-facing surface | [[guest-experience-charter]] *(Product)* | We own the **operator-facing** narrative and consume NF-B in aggregate only (`intelligence.md:490`) |
 | How the insight card looks | [[design-charter]] / [[client-surfaces-charter]] | We own the sentence and the empty state; they own the pixels |
 | The model call itself — retry, routing, cost, timeout | [[harness-model-routing-charter|harness-and-model-routing-charter]] *(RM-1)* | `consultants.service.ts:159` is one of RM-1's seven raw-`fetch` callsites, with **no retry/backoff at all** (`intelligence.md:81-83`) |
-| Guarding `/analytics/consult` and the consultant toggle | [[security-charter]] / [[platform-api-charter]] | OD-20 is theirs to fix; ours to refuse to demo behind |
+| Guarding `/analytics/consult` and the consultant toggle | [[security-charter]] / [[platform-api-charter]] | OD-20 was theirs to fix; ours to refuse to demo behind. **They fixed it 2026-08-24** (PR #31, `analytics.controller.ts:51`) — the boundary stands, the refusal is discharged |
 
 ## Metrics it moves
 
@@ -150,9 +150,11 @@ consequence: a feed that explains *why* it is empty.
 - **No feedback on insights**, only on recommendations (above).
 - **No spec file** for any of this team's five service files — 2,325 lines of
   scoring, ranking, verbalizing, scheduling and dispositioning with zero tests.
-- **No expiry on consultant enablement**, and the toggle route
-  (`analytics.controller.ts:516`) plus the consult route (`:531`) are both unguarded
-  (OD-20).
+- **No expiry on consultant enablement.** The toggle and consult routes were also both
+  unguarded (OD-20); *that half closed 2026-08-24 — PR #31 put a class-level
+  `@UseGuards(JwtAuthGuard)` on `AnalyticsController` (`analytics.controller.ts:51`)
+  covering every route handler on the file.* The missing expiry is untouched by that fix
+  and remains this team's gap.
 - **Rule coverage is thin against the catalogue** — 8 rules against 573 insight types.
   Whether that is a gap or good judgement is itself a question this team should answer with
   evidence rather than assume.

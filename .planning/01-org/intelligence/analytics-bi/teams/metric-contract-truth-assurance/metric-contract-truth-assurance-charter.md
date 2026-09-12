@@ -113,7 +113,7 @@ above it does not call it for that number.
 ### Divergence 2 — the feature count, in the semantic layer itself
 
 `metric-registry.ts:8` describes itself as *"the machine-readable bridge between
-`.planning/ANALYTICS_FEATURE_CATALOG.md` (the 360 features)"*. That file says **460**
+`.planning/07-reference/ANALYTICS_FEATURE_CATALOG.md` (the 360 features)"*. That file says **460**
 (`:5`). Its own priority-tier table (`:931-936`) sums 92 + 170 + 98 = **360**, because
 Batch 6 (361–460, one hundred seating-density features) was appended without tiers. Its
 machine-readable export, `datasets/planning-exports/analytics-feature-catalog.json`, carries 460 features

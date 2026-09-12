@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { CommandProvider } from '../command/CommandProvider'
+import { AskAiSurface } from '../askai/AskAiSurface'
 import { GuidanceProvider } from '../../guidance/GuidanceProvider'
 import { PageTipStrip } from '../../guidance/components/PageTipStrip'
 import { SetupNudgeBanner } from '../../guidance/components/SetupNudgeBanner'
@@ -72,9 +73,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <div className="flex items-center gap-2">
-                <BrandMark size={24} alt="" />
-                <span className="text-sm font-bold text-gray-900">WineOps AI</span>
+              <div className="flex items-center">
+                <BrandMark size={18} alt="Mudavym" />
               </div>
               <div className="w-11 h-11 shrink-0" aria-hidden />
             </div>
@@ -86,6 +86,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
 
           <WineAgentFab />
+          {/* Ask AI (P3.C) — opened by ⌘⇧K, which CommandProvider registers. */}
+          <AskAiSurface />
         </div>
       </GuidanceProvider>
     </CommandProvider>

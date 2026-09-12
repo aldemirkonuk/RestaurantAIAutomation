@@ -12,6 +12,12 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# NOT_APPLICABLE distinguishes 'this rule did not run' from 'this rule passed'.
+# Six tests below are named `..._skips_check` and used to assert `is None`,
+# which is what a PASS returns — they described the skip and then locked in
+# the value that made it invisible.
+from services.ontology_validation_service import NOT_APPLICABLE  # noqa: E402
+
 from unittest.mock import MagicMock, patch
 
 
@@ -83,7 +89,10 @@ class TestRegionCountryConsistency:
         """ONTO-05: No appellation → skip (None returned, no DB call)"""
         service = _make_service()
         result = service.check_region_country_consistency(None, "France")
-        assert result is None
+        # The test NAME said 'skips' and the assertion said 'None' — which is
+        # exactly what a PASS returns. Six tests documented the skip and then
+        # locked in the value that made it indistinguishable from a pass.
+        assert result is NOT_APPLICABLE
 
     def test_appellation_not_in_db_skips_check(self):
         """ONTO-05: Appellation not found in DB → skip (no false positives)"""
@@ -96,7 +105,10 @@ class TestRegionCountryConsistency:
                 "Unknown Appellation XYZ", "France"
             )
 
-        assert result is None
+        # The test NAME said 'skips' and the assertion said 'None' — which is
+        # exactly what a PASS returns. Six tests documented the skip and then
+        # locked in the value that made it indistinguishable from a pass.
+        assert result is NOT_APPLICABLE
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +232,10 @@ class TestAppellationRuleEnforcement:
                     "Unknown Appellation", "Merlot"
                 )
 
-        assert result is None
+        # The test NAME said 'skips' and the assertion said 'None' — which is
+        # exactly what a PASS returns. Six tests documented the skip and then
+        # locked in the value that made it indistinguishable from a pass.
+        assert result is NOT_APPLICABLE
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +288,10 @@ class TestVintagePlausibility:
         """ONTO-05: No appellation → skip vintage check (no false positives)"""
         service = _make_service()
         result = service.check_vintage_plausibility("2020", None)
-        assert result is None
+        # The test NAME said 'skips' and the assertion said 'None' — which is
+        # exactly what a PASS returns. Six tests documented the skip and then
+        # locked in the value that made it indistinguishable from a pass.
+        assert result is NOT_APPLICABLE
 
     def test_no_vintage_rule_skips_check(self):
         """ONTO-05: Vintage present but no DB rule for appellation → skip"""
@@ -283,7 +301,10 @@ class TestVintagePlausibility:
         )
 
         result = service.check_vintage_plausibility("2020", "UnknownAppellation")
-        assert result is None
+        # The test NAME said 'skips' and the assertion said 'None' — which is
+        # exactly what a PASS returns. Six tests documented the skip and then
+        # locked in the value that made it indistinguishable from a pass.
+        assert result is NOT_APPLICABLE
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +357,10 @@ class TestColorGrapeWarning:
             ):
                 result = service.check_color_grape_consistency("red", "ExoticGrape")
 
-        assert result is None
+        # The test NAME said 'skips' and the assertion said 'None' — which is
+        # exactly what a PASS returns. Six tests documented the skip and then
+        # locked in the value that made it indistinguishable from a pass.
+        assert result is NOT_APPLICABLE
 
 
 # ---------------------------------------------------------------------------
@@ -419,3 +443,51 @@ class TestOntologyAutofill:
         assert "country" in updated_fc
         assert updated_fc["country"]["confidence"] == 1.0
         assert updated_fc["country"]["source"] == "ontology"
+
+
+class TestChecksTotalCountsWhatRan:
+    """
+    `checks_total` was the constant 4. A bottle none of the four wine rules
+    could judge therefore scored `checks_passed=4, checks_failed=0` — a clean
+    bill of health from four checks that examined nothing.
+
+    Non-wine drinks already flow through this pipeline (that is why
+    `20260817060000_beverage_kind_classification.sql` added `beverage_kind` to
+    `master_wine_library`), so the population being fabricated a pass for is
+    real. A single malt has no appellation, grape, vintage or colour: all four
+    rules skip.
+    """
+
+    def test_a_bottle_no_rule_can_judge_scores_zero_checks_not_four(self):
+        svc = _make_service()
+        # Lagavulin 16 shaped: nothing any wine rule can reach.
+        r1 = svc.check_region_country_consistency(None, None)
+        r2 = svc.check_grape_appellation_compatibility(None, None)
+        r3 = svc.check_vintage_plausibility(None, None)
+        r4 = svc.check_color_grape_consistency(None, None)
+        results = [r1, r2, r3, r4]
+
+        ran = sum(1 for r in results if r is not NOT_APPLICABLE)
+        assert ran == 0, "no wine rule can judge a single malt — none should count"
+
+        # And none of them is a failure, so the old arithmetic
+        # (checks_passed = 4 - 0) produced a perfect score.
+        assert all(not r for r in results)
+
+    def test_a_skip_and_a_pass_are_no_longer_the_same_value(self):
+        # The whole defect in one assertion.
+        svc = _make_service()
+        skipped = svc.check_vintage_plausibility(None, None)
+        passed = svc.check_vintage_plausibility("NV", None)
+        assert skipped is NOT_APPLICABLE
+        assert passed is None
+        assert skipped is not passed
+
+    def test_the_untestable_branch_is_now_reachable(self):
+        # `ontology_verdict` guards `checks_total == 0` and calls it untestable.
+        # That branch could never fire while the caller passed a constant 4.
+        from services.ontology_verdict import ontology_verdict
+
+        v = ontology_verdict(checks_passed=0, checks_failed=0, checks_total=0)
+        assert v["outcome"] is None
+        assert v["evidence"]["untestable"] == "no_ontology_rule_applied"

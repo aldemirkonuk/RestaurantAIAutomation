@@ -140,14 +140,14 @@ export default function AuthorizeIntegration() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-        className="overflow-hidden rounded-2xl border border-wine-100/80 bg-white/90 shadow-[0_24px_64px_-24px_rgba(158,66,73,0.18)] backdrop-blur-md"
+        className="overflow-hidden rounded-2xl border border-wine-100/80 bg-white/90 shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18)] backdrop-blur-md"
       >
         <div className="border-b border-gray-100 px-7 py-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-wine-600">
             Authorization request
           </p>
           <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-gray-900">
-            Connect {entry.label} to WineOps
+            Connect {entry.label} to Mudavym
           </h1>
           <p className="mt-1.5 text-sm leading-relaxed text-gray-500">{entry.description}</p>
         </div>
@@ -169,7 +169,7 @@ export default function AuthorizeIntegration() {
           <>
             <section className="px-7 py-6">
               <h2 className="text-sm font-semibold text-gray-900">
-                What WineOps will be able to do
+                What Mudavym will be able to do
               </h2>
               <ul className="mt-3 space-y-3">
                 {entry.scopes.map((scope) => (
@@ -244,7 +244,7 @@ export default function AuthorizeIntegration() {
                 type="button"
                 onClick={handleAllow}
                 disabled={redirecting}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-wine-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_28px_-10px_rgba(158,66,73,0.55)] transition-colors hover:bg-wine-700 disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-wine-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)] transition-colors hover:bg-wine-700 disabled:opacity-60"
               >
                 {redirecting ? (
                   <>
@@ -281,11 +281,11 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="relative min-h-screen overflow-hidden bg-[#FAF7F5] px-4 py-12">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(158,66,73,0.10),transparent_50%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(26,94,107,0.10),transparent_50%)]"
       />
       <div className="relative mx-auto w-full max-w-lg">
         <div className="mb-7 flex flex-col items-center text-center">
-          <BrandMark size={44} />
+          <BrandMark size={26} />
           <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500">
             <ShieldCheck className="h-3.5 w-3.5 text-wine-500" />
             You are granting access to your own account

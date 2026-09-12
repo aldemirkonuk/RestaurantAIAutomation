@@ -25,7 +25,11 @@ interface DashboardCanvasProps {
   isEditMode: boolean
   onBlocksChange: (blocks: DashboardBlockType[]) => void
   // Data pass-through
-  salesData: Array<{ date: string; revenue: number; bottles: number; orders?: number; red?: number; white?: number; sparkling?: number; rose?: number; dessert?: number }>
+  /**
+   * Daily PURCHASE-order data. `spend` is money paid to vendors
+   * (procurement_orders), never POS sales revenue.
+   */
+  purchaseDayData: Array<{ date: string; spend: number; bottles: number; orders?: number; red?: number; white?: number; sparkling?: number; rose?: number; dessert?: number }>
   wineTypeDistribution: WineTypeDistribution[]
   topWines: TopWine[]
   timeRange: string
@@ -33,7 +37,17 @@ interface DashboardCanvasProps {
   onKPIClick?: (kpiKey: string) => void
   spotlightedKPI?: string | null
   totalOrders?: number
-  totalRevenue?: number
+  /** Total vendor spend across the window. */
+  totalSpend?: number
+  /**
+   * Real sales revenue for the window from `pos_checks`, and whether a POS is
+   * connected at all. `null` revenue means "no data", never "no sales" — the
+   * charts that read it render an empty state rather than a zero (OD-85).
+   */
+  posRevenue?: number | null
+  posConnected?: boolean
+  /** Real POS revenue per day, keyed by the same short label as purchaseDayData. */
+  posRevenueByDate?: Record<string, number>
   className?: string
 }
 
@@ -53,7 +67,7 @@ export function DashboardCanvas({
   blocks,
   isEditMode,
   onBlocksChange,
-  salesData,
+  purchaseDayData,
   wineTypeDistribution,
   topWines,
   timeRange,
@@ -61,7 +75,10 @@ export function DashboardCanvas({
   onKPIClick,
   spotlightedKPI,
   totalOrders = 0,
-  totalRevenue = 0,
+  totalSpend = 0,
+  posRevenue = null,
+  posConnected = false,
+  posRevenueByDate = {},
   className = '',
 }: DashboardCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -196,7 +213,7 @@ export function DashboardCanvas({
               isEditMode={isEditMode}
               onUpdate={handleBlockUpdate}
               onDelete={handleBlockDelete}
-              salesData={salesData}
+              purchaseDayData={purchaseDayData}
               wineTypeDistribution={wineTypeDistribution}
               topWines={topWines}
               timeRange={timeRange}
@@ -204,7 +221,10 @@ export function DashboardCanvas({
               onKPIClick={onKPIClick}
               spotlightedKPI={spotlightedKPI}
               totalOrders={totalOrders}
-              totalRevenue={totalRevenue}
+              totalSpend={totalSpend}
+              posRevenue={posRevenue}
+              posConnected={posConnected}
+              posRevenueByDate={posRevenueByDate}
             />
           </div>
         ))}

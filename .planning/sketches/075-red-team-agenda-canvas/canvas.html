@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Red Team — Agenda Canvas · 2026-08-28</title>
+<style>
+  :root{
+    --bg:#0e1013; --panel:#151920; --panel2:#1b212a; --hair:#262e39;
+    --ink:#e6e9ee; --mute:#8b95a5; --dim:#5d6875;
+    --wine:#c04a5e; --live:#e0674a; --latent:#c9a227; --rej:#4e5a68; --ok:#3f8f7a;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1420px;margin:0 auto;padding:26px 26px 70px}
+  header{border-bottom:1px solid var(--hair);padding-bottom:16px;margin-bottom:22px;
+         display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between}
+  h1{font-size:23px;margin:0 0 4px;letter-spacing:-.01em;font-weight:600}
+  h1 span{color:var(--wine)}
+  .sub{color:var(--mute);font-size:13px;max-width:64ch}
+  .stamp{font-family:var(--mono);font-size:11px;color:var(--dim);text-align:right;line-height:1.7}
+  .stamp b{color:var(--mute);font-weight:500}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.13em;color:var(--mute);
+     margin:34px 0 12px;font-weight:600;display:flex;align-items:center;gap:10px}
+  h2::after{content:"";flex:1;height:1px;background:var(--hair)}
+  .lede{color:var(--mute);max-width:88ch;margin:-2px 0 16px;font-size:13px}
+  .grid{display:grid;gap:12px}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(400px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--hair);border-radius:8px;padding:14px 15px}
+  .card.live{border-left:3px solid var(--live)}
+  .card.latent{border-left:3px solid var(--latent)}
+  .card.rej{border-left:3px solid var(--rej)}
+  .cardhead{display:flex;align-items:baseline;gap:9px;margin-bottom:7px}
+  .wid{font-family:var(--mono);font-size:12px;color:var(--wine);font-weight:600}
+  .ctitle{font-size:13.5px;font-weight:600;line-height:1.35}
+  .grade{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
+         padding:2px 7px;border-radius:3px;text-transform:uppercase;white-space:nowrap}
+  .grade.live{background:rgba(224,103,74,.16);color:var(--live)}
+  .grade.latent{background:rgba(201,162,39,.15);color:var(--latent)}
+  .grade.rej{background:rgba(78,90,104,.2);color:var(--rej)}
+  .num{font-family:var(--mono);font-size:11.5px;color:var(--ink);background:var(--panel2);
+       border:1px solid var(--hair);border-radius:4px;padding:6px 8px;margin:8px 0}
+  .num b{color:var(--live)}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);
+       margin-top:9px;margin-bottom:2px}
+  .sm{font-size:12.5px;color:var(--mute)}
+  .sm b{color:var(--ink);font-weight:600}
+  code{font-family:var(--mono);font-size:11.5px;color:#a8bccf;background:rgba(255,255,255,.04);
+       padding:1px 4px;border-radius:3px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.09em;
+     color:var(--dim);font-weight:600;padding:0 10px 7px;border-bottom:1px solid var(--hair)}
+  td{padding:8px 10px;border-bottom:1px solid rgba(38,46,57,.55);vertical-align:top;color:var(--mute)}
+  td b{color:var(--ink);font-weight:600}
+  tr:last-child td{border-bottom:none}
+  .mono{font-family:var(--mono)}
+  .scroll{overflow-x:auto}
+  .slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+  .slot{background:var(--panel2);border:1px solid var(--hair);border-radius:6px;padding:9px 10px}
+  .slot .id{font-family:var(--mono);font-size:12px;color:var(--wine);font-weight:600}
+  .slot .who{font-size:11px;color:var(--dim);margin-top:3px}
+  .slot .d{font-family:var(--mono);font-size:10.5px;color:var(--mute);margin-top:5px}
+  .slot.def{border-style:dashed;opacity:.62}
+  .foot{margin-top:34px;border-top:1px solid var(--hair);padding-top:14px;
+        color:var(--dim);font-size:11.5px;font-family:var(--mono);line-height:1.8}
+  .locks{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .lock{font-family:var(--mono);font-size:11px;border:1px solid var(--hair);border-radius:4px;
+        padding:5px 9px;color:var(--mute);background:var(--panel)}
+  .lock b{color:var(--wine)}
+  svg{display:block;max-width:100%}
+  .cap{color:var(--dim);font-size:11px;margin-top:7px;font-style:italic}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <h1>Red Team — <span>Agenda Canvas</span></h1>
+    <div class="sub">One page for <code>red-team-agenda-full.md</code>, dated 2026-08-28.
+    Item zero is the premortem of the wave that commissioned it — measured from inside the
+    wave, with 23 of 24 sibling agendas already on disk.</div>
+  </div>
+  <div class="stamp">
+    ADR 0039 · Track B<br>
+    advisory · <b>findings-only</b>, outside the line<br>
+    cap: <b>7 open findings</b> · spent<br>
+    <b>0</b> forks resolved here
+  </div>
+</header>
+
+<h2>The measurement the rest of the page rests on</h2>
+<div class="lede">
+  <code>watch_loops.py</code> is one of five running loops. It reports two dated rules: agendas
+  going stale <em>en masse</em>, and units due to judge whether they should still exist. Wave 3
+  touched both. The counterfactual — the same scan with and without files dated
+  <span class="mono">2026-08-28</span> — separates <em>the wave caused it</em> from
+  <em>it was already there</em>.
+</div>
+
+<div class="card">
+<svg viewBox="0 0 1160 190" role="img" aria-label="Counterfactual watcher scan: without wave-3 files, zero events in the 30-day horizon; with them, six events naming eighteen unit-slots">
+  <text x="0" y="16" fill="#8b95a5" font-family="ui-monospace,monospace" font-size="11">CORPUS WITHOUT FILES DATED 2026-08-28</text>
+  <rect x="0" y="26" width="1160" height="30" rx="4" fill="#1b212a" stroke="#262e39"/>
+  <text x="14" y="46" fill="#5d6875" font-family="ui-monospace,monospace" font-size="12">0 events in the 30-day horizon · 0 unit-slots named · 4 dated-trigger dates in the whole corpus</text>
+
+  <text x="0" y="92" fill="#8b95a5" font-family="ui-monospace,monospace" font-size="11">CORPUS WITH THEM — 23 OF 24 UNITS</text>
+  <g>
+    <rect x="0" y="102" width="1160" height="30" rx="4" fill="#1b212a" stroke="#262e39"/>
+    <g font-family="ui-monospace,monospace" font-size="11">
+      <rect x="4" y="106" width="188" height="22" rx="3" fill="rgba(224,103,74,.18)" stroke="#e0674a" stroke-opacity=".5"/>
+      <text x="14" y="121" fill="#e0674a">09-04 · 3 units</text>
+      <rect x="196" y="106" width="188" height="22" rx="3" fill="rgba(224,103,74,.18)" stroke="#e0674a" stroke-opacity=".5"/>
+      <text x="206" y="121" fill="#e0674a">09-11 · 7 units</text>
+      <rect x="388" y="106" width="188" height="22" rx="3" fill="rgba(224,103,74,.18)" stroke="#e0674a" stroke-opacity=".5"/>
+      <text x="398" y="121" fill="#e0674a">09-18 · 2 units</text>
+      <rect x="580" y="106" width="188" height="22" rx="3" fill="rgba(224,103,74,.18)" stroke="#e0674a" stroke-opacity=".5"/>
+      <text x="590" y="121" fill="#e0674a">09-25 · 4 units</text>
+      <rect x="772" y="106" width="188" height="22" rx="3" fill="rgba(224,103,74,.18)" stroke="#e0674a" stroke-opacity=".5"/>
+      <text x="782" y="121" fill="#e0674a">09-27 · 1 unit</text>
+      <rect x="964" y="106" width="192" height="22" rx="3" fill="rgba(224,103,74,.18)" stroke="#e0674a" stroke-opacity=".5"/>
+      <text x="974" y="121" fill="#e0674a">09-01 · 1 unit</text>
+    </g>
+  </g>
+  <text x="0" y="158" fill="#e6e9ee" font-family="ui-monospace,monospace" font-size="12.5">6 events · 18 unit-slots · every one of them false</text>
+  <text x="0" y="178" fill="#5d6875" font-family="ui-monospace,monospace" font-size="11">sources: analytics-bi:126 &#8220;collapses failure to null&#8221; · engineering:147 false_merge_count · design:90 &#8220;never merged into it&#8221; · security:202 &#8220;merged or deferred&#8221;</text>
+</svg>
+<div class="cap">Measured twice, four hours apart: at 20 units it read 5 events / 16 slots; at 23 units, 6 / 18. The measurement moved while it was being taken — roughly one false event per four agendas, with four units still to land.</div>
+</div>
+
+<h2>RT-0 · six mechanisms, graded</h2>
+<div class="lede">
+  Every mechanism carries the number that produced it and the <em>earliest observable signal</em> —
+  the reading that would show it before the failure does. &ldquo;Be careful&rdquo; is not a counter-pressure.
+</div>
+
+<div class="grid g3">
+
+  <div class="card live">
+    <div class="cardhead"><span class="wid">W1</span>
+      <span class="ctitle">The staleness rule fires as a mass event — now twice</span>
+      <span class="grade live">live</span></div>
+    <div class="num">200 agenda files · <b>154</b> at 2026-08-24 · <b>46</b> at 2026-08-28 · cliffs <b>10-23</b> and <b>10-27</b></div>
+    <div class="sm">The detector needs 10 files sharing a date. Both dates clear it, so the wave
+      <b>split</b> the cliff rather than closing it. <code>watch_loops.py:12</code> — “a rule that
+      condemns everything condemns nothing.”</div>
+    <div class="lbl">Earliest signal</div>
+    <div class="sm">2026-09-27, when the second cliff enters the 30-day horizon beside the first.
+      Cheaper today: the count of distinct <code>updated:</code> dates across the 200 files is <b>2</b>.</div>
+    <div class="lbl">Counter-pressure</div>
+    <div class="sm">Not a date bump — a date-only diff already grades as untouched. All 20 measured
+      agendas promise a <code>close_time</code> <b>before</b> their own staleness date, so a per-unit
+      check — <em>first promise passed, no content diff</em> — fires staggered and weeks earlier.
+      Proposed as <b>F-W1</b>; the loop owner decides.</div>
+  </div>
+
+  <div class="card live">
+    <div class="cardhead"><span class="wid">W2</span>
+      <span class="ctitle">The watcher goes deaf on dated triggers</span>
+      <span class="grade live">live</span></div>
+    <div class="num">horizon events <b>0 &rarr; 6</b> · <b>18</b> unit-slots · all false</div>
+    <div class="sm">Any line with a future date and one of
+      <code>merge|retire|collapse|fold|…</code> is reported as a unit deciding whether to exist.
+      <code>close_time</code> rows trip it constantly. Knowledge&nbsp;&amp;&nbsp;Documentation measured
+      the same effect and owns the fix (KD-16).</div>
+    <div class="lbl">Why it is Red Team's problem</div>
+    <div class="sm">The genuine trigger — <b>2026-11-24</b>, seven units judging their own existence,
+      <b>this one included</b> — now sits under 35 line-hits. The one event designed to be loud
+      arrives inside noise it did not create.</div>
+    <div class="lbl">Earliest signal</div>
+    <div class="sm">A watcher run naming a unit whose charter holds no dated existence rule.
+      True today, six times.</div>
+  </div>
+
+  <div class="card latent">
+    <div class="cardhead"><span class="wid">W3</span>
+      <span class="ctitle">Ambition outruns evidence</span>
+      <span class="grade latent">latent</span></div>
+    <div class="num">379 task rows · <b>4%</b> carry no evidence token · 63% carry no strict <code>file:line</code></div>
+    <div class="sm"><b>The honest reading is 4%</b>, and leading with 63% would be this function's own
+      M1 — an objection manufactured from a weak regex. The method cannot see evidence that sits
+      outside the row, and that limit is stated with the number rather than after it.</div>
+    <div class="lbl">Earliest signal</div>
+    <div class="sm">Not the citation rate — <b>circular evidence</b>. <b>15</b> rows already cite a
+      sibling agenda written the same day. A wave can bootstrap its own justification in one day
+      and still read as heavily cited.</div>
+    <div class="lbl">Counter-pressure</div>
+    <div class="sm">L-RT-4's first run, aimed at this wave: sample 20 rows, one question —
+      <em>did the cited evidence exist outside the wave?</em> A clean sample closes W3.</div>
+  </div>
+
+  <div class="card live">
+    <div class="cardhead"><span class="wid">W4</span>
+      <span class="ctitle">The wave feeds the queue that eats the function</span>
+      <span class="grade live">live</span></div>
+    <div class="num">referrals <b>82 &rarr; 436</b> lines · <b>67 &rarr; 99</b> units · findings filed: <b>0</b></div>
+    <div class="sm">Premortem M4's denominator moved 5.3× while the numerator stayed at zero.
+      Two wave-3 referrals arrived <b>with dates attached</b> — a unit setting this function's calendar.
+      Both are legitimate; neither is in cycle 1. Referrals get no privileged lane.</div>
+    <div class="lbl">The one that is a finding, not traffic</div>
+    <div class="sm">A sibling agenda asks whether guest-data-use widenings should route through
+      Red&nbsp;Team. They should not — ethics was considered and <b>not adopted</b> as advisory.
+      Accepting it quietly would be scope drift arriving as a favour. Returned as <b>F-W4</b>.</div>
+  </div>
+
+  <div class="card live">
+    <div class="cardhead"><span class="wid">W5</span>
+      <span class="ctitle">Canvases nobody can reach</span>
+      <span class="grade live">live</span></div>
+    <div class="num"><b>73</b> sketch dirs · <b>43</b> manifest rows · <b>30</b> gaps — <b>10 predate this wave</b></div>
+    <div class="sm">Each agent was told, correctly, not to edit the manifest; the orchestrating session
+      adds the rows. That is not a risk — it is <b>a procedure that has already failed ten times</b>
+      here (005, 011–015, 017–019, 049), before anything depended on it. 28 of 43 rows also carry
+      <code>winner: null</code>: an unanswered design question is the resting state.</div>
+    <div class="lbl">Earliest signal</div>
+    <div class="sm">Directory count versus row count. Needs no judgement, available the moment the
+      wave commits — which is exactly why it should be a check and not a memory.</div>
+  </div>
+
+  <div class="card live">
+    <div class="cardhead"><span class="wid">W6</span>
+      <span class="ctitle">The wave re-anchors the citations pointing into it</span>
+      <span class="grade live">live</span></div>
+    <div class="num"><b>11</b> line-anchored citations from 9 files point into documents rewritten today</div>
+    <div class="sm">Not in the seed list — found by writing this agenda. ADR 0025 locks the same
+      mechanism for the register: one inserted row re-anchors every citation below it. A rewrite is
+      that event, larger.</div>
+    <div class="lbl">Self-caused instance</div>
+    <div class="sm">The fork registry cites <code>red-team-agenda-full.md:296-301</code> as the home
+      of <code>RT-F1…RT-F6</code>. The IDs are unchanged and still in one section; <b>the line anchor
+      is now wrong</b>, and this page is the reason.</div>
+    <div class="lbl">Counter-pressure</div>
+    <div class="sm">Section anchors for cross-file references into agendas. Deferred to cycle 2
+      by the cap — <em>named</em>, not forgotten.</div>
+  </div>
+
+</div>
+
+<h2>Seeds examined and rejected</h2>
+<div class="grid g3">
+  <div class="card rej">
+    <div class="cardhead"><span class="ctitle">“Agendas will schedule other units' work”</span>
+      <span class="grade rej">rejected</span></div>
+    <div class="sm">Looked for it; the wave routes cross-unit needs to <code>questions.md</code> files
+      as the brief requires. The count of “rows owned by another unit” was <b>discarded, not
+      published</b> — the tables have different column orders and the script was reading doneability
+      text as owners. A red team that ships a number from a broken script has no standing to grade
+      anyone's evidence. The measurable version is W4.</div>
+  </div>
+  <div class="card rej">
+    <div class="cardhead"><span class="ctitle">“24 agendas in one day is too much to review”</span>
+      <span class="grade rej">rejected</span></div>
+    <div class="sm">No observable separates it from W1 and W5 — the same worry, with instruments
+      attached. An unfalsifiable mechanism is not a premortem entry; it is the thing the directive's
+      <code>UNFALSIFIABLE</code> path exists to catch.</div>
+  </div>
+  <div class="card rej">
+    <div class="cardhead"><span class="ctitle">“The agendas will contradict each other”</span>
+      <span class="grade rej">not run</span></div>
+    <div class="sm">Needs a cross-agenda claim diff; the existing guard covers the register, not
+      agenda prose. Recorded as a gap rather than asserted in either direction.</div>
+  </div>
+</div>
+
+<h2>The cap, spent — cycle 1</h2>
+<div class="lede">
+  Seven open findings is the ceiling, and this is the first cycle in which it binds. Three of the
+  seven slots are reserved before any referral is read: newest lock, oldest fork, founder-locked.
+  Cycle 1 holds <b>two</b> founder-locked targets — a cycle with zero would itself be a filed
+  finding against Red Team.
+</div>
+<div class="slots">
+  <div class="slot"><div class="id">RT-1</div><div class="who">ADR 0039 — the plan of record that commissioned this page</div><div class="d">09-04 · O1+O3</div></div>
+  <div class="slot"><div class="id">RT-2</div><div class="who">ADR 0037 — NF-B erasure. Founding target T1, arrived as a decision</div><div class="d">09-04 · O1+O3</div></div>
+  <div class="slot"><div class="id">F-W1</div><div class="who">Two mass cliffs → decision office</div><div class="d">09-04 · C4</div></div>
+  <div class="slot"><div class="id">F-W2</div><div class="who">Dated-trigger noise → decision office</div><div class="d">09-04 · C4</div></div>
+  <div class="slot"><div class="id">F-W5</div><div class="who">Canvas orphaning → exploration studio</div><div class="d">09-04 · C4</div></div>
+  <div class="slot"><div class="id">F-W4</div><div class="who">Ethics scope is not ours → compliance</div><div class="d">09-04 · C3</div></div>
+  <div class="slot"><div class="id">RT-6</div><div class="who">OD-04 — oldest fork never attacked</div><div class="d">09-25 · O2</div></div>
+  <div class="slot def"><div class="id">F-W6</div><div class="who">Citation re-anchoring</div><div class="d">deferred · cycle 2</div></div>
+  <div class="slot def"><div class="id">C3 ×2</div><div class="who">Both wave-3 referrals that arrived with dates</div><div class="d">deferred · no privileged lane</div></div>
+</div>
+<div class="cap">To open an eighth, close one. Deferring is the scoring rule doing its work under a cap; doing all of them would be the objection machine's first day.</div>
+
+<h2>What is scheduled, and when it closes</h2>
+<div class="card scroll">
+<svg viewBox="0 0 1160 320" role="img" aria-label="Timeline of scheduled tasks by close time, September to November 2026">
+  <g font-family="ui-monospace,monospace" font-size="10.5" fill="#5d6875">
+    <line x1="120" y1="34" x2="1140" y2="34" stroke="#262e39"/>
+    <text x="120" y="24">09-04</text><line x1="120" y1="28" x2="120" y2="300" stroke="#262e39" stroke-dasharray="2 5"/>
+    <text x="266" y="24">09-18</text><line x1="266" y1="28" x2="266" y2="300" stroke="#262e39" stroke-dasharray="2 5"/>
+    <text x="412" y="24">09-25</text><line x1="412" y1="28" x2="412" y2="300" stroke="#262e39" stroke-dasharray="2 5"/>
+    <text x="558" y="24">09-30</text><line x1="558" y1="28" x2="558" y2="300" stroke="#262e39" stroke-dasharray="2 5"/>
+    <text x="742" y="24">10-16</text><line x1="742" y1="28" x2="742" y2="300" stroke="#262e39" stroke-dasharray="2 5"/>
+    <text x="900" y="24">10-27</text><line x1="900" y1="28" x2="900" y2="300" stroke="#c04a5e" stroke-opacity=".45" stroke-dasharray="3 4"/>
+    <text x="1000" y="24">10-31</text><line x1="1000" y1="28" x2="1000" y2="300" stroke="#262e39" stroke-dasharray="2 5"/>
+    <text x="1092" y="24">11-24</text><line x1="1092" y1="28" x2="1092" y2="300" stroke="#c04a5e" stroke-opacity=".45" stroke-dasharray="3 4"/>
+  </g>
+
+  <g font-family="ui-monospace,monospace" font-size="10" fill="#8b95a5">
+    <text x="0" y="62">TRACK 1 · locks</text>
+    <text x="0" y="126">TRACK 2 · returns</text>
+    <text x="0" y="182">TRACK 3 · program</text>
+    <text x="0" y="262">TRACK 4 · self</text>
+  </g>
+
+  <g font-family="ui-monospace,monospace" font-size="10.5">
+    <rect x="120" y="48" width="128" height="20" rx="3" fill="rgba(192,74,94,.2)" stroke="#c04a5e"/><text x="128" y="62" fill="#e6e9ee">RT-1 ADR 0039</text>
+    <rect x="120" y="72" width="128" height="20" rx="3" fill="rgba(192,74,94,.2)" stroke="#c04a5e"/><text x="128" y="86" fill="#e6e9ee">RT-2 ADR 0037</text>
+    <rect x="266" y="48" width="132" height="20" rx="3" fill="#1b212a" stroke="#3f8f7a"/><text x="274" y="62" fill="#e6e9ee">RT-3 backlog sweep</text>
+
+    <rect x="120" y="112" width="128" height="20" rx="3" fill="#1b212a" stroke="#262e39"/><text x="128" y="126" fill="#8b95a5">F-W1 · F-W2</text>
+    <rect x="120" y="136" width="128" height="20" rx="3" fill="#1b212a" stroke="#262e39"/><text x="128" y="150" fill="#8b95a5">F-W5 · F-W4</text>
+
+    <rect x="266" y="168" width="132" height="20" rx="3" fill="#1b212a" stroke="#3f8f7a"/><text x="274" y="182" fill="#e6e9ee">RT-4 pre-register</text>
+    <rect x="412" y="168" width="132" height="20" rx="3" fill="#1b212a" stroke="#3f8f7a"/><text x="420" y="182" fill="#e6e9ee">RT-6 OD-04 (O2)</text>
+    <rect x="742" y="168" width="132" height="20" rx="3" fill="#1b212a" stroke="#c9a227" stroke-dasharray="4 3"/><text x="750" y="182" fill="#c9a227">RT-7 sample ✦</text>
+    <rect x="612" y="192" width="150" height="20" rx="3" fill="#1b212a" stroke="#c9a227" stroke-dasharray="4 3"/><text x="620" y="206" fill="#c9a227">RT-5 resolving ADR ✦</text>
+    <rect x="900" y="216" width="150" height="20" rx="3" fill="#1b212a" stroke="#c9a227" stroke-dasharray="4 3"/><text x="908" y="230" fill="#c9a227">RT-8 NF-B premortem ✦</text>
+
+    <rect x="558" y="248" width="132" height="20" rx="3" fill="#1b212a" stroke="#3f8f7a"/><text x="566" y="262" fill="#e6e9ee">RT-9 sweep</text>
+    <rect x="742" y="248" width="132" height="20" rx="3" fill="#1b212a" stroke="#3f8f7a"/><text x="750" y="262" fill="#e6e9ee">RT-10 the cap</text>
+    <rect x="1000" y="248" width="140" height="20" rx="3" fill="#1b212a" stroke="#3f8f7a"/><text x="1008" y="262" fill="#e6e9ee">RT-11 pre-register</text>
+  </g>
+
+  <g font-family="ui-monospace,monospace" font-size="9.5" fill="#c04a5e">
+    <text x="676" y="296">10-27 · this page's own staleness cliff</text>
+    <text x="1000" y="296">11-24 · self-judgment</text>
+  </g>
+  <g font-family="ui-monospace,monospace" font-size="9.5" fill="#5d6875">
+    <text x="0" y="312">solid = committed · dashed ✦ = reach, graded on the page · wine = a date the org already owns, not an estimate of ours</text>
+  </g>
+</svg>
+</div>
+
+<h2>The two dates this page is bracketed by</h2>
+<div class="grid g2">
+  <div class="card">
+    <div class="cardhead"><span class="ctitle">2026-10-27 — the cliff this document joins</span></div>
+    <div class="sm">Forty-six agendas, this one among them, go stale together. The disconfirming
+      observation is written down and dated: <b>if this directory shows no content diff by then,
+      RT-0 was decoration</b> — and the charter's exit condition is the standing consequence, not a
+      new rule invented for the occasion.</div>
+  </div>
+  <div class="card">
+    <div class="cardhead"><span class="ctitle">2026-11-24 — this function judges itself</span></div>
+    <div class="sm">Fewer than six findings, actionability under 80%, or a 100% reaffirmation rate
+      folds Red Team into the Decision Office. <b>RT-11 defines those three readings before the
+      date</b>, by someone who does not yet know the answer. Deciding the criteria on the day is
+      deciding them with the result in hand — the same defect this function attacks elsewhere.</div>
+  </div>
+</div>
+
+<h2>Self-emission — the discipline, applied here first</h2>
+<div class="card">
+<table>
+  <tr><th>Check</th><th>Rule</th><th>Verified 2026-08-28</th></tr>
+  <tr><td><b>Dated-trigger lines in this directory</b></td>
+      <td>A future date shares a line with a trigger word only when the date is a genuine existence rule</td>
+      <td><b>1</b> — the 2026-11-24 sentence. Zero red-team events inside the watcher's 30-day horizon</td></tr>
+  <tr><td><b>Scope drift</b></td>
+      <td>Red Team attacks reasoning; Security attacks systems. Code may be evidence, never the subject</td>
+      <td>Board query expects <b>empty</b>. RT-2 cites a migration line as <em>evidence</em> about a decision</td></tr>
+  <tr><td><b>Duplication</b></td>
+      <td>Where another unit already owns the fix, the finding names them and stops</td>
+      <td>KD-16 (classifier), AIO-3 (protocol review), Compliance (shredding mechanism) — all named, none restated</td></tr>
+  <tr><td><b>Estimates as readings</b></td>
+      <td>A metric with no instrument is reported as a dependency, not a number</td>
+      <td><code>rt.finding_return_hours</code> and <code>nf_a.doneability_verdict</code> both carry no value here</td></tr>
+</table>
+</div>
+
+<h2>Locks, stated out loud</h2>
+<div class="locks">
+  <span class="lock"><b>pricing model</b> — deferred, untouched</span>
+  <span class="lock"><b>brand / landing visuals</b> — held, untouched</span>
+  <span class="lock"><b>NF-B</b> — HELD; RT-8 premortems the decision, docs only</span>
+  <span class="lock"><b>0</b> open forks resolved</span>
+  <span class="lock"><b>0</b> other units' files edited</span>
+  <span class="lock"><b>findings-only</b> — nothing here blocks anything</span>
+</div>
+
+<div class="foot">
+  sketch 075 · thinking surface, throwaway-grade · self-contained, no external assets<br>
+  every number re-measured against the worktree on 2026-08-28 · sources cited in red-team-agenda-full.md<br>
+  the wave premortem is item zero because the wave is the highest-scoring target on the queue, not because it was assigned
+</div>
+
+</div>
+</body>
+</html>

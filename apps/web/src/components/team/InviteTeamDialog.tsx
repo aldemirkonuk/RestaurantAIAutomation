@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { Button } from '../ui/button'
 import { useAnchoredDialogPosition } from '../../hooks/useAnchoredDialogPosition'
+import { apiClient, getErrorMessage } from '../../services/api/client'
 
 interface InviteTeamDialogProps {
   open: boolean
@@ -15,7 +16,7 @@ interface InviteTeamDialogProps {
   anchorRef?: RefObject<HTMLElement | null>
   /**
    * Optional escape hatch: create a schedule roster profile without sending an
-   * account invite (walk-in / contractor who only needs shifts, not WineOps login).
+   * account invite (walk-in / contractor who only needs shifts, not Mudavym login).
    */
   onRosterOnly?: () => void
 }
@@ -34,33 +35,17 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
   const [copied, setCopied] = useState(false)
   const anchorPos = useAnchoredDialogPosition(open, anchorRef)
 
-  const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
-
   const handleGenerate = async () => {
     setIsGenerating(true)
     try {
-      const token = localStorage.getItem('accessToken')
-      const resp = await fetch(`${API_URL}/api/v1/auth/invite`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          restaurantId,
-          targetEmail: targetEmail || undefined,
-          role,
-        }),
+      const { data } = await apiClient.post<GeneratedInvite>('/auth/invite', {
+        restaurantId,
+        targetEmail: targetEmail || undefined,
+        role,
       })
-      if (!resp.ok) {
-        const data = await resp.json()
-        throw new Error(data.message || 'Failed to generate invite')
-      }
-      const data = await resp.json()
       setInvite({ code: data.code, expiresAt: data.expiresAt, inviteUrl: data.inviteUrl })
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to generate invite. Please try again.'
-      toast.error(message)
+      toast.error(getErrorMessage(err))
     } finally {
       setIsGenerating(false)
     }
@@ -157,7 +142,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
                       }}
                       className="text-xs text-gray-500 hover:text-wine-700 text-center underline-offset-2 hover:underline"
                     >
-                      Add roster-only staff (no WineOps login)
+                      Add roster-only staff (no Mudavym login)
                     </button>
                   )}
                 </div>

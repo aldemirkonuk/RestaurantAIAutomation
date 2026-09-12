@@ -66,6 +66,17 @@ Synthetic engine generates: clean delivery · short delivery · substitution · 
 damaged-goods, against a synthetic PO book. Gate: invoice-pipeline changes ship only when
 the five synthetic variants parse to correct ledger deltas.
 
+**Executed on the sim tenant — 2026-09-06 (slice 3 stop 3).** The clean-arrival half of this
+scenario now has a measured run behind it: a door count taken at the door became a
+`receiving_advice` document, the delivery was created from it in the same call (`UNORDERED`,
+permanent — nobody ordered it, and the product says so rather than manufacturing a purchase
+order), the vendor's invoice and delivery note were attached with their roles, and the two
+gates were passed in order. `differsOnLines` came back **null** at creation — no order and no
+vendor document was attached yet, so nothing could be compared, and null is not zero; the
+comparison ran, and the notification fired, only when the invoice was linked. Full evidence
+and the four refusal statuses are in S03 §9 and in the stop-3 PR; the defects the run found
+are in `v3.0-TECH-DEBT.md` (2026-09-06 section).
+
 ## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
 
 - **Core (operate):** the PO-prefilled receiving checklist at the door; one-tap
@@ -84,7 +95,11 @@ the five synthetic variants parse to correct ledger deltas.
   computable without POS but ⛔ **needs POS for depth** — it reads the same
   `wine_consumption_log` series S10 depends on, which only deepens as POS sales flow through
   `recordConsumption`. Per-parse agent economics (cost/verdict per invoice) is 🚧 **signal not
-  built** — NF-A emits nothing in the gateway.
+  built** — NF-A emits nothing in the gateway. *Corrected 2026-08-25: the signal is
+  built. `document-extractor` is one of the 7 emitting callsites, and invoice extraction
+  is the **first** task type carrying a doneability verdict
+  (`outcome_basis: reconciliation_v1`, ADR 0017). Coverage is still ~0% — the signal
+  exists, the volume does not.*
 
 ## 11. Evolution feedback
 Where receivers override the parse tells us where the parser is weak; which insights the

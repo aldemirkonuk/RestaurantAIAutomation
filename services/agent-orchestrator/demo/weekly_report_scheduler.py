@@ -75,11 +75,35 @@ class WeeklyReportScheduler:
         print("✅ Scheduler cleaned up")
 
     async def get_all_managers_with_preferences(self) -> List[Dict[str, Any]]:
-        """Get all managers with their report preferences"""
+        """
+        Get all managers with their report preferences.
+
+        OD-99: this read a table called `managers`. No migration in this
+        repository declares it and production returns 404 PGRST205 (verified
+        2026-08-26), so the `except` below caught it, printed "Error getting
+        managers", and returned `[]` -- meaning this scheduler has never had a
+        single manager to report to, and every downstream method here has been
+        unreachable since the baseline.
+
+        The real table is `manager_report_profiles`: it exists in production,
+        it is what `generated_reports.profile_id` points at, and it carries
+        `manager_id`, `restaurant_id`, `weekly_enabled`, `timezone` and
+        `delivery_channels` -- i.e. exactly "managers with report
+        preferences". Note the join key changed with it: rows here are
+        *profiles*, so the per-manager preference lookup below must use
+        `manager_id`, not the profile's own `id`.
+
+        `manager_report_profiles` holds 0 rows in production today, so this
+        demo still has nothing to report on -- but it is now empty because
+        nobody has configured a report profile, which is a true statement,
+        rather than empty because the query 404'd, which was not.
+        """
         try:
             # Get managers
             managers_result = (
-                await self.db.supabase.table("managers").select("*").execute()
+                await self.db.supabase.table("manager_report_profiles")
+                .select("*")
+                .execute()
             )
             managers = managers_result.data or []
 
@@ -88,7 +112,7 @@ class WeeklyReportScheduler:
                 prefs_result = (
                     await self.db.supabase.table("manager_preferences")
                     .select("*")
-                    .eq("manager_id", manager["id"])
+                    .eq("manager_id", manager["manager_id"])
                     .limit(1)
                     .execute()
                 )
@@ -129,7 +153,7 @@ class WeeklyReportScheduler:
 
         report = {
             "type": "weekly",
-            "manager_id": manager["id"],
+            "manager_id": manager["manager_id"],
             "restaurant_id": restaurant_id,
             "generated_at": datetime.utcnow().isoformat(),
             "period": {
@@ -248,7 +272,7 @@ class WeeklyReportScheduler:
                 "routing_key": "report.weekly",
                 "timestamp": datetime.utcnow().isoformat(),
                 "payload": {
-                    "manager_id": manager["id"],
+                    "manager_id": manager["manager_id"],
                     "manager_email": manager.get("email"),
                     "manager_phone": manager.get("phone"),
                     "report": report,

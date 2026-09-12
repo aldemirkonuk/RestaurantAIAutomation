@@ -1,0 +1,65 @@
+[
+  {
+    "name": "settle",
+    "kind": "spring",
+    "params": {
+      "stiffness": 260,
+      "damping": 34
+    },
+    "durationMs": null,
+    "purpose": "Ink drying — the workhorse settle.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "stamp",
+    "kind": "spring",
+    "params": {
+      "stiffness": 500,
+      "damping": 26
+    },
+    "durationMs": null,
+    "purpose": "The ceremonial one: approvals only, the wax press.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "tally",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.32,
+        0.72,
+        0,
+        1
+      ]
+    },
+    "durationMs": 650,
+    "purpose": "Per-digit ease-out as a column tallies.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "ink",
+    "kind": "spring",
+    "params": {
+      "stiffness": 80,
+      "damping": 24
+    },
+    "durationMs": null,
+    "purpose": "Slowest: long document reveals, show-the-working.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "open",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.3,
+        1.08,
+        0.35,
+        1
+      ]
+    },
+    "durationMs": 380,
+    "purpose": "Row expand — show the working, with a hair of overshoot.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  }
+]

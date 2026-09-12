@@ -104,6 +104,10 @@ export class TableAnalyticsService {
         "id, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, tip, items",
       )
       .eq("restaurant_id", restaurantId)
+      // A voided check is not revenue. Its stock is reversed at ingest, but its
+      // `total` used to keep counting here forever — every table and waiter
+      // figure inherited it.
+      .eq("voided", false)
       .gte("opened_at", since);
     if (error) {
       this.logger.warn(`loadChecks failed: ${error.message}`);

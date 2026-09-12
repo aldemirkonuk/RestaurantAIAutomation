@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { Sidebar } from './Sidebar'
-import { BrowserRouter } from 'react-router-dom'
 import { within, userEvent } from '@storybook/test'
 
 const meta: Meta<typeof Sidebar> = {
@@ -26,20 +25,18 @@ Features:
   },
   decorators: [
     (Story) => (
-      <BrowserRouter>
-        <div className="flex min-h-screen bg-slate-50">
-          <Story />
-          <div className="flex-1 p-6">
-            <div className="bg-white rounded-2xl p-8 shadow-sm">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Main Content Area</h1>
-              <p className="text-gray-600">
-                This is the main content area. The sidebar is on the left.
-                Try hovering over navigation items and clicking the collapse button.
-              </p>
-            </div>
+      <div className="flex min-h-screen bg-slate-50">
+        <Story />
+        <div className="flex-1 p-6">
+          <div className="bg-white rounded-2xl p-8 shadow-sm">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Main Content Area</h1>
+            <p className="text-gray-600">
+              This is the main content area. The sidebar is on the left.
+              Try hovering over navigation items and clicking the collapse button.
+            </p>
           </div>
         </div>
-      </BrowserRouter>
+      </div>
     ),
   ],
   tags: ['autodocs'],
@@ -68,19 +65,17 @@ export const DarkMode: Story = {
   },
   decorators: [
     (Story) => (
-      <BrowserRouter>
-        <div className="dark flex min-h-screen bg-slate-900">
-          <Story />
-          <div className="flex-1 p-6">
-            <div className="bg-slate-800 rounded-2xl p-8 shadow-sm">
-              <h1 className="text-2xl font-bold text-white mb-2">Main Content Area</h1>
-              <p className="text-gray-300">
-                Sidebar in dark mode with all navigation items visible.
-              </p>
-            </div>
+      <div className="dark flex min-h-screen bg-slate-900">
+        <Story />
+        <div className="flex-1 p-6">
+          <div className="bg-slate-800 rounded-2xl p-8 shadow-sm">
+            <h1 className="text-2xl font-bold text-white mb-2">Main Content Area</h1>
+            <p className="text-gray-300">
+              Sidebar in dark mode with all navigation items visible.
+            </p>
           </div>
         </div>
-      </BrowserRouter>
+      </div>
     ),
   ],
 }

@@ -25,7 +25,7 @@ links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-loops]]", "[[eng
 | Weekly | Producer collapse watch — L-CI-3 | Collapse ratio, region-span anomalies |
 | Weekly | Guest identity boundary sample — L-CI-5 | Cluster-formation audit |
 | Monthly | Near-key duplicate sweep — `supabase/migrations/20260818010000_beverage_duplicates_near_key.sql`, `…20260813150000_find_library_duplicates.sql` | Candidate pairs into the adjudication queue |
-| Quarterly | Dish-identity deferral review against `.planning/DISH_IDENTITY_DESIGN.md` | Un-defer recommendation or an explicit re-defer |
+| Quarterly | Dish-identity deferral review against `.planning/07-reference/DISH_IDENTITY_DESIGN.md` | Un-defer recommendation or an explicit re-defer |
 
 ## Skills owned
 

@@ -2,7 +2,7 @@
  * Supabase Client Integration
  * 
  * This module provides the Supabase client and utility hooks
- * for interacting with the WineOps database.
+ * for interacting with the Mudavym database.
  */
 
 import { createClient } from '@supabase/supabase-js'

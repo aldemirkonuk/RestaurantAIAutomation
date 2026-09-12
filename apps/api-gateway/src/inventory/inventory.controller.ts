@@ -14,6 +14,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { InventoryService } from "./inventory.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -292,12 +293,14 @@ export class InventoryController {
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,
     @Body() dto: UpdateInventoryItemDto,
+    @CurrentUser() user?: { userId?: string },
   ) {
     try {
       return await this.inventoryService.updateInventoryItem(
         restaurantId,
         itemId,
         dto,
+        user?.userId ?? null,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -321,12 +324,14 @@ export class InventoryController {
       qty: number;
       reason?: string;
     },
+    @CurrentUser() user?: { userId?: string },
   ) {
     try {
       return await this.inventoryService.transferStock(
         restaurantId,
         itemId,
         dto,
+        user?.userId ?? null,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -353,9 +358,15 @@ export class InventoryController {
       reason?: string;
       idempotencyKey?: string | null;
     },
+    @CurrentUser() user?: { userId?: string },
   ) {
     try {
-      return await this.inventoryService.recordPour(restaurantId, itemId, dto);
+      return await this.inventoryService.recordPour(
+        restaurantId,
+        itemId,
+        dto,
+        user?.userId ?? null,
+      );
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -370,7 +381,7 @@ export class InventoryController {
     summary:
       "Record a spot count (manual, voice-confirmed, or a confirmed photo proposal)",
     description:
-      "Writes through set_stock_absolute with transaction_type=reconciliation, source=mobile_count (decision E42), and always stamps last_counted_at, even when the counted quantity matches stock exactly (decision E41). idempotencyKey should be client-generated as count:{inventoryId}:{clientCountId} so a retry on flaky signal cannot double-apply (decision E43).",
+      "ADR 0078: writes a stock_counts row UNCONDITIONALLY through record_stock_count, and applies a stock movement only as a consequence of a non-zero difference. A count that agrees is recorded with variance 0 and a null transactionId — previously it wrote nothing at all, because set_stock_absolute returns NULL on a zero delta and inventory_transactions CHECKs quantity_change <> 0. last_counted_at is still stamped (decision E41), now inside the same transaction. The idempotency key count:{inventoryId}:{clientCountId} (decision E43) now covers the count row as well as the movement, so a retry on flaky signal records one count, not two.",
   })
   async recordSpotCount(
     @Param("restaurantId") restaurantId: string,
@@ -381,14 +392,19 @@ export class InventoryController {
       stockState?: "live" | "shadow";
       clientCountId: string;
       reason?: string;
-      performedBy?: string | null;
     },
+    @CurrentUser() user?: { userId?: string },
   ) {
     try {
       return await this.inventoryService.recordSpotCount(
         restaurantId,
         itemId,
-        dto,
+        // ADR 0078 (attribution): performedBy came from the request BODY, so a
+        // client could name anyone as the counter. It now comes from the
+        // verified JWT and the body field is ignored — an attributed ledger
+        // whose attribution is client-asserted is worse than none, because it
+        // reads as evidence.
+        { ...dto, performedBy: user?.userId ?? null },
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;

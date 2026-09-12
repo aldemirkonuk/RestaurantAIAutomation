@@ -1,0 +1,833 @@
+<style>
+/* == sig -- Signature moments (sig-02 .. sig-06) ==========================
+   The ceremonies. The few moments a day that deserve weight because something
+   became irreversible. Every selector is prefixed .mx-sig. Colours come only
+   from the host's variables -- never a hex, and never a raw rgba() either,
+   because a shadow that does not swap with the skin is still a hard-coded
+   colour.
+
+   THE THESIS, in one line: the Mudavym wordmark is a DOUBLE RULE and a FULL
+   STOP, and in bookkeeping a double rule under a figure means the account is
+   ruled off -- grand total, procedure ended, nothing goes below this line
+   (single rule = subtotal; double rule = final). So the wordmark already reads
+   "this is final." All five ceremonies are that one object in five states:
+
+     sig-02  wax    the die strikes, the wax spreads, the rules bite the paper
+     sig-03  dry    the same die, no wax: a blind emboss. The everyday commit
+     sig-04  close  two rules travel together and bracket the record shut
+     sig-05  thumb  wax pressed by one hand at a door, carrying the key
+     sig-06  rule   no wax at all. The double rule is simply drawn.
+
+   RESEARCH -- borrowed, and refused. (Long form sits in each motion's
+   `purpose`; collected here so the family reads as one argument.)
+
+   BORROWED
+   . Ottoman muhur / tughra -- the sultan's seal, pressed to APPROVE official
+     documents and correspondence. Matrix cut in agate or quartz, impression
+     left in wax: you never see the die, only what it left behind. Taken
+     literally -- the die must LEAVE and the impression must stay. A mark that
+     flies in and parks is a sticker, not a seal.
+   . Letterpress (Smashing Magazine, "Simulating The Letterpress", 2012) -- the
+     effect belongs to the PAPER, not the ink: impressed relief carries a
+     shadow along its top edge and a highlight along its bottom. That is why
+     every mark here is drawn twice, offset 0.8px, and never as a flat fill.
+   . Squash & stretch with volume preserved -- taken, but re-assigned. Stone
+     does not squash. The DIE stays rigid; the WAX spreads outward exactly as
+     the die stops descending.
+   . Anticipation -- the wind-up before the strike is what makes it read as an
+     act rather than an appearance. Suppressed in exactly one place (sig-05),
+     on purpose.
+   . Apple Pay's double-click-to-confirm -- the confirmation lives on a channel
+     the app cannot fake. Re-aimed: the seal lands ON THE RECORD, never in a
+     floating toast. Any screen can raise a toast; only the ledger row can
+     carry an impression.
+   . Duolingo's streak celebration fires only on the first lesson of the day --
+     ceremony rationed by context. This is the whole sig-02 / sig-03 split.
+
+   REFUSED
+   . Robinhood swipe-to-confirm. Publicly criticised as "peak dark design"
+     because a swipe is the same gesture as scrolling the list it sits in, so
+     a mis-aimed thumb books a trade. /orders IS a scrolling list. A hold
+     cannot be produced by a brush. (WCAG 2.5.7 also wants a single-pointer
+     alternative to any dragging path -- there is one, on the keyboard.)
+   . Stripe / Duolingo confetti and the bouncing green tick. Money leaving a
+     restaurant is not a win. Nothing in this family celebrates; it certifies.
+   . Animating box-shadow per frame for the dent. It is a paint-bound property
+     and sig-05 runs on a phone at 12%. The dent is a class with a transition;
+     everything else here is transform and opacity only.
+   . WCAG G168 / 2.5.7: press-and-hold is hard with tremor, so every hold is
+     cancellable, needs no repositioning, and states its keyboard path.        */
+
+.mx-sig{
+  font-family:var(--m-sans);
+  font-size:11px;line-height:1.4;color:var(--m-ink);
+  position:relative;width:100%;
+  -webkit-font-smoothing:antialiased;
+}
+.mx-sig .s-k{font:500 8.5px/1.2 var(--m-mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--m-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.mx-sig .s-k.on{color:var(--m-accent)}
+.mx-sig .num{font-family:var(--m-mono);font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.mx-sig .s-btn{
+  position:relative;overflow:hidden;width:100%;
+  font:500 9px/1 var(--m-mono);letter-spacing:.11em;text-transform:uppercase;
+  background:transparent;color:var(--m-ink);border:1px solid var(--m-line2);
+  border-radius:3px;padding:7px 8px;cursor:pointer;
+  touch-action:none;user-select:none;-webkit-user-select:none;
+}
+.mx-sig .s-btn span{position:relative;z-index:1}
+.mx-sig .s-btn:focus-visible{outline:2px solid var(--m-accent);outline-offset:2px}
+.mx-sig .s-note{margin-top:4px;font-size:8.5px;line-height:1.3;color:var(--m-mut);text-align:center}
+
+/* -- the seal apparatus, shared by 02 / 03 / 05 ------------------------- */
+.mx-sig .seal{position:absolute;pointer-events:none}
+.mx-sig .seal svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+/* the wax: never a true circle, and never square to the page. Wax is squeezed
+   out under a die held in a hand, so the blob is lopsided and the whole seal
+   sits a few degrees off axis. The rotation is not decoration -- the house
+   "stamp" token names `transform: rotate` alongside scale, and a seal that
+   lands perfectly level reads as a printed asset rather than an act. */
+.mx-sig .seal{transform:rotate(-6deg)}
+.mx-sig .wax{position:absolute;inset:0;
+  border-radius:53% 47% 44% 56%/46% 55% 45% 54%;
+  background:
+    radial-gradient(circle at 36% 30%,
+      color-mix(in srgb,var(--m-accent) 88%,var(--m-ink)) 0%,
+      var(--m-accent) 46%,
+      color-mix(in srgb,var(--m-accent) 74%,var(--m-sunk)) 100%);
+  /* the squeezed rim: where the wax ran thinnest it is darkest */
+  box-shadow:0 0 0 .5px color-mix(in srgb,var(--m-accent) 55%,var(--m-sunk));
+  transform:scale(0);opacity:0;transform-origin:50% 55%}
+/* the impression: drawn twice. Highlight sits BELOW the stroke, body on the
+   line -- that offset pair is what an eye reads as "pressed in" rather than
+   "printed on". Both halves are derived from --m-accent, so the skin toggle
+   reaches the letterpress too. */
+.mx-sig .mk-h{stroke:color-mix(in srgb,var(--m-accent) 46%,var(--m-ink));fill:none}
+.mx-sig .mk-b{stroke:color-mix(in srgb,var(--m-accent) 50%,var(--m-sunk));fill:none}
+.mx-sig .mk-h circle{fill:color-mix(in srgb,var(--m-accent) 46%,var(--m-ink));stroke:none}
+.mx-sig .mk-b circle{fill:color-mix(in srgb,var(--m-accent) 50%,var(--m-sunk));stroke:none}
+.mx-sig .mark{opacity:0}
+/* the die: the tool. Dark, rigid, and it leaves. */
+.mx-sig .die{position:absolute;inset:-2px;border-radius:50%;
+  background:radial-gradient(circle at 42% 28%,var(--m-line2) 0%,var(--m-sunk) 78%);
+  border:1px solid var(--m-line2);
+  opacity:0;transform:translateY(-46px) scale(1.24)}
+.mx-sig .die .dk-b{stroke:color-mix(in srgb,var(--m-line2) 68%,var(--m-ink));fill:none}
+.mx-sig .die .dk-b circle{fill:color-mix(in srgb,var(--m-line2) 68%,var(--m-ink));stroke:none}
+
+/* the dent. A class, not an animated property -- see the REFUSED note above. */
+.mx-sig .dentable{transition:box-shadow 90ms cubic-bezier(.55,0,.85,.4)}
+.mx-sig .dentable.dent{
+  box-shadow:
+    inset 0 2px 3px -1px color-mix(in srgb,var(--m-sunk) 82%,transparent),
+    inset 0 -1px 0 color-mix(in srgb,var(--m-ink) 9%,transparent);
+}
+.mx-sig .dentable.dent.rest{
+  box-shadow:
+    inset 0 1px 2px -1px color-mix(in srgb,var(--m-sunk) 66%,transparent),
+    inset 0 -1px 0 color-mix(in srgb,var(--m-ink) 6%,transparent);
+  transition:box-shadow 260ms cubic-bezier(.16,1,.3,1);
+}
+
+/* == 02 . the seal lands ================================================ */
+.mx-sig-02 .s2-row{position:relative;display:flex;gap:8px;align-items:flex-start;
+  padding:7px 8px;border:1px solid var(--m-line);border-radius:4px;
+  background:var(--m-surface)}
+.mx-sig-02 .s2-left{flex:1;min-width:0}
+.mx-sig-02 .s2-amt{display:block;font-size:15px;font-weight:600;margin:3px 0 0;letter-spacing:-.02em}
+.mx-sig-02 .s2-sub{font-size:9px;line-height:1.35;color:var(--m-mut);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-sig-02 .s2-well{width:58px;flex:none;align-self:stretch}
+.mx-sig-02 .s2-chip{display:inline-block;margin-top:4px;padding:1.5px 4px;border-radius:2px;
+  font:500 8px/1.2 var(--m-mono);letter-spacing:.09em;text-transform:uppercase;
+  border:1px solid var(--m-line2);color:var(--m-mut)}
+.mx-sig-02 .s2-chip.done{border-color:color-mix(in srgb,var(--m-accent) 55%,transparent);
+  color:var(--m-accent)}
+.mx-sig-02 .s2-seal{right:7px;top:9px;width:50px;height:50px}
+.mx-sig-02 .s2-fill{position:absolute;left:0;top:0;bottom:0;width:100%;
+  background:color-mix(in srgb,var(--m-accent) 24%,transparent);
+  transform:scaleX(0);transform-origin:0 50%}
+.mx-sig-02 .s2-btn{margin-top:6px}
+.mx-sig-02 .s2-btn.sealed{border-color:color-mix(in srgb,var(--m-accent) 50%,transparent);
+  color:var(--m-mut);cursor:default}
+
+/* == 03 . the dry emboss ================================================ */
+/* the extra bottom padding is the corner the emboss lands in -- a stamp must
+   not sit on top of a figure it did not change */
+.mx-sig-03 .s3-grp{position:relative;border:1px solid var(--m-line);border-radius:4px;
+  background:var(--m-surface);padding:6px 8px 12px}
+.mx-sig-03 .s3-gh{display:flex;justify-content:space-between;gap:6px;align-items:baseline;
+  padding-bottom:5px;border-bottom:1px solid var(--m-line);margin-bottom:4px}
+/* the confirmation label carries no accent either -- see the note on .s3-emb */
+.mx-sig-03 .s3-done{color:var(--m-ink)}
+.mx-sig-03 .s3-r{display:flex;justify-content:space-between;gap:6px;padding:1.5px 0;
+  font-size:9.5px;color:var(--m-mut);opacity:.55}
+.mx-sig-03 .s3-r b{font-weight:500;color:var(--m-ink);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.mx-sig-03 .s3-r i{font-style:normal;color:var(--m-mut);font-family:var(--m-mono);
+  font-variant-numeric:tabular-nums}
+.mx-sig-03 .s3-more{font-size:9px;color:var(--m-mut);padding-top:3px;opacity:.7}
+/* bottom-right corner, where a clerk stamps a batch sheet -- and clear of both
+   the header text and the divider rule. Squarer than sig-02, because a bulk
+   approve is a machine action rather than a hand's. */
+.mx-sig-03 .s3-emb{right:7px;bottom:3px;width:26px;height:26px;transform:rotate(-4deg)}
+/* dry: an impression with no wax in it is a change in the PAPER, so it takes
+   the surface's own colours and carries no accent at all. */
+.mx-sig-03 .s3-emb .mk-h{stroke:color-mix(in srgb,var(--m-ink) 30%,transparent)}
+.mx-sig-03 .s3-emb .mk-b{stroke:color-mix(in srgb,var(--m-sunk) 88%,var(--m-ink))}
+.mx-sig-03 .s3-emb .mk-h circle{fill:color-mix(in srgb,var(--m-ink) 30%,transparent)}
+.mx-sig-03 .s3-emb .mk-b circle{fill:color-mix(in srgb,var(--m-sunk) 88%,var(--m-ink))}
+.mx-sig-03 .s3-btn{margin-top:6px}
+
+/* == 04 . the record closes ============================================= */
+.mx-sig-04 .s4-rec{position:relative;padding:0 2px}
+.mx-sig-04 .s4-rule{display:block;height:1.5px;background:var(--m-line2);
+  transform:scaleX(0);transform-origin:0 50%;opacity:.7}
+.mx-sig-04 .s4-rule.top{background:color-mix(in srgb,var(--m-accent) 60%,transparent);
+  transform:scaleX(1)}
+.mx-sig-04 .s4-rule.bot{transform-origin:100% 50%}
+.mx-sig-04 .s4-body{padding:9px 2px}
+.mx-sig-04 .s4-hd{display:flex;justify-content:space-between;gap:6px;margin-bottom:7px}
+.mx-sig-04 .s4-cols{display:flex;align-items:center;position:relative;height:33px}
+.mx-sig-04 .s4-col{flex:1;min-width:0;border:1px dashed var(--m-line2);border-radius:3px;
+  height:33px;padding:4px 6px}
+.mx-sig-04 .s4-col.live{border-style:solid}
+.mx-sig-04 .s4-cl{font:500 7.5px/1 var(--m-mono);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--m-mut);display:block}
+.mx-sig-04 .s4-cv{font-family:var(--m-mono);font-variant-numeric:tabular-nums;font-size:13px;
+  font-weight:500;margin-top:3px;color:var(--m-mut);opacity:.35}
+.mx-sig-04 .s4-arrow{width:20px;flex:none;text-align:center;color:var(--m-mut);
+  font-family:var(--m-mono);font-size:10px;opacity:.45}
+.mx-sig-04 .s4-tok{position:absolute;left:6px;top:15px;
+  font-family:var(--m-mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:500;
+  color:var(--m-mut);padding:0 3px;border-radius:2px;line-height:1.15;
+  border:1px dashed var(--m-line2)}
+.mx-sig-04 .s4-tok.live{color:var(--m-accent);border-style:solid;
+  border-color:color-mix(in srgb,var(--m-accent) 50%,transparent)}
+.mx-sig-04 .s4-foot{display:flex;justify-content:space-between;gap:6px;margin-top:6px}
+
+/* == 05 . the door ====================================================== */
+.mx-sig-05 .s5-door{position:relative;background:var(--m-sunk);border-radius:5px;
+  border:1px solid var(--m-line);padding:8px 10px 9px;text-align:center}
+.mx-sig-05 .s5-ttl{font-family:var(--m-serif);font-size:13.5px;font-weight:600;
+  letter-spacing:-.01em;line-height:1.25}
+.mx-sig-05 .s5-sub{font-size:9px;line-height:1.3;color:var(--m-mut);margin-top:1px;min-height:1.3em}
+.mx-sig-05 .s5-pad{position:relative;height:46px;margin:5px 0 3px}
+.mx-sig-05 .s5-thumb{position:absolute;left:50%;top:0;transform:translateX(-50%);
+  width:46px;height:46px;border-radius:50%;padding:0;
+  background:transparent;border:2px dashed var(--m-line2);cursor:pointer;
+  touch-action:none;user-select:none;-webkit-user-select:none}
+.mx-sig-05 .s5-thumb:focus-visible{outline:2px solid var(--m-accent);outline-offset:3px}
+.mx-sig-05 .s5-thumb.gone{border-color:transparent}
+/* nearly square: a thumb comes straight down onto the glass */
+.mx-sig-05 .s5-seal{left:-2px;top:-2px;right:-2px;bottom:-2px;transform:rotate(-3deg)}
+.mx-sig-05 .s5-key{font:500 8.5px/1.3 var(--m-mono);letter-spacing:.04em;
+  color:var(--m-accent);opacity:0;min-height:1.3em}
+.mx-sig-05 .s5-tap{font:500 7.5px/1.25 var(--m-mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--m-mut);margin-top:2px;min-height:1.25em}
+
+/* == 06 . the books close =============================================== */
+.mx-sig-06 .s6-led{position:relative;padding:0 3px}
+.mx-sig-06 .s6-cap{margin-bottom:4px}
+.mx-sig-06 .s6-r{display:flex;justify-content:space-between;gap:8px;align-items:baseline;
+  font-size:9.5px;padding:1px 0;color:var(--m-mut)}
+.mx-sig-06 .s6-r b{font-weight:400;color:var(--m-ink)}
+.mx-sig-06 .s6-r .num{font-size:10px;color:var(--m-ink)}
+/* the merdiban step -- the Ottoman ledger method indented each entry beneath
+   the one it belonged to, which is why this reads as a descent, not a table. */
+.mx-sig-06 .s6-r.i1{padding-left:8px}
+.mx-sig-06 .s6-r.i2{padding-left:16px}
+.mx-sig-06 .s6-tot{display:flex;justify-content:space-between;gap:8px;align-items:baseline;
+  margin-top:3px;font-size:9.5px}
+.mx-sig-06 .s6-tot .num{font-size:13px;font-weight:600;letter-spacing:-.02em}
+.mx-sig-06 .s6-rules{position:relative;height:8px;margin:2px 0 0 auto;width:108px}
+.mx-sig-06 .s6-rule{position:absolute;right:9px;left:0;height:1.5px;background:var(--m-ink);
+  transform:scaleX(0)}
+.mx-sig-06 .s6-rule.a{top:0;transform-origin:0 50%}
+.mx-sig-06 .s6-rule.b{top:4px;transform-origin:100% 50%}
+/* the full stop: the only accent in the entire motion, and it is set last. */
+.mx-sig-06 .s6-dot{position:absolute;right:0;top:0;width:5px;height:5px;border-radius:50%;
+  background:var(--m-accent);opacity:0;transform:scale(.4)}
+.mx-sig-06 .s6-said{margin-top:4px;font-size:8.5px;color:var(--m-mut);text-align:right;opacity:0}
+
+/* -- reduced motion: land on the end state ----------------------------- */
+@media (prefers-reduced-motion:reduce){
+  .mx-sig *,.mx-sig *::before,.mx-sig *::after{
+    animation-duration:1ms!important;animation-delay:0ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:1ms!important;transition-delay:0ms!important;
+  }
+  .mx-sig .die{display:none!important}
+  .mx-sig .wax{transform:scale(1)!important;opacity:1!important}
+  .mx-sig .mark{opacity:1!important}
+}
+</style>
+<script>
+(function(){
+  var M = window.MUDAVYM_MOTIONS = window.MUDAVYM_MOTIONS || [];
+  var FAM = 'Signature moments';
+  /* queried live, not captured at load: a viewer who turns the OS setting on
+     mid-session should get the still version of the very next replay, and a
+     constant read once at parse time silently ignores them. */
+  var RMQ = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)')) || null;
+  function REDUCED(){ return !!(RMQ && RMQ.matches); }
+
+  /* ── real spring: integrate, then sample into a CSS linear() easing ──
+     a = (-k(x-1) - c*v)/m, 1ms Euler-Cromer steps, stop at restDelta. Same
+     integrator the sibling parts use, so the numbers are comparable across
+     the canvas rather than being two authors' separate guesses.            */
+  var LINEAR_OK = (function(){ try{ return CSS.supports('animation-timing-function','linear(0, 0.5, 1)'); }catch(e){ return false; } })();
+  function spring(k, c, m, restDelta){
+    m = m || 1; restDelta = restDelta || 0.005;
+    var dt = 1/1000, x = 0, v = 0, t = 0, tr = [0], peak = 0, cap = 4;
+    while (t < cap){
+      v += ((-k*(x-1) - c*v)/m)*dt; x += v*dt; t += dt;
+      tr.push(x); if (x > peak) peak = x;
+      if (Math.abs(1-x) < restDelta && Math.abs(v) < restDelta*8) break;
+    }
+    var n = 46, pts = [], i, idx;
+    for (i=0;i<=n;i++){ idx = Math.round(i/n*(tr.length-1)); pts.push(+tr[idx].toFixed(4)); }
+    pts[0] = 0; pts[n] = 1;
+    return {
+      k:k, c:c, trace:tr,
+      duration: Math.round(t*1000),
+      overshoot: +(Math.max(0,peak-1)*100).toFixed(1),
+      easing: LINEAR_OK ? 'linear('+pts.join(',')+')' : 'cubic-bezier(.16,1,.3,1)'
+    };
+  }
+  var SP = {
+    stamp: spring(520,26),   // house "stamp" — the one permitted ceremony
+    tuck : spring(380,32)    // house "tuck"  — weight under a finger
+  };
+  function sp(s,label){ return label+' spring '+s.k+'/'+s.c+' → '+s.duration+'ms, '+s.overshoot+'% overshoot'; }
+
+  var EZ = {
+    settle:'cubic-bezier(.16,1,.3,1)',   // house
+    turn  :'cubic-bezier(.32,.72,0,1)',  // house — opening (here, closing) a record
+    ink   :'cubic-bezier(.16,1,.3,1)',   // house — micro states
+    /* the strike. Deliberately NOT a house curve. Everything else in Mudavym
+       decelerates into place because it is being placed; a falling die is not
+       placed, it is dropped, so it must ACCELERATE into the paper. This is the
+       only ease-in in the system, and it is what makes the contact land. */
+    strike:'cubic-bezier(.55,0,.85,.4)',
+    lift  :'cubic-bezier(.3,0,.2,1)'
+  };
+
+  function R(){ try{ var f=window.MUDAVYM_RATE; var v=f?f():1; return (v>0?v:1); }catch(e){ return 1; } }
+
+  /* per-root bookkeeping so play() is idempotent under repeat calls */
+  function ctl(root){
+    (root._pt||[]).forEach(clearTimeout);
+    (root._pa||[]).forEach(function(a){ try{ a.cancel(); }catch(e){} });
+    if (root._pr){ cancelAnimationFrame(root._pr); root._pr = null; }
+    root._pt = []; root._pa = []; root._gen = (root._gen||0) + 1;
+    var gen = root._gen;
+    void root.offsetWidth;
+    return {
+      gen: function(){ return gen === root._gen; },
+      at: function(ms, fn){ root._pt.push(setTimeout(function(){ if (gen===root._gen) fn(); }, REDUCED()?0:ms/R())); },
+      an: function(el, kf, o){
+        o = o || {};
+        var opt = { duration:(o.duration||300)/R(), delay:(o.delay||0)/R(),
+                    easing:o.easing||EZ.settle, fill:o.fill||'both', iterations:1 };
+        if (REDUCED()){ opt.duration = 1; opt.delay = 0; }
+        var a = el.animate(kf, opt); root._pa.push(a); return a;
+      },
+      sweep: function(ms, fn, done){
+        if (REDUCED()){ fn(1); if (done) done(); return; }
+        var t0 = performance.now(), dur = ms/R();
+        (function step(now){
+          if (gen !== root._gen) return;
+          var p = Math.min(1,(now-t0)/dur);
+          fn(p);
+          if (p < 1) root._pr = requestAnimationFrame(step);
+          else if (done) done();
+        })(t0);
+      },
+      stop: function(){ if (root._pr){ cancelAnimationFrame(root._pr); root._pr = null; } }
+    };
+  }
+  function q(root,s){ return root.querySelector(s); }
+
+  /* ── the mark ── the wordmark reduced to its two irreducible parts: a
+     double rule and a full stop. Drawn twice -- a light copy 0.8px BELOW the
+     stroke, the body copy on the line -- because that offset pair is what an
+     eye reads as relief pressed into a surface rather than ink printed on one.
+     Everything about this shape is load-bearing: those two rules are the same
+     two rules sig-06 draws under the day's total.                          */
+  var RULES = 'M10 19h20M10 24.5h20';
+  function markSVG(cls){
+    return '<svg class="'+(cls||'mark')+'" viewBox="0 0 44 44" aria-hidden="true">'+
+      '<g class="mk-h" transform="translate(0,.8)" stroke-width="2.5" stroke-linecap="butt">'+
+        '<path d="'+RULES+'"/><circle cx="35" cy="24.5" r="2.3"/></g>'+
+      '<g class="mk-b" stroke-width="2.5" stroke-linecap="butt">'+
+        '<path d="'+RULES+'"/><circle cx="35" cy="24.5" r="2.3"/></g></svg>';
+  }
+  function dieSVG(){
+    return '<svg viewBox="0 0 44 44" aria-hidden="true">'+
+      '<g class="dk-b" stroke-width="2.5" stroke-linecap="butt">'+
+        '<path d="'+RULES+'"/><circle cx="35" cy="24.5" r="2.3"/></g></svg>';
+  }
+  function sealHTML(cls){
+    return '<div class="seal '+cls+'">'+
+      '<i class="wax"></i>'+ markSVG('mark') +
+      '<i class="die">'+ dieSVG() +'</i></div>';
+  }
+  /* the dry emboss (sig-03) has no wax element at all, so every reach for one
+     is optional here rather than assumed. */
+  function resetSeal(seal){
+    var wax = seal.querySelector('.wax');
+    if (wax) wax.style.cssText = 'transform:scale(0);opacity:0';
+    seal.querySelector('.mark').style.opacity = '0';
+    seal.querySelector('.die').style.cssText = 'opacity:0;transform:translateY(-46px) scale(1.24)';
+  }
+
+  /* ── THE STRIKE ── the one routine every ceremony in this family shares.
+     Three bodies, never one:
+       DIE   rigid. Winds up, accelerates in, and LEAVES. Stone does not
+             squash, so it never scales on contact.
+       WAX   appears at contact and spreads. Volume preserved: it spreads
+             outward exactly as the die stops going down.
+       PAPER takes the blow. Depresses 1.6px, returns, keeps a residual dent.
+     opts: {wax:bool, windup:ms|0, paper:el|null, onContact:fn}              */
+  function strike(c, seal, opts){
+    opts = opts || {};
+    var die = seal.querySelector('.die'),
+        wax = seal.querySelector('.wax'),
+        mk  = seal.querySelector('.mark'),
+        wind = opts.windup === 0 ? 0 : (opts.windup || 110),
+        y0   = wind ? -52 : -30,
+        s0   = wind ? 1.2 : 1.14,
+        fall = wind ? 130 : 96,
+        /* the die also un-twists as it comes down. A hand holding a seal is
+           never square to the page on the way in; it squares up on contact. */
+        r0   = (opts.rot === undefined ? -8 : opts.rot),
+        T = function(y,s,r){ return 'translateY('+y+'px) scale('+s+') rotate('+r+'deg)'; },
+        wants = opts.wax !== false;
+
+    /* 1 . anticipation -- the wind-up is what turns a landing into an act. */
+    if (wind){
+      c.an(die, [{opacity:0,  transform:T(-46,1.24,r0)},
+                 {opacity:.95,transform:T(y0,s0,r0*0.7)}],
+           {duration:wind, easing:EZ.lift});
+    }
+    die.style.opacity = '.95';
+    die.style.transform = T(y0,s0,r0*0.7);
+
+    /* 2 . the strike. Short, and accelerating. */
+    c.at(wind, function(){
+      c.an(die, [{opacity:.95,transform:T(y0,s0,r0*0.7)},
+                 {opacity:1,  transform:T(0,1,0)}],
+           {duration:fall, easing:EZ.strike});
+      die.style.transform = T(0,1,0);
+      die.style.opacity = '1';
+    });
+
+    /* 3 . contact. */
+    c.at(wind + fall, function(){
+      if (wants && wax){
+        c.an(wax, [{transform:'scale(.16)', opacity:.4},{transform:'scale(1)', opacity:1}],
+             {duration:SP.stamp.duration, easing:SP.stamp.easing});
+        wax.style.transform = 'scale(1)'; wax.style.opacity = '1';
+      }
+      if (opts.paper){
+        opts.paper.classList.remove('rest');
+        opts.paper.classList.add('dent');
+        c.an(opts.paper, [{transform:'translateY(0)'},{transform:'translateY(1.6px)'}],
+             {duration:70, easing:EZ.strike});
+        c.at(70, function(){
+          // the paper returns, but it does not forget: a shallower dent stays
+          c.an(opts.paper, [{transform:'translateY(1.6px)'},{transform:'translateY(0)'}],
+               {duration:260, easing:EZ.settle});
+          opts.paper.classList.add('rest');
+        });
+      }
+      if (opts.onContact) opts.onContact();
+    });
+
+    /* 4 . the die leaves, and only then is the impression readable. You never
+          see a muhur while it is being pressed; you see what it left.       */
+    c.at(wind + fall + 90, function(){
+      c.an(die, [{opacity:1, transform:T(0,1,0)},
+                 {opacity:0, transform:T(-34,1.1,r0*0.5)}],
+           {duration:220, easing:EZ.lift});
+      die.style.opacity = '0';
+      c.an(mk, [{opacity:0},{opacity:1}], {duration:150, delay:60, easing:EZ.ink});
+      mk.style.opacity = '1';
+    });
+
+    return wind + fall + 310;
+  }
+
+  /* A hold that is honest: linear fill, because the operator is timing it
+     against their own thumb and a fill that eases lies about how long is left.
+     Release cancels. The keyboard path is NOT a hold (WCAG 2.5.7 / G168):
+     Enter arms it, Enter again commits, and it disarms itself after 3s.     */
+  function hold(c, btn, fill, ms, onDone){
+    var fired = false, raf = null, t0 = 0;
+    function set(p){ fill.style.transform = 'scaleX('+p+')'; }
+    function stop(){ if (raf){ cancelAnimationFrame(raf); raf = null; } }
+    function finish(){ if (fired) return; fired = true; stop(); set(1); onDone(); }
+    function tick(now){
+      var p = Math.min(1,(now-t0)/(ms/R()));
+      set(p);
+      if (p < 1) raf = requestAnimationFrame(tick); else finish();
+    }
+    function down(e){
+      if (fired) return; if (e) e.preventDefault();
+      /* NEVER restart a hold that is already running. Hovering the card fires
+         play(), which schedules the unattended demo hold -- without this guard
+         that scheduled call resets the clock under a founder who is already
+         pressing, and their hold can never finish. Measured: a real 900ms
+         press completed 0 of 1 times before this line, 1 of 1 after. */
+      if (raf) return;
+      if (REDUCED()){ finish(); return; }
+      t0 = performance.now(); raf = requestAnimationFrame(tick);
+    }
+    function up(){
+      if (fired || !raf) return; stop();
+      var pw = fill.parentNode.getBoundingClientRect().width || 1;
+      var from = fill.getBoundingClientRect().width / pw;
+      c.an(fill,[{transform:'scaleX('+from+')'},{transform:'scaleX(0)'}],
+           {duration:160, easing:EZ.settle});
+      set(0);
+    }
+    if (!btn._wired){
+      btn._wired = 1;
+      btn.addEventListener('pointerdown',  function(e){ if (btn._h) btn._h.down(e); });
+      btn.addEventListener('pointerup',    function(){ if (btn._h) btn._h.up(); });
+      btn.addEventListener('pointerleave', function(){ if (btn._h) btn._h.up(); });
+      btn.addEventListener('pointercancel',function(){ if (btn._h) btn._h.up(); });
+      btn.addEventListener('keydown', function(e){
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        if (!btn._h) return;
+        if (btn._armed){ btn._armed = false; btn._h.finish(); }
+        else { btn._armed = true; btn._h.set(.5);
+               setTimeout(function(){ if (btn._armed){ btn._armed = false; btn._h.set(0); } }, 3000); }
+      });
+    }
+    btn._armed = false;
+    btn._h = { down:down, up:up, finish:finish, set:set };
+    set(0);
+    return { auto:function(delay){ c.at(delay||0, function(){ down(null); }); } };
+  }
+
+  /* ══ sig-02 · order approved: the seal lands ══════════════ */
+  M.push({
+    id:'sig-02', name:'The seal lands', family:FAM,
+    purpose:'The founder’s own words: "when it’s approved, we show our logo as a stamp." Approving a purchase order is the moment money leaves the restaurant, and today it has no moment at all — confirmApproval closes the modal and refetches, and the only visible acknowledgement anywhere in that path is a native alert() on FAILURE. This is what should happen instead. Three bodies, never one: a rigid die that winds up, accelerates in and then LEAVES; wax that spreads exactly as the die stops; paper that takes the blow and keeps the dent. Borrowed from the Ottoman muhur — pressed to approve official documents, agate matrix, wax impression, and you only ever see what it left behind. Refused: Robinhood’s swipe-to-confirm (a swipe is the same gesture as scrolling the list it lives in — called "peak dark design" in public for exactly that reason) and the Stripe/Duolingo confetti tick (money leaving a kitchen is not a win). Hold it yourself; let go early and nothing happened.',
+    spec:'hold: strictly LINEAR 620ms (house “press”) — an eased fill lies about how much time is left · windup 110ms '+EZ.lift+' · strike 130ms '+EZ.strike+', the only ease-IN in the system because a falling die is dropped, not placed · die un-twists -14deg to -6deg on the way in, because the house “stamp” token names rotate alongside scale and a seal that lands square reads as a printed asset · wax spread '+sp(SP.stamp,'house “stamp”')+' · paper depresses 1.6px in 70ms, returns over 260ms settle and keeps a residual dent · die lifts away 220ms '+EZ.lift+', impression reads at +60ms · 570ms from release of the hold',
+    source:'apps/web/src/pages/Orders.tsx:511-524 (confirmApproval — alert() on failure, nothing at all on success)',
+    html:'<div class="mx-sig mx-sig-02">'+
+      '<div class="s2-row dentable">'+
+        '<div class="s2-left">'+
+          '<span class="s-k">PO-1042 · Vinos del Norte</span>'+
+          '<b class="num s2-amt">$1,284.00</b>'+
+          '<div class="s2-sub">6 × Rioja Reserva 2019 · net 30</div>'+
+          '<span class="s2-chip">Pending approval</span>'+
+        '</div>'+
+        '<div class="s2-well"></div>'+
+        sealHTML('s2-seal')+
+      '</div>'+
+      '<button type="button" class="s-btn s2-btn"><i class="s2-fill"></i>'+
+        '<span>Hold to approve</span></button>'+
+      '<div class="s-note s2-note">Press and hold — or focus it and press Enter twice.</div>'+
+      '</div>',
+    play:function(root){
+      var c = ctl(root),
+          seal = q(root,'.s2-seal'), row = q(root,'.s2-row'),
+          btn = q(root,'.s2-btn'), fill = q(root,'.s2-fill'),
+          chip = q(root,'.s2-chip'), lab = btn.querySelector('span'),
+          note = q(root,'.s2-note');
+
+      chip.textContent = 'Pending approval'; chip.classList.remove('done');
+      btn.classList.remove('sealed'); lab.textContent = 'Hold to approve';
+      note.textContent = 'Press and hold — or focus it and press Enter twice.';
+      row.classList.remove('dent','rest'); row.style.transform = '';
+      resetSeal(seal);
+
+      hold(c, btn, fill, 620, function(){
+        lab.textContent = 'Approved';
+        btn.classList.add('sealed');
+        strike(c, seal, { paper: row });
+        c.at(470, function(){
+          chip.textContent = 'Approved 14:22'; chip.classList.add('done');
+          c.an(chip, [{opacity:.3},{opacity:1}], {duration:160, easing:EZ.ink});
+          note.textContent = 'Sealed on the record — not in a toast any screen could raise.';
+        });
+      }).auto(420);
+    }
+  });
+
+  /* ══ sig-03 · confirmation: the dry emboss ═════════════ */
+  M.push({
+    id:'sig-03', name:'Confirmation (dry emboss)', family:FAM,
+    purpose:'The same die, no wax — a blind emboss, the dent alone. This is the commit ceremony for everywhere else in the product, and the reason it has to exist is rationing: Duolingo fires its streak celebration only on the first lesson of the day, and the same rule has to hold here or the seal stops meaning anything. Bulk-approving fourteen orders — handleBulkApprove, which today ends in an alert() carrying a green tick emoji — must not land fourteen wax seals. It lands ONE dry impression on the group, and the rows underneath simply settle. The family resemblance is carried by the impression: identical geometry, identical strike, one third of the energy, and no accent colour in it at all.',
+    spec:'windup 70ms '+EZ.lift+' · strike 110ms '+EZ.strike+' · no wax, no accent — impression only, revealed over 150ms as the die lifts (220ms) · rows settle on a 46ms stagger, 6px travel, 300ms '+EZ.settle+' · dent is a class transition, not an animated box-shadow · total 380ms',
+    source:'apps/web/src/pages/Orders.tsx:1214-1241 (handleBulkApprove)',
+    html:'<div class="mx-sig mx-sig-03">'+
+      '<div class="s3-grp dentable">'+
+        '<div class="s3-gh"><span class="s-k">14 orders selected</span>'+
+          '<span class="s-k s3-done"></span></div>'+
+        '<div class="s3-r"><b>PO-1042 · Vinos del Norte</b><i>$1,284.00</i></div>'+
+        '<div class="s3-r"><b>PO-1043 · Ekmek Fabrika</b><i>$212.40</i></div>'+
+        '<div class="s3-r"><b>PO-1044 · Deniz Ürünleri</b><i>$906.15</i></div>'+
+        '<div class="s3-more">+ 11 more</div>'+
+        '<div class="seal s3-emb">'+ markSVG('mark') +'<i class="die">'+ dieSVG() +'</i></div>'+
+      '</div>'+
+      '<button type="button" class="s-btn s3-btn"><span>Approve 14</span></button>'+
+      '</div>',
+    play:function(root){
+      var c = ctl(root),
+          grp = q(root,'.s3-grp'), emb = q(root,'.s3-emb'),
+          done = q(root,'.s3-done'), rows = [].slice.call(root.querySelectorAll('.s3-r')),
+          btn = q(root,'.s3-btn');
+
+      done.textContent = '';
+      grp.classList.remove('dent','rest'); grp.style.transform = '';
+      rows.forEach(function(r){ r.style.opacity = '.55'; });
+      resetSeal(emb);
+
+      function go(){
+        var cc = root._sig3 || c;
+        if (!cc.gen()) return;
+        strike(cc, emb, { wax:false, windup:70, rot:-5, paper:grp });
+        rows.forEach(function(r,i){
+          cc.an(r,[{opacity:.55, transform:'translateY(6px)'},
+                   {opacity:1,   transform:'translateY(0)'}],
+                {duration:300, delay:180 + i*46, easing:EZ.settle});
+          r.style.opacity = '1';
+        });
+        cc.at(420, function(){
+          done.textContent = 'all approved';   // no accent: see .s3-done
+          cc.an(done,[{opacity:0},{opacity:1}],{duration:160, easing:EZ.ink});
+        });
+      }
+      root._sig3 = c;
+      if (!btn._b){ btn._b = 1; btn.addEventListener('click', go); }
+      c.at(380, go);
+    }
+  });
+
+  /* ══ sig-04 · order delivered: the record closes ═════════ */
+  M.push({
+    id:'sig-04', name:'The record closes', family:FAM,
+    purpose:'The goods arrive and the order stops being open. handleMarkAsDelivered is the moment stock actually crosses from shadow to live — the real economic event on this page — and today it is announced by a native browser alert() carrying a tick emoji: modal, unstyled, and it blocks the page behind it. No wax here, on purpose. Delivery is not an approval, it is a completion, so nothing is stamped; instead the rule the approval left at the top of the record is joined by its partner at the bottom, the pair travels inward and brackets the record shut, and the shadow quantity crosses the gap and hardens into live stock. Dashed becomes solid. The record stops being a thing you can add to.',
+    spec:'closing rule draws RIGHT→LEFT 300ms '+EZ.turn+' — the second stroke of a rule-off goes back the other way, which is how a hand actually does it · quantity crosses on '+sp(SP.tuck,'house “tuck”')+' (travel measured at play time, so it lands in the live column at any card width) · bracket closes 5px inward, 420ms '+EZ.turn+' · dashed→solid ink 160ms · no spring on the rules and no overshoot anywhere: a record closing must not rebound',
+    source:'apps/web/src/pages/Orders.tsx:637-717 (handleMarkAsDelivered; the alert() is at :706)',
+    html:'<div class="mx-sig mx-sig-04">'+
+      '<div class="s4-rec">'+
+        '<i class="s4-rule top"></i>'+
+        '<div class="s4-body">'+
+          '<div class="s4-hd"><span class="s-k">PO-1042 · Vinos del Norte</span>'+
+            '<span class="s-k s4-st">Ordered</span></div>'+
+          '<div class="s4-cols">'+
+            '<div class="s4-col shadow"><span class="s4-cl">Shadow</span>'+
+              '<div class="s4-cv">12</div></div>'+
+            '<div class="s4-arrow">→</div>'+
+            '<div class="s4-col live"><span class="s4-cl">Live stock</span>'+
+              '<div class="s4-cv s4-lv">48</div></div>'+
+            '<span class="s4-tok num">12</span>'+
+          '</div>'+
+        '</div>'+
+        '<i class="s4-rule bot"></i>'+
+        '<div class="s4-foot"><span class="s-k s4-note">Awaiting delivery</span>'+
+          '<span class="s-k s4-when"></span></div>'+
+      '</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          top = q(root,'.s4-rule.top'), bot = q(root,'.s4-rule.bot'),
+          body = q(root,'.s4-body'), tok = q(root,'.s4-tok'),
+          lv = q(root,'.s4-lv'), st = q(root,'.s4-st'),
+          note = q(root,'.s4-note'), when = q(root,'.s4-when'),
+          shadowCol = q(root,'.s4-col.shadow'), liveCol = q(root,'.s4-col.live');
+
+      bot.style.transform = 'scaleX(0)';
+      top.style.opacity = '.7'; bot.style.opacity = '.7';
+      tok.classList.remove('live');
+      tok.style.transform = 'translateX(0)'; tok.style.opacity = '1';
+      lv.textContent = '48'; lv.style.opacity = '.35';
+      st.textContent = 'Ordered'; st.classList.remove('on');
+      note.textContent = 'Awaiting delivery'; when.textContent = '';
+      body.style.padding = '9px 2px';
+      shadowCol.style.opacity = '1';
+
+      /* how far the token has to travel: measured, never guessed, so it lands
+         in the live column at whatever width the host grid hands us. */
+      var gap = Math.max(38, liveCol.offsetLeft - shadowCol.offsetLeft);
+
+      // 1 . the closing rule is drawn, back the other way
+      c.at(240, function(){
+        c.an(bot, [{transform:'scaleX(0)'},{transform:'scaleX(1)'}],
+             {duration:300, easing:EZ.turn});
+        bot.style.transform = 'scaleX(1)';
+      });
+
+      // 2 . the stock actually crosses
+      c.at(560, function(){
+        c.an(tok, [{transform:'translateX(0)'},{transform:'translateX('+gap+'px)'}],
+             {duration:SP.tuck.duration, easing:SP.tuck.easing});
+        tok.style.transform = 'translateX('+gap+'px)';
+        c.at(140, function(){ tok.classList.add('live'); });
+        c.an(shadowCol, [{opacity:1},{opacity:.4}], {duration:260, easing:EZ.ink});
+        shadowCol.style.opacity = '.4';
+      });
+
+      c.at(560 + SP.tuck.duration - 60, function(){
+        lv.textContent = '60'; lv.style.opacity = '1';
+        c.an(lv, [{opacity:.35},{opacity:1}], {duration:180, easing:EZ.ink});
+        c.an(tok, [{opacity:1},{opacity:0}], {duration:160, easing:EZ.ink});
+        tok.style.opacity = '0';
+      });
+
+      // 3 . the bracket closes. The record gets smaller; it is finished.
+      c.at(980, function(){
+        c.an(body, [{paddingTop:'9px', paddingBottom:'9px'},
+                    {paddingTop:'4px', paddingBottom:'4px'}],
+             {duration:420, easing:EZ.turn});
+        body.style.padding = '4px 2px';
+        [top,bot].forEach(function(r){
+          c.an(r, [{opacity:.7},{opacity:1}], {duration:420, easing:EZ.turn});
+          r.style.opacity = '1';
+        });
+        st.textContent = 'Delivered'; st.classList.add('on');
+        note.textContent = 'Booked into live stock';
+        when.textContent = '18:07';
+        c.an(when, [{opacity:0},{opacity:1}], {duration:200, delay:120, easing:EZ.ink});
+      });
+    }
+  });
+
+  /* ══ sig-05 · delivery sealed at the door ═════════════ */
+  M.push({
+    id:'sig-05', name:'Sealed at the door', family:FAM,
+    purpose:'A porter, one hand, mid-service, phone at 12%, no signal in the walk-in. Ceremony that survives being rushed. The honest problem with optimistic UI is that it is meant for reversible, low-stakes actions and a goods receipt is neither — so this seal does NOT claim the receipt was sent. It seals the idempotency key, which doorOutbox mints at the instant of the tap and reuses on every retry, and which is the actual reason a resend cannot book the stock twice. The key is what gets sealed, so it writes itself out directly beneath the impression, in mono and in the wax’s own colour, with the line under it saying the receipt will send itself. No wind-up — a rushed thumb gets no anticipation, the die is already under the finger. No spinner, no blur, nothing looping, no animated shadow: one transform and one opacity, because the battery is real. Lift early and it still seals, because the key existed from first contact. The door screen today ends on a plain emerald tick; this is what the same half-second could carry instead. Press it.',
+    spec:'contact at 0ms — anticipation deliberately suppressed · strike 96ms '+EZ.strike+', die at -7deg to -3deg (a thumb comes down almost square; sig-02’s hand does not) · wax spread '+sp(SP.stamp,'house “stamp”')+', identical to sig-02 because the porter’s receipt is exactly as real as the owner’s approval · key writes over 180ms '+EZ.ink+' · total 406ms · compositor-only: transform + opacity, no filter, no box-shadow animation, nothing on a loop',
+    source:'apps/web/src/lib/doorOutbox.ts:35-40 (newIdempotencyKey) · :49-70 (submitDoorReceipt queues when offline)',
+    html:'<div class="mx-sig mx-sig-05">'+
+      '<div class="s5-door">'+
+        '<div class="s5-ttl s5-h">4 boxes · none damaged</div>'+
+        '<div class="s5-sub s5-s">Vinos del Norte · PO-1042</div>'+
+        '<div class="s5-pad">'+
+          '<button type="button" class="s5-thumb" aria-label="Press to seal this receipt">'+
+            sealHTML('s5-seal')+'</button>'+
+        '</div>'+
+        '<div class="s5-key num"></div>'+
+        '<div class="s5-tap">press · one thumb</div>'+
+      '</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          seal = q(root,'.s5-seal'), thumb = q(root,'.s5-thumb'),
+          key = q(root,'.s5-key'), tap = q(root,'.s5-tap'),
+          h = q(root,'.s5-h'), s = q(root,'.s5-s');
+
+      thumb.classList.remove('gone');
+      key.textContent = ''; key.style.opacity = '0';
+      tap.textContent = 'press · one thumb';
+      h.textContent = '4 boxes · none damaged';
+      s.textContent = 'Vinos del Norte · PO-1042';
+      resetSeal(seal);
+      root._sig5done = false;
+
+      function go(){
+        var cc = root._sig5 || c;
+        if (root._sig5done || !cc.gen()) return;
+        root._sig5done = true;
+        thumb.classList.add('gone');
+        /* windup 0 -- there is no ceremony of approach when someone is holding
+           a door open with their shoulder. The die is already at the thumb. */
+        strike(cc, seal, { windup:0, rot:-4, onContact:function(){
+          h.textContent = 'Sealed';
+          s.textContent = 'It will send itself when you have signal.';
+        }});
+        cc.at(180, function(){
+          var full = 'door:1042:7f3a2c';
+          key.style.opacity = '1';
+          cc.an(key, [{opacity:0},{opacity:1}], {duration:120, easing:EZ.ink});
+          // written, not revealed: a key is something a machine wrote down
+          cc.sweep(180, function(p){
+            key.textContent = full.slice(0, Math.round(p * full.length));
+          }, function(){ key.textContent = full; });
+          tap.textContent = 'idempotency key · a resend cannot double-book';
+        });
+      }
+      root._sig5 = c;
+      if (!thumb._b){ thumb._b = 1;
+        thumb.addEventListener('pointerdown', function(e){ e.preventDefault(); go(); }); }
+      c.at(520, go);
+    }
+  });
+
+  /* ══ sig-06 · the books close ════════════════════ */
+  M.push({
+    id:'sig-06', name:'The books close', family:FAM,
+    purpose:'The quietest of the five, and the one that explains the other four. In bookkeeping a single rule under a figure means subtotal; a DOUBLE rule means grand total — the account is ruled off, nothing goes below this line. The Mudavym wordmark is a double rule and a full stop, so the logo has always read "this is final", and the seal in sig-02 is only this same figure pressed into wax. Which is why the nightly close needs no wax at all: the rules are simply drawn, at constant speed, the way a hand draws against a straightedge — the first left to right, the second back the other way, with a real pause between them, because the pause IS the ceremony. Answers a documented gap: /reports has a monthly reconciliation panel whose variance is literally Math.random(), and there is no close ACT anywhere in the product — no period is ever ruled off, and the only thing in the system that knows a day ended is an hourly server sweep the owner never sees.',
+    spec:'entries settle 260ms on a 40ms stagger · rule one draws L→R 300ms LINEAR — a straightedge does not ease · pause 180ms, deliberate and load-bearing · rule two draws R→L 170ms linear · full stop sets 140ms '+EZ.settle+' · the closed day dims to 62% over 400ms · total 1310ms, zero springs and zero overshoot anywhere: nothing that is finished should rebound',
+    source:'components/reports/organisms/MonthlyReconciliation.tsx:31 (Math.random variance) · analytics/insights/insight-scheduler.service.ts:42 (the hourly sweep nobody sees)',
+    html:'<div class="mx-sig mx-sig-06">'+
+      '<div class="s6-led">'+
+        '<div class="s6-cap"><span class="s-k">Thursday 28 August · service closed</span></div>'+
+        '<div class="s6-body">'+
+          '<div class="s6-r"><b>Covers</b><span class="num">168</span></div>'+
+          '<div class="s6-r i1"><span>Beverage sales</span><span class="num">$4,280.00</span></div>'+
+          '<div class="s6-r i2"><span>Purchases booked</span><span class="num">$1,284.00</span></div>'+
+          '<div class="s6-r i2"><span>Variance to theoretical</span><span class="num">−$36.40</span></div>'+
+        '</div>'+
+        '<div class="s6-tot"><span class="s-k s6-tl">Day closed</span>'+
+          '<span class="num s6-tv">$2,959.60</span></div>'+
+        '<div class="s6-rules"><i class="s6-rule a"></i><i class="s6-rule b"></i>'+
+          '<i class="s6-dot"></i></div>'+
+        '<div class="s6-said">Ruled off. Reopening it takes a reason.</div>'+
+      '</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          rows = [].slice.call(root.querySelectorAll('.s6-r')),
+          a = q(root,'.s6-rule.a'), b = q(root,'.s6-rule.b'),
+          dot = q(root,'.s6-dot'), said = q(root,'.s6-said'),
+          body = q(root,'.s6-body');
+
+      a.style.transform = 'scaleX(0)'; b.style.transform = 'scaleX(0)';
+      dot.style.opacity = '0'; dot.style.transform = 'scale(.4)';
+      said.style.opacity = '0'; body.style.opacity = '1';
+
+      rows.forEach(function(r,i){
+        c.an(r, [{opacity:0, transform:'translateY(5px)'},
+                 {opacity:1, transform:'translateY(0)'}],
+             {duration:260, delay:i*40, easing:EZ.settle});
+      });
+
+      // 1 . the subtotal rule. Linear -- a straightedge does not accelerate.
+      c.at(300, function(){
+        c.an(a, [{transform:'scaleX(0)'},{transform:'scaleX(1)'}],
+             {duration:300, easing:'linear'});
+        a.style.transform = 'scaleX(1)';
+      });
+
+      // 2 . 180ms of nothing. This is the ceremony.
+      // 3 . the second stroke, drawn back the other way. Now it is a grand total.
+      c.at(780, function(){
+        c.an(b, [{transform:'scaleX(0)'},{transform:'scaleX(1)'}],
+             {duration:170, easing:'linear'});
+        b.style.transform = 'scaleX(1)';
+      });
+
+      // 4 . the full stop, set last -- the only accent in the whole motion.
+      c.at(950, function(){
+        c.an(dot, [{opacity:0, transform:'scale(.4)'},
+                   {opacity:1, transform:'scale(1)'}],
+             {duration:140, easing:EZ.settle});
+        dot.style.opacity = '1'; dot.style.transform = 'scale(1)';
+      });
+
+      // 5 . the day goes behind glass.
+      c.at(1010, function(){
+        c.an(body, [{opacity:1},{opacity:.62}], {duration:400, easing:EZ.settle});
+        body.style.opacity = '.62';
+        c.an(said, [{opacity:0},{opacity:1}], {duration:300, delay:80, easing:EZ.ink});
+        said.style.opacity = '1';
+      });
+    }
+  });
+})();
+</script>

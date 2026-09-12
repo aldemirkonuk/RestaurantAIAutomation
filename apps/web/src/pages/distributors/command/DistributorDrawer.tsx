@@ -205,7 +205,7 @@ export function DistributorDrawer({ distributorId, onClose, customProviders = []
 
                   <Section title="Where they can sell">
                     {vendor?.listing_tier === 'curated' && (
-                      <span className="mb-3 inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium tracking-wide text-blue-700 uppercase" title="Details verified by WineOps AI">
+                      <span className="mb-3 inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium tracking-wide text-blue-700 uppercase" title="Details verified by Mudavym">
                         <ShieldCheck className="h-3 w-3" />
                         Verified
                       </span>

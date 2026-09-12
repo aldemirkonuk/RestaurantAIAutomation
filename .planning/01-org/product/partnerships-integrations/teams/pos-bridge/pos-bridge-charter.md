@@ -129,26 +129,42 @@ task from *build* to *get one venue to authorize a connection.*
 
 ### ⚠️ The reality check that governs everything above
 
-- **`pos_checks` = 0 real rows** (`.planning/AGENT_NATIVE_UI_DECISION.md:56`). The 47 rows
-  that exist are `source='generic_webhook'` simulator output from a single 43-minute window
-  (`supabase/.../20260819000000_guest_identity_minimal_slice.sql:11-14`).
+- **`pos_checks` = 0 real rows.** *(Updated 2026-08-24 by live query against production
+  `exzueerziesmczwlhomd`: the count is now **literally zero**. The 47 `generic_webhook`
+  simulator rows from the 2026-08-19 window are gone. `restaurant_tables` and
+  `wine_consumption_log` are also at 0; `pos_item_mappings` and
+  `pos_catalog_match_proposals` hold 92 each.)*
 - Everything in this charter is therefore **capability, not throughput.** No canonical check
   produced by a real restaurant has ever entered this system.
 
 ### ⚠️ The live exposure this team owns a piece of
 
-`ENDPOINTS.md:355` classifies all 10 pos-hub routes as unguarded webhook-module routes. The
-honest breakdown, verified this session:
+`ENDPOINTS.md:355` classifies all 10 pos-hub routes as unguarded webhook-module routes.
+**That classification is now out of date** — re-verified against `origin/main` 2026-08-24:
 
 - `POST /pos-hub/webhook/:provider/:restaurantId` — **verifies correctly.** HMAC-SHA256 over
   the raw body in `X-Pos-Hub-Signature`, `crypto.timingSafeEqual`, **fails closed** when
-  `POS_HUB_WEBHOOK_SECRET` is unset (`pos-hub.controller.ts:68-75`,
+  `POS_HUB_WEBHOOK_SECRET` is unset (`pos-hub.controller.ts:61-86`,
   `pos-hub.service.ts:96-121`). This is the good pattern.
-- **The other 9 routes are unauthenticated and unverified.** Among them:
-  `POST /pos-hub/catalog-match/:restaurantId/proposals/:proposalId/approve` and `/reject`
-  (`ENDPOINTS.md:361-362`) — **the human approval gate for catalogue mapping, callable by
-  anyone.** A gate anyone can pull is not a gate.
+- **The other 9 routes are now guarded.** `@UseGuards(JwtAuthGuard)` sits at class level
+  (`pos-hub.controller.ts:36`), so the catalogue approval gate is no longer anonymous —
+  **OD-40 is fixed** and should be moved to Resolved.
+- **The exposure that replaced it is scope, not absence:** `POS_HUB_WEBHOOK_SECRET` is a
+  single process-wide secret shared across all 27 providers and all restaurants, and the
+  webhook route never binds `restaurantId` to the key. A signature valid for one tenant is
+  valid for every tenant. See [POS-BRIDGE-AUDIT §2.4](../../../../../04-specs/POS-BRIDGE-AUDIT.md)
+  and draft decision OD-B.
 
 This corrects `product.md:783`'s claim that *"0 of the 32 verify signatures today."*
 Co-owned with [[connector-platform-trust-charter]] and
 [[perimeter-ingress-integrity-charter]] under OD-19.
+
+### Full coverage audit
+
+[**POS-BRIDGE-AUDIT**](../../../../../04-specs/POS-BRIDGE-AUDIT.md) (2026-08-24) — what exists,
+what is genuinely missing, what is missing but does not matter yet, and a ranked gap list.
+It supersedes `md/04-updates-builds/POS_INTEGRATION_COMPLETE.md`. Two findings there outrank
+everything on this charter's own roadmap because they are **already wrong**, not unbuilt:
+`sale_unit` is never written (all 92 production mappings are null → every glass pour depletes
+a bottle), and `voided` is never persisted (→ voided checks count as revenue forever). Both
+are logged in [[pos-bridge-questions]].

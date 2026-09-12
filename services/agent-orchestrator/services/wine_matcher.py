@@ -17,9 +17,12 @@ Thresholds:
 import asyncio
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
+from services.log_safety import sanitize_for_log
 from services.text_normalizer import get_normalizer
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -235,11 +238,17 @@ class WineMatcher:
         producer: Optional[str] = None,
         vintage: Optional[int] = None,
         wine_type: Optional[str] = None,
-        restaurant_id: Optional[str] = None,
+        restaurant_id: Optional[str] = None,  # unused since OD-99; see Phase 1
         limit: int = 5,
     ) -> Dict[str, Any]:
         """
         Run full matching pipeline.
+
+        `restaurant_id` is accepted and currently unused: the only phase that
+        consumed it (Phase 1, the per-restaurant library) queried a table that
+        does not exist and was removed under OD-99. The parameter is kept
+        because callers pass it and because OD-102 may give it a real phase to
+        feed again -- it is a placeholder for a decision, not dead weight.
 
         Returns:
             {
@@ -257,27 +266,30 @@ class WineMatcher:
             self._normalizer.normalize_for_matching(producer) if producer else None
         )
 
-        # ---- Phase 1: User library first (if restaurant_id) ----
-        if restaurant_id and self.supabase:
-            user_matches = await self._search_user_library(
-                restaurant_id,
-                wine_name,
-                producer,
-                vintage,
-                limit=10,
-            )
-            if user_matches:
-                scored = self._score_candidates(
-                    user_matches,
-                    normalized_name,
-                    normalized_producer,
-                    vintage,
-                    limit,
-                )
-                if scored and scored[0].similarity_score >= self.AUTO_MATCH_THRESHOLD:
-                    return self._build_result(scored, phase="user_library", auto=True)
-                if scored and scored[0].similarity_score >= self.SUGGEST_THRESHOLD:
-                    return self._build_result(scored, phase="user_library", auto=False)
+        # ---- Phase 1 (removed, OD-99): the restaurant's own wine library ----
+        #
+        # There used to be a phase here that searched a table called
+        # `wine_library`, scoped by `restaurant_id`, before falling through to
+        # the master library. That table is declared by no migration in this
+        # repository and returns 404 PGRST205 in production (verified
+        # 2026-08-26). The query raised on every call, `_search_user_library`
+        # swallowed it into a `logger.warning` and returned `[]`, and the
+        # `if user_matches:` below it was never true. Phase 1 has therefore
+        # never produced a single candidate: every match this service has ever
+        # made came from 1b/1c/1d against `master_wine_library`. Deleting it is
+        # behaviour-identical to what shipped, and `phase="user_library"` can
+        # no longer appear in a result it could never have reached.
+        #
+        # Deleted rather than repointed, because there is no one obvious table
+        # and a guess here would be worse than the admitted gap. The two
+        # candidates mean different things: `restaurant_inventory` is what the
+        # restaurant HAS (its wine identity lives on `master_wine_id`, i.e. in
+        # the master library 1b already searches, so it would mostly duplicate
+        # 1b), while `menu_items` is what the restaurant SELLS and carries
+        # `name`, `producer`, `vintage`, `category` per restaurant -- the exact
+        # shape the deleted select asked for. Which one Phase 1 should search,
+        # or whether a restaurant-scoped library should exist at all, is a
+        # product decision and not a repair. Filed as OD-102.
 
         # ---- Phase 1b: pgvector embedding search on master library ----
         vector_candidates = await self._vector_search(wine_name, limit=50)
@@ -312,7 +324,8 @@ class WineMatcher:
             )
         except asyncio.TimeoutError:
             logger.warning(
-                f"AI enrichment timed out for '{wine_name}' — returning null enrichment"
+                "AI enrichment timed out for '%s' — returning null enrichment",
+                sanitize_for_log(wine_name),
             )
             enrichment = None
 
@@ -387,32 +400,6 @@ class WineMatcher:
             return result.data or []
         except Exception as e:
             logger.warning(f"ilike search failed: {e}")
-            return []
-
-    async def _search_user_library(
-        self,
-        restaurant_id: str,
-        wine_name: str,
-        producer: Optional[str],
-        vintage: Optional[int],
-        limit: int = 10,
-    ) -> List[Dict[str, Any]]:
-        """Search restaurant-specific wine library."""
-        if not self.supabase:
-            return []
-        try:
-            first_token = wine_name.split()[0] if wine_name.split() else wine_name
-            result = (
-                self.supabase.table("wine_library")
-                .select("id, name, producer, vintage, wine_type")
-                .eq("restaurant_id", restaurant_id)
-                .ilike("name", f"%{first_token}%")
-                .limit(limit)
-                .execute()
-            )
-            return result.data or []
-        except Exception as e:
-            logger.warning(f"User library search failed: {e}")
             return []
 
     # ---- Phase 2: Scoring ----
@@ -563,40 +550,68 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
                 temperature=0.1,
             )
 
+            _t0 = time.perf_counter()
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
                 config=config,
             )
 
-            # P1: previously an unlogged model call (dark site)
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+            # OD-75: a parse failure here falls through to the outer handler and
+            # the non-grounded fallback, so the emit sits in a `finally` below
+            # the parse — that preserves the fallback exactly while grading the
+            # row on whether the grounded answer was actually usable.
+            _outcome = "partial"
             try:
-                from services.spend_logger import estimate_llm_cost, get_spend_logger
+                result_text = response.text.strip()
+                if "```json" in result_text:
+                    result_text = (
+                        result_text.split("```json")[1].split("```")[0].strip()
+                    )
+                elif "```" in result_text:
+                    result_text = result_text.split("```")[1].split("```")[0].strip()
 
-                _usage = getattr(response, "usage_metadata", None)
-                _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
-                get_spend_logger().log(
-                    provider="google",
-                    model="gemini-2.5-flash",
-                    input_tokens=_in,
-                    output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
-                    agent_fallback="wine_matcher",
-                    task_type="wine_enrichment_grounded",
-                    outcome="success",  # call-level: response returned
-                    context={"wine_name": str(wine_name)[:120]},
-                )
-            except Exception:
-                pass
+                data = json.loads(result_text)
+                _outcome = "success"
+            finally:
+                # P1: previously an unlogged model call (dark site)
+                try:
+                    from services.spend_logger import (
+                        estimate_llm_cost,
+                        get_spend_logger,
+                    )
 
-            result_text = response.text.strip()
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1].split("```")[0].strip()
+                    # label the model actually configured, not a literal (OD-57)
+                    _model_id = get_settings().gemini_model
+                    _usage = getattr(response, "usage_metadata", None)
+                    _in = getattr(_usage, "prompt_token_count", 0) or 0
+                    # thinking tokens bill at the output rate — see
+                    # spend_logger.usage_tokens()
+                    _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                        getattr(_usage, "thoughts_token_count", 0) or 0
+                    )
+                    get_spend_logger().log(
+                        provider="google",
+                        model="gemini-2.5-flash",
+                        input_tokens=_in,
+                        output_tokens=_out,
+                        cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                        agent_fallback="wine_matcher",
+                        task_type="wine_enrichment_grounded",
+                        choice=f"enrichment:{_outcome}",
+                        outcome=_outcome,
+                        duration_ms=_elapsed_ms,
+                        context={
+                            "wine_name": str(wine_name)[:120],
+                            "outcome_basis": "parse_v1",
+                            "parse_failed": _outcome != "success",
+                        },
+                    )
+                except Exception:
+                    pass
 
-            data = json.loads(result_text)
             data["source"] = "gemini_grounded_enrichment"
 
             # Capture grounding metadata if available
@@ -632,7 +647,7 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
             import google.generativeai as genai
 
             genai.configure(api_key=self.google_api_key)
-            model = genai.GenerativeModel("gemini-pro")
+            model = genai.GenerativeModel(get_settings().gemini_model)
 
             wine_desc = wine_name
             if producer:
@@ -643,38 +658,65 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
             prompt = f"""You are a master sommelier. Research this wine: "{wine_desc}"
 Return ONLY valid JSON with: name, producer, vintage, wine_type, country, region, grape_variety, tasting_notes, food_pairings, confidence."""
 
+            _t0 = time.perf_counter()
             response = model.generate_content(
                 prompt, generation_config={"temperature": 0.1}
             )
 
-            # P1: previously an unlogged model call (dark site)
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+            # OD-75: same fix as the grounded path above. This twin was not in
+            # the reported list, but leaving it would make the fallback claim
+            # `success` for exactly the answers the primary now grades honestly.
+            _outcome = "partial"
             try:
-                from services.spend_logger import estimate_llm_cost, get_spend_logger
+                result_text = response.text.strip()
+                if "```json" in result_text:
+                    result_text = (
+                        result_text.split("```json")[1].split("```")[0].strip()
+                    )
+                elif "```" in result_text:
+                    result_text = result_text.split("```")[1].split("```")[0].strip()
 
-                _usage = getattr(response, "usage_metadata", None)
-                _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
-                get_spend_logger().log(
-                    provider="google",
-                    model="gemini-pro",
-                    input_tokens=_in,
-                    output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
-                    agent_fallback="wine_matcher",
-                    task_type="wine_enrichment_fallback",
-                    outcome="success",  # call-level: response returned
-                    context={"wine_name": str(wine_name)[:120]},
-                )
-            except Exception:
-                pass
+                data = json.loads(result_text)
+                _outcome = "success"
+            finally:
+                # P1: previously an unlogged model call (dark site)
+                try:
+                    from services.spend_logger import (
+                        estimate_llm_cost,
+                        get_spend_logger,
+                    )
 
-            result_text = response.text.strip()
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1].split("```")[0].strip()
+                    # label the model actually configured, not a literal (OD-57)
+                    _model_id = get_settings().gemini_model
+                    _usage = getattr(response, "usage_metadata", None)
+                    _in = getattr(_usage, "prompt_token_count", 0) or 0
+                    # thinking tokens bill at the output rate — see
+                    # spend_logger.usage_tokens()
+                    _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                        getattr(_usage, "thoughts_token_count", 0) or 0
+                    )
+                    get_spend_logger().log(
+                        provider="google",
+                        model=_model_id,
+                        input_tokens=_in,
+                        output_tokens=_out,
+                        cost_usd=estimate_llm_cost(_model_id, _in, _out),
+                        agent_fallback="wine_matcher",
+                        task_type="wine_enrichment_fallback",
+                        choice=f"enrichment:{_outcome}",
+                        outcome=_outcome,
+                        duration_ms=_elapsed_ms,
+                        context={
+                            "wine_name": str(wine_name)[:120],
+                            "outcome_basis": "parse_v1",
+                            "parse_failed": _outcome != "success",
+                        },
+                    )
+                except Exception:
+                    pass
 
-            data = json.loads(result_text)
             data["source"] = "gemini_enrichment_fallback"
             return data
         except Exception as e:

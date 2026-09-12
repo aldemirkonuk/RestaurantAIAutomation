@@ -24,7 +24,13 @@ interface PurchaseMetrics {
 interface PurchasedWinesTableProps {
   purchaseData: PurchaseData[]
   metrics: PurchaseMetrics
-  totalRevenue: number
+  /**
+   * Sales revenue for the same window, from `pos_checks`. COGS ratio is
+   * cost ÷ revenue, so it cannot be computed without this. Pass `null` when no
+   * POS revenue feed is wired — the tile then says so instead of dividing
+   * procurement spend by itself and always printing ~100%.
+   */
+  posRevenue: number | null
   isOpen: boolean
   onToggle: () => void
   className?: string
@@ -33,7 +39,7 @@ interface PurchasedWinesTableProps {
 export function PurchasedWinesTable({
   purchaseData,
   metrics,
-  totalRevenue,
+  posRevenue,
   isOpen,
   onToggle,
   className = '',
@@ -84,9 +90,18 @@ export function PurchasedWinesTable({
               <BarChart3 className="w-5 h-5 text-amber-600" />
               <p className="text-sm font-medium text-gray-600">COGS Ratio</p>
             </div>
-            <p className="text-3xl font-bold text-amber-600">
-              {((metrics.totalSpent / totalRevenue) * 100).toFixed(1)}%
-            </p>
+            {posRevenue && posRevenue > 0 ? (
+              <p className="text-3xl font-bold text-amber-600">
+                {((metrics.totalSpent / posRevenue) * 100).toFixed(1)}%
+              </p>
+            ) : (
+              <>
+                <p className="text-3xl font-bold text-gray-300">—</p>
+                <p className="text-[11px] text-gray-500 mt-1 leading-tight">
+                  Needs sales revenue from a connected POS
+                </p>
+              </>
+            )}
           </div>
         </div>
 

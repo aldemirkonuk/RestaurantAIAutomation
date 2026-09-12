@@ -1,9 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import type {
+  AppNotification,
   CalendarEvent,
   FeedResponse,
   InventoryItem,
+  NotificationPage,
   ProcurementOrder,
   TodayPulse,
 } from "./types";
@@ -11,11 +13,13 @@ import { useSession } from "@/state/session";
 
 export const feedKey = ["mobile", "feed"] as const;
 export const pulseKey = ["mobile", "pulse"] as const;
+export const notificationsKey = ["notifications"] as const;
 
 function useAuthed() {
   const status = useSession((s) => s.status);
   const restaurantId = useSession((s) => s.user?.restaurantId);
-  return { enabled: status === "signedIn", restaurantId };
+  const userId = useSession((s) => s.user?.id);
+  return { enabled: status === "signedIn", restaurantId, userId };
 }
 
 export function useFeed() {
@@ -191,6 +195,108 @@ export function useTeamMembers() {
     staleTime: 10 * 60_000,
     retry: false,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Notification inbox
+//
+// The gateway's notifications controller is JWT-guarded but still takes the
+// user id as a query param (notifications.controller.ts:83-95) — the same
+// contract the web client uses (apps/web/src/services/api/notifications.ts:102).
+// Mobile follows it rather than inventing a second shape.
+// ---------------------------------------------------------------------------
+
+export type InboxFilter = "unread" | "read" | "archived";
+
+export function useNotifications(filter: InboxFilter) {
+  const { enabled, restaurantId, userId } = useAuthed();
+  return useQuery({
+    queryKey: [...notificationsKey, "list", userId, restaurantId, filter],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        userId: String(userId),
+        status: filter,
+        limit: "50",
+      });
+      if (restaurantId) params.set("restaurantId", restaurantId);
+      const body = await api<NotificationPage | AppNotification[]>(
+        `/notifications?${params.toString()}`,
+      );
+      return Array.isArray(body) ? body : (body.data ?? []);
+    },
+    enabled: enabled && !!userId,
+    refetchInterval: 2 * 60_000,
+    retry: false,
+  });
+}
+
+export function useUnreadCount() {
+  const { enabled, restaurantId, userId } = useAuthed();
+  return useQuery({
+    queryKey: [...notificationsKey, "unread-count", userId, restaurantId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ userId: String(userId) });
+      if (restaurantId) params.set("restaurantId", restaurantId);
+      const body = await api<{ count: number }>(
+        `/notifications/unread/count?${params.toString()}`,
+      );
+      return Number(body?.count ?? 0);
+    },
+    enabled: enabled && !!userId,
+    refetchInterval: 2 * 60_000,
+    retry: false,
+  });
+}
+
+/**
+ * Inbox mutations. Deliberately *not* routed through the outbox: unlike an
+ * order approval, marking something read has no business consequence worth
+ * replaying days later, and a queued archive that lands after the row is gone
+ * is noise. They fail loudly and the list refetches.
+ */
+export function useNotificationActions() {
+  const qc = useQueryClient();
+  const { restaurantId, userId } = useAuthed();
+  const settle = () => {
+    qc.invalidateQueries({ queryKey: [...notificationsKey] });
+    qc.invalidateQueries({ queryKey: [...feedKey] });
+  };
+
+  const markRead = useMutation({
+    mutationFn: (id: string) =>
+      api(`/notifications/${id}/read`, { method: "PATCH" }),
+    onSettled: settle,
+  });
+
+  const markUnread = useMutation({
+    mutationFn: (id: string) =>
+      api(`/notifications/${id}/unread`, { method: "PATCH" }),
+    onSettled: settle,
+  });
+
+  const archive = useMutation({
+    mutationFn: (id: string) =>
+      api(`/notifications/${id}/archive`, { method: "PATCH" }),
+    onSettled: settle,
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/notifications/${id}`, { method: "DELETE" }),
+    onSettled: settle,
+  });
+
+  const markAllRead = useMutation({
+    mutationFn: () => {
+      const params = new URLSearchParams({ userId: String(userId) });
+      if (restaurantId) params.set("restaurantId", restaurantId);
+      return api(`/notifications/read/all?${params.toString()}`, {
+        method: "PATCH",
+      });
+    },
+    onSettled: settle,
+  });
+
+  return { markRead, markUnread, archive, remove, markAllRead };
 }
 
 // ---------------------------------------------------------------------------

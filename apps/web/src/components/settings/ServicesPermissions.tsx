@@ -28,7 +28,7 @@ const CONSENT_COPY: Partial<Record<ServiceId, ConsentCopy>> = {
   privacy_analytics: {
     title: 'Turn on usage analytics?',
     summary:
-      'WineOps will report how you move through the app so we can find the screens that slow people down.',
+      'Mudavym will report how you move through the app so we can find the screens that slow people down.',
     dataCategories: [
       'Which page you are on, by name',
       'Interaction events such as rage clicks and dead clicks',
@@ -47,7 +47,7 @@ const CONSENT_COPY: Partial<Record<ServiceId, ConsentCopy>> = {
   privacy_sharing: {
     title: 'Allow data sharing with partners?',
     summary:
-      'This lets WineOps pass operational data to logistics and POS partners you connect. Nothing is shared until you connect a specific partner, and only with that partner.',
+      'This lets Mudavym pass operational data to logistics and POS partners you connect. Nothing is shared until you connect a specific partner, and only with that partner.',
     dataCategories: [
       'Order and delivery details for the partner fulfilling them',
       'Product identifiers and quantities needed to match catalogs',
@@ -69,7 +69,7 @@ const SERVICES: ServiceRow[] = [
     id: 'email',
     title: 'Email access',
     description:
-      'Allow WineOps to send operational email (invites, order digests) from your connected sender. Does not grant Wine Agent mailbox access.',
+      'Allow Mudavym to send operational email (invites, order digests) from your connected sender. Does not grant Wine Agent mailbox access.',
     icon: Mail,
     statusLabel: (e) => (e ? 'Enabled' : 'Off'),
   },
@@ -85,7 +85,7 @@ const SERVICES: ServiceRow[] = [
     id: 'privacy_analytics',
     title: 'Product analytics',
     description:
-      'Anonymous usage signals that help improve WineOps. Never includes your wine list contents.',
+      'Anonymous usage signals that help improve Mudavym. Never includes your wine list contents.',
     icon: Shield,
     statusLabel: (e) => (e ? 'On' : 'Off'),
   },
@@ -163,7 +163,7 @@ export function ServicesPermissions() {
       <div data-tour="services-intro">
         <h2 className="text-lg font-semibold text-gray-900">Services & permissions</h2>
         <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-          Control what WineOps can access. These settings are optional and separate from
+          Control what Mudavym can access. These settings are optional and separate from
           product tours. Wine Agent is a navigation shortcut for inventory & ordering help —
           it does not grant email access.
         </p>
@@ -237,7 +237,7 @@ export function ServicesPermissions() {
           )
         })}
 
-        {/* Cookies — informational (WineOps sets no tracking cookies) */}
+        {/* Cookies — informational (Mudavym sets no tracking cookies) */}
         <li className="flex flex-col sm:flex-row sm:items-center gap-3 p-4">
           <div className="flex items-start gap-3 flex-1 min-w-0">
             <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center flex-shrink-0">
@@ -246,7 +246,7 @@ export function ServicesPermissions() {
             <div className="min-w-0">
               <p className="text-sm font-medium text-gray-900">Cookies</p>
               <p className="text-sm text-gray-500 mt-0.5">
-                WineOps sets no tracking or advertising cookies. Your session lives in local
+                Mudavym sets no tracking or advertising cookies. Your session lives in local
                 storage and clears when you sign out.{' '}
                 <Link to="/privacy" className="font-medium text-wine-600 hover:text-wine-700">
                   Privacy notice

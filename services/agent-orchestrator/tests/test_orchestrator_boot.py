@@ -139,7 +139,10 @@ class TestSubscriptionsAreActuallyBound:
             "exactly one queue must be bound to procurement.order.created after "
             f"boot; got {bound}"
         )
-        assert bound[0][0] == "queue.provider_communication_agent.procurement_order_created"
+        assert (
+            bound[0][0]
+            == "queue.provider_communication_agent.procurement_order_created"
+        )
 
     async def test_every_declared_key_of_every_core_agent_is_bound(self, booted):
         orch, bus = booted
@@ -159,6 +162,6 @@ class TestSubscriptionsAreActuallyBound:
         declared_queues = {queue for queue, _, _ in bus.bindings}
         not_consumed = declared_queues - set(bus.consumed)
 
-        assert not not_consumed, (
-            f"queues declared but never consumed from: {sorted(not_consumed)}"
-        )
+        assert (
+            not not_consumed
+        ), f"queues declared but never consumed from: {sorted(not_consumed)}"

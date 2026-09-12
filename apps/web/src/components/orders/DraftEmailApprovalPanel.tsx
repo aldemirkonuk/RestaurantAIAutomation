@@ -364,7 +364,7 @@ export function DraftEmailApprovalPanel({
                 {/* Disclaimer — read-only, per D-32-08 */}
                 <div
                   className="mx-5 mb-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex-shrink-0"
-                  aria-label="Non-removable WineOps AI disclaimer"
+                  aria-label="Non-removable Mudavym disclaimer"
                 >
                   <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">
                     Auto-appended disclaimer (required · non-editable)

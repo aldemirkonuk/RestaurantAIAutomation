@@ -114,10 +114,16 @@ export default function ReceivingScreen() {
     useOutbox.getState().enqueue({
       path: `/procurement/orders/${orderId}/verify-receipt`,
       body: {
-        invoiceQuantity: invoiceQty,
+        // Unit-declaring names. No unit is sent, which means "the order's own
+        // unit" — correct here, because the count starts from the order's own
+        // quantity. Payloads already sitting in the outbox from an older build
+        // still carry the unitless names; the gateway accepts those as
+        // deprecated aliases, which is the whole reason this was not a bare
+        // rename.
+        invoiceQuantityInInvoiceUom: invoiceQty,
         invoiceUnitPrice: invoiceUnitPrice ?? undefined,
-        acceptedQuantity: acceptedQty,
-        rejectedQuantity: rejectedQty,
+        acceptedQuantityInCountedUom: acceptedQty,
+        rejectedQuantityInCountedUom: rejectedQty,
         rejectedReason:
           rejectedQty > 0 ? rejectedReason.trim() || "damaged on arrival" : undefined,
         priceOverrideReason: priceDiffers ? priceOverrideReason.trim() : undefined,

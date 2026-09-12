@@ -9,6 +9,7 @@ import {
   SalesChartPointDto,
   InventoryBreakdownDto,
 } from "./dto/dashboard-summary.dto";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 
 describe("DashboardController", () => {
   let controller: DashboardController;
@@ -31,7 +32,13 @@ describe("DashboardController", () => {
           useValue: mockDashboardService,
         },
       ],
-    }).compile();
+    })
+      // OD-20 guarded this controller at class level. A unit spec should not
+      // have to construct the auth graph to test a handler — stub the guard
+      // and let the boot guard prove the real one resolves.
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<DashboardController>(DashboardController);
     dashboardService = module.get<DashboardService>(DashboardService);
@@ -54,9 +61,9 @@ describe("DashboardController", () => {
         totalVolumeOz: 12680,
         lowStockItems: 5,
         pendingOrders: 3,
-        todaySales: 1250.5,
-        weekSales: 8750.0,
-        monthSales: 35000.0,
+        todayProcurementSpend: 1250.5,
+        weekProcurementSpend: 8750.0,
+        monthProcurementSpend: 35000.0,
       };
 
       mockDashboardService.getStats.mockResolvedValue(expectedResponse);
@@ -199,17 +206,17 @@ describe("DashboardController", () => {
   describe("GET /dashboard/sales-chart/:restaurantId", () => {
     const restaurantId = "restaurant-123";
 
-    it("should return sales chart data with default period", async () => {
+    it("should return the procurement-spend series with default period", async () => {
       const expectedResponse: SalesChartPointDto[] = [
         {
           date: "2024-01-01",
-          revenue: 1250.5,
+          procurementSpend: 1250.5,
           bottles: 25,
           glasses: 150,
         },
         {
           date: "2024-01-02",
-          revenue: 1800.0,
+          procurementSpend: 1800.0,
           bottles: 35,
           glasses: 210,
         },
@@ -222,7 +229,11 @@ describe("DashboardController", () => {
       expect(result).toEqual(expectedResponse);
       expect(Array.isArray(result)).toBe(true);
       expect(result[0]).toHaveProperty("date");
-      expect(result[0]).toHaveProperty("revenue");
+      // The money field is vendor spend, not sales. Asserting the absence of
+      // `revenue` is the point: the old name inverted the sign of the figure
+      // for every consumer that plotted it.
+      expect(result[0]).toHaveProperty("procurementSpend");
+      expect(result[0]).not.toHaveProperty("revenue");
       expect(result[0]).toHaveProperty("bottles");
       expect(result[0]).toHaveProperty("glasses");
       expect(mockDashboardService.getSalesChart).toHaveBeenCalledWith(

@@ -7,16 +7,19 @@ import { Card } from "@/components/ui/Screen";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { color, space } from "@/design/tokens";
 import { useTodayPulse } from "@/api/queries";
+import { resolvePulseStripView } from "./pulseStripView";
 
 function money(value: number): string {
   return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }
 
 /**
- * The glance that costs zero taps: tonight's revenue, checks, and the delta
- * against the same window last week. Sales data needs a POS feed; without it
- * the strip quietly shows only the decision count. Tapping the strip opens
- * the Insights tab — the plain-language conclusions + goals home.
+ * The glance that costs zero taps: tonight's revenue, checks, the delta
+ * against the same window last week, and how many decisions are pending.
+ * Sales data needs a POS feed; when it is not available the strip says so in
+ * plain language rather than falling back to a reassuring "All clear" it
+ * cannot support (ADR 0020). Tapping the strip opens the Insights tab — the
+ * plain-language conclusions + goals home.
  */
 export function PulseStrip() {
   const router = useRouter();
@@ -34,7 +37,7 @@ export function PulseStrip() {
 
   if (!data) return null;
 
-  const hasSales = data.revenueToday != null;
+  const view = resolvePulseStripView(data);
 
   return (
     <PressableScale onPress={() => router.push("/insights")}>
@@ -51,28 +54,31 @@ export function PulseStrip() {
         <AppText variant="caption" tone="tertiary">
           Tonight
         </AppText>
-        {hasSales ? (
+        {view.revenue.status === "known" ? (
           <>
             <AppText variant="display" style={{ marginTop: 2 }}>
-              {money(data.revenueToday!)}
+              {money(view.revenue.amount)}
             </AppText>
             <AppText variant="footnote" tone="secondary">
-              {data.checksToday != null ? `${data.checksToday} checks` : "sales so far"}
+              {view.revenue.checksLabel}
             </AppText>
           </>
         ) : (
-          <AppText variant="headline" style={{ marginTop: 2 }}>
-            {data.pendingDecisions === 0
-              ? "All clear"
-              : `${data.pendingDecisions} decision${data.pendingDecisions === 1 ? "" : "s"} waiting`}
+          <AppText variant="footnote" tone="tertiary" style={{ marginTop: 6, maxWidth: 220 }}>
+            {view.revenue.message}
           </AppText>
         )}
+        {view.decisionsLabel != null ? (
+          <AppText variant="headline" style={{ marginTop: space.xs }}>
+            {view.decisionsLabel}
+          </AppText>
+        ) : null}
       </View>
 
-      {hasSales && data.deltaPct != null ? (
+      {view.revenue.status === "known" && view.revenue.deltaPct != null ? (
         <View
           style={{
-            backgroundColor: data.deltaPct >= 0 ? color.successTint : color.dangerTint,
+            backgroundColor: view.revenue.deltaPct >= 0 ? color.successTint : color.dangerTint,
             paddingHorizontal: space.md,
             paddingVertical: space.xs,
             borderRadius: 999,
@@ -80,10 +86,10 @@ export function PulseStrip() {
         >
           <AppText
             variant="caption"
-            style={{ color: data.deltaPct >= 0 ? color.success : color.danger }}
+            style={{ color: view.revenue.deltaPct >= 0 ? color.success : color.danger }}
           >
-            {data.deltaPct >= 0 ? "+" : ""}
-            {data.deltaPct}% vs last week
+            {view.revenue.deltaPct >= 0 ? "+" : ""}
+            {view.revenue.deltaPct}% vs last week
           </AppText>
         </View>
         ) : null}

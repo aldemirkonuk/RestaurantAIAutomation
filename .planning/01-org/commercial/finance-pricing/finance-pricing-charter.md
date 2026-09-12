@@ -122,7 +122,9 @@ grade for the pair is neither team's grade.
    per task per agent* (`foundation README §4.2`) — is **not derivable from what is
    currently logged**. This is F1's first real assignment
    ([[inference-cost-agenda-full]]).
-2. **The NestJS runtime emits nothing.** Grepping `apps/api-gateway/src` for `api_spend`,
+2. **The NestJS runtime emitted nothing as of 2026-08-24.** *Corrected 2026-08-25:
+   superseded by P1 — all seven callsites now write `neural_footprint_event` through
+   `common/model-client` (`model-client.service.ts:413`).* Grepping `apps/api-gateway/src` for `api_spend`,
    `cost_usd` or `input_tokens` returns **zero hits** — verified 2026-08-24 — so the seven
    production Anthropic callsites enumerated at
    `.planning/foundation/teams/intelligence.md:64-73` run with no cost telemetry at all.

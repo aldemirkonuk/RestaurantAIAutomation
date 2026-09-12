@@ -82,6 +82,47 @@ function saveScheduledReminders(reminders: ScheduledReminder[]): void {
   localStorage.setItem(SCHEDULED_REMINDERS_KEY, JSON.stringify(reminders))
 }
 
+/** Exact minute counts that map onto a named reminder type. */
+const NAMED_REMINDER_MINUTES: Array<[number, ReminderType]> = [
+  [15, '15min'],
+  [60, '1hour'],
+  [1440, '1day'],
+  [10080, '1week'],
+]
+
+/**
+ * Translate an arbitrary "minutes before" value (what the calendar's reminder UI
+ * collects) into the `reminderType` / `customMinutes` pair `scheduleReminder`
+ * takes. Named presets keep their label; anything else becomes a custom offset.
+ */
+export function reminderTypeForMinutes(minutesBefore: number): {
+  reminderType: ReminderType
+  customMinutes?: number
+} {
+  const named = NAMED_REMINDER_MINUTES.find(([minutes]) => minutes === minutesBefore)
+  if (named) return { reminderType: named[1] }
+  return { reminderType: 'custom', customMinutes: minutesBefore }
+}
+
+/**
+ * Drop every not-yet-sent reminder for an event. Called before re-scheduling an
+ * edited event and when an event is deleted, so a reminder never fires for a
+ * time (or an event) that no longer exists.
+ *
+ * Returns the number of reminders removed.
+ */
+export function cancelRemindersForEvent(eventId: string): number {
+  const reminders = getScheduledReminders()
+  const kept = reminders.filter(
+    (reminder) => !(reminder.eventId === eventId && reminder.status === 'pending')
+  )
+  const removed = reminders.length - kept.length
+  if (removed > 0) {
+    saveScheduledReminders(kept)
+  }
+  return removed
+}
+
 /**
  * Schedule a reminder for a calendar event
  */

@@ -31,6 +31,50 @@
     "name": "Sim Turkish Clone",
     "timezone": "America/Chicago",
     "city": "Chicago",
-    "country": "USA"
+    "country": "USA",
+    "operating_hours": {
+      "mon": [
+        {
+          "open": "12:00",
+          "close": "23:00"
+        }
+      ],
+      "tue": [
+        {
+          "open": "12:00",
+          "close": "23:00"
+        }
+      ],
+      "wed": [
+        {
+          "open": "12:00",
+          "close": "23:00"
+        }
+      ],
+      "thu": [
+        {
+          "open": "12:00",
+          "close": "23:00"
+        }
+      ],
+      "fri": [
+        {
+          "open": "12:00",
+          "close": "23:00"
+        }
+      ],
+      "sat": [
+        {
+          "open": "12:00",
+          "close": "23:00"
+        }
+      ],
+      "sun": [
+        {
+          "open": "12:00",
+          "close": "23:00"
+        }
+      ]
+    }
   }
 }

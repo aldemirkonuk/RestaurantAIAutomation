@@ -82,7 +82,8 @@ WHERE type = "loops" AND !contains(file.content, "close_time")
 Published weekly whether or not they move. A frozen zero beside a rising blocker age is
 the measurement (premortem M2).
 
-- [ ] `nf_a.doneability_verdict_coverage` — **0%** — no verdict exists anywhere
+- [ ] `nf_a.doneability_verdict_coverage` — **~0%** — corrected 2026-08-25: one basis
+      exists (`reconciliation_v1`, invoices — ADR 0017); every other slice ungraded
 - [ ] `nf_a.verified_task_success_rate` — **unmeasurable** — `core/base_agent.py:602`
       records `success` = *did not raise*
 - [ ] `nf_a.cost_per_task` — **not derivable** — no `agent` param,

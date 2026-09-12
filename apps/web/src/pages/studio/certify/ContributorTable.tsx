@@ -47,10 +47,14 @@ export function ContributorTable({ contributors, onRevoke, onToggleEnable }: Con
         onClick: async () => {
           setLoadingId(c.user_id)
           try {
+            // onRevoke throws on any non-2xx (StudioCertify → studioApi.ts), so this
+            // success toast can only follow a revoke the server actually performed.
             await onRevoke(c.user_id)
             toast.success('Contributor revoked')
-          } catch {
-            toast.error('Could not revoke this contributor')
+          } catch (err) {
+            toast.error('Could not revoke this contributor', {
+              description: err instanceof Error ? err.message.slice(0, 160) : undefined,
+            })
           } finally {
             setLoadingId(null)
           }
@@ -68,8 +72,18 @@ export function ContributorTable({ contributors, onRevoke, onToggleEnable }: Con
         label: 'Confirm',
         onClick: async () => {
           setLoadingId(c.user_id)
-          try { await onToggleEnable(c.user_id, enable) }
-          finally { setLoadingId(null) }
+          try {
+            await onToggleEnable(c.user_id, enable)
+            toast.success(enable ? 'Access enabled' : 'Access disabled')
+          } catch (err) {
+            // Previously there was no catch at all: a failed toggle produced an
+            // unhandled rejection and the toggle silently sprang back on the next poll.
+            toast.error(`Could not ${label.toLowerCase()} this contributor`, {
+              description: err instanceof Error ? err.message.slice(0, 160) : undefined,
+            })
+          } finally {
+            setLoadingId(null)
+          }
         },
       },
       cancel: { label: 'Cancel', onClick: () => {} },

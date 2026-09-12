@@ -24,10 +24,87 @@ import random
 import httpx
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Callable
+from urllib.parse import quote
 from uuid import uuid4
 import logging
 
+from services.safe_path import is_safe_path_segment
+
 logger = logging.getLogger(__name__)
+
+# The client's long-standing constant. NOTE: config/settings.py:152-154 defaults
+# TOAST_API_URL to "https://ws-api.toasttab.com" instead, and the two have never
+# agreed. Neither has been checked against a live Toast call. This value is only
+# the last-resort fallback now that the factory passes the setting through.
+DEFAULT_TOAST_BASE_URL = "https://api.toasttab.com"
+
+
+def _require_safe_id(value: str, kind: str) -> None:
+    """Reject an id that cannot be safely interpolated into an outbound URL.
+
+    Enforced in the client rather than only in the router because the client is
+    importable by agents and scripts too, and a sink is only closed if it is
+    closed at the sink.
+
+    Belt and braces: callers additionally pass these ids through
+    `urllib.parse.quote(..., safe="")` at the interpolation site, so even a
+    value that somehow reached the template could not introduce a slash and
+    escape its path segment. The allowlist rejects nonsense early with a clear
+    error; the encoding is what makes the escape structurally impossible.
+
+    NOTE ON THE RESIDUAL CodeQL ALERT. `py/partial-ssrf` still fires on the two
+    request lines that use these ids, and it is expected to. That query flags
+    *any* caller-influenced value appearing in a URL path — `quote()` is what
+    downgrades py/full-ssrf to py/partial-ssrf, not what clears it — so it
+    cannot be satisfied by any fetch-a-resource-by-id client. What is actually
+    closed here is the escape: the host is never caller-influenced, the id is
+    constrained to [A-Za-z0-9._~-]{1,256}, and it is percent-encoded at the
+    sink. This is the same allowlist OD-90 used to close the identical defect
+    on the gateway side (apps/api-gateway/src/common/http/safe-path.ts).
+    Per the precedent OD-93 set, a residual false positive is dismissed in
+    CodeQL by the repo owner and recorded in OPEN-DECISIONS — it is
+    deliberately not suppressed in code here.
+    """
+    if not is_safe_path_segment(value):
+        raise ToastInvalidIdentifier(f"Invalid Toast {kind} id")
+
+
+class ToastError(RuntimeError):
+    """Base class for Toast failures that must be surfaced, never papered over."""
+
+
+class ToastNotConfigured(ToastError):
+    """No usable Toast credentials, so no real call could even be attempted.
+
+    Raised only in `strict=True` mode. The permissive default keeps falling back
+    to mock data for the demo scripts that want it.
+    """
+
+
+class ToastUnavailable(ToastError):
+    """A real Toast call was attempted and failed (auth, network, HTTP status).
+
+    Raised only in `strict=True` mode, in place of the mock fallback.
+    """
+
+
+class ToastInvalidIdentifier(ToastError):
+    """A caller-supplied id cannot be safely interpolated into an outbound URL.
+
+    Raised before any request is made, in every mode. See services/safe_path.py:
+    an id that is not a single literal path segment can escape the path it was
+    meant to be confined to (CodeQL py/partial-ssrf).
+    """
+
+
+class ToastNotFound(ToastError):
+    """Toast answered, and the answer was that the resource does not exist.
+
+    Split out from ToastUnavailable because "this menu is not there" is a real,
+    trustworthy answer that must reach the caller as 404 — while "we could not
+    reach Toast" must reach it as 503. Collapsing the two would let an outage
+    read as a deletion.
+    """
 
 
 class ToastAPIClient:
@@ -38,6 +115,13 @@ class ToastAPIClient:
     - Real: Uses actual Toast API with credentials
     - Mock: Generates realistic wine sales data
     - Hybrid: Tries real API, falls back to mock
+
+    `strict=True` disables every mock fallback: each operation raises
+    ToastNotConfigured (no credentials) or ToastUnavailable (the real call
+    failed) instead of returning invented data. Required by ADR 0020 for any
+    caller that puts the result in front of a user — see
+    `.planning/decisions/0020-no-fabricated-answers.md`. Default stays False so
+    existing callers (demo/, tests/) behave exactly as before.
     """
 
     # Wine items for mock data generation
@@ -127,12 +211,14 @@ class ToastAPIClient:
         toast_restaurant_guid: Optional[str] = None,
         mock_mode: bool = True,
         base_url: str = "https://api.toasttab.com",
+        strict: bool = False,
     ):
         self.client_id = toast_client_id
         self.client_secret = toast_client_secret
         self.restaurant_guid = toast_restaurant_guid
         self.mock_mode = mock_mode
         self.base_url = base_url
+        self.strict = strict
 
         # HTTP client
         self.http_client: Optional[httpx.AsyncClient] = None
@@ -155,6 +241,10 @@ class ToastAPIClient:
         self.http_client = httpx.AsyncClient(timeout=30.0)
 
         if self.mock_mode:
+            if self.strict:
+                raise ToastNotConfigured(
+                    "Toast client is in mock mode; strict callers must not serve mock data."
+                )
             logger.info("✓ Toast API client initialized (MOCK mode)")
             return True
 
@@ -166,10 +256,19 @@ class ToastAPIClient:
                 return True
             except Exception as e:
                 logger.warning(f"Toast API authentication failed: {e}")
+                if self.strict:
+                    # Do NOT flip mock_mode — that is the exact silent
+                    # degradation this mode exists to prevent.
+                    raise ToastUnavailable(f"Toast authentication failed: {e}") from e
                 logger.info("Falling back to MOCK mode")
                 self.mock_mode = True
                 return True
         else:
+            if self.strict:
+                raise ToastNotConfigured(
+                    "Toast credentials are not configured "
+                    "(TOAST_CLIENT_ID / TOAST_CLIENT_SECRET)."
+                )
             logger.info("No Toast credentials provided, using MOCK mode")
             self.mock_mode = True
             return True
@@ -214,11 +313,31 @@ class ToastAPIClient:
 
         return self.access_token
 
+    def _refuse_mock(self, operation: str) -> None:
+        """Strict mode: refuse to answer `operation` with fabricated data."""
+        if self.strict:
+            raise ToastNotConfigured(
+                f"Toast is not configured; refusing to serve mock data for {operation}."
+            )
+
+    def _refuse_fallback(self, operation: str, exc: Exception) -> None:
+        """Strict mode: surface a real failure instead of falling back to mock."""
+        if not self.strict:
+            return
+        if (
+            isinstance(exc, httpx.HTTPStatusError)
+            and exc.response is not None
+            and exc.response.status_code == 404
+        ):
+            raise ToastNotFound(f"Toast {operation}: not found") from exc
+        raise ToastUnavailable(f"Toast {operation} failed: {exc}") from exc
+
     async def fetch_menus(self, restaurant_id: Optional[str] = None) -> Dict[str, Any]:
         """Fetch menus from Toast API (or mock data)."""
         self.total_api_calls += 1
 
         if self.mock_mode:
+            self._refuse_mock("fetch_menus")
             return {"menus": self.MOCK_MENUS}
 
         try:
@@ -233,11 +352,14 @@ class ToastAPIClient:
             return response.json()
         except Exception as e:
             logger.warning(f"Toast menus fetch failed: {e}. Falling back to mock.")
+            self._refuse_fallback("menus fetch", e)
             return {"menus": self.MOCK_MENUS}
 
     async def fetch_menu(self, menu_id: str) -> Dict[str, Any]:
         """Fetch a single menu by ID (or mock data)."""
+        _require_safe_id(menu_id, "menu")
         if self.mock_mode:
+            self._refuse_mock("fetch_menu")
             for menu in self.MOCK_MENUS:
                 if menu["guid"] == menu_id:
                     return menu
@@ -245,7 +367,7 @@ class ToastAPIClient:
 
         try:
             token = await self._authenticate()
-            menu_url = f"{self.base_url}/config/v2/menus/{menu_id}"
+            menu_url = f"{self.base_url}/config/v2/menus/{quote(menu_id, safe='')}"
             response = await self.http_client.get(
                 menu_url,
                 headers={"Authorization": f"Bearer {token}"},
@@ -254,16 +376,59 @@ class ToastAPIClient:
             return response.json()
         except Exception as e:
             logger.warning(f"Toast menu fetch failed: {e}. Falling back to mock.")
+            self._refuse_fallback("menu fetch", e)
             for menu in self.MOCK_MENUS:
                 if menu["guid"] == menu_id:
                     return menu
             raise
+
+    async def fetch_order(self, order_id: str) -> Dict[str, Any]:
+        """Fetch a single order by GUID from Toast's orders API.
+
+        Endpoint: GET /orders/v2/orders/{guid}
+
+        Unlike its siblings this method has NO mock fallback in either mode, and
+        that is deliberate. `create_order`'s mock path mints a random uuid that is
+        never stored, so there is no mock order any caller could legitimately read
+        back — a mock `fetch_order` could only invent an order that does not
+        exist, at a vendor, with money attached. ADR 0020 forbids exactly that.
+        Non-strict callers therefore get ToastNotConfigured rather than a fiction.
+        """
+        _require_safe_id(order_id, "order")
+        self.total_api_calls += 1
+
+        if self.mock_mode:
+            raise ToastNotConfigured(
+                "Toast is not configured; order lookup has no mock answer "
+                "(an invented order is never a safe fallback)."
+            )
+
+        try:
+            token = await self._authenticate()
+            order_url = f"{self.base_url}/orders/v2/orders/{quote(order_id, safe='')}"
+            response = await self.http_client.get(
+                order_url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except ToastError:
+            raise
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"Toast order fetch failed: {e}")
+            if e.response is not None and e.response.status_code == 404:
+                raise ToastNotFound(f"Toast order '{order_id}' not found") from e
+            raise ToastUnavailable(f"Toast order fetch failed: {e}") from e
+        except Exception as e:
+            logger.warning(f"Toast order fetch failed: {e}")
+            raise ToastUnavailable(f"Toast order fetch failed: {e}") from e
 
     async def create_order(
         self, restaurant_id: str, payload: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Create an order (mock or API)."""
         if self.mock_mode:
+            self._refuse_mock("create_order")
             return {
                 "order_id": str(uuid4()),
                 "restaurant_id": restaurant_id,
@@ -284,6 +449,9 @@ class ToastAPIClient:
             return response.json()
         except Exception as e:
             logger.warning(f"Toast order create failed: {e}. Falling back to mock.")
+            # Strict mode refuses hardest here: a fabricated "mock_created" order
+            # tells the caller a real order was placed at a vendor when none was.
+            self._refuse_fallback("order create", e)
             return {
                 "order_id": str(uuid4()),
                 "restaurant_id": restaurant_id,
@@ -312,6 +480,7 @@ class ToastAPIClient:
         self.total_api_calls += 1
 
         if self.mock_mode:
+            self._refuse_mock("fetch_sales_data")
             return self._generate_mock_sales(start_time, end_time)
 
         # Real API call
@@ -344,6 +513,7 @@ class ToastAPIClient:
 
         except Exception as e:
             logger.error(f"Toast API error: {e}, falling back to mock")
+            self._refuse_fallback("sales fetch", e)
             return self._generate_mock_sales(start_time, end_time)
 
     def _extract_wine_items(self, order: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -527,22 +697,88 @@ class ToastAPIClient:
         self.is_streaming = False
 
     def get_statistics(self) -> Dict[str, Any]:
-        """Get client statistics"""
+        """Get client statistics.
+
+        `credentials_present` reports only whether the keys are set — never any
+        part of their value.
+        """
         return {
             "mode": "mock" if self.mock_mode else "real",
             "total_api_calls": self.total_api_calls,
             "total_sales_fetched": self.total_sales_fetched,
             "mock_sales_generated": self.mock_sales_generated,
             "is_streaming": self.is_streaming,
+            "strict": self.strict,
+            "credentials_present": bool(self.client_id and self.client_secret),
         }
 
 
 # Convenience function to create client from settings
-def create_toast_client_from_settings(settings) -> ToastAPIClient:
-    """Create Toast API client from application settings"""
+def create_toast_client_from_settings(settings, strict: bool = False) -> ToastAPIClient:
+    """Create Toast API client from application settings.
+
+    Two defects fixed here, both of which had to be fixed before this factory
+    could have a first caller:
+
+    1. It read `settings.toast_mock_mode` directly. `Settings` is a plain class
+       (config/settings.py:13-16) that did not define that attribute at the
+       time, so the read raised AttributeError on every call. There were zero
+       callers, which is why nobody hit it. The read is now via `getattr` so
+       this factory does not depend on a particular settings revision — but the
+       fallback is `True`, not a credentials-derived guess. A settings object
+       that has no opinion about mocking must not thereby authorise live calls.
+
+    2. It never passed `base_url`, so `settings.toast_api_url` was dead config
+       and every call went to the client's hardcoded constant regardless of what
+       the operator had set. The setting is now wired through, which is what
+       makes the host operator-controlled rather than baked in.
+
+    `TOAST_MOCK_MODE` is the ONLY thing that decides. It used to not be:
+
+        if strict:
+            mock_mode = False
+
+    stood here, and `get_toast_client()` (api/toast_routes.py) — the router's
+    sole production caller — always passes `strict=True`. So the switch could
+    not gate the router at all. Measured on the pre-fix tree, 2026-09-03, with
+    the switch at its documented safe value and egress recorded at the socket
+    layer:
+
+        settings.toast_mock_mode       = True
+        client.mock_mode after factory = False
+        EGRESS ATTEMPTED: DNS for ws-api.toasttab.com:443
+
+    The reasoning behind that line was that strict-plus-mock is a contradiction
+    which can only produce a 503. It is a contradiction, and a 503 is the
+    correct resolution of it: an operator who asked for mock and gets a refusal
+    has been told the truth, whereas one who asked for mock and got a live,
+    billable third-party call has been overruled by code they cannot see.
+    Strict is a promise never to *fabricate*; it was never a licence to
+    *connect*. `connect()` raises ToastNotConfigured in that state and
+    `_raise_http_for` maps it to 503 — which is the whole switch, working.
+
+    Deleting the line is necessary but was NOT sufficient, and that is worth
+    recording: with the line gone but the fallback still credentials-derived,
+    the pre-fix tree still attempted DNS for ws-api.toasttab.com whenever
+    TOAST_CLIENT_ID and TOAST_CLIENT_SECRET were both set, because `not (id and
+    secret)` is False. Credentials being *present* is not consent to *use*
+    them. Hence the `True` fallback above.
+    """
+    mock_mode = getattr(settings, "toast_mock_mode", True)
+
     return ToastAPIClient(
         toast_client_id=settings.toast_client_id,
         toast_client_secret=settings.toast_client_secret,
         toast_restaurant_guid=settings.toast_restaurant_guid,
-        mock_mode=settings.toast_mock_mode,
+        mock_mode=mock_mode,
+        # UNVERIFIED which host is correct. The settings default
+        # ("https://ws-api.toasttab.com", config/settings.py:152-154) and this
+        # client's own constant ("https://api.toasttab.com") disagree, and that
+        # cannot be settled without a live Toast call, which this work is
+        # forbidden from making. Wiring the setting through is nonetheless
+        # right regardless of which string wins: it makes the host something an
+        # operator sets via TOAST_API_URL instead of dead config next to a
+        # hardcoded constant.
+        base_url=getattr(settings, "toast_api_url", None) or DEFAULT_TOAST_BASE_URL,
+        strict=strict,
     )

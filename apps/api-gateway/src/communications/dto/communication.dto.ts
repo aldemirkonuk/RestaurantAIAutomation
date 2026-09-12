@@ -45,22 +45,44 @@ export class SendEmailDto {
   @IsArray()
   @IsEmail({}, { each: true })
   bcc?: string[];
+
+  // ADR 0099 — the four threading fields.
+  //
+  // These are not new capability. `EmailOptions` (gmail.service.ts:36-48) has
+  // always carried them, `createMimeMessage` has always emitted `Reply-To`,
+  // `In-Reply-To` and `References`, and `users.messages.send` has always taken
+  // `threadId`. Only this DTO was missing them — and with
+  // `forbidNonWhitelisted: true` (main.ts:51-57) an undeclared field is not
+  // ignored, it is a 400. So every THREADED vendor reply from the orchestrator
+  // (`email_composer_service.py:345-352`) was rejected on validation, on top of
+  // being rejected on auth. The caller was not inventing fields.
+
+  @ApiPropertyOptional({ description: "Reply-To header" })
+  @IsOptional()
+  @IsEmail()
+  replyTo?: string;
+
+  @ApiPropertyOptional({
+    description: "Gmail thread id — appends this message to an existing thread",
+  })
+  @IsOptional()
+  @IsString()
+  threadId?: string;
+
+  @ApiPropertyOptional({ description: "RFC 5322 In-Reply-To message id" })
+  @IsOptional()
+  @IsString()
+  inReplyTo?: string;
+
+  @ApiPropertyOptional({ description: "RFC 5322 References chain" })
+  @IsOptional()
+  @IsString()
+  references?: string;
 }
 
-export class SendSmsDto {
-  @ApiProperty({
-    description: "Phone number in E.164 format",
-    example: "+14155551234",
-  })
-  @IsString()
-  to: string;
-
-  @ApiProperty({
-    description: "SMS message content (max 160 chars recommended)",
-  })
-  @IsString()
-  message: string;
-}
+// SendSmsDto was deleted with POST /communications/sms on 2026-09-02
+// (ADR 0084). It was the whole of the validation on an open SMS relay: `to` is
+// a string, `message` is a string. Nothing else references it.
 
 export class LowStockAlertDto {
   @ApiProperty({
@@ -146,9 +168,10 @@ export class DailySummaryDto {
   @IsNumber()
   pendingOrders: number;
 
-  @ApiProperty({ description: "Number of deliveries expected today" })
-  @IsNumber()
-  deliveriesToday: number;
+  // `deliveriesToday` was removed 2026-09-02 (ADR 0084). The scheduled sender
+  // fed it a hardcoded 0 and the SMS printed it beside two measured figures.
+  // The field is gone rather than made optional: an accepted-and-ignored
+  // parameter is the next reader's false lead.
 }
 
 export class WeeklyReportDto {
@@ -173,6 +196,14 @@ export class CommunicationResultDto {
 
   @ApiPropertyOptional({ description: "Message ID if available" })
   messageId?: string;
+
+  // ADR 0099 — the caller persists this as `procurement_conversations.
+  // gmail_thread_id` and feeds it back as `threadId` on the next reply
+  // (provider_conversation_agent.py:3090). `EmailResult.threadId` was always
+  // populated; the handler dropped it on the way out, so every reply would have
+  // started a new Gmail thread even once F1 and F2 were fixed.
+  @ApiPropertyOptional({ description: "Gmail thread id of the sent message" })
+  threadId?: string;
 
   @ApiPropertyOptional({ description: "Error message if failed" })
   error?: string;

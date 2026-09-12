@@ -6,9 +6,10 @@ registration and Workspace signup.
 domain that is already carrying real vendor traffic is materially harder later —
 vendors have the old `From:` address in their address books and reply chains.
 
-**Register note (2026-08-26):** OD-77 and OD-78 are *not* present in
-[OPEN-DECISIONS.md](OPEN-DECISIONS.md); they exist only in session chat. Add them
-to the register when the domain is chosen, per CLAUDE.md §0.2.
+**Register note (updated 2026-08-27):** OD-77 and OD-78 are now rows in
+[OPEN-DECISIONS.md](OPEN-DECISIONS.md). This runbook itself was committed
+2026-08-27 by the register backfill — until then it lived only as an untracked
+file in one checkout, one errant clean away from vanishing.
 
 **Related:** OD-27 (founder deferred the `wineops` → Mudavym string
 recalibration; that migration and this one should share one sender identity).

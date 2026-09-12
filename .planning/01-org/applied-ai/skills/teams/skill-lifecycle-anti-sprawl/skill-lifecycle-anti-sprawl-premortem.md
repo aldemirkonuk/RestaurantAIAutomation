@@ -24,7 +24,8 @@ links: ["[[skill-lifecycle-anti-sprawl-charter]]", "[[skill-lifecycle-anti-spraw
 [[technology]] §4.2's own premortem, and first here because it is the **enabling
 condition for every other failure**. The 30-day rule asks one question. Today the
 system cannot answer it: no `skill_id`, no invocation log, and L4 emits nothing
-([[README]] §1). Getting the field added means negotiating with
+([[README]] §1). *Corrected 2026-08-25: L4 emits since P1; `skill_id` and the
+invocation log are still absent, so the question is still unanswerable.* Getting the field added means negotiating with
 [[ai-orchestration-charter]] and `[[observability-telemetry-plumbing-charter|sre-observability]]` for a schema change on a
 table that does not exist yet, against OD-11 which is still open. That negotiation
 is slow, unglamorous, and belongs to a team with zero artifacts and no leverage. So

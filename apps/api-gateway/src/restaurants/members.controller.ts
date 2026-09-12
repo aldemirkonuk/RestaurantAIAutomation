@@ -58,7 +58,10 @@ export class MembersController {
     @Param("restaurantId") restaurantId: string,
     @Param("memberId") memberId: string,
     @Body() body: UpdateMemberRoleDto,
-  ): Promise<void> {
+  ) {
+    // Returns the audit receipt (ADR 0088): whether the change was recorded and
+    // whether the person was told. A record that silently failed to write must
+    // not look the same to a caller as one that succeeded.
     const userId = (req.user as AuthenticatedUser)?.userId;
     if (!userId) throw new ForbiddenException("Missing user identity");
     return this.membersService.updateMemberRole(

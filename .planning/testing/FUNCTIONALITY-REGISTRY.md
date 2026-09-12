@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical answer to “how tested is X?” — every surface maps to exactly one of 11 functionality groups.  
 **Requirements:** TFND-01 (this file) · TFND-02 ([RUBRIC.md](./RUBRIC.md)) · TFND-03/04 (future [EXISTING-TEST-INVENTORY.md](./EXISTING-TEST-INVENTORY.md), [TESTING-SCORECARD.md](./TESTING-SCORECARD.md))  
-**Operator catalog:** [.planning/UX_PATHS_CATALOG.md](../UX_PATHS_CATALOG.md) — status tags for manual pathway watchlist (Phase 43 fodder)  
+**Operator catalog:** [.planning/07-reference/UX_PATHS_CATALOG.md](../07-reference/UX_PATHS_CATALOG.md) — status tags for manual pathway watchlist (Phase 43 fodder)  
 **Locked groups:** CONTEXT D-09 / ROADMAP Testing Campaign seed — do not rename
 
 How tested is X? → find the surface in Tables A–D → read its **Primary group** → open [RUBRIC.md](./RUBRIC.md) for T0–T4 maturity · scorecard for current score.
@@ -128,8 +128,7 @@ Every `path=` from `App.tsx` Routes. Primary group is exactly one id/name per ro
 | `/providers` | Providers | 5 Procurement & Vendors | — | yes |
 | `/promotions` | Promotions | 6 Communications & Email Intelligence | also_touches: 5 | yes |
 | `/communications` | Communications | 6 Communications & Email Intelligence | — | yes |
-| `/calendar` | CalendarModular | 7 Calendar & Scheduling | — | yes (canonical) |
-| `/calendar-classic` | Calendar | 7 Calendar & Scheduling | — | legacy |
+| `/calendar` | CalendarModular | 7 Calendar & Scheduling | — | yes (canonical, sole calendar since 2026-08-26) |
 | `/` | Dashboard | 8 Analytics, Reports & Insights | — | yes |
 | `/reports` | Reports | 8 Analytics, Reports & Insights | — | yes |
 | `/documents-reports` | DocumentsPage | 8 Analytics, Reports & Insights | — | yes |
@@ -137,8 +136,6 @@ Every `path=` from `App.tsx` Routes. Primary group is exactly one id/name per ro
 | `/notifications` | Notifications | 9 Notifications & Alerts | — | yes |
 | `/recommendations` | Recommendations | 10 AI Assistants & Recommendations | — | yes |
 | `/sommelier` | SommelierAI | 10 AI Assistants & Recommendations | — | yes |
-| `/wine-agent` | PlaceholderPage | 10 AI Assistants & Recommendations | — | yes |
-| `/wineagent` | PlaceholderPage | 10 AI Assistants & Recommendations | — | yes |
 | `/admin` | AdminPanel | 11 Platform & Agent Infrastructure | — | yes |
 | `/admin/health` | AdminHealth | 11 Platform & Agent Infrastructure | — | yes |
 | `/dev-sandbox` | DevSandbox | 11 Platform & Agent Infrastructure | — | yes |
@@ -153,7 +150,7 @@ Every `path=` from `App.tsx` Routes. Primary group is exactly one id/name per ro
 ### Canonical vs legacy/orphan for manual pass
 
 - Prefer `/inventory` (command) over `/inventory-legacy` (`legacy`)
-- Prefer `/calendar` (modular) over `/calendar-classic` (`legacy`)
+- `/calendar` (modular) is the only calendar — `/calendar-classic` retired 2026-08-26
 - `RecurringOrders` = `orphan` — **not** a Phase 43 tick until routed
 
 ### Reserved future surface (Phase 38)
@@ -247,7 +244,7 @@ Suite ownership for Phases 39/40 = **registry primary group**. Do not dual-own o
 
 ## Manual pathway watchlist
 
-Flag for Gaps / Phase 43 checklists — **not** product fixes. Cite [.planning/UX_PATHS_CATALOG.md](../UX_PATHS_CATALOG.md):
+Flag for Gaps / Phase 43 checklists — **not** product fixes. Cite [.planning/07-reference/UX_PATHS_CATALOG.md](../07-reference/UX_PATHS_CATALOG.md):
 
 - **Auth:** Forgot password → non-existent route; Remember me unbound (`Login.tsx` / catalog §20)
 - **Scanner:** GetStarted scan/CSV/manual live; Wine Library menu-scanner persistence still mocked (catalog §E)

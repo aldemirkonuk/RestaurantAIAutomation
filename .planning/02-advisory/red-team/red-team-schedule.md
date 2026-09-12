@@ -100,5 +100,5 @@ manufacture a justification.
 | `questions.md` as a real file convention | [[ORG_STRUCTURE]] §3 defines it; every unit instantiates its own | **Zero exist.** The first finding creates the first one |
 | The open-fork register and its IDs | [[decision-office-charter]] | Exists; drifting (T6) |
 | Loop close-time tracking across the org | [[decision-office-charter]] | Proposed |
-| NF-A emission for `nf_a.doneability_verdict` | [[neural-footprint-instrumentation-charter]] | **Emits nothing yet** (foundation README §1, L4) |
+| NF-A emission for `nf_a.doneability_verdict` | [[neural-footprint-instrumentation-charter]] | *Corrected 2026-08-25:* emission shipped in P1; the open dependency is now **verdict coverage** for this task type ([[0017-doneability-verdicts-are-sidecar-claims]]) |
 | `.claude/skills/` as a working skill layer | [[skills-charter]] | One `README.md`. See OD-24 and [[red-team-agenda-full]] T5 |

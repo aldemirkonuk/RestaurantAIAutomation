@@ -14,7 +14,14 @@ class Settings:
     """Application settings loaded from environment variables."""
 
     def __init__(self):
-        self.claude_api_key: Optional[str] = os.getenv("CLAUDE_API_KEY")
+        # ANTHROPIC_API_KEY is the SDK's own conventional name and is what this
+        # deployment actually sets; reading only CLAUDE_API_KEY left this None and
+        # logged "Haiku calls will fail" on every boot. Calls still worked because
+        # the SDK falls back to ANTHROPIC_API_KEY itself — accurate config beats
+        # relying on that, and a misleading warning trains people to ignore logs.
+        self.claude_api_key: Optional[str] = os.getenv("CLAUDE_API_KEY") or os.getenv(
+            "ANTHROPIC_API_KEY"
+        )
         self.supabase_url: Optional[str] = os.getenv("SUPABASE_URL")
         self.supabase_key: Optional[str] = (
             os.getenv("SUPABASE_SERVICE_KEY")
@@ -99,8 +106,10 @@ class Settings:
         self.research_cascade_flash_model: str = os.getenv(
             "RESEARCH_CASCADE_FLASH_MODEL", "gemini-2.5-flash"
         )
+        # claude-sonnet-4-20250514 was RETIRED — verified 404 against the live API
+        # on 2026-08-24, same class of dead default as gemini-2.0-flash (ADR 0010).
         self.research_cascade_sonnet_model: str = os.getenv(
-            "RESEARCH_CASCADE_SONNET_MODEL", "claude-sonnet-4-20250514"
+            "RESEARCH_CASCADE_SONNET_MODEL", "claude-sonnet-5"
         )
         # Phase 12.1: Entity cache (D-04)
         self.redis_url: Optional[str] = os.getenv("REDIS_URL")
@@ -149,6 +158,35 @@ class Settings:
         self.toast_webhook_secret: Optional[str] = os.getenv("TOAST_WEBHOOK_SECRET")
         self.toast_environment: str = os.getenv("TOAST_ENVIRONMENT", "sandbox")
         self.mock_pos: bool = os.getenv("MOCK_POS", "true").lower() == "true"
+        # create_toast_client_from_settings() reads `settings.toast_mock_mode`
+        # (services/toast_api_client.py:547) — an attribute this class had never
+        # defined, so that factory raised AttributeError on every call. It went
+        # unnoticed because the factory has no callers: every existing client is
+        # built via ToastAPIClient(...) directly. The /api/v1/toast router is the
+        # first caller, which is why this is being defined now.
+        #
+        # Deliberately NOT `self.mock_pos`. MOCK_POS is false in production, so
+        # aliasing would turn a bug fix into a silent switch to real, billable
+        # calls against a third-party API — a commercial decision (OD-64) taken
+        # by nobody. This reads its own key and defaults to the same safe value
+        # the gateway uses (TOAST_MOCK_MODE, default true —
+        # apps/api-gateway/src/toast/toast.service.ts:72), so one key now
+        # governs Toast mocking on both services.
+        #
+        # The polarity of the parse is the point. Written as `== "true"` this
+        # was fail-OPEN for everything that is not the literal word: measured
+        # 2026-09-03, `TOAST_MOCK_MODE=yes`, `=1` and `=""` all produced
+        # mock_mode False, i.e. LIVE, billable calls to a third-party API from
+        # a typo. A mock switch is a safety switch, so only an explicit,
+        # unambiguous opt-out may disarm it: anything that is not exactly
+        # "false" (case-insensitive, trimmed) means mock. Unset means mock.
+        # Malformed means mock. That is fail-closed, and it is why this is not
+        # written the same way as `self.debug` above — `debug` fails closed on
+        # `== "true"` because its safe value is False, and Toast's safe value
+        # is True.
+        self.toast_mock_mode: bool = (
+            os.getenv("TOAST_MOCK_MODE", "true").strip().lower() != "false"
+        )
 
         # Phase 21: Inventory and buffer configuration (E2E-v2-02, E2E-v2-03)
         self.buffer_window_minutes: int = int(os.getenv("BUFFER_WINDOW_MINUTES", "30"))
@@ -167,7 +205,19 @@ class Settings:
         self.llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 
         # Phase 24: Email intelligence model selection (model_clients.py)
-        self.gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        # gemini-2.0-flash was SHUT DOWN 2026-06-01; the old default 404'd on every
+        # call and dead-lettered all inbound mail. Replaced per ADR 0010.
+        self.gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+        # Classification escalation (ADR 0010). The primary model scored 54/54 on
+        # the eval set and never fell below this floor, so escalation is a safety
+        # net for genuinely ambiguous mail, not a routine second opinion — the
+        # escalation model costs roughly 10x per token.
+        self.email_intel_escalation_model: str = os.getenv(
+            "EMAIL_INTEL_ESCALATION_MODEL", "claude-sonnet-5"
+        )
+        self.email_intel_escalation_threshold: float = float(
+            os.getenv("EMAIL_INTEL_ESCALATION_THRESHOLD", "0.70")
+        )
         self.haiku_model: str = os.getenv("HAIKU_MODEL", "claude-haiku-4-5-20251001")
         # Phase 24: ProviderConversationAgent Level 4 feature flag (COMMS-07, R-11)
         # Default=False — canary rollout per D-05. Set PROV_AGENT_LEVEL4_ENABLED=true to enable.

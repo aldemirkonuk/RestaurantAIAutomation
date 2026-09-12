@@ -113,7 +113,9 @@ richer answers", the model hallucinates a margin figure in front of a customer, 
 credibility cost exceeds everything the deterministic engine earned. The compounding
 factor: `PUT /analytics/consultants/:restaurantId/toggle`
 (`analytics.controller.ts:516`) is one of 39 unguarded routes, so **anyone on the
-internet can flip it too** — OD-20, live today.
+internet can flip it too** — OD-20, live today. *Corrected 2026-08-25: OD-20 is
+RESOLVED (`analytics.controller.ts:51`), so this compounding factor is gone; the
+hallucinated-margin failure below stands on its own.*
 
 **Earliest observable signal.** An `analytics_insight_prefs` row with
 `category = 'consultants'` and `enabled = true` that has been true for longer than one
@@ -126,8 +128,12 @@ pack" instruction.
 ([[analytics-bi-schedule]]) lists every enabled row with its age. Separately: no claim
 produced by the consultant layer is ever quoted outside the product without a
 deterministic number behind it — the `YC_WEDGE_PLAN.md:31-33` "we asked ≠ we received"
-rule generalised. And [[security-charter]] carries OD-20 with a close-time; this
-department refuses to demo the consultant layer while the toggle route is unguarded.
+rule generalised. And [[security-charter]] carried OD-20 with a close-time; this
+department refused to demo the consultant layer while the toggle route was unguarded.
+*Corrected 2026-09-01: that refusal has lapsed — PR #31 (2026-08-24) guarded the
+controller (`analytics.controller.ts:51`, class-level `@UseGuards(JwtAuthGuard)`) and
+OD-20 is resolved. The expiry-and-named-owner prevention above is untouched by that fix
+and is still the live half of this entry.*
 
 ---
 
@@ -169,9 +175,10 @@ is the register's first entry, not an example of it.
 - **Advisory is findings-only** ([[ORG_STRUCTURE]] §3). [[red-team-charter]] should attack
   M5 first — it is the mechanism with a commercial incentive behind it, which makes it
   the one this department is least able to police from inside.
-- **[[decision-office-charter]] owns the close-times** on the two dependencies this
-  department does not control: SimPOS (§44.7, blocking AB-3) and OD-20 (blocking honest
-  demos of AB-2's consultant layer).
+- **[[decision-office-charter]] owns the close-times** on the dependencies this
+  department does not control: SimPOS (§44.7, blocking AB-3), and formerly OD-20, which
+  blocked honest demos of AB-2's consultant layer. *Corrected 2026-09-01: OD-20 closed
+  2026-08-24 (PR #31, `analytics.controller.ts:51`), leaving SimPOS as the only one.*
 - **Anti-sprawl applies here too.** If nothing in this document has been revisited in 60
   days it is fiction (foundation §3.3, §6) — and the first thing to check is whether
   `analytics.metric_claim_divergence_count` is still ≥ 2.

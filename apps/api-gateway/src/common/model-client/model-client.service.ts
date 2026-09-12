@@ -63,6 +63,36 @@ export class ModelClientError extends Error {
   }
 }
 
+/**
+ * A handle on the NF row a call is about to write, for callers that can grade
+ * their own work AFTER the fact (OD-59).
+ *
+ * Why a promise and not a return value: emission is deliberately
+ * fire-and-forget (see `emit`), so when `call()` resolves, the insert may not
+ * have run yet. Returning the id would mean awaiting the insert on the user
+ * path — exactly the coupling the emitter was built to avoid.
+ *
+ * `id` ALWAYS settles, including when the emit is dropped, in which case it
+ * resolves `null`. A verdict writer awaiting a ref that never settled would
+ * leak a pending promise per call.
+ */
+export class NfEventRef {
+  private settleFn!: (id: string | null) => void;
+  private settled = false;
+
+  /** The row id once written, or null if the emit was dropped. Never rejects. */
+  readonly id: Promise<string | null> = new Promise((resolve) => {
+    this.settleFn = resolve;
+  });
+
+  /** @internal — only ModelClientService settles a ref. */
+  settle(id: string | null): void {
+    if (this.settled) return; // a second settle must not throw
+    this.settled = true;
+    this.settleFn(id);
+  }
+}
+
 export interface NfMeta {
   /**
    * Agent identity in the existing decision_log `agent_name` style —
@@ -85,6 +115,18 @@ export interface NfMeta {
   correlationId?: string | null;
   /** Extra keys merged into the context jsonb (persona, url, chunk index...). */
   context?: Record<string, unknown>;
+  /**
+   * The registry skill that fired for this call, when one did (ADR 0039 A4).
+   * Optional passthrough: no call site sets it today, and a call that is not a
+   * skill firing must leave it unset rather than invent a value — the column is
+   * nullable forever and NULL there means "not a skill task", never "unknown".
+   */
+  skillId?: string | null;
+  /**
+   * Supply a ref to receive this call's NF row id, for sites that grade their
+   * own output once it has been parsed (OD-59). Omit it and nothing changes.
+   */
+  eventRef?: NfEventRef;
 }
 
 export interface ModelCallOptions {
@@ -282,12 +324,17 @@ export class ModelClientService {
   ): void {
     // The `void` convention is enforced HERE rather than at call sites so no
     // site can forget it — emission latency never rides a user path.
-    void this.persistNfEvent(nf, call).catch((err: any) => {
-      this.nfDropCount++;
-      this.logger.warn(
-        `neural_footprint_event emit failed (${this.nfDropCount} dropped since boot): ${err?.message ?? err}`,
-      );
-    });
+    void this.persistNfEvent(nf, call)
+      .catch((err: any) => {
+        this.nfDropCount++;
+        this.logger.warn(
+          `neural_footprint_event emit failed (${this.nfDropCount} dropped since boot): ${err?.message ?? err}`,
+        );
+      })
+      // A dropped emit still settles the ref, with null. Without this, a site
+      // awaiting `ref.id` to write a verdict would hang forever on exactly the
+      // rows that failed — a leak that grows with the failure it is hiding.
+      .finally(() => nf.eventRef?.settle(null));
   }
 
   private async persistNfEvent(
@@ -366,7 +413,10 @@ export class ModelClientService {
       ...(nf.context ?? {}),
     };
 
-    const { error } = await this.databaseService.supabase
+    // `.select("id")` only when a caller asked for the id — an unconditional
+    // RETURNING would add a round-trip cost to all 9 emitting sites to serve
+    // the one that grades itself.
+    const insert = this.databaseService.supabase
       .from("neural_footprint_event")
       .insert({
         subject_type: "agent",
@@ -387,8 +437,26 @@ export class ModelClientService {
         duration_ms: Math.round(call.durationMs),
         correlation_id: nf.correlationId ?? getCorrelationId(),
         restaurant_id: nf.restaurantId ?? null,
+        // Spread ONLY when set, and that is correctness rather than tidiness:
+        // PostgREST rejects the whole row for an unknown column, so writing
+        // `skill_id: null` unconditionally would drop every emit in any
+        // environment where 20260828103059_nf_skill_id.sql has not landed yet —
+        // an optional passthrough taking the instrument down. Omitting the key
+        // leaves the column at its NULL default: the same stored row, no risk.
+        ...(nf.skillId ? { skill_id: nf.skillId } : {}),
       });
+
+    if (!nf.eventRef) {
+      const { error } = await insert;
+      if (error) throw new Error(error.message);
+      return;
+    }
+
+    const { data, error } = await insert.select("id").single();
     if (error) throw new Error(error.message);
+    // Settling before the caller's grader runs is the whole point; a row that
+    // wrote but returned no id settles null rather than pretending.
+    nf.eventRef.settle((data as { id?: string } | null)?.id ?? null);
   }
 
   /**

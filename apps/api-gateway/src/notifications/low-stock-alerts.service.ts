@@ -8,12 +8,30 @@ import {
 import { Cron } from "@nestjs/schedule";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
+import { CRITICAL_RATIO, classifyStock } from "../common/stock-status";
 import { NotificationsService } from "./notifications.service";
 import { GmailService } from "../communications/gmail.service";
 import { RecipientResolverService } from "../communications/recipient-resolver.service";
 import type { LowStockDigestWine } from "../communications/email-templates";
 
 type AlertLevel = "ok" | "low" | "critical";
+
+/**
+ * What a low-stock email attempt actually did, written to
+ * `notifications.delivery_status.email` (ADR 0093 D5).
+ *
+ * `recipients` is a COUNT and never an address (ADR 0040). `ok: false` with an
+ * `error` is a measured failure; the ABSENCE of this object on a row means the
+ * attempt was never recorded, which a reader must render as unknown rather
+ * than as "not sent" (ADR 0020).
+ */
+export interface EmailDeliveryOutcome {
+  attempted_at: string;
+  ok: boolean;
+  error: string | null;
+  recipients: number;
+  mode: "instant" | "digest";
+}
 
 interface LowStockRow {
   inventoryId: string;
@@ -48,8 +66,12 @@ interface LowStockRow {
 export class LowStockAlertsService {
   private readonly logger = new Logger(LowStockAlertsService.name);
 
-  /** Wines at/under 50% of par are "critical"; between 50%–100% are "low". */
-  private readonly CRITICAL_RATIO = 0.5;
+  /**
+   * Wines at/under 50% of par are "critical"; below that and under par, "low".
+   * The number lives in `common/stock-status.ts` now — re-exported here only so
+   * the digest copy that quotes it cannot quote a different one.
+   */
+  private readonly CRITICAL_RATIO = CRITICAL_RATIO;
   /** Re-running the daily digest inside this window won't double-post. */
   private readonly DIGEST_DEDUPE_MINUTES = 12 * 60;
 
@@ -184,16 +206,22 @@ export class LowStockAlertsService {
       const isNew = prev === "ok" || (prev === "low" && cur === "critical");
       if (isNew) newCrossings.push(row);
 
+      // The LEVEL is written first and unconditionally, because it is the
+      // dedupe: only a crossing whose new level we DURABLY recorded is
+      // eligible to alert, so a DB blip cannot make us re-send forever.
+      //
+      // `last_alerted_at` and `alert_count` are NOT written here any more.
+      // They used to be, inside this loop, before the cooldown check below and
+      // before prefs had decided whether anything would be sent — so the
+      // ledger claimed 7 alerts while `notifications` held 2 rows covering 3
+      // wines (POS lens, absence-as-health 8). A ledger that timestamps an
+      // alert nobody received answers "did we tell them?" with a confident,
+      // wrong yes.
       const persisted = await this.upsertState(restaurantId, {
         inventoryId: row.inventoryId,
         wineName: row.wineName,
         level: cur,
-        bumpAlert: isNew,
-        alertedAt: isNew ? nowIso : undefined,
       });
-      // Fail-closed: only a crossing whose new level we DURABLY recorded is
-      // eligible to alert. If the write failed, we leave it untouched and retry
-      // next sweep — so a DB blip can't make us re-send the same alert forever.
       if (isNew && persisted) persistedNew.push(row);
     }
 
@@ -205,20 +233,131 @@ export class LowStockAlertsService {
         prefs.instantFirstAlert ||
         (w.severity === "critical" && prefs.criticalImmediate),
     );
+    const heldByPrefs = persistedNew.filter((w) => !immediate.includes(w));
     const now = Date.now();
     const cooledDown =
       now - (this.lastInstantAt.get(restaurantId) ?? 0) >=
       this.INSTANT_COOLDOWN_MS;
+
     if (immediate.length > 0 && cooledDown) {
       this.lastInstantAt.set(restaurantId, now);
-      await this.fireInstantAlert(restaurantId, immediate, restaurantName);
+      const delivered = await this.fireInstantAlert(
+        restaurantId,
+        immediate,
+        restaurantName,
+      );
+      // Stamped only now, and only for the wines the notification names. If
+      // `persistForRestaurant` produced no row, `delivered` is false and these
+      // wines are recorded as held rather than as alerted — the same defect
+      // one layer down, and it must not be reintroduced there.
+      await this.recordAlertOutcome(
+        restaurantId,
+        immediate,
+        delivered ? { alertedAt: nowIso } : { heldAt: nowIso, reason: "prefs" },
+      );
     } else if (immediate.length > 0) {
       this.logger.log(
         `Low-stock instant alert for ${restaurantId} suppressed by cooldown (${immediate.length} wines roll into the digest).`,
       );
+      await this.recordAlertOutcome(restaurantId, immediate, {
+        heldAt: nowIso,
+        reason: "instant_cooldown",
+      });
+    }
+
+    // Crossings the manager's own settings held back are real crossings that
+    // nobody has been told about. Recording them as held is what makes
+    // "waiting for tonight's digest" visible instead of looking like nothing
+    // happened.
+    if (heldByPrefs.length > 0) {
+      await this.recordAlertOutcome(restaurantId, heldByPrefs, {
+        heldAt: nowIso,
+        reason: "prefs",
+      });
     }
 
     return { newCrossings };
+  }
+
+  /**
+   * Crossings that have happened and that nobody has been told about yet.
+   *
+   * This is the read side of the ledger fix. Before it, a crossing suppressed
+   * by the instant cooldown or by the manager's own preferences was
+   * indistinguishable from a crossing that never happened — both left
+   * `last_alerted_at` looking settled — so "the digest will cover it tonight"
+   * and "nothing is wrong" rendered identically. The queue is small and the
+   * consequence of not knowing about it is a stockout, so it is worth a row on
+   * the screen rather than a line in a log.
+   *
+   * A failed read throws rather than returning an empty list (ADR 0067): an
+   * empty held-queue is good news, and good news must be measured.
+   */
+  async listHeldCrossings(restaurantId: string): Promise<{
+    restaurant_id: string;
+    held: Array<{
+      inventory_id: string;
+      wine_name: string | null;
+      level: string;
+      held_at: string;
+      reason: string | null;
+    }>;
+    summary: { count: number; critical: number; oldest_held_at: string | null };
+  }> {
+    const { data, error } = await this.db.supabase
+      .from("inventory_alert_state")
+      .select(
+        "inventory_id, wine_name, last_alert_level, last_held_at, last_held_reason",
+      )
+      .eq("restaurant_id", restaurantId)
+      .not("last_held_at", "is", null)
+      .order("last_held_at", { ascending: false });
+    if (error) throw new Error(error.message);
+
+    const held = (data || []).map((r: any) => ({
+      inventory_id: r.inventory_id,
+      wine_name: r.wine_name ?? null,
+      level: r.last_alert_level ?? "low",
+      held_at: r.last_held_at,
+      reason: r.last_held_reason ?? null,
+    }));
+    return {
+      restaurant_id: restaurantId,
+      held,
+      summary: {
+        count: held.length,
+        critical: held.filter((h) => h.level === "critical").length,
+        oldest_held_at: held.length > 0 ? held[held.length - 1].held_at : null,
+      },
+    };
+  }
+
+  /**
+   * Write what actually became of a crossing.
+   *
+   * Exactly one of two things is true of every crossing that reaches here: a
+   * notification row exists for it, or it is waiting. Both are recorded;
+   * neither is inferred from the absence of the other, because
+   * `last_alerted_at IS NULL` already means "no crossing detected" and
+   * overloading it with "held" would put us back where we started.
+   */
+  private async recordAlertOutcome(
+    restaurantId: string,
+    wines: LowStockRow[],
+    outcome:
+      | { alertedAt: string }
+      | { heldAt: string; reason: "instant_cooldown" | "prefs" },
+  ): Promise<void> {
+    for (const w of wines) {
+      await this.upsertState(restaurantId, {
+        inventoryId: w.inventoryId,
+        wineName: w.wineName,
+        level: w.severity,
+        ...("alertedAt" in outcome
+          ? { bumpAlert: true, alertedAt: outcome.alertedAt, clearHold: true }
+          : { heldAt: outcome.heldAt, heldReason: outcome.reason }),
+      });
+    }
   }
 
   // ==========================================================================
@@ -289,7 +428,9 @@ export class LowStockAlertsService {
     restaurantId: string,
     wines: LowStockRow[],
     restaurantName?: string,
-  ): Promise<void> {
+    /** True only when an inbox row was actually written. The caller stamps the
+     * ledger on this, so it must never report success it did not observe. */
+  ): Promise<boolean> {
     const criticalCount = wines.filter((w) => w.severity === "critical").length;
     const priority: "critical" | "high" =
       criticalCount > 0 ? "critical" : "high";
@@ -302,33 +443,48 @@ export class LowStockAlertsService {
         : `${criticalCount > 0 ? "🚨" : "⚠️"} ${wines.length} wines dropped below par`;
 
     // 1) In-app inbox — the reliable channel (works even with no email set up).
-    await this.notifications.persistForRestaurant(restaurantId, {
-      type: "inventory_low_stock",
-      title,
-      message:
-        wines.length === 1
-          ? `Only ${wines[0].currentStock} bottles remaining (par: ${wines[0].threshold})`
-          : `Just crossed below par: ${list}`,
-      priority,
-      actionUrl: "/inventory?filter=low-stock",
-      actionLabel: "View Inventory",
-      groupKey: `low_stock_instant:${Date.now()}`,
-      metadata: {
-        mode: "instant",
-        count: wines.length,
-        criticalCount,
-        wines: wines.map((w) => ({
-          wineId: w.wineId,
-          wineName: w.wineName,
-          currentStock: w.currentStock,
-          threshold: w.threshold,
-          severity: w.severity,
-        })),
+    const persisted = await this.notifications.persistForRestaurant(
+      restaurantId,
+      {
+        type: "inventory_low_stock",
+        title,
+        message:
+          wines.length === 1
+            ? `Only ${wines[0].currentStock} bottles remaining (par: ${wines[0].threshold})`
+            : `Just crossed below par: ${list}`,
+        priority,
+        actionUrl: "/inventory?filter=low-stock",
+        actionLabel: "View Inventory",
+        groupKey: `low_stock_instant:${Date.now()}`,
+        metadata: {
+          mode: "instant",
+          count: wines.length,
+          criticalCount,
+          wines: wines.map((w) => ({
+            wineId: w.wineId,
+            wineName: w.wineName,
+            currentStock: w.currentStock,
+            threshold: w.threshold,
+            severity: w.severity,
+          })),
+        },
       },
-    });
+    );
 
     // 2) Email — one grouped digest email for the burst.
-    await this.emailDigest(restaurantId, wines, "instant", restaurantName);
+    const outcome = await this.emailDigest(
+      restaurantId,
+      wines,
+      "instant",
+      restaurantName,
+    );
+    await this.recordEmailOutcome(persisted?.ids, outcome);
+
+    // The INBOX row is what "we told them" means here — email delivery is
+    // recorded separately and is allowed to fail (the lens run's two alerts
+    // both carried `email = {ok:false, error:"no_recipients"}` and that was
+    // correct). A falsy `persisted` means no inbox row, so nothing was told.
+    return Boolean(persisted);
   }
 
   /**
@@ -344,7 +500,7 @@ export class LowStockAlertsService {
     const criticalCount = rows.filter((w) => w.severity === "critical").length;
     const dateStr = new Date().toISOString().slice(0, 10);
 
-    await this.notifications.persistForRestaurant(
+    const persisted = await this.notifications.persistForRestaurant(
       restaurantId,
       {
         type: "inventory_low_stock",
@@ -370,7 +526,13 @@ export class LowStockAlertsService {
       { dedupeWithinMinutes: this.DIGEST_DEDUPE_MINUTES },
     );
 
-    await this.emailDigest(restaurantId, rows, "digest", restaurantName);
+    const outcome = await this.emailDigest(
+      restaurantId,
+      rows,
+      "digest",
+      restaurantName,
+    );
+    await this.recordEmailOutcome(persisted?.ids, outcome);
 
     // Stamp the digest time on the ledger.
     const nowIso = new Date().toISOString();
@@ -384,20 +546,46 @@ export class LowStockAlertsService {
     }
   }
 
-  /** Send the batched email via Gmail, resolving low-stock email recipients. */
+  /**
+   * Send the batched email via Gmail, and REPORT what happened.
+   *
+   * This used to return `void` on every path — sent, threw, no Gmail, no
+   * recipients — and the only trace of a failure was a `logger.warn` nobody
+   * can query. An email that never left read exactly like one that did
+   * ([[absence-reported-as-health]]). The outcome now travels back to the
+   * caller, which stamps it on the notification rows (ADR 0093 D5).
+   */
   private async emailDigest(
     restaurantId: string,
     rows: LowStockRow[],
     mode: "instant" | "digest",
     restaurantName?: string,
-  ): Promise<void> {
-    if (!this.gmail) return;
+  ): Promise<EmailDeliveryOutcome> {
+    const attempted_at = new Date().toISOString();
+    if (!this.gmail) {
+      this.logger.log(
+        `Low-stock ${mode} for ${restaurantId}: Gmail is not configured — inbox only`,
+      );
+      return {
+        attempted_at,
+        ok: false,
+        error: "gmail_not_configured",
+        recipients: 0,
+        mode,
+      };
+    }
     const emails = await this.resolveEmails(restaurantId);
     if (emails.length === 0) {
       this.logger.log(
         `Low-stock ${mode} for ${restaurantId}: no email recipients — inbox only`,
       );
-      return;
+      return {
+        attempted_at,
+        ok: false,
+        error: "no_recipients",
+        recipients: 0,
+        mode,
+      };
     }
     const wines: LowStockDigestWine[] = rows.map((w) => ({
       wineName: w.wineName,
@@ -414,8 +602,72 @@ export class LowStockAlertsService {
         restaurantName,
         inventoryUrl: this.inventoryUrl(),
       });
+      return {
+        attempted_at,
+        ok: true,
+        error: null,
+        // COUNT ONLY. ADR 0040: an address never lands in a row a page
+        // renders, and "who was told" is not a question this column answers.
+        recipients: emails.length,
+        mode,
+      };
     } catch (e: any) {
       this.logger.warn(`Low-stock ${mode} email failed: ${e?.message}`);
+      return {
+        attempted_at,
+        ok: false,
+        error: e?.message ? String(e.message) : "unknown_error",
+        recipients: emails.length,
+        mode,
+      };
+    }
+  }
+
+  /**
+   * Stamp the send outcome onto `notifications.delivery_status.email`.
+   *
+   * Read-modify-write on purpose: `delivery_status` is a shared jsonb bag and
+   * other channels (push, SMS) may own their own keys in it. A blind
+   * `update({ delivery_status: { email } })` would DELETE theirs, which is a
+   * quieter version of the same fault this whole change is about.
+   *
+   * Best-effort and never thrown: the alert itself already landed, and losing
+   * the audit stamp must not lose the alert. A failure is logged with the ids
+   * it could not stamp, so the gap is enumerable rather than invisible.
+   */
+  private async recordEmailOutcome(
+    notificationIds: string[] | undefined,
+    outcome: EmailDeliveryOutcome,
+  ): Promise<void> {
+    if (!notificationIds?.length) return;
+    try {
+      const { data, error } = await this.db.supabase
+        .from("notifications")
+        .select("id, delivery_status")
+        .in("id", notificationIds);
+      if (error) {
+        this.logger.warn(
+          `delivery_status read failed for ${notificationIds.length} notification(s): ${error.message} — the email outcome (${outcome.ok ? "sent" : outcome.error}) is not recorded on them`,
+        );
+        return;
+      }
+      for (const row of data ?? []) {
+        const existing =
+          row.delivery_status && typeof row.delivery_status === "object"
+            ? row.delivery_status
+            : {};
+        const { error: updateError } = await this.db.supabase
+          .from("notifications")
+          .update({ delivery_status: { ...existing, email: outcome } })
+          .eq("id", row.id);
+        if (updateError) {
+          this.logger.warn(
+            `delivery_status write failed for notification ${row.id}: ${updateError.message}`,
+          );
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`delivery_status stamp failed: ${e?.message}`);
     }
   }
 
@@ -554,8 +806,24 @@ export class LowStockAlertsService {
     const currentStock = Number(raw.stock_live ?? raw.current_stock ?? 0);
     const threshold = Number(raw.threshold_min ?? raw.par_level ?? 10);
     if (!(threshold > 0)) return null;
-    const severity: "critical" | "low" =
-      currentStock <= threshold * this.CRITICAL_RATIO ? "critical" : "low";
+    // The same `classifyStock` the /inventory chip and /summary now use
+    // (common/stock-status.ts, pinned by datasets/sim/fixtures/below-par-cases.json).
+    // This service and the page disagreed on the lens run — it called Tsantali
+    // at 2/5 "critical" while /summary reported criticalCount 0 — and the only
+    // durable fix for two implementations of one rule is to stop having two.
+    const band = classifyStock(currentStock, threshold);
+    // Rows arrive from v_low_stock_items, which is already `stock < par`, so
+    // `at_par`/`healthy` cannot appear here. If one ever does — the view and
+    // this predicate having drifted — it is dropped rather than alerted on,
+    // and said so, because alerting a venue about a wine that is not low is
+    // how people learn to ignore alerts.
+    if (band !== "critical" && band !== "low") {
+      this.logger.warn(
+        `v_low_stock_items returned ${raw.wine_name ?? inventoryId} at ${currentStock}/${threshold}, which classifyStock calls '${band}' — not alerting. The view's predicate and common/stock-status.ts have drifted.`,
+      );
+      return null;
+    }
+    const severity: "critical" | "low" = band;
     return {
       inventoryId,
       wineId: raw.wine_id ?? raw.master_wine_id ?? inventoryId,
@@ -598,6 +866,11 @@ export class LowStockAlertsService {
       bumpAlert?: boolean;
       alertedAt?: string;
       digestAt?: string;
+      /** A crossing detected and deliberately not sent yet. */
+      heldAt?: string;
+      heldReason?: "instant_cooldown" | "prefs";
+      /** Something was sent, so the hold is over. */
+      clearHold?: boolean;
     },
   ): Promise<boolean> {
     const nowIso = new Date().toISOString();
@@ -610,6 +883,17 @@ export class LowStockAlertsService {
     };
     if (p.alertedAt) row.last_alerted_at = p.alertedAt;
     if (p.digestAt) row.last_digest_at = p.digestAt;
+    if (p.heldAt) {
+      row.last_held_at = p.heldAt;
+      row.last_held_reason = p.heldReason ?? null;
+    }
+    // An alert going out ends the hold. Leaving a stale `last_held_at` behind
+    // would make an alerted wine look like one still waiting, which is the
+    // same fault as the one this column was added to fix, mirrored.
+    if (p.clearHold) {
+      row.last_held_at = null;
+      row.last_held_reason = null;
+    }
     try {
       // Count how many times we've alerted on this item (best-effort, +1 per
       // new crossing). Read-modify is fine: the sweep is single-writer.
@@ -653,20 +937,58 @@ export class LowStockAlertsService {
     return map;
   }
 
-  /** Resolve low-stock email recipients (honours low_stock_channels), env fallback. */
+  /**
+   * Resolve low-stock email recipients for ONE restaurant.
+   *
+   * `MANAGER_EMAIL` names a single restaurant's manager, so it is only a legal
+   * answer for the legacy default tenant (`DEFAULT_RESTAURANT_ID`). This method
+   * is called from `emailDigest(restaurantId, …)`, once per restaurant, so
+   * reaching for that env var unconditionally sent restaurant B's stock levels
+   * to restaurant A's inbox — the same cross-tenant leak OD-87 / ADR 0022 closed
+   * inside the resolver, reproduced one layer up in this caller.
+   *
+   * It leaked twice over, because both layers fell back:
+   *   1. `resolveRecipients` was called without `allowDefaultFallback`, which
+   *      defaults to `true`, so the resolver substituted the global address; and
+   *   2. if that still produced nothing, the `MANAGER_EMAIL` read below
+   *      substituted it again.
+   *
+   * Both are now gated on the restaurant actually being the legacy default.
+   * For every other tenant an unresolvable recipient list is an empty list and
+   * a WARN — never another tenant's address. The caller already treats empty as
+   * "inbox only" and logs it, so nothing is silently dropped.
+   */
   private async resolveEmails(restaurantId: string): Promise<string[]> {
+    const defaultRestaurantId =
+      this.config.get<string>("DEFAULT_RESTAURANT_ID") || null;
+    const isLegacyDefault =
+      defaultRestaurantId !== null && restaurantId === defaultRestaurantId;
+
     if (this.recipientResolver) {
       try {
         const res = await this.recipientResolver.resolveRecipients({
           restaurantId,
           roles: ["manager"],
           channels: ["email"],
+          allowDefaultFallback: isLegacyDefault,
         });
         if (res.emails?.length) return res.emails;
-      } catch {
-        /* fall through to env */
+      } catch (error) {
+        this.logger.warn(
+          `Low-stock recipient resolution failed for ${restaurantId}: ${error}`,
+        );
       }
     }
+
+    if (!isLegacyDefault) {
+      this.logger.warn(
+        `RECIPIENTS_NONE restaurant=${restaurantId} roles=manager — low-stock email ` +
+          "resolved to nobody. The global MANAGER_EMAIL fallback belongs to " +
+          "another tenant and is not used here; sending nothing.",
+      );
+      return [];
+    }
+
     const env = this.config.get<string>("MANAGER_EMAIL") || "";
     return env
       .split(",")

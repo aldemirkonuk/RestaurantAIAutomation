@@ -41,7 +41,8 @@ status: blocked
 ```
 
 **Blocked on:** `skill_id` does not exist on the NF-A event, and L4 emits nothing
-([[README]] §1). Until then `firing_rate_30d` is undefined, not zero — the
+([[README]] §1). *Corrected 2026-08-25: L4 emits since P1 — the remaining blocker is
+`skill_id`, which is still absent from the event and from every migration.* Until then `firing_rate_30d` is undefined, not zero — the
 distinction matters, because undefined defaults to "keep" and zero defaults to
 "delete".
 

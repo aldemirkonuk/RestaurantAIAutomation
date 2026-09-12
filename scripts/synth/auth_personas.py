@@ -85,7 +85,10 @@ def _create_or_find_user(
         "password": password,
         "email_confirm": True,
         "app_metadata": {"roles": ["sim", role]},
-        "user_metadata": {"full_name": f"Sim {role.title()} (Phase 37)", "sim_role": role},
+        "user_metadata": {
+            "full_name": f"Sim {role.title()} (Phase 37)",
+            "sim_role": role,
+        },
     }
     # Do not log payload — contains password
     resp = client.post(url, json=payload, headers=headers, timeout=30.0)
@@ -100,7 +103,9 @@ def _create_or_find_user(
     if resp.status_code == 422 and (
         "already registered" in body_l or "already been registered" in body_l
     ):
-        user_id = _lookup_user_id(client, supabase_url=supabase_url, headers=headers, email=email)
+        user_id = _lookup_user_id(
+            client, supabase_url=supabase_url, headers=headers, email=email
+        )
         if not user_id:
             raise RuntimeError(
                 f"Auth user {email!r} already registered but id lookup failed"
@@ -123,7 +128,9 @@ def _lookup_user_id(
     """List admin users and find by email (idempotent path)."""
     # Prefer filter query when supported; fall back to list page.
     url = f"{supabase_url.rstrip('/')}/auth/v1/admin/users"
-    resp = client.get(url, headers=headers, params={"page": 1, "per_page": 200}, timeout=30.0)
+    resp = client.get(
+        url, headers=headers, params={"page": 1, "per_page": 200}, timeout=30.0
+    )
     if resp.status_code != 200:
         return None
     data = resp.json()
@@ -145,8 +152,17 @@ def _upsert_public_user(
     user_id: str,
     email: str,
     role: str,
+    password: str | None = None,
 ) -> None:
-    """Mirror Auth user into public.users without bcrypt hand-roll."""
+    """Mirror the Auth user into public.users, with a sign-in method the product honours.
+
+    The gateway's own `POST /auth/login` does not consult Supabase Auth: it
+    bcrypt-compares `users.password_hash` (auth.service.ts:209) and answers
+    `NO_SIGNIN_METHOD` when the column is null. Until 2026-09-03 the mirror
+    carried no hash, so a persona that existed in Auth could not sign in to the
+    product it was seeded to exercise (ADR 0093 live day). Cost 10 matches the
+    gateway's SALT_ROUNDS; the plaintext never leaves this process.
+    """
     url = f"{supabase_url.rstrip('/')}/rest/v1/users"
     rest_headers = {
         **headers,
@@ -160,6 +176,12 @@ def _upsert_public_user(
         "role": role,
         "email_verified": True,
     }
+    if password:
+        import bcrypt
+
+        payload["password_hash"] = bcrypt.hashpw(
+            password.encode("utf-8"), bcrypt.gensalt(rounds=10)
+        ).decode("ascii")
     resp = client.post(url, json=payload, headers=rest_headers, timeout=30.0)
     if resp.status_code not in (200, 201, 204):
         raise RuntimeError(
@@ -200,6 +222,7 @@ def ensure_personas(*, client: httpx.Client | None = None) -> dict[str, dict[str
                 user_id=user_id,
                 email=email,
                 role=role,
+                password=password,
             )
             result[role] = {
                 "user_id": user_id,

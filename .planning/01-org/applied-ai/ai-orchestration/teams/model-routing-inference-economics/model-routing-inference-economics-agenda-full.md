@@ -37,7 +37,8 @@ Not the easiest file. The **right** file, for three reasons that all point at it
 - It is the most exposed — [[README]] §0 finding 1: `analytics.controller.ts` has zero
   `@UseGuards` and zero `@Public`, so an anonymous caller can toggle the consultant
   layer on and then invoke it. *"Unauthorized spend on the founder's key, reachable
-  now."*
+  now."* *Corrected 2026-08-25: closed — `analytics.controller.ts:51` now carries a
+  class-level `@UseGuards(JwtAuthGuard)`; OD-20 is RESOLVED.*
 - It has **no cost visibility at all**, so if that exposure were being exploited
   today, the first alert would be a provider invoice
   ([[model-routing-inference-economics-premortem]] #4).
@@ -116,10 +117,11 @@ Step 1 is a day of work and closes the largest blind spot in the department.
    1 is urgent rather than merely first.
 2. **What is the cost ceiling per restaurant per month?** Cost-per-task is only
    actionable against a target, and `[[unit-economics-pricing-charter|fin-unit-economics-pricing]]` needs the same
-   number from the other direction. Locked pricing is $20–50/mo
-   (`OPEN-DECISIONS.md:25`, OD-23 context) — what share of that may be inference?
-3. **OD-04 — the external model roster** (Kimi/Moonshot, DeepSeek, etc.) is explicitly
-   downstream of OD-03 (`OPEN-DECISIONS.md:15`). Confirm we should not evaluate
+   number from the other direction. Pricing is **not** locked — $20–50/mo is assumed and
+   no ADR records it (OD-23, `OPEN-DECISIONS.md:34`) — what share of that may be inference?
+3. **OD-04 — the external model roster** (Kimi/Moonshot, DeepSeek, etc.) was filed as
+   downstream of OD-03, but the row no longer says so: its unblocker is now a **job →
+   model registry** (OD-04, `OPEN-DECISIONS.md:29`). Confirm we should still not evaluate
    non-Anthropic models until the harness fork closes. We think that ordering is right
    and want it stated, not assumed.
 4. **`ux-optimizer.service.ts:250` pins a dated model snapshot** while six siblings pin

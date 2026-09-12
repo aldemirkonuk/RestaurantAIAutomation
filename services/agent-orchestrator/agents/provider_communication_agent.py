@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from config.settings import Settings
@@ -517,9 +518,13 @@ class ProviderCommunicationAgent(BaseAgent):
         input_tokens = 0
         output_tokens = 0
         draft_generated = False  # P1: call-level outcome for the spend row
+        # P1: started here so the fallback path still reports a duration; re-taken
+        # below the semaphore so queue wait is not billed to the model call.
+        _t0 = time.perf_counter()
         try:
             haiku = get_haiku_client()
             async with self.haiku_semaphore:
+                _t0 = time.perf_counter()
                 response = await haiku.messages.create(
                     model=self.settings.haiku_model,
                     max_tokens=256,
@@ -568,27 +573,6 @@ class ProviderCommunicationAgent(BaseAgent):
                 ),
             }
 
-        # Step 7: SpendLogger (TOKENBDGT-03) — dual-writes NF (P1)
-        try:
-            spend_logger = get_spend_logger()
-            cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
-            spend_logger.log(
-                provider="anthropic",
-                model=self.settings.haiku_model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost_usd=cost_usd,
-                restaurant_id=restaurant_id,
-                agent=self.agent_name,
-                task_type="email_draft",
-                choice="draft:parsed" if draft_generated else "draft:fallback",
-                outcome="success" if draft_generated else "failure",
-                correlation_id=getattr(self, "_current_correlation_id", None),
-                context={"order_id": str(order_id)},
-            )
-        except Exception as exc:
-            self.logger.warning(f"SpendLogger failed (non-critical): {exc}")
-
         # Step 8a: Post-draft constraint checks
         draft_body = draft_json.get("body", "")
         post_check = ce.check_hard_constraints(draft_body)
@@ -605,7 +589,59 @@ class ProviderCommunicationAgent(BaseAgent):
             "is_sensitive": is_sensitive,
         }
 
-        if post_check.blocked or word_check.blocked:
+        # Step 7 (OD-59 / P3.0): SpendLogger (TOKENBDGT-03) — dual-writes NF (P1).
+        #
+        # MOVED here from above Step 8a. It used to fire the moment the JSON
+        # parsed, which meant a draft that violates a HARD constraint — the
+        # blocked branch immediately below, where the flow gives up and asks a
+        # human to draft manually — recorded as `success`. The constraint checks
+        # are the real verdict on this task and they run three lines up; the emit
+        # simply happened first. Same defect OD-75 fixed for ~12 parse sites,
+        # one layer further out.
+        #
+        # `constraint_v1` reads three flags that already existed: nothing new is
+        # computed, and the emit still runs on BOTH sides of the blocked return.
+        blocked = bool(post_check.blocked or word_check.blocked)
+        try:
+            spend_logger = get_spend_logger()
+            cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
+            if not draft_generated:
+                # The model produced nothing usable and a fallback stood in.
+                draft_outcome = "failure"
+            elif blocked:
+                # A draft that trips a hard constraint is not a usable artifact:
+                # it is discarded and a human writes the email instead.
+                draft_outcome = "failure"
+            elif annotating.triggered_annotating:
+                draft_outcome = "partial"
+            else:
+                draft_outcome = "success"
+            spend_logger.log(
+                provider="anthropic",
+                model=self.settings.haiku_model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                restaurant_id=restaurant_id,
+                agent=self.agent_name,
+                task_type="email_draft",
+                choice="draft:parsed" if draft_generated else "draft:fallback",
+                outcome=draft_outcome,
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                correlation_id=getattr(self, "_current_correlation_id", None),
+                context={
+                    "outcome_basis": "constraint_v1",
+                    "order_id": str(order_id),
+                    "draft_generated": bool(draft_generated),
+                    "hard_constraints": list(post_check.triggered_hard),
+                    "annotating_constraints": list(annotating.triggered_annotating),
+                    "length_blocked": bool(word_check.blocked),
+                },
+            )
+        except Exception as exc:
+            self.logger.warning(f"SpendLogger failed (non-critical): {exc}")
+
+        if blocked:
             await self._notify(
                 restaurant_id=restaurant_id,
                 notification_type="constraint_triggered",
@@ -997,11 +1033,15 @@ class ProviderCommunicationAgent(BaseAgent):
         try:
             haiku = get_haiku_client()
             async with self.haiku_semaphore:
+                _t0 = time.perf_counter()
                 response = await haiku.messages.create(
                     model=self.settings.haiku_model,
                     max_tokens=256,
                     messages=[{"role": "user", "content": prompt}],
                 )
+            # Captured here, not at the log call below — a Supabase round-trip
+            # sits in between and must not be billed to the model call (P1).
+            _dur_ms = int((time.perf_counter() - _t0) * 1000)
             raw = response.content[0].text if response.content else "{}"
             raw = raw.strip()
             if raw.startswith("```"):
@@ -1058,6 +1098,7 @@ class ProviderCommunicationAgent(BaseAgent):
                     task_type="profile_extraction",
                     choice=f"fields:{len(new_fields)}",
                     outcome="success",  # log runs only after a successful parse
+                    duration_ms=_dur_ms,
                     correlation_id=getattr(self, "_current_correlation_id", None),
                     context={"provider_id": str(provider_id)},
                 )
@@ -1114,11 +1155,15 @@ class ProviderCommunicationAgent(BaseAgent):
         try:
             haiku = get_haiku_client()
             async with self.haiku_semaphore:
+                _t0 = time.perf_counter()
                 response = await haiku.messages.create(
                     model=self.settings.haiku_model,
                     max_tokens=512,
                     messages=[{"role": "user", "content": prompt}],
                 )
+            # Captured here, not at the log call below — the rolling_summary
+            # UPDATE and negotiation_facts INSERTs sit in between (P1).
+            _dur_ms = int((time.perf_counter() - _t0) * 1000)
             raw = response.content[0].text if response.content else "{}"
             raw = raw.strip()
             if raw.startswith("```"):
@@ -1191,6 +1236,7 @@ class ProviderCommunicationAgent(BaseAgent):
                 task_type="summarization",
                 choice=f"facts:{len(facts)}",
                 outcome="success",  # parse succeeded or we returned at :1061
+                duration_ms=_dur_ms,
                 correlation_id=getattr(self, "_current_correlation_id", None),
                 context={"conversation_id": str(conversation_id)},
             )

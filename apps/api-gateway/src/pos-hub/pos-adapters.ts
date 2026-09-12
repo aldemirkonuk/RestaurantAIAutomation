@@ -14,7 +14,23 @@ export interface PosAdapter {
   normalize(payload: any): CanonicalCheck[];
 }
 
+/**
+ * A number, or null when the provider did not give one.
+ *
+ * The null/undefined/"" guard is the whole point and was missing until
+ * 2026-09-05: `Number(null)` is `0`, and `0` is finite, so an explicit
+ * `covers: null` — the honest answer from a POS that structurally cannot
+ * report covers, Square being the case that measured it — was stored as a
+ * table that seated nobody. 42 of 42 canonical checks on the Square day sent
+ * `covers: null` and read back `0`. Omitted keys happened to survive
+ * (`Number(undefined)` is NaN), which is why the SimPOS lens saw 44 nulls on
+ * the same column: the two runs landed on opposite sides of one coercion.
+ *
+ * A real zero still reads as zero — a comped check took no money, and that is
+ * a fact, not an absence. ADR 0105 D5, ADR 0020.
+ */
 const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };

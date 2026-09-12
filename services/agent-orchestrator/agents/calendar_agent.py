@@ -13,7 +13,8 @@ Tracks:
 
 import json
 import re
-from typing import Dict, List, Any
+import time
+from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
 from core.base_agent import BaseAgent
@@ -108,16 +109,14 @@ class CalendarAgent(BaseAgent):
         )
 
         try:
-            # Build the LLM prompt
-            today = datetime.utcnow().strftime("%Y-%m-%d")
-            prompt = DATE_EXTRACTION_PROMPT.format(
-                conversation=conversation[:3000],  # Truncate very long conversations
+            # The prompt is built INSIDE _call_llm_for_dates, not here, so the
+            # formatted template never enters this scope. See OD-63: the regex
+            # fallback used to be handed `prompt` from exactly this call site.
+            extracted_dates = await self._call_llm_for_dates(
+                conversation[:3000],  # Truncate very long conversations
                 provider_name=provider_name,
-                today=today,
+                restaurant_id=restaurant_id,
             )
-
-            # Call Gemini Pro via the database's LLM helper (or direct API)
-            extracted_dates = await self._call_llm_for_dates(prompt)
 
             if not extracted_dates:
                 self.logger.debug(
@@ -185,56 +184,122 @@ class CalendarAgent(BaseAgent):
                 f"Error extracting dates from conversation: {e}", exc_info=True
             )
 
-    async def _call_llm_for_dates(self, prompt: str) -> List[Dict[str, Any]]:
-        """Call Gemini Pro to extract dates, with regex fallback"""
+    async def _call_llm_for_dates(
+        self,
+        conversation: str,
+        provider_name: str = "Unknown Provider",
+        restaurant_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Call Gemini to extract dates from `conversation`, with a regex fallback.
+
+        Takes the RAW conversation text, never the formatted prompt. OD-63: the
+        caller used to build the prompt and pass that here, and the fallback at
+        the bottom then regexed the template itself — which embeds today's date
+        and the two literal example dates 2026-02-15 / 2026-03-01. Every fallback
+        therefore invented at least three dates at confidence 0.6, stamped
+        source="llm_extraction" so they read as genuine extraction.
+
+        Building the prompt in here rather than at the call site is the actual
+        fix: it removes the formatted template from the caller's scope entirely,
+        so there is no longer a wrong string available to pass. Restoring the bug
+        would take a deliberate refactor, not a slip.
+        """
+        prompt = DATE_EXTRACTION_PROMPT.format(
+            conversation=conversation,
+            provider_name=provider_name,
+            today=datetime.utcnow().strftime("%Y-%m-%d"),
+        )
         try:
-            # Try Gemini Pro via google.generativeai
-            import google.generativeai as genai
+            # Was the legacy google.generativeai SDK pinned to "gemini-pro" — a
+            # model that is retired (404) — and it never called genai.configure(),
+            # so it had no API key either. Both failures landed in the broad
+            # `except Exception` below, meaning this path had silently been regex
+            # only. Now on the shared new-SDK client like every other call site.
+            from config.settings import get_settings
+            from services.model_clients import get_gemini_client
 
-            model = genai.GenerativeModel("gemini-pro")
-            response = await model.generate_content_async(prompt)
+            model_id = get_settings().gemini_model
+            client = get_gemini_client()
+            _t0 = time.perf_counter()
+            response = await client.aio.models.generate_content(
+                model=model_id,
+                contents=prompt,
+            )
 
-            # P1: previously an unlogged model call (dark site)
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+            # OD-75: parse BEFORE logging spend. A model that answers in prose
+            # produces no dates at all, and grading that `success` made the
+            # regex-fallback path — the one that used to invent dates (OD-63) —
+            # indistinguishable from a real extraction in NF.
+            _dates: Optional[List[Dict[str, Any]]] = None
+            _parse_failed = False
             try:
-                from services.spend_logger import estimate_llm_cost, get_spend_logger
+                text = (response.text or "").strip() if response else ""
+                # Extract JSON array from response (LLM may wrap in markdown)
+                json_match = re.search(r"\[.*\]", text, re.DOTALL)
+                if json_match:
+                    _dates = json.loads(json_match.group())
+                else:
+                    _parse_failed = True
+            except (json.JSONDecodeError, ValueError, AttributeError) as exc:
+                _parse_failed = True
+                self.logger.warning(f"LLM date extraction parse failed: {exc}")
 
-                _usage = getattr(response, "usage_metadata", None)
-                _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+            # P1: previously an unlogged model call (dark site).
+            # Emitted on BOTH paths — the tokens were spent before the parse ran.
+            try:
+                from services.spend_logger import (
+                    estimate_llm_cost,
+                    get_spend_logger,
+                    usage_tokens,
+                )
+
+                _in, _out = usage_tokens(response)  # _out includes thinking tokens
                 get_spend_logger().log(
                     provider="google",
-                    model="gemini-pro",
+                    model=model_id,
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                    cost_usd=estimate_llm_cost(model_id, _in, _out),
+                    restaurant_id=restaurant_id or None,
                     agent=self.agent_name,
                     task_type="date_extraction",
-                    outcome="success",  # call-level: response returned
+                    choice=("dates:parse_failed" if _parse_failed else "dates:parsed"),
+                    outcome="partial" if _parse_failed else "success",
+                    duration_ms=_elapsed_ms,
                     correlation_id=getattr(self, "_current_correlation_id", None),
+                    context={
+                        "outcome_basis": "parse_v1",
+                        "parse_failed": _parse_failed,
+                    },
                 )
             except Exception:
                 pass
 
-            if response and response.text:
-                # Parse JSON from LLM response
-                text = response.text.strip()
-                # Extract JSON array from response (LLM may wrap in markdown)
-                json_match = re.search(r"\[.*\]", text, re.DOTALL)
-                if json_match:
-                    return json.loads(json_match.group())
+            if _dates is not None:
+                return _dates
 
         except ImportError:
-            self.logger.debug("google.generativeai not available, using regex fallback")
+            self.logger.debug("google-genai not installed, using regex fallback")
         except Exception as e:
             self.logger.warning(
                 f"LLM date extraction failed, using regex fallback: {e}"
             )
 
-        # Regex fallback: extract obvious date patterns from the prompt
-        return self._regex_date_extraction(prompt)
+        # Regex fallback: extract obvious date patterns from the CONVERSATION.
+        # Passing `prompt` here was OD-63.
+        return self._regex_date_extraction(conversation)
 
     def _regex_date_extraction(self, text: str) -> List[Dict[str, Any]]:
-        """Fallback: extract dates using regex patterns"""
+        """
+        Fallback: extract dates using regex patterns.
+
+        `text` must be conversation text a vendor actually wrote. Anything we
+        generated ourselves — a prompt, a system message, a rendered template —
+        will match here and be persisted as though a vendor had stated it.
+        """
         results = []
         # ISO dates: 2026-02-15
         for match in re.finditer(r"(\d{4}-\d{2}-\d{2})", text):

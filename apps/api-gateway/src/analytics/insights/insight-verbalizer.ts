@@ -68,6 +68,29 @@ export function fmtValue(v: number, unit: InsightEvidence["unit"]): string {
 
 export const fmtPct = (p: number) => `${Math.abs(p * 100).toFixed(0)}%`;
 
+/**
+ * Floor-geometry gloss appended to the top-table peer sentence.
+ *
+ * `r` is the correlation between a table attribute and average check, so its
+ * SIGN alone decides the reading: r > 0 means more of the attribute goes with a
+ * HIGHER check. The version this replaces (inline in the generator) paired the
+ * direction word with an inverted verb — r = +0.90 on seat count rendered as
+ * "farther-to-seat count tables average lower checks" — and ran
+ * `.replace("distance to ", "")` over "seat count", which is not a distance at
+ * all. Both defects surfaced together the first time real POS checks reached
+ * the generator: the same run emitted this sentence and the `correlation`
+ * template below, which read the identical r as "goes with higher average
+ * check". Two contradictory sentences from one number.
+ */
+export function tableAttributeReading(attribute: string, r: number): string {
+  const DIST = "distance to ";
+  const higher = r > 0 ? "higher" : "lower";
+  const phrase = attribute.startsWith(DIST)
+    ? `tables farther from the ${attribute.slice(DIST.length)}`
+    : `tables with more ${attribute === "seat count" ? "seats" : attribute}`;
+  return `Across your floor, ${phrase} average ${higher} checks (r=${r.toFixed(2)}).`;
+}
+
 /** Render an insight sentence for a template family. Returns null if the
  * evidence is insufficient for that family (caller should skip). */
 export function verbalize(template: string, e: InsightEvidence): string | null {

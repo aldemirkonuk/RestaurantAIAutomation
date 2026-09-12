@@ -30,6 +30,11 @@ import { ConsultantsService } from "./consultants.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
+import {
+  annotatedCandidates,
+  catalogCoverage,
+} from "./insights/insight-implementations";
+import { DataRequirement } from "./insights/insight-catalog";
 import { Persona } from "./metric-registry";
 
 /**
@@ -42,6 +47,32 @@ import { Persona } from "./metric-registry";
  *   • /risk/:id                 — HHI, Gini, VaR/CVaR, Sharpe, drawdown
  *   • /forecast/:id             — Holt-Winters demand projection
  */
+/**
+ * `horizon` reaches `new Array(horizon)` in the smoothers, so an unbounded
+ * value is a resource-exhaustion vector, not just a silly input — CodeQL
+ * flagged it as js/resource-exhaustion at forecasting.ts:49.
+ *
+ * Two failure modes, both closed here rather than in the engine, because the
+ * boundary is where untrusted input should stop:
+ *  - `?horizon=999999999` allocated a billion-element array.
+ *  - `?horizon=abc` produced NaN. The previous `parseInt(...) ?? 14` did NOT
+ *    catch that: `??` tests for null/undefined, and NaN is neither, so the NaN
+ *    flowed through and `new Array(NaN)` yields an empty forecast reported as
+ *    a successful one.
+ *
+ * Anything unparseable or out of range returns undefined so the service applies
+ * its own default, rather than this silently substituting a number the caller
+ * did not ask for.
+ */
+const MAX_FORECAST_HORIZON = 365;
+
+function parseHorizon(raw?: string): number | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1 || n > MAX_FORECAST_HORIZON) return undefined;
+  return n;
+}
+
 @ApiTags("analytics")
 @Controller("analytics")
 // Every route here is tenant-scoped and several cost money: POST /consult/:id
@@ -197,7 +228,7 @@ export class AnalyticsController {
     try {
       return await this.analyticsService.getDemandForecast(restaurantId, {
         masterWineId,
-        horizon: horizonStr ? parseInt(horizonStr, 10) : undefined,
+        horizon: parseHorizon(horizonStr),
       });
     } catch (error) {
       throw new HttpException(
@@ -223,20 +254,35 @@ export class AnalyticsController {
 
   @Get("insight-catalog/types")
   @ApiOperation({
-    summary: "Full enumerated insight catalog (Browse All 375 Types)",
+    summary: "Full enumerated insight catalog (Browse All Types)",
     description:
-      "Every dimension × measure × comparator candidate type with category and data requirements. Pass restaurantId to also receive which requirements this restaurant satisfies (computable vs blocked).",
+      "Every dimension × measure × comparator candidate type with category, data requirements, and whether a generator implements it today. Pass restaurantId to also receive which requirements this restaurant satisfies. `coverage` is the honest split: computable now = implemented AND data available; the rest are blocked on data or not built yet (ADR 0020 — the catalogue is a roadmap, not a capability claim).",
   })
   @ApiQuery({ name: "restaurantId", required: false })
   async getInsightCatalogTypes(@Query("restaurantId") restaurantId?: string) {
     const catalog = this.insightGenerator.getCatalogTypes();
-    if (!restaurantId) return { ...catalog, available: null };
+    // `implemented` per type + the coverage split are the only honest basis for
+    // a "computable now" figure; data availability alone counted the roadmap.
+    const candidates = annotatedCandidates();
+    const unknown = {
+      ...catalog,
+      candidates,
+      available: null,
+      coverage: catalogCoverage(null),
+    };
+    if (!restaurantId) return unknown;
     try {
       const available =
         await this.insightGenerator.getAvailability(restaurantId);
-      return { ...catalog, available };
+      return {
+        ...catalog,
+        candidates,
+        available,
+        coverage: catalogCoverage(new Set<DataRequirement>(available)),
+      };
     } catch {
-      return { ...catalog, available: null };
+      // Availability unknown — say so with nulls rather than guessing a count.
+      return unknown;
     }
   }
 
@@ -613,6 +659,60 @@ export class AnalyticsController {
     @Param("masterWineId") masterWineId: string,
   ) {
     return this.advanced.getWine360(restaurantId, masterWineId);
+  }
+
+  // ==========================================================================
+  // POS-backed sales revenue (OD-85)
+  // ==========================================================================
+
+  @Get("pos-revenue/:restaurantId")
+  @ApiOperation({
+    summary: "Sales revenue booked through the POS, over a day range",
+    description:
+      "Sum of non-voided `pos_checks.total` plus the per-wine bottle/glass breakdown for the same window. " +
+      "`posConnected: false` means this restaurant has never had a POS check land — `revenue` and `checkCount` " +
+      "are then `null`, NOT `0`, and every consumer must render an empty state rather than a figure. " +
+      "Reuses the same query goal progress runs on, so the two can never disagree.",
+  })
+  @ApiQuery({
+    name: "days",
+    required: false,
+    description: "Window length in days (1–365, default 30).",
+  })
+  @ApiResponse({ status: 200, description: "POS revenue window" })
+  async getPosRevenue(
+    @Param("restaurantId") restaurantId: string,
+    @Query("days") days?: string,
+  ) {
+    const parsed = Number.parseInt(days ?? "", 10);
+    const span = Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, 1), 365)
+      : 30;
+    try {
+      const window = await this.goalsService.getPosRevenueWindow(
+        restaurantId,
+        span,
+      );
+      // Skipped entirely when no POS is wired: there is nothing to break down,
+      // and issuing the query anyway would only make "no POS" cost two round
+      // trips to discover.
+      const consumption = window.posConnected
+        ? await this.analyticsService.getPosConsumptionBreakdown(
+            restaurantId,
+            window.from,
+            window.to,
+          )
+        : [];
+      return { ...window, consumption };
+    } catch (error) {
+      // Deliberately a 500 rather than an empty payload: "we could not load
+      // this" and "you have no POS" are different sentences, and the UI shows
+      // different things for each.
+      throw new HttpException(
+        error.message || "Failed to load POS revenue",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Get("overview/:restaurantId")

@@ -23,12 +23,70 @@ from typing import Optional
 from fastapi import Header, HTTPException
 from pydantic import BaseModel, Field
 
+from services.log_safety import sanitize_for_log
+
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
 # JWT ROLE DEPENDENCY (extends verify_admin_token pattern from research_routes.py)
 # =============================================================================
+
+
+def _decode_studio_jwt(authorization: Optional[str]) -> dict:
+    """
+    Verify a Bearer JWT and return its payload. Raises 401/503 — never returns unverified.
+
+    Shared by require_studio_role() and require_authenticated_user() so there is exactly one
+    place that decides whether a caller is who they say they are. The token is issued by the
+    NestJS gateway (`apps/api-gateway/src/auth/auth.service.ts:435`), which signs with
+    JWT_SECRET and embeds `app_metadata.roles` for exactly this consumer; that value must
+    therefore equal SUPABASE_JWT_SECRET here or every studio call 401s. See ADR 0021.
+    """
+    import jwt as pyjwt  # PyJWT>=2.8.0
+    from config.settings import get_settings
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Bearer token")
+    token = authorization.removeprefix("Bearer ")
+    secret = get_settings().supabase_jwt_secret
+    if not secret:
+        logger.error(
+            "SUPABASE_JWT_SECRET not configured — studio endpoints cannot authenticate"
+        )
+        raise HTTPException(status_code=503, detail="Auth configuration error")
+    try:
+        return pyjwt.decode(
+            token,
+            secret,
+            algorithms=["HS256"],
+            options={"verify_aud": False},  # Supabase JWTs use anon key as audience
+        )
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except pyjwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+
+
+def require_authenticated_user():
+    """
+    FastAPI dependency factory — verifies the Bearer JWT and returns the payload, with no
+    role requirement at all.
+
+    This exists for endpoints whose authorization comes from something other than a
+    pre-existing role. The only such endpoint today is POST /invite/redeem: an invitee has
+    no studio role by definition — that is what the invite grants — so gating redemption on
+    a studio role made the flow unusable by anyone it was meant for (ADR 0021).
+
+    Authorization for those endpoints must come from elsewhere; redeem_invite binds it to
+    the invite's target_email. "Authenticated" here means any account on the platform,
+    including every restaurant user, so it is never sufficient on its own.
+    """
+
+    def _check(authorization: Optional[str] = Header(None)) -> dict:
+        return _decode_studio_jwt(authorization)
+
+    return _check
 
 
 def require_studio_role(*required_roles: str):
@@ -50,29 +108,7 @@ def require_studio_role(*required_roles: str):
     """
 
     def _check(authorization: Optional[str] = Header(None)) -> dict:
-        import jwt as pyjwt  # PyJWT>=2.8.0
-        from config.settings import get_settings
-
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing Bearer token")
-        token = authorization.removeprefix("Bearer ")
-        secret = get_settings().supabase_jwt_secret
-        if not secret:
-            logger.error(
-                "SUPABASE_JWT_SECRET not configured — studio endpoints cannot authenticate"
-            )
-            raise HTTPException(status_code=503, detail="Auth configuration error")
-        try:
-            payload = pyjwt.decode(
-                token,
-                secret,
-                algorithms=["HS256"],
-                options={"verify_aud": False},  # Supabase JWTs use anon key as audience
-            )
-        except pyjwt.ExpiredSignatureError:
-            raise HTTPException(status_code=401, detail="Token expired")
-        except pyjwt.PyJWTError as exc:
-            raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+        payload = _decode_studio_jwt(authorization)
 
         # Tier 1: JWT app_metadata.roles (populated by Supabase JWT hook if configured)
         app_meta = payload.get("app_metadata", {})
@@ -100,9 +136,11 @@ def require_studio_role(*required_roles: str):
                         return payload
                     jwt_roles = db_roles  # show accurate roles in error message
                 except Exception as exc:
+                    # user_id is the JWT `sub` claim. A verified signature proves who set
+                    # the claim, not that it is free of newlines — escape before logging.
                     logger.warning(
                         "require_studio_role: DB role fallback failed for %s: %s",
-                        user_id,
+                        sanitize_for_log(user_id),
                         exc,
                     )
 
@@ -144,16 +182,45 @@ class ApprovalDecision(BaseModel):
 
 
 class InviteRequest(BaseModel):
-    """POST /api/v1/studio/invite request body."""
+    """
+    POST /api/v1/studio/invite request body.
+
+    target_email is REQUIRED (ADR 0021). It was optional and written but never read, so the
+    token alone authorized the grant — anyone it reached could claim the role, up to and
+    including review_admin. redeem_invite now checks the redeeming JWT's email against it,
+    which only works if minting cannot produce an unbound token.
+    """
 
     role: str = Field(..., pattern="^(developer|certified_contributor|review_admin)$")
-    target_email: Optional[str] = None
+    target_email: str = Field(
+        ..., min_length=3, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    )
 
 
 class RedeemRequest(BaseModel):
     """POST /api/v1/studio/invite/redeem request body. Token in body, never query string (Pitfall 2)."""
 
     token: str  # UUID string of the invite token
+
+
+def normalize_email(value: Optional[str]) -> str:
+    """Casefold + strip for comparison. Returns "" for None so callers fail closed on absence."""
+    return value.strip().casefold() if isinstance(value, str) else ""
+
+
+# Re-exported so existing studio call sites keep their import. The definition moved to
+# services/log_safety.py once onboarding_routes needed it too — a generic log helper does
+# not belong in the studio promotion module.
+__all__ = [
+    "require_studio_role",
+    "require_authenticated_user",
+    "normalize_email",
+    "sanitize_for_log",
+    "OverrideRequest",
+    "ApprovalDecision",
+    "InviteRequest",
+    "RedeemRequest",
+]
 
 
 # =============================================================================
@@ -195,7 +262,9 @@ def _get_user_studio_roles(supabase, user_id: str) -> list:
         )
         return resp.data or []
     except Exception as exc:
-        logger.error("_get_user_studio_roles failed for %s: %s", user_id, exc)
+        logger.error(
+            "_get_user_studio_roles failed for %s: %s", sanitize_for_log(user_id), exc
+        )
         return []
 
 
@@ -231,9 +300,11 @@ def _apply_override_to_submission(
             raise ValueError(f"Submission {submission_id} not found")
         existing_fc = (resp.data or {}).get("field_confidence") or {}
     except Exception as exc:
+        # submission_id / field_name / actor_id all arrive from the request (OverrideRequest
+        # body, or the JWT `sub` for actor_id) — see api/studio_routes.py:263 and :456.
         logger.error(
             "_apply_override_to_submission: fetch submission %s failed: %s",
-            submission_id,
+            sanitize_for_log(submission_id),
             exc,
         )
         raise
@@ -248,9 +319,9 @@ def _apply_override_to_submission(
     ).eq("id", submission_id).execute()
     logger.info(
         "Applied override to submission %s field=%s by actor=%s",
-        submission_id,
-        field_name,
-        actor_id,
+        sanitize_for_log(submission_id),
+        sanitize_for_log(field_name),
+        sanitize_for_log(actor_id),
     )
 
 
@@ -293,8 +364,11 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
             .execute()
         )
         if not resp.data:
+            # submission_id is caller-supplied from the request body (studio_routes.py:283)
+            # or from the stored override row it originally wrote.
             logger.warning(
-                "_maybe_promote_submission: submission %s not found", submission_id
+                "_maybe_promote_submission: submission %s not found",
+                sanitize_for_log(submission_id),
             )
             return False
 
@@ -302,7 +376,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
         if submission.get("status") != "pending_review":
             logger.debug(
                 "_maybe_promote_submission: submission %s not in pending_review (status=%s)",
-                submission_id,
+                sanitize_for_log(submission_id),
                 submission.get("status"),
             )
             return False
@@ -320,7 +394,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
             logger.debug(
                 "_maybe_promote_submission: %d pending fields remain for %s",
                 remaining_pending,
-                submission_id,
+                sanitize_for_log(submission_id),
             )
             return False
 
@@ -329,7 +403,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
         if should_auto_block(fc):
             logger.debug(
                 "_maybe_promote_submission: submission %s is auto_blocked",
-                submission_id,
+                sanitize_for_log(submission_id),
             )
             return False
 
@@ -374,12 +448,16 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
 
         logger.info(
             "_maybe_promote_submission: promoted submission %s → master_wine_library",
-            submission_id,
+            sanitize_for_log(submission_id),
         )
         return True
 
     except Exception as exc:
-        logger.error("_maybe_promote_submission: failed for %s: %s", submission_id, exc)
+        logger.error(
+            "_maybe_promote_submission: failed for %s: %s",
+            sanitize_for_log(submission_id),
+            exc,
+        )
         return False
 
 
@@ -419,7 +497,7 @@ def check_and_update_trust(
                 ).eq("user_id", user_id).eq("role", "certified_contributor").execute()
                 logger.info(
                     "User %s earned auto_promote status (threshold=%d)",
-                    user_id,
+                    sanitize_for_log(user_id),
                     threshold,
                 )
         else:
@@ -427,7 +505,11 @@ def check_and_update_trust(
             supabase.table("user_roles").update(
                 {"consecutive_approved_overrides": 0}
             ).eq("user_id", user_id).eq("role", "certified_contributor").execute()
-            logger.info("User %s trust streak reset (rejection)", user_id)
+            logger.info(
+                "User %s trust streak reset (rejection)", sanitize_for_log(user_id)
+            )
     except Exception as exc:
-        logger.error("check_and_update_trust failed for %s: %s", user_id, exc)
+        logger.error(
+            "check_and_update_trust failed for %s: %s", sanitize_for_log(user_id), exc
+        )
         raise

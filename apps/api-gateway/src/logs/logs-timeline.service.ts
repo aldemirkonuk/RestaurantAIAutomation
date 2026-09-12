@@ -13,6 +13,21 @@ import { DatabaseService } from "../database/database.service";
  * Without a correlation_id filter the timeline returns the most recent
  * events across all six sources for a restaurant, tagged by source so the
  * UI can render one chronological feed.
+ *
+ * THE RESPONSE CONFESSES (ADR 0086)
+ *
+ * Each source is fetched independently and a failing one must not take the
+ * other five down, so every fetch is caught. Catching it to `[]` and
+ * returning 200 was the wrong half of that: a source that 500s contributed
+ * zero events, the request succeeded, and the caller — a page whose entire
+ * subject is counts — rendered a SMALLER NUMBER with no error state at all.
+ * A missing register was indistinguishable from a quiet one.
+ *
+ * So the response carries three things, not one: the events, the sources
+ * that were actually queried, and the sources that failed. A caller that
+ * wants a count can now tell an empty register from an unreachable one, and
+ * `sourcesQueried` states the deliberate omission (event_store without a
+ * correlation_id) rather than leaving it to be inferred from a short list.
  */
 
 export type TimelineSource =
@@ -26,10 +41,49 @@ export type TimelineSource =
 export interface TimelineEvent {
   id: string;
   source: TimelineSource;
-  occurredAt: string;
+  /**
+   * NULL when the row's timestamp column is null — which both
+   * `procurement_documents.created_at` and `system_audit_log.created_at`
+   * permit (baseline_from_production.sql). The event is still returned; it
+   * simply does not claim a time it does not have.
+   */
+  occurredAt: string | null;
   correlationId: string | null;
   summary: string;
   detail: Record<string, unknown>;
+}
+
+/** One source's outcome: what it returned, or why it returned nothing. */
+interface SourceResult {
+  source: TimelineSource;
+  events: TimelineEvent[];
+  error: string | null;
+}
+
+export interface TimelineResponse {
+  events: TimelineEvent[];
+  correlationId: string | null;
+  /** Every source this call actually read. A skip is stated, never implied. */
+  sourcesQueried: TimelineSource[];
+  /** Sources that errored. Non-empty means the counts below are a FLOOR. */
+  failedSources: TimelineSource[];
+}
+
+/**
+ * Newest first, with undated rows LAST.
+ *
+ * This comparator used to be `b.occurredAt.localeCompare(a.occurredAt)`
+ * inline, and it ran outside every per-source try/catch — so one nullable
+ * `created_at` threw a TypeError past all six guards and 500ed the whole
+ * feed. An undated row is not dropped (that would be deciding it did not
+ * happen) and not floated to the top (that would be claiming it is the most
+ * recent thing that did).
+ */
+function newestFirst(a: TimelineEvent, b: TimelineEvent): number {
+  if (!a.occurredAt && !b.occurredAt) return 0;
+  if (!a.occurredAt) return 1;
+  if (!b.occurredAt) return -1;
+  return b.occurredAt.localeCompare(a.occurredAt);
 }
 
 @Injectable()
@@ -41,49 +95,62 @@ export class LogsTimelineService {
   async getTimeline(
     restaurantId: string,
     opts: { correlationId?: string; limit?: number } = {},
-  ): Promise<{ events: TimelineEvent[]; correlationId: string | null }> {
+  ): Promise<TimelineResponse> {
     const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
     const correlationId = opts.correlationId?.trim() || null;
     const db = this.dbService.getClient();
 
-    const [
-      posChecks,
-      decisions,
-      inventoryTxns,
-      documents,
-      auditLog,
-      eventStore,
-    ] = await Promise.all([
+    const results = await Promise.all([
       this.fetchPosChecks(db, restaurantId, correlationId, limit),
       this.fetchDecisions(db, restaurantId, correlationId, limit),
       this.fetchInventoryTxns(db, restaurantId, correlationId, limit),
       this.fetchDocuments(db, restaurantId, correlationId, limit),
       this.fetchAuditLog(db, restaurantId, correlationId, limit),
-      this.fetchEventStore(db, correlationId, limit),
+      // event_store is not restaurant-scoped, so it is read only when a
+      // correlation_id names the rows to read. `null` — not an empty result —
+      // is what says "not queried", so the skip is reported as a skip.
+      correlationId
+        ? this.fetchEventStore(db, correlationId, limit)
+        : Promise.resolve(null),
     ]);
 
-    const events = [
-      ...posChecks,
-      ...decisions,
-      ...inventoryTxns,
-      ...documents,
-      ...auditLog,
-      ...eventStore,
-    ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+    const queried = results.filter((r): r is SourceResult => r !== null);
+    const events = queried
+      .flatMap((r) => r.events)
+      .sort(newestFirst)
+      .slice(0, limit);
 
     return {
-      events: events.slice(0, limit),
+      events,
       correlationId,
+      sourcesQueried: queried.map((r) => r.source),
+      failedSources: queried.filter((r) => r.error).map((r) => r.source),
     };
   }
 
-  private async fetchPosChecks(
+  /** Run one source's query, converting a thrown error into a named failure. */
+  private async guard(
+    source: TimelineSource,
+    fetch: () => Promise<TimelineEvent[]>,
+  ): Promise<SourceResult> {
+    try {
+      return { source, events: await fetch(), error: null };
+    } catch (err: any) {
+      const message = err?.message ?? "unknown error";
+      // Still logged loudly — but the log is for us, and the caller needs to
+      // be told too. Only one of those two used to happen.
+      this.logger.warn(`${source} timeline fetch failed: ${message}`);
+      return { source, events: [], error: message };
+    }
+  }
+
+  private fetchPosChecks(
     db: any,
     restaurantId: string,
     correlationId: string | null,
     limit: number,
-  ): Promise<TimelineEvent[]> {
-    try {
+  ): Promise<SourceResult> {
+    return this.guard("pos_checks", async () => {
       let q = db
         .from("pos_checks")
         .select(
@@ -98,7 +165,7 @@ export class LogsTimelineService {
       return (data || []).map((r: any) => ({
         id: r.id,
         source: "pos_checks" as const,
-        occurredAt: r.closed_at || r.opened_at,
+        occurredAt: r.closed_at || r.opened_at || null,
         correlationId: r.correlation_id ?? null,
         summary: `POS check ${r.external_check_id}${r.closed_at ? " closed" : " opened"} (${r.source})`,
         detail: {
@@ -107,19 +174,16 @@ export class LogsTimelineService {
           itemCount: Array.isArray(r.items) ? r.items.length : 0,
         },
       }));
-    } catch (err: any) {
-      this.logger.warn(`pos_checks timeline fetch failed: ${err?.message}`);
-      return [];
-    }
+    });
   }
 
-  private async fetchDecisions(
+  private fetchDecisions(
     db: any,
     restaurantId: string,
     correlationId: string | null,
     limit: number,
-  ): Promise<TimelineEvent[]> {
-    try {
+  ): Promise<SourceResult> {
+    return this.guard("decision_log", async () => {
       let q = db
         .from("decision_log")
         .select(
@@ -134,7 +198,7 @@ export class LogsTimelineService {
       return (data || []).map((r: any) => ({
         id: r.id,
         source: "decision_log" as const,
-        occurredAt: r.created_at,
+        occurredAt: r.created_at ?? null,
         correlationId: r.correlation_id ?? null,
         summary: `${r.agent_name}: ${r.decision_type}`,
         detail: {
@@ -144,19 +208,16 @@ export class LogsTimelineService {
           output: r.output,
         },
       }));
-    } catch (err: any) {
-      this.logger.warn(`decision_log timeline fetch failed: ${err?.message}`);
-      return [];
-    }
+    });
   }
 
-  private async fetchInventoryTxns(
+  private fetchInventoryTxns(
     db: any,
     restaurantId: string,
     correlationId: string | null,
     limit: number,
-  ): Promise<TimelineEvent[]> {
-    try {
+  ): Promise<SourceResult> {
+    return this.guard("inventory_transactions", async () => {
       // correlation lives in metadata->>'correlation_id' for this table.
       let q = db
         .from("inventory_transactions")
@@ -174,7 +235,7 @@ export class LogsTimelineService {
       return (data || []).map((r: any) => ({
         id: r.id,
         source: "inventory_transactions" as const,
-        occurredAt: r.transaction_date,
+        occurredAt: r.transaction_date ?? null,
         correlationId: r.metadata?.correlation_id ?? null,
         summary: `Stock ${r.transaction_type} (${r.source}): ${r.quantity_change > 0 ? "+" : ""}${r.quantity_change}`,
         detail: {
@@ -185,21 +246,16 @@ export class LogsTimelineService {
           reason: r.reason,
         },
       }));
-    } catch (err: any) {
-      this.logger.warn(
-        `inventory_transactions timeline fetch failed: ${err?.message}`,
-      );
-      return [];
-    }
+    });
   }
 
-  private async fetchDocuments(
+  private fetchDocuments(
     db: any,
     restaurantId: string,
     correlationId: string | null,
     limit: number,
-  ): Promise<TimelineEvent[]> {
-    try {
+  ): Promise<SourceResult> {
+    return this.guard("procurement_documents", async () => {
       let q = db
         .from("procurement_documents")
         .select(
@@ -214,7 +270,8 @@ export class LogsTimelineService {
       return (data || []).map((r: any) => ({
         id: r.id,
         source: "procurement_documents" as const,
-        occurredAt: r.created_at,
+        // NULLABLE in the baseline — see TimelineEvent.occurredAt.
+        occurredAt: r.created_at ?? null,
         correlationId: r.correlation_id ?? null,
         summary: `${r.doc_type}${r.doc_number ? ` #${r.doc_number}` : ""} → ${r.status}`,
         detail: {
@@ -224,21 +281,16 @@ export class LogsTimelineService {
           total: r.total,
         },
       }));
-    } catch (err: any) {
-      this.logger.warn(
-        `procurement_documents timeline fetch failed: ${err?.message}`,
-      );
-      return [];
-    }
+    });
   }
 
-  private async fetchAuditLog(
+  private fetchAuditLog(
     db: any,
     restaurantId: string,
     correlationId: string | null,
     limit: number,
-  ): Promise<TimelineEvent[]> {
-    try {
+  ): Promise<SourceResult> {
+    return this.guard("system_audit_log", async () => {
       let q = db
         .from("system_audit_log")
         .select(
@@ -253,7 +305,8 @@ export class LogsTimelineService {
       return (data || []).map((r: any) => ({
         id: r.id,
         source: "system_audit_log" as const,
-        occurredAt: r.created_at,
+        // NULLABLE in the baseline — see TimelineEvent.occurredAt.
+        occurredAt: r.created_at ?? null,
         correlationId: r.correlation_id ?? null,
         summary: `${r.actor_type} ${r.action} on ${r.entity_type}`,
         detail: {
@@ -264,24 +317,21 @@ export class LogsTimelineService {
           reason: r.reason,
         },
       }));
-    } catch (err: any) {
-      this.logger.warn(
-        `system_audit_log timeline fetch failed: ${err?.message}`,
-      );
-      return [];
-    }
+    });
   }
 
-  private async fetchEventStore(
+  /**
+   * event_store is not restaurant-scoped, so the caller only reaches this when
+   * a correlation_id names the rows to read; without one it would dump the
+   * whole platform's event stream into every restaurant's timeline. The skip
+   * is decided by the caller so that `sourcesQueried` can report it.
+   */
+  private fetchEventStore(
     db: any,
-    correlationId: string | null,
+    correlationId: string,
     limit: number,
-  ): Promise<TimelineEvent[]> {
-    // event_store is not restaurant-scoped — only return rows when a
-    // correlation_id is explicitly requested, otherwise it would dump the
-    // whole platform's event stream into every restaurant's timeline.
-    if (!correlationId) return [];
-    try {
+  ): Promise<SourceResult> {
+    return this.guard("event_store", async () => {
       const { data, error } = await db
         .from("event_store")
         .select(
@@ -294,7 +344,7 @@ export class LogsTimelineService {
       return (data || []).map((r: any) => ({
         id: r.event_id,
         source: "event_store" as const,
-        occurredAt: r.created_at,
+        occurredAt: r.created_at ?? null,
         correlationId: r.correlation_id ?? null,
         summary: `${r.aggregate_type}.${r.event_type}`,
         detail: {
@@ -303,9 +353,6 @@ export class LogsTimelineService {
           eventType: r.event_type,
         },
       }));
-    } catch (err: any) {
-      this.logger.warn(`event_store timeline fetch failed: ${err?.message}`);
-      return [];
-    }
+    });
   }
 }

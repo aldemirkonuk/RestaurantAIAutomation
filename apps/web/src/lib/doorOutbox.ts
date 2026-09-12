@@ -48,7 +48,18 @@ export function newIdempotencyKey(orderId: string): string {
  */
 export async function submitDoorReceipt(
   entry: QueuedDoorReceipt,
-): Promise<{ synced: boolean; alreadyRecorded?: boolean }> {
+): Promise<{
+  synced: boolean
+  alreadyRecorded?: boolean
+  /**
+   * Whether the shelf count moved. Passed through — not collapsed into
+   * `synced` — because "the delivery is recorded" and "the stock is booked" are
+   * two different facts and the gateway used to report the second one whether or
+   * not it happened. A caller that only knows `synced` cannot tell them apart.
+   */
+  stockBooked?: boolean
+  stockIssue?: string
+}> {
   if (!navigator.onLine) {
     await queue(entry)
     return { synced: false }
@@ -56,7 +67,12 @@ export async function submitDoorReceipt(
 
   try {
     const res = await receivingApi.recordDoorReceipt(entry.orderId, entry.body)
-    return { synced: true, alreadyRecorded: res.alreadyRecorded }
+    return {
+      synced: true,
+      alreadyRecorded: res.alreadyRecorded,
+      stockBooked: res.stockBooked,
+      stockIssue: res.stockIssue,
+    }
   } catch (err) {
     // A 4xx means the server understood and refused; retrying will not help and
     // queueing it would hide a real problem behind a permanently stuck item.

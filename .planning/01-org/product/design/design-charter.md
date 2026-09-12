@@ -33,7 +33,7 @@ during service is a real performance budget. Every decision below is downstream 
 
 Owns outright:
 
-- **The UX path ledger** — `.planning/UX_PATHS_CATALOG.md`: 1,867 lines, 157,641 bytes,
+- **The UX path ledger** — `.planning/07-reference/UX_PATHS_CATALOG.md`: 1,867 lines, 157,641 bytes,
   **910 unique `NEW-` IDs** (`NEW-001…NEW-910`) across **29 lettered sections**, counted
   this session. Definition, priority, acceptance criteria, and the deferred/unblocked-by
   record. *Not* the build — see non-goals.
@@ -107,7 +107,9 @@ the Deferred Decisions Log has disagreed with the shipped state of the product. 
 number is **non-zero and unknown** (see Evidence).
 
 **Neural-footprint tie, stated honestly.** Design does not emit `nf_a.*` or `nf_b.*` today
-— nothing does ([[README]] §1, L4 "emits nothing yet"). Two ties are real rather than
+— nothing does ([[README]] §1, L4 "emits nothing yet"). *Corrected 2026-08-25: `nf_a.*`
+is emitted since P1 (all 7 gateway callsites, `model-client.service.ts:413`); `nf_b.*`
+is still unemitted, so the point below holds for Design's own surface.* Two ties are real rather than
 decorative: (1) guest-facing surface *is* the NF-B stimulus field — a dish or wine
 exposure event is only as good as the screen that produced it, so surface design decides
 what `nf_b.stimulus` can even mean; (2) the human-gate pattern — one-tap approve, never
@@ -186,7 +188,10 @@ someone grepped for it.
 - **Product division team layer** (**PROD-F1**; product.md §6, proposed as "OD-20") — 17 teams as
   proposed, or the reduced set in §5.3? Design is 4 of the 17.
 - ✅ **ID collision resolved by [[decision-office-charter]].** `product.md:858-862`
-  proposed IDs OD-20 through OD-24, but `decisions/OPEN-DECISIONS.md:24-27` already
-  assigns OD-20 (analytics spend), OD-21 (Obsidian workflow), OD-22 (tooling library),
-  OD-23 (\$20k MRR) — four of the five were taken. The forks above now carry
-  **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]) and should be cited by ID.
+  proposed IDs OD-20 through OD-24, but the register already assigns
+  OD-20 (analytics spend, `decisions/OPEN-DECISIONS.md:120`),
+  OD-21 (Obsidian workflow, `decisions/OPEN-DECISIONS.md:147`),
+  OD-22 (tooling library, `decisions/OPEN-DECISIONS.md:130`) and
+  OD-23 (revenue target, unverified, `decisions/OPEN-DECISIONS.md:34`) — four of the five
+  were taken. The forks above now carry **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]) and should
+  be cited by ID.

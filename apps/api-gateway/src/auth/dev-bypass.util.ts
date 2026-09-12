@@ -32,6 +32,27 @@ export interface DevBypassRequest {
 }
 
 /**
+ * The ENV half of `devBypassAllowed`, on its own.
+ *
+ * Split out because it is the only half a reader can re-check later: by the
+ * time `GET /auth/me` runs, the localhost check and the shared-secret header
+ * belong to the login request that minted the session, not to this one. A
+ * dev-bypass claim inside a token therefore grants nothing by itself — the
+ * reader asks this function again, at read time, so the very same token is
+ * inert on a server where NODE_ENV=production or DEV_AUTH_BYPASS is unset.
+ *
+ * The lesson is borrowed directly from the OAuth self-provision hole
+ * (.planning/v3.0-TECH-DEBT.md:732): an env var being unset must never be the
+ * ONLY thing standing between a caller and a privilege. Here it is not — the
+ * claim must ALSO have been signed by this server's own JWT secret, which no
+ * outside caller can produce.
+ */
+export function devBypassEnvEnabled(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  return process.env.DEV_AUTH_BYPASS === "true";
+}
+
+/**
  * True only when every one of these holds:
  *   1. NODE_ENV is not "production".
  *   2. DEV_AUTH_BYPASS=true is set (in a local, gitignored .env.local).
@@ -43,8 +64,7 @@ export interface DevBypassRequest {
  * false, never a default identity.
  */
 export function devBypassAllowed(request: DevBypassRequest): boolean {
-  if (process.env.NODE_ENV === "production") return false;
-  if (process.env.DEV_AUTH_BYPASS !== "true") return false;
+  if (!devBypassEnvEnabled()) return false;
   if (!process.env.DEV_AUTH_BYPASS_EMAIL) return false;
   if (!isLocalhostRequest(request)) return false;
 

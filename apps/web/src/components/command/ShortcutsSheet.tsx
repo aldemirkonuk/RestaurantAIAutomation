@@ -9,6 +9,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
     title: "Global",
     items: [
       ["⌘ K", "Open the command palette"],
+      ["⌘ ⇧ K", "Ask AI for an action (you confirm before anything runs)"],
       ["⌘ ⇧ O", "Jump back to a recently-viewed page"],
       ["?", "Show this shortcut sheet"],
       ["g then d / i / o", "Go to Dashboard / Inventory / Orders"],

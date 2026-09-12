@@ -4,7 +4,7 @@ division: platform
 department: engineering
 team: platform-api
 status: open
-updated: 2026-08-24
+updated: 2026-09-01
 open_questions: 1
 links: ["[[platform-api-charter]]", "[[platform-api-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
@@ -19,7 +19,7 @@ links: ["[[platform-api-charter]]", "[[platform-api-agenda-full]]", "[[architect
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| AR-5 | architecture-review | 2026-08-24 | The tenant invariant is per-controller convention, not architecture: `apps/api-gateway/src/common/tenant/tenant.guard.ts:38-46` returns `true` when there is no authenticated user (deliberately, with a logged warning), so isolation holds only where a second, independent decorator was remembered. [[ENDPOINTS]] measures the result: 137 of 448 endpoints carry no `JwtAuthGuard`; minus 32 webhook routes and 11 explicit `@Public()`, **94 are unguarded by omission**. Endpoint 449 will be unguarded by default. | Make the invariant structural (deny-by-default at the boundary). Exploitability and endpoint triage are [[security-charter]]'s under OD-19/OD-20. | 2026-10-05 |
+| AR-5 | architecture-review | 2026-08-24 | The tenant invariant is per-controller convention, not architecture: `apps/api-gateway/src/common/tenant/tenant.guard.ts:38-46` returns `true` when there is no authenticated user (deliberately, with a logged warning), so isolation holds only where a second, independent decorator was remembered. [[ENDPOINTS]] measured the result then as 137 of 448 endpoints carrying no `JwtAuthGuard`; minus 32 webhook routes and 11 explicit `@Public()`, ~~**94 are unguarded by omission**~~. **Count corrected 2026-09-01 by the E0 auth census** (`ECOSYSTEM-PLAN.md:83`, method at [[ECOSYSTEM-E0-MEASUREMENTS]] §2): 468 route handlers, 444 authenticated, 23 deliberately public with evidence, **0 unauthenticated by omission**, 1 unclear. **The question stays open because it was never a question about the count: the defect count is zero while the defect generator is fully intact** — `JwtAuthGuard` is per-controller, not a global `APP_GUARD` (`app.module.ts:130-137` registers only `RateLimitGuard` and `TenantGuard`). Endpoint 469 will be unguarded by default. | Make the invariant structural (deny-by-default at the boundary). Exploitability and endpoint triage are [[security-charter]]'s under OD-19/OD-20. | 2026-10-05 |
 
 ## Answered
 

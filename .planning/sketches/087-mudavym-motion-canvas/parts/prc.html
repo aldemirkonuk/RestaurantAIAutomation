@@ -1,0 +1,1044 @@
+<style>
+/* == prc -- Procurement & money ===========================================
+   Where money moves: purchase orders, the AI vendor-email layer, the credit
+   ledger, landed cost, price drift. Every selector is prefixed .mx-prc.
+   Colours come only from the host's variables -- never a hex.              */
+
+.mx-prc{
+  font-family:var(--m-sans);
+  font-size:11px;line-height:1.4;color:var(--m-ink);
+  position:relative;width:100%;
+  -webkit-font-smoothing:antialiased;
+}
+.mx-prc .p-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.mx-prc .p-k{font:500 8.5px/1.2 var(--m-mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--m-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-prc .p-k.on{color:var(--m-accent)}
+.mx-prc .p-k.w{color:var(--m-warn)}
+.mx-prc .num{font-family:var(--m-mono);font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.mx-prc .p-btn{
+  font:500 9px/1 var(--m-mono);letter-spacing:.11em;text-transform:uppercase;
+  background:transparent;color:var(--m-ink);border:1px solid var(--m-line2);
+  border-radius:3px;padding:6px 8px;cursor:pointer;font-family:var(--m-mono);
+}
+.mx-prc .p-btn.lit{background:var(--m-accent);border-color:var(--m-accent);color:var(--m-accent-ink)}
+
+/* -- 01 . the deadline, not the undo ----------------------------------- */
+.mx-prc-01 .c1-band{display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:3px;
+  border:1px solid color-mix(in srgb,var(--m-warn) 40%,transparent);
+  background:color-mix(in srgb,var(--m-warn) 9%,transparent);margin-bottom:6px}
+.mx-prc-01 .c1-band.done{border-color:color-mix(in srgb,var(--m-accent) 45%,transparent);
+  background:color-mix(in srgb,var(--m-accent) 9%,transparent)}
+.mx-prc-01 .c1-dot{width:6px;height:6px;border-radius:50%;background:var(--m-warn);flex:none}
+.mx-prc-01 .c1-band.done .c1-dot{background:var(--m-accent)}
+.mx-prc-01 .c1-txt{font-size:10px;flex:1;min-width:0}
+.mx-prc-01 .c1-n{font-family:var(--m-mono);font-variant-numeric:tabular-nums;font-weight:500}
+.mx-prc-01 .c1-track{height:3px;border-radius:2px;background:var(--m-line);overflow:hidden;margin-bottom:8px}
+.mx-prc-01 .c1-fill{display:block;height:100%;background:var(--m-warn);transform-origin:0 50%}
+.mx-prc-01 .c1-fill.held{background:var(--m-accent)}
+.mx-prc-01 .c1-btn{width:100%;text-align:center;display:block}
+.mx-prc-01 .c1-note{margin-top:5px;text-align:center;font-size:9px;color:var(--m-mut)}
+
+/* -- 02 . a draft cannot travel ---------------------------------------- */
+.mx-prc-02 .c2-stage{position:relative;height:74px;margin-bottom:7px}
+.mx-prc-02 .c2-div{position:absolute;left:52%;top:0;bottom:0;width:1px;background:var(--m-line2)}
+.mx-prc-02 .c2-ll{position:absolute;top:0;font:500 8px/1 var(--m-mono);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--m-mut)}
+.mx-prc-02 .c2-ll.a{left:0}
+.mx-prc-02 .c2-ll.b{left:calc(52% + 8px)}
+.mx-prc-02 .c2-ghost{position:absolute;left:calc(52% + 8px);top:15px;width:44%;height:52px;
+  border:1px dashed var(--m-line2);border-radius:3px;opacity:.5}
+.mx-prc-02 .c2-card{position:absolute;left:0;top:15px;width:48%;height:52px;padding:5px 6px;
+  background:var(--m-surface);border:1px dashed var(--m-line2);border-radius:3px;
+  cursor:grab;touch-action:none;user-select:none}
+.mx-prc-02 .c2-card.solid{border-style:solid;border-color:var(--m-accent)}
+.mx-prc-02 .c2-card:active{cursor:grabbing}
+.mx-prc-02 .c2-cn{font-size:9.5px;color:var(--m-mut);display:flex;justify-content:space-between;gap:4px}
+.mx-prc-02 .c2-cb{font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mx-prc-02 .c2-ts{font:500 8px/1 var(--m-mono);color:var(--m-accent);margin-top:5px;display:block;height:9px}
+.mx-prc-02 .c2-foot{display:flex;gap:6px;align-items:center}
+.mx-prc-02 .c2-why{flex:1;font-size:9px;color:var(--m-mut)}
+
+/* -- 03 . grab the wheel ----------------------------------------------- */
+.mx-prc-03 .c3-band{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.mx-prc-03 .c3-bot{width:14px;height:14px;border-radius:3px;flex:none;display:flex;
+  align-items:center;justify-content:center;font-size:8px;
+  background:var(--m-accent);color:var(--m-accent-ink)}
+.mx-prc-03 .c3-say{flex:1;min-width:0;font-size:10.5px;font-family:var(--m-serif);font-style:italic;
+  background-image:linear-gradient(90deg,var(--m-mut) 34%,var(--m-ink) 50%,var(--m-mut) 66%);
+  background-size:240% 100%;background-position:120% 0;
+  -webkit-background-clip:text;background-clip:text;color:transparent;white-space:nowrap}
+.mx-prc-03 .c3-tog{padding:4px 6px;font-size:8px}
+.mx-prc-03 .c3-thread{border-top:1px solid var(--m-line);padding-top:5px}
+.mx-prc-03 .c3-msg{font-size:9.5px;padding:3px 6px;border-radius:3px;margin-bottom:3px;max-width:82%}
+.mx-prc-03 .c3-msg.out{background:var(--m-accent);color:var(--m-accent-ink);margin-left:auto}
+.mx-prc-03 .c3-msg.in{background:var(--m-line);color:var(--m-ink)}
+.mx-prc-03 .c3-msg.draft{border:1px dashed var(--m-line2);color:var(--m-mut);margin-left:auto;background:none}
+.mx-prc-03 .c3-rule{display:flex;align-items:center;gap:5px;height:12px;overflow:hidden}
+.mx-prc-03 .c3-rule i{flex:1;height:1px;background:var(--m-warn);transform-origin:0 50%;transform:scaleX(0)}
+.mx-prc-03 .c3-rule span{font:500 7.5px/1 var(--m-mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--m-warn);opacity:0;white-space:nowrap}
+.mx-prc-03.is-held .c3-bot{background:var(--m-line2);color:var(--m-mut)}
+
+/* -- 04 . the offer, and who is vouching for it ------------------------ */
+.mx-prc-04 .c4-card{border:1px solid var(--m-line2);border-radius:4px;padding:5px 8px 6px;background:var(--m-surface)}
+.mx-prc-04 .c4-t{display:flex;align-items:baseline;gap:5px;font-family:var(--m-serif);font-size:12px;
+  font-weight:600;margin-bottom:4px}
+.mx-prc-04 .c4-u{font:500 7.5px/1 var(--m-mono);letter-spacing:.11em;text-transform:uppercase;
+  color:var(--m-no);border:1px solid var(--m-no);border-radius:2px;padding:2px 3px}
+.mx-prc-04 .c4-row{display:flex;justify-content:space-between;gap:6px;font-size:10px;
+  padding:2px 0;border-bottom:1px solid var(--m-line)}
+.mx-prc-04 .c4-conf{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:9px;color:var(--m-mut)}
+.mx-prc-04 .c4-bar{flex:1;height:3px;border-radius:2px;background:var(--m-line);overflow:hidden}
+.mx-prc-04 .c4-bar b{display:block;height:100%;background:var(--m-warn);transform-origin:0 50%;transform:scaleX(0)}
+.mx-prc-04 .c4-warn{display:grid;grid-template-rows:0fr;transition:none}
+.mx-prc-04 .c4-warn > div{overflow:hidden;min-height:0}
+.mx-prc-04 .c4-wi{font-size:9px;color:var(--m-warn);padding-top:4px}
+.mx-prc-04 .c4-trust{font-size:9px;color:var(--m-mut);margin-top:3px}
+/* the decision replaces the controls in place -- no row is added to the card */
+.mx-prc-04 .c4-slot{display:grid;margin-top:5px}
+.mx-prc-04 .c4-slot > *{grid-area:1/1}
+.mx-prc-04 .c4-acts{display:flex;gap:5px}
+.mx-prc-04 .c4-acts .p-btn{flex:1;padding:5px 4px;font-size:8px}
+.mx-prc-04 .c4-ok[data-armed="0"]{opacity:.45;cursor:not-allowed}
+.mx-prc-04 .c4-trace{display:flex;align-items:center;opacity:0;pointer-events:none}
+.mx-prc-04 .c4-ti{font:500 8px/1.5 var(--m-mono);letter-spacing:.06em;color:var(--m-mut)}
+
+/* -- 05 . credited resists without a memo ------------------------------ */
+.mx-prc-05 .c5-rail{display:flex;align-items:center;gap:4px;margin-bottom:7px}
+.mx-prc-05 .c5-s{font:500 7.5px/1 var(--m-mono);letter-spacing:.09em;text-transform:uppercase;
+  border:1px solid var(--m-line2);border-radius:2px;padding:3px 4px;color:var(--m-mut)}
+.mx-prc-05 .c5-s.on{border-color:var(--m-accent);color:var(--m-accent)}
+.mx-prc-05 .c5-s.settled{background:var(--m-accent);border-color:var(--m-accent);color:var(--m-accent-ink)}
+.mx-prc-05 .c5-tick{flex:1;height:1px;background:var(--m-line);transform-origin:0 50%;transform:scaleX(0)}
+.mx-prc-05 .c5-amt{display:flex;align-items:baseline;gap:6px;font-size:10px;color:var(--m-mut);margin-bottom:4px}
+.mx-prc-05 .c5-amt b{color:var(--m-ink);font-size:12px}
+.mx-prc-05 .c5-d{color:var(--m-warn);font-size:9.5px;opacity:0}
+.mx-prc-05 .c5-memo{display:grid;grid-template-rows:0fr}
+.mx-prc-05 .c5-memo > div{overflow:hidden;min-height:0}
+.mx-prc-05 .c5-mi{display:flex;justify-content:space-between;gap:6px;font-size:9px;color:var(--m-mut);
+  border:1px dashed var(--m-line2);border-radius:3px;padding:3px 5px;margin-bottom:5px}
+.mx-prc-05 .c5-mv{color:var(--m-ink)}
+.mx-prc-05 .c5-b{width:100%}
+.mx-prc-05 .c5-note{margin-top:5px;font-size:9px;color:var(--m-mut);text-align:center}
+
+/* -- 06 . landed cost assembles ---------------------------------------- */
+.mx-prc-06 .c6-bar{display:flex;height:16px;border-radius:2px;overflow:hidden;background:var(--m-sunk);
+  border:1px solid var(--m-line);margin-bottom:7px}
+.mx-prc-06 .c6-bar i{display:block;height:100%;transform-origin:0 50%;transform:scaleX(0)}
+/* widths are floored so a $9 split-case fee stays visible against a $1,284 line;
+   the figures beneath are exact. */
+.mx-prc-06 .c6-bar i.g{background:var(--m-accent);flex:0 0 82%}
+.mx-prc-06 .c6-bar i.c[data-k="fr"]{background:color-mix(in srgb,var(--m-accent) 46%,var(--m-line2));flex:0 0 4%}
+.mx-prc-06 .c6-bar i.c[data-k="fu"]{background:color-mix(in srgb,var(--m-accent) 34%,var(--m-line2));flex:0 0 2.5%}
+.mx-prc-06 .c6-bar i.c[data-k="sp"]{background:color-mix(in srgb,var(--m-accent) 24%,var(--m-line2));flex:0 0 2%}
+.mx-prc-06 .c6-bar i.t{background:var(--m-no);flex:0 0 9.5%}
+.mx-prc-06 .c6-pair{display:grid;grid-template-columns:1fr 1fr;column-gap:10px}
+.mx-prc-06 .c6-l{display:flex;justify-content:space-between;gap:6px;font-size:9.5px;
+  padding:1px 0;border-bottom:1px solid var(--m-line);color:var(--m-mut);opacity:.34}
+.mx-prc-06 .c6-l.on{opacity:1}
+.mx-prc-06 .c6-l b{font-weight:400;color:var(--m-ink)}
+.mx-prc-06 .c6-l.nul b{color:var(--m-mut)}
+.mx-prc-06 .c6-l.tax b{color:var(--m-no)}
+.mx-prc-06 .c6-l.tax.gone{text-decoration:line-through;text-decoration-color:var(--m-no)}
+.mx-prc-06 .c6-note{margin-top:5px;font-size:9px;color:var(--m-mut);opacity:0}
+
+/* -- 07 . two windows agree, one has nothing to say -------------------- */
+.mx-prc-07 .c7-set{display:flex;gap:6px;align-items:flex-end}
+.mx-prc-07 .c7-w{flex:1;min-width:0;border:1px solid var(--m-line);border-radius:3px;padding:5px 5px 4px}
+.mx-prc-07 .c7-lb{font:500 8px/1 var(--m-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--m-mut)}
+/* the baseline sits mid-plot so a fall is drawn falling, not as a short rise */
+.mx-prc-07 .c7-plot{position:relative;height:42px;margin:5px 0 3px}
+.mx-prc-07 .c7-base{position:absolute;left:0;right:0;top:20px;height:1px;background:var(--m-line2);
+  transform-origin:0 50%;transform:scaleX(0);display:block}
+.mx-prc-07 .c7-bar{position:absolute;left:22%;right:22%;background:var(--m-no);
+  transform-origin:50% 100%;transform:scaleY(0);display:block;bottom:22px}
+.mx-prc-07 .c7-bar.dn{background:var(--m-ok);top:21px;bottom:auto;transform-origin:50% 0}
+.mx-prc-07 .c7-v{font-size:10px;font-weight:600;display:block}
+.mx-prc-07 .c7-v.up{color:var(--m-no)}
+.mx-prc-07 .c7-v.dn{color:var(--m-ok)}
+.mx-prc-07 .c7-nd{font-family:var(--m-serif);font-style:italic;font-size:9.5px;font-weight:400;
+  color:var(--m-mut);opacity:0;line-height:1.25}
+.mx-prc-07 .c7-foot{margin-top:6px;font-size:9px;color:var(--m-mut)}
+
+/* -- 08 . a suggestion is not a fact ----------------------------------- */
+.mx-prc-08 .c8-pair{position:relative;display:flex;gap:0;align-items:center;height:52px}
+.mx-prc-08 .c8-col{flex:1;min-width:0;border:1px solid var(--m-line);border-radius:3px;padding:4px 5px}
+.mx-prc-08 .c8-r{font-size:9.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mx-prc-08 .c8-r.sub{color:var(--m-mut);font-family:var(--m-mono);font-variant-numeric:tabular-nums;
+  font-size:9px;letter-spacing:-.03em;margin-top:2px}
+.mx-prc-08 .c8-link{width:42px;height:52px;flex:none}
+.mx-prc-08 .c8-link path{fill:none;stroke-width:1.3;stroke-linecap:round}
+.mx-prc-08 .c8-p1{stroke:var(--m-mut);stroke-dasharray:2.4 3}
+.mx-prc-08 .c8-p2{stroke:var(--m-accent);stroke-dasharray:60;stroke-dashoffset:60}
+.mx-prc-08 .c8-sway{animation:prc-sway 2600ms cubic-bezier(.45,0,.55,1) infinite alternate}
+@keyframes prc-sway{from{transform:translateY(-1.2px)}to{transform:translateY(1.2px)}}
+.mx-prc-08 .c8-seal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.4);opacity:0;
+  width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:9px;line-height:1;background:var(--m-accent);color:var(--m-accent-ink)}
+.mx-prc-08 .c8-foot{display:flex;align-items:center;gap:6px;margin-top:7px}
+.mx-prc-08 .c8-st{flex:1;font-size:9px;color:var(--m-mut)}
+.mx-prc-08 .c8-st.done{color:var(--m-ok)}
+
+/* -- 09 . the drift spur ----------------------------------------------- */
+.mx-prc-09 .c9-row{display:flex;align-items:center;gap:7px;height:24px;padding:0 7px;
+  border:1px solid var(--m-line);border-radius:3px;background:var(--m-surface)}
+.mx-prc-09 .c9-nm{flex:1;min-width:0;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mx-prc-09 .c9-pr{font-size:11px;padding:2px 4px;border-radius:2px;cursor:pointer}
+.mx-prc-09 .c9-pr.hot{background:color-mix(in srgb,var(--m-accent) 16%,transparent);color:var(--m-accent)}
+.mx-prc-09 .c9-spur{display:grid;grid-template-rows:0fr}
+.mx-prc-09 .c9-spur > div{overflow:hidden;min-height:0}
+.mx-prc-09 .c9-in{border:1px solid var(--m-line);border-top:none;border-radius:0 0 3px 3px;padding:5px 7px}
+.mx-prc-09 .c9-spark{width:100%;height:22px;display:block;clip-path:inset(0 100% 0 0)}
+.mx-prc-09 .c9-spark path{fill:none;stroke:var(--m-accent);stroke-width:1.4;stroke-linejoin:round}
+.mx-prc-09 .c9-cmp{display:flex;justify-content:space-between;gap:4px;font-size:9px;
+  color:var(--m-mut);margin-top:3px}
+.mx-prc-09 .c9-cmp b{font-weight:400;color:var(--m-ink);font-family:var(--m-mono);
+  font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.mx-prc-09 .c9-door{margin-top:6px;text-align:center;font:500 8px/1 var(--m-mono);letter-spacing:.11em;
+  text-transform:uppercase;background:var(--m-accent);color:var(--m-accent-ink);
+  border-radius:2px;padding:4px;opacity:0;cursor:pointer}
+.mx-prc-09 .c9-gap{margin-top:4px;font-size:9px;color:var(--m-mut)}
+
+/* -- 10 . opened, never sent ------------------------------------------- */
+.mx-prc-10 .c10-list{border-top:1px solid var(--m-line);position:relative}
+.mx-prc-10 .c10-r{position:relative;display:flex;align-items:center;gap:6px;height:27px;padding:0 7px 0 9px;
+  border-bottom:1px solid var(--m-line);background:var(--m-surface)}
+.mx-prc-10 .c10-age{position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--m-line2);
+  transform-origin:50% 100%;transform:scaleY(0)}
+.mx-prc-10 .c10-r.old .c10-age{background:var(--m-warn)}
+.mx-prc-10 .c10-r.sent .c10-age{background:var(--m-ok)}
+.mx-prc-10 .c10-nm{flex:1;min-width:0;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mx-prc-10 .c10-d{font:500 8px/1 var(--m-mono);letter-spacing:.06em;color:var(--m-mut);white-space:nowrap}
+.mx-prc-10 .c10-r.old .c10-d{color:var(--m-warn)}
+.mx-prc-10 .c10-r.sent .c10-d{color:var(--m-ok)}
+.mx-prc-10 .c10-am{font-size:10px}
+.mx-prc-10 .c10-foot{margin-top:6px;font-size:9px;color:var(--m-mut)}
+
+/* -- 11 . dormant, not empty ------------------------------------------- */
+.mx-prc-11 .c11-pane{height:76px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:7px;border:1px dashed var(--m-line2);border-radius:4px;padding:8px}
+.mx-prc-11 .c11-pane.live{border-style:solid}
+.mx-prc-11 .c11-intake{display:flex;gap:4px}
+.mx-prc-11 .c11-intake i{width:16px;height:8px;border:1px solid var(--m-line2);border-radius:1px;display:block}
+.mx-prc-11 .c11-breathe{animation:prc-breathe 2400ms cubic-bezier(.45,0,.55,1) infinite alternate}
+@keyframes prc-breathe{
+  from{opacity:.34;transform:scale(.994)}
+  to  {opacity:.62;transform:scale(1.006)}
+}
+.mx-prc-11 .c11-say{font-size:9.5px;color:var(--m-mut);text-align:center;line-height:1.35;max-width:26ch}
+.mx-prc-11 .c11-say b{font-weight:400;color:var(--m-ink)}
+.mx-prc-11 .c11-foot{margin-top:6px;font-size:9px;color:var(--m-mut);text-align:center}
+
+/* -- reduced motion: land on the end state ----------------------------- */
+@media (prefers-reduced-motion:reduce){
+  .mx-prc *,.mx-prc *::before,.mx-prc *::after{
+    animation-duration:1ms!important;animation-delay:0ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:1ms!important;transition-delay:0ms!important;
+  }
+  .mx-prc-08 .c8-sway{animation:none!important;transform:none!important}
+  .mx-prc-11 .c11-breathe{animation:none!important;opacity:.5!important}
+}
+</style>
+<script>
+(function(){
+  var M = window.MUDAVYM_MOTIONS = window.MUDAVYM_MOTIONS || [];
+  var FAM = 'Procurement & money';
+  var REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  /* \u2500\u2500 real spring: integrate, then sample into a CSS linear() easing \u2500\u2500
+     a = (-k(x-1) - c\u00b7v)/m, 1ms Euler-Cromer steps, stop at restDelta.   */
+  var LINEAR_OK = (function(){ try{ return CSS.supports('animation-timing-function','linear(0, 0.5, 1)'); }catch(e){ return false; } })();
+  function spring(k, c, m, restDelta){
+    m = m || 1; restDelta = restDelta || 0.005;
+    var dt = 1/1000, x = 0, v = 0, t = 0, tr = [0], peak = 0, cap = 4;
+    while (t < cap){
+      v += ((-k*(x-1) - c*v)/m)*dt; x += v*dt; t += dt;
+      tr.push(x); if (x > peak) peak = x;
+      if (Math.abs(1-x) < restDelta && Math.abs(v) < restDelta*8) break;
+    }
+    var n = 46, pts = [], i, idx;
+    for (i=0;i<=n;i++){ idx = Math.round(i/n*(tr.length-1)); pts.push(+tr[idx].toFixed(4)); }
+    pts[0] = 0; pts[n] = 1;
+    return {
+      k:k, c:c, trace:tr,
+      duration: Math.round(t*1000),
+      overshoot: +(Math.max(0,peak-1)*100).toFixed(1),
+      easing: LINEAR_OK ? 'linear('+pts.join(',')+')' : 'cubic-bezier(.16,1,.3,1)'
+    };
+  }
+  var SP = {
+    tuck : spring(380,32),        // house "tuck" \u2014 weight under a finger, not bounce
+    seat : spring(300,34),        // near-critical: a control that resists and returns
+    tally: spring(120,26,1,0.0015),// house "tally" \u2014 overdamped, figures never bounce
+    stamp: spring(520,26)         // house "stamp" \u2014 the one permitted ceremony
+  };
+  function sp(s,label){ return label+' spring '+s.k+'/'+s.c+' \u2192 '+s.duration+'ms, '+s.overshoot+'% overshoot'; }
+
+  var EZ = {
+    settle:'cubic-bezier(.16,1,.3,1)',   // house
+    turn  :'cubic-bezier(.32,.72,0,1)',  // house \u2014 opening a record
+    ink   :'cubic-bezier(.16,1,.3,1)',   // house \u2014 micro states
+    exit  :'cubic-bezier(.4,0,.9,1)',
+    glide :'cubic-bezier(.22,.61,.36,1)' // deceleration to rest
+  };
+
+  /* the canvas speed slider; 1 = as authored */
+  function R(){ try{ var f=window.MUDAVYM_RATE; var v=f?f():1; return (v>0?v:1); }catch(e){ return 1; } }
+
+  /* per-root bookkeeping so play() is idempotent under repeat calls */
+  function ctl(root){
+    (root._pt||[]).forEach(clearTimeout);
+    (root._pa||[]).forEach(function(a){ try{ a.cancel(); }catch(e){} });
+    if (root._pr){ cancelAnimationFrame(root._pr); root._pr = null; }
+    root._pt = []; root._pa = []; root._gen = (root._gen||0) + 1;
+    var gen = root._gen;
+    void root.offsetWidth;
+    return {
+      gen: function(){ return gen === root._gen; },
+      at: function(ms, fn){ root._pt.push(setTimeout(function(){ if (gen===root._gen) fn(); }, REDUCED?0:ms/R())); },
+      an: function(el, kf, o){
+        o = o || {};
+        var opt = { duration:(o.duration||300)/R(), delay:(o.delay||0)/R(),
+                    easing:o.easing||EZ.settle, fill:o.fill||'both', iterations:o.iterations||1,
+                    direction:o.direction };
+        if (REDUCED){ opt.duration = 1; opt.delay = 0; opt.iterations = 1; }
+        var a = el.animate(kf, opt); root._pa.push(a); return a;
+      },
+      /* rAF sweep with a value callback; ms is authored time, scaled by the slider */
+      sweep: function(ms, fn, done){
+        if (REDUCED){ fn(1); if (done) done(); return; }
+        var t0 = performance.now(), dur = ms/R();
+        (function step(now){
+          if (gen !== root._gen) return;
+          var p = Math.min(1,(now-t0)/dur);
+          fn(p);
+          if (p < 1) root._pr = requestAnimationFrame(step);
+          else if (done) done();
+        })(t0);
+      },
+      stop: function(){ if (root._pr){ cancelAnimationFrame(root._pr); root._pr = null; } }
+    };
+  }
+  function q(root,s){ return Array.prototype.slice.call(root.querySelectorAll(s)); }
+  function money(n){ return '$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+  /* overdamped tally: read the integrated spring trace, so the figure never bounces */
+  function tallyTo(c, el, from, to, ms, fmt){
+    c.sweep(ms, function(p){
+      var idx = Math.min(SP.tally.trace.length-1, Math.round(p*(SP.tally.trace.length-1)));
+      var x = SP.tally.trace[idx];
+      el.textContent = fmt(from + (to-from)*x);
+    }, function(){ el.textContent = fmt(to); });
+  }
+
+  /* \u2550\u2550 prc-01 \u00b7 the deadline, not the undo \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-01', name:'The deadline, not the undo', family:FAM,
+    purpose:'An undo window drains AFTER you acted; this one drains BEFORE the AI acts, so the cancel must get stronger as the clock runs out, never weaker. Real two-minute auto-send window on the Orders thread drawer, compressed here to six seconds.',
+    spec:'drain: strictly linear, 120s real (6.0s demo) \u2014 an operator times a deadline against their own clock \u00b7 cancel gains weight: border 1\u21922px + scale 1\u21921.035, '+EZ.settle+' driven per-frame \u00b7 revert to draft: settle 320ms',
+    source:'apps/web/src/components/orders/CommsThreadDrawer.tsx:222-231',
+    html:'<div class="mx-prc mx-prc-01">'+
+      '<div class="p-h"><span class="p-k">PO-1042 \u00b7 Vinos del Norte</span><span class="p-k w c1-tag">Auto-send scheduled</span></div>'+
+      '<div class="c1-band"><span class="c1-dot"></span>'+
+        '<span class="c1-txt">AI is auto-sending this reply in <b class="c1-n">120</b>s</span></div>'+
+      '<div class="c1-track"><i class="c1-fill"></i></div>'+
+      '<button type="button" class="p-btn c1-btn">Cancel &amp; review instead</button>'+
+      '<div class="c1-note">Cancelling keeps it as a draft for you to edit and approve.</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          fill = root.querySelector('.c1-fill'), n = root.querySelector('.c1-n'),
+          btn  = root.querySelector('.c1-btn'), band = root.querySelector('.c1-band'),
+          tag  = root.querySelector('.c1-tag'), txt = root.querySelector('.c1-txt'),
+          note = root.querySelector('.c1-note'), cancelled = false;
+
+      band.classList.remove('done'); fill.classList.remove('held');
+      tag.textContent = 'Auto-send scheduled'; tag.classList.add('w');
+      txt.innerHTML = 'AI is auto-sending this reply in <b class="c1-n">120</b>s';
+      n = root.querySelector('.c1-n');
+      note.textContent = 'Cancelling keeps it as a draft for you to edit and approve.';
+      fill.style.transform = 'scaleX(1)';
+      btn.style.cssText = 'border-width:1px;opacity:.72';
+
+      function cancel(){
+        if (cancelled) return; cancelled = true;
+        c.stop();
+        // the drain reverses: the deadline is gone, not merely paused
+        c.an(fill, [{transform:getComputedStyle(fill).transform},{transform:'scaleX(1)'}],
+             {duration:320, easing:EZ.settle});
+        fill.style.transform = 'scaleX(1)';
+        band.classList.add('done'); fill.classList.add('held');
+        tag.classList.remove('w'); tag.textContent = 'Draft \u00b7 awaiting you';
+        c.an(band,[{opacity:.4},{opacity:1}],{duration:200});
+        txt.textContent = 'Held as a draft. Nothing has left the building.';
+        note.textContent = 'Edit it, approve it, or discard it \u2014 your move.';
+        btn.style.cssText = 'border-width:1px;opacity:.55';
+      }
+      if (!btn._b){ btn._b = 1; btn.addEventListener('click', cancel); }
+
+      c.at(300, function(){
+        c.sweep(6000, function(p){
+          fill.style.transform = 'scaleX('+(1-p)+')';
+          n.textContent = Math.ceil(120*(1-p));
+          // the control gains weight as the window closes \u2014 it must never dim
+          btn.style.borderWidth = (1 + p).toFixed(2)+'px';
+          btn.style.opacity = (0.72 + 0.28*p).toFixed(3);
+          btn.style.transform = 'scale('+(1+0.035*p).toFixed(4)+')';
+          if (p > 0.62) cancel();
+        });
+      });
+    }
+  });
+
+  /* \u2550\u2550 prc-02 \u00b7 a draft cannot travel \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-02', name:'A draft cannot travel', family:FAM,
+    purpose:'The guardrail made physical: an AI draft on the Orders thread may never wear the clothes of a sent message. Drag it at the Sent lane and it rubber-bands home \u2014 only approve-draft moves it, and only then does it get a solid edge and a timestamp. Drag it yourself.',
+    spec:'resistance 0.32\u00d7 beyond the lane edge, capped at 40px \u00b7 return '+sp(SP.tuck,'tuck')+' \u00b7 commit: dashed\u2192solid 160ms ink, timestamp writes, travel settle 320ms',
+    source:'apps/web/src/hooks/queries/useDraftEmailQueries.ts:63-87',
+    html:'<div class="mx-prc mx-prc-02">'+
+      '<div class="p-h"><span class="p-k">Vinos del Norte \u00b7 round 3</span><span class="p-k c2-hint">drag it \u2192</span></div>'+
+      '<div class="c2-stage">'+
+        '<span class="c2-ll a">Awaiting you</span><span class="c2-ll b">Sent</span>'+
+        '<div class="c2-div"></div><div class="c2-ghost"></div>'+
+        '<div class="c2-card"><div class="c2-cn"><span>AI draft</span><span>round 3</span></div>'+
+          '<div class="c2-cb">Counter at $18.40 for 6\u2026</div>'+
+          '<span class="c2-ts"></span></div>'+
+      '</div>'+
+      '<div class="c2-foot"><span class="c2-why">Approval is the only thing that moves it.</span>'+
+        '<button type="button" class="p-btn c2-ap">Approve draft</button></div></div>',
+    play:function(root){
+      var c = ctl(root),
+          card = root.querySelector('.c2-card'), ts = root.querySelector('.c2-ts'),
+          ap = root.querySelector('.c2-ap'), hint = root.querySelector('.c2-hint'),
+          why = root.querySelector('.c2-why'), stage = root.querySelector('.c2-stage'),
+          sent = false;
+
+      card.style.transform = 'translateX(0)';
+      card.classList.remove('solid'); ts.textContent = '';
+      ap.classList.remove('lit'); ap.textContent = 'Approve draft'; ap.style.opacity = '1';
+      hint.textContent = 'drag it \u2192';
+      why.textContent = 'Approval is the only thing that moves it.';
+
+      function springBack(from){
+        c.an(card, [{transform:'translateX('+from+'px)'},{transform:'translateX(0)'}],
+             {duration:SP.tuck.duration, easing:SP.tuck.easing});
+        card.style.transform = 'translateX(0)';
+      }
+      function commit(){
+        if (sent) return; sent = true;
+        c.an(card,[{borderColor:'var(--m-line2)'},{borderColor:'var(--m-accent)'}],{duration:160,easing:EZ.ink});
+        card.classList.add('solid');
+        var full = '21:14 \u00b7 sent';
+        c.sweep(340, function(p){ ts.textContent = full.slice(0, Math.round(p*full.length)); },
+                function(){ ts.textContent = full; });
+        c.at(360, function(){
+          var travel = stage.clientWidth*0.52 + 8;
+          c.an(card,[{transform:'translateX(0)'},{transform:'translateX('+travel+'px)'}],
+               {duration:320, easing:EZ.settle});
+          card.style.transform = 'translateX('+travel+'px)';
+          ap.style.opacity = '.4'; ap.textContent = 'Sent 21:14';
+          why.textContent = 'It only wore a timestamp once you approved it.';
+        });
+      }
+      if (!ap._b){ ap._b = 1; ap.addEventListener('click', commit); }
+
+      if (!card._b){
+        card._b = 1;
+        var down = false, x0 = 0, cur = 0;
+        card.addEventListener('pointerdown', function(e){
+          if (sent) return; down = true; x0 = e.clientX; cur = 0;
+          try{ card.setPointerCapture(e.pointerId); }catch(err){}
+        });
+        card.addEventListener('pointermove', function(e){
+          if (!down) return;
+          var dx = e.clientX - x0;
+          // beyond the lane edge the draft resists: it is not allowed over there
+          cur = dx > 0 ? Math.min(40, dx*0.32) : Math.max(-14, dx*0.32);
+          card.style.transform = 'translateX('+cur+'px)';
+        });
+        function up(){ if (!down) return; down = false; springBack(cur); cur = 0; }
+        card.addEventListener('pointerup', up);
+        card.addEventListener('pointercancel', up);
+      }
+
+      /* self-playing: shove it at the Sent lane twice, then approve */
+      c.at(500, function(){
+        c.an(card,[{transform:'translateX(0)'},{transform:'translateX(34px)'}],
+             {duration:220, easing:EZ.exit});
+        card.style.transform = 'translateX(34px)';
+      });
+      c.at(780, function(){ springBack(34); });
+      c.at(1250, function(){
+        c.an(card,[{transform:'translateX(0)'},{transform:'translateX(40px)'}],
+             {duration:180, easing:EZ.exit});
+        card.style.transform = 'translateX(40px)';
+        hint.textContent = 'it will not go';
+      });
+      c.at(1470, function(){ springBack(40); });
+      c.at(2100, function(){ hint.textContent = 'approve \u2192'; c.an(ap,[{transform:'scale(1)'},{transform:'scale(.96)'},{transform:'scale(1)'}],{duration:200}); ap.classList.add('lit'); });
+      c.at(2320, commit);
+    }
+  });
+
+  /* \u2550\u2550 prc-03 \u00b7 grab the wheel \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-03', name:'Grab the wheel', family:FAM,
+    purpose:'Pausing the AI mid-thread on an order. The thinking sweep does not snap off \u2014 it decelerates to a stop, because the AI is stopping mid-sentence and pretending otherwise would be a lie. A rule then marks exactly where the human took over. Toggle it yourself.',
+    spec:'sweep runs at 1900ms/cycle; pause decays its velocity to zero over 520ms on '+EZ.glide+' (per-frame, not a class swap) \u00b7 handover rule scaleX 0\u21921 turn 420ms, label +140ms',
+    source:'apps/web/src/components/orders/CommsThreadDrawer.tsx:504-520',
+    html:'<div class="mx-prc mx-prc-03">'+
+      '<div class="c3-band"><span class="c3-bot">&#9670;</span>'+
+        '<span class="c3-say">AI is handling this order</span>'+
+        '<button type="button" class="p-btn c3-tog">Pause AI</button></div>'+
+      '<div class="c3-thread">'+
+        '<div class="c3-msg out">Can you hold 6 at $18.40?</div>'+
+        '<div class="c3-msg in">We can do $18.90 this week.</div>'+
+        '<div class="c3-rule"><i></i><span>you took the wheel \u00b7 21:14</span></div>'+
+        '<div class="c3-msg draft">Drafting a counter&#8230;</div>'+
+      '</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          say = root.querySelector('.c3-say'), tog = root.querySelector('.c3-tog'),
+          rule = root.querySelector('.c3-rule i'), lab = root.querySelector('.c3-rule span'),
+          draft = root.querySelector('.c3-msg.draft'),
+          box = root.querySelector('.mx-prc-03') || root,
+          pos = 120, vel = -1, held = false, decay = null; // vel in % of background-position per frame-ms
+
+      box.classList.remove('is-held');
+      tog.textContent = 'Pause AI'; tog.classList.remove('lit');
+      draft.textContent = 'Drafting a counter\u2026';
+      rule.style.transform = 'scaleX(0)'; lab.style.opacity = '0';
+      say.textContent = 'AI is handling this order';
+
+      var last = performance.now();
+      function frame(now){
+        if (!c.gen()) return;
+        var dt = Math.min(48, now - last); last = now;
+        var v = vel;
+        if (decay){
+          var p = Math.min(1, (now - decay.t0)/(520/R()));
+          // ease-out on the VELOCITY: the sweep coasts to rest
+          v = decay.from * (1 - (1-Math.pow(1-p,3)));
+          if (p >= 1){ vel = 0; decay = null; }
+        }
+        pos += v * dt * 0.12 * R();
+        if (pos < -120) pos = 120;
+        say.style.backgroundPosition = pos.toFixed(2)+'% 0';
+        root._pr = requestAnimationFrame(frame);
+      }
+      if (!REDUCED) root._pr = requestAnimationFrame(frame);
+      else say.style.backgroundPosition = '0% 0';
+
+      function setHeld(on){
+        held = on;
+        box.classList.toggle('is-held', on);
+        tog.textContent = on ? 'Resume AI' : 'Pause AI';
+        tog.classList.toggle('lit', !on);
+        if (on){
+          decay = { t0: performance.now(), from: vel || -1 };
+          say.textContent = 'AI paused for this order';
+          draft.textContent = 'Held \u2014 the thread is yours';
+          c.an(rule, [{transform:'scaleX(0)'},{transform:'scaleX(1)'}], {duration:420, easing:EZ.turn});
+          rule.style.transform = 'scaleX(1)';
+          c.an(lab, [{opacity:0},{opacity:1}], {duration:200, delay:140});
+          lab.style.opacity = '1';
+        } else {
+          decay = null; vel = -1; last = performance.now();
+          say.textContent = 'AI is handling this order';
+          draft.textContent = 'Drafting a counter\u2026';
+          c.an(rule, [{transform:'scaleX(1)'},{transform:'scaleX(0)'}], {duration:260, easing:EZ.exit});
+          rule.style.transform = 'scaleX(0)';
+          c.an(lab, [{opacity:1},{opacity:0}], {duration:140});
+          lab.style.opacity = '0';
+        }
+      }
+      if (!tog._b){ tog._b = 1; tog.addEventListener('click', function(){ setHeld(!held); }); }
+      c.at(1150, function(){ setHeld(true); });
+    }
+  });
+
+  /* \u2550\u2550 prc-04 \u00b7 the offer, and who is vouching for it \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-04', name:'The offer, and who is vouching for it', family:FAM,
+    purpose:'An AI-extracted deal proposal arriving on an order. Below 0.60 extraction confidence the Confirm control never arms itself \u2014 the warning unfolds and only Dismiss stays lit; and a dismissal does not vanish, it leaves a line in the thread, because a refused offer is still a decision about money.',
+    spec:'card settle 320ms \u00b7 figures '+sp(SP.tally,'tally')+' \u00b7 confidence bar scaleX to .54 in 620ms \u00b7 warning grid-rows 0fr\u21921fr turn 420ms \u00b7 Confirm stays unarmed while confidence < 0.60 \u00b7 the record replaces the controls in the same cell: buttons out 180ms exit, trace in 300ms settle at +120ms \u2014 no row is added',
+    source:'apps/web/src/components/orders/DealApprovalModal.tsx:34-37,164-167',
+    html:'<div class="mx-prc mx-prc-04">'+
+      '<div class="c4-card">'+
+        '<div class="c4-t">Offer &#8212; accept?<span class="c4-u">urgent</span></div>'+
+        '<div class="c4-row"><span>6 &#215; Ribera del Duero</span><b class="num c4-p">$0.00</b></div>'+
+        '<div class="c4-conf"><span>confidence</span><i class="c4-bar"><b></b></i><span class="num c4-cv">0%</span></div>'+
+        '<div class="c4-warn"><div><div class="c4-wi">Low confidence \u2014 read the full email before confirming.</div></div></div>'+
+        '<div class="c4-trust">New vendor \u00b7 2 completed orders.</div>'+
+        '<div class="c4-slot">'+
+          '<div class="c4-acts"><button type="button" class="p-btn c4-ok" data-armed="0">Confirm</button>'+
+            '<button type="button" class="p-btn c4-no">Dismiss</button></div>'+
+          '<div class="c4-trace"><span class="c4-ti">dismissed 21:16 \u00b7 kept in the thread</span></div>'+
+        '</div>'+
+      '</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          card = root.querySelector('.c4-card'), price = root.querySelector('.c4-p'),
+          bar = root.querySelector('.c4-bar b'), cv = root.querySelector('.c4-cv'),
+          warn = root.querySelector('.c4-warn'), trace = root.querySelector('.c4-trace'),
+          ok = root.querySelector('.c4-ok'), no = root.querySelector('.c4-no');
+
+      var acts = root.querySelector('.c4-acts');
+      warn.style.gridTemplateRows = '0fr';
+      trace.style.opacity = '0'; acts.style.opacity = '1';
+      bar.style.transform = 'scaleX(0)'; cv.textContent = '0%'; price.textContent = '$0.00';
+      ok.dataset.armed = '0'; ok.classList.remove('lit'); no.classList.remove('lit');
+      no.textContent = 'Dismiss';
+
+      c.an(card, [{opacity:0, transform:'translateY(6px)'},{opacity:1, transform:'none'}],
+           {duration:320, easing:EZ.settle});
+      c.at(240, function(){ tallyTo(c, price, 0, 113.40, 840, money); });
+      c.at(420, function(){
+        c.an(bar, [{transform:'scaleX(0)'},{transform:'scaleX(.54)'}], {duration:620, easing:EZ.settle});
+        bar.style.transform = 'scaleX(.54)';
+        c.sweep(620, function(p){ cv.textContent = Math.round(54*p)+'%'; }, function(){ cv.textContent='54%'; });
+      });
+      c.at(1120, function(){
+        // < 0.60 \u2192 the warning opens and Confirm is deliberately left unarmed
+        c.an(warn, [{gridTemplateRows:'0fr'},{gridTemplateRows:'1fr'}], {duration:420, easing:EZ.turn});
+        warn.style.gridTemplateRows = '1fr';
+        no.classList.add('lit');
+      });
+      function dismiss(){
+        // the record takes the controls' place: a refused offer still leaves a line
+        c.an(acts, [{opacity:1, transform:'translateY(0)'},{opacity:0, transform:'translateY(-3px)'}],
+             {duration:180, easing:EZ.exit});
+        acts.style.opacity = '0';
+        c.an(trace, [{opacity:0, transform:'translateY(4px)'},{opacity:1, transform:'none'}],
+             {duration:300, delay:120, easing:EZ.settle});
+        trace.style.opacity = '1';
+        no.classList.remove('lit'); no.textContent = 'Dismissed';
+      }
+      if (!no._b){ no._b = 1; no.addEventListener('click', dismiss); }
+      if (!ok._b){ ok._b = 1; ok.addEventListener('click', function(){
+        if (ok.dataset.armed === '0'){
+          c.an(ok,[{transform:'translateX(0)'},{transform:'translateX(-2px)'},{transform:'translateX(0)'}],
+               {duration:180, easing:EZ.ink});
+        }
+      }); }
+      c.at(2100, dismiss);
+    }
+  });
+
+  /* \u2550\u2550 prc-05 \u00b7 credited resists without a memo \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-05', name:'Credited resists without a memo', family:FAM,
+    purpose:'A vendor credit claim walking its ledger states on Receipts \u2192 Credits. Claimed is not recovered: the \u2192 credited step refuses until a credit-memo id exists, so the button pushes back and returns rather than shaking \u2014 a refusal with a reason, not an error.',
+    spec:'state chips ink 160ms, connector scaleX 200ms \u00b7 resist: 2px counter-travel then '+sp(SP.seat,'seat')+' \u00b7 memo strip grid-rows 0fr\u21921fr turn 420ms \u00b7 settlement '+sp(SP.tally,'tally'),
+    source:'apps/web/src/pages/ReceiptsPage.tsx:118-140 \u00b7 services/api/credits.ts:1-7',
+    html:'<div class="mx-prc mx-prc-05">'+
+      '<div class="p-h"><span class="p-k">Claim \u00b7 4 short, Vinos del Norte</span></div>'+
+      '<div class="c5-rail">'+
+        '<span class="c5-s" data-i="0">open</span><i class="c5-tick"></i>'+
+        '<span class="c5-s" data-i="1">requested</span><i class="c5-tick"></i>'+
+        '<span class="c5-s" data-i="2">promised</span><i class="c5-tick"></i>'+
+        '<span class="c5-s" data-i="3">credited</span></div>'+
+      '<div class="c5-amt"><span>claimed</span><b class="num c5-c">$312.00</b>'+
+        '<span>&#8594;</span><b class="num c5-cr">&#8212;</b><span class="c5-d num">&#8212;</span></div>'+
+      '<div class="c5-memo"><div><div class="c5-mi"><span>credit-memo document id</span>'+
+        '<b class="num c5-mv">&#8212;</b></div></div></div>'+
+      '<button type="button" class="p-btn c5-b">&#8594; credited</button>'+
+      '<div class="c5-note">A promise without a memo is not recovery.</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          chips = q(root,'.c5-s'), ticks = q(root,'.c5-tick'),
+          memo = root.querySelector('.c5-memo'), mv = root.querySelector('.c5-mv'),
+          btn = root.querySelector('.c5-b'), cr = root.querySelector('.c5-cr'),
+          d = root.querySelector('.c5-d'), note = root.querySelector('.c5-note'),
+          hasMemo = false;
+
+      chips.forEach(function(s){ s.classList.remove('on','settled'); });
+      ticks.forEach(function(t){ t.style.transform = 'scaleX(0)'; });
+      memo.style.gridTemplateRows = '0fr'; mv.textContent = '\u2014';
+      cr.textContent = '\u2014'; d.style.opacity = '0'; d.textContent = '\u2014';
+      btn.classList.remove('lit'); btn.textContent = '\u2192 credited';
+      note.textContent = 'A promise without a memo is not recovery.';
+
+      function step(i){
+        c.an(chips[i], [{opacity:.45},{opacity:1}], {duration:160, easing:EZ.ink});
+        chips[i].classList.add('on');
+        if (i>0){
+          c.an(ticks[i-1],[{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:200,easing:EZ.settle});
+          ticks[i-1].style.transform = 'scaleX(1)';
+        }
+      }
+      chips[0].classList.add('on');
+      c.at(320, function(){ step(1); });
+      c.at(700, function(){ step(2); });
+
+      function attempt(){
+        if (hasMemo){ settle(); return; }
+        // refusal reads as resistance, not as a shake
+        c.an(btn, [{transform:'translateX(0)'},{transform:'translateX(-2px)'}], {duration:90, easing:EZ.exit});
+        c.at(90, function(){
+          c.an(btn, [{transform:'translateX(-2px)'},{transform:'translateX(0)'}],
+               {duration:SP.seat.duration, easing:SP.seat.easing});
+          btn.style.transform = 'translateX(0)';
+        });
+        c.an(memo, [{gridTemplateRows:'0fr'},{gridTemplateRows:'1fr'}], {duration:420, easing:EZ.turn});
+        memo.style.gridTemplateRows = '1fr';
+        note.textContent = 'The server refuses the transition without it.';
+        var full = 'CM-2214';
+        c.at(520, function(){
+          c.sweep(420, function(p){ mv.textContent = full.slice(0, Math.round(p*full.length)) || '\u2014'; },
+                  function(){
+                    mv.textContent = full; hasMemo = true; btn.classList.add('lit');
+                    c.at(700, function(){ if (hasMemo) settle(); });   // the demo presses it for you
+                  });
+        });
+      }
+      function settle(){
+        chips[3].classList.add('on','settled');
+        c.an(ticks[2],[{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:200,easing:EZ.settle});
+        ticks[2].style.transform = 'scaleX(1)';
+        tallyTo(c, cr, 0, 286.50, 840, money);
+        c.at(500, function(){
+          d.textContent = '\u2212$25.50'; c.an(d,[{opacity:0},{opacity:1}],{duration:200}); d.style.opacity='1';
+          note.textContent = 'Recovered $286.50 of $312.00 \u2014 the shortfall is named.';
+        });
+      }
+      if (!btn._b){ btn._b = 1; btn.addEventListener('click', attempt); }
+      c.at(1150, attempt);
+    }
+  });
+
+  /* \u2550\u2550 prc-06 \u00b7 landed cost assembles \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-06', name:'Landed cost assembles, tax withdraws', family:FAM,
+    purpose:'Building landed cost from an invoice on Receipts: freight, fuel and split-case are cost of goods and stack on; a null delivery fee adds nothing and shows an em dash rather than a zero; and tax is shown entering and then deliberately withdrawing, because folding it in would make every freight-charging house look like a vendor error.',
+    spec:'segments scaleX 0\u21921 settle 320ms, 90ms stagger \u00b7 total '+sp(SP.tally,'tally')+' \u00b7 tax enters 260ms, withdraws '+EZ.exit+' 300ms and the total walks back down \u00b7 segment widths carry a floor (a $9 fee against a $1,284 line would otherwise be sub-pixel); the figures are exact',
+    source:'apps/web/src/services/api/documents.ts:142-151',
+    html:'<div class="mx-prc mx-prc-06">'+
+      '<div class="p-h"><span class="p-k">Invoice 6612 \u00b7 landed</span><span class="p-k on num c6-tot">$0.00</span></div>'+
+      '<div class="c6-bar"><i class="g"></i><i class="c" data-k="fr"></i><i class="c" data-k="fu"></i>'+
+        '<i class="c" data-k="sp"></i><i class="t"></i></div>'+
+      '<div class="c6-l" data-k="g"><span>Goods</span><b class="num">$1,284.60</b></div>'+
+      '<div class="c6-pair">'+
+        '<div class="c6-l" data-k="fr"><span>Freight</span><b class="num">$38.00</b></div>'+
+        '<div class="c6-l" data-k="fu"><span>Fuel</span><b class="num">$12.40</b></div>'+
+        '<div class="c6-l" data-k="sp"><span>Split-case</span><b class="num">$9.00</b></div>'+
+        '<div class="c6-l nul" data-k="dl"><span>Delivery</span><b class="num">&#8212;</b></div>'+
+      '</div>'+
+      '<div class="c6-l tax" data-k="tx"><span>Tax</span><b class="num">$115.61</b></div>'+
+      '<div class="c6-note">A null charge is an em dash, not a zero. Tax is not cost of goods.</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          segs = {}, tot = root.querySelector('.c6-tot'),
+          note = root.querySelector('.c6-note'),
+          lines = {};
+      q(root,'.c6-bar i').forEach(function(i){ segs[i.dataset.k || (i.className==='g'?'g':'tx')] = i; });
+      q(root,'.c6-l').forEach(function(l){ lines[l.dataset.k] = l; l.classList.remove('on','gone'); });
+      Object.keys(segs).forEach(function(k){ segs[k].style.transform = 'scaleX(0)'; });
+      tot.textContent = '$0.00'; note.style.opacity = '0';
+
+      function grow(k, delay){
+        c.at(delay, function(){
+          c.an(segs[k], [{transform:'scaleX(0)'},{transform:'scaleX(1)'}], {duration:320, easing:EZ.settle});
+          segs[k].style.transform = 'scaleX(1)';
+          lines[k].classList.add('on');
+        });
+      }
+      grow('g', 120);
+      c.at(200, function(){ tallyTo(c, tot, 0, 1284.60, 780, money); });
+      grow('fr', 620); grow('fu', 710); grow('sp', 800);
+      c.at(640, function(){ tallyTo(c, tot, 1284.60, 1344.00, 620, money); });
+      // a null charge is not a zero charge: the line lights, no segment is drawn
+      c.at(900, function(){ lines.dl.classList.add('on'); });
+      c.at(1320, function(){
+        lines.tx.classList.add('on');
+        c.an(segs.tx, [{transform:'scaleX(0)'},{transform:'scaleX(1)'}], {duration:260, easing:EZ.settle});
+        segs.tx.style.transform = 'scaleX(1)';
+        tallyTo(c, tot, 1344.00, 1459.61, 420, money);
+      });
+      c.at(2000, function(){
+        c.an(segs.tx, [{transform:'scaleX(1)'},{transform:'scaleX(0)'}], {duration:300, easing:EZ.exit});
+        segs.tx.style.transform = 'scaleX(0)';
+        lines.tx.classList.add('gone');
+        tallyTo(c, tot, 1459.61, 1344.00, 420, money);
+        c.an(note, [{opacity:0},{opacity:1}], {duration:240, delay:120});
+        note.style.opacity = '1';
+      });
+    }
+  });
+
+  /* \u2550\u2550 prc-07 \u00b7 two windows agree, one has nothing to say \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-07', name:'Two windows agree, one has nothing to say', family:FAM,
+    purpose:'The 7/30/90 drift chips on the vendor price comparison. The 90-day window has no comparable observation, so its baseline is withdrawn rather than drawn flat \u2014 an unknown must never borrow the shape of a zero, which is the same class of lie as reporting a failed query as an empty result.',
+    spec:'baselines scaleX 0\u21921 settle 320ms, 80ms stagger \u00b7 bars scaleY out of a mid-plot baseline, settle 380ms, height linear in the percentage (4.2% = 18px, 1.1% = 4.7px) so a fall is drawn falling \u00b7 the null window retracts its own baseline scaleX 1\u21920 '+EZ.exit+' 240ms, serif-italic label fades 220ms \u2014 never a 0% bar',
+    source:'apps/web/src/pages/VendorPriceCompare.tsx:100-110',
+    html:'<div class="mx-prc mx-prc-07">'+
+      '<div class="p-h"><span class="p-k">Ribera del Duero \u00b7 4 vendors</span></div>'+
+      '<div class="c7-set">'+
+        '<div class="c7-w"><span class="c7-lb">7d</span><div class="c7-plot">'+
+          '<i class="c7-bar" style="height:18px"></i><u class="c7-base"></u></div>'+
+          '<span class="c7-v up num">+0.0%</span></div>'+
+        '<div class="c7-w"><span class="c7-lb">30d</span><div class="c7-plot">'+
+          '<i class="c7-bar dn" style="height:4.7px"></i><u class="c7-base"></u></div>'+
+          '<span class="c7-v dn num">+0.0%</span></div>'+
+        '<div class="c7-w none"><span class="c7-lb">90d</span><div class="c7-plot">'+
+          '<u class="c7-base"></u></div>'+
+          '<span class="c7-v c7-nd">No comparable data</span></div>'+
+      '</div>'+
+      '<div class="c7-foot">Observation density decides what may be drawn.</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          bases = q(root,'.c7-base'), bars = q(root,'.c7-bar'),
+          vals = q(root,'.c7-v'), nd = root.querySelector('.c7-nd');
+      bases.forEach(function(b){ b.style.transform='scaleX(0)'; });
+      bars.forEach(function(b){ b.style.transform='scaleY(0)'; });
+      vals[0].textContent = '+0.0%'; vals[1].textContent = '+0.0%';
+      nd.style.opacity = '0';
+
+      bases.forEach(function(b,i){
+        c.at(120 + i*80, function(){
+          c.an(b, [{transform:'scaleX(0)'},{transform:'scaleX(1)'}], {duration:320, easing:EZ.settle});
+          b.style.transform = 'scaleX(1)';
+        });
+      });
+      [[0,4.2],[1,-1.1]].forEach(function(pair,i){
+        c.at(420 + i*80, function(){
+          var b = bars[pair[0]];
+          c.an(b, [{transform:'scaleY(0)'},{transform:'scaleY(1)'}], {duration:380, easing:EZ.settle});
+          b.style.transform = 'scaleY(1)';
+          c.sweep(420, function(p){
+            var idx = Math.min(SP.tally.trace.length-1, Math.round(p*(SP.tally.trace.length-1)));
+            var v = pair[1]*SP.tally.trace[idx];
+            vals[pair[0]].textContent = (v>=0?'+':'\u2212')+Math.abs(v).toFixed(1)+'%';
+          }, function(){
+            vals[pair[0]].textContent = (pair[1]>=0?'+':'\u2212')+Math.abs(pair[1]).toFixed(1)+'%';
+          });
+        });
+      });
+      // the honest beat: no data \u2192 take the baseline away, do not draw zero
+      c.at(900, function(){
+        var b = bases[2];
+        c.an(b, [{transform:'scaleX(1)'},{transform:'scaleX(0)'}], {duration:240, easing:EZ.exit});
+        b.style.transform = 'scaleX(0)';
+      });
+      c.at(1120, function(){
+        c.an(nd, [{opacity:0},{opacity:1}], {duration:220});
+        nd.style.opacity = '1';
+      });
+    }
+  });
+
+  /* \u2550\u2550 prc-08 \u00b7 a suggestion is not a fact (GAP) \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-08', name:'A suggestion is not a fact', family:FAM,
+    purpose:'GAP: line-match suggestions exist on the server and have no UI at all, so a proposed invoice\u2194order pairing is invisible today. Proposed motion: an unaccepted pairing is drawn as a tether that never stops moving \u2014 a suggestion must not sit as still as a fact \u2014 and only acceptance makes it solid and still.',
+    spec:'proposal: dashed tether swaying \u00b11.2px on a 2600ms cubic-bezier(.45,0,.55,1) alternate loop \u00b7 accept: solid path draws stroke-dashoffset 60\u21920 turn 420ms, sway removed, chip '+sp(SP.stamp,'stamp'),
+    source:'06-pages/receipts.md \u00a79 (v3.0-TECH-DEBT.md:447)',
+    html:'<div class="mx-prc mx-prc-08">'+
+      '<div class="p-h"><span class="p-k">Invoice 6612</span><span class="p-k">PO-1042</span></div>'+
+      '<div class="c8-pair">'+
+        '<div class="c8-col"><div class="c8-r">RIB-DUE 12&#215;75</div><div class="c8-r sub">6 @ $18.90</div></div>'+
+        '<svg class="c8-link" viewBox="0 0 42 52" aria-hidden="true">'+
+          '<path class="c8-p1" d="M1 26 C 14 26, 28 26, 41 26"/>'+
+          '<path class="c8-p2" d="M1 26 C 14 26, 28 26, 41 26"/></svg>'+
+        '<div class="c8-col"><div class="c8-r">Ribera del Duero</div><div class="c8-r sub">6 @ $18.40</div></div>'+
+        '<span class="c8-seal">&#10003;</span>'+
+      '</div>'+
+      '<div class="c8-foot"><span class="c8-st">suggested &#183; not applied</span>'+
+        '<button type="button" class="p-btn c8-acc">Accept match</button></div></div>',
+    play:function(root){
+      var c = ctl(root),
+          svg = root.querySelector('.c8-link'), p2 = root.querySelector('.c8-p2'),
+          p1 = root.querySelector('.c8-p1'), seal = root.querySelector('.c8-seal'),
+          st = root.querySelector('.c8-st'), acc = root.querySelector('.c8-acc'),
+          done = false;
+
+      svg.classList.add('c8-sway');
+      p2.style.strokeDashoffset = '60'; p1.style.opacity = '1';
+      seal.style.opacity = '0'; seal.style.transform = 'translate(-50%,-50%) scale(.4)';
+      st.textContent = 'suggested \u00b7 not applied'; st.classList.remove('done');
+      acc.classList.add('lit'); acc.textContent = 'Accept match';
+
+      function accept(){
+        if (done) return; done = true;
+        svg.classList.remove('c8-sway'); svg.style.transform = 'none';
+        c.an(p2, [{strokeDashoffset:60},{strokeDashoffset:0}], {duration:420, easing:EZ.turn});
+        p2.style.strokeDashoffset = '0';
+        c.an(p1, [{opacity:1},{opacity:0}], {duration:200});
+        p1.style.opacity = '0';
+        c.at(300, function(){
+          c.an(seal, [{opacity:0, transform:'translate(-50%,-50%) scale(.4) rotate(-8deg)'},
+                      {opacity:1, transform:'translate(-50%,-50%) scale(1) rotate(0deg)'}],
+               {duration:SP.stamp.duration, easing:SP.stamp.easing});
+          seal.style.opacity = '1'; seal.style.transform = 'translate(-50%,-50%) scale(1)';
+          st.textContent = 'applied \u00b7 $3.00 variance booked'; st.classList.add('done');
+          acc.classList.remove('lit'); acc.textContent = 'Undo';
+        });
+      }
+      if (!acc._b){ acc._b = 1; acc.addEventListener('click', accept); }
+      c.at(2200, accept);
+    }
+  });
+
+  /* \u2550\u2550 prc-09 \u00b7 the drift spur (GAP) \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-09', name:'The drift spur', family:FAM,
+    purpose:'GAP: /vendor-prices ships and nothing links to it \u2014 "comparison routes unreachable". Proposed motion: the doorway grows out of the number that motivates it. Dwell on a price on the Providers roster and the comparison unfurls from that exact figure, carrying the route with it. Hover the price yourself.',
+    spec:'dwell gate 600ms before anything commits \u00b7 spur grid-rows 0fr\u21921fr turn 420ms \u00b7 sparkline clip-path inset wipe from the numeral 380ms \u00b7 doorway 6px rise settle 320ms at +180ms',
+    source:'06-pages/vendor-prices.md \u00a79 \u00b7 06-pages/providers.md \u00a79',
+    html:'<div class="mx-prc mx-prc-09">'+
+      '<div class="p-h"><span class="p-k">Providers roster</span><span class="p-k c9-h">dwell on the price</span></div>'+
+      '<div class="c9-row"><span class="c9-nm">Ribera del Duero 2019</span>'+
+        '<span class="num c9-pr">$18.90</span></div>'+
+      '<div class="c9-spur"><div><div class="c9-in">'+
+        '<svg class="c9-spark" viewBox="0 0 200 26" preserveAspectRatio="none" aria-hidden="true">'+
+          '<path d="M2 20 L 30 18 L 58 19 L 86 14 L 114 15 L 142 9 L 170 7 L 198 4"/></svg>'+
+        '<div class="c9-cmp"><span>Empire <b>$17.40</b></span><span>Skurnik <b>$18.10</b></span>'+
+          '<span>yours <b>$18.90</b></span></div>'+
+        '<div class="c9-door">Compare 4 vendors &#8594;</div>'+
+      '</div></div></div>'+
+      '<div class="c9-gap">Today this route has no inbound link at all.</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          pr = root.querySelector('.c9-pr'), spur = root.querySelector('.c9-spur'),
+          spark = root.querySelector('.c9-spark'), door = root.querySelector('.c9-door'),
+          hint = root.querySelector('.c9-h'), openT = null, isOpen = false;
+
+      function close(){
+        isOpen = false;
+        pr.classList.remove('hot');
+        c.an(spur, [{gridTemplateRows:'1fr'},{gridTemplateRows:'0fr'}], {duration:260, easing:EZ.exit});
+        spur.style.gridTemplateRows = '0fr';
+        spark.style.clipPath = 'inset(0 100% 0 0)'; door.style.opacity = '0';
+        hint.textContent = 'dwell on the price';
+      }
+      function open(){
+        if (isOpen) return; isOpen = true;
+        pr.classList.add('hot'); hint.textContent = 'from the number';
+        c.an(spur, [{gridTemplateRows:'0fr'},{gridTemplateRows:'1fr'}], {duration:420, easing:EZ.turn});
+        spur.style.gridTemplateRows = '1fr';
+        c.an(spark, [{clipPath:'inset(0 100% 0 0)'},{clipPath:'inset(0 0 0 0)'}],
+             {duration:380, delay:80, easing:EZ.settle});
+        spark.style.clipPath = 'inset(0 0 0 0)';
+        c.an(door, [{opacity:0, transform:'translateY(6px)'},{opacity:1, transform:'none'}],
+             {duration:320, delay:180, easing:EZ.settle});
+        door.style.opacity = '1';
+      }
+      spur.style.gridTemplateRows = '0fr'; spark.style.clipPath = 'inset(0 100% 0 0)';
+      door.style.opacity = '0'; pr.classList.remove('hot');
+
+      if (!pr._b){
+        pr._b = 1;
+        // the dwell gate is the whole point: a passing cursor must not open it
+        pr.addEventListener('mouseenter', function(){ openT = setTimeout(open, 600); });
+        pr.addEventListener('mouseleave', function(){ clearTimeout(openT); });
+      }
+      c.at(900, open);
+    }
+  });
+
+  /* \u2550\u2550 prc-10 \u00b7 opened, never sent (GAP) \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-10', name:'Opened, never sent', family:FAM,
+    purpose:'GAP: the credit ledger records S03\u2019s known defect \u2014 a claim opened and never actually requested from the vendor. Proposed motion: age is drawn, not stated. Each open claim grows a hairline at 1 day per 1/30th of the row, and the moment one passes fourteen days it lifts itself to the top of the ledger instead of ageing silently at the bottom.',
+    spec:'hairline: strictly linear crawl, 1 day = 3.33% of row height, driven per-frame off oldestOpenDays \u00b7 threshold 14d recolours ink 160ms \u00b7 promotion is a FLIP: measure, invert, release on '+sp(SP.tuck,'tuck'),
+    source:'06-pages/credits.md \u00a76 \u2014 TIER-MAP S03 "credit claim opened-never-sent"',
+    html:'<div class="mx-prc mx-prc-10">'+
+      '<div class="p-h"><span class="p-k">Credit claims</span><span class="p-k c10-k">ageing</span></div>'+
+      '<div class="c10-list">'+
+        '<div class="c10-r sent" data-d0="9" data-d1="9" data-st="requested"><i class="c10-age"></i>'+
+          '<span class="c10-nm">Empire &#183; damaged case</span>'+
+          '<span class="c10-d">requested 9d</span><span class="num c10-am">$1,020.00</span></div>'+
+        '<div class="c10-r" data-d0="2" data-d1="5" data-st="open"><i class="c10-age"></i>'+
+          '<span class="c10-nm">Skurnik &#183; 2 short</span>'+
+          '<span class="c10-d">open 2d</span><span class="num c10-am">$84.50</span></div>'+
+        '<div class="c10-r" data-d0="11" data-d1="16" data-st="open"><i class="c10-age"></i>'+
+          '<span class="c10-nm">Vinos del Norte &#183; 4 short</span>'+
+          '<span class="c10-d">open 11d</span><span class="num c10-am">$312.00</span></div>'+
+      '</div>'+
+      '<div class="c10-foot">Claimed is not recovered. Never-sent is not claimed.</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          list = root.querySelector('.c10-list'),
+          kick = root.querySelector('.c10-k'), foot = root.querySelector('.c10-foot'),
+          promoted = false, rows;
+
+      // stamp the authored order once, then restore it on every replay
+      q(root,'.c10-r').forEach(function(r,i){ if (r.dataset.o == null) r.dataset.o = i; });
+      Array.prototype.slice.call(list.children)
+        .sort(function(a,b){ return (+a.dataset.o) - (+b.dataset.o); })
+        .forEach(function(r){ list.appendChild(r); r.classList.remove('old'); r.style.transform=''; });
+      rows = q(root,'.c10-r');
+      rows.forEach(function(r){
+        r.querySelector('.c10-age').style.transform = 'scaleY(0)';
+        r.querySelector('.c10-d').textContent = r.dataset.st+' '+r.dataset.d0+'d';
+      });
+      kick.textContent = 'ageing'; kick.classList.remove('w');
+      foot.textContent = 'Claimed is not recovered. Never-sent is not claimed.';
+
+      var late = rows[2];
+      c.sweep(3400, function(p){
+        rows.forEach(function(r){
+          var d0 = +r.dataset.d0, d1 = +r.dataset.d1, d = d0 + (d1-d0)*p;
+          r.querySelector('.c10-age').style.transform = 'scaleY('+Math.min(1, d/30)+')';
+          r.querySelector('.c10-d').textContent = r.dataset.st+' '+Math.floor(d)+'d';
+          if (r.dataset.st === 'open' && d >= 14 && !r.classList.contains('old')){
+            r.classList.add('old');
+            c.an(r.querySelector('.c10-d'), [{opacity:.4},{opacity:1}], {duration:160, easing:EZ.ink});
+          }
+        });
+        if (!promoted && (+late.dataset.d0 + (+late.dataset.d1 - +late.dataset.d0)*p) >= 14){
+          promoted = true;
+          // FLIP: the row that has waited longest lifts itself to the top of the ledger
+          var first = rows.map(function(r){ return r.getBoundingClientRect().top; });
+          list.insertBefore(late, list.firstElementChild);
+          rows.forEach(function(r,i){
+            var d = first[i] - r.getBoundingClientRect().top;
+            if (!d) return;
+            c.an(r, [{transform:'translateY('+d+'px)'},{transform:'translateY(0)'}],
+                 {duration:SP.tuck.duration, easing:SP.tuck.easing});
+          });
+          kick.textContent = '14d \u00b7 never sent'; kick.classList.add('w');
+          foot.textContent = '$312.00 has been claimed for two weeks and never asked for.';
+        }
+      });
+    }
+  });
+
+  /* \u2550\u2550 prc-11 \u00b7 dormant, not empty (GAP) \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+  M.push({
+    id:'prc-11', name:'Dormant, not empty', family:FAM,
+    purpose:'GAP: the Offers tab is empty because provider_promotions is still dormant behind a shadow-mode pipeline, and an empty state reads to an owner as "no vendor ever offered you anything". Proposed motion: a dormant intake breathes and says so; a true zero is completely still. The card shows both so the difference is the demo.',
+    spec:'dormant: opacity .34\u2192.62 + scale .994\u21921.006, 2400ms cubic-bezier(.45,0,.55,1) alternate infinite \u00b7 true zero: no animation declared at all \u00b7 label crossfade 240ms',
+    source:'06-pages/promotions.md \u00a79 \u2014 provider_promotions dormant',
+    html:'<div class="mx-prc mx-prc-11">'+
+      '<div class="p-h"><span class="p-k">Offers</span><span class="p-k on c11-mode">dormant</span></div>'+
+      '<div class="c11-pane"><div class="c11-intake"><i></i><i></i><i></i></div>'+
+        '<div class="c11-say"><b>Vendor-mail extraction is in shadow mode.</b><br>Nothing has been published yet.</div></div>'+
+      '<div class="c11-foot">A dormant intake breathes. A true zero is still.</div></div>',
+    play:function(root){
+      var c = ctl(root),
+          pane = root.querySelector('.c11-pane'), intake = root.querySelector('.c11-intake'),
+          say = root.querySelector('.c11-say'), mode = root.querySelector('.c11-mode');
+
+      function dormant(){
+        pane.classList.remove('live');
+        intake.classList.add('c11-breathe'); intake.style.opacity = '';
+        mode.textContent = 'dormant'; mode.classList.add('on');
+        say.innerHTML = '<b>Vendor-mail extraction is in shadow mode.</b><br>Nothing has been published yet.';
+      }
+      function zero(){
+        pane.classList.add('live');
+        intake.classList.remove('c11-breathe');
+        intake.style.opacity = '1';        // still, and fully present \u2014 nothing is waking up
+        mode.textContent = 'live'; mode.classList.remove('on');
+        say.innerHTML = '<b>No offers this week.</b><br>The intake is awake and found nothing.';
+      }
+      dormant();
+      c.at(2600, function(){ c.an(say,[{opacity:0},{opacity:1}],{duration:240}); zero(); });
+      c.at(5200, function(){ c.an(say,[{opacity:0},{opacity:1}],{duration:240}); dormant(); });
+    }
+  });
+})();
+</script>

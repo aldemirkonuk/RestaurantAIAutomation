@@ -17,8 +17,8 @@
 
 import { useEffect, useState } from "react";
 import { attachFrictionDetectors, reportTti } from "../lib/uxSignals";
+import { apiClient } from "../services/api/client";
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
 const ENABLED = import.meta.env.VITE_UX_OPTIMIZER === "true";
 
 export interface UxOverride {
@@ -40,11 +40,11 @@ export function useUxOverrides(page: string) {
     // name someone else's.
     const token = localStorage.getItem("accessToken");
     if (token) {
-      fetch(`${API_URL}/api/v1/ux/overrides?page=${encodeURIComponent(page)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((body) => {
+      apiClient
+        .get<{ enabled?: boolean; overrides?: UxOverride[] }>(
+          `/ux/overrides?page=${encodeURIComponent(page)}`,
+        )
+        .then(({ data: body }) => {
           if (cancelled || !body?.enabled) return;
           const map: Record<string, UxOverride> = {};
           for (const o of body.overrides ?? []) map[o.targetKey] = o;

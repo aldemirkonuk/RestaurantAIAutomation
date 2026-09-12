@@ -38,22 +38,26 @@ import type {
 
 // ── Data sources ───────────────────────────────────────────────────────
 
+// NOTE: every `key` below is persisted into user preferences and is frozen.
+// The `title`/`description` are the user-visible strings and DO reflect the
+// truth: this dashboard charts vendor spend from `procurement_orders`, never
+// POS sales revenue.
 export const DATA_SOURCES: DataSourceMeta[] = [
-  { key: 'revenue', title: 'Revenue', icon: DollarSign, description: 'Total sales revenue over time', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
-  { key: 'orders', title: 'Orders', icon: ShoppingCart, description: 'Number of orders placed', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
-  { key: 'bottles', title: 'Bottles Sold', icon: Package, description: 'Total bottles sold', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
-  { key: 'wineDistribution', title: 'Wine Distribution', icon: Wine, description: 'Sales breakdown by wine type', compatibleChartTypes: ['donut', 'bar', 'stacked-bar'], supportsKPI: false, supportsTable: true, category: 'distribution' },
-  { key: 'topWines', title: 'Top Wines', icon: TrendingUp, description: 'Best performing wines', compatibleChartTypes: ['bar'], supportsKPI: false, supportsTable: true, category: 'ranked' },
+  { key: 'revenue', title: 'Vendor Spend', icon: DollarSign, description: 'Money paid to vendors over time (purchase orders)', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
+  { key: 'orders', title: 'Purchase Orders', icon: ShoppingCart, description: 'Number of purchase orders placed', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
+  { key: 'bottles', title: 'Bottles Purchased', icon: Package, description: 'Total bottles ordered from vendors', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
+  { key: 'wineDistribution', title: 'Wine Distribution', icon: Wine, description: 'Purchasing breakdown by wine type', compatibleChartTypes: ['donut', 'bar', 'stacked-bar'], supportsKPI: false, supportsTable: true, category: 'distribution' },
+  { key: 'topWines', title: 'Top Wines', icon: TrendingUp, description: 'Most-purchased wines by spend', compatibleChartTypes: ['bar'], supportsKPI: false, supportsTable: true, category: 'ranked' },
   { key: 'purchaseCost', title: 'Purchase Cost', icon: Activity, description: 'Total purchase expenses', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
   { key: 'profitMargin', title: 'Profit Margin', icon: Percent, description: 'Profit percentage over time', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
   { key: 'inventoryValue', title: 'Inventory Value', icon: Layers, description: 'Total inventory worth', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
   { key: 'ordersByType', title: 'Orders by Type', icon: BarChart3, description: 'Orders categorized by wine type', compatibleChartTypes: ['stacked-bar', 'bar', 'donut'], supportsKPI: false, supportsTable: true, category: 'categorical' },
-  { key: 'dailyBreakdown', title: 'Daily Breakdown', icon: Calendar, description: 'Day-by-day performance', compatibleChartTypes: ['bar', 'line', 'area'], supportsKPI: false, supportsTable: true, category: 'time-series' },
+  { key: 'dailyBreakdown', title: 'Daily Breakdown', icon: Calendar, description: 'Day-by-day purchasing activity', compatibleChartTypes: ['bar', 'line', 'area'], supportsKPI: false, supportsTable: true, category: 'time-series' },
   { key: 'providerPerformance', title: 'Provider Performance', icon: Users, description: 'Supplier metrics', compatibleChartTypes: ['bar'], supportsKPI: false, supportsTable: true, category: 'ranked' },
-  { key: 'salesTrend', title: 'Sales Trend', icon: Target, description: 'Sales trajectory analysis', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
+  { key: 'salesTrend', title: 'Spend Trend', icon: Target, description: 'Vendor-spend trajectory analysis', compatibleChartTypes: ['area', 'line', 'bar'], supportsKPI: true, supportsTable: true, category: 'time-series' },
   { key: 'busyHours', title: 'Busy Hours', icon: Grid3x3, description: 'Hourly traffic heatmap', compatibleChartTypes: ['heatmap'], supportsKPI: false, supportsTable: false, category: 'categorical' },
-  { key: 'channelMix', title: 'Revenue by Channel', icon: Radio, description: 'Revenue split by service channel', compatibleChartTypes: ['channel-donut'], supportsKPI: false, supportsTable: false, category: 'distribution' },
-  { key: 'laborRevenue', title: 'Labor vs Revenue', icon: Briefcase, description: 'Labor cost overlaid on revenue', compatibleChartTypes: ['labor-overlay'], supportsKPI: false, supportsTable: false, category: 'time-series' },
+  { key: 'channelMix', title: 'Spend by Channel (est.)', icon: Radio, description: 'Vendor spend split across channels by a fixed estimate', compatibleChartTypes: ['channel-donut'], supportsKPI: false, supportsTable: false, category: 'distribution' },
+  { key: 'laborRevenue', title: 'Labor vs Vendor Spend', icon: Briefcase, description: 'Estimated labor cost overlaid on vendor spend', compatibleChartTypes: ['labor-overlay'], supportsKPI: false, supportsTable: false, category: 'time-series' },
   { key: 'orderFunnel', title: 'Order Funnel', icon: GitFork, description: 'Order conversion pipeline', compatibleChartTypes: ['funnel'], supportsKPI: false, supportsTable: false, category: 'categorical' },
 ]
 
@@ -68,9 +72,9 @@ export const CHART_TYPES: ChartTypeMeta[] = [
   { key: 'donut', title: 'Donut Chart', icon: PieChart, description: 'Circular distribution' },
   { key: 'stacked-bar', title: 'Stacked Bar', icon: Layers, description: 'Stacked categories' },
   { key: 'heatmap', title: 'Heatmap', icon: Grid3x3, description: 'Hourly traffic grid' },
-  { key: 'labor-overlay', title: 'Labor Overlay', icon: Briefcase, description: 'Labor vs revenue dual line' },
+  { key: 'labor-overlay', title: 'Labor Overlay', icon: Briefcase, description: 'Labor vs vendor spend dual line' },
   { key: 'funnel', title: 'Funnel', icon: GitFork, description: 'Conversion funnel' },
-  { key: 'channel-donut', title: 'Channel Donut', icon: Radio, description: 'Revenue by channel' },
+  { key: 'channel-donut', title: 'Channel Donut', icon: Radio, description: 'Vendor spend by channel' },
 ]
 
 export const CHART_TYPE_MAP = Object.fromEntries(CHART_TYPES.map((ct) => [ct.key, ct])) as Record<string, ChartTypeMeta>
@@ -102,20 +106,20 @@ export function getDefaultChartType(dataSource: string): ChartType {
 
 export const DEFAULT_BLOCKS: DashboardBlock[] = [
   // KPI row
-  { id: 'kpi-revenue', title: 'Total Revenue', blockType: 'kpi', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2 }, visible: true },
+  { id: 'kpi-revenue', title: 'Vendor Spend', blockType: 'kpi', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2 }, visible: true },
   { id: 'kpi-orders', title: 'Total Orders', blockType: 'kpi', dataSource: 'orders', chartType: 'bar', layout: { x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2 }, visible: true },
   { id: 'kpi-bottles', title: 'Bottles Sold', blockType: 'kpi', dataSource: 'bottles', chartType: 'bar', layout: { x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2 }, visible: true },
   { id: 'kpi-avgorder', title: 'Avg Order Value', blockType: 'kpi', dataSource: 'profitMargin', chartType: 'line', layout: { x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2 }, visible: true },
   // Chart row
-  { id: 'chart-revenue', title: 'Revenue Trend', blockType: 'chart', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 2, w: 8, h: 4, minW: 4, minH: 3 }, visible: true },
+  { id: 'chart-revenue', title: 'Vendor Spend Trend', blockType: 'chart', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 2, w: 8, h: 4, minW: 4, minH: 3 }, visible: true },
   { id: 'chart-distribution', title: 'Wine Distribution', blockType: 'chart', dataSource: 'wineDistribution', chartType: 'donut', layout: { x: 8, y: 2, w: 4, h: 4, minW: 3, minH: 3 }, visible: true },
   // Second chart row
   { id: 'chart-ordertype', title: 'Orders by Wine Type', blockType: 'chart', dataSource: 'ordersByType', chartType: 'stacked-bar', layout: { x: 0, y: 6, w: 6, h: 4, minW: 4, minH: 3 }, visible: true },
   { id: 'chart-topwines', title: 'Top Performing Wines', blockType: 'chart', dataSource: 'topWines', chartType: 'bar', layout: { x: 6, y: 6, w: 6, h: 4, minW: 4, minH: 3 }, visible: true },
   // New analytics row
   { id: 'chart-heatmap', title: 'Busy Hours', blockType: 'chart', dataSource: 'busyHours', chartType: 'heatmap', layout: { x: 0, y: 10, w: 8, h: 5, minW: 6, minH: 4 }, visible: true },
-  { id: 'chart-channeldonut', title: 'Revenue by Channel', blockType: 'chart', dataSource: 'channelMix', chartType: 'channel-donut', layout: { x: 8, y: 10, w: 4, h: 5, minW: 3, minH: 4 }, visible: true },
-  { id: 'chart-laboroverlay', title: 'Labor vs Revenue', blockType: 'chart', dataSource: 'laborRevenue', chartType: 'labor-overlay', layout: { x: 0, y: 15, w: 7, h: 4, minW: 5, minH: 3 }, visible: true },
+  { id: 'chart-channeldonut', title: 'Spend by Channel (est.)', blockType: 'chart', dataSource: 'channelMix', chartType: 'channel-donut', layout: { x: 8, y: 10, w: 4, h: 5, minW: 3, minH: 4 }, visible: true },
+  { id: 'chart-laboroverlay', title: 'Labor vs Vendor Spend', blockType: 'chart', dataSource: 'laborRevenue', chartType: 'labor-overlay', layout: { x: 0, y: 15, w: 7, h: 4, minW: 5, minH: 3 }, visible: true },
   { id: 'chart-funnel', title: 'Order Funnel', blockType: 'chart', dataSource: 'orderFunnel', chartType: 'funnel', layout: { x: 7, y: 15, w: 5, h: 4, minW: 4, minH: 3 }, visible: true },
 ]
 
@@ -135,11 +139,11 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     icon: Rows,
     description: 'Dense layout, more data per screen',
     blocks: [
-      { id: 'kpi-revenue', title: 'Total Revenue', blockType: 'kpi', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2 }, visible: true },
+      { id: 'kpi-revenue', title: 'Vendor Spend', blockType: 'kpi', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 0, w: 3, h: 2, minW: 2, minH: 2 }, visible: true },
       { id: 'kpi-orders', title: 'Total Orders', blockType: 'kpi', dataSource: 'orders', chartType: 'bar', layout: { x: 3, y: 0, w: 3, h: 2, minW: 2, minH: 2 }, visible: true },
       { id: 'kpi-bottles', title: 'Bottles Sold', blockType: 'kpi', dataSource: 'bottles', chartType: 'bar', layout: { x: 6, y: 0, w: 3, h: 2, minW: 2, minH: 2 }, visible: true },
       { id: 'kpi-margin', title: 'Profit Margin', blockType: 'kpi', dataSource: 'profitMargin', chartType: 'line', layout: { x: 9, y: 0, w: 3, h: 2, minW: 2, minH: 2 }, visible: true },
-      { id: 'chart-revenue', title: 'Revenue Trend', blockType: 'chart', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 2, w: 6, h: 3, minW: 4, minH: 3 }, visible: true },
+      { id: 'chart-revenue', title: 'Vendor Spend Trend', blockType: 'chart', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 2, w: 6, h: 3, minW: 4, minH: 3 }, visible: true },
       { id: 'chart-distribution', title: 'Wine Distribution', blockType: 'chart', dataSource: 'wineDistribution', chartType: 'donut', layout: { x: 6, y: 2, w: 6, h: 3, minW: 3, minH: 3 }, visible: true },
       { id: 'table-daily', title: 'Daily Breakdown', blockType: 'table', dataSource: 'dailyBreakdown', chartType: 'bar', layout: { x: 0, y: 5, w: 12, h: 4, minW: 6, minH: 3 }, visible: true },
     ],
@@ -150,7 +154,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     icon: Maximize2,
     description: 'Large charts for presenting',
     blocks: [
-      { id: 'chart-revenue', title: 'Revenue Trend', blockType: 'chart', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 0, w: 12, h: 5, minW: 6, minH: 3 }, visible: true },
+      { id: 'chart-revenue', title: 'Vendor Spend Trend', blockType: 'chart', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 0, w: 12, h: 5, minW: 6, minH: 3 }, visible: true },
       { id: 'chart-distribution', title: 'Wine Distribution', blockType: 'chart', dataSource: 'wineDistribution', chartType: 'donut', layout: { x: 0, y: 5, w: 6, h: 5, minW: 4, minH: 3 }, visible: true },
       { id: 'chart-topwines', title: 'Top Performing Wines', blockType: 'chart', dataSource: 'topWines', chartType: 'bar', layout: { x: 6, y: 5, w: 6, h: 5, minW: 4, minH: 3 }, visible: true },
     ],
@@ -161,10 +165,10 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     icon: Columns,
     description: 'Mixed KPI + charts + tables',
     blocks: [
-      { id: 'kpi-revenue', title: 'Total Revenue', blockType: 'kpi', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 0, w: 4, h: 2, minW: 2, minH: 2 }, visible: true },
+      { id: 'kpi-revenue', title: 'Vendor Spend', blockType: 'kpi', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 0, w: 4, h: 2, minW: 2, minH: 2 }, visible: true },
       { id: 'kpi-orders', title: 'Total Orders', blockType: 'kpi', dataSource: 'orders', chartType: 'bar', layout: { x: 4, y: 0, w: 4, h: 2, minW: 2, minH: 2 }, visible: true },
       { id: 'kpi-margin', title: 'Profit Margin', blockType: 'kpi', dataSource: 'profitMargin', chartType: 'line', layout: { x: 8, y: 0, w: 4, h: 2, minW: 2, minH: 2 }, visible: true },
-      { id: 'chart-revenue', title: 'Revenue Trend', blockType: 'chart', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 2, w: 8, h: 4, minW: 4, minH: 3 }, visible: true },
+      { id: 'chart-revenue', title: 'Vendor Spend Trend', blockType: 'chart', dataSource: 'revenue', chartType: 'area', layout: { x: 0, y: 2, w: 8, h: 4, minW: 4, minH: 3 }, visible: true },
       { id: 'chart-distribution', title: 'Wine Distribution', blockType: 'chart', dataSource: 'wineDistribution', chartType: 'donut', layout: { x: 8, y: 2, w: 4, h: 4, minW: 3, minH: 3 }, visible: true },
       { id: 'table-topwines', title: 'Top Wines Table', blockType: 'table', dataSource: 'topWines', chartType: 'bar', layout: { x: 0, y: 6, w: 6, h: 4, minW: 4, minH: 3 }, visible: true },
       { id: 'chart-ordertype', title: 'Orders by Type', blockType: 'chart', dataSource: 'ordersByType', chartType: 'stacked-bar', layout: { x: 6, y: 6, w: 6, h: 4, minW: 4, minH: 3 }, visible: true },

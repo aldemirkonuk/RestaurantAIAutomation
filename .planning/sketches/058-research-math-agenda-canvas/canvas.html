@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research &amp; Math — Agenda Canvas 2026-08-28</title>
+<style>
+  :root {
+    --paper:#faf9f7; --ink:#2a2724; --muted:#8a857e; --hair:#e5e1da; --card:#fff;
+    --rm1:oklch(0.58 0.13 245); --rm2:oklch(0.58 0.13 10); --rm3:oklch(0.58 0.13 170);
+    --rm4:oklch(0.58 0.13 300); --dept:oklch(0.58 0.13 75);
+    --blank:#b9b3aa; --lock:#8a2f3b;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+         font-family:'IBM Plex Sans',ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;
+         font-size:14px; line-height:1.45; }
+  .mono { font-family:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace; }
+  header { padding:20px 28px 16px; border-bottom:1px solid var(--hair); background:var(--card); }
+  header h1 { margin:0 0 4px; font-size:17px; font-weight:600; letter-spacing:-0.01em; }
+  header .sub { color:var(--muted); font-size:12.5px; }
+  header .thesis { margin-top:10px; max-width:1080px; font-size:13.5px; }
+  header .thesis b { background:#fdf3d8; padding:0 3px; }
+  main { padding:22px 28px 56px; max-width:1560px; margin:0 auto; }
+  h3.sec { font-size:11px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+           color:var(--muted); border-bottom:2px solid var(--hair); padding-bottom:6px; margin:30px 0 14px; }
+
+  /* metric strip */
+  .metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
+  .metric { background:var(--card); border:1px solid var(--hair); border-radius:7px; padding:12px 14px;
+            border-left:3px solid var(--hair); }
+  .metric .k { font-size:11.5px; color:var(--muted); }
+  .metric .v { font-size:18px; font-weight:600; margin-top:3px; }
+  .metric .v.blank { color:var(--blank); font-size:14px; font-weight:500; font-style:italic; }
+  .metric .n { font-size:11px; color:var(--muted); margin-top:4px; }
+
+  /* timeline */
+  .tl { display:grid; grid-template-columns:150px repeat(6,minmax(150px,1fr)); gap:8px; min-width:1080px; }
+  .tl .head { font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase;
+              color:var(--muted); padding:0 0 6px; border-bottom:1px solid var(--hair); }
+  .lane { font-size:12.5px; font-weight:600; padding:12px 10px 12px 0; border-top:1px solid var(--hair);
+          display:flex; flex-direction:column; gap:2px; justify-content:center; }
+  .lane .who { font-size:10.5px; font-weight:400; color:var(--muted); }
+  .cell { border-top:1px solid var(--hair); padding:10px 0; display:flex; flex-direction:column; gap:6px; }
+  .task { background:var(--card); border:1px solid var(--hair); border-radius:6px; padding:8px 10px;
+          font-size:12px; border-left:3px solid var(--hair); transition:opacity .15s,border-color .15s; }
+  .task .id { font-size:10px; font-weight:600; letter-spacing:.04em; color:var(--muted); }
+  .task .t { display:block; margin-top:1px; }
+  .task .d { display:block; margin-top:5px; font-size:10.5px; color:var(--muted); }
+  .task .d::before { content:"done when "; font-variant:small-caps; }
+  .task.blocked { background:repeating-linear-gradient(135deg,#fff,#fff 7px,#f6f3ee 7px,#f6f3ee 14px); }
+  .task .rep { float:right; color:var(--muted); font-size:11px; }
+  .l1 { border-left-color:var(--rm1); } .l2 { border-left-color:var(--rm2); }
+  .l3 { border-left-color:var(--rm3); } .l4 { border-left-color:var(--rm4); }
+  .ld { border-left-color:var(--dept); }
+  .n1 { color:var(--rm1);} .n2 { color:var(--rm2);} .n3 { color:var(--rm3);}
+  .n4 { color:var(--rm4);} .nd { color:var(--dept);}
+  .scroll { overflow-x:auto; }
+  .dim { opacity:.16; }
+
+  /* seams */
+  .seams { display:flex; flex-wrap:wrap; gap:8px; }
+  .seam { font-size:12px; background:var(--card); border:1px solid var(--hair); border-radius:4px;
+          padding:6px 11px; cursor:pointer; user-select:none; }
+  .seam:hover { border-color:var(--muted); }
+  .seam.on { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  .seam .s { color:var(--muted); font-size:10.5px; }
+  .seam.on .s { color:#cfc9c0; }
+
+  /* two-col bottom */
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:22px; }
+  .panel { background:var(--card); border:1px solid var(--hair); border-radius:7px; padding:14px 16px; }
+  .panel h4 { margin:0 0 8px; font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
+  .panel ul { margin:0; padding-left:18px; }
+  .panel li { margin-bottom:7px; font-size:12.5px; }
+  .lockbar { border-left:3px solid var(--lock); }
+  .lockbar h4 { color:var(--lock); }
+  code { font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace; font-size:11.5px;
+         background:#f3f0ea; padding:0 3px; border-radius:3px; }
+  footer { margin-top:34px; padding-top:14px; border-top:1px solid var(--hair);
+           color:var(--muted); font-size:11.5px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Research &amp; Math — agenda canvas</h1>
+  <div class="sub mono">2026-08-28 · department of 4 teams · ADR 0039 Track B · throwaway thinking surface, not a product</div>
+  <div class="thesis">
+    Coverage closed on 2026-08-27 — <b>39 task types emit, 27 carry a verdict, 12 are knowingly exempt, 0 are ungraded</b>
+    (<span class="mono">check_task_types_are_graded.py</span>, run 2026-08-28). A number at its ceiling cannot move.
+    So this agenda is about <b>strength, cost and replay</b>: how good a verdict actually is, what a completed task
+    actually costs, and whether a published claim survives data it had not seen.
+  </div>
+</header>
+
+<main>
+
+<h3 class="sec">The metric set — blank is a status, never an estimate</h3>
+<div class="metrics">
+  <div class="metric" style="border-left-color:var(--rm3)">
+    <div class="k mono">nf_a.event_completeness</div>
+    <div class="v blank">not measured</div>
+    <div class="n">both runtimes emit; nobody has counted. First publish 09-04 · RM-12</div>
+  </div>
+  <div class="metric" style="border-left-color:var(--rm1)">
+    <div class="k mono">nf_a.cost_per_completed_task</div>
+    <div class="v blank">no denominator</div>
+    <div class="n">RM-06 writes what it means (ADR 0036 gives RM-1 that half)</div>
+  </div>
+  <div class="metric" style="border-left-color:var(--rm1)">
+    <div class="k mono">nf_a.harness_overhead_ms</div>
+    <div class="v blank">0 hits in the tree</div>
+    <div class="n">still the number that decides OD-03 · RM-05</div>
+  </div>
+  <div class="metric" style="border-left-color:var(--rm2)">
+    <div class="k mono">verified − self-reported</div>
+    <div class="v blank">never published</div>
+    <div class="n">computable since P3.0. The department's actual product · RM-15</div>
+  </div>
+  <div class="metric" style="border-left-color:var(--rm2)">
+    <div class="k">verdict <b>strength</b> per task type</div>
+    <div class="v">15 of 16</div>
+    <div class="n">Python basis literals are <code>parse_v1</code> — the basis whose own docstring calls it deliberately weak · RM-14</div>
+  </div>
+  <div class="metric" style="border-left-color:var(--rm4)">
+    <div class="k mono">bt.outcome_regrade_delta</div>
+    <div class="v">0 replays ever</div>
+    <div class="n">entry trigger MET 2026-08-28 · first replay 09-18 · RM-08</div>
+  </div>
+</div>
+
+<h3 class="sec">The agenda, by team and close-time <span style="text-transform:none;font-weight:400">— hatched = waiting on a unit we do not control · ↻ = recurring, date is the first run</span></h3>
+<div class="scroll">
+<div class="tl">
+  <div class="head">Team</div>
+  <div class="head">Sep 4</div><div class="head">Sep 11</div><div class="head">Sep 18</div>
+  <div class="head">Sep 25</div><div class="head">Oct 2</div><div class="head">Oct 9</div>
+
+  <!-- RM-1 -->
+  <div class="lane"><span class="n1">RM-1 · Harness &amp; Model Routing</span><span class="who">methodology half of Track A1</span></div>
+  <div class="cell">
+    <div class="task l1" data-seam="aio-model-routing"><span class="id">RM-17</span><span class="rep">↻</span>
+      <span class="t">Consume <code>model-pin-census</code> — don't build a second census</span>
+      <span class="d">we read a number we did not produce</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l1" data-seam="aio-model-routing"><span class="id">RM-05a</span>
+      <span class="t"><code>harness_overhead_ms</code> instrument <b>spec</b></span>
+      <span class="d">overhead = duration_ms − Σ provider_ms, boundary named</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l1" data-seam="finance-a2"><span class="id">RM-06</span>
+      <span class="t">What <code>cost_per_completed_task</code> <b>means</b></span>
+      <span class="d">Track A2's migration is graded against the text, not the reverse</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l1" data-seam="architecture-review"><span class="id">RM-04</span>
+      <span class="t">The bake-off <b>benchmark spec</b> — 102 cards, 36/36/30 by routing class</span>
+      <span class="d">committed before any candidate runs; adversarial pass returns a finding or "clean"</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l1 blocked" data-seam="aio-model-routing"><span class="id">RM-05b</span>
+      <span class="t">First overhead <b>reading</b> on the board</span>
+      <span class="d">a value or the words "not measured" — never inferred</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l1" data-seam="aio-model-routing"><span class="id">RM-07</span>
+      <span class="t">Substitution-study rules</span>
+      <span class="d">one real routing proposal has passed through them</span></div>
+  </div>
+
+  <!-- RM-2 -->
+  <div class="lane"><span class="n2">RM-2 · Evaluation &amp; Doneability</span><span class="who">Track A5 — the spine</span></div>
+  <div class="cell">
+    <div class="task l2"><span class="id">RM-15</span><span class="rep">↻</span>
+      <span class="t">Publish verified <b>beside</b> self-reported</span>
+      <span class="d">both in one row — together, or neither</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l2"><span class="id">RM-02</span>
+      <span class="t">Census the vendor-reply <b>family</b> — it spans both runtimes</span>
+      <span class="d">the CI guard would catch a member being dropped</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l2" data-seam="aio-evaluation-gates"><span class="id">RM-01</span>
+      <span class="t">★ Judgment rubric #1 — define <code>approval_v1</code></span>
+      <span class="d">a disputed row is gradable by hand from the rubric alone</span></div>
+    <div class="task l2"><span class="id">RM-14a</span>
+      <span class="t">★ The verdict-<b>strength ladder</b> (a partial order, never a total one)</span>
+      <span class="d">incomparable pairs are stated as incomparable</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l2 blocked" data-seam="aio-evaluation-gates"><span class="id">RM-03</span>
+      <span class="t">File the operating ask at aio-evaluation-gates</span>
+      <span class="d">answered, or aged out at 42 days — we write no gate code</span></div>
+    <div class="task l2"><span class="id">RM-14b</span>
+      <span class="t">First strength <b>distribution</b> on the board</span>
+      <span class="d">a distribution, not an average; downgrades are shrink-only</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l2"><span class="id">RM-16</span>
+      <span class="t">Golden-set provenance labels</span>
+      <span class="d">no <code>imagination-only</code> set sits behind a blocking gate</span></div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- RM-3 -->
+  <div class="lane"><span class="n3">RM-3 · NF Instrumentation</span><span class="who">methodology half of Track A4</span></div>
+  <div class="cell">
+    <div class="task l3" data-seam="data"><span class="id">RM-12</span><span class="rep">↻</span>
+      <span class="t">Publish completeness; correct L1's stale <code>baseline:</code></span>
+      <span class="d">recomputed from the table, never from the callsite list</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l3 blocked" data-seam="skills"><span class="id">RM-10</span>
+      <span class="t">The <code>nf_a.skill_id</code> <b>contract</b> — before the migration</span>
+      <span class="d">firing_rate_30d is computable on paper before a row exists</span></div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="task l3 blocked" data-seam="finance-a2"><span class="id">RM-13</span><span class="rep">↻</span>
+      <span class="t">Reconcile against a provider invoice — or downgrade the loop</span>
+      <span class="d">a delta publishes, or the loop is downgraded in writing</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l3" data-seam="engineering"><span class="id">RM-11</span>
+      <span class="t">One basis vocabulary across both runtimes, <b>with a guard</b></span>
+      <span class="d">a misspelled basis is a build failure on both sides</span></div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- RM-4 -->
+  <div class="lane"><span class="n4">RM-4 · Backtests</span><span class="who">dormant until 2026-08-28</span></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="task l4"><span class="id">RM-08</span>
+      <span class="t">★ <b>First replay ever</b> — re-grade the family's historical <code>parse_v1</code> rows under <code>approval_v1</code></span>
+      <span class="d">survived · falsified · or unfalsifiable — and unfalsifiable is itself a finding</span></div>
+  </div>
+  <div class="cell">
+    <div class="task l4" data-seam="scenario-contract"><span class="id">RM-09</span><span class="rep">↻</span>
+      <span class="t">Coverage per scenario class — including the zero rows</span>
+      <span class="d">"not replayed" is distinguishable from "replayed and survived"</span></div>
+  </div>
+  <div class="cell"></div><div class="cell"></div>
+
+  <!-- Department -->
+  <div class="lane"><span class="nd">Department</span><span class="who">rm-board-warden</span></div>
+  <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+  <div class="cell">
+    <div class="task ld" data-seam="applied-ai"><span class="id">RM-18</span><span class="rep">↻</span>
+      <span class="t">Applied AI seam audit — now that 4 skills exist and <b>all four are theirs</b></span>
+      <span class="d">output is a merge proposal, or the single word "clean"</span></div>
+  </div>
+  <div class="cell"></div><div class="cell"></div>
+</div>
+</div>
+
+<h3 class="sec">Seams this agenda touches — click one to see which tasks cross it</h3>
+<div class="seams" id="seams">
+  <div class="seam" data-k="aio-evaluation-gates">aio-evaluation-gates <span class="s">TECH-F3 · we define, they operate</span></div>
+  <div class="seam" data-k="aio-model-routing">aio-model-routing <span class="s">ADR 0036 · methodology / operation</span></div>
+  <div class="seam" data-k="architecture-review">architecture-review <span class="s">adversarial pass, before the run</span></div>
+  <div class="seam" data-k="skills">skills <span class="s">Track A4 · the column lands in parallel</span></div>
+  <div class="seam" data-k="data">data <span class="s">we own the contract, they own the DDL</span></div>
+  <div class="seam" data-k="engineering">engineering <span class="s">the guard runs in their CI</span></div>
+  <div class="seam" data-k="finance-a2">finance / Track A2 <span class="s">one spend spine, two grains</span></div>
+  <div class="seam" data-k="scenario-contract">SCENARIO-CONTRACT <span class="s">17 §9 gates, nothing executes them</span></div>
+  <div class="seam" data-k="applied-ai">applied-ai, all of it <span class="s">the seam audit's whole surface</span></div>
+</div>
+
+<h3 class="sec">Held, deleted, and what nobody owns</h3>
+<div class="cols">
+  <div class="panel lockbar">
+    <h4>Locks — observed, not worked around</h4>
+    <ul>
+      <li><b>Pricing model: deferred.</b> RM-06 produces a cost definition Finance may consume as a unit-economics <i>input</i>. No pricing work is scheduled and no task's close condition assumes an unlock.</li>
+      <li><b>Brand / landing visuals: held.</b> Nothing here is brand-adjacent.</li>
+      <li><b>NF-B: held</b> — nothing scheduled against it. <b>NF-C</b> stays a quarterly check expected to answer <i>no</i>, not a programme.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h4>Deleted for want of a doneability</h4>
+    <ul>
+      <li><i>"Improve cost per task"</i> — no denominator exists until RM-06 makes one. It is RM-06's consequence, not a task.</li>
+      <li><i>"Stand up the T4 skill registry"</i> — trigger unmet at 4 skills. This department enforces the anti-sprawl rule on everyone, so it applies it to itself first. RM-18 audits the four instead of adding a fifth.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h4>Findings — no card or loop can carry these</h4>
+    <ul>
+      <li><code>claim.published</code> has <b>no publisher</b>, so backtests is trigger-blind. The obvious emitter is <code>rm-board-warden</code> — but that is a card change, which this wave may not make.</li>
+      <li><code>protected_lane.item_slipped</code> has no publisher either: nothing measures whether a non-preemptible item moved.</li>
+      <li><b>No verdict basis grades an audit.</b> Three of four RM cards carry <code>quality_bar: … NONE (gap)</code> — so the agents that police self-grading are themselves self-graded.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  Sketch 058 · <span class="mono">.planning/sketches/058-research-math-agenda-canvas/</span> · sources:
+  <span class="mono">research-math-agenda-full.md</span>, <span class="mono">00-index/cards.json</span>,
+  <span class="mono">scripts/check_task_types_are_graded.py</span> (run 2026-08-28),
+  <span class="mono">verdict-bases.ts</span>, <span class="mono">inbound-responder.service.ts:776–796</span>.
+  ★ marks the three most ambitious tasks. Throwaway-grade per the sketch conventions.
+</footer>
+
+</main>
+
+<script>
+  const seams = document.getElementById('seams');
+  const tasks = [...document.querySelectorAll('.task')];
+  let active = null;
+  seams.addEventListener('click', (e) => {
+    const chip = e.target.closest('.seam');
+    if (!chip) return;
+    const k = chip.dataset.k;
+    active = (active === k) ? null : k;
+    [...seams.children].forEach(c => c.classList.toggle('on', c.dataset.k === active));
+    tasks.forEach(t => t.classList.toggle('dim', active !== null && t.dataset.seam !== active));
+  });
+</script>
+</body>
+</html>

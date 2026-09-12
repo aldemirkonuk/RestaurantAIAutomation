@@ -77,6 +77,12 @@ def canonical_check(check: Check) -> dict[str, Any]:
         "externalCheckId": check.external_check_id,
         "openedAt": check.opened_at.isoformat(),
         "closedAt": check.closed_at.isoformat(),
+        # `genericAdapter.normalize` reads `r.voided ?? r.is_voided ?? false`,
+        # and `applyStockEffects` branches on it to RETURN stock rather than
+        # deplete it. Sending it explicitly (rather than relying on the
+        # adapter's default) is what makes the ADR 0093 void scenario a real
+        # second post of the same check id rather than a duplicate of the first.
+        "voided": bool(getattr(check, "voided", False)),
         "tableRef": check.table_ref,
         "serverExternalId": check.server_external_id,
         "serverName": check.server_name,
@@ -167,3 +173,44 @@ def idempotency_key(check: Check) -> str:
     of service into one processed order.
     """
     return f"{check.external_check_id}:{EVENT_ORDER_COMPLETED}"
+
+
+#: Provider key the ADR 0093 harness posts through. `applyStockEffects` puts it
+#: verbatim into the depletion idempotency key, so it is part of that key's
+#: contract, not a caller's choice.
+GENERIC_SOURCE = "generic_webhook"
+
+
+def line_idempotency_key(
+    external_check_id: str,
+    external_item_id: str | None,
+    name: str,
+    line_no: int,
+    *,
+    source: str = GENERIC_SOURCE,
+) -> str:
+    """The key `applyStockEffects` computes for ONE LINE of a check.
+
+    Verbatim from `pos-hub.service.ts` (`applyStockEffects`, decision B15):
+
+        const idem = `pos:${source}:${check.externalCheckId}:${it.external_item_id ?? it.name}:${lineNo}`;
+
+    Two properties are load-bearing and neither is obvious:
+
+    * `lineNo` indexes **every** item on the check, food included. The loop
+      `for (let lineNo = 0; lineNo < items.length; lineNo++)` runs over the full
+      item list and only `continue`s past non-wine lines, so the wine on a check
+      whose first two lines are food is line 2, not line 0. An expectation that
+      numbered wine lines from zero would predict keys the hub never writes.
+    * It is NOT `payloads.idempotency_key`. That function is the *Toast*
+      envelope key (`<order_guid>:OrderCompleted`), one per check, computed by
+      `process_toast_webhook` on the other ingress entirely. The two live in the
+      same module because the same simulated check drives both doors, and
+      confusing them is why this one has its own name and its own test.
+
+    Only lines that actually reach an RPC get a key: food never enters the
+    branch, and an unmapped or unresolvable line is queued in
+    `pos_unresolved_lines` before `idem` is computed. So an expectation records
+    `null` for those, not a key nothing will ever write.
+    """
+    return f"pos:{source}:{external_check_id}:{external_item_id or name}:{line_no}"

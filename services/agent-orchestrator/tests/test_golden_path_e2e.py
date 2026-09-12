@@ -13,7 +13,7 @@ Actual event routing chain (from RESEARCH.md):
   BufferManagerAgent (receives pos.sale.completed)
       -> _evaluate_buffer() -> publish stock.evaluated -> stock.events
   InventoryEngineAgent (receives stock.evaluated)
-      -> _handle_stock_evaluated() -> UPDATE inventory_stock
+      -> _handle_stock_evaluated() -> UPDATE restaurant_inventory
       -> publish stock.state.changed -> stock.events
   BufferManagerAgent (parallel) when stock < threshold:
       -> publish stock.threshold.breached -> stock.events
@@ -256,7 +256,10 @@ def reporting_agent():
     bus = _make_bus()
     db = _make_db()
     # ReportingAgent uses self.database.supabase.table(...).select().eq().execute()
-    # We need inventory_stock table to return data
+    # OD-99: the report reads `restaurant_inventory`. It used to read
+    # `inventory_stock`, which 404s in production (PGRST205) -- and this
+    # fixture, plus the assertion at the bottom of the test, pinned that
+    # phantom name in place and would have failed anyone who fixed it.
     inv_chain = MagicMock()
     inv_chain.select.return_value = inv_chain
     inv_chain.eq.return_value = inv_chain
@@ -267,7 +270,7 @@ def reporting_agent():
                 "wine_name": "Caymus Cabernet 2021",
                 "stock_live": 4,
                 "threshold_min": 2,
-                "wine_price": 120.0,
+                "last_purchase_price": 120.0,
                 "last_sold_at": "2026-04-11T19:30:00Z",
             }
         ],
@@ -275,7 +278,7 @@ def reporting_agent():
     )
 
     def _table_side_effect(table_name):
-        if table_name == "inventory_stock":
+        if table_name == "restaurant_inventory":
             return inv_chain
         # For all other tables (idempotency_keys, decision_log, etc.)
         chain = MagicMock()
@@ -428,14 +431,17 @@ async def test_e2e_04_stock_event_to_reporting(reporting_agent):
         "fatal_error",
         "crash",
     ), f"ReportingAgent returned failure status: {result}"
-    # DB must have been queried for inventory_stock
+    # DB must have been queried for restaurant_inventory (OD-99)
     db = reporting_agent.database
     db.supabase.table.assert_called()
     table_calls = [str(c) for c in db.supabase.table.call_args_list]
-    inventory_queried = any("inventory_stock" in c for c in table_calls)
+    inventory_queried = any("restaurant_inventory" in c for c in table_calls)
     assert (
         inventory_queried
-    ), f"Expected inventory_stock table to be queried. Table calls: {table_calls}"
+    ), f"Expected restaurant_inventory table to be queried. Table calls: {table_calls}"
+    assert not any(
+        "inventory_stock" in c for c in table_calls
+    ), f"inventory_stock does not exist in production. Table calls: {table_calls}"
 
 
 # ---------------------------------------------------------------------------

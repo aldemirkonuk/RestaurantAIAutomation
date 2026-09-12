@@ -16,8 +16,10 @@ describe("InboundResponderService (deterministic core)", () => {
 
   beforeEach(() => {
     // Pure-logic methods don't touch the injected deps, so stubs are fine.
-    // Order: configService, databaseService, modelClient, websocketGateway.
+    // Order: configService, databaseService, modelClient, websocketGateway,
+    // nfVerdicts.
     service = new InboundResponderService(
+      {} as any,
       {} as any,
       {} as any,
       {} as any,
@@ -353,6 +355,7 @@ describe("InboundResponderService (deterministic core)", () => {
         { supabase } as any,
         {} as any, // modelClient — unused by the deterministic core under test
         {} as any,
+        {} as any, // nfVerdicts — the graded path is not the core under test
       );
       return { s: s as any, captured };
     };

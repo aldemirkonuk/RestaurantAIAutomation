@@ -96,12 +96,115 @@ changes after repeated depletion patterns are proposed, never auto-applied.
   a total silent outage — see S09.
 
 ## 9. Simulation & deploy gate
+
+> **EXECUTES AS A CHECK since 2026-09-02 (ADR 0093)** — `scripts/simulate scenario … --apply`
+> posts a seeded day through the signed `generic_webhook` path and
+> `GET /simpos/:id/scenarios/runs/:runId/verify` compares it: `stock.bottle_transactions`,
+> `stock.pours`, `stock.projection` (projection = lots) and `consumption.mirror` are the
+> "correct ledger delta"; `stock.dedupe` + `webhook.duplicate` are "a replay is a no-op".
+> **PASSED on the record 2026-09-03** (ADR 0093, run `937a23f0`): 19 bottle lines → one
+> `sale` transaction each, 32 glass lines → one pour event each, projection = lots on all
+> 36 wines, the duplicate webhook moved stock once, the void returned its bottle, and every
+> depleting sale reached `wine_consumption_log` once — after the harness found that the
+> mirror had written **zero** rows for every POS sale since 2026-08-24 (42P10 against a
+> partial unique index) and the hub was fixed the same day.
 **SimPOS is the harness for exactly this** (`apps/api-gateway/src/simpos/` — non-production
 only since PR #32). A SimPOS check-close signs the canonical payload with a real HMAC and
 POSTs `generic_webhook` into the hub (`simpos.service.ts:485-509`), so the golden path runs
 without a real POS. **Gate (simulation before live, locked 2026-08-24):** pos-bridge
 ingestion or stock-effect changes ship only when a SimPOS close produces the correct ledger
 delta **and** a replay of the same `external_check_id` is a no-op (idempotency proven).
+
+### 9.1 Lens run, 2026-09-03 — the real Meyhouse Palo Alto menu through the product's doors
+
+Tenant `Sim Meyhouse` (`a229f22b-…`, America/Los_Angeles, hours set from the venue). No seed:
+53 inventory items were loaded through the Add-Wine modal (2), `POST :rid/items/bulk` (50) and a
+count (1); 135 SimPOS buttons were typed at printed-menu prices (5 oz = 148 ml, 8 oz = 237 ml,
+bottle, rakı single/double); 107 POS mappings were approved through the API because no screen
+exists for them; then **44 checks** were closed — 9 on the terminal UI, 35 through the SimPOS API,
+99 lines, 1 void, one check closed twice (refused, `403`, no duplicate ledger row).
+
+| | Database after the service |
+|---|---|
+| `pos_checks` | 44 — `total/subtotal/tip/covers/table_id/server_name` NULL on 44 of 44 |
+| `pos_unresolved_lines` | 39 — `unmapped` 38 (mezes and coffee, declared wine), `no_sale_volume` 1 |
+| `wine_consumption_log` | 55 — 40 glass, 15 bottle |
+| `inventory_transactions` | 89 — `initial/manual` 52, `sale/pos` 34, `reconciliation/mobile_count` 3 |
+| bottles depleted by POS | 34; `open_bottle_ml` 8 017 across open bottles |
+
+**The onboarding answer, measured:** a count on a zero-stock item creates a lot
+(`record_stock_count` → `apply_stock_movement` on the non-zero delta, `inventory.service.ts:363,405`,
+`20260902190000_a_count_is_a_record.sql:275-303`, `20260902150000_lot_cost_truth.sql:163-166`) at
+`unit_cost NULL / 'estimated'` — so an opening count is a legitimate door for a cellar that was
+never bought through the product, valued at nothing until a receipt revalues it.
+
+| Surface | Rendered | Database | Verdict |
+|---|---|---|---|
+| `/inventory` settled | 53 wines · 274 bottles | 53 · SUM(lots.qty) 274 | match |
+| `/inventory` value | "$0 cost basis", every row $0 | 52 of 54 lots `unit_cost NULL` | absence as $0 |
+| `/inventory` below par | chip 9 (2 critical) | `/low-stock`, `/summary` 7, critical 0 | two definitions |
+| `/inventory` first 2.5 s | "0 wines, 0 bottles" | 53 / 274 | loading = empty |
+| `/simpos/:id/orders` | 45 checks, lines, prices | 45 · 99 lines | match; no totals; viewer's TZ |
+| `/notifications` | "7 Wines Need Restocking"; 1 in the stream | 2 rows · 3 wines · 7 below par | stream missed 4 |
+| `/dashboard` | 53 · 274 · 205.5 L; Low Stock 7 | matches | match |
+| `/reports` | "needs a connected POS" | 44 checks · 34 depleted · 55 rows | wrong cause |
+| `/recommendations` | 12 rules · 1 active (Muhammara + Köpoğlu 2.2×) | true of tonight | correct |
+
+The §9 gates as they stand after this run: **correct ledger delta** — holds for mapped lines
+(34 depletions, 5 oz/8 oz volumes as set per button); **replay is a no-op** — holds at the terminal
+(double close refused) and was not re-tested at the webhook. Twelve defects and nine
+absence-as-health instances are filed in `v3.0-TECH-DEBT.md` (2026-09-03, POS lens); the blocking
+one is that no screen connects POS buttons to stock.
+
+### 9.2 Lens run, 2026-09-05 — the real Vanilla Kaleiçi (Antalya) menu through the product's doors
+
+Tenant `Sim Vanilla Kaleiçi` (`684920db-…`, **Europe/Istanbul**, country `TR`, hours Mon–Sun
+11:00–23:59 set from the venue). Code under test: `main` at **`528f13d1`** — the mapping-surface
+fix (#307) and the migration guard (#311) landed on `main` *after* this run, so every measurement
+below is against the pre-#307 tree and §9.1's defects 1 and 2 are re-measured as they stood then.
+No seed: 27 inventory items were loaded through the **Receive-a-delivery → "Wine not in the
+library"** UI door (2), `POST :rid/items/bulk` (25) and a count (1); **268 SimPOS buttons** were
+typed at the venue's printed **₺** prices; 36 POS mappings and 36 sale units were written through
+the API because no screen existed for them; then **38 checks** were closed — 7 on the terminal UI,
+31 through the SimPOS API — 92 lines, 134 units, 1 void, one check closed twice (refused, `403`).
+Check counts per hour follow Google's **measured** Saturday busyness curve for this venue
+(2·2·2·2·2·3·3·4·4·5·4·3·2 across 11:00–23:00).
+
+| | Database after the service |
+|---|---|
+| `pos_checks` | 38 — `total/subtotal/tip/covers/table_id/server_name` NULL on 38 of 38, over **₺148,205** actually rung; the table has **no currency column at all** |
+| `pos_unresolved_lines` | 79 of 92 lines — every one `unmapped`, every one `is_wine: true` (hummus, water, Turkish coffee, Efes, cola, Espresso Martini) |
+| `wine_consumption_log` | 12 — 6 bottle, 6 glass (14 glasses poured) |
+| `pour_events` | 6 — **5 bottles opened, 2 100 ml poured**; `inventory_lots.open_bottle_ml` 1 650 ml, and 5×750 − 2 100 = 1 650 |
+| `inventory_transactions` | 39 — `initial/manual` 27, `sale/pos` 11, `reconciliation/mobile_count` 1 |
+| bottles on hand | 245 → 234; 27 of 27 lots `unit_cost NULL / 'estimated'` |
+
+**The inventory answer, measured:** `restaurant_inventory.master_wine_id` is **`NOT NULL`**
+(`20260805000000_baseline_from_production.sql:3262`), so everything stocked must be a wine.
+Of this venue's 284 published rows, **247 have no home at all** — 46 cocktails, 78 spirit rows,
+6 beers, 48 non-alcoholic and 69 food. A further 10 of the 37 wine *menu rows* have no
+independent representation, because glass, 500 ml carafe and bottle collapse into one identity.
+
+| Surface | Rendered | Database | Verdict |
+|---|---|---|---|
+| `/inventory` settled | 27 wines · 234 bottles | 27 · `SUM(lots.qty)` 234 | match |
+| `/inventory` TYPE | **"Red" on 26 of 27** — champagne, prosecco, 2 rosés, 5 whites | `primary_type` `'unknown'` on all 26 | asserted, not read |
+| `/inventory` producer | "Malbec, Unknown"; "Prosecco, Unknown" | `producer` = the wine's own **name** on 26 of 26 | fabricated provenance |
+| `/inventory` house white | "HOUSE WHITE / Unknown Producer, **California**" | bound to another tenant's tier-4 row (USA, 2023) | cross-tenant identity capture |
+| `/inventory` value / currency | "$0 cost basis", `$` everywhere | 27 NULL-cost lots; tenant country `TR` | absence as $0; wrong currency |
+| `/notifications` | "**20 unread**", a CRITICAL card naming **Sim Meyhouse's** wines | this tenant owns **1** row; 27 of 28 belong to two other restaurants | cross-tenant leak |
+| `/dashboard` | 27 · 234 · 175.5 L; Low Stock 2 | matches | match |
+| `/dashboard` low-stock widget | "**Unknown wine(750ml)** · Min:" ×2, blank numbers | the same page's One-Tap card names both correctly | two widgets, one truth |
+| `/reports` | **crashes** (`useState` of null, duplicate React in the Vite dep optimizer) | — | **not audited — dev-server condition, not a proven product defect** |
+| `/recommendations` | 12 rules · **0 active**, unchanged after Recompute | revenue rules cannot fire over 38 NULL totals; runway 120 d | honest; Recompute wrote 1 true `analytics_insights` row |
+| `/simpos/:id/orders` | 39 checks, lines, prices; void shows `Loss $3950.00` | 39 · `lossTotal` 3 950 | match; `$` on ₺; viewer's TZ (7 h out) |
+
+The §9 gates as they stand after this run: **correct ledger delta** — holds, and the pour
+arithmetic reconciles to the millilitre; **replay is a no-op** — holds at the terminal (double
+close refused `403`) and was not re-tested at the webhook. Ten new findings and eleven
+re-measurements are filed in `v3.0-TECH-DEBT.md` (2026-09-05, Antalya lens); the two blocking
+ones are that **notifications are scoped to the user rather than the tenant**, and that an
+unrecognised wine is **asserted to be red** rather than reported as unknown.
 
 ## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
 

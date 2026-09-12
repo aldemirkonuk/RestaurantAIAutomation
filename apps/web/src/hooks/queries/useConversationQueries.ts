@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { useAuth } from '../../contexts/AuthContext'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -179,10 +180,17 @@ export function useConversations(filters: ConversationFilters = {}) {
 /**
  * List conversations paginated BY THREAD, so a thread is never split across pages.
  * Prefer this over `useConversations` for any grouped view.
+ *
+ * Keyed by the active restaurant: the request is scoped by the
+ * X-Restaurant-Id header (interceptor above), so an unkeyed cache would keep
+ * serving the previous tenant's threads after a restaurant switch while the
+ * consuming page stays mounted.
  */
 export function useConversationThreads(filters: ConversationFilters = {}) {
+  const { user, activeRestaurantId } = useAuth()
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? ''
   return useQuery<ConversationThreadListResponse>({
-    queryKey: [...conversationKeys.lists(), 'byThread', filters],
+    queryKey: [...conversationKeys.lists(), 'byThread', restaurantId, filters],
     queryFn: async () => {
       const params = new URLSearchParams()
       Object.entries(filters).forEach(([key, value]) => {
@@ -251,14 +259,30 @@ export function useRegenerateSummary() {
 
 export interface ProcurementHistoryItem {
   id: string
-  orderId: string
+  /**
+   * NULL on 25 of production's 27 rows — which is why ADR 0084 had to turn the
+   * `procurement_orders!inner` embed into a `!left` one to see them at all.
+   */
+  orderId: string | null
   providerId: string
-  emailType: string
-  status: string
+  /**
+   * Uppercased by the gateway (`procurement.service.ts` `getConversationHistory`,
+   * whose spec asserts "normalises direction to the casing the UI compares
+   * against"). It was sent but not declared here, so no consumer could read it
+   * — and `/communications` rendered every inbound vendor reply as an outbound
+   * AI draft, because `status` on an inbound row is the column DEFAULT `'DRAFT'`
+   * that the inbound writer never sets.
+   */
+  direction: 'OUTBOUND' | 'INBOUND'
+  /** NULL on every inbound row — `outbound_email_type` is an outbound concept. */
+  emailType: string | null
+  /** `procurement_conversations.status` is nullable; ADR 0084 admits null rows. */
+  status: string | null
   roundCount: number
   createdAt: string
   sentAt: string
-  draftContent: string
+  /** `content ?? message_text ?? null` — the gateway may genuinely have none. */
+  draftContent: string | null
   constraintFlags: {
     hard: string[]
     annotating: string[]
@@ -273,12 +297,35 @@ export interface ProcurementHistoryItem {
 }
 
 export const procurementHistoryKeys = {
+  /** Invalidation PREFIX only — never a bucket anything is stored under. */
   all: ['procurement', 'history'] as const,
+  forRestaurant: (restaurantId: string) =>
+    ['procurement', 'history', restaurantId] as const,
 }
 
+/**
+ * Keyed by the active restaurant, for the same reason `useConversationThreads`
+ * above is — and more sharply here.
+ *
+ * `GET /procurement/conversations/history` is scoped ENTIRELY from the JWT:
+ * `procurement.controller.ts:737` reads `user.restaurantId` and the gateway
+ * never reads the `X-Restaurant-Id` header this client stamps (a repo-wide
+ * grep finds that header only in test fixtures). So the token is re-minted on
+ * a restaurant switch — and `AuthContext.tsx` catches a FAILED switch and
+ * proceeds, logging that it will continue "with X-Restaurant-Id header only",
+ * a fallback the gateway does not implement. A failed switch plus a constant
+ * cache key therefore renders the PREVIOUS tenant's conversation book under
+ * the new tenant's name, with no banner. The key literal is the only thing
+ * separating the two.
+ */
 export function useProcurementConversationHistory() {
+  const { user, activeRestaurantId } = useAuth()
+  // Prefer the runtime-updated activeRestaurantId: user.restaurantId comes
+  // from the JWT and is stale for the whole window between a switch and a
+  // re-mint.
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? ''
   return useQuery({
-    queryKey: procurementHistoryKeys.all,
+    queryKey: procurementHistoryKeys.forRestaurant(restaurantId),
     queryFn: () =>
       api
         .get<ProcurementHistoryItem[]>('/procurement/conversations/history')

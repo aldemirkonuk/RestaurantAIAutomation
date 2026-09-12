@@ -70,7 +70,7 @@ work is how implementation teams quietly acquire product authority.
 
 ## Two standing rules
 
-**1. The burn-down is an input.** `.planning/UX_PATHS_CATALOG.md` closures are reported,
+**1. The burn-down is an input.** `.planning/07-reference/UX_PATHS_CATALOG.md` closures are reported,
 never led with. If a status update opens with the burn-down count, that is premortem M1
 starting and the directive says re-order the update.
 

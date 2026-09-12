@@ -92,7 +92,14 @@ export async function getAlerts(restaurantId?: string): Promise<any[]> {
 }
 
 /**
- * Get sales data for dashboard chart
+ * Chart series for the dashboard.
+ *
+ * The endpoint path `GET /dashboard/sales-chart/:id` is frozen and is a
+ * misnomer: it does NOT return sales. The gateway builds this series from
+ * delivered `procurement_orders.total_cost` — money the restaurant PAYS its
+ * vendors, published as `procurementSpend` — plus a `wine_consumption_log`
+ * glasses count. See `apps/api-gateway/src/dashboard/dashboard.service.ts`
+ * `getSalesChart`. Sales revenue lives in `pos_checks` and is not returned here.
  */
 export async function getSalesChartData(
   period: 'day' | 'week' | 'month' = 'week',
@@ -179,24 +186,57 @@ export async function getOneTapActions(restaurantId?: string): Promise<any[]> {
 }
 
 /**
- * Execute a one-tap action
+ * Execute a one-tap action.
+ *
+ * The gateway marks the row completed, stamps `executed_by` with the caller's
+ * user id, records `execution_result`, and broadcasts `action_executed` over the
+ * WebSocket. `result` is the optional `ExecuteActionDto.result` payload.
+ *
+ * This throws on failure — deliberately. Callers show optimistic UI and must
+ * roll it back, so swallowing the error here would recreate the fabricated
+ * success this endpoint exists to replace.
  */
 export async function executeOneTapAction(
+  actionId: string,
+  restaurantId?: string,
+  result?: Record<string, unknown>
+): Promise<{ success: boolean; message: string }> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+
+  const response = await apiClient.post(
+    `/one-tap-actions/${actionId}/execute`,
+    result ? { result } : {},
+    { params: { restaurantId: id } }
+  );
+  return response.data;
+}
+
+/**
+ * Cancel a one-tap action — the server-side counterpart of "Reject".
+ *
+ * Sets status to `cancelled` and broadcasts `action_cancelled`. Distinct from
+ * delete: the row stays, so a rejection is auditable.
+ */
+export async function cancelOneTapAction(
   actionId: string,
   restaurantId?: string
 ): Promise<{ success: boolean; message: string }> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.post(`/one-tap-actions/${actionId}/execute`, {}, {
-    params: { restaurantId: id },
-  });
+  const response = await apiClient.post(`/one-tap-actions/${actionId}/cancel`, {});
   return response.data;
 }
 
 /**
- * Get calendar-revenue data for a specific month
- * Returns per-day data with revenue from delivered orders and calendar events
+ * Per-day figures for the dashboard calendar.
+ *
+ * The endpoint path `GET /dashboard/calendar-revenue/:id` is frozen and is a
+ * misnomer: `daily[].procurement_spend` and `monthly_procurement_spend` are
+ * summed from delivered `procurement_orders` — vendor SPEND, not sales revenue.
+ * `bottles_sold` counts bottles DELIVERED by vendors, for the same reason. See
+ * `apps/api-gateway/src/dashboard/dashboard.service.ts` `getCalendarRevenue`.
  */
 export async function getCalendarRevenue(
   year?: number,
@@ -208,12 +248,12 @@ export async function getCalendarRevenue(
   restaurant_id: string;
   daily: Array<{
     date: string;
-    revenue: number;
+    procurement_spend: number;
     bottles_sold: number;
     events: any[];
     order_count: number;
   }>;
-  monthly_total: number;
+  monthly_procurement_spend: number;
   monthly_bottles: number;
 }> {
   const id = restaurantId || getActiveRestaurantId();
@@ -235,7 +275,7 @@ export async function getCalendarRevenue(
       month: m,
       restaurant_id: id,
       daily: [],
-      monthly_total: 0,
+      monthly_procurement_spend: 0,
       monthly_bottles: 0,
     };
   }
@@ -252,6 +292,7 @@ export const dashboardApi = {
   getInventoryBreakdown,
   getOneTapActions,
   executeOneTapAction,
+  cancelOneTapAction,
   getCalendarRevenue,
 };
 

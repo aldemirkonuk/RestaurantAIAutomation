@@ -137,7 +137,9 @@ ledger there is no per-task-type cost, so a founder decision is blocked on this 
 
 ### Two further un-metered surfaces, verified
 
-1. **NestJS emits nothing.** Grepping `apps/api-gateway/src` for `api_spend`, `cost_usd`
+1. **NestJS emitted nothing as of 2026-08-24.** *Corrected 2026-08-25: superseded by
+   P1 — all seven callsites now emit `neural_footprint_event`
+   (`model-client.service.ts:413`).* Grepping `apps/api-gateway/src` for `api_spend`, `cost_usd`
    or `input_tokens` returns **zero hits**. The seven production Anthropic callsites
    enumerated at `.planning/foundation/teams/intelligence.md:64-73` — `analytics/consultants`,
    `common/orchestrator/inbound-responder`, `procurement/documents/document-extractor`,

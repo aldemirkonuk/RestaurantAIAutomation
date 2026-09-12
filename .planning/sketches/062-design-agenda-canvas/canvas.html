@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 062 · Design — Agenda Canvas (2026-08-28)</title>
+<style>
+  :root{
+    --ink:#16161a; --ink-2:#3d3d46; --ink-3:#6b6b78; --ink-4:#9a9aa6;
+    --paper:#faf9f7; --card:#ffffff; --rule:#e3e0da; --rule-2:#cfcbc2;
+    --lane-d:#4a4a52; --lane-1:#2f6f5e; --lane-2:#3a5f8a; --lane-3:#7a5a2e; --lane-4:#6b3f6e;
+    --hold:#8a2f2f; --hold-bg:#fbf1f0;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans);
+    font-size:13px; line-height:1.45;
+    background-image:linear-gradient(var(--rule) 1px,transparent 1px),linear-gradient(90deg,var(--rule) 1px,transparent 1px);
+    background-size:28px 28px; background-position:-1px -1px;
+  }
+  .sheet{max-width:1320px; margin:0 auto; padding:26px 22px 60px}
+  header{display:flex; flex-wrap:wrap; gap:14px; align-items:baseline; justify-content:space-between;
+    border-bottom:2px solid var(--ink); padding-bottom:10px; margin-bottom:16px}
+  h1{font-size:19px; margin:0; letter-spacing:-.01em}
+  h1 span{color:var(--ink-3); font-weight:400}
+  .meta{font-family:var(--mono); font-size:11px; color:var(--ink-3); text-align:right}
+  h2{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3);
+    margin:26px 0 8px; font-weight:600}
+
+  /* ---- locks band ---- */
+  .locks{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px}
+  .lock{border:1px solid var(--hold); background:var(--hold-bg); border-radius:3px; padding:9px 11px}
+  .lock b{display:block; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--hold)}
+  .lock p{margin:4px 0 0; color:var(--ink-2); font-size:12px}
+  .lock code{font-family:var(--mono); font-size:10.5px; color:var(--ink-3)}
+
+  /* ---- timeline grid ---- */
+  .grid{display:grid; grid-template-columns:74px repeat(6,minmax(0,1fr)); gap:6px; align-items:stretch}
+  .colhead{font-family:var(--mono); font-size:10.5px; color:var(--ink-2); text-align:center;
+    border-bottom:1px solid var(--rule-2); padding:0 0 5px}
+  .colhead b{display:block; font-size:12px; color:var(--ink)}
+  .lane-label{font-family:var(--mono); font-size:10px; color:#fff; writing-mode:vertical-rl;
+    transform:rotate(180deg); display:flex; align-items:center; justify-content:center;
+    border-radius:3px; padding:6px 0; letter-spacing:.08em}
+  .lane-label small{font-size:9px; opacity:.75; letter-spacing:0}
+  .lane-label small::before{content:" · "}
+  .cell{display:flex; flex-direction:column; gap:5px; min-height:54px;
+    border-left:1px dashed var(--rule-2); padding:2px 2px 8px}
+  .chip{background:var(--card); border:1px solid var(--rule-2); border-left-width:3px;
+    border-radius:3px; padding:6px 7px; box-shadow:0 1px 0 rgba(0,0,0,.03)}
+  .chip .id{font-family:var(--mono); font-size:9.5px; color:var(--ink-3); letter-spacing:.04em}
+  .chip .t{font-weight:600; font-size:12px; margin:1px 0 3px; letter-spacing:-.005em}
+  .chip .d{font-size:11px; color:var(--ink-2)}
+  .chip .d em{font-style:normal; color:var(--ink-3); font-family:var(--mono); font-size:10px}
+  .reach{background:repeating-linear-gradient(135deg,#fff,#fff 7px,#fbfaf6 7px,#fbfaf6 14px)}
+  .reach .id::after{content:" · reach"; color:var(--hold)}
+  .l-d{border-left-color:var(--lane-d)} .b-d{background:var(--lane-d)}
+  .l-1{border-left-color:var(--lane-1)} .b-1{background:var(--lane-1)}
+  .l-2{border-left-color:var(--lane-2)} .b-2{background:var(--lane-2)}
+  .l-3{border-left-color:var(--lane-3)} .b-3{background:var(--lane-3)}
+  .l-4{border-left-color:var(--lane-4)} .b-4{background:var(--lane-4)}
+  .wall{grid-column:1 / -1; margin-top:6px; border-top:2px solid var(--hold);
+    font-family:var(--mono); font-size:11px; color:var(--hold); padding-top:5px}
+
+  /* ---- lower panels ---- */
+  .cols{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px}
+  .panel{background:var(--card); border:1px solid var(--rule-2); border-radius:3px; padding:12px 13px}
+  .panel h3{margin:0 0 7px; font-size:12px; letter-spacing:.02em}
+  ul{margin:0; padding-left:16px} li{margin:3px 0; color:var(--ink-2)}
+  code{font-family:var(--mono); font-size:11px; color:var(--ink-2); background:#f2f0eb;
+    padding:0 3px; border-radius:2px}
+  table{border-collapse:collapse; width:100%; font-size:11.5px}
+  td,th{text-align:left; padding:3px 6px 3px 0; border-bottom:1px solid var(--rule); vertical-align:top}
+  th{color:var(--ink-3); font-weight:600; font-size:10px; letter-spacing:.07em; text-transform:uppercase}
+  .num{font-family:var(--mono); white-space:nowrap}
+  .bad{color:var(--hold); font-weight:600} .ok{color:var(--lane-1); font-weight:600}
+  .swatch{display:inline-block; width:9px; height:9px; border-radius:50%; vertical-align:-1px;
+    border:1px solid rgba(0,0,0,.25); margin-right:3px}
+  footer{margin-top:26px; border-top:1px solid var(--rule-2); padding-top:9px;
+    font-family:var(--mono); font-size:10.5px; color:var(--ink-4)}
+  @media (max-width:820px){
+    .grid{grid-template-columns:1fr}
+    .lane-label{writing-mode:horizontal-tb; transform:none; justify-content:flex-start; padding:5px 9px}
+    .colhead{display:none}
+    .cell{border-left:3px solid var(--rule-2); border-bottom:1px solid var(--rule)}
+    .cell::before{content:attr(data-when); font-family:var(--mono); font-size:10px; color:var(--ink-3)}
+    .cell:empty{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <h1>Design — Agenda Canvas <span>· one department, one picture</span></h1>
+  <div class="meta">
+    sketch 062 · 2026-08-28 · wave 3 / ADR 0039 Track B<br>
+    4 teams + dept · 23 tasks · 6 findings · 6 founder questions
+  </div>
+</header>
+
+<h2>Locks in force — read before the tasks</h2>
+<div class="locks">
+  <div class="lock">
+    <b>Brand / landing visuals — HELD</b>
+    <p>“hold until <b>structure + brand</b> exist”. This agenda does the structure half and
+       <b>commissions no visual</b>. <code>decisions/README.md:81</code></p>
+  </div>
+  <div class="lock">
+    <b>OD-106 — documentation only</b>
+    <p>Founder co-design. The pack is built; the direction and the primary are not picked.
+       Two burgundies documented, not chosen:
+       <span class="swatch" style="background:#9E4249"></span><code>#9E4249</code>
+       <span class="swatch" style="background:#CD2D5B"></span><code>#CD2D5B</code>.
+       <code>OD-106 (OPEN-DECISIONS.md:66)</code></p>
+  </div>
+  <div class="lock">
+    <b>Voice guide is not ours</b>
+    <p>M1 <i>brand-identity</i> owns the voice guide; Design owns the product-language corpus
+       beneath it. <code>brand-identity-charter:27-29,148</code></p>
+  </div>
+  <div class="lock">
+    <b>UX optimizer stays dark</b>
+    <p><code>ux_optimizer_rows = 0</code> is the <i>correct</i> value. Non-zero is a decision
+       incident. <code>AGENT_NATIVE_UI_DECISION:78</code></p>
+  </div>
+</div>
+
+<h2>The agenda on its clock — every task sits in the column it must move by</h2>
+<div class="grid">
+  <div></div>
+  <div class="colhead"><b>Sep 4</b>week 1</div>
+  <div class="colhead"><b>Sep 11</b>week 2</div>
+  <div class="colhead"><b>Sep 18</b>week 3</div>
+  <div class="colhead"><b>Sep 25</b>week 4</div>
+  <div class="colhead"><b>Oct 9</b>week 6</div>
+  <div class="colhead"><b>Oct 23</b>week 8</div>
+
+  <!-- Department lane -->
+  <div class="lane-label b-d">DEPT <small>board-steward</small></div>
+  <div class="cell" data-when="Sep 4"></div>
+  <div class="cell" data-when="Sep 11">
+    <div class="chip l-d"><div class="id">D3</div><div class="t">First board rollup</div>
+      <div class="d">Five metrics as a <b>set</b> — or the word <i>unmeasured</i> with the missing event named. <em>no sum, ever</em></div></div>
+  </div>
+  <div class="cell" data-when="Sep 18">
+    <div class="chip l-d"><div class="id">D4</div><div class="t">optimizer-dark-check → registry skill #5</div>
+      <div class="d">Registry is real (4 skills, none ours). <em>.claude/skills/</em></div></div>
+    <div class="chip l-d"><div class="id">D5</div><div class="t">Escalate PROD-F5 on instance #1</div>
+      <div class="d">One named <code>NEW-</code> row whose only blocker is an endpoint. <em>not the tenth</em></div></div>
+  </div>
+  <div class="cell" data-when="Sep 25">
+    <div class="chip l-d reach"><div class="id">D1</div><div class="t">Product-language corpus + voice foundation</div>
+      <div class="d">Honesty idioms as testable rules, each with an on-disk counterexample. Handed to M1 as evidence, never prose. <em>94 brand strings / 56 files</em></div></div>
+  </div>
+  <div class="cell" data-when="Oct 9">
+    <div class="chip l-d"><div class="id">D2</div><div class="t">OD-106 co-design pack</div>
+      <div class="d">Closes direction + primary in <b>one</b> founder session. No mock produced.</div></div>
+    <div class="chip l-d"><div class="id">D6</div><div class="t">The unlock case — written, not acted on</div>
+      <div class="d">Grades “structure + brand” met/unmet. Recommends no build.</div></div>
+  </div>
+  <div class="cell" data-when="Oct 23"></div>
+
+  <!-- T1 -->
+  <div class="lane-label b-1">T1 <small>ux-path burn-down</small></div>
+  <div class="cell" data-when="Sep 4">
+    <div class="chip l-1"><div class="id">T1.1</div><div class="t">Repair <code>:49</code>, sweep <code>:10-67</code></div>
+      <div class="d">One verdict per deferred row — blocked / unblocked / <b>uncheckable</b>. Zero silent skips. <em>founding baseline</em></div></div>
+  </div>
+  <div class="cell" data-when="Sep 11"></div>
+  <div class="cell" data-when="Sep 18"></div>
+  <div class="cell" data-when="Sep 25">
+    <div class="chip l-1 reach"><div class="id">T1.2</div><div class="t">The service-route register</div>
+      <div class="d">Which of 47 routes staff touch <i>during service</i> — the denominator L-DSN-5 lacks. <em>counters premortem M2</em></div></div>
+  </div>
+  <div class="cell" data-when="Oct 9">
+    <div class="chip l-1 reach"><div class="id">T1.3</div><div class="t">Implement <code>ux-ledger-reconciler</code></div>
+      <div class="d">Card is mechanical and absent from <code>run_card.py:333</code>. Makes M1’s counter-pressure <b>a script, not a habit</b>.</div></div>
+    <div class="chip l-1"><div class="id">T1.4</div><div class="t">Ask for the missing “will not build” state</div>
+      <div class="d">A 910-row ledger with no close state is a commitment by default.</div></div>
+  </div>
+  <div class="cell" data-when="Oct 23"></div>
+
+  <!-- T2 -->
+  <div class="lane-label b-2">T2 <small>substrate + motion</small></div>
+  <div class="cell" data-when="Sep 4"></div>
+  <div class="cell" data-when="Sep 11"></div>
+  <div class="cell" data-when="Sep 18">
+    <div class="chip l-2"><div class="id">T2.4</div><div class="t">Publish the token-divergence diff</div>
+      <div class="d">Every value where tailwind and the sketch theme disagree. <b>Picks nothing.</b></div></div>
+  </div>
+  <div class="cell" data-when="Sep 25">
+    <div class="chip l-2"><div class="id">T2.2</div><div class="t">Adopt the a11y ratchet nobody counts</div>
+      <div class="d"><code>a11y_allowlist_files = 47</code>; fix a file → delete a line, never add one. +1 more §X rule into CI. Fix the <code>:1493→:1498</code> anchor.</div></div>
+    <div class="chip l-2"><div class="id">T2.3</div><div class="t">Define <code>system_composition_pct</code></div>
+      <div class="d">The denominator before the ratio — else the system becomes a museum (M4).</div></div>
+  </div>
+  <div class="cell" data-when="Oct 9">
+    <div class="chip l-2 reach"><div class="id">T2.1</div><div class="t">Implement <code>substrate-census</code></div>
+      <div class="d">Reproducible on a commit; each of 10 §X rules <i>enforced</i> or <i>unenforced-with-an-owner</i>.</div></div>
+  </div>
+  <div class="cell" data-when="Oct 23"></div>
+
+  <!-- T3 -->
+  <div class="lane-label b-3">T3 <small>exploration studio</small></div>
+  <div class="cell" data-when="Sep 4"></div>
+  <div class="cell" data-when="Sep 11">
+    <div class="chip l-3"><div class="id">T3.1</div><div class="t">Bidirectional MANIFEST closure</div>
+      <div class="d">43 rows / 53 dirs · 10 unindexed · dup <code>038</code>,<code>048</code> · row <code>039</code> orphan — <b>plus ~24 wave-3 canvases</b>.</div></div>
+    <div class="chip l-3"><div class="id">T3.2</div><div class="t">Set N — the WIP limit</div>
+      <div class="d">Never set; 28 questions open. Publish the number or the rule is decor.</div></div>
+  </div>
+  <div class="cell" data-when="Sep 18"></div>
+  <div class="cell" data-when="Sep 25">
+    <div class="chip l-3"><div class="id">T3.3</div><div class="t">Withdraw the abandoned questions</div>
+      <div class="d">Null for two close-times = <i>no winner, question withdrawn</i>. That is convergence.</div></div>
+  </div>
+  <div class="cell" data-when="Oct 9">
+    <div class="chip l-3 reach"><div class="id">T3.4</div><div class="t">Implement <code>sketch-manifest-steward</code></div>
+      <div class="d">Sweep runs as a PR diff; never edits the corpus silently.</div></div>
+  </div>
+  <div class="cell" data-when="Oct 23">
+    <div class="chip l-3"><div class="id">T3.5</div><div class="t">The sketch program — canvas-driven</div>
+      <div class="d">A question = a canvas, registered at birth, with a receiving team + close-time. <b>Cohort #1 is this wave</b> (incl. 062), measured for conversion. <em>baseline 2 of 53</em></div></div>
+  </div>
+
+  <!-- T4 -->
+  <div class="lane-label b-4">T4 <small>activation + guidance</small></div>
+  <div class="cell" data-when="Sep 4"></div>
+  <div class="cell" data-when="Sep 11">
+    <div class="chip l-4"><div class="id">T4.4</div><div class="t">First activation read — or honest <i>unmeasured</i></div>
+      <div class="d">Three role readings. <b>Averaging them is a defect</b>, not a formatting choice.</div></div>
+  </div>
+  <div class="cell" data-when="Sep 18">
+    <div class="chip l-4"><div class="id">T4.2</div><div class="t">Execute sketch 051’s winner</div>
+      <div class="d">First visit overrides the session cap at <code>GuidanceProvider.tsx:186</code>. Decided 2026; unbuilt.</div></div>
+  </div>
+  <div class="cell" data-when="Sep 25">
+    <div class="chip l-4"><div class="id">T4.1</div><div class="t">Define the “real action” event</div>
+      <div class="d">With analytics-bi. L-DSN-4 cannot close without it — and says so monthly.</div></div>
+  </div>
+  <div class="cell" data-when="Oct 9"></div>
+  <div class="cell" data-when="Oct 23">
+    <div class="chip l-4 reach"><div class="id">T4.3</div><div class="t">Role-based defaults — spec, not build</div>
+      <div class="d">The turnover rule puts the burden of proof on the change. <code>role_default_coverage_pct = 0</code>.</div></div>
+  </div>
+
+  <div class="wall">2026-10-27 — the staleness wall. All 198 agendas shared <code>updated: 2026-08-24</code>
+    and fire together on 2026-10-23 (<code>watch_loops.py:11-13</code>); re-dating this file moves its own
+    condemnation to the 27th. Anything above that has not moved by then is fiction by our own rule.</div>
+</div>
+
+<h2>Seams this agenda touches</h2>
+<div class="cols">
+  <div class="panel">
+    <h3>Who we hand to, and what</h3>
+    <table>
+      <tr><th>Unit</th><th>What crosses</th></tr>
+      <tr><td>media-brand / <b>M1</b></td><td>D1’s product-language corpus — <b>evidence, never prose</b>. They own the voice guide</td></tr>
+      <tr><td>analytics-bi</td><td>T4.1 — the <code>activation.real_action</code> definition. Publisher: <span class="bad">NONE</span> today</td></tr>
+      <tr><td>engineering</td><td>T1.3 / T2.1 / T3.4 — three functions in the shared <code>run_card.py</code></td></tr>
+      <tr><td>decision-office</td><td>D5 (PROD-F5), T1.4, and every finding below</td></tr>
+      <tr><td>surface-portfolio</td><td>Orphan-route findings only — <i>whether</i> a page exists is theirs</td></tr>
+      <tr><td>founder</td><td>D2’s pack, D6’s unlock case, and the six questions</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>Findings — no card or loop can carry these</h3>
+    <ul>
+      <li>The department’s own card is <code>extraction</code> → ADR 0038 keeps it designed. <b>The rollup is a human PR indefinitely.</b></li>
+      <li><code>loop.close_time_breached</code> — no publisher; nothing measures loop age</li>
+      <li><code>time_to_first_real_action_*</code> — no producing event</li>
+      <li><code>blocked_on_endpoint_count</code> — emitted, no committed consumer while PROD-F5 is open</li>
+      <li>The 47-file a11y allowlist had <b>no owning metric in any charter</b> until today</li>
+      <li><code>sketch.directory_added</code> — no publisher; this wave adds ~24 at once</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>Counters, re-measured 2026-08-28</h3>
+    <table>
+      <tr><td>paths (unique <code>NEW-</code>)</td><td class="num">910</td></tr>
+      <tr><td>ledger drift</td><td class="num bad">≥ 32 days</td></tr>
+      <tr><td>token sources</td><td class="num bad">2 → target 1</td></tr>
+      <tr><td>primitives w/ stories</td><td class="num">5/26 web · 0/16 pkg · 0 mobile</td></tr>
+      <tr><td>a11y rules in CI</td><td class="num">1 of 10 · allowlist 47</td></tr>
+      <tr><td>sketch questions resolved</td><td class="num">15 of 43 · 28 null</td></tr>
+      <tr><td>winner → shipped</td><td class="num bad">2 of 53</td></tr>
+      <tr><td>role-default coverage</td><td class="num bad">0%</td></tr>
+      <tr><td>ux_optimizer_rows</td><td class="num ok">0 — correct</td></tr>
+      <tr><td>mechanical cards running</td><td class="num bad">0 of 3</td></tr>
+    </table>
+  </div>
+</div>
+
+<footer>
+  Throwaway thinking surface — not a product, not a proposal, and <b>not a visual direction</b>.
+  Hatched chips are graded reaches (agenda §4). Rejected seeds live in agenda §5.
+  Source of truth: <code>.planning/01-org/product/design/design-agenda-full.md</code>
+</footer>
+
+</div>
+</body>
+</html>

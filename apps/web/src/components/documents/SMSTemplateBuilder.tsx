@@ -41,7 +41,12 @@ interface SMSTemplate {
 
 interface SMSTemplateBuilderProps {
   onClose: () => void
-  onSave?: (template: SMSTemplate) => void
+  /**
+   * May persist, and may therefore fail. A rejection means NOTHING was stored,
+   * so the builder must not show its success state or close over it — see
+   * `handleSave`.
+   */
+  onSave?: (template: SMSTemplate) => void | Promise<void>
   editingTemplate?: SMSTemplate | null
 }
 
@@ -346,7 +351,14 @@ export function SMSTemplateBuilder({ onClose, onSave, editingTemplate }: SMSTemp
     let preview = message
     VARIABLE_CATEGORIES.forEach(cat => {
       cat.variables.forEach(v => {
-        preview = preview.replace(new RegExp(v.key.replace(/[{}]/g, '\\$&'), 'g'), v.example)
+        // Escape every regex metacharacter, not just braces: `[{}]` leaves
+        // `.`, `*`, `+`, `(`, `)` etc. live, so a variable key containing one
+        // silently becomes a pattern instead of a literal. Today the keys are
+        // a static constant, which is why this is hardening rather than a
+        // live bug — but the escape should be correct for the input it claims
+        // to handle.
+        const literal = v.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        preview = preview.replace(new RegExp(literal, 'g'), v.example)
       })
     })
     return preview
@@ -375,15 +387,25 @@ export function SMSTemplateBuilder({ onClose, onSave, editingTemplate }: SMSTemp
       tags,
     }
 
-    // Simulate save delay
-    await new Promise(resolve => setTimeout(resolve, 800))
+    // The success state follows the outcome, it does not precede it. This used
+    // to await a `// Simulate save delay` timer, then set success and call
+    // `onSave` — so a handler that persists and FAILS still produced a green
+    // tick and a closed builder, discarding the author's work while telling
+    // them it was saved (ADR 0051 clause 3). The fake delay is gone with it:
+    // the wait is now the real request.
+    try {
+      if (onSave) {
+        await onSave(template)
+      }
+    } catch {
+      // The caller surfaces the failure in words; the builder's job is only to
+      // not claim success and to keep the work on screen.
+      setIsSaving(false)
+      return
+    }
 
     setIsSaving(false)
     setSaveSuccess(true)
-
-    if (onSave) {
-      onSave(template)
-    }
 
     setTimeout(() => {
       setSaveSuccess(false)

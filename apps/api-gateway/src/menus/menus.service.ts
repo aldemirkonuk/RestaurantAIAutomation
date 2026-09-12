@@ -326,6 +326,11 @@ export class MenusService {
           region: item.region,
           grapeVariety: item.grape_variety,
         })),
+        // A menu prints "House White" and "Red — by the glass" as often as it
+        // prints a producer. Those lines are this venue's own wines and never
+        // join the shared library (ADR 0130), so the resolver has to know
+        // whose menu this is.
+        restaurantId,
       );
       resolved = items.map((item, idx) => ({
         item,

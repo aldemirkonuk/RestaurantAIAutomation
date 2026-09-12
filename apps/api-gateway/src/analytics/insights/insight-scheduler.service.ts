@@ -1,4 +1,8 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { DatabaseService } from "../../database/database.service";
 import { InsightGeneratorService } from "./insight-generator.service";
@@ -55,15 +59,36 @@ export class InsightSchedulerService {
   /** Exposed for tests and the manual "refresh all" admin path. */
   async runSweep(now: Date) {
     const client = this.dbService.getClient();
-    const { data: restaurants } = await client
+    // This is the widest blast radius in the swallowed-read class (ADR 0067):
+    // the error was discarded, `restaurants` came back null, and the early
+    // return no-opped the ENTIRE insight sweep — every category, every tenant,
+    // every hour — while `sweep()` above logged nothing because supabase-js
+    // resolves rather than throws, so its try/catch never fired. A tenant
+    // list that cannot be read is not "there are no tenants"; throw, so the
+    // hourly cron's own catch records a failed sweep.
+    const { data: restaurants, error: restaurantsError } = await client
       .from("restaurants")
       .select("id")
       .limit(500);
+    if (restaurantsError)
+      throw new Error(
+        `restaurants lookup failed, refusing to report a no-op sweep as a ` +
+          `clean one: ${restaurantsError.code ?? "?"} ${restaurantsError.message}`,
+      );
     if (!restaurants?.length) return;
 
-    const { data: prefRows } = await client
+    // A failed prefs read is survivable — every category falls back to the
+    // default cadence below — but it silently ignores every operator's
+    // configured schedule, so it is said out loud rather than absorbed.
+    const { data: prefRows, error: prefsError } = await client
       .from("analytics_insight_prefs")
       .select("*");
+    if (prefsError)
+      this.logger.error(
+        `analytics_insight_prefs read failed — this sweep will use DEFAULT ` +
+          `cadences for all ${restaurants.length} restaurants, ignoring every ` +
+          `configured schedule: ${prefsError.code ?? "?"} ${prefsError.message}`,
+      );
     const prefs = new Map<string, any>();
     for (const p of prefRows || [])
       prefs.set(`${p.restaurant_id}:${p.category}`, p);
@@ -129,11 +154,19 @@ export class InsightSchedulerService {
   // ---- prefs API -----------------------------------------------------------
 
   async getPrefs(restaurantId: string) {
-    const { data } = await this.dbService
+    const { data, error } = await this.dbService
       .getClient()
       .from("analytics_insight_prefs")
       .select("*")
       .eq("restaurant_id", restaurantId);
+    // Falling back to defaults on a failed read is worse than failing: the
+    // panel would show the operator a schedule they never chose, and saving
+    // from that screen would WRITE those defaults over their real settings.
+    if (error)
+      throw new ServiceUnavailableException(
+        `analytics_insight_prefs read failed for r=${restaurantId}: ` +
+          `${error.code ?? "?"} ${error.message}`,
+      );
     const byCat = new Map((data || []).map((p: any) => [p.category, p]));
     return InsightSchedulerService.ALL_CATEGORIES.map((category) => {
       const p: any = byCat.get(category);

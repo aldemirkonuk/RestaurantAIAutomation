@@ -109,6 +109,51 @@ export class ConversationsService {
 
   constructor(private readonly databaseService: DatabaseService) {}
 
+  /**
+   * Publish a domain event to the orchestrator's event bus.
+   *
+   * KNOWN BROKEN, deliberately left in place. The orchestrator has no
+   * `/api/v1/events` router — it registers only
+   * `/api/v1/{admin,analytics,collect,onboarding,pos,preview,procurement,
+   * quality,research,scan,studio}`, `/api/templates` and the unprefixed health
+   * routes (`services/agent-orchestrator/main.py:151-186`). So every call here
+   * returns 404 today. It is NOT deleted, because unlike the Toast forward these
+   * three call sites have no alternative consumer: whether to build the bus or
+   * retire the `conversations.*` approve/reject/summarise endpoints is an open
+   * founder decision, not one this method may make.
+   *
+   * What it must never do again is hide that. It **throws**, at `error` level,
+   * with the full outbound call in the log line. Callers may not report a
+   * success they did not achieve (ADR 0020 — no fabricated answers).
+   */
+  private async publishEvent(
+    exchange: string,
+    routingKey: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const url = `${AGENT_ORCHESTRATOR_URL}/api/v1/events/publish`;
+    try {
+      await axios.post(url, {
+        exchange,
+        routing_key: routingKey,
+        payload,
+      });
+    } catch (error) {
+      const status = error?.response?.status;
+      const permanent = status === 404 || status === 405;
+      this.logger.error(
+        `Event publish FAILED — POST ${url} exchange=${exchange} ` +
+          `routing_key=${routingKey} status=${status ?? "no-response"}` +
+          `${permanent ? " (PERMANENT: the orchestrator does not serve this route)" : ""}: ` +
+          `${error.message}`,
+      );
+      throw new Error(
+        `event bus unavailable (POST /api/v1/events/publish → ` +
+          `${status ?? "no response"}${permanent ? ", route not served" : ""})`,
+      );
+    }
+  }
+
   // ── New: Listing & Filtering ──────────────────────────────────────
 
   /**
@@ -433,19 +478,21 @@ export class ConversationsService {
         return { success: false, error: "Conversation not found" };
       }
 
-      // Publish event to trigger summarization in the EmailParsingAgent
+      // Publish event to trigger summarization in the EmailParsingAgent.
+      // If this does not land, nothing was requested of anything — saying
+      // "Summary regeneration requested" anyway is a fabricated success.
       try {
-        await axios.post(`${AGENT_ORCHESTRATOR_URL}/api/v1/events/publish`, {
-          exchange: "email.events",
-          routing_key: "email.summarize.requested",
-          payload: {
-            order_id: conv.order_id,
-            conversation_id: conversationId,
-            requested_at: new Date().toISOString(),
-          },
+        await this.publishEvent("email.events", "email.summarize.requested", {
+          order_id: conv.order_id,
+          conversation_id: conversationId,
+          requested_at: new Date().toISOString(),
         });
       } catch (e) {
-        this.logger.warn(`Could not publish summarization event: ${e.message}`);
+        return {
+          success: false,
+          order_id: conv.order_id,
+          error: `Summary regeneration could not be requested — ${e.message}. Nothing was queued.`,
+        };
       }
 
       return {
@@ -659,27 +706,43 @@ export class ConversationsService {
         };
       }
 
-      // 2. Publish conversation.approved event to RabbitMQ
+      // 2. Publish conversation.approved so the procurement agent resumes and
+      //    sends the vendor message.
+      //
+      //    NOTHING IN THIS METHOD SENDS A MESSAGE. Until 2026-09-01 this
+      //    returned `messageSent: true` unconditionally — including after the
+      //    publish above had 404'd and been swallowed — so the endpoint
+      //    reported a vendor message that was never sent. That is a fabricated
+      //    success under ADR 0020, and it is now impossible: `messageSent` is
+      //    only ever true where the gateway holds evidence of a send, and the
+      //    gateway never holds that evidence.
       try {
-        await axios.post(`${AGENT_ORCHESTRATOR_URL}/api/v1/events/publish`, {
-          exchange: "conversation.events",
-          routing_key: "conversation.approved",
-          payload: {
+        await this.publishEvent(
+          "conversation.events",
+          "conversation.approved",
+          {
             conversation_id: conversationId,
             approval_channel: options.approvalChannel,
             modified: !!options.modifiedMessage,
           },
-        });
+        );
 
         this.logger.log(
-          `✅ Published conversation.approved event for ${conversationId}`,
+          `Published conversation.approved event for ${conversationId}`,
         );
       } catch (eventError) {
-        this.logger.error(`Failed to publish event: ${eventError.message}`);
-        // Don't fail the request if event publishing fails
+        return {
+          success: false,
+          messageSent: false,
+          error:
+            `The approval was recorded, but it could not be dispatched — ${eventError.message}. ` +
+            `No message has been sent to the vendor.`,
+        };
       }
 
-      return { success: true, messageSent: true };
+      // The event was accepted. That is a dispatch, not a send — the agent may
+      // still fail downstream — so we do not claim the message went out.
+      return { success: true, messageSent: false };
     } catch (error) {
       this.logger.error(`Failed to approve conversation: ${error.message}`);
       return { success: false, messageSent: false, error: error.message };
@@ -756,23 +819,29 @@ export class ConversationsService {
         return { success: false, error: updateError.message };
       }
 
-      // 2. Publish conversation.rejected event to RabbitMQ
+      // 2. Publish conversation.rejected so the procurement agent resumes.
+      //    Same rule as approve: if the dispatch does not land, the action did
+      //    not complete and must not report success.
       try {
-        await axios.post(`${AGENT_ORCHESTRATOR_URL}/api/v1/events/publish`, {
-          exchange: "conversation.events",
-          routing_key: "conversation.rejected",
-          payload: {
+        await this.publishEvent(
+          "conversation.events",
+          "conversation.rejected",
+          {
             conversation_id: conversationId,
             reason,
           },
-        });
+        );
 
         this.logger.log(
-          `✅ Published conversation.rejected event for ${conversationId}`,
+          `Published conversation.rejected event for ${conversationId}`,
         );
       } catch (eventError) {
-        this.logger.error(`Failed to publish event: ${eventError.message}`);
-        // Don't fail the request if event publishing fails
+        return {
+          success: false,
+          error:
+            `The rejection was recorded, but it could not be dispatched — ${eventError.message}. ` +
+            `The agent has not been told to stop.`,
+        };
       }
 
       return { success: true };

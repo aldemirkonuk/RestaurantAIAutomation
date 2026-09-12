@@ -137,7 +137,7 @@ export function AddToInventoryFromLibraryModal({
   const { dispatchInventoryUpdate } = useRealtimeDispatch()
   
   // Get storage locations for cross-page persistence
-  const { locations, locationsLoading, assignWineToLocation, getWineLocation } = useStorageLocations()
+  const { locations, locationsLoading, locationsUnavailable, assignWineToLocation, getWineLocation } = useStorageLocations()
 
   const availableProviders = useMemo(() => {
     if (localProviders.length === 0) {
@@ -777,6 +777,13 @@ export function AddToInventoryFromLibraryModal({
                 <div className="flex items-center justify-center h-14 text-gray-400">
                   <Loader2 className="w-5 h-5 animate-spin" />
                 </div>
+              ) : locationsUnavailable ? (
+                // ADR 0080: a failed fetch is not "you have no zones". The
+                // picker says which of the two it is, because the difference
+                // decides whether the user should go and create one.
+                <p className="text-sm text-amber-700 text-center py-3">
+                  Zones could not be loaded — this is not a claim that you have none.
+                </p>
               ) : locations.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-3">
                   No storage locations configured
@@ -784,11 +791,14 @@ export function AddToInventoryFromLibraryModal({
               ) : (
                 <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-0.5">
                   {locations.map((location) => {
+                    // A zone with no recorded capacity has no percentage and
+                    // cannot be known to be full.
                     const pct =
-                      location.capacity > 0
+                      location.capacity != null && location.capacity > 0
                         ? Math.min(100, (location.currentCount / location.capacity) * 100)
-                        : 0
-                    const isFull = location.currentCount >= location.capacity
+                        : null
+                    const isFull =
+                      location.capacity != null && location.currentCount >= location.capacity
                     const isSelected = selectedLocationId === location.id
                     return (
                       <button
@@ -816,21 +826,25 @@ export function AddToInventoryFromLibraryModal({
                             <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
                           )}
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1 mb-1.5">
-                          <div
-                            className={`h-1 rounded-full transition-all ${
-                              pct > 90
-                                ? 'bg-red-400'
-                                : pct > 70
-                                ? 'bg-amber-400'
-                                : 'bg-emerald-400'
-                            }`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
+                        {pct == null ? (
+                          <p className="text-[10px] text-gray-400 mb-1.5">Capacity not recorded</p>
+                        ) : (
+                          <div className="w-full bg-gray-100 rounded-full h-1 mb-1.5">
+                            <div
+                              className={`h-1 rounded-full transition-all ${
+                                pct > 90
+                                  ? 'bg-red-400'
+                                  : pct > 70
+                                  ? 'bg-amber-400'
+                                  : 'bg-emerald-400'
+                              }`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        )}
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-gray-400">
-                            {location.currentCount}/{location.capacity}
+                            {location.currentCount}/{location.capacity ?? '—'}
                           </span>
                           {location.temperature && (
                             <span className="text-[11px] text-gray-400">

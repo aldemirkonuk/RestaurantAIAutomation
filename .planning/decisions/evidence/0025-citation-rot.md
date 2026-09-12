@@ -1,0 +1,229 @@
+# Evidence for [ADR 0025](../0025-citations-must-disagree-loudly.md)
+
+Every number in the ADR, with the command that produced it. Measured 2026-08-26 in a
+worktree at `origin/main` = `5ca9ce70`. Per `CLAUDE.md` §5b these are **re-measured,
+never copied forward** — three figures from earlier passes did not reproduce and were
+replaced (noted in §6).
+
+---
+
+## 1. The guard is blind in one direction
+
+`scripts/check_decision_claims.sh:149`, verbatim:
+
+```bash
+if bash -c "$verify" >/dev/null 2>&1; then holds="yes"; else holds="no"; fi
+```
+
+With the semantics documented at `:152-153` — `open` → the claim must **not** hold —
+any non-zero exit counts as passing.
+
+**`.env.example` has never existed in this repo:**
+
+```
+$ git rev-list --all --objects -- .env.example | wc -l
+0
+$ ls env.example
+env.example
+```
+
+`CLAIMS.jsonl:25` (OD-78, `status: open`) is
+`grep -qE '^[[:space:]]*GMAIL_PUBSUB_(AUDIENCE|REQUIRE_AUTH)=' .env.example 2>/dev/null`
+→ exit 2, counted as holding.
+
+**The negation trap, on a security claim.** `CLAIMS.jsonl:38` asserts invite
+redemption is not studio-role gated:
+
+```
+$ bash -c "! grep -A 3 'def redeem_invite' services/agent-orchestrator/api/DELETED_FILE.py | grep -q 'require_studio_role'"
+grep: services/agent-orchestrator/api/DELETED_FILE.py: No such file or directory
+$ echo $?
+0
+```
+
+Exit 0 — "the claim still holds" — against a file that is not there.
+
+## 2. What strict mode would cost
+
+Two passes. Classifying by stderr finds nothing, because the broken claim muzzles
+itself; stripping `2>/dev/null` first finds it:
+
+```python
+for r in claims:                                    # 68 claims, comments excluded
+    v = r['verify'].replace('2>/dev/null', '')      # strip the claim's own muzzle
+    p = subprocess.run(['bash','-c',v], capture_output=True, text=True)
+    if re.search(r'No such file|command not found|cannot open', p.stderr, re.I):
+        print(r['id'], p.returncode, p.stderr.splitlines()[0])
+```
+
+```
+without stripping : COULD NOT RUN 0 of 68
+with stripping    : COULD NOT RUN 1 of 68
+   OD-78  open  exit=2  grep: .env.example: No such file or directory
+self-silencing claims: 2 of 68  (OD-78 open, OD-93 resolved)
+```
+
+**So strict mode costs exactly one build failure** — and it must strip or forbid
+claim-level stderr suppression, or it certifies the very claim it exists to catch.
+
+## 3. The pairing check — 0 of 23
+
+This is the whole checker. It produced the ADR's headline figure:
+
+```python
+reg = open('.planning/decisions/OPEN-DECISIONS.md').read().splitlines()
+def id_at(n):
+    m = re.match(r'\|\s*(OD-\d+)\s*\|', reg[n-1]) if 1 <= n <= len(reg) else None
+    return m.group(1) if m else None
+# for each "OD-NN ... OPEN-DECISIONS.md:L1,L2" citation, does any Lk name OD-NN?
+```
+
+```
+OPEN-DECISIONS.md:N citations: 74   id-paired: 23   agreeing: 0
+register length: 128 lines
+```
+
+**Zero.** Not one line anchor into the register agrees with the id beside it. The
+register is 128 lines, so this is not a locating problem — the anchors are simply
+never re-read. This same command is the proposed CI check.
+
+## 4. Blast radius of a single commit
+
+`39abb348` inserted the OD-83 `/receiving` command into
+`apps/web/src/components/command/commands.ts`, shifting the "375" strings:
+
+```
+$ grep -n "375" apps/web/src/components/command/commands.ts
+84:  { id: "nav-catalog", ...
+105:  { id: "insight-browse", title: "Browse all 375 insight types", ...
+$ grep -rhoE 'commands\.ts:[0-9]+(,[0-9]+)*' .planning/ | sort | uniq -c | sort -rn
+  11 commands.ts:99
+   9 commands.ts:78,99
+   ...
+```
+
+20 of 27 point at `:78,99` or `:99`; both are now wrong. One decision's fix silently
+broke another decision's citations, and they are still broken at HEAD.
+
+## 5. Churn — the most-cited file is the most-rewritten
+
+```
+$ grep -rhoE 'OPEN-DECISIONS\.md:[0-9]+' .planning/ | wc -l          → 74
+$ git log --oneline --since="2026-08-01" -- .planning/decisions/OPEN-DECISIONS.md | wc -l   → 57
+$ git log --oneline --since="2026-08-01" | wc -l                     → 255
+```
+
+22% of all repo commits touch it. Any line anchor into it is doomed by construction.
+
+## 6. Archive duplication (ADR §7)
+
+```
+469 of 522 files in .planning/archive/ are byte-identical to a live file  (89.8%)
+6.4 MB of the 6.9 MB archive
+```
+
+md5 of every file under `.planning/` excluding `archive/`, compared against every file
+under `archive/`. Retire-to-write has been satisfied by copying, not retiring.
+
+## 7. Numbers that did NOT reproduce
+
+Recorded because §5b says a number nobody re-checks is the failure mode itself:
+
+- **"0 of 34 `ENDPOINTS.md` row citations land"** — not reproducible.
+  `.planning/foundation/ENDPOINTS.md` has 8 unique source locators and `main.ts:77`
+  resolves exactly to `app.setGlobalPrefix("api/v1")`. **Discarded.**
+- **Doc→doc drift "73.2%"** vs a later pass's 21.8% — the two passes measured
+  different populations. Neither is cited in the ADR; the 0-of-23 pairing figure is
+  used instead because it is exact rather than sampled.
+- **"20 of 27" vs "42 of 42" `commands.ts` anchors** — extraction differs (ranges and
+  bare forms). The ADR states the direction, not the disputed count.
+- My own first quantification of unrunnable claims said **2 of 9 open claims**. Wrong:
+  OD-72's `src/lib/supabase.ts` sits inside a `grep -v` filter, not as a file operand,
+  and `apps/web/src/lib/supabase.ts` exists. The true figure is **1**. The regex that
+  produced the error is the same technique the ADR rejects for enforcement.
+
+---
+
+## 8. Re-derived at lock time — 2026-08-26, `origin/main` = `4c6eb6d2`
+
+Everything above was measured at `5ca9ce70`. Five PRs merged after that, so §5b says
+re-measure rather than carry the numbers forward. All four figures were re-earned in
+a clean worktree.
+
+### 8.1 The pairing figure survived, wider than before
+
+```
+$ ./scripts/check_citation_pairing.py     # before any fix
+== Citation pairing: 78 register citations checked against 98 rows
+== UNANCHORED (36)   — a register locator with no id beside it
+== DISAGREEING (38)  — the id and the line name different rows
+```
+
+23 became 38 because the enforced extraction is wider than the one that produced the
+headline: it pairs a locator with the nearest id **anywhere** on its line (within 120
+characters), not only one immediately preceding it, and it scans source files as well
+as `.planning/`. **Agreeing: still 0.** The direction and the magnitude both held.
+
+The 36 unanchored are not a new finding, they are the other half of §6.1 — a locator
+carrying no id at all. Enforcing only the pairs would leave a check anyone can route
+around by deleting three characters.
+
+### 8.2 Strict mode's cost fell from 1 to 0
+
+```
+94 claims, stripping each claim's own 2>/dev/null before running:
+   COULD NOT RUN: 0 of 94
+```
+
+The one instance the ADR measured (OD-78 grepping `.env.example`) was repointed by
+`fix/dossier-rot-sweep` before this landed — the ADR's own note said it would be.
+
+**The four states, run against the guard before it was changed.** This is the
+measurement that mattered, not the cost:
+
+| Planted claim | Verify exits | Guard said |
+|---|---|---|
+| malformed JSON | — | `FAIL … malformed lines`, **exit 2** |
+| `open`, `grep -q FOO no/such/file.ts` | 2 | `95 checked, 95 holding` · `PASS`, **exit 0** |
+| `resolved`, `! grep -q X no/such/routes.py` | **0** | `96 checked, 96 holding` · `PASS`, **exit 0** |
+| `open`, `definitely_not_a_command --check` | 127 | `PASS`, **exit 0** |
+
+Three of four certified themselves. After the change all three exit 2, and malformed
+still exits 2. Note the third: the negation turns the missing file into success, which
+is why exit status alone cannot carry this rule and stderr has to be read.
+
+### 8.3 Archive twins reproduced exactly
+
+SHA-256 of every file under `.planning/archive/`, matched against a SHA-256 index of
+the entire live tree (repo minus `.git` and `archive/`):
+
+```
+archive files: 522
+byte-identical twins of a live path: 469
+non-identical remainder: 53
+archive bytes: 6.9 MB; twin bytes: 6.4 MB
+```
+
+**469 of 522 — the same number, five PRs later.** One twin verified end to end:
+
+```
+$ shasum -a 256 .planning/archive/v2.0-MILESTONE-AUDIT.md .planning/v2.0-MILESTONE-AUDIT.md
+36f9b714…  .planning/archive/v2.0-MILESTONE-AUDIT.md
+36f9b714…  .planning/v2.0-MILESTONE-AUDIT.md
+$ git show HEAD^:.planning/archive/v2.0-MILESTONE-AUDIT.md | shasum -a 256   # after deleting
+36f9b714…
+```
+
+Nothing was deleted whose bytes are not still at a live path and in history.
+
+### 8.4 Each guard was proven able to fail
+
+A guard nobody has seen go red is a guess. Both were planted against:
+
+```
+pairing  · wrong id      -> DISAGREEING (1), exit 1;  removed -> exit 0
+pairing  · bare locator  -> UNANCHORED (1),  exit 1;  removed -> exit 0
+pairing  · register hidden        -> "is missing; this guard has nothing to check", exit 2
+pairing  · row pattern broken     -> "parsed to only 0 decision rows (floor 50)",   exit 2
+claims   · all four states above, before and after the change
+```

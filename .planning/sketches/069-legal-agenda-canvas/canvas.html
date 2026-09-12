@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>069 — Legal agenda canvas · 2026-08-28</title>
+<style>
+  /* Throwaway thinking surface for .planning/01-org/corporate/legal/legal-agenda-full.md.
+     Docket palette: warm paper, ink, one burgundy. No product chrome, no assets, no JS
+     beyond a hover title. Every number on this page was measured on 2026-08-28 and the
+     agenda cites the path:line it came from. */
+  :root{
+    --paper:#FAF8F5; --paper-sunk:#F2EEE7; --paper-deep:#EAE4DA;
+    --ink:#1C1917; --ink-soft:#544D46; --ink-faint:#8A8177;
+    --rule:#DED7CD; --burgundy:#8C3341; --burgundy-deep:#5E1F2A; --burgundy-wash:#F6EAEB;
+    --hold:#8A6A12; --hold-wash:#FBF2DC; --ok:#2E6448; --ok-wash:#E8F1EB;
+    --gap:#A33B22; --gap-wash:#FBEAE4;
+    --r:.6rem;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);padding:30px 24px 64px;
+       font:14.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  .wrap{max-width:1420px;margin:0 auto}
+  .serif{font-family:"Hoefler Text","Iowan Old Style",Georgia,serif}
+
+  /* ── head ─────────────────────────────────────────────────────────── */
+  header{border-bottom:1px solid var(--ink);padding-bottom:16px;margin-bottom:24px}
+  .id{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--burgundy);font-weight:700}
+  h1{margin:7px 0 0;font-size:29px;font-weight:400;letter-spacing:-.02em}
+  header p{margin:9px 0 0;color:var(--ink-soft);max-width:78ch;font-size:13.5px}
+  .thesis{margin-top:14px;padding:11px 14px;background:var(--burgundy-wash);
+          border-left:3px solid var(--burgundy);border-radius:0 var(--r) var(--r) 0;
+          font-size:13.5px;max-width:92ch;color:var(--burgundy-deep)}
+  .refuse{margin-top:9px;font-size:12.5px;color:var(--ink-faint)}
+
+  h2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--burgundy);
+     font-weight:700;margin:30px 0 11px;padding-bottom:5px;border-bottom:1px solid var(--rule)}
+  .note{font-size:12.5px;color:var(--ink-faint);margin:9px 0 0;max-width:96ch}
+
+  /* ── census strip ────────────────────────────────────────────────── */
+  .census{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  @media(max-width:1080px){.census{grid-template-columns:repeat(2,1fr)}}
+  .ch{background:#fff;border:1px solid var(--rule);border-radius:var(--r);padding:12px 13px}
+  .ch .name{font-size:15px;letter-spacing:-.01em}
+  .ch .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;
+            color:var(--ink-faint);margin-top:6px;word-break:break-all;line-height:1.45}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.08em;
+        text-transform:uppercase;padding:2.5px 7px;border-radius:99px;margin-top:9px}
+  .c-ok{background:var(--ok-wash);color:var(--ok)}
+  .c-gap{background:var(--gap-wash);color:var(--gap)}
+  .c-hold{background:var(--hold-wash);color:var(--hold)}
+  .c-none{background:var(--paper-deep);color:var(--ink-faint)}
+  .ch .why{font-size:12px;color:var(--ink-soft);margin-top:8px}
+
+  .counts{display:flex;gap:26px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;
+          background:var(--paper-sunk);border-radius:var(--r)}
+  .counts div{font-size:12.5px;color:var(--ink-soft)}
+  .counts b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;
+            color:var(--burgundy);display:block;font-weight:700}
+
+  /* ── timeline ────────────────────────────────────────────────────── */
+  .grid{display:grid;grid-template-columns:132px repeat(7,minmax(112px,1fr));
+        border:1px solid var(--rule);border-radius:var(--r);overflow:hidden;background:#fff}
+  .grid > div{border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:8px}
+  .hd{background:var(--paper-sunk);font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+      color:var(--ink-soft);font-weight:700;padding:9px 8px !important}
+  .hd small{display:block;text-transform:none;letter-spacing:0;font-weight:400;
+            color:var(--ink-faint);font-size:10.5px;margin-top:2px}
+  .lane{background:var(--paper-sunk);font-size:12.5px;font-weight:600;line-height:1.35}
+  .lane small{display:block;font-weight:400;color:var(--ink-faint);font-size:11px;margin-top:3px}
+  .cell{min-height:96px;vertical-align:top}
+  .t{display:block;background:var(--burgundy-wash);border-left:3px solid var(--burgundy);
+     border-radius:0 5px 5px 0;padding:6px 7px;margin-bottom:6px;cursor:help}
+  .t b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;
+       color:var(--burgundy-deep);letter-spacing:.02em}
+  .t span{display:block;font-size:11.5px;color:var(--ink);margin-top:2px;line-height:1.32}
+  .t.reach{background:var(--hold-wash);border-left-color:var(--hold)}
+  .t.reach b{color:var(--hold)}
+  .t.spec{background:var(--paper-sunk);border-left-color:var(--ink-faint)}
+  .t.spec b{color:var(--ink-soft)}
+  .t.founder{background:var(--ok-wash);border-left-color:var(--ok)}
+  .t.founder b{color:var(--ok)}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:11px;font-size:12px;color:var(--ink-soft)}
+  .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;
+      vertical-align:-1px;border-left:3px solid}
+  .sw1{background:var(--burgundy-wash);border-color:var(--burgundy)}
+  .sw2{background:var(--hold-wash);border-color:var(--hold)}
+  .sw3{background:var(--ok-wash);border-color:var(--ok)}
+  .sw4{background:var(--paper-sunk);border-color:var(--ink-faint)}
+
+  /* ── three columns ───────────────────────────────────────────────── */
+  .cols3{display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:20px;align-items:start}
+  @media(max-width:1080px){.cols3{grid-template-columns:1fr}}
+  ul.tight{margin:0;padding-left:17px}
+  ul.tight li{margin-bottom:8px;font-size:13px;color:var(--ink-soft);line-height:1.45}
+  ul.tight li b{color:var(--ink);font-weight:600}
+  .box{background:#fff;border:1px solid var(--rule);border-radius:var(--r);padding:13px 15px}
+  .box h3{margin:0 0 9px;font-size:13px;letter-spacing:-.01em;font-weight:600}
+  .seam{display:flex;justify-content:space-between;gap:10px;padding:7px 0;
+        border-bottom:1px dashed var(--rule);font-size:12.5px}
+  .seam:last-child{border-bottom:0}
+  .seam .to{color:var(--ink);font-weight:600}
+  .seam .by{color:var(--ink-faint);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+            font-size:11px;white-space:nowrap}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+       background:var(--paper-sunk);padding:1px 4px;border-radius:3px}
+  footer{margin-top:30px;padding-top:14px;border-top:1px solid var(--ink);
+         font-size:12px;color:var(--ink-faint);max-width:100ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="id">Sketch 069 · corporate / legal · 2026-08-28</div>
+  <h1 class="serif">The agenda of a department with zero artifacts and one running question</h1>
+  <p>One picture of <code>legal-agenda-full.md</code>: 16 tasks, three owners, six close-times.
+     The spine is not the fifteen document types — most of them presume counterparties that do
+     not exist. The spine is <b>which surfaces can already bind us</b>, and the paper that is
+     already missing under work already done.</p>
+  <div class="thesis"><b>ADR 0013 is this department's proof of concept.</b> It asked which
+     runtimes could commit the company, counted instead of trusting two “ported verbatim”
+     comments, and found 19 / 8 / 3 — with the runtime that could actually place an order
+     running the weakest list. This agenda turns that one-off count into a standing census
+     across <i>every</i> channel, and builds the DPA substrate before a counterparty’s DPA
+     arrives without a warning window.</div>
+  <div class="refuse">No agent signs, files, or sends. Nothing on this page is drafted legal
+     text, and nothing here is legal advice — every output is a fact sheet, a register row,
+     a specification, or a hold, addressed to the founder and then to counsel.</div>
+</header>
+
+<h2>The census, previewed — vendor-facing channels and whether a guard is on the path</h2>
+<div class="census">
+  <div class="ch">
+    <div class="name">Email — gateway reply</div>
+    <div class="path">common/orchestrator/<br>inbound-responder.service.ts:893</div>
+    <span class="chip c-ok">guarded · no auto-send</span>
+    <div class="why">19 canon patterns, forces manager approval.</div>
+  </div>
+  <div class="ch">
+    <div class="name">Email — orchestrator draft</div>
+    <div class="path">agents/provider_communication_agent.py:578<br>→ constraint_engine.py:46</div>
+    <span class="chip c-ok">guarded · transitively</span>
+    <div class="why">No import of the canon — reached through <code>check_hard_constraints</code>.
+      An import-grep census would file a false finding here. That is why LEG-2 exists.</div>
+  </div>
+  <div class="ch">
+    <div class="name">Voice — vendor negotiation</div>
+    <div class="path">services/plivo_voice_client.py:514-545<br>agents/procurement_agent.py:732-800</div>
+    <span class="chip c-gap">no guard on the path</span>
+    <div class="why">Speaks a quantity and a target price, then gathers
+      “press 1 if you can accommodate this order”. Dormant: no in-repo caller, client builds
+      only when <code>PLIVO_AUTH_ID</code> is set. One call site from live.</div>
+  </div>
+  <div class="ch">
+    <div class="name">SMS — transport</div>
+    <div class="path">services/plivo_client.py<br>communications/sms.service.ts:57</div>
+    <span class="chip c-hold">recipient class unsettled</span>
+    <div class="why">Vendor-facing sends were migrated away; whether any path still reaches a
+      counterparty is a census row, not a guess.</div>
+  </div>
+  <div class="ch">
+    <div class="name">The sent corpus</div>
+    <div class="path">procurement_conversations<br>baseline_from_production.sql:4294-4331</div>
+    <span class="chip c-none">never read</span>
+    <div class="why">Production already sorts outbound vendor mail into
+      <code>DEMAND_OFFER</code> / <code>COUNTER_OFFER</code> /
+      <code>ACCEPTANCE_CONFIRM_REQUEST</code>. Every guard runs at draft time. Nothing has
+      ever read what was sent — LEG-5.</div>
+  </div>
+</div>
+<div class="counts">
+  <div><b>14</b> non-test files carry an outbound send (9 gateway · 5 orchestrator)</div>
+  <div><b>3</b> runtime files reach the guardrail (+1 transitively)</div>
+  <div><b>0 / 5</b> channels carry a census row today</div>
+  <div><b>0 of 0</b> instruments · chain integrity passes only at 100%</div>
+  <div><b>0</b> occurrences of GDPR or CCPA across <code>apps/ services/ packages/</code></div>
+</div>
+
+<h2>The agenda on one timeline — owner by lane, close-time by column</h2>
+<div class="grid">
+  <div class="hd">Owner</div>
+  <div class="hd">Sep 4 <small>the cheap ones</small></div>
+  <div class="hd">Sep 11 <small>census + gates</small></div>
+  <div class="hd">Sep 18 <small>counsel-facing</small></div>
+  <div class="hd">Sep 25 <small>reach</small></div>
+  <div class="hd">Oct 2 <small>substrate</small></div>
+  <div class="hd">Oct 16 <small>specs</small></div>
+  <div class="hd">Recurring <small>per-event / quarterly</small></div>
+
+  <div class="lane">Department<small>card <code>legal-intake-registrar</code> · lane assignment is its one departmental job</small></div>
+  <div class="cell">
+    <span class="t" title="A3 counts mutations of stock, money and outbound. An outbound message naming price and quantity mutates our contractual position. Done when A3 names the class or refuses it in writing.">
+      <b>LEG-4</b><span>Claim the outbound class in Track A3’s denominator</span></span>
+    <span class="t" title="Done when a row states the fork and both costs. Not resolved here. Adding a row re-anchors citations below it — run both register guards (ADR 0025).">
+      <b>LEG-9</b><span>Stage CORP-F2 into OPEN-DECISIONS</span></span>
+    <span class="t founder" title="R2 and IE-1 both promise 'a named waiting period' and neither names one. Any number is enforceable; no number is a norm.">
+      <b>LEG-13</b><span>Name the waiting period — founder</span></span>
+    <span class="t" title="Done when the reversal is on a date rather than in a paragraph: zero IE instruments AND fewer than five CW agreements at the second review → one team.">
+      <b>LEG-16</b><span>Merge condition as two dates</span></span>
+  </div>
+  <div class="cell">
+    <span class="t" title="One table, every row read off disk with path:line: runtime · channel · recipient class · auto-send · guard reached · the call path that proves it. 'Undetermined' is a legal answer; a guess is not.">
+      <b>LEG-1</b><span>Census v1 — every outbound path, by channel</span></span>
+    <span class="t" title="A surface counts as guarded only when a call path reaches the guard. Worked example: provider_communication_agent imports nothing and is guarded anyway.">
+      <b>LEG-2</b><span>Method rule: trace call paths, not imports</span></span>
+    <span class="t" title="A census row plus one question filed to engineering-questions.md. Records the surface and its guard state; asks nothing about the law.">
+      <b>LEG-3</b><span>The voice row — the census’s first finding</span></span>
+    <span class="t" title="One page: lane = data instrument, the hold at 'in counsel review', who co-signs, what the register records. Done when a stranger could route the email from it.">
+      <b>LEG-8</b><span>DPA intake routine — the first 24 hours</span></span>
+    <span class="t" title="Six states, owning team, gates, retention location — and zero rows. Closes the consumes gap every card in this department names.">
+      <b>LEG-10</b><span>Give the instrument register a home</span></span>
+  </div>
+  <div class="cell">
+    <span class="t founder" title="Written here, sent by the founder. Entity fact, the six one-way-door classes, which need counsel before signature, the first three questions.">
+      <b>LEG-11</b><span>Counsel engagement brief</span></span>
+    <span class="t reach" title="Four counts and no characterization: distinct authors, non-founder commits, commits carrying an AI co-author trailer, and the dated sweep showing no instrument of assignment exists. What they mean is counsel's.">
+      <b>LEG-12</b><span>Provenance fact pack for the IP question</span></span>
+  </div>
+  <div class="cell">
+    <span class="t reach" title="Counts only, read-only, no message text into the vault. Outbound rows with sent_at grouped by type × ai_generated, matched against the canon. Closes as BLOCKED with a named holder if nobody can run it.">
+      <b>LEG-5</b><span>Retro-census: have we already said something binding?</span></span>
+  </div>
+  <div class="cell">
+    <span class="t" title="Deletion · retention · subprocessor notice · breach notice · access/portability · security measures. Each gets a named tested behaviour or NONE with the reason. A green first run means the map was written too kindly.">
+      <b>LEG-7</b><span>Commitment→test map, dry run <small>(with Compliance)</small></span></span>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="t" title="Quarterly with the schedule's existing sweeps, and per-event on any new outbound path or channel.">
+      <b>LEG-1</b><span>Census — quarterly + per-event</span></span>
+    <span class="t" title="First review 2026-11-27, second 2027-02-26.">
+      <b>LEG-16</b><span>Team-shape review — quarterly</span></span>
+  </div>
+
+  <div class="lane">Instruments &amp; Equity<small>the six one-way doors · checkers and refusals only, never a draft</small></div>
+  <div class="cell">
+    <span class="t founder" title="IE-1 carries the same unnamed floor as R2. This team has no legitimate hour-scale work, so an hour-scale request is itself a finding.">
+      <b>LEG-13</b><span>IE-1’s half of the waiting period</span></span>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="t spec" title="instrument-chain-check · cap-table-tie-out · consent-record-completeness. Input, exact assertion, the refusal emitted, and the reproducibility bar. None is committed as a skill — §3.3 rule 3 deletes a skill with no past instance, and with zero instruments there is none.">
+      <b>LEG-15</b><span>Checker specs — and none of them committed</span></span>
+  </div>
+  <div class="cell">
+    <span class="t spec" title="The checkers become real per-event, gated on the first instrument — not on a date.">
+      <b>LEG-15</b><span>Skills gated on the first instrument</span></span>
+  </div>
+
+  <div class="lane">Commercial &amp; Workforce<small>the nine repeatable instruments · the only lane where assembly is allowed</small></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="t" title="One row per third party that can receive restaurant or guest data: what reaches it, the manifest path:line that proves it is wired, and whether an agreement exists (today: unknown, for all of them).">
+      <b>LEG-6</b><span>Subprocessor register v1</span></span>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="t" title="Sections named per instrument type; fallback ladder shape with every rung EMPTY and marked 'founder + counsel decide once'. No clause text — R7.">
+      <b>LEG-14</b><span>Clause-library skeleton, positions blank</span></span>
+    <span class="t" title="The instrument side of the two-signature rule; Compliance signs satisfiability, Privacy Engineering names the test.">
+      <b>LEG-7</b><span>Annex map — instrument side</span></span>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="t" title="Quarterly re-read alongside the Annex re-validation row already in legal-schedule.">
+      <b>LEG-6</b><span>Subprocessors — quarterly</span></span>
+    <span class="t" title="L-LEG-2 re-fires in both directions: a code change that breaks a behaviour an executed Annex depends on reopens the instrument.">
+      <b>LEG-7</b><span>Annex satisfiability — per-event</span></span>
+  </div>
+</div>
+<div class="legend">
+  <span><i class="sw sw1"></i>department work</span>
+  <span><i class="sw sw2"></i>reach — graded, may close as BLOCKED</span>
+  <span><i class="sw sw3"></i>founder decides or founder sends</span>
+  <span><i class="sw sw4"></i>specification only — nothing committed</span>
+  <span style="color:var(--ink-faint)">hover any chip for its doneability</span>
+</div>
+<p class="note">Nothing is weekly. The open-request standup stays weekly and stays silent while
+the queue is empty; a second weekly cadence over an empty register is premortem M1, and the
+schedule already refuses it.</p>
+
+<h2>The seams — what this department cannot do alone</h2>
+<div class="cols3">
+  <div class="box">
+    <h3>Cross-unit asks · findings-only, none of them block</h3>
+    <div class="seam"><span class="to">engineering</span><span class="by">LEG-X1 · 42d</span></div>
+    <div class="seam"><span>Voice and SMS vendor paths reach no guard. Intended while dormant? What happens at the first caller?</span></div>
+    <div class="seam"><span class="to">knowledge-documentation</span><span class="by">LEG-X2 · 42d</span></div>
+    <div class="seam"><span>Does an <i>operational</i> register count as a document under retire-to-write? LEG-10 waits on the answer, not the work.</span></div>
+    <div class="seam"><span class="to">owner of <code>watch_loops.py</code></span><span class="by">LEG-X3 · 42d</span></div>
+    <div class="seam"><span>A content hash beside <code>updated:</code> — line 74 reads the date and nothing else, so a date-only bump is invisible. That is exactly M1’s disguise.</span></div>
+    <div class="seam"><span class="to">applied-ai / action-safety</span><span class="by">LEG-X4 · Sep 4</span></div>
+    <div class="seam"><span class="to">compliance-privacy</span><span class="by">LEG-X5 · Oct 2</span></div>
+    <div class="seam"><span>Co-read the subprocessor register, co-run the dry run. The deletion row will read NONE — that is the useful outcome.</span></div>
+  </div>
+  <div class="box">
+    <h3>Gates that must exist before the thing they gate arrives</h3>
+    <ul class="tight">
+      <li><b>Counsel engaged</b> — before the first one-way-door instrument. Every rule routes to “counsel reviews”; without one, R1 is a sentence.</li>
+      <li><b>Two-signature DPA gate</b> — before the first enterprise DPA. There is no preparation window; the email arrives or it does not.</li>
+      <li><b>The register</b> — before the <i>second</i> instrument. The first can be tracked by memory. The second cannot.</li>
+      <li><b>A number on the waiting period</b> — the floor exists for the day it is inconvenient, which is the only day it does anything.</li>
+      <li><b>The merge condition, dated</b> — 2026-11-27 and 2027-02-26. This org names split triggers everywhere and merge triggers nowhere.</li>
+    </ul>
+  </div>
+  <div class="box">
+    <h3>Findings — no card and no loop can carry these</h3>
+    <ul class="tight">
+      <li><b>F1</b> — <code>legal.agenda_content_diff_days</code> has no producer, and the watcher cannot supply it (<code>watch_loops.py:74</code>).</li>
+      <li><b>F2</b> — the census has no mechanical home: <code>run_card.py</code> executes <code>mechanical</code> cards; the registrar is <code>extraction</code>. LEG-1 runs by hand until a card revision.</li>
+      <li><b>F3</b> — the register, the request path and the <code>legal.paper_requested</code> publisher are one missing object seen from three sides. LEG-10 closes a third.</li>
+      <li><b>F4</b> — CORP-F1 / OD-17 got sharper, not answered: 9 artifacts × 3 units, for a department whose register is empty.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>What this agenda refuses</h2>
+<div class="cols3">
+  <div class="box"><h3>No template drafting</h3>
+    <p class="note">Not a DPA, not an NDA, not an MSA. R7 keeps clause language out of this
+    vault and drafting is counsel’s. Program 2 builds the substrate an Annex is assembled
+    from — a subprocessor list, a commitment→test map, an intake routine — and stops there.</p></div>
+  <div class="box"><h3>No skill without a past instance</h3>
+    <p class="note">Six of the seven checkers stay specifications. The four skills admitted
+    on 2026-08-28 each carried a real prior firing; these have none, because there are no
+    instruments. Committing them now would be the same overreach in a friendlier costume.</p></div>
+  <div class="box"><h3>No opinion on what a surface means</h3>
+    <p class="note">The census records channels, guard states and call paths. Whether a
+    spoken “press 1” or a sent <code>DEMAND_OFFER</code> forms anything is counsel’s question,
+    permanently. Legal prepares the fact; it does not preview the answer.</p></div>
+</div>
+
+<footer>
+  Sketch 069 · thinking surface, not a product · every count on this page was measured
+  2026-08-28 against the repo and is cited by <code>path:line</code> in
+  <code>.planning/01-org/corporate/legal/legal-agenda-full.md</code>. Tasks, doneability and
+  close-times live there; this canvas is how they are seen at once. Not legal advice.
+</footer>
+
+</div>
+</body>
+</html>

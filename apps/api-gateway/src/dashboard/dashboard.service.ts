@@ -12,9 +12,16 @@ import {
   NotificationSummaryDto,
   ReportSummaryDto,
   CalendarSummaryDto,
-  RevenueSummaryDto,
+  ProcurementSpendSummaryDto,
   ServiceErrorDto,
 } from "./dto/dashboard-summary.dto";
+import {
+  ORDER_AWAITING_APPROVAL_STATUSES,
+  ORDER_OPEN_WITH_VENDOR_STATUSES,
+  ORDER_OUTSTANDING_STATUSES,
+  ORDER_SPEND_STATUSES,
+  hasStatus,
+} from "../procurement/order-status";
 
 /**
  * Dashboard Service - Aggregates data from multiple services in parallel
@@ -50,7 +57,7 @@ export class DashboardService {
       this.getNotificationsSummary(restaurantId),
       this.getReportsSummary(restaurantId),
       this.getCalendarSummary(restaurantId),
-      this.getRevenueSummary(restaurantId),
+      this.getProcurementSpendSummary(restaurantId),
     ]);
 
     // Process results with graceful degradation
@@ -68,7 +75,10 @@ export class DashboardService {
       results[4],
       "calendar",
     );
-    const revenue = this.handleResult<RevenueSummaryDto>(results[5], "revenue");
+    const procurementSpend = this.handleResult<ProcurementSpendSummaryDto>(
+      results[5],
+      "procurementSpend",
+    );
 
     // Collect any errors
     const errors = this.collectErrors(results, [
@@ -77,7 +87,7 @@ export class DashboardService {
       "notifications",
       "reports",
       "calendar",
-      "revenue",
+      "procurementSpend",
     ]);
 
     const duration = Date.now() - startTime;
@@ -91,7 +101,7 @@ export class DashboardService {
       notifications,
       reports,
       calendar,
-      revenue,
+      procurementSpend,
       errors,
       timestamp: new Date().toISOString(),
       allServicesHealthy: errors.length === 0,
@@ -134,12 +144,12 @@ export class DashboardService {
     const orders = await this.dbService.getProcurementOrders(restaurantId);
 
     const pending =
-      orders?.filter(
-        (o) => o.status === "pending" || o.status === "awaiting_approval",
+      orders?.filter((o) =>
+        hasStatus(o.status, ORDER_AWAITING_APPROVAL_STATUSES),
       ) || [];
     const inTransit =
-      orders?.filter(
-        (o) => o.status === "in_transit" || o.status === "ordered",
+      orders?.filter((o) =>
+        hasStatus(o.status, ORDER_OPEN_WITH_VENDOR_STATUSES),
       ) || [];
 
     return {
@@ -202,32 +212,44 @@ export class DashboardService {
 
     try {
       const { data: reports, error } = await client
-        .from("reports")
-        .select("*")
+        .from("generated_reports")
+        .select(
+          "id, restaurant_id, report_type, title, summary, status, " +
+            "report_period_start, report_period_end, created_at",
+        )
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false })
         .limit(1);
 
       if (error) {
-        // If reports table doesn't exist or error, return null
+        // ADR 0020: a read that did not answer is NOT emptiness. Say so, and
+        // carry the PostgREST code — `PGRST205` is precisely the "this table
+        // does not exist" signal that went unnoticed here for months.
         this.logger.warn(`Reports query error: ${error.message}`);
+        const code = error.code ? ` [${error.code}]` : "";
         return {
           latest: null,
           lastGeneratedAt: null,
+          unavailable: `The report archive could not be read${code}: ${error.message}`,
         };
       }
 
-      const latest = reports?.[0] || null;
+      // supabase-js cannot infer a row type from a column list built by
+      // concatenation, so name the two fields this block actually reads.
+      const latest =
+        (reports?.[0] as { created_at?: string } | undefined) ?? null;
 
       return {
         latest,
         lastGeneratedAt: latest?.created_at || null,
+        unavailable: null,
       };
     } catch (error) {
       this.logger.warn(`Reports fetch failed: ${error.message}`);
       return {
         latest: null,
         lastGeneratedAt: null,
+        unavailable: `The report archive could not be read: ${error.message}`,
       };
     }
   }
@@ -280,11 +302,20 @@ export class DashboardService {
   }
 
   /**
-   * Get revenue summary from delivered procurement orders
+   * Total the restaurant paid its vendors for orders that were delivered.
+   *
+   * `procurement_orders.total_cost` is a vendor invoice line: money OUT. This
+   * method previously published the same sums as `totalRevenue` /
+   * `monthlyRevenue` / `revenueByMonth`, so the dashboard's headline number
+   * reported cost as income and every "revenue up" reading actually meant the
+   * restaurant had spent more. The query is unchanged; only the claim is.
+   *
+   * Sales revenue is not derivable here — it lives in `pos_checks`, which this
+   * service does not query.
    */
-  private async getRevenueSummary(
+  private async getProcurementSpendSummary(
     restaurantId: string,
-  ): Promise<RevenueSummaryDto> {
+  ): Promise<ProcurementSpendSummaryDto> {
     const client = this.dbService.getClient();
 
     try {
@@ -295,22 +326,22 @@ export class DashboardService {
           "final_price, total_cost, bottles_total, quantity, delivered_at, created_at, status",
         )
         .eq("restaurant_id", restaurantId)
-        .eq("status", "delivered");
+        .in("status", ORDER_SPEND_STATUSES);
 
       if (error) {
-        this.logger.warn(`Revenue query error: ${error.message}`);
+        this.logger.warn(`Procurement spend query error: ${error.message}`);
         return {
-          totalRevenue: 0,
-          monthlyRevenue: 0,
+          totalProcurementSpend: 0,
+          monthlyProcurementSpend: 0,
           totalBottlesDelivered: 0,
-          revenueByMonth: [],
+          spendByMonth: [],
         };
       }
 
       const orders = delivered || [];
 
-      // Total revenue
-      const totalRevenue = orders.reduce(
+      // Total paid to vendors
+      const totalProcurementSpend = orders.reduce(
         (sum, o) => sum + (o.total_cost || o.final_price || 0),
         0,
       );
@@ -319,63 +350,67 @@ export class DashboardService {
         0,
       );
 
-      // Monthly revenue
+      // Paid to vendors this calendar month
       const now = new Date();
       const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const monthlyRevenue = orders
+      const monthlyProcurementSpend = orders
         .filter((o) => {
           const orderDate = o.delivered_at || o.created_at;
           return orderDate && orderDate.startsWith(currentMonth);
         })
         .reduce((sum, o) => sum + (o.total_cost || o.final_price || 0), 0);
 
-      // Revenue by month (last 12 months)
-      const revenueByMonth: {
+      // Spend by month (last 12 months)
+      const spendByMonth: {
         month: string;
-        revenue: number;
+        spend: number;
         bottles: number;
       }[] = [];
-      const monthMap = new Map<string, { revenue: number; bottles: number }>();
+      const monthMap = new Map<string, { spend: number; bottles: number }>();
 
       for (const o of orders) {
         const orderDate = o.delivered_at || o.created_at;
         if (!orderDate) continue;
         const month = orderDate.substring(0, 7); // YYYY-MM
-        const existing = monthMap.get(month) || { revenue: 0, bottles: 0 };
-        existing.revenue += o.total_cost || o.final_price || 0;
+        const existing = monthMap.get(month) || { spend: 0, bottles: 0 };
+        existing.spend += o.total_cost || o.final_price || 0;
         existing.bottles += o.bottles_total || o.quantity || 0;
         monthMap.set(month, existing);
       }
 
       // Sort by month and take last 12
       for (const [month, data] of Array.from(monthMap.entries()).sort()) {
-        revenueByMonth.push({
+        spendByMonth.push({
           month,
-          revenue: data.revenue,
+          spend: data.spend,
           bottles: data.bottles,
         });
       }
 
       return {
-        totalRevenue,
-        monthlyRevenue,
+        totalProcurementSpend,
+        monthlyProcurementSpend,
         totalBottlesDelivered,
-        revenueByMonth: revenueByMonth.slice(-12),
+        spendByMonth: spendByMonth.slice(-12),
       };
     } catch (error) {
-      this.logger.warn(`Revenue fetch failed: ${error.message}`);
+      this.logger.warn(`Procurement spend fetch failed: ${error.message}`);
       return {
-        totalRevenue: 0,
-        monthlyRevenue: 0,
+        totalProcurementSpend: 0,
+        monthlyProcurementSpend: 0,
         totalBottlesDelivered: 0,
-        revenueByMonth: [],
+        spendByMonth: [],
       };
     }
   }
 
   /**
-   * Get calendar-revenue data per day for a given month
-   * Joins calendar_events with procurement_orders
+   * Per-day figures behind `GET /dashboard/calendar-revenue/:id`. The route
+   * name is frozen; the payload is not revenue. `daily[].procurement_spend` and
+   * `monthly_procurement_spend` are summed from delivered `procurement_orders`
+   * — money paid to vendors, not money earned. `bottles_sold` counts bottles
+   * DELIVERED by vendors, for the same reason. Joins `calendar_events` for the
+   * day overlays. Sales revenue lives in `pos_checks` and is not read here.
    */
   async getCalendarRevenue(
     restaurantId: string,
@@ -407,7 +442,7 @@ export class DashboardService {
           "id, final_price, total_cost, bottles_total, quantity, delivered_at, wine_name, status",
         )
         .eq("restaurant_id", restaurantId)
-        .eq("status", "delivered")
+        .in("status", ORDER_SPEND_STATUSES)
         .gte("delivered_at", startDate)
         .lt("delivered_at", endDate);
 
@@ -425,7 +460,7 @@ export class DashboardService {
           (o) => o.delivered_at && o.delivered_at.startsWith(dateStr),
         );
 
-        const revenue = dayOrders.reduce(
+        const procurementSpend = dayOrders.reduce(
           (sum, o) => sum + (o.total_cost || o.final_price || 0),
           0,
         );
@@ -436,7 +471,7 @@ export class DashboardService {
 
         dailyData.push({
           date: dateStr,
-          revenue,
+          procurement_spend: procurementSpend,
           bottles_sold: bottlesSold,
           events: dayEvents,
           order_count: dayOrders.length,
@@ -448,7 +483,10 @@ export class DashboardService {
         month,
         restaurant_id: restaurantId,
         daily: dailyData,
-        monthly_total: dailyData.reduce((sum, d) => sum + d.revenue, 0),
+        monthly_procurement_spend: dailyData.reduce(
+          (sum, d) => sum + d.procurement_spend,
+          0,
+        ),
         monthly_bottles: dailyData.reduce((sum, d) => sum + d.bottles_sold, 0),
       };
     } catch (error) {
@@ -513,8 +551,8 @@ export class DashboardService {
       );
       const totalVolumeOz = Math.round(totalVolumeMl * 0.033814 * 100) / 100;
       const lowStockItems = lowStock.length;
-      const pendingOrders = orders.filter(
-        (o) => o.status === "pending" || o.status === "awaiting_approval",
+      const pendingOrders = orders.filter((o) =>
+        hasStatus(o.status, ORDER_AWAITING_APPROVAL_STATUSES),
       ).length;
 
       const now = new Date();
@@ -526,12 +564,18 @@ export class DashboardService {
         .toISOString()
         .split("T")[0];
 
-      const salesFrom = (items: any[], since: string) =>
+      // Sums vendor invoices on delivered procurement orders. This was named
+      // `salesFrom` and published as todaySales/weekSales/monthSales, which the
+      // web dashboard rendered as "Total Revenue" — the exact opposite of what
+      // the number is. Nothing here is a sale.
+      const spendSince = (items: any[], since: string) =>
         items
           .filter((o) => o.created_at && o.created_at >= since)
           .reduce((sum, o) => sum + (o.total_cost || o.final_price || 0), 0);
 
-      const deliveredOrders = orders.filter((o) => o.status === "delivered");
+      const deliveredOrders = orders.filter((o) =>
+        hasStatus(o.status, ORDER_SPEND_STATUSES),
+      );
 
       return {
         totalWines,
@@ -540,9 +584,9 @@ export class DashboardService {
         totalVolumeOz,
         lowStockItems,
         pendingOrders,
-        todaySales: salesFrom(deliveredOrders, todayStr),
-        weekSales: salesFrom(deliveredOrders, weekAgo),
-        monthSales: salesFrom(deliveredOrders, monthAgo),
+        todayProcurementSpend: spendSince(deliveredOrders, todayStr),
+        weekProcurementSpend: spendSince(deliveredOrders, weekAgo),
+        monthProcurementSpend: spendSince(deliveredOrders, monthAgo),
       };
     } catch (error) {
       this.logger.error(`Stats fetch failed: ${error.message}`);
@@ -666,7 +710,7 @@ export class DashboardService {
             .from("procurement_orders")
             .select("id, status, expected_delivery_date, created_at")
             .eq("restaurant_id", restaurantId)
-            .in("status", ["pending", "awaiting_approval", "ordered"]),
+            .in("status", ORDER_OUTSTANDING_STATUSES),
           client
             .from("restaurant_inventory")
             .select("id, master_wine_id, stock_live, updated_at, wine_name")
@@ -748,6 +792,13 @@ export class DashboardService {
   // SALES CHART
   // ==========================================================================
 
+  /**
+   * Time series behind `GET /dashboard/sales-chart/:id`. The route name is
+   * frozen; the payload is not sales. Each point's `procurementSpend` is summed
+   * from delivered `procurement_orders.total_cost` — vendor invoices, money
+   * out. `glasses` is a `wine_consumption_log` count. Sales revenue lives in
+   * `pos_checks`, which this method does not read.
+   */
   async getSalesChart(
     restaurantId: string,
     period: "day" | "week" | "month" | "year" = "month",
@@ -787,7 +838,7 @@ export class DashboardService {
             "id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
           )
           .eq("restaurant_id", restaurantId)
-          .eq("status", "delivered")
+          .in("status", ORDER_SPEND_STATUSES)
           .gte("delivered_at", sinceStr),
         client
           .from("wine_consumption_log")
@@ -807,17 +858,17 @@ export class DashboardService {
 
       const buckets = new Map<
         string,
-        { revenue: number; bottles: number; glasses: number }
+        { procurementSpend: number; bottles: number; glasses: number }
       >();
 
       for (const o of orders) {
         const dateKey = groupFn(o.delivered_at || o.created_at);
         const existing = buckets.get(dateKey) || {
-          revenue: 0,
+          procurementSpend: 0,
           bottles: 0,
           glasses: 0,
         };
-        existing.revenue += o.total_cost || o.final_price || 0;
+        existing.procurementSpend += o.total_cost || o.final_price || 0;
         existing.bottles += o.bottles_total || o.quantity || 0;
         buckets.set(dateKey, existing);
       }
@@ -825,7 +876,7 @@ export class DashboardService {
       for (const c of consumption) {
         const dateKey = groupFn(c.created_at);
         const existing = buckets.get(dateKey) || {
-          revenue: 0,
+          procurementSpend: 0,
           bottles: 0,
           glasses: 0,
         };
@@ -837,7 +888,7 @@ export class DashboardService {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, data]) => ({
           date,
-          revenue: data.revenue,
+          procurementSpend: data.procurementSpend,
           bottles: data.bottles,
           glasses: data.glasses,
         }));

@@ -39,12 +39,46 @@ export class NotificationSummaryDto {
   unreadCount: number;
 }
 
+/**
+ * The most recent row of `generated_reports` for a restaurant.
+ *
+ * OD-99. This used to be read from a table called `reports`, which is declared
+ * by no migration in this repository and does not exist in production —
+ * PostgREST answered `PGRST205` on every single call and the service swallowed
+ * it into `{latest: null, lastGeneratedAt: null}`. That is indistinguishable
+ * from "no reports yet", so the failure was invisible from the moment it was
+ * written. The real archive is `generated_reports`, whose columns
+ * (`restaurant_id`, `created_at`, `report_type`, `title`, `status`, …) are an
+ * exact fit for what this block reports.
+ *
+ * `unavailable` exists because ADR 0020 forbids rendering a failed read as an
+ * empty one. Three distinguishable states:
+ *   - `latest` set                          -> a report exists
+ *   - `latest` null, `unavailable` null     -> the read answered, and the
+ *                                              archive is genuinely empty
+ *   - `unavailable` set                     -> the read did not answer; the
+ *                                              string says why
+ *
+ * The archive being empty is itself expected today and is NOT a defect of this
+ * block: `generated_reports` holds 0 rows in production because report
+ * generation has no producer (OD-81) — `POST /reports/generate` inserts a
+ * `status: "pending"` row and nothing ever advances it.
+ */
 export class ReportSummaryDto {
   @ApiPropertyOptional({ description: "Latest report" })
   latest: any | null;
 
   @ApiPropertyOptional({ description: "Last generated date" })
   lastGeneratedAt: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Non-null when the report archive could not be read. A null `latest` " +
+      "with a null `unavailable` means the archive is genuinely empty; a " +
+      "null `latest` with this set means the query failed and the caller " +
+      "must not render it as emptiness (ADR 0020).",
+  })
+  unavailable: string | null;
 }
 
 export class CalendarSummaryDto {
@@ -58,20 +92,32 @@ export class CalendarSummaryDto {
   deliveriesThisWeek: number;
 }
 
-export class RevenueSummaryDto {
+/**
+ * Money the restaurant PAID ITS VENDORS, aggregated from delivered
+ * `procurement_orders`. This is cost, not income.
+ *
+ * It used to be called `RevenueSummaryDto` and its fields `totalRevenue` /
+ * `monthlyRevenue` / `revenueByMonth`, which inverted the economics of the
+ * owner's headline KPI: every dollar spent on wine was presented as a dollar
+ * earned. Nothing about the query changed in the rename — only the claim it
+ * makes. Real sales revenue would come from `pos_checks`, which this service
+ * does not read.
+ */
+export class ProcurementSpendSummaryDto {
   @ApiProperty({
-    description: "Total revenue from delivered orders (all time)",
+    description:
+      "Total spent with vendors on delivered orders (all time). NOT revenue.",
   })
-  totalRevenue: number;
+  totalProcurementSpend: number;
 
-  @ApiProperty({ description: "Revenue this month" })
-  monthlyRevenue: number;
+  @ApiProperty({ description: "Vendor spend this month" })
+  monthlyProcurementSpend: number;
 
-  @ApiProperty({ description: "Total bottles delivered" })
+  @ApiProperty({ description: "Total bottles delivered by vendors" })
   totalBottlesDelivered: number;
 
-  @ApiProperty({ description: "Revenue by month [{month, revenue, bottles}]" })
-  revenueByMonth: any[];
+  @ApiProperty({ description: "Vendor spend by month [{month, spend, bottles}]" })
+  spendByMonth: any[];
 }
 
 export class ServiceErrorDto {
@@ -101,8 +147,11 @@ export class DashboardSummaryDto {
   @ApiProperty({ description: "Calendar summary", type: CalendarSummaryDto })
   calendar: CalendarSummaryDto | null;
 
-  @ApiProperty({ description: "Revenue summary", type: RevenueSummaryDto })
-  revenue: RevenueSummaryDto | null;
+  @ApiProperty({
+    description: "Vendor spend summary (money paid out, not earned)",
+    type: ProcurementSpendSummaryDto,
+  })
+  procurementSpend: ProcurementSpendSummaryDto | null;
 
   @ApiProperty({
     description: "List of service errors",
@@ -128,9 +177,19 @@ export class DashboardStatsDto {
   @ApiProperty() totalVolumeOz: number;
   @ApiProperty() lowStockItems: number;
   @ApiProperty() pendingOrders: number;
-  @ApiProperty() todaySales: number;
-  @ApiProperty() weekSales: number;
-  @ApiProperty() monthSales: number;
+
+  // These three were `todaySales` / `weekSales` / `monthSales`, and `monthSales`
+  // is what the web dashboard rendered under the heading "Total Revenue". They
+  // are sums of `procurement_orders.total_cost` for delivered orders — vendor
+  // invoices, i.e. money leaving the restaurant. No sale is involved.
+  @ApiProperty({ description: "Vendor spend on orders delivered today" })
+  todayProcurementSpend: number;
+
+  @ApiProperty({ description: "Vendor spend on orders delivered in the last 7 days" })
+  weekProcurementSpend: number;
+
+  @ApiProperty({ description: "Vendor spend on orders delivered in the last 30 days" })
+  monthProcurementSpend: number;
 }
 
 // ============================================================================
@@ -165,9 +224,25 @@ export class AlertDto {
 // SALES CHART
 // ============================================================================
 
+/**
+ * One bucket of the `GET /dashboard/sales-chart/:id` series.
+ *
+ * The route name is frozen (it is a published path), but the money in here is
+ * NOT sales. `procurementSpend` is summed from delivered
+ * `procurement_orders.total_cost` — money the restaurant PAYS its vendors. The
+ * field used to be called `revenue`, which inverted the sign of the number for
+ * every consumer that plotted it. `glasses` comes from `wine_consumption_log`.
+ * Real sales revenue lives in `pos_checks` and is not read by this endpoint.
+ */
 export class SalesChartPointDto {
   @ApiProperty() date: string;
-  @ApiProperty() revenue: number;
+
+  @ApiProperty({
+    description:
+      "Vendor spend on orders delivered in this bucket. NOT sales revenue.",
+  })
+  procurementSpend: number;
+
   @ApiProperty() bottles: number;
   @ApiProperty() glasses: number;
 }

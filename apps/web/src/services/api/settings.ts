@@ -1,80 +1,51 @@
 import { apiClient } from './client';
 
+/**
+ * Only the flags something actually reads.
+ *
+ * This interface used to list 22 booleans. OD-86 (2026-08-26) found that 21 of
+ * them were read by no code anywhere, and that none of the 22 columns behind
+ * them existed in the database — so the GET returned invented values and the
+ * PUT always failed. The other 21 are now UI-side metadata in
+ * `components/settings/inactiveFeatures.ts`, rendered without a switch.
+ * See `apps/api-gateway/src/settings/feature-flag-registry.ts`.
+ */
 export interface FeatureFlags {
-  enable_inventory_storage_locations: boolean;
-  enable_auto_procurement: boolean;
-  enable_visual_verification: boolean;
-  enable_predictive_analytics: boolean;
+  /** AI reads and answers vendor email at all. */
   enable_ai_negotiation: boolean;
-  enable_sommelier_ai: boolean;
-  enable_voice_agent: boolean;
-  enable_menu_analyzer: boolean;
-  enable_calendar_sync: boolean;
-  enable_whatsapp_business: boolean;
-  enable_quickbooks_sync: boolean;
-  enable_recurring_orders: boolean;
-  enable_invoice_scanning: boolean;
-  enable_check_scanning: boolean;
-  enable_auction_purchases: boolean;
-  enable_profit_margin_tracking: boolean;
-  enable_guest_crm: boolean;
-  enable_wine_pairing_ai: boolean;
-  enable_compliance_autopilot: boolean;
-  enable_shrinkage_detective: boolean;
-  enable_staff_training_simulator: boolean;
-  enable_pour_cost_optimizer: boolean;
+  /** AI replies leave for the vendor with no human approval. */
+  enable_ai_autonomous_send: boolean;
 }
 
-export interface UpdateFeatureFlagsRequest {
-  enable_inventory_storage_locations?: boolean;
-  enable_auto_procurement?: boolean;
-  enable_visual_verification?: boolean;
-  enable_predictive_analytics?: boolean;
-  enable_ai_negotiation?: boolean;
-  enable_sommelier_ai?: boolean;
-  enable_voice_agent?: boolean;
-  enable_menu_analyzer?: boolean;
-  enable_calendar_sync?: boolean;
-  enable_whatsapp_business?: boolean;
-  enable_quickbooks_sync?: boolean;
-  enable_recurring_orders?: boolean;
-  enable_invoice_scanning?: boolean;
-  enable_check_scanning?: boolean;
-  enable_auction_purchases?: boolean;
-  enable_profit_margin_tracking?: boolean;
-  enable_guest_crm?: boolean;
-  enable_wine_pairing_ai?: boolean;
-  enable_compliance_autopilot?: boolean;
-  enable_shrinkage_detective?: boolean;
-  enable_staff_training_simulator?: boolean;
-  enable_pour_cost_optimizer?: boolean;
+export type UpdateFeatureFlagsRequest = Partial<FeatureFlags>;
+
+export interface FeatureFlagCheckResult {
+  enabled: boolean;
+  /** False means nothing reads the flag — `enabled` describes nothing. */
+  active: boolean;
+  feature_name: string;
+  restaurant_id: string;
 }
 
 export const settingsApi = {
-  /**
-   * Get feature flags for the current restaurant
-   */
   async getFeatureFlags(): Promise<FeatureFlags> {
     const response = await apiClient.get<FeatureFlags>('/settings/feature-flags');
     return response.data;
   },
 
-  /**
-   * Update feature flags for the current restaurant
-   */
   async updateFeatureFlags(flags: UpdateFeatureFlagsRequest): Promise<FeatureFlags> {
     const response = await apiClient.put<FeatureFlags>('/settings/feature-flags', flags);
     return response.data;
   },
 
-  /**
-   * Check if a specific feature is enabled
-   */
-  async checkFeatureFlag(restaurantId: string, featureName: string): Promise<boolean> {
-    const response = await apiClient.post<{ enabled: boolean }>('/settings/feature-flags/check', {
-      restaurant_id: restaurantId,
-      feature_name: featureName,
-    });
-    return response.data.enabled;
+  async checkFeatureFlag(
+    restaurantId: string,
+    featureName: string,
+  ): Promise<FeatureFlagCheckResult> {
+    const response = await apiClient.post<FeatureFlagCheckResult>(
+      '/settings/feature-flags/check',
+      { restaurant_id: restaurantId, feature_name: featureName },
+    );
+    return response.data;
   },
 };

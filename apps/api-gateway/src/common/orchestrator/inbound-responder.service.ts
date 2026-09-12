@@ -1,7 +1,12 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../../database/database.service";
-import { ModelClientService } from "../model-client/model-client.service";
+import {
+  ModelClientService,
+  NfEventRef,
+} from "../model-client/model-client.service";
+import { NfVerdictService } from "../model-client/nf-verdict.service";
+import { PARSE_BASIS } from "../model-client/verdict-bases";
 import { getCorrelationId } from "../model-client/correlation";
 import { WebsocketGateway } from "../../websocket/websocket.gateway";
 import { EmailClass, TransportSignals, replySkipReason } from "./email-triage";
@@ -13,6 +18,11 @@ import {
 } from "./commercial-terms";
 import { SenderReputationService } from "./sender-reputation.service";
 import { computePriority } from "./priority";
+import { SETTINGS_ROW_FLAG_NAME } from "../../settings/feature-flag-registry";
+// AI-SPEC §6 UCC contract-formation guardrail. Single source of truth for both
+// runtimes (OD-44) — the Python orchestrator's copy is generated from it by
+// scripts/sync_commitment_patterns.py. Edit commitment-patterns.ts, never a copy.
+import { COMMITMENT_PATTERNS } from "./commitment-patterns";
 
 // Claude Haiku 4.5 — fast/cheap, the right tier for this per-reply background call.
 // (Replaces claude-3-5-haiku-20241022, retired 2026-02-19.) For stronger negotiation
@@ -38,35 +48,6 @@ const AUTO_REPLY_SUBJECT_PATTERNS: RegExp[] = [
   /do not reply/i,
   /vacation/i,
   /away from (the )?office/i,
-];
-
-/**
- * AI-SPEC §6 guardrail: phrases that could constitute a binding purchase
- * commitment (UCC contract-formation risk). A draft containing any of these
- * must NEVER auto-send — it is forced to manager approval. Ported verbatim
- * from services/agent-orchestrator/agents/provider_conversation_agent.py.
- */
-const COMMITMENT_PATTERNS: RegExp[] = [
-  /\bwill take\b/i,
-  /\bwould like to order\b/i,
-  /\bplease confirm our order\b/i,
-  /\bwe'?ll proceed with\b/i,
-  /\bwe accept\b/i,
-  /\bconfirm \d+ cases?\b/i,
-  /\blet'?s go ahead\b/i,
-  /\bsending payment\b/i,
-  /\bplace the order\b/i,
-  /\bgo ahead and ship\b/i,
-  // Multilingual commitment phrases (FR / IT / ES / DE) — common in the fine-dining wine trade.
-  /\bnous acceptons\b/i,
-  /\bnous confirmons\b/i,
-  /\bbon de commande\b/i,
-  /\baccettiamo\b/i,
-  /\bconfermiamo l'ordine\b/i,
-  /\baceptamos\b/i,
-  /\bconfirmamos el pedido\b/i,
-  /\bwir akzeptieren\b/i,
-  /\bbestellung aufgeben\b/i,
 ];
 
 interface InboundContext {
@@ -176,6 +157,7 @@ export class InboundResponderService {
     private readonly databaseService: DatabaseService,
     private readonly modelClient: ModelClientService,
     private readonly websocketGateway: WebsocketGateway,
+    private readonly nfVerdicts: NfVerdictService,
     @Optional() private readonly senderReputation?: SenderReputationService,
   ) {}
 
@@ -493,6 +475,8 @@ export class InboundResponderService {
           "PENDING_APPROVAL",
           "AUTO_SEND_SCHEDULED",
           "AUTO_SENDING",
+          // A manager-approved send is in flight — don't stage a rival draft.
+          "SENDING",
         ])
         .limit(1);
       if (existingDraft?.length) {
@@ -757,6 +741,11 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       }
     }
 
+    // OD-59 / P3.0: `parseAnalysis` returning null means this call produced
+    // nothing usable — no reply body, no analysis. At call level that reads as
+    // `success` because the HTTP request returned 200, which is the exact
+    // inversion the verdict below exists to correct.
+    const eventRef = new NfEventRef();
     try {
       // P1 NF-A: routed through the model client. Body and the PDF beta
       // header pass through VERBATIM — temperature 0.4 and
@@ -780,11 +769,35 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
           choice: "analysis+draft",
           restaurantId: input.restaurantId,
           correlationId: input.correlationId ?? null,
+          eventRef,
         },
       });
 
       const text: string = payload?.content?.[0]?.text ?? "";
-      return this.parseAnalysis(text);
+      const analysis = this.parseAnalysis(text);
+      this.nfVerdicts.record(eventRef, PARSE_BASIS, {
+        outcome: analysis ? "success" : "failure",
+        evidence: {
+          // Enough to re-check a disputed verdict without re-running the call.
+          response_chars: text.length,
+          parsed: analysis !== null,
+          ...(analysis
+            ? {
+                intent: analysis.intent,
+                reply_body_chars: analysis.reply_body.length,
+              }
+            : {}),
+        },
+      });
+      // The honest verdict on THIS task is what happened to the draft — a human
+      // approving it, or the autonomy gate releasing it. That is `approval_v1`,
+      // needs a deferred join against the approve/dismiss record, and lands as a
+      // second row beside this one rather than replacing it.
+      //
+      // Deliberately NOT phrased as the absolute this file used to carry: OD-37
+      // established that the stronger claim is overstated, and a CLAIMS.jsonl
+      // guard fails the build if it reappears here.
+      return analysis;
     } catch (error: any) {
       // ModelClientError.message already carries the API error detail the old
       // axios-shape read (error.response.data.error.message) used to surface.
@@ -952,13 +965,23 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
   // HELPERS
   // ===========================================================================
 
-  /** Read enable_ai_negotiation; default ON when no flags row exists. */
+  /**
+   * Read enable_ai_negotiation; default ON when no settings row exists.
+   *
+   * The `flag_name` filter is load-bearing. `restaurant_feature_flags` is an
+   * EAV table that also holds rows written by other subsystems (self-evolution
+   * writes one per restaurant), so filtering on restaurant_id alone makes
+   * `.maybeSingle()` fail as soon as a restaurant has two rows — and the
+   * failure lands on the fallback, which is why this gate has effectively been
+   * stuck ON. See settings/feature-flag-registry.ts.
+   */
   private async isNegotiationEnabled(restaurantId: string): Promise<boolean> {
     try {
       const { data, error } = await this.databaseService.supabase
         .from("restaurant_feature_flags")
         .select("enable_ai_negotiation")
         .eq("restaurant_id", restaurantId)
+        .eq("flag_name", SETTINGS_ROW_FLAG_NAME)
         .maybeSingle();
       if (error || !data) return true; // no row -> defaults enabled
       return (data as any).enable_ai_negotiation !== false;
@@ -967,7 +990,13 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     }
   }
 
-  /** Read enable_ai_autonomous_send; default OFF unless explicitly enabled. */
+  /**
+   * Read enable_ai_autonomous_send; default OFF unless explicitly enabled.
+   *
+   * Fails closed on every uncertain path — no row, read error, thrown client.
+   * Sending a vendor an email the manager never saw is not recoverable, so the
+   * only value that turns this on is a literal stored `true`.
+   */
   private async isAutonomousSendEnabled(
     restaurantId: string,
   ): Promise<boolean> {
@@ -976,6 +1005,7 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         .from("restaurant_feature_flags")
         .select("enable_ai_autonomous_send")
         .eq("restaurant_id", restaurantId)
+        .eq("flag_name", SETTINGS_ROW_FLAG_NAME)
         .maybeSingle();
       if (error || !data) return false; // default OFF — manager approves until flipped on
       return (data as any).enable_ai_autonomous_send === true;

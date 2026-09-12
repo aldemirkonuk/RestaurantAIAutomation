@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture Review — Agenda Canvas · 2026-08-28</title>
+<style>
+  :root{
+    --ink:#0c0e11; --panel:#13161b; --panel2:#181c22; --line:#252b34;
+    --text:#e6e9ee; --dim:#8b95a5; --faint:#5a6472;
+    --pass:#d6a15f;      /* the adversarial pass — Track A1 */
+    --census:#5fb0d6;    /* the standing findings program */
+    --self:#b98ad6;      /* this function's own questions */
+    --seam:#6fcf97;      /* leaves the unit */
+    --alarm:#e2564d;
+    --ok:#4f9d6b;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--ink);color:var(--text);font-family:var(--sans);font-size:14px;
+       line-height:1.45;padding:28px 24px 64px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1360px;margin:0 auto}
+  a{color:inherit}
+
+  header{display:flex;flex-wrap:wrap;align-items:flex-end;gap:20px;
+         border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:24px}
+  h1{font-size:23px;font-weight:600;letter-spacing:-.015em}
+  h1 span{color:var(--dim);font-weight:400}
+  .stamp{font-family:var(--mono);font-size:11px;color:var(--faint);
+         border:1px solid var(--line);border-radius:3px;padding:4px 8px;white-space:nowrap}
+  .stamp.hot{color:var(--alarm);border-color:#4a2a28}
+  .thesis{flex:1 1 470px;min-width:300px;color:var(--dim);font-size:13px;max-width:680px}
+  .thesis b{color:var(--text);font-weight:600}
+
+  section{margin-bottom:28px}
+  .sechead{display:flex;align-items:baseline;gap:10px;margin-bottom:11px;flex-wrap:wrap}
+  .sechead h2{font-size:12px;font-weight:700;letter-spacing:.11em;text-transform:uppercase}
+  .sechead .note{font-size:11.5px;color:var(--faint)}
+  .key{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+
+  /* ---- ledger ---- */
+  table{width:100%;border-collapse:collapse;background:var(--panel);
+        border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);
+        font-size:12.5px;vertical-align:top}
+  th{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);
+     font-weight:600;background:var(--panel2)}
+  tr:last-child td{border-bottom:none}
+  td.id{font-family:var(--mono);color:var(--dim);white-space:nowrap}
+  td.src{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+        padding:2px 6px;border-radius:3px;border:1px solid var(--line);white-space:nowrap}
+  .pill.closed{color:var(--ok);border-color:#24402f}
+  .pill.open{color:var(--alarm);border-color:#4a2a28}
+  .pill.moved{color:var(--pass);border-color:#453722}
+  .byfinding{font-family:var(--mono);font-size:11px;color:var(--faint)}
+
+  /* ---- zero numerator ---- */
+  .ratio{display:grid;grid-template-columns:minmax(280px,1fr) 2fr;gap:14px}
+  @media(max-width:900px){.ratio{grid-template-columns:1fr}}
+  .bignum{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+          padding:18px 18px 16px;display:flex;flex-direction:column;justify-content:center}
+  .bignum .frac{font-family:var(--mono);font-size:52px;font-weight:600;letter-spacing:-.03em;
+                color:var(--alarm);line-height:1}
+  .bignum .lab{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:9px}
+  .bignum .exp{font-size:12.5px;color:var(--dim);margin-top:11px}
+  .whoclosed{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:15px 16px}
+  .whoclosed h3{font-size:13px;font-weight:600;margin-bottom:10px}
+  .cbars{display:flex;flex-direction:column;gap:9px}
+  .cbar .lab{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:4px}
+  .cbar .lab span:last-child{font-family:var(--mono);color:var(--dim)}
+  .track{height:10px;background:var(--panel2);border:1px solid var(--line);
+         border-radius:2px;overflow:hidden}
+  .fill{height:100%}
+  .zeroline{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);
+            font-size:12px;color:var(--dim)}
+
+  /* ---- pass ---- */
+  .gate{display:flex;align-items:center;gap:12px;background:var(--panel2);
+        border:1px solid var(--line);border-left:3px solid var(--pass);
+        border-radius:5px;padding:10px 13px;margin-bottom:12px;flex-wrap:wrap}
+  .gate .seal{font-family:var(--mono);font-size:10.5px;color:var(--pass);
+              border:1px solid #453722;border-radius:3px;padding:3px 7px}
+  .gate .txt{font-size:12.5px;color:var(--dim)}
+  .axes{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:10px}
+  .axis{background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--pass);
+        border-radius:5px;padding:12px 13px}
+  .axis .n{font-family:var(--mono);font-size:10.5px;color:var(--pass);margin-bottom:5px}
+  .axis h4{font-size:13px;font-weight:600;margin-bottom:6px;line-height:1.3}
+  .axis p{font-size:12px;color:var(--dim);margin-bottom:8px}
+  .axis .done{font-size:11.5px;color:var(--faint);border-top:1px dashed var(--line);
+              padding-top:7px}
+  .axis .done b{color:var(--dim);font-weight:600}
+  .axis .fig{font-family:var(--mono);font-size:11px;color:var(--text);
+             background:var(--panel2);border:1px solid var(--line);border-radius:3px;
+             padding:5px 7px;margin-bottom:8px;display:block}
+
+  /* ---- guard census ---- */
+  .censusgrid{display:grid;grid-template-columns:1fr minmax(250px,320px);gap:14px}
+  @media(max-width:900px){.censusgrid{grid-template-columns:1fr}}
+  .guards{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:6px;
+          background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px}
+  .g{font-family:var(--mono);font-size:10.5px;padding:6px 8px;border-radius:3px;
+     border:1px solid var(--line);background:var(--panel2);color:var(--faint);
+     display:flex;align-items:center;gap:7px}
+  .g .dot{width:7px;height:7px;border-radius:50%;background:#39414c;flex:none}
+  .g.lit{color:var(--text);border-color:#24402f}
+  .g.lit .dot{background:var(--ok)}
+  .censusnote{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:15px 16px}
+  .censusnote .big{font-family:var(--mono);font-size:34px;font-weight:600;color:var(--census);
+                   letter-spacing:-.02em;line-height:1}
+  .censusnote .big small{font-size:16px;color:var(--faint);font-weight:400}
+  .censusnote p{font-size:12.5px;color:var(--dim);margin-top:11px}
+  .censusnote .rule{font-family:var(--mono);font-size:11px;color:var(--faint);
+                    border-left:2px solid var(--line);padding-left:9px;margin-top:12px}
+
+  /* ---- lanes ---- */
+  .lanes{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border:1px solid var(--line);
+         border-radius:6px;overflow:hidden;background:var(--panel)}
+  @media(max-width:1080px){.lanes{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media(max-width:640px){.lanes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .lanes .card .h,.lanes .card .d,.lanes .col .date{overflow-wrap:anywhere}
+  .col{border-right:1px solid var(--line);padding:9px 8px 12px;min-height:246px}
+  .col:last-child{border-right:none}
+  .col .date{font-family:var(--mono);font-size:11px;color:var(--text);padding-bottom:7px;
+             margin-bottom:8px;border-bottom:1px solid var(--line)}
+  .col .date em{display:block;font-style:normal;font-size:10px;color:var(--faint);margin-top:2px}
+  .card{border:1px solid var(--line);border-left:3px solid var(--line);border-radius:4px;
+        background:var(--panel2);padding:7px 8px;margin-bottom:7px}
+  .card.pass{border-left-color:var(--pass)}
+  .card.census{border-left-color:var(--census)}
+  .card.self{border-left-color:var(--self)}
+  .card .t{font-family:var(--mono);font-size:10px;color:var(--faint);margin-bottom:3px}
+  .card .h{font-size:12px;font-weight:600;line-height:1.28;margin-bottom:4px}
+  .card .d{font-size:10.5px;color:var(--faint);line-height:1.35}
+  .card .reach{display:inline-block;font-family:var(--mono);font-size:9.5px;color:var(--alarm);
+               border:1px solid #4a2a28;border-radius:2px;padding:1px 4px;margin-top:5px}
+
+  /* ---- scope ---- */
+  .scope{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:820px){.scope{grid-template-columns:1fr}}
+  .read{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 15px}
+  .read h3{font-size:13px;font-weight:600}
+  .read .cite{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin:3px 0 11px}
+  .blocks{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:11px}
+  .u{width:11px;height:11px;border-radius:2px;background:var(--panel2);border:1px solid var(--line)}
+  .u.on{background:var(--self);border-color:var(--self)}
+  .read .cost{font-size:12px;color:var(--dim)}
+  .verdictbar{margin-top:12px;background:var(--panel);border:1px solid var(--line);
+              border-left:3px solid var(--self);border-radius:5px;padding:11px 13px;
+              font-size:12.5px;color:var(--dim)}
+
+  /* ---- seams + uncarryable ---- */
+  .two{display:grid;grid-template-columns:1.15fr 1fr;gap:14px}
+  @media(max-width:900px){.two{grid-template-columns:1fr}}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 15px}
+  .box h3{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+          color:var(--faint);margin-bottom:10px}
+  .seamrow{display:flex;gap:9px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:12px}
+  .seamrow:last-child{border-bottom:none}
+  .seamrow .to{font-family:var(--mono);font-size:10.5px;color:var(--seam);flex:0 0 168px}
+  .seamrow .what{color:var(--dim)}
+  ol.nocarry{list-style:none;counter-reset:n}
+  ol.nocarry li{counter-increment:n;position:relative;padding:8px 0 8px 26px;font-size:12px;
+                color:var(--dim);border-bottom:1px dashed var(--line)}
+  ol.nocarry li:last-child{border-bottom:none}
+  ol.nocarry li::before{content:counter(n);position:absolute;left:0;top:8px;
+                        font-family:var(--mono);font-size:10.5px;color:var(--alarm)}
+
+  footer{border-top:1px solid var(--line);padding-top:14px;margin-top:6px}
+  footer h3{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);
+            margin-bottom:8px}
+  footer ul{list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+            gap:4px 20px}
+  footer li{font-family:var(--mono);font-size:10.5px;color:var(--faint);line-height:1.5}
+  footer .disc{margin-top:12px;font-size:11.5px;color:var(--faint);font-family:var(--sans)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <h1>Architecture Review <span>— agenda canvas</span></h1>
+    <div class="key" style="margin-top:6px">02-advisory · findings-only, outside the line (OD-16, ADR 0007) · owns no line work</div>
+  </div>
+  <div class="thesis">
+    <b>The founding backlog closed itself, and that is the finding.</b> Seven findings were
+    raised on 2026-08-24 as the evidence this function was needed. Six have closed or moved —
+    and <b>none of them closed because a finding was written</b>. This canvas is built so the
+    re-grade cannot read as a victory lap: every green row is printed next to the ratio that
+    stayed at zero.
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <div class="stamp">dated 2026-08-28 · ADR 0039 Track B</div>
+    <div class="stamp hot">findings_closed_by_decision_ratio = 0 / 0</div>
+  </div>
+</header>
+
+<!-- 1 ─ THE RE-GRADE LEDGER -->
+<section>
+  <div class="sechead">
+    <h2>§0 · Re-grade — the seven, measured against today's tree</h2>
+    <span class="note">Every row re-verified 2026-08-28. Nothing carried forward from the charter unmeasured.</span>
+  </div>
+  <table>
+    <tr><th style="width:66px">ID</th><th style="width:96px">State</th><th>What moved</th><th style="width:150px">Closed by</th><th style="width:290px">Evidence</th></tr>
+    <tr>
+      <td class="id">AR-0</td><td><span class="pill closed">CLOSED</span></td>
+      <td>Findings had nowhere to land — now 100 of 100 units carry a questions file with the 42-day rule</td>
+      <td class="byfinding">OD-41 tooling</td>
+      <td class="src">build_questions_files.py · architecture-review-questions.md:38-41</td>
+    </tr>
+    <tr>
+      <td class="id">AR-1</td><td><span class="pill open">OPEN</span></td>
+      <td>L6→L0 bypass halved: <b>2 files / 5 statements → 1 file / 3</b>. The generated_reports half now goes through the gateway</td>
+      <td class="byfinding">P1 (the reports half)</td>
+      <td class="src">useSommelierQueries.ts:25-26, 42-43, 56 · useReportQueries.ts:13</td>
+    </tr>
+    <tr>
+      <td class="id">AR-2</td><td><span class="pill closed">CLOSED</span></td>
+      <td>The diverged legal guardrail (19 TS / 8 Py) is now one generated module from a TS canon — <b>plus a ratchet</b></td>
+      <td class="byfinding">P1 + a CI guard</td>
+      <td class="src">provider_conversation_agent.py:125-133 · sync_commitment_patterns.py · ci.yml:87-103</td>
+    </tr>
+    <tr>
+      <td class="id">AR-3</td><td><span class="pill closed">CLOSED</span></td>
+      <td>Seven hand-rolled provider callsites → <b>one endpoint constant at the boundary</b>, and a blocking guard stops a second</td>
+      <td class="byfinding">P1 + a CI guard</td>
+      <td class="src">common/model-client/model-client.service.ts:7 · ci.yml:120</td>
+    </tr>
+    <tr>
+      <td class="id">AR-4</td><td><span class="pill closed">CLOSED</span></td>
+      <td>L4 emits and joins; verdict coverage is what remains, and it is ADR 0017's</td>
+      <td class="byfinding">P1</td>
+      <td class="src">model-client.service.ts:413 · spend_logger.py:269,276,406</td>
+    </tr>
+    <tr>
+      <td class="id">AR-5</td><td><span class="pill moved">MOVED</span></td>
+      <td>Tenant isolation moved from a per-controller convention to an assertion at the auth stage. <b>Nothing counts endpoints</b>, so no figure is asserted</td>
+      <td class="byfinding">P1 (partly)</td>
+      <td class="src">tenant.guard.ts:34-58 · OD-19 open</td>
+    </tr>
+    <tr>
+      <td class="id">AR-6</td><td><span class="pill closed">PRECEDENT</span></td>
+      <td>The template it named has been copied <b>20 more times</b> — the repo grew a guard layer nobody reviews</td>
+      <td class="byfinding">everyone else</td>
+      <td class="src">check_schema_parity.sh:6-11 · scripts/check_* = 21</td>
+    </tr>
+  </table>
+</section>
+
+<!-- 2 ─ ZERO NUMERATOR -->
+<section>
+  <div class="sechead">
+    <h2>§0.1 · The number that did not move</h2>
+    <span class="note">The board's headline is not the violation count.</span>
+  </div>
+  <div class="ratio">
+    <div class="bignum">
+      <div class="frac">0 / 0</div>
+      <div class="lab">arch.findings_closed_by_decision_ratio</div>
+      <div class="exp">Six findings closed. <b>Zero</b> were raised, read, or aged first.
+        The detection was right and detection was <b>not the constraint</b> — which changes
+        what the 2026-11-24 merge trigger is testing.</div>
+    </div>
+    <div class="whoclosed">
+      <h3>What closed the six</h3>
+      <div class="cbars">
+        <div class="cbar">
+          <div class="lab"><span>P1 line work (AR-1 half, AR-2, AR-3, AR-4, AR-5)</span><span>5</span></div>
+          <div class="track"><div class="fill" style="width:71%;background:var(--ok)"></div></div>
+        </div>
+        <div class="cbar">
+          <div class="lab"><span>OD-41 vault tooling (AR-0)</span><span>1</span></div>
+          <div class="track"><div class="fill" style="width:14%;background:var(--census)"></div></div>
+        </div>
+        <div class="cbar">
+          <div class="lab"><span>A written finding from this function</span><span>0</span></div>
+          <div class="track"><div class="fill" style="width:0%;background:var(--alarm)"></div></div>
+        </div>
+      </div>
+      <div class="zeroline">The bottom bar is the whole agenda's premise. It is drawn at
+        zero width on purpose — a legend entry with nothing behind it is exactly what
+        <b>premortem #1</b> looks like from the outside.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 ─ THE PASS -->
+<section>
+  <div class="sechead">
+    <h2>§2 · The adversarial pass on Track A1's bake-off protocol</h2>
+    <span class="note">ADR 0039 assigns this pass here by name. It runs <b>before</b> the bake-off, not after it reports.</span>
+  </div>
+  <div class="gate">
+    <span class="seal">SEALED 2026-08-28</span>
+    <span class="txt">These five axes are fixed <b>before</b> <span style="font-family:var(--mono)">scripts/bakeoff/</span>
+      is readable from this worktree. An axis added after reading the protocol must be marked
+      <span style="font-family:var(--mono)">added-after-reading</span>, with its reason. A protocol
+      reviewed after a scored run is reviewed by someone who already knows who won.</span>
+  </div>
+  <div class="axes">
+    <div class="axis">
+      <div class="n">AXIS 1 · workload validity</div>
+      <h4>Can the scored set say what "done" means?</h4>
+      <span class="fig">102 cards · 58 read <b>NONE (gap)</b> · 8 execute</span>
+      <p>ADR 0039 names cards.json as the workloads. A bake-off scored where 57% of the
+         workloads carry no verdict basis measures completion, not capability — the fastest
+         finisher wins a race nobody defined.</p>
+      <div class="done"><b>Done when</b> the protocol names its scored subset with a count and
+        a per-card verdict basis — or a Sev-1 is written naming the gap and its size.</div>
+    </div>
+    <div class="axis">
+      <div class="n">AXIS 2 · rigged axes</div>
+      <h4>Which candidate wins each axis by construction?</h4>
+      <span class="fig">3 named suspects, from the record</span>
+      <p>An axis about fitting the saga/DLQ model scores in-house 1.0 by definition;
+         "harness overhead" measured without the messaging surface prices two candidates on
+         different substrates; weights revised after a pilot run.</p>
+      <div class="done"><b>Done when</b> every axis carries one line naming which candidate it
+        favours before any data. No line = a finding. Weights revised post-run = Sev-1.</div>
+    </div>
+    <div class="axis">
+      <div class="n">AXIS 3 · candidate set</div>
+      <h4>What is not on the list?</h4>
+      <span class="fig">OD-03 names 3 · OD-52 reframes the question</span>
+      <p>Under OD-52's reframe — "which reasoning layer sits ON our messaging infra" — the
+         <b>null candidate</b> (no separate harness; a loop behind the model-client boundary
+         that already exists and is already guarded) is a real candidate.</p>
+      <div class="done"><b>Done when</b> the protocol includes it or excludes it in writing.
+        <b>This axis names gaps and never picks</b> — the fork stays open.</div>
+    </div>
+    <div class="axis">
+      <div class="n">AXIS 4 · hidden integration cost</div>
+      <h4>What does the winner cost to actually adopt?</h4>
+      <span class="fig">the guard · the core/ diet · 24 modules</span>
+      <p>A candidate calling providers through its own client breaks a blocking, two-runtime,
+         <b>shrink-only-debt</b> guard. ADR 0039 forbids extending <span style="font-family:var(--mono)">core/</span>
+         while A1 runs — so a candidate whose adoption path is a core/ extension is unpilotable
+         under the plan running the bake-off.</p>
+      <div class="done"><b>Done when</b> each of the three is a priced line or an explicit
+        out-of-scope statement. Neither = written up.</div>
+    </div>
+    <div class="axis">
+      <div class="n">AXIS 5 · who grades the run?</div>
+      <h4>ADR 0036's line, on its first exercise</h4>
+      <span class="fig">RM-1 methodology / aio operation</span>
+      <p>If the protocol is authored <b>and</b> graded by the team that operates the harness,
+         the line ADR 0036 locked is broken the first time it is used — and that is a finding
+         against <b>the seam</b>, not against the protocol or its authors.</p>
+      <div class="done"><b>Done when</b> the grader and grading basis are named. Author = grader
+        → one finding to Research &amp; Math, one line to Decision Office.</div>
+    </div>
+    <div class="axis" style="border-top-color:var(--line)">
+      <div class="n" style="color:var(--faint)">WHAT THIS PASS IS NOT</div>
+      <h4>No pick. No score. No gate.</h4>
+      <p>It does not choose a candidate, score anything, block the run, or require anyone's
+         agreement to proceed. If A1's owners run the bake-off the day after receiving a Sev-1,
+         that is within their rights — <b>and the finding simply starts ageing.</b></p>
+      <div class="done">Findings-only is <b>locked</b> (OD-16). Follow-ups: one revision round
+        (7d), and a post-run read filed <b>before</b> OD-03 is flipped to Resolved.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 ─ GUARD CENSUS -->
+<section>
+  <div class="sechead">
+    <h2>§3.1 · The guard census — one rule, 21 enforcement points</h2>
+    <span class="note">The first review subject in this unit's history that <b>did not exist</b> when the unit was chartered.</span>
+    <span class="key" style="margin-left:auto">● has an explicit cannot-check exit &nbsp;·&nbsp; ○ does not</span>
+  </div>
+  <div class="censusgrid">
+    <div class="guards">
+      <div class="g lit"><span class="dot"></span>check_decision_claims.sh</div>
+      <div class="g lit"><span class="dot"></span>check_gateway_boots.sh</div>
+      <div class="g lit"><span class="dot"></span>check_model_calls_logged.sh</div>
+      <div class="g lit"><span class="dot"></span>check_schema_parity.sh</div>
+      <div class="g lit"><span class="dot"></span>check_citation_pairing.py</div>
+      <div class="g lit"><span class="dot"></span>check_migrations_single_home.py</div>
+      <div class="g lit"><span class="dot"></span>check_new_tables_are_locked_down.py</div>
+      <div class="g lit"><span class="dot"></span>check_queried_tables_exist.py</div>
+      <div class="g lit"><span class="dot"></span>check_task_types_are_graded.py</div>
+      <div class="g"><span class="dot"></span>check_db_reachable.sh</div>
+      <div class="g"><span class="dot"></span>check_no_direct_stock_writes.sh</div>
+      <div class="g"><span class="dot"></span>check_no_direct_type_attributes_access.sh</div>
+      <div class="g"><span class="dot"></span>check_no_guest_name_matching.sh</div>
+      <div class="g"><span class="dot"></span>check_no_raw_guest_channels.sh</div>
+      <div class="g"><span class="dot"></span>check_beverage_identity_parity.py</div>
+      <div class="g"><span class="dot"></span>check_beverage_kind_regression.py</div>
+      <div class="g"><span class="dot"></span>check_display_name_parity.py</div>
+      <div class="g"><span class="dot"></span>check_log_sanitizer_usage.py</div>
+      <div class="g"><span class="dot"></span>check_no_vendored_deps.py</div>
+      <div class="g"><span class="dot"></span>check_od_ids_exist.py</div>
+      <div class="g"><span class="dot"></span>check_test_scripts_are_real.py</div>
+    </div>
+    <div class="censusnote">
+      <div class="big">9<small> / 21</small></div>
+      <p><b>12 unlit is not 12 defects</b>, and the census must not pretend otherwise. Some of
+        the twelve have no unable-to-check state at all. Deciding which is which is the human
+        half — the judgement the scout's card deliberately keeps outside itself.</p>
+      <div class="rule">"Exit 2 = the guard could not check what it claims to check … every
+        'found nothing' path here is a FAILURE, not a pass."<br>
+        — check_model_calls_logged.sh:20-35</div>
+      <p style="margin-top:12px"><b>Done when</b> all 21 carry one of three labels — has an
+        exit-2 path / cannot fail-to-check, with the reason / <b>can fail to check and passes
+        green</b> — and the third list ships with path:line, one finding per owning unit.
+        <b>A count with names, never a percentage.</b></p>
+    </div>
+  </div>
+</section>
+
+<!-- 5 ─ LANES -->
+<section>
+  <div class="sechead">
+    <h2>Close-times — every item, on a date</h2>
+    <span class="note">Fortnightly spine: sweeps on the 1st and the 15th. 42 days = three sweeps = escalation.</span>
+    <span class="key" style="margin-left:auto">
+      <span style="color:var(--pass)">▍</span> Track A1 pass &nbsp;
+      <span style="color:var(--census)">▍</span> findings program &nbsp;
+      <span style="color:var(--self)">▍</span> this function's own questions
+    </span>
+  </div>
+  <div class="lanes">
+    <div class="col">
+      <div class="date">2026-08-28 <em>today · sealed</em></div>
+      <div class="card pass">
+        <div class="t">AR-A1.0</div>
+        <div class="h">Pre-register the five axes</div>
+        <div class="d">done: the pass cites this date and lists any post-hoc axis separately</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="date">on protocol landing <em>+3d · hard stop before any run</em></div>
+      <div class="card pass">
+        <div class="t">AR-A1.1–.5</div>
+        <div class="h">The five-axis adversarial pass</div>
+        <div class="d">done: each axis closes with a finding or an explicit "checked, clean". Silence = a failed pass</div>
+      </div>
+      <div class="card pass">
+        <div class="t">AR-A1.6 · +7d</div>
+        <div class="h">One revision round</div>
+        <div class="d">done: every finding marked resolved / accepted-in-writing / still-open, no re-argument</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="date">2026-09-01 <em>sweep 1</em></div>
+      <div class="card census">
+        <div class="t">AR-B1</div>
+        <div class="h">Guard census, 21 points</div>
+        <div class="d">done: three labels, named list, per-owner findings</div>
+      </div>
+      <div class="card census">
+        <div class="t">AR-B4</div>
+        <div class="h">Directory→layer map, first draft</div>
+        <div class="d">done: every top-level dir gets one layer or a published reason. Lands as a README §1 amendment — no new doc</div>
+      </div>
+      <div class="card census">
+        <div class="t">AR-B5</div>
+        <div class="h">AR-1 / AR-5 re-check</div>
+        <div class="d">done: re-checked and aged, never re-published</div>
+      </div>
+      <div class="card self">
+        <div class="t">AR-C1</div>
+        <div class="h">File the scope contradiction</div>
+        <div class="d">done: one row with both citations in decision-office-questions.md</div>
+      </div>
+      <div class="card self">
+        <div class="t">AR-B2</div>
+        <div class="h">Severity-ladder amendment</div>
+        <div class="d">done: a founder answer, either way</div>
+        <span class="reach">REACH · needs a decision</span>
+      </div>
+    </div>
+    <div class="col">
+      <div class="date">2026-09-15 <em>sweep 2</em></div>
+      <div class="card census">
+        <div class="t">AR-B3</div>
+        <div class="h">Seam-line watch — ADR 0035's eight items</div>
+        <div class="d">done: each item verified or contradicted against the path:line carrying its resolution. <b>Verification, not re-litigation</b> — ADR 0036 rightly rejected routing the fork here</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="date">2026-10-13 <em>42 days · binary</em></div>
+      <div class="card census">
+        <div class="t">escalation</div>
+        <div class="h">Guard-census findings become binaries</div>
+        <div class="d">fix it · or accept it in writing with an owner and a revisit date</div>
+      </div>
+      <div class="card self">
+        <div class="t">AR-C1</div>
+        <div class="h">Scope answer forced</div>
+        <div class="d">no third option, including silence</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="date">2026-11-24 <em>the merge trigger</em></div>
+      <div class="card self">
+        <div class="t">AR-C2</div>
+        <div class="h">Denominator ≥ 5, or file the merge</div>
+        <div class="d">done: the ratio published with at least five findings actually raised and dated — or this function files its own merge escalation to Decision Office</div>
+      </div>
+      <div class="card census">
+        <div class="t">AR-B3 · 11-28</div>
+        <div class="h">ADR 0036's failure test, first read</div>
+        <div class="d">done: one stated observable and a named reader — or its absence is filed</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 ─ SCOPE -->
+<section>
+  <div class="sechead">
+    <h2>§4.1 · Two documents disagree about what this function reviews</h2>
+    <span class="note">Shown as two differently-sized surfaces, because that is the actual disagreement.</span>
+  </div>
+  <div class="scope">
+    <div class="read">
+      <h3>Reading A — the charter</h3>
+      <div class="cite">architecture-review-charter §Mandate · "Platform, Applied AI, and Product"</div>
+      <div class="blocks">
+        <span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span>
+        <span class="u"></span><span class="u"></span><span class="u"></span><span class="u"></span><span class="u"></span><span class="u"></span><span class="u"></span><span class="u"></span><span class="u"></span><span class="u"></span><span class="u"></span><span class="u"></span>
+      </div>
+      <div class="cost"><b>9 of 21</b> department-level line units. Reviewable at a fortnightly
+        cadence — and it leaves <b>L4's methodology owner outside the mandate</b>, so the layer
+        stack is reviewed everywhere except at its metric spine.</div>
+    </div>
+    <div class="read">
+      <h3>Reading B — ORG_STRUCTURE §3, as it reads today</h3>
+      <div class="cite">foundation/ORG_STRUCTURE.md §3 · "All divisions" (+ a dated 2026-08-24 correction note)</div>
+      <div class="blocks">
+        <span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span><span class="u on"></span>
+      </div>
+      <div class="cost"><b>21 of 21</b> — every division. 100 units and 76 teams beneath them,
+        reviewed by a function with <b>no build capacity</b> and one human sweep a fortnight.</div>
+    </div>
+  </div>
+  <div class="verdictbar">
+    <b>Filed, not resolved.</b> Wave-3 rules forbid touching a charter, and a review function
+    that quietly re-scopes itself in its own agenda is doing exactly what it exists to catch.
+    Position offered to the founder: <b>§3 is right in principle and unaffordable in practice —
+    the honest form is "all divisions, on a published rotation, with the rotation itself
+    reported as a coverage number."</b> The call is the founder's either way.
+  </div>
+</section>
+
+<!-- 7 ─ SEAMS + NO-CARRY -->
+<section>
+  <div class="two">
+    <div class="box">
+      <h3>Seams — what leaves this unit, and to whom</h3>
+      <div class="seamrow"><span class="to">harness-runtime · aio</span><span class="what">The five-axis pass — before the first scored run</span></div>
+      <div class="seamrow"><span class="to">research-math</span><span class="what">Axis 5 only, if the grader is the author — ADR 0036's line, one exercise in</span></div>
+      <div class="seamrow"><span class="to">schema-migrations · engineering · security · compliance-privacy</span><span class="what">The guard census, split per guard owner — one finding per guard, <b>never one bulk complaint</b></span></div>
+      <div class="seamrow"><span class="to">decision-office</span><span class="what">The scope contradiction · the README §1 amendment · every 42-day escalation</span></div>
+      <div class="seamrow"><span class="to">client-surfaces</span><span class="what">AR-1's three remaining statements, each sweep until closed</span></div>
+      <div class="seamrow"><span class="to">red-team</span><span class="what">This agenda, as the attack surface the premortem invites: at day 60, what changed in the repo because any of it was written?</span></div>
+      <div class="seamrow"><span class="to">card layer's owners</span><span class="what"><b>An ask, not an act:</b> arch-census-scout is mechanical and all seven of its counts are greps, yet it is not in run_card.py's IMPLEMENTED set (8 of 102). This unit will not write it — a patch against scripts/ violates its first non-goal</span></div>
+    </div>
+    <div class="box">
+      <h3>Findings no card and no loop can carry</h3>
+      <ol class="nocarry">
+        <li><b>commit.touches_layer_boundary has no publisher</b>, and cannot get one until the
+          layer map lands. Until then the fortnightly sweep <i>is</i> the blind-spot bound — 14 days.</li>
+        <li><b>A finding landing in another unit's questions file notifies nobody.</b> 100 of 100
+          files exist; nothing pushes. Every close-time on this canvas assumes a reader who has
+          not been told they have mail.</li>
+        <li><b>This unit's own card reads quality_bar: NONE (gap).</b> So the function about to
+          grade a bake-off's verdict basis does not have one for its own output. Stated here
+          because it is true, and because Red Team would otherwise have to find it.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <h3>Provenance — every figure on this page is measured, none illustrative</h3>
+  <ul>
+    <li>.planning/00-index/cards.json — 102 cards / 100 units; 58 quality_bar "NONE (gap)"; 36·36·30 routing mix</li>
+    <li>scripts/agents/run_card.py:333-342 — 8 of 102 cards execute (IMPLEMENTED)</li>
+    <li>ls scripts/check_* — 21 guards; 9 contain an exit-2 / sys.exit(2) path</li>
+    <li>scripts/check_model_calls_logged.sh:20-35 — the NEVER VACUOUS rule, quoted verbatim</li>
+    <li>.github/workflows/ci.yml:87-103 (commitment-guardrail-sync) · :120 (model-call-ledger)</li>
+    <li>apps/web/src/hooks/queries/useSommelierQueries.ts:25-26, 42-43, 56 — the 3 live bypass statements</li>
+    <li>apps/api-gateway/src/common/model-client/model-client.service.ts:7 — the one remaining endpoint constant</li>
+    <li>apps/api-gateway/src/common/tenant/tenant.guard.ts:34-58 — AR-5's moved enforcement</li>
+    <li>find .planning -name "*-questions.md" — 100 (OD-41)</li>
+    <li>OPEN-DECISIONS.md:28 (OD-03) · :40 (OD-52's reframe) · ADR 0035 · ADR 0036 · ADR 0039</li>
+  </ul>
+  <div class="disc">Throwaway-grade thinking surface for
+    <b>architecture-review-agenda-full.md</b>, not a product surface. Deliberately an
+    instrument panel rather than the burgundy/glass direction in the sketch conventions —
+    that palette is for customer surfaces. <b>No roll-up number appears anywhere on this
+    page:</b> a green convergence figure must not be able to hide a diverged guardrail, and
+    on this canvas five improved rows sit next to one ratio that stayed at zero.</div>
+</footer>
+
+</div>
+</body>
+</html>

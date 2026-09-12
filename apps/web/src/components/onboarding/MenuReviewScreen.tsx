@@ -51,7 +51,7 @@ function EditableCell({ value, placeholder, onSave }: EditableCellProps) {
             setEditing(false)
           }
         }}
-        className="w-full px-2 py-1 rounded-lg border border-[#9E4249] focus:outline-none focus:ring-2 focus:ring-[#9E4249]/20 text-sm"
+        className="w-full px-2 py-1 rounded-lg border border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm"
       />
     )
   }
@@ -208,13 +208,13 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
                 value={newWineName}
                 onChange={(e) => setNewWineName(e.target.value)}
                 placeholder="Wine name *"
-                className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-[#9E4249] focus:outline-none focus:ring-2 focus:ring-[#9E4249]/20"
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20"
               />
               <input
                 value={newWineProducer}
                 onChange={(e) => setNewWineProducer(e.target.value)}
                 placeholder="Producer"
-                className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-[#9E4249] focus:outline-none focus:ring-2 focus:ring-[#9E4249]/20"
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20"
               />
             </div>
             {addError && <p className="text-xs text-red-600 mb-2">{addError}</p>}
@@ -223,7 +223,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
                 size="sm"
                 onClick={handleAddWine}
                 disabled={addingLoading}
-                className="bg-[#9E4249] hover:bg-[#B85055] text-white"
+                className="bg-[#1A5E6B] hover:bg-[#14515C] text-white"
               >
                 {addingLoading ? 'Adding...' : 'Add wine'}
               </Button>
@@ -236,7 +236,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
           <button
             type="button"
             onClick={() => setAddingRow(true)}
-            className="flex items-center gap-1.5 text-sm text-[#9E4249] hover:text-[#B85055] font-medium mb-6"
+            className="flex items-center gap-1.5 text-sm text-[#1A5E6B] hover:text-[#14515C] font-medium mb-6"
           >
             <Plus className="w-4 h-4" />
             Add a wine
@@ -247,7 +247,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
           <button onClick={onSkip} className="text-sm text-gray-400 hover:text-gray-600">
             Skip review
           </button>
-          <Button onClick={onConfirm} className="bg-[#9E4249] hover:bg-[#B85055] text-white">
+          <Button onClick={onConfirm} className="bg-[#1A5E6B] hover:bg-[#14515C] text-white">
             <Sparkles className="w-4 h-4 mr-1.5" />
             Looks good, continue
           </Button>

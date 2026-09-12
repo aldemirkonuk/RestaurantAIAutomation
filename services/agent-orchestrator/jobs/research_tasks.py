@@ -50,6 +50,7 @@ import json
 import logging
 import re
 import socket
+import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -89,7 +90,7 @@ from services.research_agent_helpers import (
     _cache_key_producer,
 )
 from services.serper_client import serper_search
-from services.spend_logger import get_spend_logger
+from services.spend_logger import estimate_llm_cost, get_spend_logger
 
 logger = logging.getLogger(__name__)
 
@@ -494,6 +495,7 @@ async def _extract_field_candidates(
             import anthropic
 
             client = anthropic.Anthropic(api_key=settings.claude_api_key)
+            _t0 = time.perf_counter()
             response = client.messages.create(
                 model=model_name,
                 max_tokens=1024,
@@ -521,6 +523,7 @@ async def _extract_field_candidates(
                     agent="research_agent",
                     task_type="field_extraction",
                     outcome="success",  # call-level: completion returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={"field": field_name, "model_tier": model_tier},
                 )
             except Exception:
@@ -553,6 +556,7 @@ async def _extract_field_candidates(
         flash_model = getattr(
             settings, "research_cascade_flash_model", "gemini-2.5-flash"
         )
+        _t0 = time.perf_counter()
         response = client.models.generate_content(
             model=flash_model,
             contents=prompt,
@@ -568,8 +572,14 @@ async def _extract_field_candidates(
         try:
             usage = getattr(response, "usage_metadata", None)
             in_tok = getattr(usage, "prompt_token_count", 0) or 0
-            out_tok = getattr(usage, "candidates_token_count", 0) or 0
-            cost = (in_tok * 0.075 / 1_000_000) + (out_tok * 0.30 / 1_000_000)
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            out_tok = (getattr(usage, "candidates_token_count", 0) or 0) + (
+                getattr(usage, "thoughts_token_count", 0) or 0
+            )
+            # Was an inline 0.075/0.30 literal — the retired gemini-2.0-flash rate,
+            # applied to whatever flash_model actually is. Route through the
+            # audited table so one correction fixes every site.
+            cost = estimate_llm_cost(flash_model, in_tok, out_tok)
             spend_logger.log(
                 provider="google",
                 model=flash_model,
@@ -579,6 +589,7 @@ async def _extract_field_candidates(
                 agent="research_agent",
                 task_type="field_extraction",
                 outcome="success",  # call-level: completion returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={"field": field_name, "model_tier": "flash"},
             )
         except Exception as spend_err:
@@ -725,6 +736,7 @@ async def _process_record(
 
         search_results: list = []
         search_ok = True
+        _t0 = time.perf_counter()
         try:
             search_results = await serper_search(query, num_results=5)
         except Exception as exc:
@@ -736,27 +748,49 @@ async def _process_record(
                 exc,
             )
 
-        try:
-            spend_logger.log(
-                provider="serper",
-                model="search",
-                input_tokens=0,
-                output_tokens=0,
-                cost_usd=serper_cost,
-                agent="research_agent",
-                task_type="field_search",
-                choice=f"search:{len(search_results)}_results",
-                outcome="success" if search_ok else "failure",  # call-level
-                context={
-                    "field": field_name,
-                    "wine_id": wine_id,
-                    "results_count": len(search_results),
-                },
-            )
-        except Exception as spend_err:
-            logger.debug("Serper spend log failed (non-fatal): %s", spend_err)
+        # OD-59 / P3.0 `results_parsed_v1`: what this search is worth is whether
+        # it produced snippets we could actually USE, and the PII filter below
+        # is part of that. The emit is deferred into a helper called at each
+        # exit so it fires exactly once and never gets lost on an early
+        # `continue` — the paid query must be recorded on every path.
+        _search_logged = False
+
+        def _log_field_search(outcome, detail: dict) -> None:
+            nonlocal _search_logged
+            if _search_logged:
+                return
+            _search_logged = True
+            try:
+                spend_logger.log(
+                    provider="serper",
+                    model="search",
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=serper_cost,
+                    agent="research_agent",
+                    task_type="field_search",
+                    choice=f"search:{len(search_results)}_results",
+                    outcome=outcome,
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    context={
+                        "outcome_basis": "results_parsed_v1",
+                        "field": field_name,
+                        "wine_id": wine_id,
+                        "results_count": len(search_results),
+                        **detail,
+                    },
+                )
+            except Exception as spend_err:
+                logger.debug("Serper spend log failed (non-fatal): %s", spend_err)
+
+        if not search_ok:
+            _log_field_search("failure", {"search_raised": True})
+            fields_unchanged += 1
+            continue
 
         if not search_results:
+            # null, not failure: no coverage and a bad query look identical here.
+            _log_field_search(None, {"untestable": "search_returned_no_results"})
             fields_unchanged += 1
             continue
 
@@ -771,8 +805,14 @@ async def _process_record(
             clean_snippets.append(sr)
 
         if not clean_snippets:
+            # `partial`, not `failure`: results DID come back and our own PII
+            # policy removed them. That is the policy working, not the search
+            # failing — but the query was still paid for and yielded nothing.
+            _log_field_search("partial", {"pii_blocked_all": True, "clean_snippets": 0})
             fields_unchanged += 1
             continue
+
+        _log_field_search("success", {"clean_snippets": len(clean_snippets)})
 
         if call_counter >= settings.research_max_calls_per_record:
             break
@@ -1022,6 +1062,7 @@ async def _process_record(
 
             search_results = []
             search_ok = True
+            _t0 = time.perf_counter()
             try:
                 search_results = await serper_search(query, num_results=5)
             except Exception:
@@ -1029,36 +1070,57 @@ async def _process_record(
 
             # P1: this Layer-3 Serper call was previously entirely unlogged —
             # money left the building with no api_spend row (dark site).
-            try:
-                spend_logger.log(
-                    provider="serper",
-                    model="search",
-                    input_tokens=0,
-                    output_tokens=0,
-                    cost_usd=settings.serper_cost_per_query,
-                    agent="research_agent",
-                    task_type="field_search_reflexion",
-                    choice=f"search:{len(search_results)}_results",
-                    outcome="success" if search_ok else "failure",  # call-level
-                    context={
-                        "field": field_name,
-                        "wine_id": wine_id,
-                        "attempt": attempt,
-                        "results_count": len(search_results),
-                    },
-                )
-            except Exception as spend_err:
-                logger.debug("Serper spend log failed (non-fatal): %s", spend_err)
+            #
+            # OD-59 / P3.0 `results_parsed_v1`: deferred to a once-guarded
+            # helper for the same reason as field_search — every `break` below
+            # is an exit the paid query must still be recorded on.
+            _reflexion_logged = False
+
+            def _log_reflexion(outcome, detail: dict) -> None:
+                nonlocal _reflexion_logged
+                if _reflexion_logged:
+                    return
+                _reflexion_logged = True
+                try:
+                    spend_logger.log(
+                        provider="serper",
+                        model="search",
+                        input_tokens=0,
+                        output_tokens=0,
+                        cost_usd=settings.serper_cost_per_query,
+                        agent="research_agent",
+                        task_type="field_search_reflexion",
+                        choice=f"search:{len(search_results)}_results",
+                        outcome=outcome,
+                        duration_ms=int((time.perf_counter() - _t0) * 1000),
+                        context={
+                            "outcome_basis": "results_parsed_v1",
+                            "field": field_name,
+                            "wine_id": wine_id,
+                            "attempt": attempt,
+                            "results_count": len(search_results),
+                            **detail,
+                        },
+                    )
+                except Exception as spend_err:
+                    logger.debug("Serper spend log failed (non-fatal): %s", spend_err)
 
             if not search_ok:
+                _log_reflexion("failure", {"search_raised": True})
                 break
 
             if not search_results:
+                _log_reflexion(None, {"untestable": "search_returned_no_results"})
                 break
 
             clean = [sr for sr in search_results if not _has_pii(sr.get("snippet", ""))]
             if not clean:
+                _log_reflexion(
+                    "partial", {"pii_blocked_all": True, "clean_snippets": 0}
+                )
                 break
+
+            _log_reflexion("success", {"clean_snippets": len(clean)})
 
             if call_counter >= settings.research_max_calls_per_record:
                 break
@@ -1329,7 +1391,15 @@ async def _check_daily_budget() -> bool:
             .gte("timestamp", today)
             .execute()
         )
-        total_today = sum(float(r.get("cost_usd", 0)) for r in (result.data or []))
+        # `or 0` not `, 0` — cost_usd is nullable since OD-61, and NULL means the
+        # model had no rate, not that the call was free. `.get("cost_usd", 0)`
+        # returns None for a present-but-NULL key, and float(None) raises
+        # TypeError straight into the fail-open handler below: a single unpriced
+        # call would have silently switched this budget gate OFF for the rest of
+        # the day. Unknown spend cannot be summed, so it is skipped — the same
+        # thing _get_monthly_spend and _preflight_cap_check do, and the same
+        # thing SUM() does in SQL.
+        total_today = sum(float(r.get("cost_usd") or 0) for r in (result.data or []))
         return total_today < settings.research_daily_budget_usd
     except Exception as exc:
         logger.warning("Budget check failed (fail-open): %s", exc)
@@ -1606,11 +1676,14 @@ def research_dispatch_batch_task(batch_size: Optional[int] = None) -> dict:
             .execute()
         )
         if (running.count or 0) > 0:
-            logger.info("research.dispatch_batch: a run is already in progress — skipping")
+            logger.info(
+                "research.dispatch_batch: a run is already in progress — skipping"
+            )
             return {"queued": 0, "skipped": "run_in_progress"}
     except Exception as exc:
         logger.warning(
-            "research.dispatch_batch: could not check running status (non-fatal): %s", exc
+            "research.dispatch_batch: could not check running status (non-fatal): %s",
+            exc,
         )
 
     limit = batch_size or settings.research_dispatch_batch_size
@@ -1642,10 +1715,14 @@ def research_dispatch_batch_task(batch_size: Optional[int] = None) -> dict:
     if errors:
         logger.error(
             "research.dispatch_batch: %d/%d dispatch(es) failed — first: %s",
-            len(errors), len(eligible), errors[0],
+            len(errors),
+            len(eligible),
+            errors[0],
         )
     logger.info(
-        "research.dispatch_batch: queued %d of %d eligible record(s)", queued, len(eligible)
+        "research.dispatch_batch: queued %d of %d eligible record(s)",
+        queued,
+        len(eligible),
     )
     return {"queued": queued, "eligible": len(eligible), "errors": len(errors)}
 

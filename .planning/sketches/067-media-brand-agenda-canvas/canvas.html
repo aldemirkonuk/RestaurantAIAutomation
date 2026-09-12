@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 067 · Media &amp; Brand — Agenda Canvas (2026-08-28)</title>
+<style>
+  :root{
+    --paper:#F7F4EF; --paper-2:#FFFDF9; --rule:#DCD4C8; --rule-2:#EAE3D8;
+    --ink:#1A1614; --ink-2:#4A423C; --ink-3:#847A70;
+    --m1:#9E4249;   /* Brand Identity */
+    --m2:#2F4858;   /* Narrative & Collateral */
+    --m3:#8A8578;   /* Social & Community — dormant */
+    --m4:#6B6A2F;   /* Customer Relationship Research */
+    --dept:#3E3A55; /* Department / warden */
+    --bad:#A6362F; --hold:#8A5A12;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);
+       font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .sheet{max-width:1440px;margin:0 auto;padding:28px 26px 56px}
+
+  /* ── header ─────────────────────────────────────────── */
+  header{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:6px}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;
+           text-transform:uppercase;color:var(--ink-3)}
+  h1{font-size:30px;line-height:1.1;margin:6px 0 4px;letter-spacing:-.02em;font-weight:650}
+  h1 span{color:var(--m1)}
+  .thesis{max-width:78ch;color:var(--ink-2);font-size:14.5px;margin:8px 0 0}
+  .thesis b{color:var(--ink)}
+
+  /* ── measured strip ─────────────────────────────────── */
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+         gap:1px;background:var(--rule);border:1px solid var(--rule);margin:18px 0 26px}
+  .tile{background:var(--paper-2);padding:12px 14px}
+  .tile .k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+           text-transform:uppercase;color:var(--ink-3)}
+  .tile .v{font-size:27px;font-weight:650;letter-spacing:-.02em;margin:5px 0 2px;
+           font-variant-numeric:tabular-nums}
+  .tile .d{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .tile .d.up{color:var(--bad);font-weight:600}
+  .tile.alarm{background:#FBF2F1}
+
+  /* ── section headings ───────────────────────────────── */
+  h2{font-size:12px;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;
+     color:var(--ink-2);margin:32px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--rule)}
+  h2 em{font-style:normal;color:var(--ink-3);text-transform:none;letter-spacing:0;
+        font-family:var(--sans);font-size:12.5px;float:right;font-weight:400}
+
+  /* ── timeline ───────────────────────────────────────── */
+  .timeline{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;align-items:start}
+  .col{min-width:0}
+  .colhead{border-top:2px solid var(--ink);padding:7px 0 9px}
+  .colhead .when{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.04em}
+  .colhead .sub{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:2px}
+  .colhead.gated{border-top-color:var(--hold)}
+  .colhead.gated .when{color:var(--hold)}
+  .colhead.recur{border-top-color:var(--ink-3)}
+
+  .card{background:var(--paper-2);border:1px solid var(--rule);border-left:4px solid var(--dept);
+        padding:9px 10px;margin-bottom:9px}
+  .card.m1{border-left-color:var(--m1)} .card.m2{border-left-color:var(--m2)}
+  .card.m3{border-left-color:var(--m3)} .card.m4{border-left-color:var(--m4)}
+  .card .id{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.05em}
+  .card.m1 .id{color:var(--m1)} .card.m2 .id{color:var(--m2)}
+  .card.m3 .id{color:var(--m3)} .card.m4 .id{color:var(--m4)}
+  .card.dept .id{color:var(--dept)}
+  .card .t{font-size:12.5px;font-weight:600;margin:3px 0 4px;line-height:1.28}
+  .card .done{font-size:11px;color:var(--ink-2);line-height:1.38}
+  .card .done b{color:var(--ink);font-weight:600}
+  .flag{display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;
+        text-transform:uppercase;padding:1px 5px;margin-top:6px;border:1px solid currentColor}
+  .flag.spine{color:var(--m1)} .flag.gate{color:var(--hold)}
+  .flag.asp{color:var(--ink-3)} .flag.cross{color:var(--m2)}
+  .card.spine{box-shadow:inset 0 0 0 1px var(--m1)}
+
+  /* ── legend ─────────────────────────────────────────── */
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 0;
+          font-family:var(--mono);font-size:10.5px;color:var(--ink-2)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .sw{width:11px;height:11px;display:inline-block}
+
+  /* ── two-column lower half ──────────────────────────── */
+  .lower{display:grid;grid-template-columns:1.15fr .85fr;gap:26px;align-items:start}
+  @media (max-width:1040px){.lower{grid-template-columns:1fr}}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
+     text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--rule);
+     padding:5px 8px 5px 0;vertical-align:bottom}
+  td{padding:7px 8px 7px 0;border-bottom:1px solid var(--rule-2);vertical-align:top;color:var(--ink-2)}
+  td.lock{color:var(--ink);font-weight:600;white-space:nowrap}
+  td.no{color:var(--bad)} td.yes{color:var(--m4)}
+  code{font-family:var(--mono);font-size:11px;background:#EFE9DF;padding:.5px 3.5px;
+       border-radius:2px;color:var(--ink)}
+
+  /* ── findings ───────────────────────────────────────── */
+  .find{border:1px solid var(--rule);border-top:3px solid var(--bad);
+        background:var(--paper-2);padding:11px 13px;margin-bottom:12px}
+  .find .h{font-size:12.5px;font-weight:650;margin-bottom:4px}
+  .find .b{font-size:11.5px;color:var(--ink-2);line-height:1.42}
+  .find .b code{font-size:10.5px}
+
+  footer{margin-top:34px;padding-top:12px;border-top:1px solid var(--rule);
+         font-family:var(--mono);font-size:10.5px;color:var(--ink-3);line-height:1.6}
+  footer b{color:var(--ink-2)}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <div class="eyebrow">Sketch 067 · Wave 3 · ADR 0039 Track B · Commercial → Media &amp; Brand</div>
+  <h1>Media &amp; Brand — first agenda, <span>2026-08-28</span></h1>
+  <p class="thesis">Eighteen tasks, four teams, one spine. The spine is the <b>brand-voice
+  guide</b>, because the visuals hold names it as its own release condition — <em>hold until
+  structure + brand exist</em>. The department's one measurable metric was re-measured today and
+  it has moved <b>away from</b> its target in four days, with zero guards. So the ratchet is
+  scheduled before the sweep.</p>
+</header>
+
+<div class="strip">
+  <div class="tile alarm">
+    <div class="k">Legacy name · shipped surfaces</div>
+    <div class="v">360</div>
+    <div class="d up">▲ +9 lines / +2 files since 08-24 &nbsp;·&nbsp; 195 files</div>
+  </div>
+  <div class="tile alarm">
+    <div class="k">Legacy domain · shipped surfaces</div>
+    <div class="v">39</div>
+    <div class="d up">▲ +6 lines / +2 files since 08-24 &nbsp;·&nbsp; 27 files</div>
+  </div>
+  <div class="tile">
+    <div class="k">Guards preventing growth</div>
+    <div class="v">0</div>
+    <div class="d">MB-4 lands one in week 1</div>
+  </div>
+  <div class="tile">
+    <div class="k">Skills owned by this dept</div>
+    <div class="v">0</div>
+    <div class="d">.claude/skills/ holds 4 — none ours</div>
+  </div>
+  <div class="tile">
+    <div class="k">Metrics measurable</div>
+    <div class="v">1 <span style="font-size:15px;color:var(--ink-3)">/ 4</span></div>
+    <div class="d">3 wait on units outside this one</div>
+  </div>
+</div>
+
+<h2>The eighteen, by close-time <em>colour = owning team · left rail = when it must have moved</em></h2>
+
+<div class="timeline">
+
+  <!-- 7d -->
+  <div class="col">
+    <div class="colhead"><div class="when">7 DAYS</div><div class="sub">2026-09-04</div></div>
+
+    <div class="card m1">
+      <div class="id">MB-3 · M1</div>
+      <div class="t">brand-surface-scan becomes a real skill</div>
+      <div class="done">Two counts, never one. A second run is byte-identical, and it
+      reproduces <b>360/195</b> and <b>39/27</b> exactly.</div>
+    </div>
+
+    <div class="card m1 spine">
+      <div class="id">MB-4 · M1</div>
+      <div class="t">brand-guard-ci — freeze the surface before renaming it</div>
+      <div class="done">A PR that adds one legacy string is <b>red</b>. Exits 2 when it cannot
+      check. Covers the regenerated <code>openapi.json</code>. Proven against a deliberate
+      regression.</div>
+      <span class="flag cross">cross-unit · engineering</span>
+    </div>
+
+    <div class="card m1">
+      <div class="id">MB-6 · M1</div>
+      <div class="t">Re-anchor the citations, then stop typing them</div>
+      <div class="done">The tier-1 table is <b>generated by MB-3</b>, not maintained by hand.
+      3 of 11 rows spot-checked today no longer resolve.</div>
+    </div>
+
+    <div class="card m4">
+      <div class="id">MB-14 · M4</div>
+      <div class="t">The consent columns are enforced by nothing</div>
+      <div class="done">Filed as a finding with a reproduction command. Closes when a code path
+      is named, or the gap is <b>accepted in writing</b> with an owner and a date.</div>
+      <span class="flag cross">cross-unit · compliance</span>
+    </div>
+  </div>
+
+  <!-- 10d -->
+  <div class="col">
+    <div class="colhead"><div class="when">10 DAYS</div><div class="sub">2026-09-07</div></div>
+
+    <div class="card m1 spine">
+      <div class="id">MB-2 · M1</div>
+      <div class="t">The naming spine — one row per outward name slot</div>
+      <div class="done">16 slots, each with a dated <code>path:line</code>, a class, an owner,
+      and a replacement or <b>DEFERRED — founder</b>. No slot unowned.</div>
+      <span class="flag spine">spine · gates MB-7</span>
+    </div>
+
+    <div class="card m1">
+      <div class="id">MB-5 · M1</div>
+      <div class="t">The tier model is wrong — five classes, not three</div>
+      <div class="done">Class 4 externally-held account identity; class 5 third-party
+      observability name. Each placed with an owner, or ruled out <b>in writing</b>.</div>
+      <span class="flag cross">escalation</span>
+    </div>
+
+    <div class="card m4">
+      <div class="id">MB-13 · M4</div>
+      <div class="t">Approval-register requirements → Compliance &amp; Privacy</div>
+      <div class="done">Requirements <b>on their gate</b>, never a schema we implement. Closes
+      when <code>research.register_exists</code> can return <b>false</b> instead of nothing.</div>
+    </div>
+
+    <div class="card m4">
+      <div class="id">MB-15 · M4</div>
+      <div class="t">The refusal rule, written before the first request</div>
+      <div class="done"><code>no register</code> is <b>terminal</b> — no warning, no soft pass,
+      no suggested alternative. Sales can read it and cannot argue with it.</div>
+    </div>
+  </div>
+
+  <!-- 14d -->
+  <div class="col">
+    <div class="colhead"><div class="when">14 DAYS</div><div class="sub">2026-09-11</div></div>
+
+    <div class="card m1 spine">
+      <div class="id">MB-1 · M1</div>
+      <div class="t">Brand voice guide v1, clause-numbered</div>
+      <div class="done">≥8 clauses with stable ids, so G3 rejects by <b>citing a clause</b>,
+      not a feeling. Scope stated on line one: published outward content, not this corpus.
+      Three shipped strings rewritten as worked examples.</div>
+      <span class="flag spine">the spine · unlocks a skill</span>
+    </div>
+
+    <div class="card m2">
+      <div class="id">MB-9 · M2</div>
+      <div class="t">Freeze the sentence; write the story, structure only</div>
+      <div class="done">Leads with <code>YC_WEDGE_PLAN.md:312</code> verbatim. Every number
+      carries a source line or is cut. <b>No visual treatment.</b></div>
+    </div>
+
+    <div class="card m2">
+      <div class="id">MB-10 · M2</div>
+      <div class="t">The claim ledger, built before there is anything to audit</div>
+      <div class="done">Every outward number: <code>verified</code> /
+      <code>we-asked-not-received</code> / <code>MISSING</code>. No blank rows. A
+      <b>PRICING — DEFERRED</b> row instead of a price.</div>
+    </div>
+
+    <div class="card dept">
+      <div class="id">MB-16 · DEPT</div>
+      <div class="t">First outward-surface inventory, run not described</div>
+      <div class="done">Every surface with <code>path:line</code> and an owning team, or the
+      class named <b>unenumerated</b>. A count without rows is a failed run.</div>
+    </div>
+  </div>
+
+  <!-- 21d -->
+  <div class="col">
+    <div class="colhead"><div class="when">21 DAYS</div><div class="sub">2026-09-18</div></div>
+
+    <div class="card m1">
+      <div class="id">MB-8 · M1</div>
+      <div class="t">Reference shortlist — verify or drop, adopt nothing</div>
+      <div class="done">12 entries → confirmed identity + a named need, or struck. <b>Zero
+      adoptions:</b> 6 of 12 are visual/motion tooling and are unadoptable under the hold.</div>
+      <span class="flag gate">lock-bounded</span>
+    </div>
+
+    <div class="card m2">
+      <div class="id">MB-11 · M2</div>
+      <div class="t">Demo script against the product that exists</div>
+      <div class="done">Every step cites a live route; anything unbuilt is marked
+      <b>NOT BUILT inside the script</b>. Whether it may be shown is not our call.</div>
+      <span class="flag asp">aspiration · pending a decision</span>
+    </div>
+
+    <div class="card dept">
+      <div class="id">MB-18 · DEPT</div>
+      <div class="t">brand.surface_added has no publisher</div>
+      <div class="done">Name a publisher, or <b>accept the gap in writing</b> with the quarterly
+      inventory as its stated bound. Both are closes. Silence is not.</div>
+    </div>
+  </div>
+
+  <!-- gated -->
+  <div class="col">
+    <div class="colhead gated"><div class="when">GATED</div><div class="sub">opens when MB-2 lands</div></div>
+
+    <div class="card m1">
+      <div class="id">MB-7 · M1</div>
+      <div class="t">Tier-1 in-product copy corrections, first slice</div>
+      <div class="done">Only rows MB-2 marked <b>decided</b>. <code>/privacy</code> first — the
+      page a person reads to decide whether to trust us names a company that no longer exists,
+      three times. Tier 3 untouched. The Expo slug untouched. The <code>SKILLS.md</code>
+      tombstone untouched — it is a historical quotation.</div>
+      <span class="flag gate">closes 2026-09-21 · copy, not visuals</span>
+    </div>
+
+    <div class="card m3">
+      <div class="id">— · M3</div>
+      <div class="t">Everything else in Social &amp; Community</div>
+      <div class="done">Dormant behind fork <b>CM-F6</b>. Entry trigger: the first long-form
+      article clears G3. Handle reservation stays a <b>question</b>, not a task — reserving for a
+      name MB-2 has not settled reserves the wrong one.</div>
+      <span class="flag gate">dormant by design</span>
+    </div>
+  </div>
+
+  <!-- recurring -->
+  <div class="col">
+    <div class="colhead recur"><div class="when">RECURRING</div><div class="sub">weekly · quarterly</div></div>
+
+    <div class="card m3">
+      <div class="id">MB-12 · M3</div>
+      <div class="t">The trigger watch runs. Nothing else runs.</div>
+      <div class="done">One line a week, dated, with an owner: has an article cleared G3?
+      Three weeks unrecorded means the <b>watch</b> is broken — and that is the report.</div>
+      <span class="flag gate">exempt from the 3-runs rule</span>
+    </div>
+
+    <div class="card dept">
+      <div class="id">MB-17 · DEPT</div>
+      <div class="t">"Not measurable" with a dependency, never "0"</div>
+      <div class="done">Three of four rows say <b>not measurable</b> and name what they wait on.
+      M1's row carries two numbers, never one. A reader can tell unmeasured from zero at a
+      glance.</div>
+    </div>
+
+    <div class="card dept">
+      <div class="id">MB-16 · DEPT</div>
+      <div class="t">Outward-surface inventory</div>
+      <div class="done">Quarterly thereafter. It is the loop that would have caught the missing
+      half — and on day one it found two classes the tier model has no room for.</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="legend">
+  <span><i class="sw" style="background:var(--m1)"></i> M1 Brand Identity</span>
+  <span><i class="sw" style="background:var(--m2)"></i> M2 Narrative &amp; Collateral</span>
+  <span><i class="sw" style="background:var(--m3)"></i> M3 Social &amp; Community (dormant)</span>
+  <span><i class="sw" style="background:var(--m4)"></i> M4 Customer Relationship Research</span>
+  <span><i class="sw" style="background:var(--dept)"></i> Department · mb-outward-warden</span>
+</div>
+
+<div class="lower">
+
+  <div>
+    <h2>Standing locks <em>what is forbidden, as legible as what is scheduled</em></h2>
+    <table>
+      <thead><tr><th style="width:23%">Lock</th><th style="width:38%">Forbids</th><th>Still permits</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="lock">Brand / landing<br>visuals — <b>HELD</b></td>
+          <td class="no">Commissioning any visual: wordmark, palette, type specimen, landing
+            page, Blender treatment. At any size.</td>
+          <td class="yes">Voice, identity, naming, tone-of-voice groundwork (MB-1, MB-2).
+            In-product <b>copy</b> corrections (MB-7).</td>
+        </tr>
+        <tr>
+          <td class="lock">Pricing model —<br><b>DEFERRED</b></td>
+          <td class="no">Any price in any outward artifact.</td>
+          <td class="yes">A visible <code>PRICING — DEFERRED</code> row in the claim ledger, so
+            the lock lives in the artifact rather than in memory.</td>
+        </tr>
+        <tr>
+          <td class="lock">Consent gate</td>
+          <td class="no">Any research touch. "It's public" is not an argument; the gate is the
+            register.</td>
+          <td class="yes">Writing requirements against the gate Compliance &amp; Privacy owns
+            (MB-13, MB-15) and filing MB-14's finding.</td>
+        </tr>
+        <tr>
+          <td class="lock">CM-F5 —<br>identifiers</td>
+          <td class="no">Workspace scopes, container names, deploy targets, the Expo slug
+            <code>wineops-ai</code>.</td>
+          <td class="yes">Handing Engineering the tier-3 list with the slug hazard written
+            down.</td>
+        </tr>
+        <tr>
+          <td class="lock">Rebrand posture</td>
+          <td class="no">Executing the sweep before the brand direction exists.</td>
+          <td class="yes">A ratchet that forbids the counts from <b>growing</b> — MB-4, pending
+            founder question 6.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Seams this agenda touches</h2>
+    <table>
+      <thead><tr><th style="width:30%">Unit</th><th>What crosses, and which way</th></tr></thead>
+      <tbody>
+        <tr><td class="lock">Platform → Engineering</td><td>MB-4's CI job · the tier-3 list and slug hazard · a destination for MB-5's two new classes. <b>Asks filed, not edits made.</b></td></tr>
+        <tr><td class="lock">Growth → Editorial Gate</td><td>MB-1's guide is the thing G3 enforces; M3's entry trigger is G3 clearing an article. <b>We define, they apply.</b></td></tr>
+        <tr><td class="lock">Compliance &amp; Privacy</td><td>MB-13's pack · MB-14's finding. <b>They own the mechanism; we state requirements.</b></td></tr>
+        <tr><td class="lock">Sales → Design-Partner Ops</td><td>The verified recovery number MB-10 may not state until their loop closes once. <b>Blocked on them, honestly.</b></td></tr>
+        <tr><td class="lock">Product → Guest Experience</td><td>MB-14's finding lands on guest consent enforcement. <b>Filed, not fixed.</b></td></tr>
+        <tr><td class="lock">Strategy &amp; Fundraising</td><td>Whether MB-11's demo may be shown at all. <b>Their decision.</b></td></tr>
+        <tr><td class="lock">Product → Design</td><td>The <code>AuthShell.tsx</code> seam: wordmark and sentence ours, form and states theirs. <b>Boundary, watched.</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h2>Found on 2026-08-28 <em>by re-measuring instead of carrying forward</em></h2>
+
+    <div class="find">
+      <div class="h">The burn-down is running backwards</div>
+      <div class="b">Name <b>351 → 360</b> lines, domain <b>33 → 39</b>, in four days, with
+      nobody editing brand strings on purpose. A surface with no ratchet does not hold still; it
+      accretes. This single fact reorders the agenda — <b>MB-4 before MB-7</b>.</div>
+    </div>
+
+    <div class="find">
+      <div class="h">The tier model has three tiers; the surface has five classes</div>
+      <div class="b"><b>Class 4 — externally-held account identity:</b>
+      <code>gmail-push@wineops.iam.gserviceaccount.com</code> and
+      <code>wineops.ai@gmail.com</code> name a Google Cloud project and a Gmail account.
+      Migrating them happens at Google, not here, and invalidates every credential minted
+      against them.<br><br>
+      <b>Class 5 — third-party observability identity:</b>
+      <code>service_name="wineops-agent-orchestrator"</code> is the name this company appears
+      under in a monitoring vendor's dashboard. Renaming it <b>forks the time series</b>; the
+      history does not follow the name.<br><br>
+      Neither is a display string, and neither is a workspace scope. The quarterly inventory
+      loop exists because "each scan searched for what it already knew about" — on day one, it
+      did that again, and this is the correction.</div>
+    </div>
+
+    <div class="find">
+      <div class="h">The consent record is enforced by nothing</div>
+      <div class="b"><code>consent_purpose</code>, <code>consent_captured_via</code> and
+      <code>consent_withdrawn_at</code> appear in <b>exactly one file</b> in the repository —
+      the migration that creates them. No code under <code>apps/</code> or
+      <code>services/</code> reads any of the three. The M4 card consumes "the consent gate
+      owned by privacy-engineering — called, never reimplemented": <b>it names a callee that
+      does not exist.</b> The premortem assumed the missing thing was the register. It is one
+      layer lower than that.</div>
+    </div>
+
+    <div class="find">
+      <div class="h">Citations rot in days, and one of them inverted</div>
+      <div class="b">Three of eleven tier-1 rows no longer resolve —
+      <code>gmail.service.ts:78→79</code>, <code>vendor-page-extractor:17→26</code>,
+      <code>push.ts:32→33</code>. Worse: a card cites "<code>PROJECT.md:101</code> — DEP-06,
+      still unchecked". <code>PROJECT.md</code> holds no <code>DEP-0</code> string at all;
+      DEP-06 lives at <code>07-reference/REQUIREMENTS.md:333</code> and is recorded
+      <b>checked</b>. The card names a blocker its own source says is cleared.</div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <b>Throwaway-grade.</b> A thinking surface for one agenda, not a product and not a template.
+  Source of truth is <code>media-brand-agenda-full.md</code>; if this canvas disagrees with it,
+  the canvas is stale.<br>
+  <b>Lock note.</b> This is an agenda diagram, not brand visual work. It reuses the repo's
+  existing burgundy and paper values rather than proposing any treatment — the brand and
+  landing visuals hold is untouched by this file.<br>
+  Counts, citations and the DEP-06 correction were measured against the working tree on
+  <b>2026-08-28</b>. No deployment was fetched and no external site was visited.
+</footer>
+
+</div>
+</body>
+</html>

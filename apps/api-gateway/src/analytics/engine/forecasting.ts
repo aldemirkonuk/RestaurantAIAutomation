@@ -29,12 +29,16 @@ import { mean } from "./statistics";
  * SES: forecast = α·actual + (1-α)·prevForecast. Good for level series with
  * no trend/seasonality. Returns the fitted series and an h-step-ahead flat
  * forecast (SES has no trend, so all future points equal the last level).
+ *
+ * `warmup` = 1: `fitted[0]` is the seed y₀ copied through, not a prediction.
+ * Every model here reports its own warmup so the number bounding the honesty
+ * window lives in the function that determines it (ADR 0064).
  */
 export function simpleExponentialSmoothing(
   series: number[],
   alpha: number,
   horizon = 1,
-): { fitted: number[]; forecast: number[] } | null {
+): { fitted: number[]; forecast: number[]; warmup: number } | null {
   if (series.length === 0 || alpha <= 0 || alpha > 1) return null;
   const fitted: number[] = [series[0]];
   for (let i = 1; i < series.length; i++) {
@@ -42,7 +46,7 @@ export function simpleExponentialSmoothing(
   }
   const level =
     alpha * series[series.length - 1] + (1 - alpha) * fitted[fitted.length - 1];
-  return { fitted, forecast: new Array(horizon).fill(level) };
+  return { fitted, forecast: new Array(horizon).fill(level), warmup: 1 };
 }
 
 // ---------------------------------------------------------------------------
@@ -54,6 +58,13 @@ export function simpleExponentialSmoothing(
  *   level_t = α·y_t + (1-α)·(level_{t-1} + trend_{t-1})
  *   trend_t = β·(level_t - level_{t-1}) + (1-β)·trend_{t-1}
  *   forecast_{t+h} = level_t + h·trend_t
+ *
+ * `fitted[i]` is the one-step-ahead ℓ_{t−1}+b_{t−1}. It used to be
+ * ℓ_{t−1}+b_t — the *updated* trend — which leaked y_t into its own
+ * prediction with coefficient α·β (ADR 0064).
+ *
+ * `warmup` = 2: level is seeded from y₀ and trend from y₁−y₀, so the first
+ * two points are consumed by seeding rather than predicted.
  */
 export function holtLinear(
   series: number[],
@@ -65,6 +76,7 @@ export function holtLinear(
   forecast: number[];
   level: number;
   trend: number;
+  warmup: number;
 } | null {
   if (series.length < 2 || alpha <= 0 || alpha > 1 || beta < 0 || beta > 1)
     return null;
@@ -73,13 +85,15 @@ export function holtLinear(
   const fitted: number[] = [series[0]];
   for (let i = 1; i < series.length; i++) {
     const prevLevel = level;
-    level = alpha * series[i] + (1 - alpha) * (prevLevel + trend);
-    trend = beta * (level - prevLevel) + (1 - beta) * trend;
-    fitted.push(prevLevel + trend);
+    const prevTrend = trend;
+    // Predict index i before absorbing series[i].
+    fitted.push(prevLevel + prevTrend);
+    level = alpha * series[i] + (1 - alpha) * (prevLevel + prevTrend);
+    trend = beta * (level - prevLevel) + (1 - beta) * prevTrend;
   }
   const forecast: number[] = [];
   for (let h = 1; h <= horizon; h++) forecast.push(level + h * trend);
-  return { fitted, forecast, level, trend };
+  return { fitted, forecast, level, trend, warmup: 2 };
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +105,17 @@ export function holtLinear(
  * seasonality on daily data). Seeds seasonal factors from the first full
  * cycle. Additive is the right choice when seasonal swings are roughly
  * constant in magnitude (a Friday adds ~N covers regardless of level).
+ *
+ * `fitted[i]` is the ONE-STEP-AHEAD prediction ℓ_{t−1}+b_{t−1}+s_{t−m} — it is
+ * computed before index i's observation is absorbed, so it is a function of
+ * series[0..i-1] only. See ADR 0064: it used to be pushed *after* the update
+ * and was therefore a function of series[i], which made every accuracy number
+ * scored against it optimistic by construction.
+ *
+ * `warmup` (= 2·period) is the seeding window. Level, trend and the initial
+ * seasonals are read off the first two seasons, so fitted values below that
+ * index are in-sample no matter how the recursion is written. Score accuracy
+ * on `fitted.slice(warmup)` against `series.slice(warmup)`.
  */
 export function holtWintersAdditive(
   series: number[],
@@ -103,6 +128,7 @@ export function holtWintersAdditive(
   level: number;
   trend: number;
   seasonals: number[];
+  warmup: number;
 } | null {
   const { alpha, beta, gamma } = params;
   if (
@@ -123,20 +149,20 @@ export function holtWintersAdditive(
 
   const fitted: number[] = [];
   for (let i = 0; i < series.length; i++) {
-    const s = seasonals[i % period];
-    if (i === 0) {
-      fitted.push(level + trend + s);
-      continue;
-    }
-    const prevLevel = level;
     const seasonalIdx = i % period;
+
+    // Predict index i FIRST, from state that has seen only series[0..i-1].
+    fitted.push(level + trend + seasonals[seasonalIdx]);
+
+    // Only then absorb series[i] into level / trend / seasonal.
+    const prevLevel = level;
+    const prevTrend = trend;
     level =
       alpha * (series[i] - seasonals[seasonalIdx]) +
-      (1 - alpha) * (prevLevel + trend);
-    trend = beta * (level - prevLevel) + (1 - beta) * trend;
+      (1 - alpha) * (prevLevel + prevTrend);
+    trend = beta * (level - prevLevel) + (1 - beta) * prevTrend;
     seasonals[seasonalIdx] =
       gamma * (series[i] - level) + (1 - gamma) * seasonals[seasonalIdx];
-    fitted.push(level + trend + seasonals[seasonalIdx]);
   }
 
   const forecast: number[] = [];
@@ -144,7 +170,7 @@ export function holtWintersAdditive(
     const s = seasonals[(series.length + h - 1) % period];
     forecast.push(level + h * trend + s);
   }
-  return { fitted, forecast, level, trend, seasonals };
+  return { fitted, forecast, level, trend, seasonals, warmup: 2 * period };
 }
 
 // ---------------------------------------------------------------------------
@@ -262,20 +288,35 @@ export function mape(actual: number[], predicted: number[]): number | null {
 
 /**
  * Mean Absolute Scaled Error — MAE of the forecast scaled by the MAE of the
- * in-sample seasonal-naive forecast. MASE < 1 means you beat the naive
- * benchmark; the scale-free metric to compare across SKUs.
+ * seasonal-naive forecast. MASE < 1 means you beat the naive benchmark; the
+ * scale-free metric to compare across SKUs.
+ *
+ * **Both windows must be the same window.** `from` bounds the naive
+ * denominator to the same indices the numerator scored: naive pairs are taken
+ * over t ∈ [max(from, period), trainingSeries.length). Leaving it at 0 scales
+ * a windowed numerator by a full-series denominator, which silently mixes
+ * scales — the caller's warmup exclusion then flatters the ratio wherever the
+ * excluded head is unusually volatile (an opening blitz) and punishes it
+ * wherever the head is unusually flat (leading zeros before a POS goes live).
+ * Measured on 400 simulated series of each shape, the mismatch moved MASE by
+ * a mean 4.5% / 6.6% and flipped the beats-naive verdict on 22 / 143 of them
+ * respectively (ADR 0064).
+ *
+ * `from` cannot pull the window earlier than `period`: a seasonal-naive pair
+ * needs `period` points of history, so indices below it have no benchmark.
  */
 export function mase(
   actual: number[],
   predicted: number[],
   trainingSeries: number[],
   period = 1,
+  from = 0,
 ): number | null {
   const forecastMae = mae(actual, predicted);
   if (forecastMae === null) return null;
   let naiveErr = 0;
   let count = 0;
-  for (let i = period; i < trainingSeries.length; i++) {
+  for (let i = Math.max(period, from); i < trainingSeries.length; i++) {
     naiveErr += Math.abs(trainingSeries[i] - trainingSeries[i - period]);
     count++;
   }

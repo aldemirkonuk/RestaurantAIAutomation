@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>080 · Mudavym — The Pass</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============ THE PASS — token layer ============ */
+:root{
+  /* dark = service mode (board base). Fire-tinted deep ink, never gray. */
+  --bg:#15100A; --raised:#1E1810; --overlay:#272016;
+  --line:rgba(246,240,230,.10); --line-strong:rgba(246,240,230,.20);
+  --ink:#F6F0E6; --ink-2:#CFC5B4; --ink-3:#998F7D; --ink-4:#665E4F;
+  --fire:#FF5A26; --fire-text:#FF7A4D; --fire-tint:rgba(255,90,38,.12);
+  --go:#4CC479; --go-tint:rgba(76,196,121,.12);
+  --hold:#F5A623; --hold-tint:rgba(245,166,35,.12);
+  --x86:#FF4D5E; --x86-tint:rgba(255,77,94,.12);
+  /* light = prep mode (used inside .lt panels) */
+  --lt-bg:#F7F4ED; --lt-raised:#FFFFFF; --lt-overlay:#EFEBE1; --lt-line:#E5DFD2;
+  --lt-ink:#171309; --lt-ink-2:#4C4535; --lt-ink-3:#807760; --lt-ink-4:#B0A78F;
+  --lt-fire:#E03A0E; --lt-fire-text:#C22F08; --lt-fire-tint:rgba(224,58,14,.09);
+  --lt-go:#177A45; --lt-go-tint:rgba(23,122,69,.10);
+  --lt-hold:#9A6400; --lt-hold-tint:rgba(245,166,35,.16);
+  --lt-x86:#BF1D2D; --lt-x86-tint:rgba(191,29,45,.10);
+  --sans:'Archivo',system-ui,-apple-system,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,monospace;
+  --settle:cubic-bezier(.16,1,.3,1); /* house CSS curve — fast out, long settle */
+  --r-data:4px; --r-touch:12px; --r-pill:999px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+main{max-width:1060px;margin:0 auto;padding:0 28px 120px}
+a{color:var(--fire-text)}
+/* type utilities */
+.kicker{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.kicker .num{color:var(--fire-text)}
+.micro{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-3)}
+.head{font-size:56px;line-height:1.02;font-weight:800;letter-spacing:-.03em}
+.sub{font-size:18px;line-height:1.5;font-weight:500;color:var(--ink-2);max-width:62ch}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+section{border-top:1px solid var(--line);padding:72px 0 64px}
+.shead{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:8px}
+.shead+.sub{margin-bottom:36px}
+/* hero */
+.hero{padding:96px 0 72px}
+.hero .call{font-size:clamp(72px,11vw,128px);line-height:.94;font-weight:900;letter-spacing:-.04em;text-transform:uppercase;margin:18px 0 26px}
+.hero .call em{font-style:normal;color:var(--fire)}
+.hero .rail{height:10px;background:var(--fire);border-radius:2px;width:132px;margin-bottom:8px;position:relative}
+.hero .rail::after{content:"";position:absolute;left:22px;top:10px;width:10px;height:12px;background:var(--fire);opacity:.55}
+/* cards / tiles */
+.grid{display:grid;gap:16px}
+.tile{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-touch);padding:22px}
+.lt{background:var(--lt-bg);color:var(--lt-ink);border-color:var(--lt-line)}
+.lt .kicker{color:var(--lt-ink-3)}
+.lt .micro{color:var(--lt-ink-3)}
+/* logos */
+.logo-grid{grid-template-columns:repeat(2,1fr)}
+.logo-tile{display:flex;align-items:center;justify-content:center;min-height:190px}
+.logo-cap{margin-top:14px}
+.logo-why{font-size:13px;font-weight:600;color:var(--ink-2);margin-top:6px;max-width:70ch}
+.concept{margin-bottom:44px}
+/* slogans */
+.slogan-row{display:grid;grid-template-columns:minmax(280px,1.1fr) 1fr;gap:8px 32px;padding:20px 0;border-top:1px solid var(--line);align-items:baseline}
+.slogan-row:first-of-type{border-top:none}
+.slogan{font-size:32px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.slogan .f{color:var(--fire)}
+.slogan-why{color:var(--ink-2);font-size:14px;font-weight:500}
+/* voice */
+.rules{grid-template-columns:repeat(2,1fr);margin-bottom:40px}
+.rule .n{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--fire-text)}
+.rule h4{font-size:18px;font-weight:800;letter-spacing:-.01em;margin:6px 0 4px}
+.rule p{font-size:13.5px;color:var(--ink-2)}
+.rw{grid-template-columns:1fr 1fr;gap:0 16px}
+.rw-pair{display:contents}
+.rw .before,.rw .after{padding:18px 20px;border-radius:var(--r-data);margin-bottom:12px}
+.rw .before{background:var(--overlay);color:var(--ink-3);border:1px solid var(--line)}
+.rw .after{background:var(--raised);border:1px solid var(--line-strong);font-weight:700;font-size:17px;letter-spacing:-.01em}
+.rw .tag{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;font-weight:600}
+.rw .before .tag{color:var(--ink-4)}
+.rw .after .tag{color:var(--fire-text)}
+/* palette */
+.pal{grid-template-columns:1fr 1fr;align-items:start}
+.pal-col{border-radius:var(--r-touch);border:1px solid var(--line);overflow:hidden}
+.pal-col .pal-head{padding:16px 20px;border-bottom:1px solid var(--line)}
+.sw{display:flex;align-items:center;gap:14px;padding:10px 20px;border-bottom:1px solid var(--line)}
+.sw:last-child{border-bottom:none}
+.chip{width:44px;height:32px;border-radius:6px;border:1px solid rgba(127,127,127,.25);flex:none}
+.sw b{font-size:13px;font-weight:700;min-width:118px}
+.sw code{font-family:var(--mono);font-size:11px;letter-spacing:.02em}
+.sw span{font-size:12px;margin-left:auto;text-align:right}
+.pal-dark{background:var(--raised)}
+.pal-dark .sw{border-color:var(--line)}
+.pal-dark .sw code{color:var(--ink-3)}
+.pal-dark .sw span{color:var(--ink-3)}
+.pal-light{background:var(--lt-bg);color:var(--lt-ink);border-color:var(--lt-line)}
+.pal-light .pal-head{border-color:var(--lt-line)}
+.pal-light .sw{border-color:var(--lt-line)}
+.pal-light .sw code{color:var(--lt-ink-3)}
+.pal-light .sw span{color:var(--lt-ink-3)}
+/* type */
+.spec{border:1px solid var(--line);border-radius:var(--r-touch);padding:8px 28px;background:var(--raised)}
+.spec-row{display:flex;align-items:baseline;gap:24px;padding:20px 0;border-bottom:1px solid var(--line)}
+.spec-row:last-child{border-bottom:none}
+.spec-meta{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--ink-3);min-width:210px;flex:none}
+.faces{grid-template-columns:1fr 1fr;margin-bottom:24px}
+.face h4{font-size:22px;font-weight:800;margin-bottom:4px}
+.face p{font-size:13px;color:var(--ink-2)}
+.face .mono-demo{font-family:var(--mono)}
+/* motion */
+.mo{grid-template-columns:repeat(3,1fr);align-items:stretch}
+.mo-demo{display:flex;flex-direction:column;gap:14px}
+.mo-demo .stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:150px;background:var(--overlay);border-radius:var(--r-data);border:1px solid var(--line);padding:18px}
+.mo-demo h4{font-size:16px;font-weight:800}
+.mo-demo .spec-line{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.04em}
+.mo-table{width:100%;border-collapse:collapse;margin:28px 0 40px;font-size:13px}
+.mo-table th{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);text-align:left;padding:10px 14px;border-bottom:1px solid var(--line-strong)}
+.mo-table td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+.mo-table td:first-child{font-family:var(--mono);font-weight:700;color:var(--fire-text)}
+.mo-table code{font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+/* toggle demo */
+.tgl{width:76px;height:44px;border-radius:var(--r-pill);background:var(--ink-4);border:none;cursor:pointer;position:relative;transition:background .18s var(--settle);flex:none}
+.tgl.on{background:var(--fire)}
+.tgl .thumb{position:absolute;top:5px;left:0;width:34px;height:34px;border-radius:50%;background:#fff;transform:translateX(5px);will-change:transform;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+/* row expand demo + orders row */
+.xrow{width:100%;background:var(--raised);border:1px solid var(--line);border-radius:var(--r-data);overflow:hidden;text-align:left}
+.xrow .rhead{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;background:none;border:none;color:inherit;font:inherit;width:100%;text-align:left}
+.xrow .rhead:active{transform:scale(.99)}
+.xrow .chev{margin-left:auto;transition:transform .2s var(--settle);color:var(--ink-3);flex:none}
+.xrow.open .chev{transform:rotate(90deg)}
+.xrow .rbody{height:0;overflow:hidden;will-change:height}
+.xrow .rbody-in{padding:4px 16px 16px;border-top:1px solid var(--line)}
+/* ticker demo */
+.tick-num{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:44px;font-weight:700;letter-spacing:-.02em}
+.btn{font:inherit;font-weight:800;letter-spacing:-.01em;background:var(--fire);color:#fff;border:none;border-radius:var(--r-touch);padding:12px 22px;cursor:pointer;transition:transform .12s var(--settle),filter .12s var(--settle)}
+.btn:hover{filter:brightness(1.07)}
+.btn:active{transform:scale(.965)}
+.btn.ghost{background:var(--overlay);color:var(--ink);border:1px solid var(--line-strong)}
+/* screens */
+.screen{border-radius:16px;border:1px solid var(--line);overflow:hidden;margin-bottom:36px}
+.screen .bar{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--overlay)}
+.screen .bar i{width:9px;height:9px;border-radius:50%;background:var(--ink-4);display:block}
+.screen .bar .micro{margin-left:8px}
+.scr-body{padding:32px 32px 36px}
+.dash{background:var(--bg)}
+.dash .greet{font-size:clamp(40px,6vw,64px);font-weight:900;letter-spacing:-.035em;line-height:1;margin:10px 0 30px}
+.dash .greet .f{color:var(--fire)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+.kpi{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-data);padding:16px 16px 14px}
+.kpi .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:40px;font-weight:700;letter-spacing:-.02em;line-height:1.05;margin-top:10px}
+.kpi.warn .v{color:var(--hold)}
+.kpi.bad .v{color:var(--x86)}
+.kpi .d{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:6px;letter-spacing:.04em}
+.onetap{background:var(--raised);border:1px solid var(--line-strong);border-left:4px solid var(--fire);border-radius:var(--r-data);padding:20px 22px;display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.onetap h3{font-size:24px;font-weight:800;letter-spacing:-.02em;margin:4px 0 2px}
+.onetap .meta{font-size:13.5px;color:var(--ink-2)}
+.hold-btn{position:relative;overflow:hidden;font:inherit;font-weight:800;background:var(--fire);color:#fff;border:none;border-radius:var(--r-touch);padding:16px 28px;font-size:17px;cursor:pointer;margin-left:auto;user-select:none;-webkit-user-select:none;touch-action:none;min-width:210px}
+.hold-btn .fill{position:absolute;inset:0;background:rgba(0,0,0,.28);transform-origin:left;transform:scaleX(0)}
+.hold-btn .lbl{position:relative}
+.hold-btn.done{background:var(--go);color:#08130C}
+.hold-hint{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ink-3);margin-top:8px;text-align:right}
+/* orders screen (light) */
+.orders{background:var(--lt-bg);color:var(--lt-ink)}
+.orders .bar{background:var(--lt-overlay);border-color:var(--lt-line)}
+.orders .bar i{background:var(--lt-ink-4)}
+.orders .xrow{background:var(--lt-raised);border-color:var(--lt-line)}
+.orders .xrow .rbody-in{border-color:var(--lt-line)}
+.orders .xrow .chev{color:var(--lt-ink-3)}
+.po{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.02em}
+.vend{font-weight:800;font-size:16px;letter-spacing:-.01em}
+.omet{font-size:13px;color:var(--lt-ink-2)}
+.pill{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:5px 10px;border-radius:var(--r-pill);white-space:nowrap}
+.pill.transit{background:var(--lt-overlay);color:var(--lt-ink-2);border:1px solid var(--lt-line)}
+.pill.ai{background:var(--lt-fire-tint);color:var(--lt-fire-text);border:1px solid rgba(224,58,14,.25)}
+.thread{border-left:3px solid var(--lt-line);padding:2px 0 2px 14px;margin:12px 0}
+.thread .who{font-family:var(--mono);font-size:10.5px;color:var(--lt-ink-3);letter-spacing:.06em;text-transform:uppercase}
+.thread p{font-size:13.5px;color:var(--lt-ink-2);margin-top:2px}
+.orders .btn{background:var(--lt-fire)}
+.orders .btn.ghost{background:var(--lt-overlay);color:var(--lt-ink);border:1px solid var(--lt-line)}
+.foot{border-top:1px solid var(--line);padding-top:28px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+@media (max-width:860px){
+  .logo-grid,.rules,.pal,.rw,.faces{grid-template-columns:1fr}
+  .mo{grid-template-columns:1fr}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .slogan-row{grid-template-columns:1fr}
+  .head{font-size:40px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:.01ms!important;animation:none!important}
+}
+</style>
+</head>
+<body>
+<main>
+
+<!-- ================= HERO ================= -->
+<header class="hero">
+  <div class="rail" aria-hidden="true"></div>
+  <p class="kicker"><span class="num">080</span> · Mudavym brand direction · OD-106 · one of five</p>
+  <h1 class="call">The <em>Pass.</em></h1>
+  <p class="sub">Named for the rail where the expo calls the order and the whole kitchen answers.
+  Display type you can read at arm's length, one verb per action, springs that arrive fast and
+  settle faster. High energy without chaos — <strong>Mudavym as the calm loud voice that runs service.</strong></p>
+</header>
+
+<!-- ================= 01 LOGO ================= -->
+<section id="logo">
+  <div class="shead"><p class="kicker"><span class="num">01</span> — Logo</p></div>
+  <h2 class="head">Three marks off the rail.</h2>
+  <p class="sub">All three set in Archivo 900. The V is the tick — the approve gesture hiding inside the name.</p>
+
+  <div class="concept">
+    <div class="grid logo-grid">
+      <div class="tile logo-tile">
+        <svg viewBox="0 0 560 150" width="420" role="img" aria-label="Mudavym wordmark, rail concept, dark">
+          <rect x="12" y="10" width="536" height="12" rx="2" fill="var(--ink)"/>
+          <rect x="52" y="22" width="12" height="16" fill="var(--fire)"/>
+          <rect x="300" y="22" width="12" height="16" fill="var(--fire)"/>
+          <text x="12" y="122" font-family="Archivo" font-weight="900" font-size="82" letter-spacing="-3" fill="var(--ink)">MUDA<tspan fill="var(--fire)">V</tspan>YM</text>
+        </svg>
+      </div>
+      <div class="tile logo-tile lt">
+        <svg viewBox="0 0 560 150" width="420" role="img" aria-label="Mudavym wordmark, rail concept, light">
+          <rect x="12" y="10" width="536" height="12" rx="2" fill="var(--lt-ink)"/>
+          <rect x="52" y="22" width="12" height="16" fill="var(--lt-fire)"/>
+          <rect x="300" y="22" width="12" height="16" fill="var(--lt-fire)"/>
+          <text x="12" y="122" font-family="Archivo" font-weight="900" font-size="82" letter-spacing="-3" fill="var(--lt-ink)">MUDA<tspan fill="var(--lt-fire)">V</tspan>YM</text>
+        </svg>
+      </div>
+    </div>
+    <p class="kicker logo-cap">A — The Rail</p>
+    <p class="logo-why">Primary lockup. The heavy rule is the pass rail; the two nubs are clipped tickets. The fire V doubles as a checkmark — every approval re-draws the logo.</p>
+  </div>
+
+  <div class="concept">
+    <div class="grid logo-grid">
+      <div class="tile logo-tile">
+        <svg viewBox="0 0 460 120" width="360" role="img" aria-label="Mudavym chit mark, dark">
+          <rect x="8" y="8" width="76" height="11" rx="2" fill="var(--ink)"/>
+          <rect x="38" y="14" width="14" height="16" fill="var(--ink)" opacity=".55"/>
+          <path d="M20,26 h52 v56 l-6.5,8 -6.5,-8 -6.5,8 -6.5,-8 -6.5,8 -6.5,-8 -6.5,8 -6.5,-8 z" fill="var(--fire)"/>
+          <text x="31" y="72" font-family="Archivo" font-weight="900" font-size="42" fill="#15100A">M</text>
+          <text x="112" y="84" font-family="Archivo" font-weight="900" font-size="56" letter-spacing="-1.5" fill="var(--ink)">Mudavym</text>
+        </svg>
+      </div>
+      <div class="tile logo-tile lt">
+        <svg viewBox="0 0 460 120" width="360" role="img" aria-label="Mudavym chit mark, light">
+          <rect x="8" y="8" width="76" height="11" rx="2" fill="var(--lt-ink)"/>
+          <rect x="38" y="14" width="14" height="16" fill="var(--lt-ink)" opacity=".55"/>
+          <path d="M20,26 h52 v56 l-6.5,8 -6.5,-8 -6.5,8 -6.5,-8 -6.5,8 -6.5,-8 -6.5,8 -6.5,-8 z" fill="var(--lt-fire)"/>
+          <text x="31" y="72" font-family="Archivo" font-weight="900" font-size="42" fill="#FFFFFF">M</text>
+          <text x="112" y="84" font-family="Archivo" font-weight="900" font-size="56" letter-spacing="-1.5" fill="var(--lt-ink)">Mudavym</text>
+        </svg>
+      </div>
+    </div>
+    <p class="kicker logo-cap">B — The Chit</p>
+    <p class="logo-why">App icon + favicon candidate. An order ticket clipped to the rail, serrated where it tears. The M sits on the chit the way an order sits on the line: visible, owned, in progress.</p>
+  </div>
+
+  <div class="concept">
+    <div class="grid logo-grid">
+      <div class="tile logo-tile">
+        <svg viewBox="0 0 470 120" width="360" role="img" aria-label="Mudavym expo stamp, dark">
+          <g transform="rotate(-5 55 62)">
+            <rect x="14" y="22" width="82" height="82" rx="16" fill="none" stroke="var(--fire)" stroke-width="6"/>
+            <text x="34" y="88" font-family="Archivo" font-weight="900" font-size="52" fill="var(--fire)">M</text>
+          </g>
+          <text x="122" y="76" font-family="Archivo" font-weight="800" font-size="44" letter-spacing="-1" fill="var(--ink)">mudavym</text>
+          <text x="124" y="100" font-family="JetBrains Mono" font-weight="700" font-size="12" letter-spacing="4" fill="var(--ink-3)">SEEN · CALLED · SENT</text>
+        </svg>
+      </div>
+      <div class="tile logo-tile lt">
+        <svg viewBox="0 0 470 120" width="360" role="img" aria-label="Mudavym expo stamp, light">
+          <g transform="rotate(-5 55 62)">
+            <rect x="14" y="22" width="82" height="82" rx="16" fill="none" stroke="var(--lt-fire)" stroke-width="6"/>
+            <text x="34" y="88" font-family="Archivo" font-weight="900" font-size="52" fill="var(--lt-fire)">M</text>
+          </g>
+          <text x="122" y="76" font-family="Archivo" font-weight="800" font-size="44" letter-spacing="-1" fill="var(--lt-ink)">mudavym</text>
+          <text x="124" y="100" font-family="JetBrains Mono" font-weight="700" font-size="12" letter-spacing="4" fill="var(--lt-ink-3)">SEEN · CALLED · SENT</text>
+        </svg>
+      </div>
+    </div>
+    <p class="kicker logo-cap">C — The Stamp</p>
+    <p class="logo-why">The expo's "seen" stamp, tilted like it was slammed by hand. Softest lockup of the three (lowercase, mono strapline) — for invoices, vendor emails, places the brand signs its work.</p>
+  </div>
+</section>
+
+<!-- ================= 02 SLOGANS ================= -->
+<section id="slogans">
+  <div class="shead"><p class="kicker"><span class="num">02</span> — Slogans</p></div>
+  <h2 class="head">Say it once. Loud.</h2>
+  <p class="sub">Six candidates. Structures borrowed from the reference set: verb-first deadpan, balanced antithesis, and "Name. Category claim."</p>
+
+  <div class="slogan-row"><p class="slogan">Runs the pass<span class="f">.</span></p><p class="slogan-why">Three words that claim the operational center of every restaurant. Deadpan, verb-first — the brand never praises itself.</p></div>
+  <div class="slogan-row"><p class="slogan">Call it. Done<span class="f">.</span></p><p class="slogan-why">The expo call-and-response compressed to four syllables. Mirrors the product loop exactly: one tap to approve, Mudavym executes.</p></div>
+  <div class="slogan-row"><p class="slogan">Less chaos, more service<span class="f">.</span></p><p class="slogan-why">Balanced-antithesis structure. Names the enemy (chaos) and the customer promise (service) in six syllables.</p></div>
+  <div class="slogan-row"><p class="slogan">The loudest calm in your kitchen<span class="f">.</span></p><p class="slogan-why">States the brand paradox outright — expo-line energy with expo-line discipline. The line people repeat back.</p></div>
+  <div class="slogan-row"><p class="slogan">Fire when ready<span class="f">.</span></p><p class="slogan-why">Kitchen verb doubling as permission language. Fits the approve-gated AI: nothing fires until the operator says fire.</p></div>
+  <div class="slogan-row"><p class="slogan">Mudavym. Your restaurant, expedited<span class="f">.</span></p><p class="slogan-why">"Name. Category claim." long-form for the website hero. The expo/expedite pun does the brand story in one word.</p></div>
+</section>
+
+<!-- ================= 03 VOICE ================= -->
+<section id="voice">
+  <div class="shead"><p class="kicker"><span class="num">03</span> — Voice</p></div>
+  <h2 class="head">One verb per call.</h2>
+  <p class="sub">The expo doesn't narrate. Eight rules, then the required rewrites.</p>
+
+  <div class="grid rules">
+    <div class="tile rule"><span class="n">R1</span><h4>Lead with the verb. Then stop.</h4><p>"Approve." "Count." "Send." A period is a full instruction. Buttons are one word wherever the object is already on screen.</p></div>
+    <div class="tile rule"><span class="n">R2</span><h4>Numbers before nouns.</h4><p>"7 low. 3 pending." The operator scans quantities first; the noun is confirmation, not headline.</p></div>
+    <div class="tile rule"><span class="n">R3</span><h4>One line per call.</h4><p>No subordinate clauses on action surfaces. If a sentence needs a comma, it's two calls — split it.</p></div>
+    <div class="tile rule"><span class="n">R4</span><h4>Say the next action, not the system state.</h4><p>Empty states point at the door, not the void. Never "No data available" — always what to do about it.</p></div>
+    <div class="tile rule"><span class="n">R5</span><h4>Shout once per screen.</h4><p>One imperative per card, everything else stands down. Two shouts on one surface is chaos, and chaos is the enemy.</p></div>
+    <div class="tile rule"><span class="n">R6</span><h4>Confirm in the past tense.</h4><p>"Approved." "Sent." "Counted." The kitchen answers the call back — every action echoes its own verb, completed.</p></div>
+    <div class="tile rule"><span class="n">R7</span><h4>Time is short and relative.</h4><p>"2m ago." "Tonight." "By Fri." Timestamps in full only inside documents and audit trails.</p></div>
+    <div class="tile rule"><span class="n">R8</span><h4>Destruction gets the full sentence.</h4><p>The one place the voice slows down. Irreversible actions are spelled out in complete, unhurried sentences — no verb-slamming near the edge.</p></div>
+  </div>
+
+  <div class="grid rw">
+    <div class="rw-pair">
+      <div class="before"><span class="tag">Before</span>Draft, approve, and track purchase orders through delivery</div>
+      <div class="after"><span class="tag">The Pass · R1 R3</span>Draft it. Approve it. Track it to the door.</div>
+    </div>
+    <div class="rw-pair">
+      <div class="before"><span class="tag">Before</span>Alerts that need a decision, oldest first</div>
+      <div class="after"><span class="tag">The Pass · R1 R2</span>Needs a call. Oldest first.</div>
+    </div>
+    <div class="rw-pair">
+      <div class="before"><span class="tag">Before</span>No checks yet — close an order from the terminal</div>
+      <div class="after"><span class="tag">The Pass · R4</span>No checks yet. Close one from the terminal.</div>
+    </div>
+    <div class="rw-pair">
+      <div class="before"><span class="tag">Before</span>No comparable data</div>
+      <div class="after"><span class="tag">The Pass · R4</span>Nothing to compare — yet. Two weeks of service fixes that.</div>
+    </div>
+    <div class="rw-pair">
+      <div class="before"><span class="tag">Before</span>Permanently delete your Mudavym account.</div>
+      <div class="after"><span class="tag">The Pass · R8 — the voice slows down</span>This deletes your Mudavym account and everything in it — orders, counts, vendor threads. There is no undo.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 04 PALETTE ================= -->
+<section id="palette">
+  <div class="shead"><p class="kicker"><span class="num">04</span> — Palette</p></div>
+  <h2 class="head">Stainless, ticket paper, one flame.</h2>
+  <p class="sub">Neutrals do 95% of the work; Fire is the only voice allowed to shout. Status hues are kitchen calls — Go, Hold, 86 — and every hue ships with its ~10–12% alpha tint twin so state color never sits raw on the page. Dark mode is fire-tinted ink, not gray.</p>
+
+  <div class="grid pal">
+    <div class="pal-col pal-dark">
+      <div class="pal-head"><p class="kicker">Service mode — dark (default)</p></div>
+      <div class="sw"><span class="chip" style="background:#15100A"></span><b>--bg</b><code>#15100A</code><span>page — near-black tinted toward Fire</span></div>
+      <div class="sw"><span class="chip" style="background:#1E1810"></span><b>--raised</b><code>#1E1810</code><span>cards, rows</span></div>
+      <div class="sw"><span class="chip" style="background:#272016"></span><b>--overlay</b><code>#272016</code><span>wells, inputs, chips</span></div>
+      <div class="sw"><span class="chip" style="background:rgba(246,240,230,.10)"></span><b>--line</b><code>rgba(246,240,230,.10)</code><span>hairline rules</span></div>
+      <div class="sw"><span class="chip" style="background:#F6F0E6"></span><b>--ink</b><code>#F6F0E6</code><span>text 1 of 4-step ladder</span></div>
+      <div class="sw"><span class="chip" style="background:#CFC5B4"></span><b>--ink-2</b><code>#CFC5B4</code><span>secondary text</span></div>
+      <div class="sw"><span class="chip" style="background:#998F7D"></span><b>--ink-3</b><code>#998F7D</code><span>kickers, meta</span></div>
+      <div class="sw"><span class="chip" style="background:#665E4F"></span><b>--ink-4</b><code>#665E4F</code><span>disabled, ghost</span></div>
+      <div class="sw"><span class="chip" style="background:#FF5A26"></span><b>--fire</b><code>#FF5A26</code><span>the call — primary action</span></div>
+      <div class="sw"><span class="chip" style="background:rgba(255,90,38,.12)"></span><b>--fire-tint</b><code>@ 12%</code><span>fire surfaces, AI chips</span></div>
+      <div class="sw"><span class="chip" style="background:#4CC479"></span><b>--go</b><code>#4CC479</code><span>success — "walking"</span></div>
+      <div class="sw"><span class="chip" style="background:#F5A623"></span><b>--hold</b><code>#F5A623</code><span>warning — "on hold"</span></div>
+      <div class="sw"><span class="chip" style="background:#FF4D5E"></span><b>--x86</b><code>#FF4D5E</code><span>danger — "86'd"</span></div>
+    </div>
+    <div class="pal-col pal-light">
+      <div class="pal-head"><p class="kicker">Prep mode — light</p></div>
+      <div class="sw"><span class="chip" style="background:#F7F4ED"></span><b>--bg</b><code>#F7F4ED</code><span>page — warm ticket paper</span></div>
+      <div class="sw"><span class="chip" style="background:#FFFFFF"></span><b>--raised</b><code>#FFFFFF</code><span>cards, rows</span></div>
+      <div class="sw"><span class="chip" style="background:#EFEBE1"></span><b>--overlay</b><code>#EFEBE1</code><span>wells, inputs, chips</span></div>
+      <div class="sw"><span class="chip" style="background:#E5DFD2"></span><b>--line</b><code>#E5DFD2</code><span>hairline rules</span></div>
+      <div class="sw"><span class="chip" style="background:#171309"></span><b>--ink</b><code>#171309</code><span>text 1 of 4-step ladder</span></div>
+      <div class="sw"><span class="chip" style="background:#4C4535"></span><b>--ink-2</b><code>#4C4535</code><span>secondary text</span></div>
+      <div class="sw"><span class="chip" style="background:#807760"></span><b>--ink-3</b><code>#807760</code><span>kickers, meta</span></div>
+      <div class="sw"><span class="chip" style="background:#B0A78F"></span><b>--ink-4</b><code>#B0A78F</code><span>disabled, ghost</span></div>
+      <div class="sw"><span class="chip" style="background:#E03A0E"></span><b>--fire</b><code>#E03A0E</code><span>the call — primary action</span></div>
+      <div class="sw"><span class="chip" style="background:rgba(224,58,14,.09)"></span><b>--fire-tint</b><code>@ 9%</code><span>fire surfaces, AI chips</span></div>
+      <div class="sw"><span class="chip" style="background:#177A45"></span><b>--go</b><code>#177A45</code><span>success — "walking"</span></div>
+      <div class="sw"><span class="chip" style="background:#9A6400"></span><b>--hold</b><code>#9A6400</code><span>warning text (chip bg = amber @16%)</span></div>
+      <div class="sw"><span class="chip" style="background:#BF1D2D"></span><b>--x86</b><code>#BF1D2D</code><span>danger — "86'd"</span></div>
+    </div>
+  </div>
+  <p class="micro" style="margin-top:16px">Rules: one accent on screen at a time · charts draw in the ink ladder, chroma appears only where meaning does (the anomaly, the alert, the one line that matters) · radius 4px on data surfaces, 12px on touch targets, pill on chips.</p>
+</section>
+
+<!-- ================= 05 TYPE ================= -->
+<section id="type">
+  <div class="shead"><p class="kicker"><span class="num">05</span> — Type</p></div>
+  <h2 class="head">128 shouts, 11 whispers.</h2>
+  <p class="sub">Two faces only. Archivo (500–900) is the voice — one grotesque stretched from 128px calls down to 13px labels. JetBrains Mono is the machine — every number, code, timestamp and kicker, always tabular. The ~12:1 hero-to-kicker ratio IS the layout.</p>
+
+  <div class="grid faces">
+    <div class="tile face"><h4 style="font-weight:900">Archivo — the expo</h4><p>Google Fonts, variable 100–900. We use 500 body · 700 emphasis · 800 heads · 900 display. Tracking tightens as size grows: −.01em at 18px → −.04em at 128px.</p></div>
+    <div class="tile face"><h4 class="mono-demo" style="font-weight:700">JetBrains Mono — the ticket</h4><p>Google Fonts. 400–700, tabular-nums always on. Owns kickers (11px, +.14em, uppercase), PO codes, KPI figures, kbd hints, timestamps. Numbers never render in Archivo.</p></div>
+  </div>
+
+  <div class="spec">
+    <div class="spec-row"><span class="spec-meta">pass/call · 128px · 900 · −.04em · lh .94</span><span style="font-size:clamp(56px,9vw,128px);font-weight:900;letter-spacing:-.04em;line-height:.94;text-transform:uppercase">Fire.</span></div>
+    <div class="spec-row"><span class="spec-meta">pass/shout · 88px · 900 · −.035em</span><span style="font-size:clamp(44px,7vw,88px);font-weight:900;letter-spacing:-.035em;line-height:.96">86'd: oysters</span></div>
+    <div class="spec-row"><span class="spec-meta">pass/head · 56px · 800 · −.03em</span><span style="font-size:56px;font-weight:800;letter-spacing:-.03em;line-height:1.02">Orders in flight</span></div>
+    <div class="spec-row"><span class="spec-meta">pass/sub · 32px · 700 · −.02em</span><span style="font-size:32px;font-weight:700;letter-spacing:-.02em">Approve Rioja reorder</span></div>
+    <div class="spec-row"><span class="spec-meta">pass/num-xl · 64px mono · 700 · tabular</span><span class="mono" style="font-size:64px;font-weight:700;letter-spacing:-.02em">$4,280</span></div>
+    <div class="spec-row"><span class="spec-meta">pass/body-lg · 18px · 500 · lh 1.5</span><span style="font-size:18px;font-weight:500;color:var(--ink-2)">Twelve bottles from Vinos del Norte, landing Friday before prep.</span></div>
+    <div class="spec-row"><span class="spec-meta">pass/body · 15px · 500 · lh 1.5</span><span style="font-size:15px;font-weight:500;color:var(--ink-2)">Vendor confirmed the delivery window. Draft reply is staged for your tap.</span></div>
+    <div class="spec-row"><span class="spec-meta">pass/label · 13px · 600</span><span style="font-size:13px;font-weight:600">Receiving · Cold storage · Bin 4</span></div>
+    <div class="spec-row"><span class="spec-meta">pass/kicker · 11px mono · 700 · +.14em</span><span class="kicker">Procurement · Needs a call</span></div>
+    <div class="spec-row"><span class="spec-meta">pass/micro · 10px mono · 500</span><span class="micro">PO-1042 · updated 2m ago · ⌘K to search</span></div>
+  </div>
+</section>
+
+<!-- ================= 06 MOTION ================= -->
+<section id="motion">
+  <div class="shead"><p class="kicker"><span class="num">06</span> — Motion</p></div>
+  <h2 class="head">Arrive hot. Settle instantly.</h2>
+  <p class="sub">Interruptible spring physics, never hard-coded easing choreography. Everything lands inside 400ms and nothing oscillates twice — the discipline of a good expo line. Tokens map 1:1 to the <code class="mono" style="font-size:13px">motion</code> React library and later to Reanimated <code class="mono" style="font-size:13px">withSpring</code>.</p>
+
+  <table class="mo-table">
+    <thead><tr><th>Token</th><th>Physics</th><th>Settles</th><th>Used for</th><th>motion (React)</th></tr></thead>
+    <tbody>
+      <tr><td>call</td><td><code>stiffness 700 · damping 34 · mass 1</code></td><td>~240ms, one soft overshoot</td><td>arrivals: toasts, cards, toggle thumbs, chips</td><td><code>{type:'spring',stiffness:700,damping:34}</code></td></tr>
+      <tr><td>slam</td><td><code>stiffness 1000 · damping 42 · mass .8</code></td><td>~140ms, no overshoot</td><td>press feedback — scale .97 and back</td><td><code>whileTap={{scale:.97}} + spring</code></td></tr>
+      <tr><td>slide</td><td><code>stiffness 420 · damping 38 · mass 1</code></td><td>~320ms, critically damped</td><td>row expand, drawers, sheets, layout shifts</td><td><code>layout + {stiffness:420,damping:38}</code></td></tr>
+      <tr><td>roll</td><td><code>stiffness 120 · damping 26 · mass 1</code></td><td>~600ms glide</td><td>number tickers only — figures get the drama</td><td><code>useSpring(value,{stiffness:120,damping:26})</code></td></tr>
+      <tr><td>settle</td><td><code>cubic-bezier(.16,1,.3,1) · 160ms</code></td><td>160ms</td><td>CSS-only hover/focus micro-states (compositor)</td><td><code>Tailwind transition — no JS</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="grid mo">
+    <div class="tile mo-demo">
+      <div><h4>Toggle</h4><p class="spec-line">call · 700/34 — tap it</p></div>
+      <div class="stage"><button class="tgl" id="tgl" role="switch" aria-checked="false" aria-label="Demo toggle"><span class="thumb" id="tglThumb"></span></button></div>
+      <p class="spec-line">The thumb is thrown, not eased — interrupt it mid-flight and it re-targets.</p>
+    </div>
+    <div class="tile mo-demo">
+      <div><h4>Row expand</h4><p class="spec-line">slide · 420/38 — click the row</p></div>
+      <div class="stage" style="align-items:stretch">
+        <div class="xrow" id="demoRow" style="align-self:center;width:100%">
+          <button class="rhead" aria-expanded="false">
+            <span class="po" style="color:var(--fire-text)">PO-1039</span>
+            <span style="font-weight:700;font-size:14px">Marisco Bros.</span>
+            <svg class="chev" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <div class="rbody"><div class="rbody-in">
+            <p style="font-size:13px;color:var(--ink-2)">8 cases · $640 · lands tomorrow 07:00</p>
+            <p class="micro" style="margin-top:6px">Thread: "Confirmed for the morning drop." · 14m ago</p>
+          </div></div>
+        </div>
+      </div>
+      <p class="spec-line">Critically damped — a drawer that bounces would spill the mise.</p>
+    </div>
+    <div class="tile mo-demo">
+      <div><h4>Number ticker</h4><p class="spec-line">roll · 120/26 — ring it</p></div>
+      <div class="stage" style="flex-direction:column;gap:16px">
+        <span class="tick-num" id="tick">$0</span>
+        <button class="btn ghost" id="tickBtn" style="font-size:13px;padding:9px 18px">Ring it</button>
+      </div>
+      <p class="spec-line">The one slow token. Revenue rolling in earns 600ms; nothing else does.</p>
+    </div>
+  </div>
+  <p class="micro" style="margin-top:18px">House rules: transform/opacity only on ops pages · every spring interruptible · gate all of it behind prefers-reduced-motion from day one.</p>
+</section>
+
+<!-- ================= 07 SCREENS ================= -->
+<section id="screens">
+  <div class="shead"><p class="kicker"><span class="num">07</span> — Sample screens</p></div>
+  <h2 class="head">On the line.</h2>
+  <p class="sub">Dashboard in service mode (dark — the evening screen), orders in prep mode (light — the office screen). Same system, both temperatures.</p>
+
+  <div class="screen dash">
+    <div class="bar"><i></i><i></i><i></i><span class="micro">mudavym · /dashboard · service mode</span></div>
+    <div class="scr-body">
+      <p class="kicker">Thu 28 Aug · service in 3h · <span style="color:var(--fire-text)">2 need a call</span></p>
+      <h3 class="greet">Evening, chef<span class="f">.</span></h3>
+      <div class="kpis">
+        <div class="kpi"><p class="kicker">Revenue</p><p class="v mono" id="kpiRev">$4,280</p><p class="d">tonight · live</p></div>
+        <div class="kpi warn"><p class="kicker">Low stock</p><p class="v mono">7</p><p class="d">on hold · count them</p></div>
+        <div class="kpi"><p class="kicker">Pending orders</p><p class="v mono">3</p><p class="d">2 drafted by AI</p></div>
+        <div class="kpi bad"><p class="kicker">Alerts</p><p class="v mono">2</p><p class="d">needs a call · oldest first</p></div>
+      </div>
+      <div class="onetap">
+        <div>
+          <p class="kicker" style="color:var(--fire-text)">One tap · procurement</p>
+          <h3>Approve Rioja reorder</h3>
+          <p class="meta">12 bottles from Vinos del Norte · $228 · lands Fri before prep</p>
+        </div>
+        <div style="margin-left:auto">
+          <button class="hold-btn" id="holdBtn"><span class="fill" id="holdFill"></span><span class="lbl" id="holdLbl">Hold to approve</span></button>
+          <p class="hold-hint">hold 600ms — no dialogs on the line</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen orders">
+    <div class="bar"><i></i><i></i><i></i><span class="micro">mudavym · /orders · prep mode</span></div>
+    <div class="scr-body">
+      <p class="kicker">Orders · in flight</p>
+      <h3 style="font-size:32px;font-weight:800;letter-spacing:-.02em;margin:8px 0 20px">3 moving<span style="color:var(--lt-fire)">.</span></h3>
+      <div class="xrow" id="orderRow">
+        <button class="rhead" aria-expanded="false" style="gap:14px;flex-wrap:wrap">
+          <span class="po" style="color:var(--lt-fire-text)">PO-1042</span>
+          <span class="vend">Vinos del Norte</span>
+          <span class="omet">24 bottles · <span class="mono" style="font-weight:700">$1,860</span></span>
+          <span class="pill transit">In transit</span>
+          <span class="pill ai">AI draft ready — one tap to approve</span>
+          <svg class="chev" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <div class="rbody"><div class="rbody-in">
+          <p class="kicker" style="margin:10px 0 2px">Vendor thread</p>
+          <div class="thread"><p class="who">Vinos del Norte · 2m ago</p><p>"Confirmed — truck leaves Logroño tonight, with you Friday 08:00."</p></div>
+          <div class="thread" style="border-color:rgba(224,58,14,.35)"><p class="who" style="color:var(--lt-fire-text)">Mudavym · draft staged</p><p>"Received, thank you. Our receiving door opens at 07:30 — see you Friday."</p></div>
+          <div style="display:flex;gap:10px;margin-top:14px">
+            <button class="btn" style="font-size:14px;padding:10px 20px">Approve.</button>
+            <button class="btn ghost" style="font-size:14px;padding:10px 20px">Open thread →</button>
+          </div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <p class="micro">080-mudavym-pass · one of five competing directions · OD-106 · document-only, no build</p>
+  <p class="micro">Archivo + JetBrains Mono via Google Fonts · springs hand-rolled inline, production = motion</p>
+</footer>
+
+</main>
+<script>
+/* ---- tiny interruptible spring engine (semi-implicit Euler, substep 8ms) ---- */
+var REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function spring(o){
+  if(REDUCED){o.onUpdate(o.to);o.onComplete&&o.onComplete();return{stop:function(){}};}
+  var x=o.from,v=o.v0||0,m=o.mass||1,rd=o.restDelta||0.05,raf,last;
+  function step(now){
+    var dt=Math.min((now-last)/1000,.064);last=now;
+    var n=Math.max(1,Math.ceil(dt/.008)),h=dt/n;
+    for(var i=0;i<n;i++){var F=-o.stiffness*(x-o.to)-o.damping*v;v+=F/m*h;x+=v*h;}
+    if(Math.abs(v)<rd*20&&Math.abs(x-o.to)<rd){o.onUpdate(o.to);o.onComplete&&o.onComplete();return;}
+    o.onUpdate(x);raf=requestAnimationFrame(step);
+  }
+  raf=requestAnimationFrame(function(t){last=t;step(t);});
+  return{stop:function(){cancelAnimationFrame(raf);},get x(){return x;},get v(){return v;}};
+}
+/* ---- demo 1: toggle (call · 700/34) ---- */
+(function(){
+  var btn=document.getElementById('tgl'),thumb=document.getElementById('tglThumb'),on=false,anim=null,pos=5;
+  btn.addEventListener('click',function(){
+    on=!on;btn.classList.toggle('on',on);btn.setAttribute('aria-checked',on);
+    var target=on?37:5,v0=anim?anim.v:0;if(anim)anim.stop();
+    anim=spring({from:pos,to:target,v0:v0,stiffness:700,damping:34,restDelta:.1,
+      onUpdate:function(x){pos=x;thumb.style.transform='translateX('+x+'px)';}});
+  });
+})();
+/* ---- rows: expand/collapse (slide · 420/38) ---- */
+function wireRow(id){
+  var row=document.getElementById(id);if(!row)return;
+  var head=row.querySelector('.rhead'),body=row.querySelector('.rbody'),inner=row.querySelector('.rbody-in');
+  var open=false,anim=null,h=0;
+  head.addEventListener('click',function(){
+    open=!open;row.classList.toggle('open',open);head.setAttribute('aria-expanded',open);
+    var target=open?inner.offsetHeight:0,v0=anim?anim.v:0;if(anim)anim.stop();
+    anim=spring({from:h,to:target,v0:v0,stiffness:420,damping:38,restDelta:.3,
+      onUpdate:function(x){h=x;body.style.height=Math.max(0,x)+'px';}});
+  });
+}
+wireRow('demoRow');wireRow('orderRow');
+/* ---- demo 3: number ticker (roll · 120/26) ---- */
+(function(){
+  var el=document.getElementById('tick'),btn=document.getElementById('tickBtn'),cur=0,anim=null;
+  function ring(to){
+    var v0=anim?anim.v:0;if(anim)anim.stop();
+    anim=spring({from:cur,to:to,v0:v0,stiffness:120,damping:26,restDelta:.4,
+      onUpdate:function(x){cur=x;el.textContent='$'+Math.round(x).toLocaleString('en-US');}});
+  }
+  btn.addEventListener('click',function(){ring(cur<100?4280:(cur>3000?1240:4280));});
+  setTimeout(function(){ring(4280);},500);
+})();
+/* ---- dashboard KPI ticks in on load ---- */
+(function(){
+  var el=document.getElementById('kpiRev');if(!el)return;var seen=false;
+  var io=new IntersectionObserver(function(es){
+    es.forEach(function(e){if(e.isIntersecting&&!seen){seen=true;
+      spring({from:0,to:4280,stiffness:120,damping:26,restDelta:.4,
+        onUpdate:function(x){el.textContent='$'+Math.round(x).toLocaleString('en-US');}});
+      io.disconnect();}});
+  },{threshold:.4});
+  io.observe(el);
+})();
+/* ---- hold-to-approve (kokonutui hold-button pattern) ---- */
+(function(){
+  var btn=document.getElementById('holdBtn'),fill=document.getElementById('holdFill'),lbl=document.getElementById('holdLbl');
+  if(!btn)return;var t=null,done=false;
+  function start(e){
+    if(done)return;e.preventDefault();
+    fill.style.transition='transform 600ms linear';fill.style.transform='scaleX(1)';
+    t=setTimeout(function(){
+      done=true;btn.classList.add('done');lbl.textContent='Approved.';
+      fill.style.transition='none';fill.style.transform='scaleX(0)';
+      setTimeout(function(){done=false;btn.classList.remove('done');lbl.textContent='Hold to approve';},2600);
+    },600);
+  }
+  function cancel(){
+    if(done)return;clearTimeout(t);
+    fill.style.transition='transform 160ms cubic-bezier(.16,1,.3,1)';fill.style.transform='scaleX(0)';
+  }
+  btn.addEventListener('pointerdown',start);
+  btn.addEventListener('pointerup',cancel);
+  btn.addEventListener('pointerleave',cancel);
+  btn.addEventListener('pointercancel',cancel);
+})();
+</script>
+</body>
+</html>

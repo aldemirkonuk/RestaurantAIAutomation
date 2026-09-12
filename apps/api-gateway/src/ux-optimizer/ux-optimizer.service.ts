@@ -7,7 +7,16 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
-import { ModelClientService } from "../common/model-client/model-client.service";
+import {
+  ModelClientService,
+  NfEventRef,
+} from "../common/model-client/model-client.service";
+import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import {
+  GROUNDING_BASIS,
+  filterProposals,
+  uxProposalVerdict,
+} from "./ux-proposal-grounding";
 
 /** Most signals read into one friction summary. See summarize() for why it is ordered. */
 const SIGNAL_SAMPLE_CAP = 5000;
@@ -60,6 +69,7 @@ export class UxOptimizerService {
     private readonly dbService: DatabaseService,
     private readonly configService: ConfigService,
     private readonly modelClient: ModelClientService,
+    private readonly nfVerdicts: NfVerdictService,
   ) {}
 
   private enabled(): boolean {
@@ -262,6 +272,11 @@ OUTPUT — respond with ONLY valid JSON:
 {"proposals":[{"kind":"copy","targetKey":"...","title":"...","rationale":"...","change":{},"confidence":0.0}]}
 Return 2–5 proposals sorted by (confidence × expected friction removed) descending. Each rationale ≤ 2 sentences and must cite a number from the summary.`;
 
+    // OD-59 / P3.0: this call grades itself on grounding. The caller catches
+    // a throw here and falls back to heuristics — which is right for the
+    // product and used to leave the footprint reading `success` for a call
+    // that produced nothing.
+    const eventRef = new NfEventRef();
     // P1 NF-A: routed through the model client (emission + timeout + transport
     // retry). Previously this fetch had no timeout at all; the client's 60s
     // default is the consolidation AR-3 asked for.
@@ -284,26 +299,54 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
         choice: "proposals",
         restaurantId,
         context: { page: summary.page },
+        eventRef,
       },
     });
     const textBlock = (payload.content || []).find(
       (b: any) => b.type === "text",
     );
-    const parsed = JSON.parse(
-      (textBlock?.text || "{}").replace(/^```json\s*|\s*```$/g, ""),
+
+    let arr: unknown[];
+    try {
+      const parsed = JSON.parse(
+        (textBlock?.text || "{}").replace(/^```json\s*|\s*```$/g, ""),
+      );
+      arr = Array.isArray(parsed.proposals) ? parsed.proposals : [];
+    } catch (err) {
+      // Record before rethrowing: the caller's catch falls back to heuristics,
+      // and without this the footprint would still read `success`.
+      this.nfVerdicts.record(
+        eventRef,
+        GROUNDING_BASIS,
+        uxProposalVerdict({ parsed: false, filter: null, rawCount: 0 }),
+      );
+      throw err;
+    }
+
+    // The prompt allows five kinds and the parser used to accept any string, so
+    // an invented kind was written straight into `ux_proposals.kind` as though
+    // it were real. Dropping it is a behaviour change, and a deliberate one.
+    const filter = filterProposals(arr);
+    if (filter.droppedKinds.length > 0) {
+      this.logger.warn(
+        `UX optimizer proposed kind(s) outside the allowed enum ` +
+          `[${filter.droppedKinds.join(", ")}] — dropped`,
+      );
+    }
+    this.nfVerdicts.record(
+      eventRef,
+      GROUNDING_BASIS,
+      uxProposalVerdict({ parsed: true, filter, rawCount: arr.length }),
     );
-    const arr = Array.isArray(parsed.proposals) ? parsed.proposals : [];
-    return arr
-      .filter((p: any) => p?.targetKey && p?.title && p?.kind)
-      .slice(0, 5)
-      .map((p: any) => ({
-        kind: String(p.kind),
-        targetKey: String(p.targetKey),
-        title: String(p.title),
-        rationale: String(p.rationale ?? ""),
-        change: p.change && typeof p.change === "object" ? p.change : {},
-        confidence: Number(p.confidence ?? 0.5),
-      }));
+
+    return filter.kept.slice(0, 5).map((p: any) => ({
+      kind: String(p.kind),
+      targetKey: String(p.targetKey),
+      title: String(p.title),
+      rationale: String(p.rationale ?? ""),
+      change: p.change && typeof p.change === "object" ? p.change : {},
+      confidence: Number(p.confidence ?? 0.5),
+    }));
   }
 
   /** Deterministic fallback so the loop works with zero LLM configuration. */

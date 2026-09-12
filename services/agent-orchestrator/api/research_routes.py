@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from services.log_safety import sanitize_for_log
+
 logger = logging.getLogger(__name__)
 
 research_router = APIRouter(prefix="/api/v1/research", tags=["research"])
@@ -102,7 +104,7 @@ def _percentile_50(values: List[float]) -> float:
 
 
 @research_router.get("/metrics", response_model=ResearchMetricsResponse)
-def get_research_metrics():
+def get_research_metrics(_token: str = Depends(verify_admin_token)):
     """
     GET /api/v1/research/metrics
 
@@ -345,7 +347,11 @@ def get_research_metrics():
 
 
 @research_router.get("/runs")
-def get_research_runs(limit: int = 20, offset: int = 0):
+def get_research_runs(
+    limit: int = 20,
+    offset: int = 0,
+    _token: str = Depends(verify_admin_token),
+):
     """
     GET /api/v1/research/runs
 
@@ -393,7 +399,11 @@ def get_research_runs(limit: int = 20, offset: int = 0):
 
 
 @research_router.get("/conflicts")
-def get_research_conflicts(limit: int = 20, offset: int = 0):
+def get_research_conflicts(
+    limit: int = 20,
+    offset: int = 0,
+    _token: str = Depends(verify_admin_token),
+):
     """
     GET /api/v1/research/conflicts
 
@@ -473,6 +483,7 @@ def get_research_challenges(
     status: str = "open",
     limit: int = 20,
     offset: int = 0,
+    _token: str = Depends(verify_admin_token),
 ):
     """
     GET /api/v1/research/challenges
@@ -624,7 +635,13 @@ def trigger_research(body: TriggerRequest, _token: str = Depends(verify_admin_to
             queued += 1
         except Exception as exc:
             dispatch_errors.append(str(exc))
-            logger.error("trigger_research: dispatch failed for %s: %s", sid, exc)
+            # In single-record mode sid is body.submission_id verbatim — an
+            # unvalidated caller string, so escape it before it reaches the log.
+            logger.error(
+                "trigger_research: dispatch failed for %s: %s",
+                sanitize_for_log(sid),
+                exc,
+            )
 
     if queued == 0 and dispatch_errors:
         raise HTTPException(

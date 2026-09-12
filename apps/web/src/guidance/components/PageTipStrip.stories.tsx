@@ -1,12 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { MemoryRouter } from 'react-router-dom'
 
 function TipStripPreview() {
   return (
     <div
       role="region"
       aria-label="Page tip"
-      className="mx-4 mt-4 mb-2 rounded-xl border border-[#9E4249]/20 bg-[#9E4249]/[0.04] px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+      className="mx-4 mt-4 mb-2 rounded-xl border border-[#1A5E6B]/20 bg-[#1A5E6B]/[0.04] px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="min-w-0 pr-2">
         <p className="text-sm font-semibold text-gray-900">Inventory Command</p>
@@ -17,7 +16,7 @@ function TipStripPreview() {
       <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
         <button
           type="button"
-          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-[#9E4249] text-white"
+          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-[#1A5E6B] text-white"
         >
           Take tour
         </button>
@@ -38,16 +37,15 @@ function TipStripPreview() {
   )
 }
 
+// Router comes from the global decorator in .storybook/preview.tsx.
 const meta: Meta = {
   title: 'Guidance/PageTipStrip',
   component: TipStripPreview,
   decorators: [
     (Story) => (
-      <MemoryRouter>
-        <div className="min-h-[200px] bg-gray-50 p-4">
-          <Story />
-        </div>
-      </MemoryRouter>
+      <div className="min-h-[200px] bg-gray-50 p-4">
+        <Story />
+      </div>
     ),
   ],
 }

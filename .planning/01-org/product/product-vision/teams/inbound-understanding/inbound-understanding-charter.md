@@ -72,7 +72,10 @@ Neural-footprint tie: each proposal is a complete NF-A event —
 alternatives considered) → `choice` (accept / edit / reject) → `outcome` +
 `doneability verdict` (foundation [[README]] §4.4). This team is the largest natural source
 of NF-A rows in the product. L4 emits nothing today (foundation [[README]]:80), so these are
-target shapes, not readings.
+target shapes, not readings. *Corrected 2026-08-25: L4 emits since P1
+(`model-client.service.ts:413`) — `inbound-responder` is one of the 7 wrapped
+callsites. The `doneability verdict` half is still ungraded for this task type
+([[0017-doneability-verdicts-are-sidecar-claims]]).*
 
 ## Evidence today
 

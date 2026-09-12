@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; background: #FAF7F1; color: #211C16; font-family: 'DM Sans', system-ui, sans-serif; }
+    a { color: #14515C; text-decoration: none; } a:hover { color: #211C16; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #FAF7F1; display: flex; flex-direction: column; overflow: hidden">
+
+  <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 26px 40px 14px">
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.14em; color: #7C7365">MUDAVYM · DIRECTION D · BUILT FOR VOLUME</span>
+      <h1 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-size: 30px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1">The Sorting Office</h1>
+      <span style="font-size: 12.5px; color: #4F473C">Everything that arrives gets sorted into a named drawer the moment it lands — signal floats, noise files itself and stays countable. Reading keeps C's clean pane. Tradeoff: the drawers are only as good as the sorter's rules.</span>
+    </div>
+    <div style="display:flex; gap:20px; text-align:right">
+      <div><span style="display:block; font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:500; letter-spacing:0.12em; color:#7C7365">THIS MONTH</span><span style="font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600; letter-spacing:-0.02em">1,204</span></div>
+      <div><span style="display:block; font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:500; letter-spacing:0.12em; color:#7C7365">NEEDS A HUMAN</span><span style="font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600; letter-spacing:-0.02em; color:#14515C">7</span></div>
+      <div><span style="display:block; font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:500; letter-spacing:0.12em; color:#7C7365">FILED ITSELF</span><span style="font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600; letter-spacing:-0.02em">1,141</span></div>
+    </div>
+  </div>
+
+  <div style="flex:1; display:grid; grid-template-columns: 560px minmax(0,1fr); gap:22px; padding: 0 40px 30px; min-height:0">
+
+    <!-- the drawers -->
+    <div style="display:flex; flex-direction:column; gap:10px; min-height:0">
+      <div style="border:1px solid rgba(26,94,107,.32); border-radius:12px; background:#F3EFE6; padding:12px 15px">
+        <div style="display:flex; align-items:baseline; gap:10px">
+          <span style="font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:600; letter-spacing:0.12em; color:#14515C">DRAWER · WAITING ON YOU</span>
+          <span style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600">7</span>
+        </div>
+        <div style="display:flex; align-items:baseline; gap:12px; padding:7px 0 2px; border-bottom:1px solid #EAE4D8; font-size:12.5px">
+          <span style="font-weight:600">Invoice INV-91 does not tie out</span><span style="color:#7C7365">Bodega Álvaro · off by $84.10</span>
+          <span style="margin-left:auto; font-size:11px; font-weight:600; color:#14515C">Open</span>
+        </div>
+        <div style="display:flex; align-items:baseline; gap:12px; padding:7px 0 2px; font-size:12.5px">
+          <span style="font-weight:600">Week 35 digest is ready to read</span><span style="color:#7C7365">written 18:04</span>
+          <span style="margin-left:auto; font-size:11px; font-weight:600; color:#14515C">Read</span>
+        </div>
+        <span style="display:block; font-size:11px; color:#7C7365; padding-top:6px">5 more · sorted oldest-debt first, never by arrival</span>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px">
+        <div style="border:1px solid #EAE4D8; border-radius:12px; background:#F3EFE6; padding:12px 15px">
+          <span style="font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:600; letter-spacing:0.12em; color:#7C7365">HOUSE REPORTS</span>
+          <div style="display:flex; align-items:baseline; gap:8px"><span style="font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:600">31</span><span style="font-size:11px; color:#7C7365">this month · 2 unread</span></div>
+          <span style="font-size:11.5px; color:#4F473C">digests · variance · sales reads</span>
+        </div>
+        <div style="border:1px solid #EAE4D8; border-radius:12px; background:#F3EFE6; padding:12px 15px">
+          <span style="font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:600; letter-spacing:0.12em; color:#7C7365">VENDOR PAPER</span>
+          <div style="display:flex; align-items:baseline; gap:8px"><span style="font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:600">96</span><span style="font-size:11px; color:#7C7365">4 need review</span></div>
+          <span style="font-size:11.5px; color:#4F473C">invoices · slips · credit memos</span>
+        </div>
+        <div style="border:1px solid #EAE4D8; border-radius:12px; background:#F3EFE6; padding:12px 15px">
+          <span style="font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:600; letter-spacing:0.12em; color:#7C7365">CONVERSATIONS</span>
+          <div style="display:flex; align-items:baseline; gap:8px"><span style="font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:600">214</span><span style="font-size:11px; color:#7C7365">1 draft waiting</span></div>
+          <span style="font-size:11.5px; color:#4F473C">vendor threads, classified</span>
+        </div>
+        <div style="border:1px solid #EAE4D8; border-radius:12px; background:#F3EFE6; padding:12px 15px">
+          <span style="font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:600; letter-spacing:0.12em; color:#7C7365">SYSTEM LOG</span>
+          <div style="display:flex; align-items:baseline; gap:8px"><span style="font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:600">863</span><span style="font-size:11px; color:#7C7365">all routine</span></div>
+          <span style="font-size:11.5px; color:#4F473C">syncs · counts · agent runs</span>
+        </div>
+      </div>
+
+      <!-- the noise roll: filed, countable, never deleted, never in the way -->
+      <div style="border:1px dashed #7C7365; border-radius:12px; padding:11px 15px; display:flex; align-items:baseline; gap:10px">
+        <span style="font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:600; letter-spacing:0.12em; color:#7C7365">FILED ITSELF TODAY</span>
+        <span style="font-size:12px; color:#4F473C">42 routine entries — 38 syncs, 3 delivered-order closes, 1 duplicate slip</span>
+        <span style="margin-left:auto; font-size:11px; font-weight:600; color:#14515C">Open the drawer</span>
+      </div>
+      <p style="margin:0; font-size:11px; color:#7C7365">Every count is a real count from its own register — a drawer never claims a number its query hasn't answered. Lists inside a drawer render windowed; a thousand rows cost what thirty cost.</p>
+    </div>
+
+    <!-- C's reading pane survives as the detail surface -->
+    <div style="border:1px solid #EAE4D8; border-radius:12px; background:#F3EFE6; padding:22px 26px; display:flex; flex-direction:column; gap:10px; min-height:0">
+      <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px">
+        <span style="font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:600; letter-spacing:0.14em; color:#7C7365">READING PANE — C'S CLEANLINESS, KEPT</span>
+        <div style="display:flex; gap:8px">
+          <span style="font-size:11.5px; font-weight:600; padding:5px 12px; border-radius:8px; border:1px solid rgba(26,94,107,.32); color:#14515C">Copy share link</span>
+          <span style="font-size:11.5px; font-weight:600; padding:5px 12px; border-radius:8px; border:1px solid #EAE4D8; color:#4F473C">File to…</span>
+        </div>
+      </div>
+      <h2 style="margin:0; font-family:'Fraunces',Georgia,serif; font-size:24px; font-weight:600; letter-spacing:-0.01em">Eight orders, two price moves, and a credit still promised</h2>
+      <span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#7C7365">HOUSE REPORT · SATURDAY 30 AUGUST · 18:04</span>
+      <p style="margin:6px 0 0; font-size:13.5px; color:#4F473C; line-height:1.65; max-width:64ch">Bodega Álvaro carried the largest share of the week at €6,010 and confirmed every order inside six hours. Two price moves crossed their thresholds: Albariño 2022 rose 4.1%, Barolo 2019 eased 2.3% — the second easing in a row.</p>
+      <p style="margin:0; font-size:13.5px; color:#4F473C; line-height:1.65; max-width:64ch">The open credit on the short Terra Alta delivery is in its sixth day: promised, not credited — a promise without a memo is not recovery.</p>
+      <div style="margin-top:auto; border-top:1px solid #EAE4D8; padding-top:10px; display:flex; gap:14px; font-size:11px; color:#7C7365">
+        <span>Cross-filed under: Vendor paper (INV-88) · Conversations (2 threads)</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

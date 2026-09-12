@@ -1,0 +1,818 @@
+{
+  "_contract": {
+    "version": 1,
+    "shape": "restaurants.operating_hours: {mon..sun: [{open:'HH:MM', close:'HH:MM'}]} — all seven keys required; [] = closed that day; up to 3 ranges per day; close <= open means the range crosses midnight into the next local day; interpreted in restaurants.timezone (IANA)",
+    "resolution_rule": "A local wall time resolves to an instant the way Python's zoneinfo does with fold=0: among the instants whose local wall time equals the target (there are two in a DST fall-back hour), take the EARLIEST — the first occurrence; if there is none (the wall time falls in a DST spring-forward gap), use the offset in force just BEFORE the transition. Implementations must find candidates from the offsets on both sides of the target (bracket the day before and after), not from a single guess: anchoring on offset(guess-read-as-UTC) is only right west of Greenwich and inverts both rules east of it (Europe/Berlin, Australia/Sydney) — measured 2026-09-02 over 630,720 wall times in 12 zones. The Berlin and Sydney cases below pin this in both suites.",
+    "is_open_at": "returns open=null with a reason when hours or timezone are unknown — never false. A window that opened on the previous local day and runs past midnight still counts.",
+    "service_windows": "windows whose OPEN falls on the given local date, as [start, end] UTC instants, sorted by start"
+  },
+  "hours": {
+    "bistro": {
+      "mon": [],
+      "tue": [
+        {
+          "open": "12:00",
+          "close": "23:00"
+        }
+      ],
+      "wed": [
+        {
+          "open": "12:00",
+          "close": "23:00"
+        }
+      ],
+      "thu": [
+        {
+          "open": "12:00",
+          "close": "23:00"
+        }
+      ],
+      "fri": [
+        {
+          "open": "12:00",
+          "close": "23:30"
+        }
+      ],
+      "sat": [
+        {
+          "open": "12:00",
+          "close": "23:30"
+        }
+      ],
+      "sun": [
+        {
+          "open": "12:00",
+          "close": "22:00"
+        }
+      ]
+    },
+    "split_service": {
+      "mon": [
+        {
+          "open": "11:30",
+          "close": "14:30"
+        },
+        {
+          "open": "17:30",
+          "close": "22:00"
+        }
+      ],
+      "tue": [
+        {
+          "open": "11:30",
+          "close": "14:30"
+        },
+        {
+          "open": "17:30",
+          "close": "22:00"
+        }
+      ],
+      "wed": [],
+      "thu": [
+        {
+          "open": "11:30",
+          "close": "14:30"
+        },
+        {
+          "open": "17:30",
+          "close": "22:00"
+        }
+      ],
+      "fri": [
+        {
+          "open": "11:30",
+          "close": "14:30"
+        },
+        {
+          "open": "17:30",
+          "close": "23:00"
+        }
+      ],
+      "sat": [
+        {
+          "open": "17:30",
+          "close": "23:00"
+        }
+      ],
+      "sun": []
+    },
+    "late_bar": {
+      "mon": [],
+      "tue": [],
+      "wed": [
+        {
+          "open": "18:00",
+          "close": "02:00"
+        }
+      ],
+      "thu": [
+        {
+          "open": "18:00",
+          "close": "02:00"
+        }
+      ],
+      "fri": [
+        {
+          "open": "18:00",
+          "close": "03:00"
+        }
+      ],
+      "sat": [
+        {
+          "open": "18:00",
+          "close": "03:00"
+        }
+      ],
+      "sun": [
+        {
+          "open": "16:00",
+          "close": "00:00"
+        }
+      ]
+    },
+    "all_day": {
+      "mon": [
+        {
+          "open": "00:00",
+          "close": "23:59"
+        }
+      ],
+      "tue": [
+        {
+          "open": "00:00",
+          "close": "23:59"
+        }
+      ],
+      "wed": [
+        {
+          "open": "00:00",
+          "close": "23:59"
+        }
+      ],
+      "thu": [
+        {
+          "open": "00:00",
+          "close": "23:59"
+        }
+      ],
+      "fri": [
+        {
+          "open": "00:00",
+          "close": "23:59"
+        }
+      ],
+      "sat": [
+        {
+          "open": "00:00",
+          "close": "23:59"
+        }
+      ],
+      "sun": [
+        {
+          "open": "00:00",
+          "close": "23:59"
+        }
+      ]
+    },
+    "berlin_bar": {
+      "mon": [],
+      "tue": [],
+      "wed": [],
+      "thu": [],
+      "fri": [
+        {
+          "open": "22:00",
+          "close": "03:00"
+        }
+      ],
+      "sat": [
+        {
+          "open": "22:00",
+          "close": "03:00"
+        }
+      ],
+      "sun": [
+        {
+          "open": "02:30",
+          "close": "04:00"
+        }
+      ]
+    }
+  },
+  "parse_cases": [
+    {
+      "name": "bistro parses",
+      "hours": "bistro",
+      "valid": true
+    },
+    {
+      "name": "split service parses",
+      "hours": "split_service",
+      "valid": true
+    },
+    {
+      "name": "late bar parses (cross-midnight)",
+      "hours": "late_bar",
+      "valid": true
+    },
+    {
+      "name": "all-day parses",
+      "hours": "all_day",
+      "valid": true
+    },
+    {
+      "name": "missing a weekday key is invalid",
+      "raw": {
+        "mon": [],
+        "tue": [],
+        "wed": [],
+        "thu": [],
+        "fri": [],
+        "sat": []
+      },
+      "valid": false
+    },
+    {
+      "name": "unknown key is invalid",
+      "raw": {
+        "mon": [],
+        "tue": [],
+        "wed": [],
+        "thu": [],
+        "fri": [],
+        "sat": [],
+        "sun": [],
+        "hol": []
+      },
+      "valid": false
+    },
+    {
+      "name": "bad time string is invalid",
+      "raw": {
+        "mon": [
+          {
+            "open": "12:00",
+            "close": "25:00"
+          }
+        ],
+        "tue": [],
+        "wed": [],
+        "thu": [],
+        "fri": [],
+        "sat": [],
+        "sun": []
+      },
+      "valid": false
+    },
+    {
+      "name": "open equal to close is invalid",
+      "raw": {
+        "mon": [
+          {
+            "open": "12:00",
+            "close": "12:00"
+          }
+        ],
+        "tue": [],
+        "wed": [],
+        "thu": [],
+        "fri": [],
+        "sat": [],
+        "sun": []
+      },
+      "valid": false
+    },
+    {
+      "name": "overlapping ranges are invalid",
+      "raw": {
+        "mon": [
+          {
+            "open": "11:00",
+            "close": "15:00"
+          },
+          {
+            "open": "14:00",
+            "close": "22:00"
+          }
+        ],
+        "tue": [],
+        "wed": [],
+        "thu": [],
+        "fri": [],
+        "sat": [],
+        "sun": []
+      },
+      "valid": false
+    },
+    {
+      "name": "cross-midnight range that is not last is invalid",
+      "raw": {
+        "mon": [
+          {
+            "open": "18:00",
+            "close": "02:00"
+          },
+          {
+            "open": "11:00",
+            "close": "14:00"
+          }
+        ],
+        "tue": [],
+        "wed": [],
+        "thu": [],
+        "fri": [],
+        "sat": [],
+        "sun": []
+      },
+      "valid": false
+    },
+    {
+      "name": "more than three ranges is invalid",
+      "raw": {
+        "mon": [
+          {
+            "open": "08:00",
+            "close": "09:00"
+          },
+          {
+            "open": "10:00",
+            "close": "11:00"
+          },
+          {
+            "open": "12:00",
+            "close": "13:00"
+          },
+          {
+            "open": "14:00",
+            "close": "15:00"
+          }
+        ],
+        "tue": [],
+        "wed": [],
+        "thu": [],
+        "fri": [],
+        "sat": [],
+        "sun": []
+      },
+      "valid": false
+    },
+    {
+      "name": "a non-object is invalid",
+      "raw": "12:00-23:00",
+      "valid": false
+    },
+    {
+      "name": "a list is invalid",
+      "raw": [],
+      "valid": false
+    }
+  ],
+  "open_cases": [
+    {
+      "name": "unknown hours → null, not false",
+      "hours": null,
+      "timezone": "America/Chicago",
+      "instant": "2026-09-02T18:00:00Z",
+      "open": null,
+      "reason": "hours_unknown"
+    },
+    {
+      "name": "unknown timezone → null, not false",
+      "hours": "bistro",
+      "timezone": null,
+      "instant": "2026-09-02T18:00:00Z",
+      "open": null,
+      "reason": "timezone_unknown"
+    },
+    {
+      "name": "invalid timezone → null, not false",
+      "hours": "bistro",
+      "timezone": "Mars/Olympus",
+      "instant": "2026-09-02T18:00:00Z",
+      "open": null,
+      "reason": "timezone_unknown"
+    },
+    {
+      "name": "Wed 2026-09-02 12:01 Chicago (CDT) is open — the founder's opening minute",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-02T17:01:00Z",
+      "open": true
+    },
+    {
+      "name": "Wed 2026-09-02 11:59 Chicago is closed (one minute before open)",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-02T16:59:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "Wed 2026-09-02 14:00 Chicago is open (the 2 PM order)",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-02T19:00:00Z",
+      "open": true
+    },
+    {
+      "name": "Wed 2026-09-02 23:00 Chicago is closed (close is exclusive)",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-03T04:00:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "Wed 2026-09-02 22:59 Chicago is open",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-03T03:59:00Z",
+      "open": true
+    },
+    {
+      "name": "Mon 2026-08-31 19:00 Chicago is closed (closed day)",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-01T00:00:00Z",
+      "open": false,
+      "reason": "closed_day"
+    },
+    {
+      "name": "Sun 2026-09-06 03:00 Chicago is closed (after hours)",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-06T08:00:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "Istanbul (no DST) Thu 2026-09-03 12:30 is open",
+      "hours": "bistro",
+      "timezone": "Europe/Istanbul",
+      "instant": "2026-09-03T09:30:00Z",
+      "open": true
+    },
+    {
+      "name": "Istanbul Thu 2026-09-03 11:30 is closed",
+      "hours": "bistro",
+      "timezone": "Europe/Istanbul",
+      "instant": "2026-09-03T08:30:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "split service: Mon 15:00 is between services",
+      "hours": "split_service",
+      "timezone": "America/Chicago",
+      "instant": "2026-08-31T20:00:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "split service: Mon 13:00 is open (lunch)",
+      "hours": "split_service",
+      "timezone": "America/Chicago",
+      "instant": "2026-08-31T18:00:00Z",
+      "open": true
+    },
+    {
+      "name": "split service: Mon 21:59 is open (dinner)",
+      "hours": "split_service",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-01T02:59:00Z",
+      "open": true
+    },
+    {
+      "name": "late bar: Thu 01:30 Chicago is open — Wednesday's window running past midnight",
+      "hours": "late_bar",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-03T06:30:00Z",
+      "open": true
+    },
+    {
+      "name": "late bar: Thu 02:00 Chicago is closed — Wednesday's window ended",
+      "hours": "late_bar",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-03T07:00:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "late bar: Tue 01:00 Chicago is closed — Monday is closed and Tuesday has no window",
+      "hours": "late_bar",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-01T06:00:00Z",
+      "open": false,
+      "reason": "closed_day"
+    },
+    {
+      "name": "late bar: Sun 16:00→00:00 — Sun 23:30 is open",
+      "hours": "late_bar",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-07T04:30:00Z",
+      "open": true
+    },
+    {
+      "name": "late bar: Sun window closing at 00:00 — Mon 00:00 is closed",
+      "hours": "late_bar",
+      "timezone": "America/Chicago",
+      "instant": "2026-09-07T05:00:00Z",
+      "open": false,
+      "reason": "closed_day"
+    },
+    {
+      "name": "DST fall-back night: late bar Sat 2026-10-31 18:00 → Sun 03:00 lasts 10 hours; Sun 02:30 CST (08:30Z) is open",
+      "hours": "late_bar",
+      "timezone": "America/Chicago",
+      "instant": "2026-11-01T08:30:00Z",
+      "open": true
+    },
+    {
+      "name": "DST fall-back night: Sun 03:00 CST (09:00Z) is closed",
+      "hours": "late_bar",
+      "timezone": "America/Chicago",
+      "instant": "2026-11-01T09:00:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "DST fall-back: ambiguous 01:30 resolves to its first occurrence (CDT, 06:30Z) and is open",
+      "hours": "late_bar",
+      "timezone": "America/Chicago",
+      "instant": "2026-11-01T06:30:00Z",
+      "open": true
+    },
+    {
+      "name": "DST spring-forward day: bistro Sun 2026-03-08 12:00 CDT (17:00Z) is open",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "instant": "2026-03-08T17:00:00Z",
+      "open": true
+    },
+    {
+      "name": "DST spring-forward day: 11:30 CDT (16:30Z) is closed",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "instant": "2026-03-08T16:30:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "all-day: 23:59:30 is closed (23:59 is exclusive)",
+      "hours": "all_day",
+      "timezone": "UTC",
+      "instant": "2026-09-02T23:59:30Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "all-day: 00:00 is open",
+      "hours": "all_day",
+      "timezone": "UTC",
+      "instant": "2026-09-02T00:00:00Z",
+      "open": true
+    },
+    {
+      "name": "Europe/Berlin fall-back: Sun 02:30 first occurrence (00:30Z) is open",
+      "hours": "berlin_bar",
+      "timezone": "Europe/Berlin",
+      "instant": "2026-10-25T00:30:00Z",
+      "open": true
+    },
+    {
+      "name": "Europe/Berlin fall-back: Sun 02:30 second occurrence (01:30Z) is open — Sunday's window has begun",
+      "hours": "berlin_bar",
+      "timezone": "Europe/Berlin",
+      "instant": "2026-10-25T01:30:00Z",
+      "open": true
+    },
+    {
+      "name": "Europe/Berlin fall-back: Sun 04:00 CET (03:00Z) is closed — Sunday's window ended",
+      "hours": "berlin_bar",
+      "timezone": "Europe/Berlin",
+      "instant": "2026-10-25T03:00:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "Europe/Berlin fall-back: Sat 21:59 CEST (19:59Z) is closed — before Saturday's window",
+      "hours": "berlin_bar",
+      "timezone": "Europe/Berlin",
+      "instant": "2026-10-24T19:59:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "Australia/Sydney fall-back: Sun 02:29 AEDT (15:29Z Sat) is open — inside Saturday's window",
+      "hours": "berlin_bar",
+      "timezone": "Australia/Sydney",
+      "instant": "2026-04-04T15:29:00Z",
+      "open": true
+    },
+    {
+      "name": "Australia/Sydney fall-back: Sun 04:00 AEST (18:00Z) is closed — Sunday's window ended",
+      "hours": "berlin_bar",
+      "timezone": "Australia/Sydney",
+      "instant": "2026-04-05T18:00:00Z",
+      "open": false,
+      "reason": "closed_day"
+    },
+    {
+      "name": "Australia/Sydney spring gap: Sun 02:00 AEST (16:00Z Sat) is closed — Sunday opens at 02:30 resolved pre-transition (16:30Z)",
+      "hours": "berlin_bar",
+      "timezone": "Australia/Sydney",
+      "instant": "2026-10-03T16:00:00Z",
+      "open": false,
+      "reason": "outside_hours"
+    },
+    {
+      "name": "Australia/Sydney spring gap: 16:30Z Sat is open — the gap open resolved pre-transition",
+      "hours": "berlin_bar",
+      "timezone": "Australia/Sydney",
+      "instant": "2026-10-03T16:30:00Z",
+      "open": true
+    }
+  ],
+  "window_cases": [
+    {
+      "name": "bistro Wed 2026-09-02 Chicago",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "date": "2026-09-02",
+      "windows": [
+        [
+          "2026-09-02T17:00:00Z",
+          "2026-09-03T04:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "bistro Mon is closed",
+      "hours": "bistro",
+      "timezone": "America/Chicago",
+      "date": "2026-08-31",
+      "windows": []
+    },
+    {
+      "name": "split service Mon has two windows",
+      "hours": "split_service",
+      "timezone": "America/Chicago",
+      "date": "2026-08-31",
+      "windows": [
+        [
+          "2026-08-31T16:30:00Z",
+          "2026-08-31T19:30:00Z"
+        ],
+        [
+          "2026-08-31T22:30:00Z",
+          "2026-09-01T03:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "late bar Wed crosses midnight",
+      "hours": "late_bar",
+      "timezone": "America/Chicago",
+      "date": "2026-09-02",
+      "windows": [
+        [
+          "2026-09-02T23:00:00Z",
+          "2026-09-03T07:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "late bar Sat 2026-10-31 spans the fall-back: 18:00 CDT → 03:00 CST is 10 hours",
+      "hours": "late_bar",
+      "timezone": "America/Chicago",
+      "date": "2026-10-31",
+      "windows": [
+        [
+          "2026-10-31T23:00:00Z",
+          "2026-11-01T09:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "spring-forward gap: a 02:30 open on 2026-03-08 resolves with the pre-transition offset (08:30Z)",
+      "hours": {
+        "mon": [],
+        "tue": [],
+        "wed": [],
+        "thu": [],
+        "fri": [],
+        "sat": [],
+        "sun": [
+          {
+            "open": "02:30",
+            "close": "04:00"
+          }
+        ]
+      },
+      "timezone": "America/Chicago",
+      "date": "2026-03-08",
+      "windows": [
+        [
+          "2026-03-08T08:30:00Z",
+          "2026-03-08T09:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "Istanbul bistro Thu",
+      "hours": "bistro",
+      "timezone": "Europe/Istanbul",
+      "date": "2026-09-03",
+      "windows": [
+        [
+          "2026-09-03T09:00:00Z",
+          "2026-09-03T20:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "all-day UTC",
+      "hours": "all_day",
+      "timezone": "UTC",
+      "date": "2026-09-02",
+      "windows": [
+        [
+          "2026-09-02T00:00:00Z",
+          "2026-09-02T23:59:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "Europe/Berlin Sat 2026-10-24 crosses the fall-back: 22:00 CEST → Sun 03:00 CET is 6 hours",
+      "hours": "berlin_bar",
+      "timezone": "Europe/Berlin",
+      "date": "2026-10-24",
+      "windows": [
+        [
+          "2026-10-24T20:00:00Z",
+          "2026-10-25T02:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "Europe/Berlin Sun 2026-10-25: an open of 02:30 in the ambiguous hour is its FIRST occurrence (CEST, 00:30Z)",
+      "hours": "berlin_bar",
+      "timezone": "Europe/Berlin",
+      "date": "2026-10-25",
+      "windows": [
+        [
+          "2026-10-25T00:30:00Z",
+          "2026-10-25T03:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "Europe/Berlin Sun 2026-03-29: an open of 02:30 in the spring-forward gap uses the PRE-transition offset (CET, 01:30Z)",
+      "hours": "berlin_bar",
+      "timezone": "Europe/Berlin",
+      "date": "2026-03-29",
+      "windows": [
+        [
+          "2026-03-29T01:30:00Z",
+          "2026-03-29T02:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "Australia/Sydney Sat 2026-04-04 crosses the fall-back: 22:00 AEDT → Sun 03:00 AEST is 6 hours",
+      "hours": "berlin_bar",
+      "timezone": "Australia/Sydney",
+      "date": "2026-04-04",
+      "windows": [
+        [
+          "2026-04-04T11:00:00Z",
+          "2026-04-04T17:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "Australia/Sydney Sun 2026-04-05: 02:30 in the ambiguous hour is its FIRST occurrence (AEDT, 15:30Z Sat)",
+      "hours": "berlin_bar",
+      "timezone": "Australia/Sydney",
+      "date": "2026-04-05",
+      "windows": [
+        [
+          "2026-04-04T15:30:00Z",
+          "2026-04-04T18:00:00Z"
+        ]
+      ]
+    },
+    {
+      "name": "Australia/Sydney Sun 2026-10-04: 02:30 in the spring-forward gap uses the PRE-transition offset (AEST, 16:30Z Sat)",
+      "hours": "berlin_bar",
+      "timezone": "Australia/Sydney",
+      "date": "2026-10-04",
+      "windows": [
+        [
+          "2026-10-03T16:30:00Z",
+          "2026-10-03T17:00:00Z"
+        ]
+      ]
+    }
+  ]
+}

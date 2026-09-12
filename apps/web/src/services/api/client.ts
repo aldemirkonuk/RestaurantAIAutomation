@@ -121,6 +121,20 @@ function createApiClient(): AxiosInstance {
         }
       }
 
+      // OD-79. The API now refuses gated routes for an unverified account.
+      // ProtectedRoute catches this on navigation, but not for a request fired
+      // by an already-mounted page, a background refetch, or a direct link —
+      // those would surface a bare "Forbidden" that tells the user nothing
+      // about what to do. Route on the code, not the prose.
+      if (
+        error.response?.status === 403 &&
+        (error.response.data as { code?: string } | undefined)?.code ===
+          'EMAIL_NOT_VERIFIED' &&
+        window.location.pathname !== '/verify-email'
+      ) {
+        window.location.href = '/verify-email';
+      }
+
       return Promise.reject(error);
     },
   );

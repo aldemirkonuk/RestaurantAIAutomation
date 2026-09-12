@@ -1,0 +1,54 @@
+[
+  {
+    "name": "tuck",
+    "kind": "spring",
+    "params": {
+      "stiffness": 380,
+      "damping": 32
+    },
+    "durationMs": null,
+    "purpose": "Row settles like a chair tucked back under the table — the motion the founder singled out.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "pour",
+    "kind": "spring",
+    "params": {
+      "stiffness": 120,
+      "damping": 20
+    },
+    "durationMs": null,
+    "purpose": "Numbers pour into place rather than snapping; used on KPI counts.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "settle",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.16,
+        1,
+        0.3,
+        1
+      ]
+    },
+    "durationMs": 420,
+    "purpose": "The house curve: row expand, grid-rows 0fr→1fr with the chevron on the same token.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "greet",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.26,
+        0.86,
+        0.44,
+        0.985
+      ]
+    },
+    "durationMs": 520,
+    "purpose": "The greeting's entrance — the house speaking first.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  }
+]

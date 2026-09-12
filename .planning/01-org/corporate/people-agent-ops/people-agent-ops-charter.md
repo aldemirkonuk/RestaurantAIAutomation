@@ -177,7 +177,11 @@ them.** That sentence is the department's founding condition.
    carries `provider`, `model`, tokens, `cost_usd`, `restaurant_id` — and **no agent, no
    verdict**. There is no key that joins them. **Performance review of an agent is not
    currently possible from what is logged.**
-6. **No doneability verdict exists anywhere.** `core/base_agent.py:602` records
+6. **No doneability verdict exists anywhere.** *Corrected 2026-08-25: one now does —
+   `reconciliation_v1` on invoice extraction
+   (`procurement/documents/reconciliation-verdict.ts`, [[0017-doneability-verdicts-are-sidecar-claims]]).
+   Coverage is still ~0% and every other task type is ungraded, so the finding holds;
+   "anywhere" does not.* `core/base_agent.py:602` records
    `success=True` when `process_message()` did not raise. An agent that returns
    confidently wrong output scores 100%.
 7. **The maturity ladder has no owner and no evidence.** `.planning/PROJECT.md:117` —

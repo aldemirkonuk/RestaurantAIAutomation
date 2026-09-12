@@ -1,67 +1,95 @@
 # API Endpoint Reference — Mudavym
 
-> Generated 2026-08-24 from `apps/api-gateway/src/**/*.controller.ts`.
 > **Grep target** — do not read whole (CLAUDE.md §2). Regenerate rather than hand-edit.
 
-**448 endpoints** across **44 modules** · 311 guarded by `JwtAuthGuard` · 137 unguarded.
+## Verification
 
-`Auth` column: ✅ = `JwtAuthGuard` present. 🌐 = explicit `@Public()` (intentionally public). ⚠️ = no guard found — note `TenantGuard` returns `true` for unauthenticated requests (`common/tenant/tenant.guard.ts:38-46`), so ⚠️ means reachable unauthenticated.
+| | |
+|---|---|
+| **Verified** | 2026-08-25 against `apps/api-gateway/src/**/*.controller.ts` at HEAD |
+| **Method** | `@Controller` / `@Get(` `@Post(` `@Put(` `@Patch(` `@Delete(` / `@UseGuards(` / `@Public(` — each route resolved against its own decorators **and** its class-level decorators |
+| **Modules** | 44 controller files, 46 `@Controller` classes |
+| **Total endpoints** | **450** |
+| **Guarded** (`JwtAuthGuard`) | **411** |
+| **Public by design** | **30** — 23 carry an explicit `@Public()`; 7 do not (6 `auth` credential routes + the Toast HMAC webhook) |
+| **UNGUARDED** | **9** — all on `toast/toast`, see below |
 
-### `analytics/analytics` (39) — ⚠️ **39 unguarded** — **classify these**
+**Load-bearing fact:** the only global guards are `RateLimitGuard` and `TenantGuard` (`app.module.ts:125-131`). There is **no global `JwtAuthGuard`**, and `TenantGuard` fails open — *"If no authenticated user, allow through"* (`common/tenant/tenant.guard.ts:38-46`). So a route with no `@UseGuards(JwtAuthGuard)` on its method or its class is reachable unauthenticated. Prefix for every path below: `/api/v1` (`main.ts:77`).
 
-| Auth | Method | Path |
-|---|---|---|
-| ⚠️ | `GET` | `/analytics/basket/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/cashflow/:restaurantId` |
-| ⚠️ | `POST` | `/analytics/consult/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/consultants/:restaurantId` |
-| ⚠️ | `PUT` | `/analytics/consultants/:restaurantId/toggle` |
-| ⚠️ | `GET` | `/analytics/financial/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/forecast/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/goals/:restaurantId` |
-| ⚠️ | `POST` | `/analytics/goals/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/goals/:restaurantId/:goalId/progress` |
-| ⚠️ | `PUT` | `/analytics/goals/:restaurantId/:goalId/status` |
-| ⚠️ | `GET` | `/analytics/health` |
-| ⚠️ | `GET` | `/analytics/hot-tables/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/insight-catalog` |
-| ⚠️ | `GET` | `/analytics/insight-catalog/types` |
-| ⚠️ | `GET` | `/analytics/insight-prefs/:restaurantId` |
-| ⚠️ | `PUT` | `/analytics/insight-prefs/:restaurantId/:category` |
-| ⚠️ | `GET` | `/analytics/insights/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/inventory-science/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/menu-engineering/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/metrics` |
-| ⚠️ | `GET` | `/analytics/overview/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/recommendations/:restaurantId` |
-| ⚠️ | `POST` | `/analytics/recommendations/:restaurantId/action` |
-| ⚠️ | `GET` | `/analytics/recommendations/:restaurantId/actions` |
-| ⚠️ | `POST` | `/analytics/recommendations/:restaurantId/bulk-action` |
-| ⚠️ | `GET` | `/analytics/recommendations/:restaurantId/digest` |
-| ⚠️ | `PUT` | `/analytics/recommendations/:restaurantId/digest` |
-| ⚠️ | `GET` | `/analytics/recommendations/:restaurantId/history` |
-| ⚠️ | `GET` | `/analytics/risk/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/seasonality/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/table-performance/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/tables/:restaurantId` |
-| ⚠️ | `POST` | `/analytics/tables/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/vendor-scorecard/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/venue/:restaurantId` |
-| ⚠️ | `PUT` | `/analytics/venue/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/waiters/:restaurantId` |
-| ⚠️ | `GET` | `/analytics/wine/:restaurantId/:masterWineId` |
+### 🔴 Open security finding — `toast/toast`
 
-### `auth/auth` (28)
+`toast/toast.controller.ts` has no `@UseGuards` on the class and none on any method (`toast/toast.controller.ts:52`). `ToastModule` is mounted (`app.module.ts:92`), so all 10 routes are live. Only `POST /toast/webhook` is public by design (HMAC-SHA256 over `toast-signature`, `toast.controller.ts:97-117`). The other **9 are genuinely unguarded tenant data** — `GET /toast/menus` and `GET /toast/sales` take `restaurantId` as a **query parameter** (`toast.controller.ts:163,278`), so any anonymous caller can read menus and sales for an arbitrary restaurant id, and `POST /toast/orders` can write one. Tracked, not fixed here — this atlas does not edit code.
+
+**Also worth a decision (not counted as UNGUARDED — they carry explicit `@Public()`):** seven of the nine public `communications` routes are test/E2E harness routes, and several of them mutate real data with no environment gate — `POST /communications/test/e2e/step2-approve-reorder` approves a real procurement order and `step3-send-vendor-email` sends a real vendor email (`communications.controller.ts:675,755`). Intent is recorded in code, so this is not a doc defect, but it is a live unauthenticated write surface.
+
+## Legend
+
+| Symbol | Meaning |
+|---|---|
+| ✅ | `JwtAuthGuard` present on the method or its controller class |
+| 🌐 | **public (by design)** — explicit `@Public()`, or an auth/webhook route that cannot require a JWT. Not a defect. |
+| ⚠️ | **UNGUARDED** — no guard, no `@Public()`, not public by design. Reachable unauthenticated. |
+| ~~row~~ | Endpoint present in the 2026-08-24 atlas, **gone at HEAD**. Kept as history. |
+
+Rows are `Auth | Method | Path`, sorted by path then method.
+
+---
+
+### `analytics/analytics` (39)
 
 | Auth | Method | Path |
 |---|---|---|
-| ✅ | `GET` | `/auth/check-email` |
-| ✅ | `POST` | `/auth/dev-bypass-login` |
+| ✅ | `GET` | `/analytics/basket/:restaurantId` |
+| ✅ | `GET` | `/analytics/cashflow/:restaurantId` |
+| ✅ | `POST` | `/analytics/consult/:restaurantId` |
+| ✅ | `GET` | `/analytics/consultants/:restaurantId` |
+| ✅ | `PUT` | `/analytics/consultants/:restaurantId/toggle` |
+| ✅ | `GET` | `/analytics/financial/:restaurantId` |
+| ✅ | `GET` | `/analytics/forecast/:restaurantId` |
+| ✅ | `GET` | `/analytics/goals/:restaurantId` |
+| ✅ | `POST` | `/analytics/goals/:restaurantId` |
+| ✅ | `GET` | `/analytics/goals/:restaurantId/:goalId/progress` |
+| ✅ | `PUT` | `/analytics/goals/:restaurantId/:goalId/status` |
+| ✅ | `GET` | `/analytics/health` |
+| ✅ | `GET` | `/analytics/hot-tables/:restaurantId` |
+| ✅ | `GET` | `/analytics/insight-catalog` |
+| ✅ | `GET` | `/analytics/insight-catalog/types` |
+| ✅ | `GET` | `/analytics/insight-prefs/:restaurantId` |
+| ✅ | `PUT` | `/analytics/insight-prefs/:restaurantId/:category` |
+| ✅ | `GET` | `/analytics/insights/:restaurantId` |
+| ✅ | `GET` | `/analytics/inventory-science/:restaurantId` |
+| ✅ | `GET` | `/analytics/menu-engineering/:restaurantId` |
+| ✅ | `GET` | `/analytics/metrics` |
+| ✅ | `GET` | `/analytics/overview/:restaurantId` |
+| ✅ | `GET` | `/analytics/recommendations/:restaurantId` |
+| ✅ | `POST` | `/analytics/recommendations/:restaurantId/action` |
+| ✅ | `GET` | `/analytics/recommendations/:restaurantId/actions` |
+| ✅ | `POST` | `/analytics/recommendations/:restaurantId/bulk-action` |
+| ✅ | `GET` | `/analytics/recommendations/:restaurantId/digest` |
+| ✅ | `PUT` | `/analytics/recommendations/:restaurantId/digest` |
+| ✅ | `GET` | `/analytics/recommendations/:restaurantId/history` |
+| ✅ | `GET` | `/analytics/risk/:restaurantId` |
+| ✅ | `GET` | `/analytics/seasonality/:restaurantId` |
+| ✅ | `GET` | `/analytics/table-performance/:restaurantId` |
+| ✅ | `GET` | `/analytics/tables/:restaurantId` |
+| ✅ | `POST` | `/analytics/tables/:restaurantId` |
+| ✅ | `GET` | `/analytics/vendor-scorecard/:restaurantId` |
+| ✅ | `GET` | `/analytics/venue/:restaurantId` |
+| ✅ | `PUT` | `/analytics/venue/:restaurantId` |
+| ✅ | `GET` | `/analytics/waiters/:restaurantId` |
+| ✅ | `GET` | `/analytics/wine/:restaurantId/:masterWineId` |
+
+### `auth/auth` (28) — 🌐 13 public by design
+
+| Auth | Method | Path |
+|---|---|---|
+| 🌐 | `GET` | `/auth/check-email` |
+| 🌐 | `POST` | `/auth/dev-bypass-login` |
 | ✅ | `POST` | `/auth/invite` |
-| ✅ | `GET` | `/auth/invite/:code` |
+| 🌐 | `GET` | `/auth/invite/:code` |
 | ✅ | `POST` | `/auth/invite/:code/accept` |
-| ✅ | `POST` | `/auth/join` |
-| ✅ | `POST` | `/auth/login` |
+| 🌐 | `POST` | `/auth/join` |
+| 🌐 | `POST` | `/auth/login` |
 | ✅ | `POST` | `/auth/logout` |
 | ✅ | `DELETE` | `/auth/me` |
 | ✅ | `GET` | `/auth/me` |
@@ -72,19 +100,19 @@
 | ✅ | `GET` | `/auth/me/linked-providers` |
 | ✅ | `POST` | `/auth/me/password` |
 | ✅ | `GET` | `/auth/me/role` |
-| ✅ | `POST` | `/auth/oauth/google` |
-| ✅ | `POST` | `/auth/oauth/microsoft` |
-| ✅ | `POST` | `/auth/refresh` |
-| ✅ | `POST` | `/auth/register` |
-| ✅ | `POST` | `/auth/register/restaurant` |
-| ✅ | `POST` | `/auth/request-password-reset` |
+| 🌐 | `POST` | `/auth/oauth/google` |
+| 🌐 | `POST` | `/auth/oauth/microsoft` |
+| 🌐 | `POST` | `/auth/refresh` |
+| 🌐 | `POST` | `/auth/register` |
+| 🌐 | `POST` | `/auth/register/restaurant` |
+| 🌐 | `POST` | `/auth/request-password-reset` |
 | ✅ | `POST` | `/auth/resend-verification` |
-| ✅ | `POST` | `/auth/reset-password` |
+| 🌐 | `POST` | `/auth/reset-password` |
 | ✅ | `POST` | `/auth/switch-restaurant` |
 | ✅ | `GET` | `/auth/verify` |
-| ✅ | `POST` | `/auth/verify-email` |
+| 🌐 | `POST` | `/auth/verify-email` |
 
-### `calendar/calendar` (19)
+### `calendar/calendar` (19) — 🌐 1 public by design
 
 | Auth | Method | Path |
 |---|---|---|
@@ -100,7 +128,7 @@
 | ✅ | `DELETE` | `/calendar/events/:eventId/recurring` |
 | ✅ | `GET` | `/calendar/events/:eventId/recurring` |
 | ✅ | `PATCH` | `/calendar/events/:eventId/status` |
-| ✅ | `GET` | `/calendar/feed/:token.ics` |
+| 🌐 | `GET` | `/calendar/feed/:token.ics` |
 | ✅ | `GET` | `/calendar/ical-token` |
 | ✅ | `POST` | `/calendar/ical-token/regenerate` |
 | ✅ | `GET` | `/calendar/recurrence/:ruleId` |
@@ -112,12 +140,13 @@
 
 | Auth | Method | Path |
 |---|---|---|
-| ✅ | `GET` | `/health` |
 | ✅ | `GET` | `/health/agents` |
 | ✅ | `GET` | `/health/agents/:name` |
 | ✅ | `GET` | `/health/providers` |
+| ✅ | `GET` | `/metrics` |
+| — | ~~`GET`~~ | ~~`/health`~~ — removed, verified 2026-08-25 (never a route on this controller; only /health/agents, /health/agents/:name, /health/providers exist) |
 
-### `common/orchestrator/inbound-email` (1) — ⚠️ **1 unguarded** (webhook module — expected public, must verify signatures instead)
+### `common/orchestrator/inbound-email` (1) — 🌐 1 public by design
 
 | Auth | Method | Path |
 |---|---|---|
@@ -141,41 +170,41 @@
 | ✅ | `GET` | `/senders/reputation` |
 | ✅ | `POST` | `/senders/trust` |
 
-### `communications/communications` (18) — ⚠️ **18 unguarded** — **classify these**
+### `communications/communications` (18) — 🌐 9 public by design
 
 | Auth | Method | Path |
 |---|---|---|
-| ⚠️ | `POST` | `/communications/alerts/daily-summary` |
-| ⚠️ | `POST` | `/communications/alerts/low-stock` |
-| ⚠️ | `POST` | `/communications/email` |
-| ⚠️ | `POST` | `/communications/sms` |
-| ⚠️ | `GET` | `/communications/status` |
+| ✅ | `POST` | `/communications/alerts/daily-summary` |
+| ✅ | `POST` | `/communications/alerts/low-stock` |
+| ✅ | `POST` | `/communications/email` |
+| ✅ | `POST` | `/communications/sms` |
+| ✅ | `GET` | `/communications/status` |
 | 🌐 | `POST` | `/communications/test/e2e/step1-trigger-threshold` |
 | 🌐 | `POST` | `/communications/test/e2e/step2-approve-reorder` |
 | 🌐 | `POST` | `/communications/test/e2e/step3-send-vendor-email` |
 | 🌐 | `GET` | `/communications/test/e2e/step4-check-inbound` |
 | 🌐 | `POST` | `/communications/test/e2e/step5-approve-confirmation` |
 | 🌐 | `GET` | `/communications/test/e2e/step6-check-status` |
-| ⚠️ | `POST` | `/communications/test/email` |
-| ⚠️ | `POST` | `/communications/test/low-stock-alert` |
-| ⚠️ | `POST` | `/communications/test/scenario` |
+| ✅ | `POST` | `/communications/test/email` |
+| ✅ | `POST` | `/communications/test/low-stock-alert` |
+| ✅ | `POST` | `/communications/test/scenario` |
 | 🌐 | `POST` | `/communications/test/send-template` |
 | 🌐 | `POST` | `/communications/webhooks/gmail` |
 | 🌐 | `POST` | `/communications/webhooks/gmail/force-fetch` |
-| ⚠️ | `GET` | `/communications/webhooks/gmail/status` |
+| ✅ | `GET` | `/communications/webhooks/gmail/status` |
 
-### `contacts/contacts` (8) — ⚠️ **8 unguarded** — **classify these**
+### `contacts/contacts` (8)
 
 | Auth | Method | Path |
 |---|---|---|
-| ⚠️ | `GET` | `/contacts` |
-| ⚠️ | `POST` | `/contacts` |
-| ⚠️ | `DELETE` | `/contacts/:id` |
-| ⚠️ | `GET` | `/contacts/:id` |
-| ⚠️ | `PATCH` | `/contacts/:id` |
-| ⚠️ | `GET` | `/contacts/:id/addresses` |
-| ⚠️ | `POST` | `/contacts/:id/addresses` |
-| ⚠️ | `DELETE` | `/contacts/addresses/:addressId` |
+| ✅ | `GET` | `/contacts` |
+| ✅ | `POST` | `/contacts` |
+| ✅ | `DELETE` | `/contacts/:id` |
+| ✅ | `GET` | `/contacts/:id` |
+| ✅ | `PATCH` | `/contacts/:id` |
+| ✅ | `GET` | `/contacts/:id/addresses` |
+| ✅ | `POST` | `/contacts/:id/addresses` |
+| ✅ | `DELETE` | `/contacts/addresses/:addressId` |
 
 ### `conversations/conversations` (12)
 
@@ -194,18 +223,18 @@
 | ✅ | `GET` | `/conversations/thread/:threadId` |
 | ✅ | `GET` | `/conversations/threads` |
 
-### `dashboard/dashboard` (8) — ⚠️ **8 unguarded** — **classify these**
+### `dashboard/dashboard` (8)
 
 | Auth | Method | Path |
 |---|---|---|
-| ⚠️ | `GET` | `/dashboard/activity/:restaurantId` |
-| ⚠️ | `GET` | `/dashboard/alerts/:restaurantId` |
-| ⚠️ | `GET` | `/dashboard/calendar-revenue/:restaurantId` |
-| ⚠️ | `GET` | `/dashboard/health` |
-| ⚠️ | `GET` | `/dashboard/inventory-breakdown/:restaurantId` |
-| ⚠️ | `GET` | `/dashboard/sales-chart/:restaurantId` |
-| ⚠️ | `GET` | `/dashboard/stats/:restaurantId` |
-| ⚠️ | `GET` | `/dashboard/summary/:restaurantId` |
+| ✅ | `GET` | `/dashboard/activity/:restaurantId` |
+| ✅ | `GET` | `/dashboard/alerts/:restaurantId` |
+| ✅ | `GET` | `/dashboard/calendar-revenue/:restaurantId` |
+| ✅ | `GET` | `/dashboard/health` |
+| ✅ | `GET` | `/dashboard/inventory-breakdown/:restaurantId` |
+| ✅ | `GET` | `/dashboard/sales-chart/:restaurantId` |
+| ✅ | `GET` | `/dashboard/stats/:restaurantId` |
+| ✅ | `GET` | `/dashboard/summary/:restaurantId` |
 
 ### `distributor-discovery/distributor-discovery` (3)
 
@@ -215,21 +244,21 @@
 | ✅ | `GET` | `/distributors/facets` |
 | ✅ | `GET` | `/distributors/search` |
 
-### `events/events` (3)
+### `events/events` (3) — 🌐 1 public by design
 
 | Auth | Method | Path |
 |---|---|---|
 | ✅ | `GET` | `/events` |
 | ✅ | `POST` | `/events` |
-| ✅ | `GET` | `/events/metrics` |
+| 🌐 | `GET` | `/events/metrics` |
 
-### `integrations/integrations-oauth` (5)
+### `integrations/integrations-oauth` (5) — 🌐 1 public by design
 
 | Auth | Method | Path |
 |---|---|---|
 | ✅ | `DELETE` | `/integrations/oauth/:integrationId` |
 | ✅ | `POST` | `/integrations/oauth/:integrationId/authorize` |
-| ✅ | `GET` | `/integrations/oauth/:provider/callback` |
+| 🌐 | `GET` | `/integrations/oauth/:provider/callback` |
 | ✅ | `GET` | `/integrations/oauth/catalog` |
 | ✅ | `GET` | `/integrations/oauth/connections` |
 
@@ -283,10 +312,14 @@
 | ✅ | `POST` | `/menus/import` |
 | ✅ | `POST` | `/menus/items` |
 | ✅ | `PATCH` | `/menus/items/:id` |
-| ✅ | `GET` | `/menus/progress` |
-| ✅ | `PATCH` | `/menus/progress` |
-| ✅ | `PATCH` | `/menus/threshold` |
-| ✅ | `GET` | `/menus/vendor-email` |
+| ✅ | `GET` | `/onboarding/progress` |
+| ✅ | `PATCH` | `/onboarding/progress` |
+| ✅ | `PATCH` | `/onboarding/threshold` |
+| ✅ | `GET` | `/onboarding/vendor-email` |
+| — | ~~`GET`~~ | ~~`/menus/progress`~~ — removed, verified 2026-08-25 (moved to GET /onboarding/progress) |
+| — | ~~`PATCH`~~ | ~~`/menus/progress`~~ — removed, verified 2026-08-25 (moved to PATCH /onboarding/progress) |
+| — | ~~`PATCH`~~ | ~~`/menus/threshold`~~ — removed, verified 2026-08-25 (moved to PATCH /onboarding/threshold) |
+| — | ~~`GET`~~ | ~~`/menus/vendor-email`~~ — removed, verified 2026-08-25 (moved to GET /onboarding/vendor-email) |
 
 ### `mobile/mobile` (4)
 
@@ -297,34 +330,34 @@
 | ✅ | `GET` | `/mobile/feed` |
 | ✅ | `GET` | `/mobile/today-pulse` |
 
-### `notifications/notifications` (24) — ⚠️ **24 unguarded** — **classify these**
+### `notifications/notifications` (24)
 
 | Auth | Method | Path |
 |---|---|---|
-| ⚠️ | `GET` | `/notifications` |
-| ⚠️ | `POST` | `/notifications` |
-| ⚠️ | `DELETE` | `/notifications/:id` |
-| ⚠️ | `PATCH` | `/notifications/:id/archive` |
-| ⚠️ | `PATCH` | `/notifications/:id/read` |
-| ⚠️ | `PATCH` | `/notifications/:id/unread` |
-| ⚠️ | `DELETE` | `/notifications/bulk` |
-| ⚠️ | `POST` | `/notifications/delivery` |
-| ⚠️ | `GET` | `/notifications/history` |
-| ⚠️ | `POST` | `/notifications/low-stock` |
-| ⚠️ | `POST` | `/notifications/order-approval` |
-| ⚠️ | `GET` | `/notifications/preferences` |
-| ⚠️ | `PATCH` | `/notifications/preferences` |
-| ⚠️ | `POST` | `/notifications/price-negotiation` |
-| ⚠️ | `POST` | `/notifications/push/subscribe` |
-| ⚠️ | `POST` | `/notifications/push/unsubscribe` |
-| ⚠️ | `DELETE` | `/notifications/read/all` |
-| ⚠️ | `PATCH` | `/notifications/read/all` |
-| ⚠️ | `PATCH` | `/notifications/read/bulk` |
-| ⚠️ | `POST` | `/notifications/send-email` |
-| ⚠️ | `POST` | `/notifications/system-alert` |
-| ⚠️ | `POST` | `/notifications/test` |
-| ⚠️ | `GET` | `/notifications/unread` |
-| ⚠️ | `GET` | `/notifications/unread/count` |
+| ✅ | `GET` | `/notifications` |
+| ✅ | `POST` | `/notifications` |
+| ✅ | `DELETE` | `/notifications/:id` |
+| ✅ | `PATCH` | `/notifications/:id/archive` |
+| ✅ | `PATCH` | `/notifications/:id/read` |
+| ✅ | `PATCH` | `/notifications/:id/unread` |
+| ✅ | `DELETE` | `/notifications/bulk` |
+| ✅ | `POST` | `/notifications/delivery` |
+| ✅ | `GET` | `/notifications/history` |
+| ✅ | `POST` | `/notifications/low-stock` |
+| ✅ | `POST` | `/notifications/order-approval` |
+| ✅ | `GET` | `/notifications/preferences` |
+| ✅ | `PATCH` | `/notifications/preferences` |
+| ✅ | `POST` | `/notifications/price-negotiation` |
+| ✅ | `POST` | `/notifications/push/subscribe` |
+| ✅ | `POST` | `/notifications/push/unsubscribe` |
+| ✅ | `DELETE` | `/notifications/read/all` |
+| ✅ | `PATCH` | `/notifications/read/all` |
+| ✅ | `PATCH` | `/notifications/read/bulk` |
+| ✅ | `POST` | `/notifications/send-email` |
+| ✅ | `POST` | `/notifications/system-alert` |
+| ✅ | `POST` | `/notifications/test` |
+| ✅ | `GET` | `/notifications/unread` |
+| ✅ | `GET` | `/notifications/unread/count` |
 
 ### `one-tap-actions/one-tap-actions` (8)
 
@@ -352,20 +385,23 @@
 | ✅ | `GET` | `/organizations/locations/:id` |
 | ✅ | `PATCH` | `/organizations/locations/:id` |
 
-### `pos-hub/pos-hub` (10) — ⚠️ **10 unguarded** (webhook module — expected public, must verify signatures instead)
+### `pos-hub/pos-hub` (13) — 🌐 1 public by design
 
 | Auth | Method | Path |
 |---|---|---|
-| ⚠️ | `POST` | `/pos-hub/catalog-match/:restaurantId` |
-| ⚠️ | `GET` | `/pos-hub/catalog-match/:restaurantId/proposals` |
-| ⚠️ | `POST` | `/pos-hub/catalog-match/:restaurantId/proposals/:proposalId/approve` |
-| ⚠️ | `POST` | `/pos-hub/catalog-match/:restaurantId/proposals/:proposalId/reject` |
-| ⚠️ | `POST` | `/pos-hub/import/:restaurantId` |
-| ⚠️ | `GET` | `/pos-hub/mappings/:restaurantId` |
-| ⚠️ | `POST` | `/pos-hub/mappings/:restaurantId` |
-| ⚠️ | `GET` | `/pos-hub/providers` |
-| ⚠️ | `GET` | `/pos-hub/status/:restaurantId` |
-| ⚠️ | `POST` | `/pos-hub/webhook/:provider/:restaurantId` |
+| ✅ | `POST` | `/pos-hub/catalog-match/:restaurantId` |
+| ✅ | `GET` | `/pos-hub/catalog-match/:restaurantId/proposals` |
+| ✅ | `POST` | `/pos-hub/catalog-match/:restaurantId/proposals/:proposalId/approve` |
+| ✅ | `POST` | `/pos-hub/catalog-match/:restaurantId/proposals/:proposalId/reject` |
+| ✅ | `POST` | `/pos-hub/import/:restaurantId` |
+| ✅ | `GET` | `/pos-hub/mappings/:restaurantId` |
+| ✅ | `POST` | `/pos-hub/mappings/:restaurantId` |
+| ✅ | `POST` | `/pos-hub/mappings/:restaurantId/:mappingId/sale-unit` |
+| ✅ | `POST` | `/pos-hub/mappings/:restaurantId/sale-unit` |
+| ✅ | `GET` | `/pos-hub/mappings/:restaurantId/sale-unit-review` |
+| ✅ | `GET` | `/pos-hub/providers` |
+| ✅ | `GET` | `/pos-hub/status/:restaurantId` |
+| 🌐 | `POST` | `/pos-hub/webhook/:provider/:restaurantId` |
 
 ### `procurement/documents/credits` (3)
 
@@ -425,16 +461,16 @@
 | ✅ | `GET` | `/procurement/receiving/queue` |
 | ✅ | `GET` | `/procurement/receiving/unverified` |
 
-### `procurement/recurring-orders` (6) — ⚠️ **6 unguarded** — **classify these**
+### `procurement/recurring-orders` (6)
 
 | Auth | Method | Path |
 |---|---|---|
-| ⚠️ | `GET` | `/recurring-orders/:restaurantId` |
-| ⚠️ | `POST` | `/recurring-orders/:restaurantId` |
-| ⚠️ | `DELETE` | `/recurring-orders/:restaurantId/:id` |
-| ⚠️ | `GET` | `/recurring-orders/:restaurantId/:id` |
-| ⚠️ | `PUT` | `/recurring-orders/:restaurantId/:id` |
-| ⚠️ | `POST` | `/recurring-orders/:restaurantId/execute-check` |
+| ✅ | `GET` | `/recurring-orders/:restaurantId` |
+| ✅ | `POST` | `/recurring-orders/:restaurantId` |
+| ✅ | `DELETE` | `/recurring-orders/:restaurantId/:id` |
+| ✅ | `GET` | `/recurring-orders/:restaurantId/:id` |
+| ✅ | `PUT` | `/recurring-orders/:restaurantId/:id` |
+| ✅ | `POST` | `/recurring-orders/:restaurantId/execute-check` |
 
 ### `providers/provider-intelligence` (17)
 
@@ -458,14 +494,13 @@
 | ✅ | `GET` | `/providers/promotions/expiring` |
 | ✅ | `GET` | `/providers/promotions/savings` |
 
-### `providers/providers` (29)
+### `providers/providers` (28)
 
 | Auth | Method | Path |
 |---|---|---|
 | ✅ | `GET` | `/providers` |
 | ✅ | `POST` | `/providers` |
 | ✅ | `DELETE` | `/providers/:id` |
-| ✅ | `GET` | `/providers/:id` |
 | ✅ | `GET` | `/providers/:id` |
 | ✅ | `PATCH` | `/providers/:id` |
 | ✅ | `PATCH` | `/providers/:id/contact-date` |
@@ -492,11 +527,12 @@
 | ✅ | `GET` | `/providers/search` |
 | ✅ | `GET` | `/providers/search/wine-type` |
 
-### `reports/reports` (7)
+### `reports/reports` (8)
 
 | Auth | Method | Path |
 |---|---|---|
 | ✅ | `GET` | `/reports` |
+| ✅ | `DELETE` | `/reports/:id` |
 | ✅ | `GET` | `/reports/:id` |
 | ✅ | `GET` | `/reports/:id/download` |
 | ✅ | `POST` | `/reports/generate` |
@@ -533,21 +569,21 @@
 | ✅ | `GET` | `/settings/feature-flags/:restaurantId` |
 | ✅ | `POST` | `/settings/feature-flags/check` |
 
-### `simpos/simpos` (11) — ⚠️ **11 unguarded** (webhook module — expected public, must verify signatures instead)
+### `simpos/simpos` (11)
 
 | Auth | Method | Path |
 |---|---|---|
-| ⚠️ | `GET` | `/simpos/:restaurantId/catalog` |
-| ⚠️ | `POST` | `/simpos/:restaurantId/catalog` |
-| ⚠️ | `DELETE` | `/simpos/:restaurantId/catalog/:catalogId` |
-| ⚠️ | `POST` | `/simpos/:restaurantId/catalog/seed` |
-| ⚠️ | `GET` | `/simpos/:restaurantId/check` |
-| ⚠️ | `GET` | `/simpos/:restaurantId/check/:checkId` |
-| ⚠️ | `POST` | `/simpos/:restaurantId/check/:checkId/close` |
-| ⚠️ | `POST` | `/simpos/:restaurantId/check/:checkId/lines` |
-| ⚠️ | `PATCH` | `/simpos/:restaurantId/lines/:lineId` |
-| ⚠️ | `GET` | `/simpos/:restaurantId/orders` |
-| ⚠️ | `GET` | `/simpos/:restaurantId/tables` |
+| ✅ | `GET` | `/simpos/:restaurantId/catalog` |
+| ✅ | `POST` | `/simpos/:restaurantId/catalog` |
+| ✅ | `DELETE` | `/simpos/:restaurantId/catalog/:catalogId` |
+| ✅ | `POST` | `/simpos/:restaurantId/catalog/seed` |
+| ✅ | `GET` | `/simpos/:restaurantId/check` |
+| ✅ | `GET` | `/simpos/:restaurantId/check/:checkId` |
+| ✅ | `POST` | `/simpos/:restaurantId/check/:checkId/close` |
+| ✅ | `POST` | `/simpos/:restaurantId/check/:checkId/lines` |
+| ✅ | `PATCH` | `/simpos/:restaurantId/lines/:lineId` |
+| ✅ | `GET` | `/simpos/:restaurantId/orders` |
+| ✅ | `GET` | `/simpos/:restaurantId/tables` |
 
 ### `storage-locations/storage-locations` (8)
 
@@ -600,7 +636,7 @@
 | ✅ | `PATCH` | `/restaurants/:restaurantId/team/time-off/:requestId` |
 | ✅ | `GET` | `/restaurants/:restaurantId/team/week` |
 
-### `toast/toast` (10) — ⚠️ **10 unguarded** (webhook module — expected public, must verify signatures instead)
+### `toast/toast` (10) — ⚠️ **9 UNGUARDED** — 🌐 1 public by design
 
 | Auth | Method | Path |
 |---|---|---|
@@ -612,7 +648,7 @@
 | ⚠️ | `GET` | `/toast/orders/:orderId` |
 | ⚠️ | `GET` | `/toast/sales` |
 | ⚠️ | `GET` | `/toast/statistics` |
-| ⚠️ | `POST` | `/toast/webhook` |
+| 🌐 | `POST` | `/toast/webhook` |
 | ⚠️ | `GET` | `/toast/webhook/metrics` |
 
 ### `user-preferences/user-preferences` (2)
@@ -635,11 +671,10 @@
 | ✅ | `POST` | `/ux/signals` |
 | ✅ | `GET` | `/ux/summary/:page` |
 
-### `vendor-catalogue/vendor-catalogue` (4)
+### `vendor-catalogue/vendor-catalogue` (3)
 
 | Auth | Method | Path |
 |---|---|---|
-| ✅ | `GET` | `/vendor-catalogue/:id` |
 | ✅ | `GET` | `/vendor-catalogue/:id` |
 | ✅ | `GET` | `/vendor-catalogue/match` |
 | ✅ | `GET` | `/vendor-catalogue/search` |
@@ -653,7 +688,7 @@
 | ✅ | `POST` | `/vendor-intel/scrape` |
 | ✅ | `POST` | `/vendor-intel/sweep` |
 
-### `vendor-portal/vendor-portal` (2) — ⚠️ **2 unguarded** (all carry explicit `@Public()` — intentionally public, not a gap)
+### `vendor-portal/vendor-portal` (2) — 🌐 2 public by design
 
 | Auth | Method | Path |
 |---|---|---|
@@ -674,3 +709,7 @@
 | ✅ | `GET` | `/wines/submissions/list` |
 | ✅ | `POST` | `/wines/submissions/process` |
 | ✅ | `GET` | `/wines/suggestions` |
+
+---
+
+*Verified 2026-08-25. Two duplicate rows in the 2026-08-24 edition (`GET /providers/:id`, `GET /vendor-catalogue/:id`) were de-duplicated — both endpoints still exist, they were listed twice.*

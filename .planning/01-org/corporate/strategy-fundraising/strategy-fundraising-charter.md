@@ -190,7 +190,7 @@ strong parts should be named before the stale ones:
 
 Two further pieces of prior art:
 
-- `.planning/AGENT_NATIVE_UI_DECISION.md:78` — *"Business review (YC-partner lens) —
+- `.planning/decisions/AGENT_NATIVE_UI_DECISION.md:78` — *"Business review (YC-partner lens) —
   verdict: don't build."* Strategy review is an existing practice here, not a new habit.
 - [ADR 0005](../../../decisions/0005-v3-to-v0-version-reset.md) — the deliberate v3→v0
   reset is a positioning decision already on the record.

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Cookie, Database, KeyRound, Share2, LineChart } from 'lucide-react'
+import { ArrowLeft, Cookie, Database, KeyRound, Share2, LineChart, Bug } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 
 /**
@@ -7,20 +7,22 @@ import { BrandMark } from '../components/brand/BrandMark'
  *
  * Written to match what the code actually does rather than boilerplate: the app
  * sets no cookies, keeps session tokens in localStorage, ships interaction
- * telemetry disabled, and defaults partner sharing to off. If any of those
- * change, this page has to change with them.
+ * telemetry disabled, defaults partner sharing to off, and sends only a
+ * pseudonymous id (never email or name) to error tracking — see
+ * lib/error-tracking.ts, which strips PII before every event leaves the browser.
+ * If any of those change, this page has to change with them.
  */
 export default function Privacy() {
   return (
     <div className="min-h-screen bg-[#FAF7F5] px-4 py-12">
       <div className="mx-auto w-full max-w-2xl">
         <div className="mb-8 flex flex-col items-center text-center">
-          <BrandMark size={44} />
+          <BrandMark size={26} />
           <h1 className="mt-4 text-2xl font-semibold tracking-tight text-gray-900">
             Privacy &amp; data
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            What WineOps stores, what leaves your browser, and what you control.
+            What Mudavym stores, what leaves your browser, and what you control.
           </p>
         </div>
 
@@ -28,7 +30,7 @@ export default function Privacy() {
           <Section
             icon={Cookie}
             title="Cookies"
-            body="WineOps sets no tracking or advertising cookies. We don't use a cookie-consent banner because there is nothing to consent to. Your sign-in session is kept in your browser's local storage instead of a cookie, and it is cleared when you sign out."
+            body="Mudavym sets no tracking or advertising cookies. We don't use a cookie-consent banner because there is nothing to consent to. Your sign-in session is kept in your browser's local storage instead of a cookie, and it is cleared when you sign out."
           />
 
           <Section
@@ -40,13 +42,19 @@ export default function Privacy() {
           <Section
             icon={Database}
             title="Connected integrations"
-            body="Connecting Google Drive or Microsoft Excel grants WineOps permission to write files on your behalf. We request the narrowest scopes that work — access is limited to files WineOps creates, not your whole drive. The access and refresh tokens are encrypted before being stored, and you can revoke a connection at any time from Settings → Integrations, which also revokes it at the provider."
+            body="Connecting Google Drive or Microsoft Excel grants Mudavym permission to write files on your behalf. We request the narrowest scopes that work — access is limited to files Mudavym creates, not your whole drive. The access and refresh tokens are encrypted before being stored, and you can revoke a connection at any time from Settings → Integrations, which also revokes it at the provider."
           />
 
           <Section
             icon={LineChart}
             title="Product analytics"
             body="Interaction telemetry is off unless your deployment explicitly enables it and you turn on Usage analytics in Settings. When it is on, what leaves the browser is a page name, an event type, an optional element name, and a number — never text you typed, never text the app rendered, and never the contents of your inventory."
+          />
+
+          <Section
+            icon={Bug}
+            title="Error and performance monitoring"
+            body="When a deployment configures error tracking (Sentry), crashes and slow requests are reported so we can fix them. What is sent is technical: the error type and stack trace, the page or request involved, browser and app-version details, and two opaque identifiers — your account id and your restaurant id — which mean nothing outside our own database. Your email address and your name are never sent. Reports are scrubbed of contact details, addresses and credentials before they leave the app, and request parameters are reported by name without their values. If no error-tracking key is configured, nothing is sent at all."
           />
 
           <Section

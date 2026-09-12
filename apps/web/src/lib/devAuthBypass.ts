@@ -40,7 +40,6 @@ export async function applyDevAuthBypass(): Promise<void> {
     if (data.accessToken) localStorage.setItem('accessToken', data.accessToken)
     if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken)
     if (data.accessToken) {
-      // eslint-disable-next-line no-console
       console.info('[dev-auth-bypass] Signed in as the configured dev account (localhost only).')
     }
   } catch {

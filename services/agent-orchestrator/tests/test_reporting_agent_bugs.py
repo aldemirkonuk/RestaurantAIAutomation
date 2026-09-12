@@ -139,8 +139,18 @@ class TestBUG10SmsAppend:
 
 class TestBUG11RealReports:
     @pytest.mark.asyncio
-    async def test_inventory_report_queries_inventory_stock_table(self):
-        """_generate_inventory_report must query inventory_stock table."""
+    async def test_inventory_report_queries_restaurant_inventory_table(self):
+        """
+        _generate_inventory_report must query `restaurant_inventory`.
+
+        OD-99. This test used to assert `inventory_stock` -- a table declared
+        by no migration in this repo, which production answers with 404
+        PGRST205. So the test did not merely miss the defect: it pinned it in
+        place, and would have failed anyone who fixed it. `restaurant_inventory`
+        is the table that exists (200 to service-role, 42501 to anon, verified
+        against production 2026-08-26) and carries every column this report
+        reads.
+        """
         agent = _make_agent()
 
         mock_result = MagicMock()
@@ -150,21 +160,21 @@ class TestBUG11RealReports:
                 "wine_name": "Caymus",
                 "stock_live": 5,
                 "threshold_min": 3,
-                "wine_price": 150.0,
+                "last_purchase_price": 150.0,
             },
             {
                 "id": "i2",
                 "wine_name": "Opus One",
                 "stock_live": 1,
                 "threshold_min": 3,
-                "wine_price": 350.0,
+                "last_purchase_price": 350.0,
             },
             {
                 "id": "i3",
                 "wine_name": "Pinot Noir",
                 "stock_live": 0,
                 "threshold_min": 2,
-                "wine_price": 80.0,
+                "last_purchase_price": 80.0,
             },
         ]
         agent.database.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = (
@@ -174,11 +184,35 @@ class TestBUG11RealReports:
         result = await agent._generate_inventory_report("rest-1")
 
         # Verify it called the right table
-        agent.database.supabase.table.assert_called_with("inventory_stock")
+        agent.database.supabase.table.assert_called_with("restaurant_inventory")
         assert result["summary"]["total_items"] == 3
         # Opus One (stock=1 < threshold=3) and Pinot Noir (stock=0 < threshold=2) = 2 low stock
         assert result["summary"]["low_stock_count"] == 2
         assert result["summary"]["out_of_stock_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_inventory_report_never_queries_the_phantom_table(self):
+        """
+        OD-99. No call may target `inventory_stock` under any name.
+
+        The sibling test above asserts the *last* table touched. This one
+        asserts the phantom never appears at all, so a future edit that adds
+        an `inventory_stock` read before the real one cannot slip past.
+        """
+        agent = _make_agent()
+        mock_result = MagicMock()
+        mock_result.data = []
+        agent.database.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+            mock_result
+        )
+
+        await agent._generate_inventory_report("rest-1")
+
+        tables = [c.args[0] for c in agent.database.supabase.table.call_args_list]
+        assert "inventory_stock" not in tables, (
+            "inventory_stock does not exist in production (404 PGRST205); "
+            f"tables queried were {tables}"
+        )
 
     @pytest.mark.asyncio
     async def test_inventory_report_returns_nonzero_value(self):
@@ -191,7 +225,7 @@ class TestBUG11RealReports:
                 "wine_name": "Caymus",
                 "stock_live": 5,
                 "threshold_min": 3,
-                "wine_price": 100.0,
+                "last_purchase_price": 100.0,
             },
         ]
         agent.database.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = (
@@ -202,6 +236,27 @@ class TestBUG11RealReports:
         assert (
             result["summary"]["total_value"] == 500.0
         ), f"Expected total_value=500.0 (5 bottles × $100), got {result['summary']['total_value']}"
+
+    @pytest.mark.asyncio
+    async def test_inventory_value_falls_back_to_custom_price(self):
+        """
+        OD-99. `restaurant_inventory` has no `wine_price`. Valuation reads
+        `last_purchase_price` first and `custom_price` when the item was never
+        purchased through the system; a row with neither contributes 0 rather
+        than a fabricated number.
+        """
+        agent = _make_agent()
+        mock_result = MagicMock()
+        mock_result.data = [
+            {"id": "i1", "wine_name": "A", "stock_live": 2, "custom_price": 40.0},
+            {"id": "i2", "wine_name": "B", "stock_live": 3},  # no price at all
+        ]
+        agent.database.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+            mock_result
+        )
+
+        result = await agent._generate_inventory_report("rest-1")
+        assert result["summary"]["total_value"] == 80.0
 
     @pytest.mark.asyncio
     async def test_sales_report_queries_pos_webhook_logs(self):

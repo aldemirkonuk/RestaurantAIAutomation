@@ -1,0 +1,847 @@
+<style>
+.mx-st{
+  --st-settle:cubic-bezier(.16,1,.3,1);
+  --st-turn:cubic-bezier(.32,.72,0,1);
+  --st-out:cubic-bezier(.3,0,1,1);
+  --st-tint:color-mix(in oklab, var(--m-accent) 12%, transparent);
+  --st-ring:color-mix(in oklab, var(--m-accent) 38%, transparent);
+  --st-notint:color-mix(in oklab, var(--m-no) 13%, transparent);
+  --st-warntint:color-mix(in oklab, var(--m-warn) 15%, transparent);
+  --st-oktint:color-mix(in oklab, var(--m-ok) 14%, transparent);
+  font-family:var(--m-sans);color:var(--m-ink);font-size:12.5px;line-height:1.42;
+  display:flex;flex-direction:column;justify-content:center;gap:9px;width:100%;
+}
+.mx-st .k{font:500 9px/1 var(--m-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--m-mut)}
+.mx-st .fig{font-family:var(--m-mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.mx-st .cap{font:400 9.5px/1.5 var(--m-mono);color:var(--m-mut);letter-spacing:.02em}
+.mx-st .say{font-family:var(--m-serif);font-variation-settings:'SOFT' 42,'WONK' 1;font-size:13px}
+.mx-st b{font-weight:600}
+
+@keyframes mxst-shim{0%{background-position:135% 0}100%{background-position:-35% 0}}
+
+/* ── st-01 · settings toggle ─────────────────────────────────────── */
+.mx-st-01 .t01-row{display:flex;align-items:flex-start;gap:11px}
+.mx-st-01 .t01-tog{position:relative;flex:none;width:40px;height:23px;border-radius:99px;
+  background:var(--m-sunk);border:1px solid var(--m-line);cursor:pointer;
+  transition:background 160ms var(--st-settle),border-color 160ms var(--st-settle)}
+.mx-st-01 .t01-tog.on{background:var(--st-tint);border-color:var(--st-ring)}
+.mx-st-01 .t01-thumb{position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:99px;
+  background:var(--m-mut);will-change:transform;transition:background 160ms var(--st-settle)}
+.mx-st-01 .t01-tog.on .t01-thumb{background:var(--m-accent)}
+.mx-st-01 .t01-txt{min-width:0}
+.mx-st-01 .t01-swap{position:relative;display:block;height:15px;margin-top:2px}
+.mx-st-01 .t01-swap i{position:absolute;inset:0;font-style:normal;font:400 10.5px/15px var(--m-mono);
+  color:var(--m-mut);white-space:nowrap;opacity:0;transform:translateY(5px);
+  transition:opacity 320ms var(--st-settle),transform 320ms var(--st-settle)}
+.mx-st-01 .t01-swap i.show{opacity:1;transform:none}
+
+/* ── st-02 · tick a line at the door ─────────────────────────────── */
+.mx-st-02 .t02-line{display:flex;align-items:center;gap:9px;
+  padding:7px 9px;border:1px solid var(--m-line);border-radius:8px;background:var(--m-surface);
+  transition:border-color 160ms var(--st-settle),background 160ms var(--st-settle);cursor:pointer}
+.mx-st-02 .t02-line.done{border-color:var(--st-ring);background:var(--st-tint)}
+.mx-st-02 .t02-box{flex:none;width:17px;height:17px;border-radius:5px;border:1.5px solid var(--m-line2);
+  display:grid;place-items:center;transition:background 140ms var(--st-settle),border-color 140ms var(--st-settle)}
+.mx-st-02 .t02-line.done .t02-box{background:var(--m-accent);border-color:var(--m-accent)}
+.mx-st-02 .t02-box svg{width:12px;height:12px;display:block}
+.mx-st-02 .t02-box path{fill:none;stroke:var(--m-accent-ink);stroke-width:2.1;stroke-linecap:round;
+  stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;
+  transition:stroke-dashoffset 180ms var(--st-settle) 60ms}
+.mx-st-02 .t02-line.done .t02-box path{stroke-dashoffset:0}
+.mx-st-02 .t02-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.mx-st-02 .t02-q{font-size:11px;color:var(--m-mut)}
+.mx-st-02 .t02-meter{height:2px;background:var(--m-sunk);border-radius:2px;overflow:hidden}
+.mx-st-02 .t02-meter i{display:block;height:100%;background:var(--m-accent);transform-origin:left;
+  transform:scaleX(.5833);transition:transform 320ms var(--st-settle)}
+.mx-st-02 .t02-foot{display:flex;align-items:baseline;gap:5px}
+
+/* ── st-03 · primary button press ────────────────────────────────── */
+.mx-st-03 .t03-btn{position:relative;display:block;width:100%;font:600 13.5px var(--m-sans);
+  background:var(--m-accent);color:var(--m-accent-ink);border:none;border-radius:9px;
+  padding:11px 16px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;
+  box-shadow:inset 0 1px 0 color-mix(in oklab, var(--m-accent-ink) 26%, transparent);
+  transition:transform 160ms var(--st-settle),box-shadow 160ms var(--st-settle)}
+.mx-st-03 .t03-btn.down{transform:translateY(1.5px) scale(.994);box-shadow:inset 0 1px 0 transparent;
+  transition:transform 90ms linear,box-shadow 90ms linear}
+.mx-st-03 .t03-btn .fig{transition:color 160ms var(--st-settle)}
+.mx-st-03 .t03-btn.lit .fig{color:color-mix(in oklab, var(--m-accent-ink) 55%, var(--m-accent))}
+
+/* ── st-04 · hold to approve → the seal lands ────────────────────── */
+.mx-st-04{gap:7px}
+.mx-st-04 .t04-stage{display:flex;align-items:center;gap:0;position:relative;padding-right:10px}
+.mx-st-04 .t04-btn{position:relative;overflow:hidden;flex:1;min-width:0;
+  font:600 13px var(--m-sans);background:var(--m-accent);color:var(--m-accent-ink);
+  border:none;border-radius:9px;padding:12px 14px;cursor:pointer;text-align:left;
+  user-select:none;-webkit-user-select:none;touch-action:none;
+  transition:background 160ms var(--st-settle)}
+.mx-st-04 .t04-btn.done{background:var(--m-ok)}
+.mx-st-04 .t04-fill{position:absolute;inset:0;transform-origin:left;transform:scaleX(0);
+  background:color-mix(in oklab, var(--m-accent-ink) 24%, transparent)}
+.mx-st-04 .t04-lab{position:relative;display:block;white-space:nowrap}
+.mx-st-04 .t04-seal{position:relative;flex:none;width:54px;height:54px;margin-left:-17px;
+  display:grid;place-items:center;opacity:0;transform:rotate(-9deg) scale(.42);
+  will-change:transform,opacity;pointer-events:none}
+.mx-st-04 .t04-wax{width:52px;height:52px;display:block;position:relative;z-index:1;
+  filter:drop-shadow(0 2px 6px color-mix(in oklab, var(--m-accent) 45%, transparent))}
+.mx-st-04 .w-blob{fill:var(--m-accent)}
+.mx-st-04 .w-ring{fill:none;stroke:var(--m-accent-ink);stroke-width:1.15;stroke-dasharray:2.2 3.4;opacity:.6}
+.mx-st-04 .w-m{fill:var(--m-accent-ink);font-family:var(--m-serif);
+  font-variation-settings:'SOFT' 42,'WONK' 1;font-size:36px;font-weight:600}
+.mx-st-04 .t04-halo{position:absolute;width:46px;height:46px;border-radius:99px;
+  border:1.5px solid var(--m-accent);opacity:0;transform:scale(.82);pointer-events:none}
+.mx-st-04 .t04-book{height:13px;font:400 9.5px/13px var(--m-mono);letter-spacing:.03em;
+  color:var(--m-mut);opacity:0;transform:translateY(6px);
+  transition:opacity 320ms var(--st-settle),transform 320ms var(--st-settle)}
+.mx-st-04 .t04-book.show{opacity:1;transform:none}
+.mx-st-04 .t04-book.warn{color:var(--m-warn)}
+
+/* ── st-05 · the undo window, draining ──────────────────────────── */
+.mx-st-05{gap:7px}
+.mx-st-05 .t05-row{display:grid;grid-template-rows:1fr;opacity:1;
+  transition:grid-template-rows 320ms var(--st-settle),opacity 320ms var(--st-settle)}
+.mx-st-05 .t05-row.gone{grid-template-rows:0fr;opacity:0}
+.mx-st-05 .t05-inner{overflow:hidden;min-height:0}
+.mx-st-05 .t05-cell{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;
+  border:1px solid var(--m-line);border-radius:8px;background:var(--m-surface);font-size:12px}
+.mx-st-05 .t05-bar{position:relative;overflow:hidden;display:flex;align-items:center;
+  justify-content:space-between;gap:8px;padding:8px 10px 9px;border-radius:8px;
+  background:var(--m-sunk);border:1px solid var(--m-line);
+  opacity:0;transform:translateY(8px);
+  transition:opacity 320ms var(--st-settle),transform 320ms var(--st-settle)}
+.mx-st-05 .t05-bar.show{opacity:1;transform:none}
+.mx-st-05 .t05-bar.out{opacity:0;transform:translateY(6px);transition:opacity 180ms var(--st-out),transform 180ms var(--st-out)}
+.mx-st-05 .t05-msg{font-size:11.5px;color:var(--m-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-st-05 .t05-undo{flex:none;font:500 10.5px var(--m-mono);letter-spacing:.06em;
+  background:transparent;border:1px solid var(--st-ring);color:var(--m-accent);
+  border-radius:6px;padding:4px 8px;cursor:pointer;transition:background 160ms var(--st-settle)}
+.mx-st-05 .t05-undo:hover{background:var(--st-tint)}
+.mx-st-05 .t05-drain{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--m-accent);
+  transform-origin:left;transform:scaleX(1)}
+
+/* ── st-06 · the confirm that retreats ──────────────────────────── */
+.mx-st-06{gap:6px}
+.mx-st-06 .t06-why{display:grid;grid-template-rows:0fr;opacity:0;
+  transition:grid-template-rows 420ms var(--st-turn),opacity 420ms var(--st-turn)}
+.mx-st-06 .t06-why.show{grid-template-rows:1fr;opacity:1}
+.mx-st-06 .t06-wi{overflow:hidden;min-height:0}
+.mx-st-06 .t06-wt{font-size:12px;color:var(--m-ink);padding-bottom:9px}
+.mx-st-06 .t06-wt b{color:var(--m-no)}
+.mx-st-06 .t06-del{position:relative;overflow:hidden;width:100%;font:600 12.5px var(--m-sans);
+  background:transparent;color:var(--m-no);border:1px solid color-mix(in oklab, var(--m-no) 42%, transparent);
+  border-radius:9px;padding:10px 14px;cursor:pointer;
+  transition:transform 420ms var(--st-turn),background 320ms var(--st-settle),
+             border-color 320ms var(--st-settle),color 320ms var(--st-settle)}
+.mx-st-06 .t06-del{margin-bottom:12px}
+.mx-st-06 .t06-del.retreat{transform:translateY(12px)}
+.mx-st-06 .t06-del.armed{background:var(--st-notint);border-color:var(--m-no)}
+.mx-st-06 .t06-del.disarmed{cursor:progress;color:var(--m-mut);border-color:var(--m-line)}
+.mx-st-06 .t06-del.gone{background:var(--m-sunk);border-color:var(--m-line);color:var(--m-mut)}
+.mx-st-06 .t06-arm{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--m-no);
+  transform-origin:left;transform:scaleX(0);opacity:0}
+.mx-st-06 .t06-lab{position:relative}
+
+/* ── st-07 · success = a rule drawn under a total ────────────────── */
+.mx-st-07 .t07-card{border:1px solid var(--m-line);border-radius:10px;background:var(--m-surface);
+  padding:10px 12px 11px;opacity:0;transform:translateY(6px);
+  transition:opacity 320ms var(--st-settle),transform 320ms var(--st-settle)}
+.mx-st-07 .t07-card.in{opacity:1;transform:none}
+.mx-st-07 .t07-tot{display:flex;justify-content:space-between;align-items:baseline;
+  gap:10px;margin-top:7px}
+.mx-st-07 .t07-tot span{font-size:12px;color:var(--m-mut)}
+.mx-st-07 .t07-tot b{font-family:var(--m-mono);font-variant-numeric:tabular-nums;
+  font-size:19px;font-weight:500;letter-spacing:-.02em}
+.mx-st-07 .t07-rules{margin-top:6px;display:flex;flex-direction:column;gap:2px}
+.mx-st-07 .t07-rules i{display:block;height:1px;background:var(--m-line2);transform-origin:left;transform:scaleX(0)}
+.mx-st-07 .t07-rules i.draw{transform:scaleX(1);transition:transform 420ms var(--st-turn)}
+.mx-st-07 .t07-rules i:nth-child(2).draw{transition-delay:90ms}
+.mx-st-07 .t07-sub{margin-top:8px;opacity:0;transition:opacity 320ms var(--st-settle)}
+.mx-st-07 .t07-sub.in{opacity:1}
+
+/* ── st-08 · the error shows its working ─────────────────────────── */
+.mx-st-08{gap:6px}
+.mx-st-08 .t08-row{display:flex;justify-content:space-between;gap:10px;align-items:center;
+  padding:7px 10px;border-radius:8px;background:var(--m-surface);
+  border:1px solid var(--m-line);border-left:2px solid var(--m-line);
+  transition:border-left-color 160ms var(--st-settle),background 160ms var(--st-settle)}
+.mx-st-08 .t08-row.bad{border-left-color:var(--m-no);background:var(--st-notint)}
+.mx-st-08 .t08-row span{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-st-08 .t08-say{opacity:0;transform:translateY(4px);color:var(--m-ink);
+  transition:opacity 320ms var(--st-settle),transform 320ms var(--st-settle)}
+.mx-st-08 .t08-say.in{opacity:1;transform:none}
+.mx-st-08 .t08-work{display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows 420ms var(--st-turn)}
+.mx-st-08 .t08-work.open{grid-template-rows:1fr}
+.mx-st-08 .t08-wi{overflow:hidden;min-height:0}
+.mx-st-08 .t08-l{display:flex;justify-content:space-between;gap:10px;
+  font:400 10.5px/1.7 var(--m-mono);color:var(--m-mut);
+  opacity:0;transform:translateY(6px);
+  transition:opacity 420ms var(--st-settle),transform 420ms var(--st-settle)}
+.mx-st-08 .t08-l.in{opacity:1;transform:none}
+.mx-st-08 .t08-l b{color:var(--m-ink);font-variant-numeric:tabular-nums;font-weight:500}
+.mx-st-08 .t08-l.diff{border-top:1px solid var(--m-line2);margin-top:3px;padding-top:3px}
+.mx-st-08 .t08-l.diff b{color:var(--m-no)}
+.mx-st-08 .t08-note{opacity:0;transform:translateY(6px);
+  transition:opacity 420ms var(--st-settle),transform 420ms var(--st-settle)}
+.mx-st-08 .t08-note.in{opacity:1;transform:none}
+
+/* ── st-09 · a toast arrives one way and leaves another ──────────── */
+.mx-st-09 .t09-page{font-size:11.5px;color:var(--m-mut);padding:5px 0 2px}
+.mx-st-09 .t09-stack{position:relative;height:82px}
+.mx-st-09 .t09-t{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:8px;
+  padding:8px 10px;border-radius:8px;background:var(--m-surface);border:1px solid var(--m-line);
+  box-shadow:0 6px 18px color-mix(in oklab, var(--m-accent) 13%, transparent);
+  font-size:11.5px;opacity:0;transform:translateY(10px);will-change:transform,opacity}
+.mx-st-09 .t09-t.in{opacity:1;transform:translateY(var(--y,0px));
+  transition:opacity 320ms var(--st-settle),transform 320ms var(--st-settle)}
+.mx-st-09 .t09-t.out{opacity:0;transform:translateY(calc(var(--y,0px) + 6px));
+  transition:opacity 180ms var(--st-out),transform 180ms var(--st-out)}
+.mx-st-09 .t09-dot{flex:none;width:6px;height:6px;border-radius:99px;background:var(--m-ok)}
+.mx-st-09 .t09-t.warn .t09-dot{background:var(--m-warn)}
+.mx-st-09 .t09-t span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── st-10 · the badge rolls ─────────────────────────────────────── */
+.mx-st-10 .t10-nav{display:flex;align-items:center;gap:9px;padding:9px 11px;
+  border:1px solid var(--m-line);border-radius:9px;background:var(--m-surface)}
+.mx-st-10 .t10-item{display:flex;align-items:center;gap:8px;font-size:12.5px;
+  will-change:transform;transition:transform 160ms var(--st-settle)}
+.mx-st-10 .t10-item.nudge{transform:translateY(-1.5px)}
+.mx-st-10 .t10-badge{display:inline-block;height:16px;border-radius:99px;background:var(--m-accent);
+  color:var(--m-accent-ink);overflow:hidden;text-align:center;
+  width:calc(var(--d,1) * 1ch + 11px);transition:width 320ms var(--st-settle)}
+.mx-st-10 .t10-digits{display:block;will-change:transform}
+.mx-st-10 .t10-digits i{display:block;height:16px;font:600 10.5px/16px var(--m-mono);
+  font-variant-numeric:tabular-nums;font-style:normal;letter-spacing:0}
+.mx-st-10 .t10-rest{margin-left:auto;font:400 10.5px var(--m-mono);color:var(--m-mut)}
+
+/* ── st-11 · optimistic: one confirms, one comes back ────────────── */
+.mx-st-11{gap:6px}
+.mx-st-11 .t11-r{padding:6px 9px 7px;border-radius:8px;background:var(--m-surface);
+  border:1px solid var(--m-line);border-left:2px solid var(--m-line);
+  transition:border-left-color 160ms var(--st-settle),background 160ms var(--st-settle)}
+.mx-st-11 .t11-r.ok{border-left-color:var(--m-ok)}
+.mx-st-11 .t11-r.bad{border-left-color:var(--m-warn);background:var(--st-warntint)}
+.mx-st-11 .t11-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.mx-st-11 .t11-nm{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-st-11 .t11-v{font-family:var(--m-mono);font-variant-numeric:tabular-nums;font-size:12.5px;
+  font-weight:500;white-space:nowrap;border-bottom:1px dashed transparent;padding-bottom:1px}
+.mx-st-11 .t11-v.pend{border-bottom-color:var(--st-ring);
+  background:linear-gradient(100deg,var(--m-mut) 20%,var(--m-accent) 42%,var(--m-mut) 64%);
+  background-size:240% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:mxst-shim 1.9s cubic-bezier(.45,0,.55,1) infinite}
+.mx-st-11 .t11-note{display:block;font:400 9.5px/1.5 var(--m-mono);color:var(--m-mut);
+  margin-top:1px;opacity:0;transition:opacity 320ms var(--st-settle)}
+.mx-st-11 .t11-note.in{opacity:1}
+.mx-st-11 .t11-note.say{font-family:var(--m-serif);font-style:italic;font-size:11px}
+
+/* ── st-12 · disabled says why; enabling is a rise ───────────────── */
+.mx-st-12 .t12-btn{width:100%;font:600 13px var(--m-sans);border-radius:9px;padding:11px 14px;
+  background:var(--m-sunk);color:var(--m-mut);border:1px solid var(--m-line);
+  cursor:not-allowed;box-shadow:none;transform:none;
+  transition:background 320ms var(--st-settle),color 320ms var(--st-settle),
+             border-color 320ms var(--st-settle),transform 320ms var(--st-settle),
+             box-shadow 320ms var(--st-settle)}
+.mx-st-12 .t12-btn.on{background:var(--m-accent);color:var(--m-accent-ink);border-color:transparent;
+  cursor:pointer;transform:translateY(-1.5px);
+  box-shadow:0 2px 0 color-mix(in oklab, var(--m-accent) 40%, transparent),
+             0 8px 20px color-mix(in oklab, var(--m-accent) 20%, transparent)}
+.mx-st-12 .t12-why{position:relative;height:15px}
+.mx-st-12 .t12-why i{position:absolute;inset:0;font-style:normal;font:400 10.5px/15px var(--m-mono);
+  color:var(--m-mut);white-space:nowrap;opacity:0;transform:translateY(4px);
+  transition:opacity 320ms var(--st-settle),transform 320ms var(--st-settle)}
+.mx-st-12 .t12-why i.show{opacity:1;transform:none}
+.mx-st-12 .t12-why i.ready{color:var(--m-ok)}
+
+@media (prefers-reduced-motion: reduce){
+  .mx-st *,.mx-st *::before,.mx-st *::after{
+    animation-duration:1ms !important;animation-iteration-count:1 !important;
+    transition-duration:1ms !important;transition-delay:0ms !important}
+}
+</style>
+<script>
+(function(){
+  var REDUCED = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  function q(r,s){ return r.querySelector(s); }
+  function qa(r,s){ return Array.prototype.slice.call(r.querySelectorAll(s)); }
+
+  function reset(root){
+    (root._stT||[]).forEach(clearTimeout);
+    (root._stR||[]).forEach(function(id){ cancelAnimationFrame(id); });
+    root._stT=[]; root._stR=[];
+  }
+  function at(root,ms,fn){ root._stT.push(setTimeout(fn,ms)); }
+  function flush(root){ void root.offsetWidth; }
+
+  /* Verlet-free semi-implicit Euler spring, fixed 8ms substeps.
+     Same integrator the house sketch uses, so the numbers match. */
+  function spring(root,o){
+    if(REDUCED){ o.onUpdate(o.to); if(o.onComplete)o.onComplete(); return; }
+    var x=o.from, v=o.v0||0, m=o.mass||1, rd=(o.restDelta===undefined?0.05:o.restDelta), last=null;
+    function step(now){
+      if(last===null) last=now;
+      var dt=Math.min((now-last)/1000,.064); last=now;
+      var n=Math.max(1,Math.ceil(dt/.008)), h=dt/n;
+      for(var i=0;i<n;i++){ var F=-o.stiffness*(x-o.to)-o.damping*v; v+=F/m*h; x+=v*h; }
+      if(Math.abs(v)<rd*20 && Math.abs(x-o.to)<rd){ o.onUpdate(o.to); if(o.onComplete)o.onComplete(); return; }
+      o.onUpdate(x); root._stR.push(requestAnimationFrame(step));
+    }
+    root._stR.push(requestAnimationFrame(step));
+  }
+
+  /* Simulate a unit-step spring at 1kHz, then resample into a CSS linear()
+     easing so the browser can run it as a real transition. Returns the
+     measured duration-to-rest and the measured overshoot. */
+  function springEase(k,c,m,rd){
+    var x=0,v=0,h=1/1000,xs=[],peak=0;
+    for(var i=0;i<8000;i++){
+      var F=-k*(x-1)-c*v; v+=F/m*h; x+=v*h; xs.push(x);
+      if(x>peak) peak=x;
+      if(Math.abs(v)<rd*20 && Math.abs(x-1)<rd) break;
+    }
+    var N=40,out=[];
+    for(var j=0;j<=N;j++){
+      var idx=Math.min(xs.length-1, Math.round(j/N*(xs.length-1)));
+      out.push(j===0 ? '0' : (j===N ? '1' : xs[idx].toFixed(4)));
+    }
+    return { ease:'linear('+out.join(',')+')', ms:Math.round(xs.length*h*1000),
+             over:Math.max(0,(peak-1)*100) };
+  }
+
+  var TUCK  = springEase(380,32,1,0.002);   /* toggle thumbs, drawer handles */
+  var STAMP = springEase(520,26,1,0.002);   /* the seal landing              */
+  var F1 = function(n){ return n.toFixed(1); };
+
+  var FAM = 'State & feedback';
+  function push(o){ o.family = FAM; window.MUDAVYM_MOTIONS.push(o); }
+
+  /* ══ st-01 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-01', name:'Toggle, and the sentence it changes',
+    purpose:'A settings switch that answers with a consequence, not just a position. The thumb rides the tuck spring; the line underneath swaps to say what the restaurant will actually experience — settings pages are where owners guess, so the switch has to state its own outcome.',
+    spec:'tuck · spring 380/32/1 · sampled to CSS linear(), '+TUCK.ms+'ms, measured '+F1(TUCK.over)+'% overshoot · label swap on settle 320ms',
+    html:'<div class="mx-st mx-st-01">'+
+      '<div class="t01-row">'+
+        '<span class="t01-tog" role="switch" tabindex="0"><span class="t01-thumb"></span></span>'+
+        '<div class="t01-txt"><b>Low-stock alerts</b>'+
+        '<span class="t01-swap">'+
+          '<i data-s="off">Sent the moment a shelf dips.</i>'+
+          '<i data-s="on">Held, then delivered once after close.</i>'+
+        '</span></div>'+
+      '</div>'+
+      '<div class="cap">tuck '+TUCK.ms+'ms · '+F1(TUCK.over)+'% overshoot · try it</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var tog=q(root,'.t01-tog'), thumb=q(root,'.t01-thumb'),
+          off=q(root,'[data-s="off"]'), on=q(root,'[data-s="on"]');
+      function paint(state,animate){
+        tog.classList.toggle('on',state);
+        thumb.style.transition = animate ? ('transform '+TUCK.ms+'ms '+TUCK.ease) : 'none';
+        thumb.style.transform  = state ? 'translateX(17px)' : 'translateX(0)';
+        off.classList.toggle('show',!state);
+        on.classList.toggle('show',state);
+      }
+      if(!root._stWired){
+        root._stWired=true;
+        var fire=function(){ paint(!tog.classList.contains('on'),true); };
+        tog.addEventListener('click',fire);
+        tog.addEventListener('keydown',function(e){ if(e.key===' '||e.key==='Enter'){e.preventDefault();fire();} });
+      }
+      paint(false,false); flush(root);
+      at(root,340,function(){ paint(true,true); });
+      at(root,2100,function(){ paint(false,true); });
+    }
+  });
+
+  /* ══ st-02 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-02', name:'Tick a line at the door',
+    purpose:'The porter checking a delivery against the order on a phone at 12% battery. The box fills, then the check draws itself in 180ms so the eye can follow the stroke and know it registered — and the count meter advances on the same beat, because the only question that matters is how many lines are left.',
+    spec:'ink 140ms fill · check stroke-dashoffset 1→0, 180ms cubic-bezier(.16,1,.3,1) +60ms · meter settle 320ms',
+    html:'<div class="mx-st mx-st-02">'+
+      '<div class="t02-line">'+
+        '<span class="t02-box"><svg viewBox="0 0 16 16" aria-hidden="true">'+
+          '<path d="M3.4 8.3 6.5 11.5 12.7 4.8" pathLength="1"/></svg></span>'+
+        '<span class="t02-nm">Sancerre · Dom. Vacheron</span>'+
+        '<span class="fig t02-q">9 cs</span>'+
+      '</div>'+
+      '<div class="t02-meter"><i></i></div>'+
+      '<div class="t02-foot"><span class="fig" data-c>7</span><span class="cap">of 12 checked at the door</span></div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var line=q(root,'.t02-line'), bar=q(root,'.t02-meter i'), c=q(root,'[data-c]');
+      function paint(done,animate){
+        bar.style.transition = animate ? 'transform 320ms cubic-bezier(.16,1,.3,1)' : 'none';
+        line.classList.toggle('done',done);
+        bar.style.transform = 'scaleX('+((done?8:7)/12)+')';
+        c.textContent = done ? '8' : '7';
+      }
+      if(!root._stWired){
+        root._stWired=true;
+        line.addEventListener('click',function(){ paint(!line.classList.contains('done'),true); });
+      }
+      paint(false,false); flush(root);
+      at(root,420,function(){ paint(true,true); });
+      at(root,2400,function(){ paint(false,true); });
+    }
+  });
+
+  /* ══ st-03 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-03', name:'The press that answers in money',
+    purpose:'A primary button under a real thumb. Down is fast and linear because it tracks the finger; up is the house curve. The surface highlight goes flat so it reads as pressed rather than moved — total travel 1.5px — and the acknowledgement is the figure briefly recolouring, because the thing being committed is the money, not the button.',
+    spec:'ink · down 90ms linear, 1.5px + scale .994 · release 160ms cubic-bezier(.16,1,.3,1) · figure recolour 160ms',
+    html:'<div class="mx-st mx-st-03">'+
+      '<button class="t03-btn" type="button">Place order · <span class="fig">&euro;412.80</span></button>'+
+      '<div class="cap">ink · 1.5px down / 90ms · up on the house curve</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var b=q(root,'.t03-btn');
+      if(!root._stWired){
+        root._stWired=true;
+        var down=function(){ b.classList.add('down'); };
+        var up=function(){
+          if(!b.classList.contains('down')) return;
+          b.classList.remove('down'); b.classList.add('lit');
+          setTimeout(function(){ b.classList.remove('lit'); },240);
+        };
+        b.addEventListener('pointerdown',function(e){ e.preventDefault(); down(); });
+        b.addEventListener('pointerup',up);
+        b.addEventListener('pointerleave',function(){ b.classList.remove('down'); });
+        b.addEventListener('pointercancel',function(){ b.classList.remove('down'); });
+      }
+      b.classList.remove('down','lit'); flush(root);
+      at(root,420,function(){ b.classList.add('down'); });
+      at(root,600,function(){ b.classList.remove('down'); b.classList.add('lit'); });
+      at(root,840,function(){ b.classList.remove('lit'); });
+      at(root,1900,function(){ b.classList.add('down'); });
+      at(root,2080,function(){ b.classList.remove('down'); b.classList.add('lit'); });
+      at(root,2320,function(){ b.classList.remove('lit'); });
+    }
+  });
+
+  /* ══ st-04 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-04', name:'Hold to approve — the seal lands',
+    purpose:'The signature moment. An owner commits &euro;1,284.40 to Bodega &Aacute;lvaro with one deliberate gesture instead of a confirm dialog. The fill is linear because the thumb is timing it; the seal pre-appears as a ghost during the hold so you can see what you are about to press; on completion it lands on the stamp spring — the one place in the whole system where overshoot is allowed. Let go early and nothing is sent, and the line underneath says exactly how far you got.',
+    spec:'press 620ms linear fill (release 160ms house curve) → stamp spring 520/26/1, '+STAMP.ms+'ms, measured '+F1(STAMP.over)+'% overshoot · halo 460ms · book line settle 320ms',
+    html:'<div class="mx-st mx-st-04">'+
+      '<div class="k">PO-1038 &middot; Bodega &Aacute;lvaro &middot; 14 lines</div>'+
+      '<div class="t04-stage">'+
+        '<button class="t04-btn" type="button">'+
+          '<span class="t04-fill"></span>'+
+          '<span class="t04-lab">Hold to approve &middot; <span class="fig">&euro;1,284.40</span></span>'+
+        '</button>'+
+        '<span class="t04-seal"><span class="t04-halo"></span>'+
+          '<svg class="t04-wax" viewBox="0 0 96 96" aria-hidden="true">'+
+            '<path class="w-blob" d="M90 48C90 60 86 70.5 75.6 75.6C66 84 58 91 48 91C38 91 28 85 19 77C11 69 10 58 10 48C10 38 13 27 19.7 19.7C27 12 38 6 48 6C58 6 68 12 75.6 20.4C84 28 90 38 90 48Z"/>'+
+            '<circle class="w-ring" cx="48" cy="48" r="29.5"/>'+
+            '<text class="w-m" x="48" y="61" text-anchor="middle">M</text>'+
+          '</svg>'+
+        '</span>'+
+      '</div>'+
+      '<div class="t04-book"></div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var btn=q(root,'.t04-btn'), fill=q(root,'.t04-fill'), lab=q(root,'.t04-lab'),
+          seal=q(root,'.t04-seal'), halo=q(root,'.t04-halo'), book=q(root,'.t04-book');
+      var HOLD=620, held=null, t0=0, done=false;
+
+      function clean(){
+        done=false;
+        btn.classList.remove('done');
+        lab.innerHTML='Hold to approve &middot; <span class="fig">&euro;1,284.40</span>';
+        fill.style.transition='none'; fill.style.transform='scaleX(0)';
+        seal.style.transition='none'; seal.style.opacity='0'; seal.style.transform='rotate(-9deg) scale(.42)';
+        halo.style.transition='none'; halo.style.opacity='0'; halo.style.transform='scale(.82)';
+        book.className='t04-book'; book.textContent='';
+      }
+      function land(){
+        if(done) return; done=true;
+        clearTimeout(held);
+        btn.classList.add('done');
+        lab.textContent='Approved.';
+        fill.style.transition='none'; fill.style.transform='scaleX(0)';
+        seal.style.transition='none'; seal.style.opacity='1';
+        halo.style.transition='transform 460ms cubic-bezier(.16,1,.3,1), opacity 460ms cubic-bezier(.16,1,.3,1)';
+        halo.style.opacity='.55';
+        requestAnimationFrame(function(){ halo.style.opacity='0'; halo.style.transform='scale(1.55)'; });
+        spring(root,{ from:.62, to:1, stiffness:520, damping:26, mass:1, restDelta:.002,
+          onUpdate:function(s){
+            var p=Math.min(1,Math.max(0,(s-.62)/.38));
+            seal.style.transform='rotate('+(-9*(1-p)).toFixed(2)+'deg) scale('+s.toFixed(4)+')';
+          }});
+        at(root,140,function(){
+          book.textContent='Entered in the book · 21:04 · A. Konuk';
+          book.classList.add('show');
+        });
+      }
+      function start(e){
+        if(done) return;
+        if(e && e.preventDefault) e.preventDefault();
+        t0=Date.now();
+        book.classList.remove('show','warn');
+        if(REDUCED){ land(); return; }
+        fill.style.transition='transform '+HOLD+'ms linear'; fill.style.transform='scaleX(1)';
+        seal.style.transition='transform '+HOLD+'ms linear, opacity '+HOLD+'ms linear';
+        seal.style.opacity='.18'; seal.style.transform='rotate(-9deg) scale(.62)';
+        held=setTimeout(land,HOLD);
+      }
+      function cancel(){
+        if(done || !t0) return;
+        clearTimeout(held);
+        var pct=Math.min(99,Math.round((Date.now()-t0)/HOLD*100)); t0=0;
+        fill.style.transition='transform 160ms cubic-bezier(.16,1,.3,1)'; fill.style.transform='scaleX(0)';
+        seal.style.transition='transform 160ms cubic-bezier(.16,1,.3,1), opacity 160ms cubic-bezier(.16,1,.3,1)';
+        seal.style.opacity='0'; seal.style.transform='rotate(-9deg) scale(.42)';
+        book.textContent='Released at '+pct+'% — nothing sent.';
+        book.className='t04-book warn show';
+      }
+      root._stAPI={start:start,cancel:cancel};
+      if(!root._stWired){
+        root._stWired=true;
+        btn.addEventListener('pointerdown',function(e){ root._stAPI.start(e); });
+        btn.addEventListener('pointerup',function(){ root._stAPI.cancel(); });
+        btn.addEventListener('pointerleave',function(){ root._stAPI.cancel(); });
+        btn.addEventListener('pointercancel',function(){ root._stAPI.cancel(); });
+      }
+      clean(); flush(root);
+      at(root,360,function(){ start(null); });
+      at(root,3400,function(){ clean(); });
+    }
+  });
+
+  /* ══ st-05 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-05', name:'The undo window, draining',
+    purpose:'Removing a line during a count. Nothing asks "are you sure" — the line goes, and a five-second window opens with the drain running dead linear, because the person is timing a decision against it and an eased countdown would lie about how much time is left. It expires quietly rather than nagging. Grab the button while it drains and the row springs back into the list.',
+    spec:'drain 5000ms linear (deliberately un-eased) · row collapse grid-rows 1fr→0fr settle 320ms · bar in 320ms settle, out 180ms accelerate',
+    html:'<div class="mx-st mx-st-05">'+
+      '<div class="t05-row"><div class="t05-inner"><div class="t05-cell">'+
+        '<span>Sancerre &middot; Dom. Vacheron</span><span class="fig">2 cs</span>'+
+      '</div></div></div>'+
+      '<div class="t05-bar">'+
+        '<span class="t05-msg">Removed <b class="fig">2 cs</b> &middot; Sancerre</span>'+
+        '<button class="t05-undo" type="button">Undo <b class="fig" data-c>5</b></button>'+
+        '<i class="t05-drain"></i>'+
+      '</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var row=q(root,'.t05-row'), bar=q(root,'.t05-bar'), drain=q(root,'.t05-drain'),
+          undo=q(root,'.t05-undo'), c=q(root,'[data-c]'), live=false;
+
+      function restore(){
+        if(!live) return; live=false;
+        bar.classList.remove('show'); bar.classList.add('out');
+        row.classList.remove('gone');
+        drain.style.transition='none'; drain.style.transform='scaleX(1)';
+      }
+      root._stAPI={restore:restore};
+      if(!root._stWired){
+        root._stWired=true;
+        undo.addEventListener('click',function(){ root._stAPI.restore(); });
+      }
+
+      row.classList.remove('gone');
+      bar.className='t05-bar';
+      q(root,'.t05-msg').innerHTML='Removed <b class="fig">2 cs</b> &middot; Sancerre';
+      drain.style.transition='none'; drain.style.transform='scaleX(1)';
+      c.textContent='5';
+      flush(root);
+
+      at(root,300,function(){
+        live=true;
+        row.classList.add('gone');
+        bar.classList.add('show');
+        drain.style.transition='transform 5000ms linear'; drain.style.transform='scaleX(0)';
+        [1,2,3,4,5].forEach(function(n){
+          at(root,n*1000,function(){ if(live) c.textContent=String(5-n); });
+        });
+        at(root,5000,function(){
+          if(!live) return; live=false;
+          q(root,'.t05-msg').textContent='Removed.';
+          bar.classList.remove('show'); bar.classList.add('out');
+        });
+      });
+    }
+  });
+
+  /* ══ st-06 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-06', name:'The confirm that retreats',
+    purpose:'Deleting a vendor that still has fourteen open orders. The button refuses to sit under a second click: it slides 12px down on the slow page-turn curve, opens the consequence above itself, and disarms for 700ms while a hairline visibly fills. No accent colour touches it. The friction is the feature — you cannot double-tap your way through this, and the count arrives on the tally spring so your eye is dragged to the number that matters.',
+    spec:'turn 420ms cubic-bezier(.32,.72,0,1) retreat 12px · arm gate 700ms linear · consequence grid-rows 0fr→1fr on turn · count tally spring 120/26',
+    html:'<div class="mx-st mx-st-06">'+
+      '<div class="t06-why"><div class="t06-wi"><div class="t06-wt">'+
+        'Bodega &Aacute;lvaro still has <b class="fig" data-n>0</b> open orders. They will be orphaned.'+
+      '</div></div></div>'+
+      '<button class="t06-del" type="button"><i class="t06-arm"></i><span class="t06-lab">Delete vendor</span></button>'+
+      '<div class="cap">no accent · 700ms arm · the button moves away from your finger</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var why=q(root,'.t06-why'), btn=q(root,'.t06-del'), arm=q(root,'.t06-arm'),
+          lab=q(root,'.t06-lab'), n=q(root,'[data-n]'), stage=0;
+
+      function clean(){
+        stage=0; why.classList.remove('show');
+        btn.className='t06-del'; lab.textContent='Delete vendor';
+        arm.style.transition='none'; arm.style.transform='scaleX(0)'; arm.style.opacity='0';
+        n.textContent='14';
+      }
+      function step(){
+        if(stage===0){
+          stage=1;
+          why.classList.add('show');
+          btn.classList.add('retreat','disarmed');
+          arm.style.opacity='1';
+          arm.style.transition='transform 700ms linear'; arm.style.transform='scaleX(1)';
+          spring(root,{ from:0, to:14, stiffness:120, damping:26, mass:1, restDelta:.01,
+            onUpdate:function(v){ n.textContent=String(Math.round(v)); }});
+          at(root,700,function(){
+            if(stage!==1) return;
+            stage=2;
+            btn.classList.remove('disarmed'); btn.classList.add('armed');
+            lab.textContent='Yes — delete, and orphan 14';
+            arm.style.transition='opacity 160ms cubic-bezier(.16,1,.3,1)'; arm.style.opacity='0';
+          });
+        } else if(stage===2){
+          stage=3;
+          btn.classList.remove('armed'); btn.classList.add('gone');
+          lab.textContent='Deleted.';
+          why.classList.remove('show');
+        }
+      }
+      root._stAPI={step:step,busy:function(){ return stage===1; }};
+      if(!root._stWired){
+        root._stWired=true;
+        btn.addEventListener('click',function(){ if(!root._stAPI.busy()) root._stAPI.step(); });
+      }
+      clean(); flush(root);
+      at(root,500,step);
+      at(root,2400,step);
+      at(root,4200,clean);
+    }
+  });
+
+  /* ══ st-07 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-07', name:'Success is a rule under a total',
+    purpose:'The stocktake closes at 21:12 and the manager wants to go home. There is no bouncing checkmark, because the house spends its one emphatic motion on the seal and nowhere else. Instead the figure settles on the tally spring — overdamped, so it never overshoots a number someone will act on — and the accountant’s double rule draws itself underneath, second line 90ms after the first. The book is closed, so the page draws the line.',
+    spec:'card settle 320ms +6px · figure tally spring 120/26/1, 0% overshoot · rules scaleX 0→1 on turn 420ms, second +90ms',
+    html:'<div class="mx-st mx-st-07">'+
+      '<div class="t07-card">'+
+        '<div class="k">Count closed &middot; 21:12</div>'+
+        '<div class="t07-tot"><span>Variance</span><b class="fig" data-v>&euro;0.00</b></div>'+
+        '<div class="t07-rules"><i></i><i></i></div>'+
+        '<div class="t07-sub cap">214 lines &middot; 3 flagged &middot; nothing left open</div>'+
+      '</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var card=q(root,'.t07-card'), v=q(root,'[data-v]'),
+          rules=qa(root,'.t07-rules i'), sub=q(root,'.t07-sub');
+
+      card.classList.remove('in');
+      rules.forEach(function(r){ r.classList.remove('draw'); });
+      sub.classList.remove('in');
+      v.textContent='€0.00';
+      flush(root);
+
+      at(root,220,function(){ card.classList.add('in'); });
+      at(root,380,function(){
+        spring(root,{ from:0, to:18.4, stiffness:120, damping:26, mass:1, restDelta:.006,
+          onUpdate:function(x){ v.textContent='€'+x.toFixed(2); }});
+      });
+      at(root,900,function(){ rules.forEach(function(r){ r.classList.add('draw'); }); });
+      at(root,1300,function(){ sub.classList.add('in'); });
+    }
+  });
+
+  /* ══ st-08 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-08', name:'The error shows its working',
+    purpose:'A manager reading a discrepancy queue at 1am does not need an apology, they need the arithmetic. The row never shakes — shaking is a tantrum and it tells you nothing. It tints, states the problem as a fact, then turns to the page underneath and lays out the sum that failed, line by line on the stagger interval, ending on the difference and the actual cause.',
+    spec:'row tint ink 160ms · statement settle 320ms · working grid-rows 0fr→1fr on turn 420ms · lines stagger 28ms, 6px, 420ms · no shake, ever',
+    html:'<div class="mx-st mx-st-08">'+
+      '<div class="t08-row"><span>INV-4471 &middot; Bodega &Aacute;lvaro</span><b class="fig">&euro;412.80</b></div>'+
+      '<div class="t08-say say">This invoice doesn’t add up.</div>'+
+      '<div class="t08-work"><div class="t08-wi">'+
+        '<div class="t08-l"><span>Lines, totalled</span><b>&euro;389.40</b></div>'+
+        '<div class="t08-l"><span>Invoiced</span><b>&euro;412.80</b></div>'+
+        '<div class="t08-l diff"><span>Difference</span><b>&euro;23.40</b></div>'+
+      '</div></div>'+
+      '<div class="t08-note cap">Sancerre priced at 6 cs. Nine were delivered.</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var row=q(root,'.t08-row'), say=q(root,'.t08-say'),
+          work=q(root,'.t08-work'), lines=qa(root,'.t08-l'), note=q(root,'.t08-note');
+
+      row.classList.remove('bad'); say.classList.remove('in');
+      work.classList.remove('open');
+      lines.forEach(function(l){ l.classList.remove('in'); });
+      note.classList.remove('in');
+      flush(root);
+
+      at(root,260,function(){ row.classList.add('bad'); });
+      at(root,420,function(){ say.classList.add('in'); });
+      at(root,760,function(){
+        work.classList.add('open');
+        lines.forEach(function(l,i){ at(root,i*28,function(){ l.classList.add('in'); }); });
+      });
+      at(root,1240,function(){ note.classList.add('in'); });
+    }
+  });
+
+  /* ══ st-09 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-09', name:'A toast arrives one way, leaves another',
+    purpose:'Arriving and leaving are not the same event, so they do not share a curve. It comes in on the house curve over 320ms because it wants a glance; it leaves in 180ms on an accelerating curve, sinking rather than rising, because you already read it and a symmetrical exit begs for a second look. A second toast pushes the first up on the same settle token rather than stacking on top of it.',
+    spec:'in 320ms cubic-bezier(.16,1,.3,1) from +10px · restack settle 320ms · out 180ms cubic-bezier(.3,0,1,1), down 6px',
+    html:'<div class="mx-st mx-st-09">'+
+      '<div class="t09-page cap">…the page carries on underneath…</div>'+
+      '<div class="t09-stack">'+
+        '<div class="t09-t" data-t="1"><i class="t09-dot"></i><span>Order sent to Bodega &Aacute;lvaro</span></div>'+
+        '<div class="t09-t warn" data-t="2"><i class="t09-dot"></i><span>Muscadet is 2 cases short</span></div>'+
+      '</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var a=q(root,'[data-t="1"]'), b=q(root,'[data-t="2"]'), SHIFT='-38px';
+
+      [a,b].forEach(function(t){ t.classList.remove('in','out'); t.style.setProperty('--y','0px'); });
+      flush(root);
+
+      at(root,260,function(){ a.classList.add('in'); });
+      at(root,1100,function(){ a.style.setProperty('--y',SHIFT); b.classList.add('in'); });
+      at(root,2900,function(){ a.classList.remove('in'); a.classList.add('out'); });
+      at(root,3600,function(){ b.classList.remove('in'); b.classList.add('out'); });
+    }
+  });
+
+  /* ══ st-10 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-10', name:'The badge rolls, and widens',
+    purpose:'A badge is a small integer, so it does not ride a counter spring — it rolls. The old digit leaves upward and the new one arrives from below behind a clipped edge, and when the count crosses into two digits the pill widens on the same curve so the nav never jumps sideways. The parent lifts 1.5px once, and no more: arrival is worth a glance, not a dance. It never animates on first paint — a queue that was already at nine when you walked in is just nine.',
+    spec:'digit roll translateY -16px on settle 320ms · pill width 1ch→2ch on settle 320ms · parent nudge 1.5px on ink 160ms · no motion on first paint',
+    html:'<div class="mx-st mx-st-10">'+
+      '<div class="t10-nav"><span class="t10-item">Receiving '+
+        '<span class="t10-badge" style="--d:1"><span class="t10-digits">'+
+          '<i>9</i><i>10</i><i>11</i></span></span></span>'+
+        '<span class="t10-rest">door open</span>'+
+      '</div>'+
+      '<div class="cap">rolls on arrival · silent on first paint</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var item=q(root,'.t10-item'), badge=q(root,'.t10-badge'), dig=q(root,'.t10-digits');
+
+      function set(i,animate){
+        dig.style.transition = animate ? 'transform 320ms cubic-bezier(.16,1,.3,1)' : 'none';
+        badge.style.transition = animate ? 'width 320ms cubic-bezier(.16,1,.3,1)' : 'none';
+        dig.style.transform='translateY('+(-16*i)+'px)';
+        badge.style.setProperty('--d', i===0 ? '1' : '2');
+        if(animate){
+          item.classList.add('nudge');
+          at(root,160,function(){ item.classList.remove('nudge'); });
+        }
+      }
+      set(0,false); flush(root);
+      at(root,700,function(){ set(1,true); });
+      at(root,2100,function(){ set(2,true); });
+      at(root,3600,function(){ set(0,false); });
+    }
+  });
+
+  /* ══ st-11 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-11', name:'Optimistic: one confirms, one comes back',
+    purpose:'Both edits are written to the screen the instant the thumb leaves, because a stocktake cannot wait on a round trip. Both are marked provisional the same way — the shimmer, the only motion the system allows while it is working, plus a dashed rule under the figure. Then the truth arrives. The top row confirms and quietly goes solid. The bottom row failed, and the number does not snap: it walks back to four on the tally spring so you actually see the correction happen, the row owns it, and the reason is written in place. No toast, no apology.',
+    spec:'shimmer 1900ms loop cubic-bezier(.45,0,.55,1) · confirm ink 160ms · rollback tally spring 120/26/1, 0% overshoot, integer-rounded so the count walks back visibly',
+    html:'<div class="mx-st mx-st-11">'+
+      '<div class="t11-r" data-r="a"><div class="t11-top">'+
+        '<span class="t11-nm">Sancerre</span><span class="t11-v">9 cs</span></div>'+
+        '<i class="t11-note"></i></div>'+
+      '<div class="t11-r" data-r="b"><div class="t11-top">'+
+        '<span class="t11-nm">Rioja Crianza</span><span class="t11-v">12 cs</span></div>'+
+        '<i class="t11-note"></i></div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var A=q(root,'[data-r="a"]'), B=q(root,'[data-r="b"]'),
+          av=q(A,'.t11-v'), bv=q(B,'.t11-v'),
+          an=q(A,'.t11-note'), bn=q(B,'.t11-note');
+
+      A.className='t11-r'; B.className='t11-r';
+      av.className='t11-v'; bv.className='t11-v';
+      av.textContent='6 cs'; bv.textContent='4 cs';
+      an.className='t11-note'; bn.className='t11-note';
+      an.textContent=''; bn.textContent='';
+      flush(root);
+
+      at(root,240,function(){
+        av.textContent='9 cs'; av.classList.add('pend');
+        bv.textContent='12 cs'; bv.classList.add('pend');
+        an.className='t11-note say in'; an.textContent='Asking Álvaro to confirm…';
+        bn.className='t11-note say in'; bn.textContent='Asking Álvaro to confirm…';
+      });
+      at(root,1300,function(){
+        av.classList.remove('pend'); A.classList.add('ok');
+        an.className='t11-note in'; an.textContent='confirmed 21:04';
+      });
+      at(root,2200,function(){
+        bv.classList.remove('pend'); B.classList.add('bad');
+        bn.className='t11-note';
+        spring(root,{ from:12, to:4, stiffness:120, damping:26, mass:1, restDelta:.02,
+          onUpdate:function(x){ bv.textContent=Math.round(x)+' cs'; },
+          onComplete:function(){
+            bn.className='t11-note in';
+            bn.textContent='Álvaro has 4 cs, not 12. Put back.';
+          }});
+      });
+    }
+  });
+
+  /* ══ st-12 ═══════════════════════════════════════════════════════ */
+  push({
+    id:'st-12', name:'Disabled says why; enabling is a rise',
+    purpose:'A greyed button with no explanation is the single most common cruelty in ops software. This one carries its own blocker and counts it down as the manager prices the last lines. Enabling is not a colour flip — the button rises off the sunk surface, takes the accent and its own light, and the blocker line is replaced by the thing you are about to do. Travel is 1.5px; elevation and colour carry the rest.',
+    spec:'settle 320ms on background, colour, border, 1.5px rise and elevation together · reason swap 320ms settle · sunk → accent, no travel beyond the ink budget',
+    html:'<div class="mx-st mx-st-12">'+
+      '<button class="t12-btn" type="button" disabled>Send to vendor</button>'+
+      '<div class="t12-why">'+
+        '<i data-w="block"><b class="fig" data-n>2</b> <span data-p>lines</span> still unpriced</i>'+
+        '<i data-w="ready" class="ready">Ready · 12 lines · &euro;412.80</i>'+
+      '</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var btn=q(root,'.t12-btn'), n=q(root,'[data-n]'), plural=q(root,'[data-p]'),
+          block=q(root,'[data-w="block"]'), ready=q(root,'[data-w="ready"]');
+
+      function paint(left){
+        if(left>0){
+          n.textContent=String(left);
+          plural.textContent = left===1 ? 'line' : 'lines';
+          btn.classList.remove('on'); btn.disabled=true;
+          btn.textContent='Send to vendor';
+          block.classList.add('show'); ready.classList.remove('show');
+        } else {
+          btn.classList.add('on'); btn.disabled=false;
+          btn.textContent='Send to vendor · 12 lines';
+          block.classList.remove('show'); ready.classList.add('show');
+        }
+      }
+      paint(2); flush(root);
+      at(root,700,function(){ paint(1); });
+      at(root,1500,function(){ paint(0); });
+      at(root,3600,function(){ paint(2); });
+    }
+  });
+})();
+</script>

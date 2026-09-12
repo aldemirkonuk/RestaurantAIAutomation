@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sketch 065 · Growth Agenda Canvas — 2026-08-28</title>
+<style>
+  /* Self-contained. Sketch-theme palette inlined (themes/default.css) so this
+     file opens from anywhere. Throwaway-grade: a thinking surface, not a product. */
+  :root{
+    --primary:#CD2D5B; --primary-dark:#7c1d3c; --primary-light:#fdf2f4;
+    --bg:#f7f8f9; --surface:#fff; --surface-2:#f3f4f6;
+    --border:#e5e7eb; --border-subtle:rgba(0,0,0,.07);
+    --text:#111827; --text-2:#4b5563; --text-3:#9ca3af;
+    --ok:#059669; --ok-bg:#ecfdf5; --ok-bd:#a7f3d0;
+    --warn:#D97706; --warn-bg:#fffbeb; --warn-bd:#fde68a;
+    --dang:#DC2626; --dang-bg:#fef2f2; --dang-bd:#fecaca;
+    --reach:#6D28D9; --reach-bg:#f5f3ff; --reach-bd:#ddd6fe;
+    --mono:'JetBrains Mono',Menlo,monospace;
+    --sans:'Plus Jakarta Sans','DM Sans',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+       font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .page{max-width:1280px;margin:0 auto;padding:32px 24px 72px}
+
+  /* ---- header ---- */
+  header{border-bottom:2px solid var(--primary);padding-bottom:18px;margin-bottom:28px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+           color:var(--primary);font-weight:600}
+  h1{font-size:30px;margin:8px 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--text-2);max-width:74ch}
+  .meta{display:flex;gap:20px;flex-wrap:wrap;margin-top:12px;font-family:var(--mono);
+        font-size:11px;color:var(--text-3)}
+  .meta b{color:var(--text-2);font-weight:600}
+
+  h2{font-size:12px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
+     color:var(--text-3);margin:36px 0 14px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+
+  /* ---- the settled fact ---- */
+  .settled{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--ok);
+           border-radius:10px;padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .settled .half h3{margin:0 0 6px;font-size:14px}
+  .settled .verdict{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 7px;
+                    border-radius:4px;letter-spacing:.04em}
+  .v-no{background:var(--dang-bg);color:var(--dang);border:1px solid var(--dang-bd)}
+  .v-yes{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-bd)}
+  .settled p{margin:6px 0 0;color:var(--text-2);font-size:13px}
+  .src{font-family:var(--mono);font-size:10.5px;color:var(--text-3);margin-top:8px;
+       word-break:break-all;line-height:1.6}
+  .residual{grid-column:1/-1;background:var(--warn-bg);border:1px solid var(--warn-bd);
+            border-radius:8px;padding:10px 12px;font-size:12.5px;color:#7c4a03}
+
+  /* ---- pipeline strip ---- */
+  .pipe{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:4px}
+  .stage{flex:1 0 150px;background:var(--surface);border:1px solid var(--border);
+         padding:12px 14px;position:relative}
+  .stage:first-child{border-radius:10px 0 0 10px}
+  .stage:last-child{border-radius:0 10px 10px 0}
+  .stage+.stage{border-left:none}
+  .stage .id{font-family:var(--mono);font-size:10px;color:var(--primary);font-weight:700}
+  .stage .nm{font-weight:600;font-size:13px;margin:3px 0 5px}
+  .stage .st{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;display:inline-block}
+  .st-blocked{background:var(--dang-bg);color:var(--dang)}
+  .st-open{background:var(--ok-bg);color:var(--ok)}
+  .st-fixed{background:var(--warn-bg);color:var(--warn)}
+  .stage small{display:block;margin-top:6px;color:var(--text-3);font-size:11px;line-height:1.45}
+  .refeed{font-family:var(--mono);font-size:11px;color:var(--text-3);text-align:center;
+          margin-top:8px;padding:6px;background:var(--surface-2);border-radius:6px}
+
+  /* ---- lanes ---- */
+  .lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .lane{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+        padding:14px 16px;border-top:3px solid var(--primary)}
+  .lane.dept{border-top-color:var(--primary-dark)}
+  .lane h3{margin:0 0 2px;font-size:14px}
+  .lane .who{font-family:var(--mono);font-size:10.5px;color:var(--text-3);margin-bottom:10px}
+  .task{border-top:1px solid var(--border-subtle);padding:9px 0}
+  .task:first-of-type{border-top:none}
+  .task .row1{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+  .tid{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--primary)}
+  .ttl{font-weight:600;font-size:13px;flex:1;min-width:0}
+  .ct{font-family:var(--mono);font-size:10px;background:var(--surface-2);color:var(--text-2);
+      padding:1px 6px;border-radius:3px;white-space:nowrap}
+  .reach{font-size:10px;background:var(--reach-bg);color:var(--reach);border:1px solid var(--reach-bd);
+         padding:0 5px;border-radius:3px;font-family:var(--mono);font-weight:700}
+  .done{font-size:12px;color:var(--text-2);margin-top:4px}
+  .done b{color:var(--text);font-weight:600}
+  .ev{font-family:var(--mono);font-size:10.5px;color:var(--text-3);margin-top:4px;line-height:1.5}
+
+  /* ---- seams ---- */
+  .seams{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .seam{background:var(--primary-light);border:1px solid #f4d3dc;border-radius:10px;padding:14px 16px}
+  .seam h3{margin:0 0 8px;font-size:13.5px}
+  .seam .pair{display:flex;gap:8px;align-items:center;font-size:12px;margin-bottom:8px;flex-wrap:wrap}
+  .pill{background:var(--surface);border:1px solid var(--border);border-radius:20px;
+        padding:2px 9px;font-family:var(--mono);font-size:10.5px}
+  .pill.left{border-color:var(--primary);color:var(--primary-dark);font-weight:600}
+  .seam p{margin:0;font-size:12px;color:var(--text-2)}
+
+  /* ---- locks + zeros ---- */
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .box.locked{background:#fbfbfc;border-style:dashed}
+  .box h3{margin:0 0 10px;font-size:13.5px}
+  .box ul{margin:0;padding-left:18px;font-size:12.5px;color:var(--text-2)}
+  .box li{margin-bottom:6px}
+  .box li b{color:var(--text)}
+  .zero{font-family:var(--mono);font-size:11px;background:var(--dang-bg);color:var(--dang);
+        padding:1px 6px;border-radius:3px;border:1px solid var(--dang-bd)}
+
+  footer{margin-top:36px;padding-top:14px;border-top:1px solid var(--border);
+         font-family:var(--mono);font-size:10.5px;color:var(--text-3);line-height:1.7}
+
+  @media (max-width:960px){
+    .lanes,.seams{grid-template-columns:1fr}
+    .settled,.split{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="eyebrow">Sketch 065 · Commercial ▸ Growth · ADR 0039 Track B</div>
+  <h1>Growth agenda, on one page</h1>
+  <div class="sub">
+    Sixteen tasks, five team lanes, three seams. The department is near-greenfield and this
+    canvas says so: most rows are the work of making the pipeline <em>possible</em>, not of
+    running it. Every task carries a doneability and a close-time; four are reach items and
+    are marked as such.
+  </div>
+  <div class="meta">
+    <span><b>Dated</b> 2026-08-28</span>
+    <span><b>Status</b> active</span>
+    <span><b>Teams</b> G1–G5</span>
+    <span><b>Loops</b> 6 · one can close today</span>
+    <span><b>Reach items</b> 4 of 16</span>
+    <span><b>Locks honoured</b> pricing deferred · brand visuals held</span>
+  </div>
+</header>
+
+<h2>The one thing that changed today — OD-53, settled by fetch</h2>
+<div class="settled">
+  <div class="half">
+    <h3>(a) Perplexity search-history endpoint <span class="verdict v-no">NO</span></h3>
+    <p>
+      The complete published endpoint index — Router, Agent, Search, Embeddings, Sonar, Auth,
+      Analytics — contains no endpoint returning a user's own searches, threads, or Library.
+      The one list endpoint returns <em>async API requests</em>, not web-app searches. The API
+      is zero-retention by policy, so there is no store a history endpoint could read. A staff
+      reply dated 2025-06-08 promised it "by end of August 2025"; twelve months on it is absent.
+    </p>
+    <div class="src">docs.perplexity.ai/llms.txt · docs.perplexity.ai/api-reference · docs.perplexity.ai/faq/faq · community.perplexity.ai/t/…/478 — retrieved 2026-08-28</div>
+  </div>
+  <div class="half">
+    <h3>(b) AnswerThePublic API <span class="verdict v-yes">EXISTS · ALPHA</span></h3>
+    <p>
+      Enabled per workspace at Account → API Access; personal access tokens; <b>60 req/min per
+      token</b>; keyword research only (create searches, retrieve reports, request AI answers).
+      <b>Paid plans only</b> — not on free. Searches spend plan credits; same keyword/language/region
+      inside 24h reuses rather than re-spends. Starter $20/mo · Growth $99/mo · Business $199/mo.
+    </p>
+    <div class="src">answerthepublic.zendesk.com/hc/en-us/articles/15219088022555 · answerthepublic.com/pricing — retrieved 2026-08-28</div>
+  </div>
+  <div class="residual">
+    <b>Residual unknown, not closed:</b> which paid tier actually carries API access. The help
+    centre says "paid plans" and names no floor; the pricing page lists no API line on any tier.
+    GRO-3 confirms with the vendor before any spend proposal. <b>Consequence of (a):</b> the corpus
+    is not <em>retrieved</em>, it is <em>captured at source</em> — a manual export is a scheduled
+    human task, and a scheduled human task is not a loop.
+  </div>
+</div>
+
+<h2>The founder's pipeline, graded against what is actually possible</h2>
+<div class="pipe">
+  <div class="stage">
+    <div class="id">G1 · step 1</div><div class="nm">Corpus</div>
+    <span class="st st-fixed">re-specified</span>
+    <small>No history API. Capture-at-source replaces harvest-after-the-fact. → GRO-2</small>
+  </div>
+  <div class="stage">
+    <div class="id">G2 · step 2</div><div class="nm">Claude drafts</div>
+    <span class="st st-blocked">blocked</span>
+    <small>Held behind the publishing target. Drafted and gated, never published early.</small>
+  </div>
+  <div class="stage">
+    <div class="id">G3 · step 3</div><div class="nm">Human pass</div>
+    <span class="st st-open">runnable now</span>
+    <small>The only lane nothing blocks. Provenance format first. → GRO-10, GRO-11</small>
+  </div>
+  <div class="stage">
+    <div class="id">G4 · step 4</div><div class="nm">Publish · crawl · cite</div>
+    <span class="st st-fixed">partly runnable</span>
+    <small>Census measurable today; <code>/v/:slug</code> is a live answer surface. → GRO-5, GRO-6</small>
+  </div>
+  <div class="stage">
+    <div class="id">G2 · step 5</div><div class="nm">FAQ layer ×10</div>
+    <span class="st st-blocked">blocked</span>
+    <small>Ships only after its article is indexed. Distinctness decided before drafting.</small>
+  </div>
+  <div class="stage">
+    <div class="id">G1 · step 6</div><div class="nm">Search Console refeed</div>
+    <span class="st st-blocked">blocked</span>
+    <small>No property, no verified domain. Deliberately not scheduled — it could not close.</small>
+  </div>
+</div>
+<div class="refeed">↺ step 6 → step 1 is the return path. Steps 1–5 without it are a content calendar, not a pipeline (L-GRO-1).</div>
+
+<h2>The sixteen tasks, by lane</h2>
+<div class="lanes">
+
+  <div class="lane dept">
+    <h3>Department</h3>
+    <div class="who">growth-board-keeper · reads five boards, owns no stage</div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-4</span><span class="ttl">Publishing-target brief, with a recommendation</span><span class="ct">14d · 09-11</span></div>
+      <div class="done"><b>Done when</b> the row text is fileable verbatim, each option carries one measured cost, and Growth names a recommendation it is willing to be wrong about.</div>
+      <div class="ev">Blocks 8 items. Named a blocker on 2026-08-24; still no register row on 2026-08-28.</div>
+    </div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-16</span><span class="ttl">Run L-GRO-6 monthly and let it report red</span><span class="ct">monthly · 09-28</span></div>
+      <div class="done"><b>Done when</b> every row carries a value, "blocked", or "unmeasurable" with its failed precondition named — and zero composite scores.</div>
+      <div class="ev">card quality_bar: a single growth score is a failed run</div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <h3>G1 · Search &amp; demand research</h3>
+    <div class="who">demand-queue-keeper · "nobody was searching for what we wrote"</div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-1</span><span class="ttl">Carry the settled OD-53 verdict into the three docs that still ask it</span><span class="ct">14d · 09-11</span></div>
+      <div class="done"><b>Done when</b> "unverified" no longer appears against either half, and each carries URL + retrieval date.</div>
+      <div class="ev">charter:103 · agenda-full:21 · premortem:63</div>
+    </div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-2</span><span class="ttl">Capture-at-source as step 1</span><span class="ct">weekly · 09-04</span></div>
+      <div class="done"><b>Done when</b> two consecutive sessions commit a corpus file with zero entries reconstructed from memory, and <code>research.session_completed</code> gets a publisher.</div>
+      <div class="ev">cards.json declared_gap: publisher NONE (OD-53)</div>
+    </div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-3</span><span class="ttl">AnswerThePublic adoption brief — propose, never purchase</span><span class="ct">14d · 09-11</span></div>
+      <div class="done"><b>Done when</b> the API-carrying tier is <em>confirmed with the vendor</em>, 60 req/min is measured against ten questions per topic monthly, and Alpha breakage is stated as inherited.</div>
+      <div class="ev">env.example (194 lines) has no slot for the credential</div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <h3>G2 · Content production</h3>
+    <div class="who">content-drafter · "the page says nothing worth citing"</div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-8</span><span class="reach">REACH</span><span class="ttl">First unit is the discipline itself — <em>emit no claim rather than a false one</em></span><span class="ct">60d after GRO-4</span></div>
+      <div class="done"><b>Done when</b> it clears the gate on first pass with complete provenance, is served with a real status code and a JS-off title, each of ten FAQ pages adds something the article does not — and <b>a human performs the publish</b>.</div>
+      <div class="ev">source is our own code: vendor-portal.service.ts:120 · aspiration pending GRO-4</div>
+    </div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-6</span><span class="reach">REACH</span><span class="ttl">(with G4) <code>/v/:slug</code> as the pilot answer surface</span><span class="ct">45d · 10-12</span></div>
+      <div class="done"><b>Done when</b> the JSON-LD validates against a real consumer, <code>seo.indexed_pages</code> reports a measured number, and one L-GRO-3 close-time runs against live URLs.</div>
+      <div class="ev">App.tsx:160 · controller.ts:40 @Public() · service.ts:127 — conditional on a published catalogue existing; that check is step one</div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <h3>G3 · Editorial gate</h3>
+    <div class="who">gate-preparer · "we published something false" · has the veto</div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-10</span><span class="ttl">Provenance format + first worked example, before any draft</span><span class="ct">21d · 09-18</span></div>
+      <div class="done"><b>Done when</b> the format catches an overstatement in the worked example: <em>dollars recovered</em> resolved down to <em>we asked</em>.</div>
+      <div class="ev">YC_WEDGE_PLAN:31-33 · the one lane with no blocker</div>
+    </div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-11</span><span class="reach">REACH</span><span class="ttl">Stock the claim register before the gate opens</span><span class="ct">30d · 09-27</span></div>
+      <div class="done"><b>Done when</b> every row carries a <code>path:line</code> or a URL + retrieval date, and the provenance check can grade all of them.</div>
+      <div class="ev">boundary check first — strategy-fundraising may already own this. Two registers is sprawl, not ambition</div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <h3>G4 · Technical SEO &amp; answer surface</h3>
+    <div class="who">crawl-surface-sentinel · "machines cannot reach, parse, or cite it"</div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-5</span><span class="ttl">Crawl-floor census — measured, never inferred</span><span class="ct">7d · 09-04</span></div>
+      <div class="done"><b>Done when</b> observed status codes are committed, so <code>seo.soft_404_rate</code> is a measurement. A census that cannot reach the deploy <b>fails</b>; it never reports green.</div>
+      <div class="ev">vercel.json:13-16 → 200 for every unmatched URL; App.tsx:328 redirects after. Both line numbers drifted from wave-1 docs</div>
+    </div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-7</span><span class="reach">REACH</span><span class="ttl">Build the citation probe — make the metric an instrument</span><span class="ct">monthly · 09-28</span></div>
+      <div class="done"><b>Done when</b> ≥20 questions run with the sampling frame written down, and a zero-page corpus prints <code>0 of 20, sampled</code> rather than "blocked".</div>
+      <div class="ev">no impressions report exists for an AI answer — sampled by construction</div>
+    </div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-9</span><span class="ttl">robots · sitemap · canonical · llms.txt, each with its honesty note</span><span class="ct">30d after GRO-4</span></div>
+      <div class="done"><b>Done when</b> the files are served, the sitemap is non-empty, and the same commit says llms.txt has no guaranteed consumer.</div>
+      <div class="ev">public/ holds 7 files, none a crawl file; index.html has no og:, twitter:, or canonical</div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <h3>G5 · Conversion funnel</h3>
+    <div class="who">funnel-census-keeper · "they arrived and left"</div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-12</span><span class="ttl">Measure without a cookie — exhaust the no-consent options first</span><span class="ct">30d · 09-27</span></div>
+      <div class="done"><b>Done when</b> <code>measurable_steps</code> goes 0 → ≥3 with <b>zero diff required</b> to Privacy.tsx — or the finding names which step is unreachable and why.</div>
+      <div class="ev">uxSignals.ts:15 dark · :21 buckets on the authenticated user id — cannot see a first visit</div>
+    </div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-13</span><span class="ttl">Privacy-coupling guard, in CI rather than in memory</span><span class="ct">21d · 09-18</span></div>
+      <div class="done"><b>Done when</b> a synthetic PR that would have passed before now <b>fails</b> — proven against the pre-fix tree — and the guard <b>blocks</b> when it cannot determine the answer.</div>
+      <div class="ev">Privacy.tsx:11 states the contract in a comment, where CI cannot read it</div>
+    </div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-14</span><span class="ttl">Close the 404 seam by naming the one shipper</span><span class="ct">30d · 09-27</span></div>
+      <div class="done"><b>Done when</b> a nonexistent URL returns a non-200 <b>observed in production</b> and the page behind it is <code>NotFoundError</code> with an actionable CTA.</div>
+      <div class="ev">error-state.tsx:142 exists and is routed nowhere — referenced only by its own Storybook</div>
+    </div>
+    <div class="task">
+      <div class="row1"><span class="tid">GRO-15</span><span class="ttl">Design the honest empty state for social proof</span><span class="ct">30d · 09-27</span></div>
+      <div class="done"><b>Done when</b> a dated sentence is shippable with one design partner and no verified recovery number, and the fabrication counter is still 0.</div>
+      <div class="ev">copy and structure only — brand/landing visuals are HELD</div>
+    </div>
+  </div>
+</div>
+
+<h2>The three seams — a seam with two owners has none</h2>
+<div class="seams">
+  <div class="seam">
+    <h3>The 404</h3>
+    <div class="pair"><span class="pill left">G4 decides</span>→<span class="pill">G5 objects</span></div>
+    <p>G4 owns the <b>status code</b>, and it lives at the host — a rewrite cannot produce a 404.
+       G5 owns <b>what the page says and where its CTA goes</b>. Neither ships it alone, which is
+       exactly why it has not shipped. GRO-14 forces the naming.</p>
+  </div>
+  <div class="seam">
+    <h3>The FAQ link graph</h3>
+    <div class="pair"><span class="pill left">G2 decides</span>→<span class="pill">G4 objects</span></div>
+    <p>G2 authors the pages and the back-links; G4 objects on thin-content and duplicate-intent
+       grounds <b>before</b> publication, never after. Ten near-identical answers are the doorway-page
+       shape, and distinctness is decided before drafting.</p>
+  </div>
+  <div class="seam">
+    <h3>Funnel instrumentation</h3>
+    <div class="pair"><span class="pill left">G5 decides</span>→<span class="pill">Compliance objects</span></div>
+    <p>G5 states what must be measured; <b>Compliance holds the pen on every word of the notice</b>.
+       Growth never drafts privacy copy. GRO-13 turns the coupling from a convention into a
+       blocking check.</p>
+  </div>
+</div>
+
+<h2>What this agenda will not do</h2>
+<div class="split">
+  <div class="box locked">
+    <h3>Locks, honoured — not worked around</h3>
+    <ul>
+      <li><b>Pricing is deferred.</b> No tier, no number, no page designed "for later". GRO-3 proposes a spend <em>brief</em> about someone else's product, never a price for ours.</li>
+      <li><b>Brand and landing visuals are held.</b> GRO-15 produces a sentence and a slot's logic; this canvas is an agenda one-pager, not a landing page.</li>
+      <li><b>No target list.</b> Sales owns it, founder-deferred.</li>
+      <li><b>No agent publishes.</b> Drafts propose; a human publishes. <code>mutate_stock_money_outbound: confirm</code> is a constant on the department card.</li>
+      <li><b>The register is not ours to edit.</b> Growth supplies OD-53's dated lines; the Decision Office writes the row.</li>
+    </ul>
+  </div>
+  <div class="box">
+    <h3>The three zeros — any non-zero is a department escalation</h3>
+    <ul>
+      <li><span class="zero">gate_bypass_count = 0</span> One bypass invalidates the pipeline, not one article. Read weekly, because a bypass is discovered, not reported.</li>
+      <li><span class="zero">fabricated_social_proof_count = 0</span> Absolute; unrecoverable if breached. The soft version arrives first — a case study written from a partner's politeness.</li>
+      <li><span class="zero">over-claims = 0</span> <em>Dollars recovered</em> means <b>we asked</b>, not we received, until a credit memo lands.</li>
+    </ul>
+    <h3 style="margin-top:14px">Seeds rejected</h3>
+    <ul>
+      <li><b>Brand-voice authoring</b> — a gate enforcing its own opinion is not a gate. Filed as a cross-unit ask.</li>
+      <li><b>Start the Search Console loop</b> — it has no property; a task that cannot close is the department's first failure mode.</li>
+      <li><b>A composite growth score</b> — the five numbers are not commensurable; averaging them is a failed run.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  Sketch 065 · growth-agenda-canvas · throwaway-grade thinking surface, not a product ·
+  generated 2026-08-28 under ADR 0039 Track B / GENERATION_BRIEF §8 ·
+  source of truth is <b>.planning/01-org/commercial/growth/growth-agenda-full.md</b> — if the two
+  disagree, the agenda wins and this file is stale ·
+  every dated third-party line on this page was fetched 2026-08-28 and carries its URL there.
+</footer>
+
+</div>
+</body>
+</html>

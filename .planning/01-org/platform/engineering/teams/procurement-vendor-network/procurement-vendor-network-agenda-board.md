@@ -5,7 +5,7 @@ department: engineering
 team: procurement-vendor-network
 status: provisional
 metrics: [procurement.order_to_delivery_reconciliation_rate]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-agenda-full]]", "[[procurement-vendor-network-loops]]", "[[engineering-agenda-board]]"]
 ---
 
@@ -50,7 +50,18 @@ GROUP BY type
 
 ## Counters
 
-- [ ] `procurement.unguarded_money_moving_routes` — **≥6** (`recurring-orders`, [[ENDPOINTS]]:428)
+- [x] `procurement.unguarded_money_moving_routes` — **0 across the `recurring-orders`
+  cluster**, closed 2026-08-25. A class-level `@UseGuards(JwtAuthGuard)` covers all six
+  (`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
+  OD-20); no `@Public()` in the file; [[ENDPOINTS]]:464-473 marks all six ✅. The
+  **team-wide** value now comes from the E0 auth census, merged 2026-09-01
+  (`ECOSYSTEM-PLAN.md:83`): 468 route handlers, 444 authenticated, 23 deliberately public
+  with evidence, **0 unauthenticated by omission**, 1 unclear — so this team's other ~91
+  routes contribute **zero**. Read the counter as a regression watch, not a backlog:
+  **the defect count is zero while the defect generator is fully intact** — `JwtAuthGuard`
+  is per-controller, not a global `APP_GUARD` (`app.module.ts:130-137` registers only
+  `RateLimitGuard` and `TenantGuard`), so the next money-moving route — endpoint 469 — is
+  unguarded until someone remembers the decorator.
 - [ ] Alert on unauthenticated writes to `procurement/**` — **not built**
 - [ ] `procurement.order_to_delivery_reconciliation_rate` — **unmeasured**
 - [ ] `procurement.no_touch_reconciliation_rate` — **unmeasured**; the clause that matters

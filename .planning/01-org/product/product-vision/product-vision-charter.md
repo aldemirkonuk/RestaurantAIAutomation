@@ -93,7 +93,9 @@ department metric is the **set** — five numbers, each paired with a hard gate,
 (`stimulus → internal_state → choice → outcome`, foundation [[README]] §4.4): a proposal is
 a stimulus, an accept-without-edit is a choice, a later correction is the outcome. The
 department is the largest single producer of `nf_a.doneability_verdict` rows once L4 emits
-anything — it emits nothing today (foundation [[README]]:80).
+anything — it emits nothing today (foundation [[README]]:80). *Corrected 2026-08-25:
+L4 emits since P1 (`model-client.service.ts:413`); what is still ~0% is verdict
+coverage, not emission — see [[0017-doneability-verdicts-are-sidecar-claims]].*
 
 ## Evidence today
 

@@ -14,6 +14,7 @@ import {
   Home,
   Boxes,
   ShoppingCart,
+  PackageCheck,
   Wine,
   Truck,
   Tag,
@@ -70,12 +71,17 @@ const NAVIGATION: Command[] = [
   { id: "nav-dashboard", title: "Dashboard", section: "Navigation", icon: Home, href: "/", shortcut: "g d", keywords: "home overview" },
   { id: "nav-inventory", title: "Inventory", section: "Navigation", icon: Boxes, href: "/inventory", shortcut: "g i", keywords: "stock cellar bottles par" },
   { id: "nav-orders", title: "Orders", section: "Navigation", icon: ShoppingCart, href: "/orders", shortcut: "g o", keywords: "procurement po purchase" },
+  // No `g` shortcut: every free letter that reads as "receiving" is already bound
+  // (r=Reports), and inventing a binding is a UX decision nobody made. Registering
+  // it here also gives `/receiving` a ROUTE_LABELS entry, which is what stops the
+  // breadcrumb rendering the raw segment.
+  { id: "nav-receiving", title: "Receiving", section: "Navigation", icon: PackageCheck, href: "/receiving", keywords: "delivery deliveries door goods in receive truck arrived packing slip" },
   { id: "nav-wines", title: "Wine Library", section: "Navigation", icon: Wine, href: "/wines", shortcut: "g w", keywords: "catalog bottles list" },
   { id: "nav-providers", title: "Providers", section: "Navigation", icon: Truck, href: "/providers", shortcut: "g p", keywords: "vendors suppliers distributors" },
   { id: "nav-promotions", title: "Promotions", section: "Navigation", icon: Tag, href: "/promotions", keywords: "offers deals prospects" },
   { id: "nav-reports", title: "Reports", section: "Navigation", icon: BarChart3, href: "/reports", shortcut: "g r", keywords: "analytics charts dashboard kpi" },
   { id: "nav-recs", title: "Recommendations", section: "Navigation", icon: Lightbulb, href: "/recommendations", keywords: "actions insights suggestions" },
-  { id: "nav-catalog", title: "Insight Catalog", section: "Navigation", icon: Layers, href: "/recommendations/catalog", keywords: "browse 375 types dimension measure comparator" },
+  { id: "nav-catalog", title: "Insight Catalog", section: "Navigation", icon: Layers, href: "/recommendations/catalog", keywords: "browse types dimension measure comparator" },
   { id: "nav-calendar", title: "Calendar", section: "Navigation", icon: Calendar, href: "/calendar", shortcut: "g c", keywords: "events schedule" },
   { id: "nav-team", title: "Team", section: "Navigation", icon: Users, href: "/team", shortcut: "g t", keywords: "staff shifts labor" },
   { id: "nav-comms", title: "Communications", section: "Navigation", icon: Mail, href: "/communications", keywords: "email sms templates" },
@@ -96,7 +102,9 @@ const CREATE: Command[] = [
 ];
 
 const INSIGHTS: Command[] = [
-  { id: "insight-browse", title: "Browse all 375 insight types", section: "Insights", icon: Layers, href: "/recommendations/catalog", keywords: "catalog dimension measure comparator explorer" },
+  // No count in the title: the catalogue is generated, so any literal here goes
+  // stale silently (this said 375 against a 573-type catalogue). ADR 0020.
+  { id: "insight-browse", title: "Browse all insight types", section: "Insights", icon: Layers, href: "/recommendations/catalog", keywords: "catalog dimension measure comparator explorer" },
   { id: "insight-recs", title: "View recommendations", section: "Insights", icon: Lightbulb, href: "/recommendations", keywords: "actions what to do" },
 ];
 

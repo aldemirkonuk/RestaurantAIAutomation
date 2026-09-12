@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mudavym — 078 The Instrument</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============ TOKENS — dark is home ============ */
+:root[data-theme="dark"]{
+  --panel:#0A0B0D; --surface:#101114; --raised:#16181C;
+  --rule:rgba(255,255,255,.09); --rule-strong:rgba(255,255,255,.17);
+  --ink:#F4F5F6; --ink-2:#B6BABF; --ink-3:#82878D; --ink-4:#55595F;
+  --signal:#FFB224; --signal-tint:rgba(255,178,36,.10); --signal-rule:rgba(255,178,36,.38);
+  --critical:#F2555A; --critical-tint:rgba(242,85,90,.10);
+  --ok:#3DD68C; --ok-tint:rgba(61,214,140,.10);
+  --ramp-1:#E8E9EA; --ramp-2:#B6BABF; --ramp-3:#82878D; --ramp-4:#55595F; --ramp-5:#33373C;
+  --crosshair:rgba(255,255,255,.25); --gridline:rgba(255,255,255,.06);
+  --btn-ink:#F4F5F6; --btn-ink-text:#0A0B0D;
+}
+:root[data-theme="light"]{
+  --panel:#F5F5F4; --surface:#FFFFFF; --raised:#FAFAF9;
+  --rule:rgba(16,17,19,.11); --rule-strong:rgba(16,17,19,.22);
+  --ink:#101113; --ink-2:#44484D; --ink-3:#7A7F85; --ink-4:#A8ACB1;
+  --signal:#8F5F00; --signal-tint:rgba(180,120,0,.10); --signal-rule:rgba(150,100,0,.45);
+  --critical:#CE2C31; --critical-tint:rgba(206,44,49,.08);
+  --ok:#1E7F4F; --ok-tint:rgba(30,127,79,.09);
+  --ramp-1:#26282B; --ramp-2:#55595F; --ramp-3:#82878D; --ramp-4:#B6BABF; --ramp-5:#DDDEDF;
+  --crosshair:rgba(16,17,19,.30); --gridline:rgba(16,17,19,.06);
+  --btn-ink:#101113; --btn-ink-text:#FFFFFF;
+}
+/* ============ MOTION TOKENS ============ */
+:root{
+  --e-flip:cubic-bezier(.2,0,0,1);      --t-flip:120ms;   /* state flips: toggles, chips */
+  --e-settle:cubic-bezier(.16,1,.3,1);  --t-settle:180ms; /* hover, press, small moves  */
+  --e-reveal:cubic-bezier(.16,1,.3,1);  --t-reveal:240ms; /* expands, drawers, unmasks  */
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition-duration:0ms!important;animation:none!important}
+}
+/* ============ BASE ============ */
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--panel); color:var(--ink);
+  font-family:"Geist",-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:14px; line-height:22px;
+  -webkit-font-smoothing:antialiased;
+  transition:background var(--t-settle) var(--e-settle), color var(--t-settle) var(--e-settle);
+}
+.mono{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+.num{font-family:"Geist Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.kicker{
+  font-family:"Geist Mono",monospace;font-size:11px;line-height:14px;font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
+}
+.amber{color:var(--signal)}
+.wrap{max-width:1080px;margin:0 auto;padding:0 32px}
+section{border-top:1px solid var(--rule);padding:56px 0 72px}
+.sec-head{display:flex;align-items:baseline;gap:16px;margin-bottom:8px}
+.sec-head h2{font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.015em}
+.sec-sub{color:var(--ink-3);font-size:14px;max-width:640px;margin-bottom:36px}
+/* ============ HEADER ============ */
+header.bar{
+  position:sticky;top:0;z-index:50;background:var(--panel);
+  border-bottom:1px solid var(--rule);
+  transition:background var(--t-settle) var(--e-settle);
+}
+header.bar .wrap{display:flex;align-items:center;justify-content:space-between;height:52px}
+.brandline{display:flex;align-items:center;gap:14px}
+.brandline svg{display:block}
+.theme-btn{
+  font-family:"Geist Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  background:none;border:1px solid var(--rule-strong);color:var(--ink-2);
+  padding:7px 12px;cursor:pointer;border-radius:0;
+  transition:border-color var(--t-settle) var(--e-settle),color var(--t-settle) var(--e-settle);
+}
+.theme-btn:hover{border-color:var(--ink-2);color:var(--ink)}
+/* ============ HERO ============ */
+.hero{padding:72px 0 64px;border-top:none}
+.hero h1{font-size:32px;line-height:38px;font-weight:600;letter-spacing:-.02em;margin:14px 0 12px}
+.hero p{color:var(--ink-2);max-width:560px}
+.hero .spec{margin-top:28px;display:flex;gap:0;border:1px solid var(--rule)}
+.hero .spec div{flex:1;padding:12px 16px;border-left:1px solid var(--rule)}
+.hero .spec div:first-child{border-left:none}
+.hero .spec .k{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);font-family:"Geist Mono",monospace;font-weight:600}
+.hero .spec .v{font-size:13px;color:var(--ink-2);margin-top:3px}
+/* ============ LOGO ============ */
+.logo-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.logo-cell{background:var(--panel);padding:0}
+.logo-pair{display:grid;grid-template-columns:1fr 1fr}
+.tile{display:flex;align-items:center;justify-content:center;min-height:150px;padding:28px}
+.tile.dark{background:#0A0B0D}
+.tile.light{background:#F5F5F4}
+.logo-meta{padding:16px 20px 20px;border-top:1px solid var(--rule)}
+.logo-meta h3{font-size:16px;font-weight:600;margin:4px 0 4px}
+.logo-meta p{font-size:13px;line-height:19px;color:var(--ink-3)}
+.wordmark-row{margin-top:1px;grid-column:1 / -1}
+/* ============ SLOGANS ============ */
+.slogan-list{border:1px solid var(--rule)}
+.slogan{display:grid;grid-template-columns:64px 1fr 1.1fr;border-top:1px solid var(--rule);align-items:baseline}
+.slogan:first-child{border-top:none}
+.slogan .idx{padding:18px 0 18px 20px;font-family:"Geist Mono",monospace;font-size:11px;color:var(--ink-4);letter-spacing:.1em}
+.slogan .line{padding:16px 24px 16px 0;font-size:19px;line-height:26px;font-weight:600;letter-spacing:-.01em}
+.slogan .why{padding:18px 20px 18px 24px;font-size:13px;line-height:19px;color:var(--ink-3);border-left:1px solid var(--rule)}
+/* ============ VOICE ============ */
+.rules{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule);margin-bottom:40px}
+.rule-card{background:var(--panel);padding:18px 20px}
+.rule-card .k{font-family:"Geist Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.12em;color:var(--ink-4)}
+.rule-card h4{font-size:14px;font-weight:600;margin:6px 0 4px}
+.rule-card p{font-size:13px;line-height:19px;color:var(--ink-3)}
+.rw{border:1px solid var(--rule)}
+.rw-row{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--rule)}
+.rw-row:first-child{border-top:none;background:var(--surface)}
+.rw-row:first-child div{font-family:"Geist Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);padding:10px 20px}
+.rw-row .before,.rw-row .after{padding:16px 20px;font-size:13.5px;line-height:20px}
+.rw-row .before{color:var(--ink-3);border-right:1px solid var(--rule)}
+.rw-row .after{color:var(--ink)}
+.rw-row .after .num{font-size:13px}
+/* ============ PALETTE ============ */
+.pal-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.pal{border:1px solid var(--rule)}
+.pal-head{padding:12px 16px;border-bottom:1px solid var(--rule);font-family:"Geist Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.sw{display:grid;grid-template-columns:44px 1fr auto;align-items:center;border-top:1px solid var(--rule)}
+.sw:first-of-type{border-top:none}
+.sw .chip{height:36px;border-right:1px solid var(--rule)}
+.sw .name{padding:0 14px;font-family:"Geist Mono",monospace;font-size:12px;color:var(--ink-2)}
+.sw .val{padding:0 14px;font-family:"Geist Mono",monospace;font-size:11px;color:var(--ink-4)}
+.pal .group{padding:8px 16px 6px;font-family:"Geist Mono",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);border-top:1px solid var(--rule);background:var(--surface)}
+.ramp-strip{display:flex;height:36px}
+.ramp-strip div{flex:1}
+/* ============ TYPE ============ */
+.type-table{border:1px solid var(--rule)}
+.type-row{display:grid;grid-template-columns:210px 1fr;border-top:1px solid var(--rule);align-items:center}
+.type-row:first-child{border-top:none}
+.type-row .spec{padding:16px 20px;border-right:1px solid var(--rule);font-family:"Geist Mono",monospace;font-size:11px;line-height:17px;color:var(--ink-3)}
+.type-row .spec b{color:var(--ink-2);font-weight:600;display:block;letter-spacing:.1em;text-transform:uppercase}
+.type-row .sample{padding:14px 24px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* ============ MOTION ============ */
+.mo-tokens{border:1px solid var(--rule);margin-bottom:32px}
+.mo-row{display:grid;grid-template-columns:150px 260px 1fr;border-top:1px solid var(--rule)}
+.mo-row:first-child{border-top:none;background:var(--surface)}
+.mo-row:first-child div{font-family:"Geist Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);padding:10px 16px}
+.mo-row div{padding:14px 16px;font-size:13px}
+.mo-row .tk{font-family:"Geist Mono",monospace;font-size:12px;color:var(--ink)}
+.mo-row .cv{font-family:"Geist Mono",monospace;font-size:11.5px;color:var(--ink-3)}
+.mo-row .use{color:var(--ink-2)}
+.demos{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.demo{background:var(--panel);padding:22px 20px 24px;min-height:210px;display:flex;flex-direction:column}
+.demo .k{margin-bottom:16px}
+.demo .stage{flex:1;display:flex;flex-direction:column;justify-content:center}
+.demo .note{font-family:"Geist Mono",monospace;font-size:10.5px;line-height:16px;color:var(--ink-4);margin-top:16px}
+/* toggle demo */
+.tgl-row{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--rule);padding:14px 16px;background:var(--surface)}
+.tgl-label{font-size:13px;font-weight:500}
+.tgl-state{font-family:"Geist Mono",monospace;font-size:11px;letter-spacing:.12em;color:var(--ink-4);margin-top:2px}
+.tgl{position:relative;width:40px;height:22px;border:1px solid var(--rule-strong);background:transparent;cursor:pointer;border-radius:0;flex:none;transition:background var(--t-flip) var(--e-flip),border-color var(--t-flip) var(--e-flip)}
+.tgl .thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;background:var(--ink-3);transition:transform var(--t-flip) var(--e-flip),background var(--t-flip) var(--e-flip)}
+.tgl.on{background:var(--ink);border-color:var(--ink)}
+.tgl.on .thumb{transform:translateX(18px);background:var(--panel)}
+/* row-expand demo */
+.xrow{border:1px solid var(--rule);background:var(--surface)}
+.xrow-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;user-select:none}
+.xrow-head:hover{background:var(--raised)}
+.xrow-title{font-family:"Geist Mono",monospace;font-size:12px}
+.xrow-pm{font-family:"Geist Mono",monospace;font-size:14px;color:var(--ink-3);width:14px;text-align:center}
+.xrow-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--t-reveal) var(--e-reveal)}
+.xrow-body>div{overflow:hidden}
+.xrow.open .xrow-body{grid-template-rows:1fr}
+.xrow-detail{border-top:1px solid var(--rule);padding:12px 14px;font-family:"Geist Mono",monospace;font-size:11px;line-height:19px;color:var(--ink-3)}
+.xrow-detail b{color:var(--ink);font-weight:500}
+/* ticker demo */
+.tick-val{font-family:"Geist Mono",monospace;font-variant-numeric:tabular-nums;font-size:30px;line-height:34px;font-weight:500;letter-spacing:-.01em}
+.tick-lbl{font-family:"Geist Mono",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);margin-bottom:6px}
+.tick-btn{margin-top:14px;align-self:flex-start;font-family:"Geist Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;background:none;border:1px solid var(--rule-strong);color:var(--ink-2);padding:8px 12px;cursor:pointer;border-radius:0;transition:border-color var(--t-settle) var(--e-settle),color var(--t-settle) var(--e-settle)}
+.tick-btn:hover{border-color:var(--ink-2);color:var(--ink)}
+.code{background:var(--surface);border:1px solid var(--rule);padding:18px 20px;font-family:"Geist Mono",monospace;font-size:12px;line-height:19px;color:var(--ink-2);overflow-x:auto;margin-top:32px}
+.code .c{color:var(--ink-4)}
+/* ============ SCREENS ============ */
+.screens{display:grid;grid-template-columns:1fr;gap:40px}
+.frame{border:1px solid var(--rule-strong);background:var(--panel)}
+.frame-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-bottom:1px solid var(--rule);background:var(--surface)}
+.frame-bar .l,.frame-bar .r{display:flex;align-items:center;gap:14px}
+.fb-brand{font-family:"Geist Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.22em}
+.kbd{font-family:"Geist Mono",monospace;font-size:10px;color:var(--ink-3);border:1px solid var(--rule-strong);padding:2px 5px}
+.fb-meta{font-family:"Geist Mono",monospace;font-size:10.5px;letter-spacing:.08em;color:var(--ink-4)}
+.frame-body{padding:26px 18px 22px}
+.greet h3{font-size:19px;font-weight:600;letter-spacing:-.01em}
+.greet .sub{font-family:"Geist Mono",monospace;font-size:11px;letter-spacing:.1em;color:var(--ink-3);margin-top:5px;text-transform:uppercase}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--rule);margin-top:22px;background:var(--surface)}
+.kpi{padding:14px 16px 16px;border-left:1px solid var(--rule)}
+.kpi:first-child{border-left:none}
+.kpi .lbl{font-family:"Geist Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4)}
+.kpi .val{display:flex;align-items:center;gap:8px;margin-top:8px;font-family:"Geist Mono",monospace;font-variant-numeric:tabular-nums;font-size:26px;line-height:30px;font-weight:500;letter-spacing:-.01em}
+.kpi .sub{font-family:"Geist Mono",monospace;font-size:10px;letter-spacing:.06em;color:var(--ink-4);margin-top:6px}
+.lamp{width:8px;height:8px;background:var(--signal);flex:none}
+.kpi.hot .val{color:var(--signal)}
+.kpi.hot .sub{color:var(--signal);opacity:.75}
+.decision{display:flex;margin-top:22px;border:1px solid var(--rule);background:var(--surface)}
+.decision .bar-l{width:3px;background:var(--signal);flex:none}
+.decision .body{padding:16px 18px;flex:1}
+.decision .k{font-family:"Geist Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--signal)}
+.decision h4{font-size:16px;font-weight:600;letter-spacing:-.005em;margin:7px 0 4px}
+.decision .meta{font-family:"Geist Mono",monospace;font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--ink-3)}
+.decision .acts{display:flex;gap:10px;margin-top:14px}
+.btn{font-family:"Geist Mono",monospace;font-size:11.5px;letter-spacing:.06em;padding:9px 16px;cursor:pointer;border-radius:0;border:1px solid transparent;transition:opacity var(--t-settle) var(--e-settle),border-color var(--t-settle) var(--e-settle)}
+.btn.fill{background:var(--btn-ink);color:var(--btn-ink-text);border-color:var(--btn-ink)}
+.btn.fill:hover{opacity:.85}
+.btn.ghost{background:none;color:var(--ink-2);border-color:var(--rule-strong)}
+.btn.ghost:hover{border-color:var(--ink-2);color:var(--ink)}
+.frame-cap{font-family:"Geist Mono",monospace;font-size:10.5px;line-height:17px;letter-spacing:.04em;color:var(--ink-4);padding:12px 2px 0}
+/* orders table */
+.ord{border:1px solid var(--rule);background:var(--surface)}
+.ord-head,.ord-row{display:grid;grid-template-columns:92px 1.4fr 100px 90px 110px 130px;align-items:center}
+.ord-head{border-bottom:1px solid var(--rule);background:var(--raised)}
+.ord-head div{font-family:"Geist Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);padding:9px 12px}
+.ord-row{border-top:1px solid var(--rule);transition:background var(--t-settle) var(--e-settle)}
+.ord-row:first-of-type{border-top:none}
+.ord-row:hover{background:var(--raised)}
+.ord-row>div{padding:13px 12px;font-family:"Geist Mono",monospace;font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ord-row .po{color:var(--ink);font-weight:500}
+.chip{display:inline-block;font-family:"Geist Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--rule-strong);color:var(--ink-3);padding:3px 7px}
+.chip.sig{border-color:var(--signal-rule);color:var(--signal);background:var(--signal-tint)}
+.ord-row .thread{text-align:right;font-size:10.5px;color:var(--ink-4);cursor:pointer}
+.ord-row .thread:hover{color:var(--ink-2)}
+.ord-row.dim>div{color:var(--ink-4)}
+.ord-row.dim .po{color:var(--ink-3)}
+.ord-sub{grid-column:1/-1;border-top:1px dashed var(--rule);padding:9px 12px;display:flex;align-items:center;gap:12px}
+.ord-foot{border-top:1px solid var(--rule);padding:9px 14px;font-family:"Geist Mono",monospace;font-size:10px;letter-spacing:.1em;color:var(--ink-4);display:flex;gap:22px;background:var(--raised)}
+/* footer */
+footer{border-top:1px solid var(--rule);padding:28px 0 48px}
+footer .wrap{display:flex;justify-content:space-between;font-family:"Geist Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4)}
+@media(max-width:860px){
+  .logo-grid,.rules,.pal-cols,.demos{grid-template-columns:1fr}
+  .slogan{grid-template-columns:48px 1fr}
+  .slogan .why{grid-column:2;border-left:none;padding:0 20px 16px 0}
+  .kpis{grid-template-columns:1fr 1fr}
+  .kpi:nth-child(3){border-left:none;border-top:1px solid var(--rule)}
+  .kpi:nth-child(4){border-top:1px solid var(--rule)}
+  .rw-row,.type-row,.mo-row{grid-template-columns:1fr}
+  .rw-row .before{border-right:none;border-bottom:1px dashed var(--rule)}
+  .ord-head{display:none}
+  .ord-row{grid-template-columns:1fr 1fr}
+  .hero .spec{flex-direction:column}
+  .hero .spec div{border-left:none;border-top:1px solid var(--rule)}
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <div class="brandline">
+      <!-- header mark: the tally -->
+      <svg width="22" height="20" viewBox="0 0 26 24" fill="none" aria-hidden="true">
+        <path d="M3 2v20M9 2v20M15 2v20M21 2v20" stroke="currentColor" stroke-width="2.4"/>
+        <path d="M0 19.5 26 4.5" stroke="currentColor" stroke-width="2.4"/>
+      </svg>
+      <span class="mono" style="font-size:11px;font-weight:600;letter-spacing:.22em">MUDAVYM</span>
+      <span class="kicker" style="color:var(--ink-4)">DIRECTION 078 — THE INSTRUMENT</span>
+    </div>
+    <button class="theme-btn" id="themeBtn" type="button">Theme: dark</button>
+  </div>
+</header>
+
+<!-- ================= HERO ================= -->
+<section class="hero">
+  <div class="wrap">
+    <div class="kicker">00 — PREMISE</div>
+    <h1>The restaurant's numbers, taken seriously.</h1>
+    <p>Mudavym is the instrument the operator trusts with money. Monochrome surfaces, hairline
+    structure, zero radius, every figure in tabular mono. Chroma has exactly one meaning:
+    <span class="amber" style="font-weight:600">something needs a decision.</span>
+    Everything else stays gray, and stays quiet.</p>
+    <div class="spec">
+      <div><div class="k">Geometry</div><div class="v">Radius 0 · 1px rules</div></div>
+      <div><div class="k">Color</div><div class="v">Grayscale + 1 signal hue</div></div>
+      <div><div class="k">Numerals</div><div class="v">Mono, tabular, always</div></div>
+      <div><div class="k">Voice</div><div class="v">Terse. Exact. 0 adjectives</div></div>
+      <div><div class="k">Motion</div><div class="v">120–240ms, settles, never bounces</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 01 LOGO ================= -->
+<section id="logo">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">01</span><h2>Logo</h2></div>
+    <p class="sec-sub">Three marks, one wordmark. Butt-capped strokes, no curves that don't earn
+    their keep. Every concept survives at 16px, engraves on a receipt printer, and stamps in
+    one color.</p>
+
+    <div class="logo-grid">
+
+      <!-- Concept A -->
+      <div class="logo-cell">
+        <div class="logo-pair">
+          <div class="tile dark">
+            <svg width="158" height="42" viewBox="0 0 180 48" fill="none">
+              <path d="M6 6v36M18 6v36M30 6v36M42 6v36" stroke="#F4F5F6" stroke-width="4.4"/>
+              <path d="M0 38 48 10" stroke="#F4F5F6" stroke-width="4.4"/>
+              <text x="64" y="34" font-family="Geist,sans-serif" font-size="24" font-weight="600" letter-spacing="-0.5" fill="#F4F5F6">Mudavym</text>
+            </svg>
+          </div>
+          <div class="tile light">
+            <svg width="158" height="42" viewBox="0 0 180 48" fill="none">
+              <path d="M6 6v36M18 6v36M30 6v36M42 6v36" stroke="#101113" stroke-width="4.4"/>
+              <path d="M0 38 48 10" stroke="#101113" stroke-width="4.4"/>
+              <text x="64" y="34" font-family="Geist,sans-serif" font-size="24" font-weight="600" letter-spacing="-0.5" fill="#101113">Mudavym</text>
+            </svg>
+          </div>
+        </div>
+        <div class="logo-meta">
+          <span class="kicker">A — THE TALLY</span>
+          <h3>Four strokes and the strike</h3>
+          <p>A tally of five. Müdavim is the guest you can count on — and the instrument counts.
+          Bottles, covers, dollars, visits: the oldest ledger mark there is, cut at radius 0.
+          The strike doubles as the check-off: a decision made.</p>
+        </div>
+      </div>
+
+      <!-- Concept B -->
+      <div class="logo-cell">
+        <div class="logo-pair">
+          <div class="tile dark">
+            <svg width="158" height="42" viewBox="0 0 180 48" fill="none">
+              <path d="M4 14V4h10M34 4h10v10M44 34v10H34M14 44H4V34" stroke="#F4F5F6" stroke-width="3.6"/>
+              <rect x="17" y="17" width="14" height="14" fill="#F4F5F6"/>
+              <text x="64" y="34" font-family="Geist,sans-serif" font-size="24" font-weight="600" letter-spacing="-0.5" fill="#F4F5F6">Mudavym</text>
+            </svg>
+          </div>
+          <div class="tile light">
+            <svg width="158" height="42" viewBox="0 0 180 48" fill="none">
+              <path d="M4 14V4h10M34 4h10v10M44 34v10H34M14 44H4V34" stroke="#101113" stroke-width="3.6"/>
+              <rect x="17" y="17" width="14" height="14" fill="#101113"/>
+              <text x="64" y="34" font-family="Geist,sans-serif" font-size="24" font-weight="600" letter-spacing="-0.5" fill="#101113">Mudavym</text>
+            </svg>
+          </div>
+        </div>
+        <div class="logo-meta">
+          <span class="kicker">B — THE REGISTER</span>
+          <h3>Calibration corners, solid center</h3>
+          <p>A registration mark: four crop corners holding one filled square. The house,
+          centered and calibrated. Reads as a viewfinder over the operation — everything inside
+          the corners is measured. Strong favicon at any size.</p>
+        </div>
+      </div>
+
+      <!-- Concept C -->
+      <div class="logo-cell" style="grid-column:1/-1">
+        <div class="logo-pair">
+          <div class="tile dark">
+            <svg width="172" height="42" viewBox="0 0 196 48" fill="none">
+              <rect x="0" y="0" width="5.6" height="48" fill="#F4F5F6"/>
+              <rect x="10.6" y="0" width="5.6" height="24" fill="#F4F5F6"/>
+              <rect x="21.2" y="0" width="5.6" height="38" fill="#FFB224"/>
+              <rect x="31.8" y="0" width="5.6" height="24" fill="#F4F5F6"/>
+              <rect x="42.4" y="0" width="5.6" height="48" fill="#F4F5F6"/>
+              <text x="66" y="34" font-family="Geist,sans-serif" font-size="24" font-weight="600" letter-spacing="-0.5" fill="#F4F5F6">Mudavym</text>
+            </svg>
+          </div>
+          <div class="tile light">
+            <svg width="172" height="42" viewBox="0 0 196 48" fill="none">
+              <rect x="0" y="0" width="5.6" height="48" fill="#101113"/>
+              <rect x="10.6" y="0" width="5.6" height="24" fill="#101113"/>
+              <rect x="21.2" y="0" width="5.6" height="38" fill="#8F5F00"/>
+              <rect x="31.8" y="0" width="5.6" height="24" fill="#101113"/>
+              <rect x="42.4" y="0" width="5.6" height="48" fill="#101113"/>
+              <text x="66" y="34" font-family="Geist,sans-serif" font-size="24" font-weight="600" letter-spacing="-0.5" fill="#101113">Mudavym</text>
+            </svg>
+          </div>
+        </div>
+        <div class="logo-meta">
+          <span class="kicker">C — THE METER</span>
+          <h3>An M read off a level meter</h3>
+          <p>Five bars hung from the top rail spell the M as a meter readout. At rest the mark is
+          all ink; when the product has something to say, exactly one bar carries the signal
+          amber — the logo itself obeys the chroma-as-anomaly rule. This is the animated/app-icon
+          variant; A and B are the print-stable ones.</p>
+        </div>
+      </div>
+
+      <!-- Wordmark row -->
+      <div class="logo-cell wordmark-row">
+        <div class="logo-pair">
+          <div class="tile dark" style="flex-direction:column;gap:18px">
+            <svg width="220" height="34" viewBox="0 0 240 36" fill="none">
+              <text x="0" y="27" font-family="Geist,sans-serif" font-size="30" font-weight="600" letter-spacing="-0.7" fill="#F4F5F6">Mudavym</text>
+            </svg>
+            <svg width="190" height="16" viewBox="0 0 210 18" fill="none">
+              <text x="0" y="14" font-family="'Geist Mono',monospace" font-size="14" font-weight="500" letter-spacing="7" fill="#B6BABF">MUDAVYM</text>
+            </svg>
+          </div>
+          <div class="tile light" style="flex-direction:column;gap:18px">
+            <svg width="220" height="34" viewBox="0 0 240 36" fill="none">
+              <text x="0" y="27" font-family="Geist,sans-serif" font-size="30" font-weight="600" letter-spacing="-0.7" fill="#101113">Mudavym</text>
+            </svg>
+            <svg width="190" height="16" viewBox="0 0 210 18" fill="none">
+              <text x="0" y="14" font-family="'Geist Mono',monospace" font-size="14" font-weight="500" letter-spacing="7" fill="#44484D">MUDAVYM</text>
+            </svg>
+          </div>
+        </div>
+        <div class="logo-meta">
+          <span class="kicker">WORDMARK — TWO REGISTERS</span>
+          <p style="margin-top:6px">Primary: Geist 600, −0.025em — the name as a product label. Secondary: Geist Mono 500,
+          +0.5em tracked caps — the stamp register, for receipts, exports, printed POs, and the
+          top bar. The mono register is the one customers' accountants will see; it should look
+          like it came off an instrument.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ================= 02 SLOGANS ================= -->
+<section id="slogans">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">02</span><h2>Slogans</h2></div>
+    <p class="sec-sub">All candidates obey the voice: no adjectives, no exclamation, structures
+    borrowed from the spec-sheet school — "Name. Category claim." and the balanced antithesis.</p>
+    <div class="slogan-list">
+      <div class="slogan"><div class="idx">S-01</div><div class="line">Count on it.</div>
+        <div class="why">The tally and the trust in three words. Müdavim is the guest who is counted on to return; the instrument is what the owner counts on. Both meanings are literal.</div></div>
+      <div class="slogan"><div class="idx">S-02</div><div class="line">The house, measured.</div>
+        <div class="why">"The house" is hospitality's own word for itself; "measured" is the instrument's whole promise. Two nouns, one comma, zero adjectives.</div></div>
+      <div class="slogan"><div class="idx">S-03</div><div class="line">Mudavym. The restaurant's instrument.</div>
+        <div class="why">The "Name. Category claim." structure — states the direction itself as the positioning. Works as the one-line footer on every export.</div></div>
+      <div class="slogan"><div class="idx">S-04</div><div class="line">Every bottle. Every dollar. Every night.</div>
+        <div class="why">A tally cadence — three counted nouns, full scope claim (inventory, money, service) without a single qualifier. The rhythm is the brand.</div></div>
+      <div class="slogan"><div class="idx">S-05</div><div class="line">The back office, calibrated.</div>
+        <div class="why">Names the enemy (the chaotic back office every operator knows) and applies the instrument verb to it. Best for the procurement/receiving story.</div></div>
+      <div class="slogan"><div class="idx">S-06</div><div class="line">Trust the readout.</div>
+        <div class="why">The operator's actual relationship with the product: money decisions made on instrument data. Doubles as an internal design principle — the readout must be trustworthy enough to deserve the line.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 03 VOICE ================= -->
+<section id="voice">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">03</span><h2>Voice</h2></div>
+    <p class="sec-sub">The product reports. It does not chat, apologize, or celebrate. Warmth
+    exists in Mudavym — but it is always a quoted human, never the brand's own copy.</p>
+
+    <div class="rules">
+      <div class="rule-card"><span class="k">R-01</span><h4>Numbers, not adjectives</h4>
+        <p>"Fast" is banned; "1.8 s" is not. Any claim that matters carries a figure. A sentence that needs an adjective needs a number instead.</p></div>
+      <div class="rule-card"><span class="k">R-02</span><h4>Every numeral is mono, tabular</h4>
+        <p>Never spelled out. "7 items", not "seven items". Figures align in columns even inside prose — the typography is part of the voice.</p></div>
+      <div class="rule-card"><span class="k">R-03</span><h4>State first, action second</h4>
+        <p>The readout precedes the button. Empty states, errors, and prompts all open with the current state as a measurement, then name the one action.</p></div>
+      <div class="rule-card"><span class="k">R-04</span><h4>Name the consequence, never ask for feelings</h4>
+        <p>"Deletes 3,412 orders. No recovery." replaces "Are you sure?" The user decides on facts, not on our nervousness.</p></div>
+      <div class="rule-card"><span class="k">R-05</span><h4>No apologies, no cheers</h4>
+        <p>Never "Sorry, something went wrong!" and never "Success!" An instrument reports the state and what restores it. No exclamation marks exist in this product.</p></div>
+      <div class="rule-card"><span class="k">R-06</span><h4>One sentence per message</h4>
+        <p>A second sentence is a second message. Fragments are legal and encouraged: "0 checks." is a complete report.</p></div>
+      <div class="rule-card"><span class="k">R-07</span><h4>Physical verbs only</h4>
+        <p>Draft, approve, close, count, receive, deliver. Never manage, leverage, empower, streamline. If a hand can't do it, the verb is wrong.</p></div>
+      <div class="rule-card"><span class="k">R-08</span><h4>Warmth is quoted, not authored</h4>
+        <p>Vendor replies, staff notes, and the AI's drafts render in full human register — quoted, attributed. The chrome around them stays deadpan. The contrast is the brand.</p></div>
+    </div>
+
+    <div class="rw">
+      <div class="rw-row"><div>Before — today's copy</div><div>After — instrument voice</div></div>
+      <div class="rw-row">
+        <div class="before">Draft, approve, and track purchase orders through delivery</div>
+        <div class="after">Draft. Approve. Track to the door.</div>
+      </div>
+      <div class="rw-row">
+        <div class="before">Alerts that need a decision, oldest first</div>
+        <div class="after"><span class="num">4</span> need a decision. Oldest first.</div>
+      </div>
+      <div class="rw-row">
+        <div class="before">No checks yet — close an order from the terminal</div>
+        <div class="after"><span class="num">0</span> checks. The count starts when an order closes at the terminal.</div>
+      </div>
+      <div class="rw-row">
+        <div class="before">No comparable data</div>
+        <div class="after">No baseline. Comparison starts at <span class="num">14</span> days of data.</div>
+      </div>
+      <div class="rw-row">
+        <div class="before">Permanently delete your Mudavym account.</div>
+        <div class="after">Deletes this account and every record in it — <span class="num">3,412</span> orders, <span class="num">2</span> years of counts. No recovery. Type the restaurant's name to proceed.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 04 PALETTE ================= -->
+<section id="palette">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">04</span><h2>Palette</h2></div>
+    <p class="sec-sub">Built from scratch — no inherited burgundy. Neutrals do 97% of the work.
+    One signal hue, chosen deliberately: <b>decision amber</b>, the caution-lamp of every
+    instrument panel — visible from across a kitchen, unmistakable, and not an alarm. Red is
+    reserved for money leaving irreversibly; green exists only as a transient confirmation and
+    never rests on screen.</p>
+
+    <div class="pal-cols">
+      <!-- DARK -->
+      <div class="pal">
+        <div class="pal-head">Dark — the home theme</div>
+        <div class="group">Surfaces</div>
+        <div class="sw"><div class="chip" style="background:#0A0B0D"></div><div class="name">--panel</div><div class="val">#0A0B0D</div></div>
+        <div class="sw"><div class="chip" style="background:#101114"></div><div class="name">--surface</div><div class="val">#101114</div></div>
+        <div class="sw"><div class="chip" style="background:#16181C"></div><div class="name">--raised</div><div class="val">#16181C</div></div>
+        <div class="sw"><div class="chip" style="background:#0A0B0D"><div style="height:100%;border-top:18px solid transparent;border-bottom:1px solid rgba(255,255,255,.09)"></div></div><div class="name">--rule</div><div class="val">#FFFFFF 9%</div></div>
+        <div class="sw"><div class="chip" style="background:#0A0B0D"><div style="height:100%;border-top:18px solid transparent;border-bottom:1px solid rgba(255,255,255,.17)"></div></div><div class="name">--rule-strong</div><div class="val">#FFFFFF 17%</div></div>
+        <div class="group">Ink ladder</div>
+        <div class="sw"><div class="chip" style="background:#F4F5F6"></div><div class="name">--ink</div><div class="val">#F4F5F6</div></div>
+        <div class="sw"><div class="chip" style="background:#B6BABF"></div><div class="name">--ink-2</div><div class="val">#B6BABF</div></div>
+        <div class="sw"><div class="chip" style="background:#82878D"></div><div class="name">--ink-3</div><div class="val">#82878D</div></div>
+        <div class="sw"><div class="chip" style="background:#55595F"></div><div class="name">--ink-4</div><div class="val">#55595F</div></div>
+        <div class="group">Meaning — the only chroma</div>
+        <div class="sw"><div class="chip" style="background:#FFB224"></div><div class="name">--signal</div><div class="val">#FFB224</div></div>
+        <div class="sw"><div class="chip" style="background:rgba(255,178,36,.10)"></div><div class="name">--signal-tint</div><div class="val">signal 10%</div></div>
+        <div class="sw"><div class="chip" style="background:#F2555A"></div><div class="name">--critical</div><div class="val">#F2555A</div></div>
+        <div class="sw"><div class="chip" style="background:rgba(242,85,90,.10)"></div><div class="name">--critical-tint</div><div class="val">critical 10%</div></div>
+        <div class="sw"><div class="chip" style="background:#3DD68C"></div><div class="name">--ok (transient)</div><div class="val">#3DD68C</div></div>
+        <div class="group">Chart ramp — data is grayscale</div>
+        <div class="sw" style="grid-template-columns:1fr"><div class="ramp-strip"><div style="background:#E8E9EA"></div><div style="background:#B6BABF"></div><div style="background:#82878D"></div><div style="background:#55595F"></div><div style="background:#33373C"></div></div></div>
+        <div class="sw"><div class="chip" style="background:#0A0B0D"><div style="height:100%;border-left:1px dashed rgba(255,255,255,.25);margin-left:21px"></div></div><div class="name">--crosshair</div><div class="val">#FFFFFF 25%</div></div>
+        <div class="sw"><div class="chip" style="background:#0A0B0D"><div style="height:100%;border-top:18px solid transparent;border-bottom:1px solid rgba(255,255,255,.06)"></div></div><div class="name">--gridline</div><div class="val">#FFFFFF 6%</div></div>
+      </div>
+
+      <!-- LIGHT -->
+      <div class="pal">
+        <div class="pal-head">Light — the daylight theme</div>
+        <div class="group">Surfaces</div>
+        <div class="sw"><div class="chip" style="background:#F5F5F4"></div><div class="name">--panel</div><div class="val">#F5F5F4</div></div>
+        <div class="sw"><div class="chip" style="background:#FFFFFF;border-bottom:1px solid rgba(16,17,19,.08)"></div><div class="name">--surface</div><div class="val">#FFFFFF</div></div>
+        <div class="sw"><div class="chip" style="background:#FAFAF9"></div><div class="name">--raised</div><div class="val">#FAFAF9</div></div>
+        <div class="sw"><div class="chip" style="background:#F5F5F4"><div style="height:100%;border-top:18px solid transparent;border-bottom:1px solid rgba(16,17,19,.11)"></div></div><div class="name">--rule</div><div class="val">#101113 11%</div></div>
+        <div class="sw"><div class="chip" style="background:#F5F5F4"><div style="height:100%;border-top:18px solid transparent;border-bottom:1px solid rgba(16,17,19,.22)"></div></div><div class="name">--rule-strong</div><div class="val">#101113 22%</div></div>
+        <div class="group">Ink ladder</div>
+        <div class="sw"><div class="chip" style="background:#101113"></div><div class="name">--ink</div><div class="val">#101113</div></div>
+        <div class="sw"><div class="chip" style="background:#44484D"></div><div class="name">--ink-2</div><div class="val">#44484D</div></div>
+        <div class="sw"><div class="chip" style="background:#7A7F85"></div><div class="name">--ink-3</div><div class="val">#7A7F85</div></div>
+        <div class="sw"><div class="chip" style="background:#A8ACB1"></div><div class="name">--ink-4</div><div class="val">#A8ACB1</div></div>
+        <div class="group">Meaning — the only chroma</div>
+        <div class="sw"><div class="chip" style="background:#8F5F00"></div><div class="name">--signal</div><div class="val">#8F5F00</div></div>
+        <div class="sw"><div class="chip" style="background:rgba(180,120,0,.10)"></div><div class="name">--signal-tint</div><div class="val">amber 10%</div></div>
+        <div class="sw"><div class="chip" style="background:#CE2C31"></div><div class="name">--critical</div><div class="val">#CE2C31</div></div>
+        <div class="sw"><div class="chip" style="background:rgba(206,44,49,.08)"></div><div class="name">--critical-tint</div><div class="val">critical 8%</div></div>
+        <div class="sw"><div class="chip" style="background:#1E7F4F"></div><div class="name">--ok (transient)</div><div class="val">#1E7F4F</div></div>
+        <div class="group">Chart ramp — data is grayscale</div>
+        <div class="sw" style="grid-template-columns:1fr"><div class="ramp-strip"><div style="background:#26282B"></div><div style="background:#55595F"></div><div style="background:#82878D"></div><div style="background:#B6BABF"></div><div style="background:#DDDEDF"></div></div></div>
+        <div class="sw"><div class="chip" style="background:#F5F5F4"><div style="height:100%;border-left:1px dashed rgba(16,17,19,.30);margin-left:21px"></div></div><div class="name">--crosshair</div><div class="val">#101113 30%</div></div>
+        <div class="sw"><div class="chip" style="background:#F5F5F4"><div style="height:100%;border-top:18px solid transparent;border-bottom:1px solid rgba(16,17,19,.06)"></div></div><div class="name">--gridline</div><div class="val">#101113 6%</div></div>
+      </div>
+    </div>
+    <p class="sec-sub" style="margin:20px 0 0;max-width:none">
+    Usage law: <b>one lamp per screen region.</b> Trends, deltas, and sparklines stay in the
+    gray ramp — up or down is not an anomaly, it is weather. Amber marks only the items awaiting
+    a human decision; when the decision is made, the amber leaves with it. A screen with no
+    pending decisions is entirely monochrome — that state is the reward.</p>
+  </div>
+</section>
+
+<!-- ================= 05 TYPE ================= -->
+<section id="type">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">05</span><h2>Type</h2></div>
+    <p class="sec-sub">Two faces, both Google-hosted: <b>Geist</b> (content) and <b>Geist Mono</b>
+    (the system's own voice — every number, label, timestamp, and ID). No serif: this brand
+    never speaks in a book voice. Authority comes from restraint — display tops out at 32px.</p>
+
+    <div class="type-table">
+      <div class="type-row"><div class="spec"><b>display · 32/38</b>Geist 600 · −0.02em<br>page titles only</div>
+        <div class="sample" style="font-size:32px;line-height:38px;font-weight:600;letter-spacing:-.02em">The house, measured.</div></div>
+      <div class="type-row"><div class="spec"><b>h1 · 24/30</b>Geist 600 · −0.015em</div>
+        <div class="sample" style="font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.015em">Receiving — Tuesday delivery</div></div>
+      <div class="type-row"><div class="spec"><b>h2 · 19/26</b>Geist 600 · −0.01em</div>
+        <div class="sample" style="font-size:19px;line-height:26px;font-weight:600;letter-spacing:-.01em">Approve Rioja reorder</div></div>
+      <div class="type-row"><div class="spec"><b>h3 · 16/24</b>Geist 600</div>
+        <div class="sample" style="font-size:16px;line-height:24px;font-weight:600">Vendor thread — Vinos del Norte</div></div>
+      <div class="type-row"><div class="spec"><b>body · 14/22</b>Geist 400</div>
+        <div class="sample" style="font-size:14px">The draft matches the last 3 orders from this vendor. Delivery lands Thursday.</div></div>
+      <div class="type-row"><div class="spec"><b>ui · 13/18</b>Geist 500 · buttons, menus</div>
+        <div class="sample" style="font-size:13px;line-height:18px;font-weight:500">Approve draft &nbsp;·&nbsp; Hold &nbsp;·&nbsp; Open thread</div></div>
+      <div class="type-row"><div class="spec"><b>data-lg · 26/30</b>Geist Mono 500 · tabular<br>KPI readouts</div>
+        <div class="sample num" style="font-size:26px;line-height:30px;font-weight:500">$4,280.00&nbsp;&nbsp;·&nbsp;&nbsp;68.2%&nbsp;&nbsp;·&nbsp;&nbsp;−$132.40</div></div>
+      <div class="type-row"><div class="spec"><b>data · 13/18</b>Geist Mono 500 · tabular<br>every number in the product</div>
+        <div class="sample num" style="font-size:13px;line-height:18px;font-weight:500">PO-1042 · 24 btl · $1,860.00 · ETA 2026-08-30</div></div>
+      <div class="type-row"><div class="spec"><b>kicker · 11/14</b>Geist Mono 600 · caps · +0.14em</div>
+        <div class="sample kicker" style="color:var(--ink-3)">Decisions pending · oldest first</div></div>
+      <div class="type-row"><div class="spec"><b>micro · 11/14</b>Geist Mono 400 · ids, stamps</div>
+        <div class="sample mono" style="font-size:11px;line-height:14px;color:var(--ink-4)">synced 17:42:08 · terminal 2 · v3.4.1</div></div>
+    </div>
+    <p class="sec-sub" style="margin:20px 0 0;max-width:none">Law: <b>if it is a number, it is
+    Geist Mono with tabular figures — no exceptions,</b> including numbers inside prose. The
+    signature contrast is 11px tracked mono kickers against tight 24–32px sans headings; the
+    10:1 register gap does the layout's work, not size inflation.</p>
+  </div>
+</section>
+
+<!-- ================= 06 MOTION ================= -->
+<section id="motion">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">06</span><h2>Motion personality</h2></div>
+    <p class="sec-sub">Nothing bounces — money doesn't bounce. Three named tokens, all fast-out
+    settle, 120–240ms. State flips snap like a switch; reveals unmask like a panel opening;
+    numbers roll like an odometer and land exactly. Reduced-motion collapses everything to
+    instant state change.</p>
+
+    <div class="mo-tokens">
+      <div class="mo-row"><div>Token</div><div>Curve · duration</div><div>Applies to</div></div>
+      <div class="mo-row"><div class="tk">flip</div><div class="cv">cubic-bezier(.2, 0, 0, 1) · 120ms</div><div class="use">Binary state: toggles, checks, chips, tab indicators. A switch, not a slide.</div></div>
+      <div class="mo-row"><div class="tk">settle</div><div class="cv">cubic-bezier(.16, 1, .3, 1) · 180ms</div><div class="use">Hover, press, focus, 2–4px moves, fades. The house curve for everything small.</div></div>
+      <div class="mo-row"><div class="tk">reveal</div><div class="cv">cubic-bezier(.16, 1, .3, 1) · 240ms</div><div class="use">Row expands, drawers, detail panels — unmasked via clip/grid, never slid in from off-screen.</div></div>
+      <div class="mo-row"><div class="tk">count</div><div class="cv">ease-out settle · 500ms</div><div class="use">Number tickers on KPI readouts. Rolls, decelerates, lands on the exact figure.</div></div>
+    </div>
+
+    <div class="demos">
+      <!-- Toggle -->
+      <div class="demo">
+        <div class="kicker k">Demo — settings toggle · flip 120ms</div>
+        <div class="stage">
+          <div class="tgl-row">
+            <div>
+              <div class="tgl-label">Auto-draft vendor replies</div>
+              <div class="tgl-state" id="tglState">OFF · DRAFTS HELD FOR APPROVAL</div>
+            </div>
+            <button class="tgl" id="tgl" type="button" role="switch" aria-checked="false" aria-label="Auto-draft vendor replies">
+              <span class="thumb"></span>
+            </button>
+          </div>
+        </div>
+        <div class="note">ON state is ink-filled, not colored — chroma is not spent on settings. Square thumb, square track, 18px travel.</div>
+      </div>
+
+      <!-- Row expand -->
+      <div class="demo">
+        <div class="kicker k">Demo — row expand · reveal 240ms</div>
+        <div class="stage">
+          <div class="xrow" id="xrow">
+            <div class="xrow-head" id="xrowHead">
+              <span class="xrow-title num">PO-1042 · $1,860.00</span>
+              <span class="xrow-pm" id="xrowPm">+</span>
+            </div>
+            <div class="xrow-body">
+              <div>
+                <div class="xrow-detail">
+                  <b>24 × Rioja Crianza 750ml</b> @ $77.50<br>
+                  ORDERED 08-26 14:02 · SHIPPED 08-27 09:15<br>
+                  ETA 08-30 · CARRIER SEUR · <b>IN TRANSIT</b>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="note">grid-rows 0fr→1fr unmask on the reveal curve. The detail is a manifest, not a card. “+” becomes “−”; nothing rotates.</div>
+      </div>
+
+      <!-- Ticker -->
+      <div class="demo">
+        <div class="kicker k">Demo — number ticker · count 500ms</div>
+        <div class="stage">
+          <div class="tick-lbl">Revenue — tonight</div>
+          <div class="tick-val num" id="tickVal">$4,187.00</div>
+          <button class="tick-btn" id="tickBtn" type="button">Simulate close-out</button>
+        </div>
+        <div class="note">Tabular figures guarantee zero layout shift while rolling. Decelerates on the settle curve and lands on the exact cent.</div>
+      </div>
+    </div>
+
+    <div class="code"><span class="c">// packages/ui/motion-tokens.ts — consumed by the `motion` React library (web)</span>
+<span class="c">// and re-read by Reanimated later (the token file is the portable unit).</span>
+export const flip   = { duration: 0.12, ease: [0.2, 0, 0, 1] as const };
+export const settle = { duration: 0.18, ease: [0.16, 1, 0.3, 1] as const };
+export const reveal = { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const };
+
+<span class="c">// &lt;motion.div layout transition={settle}&gt; — filtered table rows settle into place</span>
+<span class="c">// &lt;motion.div initial={{clipPath:'inset(0 0 100% 0)'}} animate={{clipPath:'inset(0)'}} transition={reveal}&gt;</span>
+<span class="c">// animate(4187, 4280, { duration: 0.5, ease: [0.16,1,0.3,1], onUpdate: setValue })  — KPI count</span>
+<span class="c">// No spring type anywhere in this direction: springs oscillate; instruments settle.</span></div>
+  </div>
+</section>
+
+<!-- ================= 07 SCREENS ================= -->
+<section id="screens">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">07</span><h2>Sample screens</h2></div>
+    <p class="sec-sub">The two shared mocks, rendered in this direction. Flip the theme in the
+    header to see both modes. Count the colored pixels — each one is a pending decision.</p>
+
+    <div class="screens">
+
+      <!-- ===== Dashboard ===== -->
+      <div>
+        <div class="frame">
+          <div class="frame-bar">
+            <div class="l">
+              <svg width="16" height="14" viewBox="0 0 26 24" fill="none" aria-hidden="true">
+                <path d="M3 2v20M9 2v20M15 2v20M21 2v20" stroke="currentColor" stroke-width="2.6"/>
+                <path d="M0 19.5 26 4.5" stroke="currentColor" stroke-width="2.6"/>
+              </svg>
+              <span class="fb-brand">MUDAVYM</span>
+            </div>
+            <div class="r">
+              <span class="kbd">⌘K</span>
+              <span class="fb-meta">TUE 28 AUG · 17:42</span>
+            </div>
+          </div>
+          <div class="frame-body">
+            <div class="greet">
+              <h3>Evening, Aldemir.</h3>
+              <div class="sub">Service 18:00 · <span class="amber">2 decisions pending</span> · oldest 2 h</div>
+            </div>
+
+            <div class="kpis">
+              <div class="kpi">
+                <div class="lbl">Revenue</div>
+                <div class="val">$4,280</div>
+                <div class="sub">+2.2% VS LAST TUE</div>
+              </div>
+              <div class="kpi hot">
+                <div class="lbl">Low stock</div>
+                <div class="val"><span class="lamp"></span>7</div>
+                <div class="sub">REORDER SUGGESTED</div>
+              </div>
+              <div class="kpi">
+                <div class="lbl">Pending orders</div>
+                <div class="val">3</div>
+                <div class="sub">NEXT ETA 08-30</div>
+              </div>
+              <div class="kpi hot">
+                <div class="lbl">Alerts</div>
+                <div class="val"><span class="lamp"></span>2</div>
+                <div class="sub">OLDEST 2 H</div>
+              </div>
+            </div>
+
+            <div class="decision">
+              <div class="bar-l"></div>
+              <div class="body">
+                <div class="k">Decision · PO draft · 1 of 2</div>
+                <h4>Approve Rioja reorder — 12 bottles from Vinos del Norte</h4>
+                <div class="meta">12 × Rioja Crianza · $186.00 · vendor est. 2 days · matches last 3 orders</div>
+                <div class="acts">
+                  <button class="btn fill" type="button">Approve — $186.00</button>
+                  <button class="btn ghost" type="button">Hold</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="frame-cap">DASHBOARD — REVENUE AND PENDING STAY GRAY (WEATHER, NOT ANOMALY). AMBER TOUCHES EXACTLY THE
+        TWO TILES AWAITING A HUMAN, AND THE ONE CARD THAT RESOLVES THEM.</div>
+      </div>
+
+      <!-- ===== Orders strip ===== -->
+      <div>
+        <div class="frame">
+          <div class="frame-bar">
+            <div class="l">
+              <span class="fb-brand">ORDERS</span>
+              <span class="fb-meta">12 OPEN · $6,412.50 COMMITTED</span>
+            </div>
+            <div class="r">
+              <span class="kbd">⌘K</span>
+              <span class="fb-meta">FILTER: ACTIVE</span>
+            </div>
+          </div>
+          <div class="frame-body" style="padding:18px">
+            <div class="ord">
+              <div class="ord-head">
+                <div>PO</div><div>Vendor</div><div>Qty</div><div>Total</div><div>Status</div><div style="text-align:right">Thread</div>
+              </div>
+              <div class="ord-row">
+                <div class="po num">PO-1042</div>
+                <div>Vinos del Norte</div>
+                <div class="num">24 btl</div>
+                <div class="num">$1,860</div>
+                <div><span class="chip">In transit</span></div>
+                <div class="thread">THREAD · 4 ▸</div>
+                <div class="ord-sub">
+                  <span class="chip sig">AI draft ready — one tap to approve</span>
+                  <span class="mono" style="font-size:10px;color:var(--ink-4)">REPLY DRAFTED 16:58 · “Confirmamos 24 botellas para el jueves…” — HELD FOR YOUR TAP</span>
+                </div>
+              </div>
+              <div class="ord-row dim">
+                <div class="po num">PO-1041</div>
+                <div>Bodega Central</div>
+                <div class="num">6 cs</div>
+                <div class="num">$742.50</div>
+                <div><span class="chip">Receiving</span></div>
+                <div class="thread">THREAD · 2 ▸</div>
+              </div>
+              <div class="ord-row dim">
+                <div class="po num">PO-1039</div>
+                <div>Marisco SL</div>
+                <div class="num">18 kg</div>
+                <div class="num">$214.20</div>
+                <div><span class="chip">Delivered</span></div>
+                <div class="thread">THREAD · 6 ▸</div>
+              </div>
+              <div class="ord-foot">
+                <span>HOLD ⏎ TO APPROVE DRAFT</span><span>▸ OPENS VENDOR THREAD DRAWER</span><span>⌘K COMMANDS</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="frame-cap">ORDERS — ONE AMBER CHIP ON THE WHOLE STRIP: THE AI DRAFT WAITING FOR A TAP. STATUS CHIPS ARE
+        OUTLINE GRAY (STATES, NOT DECISIONS). THE QUOTED VENDOR REPLY IS THE ONLY WARM SENTENCE ON SCREEN — RULE R-08.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>078 — THE INSTRUMENT</span>
+    <span>MUDAVYM · OD-106 · 2026-08-28</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  // Theme toggle
+  var root=document.documentElement, btn=document.getElementById('themeBtn');
+  btn.addEventListener('click',function(){
+    var next=root.getAttribute('data-theme')==='dark'?'light':'dark';
+    root.setAttribute('data-theme',next);
+    btn.textContent='Theme: '+next;
+  });
+
+  // Toggle demo — flip 120ms
+  var tgl=document.getElementById('tgl'), st=document.getElementById('tglState');
+  tgl.addEventListener('click',function(){
+    var on=tgl.classList.toggle('on');
+    tgl.setAttribute('aria-checked',on?'true':'false');
+    st.textContent=on?'ON · REPLIES DRAFT AUTOMATICALLY, SEND ON TAP':'OFF · DRAFTS HELD FOR APPROVAL';
+  });
+
+  // Row expand — reveal 240ms
+  var xrow=document.getElementById('xrow'), pm=document.getElementById('xrowPm');
+  document.getElementById('xrowHead').addEventListener('click',function(){
+    var open=xrow.classList.toggle('open');
+    pm.textContent=open?'−':'+';
+  });
+
+  // Number ticker — count 500ms, settle-flavored ease-out
+  var val=document.getElementById('tickVal'), from=4187.00, to=4280.00, cur=from;
+  function fmt(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function ease(t){return 1-Math.pow(1-t,4);} // approximates cubic-bezier(.16,1,.3,1)
+  document.getElementById('tickBtn').addEventListener('click',function(){
+    var start=cur, end=(Math.abs(cur-to)<0.01)?from:to, t0=null, D=500;
+    if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      cur=end; val.textContent=fmt(end); return;
+    }
+    function step(ts){
+      if(t0===null)t0=ts;
+      var p=Math.min((ts-t0)/D,1);
+      cur=start+(end-start)*ease(p);
+      val.textContent=fmt(cur);
+      if(p<1)requestAnimationFrame(step); else {cur=end; val.textContent=fmt(end);}
+    }
+    requestAnimationFrame(step);
+  });
+})();
+</script>
+</body>
+</html>

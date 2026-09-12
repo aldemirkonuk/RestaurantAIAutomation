@@ -1,0 +1,4558 @@
+{
+  "venue": {
+    "name": "Meyhouse Palo Alto",
+    "also_listed_as": [
+      "Meyhouse",
+      "Meyhouse & Meyhouse Jazz Club"
+    ],
+    "address": "640 Emerson Street, Palo Alto, CA 94301",
+    "city": "Palo Alto",
+    "state": "CA",
+    "timezone": "America/Los_Angeles",
+    "phone": "(650) 521-0935",
+    "website": "https://www.meyhouserestaurant.com/palo-alto",
+    "cuisine": [
+      "Turkish",
+      "Mediterranean",
+      "Middle Eastern"
+    ],
+    "concept": "meyhane (Turkish house of wine/small plates) with a live jazz room",
+    "price_level": {
+      "yelp": "$$$",
+      "opentable": "$31 to $50",
+      "note": "Two different scales; neither is a check average. Recorded as published."
+    },
+    "dining_style_opentable": "Fine Dining",
+    "dress_code_opentable": "Smart Casual",
+    "ratings_as_read": {
+      "yelp": {
+        "stars": 4.5,
+        "review_count": 318
+      },
+      "opentable": {
+        "stars": 4.7,
+        "review_count": 918
+      },
+      "google": {
+        "stars": 4.6,
+        "review_count": null
+      }
+    },
+    "opened": "August 9, 2023 (restaurant); jazz venue opened November 2023",
+    "people": {
+      "executive_chef_partner": "Omer Artun",
+      "partner": "Koray Altinsoy",
+      "gm_beverage_director": "Refet Tugay"
+    },
+    "sources": [
+      {
+        "url": "https://www.meyhouserestaurant.com/palo-alto",
+        "read_at": "2026-09-03",
+        "note": "address, phone, hours"
+      },
+      {
+        "url": "https://www.yelp.com/biz/meyhouse-palo-alto-2",
+        "read_at": "2026-09-03",
+        "note": "price level $$$, categories, rating, hours"
+      },
+      {
+        "url": "https://www.opentable.com/r/meyhouse-palo-alto-palo-alto",
+        "read_at": "2026-09-03",
+        "note": "price band, dining style, dress code, rating, cuisines"
+      },
+      {
+        "url": "https://www.google.com/maps/search/Meyhouse+640+Emerson+St+Palo+Alto",
+        "read_at": "2026-09-03",
+        "note": "Google rating 4.6; listing name 'Meyhouse & Meyhouse Jazz Club'"
+      },
+      {
+        "url": "https://www.hautelivingsf.com/2025/10/28/meyhouse-sunnyvale-palo-alto-a-modern-tribute-to-turkey/",
+        "read_at": "2026-09-03",
+        "note": "founders, beverage director, concept"
+      },
+      {
+        "url": "https://www.meyhousejazz.com/locations",
+        "read_at": "2026-09-03",
+        "note": "jazz venue opened November 2023"
+      }
+    ]
+  },
+  "operating_hours": {
+    "mon": [
+      {
+        "open": "11:45",
+        "close": "14:00"
+      },
+      {
+        "open": "17:00",
+        "close": "21:30"
+      }
+    ],
+    "tue": [
+      {
+        "open": "11:45",
+        "close": "14:00"
+      },
+      {
+        "open": "17:00",
+        "close": "21:30"
+      }
+    ],
+    "wed": [
+      {
+        "open": "11:45",
+        "close": "14:00"
+      },
+      {
+        "open": "17:00",
+        "close": "21:30"
+      }
+    ],
+    "thu": [
+      {
+        "open": "11:45",
+        "close": "14:00"
+      },
+      {
+        "open": "17:00",
+        "close": "21:30"
+      }
+    ],
+    "fri": [
+      {
+        "open": "11:45",
+        "close": "14:00"
+      },
+      {
+        "open": "17:00",
+        "close": "22:00"
+      }
+    ],
+    "sat": [
+      {
+        "open": "11:45",
+        "close": "14:00"
+      },
+      {
+        "open": "17:00",
+        "close": "22:00"
+      }
+    ],
+    "sun": [
+      {
+        "open": "11:45",
+        "close": "14:00"
+      },
+      {
+        "open": "17:00",
+        "close": "21:30"
+      }
+    ],
+    "_note": "Venue's own site and Yelp agree exactly: lunch daily 11:45am-2:00pm; dinner Mon-Thu & Sun 5:00-9:30pm, Fri-Sat 5:00-10:00pm. OpenTable publishes a NARROWER variant (lunch 11:45am-1:45pm; dinner Mon-Thu/Sun 5:00-9:00pm) - that is a last-seating grid, not door hours, and is NOT used here.",
+    "_sources": [
+      {
+        "url": "https://www.meyhouserestaurant.com/palo-alto",
+        "read_at": "2026-09-03",
+        "note": "hours as published by the venue"
+      },
+      {
+        "url": "https://www.yelp.com/biz/meyhouse-palo-alto-2",
+        "read_at": "2026-09-03",
+        "note": "identical hours, all 7 days"
+      },
+      {
+        "url": "https://www.opentable.com/r/meyhouse-palo-alto-palo-alto",
+        "read_at": "2026-09-03",
+        "note": "conflicting narrower hours - recorded but not used"
+      }
+    ]
+  },
+  "seating": {
+    "tables": null,
+    "seats": 100,
+    "bar_seats": null,
+    "outdoor": true,
+    "seats_basis": "'Full Buyout of Meyhouse Palo Alto' is listed with SEATED: 100. This is the seated capacity of a whole-venue buyout, the closest published proxy for the dining-room seat count; it is NOT a table count and may exclude or include bar/patio seats.",
+    "rooms": [
+      {
+        "name": "Main Dining Room",
+        "seats": null
+      },
+      {
+        "name": "Bar seating",
+        "seats": null,
+        "note": "21 and over only"
+      },
+      {
+        "name": "Outdoor Seating",
+        "seats": null,
+        "note": "sidewalk/patio tables"
+      },
+      {
+        "name": "Istanbul Room (private dining)",
+        "seats": 40,
+        "note": "'provides the perfect ambiance for hosting a party of up to 40 people'; has A/V and a private bar"
+      },
+      {
+        "name": "Meyhouse Jazz room",
+        "seats": 30,
+        "note": "'Meyhouse Jazz Palo Alto seats 30 guests per seating'; speakeasy-style, built with SFJAZZ sound engineers"
+      }
+    ],
+    "private_events_range": "8 to 100 people (venue site); 10 to 100 people (The Vendry listing)",
+    "max_event_capacity_listed": 200,
+    "tables_note": "No table count is published anywhere found. Left null rather than inferred from seats.",
+    "bar_seats_note": "A bar exists and is bookable as a dining area ('Bar seating - 21 and over only'); guests describe 'a large bar'. No seat count published.",
+    "sources": [
+      {
+        "url": "https://thevendry.com/venue/236560/meyhouse-palo-alto-palo-alto-ca/space/146132",
+        "read_at": "2026-09-03",
+        "note": "Full Buyout SEATED: 100; 10-100 private parties"
+      },
+      {
+        "url": "https://www.meyhouserestaurant.com/private-events",
+        "read_at": "2026-09-03",
+        "note": "8 to 100 people; Istanbul room up to 40 with private bar and A/V"
+      },
+      {
+        "url": "https://www.meyhousejazz.com/locations",
+        "read_at": "2026-09-03",
+        "note": "jazz room seats 30 guests per seating"
+      },
+      {
+        "url": "https://www.opentable.com/r/meyhouse-palo-alto-palo-alto",
+        "read_at": "2026-09-03",
+        "note": "Dining areas: Main Dining Room, Bar seating - 21 and over only, Outdoor Seating"
+      },
+      {
+        "url": "https://www.yelp.com/biz/meyhouse-palo-alto-2",
+        "read_at": "2026-09-03",
+        "note": "Outdoor seating attribute and highlight"
+      },
+      {
+        "url": "https://www.eventective.com/palo-alto-ca/meyhouse-753187.html",
+        "read_at": "2026-09-03",
+        "note": "Max Number of People for an Event: 200"
+      }
+    ]
+  },
+  "service_rhythm": {
+    "covers_per_service_estimate": {
+      "_status": "ESTIMATE - derived, not published. No cover counts are published by the venue.",
+      "_method": "100 seated capacity x assumed turns across the published service window. Turn counts are assumptions, not measurements; the only booking-volume evidence found is OpenTable's 'Booked 33 times today' (parties booked through OpenTable only, one day, excludes phone, walk-ins and other channels).",
+      "lunch_daily": {
+        "low": 60,
+        "high": 100,
+        "turns_assumed": "0.6-1.0",
+        "rationale": "2h15m window; OpenTable's own FAQ calls lunch the quieter service."
+      },
+      "dinner_sun_thu": {
+        "low": 150,
+        "high": 200,
+        "turns_assumed": "1.5-2.0",
+        "rationale": "4h30m window (17:00-21:30), includes the 30-seat jazz room's two seatings."
+      },
+      "dinner_fri_sat": {
+        "low": 180,
+        "high": 240,
+        "turns_assumed": "1.8-2.4",
+        "rationale": "5h window (17:00-22:00); OpenTable FAQ: 'expect a livelier, packed scene on Friday and other weekend evenings'."
+      }
+    },
+    "peak_windows": [
+      {
+        "label": "Dinner prime",
+        "days": "all",
+        "start": "18:30",
+        "end": "20:00",
+        "evidence": "For a 2-top on Fri 2026-09-11 queried on 2026-09-03, OpenTable offered ONLY 6:30, 6:45, 7:00, 7:15 and 7:30 PM - later prime-time slots were not offered, consistent with them already being booked. Jazz first seating's show also begins ~6:30 PM.",
+        "confidence": "medium"
+      },
+      {
+        "label": "Jazz second seating",
+        "days": "performance nights",
+        "start": "20:00",
+        "end": "21:30",
+        "evidence": "Jazz site: 'Arrive at 8:00 PM, show begins around 8:30 PM'; sets run ~1 hour 15 minutes.",
+        "confidence": "high"
+      },
+      {
+        "label": "Lunch peak",
+        "days": "all",
+        "start": "12:00",
+        "end": "13:15",
+        "evidence": "Lunch runs 11:45-14:00; multiple reviews describe group/business lunches. Exact intra-service peak is NOT published - the window is inferred from the service length.",
+        "confidence": "low"
+      }
+    ],
+    "popular_times": null,
+    "popular_times_note": "NOT FOUND. Google Maps served only a signed-out limited view with no Popular Times histogram; Yelp showed no popular-times data.",
+    "turn_time_minutes": null,
+    "turn_time_note": "NOT PUBLISHED. The only published dwell structure is the jazz room's two seatings (arrive 17:00 / show ~18:30, and arrive 20:00 / show ~20:30, sets ~75 min), implying roughly a 3-hour first seating for jazz guests. Press describes meyhane guests arriving at 5pm and staying until 11pm. No dining-room turn time is stated anywhere; left null.",
+    "reservation_slots": {
+      "platform": "OpenTable",
+      "granularity_minutes": 15,
+      "observed_offered_slots_fri_2026_09_11_party_of_2": [
+        "18:30",
+        "18:45",
+        "19:00",
+        "19:15",
+        "19:30"
+      ],
+      "picker_grid_minutes": 30,
+      "picker_range": "12:00-21:00 in 30-minute steps",
+      "party_size_range": "1 to 20 people",
+      "booking_volume_signal": "Booked 33 times today (OpenTable, read 2026-09-03)",
+      "jazz_seatings": [
+        {
+          "arrive": "17:00",
+          "show_starts": "18:30"
+        },
+        {
+          "arrive": "20:00",
+          "show_starts": "20:30"
+        }
+      ],
+      "jazz_set_length_minutes": 75
+    },
+    "noise_level_opentable": "Moderate",
+    "sources": [
+      {
+        "url": "https://www.opentable.com/r/meyhouse-palo-alto-palo-alto",
+        "read_at": "2026-09-03",
+        "note": "reservation slot granularity, booked-33-times, dining areas, FAQ on busy nights, noise level"
+      },
+      {
+        "url": "https://www.meyhousejazz.com/",
+        "read_at": "2026-09-03",
+        "note": "jazz arrival/show times and ~1h15m set length"
+      },
+      {
+        "url": "https://www.meyhousejazz.com/locations",
+        "read_at": "2026-09-03",
+        "note": "30 guests per seating"
+      },
+      {
+        "url": "https://thevendry.com/venue/236560/meyhouse-palo-alto-palo-alto-ca/space/146132",
+        "read_at": "2026-09-03",
+        "note": "seated capacity 100 used as the estimate base"
+      },
+      {
+        "url": "https://www.google.com/maps/search/Meyhouse+640+Emerson+St+Palo+Alto",
+        "read_at": "2026-09-03",
+        "note": "no popular-times data available signed out"
+      }
+    ]
+  },
+  "menu": {
+    "_menu_versions_read": {
+      "dinner_food": "DINNER FOOD Palo Alto - 2026.06.27.jpg",
+      "all_day_drinks": "ALL DAY DRINK Palo Alto - 2026.06.27.jpg",
+      "dessert": "DESSERT - PALO ALTO - 2026.06.25.jpg",
+      "lunch_food": "LUNCH FOOD Palo Alto - 2026.06.27.jpg",
+      "by_the_bottle_wine": "BTB Palo Alto - 2026-05-14.jpg (2 pages)"
+    },
+    "_warning": "OpenTable also hosts a Meyhouse menu stamped 'Last updated: January 17, 2026' whose prices are LOWER than the venue's own June 2026 menus (e.g. Atom $14 vs $16, Ahtapot $24 vs $25, Levrek $50 vs $55). The OpenTable copy is stale and was NOT used. Every price below is from the venue's own current menu images.",
+    "wines_by_glass": [
+      {
+        "name": "2024 Château Peyrassol, Les Commandeur, Cotes de Provence, France",
+        "producer": "Château Peyrassol",
+        "vintage": "2024",
+        "region": "Cotes de Provence, France",
+        "grape": null,
+        "glass_price": 16,
+        "glass_price_8oz": 24,
+        "bottle_price": 62,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "Rose",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2022, Schramsberg, Blanc de Blanc, North Coast",
+        "producer": "Schramsberg",
+        "vintage": "2022",
+        "region": "North Coast",
+        "grape": null,
+        "glass_price": 24,
+        "glass_price_8oz": null,
+        "bottle_price": 95,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "Sparkling",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2024 Kir-Yianni Akakies, Brut Rose, Amyndeon, Greece",
+        "producer": "Kir-Yianni",
+        "vintage": "2024",
+        "region": "Amyndeon, Greece",
+        "grape": null,
+        "glass_price": 19,
+        "glass_price_8oz": null,
+        "bottle_price": 72,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "Sparkling",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2022 Aia Vecchie, Vermentino, Tuscany",
+        "producer": "Aia Vecchie",
+        "vintage": "2022",
+        "region": "Tuscany",
+        "grape": "Vermentino",
+        "glass_price": 13,
+        "glass_price_8oz": 23,
+        "bottle_price": 62,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "White",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2024 Isabey, Sauvignon Blanc, Aegean Coast, Türkiye",
+        "producer": "Isabey",
+        "vintage": "2024",
+        "region": "Aegean Coast, Türkiye",
+        "grape": "Sauvignon Blanc",
+        "glass_price": 18,
+        "glass_price_8oz": 26,
+        "bottle_price": 70,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "White",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2022 Kvaszinger “Hatalos, Furmint, Tokaji, Hungary",
+        "producer": "Kvaszinger",
+        "vintage": "2022",
+        "region": "Tokaji, Hungary",
+        "grape": "Furmint",
+        "glass_price": 21,
+        "glass_price_8oz": 31,
+        "bottle_price": 82,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "White",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2024 Fam. Torres, Pazo das Bruxas Albarino, Rias Baixas, Spain",
+        "producer": "Familia Torres",
+        "vintage": "2024",
+        "region": "Rias Baixas, Spain",
+        "grape": "Albariño",
+        "glass_price": 15,
+        "glass_price_8oz": 22,
+        "bottle_price": 58,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "White",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2023 Duckhorn, Chardonnay, Napa Valley",
+        "producer": "Duckhorn",
+        "vintage": "2023",
+        "region": "Napa Valley",
+        "grape": "Chardonnay",
+        "glass_price": 19,
+        "glass_price_8oz": 29,
+        "bottle_price": 74,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "White",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2023 Far Niente, Chardonnay, Napa Valley",
+        "producer": "Far Niente",
+        "vintage": "2023",
+        "region": "Napa Valley",
+        "grape": "Chardonnay",
+        "glass_price": 32,
+        "glass_price_8oz": 47,
+        "bottle_price": 123,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "White",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2023 Alexandrea, Areni, Armenia",
+        "producer": "Alexandrea",
+        "vintage": "2023",
+        "region": "Armenia",
+        "grape": "Areni",
+        "glass_price": 17,
+        "glass_price_8oz": 25,
+        "bottle_price": 66,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "Red",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2021 Gürbüz Winery, Kalecik Karası, Kalecik, Türkiye",
+        "producer": "Gürbüz Winery",
+        "vintage": "2021",
+        "region": "Kalecik, Türkiye",
+        "grape": "Kalecik Karası",
+        "glass_price": 21,
+        "glass_price_8oz": 31,
+        "bottle_price": 82,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "Red",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2022 Goldeneye, Pinot Noir, Anderson Valley",
+        "producer": "Goldeneye",
+        "vintage": "2022",
+        "region": "Anderson Valley",
+        "grape": "Pinot Noir",
+        "glass_price": 26,
+        "glass_price_8oz": 39,
+        "bottle_price": 103,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "Red",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2021 Serial “Defiance Vineyard” Cabernet Sauvignon, Paso Robles",
+        "producer": "Serial",
+        "vintage": "2021",
+        "region": "Paso Robles",
+        "grape": "Cabernet Sauvignon",
+        "glass_price": 18,
+        "glass_price_8oz": 26,
+        "bottle_price": 70,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "Red",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2019 Ink Grade “Andosol” Zinfandel Blend, Napa Valley",
+        "producer": "Ink Grade",
+        "vintage": "2019",
+        "region": "Napa Valley",
+        "grape": "Zinfandel Blend",
+        "glass_price": 19,
+        "glass_price_8oz": 28,
+        "bottle_price": 74,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "Red",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2020 Nev’i Şahsına Münasır, Bordeaux Blend, Kırklareli, Türkiye",
+        "producer": "Nev’i Şahsına Münasır",
+        "vintage": "2020",
+        "region": "Kırklareli, Türkiye",
+        "grape": "Bordeaux Blend",
+        "glass_price": 37,
+        "glass_price_8oz": 55,
+        "bottle_price": 125,
+        "size_ml": 148,
+        "pour_sizes_printed": "5oz-8oz-BTL",
+        "style": "Red",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "La Spinetta, Bricco Quaglia, Moscato D’Asti, Italy",
+        "producer": "La Spinetta",
+        "vintage": null,
+        "region": "Asti, Italy",
+        "grape": "Moscato",
+        "glass_price": 14,
+        "bottle_price": null,
+        "size_ml": null,
+        "style": "Dessert wine",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "2017 Dolce “by Far Niente” Napa Valley",
+        "producer": "Far Niente",
+        "vintage": "2017",
+        "region": "Napa Valley",
+        "grape": null,
+        "glass_price": 22,
+        "bottle_price": null,
+        "size_ml": null,
+        "style": "Dessert wine",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Kvaszinger Tokaji Aszu, 6 Puttonyos, Hungary",
+        "producer": "Kvaszinger",
+        "vintage": null,
+        "region": "Tokaji, Hungary",
+        "grape": "Furmint",
+        "glass_price": 41,
+        "bottle_price": null,
+        "size_ml": null,
+        "style": "Dessert wine",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "2020 Chateau d’Yquem Premier Cru, Sauternes, France",
+        "producer": "Chateau d’Yquem",
+        "vintage": "2020",
+        "region": "Sauternes, France",
+        "grape": null,
+        "glass_price": 50,
+        "bottle_price": null,
+        "size_ml": 30,
+        "style": "Dessert wine",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg",
+        "pour_note": "printed as 1oz $50 / 2oz $95",
+        "price_2oz": 95
+      },
+      {
+        "name": "2002 Estate Argyros, Vin Santo, Santorini, Greece",
+        "producer": "Estate Argyros",
+        "vintage": "2002",
+        "region": "Santorini, Greece",
+        "grape": "Assyrtiko",
+        "glass_price": 21,
+        "bottle_price": null,
+        "size_ml": null,
+        "style": "Dessert wine",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Alvear Solera 1927, Pedro-Ximenez, Montilla-Mobriles, Spain",
+        "producer": "Alvear",
+        "vintage": null,
+        "region": "Montilla-Moriles, Spain",
+        "grape": "Pedro Ximénez",
+        "glass_price": 23,
+        "bottle_price": null,
+        "size_ml": null,
+        "style": "Dessert wine",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Graham’s Tawny Porto",
+        "producer": "Graham’s",
+        "vintage": null,
+        "region": "Douro, Portugal",
+        "grape": null,
+        "glass_price": 14,
+        "bottle_price": null,
+        "size_ml": null,
+        "style": "Fortified",
+        "price_by_age": {
+          "10yr": 14,
+          "20yr": 22,
+          "30yr": 47,
+          "40yr": 69
+        },
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      }
+    ],
+    "wines_by_bottle": [
+      {
+        "name": "NV, Billecart Salmon Brut La Rose, Champagne",
+        "producer": "Billecart-Salmon",
+        "vintage": null,
+        "region": "Champagne",
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 80,
+        "size_ml": 375,
+        "style": "Sparkling",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "NV, Billecart Salmon Brut, La Reserve, Champagne",
+        "producer": "Billecart-Salmon",
+        "vintage": null,
+        "region": "Champagne",
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 90,
+        "size_ml": 375,
+        "style": "Sparkling",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2019 La Scolca, Gavi dei Gavi",
+        "producer": "La Scolca",
+        "vintage": "2019",
+        "region": "Gavi, Italy",
+        "grape": "Cortese",
+        "glass_price": null,
+        "bottle_price": 40,
+        "size_ml": 375,
+        "style": "White",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2020 Patz & Hall “Dutton Ranch”, Chardonnay, Russian River",
+        "producer": "Patz & Hall",
+        "vintage": "2020",
+        "region": "Russian River",
+        "grape": "Chardonnay",
+        "glass_price": null,
+        "bottle_price": 49,
+        "size_ml": 375,
+        "style": "White",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2022 Comte La Fond, Sancerre",
+        "producer": "Comte Lafond",
+        "vintage": "2022",
+        "region": "Sancerre",
+        "grape": "Sauvignon Blanc",
+        "glass_price": null,
+        "bottle_price": 53,
+        "size_ml": 375,
+        "style": "White",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2022 Louis Latour, Puligny-Montrachet",
+        "producer": "Louis Latour",
+        "vintage": "2022",
+        "region": "Puligny-Montrachet",
+        "grape": "Chardonnay",
+        "glass_price": null,
+        "bottle_price": 120,
+        "size_ml": 375,
+        "style": "White",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2021 Emeritus “Hallberg Ranch”, Pinot Noir, Russian River",
+        "producer": "Emeritus",
+        "vintage": "2021",
+        "region": "Russian River",
+        "grape": "Pinot Noir",
+        "glass_price": null,
+        "bottle_price": 49,
+        "size_ml": 375,
+        "style": "Red",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2021 Marchesi Di Gresy, Barbaresco Martinenga",
+        "producer": "Marchesi di Gresy",
+        "vintage": "2021",
+        "region": "Barbaresco",
+        "grape": "Nebbiolo",
+        "glass_price": null,
+        "bottle_price": 71,
+        "size_ml": 375,
+        "style": "Red",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2023 Pio Cesare, Barolo",
+        "producer": "Pio Cesare",
+        "vintage": "2023",
+        "region": "Barolo",
+        "grape": "Nebbiolo",
+        "glass_price": null,
+        "bottle_price": 84,
+        "size_ml": 375,
+        "style": "Red",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2022 Antinori Tignanello, Tuscany",
+        "producer": "Antinori",
+        "vintage": "2022",
+        "region": "Tuscany",
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 142,
+        "size_ml": 375,
+        "style": "Red",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2017 Chateau Musar, Rouge, Bekaa Valley, Lebanon",
+        "producer": "Chateau Musar",
+        "vintage": "2017",
+        "region": "Bekaa Valley, Lebanon",
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 82,
+        "size_ml": 375,
+        "style": "Red",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2022 Shafer “One Point Five”, Cabernet Sauvignon, Napa Valley",
+        "producer": "Shafer",
+        "vintage": "2022",
+        "region": "Napa Valley",
+        "grape": "Cabernet Sauvignon",
+        "glass_price": null,
+        "bottle_price": 108,
+        "size_ml": 375,
+        "style": "Red",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2020 Dom. Louis Latour, Chateau Corton, Grancey Grand Cru",
+        "producer": "Louis Latour",
+        "vintage": "2020",
+        "region": "Corton Grand Cru",
+        "grape": "Pinot Noir",
+        "glass_price": null,
+        "bottle_price": 186,
+        "size_ml": 375,
+        "style": "Red",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2019 Frog’s Leap, Cabernet Sauvignon, Rutherford",
+        "producer": "Frog’s Leap",
+        "vintage": "2019",
+        "region": "Rutherford",
+        "grape": "Cabernet Sauvignon",
+        "glass_price": null,
+        "bottle_price": 81,
+        "size_ml": 375,
+        "style": "Red",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2023 Paul Hobbs, Cabernet Sauvignon, Napa Valley",
+        "producer": "Paul Hobbs",
+        "vintage": "2023",
+        "region": "Napa Valley",
+        "grape": "Cabernet Sauvignon",
+        "glass_price": null,
+        "bottle_price": 90,
+        "size_ml": 375,
+        "style": "Red",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2019 Accendo, Cabernet Sauvignon, Napa Valley",
+        "producer": "Accendo",
+        "vintage": "2019",
+        "region": "Napa Valley",
+        "grape": "Cabernet Sauvignon",
+        "glass_price": null,
+        "bottle_price": 278,
+        "size_ml": 375,
+        "style": "Red",
+        "list_section": "HALF BOTTLE WINE (375ml)",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "2016 Grapeheart, Syrah-Cabernet, Napa Valley",
+        "producer": null,
+        "vintage": "2016",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 50,
+        "size_ml": 750,
+        "list_section": "LEAVING THE CELLAR ~ discounted prices",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Massolino, Nebbiolo, Langhe, Italy",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 60,
+        "size_ml": 750,
+        "list_section": "LEAVING THE CELLAR ~ discounted prices",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Marchelle \"van der Kamp\", Pinot Meunier, Sonoma Mnt.",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 61,
+        "size_ml": 750,
+        "list_section": "LEAVING THE CELLAR ~ discounted prices",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2019 Tenuta di Arceno, Chianti Classico, Italy",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 69,
+        "size_ml": 750,
+        "list_section": "LEAVING THE CELLAR ~ discounted prices",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Stolpman Vin., \"La Cuadrilla\", Red Blend, Santa Barbara County",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 70,
+        "size_ml": 750,
+        "list_section": "LEAVING THE CELLAR ~ discounted prices",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Emilio Moro, Ribera del Duero",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 72,
+        "size_ml": 750,
+        "list_section": "LEAVING THE CELLAR ~ discounted prices",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2020 Theopetra Estate, Cabernet-Syrah Blend, Meteora, Greece",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 81,
+        "size_ml": 750,
+        "list_section": "LEAVING THE CELLAR ~ discounted prices",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2008 Metoxi Chromista, Limnio-Cabernet Sauvignon, Agioritikos",
+        "producer": null,
+        "vintage": "2008",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 155,
+        "size_ml": 750,
+        "list_section": "LEAVING THE CELLAR ~ discounted prices",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "NV Dalla Balla Treviso Prosecco",
+        "producer": null,
+        "vintage": "NV",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 48,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Non Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "NV Domaine Carneros, Brut Rose, Carneros",
+        "producer": null,
+        "vintage": "NV",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 91,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Non Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "Billecart-Salmon, Brut Rose, Champagne",
+        "producer": null,
+        "vintage": null,
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 172,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Non Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "Billecart-Salmon, La Reserve, Champagne",
+        "producer": null,
+        "vintage": null,
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 180,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Non Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2018 Llopart, Brut RSV, Coorpinnat, Penedes",
+        "producer": null,
+        "vintage": "2018",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 96,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Schramsberg, Blanc de Noir, North Coast",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 120,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2019 Ultramarine, Hintz Viny, Blanc de Noir, Sonoma Coast",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 200,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2019 Ultramarine, Hintz Viny, Blanc de Blancs, Sonoma Coast",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 220,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2013 Dom Perignon, Brut, Champagne",
+        "producer": null,
+        "vintage": "2013",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 498,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2002 Duval-Leroy, Femme de Champagne",
+        "producer": null,
+        "vintage": "2002",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 490,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2015 Louis Roederer, Cristal, Champagne",
+        "producer": null,
+        "vintage": "2015",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 594,
+        "size_ml": 750,
+        "list_section": "SPARKLING WINE — Vintage",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Gobelsburg, \"Cistercien Rose\", Kamptal",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 52,
+        "size_ml": 750,
+        "list_section": "ROSE WINE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Alpha Estate \"Hedgehog Vineyard\" Amyndeon",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 70,
+        "size_ml": 750,
+        "list_section": "ROSE WINE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2024 Massican, Napa Valley",
+        "producer": null,
+        "vintage": "2024",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 72,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Sauvignon Blanc",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Clos Henri, Marlborough New Zealand",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 73,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Sauvignon Blanc",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Hourglass, NapaCounty/SonomaCounty",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 84,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Sauvignon Blanc",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Acumen, Mountain Side, Sonoma County",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 82,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Sauvignon Blanc",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Sinegal, Napa Valley",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 80,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Sauvignon Blanc",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Scribe \"Estate\", Sonoma Valley",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 76,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Hanzell Sebella, Moon Mountain",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 79,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Sandhi, Sta. Rita Hills",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 86,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Seven Springs “Evening Land” Chardonnay, Eola-Amity Hills",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 91,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2024 Massican “Hyde Vineyard”, Napa Valley",
+        "producer": null,
+        "vintage": "2024",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 95,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Paul Hobbs, Russian River",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 120,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Far Niente, Chardonnay, Napa Valley",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 123,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Kistler \"Les Noisetiers\", Sonoma Coast",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 135,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Radio-Coteau “Heintz”, Chardonnay, Sonoma Coast",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 150,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Aubert, UV-SL Vineyard, Chardonnay, Sonoma Coast",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 180,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Kongsgaard, Chardonnay, Napa Valley",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 350,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Chardonnay",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Starlite Vineyards, Viognier, Alexander Valley",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 72,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Other Whites",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Chapallet \"Signature\", Chenin Blanc, Napa Valley",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 132,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Other Whites",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2020 Sine Qua Non, White Blend, Disenta II, California",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 456,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Other Whites",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2016 Gravner, Ribolla, Friuli-Venezia Giulia, Italy",
+        "producer": null,
+        "vintage": "2016",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 198,
+        "size_ml": 750,
+        "list_section": "NEW WORLD WHITE WINE — Other Whites",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Garofoli Supera, Verdicchio di Matelica, ITALY",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 52,
+        "size_ml": 750,
+        "list_section": "OLD WORLD WHITE WINE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Avancia, Godello, Valdeorras, SPAIN",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 56,
+        "size_ml": 750,
+        "list_section": "OLD WORLD WHITE WINE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2024 Fam. Torres, Pazo das Bruxas Albarino, Rias Baixas, Spain",
+        "producer": null,
+        "vintage": "2024",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 58,
+        "size_ml": 750,
+        "list_section": "OLD WORLD WHITE WINE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Pascal Jolivet, Sauvignon Blanc, Sancerre, FRANCE",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 87,
+        "size_ml": 750,
+        "list_section": "OLD WORLD WHITE WINE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Olivier Leflaive \"Les Sétilles\", Bourgogne, FRANCE",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 96,
+        "size_ml": 750,
+        "list_section": "OLD WORLD WHITE WINE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Domaine Billaud-Simon , Chablis, FRANCE",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 140,
+        "size_ml": 750,
+        "list_section": "OLD WORLD WHITE WINE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Isabey, Sauvignon Blanc, Aegean Coast",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 68,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2018 Sevilen 900, Fume Blanc, Denizli, Türkiye",
+        "producer": null,
+        "vintage": "2018",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 90,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Gürbüz, Sauvignon Blanc-Muscat (Orange Wine), Tekirdağ",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 90,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Semeli \"Mountain Sun\", White Blend, Peloponnese",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 52,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — GREECE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Alpha Estate, \"Turtels Vineyard\", Malagouzia, Amyndeon, Greece",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 64,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — GREECE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Alpha Estate, Sauvignon Blanc, Amyndeon",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 72,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — GREECE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Hatziyannis, Assyrtiko, Santorini",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 84,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — GREECE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Vassaltis, Assyrtiko, Santorini",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 135,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — GREECE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Koncho, Rkatsitelli, Kakheti",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 52,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — GEROGIA [sic on menu]",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Alexandria Winery, Riesling",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 60,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — ARMENIA",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2020 Zorah \"Voski\", Voskeat-Garanmak Red Blend, Rind",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 88,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — ARMENIA",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Kvaszinger “Hatalos, Furmint, Tokaji, Hungary",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 82,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD WHITE WINE — HUNGARY",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Gürbüz Winery, Kalecik Karası, Kalecik",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 72,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Kavaklıdere, Prestige Series, Kalecik Karası, Ankara",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 88,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Gürbüz Winery, Blend #1 (Shiraz-Cabernet), Trakya",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 92,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2017 Prodom, Syrah-Petit Verdot-Cab.Franc, Aegean Coast",
+        "producer": null,
+        "vintage": "2017",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 96,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Çamlija, Kalecik Karası, Lüleburgaz",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 100,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Çamlija, Cabernet Sauvignon, Trakya",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 103,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2020 Nev’i Şahsına Münasır Sui, Cabernet Blend, Kırklareli",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 122,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2015 Centum, Syrah, Denizli",
+        "producer": null,
+        "vintage": "2015",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 131,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — TÜRKİYE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2018 Chateau Musar, Red Blend, Bekaa Valley",
+        "producer": null,
+        "vintage": "2018",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 165,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — LEBANON",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2016 Tsantali, Rapsani Reserve, Red Blend, Rapsani",
+        "producer": null,
+        "vintage": "2016",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 90,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — GREECE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2020 Costa Lazaridi, Cabernet Franc, Amethystos Cava, Drama",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 108,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — GREECE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Megas Oenos, Agiorgitiko-Cabernet Sauvignon, Peloponnese",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 110,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — GREECE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2019 Alpha Estate \"Barba Yannis\" O.V. Xinomavro, Amyndeon",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 115,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — GREECE",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2021 Koncho, Saperavi Premium, Kakheti",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 64,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — GEORGIA",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2019 Tikves Barovo, Kratosija-Vranec, Tikves",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 85,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — GEORGIA",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2022 Tzora Vineyards, \"Shoresh\", Judean Hills",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 95,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — ISRAEL",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2020 Golan Heights \"Yarden\", Cabernet Sauvignon, Galilee",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 105,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — ISRAEL",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2023 Alexandrea, Areni, Armenia, Vayots Dzor",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 66,
+        "size_ml": 750,
+        "list_section": "ANCIENT WORLD RED WINE — ARMENIA",
+        "source": "https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+      },
+      {
+        "name": "2019 Stephane Aviron, Morgon Cote du Py W",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 76,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BURGUNDY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2020 Jean Baptiste Jessiaume, “La Fosse”, Rully 1er Cru",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 112,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BURGUNDY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2020 Chateau de Marsannay, \"Les Echezots\" Marsannay",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 186,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BURGUNDY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Domaine de L’arlot, Les Suchots, Vosne-Romanee 1er Cru",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 537,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BURGUNDY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2018 Henri Rebourseau, Charmes-Chambertin Grand Cru",
+        "producer": null,
+        "vintage": "2018",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 685,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BURGUNDY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Domaine Faiveley, Chambertin Clos de Beze Grand Cru",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 1892,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BURGUNDY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Domaine de la Romanee-Conti, Echezeaux",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 1845,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BURGUNDY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Domaine de la Romanee-Conti, Romanee-St-Vivant",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 4927,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BURGUNDY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Chateau Peymouton, Saint-Emillion Grand Cru",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 84,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BORDEAUX",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2017 Chateau Rahoul, Graves",
+        "producer": null,
+        "vintage": "2017",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 95,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BORDEAUX",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2014 Chateau la Garde, Pessac-Leognan",
+        "producer": null,
+        "vintage": "2014",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 98,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BORDEAUX",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Chateau De Lascombes, Margaux",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 112,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BORDEAUX",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2018 Chateau Le Boscq, St. Estephe",
+        "producer": null,
+        "vintage": "2018",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 128,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BORDEAUX",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2016 Chateau Clerc Milon, Grand Cru, Pauillac",
+        "producer": null,
+        "vintage": "2016",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 430,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - BORDEAUX",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2020 Domaine D’ourea, Vacqueyras",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 60,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - RHONE",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2018 Domaine Mucyn \"Hypsos\", Cornas",
+        "producer": null,
+        "vintage": "2018",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 120,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - RHONE",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Domaine La Barroche, Chateauneuf-du-Pape",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 125,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - RHONE",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Laurent Fayolle, Crozes-Hermitage",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 126,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - RHONE",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2016 Thierry Allemand \"Reynard\", Cornas",
+        "producer": null,
+        "vintage": "2016",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 870,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — FRANCE - RHONE",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2017 Mastroberardino, Radici, Taurasi",
+        "producer": null,
+        "vintage": "2017",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 130,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - CAMPANIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2020 Marchesi Di Gresy, Barbaresco Martinenga",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 135,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - PIEDMONT",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2020 Sottimano, Barbaresco Basarin",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 172,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - PIEDMONT",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2020 Brovia, Garblet Sue, Barolo",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 215,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - PIEDMONT",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Conterno Fantino, Castelletto Barolo",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 210,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - PIEDMONT",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Fossacolle, Brunello di Montalcino",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 147,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - TUSCANY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2020 Baricci \"Montosoli\" Brunello di Montalcino",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 185,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - TUSCANY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Salvioni, Rosso di Montalcino",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 222,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - TUSCANY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2018 Roccolo Grassi, Amarone della Valpecilla",
+        "producer": null,
+        "vintage": "2018",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 198,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - VENETO",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2018 Paolo and Giampiero Bea, Pipparello Montefalco Rosso Riserva",
+        "producer": null,
+        "vintage": "2018",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 285,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - UMBRIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2017 Paolo and Giampiero Bea, Cerrete Montefalco Sagrantino Secco",
+        "producer": null,
+        "vintage": "2017",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 315,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — ITALY - UMBRIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2017 Bodegas y Vinedos, Heras Cordon, Rioja",
+        "producer": null,
+        "vintage": "2017",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 80,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — SPAIN",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Emilio Moro, Ribera del Duero",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 84,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — SPAIN",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2020 Bodegas Mas Alta \"Artigas\", Red Blend, Priorat",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 88,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — SPAIN",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 PSI, Ribera Del Duero",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 98,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — SPAIN",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2018 Torres, “Mas La Plana”, Cabernet Sauvignon, Penedes",
+        "producer": null,
+        "vintage": "2018",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 160,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — SPAIN",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Flor de Pingus, Tempranillo, Ribera Del Duero",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 190,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — SPAIN",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Syrocco, Syrah, Zenata",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 66,
+        "size_ml": 750,
+        "list_section": "OLD WORLD RED WINE — MOROCCO",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Occidental, \"Freestone-Occidental\", Sonoma Coast",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 90,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ CALIFORNIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Ramey, Russian River",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 120,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ CALIFORNIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2023 Dumol, “Western Reach”, Russian River",
+        "producer": null,
+        "vintage": "2023",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 156,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ CALIFORNIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Roar \"Gary's Vineyard\", Santa Lucia Highlands",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 159,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ CALIFORNIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Cobb, Doc's Ranch Vineyard \"Swan & Calera\", Sonoma Coast",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 174,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ CALIFORNIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Arista \"Kanzler Vineyards\" Russian River",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 178,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ CALIFORNIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Radio-Coteau “Belay”, Sonoma Coast",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 185,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ CALIFORNIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Cirq, Russian River",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 375,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ CALIFORNIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2017 Alexana \"Revana Vineyard\", Pinot, Noir, Dundee Hills",
+        "producer": null,
+        "vintage": "2017",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 126,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ OREGON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Brickhouse, “Les Dijonnais”, Ribbon Ridge",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 135,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ OREGON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Soter \"Mineral Spring Ranch\", Yamhill-Carlton",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 171,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ OREGON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Domaine Serene \"Evenstad Reserve\" Willamette Valley",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 217,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — PINOT NOIR ~ OREGON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Girard, Petit Syrah, Napa Valley",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 84,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — SYRAH / PETIT SYRAH",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Roar, \"Rosella's Vineyard\", Santa Lucia Highlands",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 162,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — SYRAH / PETIT SYRAH",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2020 Alban Vineyards \"Patrina\", Edna Valley",
+        "producer": null,
+        "vintage": "2020",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 172,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — SYRAH / PETIT SYRAH",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Martha Stoumen “Grist Vineyard” Syrah, Dry Creek Valley",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 196,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — SYRAH / PETIT SYRAH",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Sine Qua Non, Disenta IV, California",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 456,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — SYRAH / PETIT SYRAH",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Sine Qua Non, Disenta IV, Californi",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 456,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — GRENACHE",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Leviathan, Red Blend, California",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 80,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — RED BLENDS",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Clos Apalta, Carmenère Blend, Chalchagua Valley, Chili",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 250,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — RED BLENDS",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Realm Cellars, “The Bard”, Napa Valley",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 250,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — RED BLENDS",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Favia \"La Magdalena\", Napa Valley",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 374,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — RED BLENDS",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2017 Opus One, Oakville",
+        "producer": null,
+        "vintage": "2017",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 638,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — RED BLENDS",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Tusk, L'Orange, Napa Valley",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 665,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — RED BLENDS",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Ovid, Napa Valley",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 750,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — RED BLENDS",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Metier, Columbia Valley, Washington",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 68,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Lola, Cabernet Sauvignon, Napa Valley",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 74,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Vina Cobos, Marchiori Estate, Mendoza, Argentina",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 175,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Nickel & Nickel, \"Fog Break\", Atlas Peak",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 181,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 O’Shaughnessy, Napa Valley",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 197,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Far Niente, Oakville",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 211,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Odette, Estate, Napa Valley",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 236,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Sevenapart \"Expedition\", Napa Valley",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 336,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Favia, Oakville",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 374,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Quintessa, Rutherford",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 382,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2022 Barnett \"Rattlesnake Hill\", Spring Mountain",
+        "producer": null,
+        "vintage": "2022",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 440,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2021 Sevenapart \"Basalt\", Atlas Peak",
+        "producer": null,
+        "vintage": "2021",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 620,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Shafer, Hillside Select, Stags Leap District",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 662,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2017 Vine Hill Ranch, Oakville",
+        "producer": null,
+        "vintage": "2017",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 737,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2019 Tusk, Napa Valley",
+        "producer": null,
+        "vintage": "2019",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 1010,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2016 Hundred Acre “Wraith”, Napa Valley",
+        "producer": null,
+        "vintage": "2016",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 1020,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — CABERNET SAUVIGNON",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2016 Starlite Vineyards, Zinfandel, Alexander Valley",
+        "producer": null,
+        "vintage": "2016",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 90,
+        "size_ml": 750,
+        "list_section": "NEW WORLD RED WINE — ZINFANDEL",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2015 Starlite Vineyards, Cabernet Sauvignon, Alexander Valley",
+        "producer": null,
+        "vintage": "2015",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 265,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — CALIFORNIA",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2010 Guiseppe Rinaldi, Brunate, Barolo",
+        "producer": null,
+        "vintage": "2010",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 1450,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — ITALY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2010 Poggio di Sotto, Brunello di Montalcino Riserva",
+        "producer": null,
+        "vintage": "2010",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 1090,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — ITALY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2015 Ipsus, Chianti Classico Gran Selezione",
+        "producer": null,
+        "vintage": "2015",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 570,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — ITALY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2009 Dal Forno Romano, Amarone della Valpolicella",
+        "producer": null,
+        "vintage": "2009",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 690,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — ITALY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2012 Miani, Merlot, Colli Orientali del Friuli Buri",
+        "producer": null,
+        "vintage": "2012",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": 900,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — ITALY",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2010 Chateau Montrose, Second Grand Cru, Saint-Estephe",
+        "producer": null,
+        "vintage": "2010",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": null,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — FRANCE / SPAIN",
+        "price_unavailable_reason": "Price column is visibly misaligned by one row in the published wine-list image: the first wine has no price on its baseline and a trailing number sits below the last wine. Printed number sequence in column order is [660, 4500, 3367, 3334, 672, 1750, 934, 2150, 1125]. No price can be attributed to a specific bottle without guessing, so all are left null.",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "1966 Chateau Longueville, Pichon-Longueville, Pauillac-Medoc",
+        "producer": null,
+        "vintage": "1966",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": null,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — FRANCE / SPAIN",
+        "price_unavailable_reason": "Price column is visibly misaligned by one row in the published wine-list image: the first wine has no price on its baseline and a trailing number sits below the last wine. Printed number sequence in column order is [660, 4500, 3367, 3334, 672, 1750, 934, 2150, 1125]. No price can be attributed to a specific bottle without guessing, so all are left null.",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2010 Chateau Lafite Rotschild, Pauillac",
+        "producer": null,
+        "vintage": "2010",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": null,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — FRANCE / SPAIN",
+        "price_unavailable_reason": "Price column is visibly misaligned by one row in the published wine-list image: the first wine has no price on its baseline and a trailing number sits below the last wine. Printed number sequence in column order is [660, 4500, 3367, 3334, 672, 1750, 934, 2150, 1125]. No price can be attributed to a specific bottle without guessing, so all are left null.",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2009 Chateau Latour, Premier Grand Cru, Pauillac",
+        "producer": null,
+        "vintage": "2009",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": null,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — FRANCE / SPAIN",
+        "price_unavailable_reason": "Price column is visibly misaligned by one row in the published wine-list image: the first wine has no price on its baseline and a trailing number sits below the last wine. Printed number sequence in column order is [660, 4500, 3367, 3334, 672, 1750, 934, 2150, 1125]. No price can be attributed to a specific bottle without guessing, so all are left null.",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2005 Chateau Pontet-Canet, Grand Cru, Pauillac",
+        "producer": null,
+        "vintage": "2005",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": null,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — FRANCE / SPAIN",
+        "price_unavailable_reason": "Price column is visibly misaligned by one row in the published wine-list image: the first wine has no price on its baseline and a trailing number sits below the last wine. Printed number sequence in column order is [660, 4500, 3367, 3334, 672, 1750, 934, 2150, 1125]. No price can be attributed to a specific bottle without guessing, so all are left null.",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2014 Chateau Mouton Rothschild, Pauillac",
+        "producer": null,
+        "vintage": "2014",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": null,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — FRANCE / SPAIN",
+        "price_unavailable_reason": "Price column is visibly misaligned by one row in the published wine-list image: the first wine has no price on its baseline and a trailing number sits below the last wine. Printed number sequence in column order is [660, 4500, 3367, 3334, 672, 1750, 934, 2150, 1125]. No price can be attributed to a specific bottle without guessing, so all are left null.",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2000 Chateau Leoville Las Cases, Saint-Julien",
+        "producer": null,
+        "vintage": "2000",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": null,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — FRANCE / SPAIN",
+        "price_unavailable_reason": "Price column is visibly misaligned by one row in the published wine-list image: the first wine has no price on its baseline and a trailing number sits below the last wine. Printed number sequence in column order is [660, 4500, 3367, 3334, 672, 1750, 934, 2150, 1125]. No price can be attributed to a specific bottle without guessing, so all are left null.",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2015 Chateau Haut-Brion, Premier Grand Cru, Pessac Leognan",
+        "producer": null,
+        "vintage": "2015",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": null,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — FRANCE / SPAIN",
+        "price_unavailable_reason": "Price column is visibly misaligned by one row in the published wine-list image: the first wine has no price on its baseline and a trailing number sits below the last wine. Printed number sequence in column order is [660, 4500, 3367, 3334, 672, 1750, 934, 2150, 1125]. No price can be attributed to a specific bottle without guessing, so all are left null.",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      },
+      {
+        "name": "2012 Vega-Sicillia, Unico, Ribera Del Duero (SPAIN)",
+        "producer": null,
+        "vintage": "2012",
+        "region": null,
+        "grape": null,
+        "glass_price": null,
+        "bottle_price": null,
+        "size_ml": 750,
+        "list_section": "LIBRARY WINES “10 years or older” — FRANCE / SPAIN",
+        "price_unavailable_reason": "Price column is visibly misaligned by one row in the published wine-list image: the first wine has no price on its baseline and a trailing number sits below the last wine. Printed number sequence in column order is [660, 4500, 3367, 3334, 672, 1750, 934, 2150, 1125]. No price can be attributed to a specific bottle without guessing, so all are left null.",
+        "source": "https://static.wixstatic.com/media/d400d4_561ccd0aa8494edcae302b7742269e9e~mv2.jpg"
+      }
+    ],
+    "raki_and_spirits": [
+      {
+        "name": "Efe Green",
+        "category": "Rakı",
+        "description": "Distilled from fresh green grapes",
+        "price_single": 13,
+        "price_double": 25,
+        "price_half_bottle": 45,
+        "price_full_bottle": 95,
+        "menu_note": "section header reads: RAKI — \"Distilled spirit with anise “aroma”\"",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Efe Black",
+        "category": "Rakı",
+        "description": "Triple distilled",
+        "price_single": 14,
+        "price_double": 26,
+        "price_half_bottle": 49,
+        "price_full_bottle": 105,
+        "menu_note": "section header reads: RAKI — \"Distilled spirit with anise “aroma”\"",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Sari Zeybek",
+        "category": "Rakı",
+        "description": "6 months oak barrel aged",
+        "price_single": 14,
+        "price_double": 26,
+        "price_half_bottle": 49,
+        "price_full_bottle": 105,
+        "menu_note": "section header reads: RAKI — \"Distilled spirit with anise “aroma”\"",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Beylerbeyi Göbek",
+        "category": "Rakı",
+        "description": "From the heart of the distillation",
+        "price_single": 15,
+        "price_double": 28,
+        "price_half_bottle": 55,
+        "price_full_bottle": 115,
+        "menu_note": "section header reads: RAKI — \"Distilled spirit with anise “aroma”\"",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Yeni Rakı Ala",
+        "category": "Rakı",
+        "description": "Triple distilled, oak barrel aged",
+        "price_single": 15,
+        "price_double": 28,
+        "price_half_bottle": 55,
+        "price_full_bottle": 115,
+        "menu_note": "section header reads: RAKI — \"Distilled spirit with anise “aroma”\"",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Hangar",
+        "category": "Vodka",
+        "price": 15,
+        "note": "well",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Belvedere",
+        "category": "Vodka",
+        "price": 16,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Belvedere “10”",
+        "category": "Vodka",
+        "price": 35,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Chopin-Potato",
+        "category": "Vodka",
+        "price": 17,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "* Chopin-Rye",
+        "category": "Vodka",
+        "price": 13,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Grey Goose",
+        "category": "Vodka",
+        "price": 16,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Haku",
+        "category": "Vodka",
+        "price": 15,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Hanson Meyerlemon",
+        "category": "Vodka",
+        "price": 16,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Ketel One",
+        "category": "Vodka",
+        "price": 16,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Beefeater",
+        "category": "Gin",
+        "price": 15,
+        "note": "well",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Bayab",
+        "category": "Gin",
+        "price": 12,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Bar Hill",
+        "category": "Gin",
+        "price": 19,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Bombay Sapphire",
+        "category": "Gin",
+        "price": 16,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Botanist",
+        "category": "Gin",
+        "price": 18,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Empress Gin",
+        "category": "Gin",
+        "price": 18,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Hendrick's",
+        "category": "Gin",
+        "price": 18,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Monkey 47",
+        "category": "Gin",
+        "price": 19,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Roku",
+        "category": "Gin",
+        "price": 12,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Sipsmith",
+        "category": "Gin",
+        "price": 15,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Tanqueray",
+        "category": "Gin",
+        "price": 16,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Young & Yonder",
+        "category": "Gin",
+        "price": 12,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Arette Blanco",
+        "category": "Additive Free Tequila",
+        "price": 15,
+        "note": "well",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "* Arette “Artisinal” Reposado",
+        "category": "Additive Free Tequila",
+        "price": 14,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "* Arette “Artisinal” Anejo",
+        "category": "Additive Free Tequila",
+        "price": 19,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Don Fulano Blanco",
+        "category": "Additive Free Tequila",
+        "price": 19,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Don Fulano Reposado",
+        "category": "Additive Free Tequila",
+        "price": 21,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Don Fulano Anejo",
+        "category": "Additive Free Tequila",
+        "price": 28,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "El Tesoro Blanco",
+        "category": "Additive Free Tequila",
+        "price": 17,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "El Tesoro Reposado",
+        "category": "Additive Free Tequila",
+        "price": 24,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "El Tesoro Anejo",
+        "category": "Additive Free Tequila",
+        "price": 28,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Fortaleza Blanco",
+        "category": "Additive Free Tequila",
+        "price": 21,
+        "note": "limited availability",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Fortaleza Reposado",
+        "category": "Additive Free Tequila",
+        "price": 29,
+        "note": "limited availability",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Fortaleza Anejo",
+        "category": "Additive Free Tequila",
+        "price": 39,
+        "note": "limited availability",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "* G4 Blanco",
+        "category": "Additive Free Tequila",
+        "price": 15,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "* Tears of Llorona Extra Anejo",
+        "category": "Additive Free Tequila",
+        "price": 25,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Clase Azul Reposado",
+        "category": "Tequila",
+        "price": 25,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Madre Espadin",
+        "category": "Mezcal",
+        "price": 15,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Del Maguey",
+        "category": "Mezcal",
+        "price": 20,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Redemption Eagle Straight",
+        "category": "Bourbon Whiskey",
+        "price": 15,
+        "note": "well",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Angels Envy",
+        "category": "Bourbon Whiskey",
+        "price": 20,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Basil Hayden",
+        "category": "Bourbon Whiskey",
+        "price": 16,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Blantons",
+        "category": "Bourbon Whiskey",
+        "price": 39,
+        "note": "limited availability",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Breckenridge",
+        "category": "Bourbon Whiskey",
+        "price": 13,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Breckenridge Spiced",
+        "category": "Bourbon Whiskey",
+        "price": 13,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Breckenridge Rum Cask",
+        "category": "Bourbon Whiskey",
+        "price": 13,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Breckenridge Px Cask",
+        "category": "Bourbon Whiskey",
+        "price": 13,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Bulleit",
+        "category": "Bourbon Whiskey",
+        "price": 15,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Elijah Craig",
+        "category": "Bourbon Whiskey",
+        "price": 15,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Hirsch Horizon",
+        "category": "Bourbon Whiskey",
+        "price": 13,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Jefferson's RSV",
+        "category": "Bourbon Whiskey",
+        "price": 20,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Knobb Creek 9yr",
+        "category": "Bourbon Whiskey",
+        "price": 23,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Maker’s Mark",
+        "category": "Bourbon Whiskey",
+        "price": 15,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Rabbit Hole Cavehill",
+        "category": "Bourbon Whiskey",
+        "price": 13,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Rabbit Hole Dareringer",
+        "category": "Bourbon Whiskey",
+        "price": 13,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Woodford",
+        "category": "Bourbon Whiskey",
+        "price": 15,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Redemption",
+        "category": "Rye Whiskey",
+        "price": 15,
+        "note": "well",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Bulleit",
+        "category": "Rye Whiskey",
+        "price": 16,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Duke Founder's Reserve",
+        "category": "Rye Whiskey",
+        "price": 20,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Elijah Craig",
+        "category": "Rye Whiskey",
+        "price": 16,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Knobb Creek 7yr",
+        "category": "Rye Whiskey",
+        "price": 18,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Rabbit Hole Boxergrail",
+        "category": "Rye Whiskey",
+        "price": 13,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Templeton",
+        "category": "Rye Whiskey",
+        "price": 23,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Whistle Pig - Piggyback 6yr",
+        "category": "Rye Whiskey",
+        "price": 32,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Whistle Pig - Small Batch 10yr",
+        "category": "Rye Whiskey",
+        "price": 33,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Whistle Pig - Piggyback 12yr",
+        "category": "Rye Whiskey",
+        "price": 39,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Willet 7yr",
+        "category": "Rye Whiskey",
+        "price": 20,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Suntory Toki",
+        "category": "Japanese Whiskey",
+        "price": 21,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Nikka Yoichi SM",
+        "category": "Japanese Whiskey",
+        "price": 24,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Nikka Miyagikyo SM",
+        "category": "Japanese Whiskey",
+        "price": 25,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Hibiki Harmony",
+        "category": "Japanese Whiskey",
+        "price": 32,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Yamazaki 12yr",
+        "category": "Japanese Whiskey",
+        "price": 52,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Yamazaki 18yr",
+        "category": "Japanese Whiskey",
+        "price": 170,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Hakushu 12yr",
+        "category": "Japanese Whiskey",
+        "price": 52,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Hakushu 18yr",
+        "category": "Japanese Whiskey",
+        "price": 170,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Auchentoshan Three Wood",
+        "category": "Single Malt Scotch",
+        "price": 26,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Aberlour 16yr",
+        "category": "Single Malt Scotch",
+        "price": 38,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Balvenie 12yr",
+        "category": "Single Malt Scotch",
+        "price": 27,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Bruichladdich Islay",
+        "category": "Single Malt Scotch",
+        "price": 19,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Glen Grant 12yr",
+        "category": "Single Malt Scotch",
+        "price": 12,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Glendronach 12yr",
+        "category": "Single Malt Scotch",
+        "price": 12,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Glenfiddich 12yr",
+        "category": "Single Malt Scotch",
+        "price": 21,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Glenfiddich 15yr",
+        "category": "Single Malt Scotch",
+        "price": 19,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Glenfiddich 21yr",
+        "category": "Single Malt Scotch",
+        "price": 49,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Glenlivet 12yr",
+        "category": "Single Malt Scotch",
+        "price": 17,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Glenlivet 14yr",
+        "category": "Single Malt Scotch",
+        "price": 23,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Glenmorangie 14yr",
+        "category": "Single Malt Scotch",
+        "price": 25,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Highland Park 12yr",
+        "category": "Single Malt Scotch",
+        "price": 12,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Lagavulin 16yr",
+        "category": "Single Malt Scotch",
+        "price": 35,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Laphroaig 10yr",
+        "category": "Single Malt Scotch",
+        "price": 20,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "*Macallan “A Night on Earth”",
+        "category": "Single Malt Scotch",
+        "price": 20,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Macallan 18yr",
+        "category": "Single Malt Scotch",
+        "price": 84,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Macallan Sherry Oak 12yr",
+        "category": "Single Malt Scotch",
+        "price": 32,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Oban 14yr",
+        "category": "Single Malt Scotch",
+        "price": 31,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Talisker 10yr",
+        "category": "Single Malt Scotch",
+        "price": 30,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Jonnie Walker Black",
+        "category": "Blended Scotch",
+        "price": 25,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Jonnie Walker Blue",
+        "category": "Blended Scotch",
+        "price": 45,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Macchi",
+        "category": "Pisco",
+        "price": 15,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Lapostolle Pisco XO",
+        "category": "Pisco",
+        "price": 23,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Hennessey VSOP",
+        "category": "Cognac",
+        "price": 15,
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Hennesey XO",
+        "category": "Cognac",
+        "price": null,
+        "note": "price printed as '$' with no number on the published menu",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      }
+    ],
+    "cocktails": [
+      {
+        "name": "Meyhouse Vesper Martini",
+        "price": 26,
+        "description": "Monkey 47, Meyer Lemon Vodka, Lillet Blanc, Lavender Bitters, Lemon Express",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Mediterranean Fizz",
+        "price": 22,
+        "description": "Bar Hill, Fever Tree Mediterranean Tonic, Fresh Grapefruit, Fresh Rosemary",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Pins & Needles",
+        "price": 24,
+        "description": "Haku Vodka, St. George Spiced Pear Liqueur, Sage Tea, Lime, Szechuan Flower",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Raki Rollie",
+        "price": 22,
+        "description": "Efe Green Raki, Hangar Vodka, Cucumber, Ginger, Lime, Basil",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Island Chai",
+        "price": 22,
+        "description": "Knobb Creek 7yr RYE, St. George Spiced Pear Liqueur, Sage Tea, Lemon, Mathieu Paquet Creme De Framboise",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Bodrum Fashion",
+        "price": 34,
+        "description": "Whistle Pig 4yr Rye, Sage Tea, Angostura, Maraschino Cherry, Orange Express",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Chilean Fashion",
+        "price": 24,
+        "description": "Lapostelle Pisco XO, Chocolate Bitters, Cinnamon, Orange Twist",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Prince Negroni",
+        "price": 21,
+        "description": "Sipsmith Gin, Fugit Gran Classico, Chazalette Sweet Vermouth",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Nar-Garita",
+        "price": 22,
+        "description": "El Tesoro Blanco, Amaro Nonino, Pomegranate Liqueur, 100% Pomegranate Juice, Lime, Cinnamon Syrup",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Cos-Mey-Politan",
+        "price": 20,
+        "description": "Meyer Lemon Vodka, Dry Curacao, 100% Pomegranate Juice, Ginger, Lime",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Cappadocia Fire",
+        "price": 22,
+        "description": "Serrano Pepper infused Madre Mezcal, Aperol, Green Chartreuse, Lime",
+        "menu_section": "CRAFT COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Aegean Fashion",
+        "price": 16,
+        "description": "Damla Sakiz (Mastika) Liqueur, Lavender Bitters, Lemon Express",
+        "menu_section": "DESSERT CRAFT COCKTAILS",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Turkish Coffee Martini",
+        "price": 15,
+        "description": "Licor 43, Chilled Turkish Coffee, Rocket Vodka, Nola Coffee Liqueur, Cinnamon",
+        "menu_section": "DESSERT CRAFT COCKTAILS",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Armut Likörü",
+        "price": 17,
+        "description": "Freezer Chilled Pear Liqueur",
+        "menu_section": "DESSERT CRAFT COCKTAILS",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Ayva Likörü",
+        "price": 17,
+        "description": "Freezer Chilled Quince Liqueur",
+        "menu_section": "DESSERT CRAFT COCKTAILS",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Son Yudum “The Last Sip”",
+        "price": 18,
+        "description": "Mozart Belgian Dark Chocolate Liqueur, Aztec Chocolate Bitters, Cointreau, Lime, Orange Express",
+        "menu_section": "DESSERT CRAFT COCKTAILS",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      }
+    ],
+    "beer": [],
+    "beer_note": "NOT FOUND as a priced list. Meyhouse demonstrably serves beer - OpenTable lists 'Beer' and 'Full Bar' among its features, and a Yelp reviewer praises a 'truly fabulous collection of Greek and Turkish beers' - but the published ALL DAY DRINK menu has no beer section and no beer prices are published anywhere found. Left empty rather than invented.",
+    "non_alcoholic": [
+      {
+        "name": "Ginger 75",
+        "price": 17,
+        "description": "Seedlip Spice, Ginger, Lemon, Cucumber Roll",
+        "menu_section": "NON-ALCOHOLIC COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Nar",
+        "price": 17,
+        "description": "Pomegranate Juice, Cinnamon, Lemon, Maraschino Cherry",
+        "menu_section": "NON-ALCOHOLIC COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "St. Agrestis Phony Negroni",
+        "price": 16,
+        "description": "Classic NA Negroni",
+        "menu_section": "NON-ALCOHOLIC COCKTAIL",
+        "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+      },
+      {
+        "name": "Turkish Coffee",
+        "price": 5,
+        "description": null,
+        "menu_section": "COFFEE & TEA",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Turkish Black Tea",
+        "price": 3,
+        "description": null,
+        "menu_section": "COFFEE & TEA",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Fresh Mint-Lemon Tea",
+        "price": 3,
+        "description": null,
+        "menu_section": "COFFEE & TEA",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Dried Sage Tea",
+        "price": 3,
+        "description": null,
+        "menu_section": "COFFEE & TEA",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      }
+    ],
+    "food": [
+      {
+        "name": "Little Little in the Middle (Chef’s Tasting Menu)",
+        "category": "Chef's Tasting Menu",
+        "price": 105,
+        "description": "Meyhouse’s most popular dining experience; signature mezes and main courses in smaller portions.",
+        "served_at": "dinner",
+        "note": "(2 people minimum) $105 per person. Everyone at the table must participate.",
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Atom",
+        "category": "Meze — Cold Vegetarian",
+        "price": 16,
+        "description": "Homemade strained yogurt with spicy peppers (gf) (v)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Girit",
+        "category": "Meze — Cold Vegetarian",
+        "price": 19,
+        "description": "Garlic-Spice whipped “Ezine cheese” from Dardanelle region, with layer of roasted Antep pistachios from Turkey (gf) (v)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Köpoğlu",
+        "category": "Meze — Cold Vegetarian",
+        "price": 19,
+        "description": "Oven roasted eggplant and peppers with tomato sauce, over homemade strained garlic yogurt (gf) (v)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Gambilya",
+        "category": "Meze — Cold Vegetarian",
+        "price": 17,
+        "description": "Bodrum's Gambilya bean spread with scallions, tomatoes, fresh dill, cumin, paprika (gf) (vg)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Acılı Muhammara",
+        "category": "Meze — Cold Vegetarian",
+        "price": 16,
+        "description": "Spicy red peppers-walnuts spread, drizzled with pomegranate molasses (vg)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Pancar",
+        "category": "Meze — Cold Vegetarian",
+        "price": 19,
+        "description": "Slow roasted beets with Turkish white cheese, fresh dill, crumbled roasted pistachio, garlic-lemon vinaigrette (gf) (v)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Deniz Börülcesi",
+        "category": "Meze — Cold Vegetarian",
+        "price": 18,
+        "description": "Steamed Sea Asparagus, a green vegetable that grows on salt marsh, tomatoes, tossed with lemon-garlic olive oil (gf) (vg)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "*Lakerda",
+        "category": "Meze — Cold Seafood & Beef",
+        "price": 28,
+        "description": "Salt cured fish, red onion, fresh dill, extra virgin olive oil, (gf)",
+        "served_at": "dinner",
+        "note": "limited availability",
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "*Çiroz füme",
+        "category": "Meze — Cold Seafood & Beef",
+        "price": 19,
+        "description": "Salt cured, smoked mackerel with dill, shallots and pickles (gf)",
+        "served_at": "dinner",
+        "note": "limited availability",
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Sögüş Dil",
+        "category": "Meze — Cold Seafood & Beef",
+        "price": 19,
+        "description": "Thin sliced smoked beef tongue (gf)",
+        "served_at": "dinner",
+        "note": "limited availability",
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Karidesli Enginar",
+        "category": "Meze — Cold Seafood & Beef",
+        "price": 23,
+        "description": "Artichoke bottoms braised in olive oil with poached shrimp, herb dressing (gf) (df) OR can be made vegan with double peeled fava beans (gf) (vg) (df)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "*Levrek Marin",
+        "category": "Meze — Cold Seafood & Beef",
+        "price": 22,
+        "description": "Lemon cured Branzino, red onion, tomato, radish and red peppercorn (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Türkmen Mantı",
+        "category": "Meze — Hot Meat & Vegetarian",
+        "price": 21,
+        "description": "Steamed Turkmen dumplings stuffed with choice of beef, OR vegetarian, over garlic yogurt",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Üç Börek",
+        "category": "Meze — Hot Meat & Vegetarian",
+        "price": 15,
+        "description": "Trio phyllo dough roll pastries with three different filling of Zucchini, Cheese, Pastirma",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Ahtapot",
+        "category": "Meze — Hot Meat & Vegetarian",
+        "price": 25,
+        "description": "Mesquite fire grilled Galician Octopus over Gambilya beans spread, paprika-butter",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Humus",
+        "category": "Meze — Hot Meat & Vegetarian",
+        "price": 21,
+        "description": "Warm humus topped with choice of house cured beef pastirma (gf) OR brown butter and pine nut (v)(gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Yaprak Ciğer",
+        "category": "Meze — Hot Meat & Vegetarian",
+        "price": 22,
+        "description": "Butter poached thinly sliced lamb liver, red onion",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Acılı Uykuluk",
+        "category": "Meze — Hot Meat & Vegetarian",
+        "price": 24,
+        "description": "Charcoal grilled, veal sweetbread skewer marinated in Aleppo pepper and garlic",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Karides Dolma",
+        "category": "Meze — Hot Meat & Vegetarian",
+        "price": 22,
+        "description": "Oven roasted Piquillo Peppers stuffed with Shrimp, finished with Isot-Bechamel",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Hamsi",
+        "category": "Meze — Hot Meat & Vegetarian",
+        "price": 19,
+        "description": "Fried fresh Anchovies from Monterey Bay",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Gavurdağı",
+        "category": "Salata & Çorba",
+        "price": 21,
+        "description": "Finely chopped Tomatoes, onions, peppers with walnuts and pomegranate molasses dressing",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Ege Salatası",
+        "category": "Salata & Çorba",
+        "price": 23,
+        "description": "Chunky tomatoes, peppers, onions, cucumbers, garlic-oregano croutons, white cheese, capers and south Aegean olives",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Domates Roka",
+        "category": "Salata & Çorba",
+        "price": 21,
+        "description": "Heirloom organic tomatoes, marinated red onions soaked in pomegranate molasses, and soy vinaigrette with baby arugula tossed with extra virgin olive oil",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Çorba",
+        "category": "Salata & Çorba",
+        "price": 12,
+        "description": "Soup of the Day",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Levrek",
+        "category": "Mangal ve Fırın",
+        "price": 55,
+        "description": "Sustainably sourced whole Branzino from the Aegean Sea, served with Meyhouse Green salad (can be made gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Chilean Seabass",
+        "category": "Mangal ve Fırın",
+        "price": 57,
+        "description": "Oven roasted with fig-ginger “Byzantian Murri Glaze”, over sauteed Aegean greens, lemon mash potato",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Orfoz",
+        "category": "Mangal ve Fırın",
+        "price": 51,
+        "description": "Charcoal grilled marinated Pink Grouper skewer, served with Meyhouse Green Salad (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "*Pirzola",
+        "category": "Mangal ve Fırın",
+        "price": 64,
+        "description": "Bone-in Lamb Chops, 3 pieces, mint-pistachio spread, dill-potato wedges (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Çemenli Tavuk",
+        "category": "Mangal ve Fırın",
+        "price": 39,
+        "description": "Organic Mary’s Chicken thigh skewer marinated with yogurt-fenugreek, over toasted orzo (can be made gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "*Alinazik",
+        "category": "Mangal ve Fırın",
+        "price": 49,
+        "description": "Marinated tenderloin skewer, over smoked eggplant-labneh, paprika-butter (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "*Antrikot",
+        "category": "Mangal ve Fırın",
+        "price": 79,
+        "description": "16oz, in-house dry aged Ribeye, lemon mashed potato (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "*Lokum",
+        "category": "Mangal ve Fırın",
+        "price": 65,
+        "description": "10oz, Flash seared USDA prime tenderloin slices, with lemon mashed potato (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Karışık Kebap",
+        "category": "Mangal ve Fırın",
+        "price": 260,
+        "description": "Assortment of Charcoal Grilled Lamb, Beef, and Chicken Kebabs, featuring unique items not available on our a la carte menu.",
+        "served_at": "dinner",
+        "note": "(for 4 people) After 4 people each additional guest $65",
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Whole Fish of the Day",
+        "category": "Mangal ve Fırın",
+        "price": null,
+        "description": "Charcoal Grilled Whole Fish: Fresh, unique whole fish sourced from around the world and expertly grilled over charcoal.",
+        "served_at": "dinner",
+        "note": "MP (market price), limited availability",
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Mercimekli Karnıyarık",
+        "category": "Sebze (Vegetarian)",
+        "price": 39,
+        "description": "Oven roasted half eggplant stuffed with green lentil, dried mint, tomato sauce and brown butter served with garlic-yogurt (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Sebzeli Alinazik",
+        "category": "Sebze (Vegetarian)",
+        "price": 39,
+        "description": "Mesquite fire grilled, marinated seasonal vegetables over smoked eggplant-labne, drizzled with paprika-butter (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Meyhouse Greens SM",
+        "category": "Yancılar (Sides)",
+        "price": 10,
+        "description": "Mixed greens, iceberg lettuce, baby arugula, cucumbers, scallions, mint with lemon-oil dressing (vg) (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Meyhouse Greens LG",
+        "category": "Yancılar (Sides)",
+        "price": 18,
+        "description": "Mixed greens, iceberg lettuce, baby arugula, cucumbers, scallions, mint with lemon-oil dressing (vg) (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Ege Otlari",
+        "category": "Yancılar (Sides)",
+        "price": 12,
+        "description": "Sauteed Aegean greens, garlic, scallion, lemon, olive oil (vg) (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Otlu Patates",
+        "category": "Yancılar (Sides)",
+        "price": 12,
+        "description": "Dill-potato wedges (vg) (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Limon Patates",
+        "category": "Yancılar (Sides)",
+        "price": 12,
+        "description": "Mashed potato, olive oil, garlic-lemon and herbs (vg) (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Pilav",
+        "category": "Yancılar (Sides)",
+        "price": 6,
+        "description": "White rice with butter (v) (gf)",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+      },
+      {
+        "name": "Profiterole",
+        "category": "Dessert",
+        "price": 16,
+        "description": "Homemade cream filled pastry, dark chocolate sauce, pistachio crumble",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Sütlaç",
+        "category": "Dessert",
+        "price": 13,
+        "description": "Turkish style Rice Pudding with charred top layer",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Künefe",
+        "category": "Dessert",
+        "price": 14,
+        "description": "Pan seared shredded phyllo dough with fresh mozzarella filling (Antakya). Please allow 10-15 minutes for this dessert",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Baklava",
+        "category": "Dessert",
+        "price": 14,
+        "description": "Homemade Baklava filled with Antep pistachio (2 pieces) Add extra piece: $7",
+        "served_at": "dinner",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Damla Sakızlı",
+        "category": "Ice Cream",
+        "price": 12,
+        "description": "Homemade mastika ice cream, crumbled pistachio",
+        "served_at": "dinner",
+        "note": "All Ice Creams have Limited Availability",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Bey Armudu & Tomurcuk",
+        "category": "Ice Cream",
+        "price": 13,
+        "description": "Homemade Bergamot & Earl Grey ice cream",
+        "served_at": "dinner",
+        "note": "All Ice Creams have Limited Availability",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Vişne & Parça Çikolatalı",
+        "category": "Ice Cream",
+        "price": 13,
+        "description": "Sour cherry and chocolate chip ice cream",
+        "served_at": "dinner",
+        "note": "All Ice Creams have Limited Availability",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Antep Fıstıklı",
+        "category": "Ice Cream",
+        "price": 13,
+        "description": "Antep Pistachio ice cream",
+        "served_at": "dinner",
+        "note": "All Ice Creams have Limited Availability",
+        "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+      },
+      {
+        "name": "Lahmacun",
+        "category": "Starter Flatbreads & Pide",
+        "price": 13,
+        "description": "Turkish flat bread layered with ground beef and finely minced tomato, onion, pepper, garlic, served with onion salad and tomato",
+        "served_at": "lunch",
+        "note": "SERVED ONLY AT LUNCH",
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Katikli Pide",
+        "category": "Starter Flatbreads & Pide",
+        "price": 17,
+        "description": "Spicy mix of spinach, Aleppo pepper, cumin, zahter and cheeses in thin crust (vg)",
+        "served_at": "lunch",
+        "note": "SERVED ONLY AT LUNCH",
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Kusbasi Pide",
+        "category": "Starter Flatbreads & Pide",
+        "price": 19,
+        "description": "Minced Tenderloin, red bell peppers, green peppers, paprika",
+        "served_at": "lunch",
+        "note": "SERVED ONLY AT LUNCH",
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Bafra Pide",
+        "category": "Starter Flatbreads & Pide",
+        "price": 16,
+        "description": "Pide from town of Bafra in Black Sea region, ground beef and onions",
+        "served_at": "lunch",
+        "note": "SERVED ONLY AT LUNCH",
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Adana",
+        "category": "Lunch — Main Course / Meze",
+        "price": 39,
+        "description": "Knife grounded local grass-fed California lamb spareribs skewer, plate served with Turkish rice and onion-tomato salad",
+        "served_at": "lunch",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Acılı Sebzeli Kebap",
+        "category": "Lunch — Main Course / Meze",
+        "price": 36,
+        "description": "Spicy Kebap with ground beef and peppers, plate served with Turkish rice and onion-tomato salad",
+        "served_at": "lunch",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Cemenli Tavuk",
+        "category": "Lunch — Main Course / Meze",
+        "price": 39,
+        "description": "Yogurt-fenugreek marinated Mary’s organic chicken thigh skewer, plate served with Turkish rice and onion-tomato salad",
+        "served_at": "lunch",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Kasap Köfte",
+        "category": "Lunch — Main Course / Meze",
+        "price": 36,
+        "description": "Turkish butcher style ground beef patties, mesquite charcoal grilled plate served with Turkish rice and onion-tomato salad",
+        "served_at": "lunch",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Alinazik",
+        "category": "Lunch — Main Course / Meze",
+        "price": 49,
+        "description": "Antep style Marinated certified Angus tenderloin skewer, over smoked eggplant-labneh",
+        "served_at": "lunch",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Filet of Levrek",
+        "category": "Lunch — Main Course / Meze",
+        "price": 39,
+        "description": "Mesquite fire grilled Filet of Branzino—Mediterranean Seabass with Meyhouse Green Salad (df)",
+        "served_at": "lunch",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Lokum",
+        "category": "Lunch — Main Course / Meze",
+        "price": 39,
+        "description": "6oz, Flash seared tenderloin slices, with lemon mashed potato (gf)",
+        "served_at": "lunch",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Pirzola",
+        "category": "Lunch — Main Course / Meze",
+        "price": 44,
+        "description": "Bone-in Lamb Chops, 2 pieces, mint-pistachio spread, Dill-potato wedges (gf)",
+        "served_at": "lunch",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Trio Sigara Böreği",
+        "category": "Lunch — Main Course / Meze",
+        "price": 15,
+        "description": "Rolled and fried phyllo dough with three different filling: Zucchini-Leeks (vegetarian), Pastirma (cured beef), Cheese (Feta & Ricotta)",
+        "served_at": "lunch",
+        "note": null,
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      },
+      {
+        "name": "Mix Kebap Plater",
+        "category": "Lunch — Main Course",
+        "price": 260,
+        "description": "Our famous meat feasts for 4 people. Assortment of Charcoal Grilled Lamb, Beef, and Chicken Kebabs, served with tomato-onion salad, and smoked eggplant-yogurt.",
+        "served_at": "lunch",
+        "note": "(for 4 people) After 4 people each additional guest $65",
+        "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg"
+      }
+    ]
+  },
+  "policies": {
+    "service_charge": "20% service charge will be added to parties of 6 or more.",
+    "living_wage_surcharge": "4% Living Wage Surcharge will be added to all bills. (printed on the dinner menu only; the lunch menu omits it)",
+    "corkage": "Corkage is $35 for the first two 750ml bottles, after the first two $65 for each 750ml bottle. Each Magnum bottle will count as two bottles. If you purchase a bottle from our menu, each bottle you purchase will waive 1 corkage fee.",
+    "corkage_note": "This wording is a live source of guest disputes: a Yelp reviewer reports being told $35 covered two bottles and then billed $35 per bottle.",
+    "tasting_menu_rule": "Little Little in the Middle: 2 people minimum, $105 per person, everyone at the table must participate.",
+    "raw_item_warning": "*Consuming raw or undercooked meats, poultry, seafood, shellfish, or eggs may increase your risk of foodborne illness.",
+    "payment_options": "AMEX, Discover, Mastercard, Visa",
+    "parking": "OpenTable lists parking details as 'None'; a Yelp reviewer notes 'Lots of street parking in downtown Palo Alto'.",
+    "sources": [
+      {
+        "url": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg",
+        "read_at": "2026-09-03",
+        "note": "service charge, living wage surcharge, corkage, raw-item warning"
+      },
+      {
+        "url": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg",
+        "read_at": "2026-09-03",
+        "note": "service charge and corkage on the lunch menu"
+      },
+      {
+        "url": "https://www.opentable.com/r/meyhouse-palo-alto-palo-alto",
+        "read_at": "2026-09-03",
+        "note": "payment options, parking"
+      },
+      {
+        "url": "https://www.yelp.com/biz/meyhouse-palo-alto-2",
+        "read_at": "2026-09-03",
+        "note": "corkage dispute, street parking"
+      }
+    ]
+  },
+  "behaviour_notes": [
+    {
+      "note": "Meyhane rhythm is long and drink-led, not course-led: guests 'arrive at 5 p.m. to drink and savor small plates, drink some more, eat again, and not leave until 11 p.m.' Model long dwell times and repeated beverage rounds interleaved with food, not a single food push.",
+      "source": "https://www.foodgal.com/2023/10/palo-altos-meyhouse-is-a-must-visit/"
+    },
+    {
+      "note": "Meze come first and arrive in volume, cold before hot: 'our entire tabletop was covered with assorted cold meze', and 'one could easily make a meal out of the assorted hot and cold meze alone.' Expect many low-priced items per check before any main.",
+      "source": "https://www.foodgal.com/2023/10/palo-altos-meyhouse-is-a-must-visit/"
+    },
+    {
+      "note": "Rakı is sold four ways on one menu row - single, double, 1/2 bottle and full bottle - and is 'served straight, in cocktails, or by the bottle for the table to share.' A bottle is a TABLE item, not a per-guest item; a POS must not divide it per cover.",
+      "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg ; https://www.hautelivingsf.com/2025/10/28/meyhouse-sunnyvale-palo-alto-a-modern-tribute-to-turkey/"
+    },
+    {
+      "note": "Wine by the glass is sold in two pour sizes on the same line (5oz and 8oz) plus a bottle price, so one wine SKU carries three distinct prices. Sparkling wines are 5oz-only ('NA' in the 8oz column).",
+      "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+    },
+    {
+      "note": "A 375ml half-bottle tier exists and is explicitly positioned as 'Perfect for 2 people to share OR Course Pairing' - a distinct SKU size between glass and bottle.",
+      "source": "https://static.wixstatic.com/media/d400d4_24ecff4d5d6a48d1aa089f12427b8ed9~mv2.jpg"
+    },
+    {
+      "note": "Ordering is family-style and shared by default; guests 'ordered everything family style' and portions are 'generous and shareable'. Item counts per cover will look high and covers-per-item low.",
+      "source": "https://www.yelp.com/biz/meyhouse-palo-alto-2 ; https://www.opentable.com/r/meyhouse-palo-alto-palo-alto"
+    },
+    {
+      "note": "The chef's tasting menu 'Little Little in the Middle' ($105pp) requires the WHOLE table to participate, 2-person minimum - a table-level modifier, not a per-seat choice. The lunch prix fixe carries the same all-or-nothing rule.",
+      "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg ; https://www.yelp.com/biz/meyhouse-palo-alto-2"
+    },
+    {
+      "note": "Large-format items are priced per table with a per-head extension: Karışık Kebap / Mix Kebap Plater is $260 for 4 people, then $65 per additional guest. A POS must model a base price plus headcount.",
+      "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+    },
+    {
+      "note": "Lunch and dinner are DIFFERENT menus with different prices for the same dish name: Lokum is $39 at lunch (6oz) and $65 at dinner (10oz); Pirzola $44 (2 pieces) vs $64 (3 pieces); Alinazik is $49 at both. Flatbreads and pide (Lahmacun $13) are lunch-only.",
+      "source": "https://static.wixstatic.com/media/d400d4_7eaa2aa0891948478a9dfdb1f82c8f21~mv2.jpg ; https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+    },
+    {
+      "note": "Late seating is structural on jazz nights: a second seating arrives at 8:00 PM for an ~8:30 PM show, so a 30-cover block lands late and dwells ~75+ minutes past the show start.",
+      "source": "https://www.meyhousejazz.com/"
+    },
+    {
+      "note": "Guests dine before OR after the show, and on busy jazz nights indoor tables are unavailable to non-ticket holders - one party 'had to reserve outside because of jazz show inside.' The jazz room removes inventory from the main room.",
+      "source": "https://www.hautelivingsf.com/2025/10/28/meyhouse-sunnyvale-palo-alto-a-modern-tribute-to-turkey/ ; https://www.opentable.com/r/meyhouse-palo-alto-palo-alto"
+    },
+    {
+      "note": "BYO is real and common: OpenTable lists 'BYO Liquor', 'BYO Wine' and 'Corkage Fee' as features, and buying a bottle off the list waives one corkage. Expect corkage lines on checks alongside wine sales.",
+      "source": "https://www.opentable.com/r/meyhouse-palo-alto-palo-alto ; https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+    },
+    {
+      "note": "The wine list is built around an 'ancient world' thesis - Türkiye, Greece, Georgia, Armenia, Hungary, Lebanon, Israel, Morocco - curated by GM/Beverage Director Refet Tugay, alongside conventional Old/New World sections. Turkish bottles are a deliberate, well-stocked category, not a token.",
+      "source": "https://www.hautelivingsf.com/2025/10/28/meyhouse-sunnyvale-palo-alto-a-modern-tribute-to-turkey/ ; https://static.wixstatic.com/media/d400d4_90ce333cf76f42739c56742db9a0504a~mv2.jpg"
+    },
+    {
+      "note": "Bar seating is 21-and-over only, so bar covers cannot include minors - relevant to any seating allocation logic.",
+      "source": "https://www.opentable.com/r/meyhouse-palo-alto-palo-alto"
+    },
+    {
+      "note": "Some items are flagged 'limited availability' on the menu itself (Lakerda, Çiroz füme, Sögüş Dil, Blantons, Fortaleza, all ice creams) and Whole Fish of the Day is market price. 86-ing and MP entry are normal operating states here.",
+      "source": "https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg ; https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+    },
+    {
+      "note": "Künefe is fired to order: 'Please allow 10-15 minutes for this dessert' - a kitchen-timing modifier that should be carried on the ticket.",
+      "source": "https://static.wixstatic.com/media/d400d4_d8d9e6df1cd740d08c649c993c96fd93~mv2.jpg"
+    },
+    {
+      "note": "Service is noisy and group-heavy at peak; OpenTable rates noise 'Moderate' but multiple reviewers call it loud, and the 20% auto-gratuity triggers at parties of 6+, so large parties are common.",
+      "source": "https://www.opentable.com/r/meyhouse-palo-alto-palo-alto ; https://static.wixstatic.com/media/d400d4_49a99167d8e54a8c84aaaefd45cb9f6a~mv2.jpg"
+    }
+  ],
+  "gaps": [
+    "Table count: not published anywhere found.",
+    "Bar seat count: not published; only that bar seating exists and is 21+.",
+    "Beer list and beer prices: not published, though beer is demonstrably served.",
+    "Popular times / hourly traffic histogram: not available (Google signed-out limited view).",
+    "Dining-room turn time: not published.",
+    "Nine Library Wines (8 France + 1 Spain) have no attributable price: the published image's price column is misaligned by one row.",
+    "Lunch prix fixe price: the venue's own prix-fixe page renders no text; third parties cite $44.95 (Yelp) and $40 (OpenTable FAQ) - conflicting, so not recorded as a price.",
+    "Hennesey XO: printed on the menu as '$' with no number.",
+    "Weekend brunch: OpenTable lists 'Weekend Brunch' as a feature and a reviewer mentions a Mother's Day brunch, but no brunch menu or hours are published.",
+    "Square footage: not published."
+  ],
+  "read_at": "2026-09-03"
+}

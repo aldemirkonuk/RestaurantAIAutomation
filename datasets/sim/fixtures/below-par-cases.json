@@ -1,0 +1,100 @@
+{
+  "_contract": {
+    "why": "The POS lens found THREE definitions of 'below par' on one page. The /inventory chip counted 9 with '2 critical'; GET /inventory/:rid/low-stock counted 7; GET /inventory/:rid/summary reported criticalCount 0 — while the alert service, at the same instant, was calling a wine at 2/5 'critical'. Three answers to one question, on one screen, about the same rows.",
+    "rule": "below par means stock_live < threshold_min — STRICTLY below, matching v_low_stock_items, which is the predicate that already decides whether an alert fires. A wine sitting exactly at par is 'at par': the system will not act on it, so no counter may claim it needs acting on. Over-reporting is the same fault as under-reporting, pointed the other way.",
+    "bands": "ratio = stock / par. critical: ratio <= 0.5. low: 0.5 < ratio < 1. at_par: ratio == 1. healthy: ratio > 1. unknown: stock is null — MUST NOT read as out of stock.",
+    "below_par_bands": ["critical", "low"],
+    "read_by": [
+      "apps/api-gateway/src/common/stock-status.ts (gateway: /summary, /low-stock counters, low-stock-alerts severity)",
+      "apps/web/src/lib/inventoryStatus.ts (SPA: KPI chip, row badges, filters)"
+    ],
+    "drift": "Both suites run THIS file. Add a case here, never to one suite alone — the two implementations are in different languages and nothing else stops them diverging again.",
+    "the_open_question": "Whether a wine exactly AT par should count as below par is a judgement about reorder policy, not about code, and it is not written in .planning/decisions/. It is expressed here as one line (at_par is not in below_par_bands) precisely so reversing it is one edit in one file rather than a hunt through three."
+  },
+  "cases": [
+    {
+      "name": "well stocked",
+      "stock": 12,
+      "par": 6,
+      "band": "healthy",
+      "below_par": false
+    },
+    {
+      "name": "one above par",
+      "stock": 7,
+      "par": 6,
+      "band": "healthy",
+      "below_par": false
+    },
+    {
+      "name": "exactly at par — the 9-vs-7 disagreement lived here",
+      "stock": 6,
+      "par": 6,
+      "band": "at_par",
+      "below_par": false
+    },
+    {
+      "name": "one below par",
+      "stock": 5,
+      "par": 6,
+      "band": "low",
+      "below_par": true
+    },
+    {
+      "name": "Tsantali as the lens measured it — the alert service called this critical while /summary counted 0",
+      "stock": 2,
+      "par": 5,
+      "band": "critical",
+      "below_par": true
+    },
+    {
+      "name": "exactly half of par is critical, not low",
+      "stock": 3,
+      "par": 6,
+      "band": "critical",
+      "below_par": true
+    },
+    {
+      "name": "just above half of par is low",
+      "stock": 4,
+      "par": 6,
+      "band": "low",
+      "below_par": true
+    },
+    {
+      "name": "out of stock",
+      "stock": 0,
+      "par": 6,
+      "band": "critical",
+      "below_par": true
+    },
+    {
+      "name": "stock unknown — a failed read must not read as out of stock",
+      "stock": null,
+      "par": 6,
+      "band": "unknown",
+      "below_par": false
+    },
+    {
+      "name": "par of zero — nothing to be below; no par is not a par of nothing",
+      "stock": 4,
+      "par": 0,
+      "band": "unknown",
+      "below_par": false
+    },
+    {
+      "name": "par unknown",
+      "stock": 4,
+      "par": null,
+      "band": "unknown",
+      "below_par": false
+    },
+    {
+      "name": "zero stock against no par is still unknown, not critical",
+      "stock": 0,
+      "par": 0,
+      "band": "unknown",
+      "below_par": false
+    }
+  ]
+}

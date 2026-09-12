@@ -36,9 +36,28 @@ export class MicrosoftStrategy extends PassportStrategy(
       return null;
     }
 
+    // `oid` is OPTIONAL in `IProfile` and Azure omits it for some account
+    // shapes. Two lines above, a missing email is guarded and the login is
+    // refused; a missing `oid` was not, and it does not fail loudly — it flows
+    // into `findOrCreateOAuthUser`, whose `providerId: string` says it cannot
+    // be undefined, and lands in `users.oauth_id`, which is nullable `text`
+    // (baseline:5857). The result is a Microsoft account persisted with NO
+    // provider id: no exception, no log, and a row that cannot be matched by
+    // provider afterwards.
+    //
+    // Refusing is right rather than generating a placeholder. `oid` is the
+    // stable per-tenant subject identifier — inventing one would create an
+    // account keyed to a value Microsoft will never send again, which is worse
+    // than not creating it. The user retries or signs in another way; nothing
+    // half-real is written.
+    const providerId = profile.oid;
+    if (!providerId) {
+      return null;
+    }
+
     const user = await this.authService.findOrCreateOAuthUser({
       provider: "microsoft",
-      providerId: profile.oid,
+      providerId,
       email,
       name: profile.displayName || email,
     });

@@ -25,7 +25,7 @@ keep it at zero while the catalogue grows. Three concrete deliverables, in order
 3. **Producer normalization brought under merge governance**, since it is a merge that
    currently has none of the merge safety machinery.
 
-Deferred on purpose: **dish identity**. `.planning/DISH_IDENTITY_DESIGN.md` exists and the
+Deferred on purpose: **dish identity**. `.planning/07-reference/DISH_IDENTITY_DESIGN.md` exists and the
 design was written *before* the deferral, which is the correct order. It stays deferred
 until the beverage side has a working ground-truth loop — building two identity systems
 against zero labelled sets doubles the unfalsifiable surface.
@@ -69,7 +69,7 @@ false splits must never be summed.
 - [ ] Instrument the collapse ratio for `producer_normalization.py`
 - [ ] Add an outcome-side twin for `scripts/check_no_guest_name_matching.sh` (premortem M5)
 - [ ] Write the un-merge downstream attribution report format before the next un-merge
-- [ ] Keep `.planning/DISH_IDENTITY_DESIGN.md` warm; do not implement yet
+- [ ] Keep `.planning/07-reference/DISH_IDENTITY_DESIGN.md` warm; do not implement yet
 
 ## Questions for the founder
 

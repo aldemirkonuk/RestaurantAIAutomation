@@ -101,6 +101,13 @@ class BridgeConfig:
     #: algorithm.
     pos_hub_secret: str = ""
     timeout: float = 10.0
+    #: Bearer for the JWT-guarded routes on the analytics base. The webhook is
+    #: `@Public()` and authenticates by HMAC, but `POST /pos-hub/mappings/:id`
+    #: inherits `PosHubController`'s class-level `@UseGuards(JwtAuthGuard)` and
+    #: is deliberately NOT `@Public()` — so seeding mappings without this 401s
+    #: every row, and the run then measures the keyword heuristic instead of the
+    #: pipeline (ADR 0093). Empty by default: the webhook path never sends it.
+    bearer: str = ""
     #: "both" | "analytics" | "stock"
     ingress: str = "both"
     apply: bool = False
@@ -324,7 +331,12 @@ class Bridge:
             return
         self._post(result.url, body, headers, result)
 
-    def seed_mappings(self, rows: list[dict[str, Any]]) -> IngressResult:
+    def seed_mappings(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        inventory_by_signature: dict[str, str] | None = None,
+    ) -> IngressResult:
         """Upsert pos_item_mappings before any check is posted.
 
         Must happen first. `PosHubService.ingest` resolves wine per check at
@@ -333,6 +345,17 @@ class Bridge:
         `is_wine: false` and only a re-post would fix it. Ordering here is the
         difference between a run that measures the pipeline and a run that
         measures the keyword list.
+
+        `inventory_by_signature` maps the menu snapshot's `signature_hash` to the
+        tenant's `restaurant_inventory.id`. Passing it is what makes a mapping
+        able to move stock at all: `resolveWine` returns an `inventoryId` only
+        from the mapping row, and `applyStockEffects` queues any line without one
+        as `unmapped` before it ever looks at a volume. A mappings seed with no
+        inventory ids therefore produces a full queue and zero depletion — which
+        reads, from the outside, exactly like a broken depletion path.
+
+        The bearer is sent on this call only. The webhook stays
+        unauthenticated-but-signed, as `@Public()` requires.
         """
         from scripts.simulate.mappings import to_upsert_body
 
@@ -341,14 +364,28 @@ class Bridge:
             url=self.config.analytics_base
             + MAPPINGS_PATH.format(restaurant_id=self.config.restaurant_id),
         )
+        headers: dict[str, str] = {}
+        if self.config.bearer:
+            headers["Authorization"] = f"Bearer {self.config.bearer}"
+        elif self.config.apply:
+            # Not fatal here — say it once and let the run report the 401s
+            # rather than pretend the rows landed.
+            result.errors.append(
+                "No bearer configured for POST /pos-hub/mappings/:id, which is "
+                "behind JwtAuthGuard — every mapping upsert will 401 and every "
+                "wine line will then queue as unmapped."
+            )
         for row in rows:
-            body = to_upsert_body(row)
+            inventory_id = None
+            if inventory_by_signature:
+                inventory_id = inventory_by_signature.get(row.get("signature_hash") or "")
+            body = to_upsert_body(row, inventory_id=inventory_id)
             if result.sample_payload is None:
                 result.sample_payload = body
             if not self.config.apply:
                 result.skipped += 1
                 continue
-            self._post(result.url, _encode(body), {}, result)
+            self._post(result.url, _encode(body), headers, result)
         self.mappings = result
         return result
 

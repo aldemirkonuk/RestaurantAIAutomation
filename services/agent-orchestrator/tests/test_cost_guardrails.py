@@ -47,14 +47,20 @@ def test_preflight_cap_check_sums_all_rows():
     assert result == pytest.approx(2.25)
 
 
-def test_preflight_cap_check_fails_open_on_db_error():
-    """COST-03: returns 0.0 (fail open) when Supabase raises an exception."""
-    from api.onboarding_routes import _preflight_cap_check
+def test_preflight_cap_check_fails_closed_on_db_error():
+    """COST-03: raises when Supabase errors — an unreadable ledger is not $0.00.
+
+    This test previously asserted the opposite (`result == 0.0`, "fail open"),
+    which meant one Supabase hiccup removed the only spend limit on an endpoint
+    that bills the Anthropic account. The endpoint turns this exception into a
+    503 rather than calling Claude with no enforceable cap.
+    """
+    from api.onboarding_routes import CapLedgerUnavailable, _preflight_cap_check
 
     supabase = _make_spend_supabase(raise_error=True)
-    result = _preflight_cap_check(supabase, "rest-abc")
 
-    assert result == 0.0
+    with pytest.raises(CapLedgerUnavailable):
+        _preflight_cap_check(supabase, "rest-abc")
 
 
 def test_preflight_cap_check_returns_zero_when_no_rows():

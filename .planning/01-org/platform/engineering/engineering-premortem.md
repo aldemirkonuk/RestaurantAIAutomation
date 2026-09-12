@@ -105,7 +105,7 @@ the only thing. A guard with no outcome-side twin is logged as a gap in
 
 ### M5 — Burn-down replaced judgement on the surfaces
 
-`.planning/UX_PATHS_CATALOG.md` is a 154KB, 760-path corpus. It is the most *legible*
+`.planning/07-reference/UX_PATHS_CATALOG.md` is a 154KB, 760-path corpus. It is the most *legible*
 work in the department: paths close, a number goes up, progress looks real. Meanwhile the
 opening baseline — **24 routes with no inbound link and 13 route components untraceable**
 ([[README]] §0) — is untouched a year later, because orphan routes are not on the list.

@@ -90,6 +90,102 @@ def coerce_priority(value: int) -> "EventPriority":
         return min(members, key=lambda p: (abs(p.value - clamped), p.value))
 
 
+# Keys that belong to the transport envelope rather than to the business event.
+# Everything NOT in this set is domain data, and is what `payload` must contain
+# for a producer that did not nest one itself. Mirrors BaseEvent's own fields
+# plus the two routing hints `consume` forwards from the AMQP frame.
+_ENVELOPE_KEYS = frozenset(
+    {
+        "event_id",
+        "event_type",
+        "timestamp",
+        "correlation_id",
+        "causation_id",
+        "source_agent",
+        "version",
+        "routing_key",
+        "exchange",
+        "payload",
+    }
+)
+
+
+def normalize_event_envelope(
+    body: Dict[str, Any], routing_key: str, exchange: str
+) -> Dict[str, Any]:
+    """Give every consumed message the one envelope shape consumers read.
+
+    TWO PRODUCERS, TWO SHAPES, AND ONE OF THEM WAS BEING THROWN AWAY
+
+    Python publishes through `MessageBus.publish`, which builds a `DynamicEvent`
+    and therefore always nests the business fields under `payload`
+    (message_bus.py:796). NestJS publishes through
+    `OrchestratorService.publishEvent`, which does
+    `JSON.stringify(event)` on the caller's object and nests nothing
+    (apps/api-gateway/src/common/orchestrator/orchestrator.service.ts:85) — all
+    17 of its call sites hand it a flat business object.
+
+    Consumers read `message.get("payload", {})`: buffer_manager.py:190 and :231,
+    provider_conversation_agent.py:366, procurement_agent.py:415, and roughly
+    forty more sites across fifteen agents. Against a flat NestJS body that
+    lookup returns `{}`, every required field is missing, and the handler bails
+    on its own guard clause. The message is consumed, acked, and dropped —
+    nothing errors and nothing is logged above debug, so the route looks merely
+    idle rather than broken.
+
+    WHY THE CONSUMER AND NOT THE PUBLISHER
+
+    Three reasons, all from the code:
+
+      1. The repo already chose consumer-side tolerance. `provider_communication_agent.py:136-141`
+         carries a comment naming this exact two-envelope split and unwraps both
+         shapes locally. That fix is correct and it works — it just lives in one
+         agent instead of at the seam every agent shares, which is why the other
+         fourteen still drop these events. This hoists that decision to the choke
+         point rather than reversing it.
+      2. Wrapping at the publisher would fix messages published from now on and
+         nothing else. Flat bodies already sitting in durable queues and in the
+         dead-letter exchange stay unreadable. Normalizing on the way in drains
+         that backlog too.
+      3. It is not publisher-specific. Any producer that speaks flat — a
+         one-off script, a future service, the HTTP publish path — is covered
+         without a second edit.
+
+    WHY THIS CANNOT BREAK PYTHON -> PYTHON TRAFFIC
+
+    The write is `setdefault`, and only for `payload`. A body that already has a
+    `payload` key is returned byte-identical, and every Python-published body
+    from `MessageBus.publish` has one. For a typed `BaseEvent` subclass that has
+    no `payload` (`StockEvaluatedEvent` and friends carry their domain fields at
+    the top level) this ADDS a `payload` mirror and removes nothing, so a
+    consumer still reading those fields flat reads exactly what it read before.
+    Nothing is deleted, renamed, or moved — the function is purely additive and
+    idempotent.
+    """
+    if not isinstance(body, dict):
+        return body
+
+    # Forward the AMQP routing key and exchange into the payload.
+    #
+    # Every BaseAgent subclass dispatches on `message.get("routing_key")` —
+    # InventoryEngine, BufferManager, ProcurementAgent and the rest all branch
+    # on it in `process_message`. Without this, that key is ALWAYS None, every
+    # branch falls through to "Unexpected routing key", and the whole agent mesh
+    # silently routes nothing: messages are published, consumed, acked, and
+    # dropped.
+    #
+    # setdefault, not assignment: a producer that already put an explicit
+    # routing_key in the body keeps it, so this can only add information, never
+    # override it.
+    body.setdefault("routing_key", routing_key)
+    body.setdefault("exchange", exchange)
+
+    if "payload" not in body:
+        body["payload"] = {k: v for k, v in body.items() if k not in _ENVELOPE_KEYS}
+
+    return body
+
+
 class BaseEvent(BaseModel):
     """Base class for all domain events with full traceability"""
 
@@ -486,6 +582,14 @@ class MessageBus:
             ("conversation.events", ExchangeType.TOPIC, True),
             ("calendar.events", ExchangeType.TOPIC, True),
             ("voice.events", ExchangeType.TOPIC, True),
+            # NotificationAgent has bound three keys on this exchange since
+            # Phase 21 (notification_agent.py:296-298) and owns the templates for
+            # all three — but the exchange was never declared. declare_queue()
+            # skips the bind when the exchange is unknown (message_bus.py:574) and
+            # publish() returns False, so the whole recurring-order notification
+            # path was inert on both ends. Declared here as part of ADR 0039
+            # Track A3, which is the first producer on it.
+            ("recurring.events", ExchangeType.TOPIC, True),
             # System control (high priority)
             ("system.control", ExchangeType.TOPIC, True),
             # Broadcast (fanout for all subscribers)
@@ -735,22 +839,13 @@ class MessageBus:
                     # Parse and process
                     body = json.loads(message.body.decode())
 
-                    # Forward the AMQP routing key and exchange into the payload.
-                    #
-                    # Every BaseAgent subclass dispatches on
-                    # `message.get("routing_key")` — InventoryEngine, BufferManager,
-                    # ProcurementAgent and the rest all branch on it in
-                    # `process_message`. Without this, that key is ALWAYS None,
-                    # every branch falls through to "Unexpected routing key", and
-                    # the whole agent mesh silently routes nothing: messages are
-                    # published, consumed, acked, and dropped.
-                    #
-                    # setdefault, not assignment: a producer that already put an
-                    # explicit routing_key in the body keeps it, so this can only
-                    # add information, never override it.
-                    if isinstance(body, dict):
-                        body.setdefault("routing_key", message.routing_key)
-                        body.setdefault("exchange", exchange_name)
+                    # Normalize the transport envelope so both producers'
+                    # shapes reach the handlers identically. See
+                    # `normalize_event_envelope` for why this lives on the
+                    # consumer side and why it cannot break Python -> Python.
+                    body = normalize_event_envelope(
+                        body, message.routing_key, exchange_name
+                    )
 
                     await callback(body)
 

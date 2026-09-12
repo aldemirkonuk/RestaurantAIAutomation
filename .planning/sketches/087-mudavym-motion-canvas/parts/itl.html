@@ -1,0 +1,1104 @@
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   itl — Intelligence & reporting. How Mudavym says what it concluded, and how
+   honestly it says it. Grounded in /reports, /recommendations,
+   /recommendations/catalog, /notifications and /logs.
+
+   Every selector is prefixed .mx-itl. No hard-coded colours, no font stacks.
+   House rules carried in: an unknown is an em dash (never a 0); stagger is
+   first-paint only; overshoot is permitted nowhere except the seal.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mx-itl{
+  --r:1;                                  /* host speed multiplier, set in play() */
+  --e1:cubic-bezier(.16,1,.3,1);          /* settle — the house curve */
+  --e2:cubic-bezier(.32,.72,0,1);         /* turn — opens a record */
+  --e3:cubic-bezier(.45,0,.55,1);         /* shimmer sweep */
+  font-family:var(--m-sans);font-size:11px;line-height:1.4;color:var(--m-ink);
+  width:100%;position:relative;-webkit-font-smoothing:antialiased;
+}
+.mx-itl *{box-sizing:border-box}
+.mx-itl .ih{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:7px}
+.mx-itl .ik{font:500 8.5px/1.2 var(--m-mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--m-mut);white-space:nowrap}
+.mx-itl .ik.on{color:var(--m-accent)}
+.mx-itl .ik.bad{color:var(--m-no)}
+.mx-itl .imono{font-family:var(--m-mono);font-variant-numeric:tabular-nums lining-nums;
+  letter-spacing:-.02em}
+.mx-itl .isay{font-family:var(--m-serif);font-size:12px;line-height:1.35}
+.mx-itl .icap{font:400 9px/1.35 var(--m-sans);color:var(--m-mut)}
+.mx-itl .icap b{color:var(--m-ink);font-weight:600}
+
+/* shimmer — the only motion the engine is allowed while it is working */
+@keyframes mx-itl-shim{0%{background-position:130% 0}100%{background-position:-30% 0}}
+.mx-itl .shim{color:transparent;
+  background-image:linear-gradient(100deg,var(--m-mut) 0%,var(--m-mut) 34%,
+    var(--m-ink) 50%,var(--m-mut) 66%,var(--m-mut) 100%);
+  background-size:240% 100%;-webkit-background-clip:text;background-clip:text;
+  animation:mx-itl-shim calc(1900ms * var(--r)) var(--e3) infinite}
+.mx-itl .skb{height:7px;border-radius:3.5px;background:var(--m-line);
+  background-image:linear-gradient(100deg,transparent 34%,
+    color-mix(in oklab,var(--m-ink) 15%,transparent) 50%,transparent 66%);
+  background-size:240% 100%;
+  animation:mx-itl-shim calc(1900ms * var(--r)) var(--e3) infinite}
+
+/* ── 01 · the conclusion arrives ────────────────────────────────────────── */
+.mx-itl-01 .i1-stage{position:relative;min-height:96px}
+.mx-itl-01 .i1-sk{position:absolute;inset:0;display:flex;flex-direction:column;gap:9px;
+  padding-top:2px;opacity:1;transition:opacity calc(240ms * var(--r)) var(--e1)}
+.mx-itl-01.on .i1-sk{opacity:0;pointer-events:none}
+.mx-itl-01 .i1-sk .isay{margin-top:3px}
+.mx-itl-01 .i1-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--m-line)}
+.mx-itl-01 .i1-r{display:flex;align-items:flex-start;gap:6px;padding:6px 0 5px;
+  border-bottom:1px solid var(--m-line);opacity:0;transform:translateY(6px);
+  transition:opacity calc(420ms * var(--r)) var(--e1),
+             transform calc(420ms * var(--r)) var(--e1)}
+.mx-itl-01.on .i1-r{opacity:1;transform:none}
+.mx-itl-01 .i1-cat{flex:none;font:600 8px/1.5 var(--m-mono);letter-spacing:.06em;
+  text-transform:uppercase;padding:1px 5px;border-radius:999px;
+  background:color-mix(in oklab,var(--m-accent) 16%,transparent);
+  color:var(--m-accent);margin-top:1px}
+.mx-itl-01 .i1-r[data-c="inventory"] .i1-cat{background:color-mix(in oklab,var(--m-warn) 16%,transparent);color:var(--m-warn)}
+.mx-itl-01 .i1-txt{flex:1;min-width:0;font-size:10.5px;line-height:1.32;color:var(--m-ink)}
+.mx-itl-01 .i1-pin{color:var(--m-warn);font-size:8px;margin-right:3px;font-style:normal}
+.mx-itl-01 .i1-sc{flex:none;font-size:9.5px;color:var(--m-mut);margin-top:1px}
+
+/* ── 02 · explain — the effect size under the sentence ──────────────────── */
+.mx-itl-02 .i2-card{background:var(--m-surface);border:1px solid var(--m-line);
+  border-radius:7px;padding:9px 10px}
+.mx-itl-02 .i2-top{display:flex;gap:7px;align-items:flex-start}
+.mx-itl-02 .i2-cat{flex:none;font:600 8px/1.5 var(--m-mono);letter-spacing:.06em;
+  text-transform:uppercase;padding:1px 5px;border-radius:999px;margin-top:1px;
+  background:color-mix(in oklab,var(--m-accent) 16%,transparent);color:var(--m-accent)}
+.mx-itl-02 .i2-say{font-size:11px;line-height:1.34}
+.mx-itl-02 .i2-acts{display:flex;gap:4px;align-items:center;margin:7px 0 0 0;
+  opacity:0;transition:opacity calc(200ms * var(--r)) var(--e1)}
+.mx-itl-02.on .i2-acts{opacity:1}
+.mx-itl-02 .i2-b{font:600 9px/1 var(--m-sans);padding:4px 6px;border-radius:4px;
+  color:var(--m-mut);cursor:pointer;user-select:none;
+  transition:background-color calc(160ms * var(--r)) var(--e1),
+             color calc(160ms * var(--r)) var(--e1)}
+.mx-itl-02 .i2-act{color:var(--m-ok);background:color-mix(in oklab,var(--m-ok) 13%,transparent)}
+.mx-itl-02 .i2-exp:hover,.mx-itl-02 .i2-exp.hit{background:var(--m-sunk);color:var(--m-ink)}
+.mx-itl-02 .i2-work{display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows calc(420ms * var(--r)) var(--e2)}
+.mx-itl-02.open .i2-work{grid-template-rows:1fr}
+.mx-itl-02 .i2-work>div{overflow:hidden;min-height:0}
+.mx-itl-02 .i2-workin{margin-top:7px;padding:7px 8px;border-radius:5px;background:var(--m-sunk);
+  border:1px solid var(--m-line)}
+.mx-itl-02 .i2-workin p{margin:0 0 2px;font-size:9.5px;color:var(--m-mut);
+  opacity:0;transform:translateY(4px);
+  transition:opacity calc(220ms * var(--r)) var(--e1),transform calc(220ms * var(--r)) var(--e1)}
+.mx-itl-02.open .i2-workin p{opacity:1;transform:none}
+.mx-itl-02 .i2-workin p b{color:var(--m-ink);font-family:var(--m-mono);
+  font-variant-numeric:tabular-nums;font-weight:500}
+.mx-itl-02 .i2-key{margin-top:4px !important;font-size:9px;color:var(--m-line2)}
+
+/* ── 03 · the reason is captured before the card leaves ─────────────────── */
+.mx-itl-03{display:flex;flex-direction:column;gap:8px}
+.mx-itl-03 .i3-hold{display:grid;grid-template-rows:1fr;
+  transition:grid-template-rows calc(320ms * var(--r)) var(--e1),
+             opacity calc(240ms * var(--r)) var(--e1)}
+.mx-itl-03.gone .i3-hold{grid-template-rows:0fr;opacity:0}
+.mx-itl-03 .i3-hold>div{overflow:hidden;min-height:0}
+.mx-itl-03 .i3-card{background:var(--m-surface);border:1px solid var(--m-line);
+  border-radius:7px;padding:9px 10px}
+.mx-itl-03 .i3-obs{font-size:10px;color:var(--m-mut);margin-bottom:3px}
+.mx-itl-03 .i3-obs b{color:var(--m-ink);font-family:var(--m-mono);
+  font-variant-numeric:tabular-nums;font-weight:500}
+.mx-itl-03 .i3-rec{font-size:11.5px;font-weight:600;line-height:1.3}
+.mx-itl-03 .i3-foot{display:flex;justify-content:flex-end;margin-top:7px}
+.mx-itl-03 .i3-dis{font:600 9px/1 var(--m-sans);padding:4px 7px;border-radius:4px;
+  border:1px solid var(--m-line2);color:var(--m-mut);cursor:pointer;user-select:none;
+  transition:border-color calc(160ms * var(--r)) var(--e1),color calc(160ms * var(--r)) var(--e1)}
+.mx-itl-03 .i3-dis:hover,.mx-itl-03.menu .i3-dis{border-color:var(--m-no);color:var(--m-no)}
+.mx-itl-03 .i3-rs{display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows calc(300ms * var(--r)) var(--e1)}
+.mx-itl-03.menu .i3-rs{grid-template-rows:1fr}
+.mx-itl-03.told .i3-rs{grid-template-rows:0fr}
+.mx-itl-03 .i3-rs>div{overflow:hidden;min-height:0}
+.mx-itl-03 .i3-rsin{display:flex;flex-wrap:wrap;gap:4px;padding-top:7px}
+.mx-itl-03 .i3-rn{font:500 9px/1 var(--m-sans);padding:4px 6px;border-radius:4px;
+  border:1px solid var(--m-line);background:var(--m-sunk);color:var(--m-mut);
+  cursor:pointer;user-select:none;opacity:0;transform:translateY(6px);
+  transition:opacity calc(220ms * var(--r)) var(--e1),
+             transform calc(220ms * var(--r)) var(--e1),
+             background-color calc(160ms * var(--r)) var(--e1),
+             border-color calc(160ms * var(--r)) var(--e1),
+             color calc(160ms * var(--r)) var(--e1)}
+.mx-itl-03.menu .i3-rn{opacity:1;transform:none}
+.mx-itl-03 .i3-rn.pick{background:var(--m-accent);border-color:var(--m-accent);
+  color:var(--m-accent-ink);font-weight:600}
+.mx-itl-03 .i3-rn.drop{opacity:0;transform:scale(.94)}
+.mx-itl-03 .i3-stamp{margin-top:6px;font:500 9px/1.3 var(--m-mono);color:var(--m-mut);
+  letter-spacing:.02em;opacity:0;transform:translateY(-4px);
+  transition:opacity calc(240ms * var(--r)) var(--e1),transform calc(240ms * var(--r)) var(--e1)}
+.mx-itl-03.told .i3-stamp{opacity:1;transform:none}
+.mx-itl-03 .i3-stamp b{color:var(--m-ink);font-weight:500}
+.mx-itl-03 .i3-count{display:flex;align-items:baseline;gap:6px;
+  border-top:1px solid var(--m-line);padding-top:6px}
+.mx-itl-03 .i3-count span{font:500 8.5px/1.2 var(--m-mono);letter-spacing:.13em;
+  text-transform:uppercase;color:var(--m-mut)}
+.mx-itl-03 .i3-n{font-size:14px;font-weight:500;color:var(--m-ink)}
+
+/* ── 04 · bulk: four leave together, one line in the ledger ─────────────── */
+.mx-itl-04 .i4-bar{display:flex;align-items:center;justify-content:space-between;gap:6px;
+  padding:4px 7px;border-radius:5px;margin-bottom:6px;
+  background:color-mix(in oklab,var(--m-accent) 13%,transparent);
+  border:1px solid color-mix(in oklab,var(--m-accent) 34%,transparent);
+  opacity:0;transform:translateY(-4px);
+  transition:opacity calc(220ms * var(--r)) var(--e1),transform calc(220ms * var(--r)) var(--e1)}
+.mx-itl-04.armed .i4-bar{opacity:1;transform:none}
+.mx-itl-04 .i4-bar b{font:600 9.5px/1 var(--m-sans);color:var(--m-accent)}
+.mx-itl-04 .i4-bar i{font:600 9px/1 var(--m-sans);font-style:normal;padding:3px 6px;
+  border-radius:4px;background:var(--m-accent);color:var(--m-accent-ink)}
+.mx-itl-04 .i4-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--m-line)}
+.mx-itl-04 .i4-r{display:flex;align-items:center;gap:6px;height:19px;overflow:hidden;
+  border-bottom:1px solid var(--m-line);
+  transition:height calc(260ms * var(--r)) var(--e1),opacity calc(200ms * var(--r)) var(--e1),
+             border-bottom-width calc(260ms * var(--r)) var(--e1)}
+/* the rule must go too, or four "gone" rows leave four 1px scars behind */
+.mx-itl-04.go .i4-r.sel{height:0;opacity:0;border-bottom-width:0}
+.mx-itl-04 .i4-cb{flex:none;width:9px;height:9px;border-radius:2px;border:1px solid var(--m-line2);
+  position:relative;
+  transition:background-color calc(160ms * var(--r)) var(--e1),
+             border-color calc(160ms * var(--r)) var(--e1)}
+.mx-itl-04 .i4-cb::after{content:"";position:absolute;left:2px;top:1px;width:3px;height:5px;
+  border:solid var(--m-accent-ink);border-width:0 1.4px 1.4px 0;transform:rotate(42deg) scale(0);
+  transform-origin:50% 50%;transition:transform calc(180ms * var(--r)) var(--e1)}
+.mx-itl-04 .i4-r.sel .i4-cb{background:var(--m-accent);border-color:var(--m-accent)}
+.mx-itl-04 .i4-r.sel .i4-cb::after{transform:rotate(42deg) scale(1)}
+.mx-itl-04 .i4-k{flex:1;min-width:0;font-family:var(--m-mono);font-size:9px;color:var(--m-ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-itl-04 .i4-u{flex:none;font:500 8px/1.5 var(--m-sans);padding:1px 5px;border-radius:999px;
+  color:var(--m-mut);background:var(--m-sunk)}
+.mx-itl-04 .i4-r[data-u="now"] .i4-u{color:var(--m-no);background:color-mix(in oklab,var(--m-no) 14%,transparent)}
+.mx-itl-04 .i4-led{display:flex;align-items:center;gap:6px;margin-top:7px;
+  font:500 9.5px/1.3 var(--m-sans);color:var(--m-mut);
+  opacity:0;transform:translateY(5px);
+  transition:opacity calc(260ms * var(--r)) var(--e1),transform calc(260ms * var(--r)) var(--e1)}
+.mx-itl-04.wrote .i4-led{opacity:1;transform:none}
+.mx-itl-04 .i4-dot{flex:none;width:6px;height:6px;border-radius:50%;
+  border:1.2px solid var(--m-mut);background:transparent;
+  transition:background-color calc(200ms * var(--r)) var(--e1),
+             border-color calc(200ms * var(--r)) var(--e1)}
+.mx-itl-04.ok .i4-dot{background:var(--m-ok);border-color:var(--m-ok)}
+.mx-itl-04 .i4-srv{margin-left:auto;font-family:var(--m-mono);font-size:8.5px;
+  color:var(--m-line2);letter-spacing:.04em}
+.mx-itl-04.ok .i4-srv{color:var(--m-ok)}
+
+/* ── 05 · a block is dragged, the canvas reflows, the layout saves ──────── */
+.mx-itl-05 .i5-wrap{position:relative;height:94px;touch-action:none}
+.mx-itl-05 .i5-b{position:absolute;left:0;top:0;width:87px;height:44px;border-radius:5px;
+  background:var(--m-surface);border:1px solid var(--m-line);padding:5px 6px;
+  cursor:grab;user-select:none;
+  transition:transform calc(200ms * var(--r)) ease,box-shadow 160ms var(--e1),
+             opacity 160ms var(--e1),scale 160ms var(--e1)}
+.mx-itl-05 .i5-b.lift{cursor:grabbing;z-index:5;scale:1.035;opacity:.9;
+  box-shadow:0 10px 26px color-mix(in oklab,var(--m-sunk) 78%,transparent);
+  transition:box-shadow 160ms var(--e1),opacity 160ms var(--e1),scale 160ms var(--e1)}
+.mx-itl-05 .i5-t{font:600 8.5px/1.2 var(--m-sans);color:var(--m-ink);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.mx-itl-05 .i5-v{font-family:var(--m-mono);font-variant-numeric:tabular-nums;font-size:12px;
+  color:var(--m-ink);margin-top:3px;letter-spacing:-.02em}
+.mx-itl-05 .i5-v i{font-style:normal;font-size:8px;color:var(--m-mut);margin-left:2px}
+.mx-itl-05 .i5-ph{position:absolute;left:0;top:0;width:87px;height:44px;border-radius:5px;
+  border:1.5px dashed var(--m-accent);
+  background:color-mix(in oklab,var(--m-accent) 12%,transparent);
+  opacity:0;pointer-events:none;
+  transition:transform calc(200ms * var(--r)) ease,opacity calc(160ms * var(--r)) var(--e1)}
+.mx-itl-05 .i5-ph.on{opacity:.6}
+.mx-itl-05 .i5-save{display:inline-flex;align-items:center;gap:4px;margin-top:6px;
+  font:500 9px/1 var(--m-mono);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--m-ok);opacity:0;transform:translateY(4px);
+  transition:opacity calc(320ms * var(--r)) var(--e1),transform calc(320ms * var(--r)) var(--e1)}
+.mx-itl-05.saved .i5-save{opacity:1;transform:none}
+
+/* ── 06 · blocked — the requirement that is missing says so ─────────────── */
+.mx-itl-06 .i6-key{font-family:var(--m-mono);font-size:9px;color:var(--m-mut);
+  word-break:break-all;margin-bottom:7px}
+.mx-itl-06 .i6-lbl{font:600 8.5px/1.2 var(--m-mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--m-mut);margin-bottom:5px}
+.mx-itl-06 .i6-chips{display:flex;flex-wrap:wrap;gap:4px}
+@keyframes mx-itl-pulse{0%{transform:scale(1)}42%{transform:scale(1.07)}100%{transform:scale(1)}}
+.mx-itl-06 .i6-c{display:inline-flex;align-items:center;gap:4px;font:500 9.5px/1 var(--m-sans);
+  padding:4px 7px;border-radius:999px;background:var(--m-sunk);color:var(--m-mut);
+  border:1px solid var(--m-line);
+  transition:background-color calc(160ms * var(--r)) var(--e1),
+             border-color calc(160ms * var(--r)) var(--e1),
+             color calc(160ms * var(--r)) var(--e1)}
+.mx-itl-06 .i6-c::before{content:"";width:5px;height:5px;border-radius:50%;
+  background:var(--m-line2);transform:scale(0);
+  transition:transform calc(200ms * var(--r)) var(--e1),
+             background-color calc(160ms * var(--r)) var(--e1)}
+.mx-itl-06 .i6-c.ok{color:var(--m-ok);border-color:color-mix(in oklab,var(--m-ok) 42%,transparent);
+  background:color-mix(in oklab,var(--m-ok) 12%,transparent)}
+.mx-itl-06 .i6-c.ok::before{background:var(--m-ok);transform:scale(1)}
+.mx-itl-06 .i6-c.no{color:var(--m-warn);border-color:color-mix(in oklab,var(--m-warn) 46%,transparent);
+  background:color-mix(in oklab,var(--m-warn) 13%,transparent)}
+.mx-itl-06 .i6-c.no::before{background:var(--m-warn);transform:scale(1)}
+.mx-itl-06 .i6-c.beat{animation:mx-itl-pulse calc(240ms * var(--r)) var(--e1) 1}
+.mx-itl-06 .i6-blk{display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows calc(420ms * var(--r)) var(--e2)}
+.mx-itl-06.blocked .i6-blk{grid-template-rows:1fr}
+.mx-itl-06 .i6-blk>div{overflow:hidden;min-height:0}
+.mx-itl-06 .i6-blkin{margin-top:7px;padding:7px 8px;border-radius:5px;font-size:9.5px;line-height:1.4;
+  border:1px solid color-mix(in oklab,var(--m-warn) 40%,transparent);
+  background:color-mix(in oklab,var(--m-warn) 11%,transparent);color:var(--m-ink)}
+.mx-itl-06 .i6-blkin b{color:var(--m-warn);font-family:var(--m-mono);font-weight:500;
+  display:inline-block;opacity:0;transform:translateY(-5px);
+  transition:opacity calc(240ms * var(--r)) var(--e1) calc(120ms * var(--r)),
+             transform calc(240ms * var(--r)) var(--e1) calc(120ms * var(--r))}
+.mx-itl-06.blocked .i6-blkin b{opacity:1;transform:none}
+
+/* ── 07 · the honest denominator ────────────────────────────────────────── */
+.mx-itl-07 .i7-big{display:flex;align-items:baseline;gap:5px;margin-bottom:9px}
+.mx-itl-07 .i7-n{font-family:var(--m-mono);font-variant-numeric:tabular-nums lining-nums;
+  font-size:29px;font-weight:500;letter-spacing:-.02em;line-height:1;color:var(--m-ink)}
+.mx-itl-07 .i7-u{font-size:11px;color:var(--m-mut);position:relative;height:1.25em;
+  overflow:hidden;display:inline-block}
+.mx-itl-07 .i7-u span{display:block;height:1.25em;line-height:1.25em;white-space:nowrap;
+  transition:transform calc(320ms * var(--r)) var(--e1)}
+.mx-itl-07.truth .i7-u span{transform:translateY(-100%)}
+.mx-itl-07 .i7-track{position:relative;height:9px;border-radius:5px;background:var(--m-sunk);
+  border:1px solid var(--m-line);overflow:hidden;width:65.4%;
+  transition:width calc(520ms * var(--r)) var(--e1)}
+.mx-itl-07.truth .i7-track{width:100%}
+.mx-itl-07 .i7-fill{position:absolute;left:0;top:0;bottom:0;background:var(--m-accent);
+  width:100%;transition:width calc(520ms * var(--r)) var(--e1)}
+.mx-itl-07.truth .i7-fill{width:25.1%}
+.mx-itl-07 .i7-legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:8px}
+.mx-itl-07 .i7-legend span{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;
+  color:var(--m-mut);opacity:0;transform:translateY(4px);
+  transition:opacity calc(260ms * var(--r)) var(--e1),transform calc(260ms * var(--r)) var(--e1)}
+.mx-itl-07.truth .i7-legend span{opacity:1;transform:none}
+.mx-itl-07.truth .i7-l2{transition-delay:calc(70ms * var(--r))}
+.mx-itl-07 .i7-legend i{width:7px;height:7px;border-radius:2px;background:var(--m-accent)}
+.mx-itl-07 .i7-l2 i{background:var(--m-line2)}
+.mx-itl-07 .i7-note{margin-top:7px;opacity:0;
+  transition:opacity calc(300ms * var(--r)) var(--e1)}
+.mx-itl-07.noted .i7-note{opacity:1}
+
+/* ── 08 · the digest updates under your eyes, and takes nothing ─────────── */
+.mx-itl-08 .i8-bar{height:2px;border-radius:1px;background:var(--m-line);overflow:hidden;
+  margin-bottom:7px}
+.mx-itl-08 .i8-bar i{display:block;height:100%;width:0;background:var(--m-accent)}
+.mx-itl-08.polling .i8-bar i{width:100%;transition:width calc(1600ms * var(--r)) linear}
+.mx-itl-08 .i8-list{list-style:none;margin:0;padding:0}
+.mx-itl-08 .i8-r{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:5px;
+  border:1px solid transparent}
+.mx-itl-08 .i8-r.sel{border-color:color-mix(in oklab,var(--m-accent) 40%,transparent);
+  background:color-mix(in oklab,var(--m-accent) 9%,transparent)}
+.mx-itl-08 .i8-dot{flex:none;width:5px;height:5px;border-radius:50%;background:var(--m-line2)}
+.mx-itl-08 .i8-r.unread .i8-dot{background:var(--m-accent)}
+.mx-itl-08 .i8-t{flex:1;min-width:0;font-size:10px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;position:relative}
+.mx-itl-08 .i8-ul{position:absolute;left:0;right:0;bottom:-2px;height:1px;background:var(--m-accent);
+  transform:scaleX(0);transform-origin:left;
+  transition:transform calc(260ms * var(--r)) var(--e1),opacity calc(400ms * var(--r)) var(--e1)}
+.mx-itl-08.rolled .i8-ul{transform:scaleX(1)}
+.mx-itl-08.faded .i8-ul{opacity:0}
+.mx-itl-08 .roll{display:inline-block;height:1.2em;overflow:hidden;vertical-align:bottom}
+.mx-itl-08 .roll .col{display:block;transition:transform calc(460ms * var(--r)) var(--e1)}
+.mx-itl-08 .roll .col b{display:block;height:1.2em;line-height:1.2em;font-weight:500;
+  font-family:var(--m-mono);font-variant-numeric:tabular-nums}
+.mx-itl-08.rolled .roll .col{transform:translateY(-50%)}
+.mx-itl-08 .i8-ts{flex:none;min-width:42px;text-align:right;font-size:9px;color:var(--m-mut)}
+.mx-itl-08 .i8-ts .col b{font-size:9px;color:var(--m-mut)}
+.mx-itl-08 .i8-keep{margin-top:6px;opacity:0;
+  transition:opacity calc(300ms * var(--r)) var(--e1)}
+.mx-itl-08.kept .i8-keep{opacity:1}
+
+/* ── 09 · what the fold swallowed ───────────────────────────────────────── */
+.mx-itl-09 .i9-deck{position:relative;height:78px;
+  transition:height calc(300ms * var(--r)) var(--e1)}
+.mx-itl-09.folded .i9-deck{height:36px}
+.mx-itl-09 .i9-c{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:6px;
+  height:22px;padding:0 7px;border-radius:5px;background:var(--m-surface);
+  border:1px solid var(--m-line);font-size:9.5px;transform-origin:50% 0;
+  transition:transform calc(300ms * var(--r)) var(--sp-tuck,cubic-bezier(.16,1,.3,1)),
+             opacity calc(240ms * var(--r)) var(--e1),
+             border-color calc(240ms * var(--r)) var(--e1)}
+.mx-itl-09 .i9-c span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.mx-itl-09 .i9-c .imono{font-size:9px;color:var(--m-mut)}
+.mx-itl-09 .i9-c1{transform:translateY(56px)}
+.mx-itl-09 .i9-c2{transform:translateY(28px)}
+.mx-itl-09 .i9-c3{transform:translateY(0)}
+.mx-itl-09.folded .i9-c1{transform:translateY(0) scale(1);z-index:3;
+  border-color:color-mix(in oklab,var(--m-accent) 44%,transparent)}
+.mx-itl-09.folded .i9-c3{transform:translateY(5px) scale(.955);z-index:2;opacity:.7}
+.mx-itl-09.folded .i9-c2{transform:translateY(10px) scale(.912);z-index:1;opacity:.45}
+.mx-itl-09 .i9-win{flex:none;font:600 7.5px/1.5 var(--m-mono);letter-spacing:.08em;
+  text-transform:uppercase;color:var(--m-accent);opacity:0;
+  transition:opacity calc(240ms * var(--r)) var(--e1)}
+.mx-itl-09.folded .i9-c1 .i9-win{opacity:1}
+.mx-itl-09 .i9-lbl{margin-top:6px;font:500 9.5px/1.3 var(--m-sans);color:var(--m-mut);
+  opacity:0;transform:translateY(4px);
+  transition:opacity calc(260ms * var(--r)) var(--e1),transform calc(260ms * var(--r)) var(--e1)}
+.mx-itl-09.told .i9-lbl{opacity:1;transform:none}
+.mx-itl-09 .i9-note{margin-top:6px;opacity:0;
+  transition:opacity calc(300ms * var(--r)) var(--e1)}
+.mx-itl-09.noted .i9-note{opacity:1}
+
+/* ── 10 · the timeline pivots onto one thread ───────────────────────────── */
+.mx-itl-10 .i10-chips{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:7px}
+.mx-itl-10 .i10-ch{display:inline-flex;align-items:center;gap:3px;font:600 7.5px/1 var(--m-sans);
+  padding:3px 5px;border-radius:999px;background:var(--m-sunk);color:var(--m-mut);
+  border:1px solid var(--m-line);
+  transition:color calc(200ms * var(--r)) var(--e1),
+             border-color calc(200ms * var(--r)) var(--e1)}
+.mx-itl-10 .i10-ch.live{color:var(--m-accent);
+  border-color:color-mix(in oklab,var(--m-accent) 40%,transparent)}
+.mx-itl-10 .i10-ch b{font-family:var(--m-mono);font-variant-numeric:tabular-nums;font-weight:500}
+.mx-itl-10 .i10-body{position:relative;padding-left:9px}
+.mx-itl-10 .i10-spine{position:absolute;left:2px;top:2px;bottom:2px;width:1px;
+  background:var(--m-accent);transform:scaleY(0);transform-origin:50% 0;
+  transition:transform calc(380ms * var(--r)) var(--e1)}
+.mx-itl-10.pivot .i10-spine{transform:scaleY(1)}
+.mx-itl-10 .i10-list{list-style:none;margin:0;padding:0}
+.mx-itl-10 .i10-e{display:flex;align-items:center;gap:5px;height:17px;overflow:hidden;
+  transition:height calc(240ms * var(--r)) var(--e1),opacity calc(200ms * var(--r)) var(--e1)}
+.mx-itl-10 .i10-e.out{height:0;opacity:0}
+.mx-itl-10 .i10-s{flex:none;font:600 7.5px/1.5 var(--m-mono);letter-spacing:.04em;padding:0 4px;
+  border-radius:3px;background:var(--m-sunk);color:var(--m-mut);border:1px solid var(--m-line)}
+.mx-itl-10 .i10-sum{flex:1;min-width:0;font-size:9.5px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.mx-itl-10 .i10-cid{flex:none;font-family:var(--m-mono);font-size:8.5px;color:var(--m-mut);
+  cursor:pointer;border-bottom:1px dotted var(--m-line2);
+  transition:color calc(160ms * var(--r)) var(--e1),
+             border-color calc(160ms * var(--r)) var(--e1)}
+.mx-itl-10 .i10-cid:hover,.mx-itl-10 .i10-cid.hit{color:var(--m-accent);border-color:var(--m-accent)}
+.mx-itl-10 .i10-cid.none{cursor:default;border-bottom-color:transparent;color:var(--m-line2)}
+.mx-itl-10 .i10-pill{display:inline-flex;align-items:center;gap:5px;margin-top:6px;
+  font:500 8.5px/1 var(--m-mono);padding:4px 6px;border-radius:4px;color:var(--m-accent);
+  background:color-mix(in oklab,var(--m-accent) 12%,transparent);
+  border:1px solid color-mix(in oklab,var(--m-accent) 36%,transparent);
+  opacity:0;transform:translateY(4px);
+  transition:opacity calc(260ms * var(--r)) var(--e1),transform calc(260ms * var(--r)) var(--e1)}
+.mx-itl-10.pivot .i10-pill{opacity:1;transform:none}
+.mx-itl-10 .i10-pill i{font-style:normal;color:var(--m-mut);cursor:pointer}
+
+/* ── 11 · a 500 is not a quiet night ────────────────────────────────────── */
+.mx-itl-11 .i11-p{position:relative;border:1px solid var(--m-line);border-radius:7px;
+  padding:8px 9px;min-height:104px;background:var(--m-surface);
+  transition:border-color calc(200ms * var(--r)) var(--e1)}
+.mx-itl-11.err .i11-p{border-color:color-mix(in oklab,var(--m-no) 62%,transparent)}
+.mx-itl-11 .i11-chips{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px}
+.mx-itl-11 .i11-ch{font:600 7.5px/1 var(--m-sans);padding:3px 5px;border-radius:999px;
+  background:var(--m-sunk);border:1px solid var(--m-line);color:var(--m-mut);
+  transition:color calc(160ms * var(--r)) var(--e1),
+             border-color calc(160ms * var(--r)) var(--e1)}
+.mx-itl-11.err .i11-ch{color:var(--m-no);border-color:color-mix(in oklab,var(--m-no) 34%,transparent)}
+.mx-itl-11 .i11-ch b{font-family:var(--m-mono);font-variant-numeric:tabular-nums;font-weight:500}
+.mx-itl-11 .i11-sk{display:flex;flex-direction:column;gap:7px;position:absolute;
+  left:9px;right:9px;top:34px;opacity:1;transition:opacity calc(240ms * var(--r)) var(--e1)}
+.mx-itl-11.quiet .i11-sk,.mx-itl-11.err .i11-sk{opacity:0}
+.mx-itl-11 .i11-body{opacity:0;transition:opacity calc(260ms * var(--r)) var(--e1)}
+.mx-itl-11.quiet .i11-q,.mx-itl-11.err .i11-e{opacity:1}
+.mx-itl-11 .i11-e{position:absolute;left:9px;right:9px;top:34px}
+.mx-itl-11 .i11-q{position:absolute;left:9px;right:9px;top:34px}
+.mx-itl-11 .i11-qt{font-size:10px;color:var(--m-mut)}
+.mx-itl-11 .i11-code{display:inline-block;font-family:var(--m-mono);font-size:8.5px;
+  color:var(--m-no);padding:2px 5px;border-radius:3px;
+  background:color-mix(in oklab,var(--m-no) 14%,transparent);margin-bottom:5px}
+.mx-itl-11 .i11-msg{font-size:10px;line-height:1.35;color:var(--m-ink);margin:0 0 6px}
+.mx-itl-11 .i11-retry{display:inline-block;font:600 9px/1 var(--m-sans);padding:5px 8px;
+  border-radius:4px;background:var(--m-no);color:var(--m-accent-ink);cursor:pointer;
+  opacity:0;transform:translateY(5px);
+  transition:opacity calc(320ms * var(--r)) var(--e1),transform calc(320ms * var(--r)) var(--e1)}
+.mx-itl-11.err .i11-retry{opacity:1;transform:none}
+.mx-itl-11 .i11-cap{margin-top:7px;opacity:0;
+  transition:opacity calc(300ms * var(--r)) var(--e1)}
+.mx-itl-11.capped .i11-cap{opacity:1}
+
+/* ── reduced motion: collapse to the end state, keep nothing looping ────── */
+@media (prefers-reduced-motion: reduce){
+  .mx-itl *,.mx-itl *::before,.mx-itl *::after{
+    transition-duration:1ms !important;transition-delay:0ms !important;
+    animation-duration:1ms !important;animation-iteration-count:1 !important}
+}
+</style>
+<script>
+(function(){
+  "use strict";
+  var FAM = 'Intelligence & reporting';
+  window.MUDAVYM_MOTIONS = window.MUDAVYM_MOTIONS || [];
+  function push(o){ o.family = FAM; window.MUDAVYM_MOTIONS.push(o); }
+
+  /* ── plumbing ───────────────────────────────────────────────────────── */
+  function RM(){
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch(e){ return false; }
+  }
+  function RATE(){
+    try {
+      var r = (typeof window.MUDAVYM_RATE === 'function') ? window.MUDAVYM_RATE() : 1;
+      return (typeof r === 'number' && r > 0.05) ? r : 1;
+    } catch(e){ return 1; }
+  }
+  function stop(root){
+    (root.__itlT || []).forEach(clearTimeout);
+    root.__itlT = [];
+    (root.__itlR || []).forEach(cancelAnimationFrame);
+    root.__itlR = [];
+  }
+  /* steps: [[delayMs, fn], …]. Under reduced motion every fn runs at once,
+     so the demo lands on its end state instead of pretending to animate. */
+  function seq(root, steps){
+    stop(root);
+    if (RM()){ steps.forEach(function(s){ try{ s[1](); }catch(e){} }); return; }
+    var r = RATE();
+    root.__itlT = steps.map(function(s){
+      return setTimeout(function(){ try{ s[1](); }catch(e){} }, s[0] * r);
+    });
+  }
+  /* Several tallies can run at once (six source chips recounting), so every
+     rAF loop keeps its own handle in the same list rather than one slot. */
+  function raf(root, ms, step, done){
+    if (RM()){ step(1); if (done) done(); return; }
+    var t0 = performance.now(), d = ms * RATE(), live = true;
+    root.__itlR = root.__itlR || [];
+    var list = root.__itlR;
+    (function tick(now){
+      if (!live) return;
+      var p = Math.min(1, (now - t0) / d);
+      step(p);
+      if (p < 1){ var id = requestAnimationFrame(tick); list.push(id); }
+      else { live = false; if (done) done(); }
+    })(t0);
+  }
+  function q(r,s){ return r.querySelector(s); }
+  function qa(r,s){ return Array.prototype.slice.call(r.querySelectorAll(s)); }
+  function reflow(el){ void el.offsetWidth; }
+
+  /* ── real springs, sampled ──────────────────────────────────────────────
+     Closed-form second-order step response for mass–spring–damper (k,c,m).
+     Used two ways: to emit a CSS linear() easing, and to drive number tallies.
+     `tally` in the house vocabulary is k=120 c=26 m=1 → zeta 1.187 (overdamped,
+     0% overshoot, ~827ms to within 1%). `tuck` is k=380 c=32 m=1 → zeta 0.821,
+     measured overshoot 1.1%.                                                */
+  function springFn(k, c, m){
+    var wn = Math.sqrt(k/m), z = c / (2 * Math.sqrt(k*m));
+    if (Math.abs(z - 1) < 1e-6){
+      return function(t){ return 1 - Math.exp(-wn*t) * (1 + wn*t); };
+    }
+    if (z < 1){
+      var wd = wn * Math.sqrt(1 - z*z);
+      return function(t){
+        return 1 - Math.exp(-z*wn*t) * (Math.cos(wd*t) + (z*wn/wd) * Math.sin(wd*t));
+      };
+    }
+    var s = wn * Math.sqrt(z*z - 1), r1 = -z*wn + s, r2 = -z*wn - s;
+    return function(t){
+      return 1 - (r2*Math.exp(r1*t) - r1*Math.exp(r2*t)) / (r2 - r1);
+    };
+  }
+  function springLinear(k, c, m, durMs, n){
+    var f = springFn(k, c, m), out = [], i;
+    n = n || 26;
+    for (i = 0; i <= n; i++) out.push(f((i/n) * (durMs/1000)).toFixed(4));
+    out[0] = '0'; out[n] = '1';                       /* pin the ends exactly */
+    return 'linear(' + out.join(',') + ')';
+  }
+  var SUPPORTS_LINEAR = (function(){
+    try { return CSS.supports('transition-timing-function','linear(0,1)'); }
+    catch(e){ return false; }
+  })();
+  var SP_TUCK = springLinear(380, 32, 1, 300);        /* 1.1% overshoot       */
+  var TALLY   = springFn(120, 26, 1);                 /* 0% overshoot         */
+  function applyVars(w){
+    w.style.setProperty('--r', String(RATE()));
+    if (SUPPORTS_LINEAR) w.style.setProperty('--sp-tuck', SP_TUCK);
+  }
+  /* number ticker on the overdamped tally spring — figures arrive, they never
+     bounce past and correct themselves. */
+  function tally(root, el, from, to, durMs, fmt){
+    raf(root, durMs, function(p){
+      var v = from + (to - from) * TALLY(p * (durMs/1000));
+      el.textContent = fmt ? fmt(v) : String(Math.round(v));
+    }, function(){ el.textContent = fmt ? fmt(to) : String(to); });
+  }
+  function mount(root, cls){
+    var w = q(root, '.' + cls);
+    if (!w) return null;
+    applyVars(w);
+    return w;
+  }
+
+  /* ═══ 01 · the conclusion arrives ═══════════════════════════════════════ */
+  push({
+    id: 'itl-01',
+    name: 'The conclusion arrives',
+    purpose: 'Reports → Engine insights panel. While /analytics/insights is computing, the only motion allowed is the shimmer over a serif line; then the deterministic sentences land in score order with pinned ones first. Nothing rolls, nothing guesses — the sentence appears when the arithmetic is done.',
+    spec: 'shimmer 1900ms loop cubic-bezier(.45,0,.55,1) → hand-off 240ms · rows stagger 28ms, item 420ms cubic-bezier(.16,1,.3,1), 6px travel',
+    source: 'apps/web/src/components/reports/organisms/EngineInsightsPanel.tsx:150-206',
+    html:
+      '<div class="mx-itl mx-itl-01">' +
+        '<div class="ih"><span class="ik">insights · engine</span>' +
+        '<span class="ik i1-st">computing</span></div>' +
+        '<div class="i1-stage">' +
+          '<ul class="i1-list">' +
+            '<li class="i1-r" data-c="sales"><span class="i1-cat">sales</span>' +
+              '<span class="i1-txt"><i class="i1-pin">&#9679;</i>Chablis 1er Cru sold 41% above its 8-week baseline on Fridays.</span>' +
+              '<span class="i1-sc imono">.91</span></li>' +
+            '<li class="i1-r" data-c="inventory"><span class="i1-cat">inventory</span>' +
+              '<span class="i1-txt">Etna Rosso covers 4.2 days at current depletion, below your 7-day floor.</span>' +
+              '<span class="i1-sc imono">.84</span></li>' +
+            '<li class="i1-r" data-c="basket"><span class="i1-cat">basket</span>' +
+              '<span class="i1-txt">Guests who took the Barolo added dessert 2.3&#215; as often.</span>' +
+              '<span class="i1-sc imono">.72</span></li>' +
+          '</ul>' +
+          '<div class="i1-sk">' +
+            '<div class="skb" style="width:88%"></div>' +
+            '<div class="skb" style="width:72%"></div>' +
+            '<div class="skb" style="width:80%"></div>' +
+            '<span class="isay shim">Totting up the night&#8230;</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-01'); if (!w) return;
+      var st = q(w, '.i1-st'), rows = qa(w, '.i1-r');
+      w.classList.remove('on'); st.classList.remove('on'); st.textContent = 'computing';
+      rows.forEach(function(r, i){ r.style.transitionDelay = (i * 28 * RATE()) + 'ms'; });
+      reflow(w);
+      seq(root, [
+        [ 900, function(){ w.classList.add('on'); }],
+        [ 980, function(){ st.textContent = '3 of 12 · by score'; st.classList.add('on'); }]
+      ]);
+    }
+  });
+
+  /* ═══ 02 · explain ═════════════════════════════════════════════════════ */
+  push({
+    id: 'itl-02',
+    name: 'Explain — the effect size under the sentence',
+    purpose: 'Reports → an insight card\'s Explain. The plain sentence is what the owner reads; the working underneath is what makes it arguable. Slower than a row expand on purpose — it opens a record, so it turns like a page rather than flicking.',
+    spec: 'actions fade 200ms · grid-template-rows 0fr→1fr, 420ms cubic-bezier(.32,.72,0,1) · lines rise 4px/220ms inside',
+    source: 'apps/web/src/components/reports/organisms/EngineInsightsPanel.tsx:414,443-459',
+    html:
+      '<div class="mx-itl mx-itl-02">' +
+        '<div class="i2-card">' +
+          '<div class="i2-top"><span class="i2-cat">tables</span>' +
+            '<span class="i2-say">Table 12 turns 34% below the zone median on Fridays.</span></div>' +
+          '<div class="i2-acts">' +
+            '<span class="i2-b i2-act">Act &#8594;</span>' +
+            '<span class="i2-b i2-exp">Explain</span>' +
+            '<span class="i2-b">Pin</span><span class="i2-b">&#10005;</span></div>' +
+          '<div class="i2-work"><div><div class="i2-workin">' +
+            '<p>Effect size: <b>34%</b></p>' +
+            '<p>Signal (z): <b>2.61</b></p>' +
+            '<p>Entity: <b>Table 12</b></p>' +
+            '<p class="i2-key imono">[table.turns.vs_zone_median]</p>' +
+          '</div></div></div>' +
+        '</div>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-02'); if (!w) return;
+      var exp = q(w, '.i2-exp');
+      if (!w.__wired){
+        w.__wired = 1;
+        exp.addEventListener('click', function(){ w.classList.toggle('open'); });
+      }
+      w.classList.remove('on','open'); exp.classList.remove('hit');
+      reflow(w);
+      /* the useful still frame of this motion is the record OPEN, so reduced
+         motion rests there rather than replaying the close. */
+      if (RM()){ stop(root); w.classList.add('on','open'); return; }
+      seq(root, [
+        [ 240, function(){ w.classList.add('on'); }],
+        [ 760, function(){ exp.classList.add('hit'); }],
+        [ 830, function(){ w.classList.add('open'); }],
+        [2700, function(){ exp.classList.remove('hit'); w.classList.remove('open'); }]
+      ]);
+    }
+  });
+
+  /* ═══ 03 · dismiss captures a reason ═══════════════════════════════════ */
+  push({
+    id: 'itl-03',
+    name: 'Dismissed, and it says why',
+    purpose: '/recommendations. A card cannot simply vanish: the four reason codes fan out, the chosen one fills and becomes the card\'s last line, and only then does the card collapse. The reason is written to recommendation_actions — this motion is the receipt for it.',
+    spec: 'reasons stagger 24ms, item 220ms cubic-bezier(.16,1,.3,1) 6px · choice ink 160ms · card collapse grid-rows 1fr→0fr 320ms · counter on the tally spring (120/26, 0% overshoot)',
+    source: 'apps/web/src/pages/Recommendations.tsx:96-102,290-296',
+    html:
+      '<div class="mx-itl mx-itl-03">' +
+        '<div class="i3-hold"><div><div class="i3-card">' +
+          '<div class="i3-obs">Etna Rosso &#183; <b>6</b> bottles, <b>4.2</b> days of cover</div>' +
+          '<div class="i3-rec">Order 12 before Thursday.</div>' +
+          '<div class="i3-rs"><div><div class="i3-rsin">' +
+            '<span class="i3-rn" data-c="not_relevant">Not relevant</span>' +
+            '<span class="i3-rn" data-c="already_handled">Already handled</span>' +
+            '<span class="i3-rn" data-c="disagree">I disagree</span>' +
+            '<span class="i3-rn" data-c="not_now">Not right now</span>' +
+          '</div></div></div>' +
+          '<div class="i3-stamp">dismissed &#183; <b>already_handled</b></div>' +
+          '<div class="i3-foot"><span class="i3-dis">Dismiss</span></div>' +
+        '</div></div></div>' +
+        '<div class="i3-count"><span>dismissed</span><b class="i3-n imono">12</b></div>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-03'); if (!w) return;
+      var chips = qa(w, '.i3-rn'), stamp = q(w, '.i3-stamp b'), n = q(w, '.i3-n');
+      function reset(){
+        w.classList.remove('menu','told','gone');
+        chips.forEach(function(c, i){
+          c.classList.remove('pick','drop');
+          c.style.transitionDelay = (i * 24 * RATE()) + 'ms';
+        });
+        n.textContent = '12';
+        reflow(w);
+      }
+      function choose(code){
+        var picked = chips.filter(function(c){ return c.dataset.c === code; })[0];
+        if (!picked) return;
+        chips.forEach(function(c){ c.classList.toggle('pick', c === picked);
+                                   c.classList.toggle('drop', c !== picked); });
+        stamp.textContent = code;
+        seq(root, [
+          [ 320, function(){ w.classList.add('told'); }],
+          [ 800, function(){ w.classList.add('gone'); tally(root, n, 12, 13, 840); }]
+        ]);
+      }
+      if (!w.__wired){
+        w.__wired = 1;
+        q(w, '.i3-dis').addEventListener('click', function(){ w.classList.add('menu'); });
+        chips.forEach(function(c){
+          c.addEventListener('click', function(){ choose(c.dataset.c); });
+        });
+      }
+      reset();
+      seq(root, [
+        [ 400, function(){ w.classList.add('menu'); }],
+        [1250, function(){ choose('already_handled'); }]
+      ]);
+    }
+  });
+
+  /* ═══ 04 · bulk ════════════════════════════════════════════════════════ */
+  push({
+    id: 'itl-04',
+    name: 'Four leave together, one line in the ledger',
+    purpose: '/recommendations bulk-action. Selecting is staggered because each tick is a separate judgement; leaving is simultaneous because dismissing them was one. The rows go optimistically the instant you press, and the ledger dot stays hollow until POST …/bulk-action actually answers.',
+    spec: 'ticks stagger 40ms, 180ms each · selected rows collapse together, height 19px→0 in 260ms (survivors ride the same collapse) · ledger rise 260ms · server confirm at +520ms',
+    source: 'apps/web/src/pages/Recommendations.tsx:394-414',
+    html:
+      '<div class="mx-itl mx-itl-04">' +
+        '<div class="i4-bar"><b>4 selected</b><i>Dismiss</i></div>' +
+        '<ul class="i4-list">' +
+          '<li class="i4-r sel-t" data-u="now"><span class="i4-cb"></span><span class="i4-k">stockout_imminent</span><span class="i4-u">Tonight</span></li>' +
+          '<li class="i4-r sel-t"><span class="i4-cb"></span><span class="i4-k">dead_stock_capital</span><span class="i4-u">This week</span></li>' +
+          '<li class="i4-r"><span class="i4-cb"></span><span class="i4-k">plowhorse_repricing</span><span class="i4-u">This week</span></li>' +
+          '<li class="i4-r sel-t"><span class="i4-cb"></span><span class="i4-k">vendor_concentration</span><span class="i4-u">This month</span></li>' +
+          '<li class="i4-r sel-t"><span class="i4-cb"></span><span class="i4-k">spend_acceleration</span><span class="i4-u">This week</span></li>' +
+          '<li class="i4-r"><span class="i4-cb"></span><span class="i4-k">puzzle_activation</span><span class="i4-u">This month</span></li>' +
+        '</ul>' +
+        '<div class="i4-led"><span class="i4-dot"></span>Dismissed 4 recommendations' +
+          '<span class="i4-srv">POST &#8230;/bulk-action</span></div>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-04'); if (!w) return;
+      var targets = qa(w, '.i4-r.sel-t'), srv = q(w, '.i4-srv');
+      w.classList.remove('armed','go','wrote','ok');
+      qa(w, '.i4-r').forEach(function(r){ r.classList.remove('sel'); });
+      srv.textContent = 'POST …/bulk-action';
+      reflow(w);
+      var steps = [];
+      targets.forEach(function(r, i){
+        steps.push([300 + i * 40, function(){ r.classList.add('sel'); }]);
+      });
+      steps.push([ 620, function(){ w.classList.add('armed'); }]);
+      steps.push([1400, function(){ w.classList.add('go'); }]);
+      steps.push([1660, function(){ w.classList.add('wrote'); }]);
+      steps.push([2180, function(){ w.classList.add('ok'); srv.textContent = '200 · 4 written'; }]);
+      seq(root, steps);
+    }
+  });
+
+  /* ═══ 05 · drag + reflow + save ════════════════════════════════════════ */
+  push({
+    id: 'itl-05',
+    name: 'A block is dragged, the canvas reflows',
+    purpose: 'Reports dashboard canvas (react-grid-layout). Lift and the block goes translucent with a long shadow; a dashed placeholder holds the target slot while the rest reflow on the canvas\'s own 200ms ease; on drop the layout PATCHes to user preferences. Drag it yourself — the blocks really move.',
+    spec: 'grid items transform 200ms ease (the canvas\'s real transition) · lift scale 1.035 / opacity .9 / shadow 160ms · placeholder dashed at .6 · saved pip 320ms cubic-bezier(.16,1,.3,1)',
+    source: 'apps/web/src/components/reports/DashboardCanvas.tsx:152-172 (persisted via Reports.tsx:466)',
+    html:
+      '<div class="mx-itl mx-itl-05">' +
+        '<div class="i5-wrap">' +
+          '<div class="i5-ph"></div>' +
+          '<div class="i5-b"><div class="i5-t">Total Revenue</div><div class="i5-v">4,280<i>&#8364;</i></div></div>' +
+          '<div class="i5-b"><div class="i5-t">Total Orders</div><div class="i5-v">118</div></div>' +
+          '<div class="i5-b"><div class="i5-t">Bottles Sold</div><div class="i5-v">341</div></div>' +
+          '<div class="i5-b"><div class="i5-t">Revenue Trend</div><div class="i5-v">+6.4<i>%</i></div></div>' +
+          '<div class="i5-b"><div class="i5-t">Top Wines</div><div class="i5-v">12</div></div>' +
+          '<div class="i5-b"><div class="i5-t">Seating</div><div class="i5-v">73<i>%</i></div></div>' +
+        '</div>' +
+        '<span class="i5-save">&#10003; layout saved</span>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-05'); if (!w) return;
+      var wrap = q(w, '.i5-wrap'), ph = q(w, '.i5-ph'), bs = qa(w, '.i5-b');
+      var CW = 87, CH = 44, G = 6, COLS = 3, ROWS = 2;
+      function slot(i){ return { x: (i % COLS) * (CW + G), y: Math.floor(i / COLS) * (CH + G) }; }
+      function tf(p){ return 'translate3d(' + p.x + 'px,' + p.y + 'px,0)'; }
+
+      if (!w.__b){
+        var B = w.__b = { order: [0,1,2,3,4,5], st: null };
+        B.apply = function(skip){
+          B.order.forEach(function(bi, s){
+            if (bi === skip) return;
+            bs[bi].style.transform = tf(slot(s));
+          });
+        };
+        B.begin = function(bi){
+          var s = B.order.indexOf(bi), p = slot(s);
+          B.st = { bi: bi, bx: p.x, by: p.y };
+          bs[bi].classList.add('lift');
+          ph.style.transform = tf(p); ph.classList.add('on');
+        };
+        B.drag = function(dx, dy){
+          if (!B.st) return;
+          var x = B.st.bx + dx, y = B.st.by + dy;
+          bs[B.st.bi].style.transform = tf({ x: x, y: y });
+          var col = Math.max(0, Math.min(COLS - 1, Math.round(x / (CW + G))));
+          var row = Math.max(0, Math.min(ROWS - 1, Math.round(y / (CH + G))));
+          var target = Math.min(bs.length - 1, row * COLS + col);
+          var cur = B.order.indexOf(B.st.bi);
+          if (target !== cur){
+            B.order.splice(cur, 1);
+            B.order.splice(target, 0, B.st.bi);
+            B.apply(B.st.bi);
+            ph.style.transform = tf(slot(target));
+          }
+        };
+        B.end = function(){
+          if (!B.st) return;
+          var b = bs[B.st.bi];
+          b.classList.remove('lift');
+          b.style.transform = tf(slot(B.order.indexOf(B.st.bi)));
+          ph.classList.remove('on');
+          B.st = null;
+          w.classList.add('saved');
+        };
+        /* the real gesture, so the founder can actually shove a block around */
+        bs.forEach(function(b, bi){
+          b.addEventListener('pointerdown', function(ev){
+            ev.preventDefault();
+            stop(root);
+            w.classList.remove('saved');
+            var sx = ev.clientX, sy = ev.clientY;
+            B.begin(bi);
+            b.setPointerCapture(ev.pointerId);
+            function mv(e){ B.drag(e.clientX - sx, e.clientY - sy); }
+            function up(){
+              b.removeEventListener('pointermove', mv);
+              b.removeEventListener('pointerup', up);
+              b.removeEventListener('pointercancel', up);
+              B.end();
+            }
+            b.addEventListener('pointermove', mv);
+            b.addEventListener('pointerup', up);
+            b.addEventListener('pointercancel', up);
+          });
+        });
+      }
+      var B2 = w.__b;
+      B2.st = null;
+      bs.forEach(function(b){ b.classList.remove('lift'); });
+      ph.classList.remove('on');
+      B2.order = [0,1,2,3,4,5];
+      w.classList.remove('saved');
+      B2.apply();
+      reflow(w);
+      /* scripted drag: Total Revenue travels from slot 0 to slot 4 */
+      var dx = (CW + G), dy = (CH + G);
+      seq(root, [
+        [ 320, function(){ B2.begin(0); }],
+        [ 400, function(){
+          raf(root, 620, function(p){
+            var e = 1 - Math.pow(1 - p, 3);
+            B2.drag(dx * e, dy * e);
+          }, function(){ B2.end(); });
+        }]
+      ]);
+    }
+  });
+
+  /* ═══ 06 · blocked ═════════════════════════════════════════════════════ */
+  push({
+    id: 'itl-06',
+    name: 'Blocked — and it names what is missing',
+    purpose: '/recommendations/catalog cell detail. Each requirement is checked against what this restaurant actually has; the two that fail beat once and then speak the sentence. The point is that "blocked" is never a shrug — it always resolves to a named table you could go and connect.',
+    spec: 'chips resolve 140ms apart, ink 160ms each · failing chips beat 240ms (scale 1.07) · explainer grid-rows 0fr→1fr 420ms cubic-bezier(.32,.72,0,1), names rise 240ms delayed 120ms',
+    source: 'apps/web/src/pages/InsightCatalog.tsx:469-470,494-524',
+    html:
+      '<div class="mx-itl mx-itl-06">' +
+        '<div class="ih"><span class="ik">insight type</span><span class="ik i6-st">checking your data</span></div>' +
+        '<div class="i6-key">table.revenue_per_seat.vs_zone_median</div>' +
+        '<div class="i6-lbl">data required</div>' +
+        '<div class="i6-chips">' +
+          '<span class="i6-c" data-ok="1">orders</span>' +
+          '<span class="i6-c" data-ok="1">inventory</span>' +
+          '<span class="i6-c" data-ok="0">checks</span>' +
+          '<span class="i6-c" data-ok="0">tables</span>' +
+        '</div>' +
+        '<div class="i6-blk"><div><div class="i6-blkin">' +
+          'Blocked &#8212; needs <b>checks, tables</b>. Connect your POS to unlock this type.' +
+        '</div></div></div>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-06'); if (!w) return;
+      var chips = qa(w, '.i6-c'), st = q(w, '.i6-st');
+      w.classList.remove('blocked');
+      chips.forEach(function(c){ c.classList.remove('ok','no','beat'); });
+      st.textContent = 'checking your data'; st.classList.remove('on');
+      reflow(w);
+      var steps = [];
+      chips.forEach(function(c, i){
+        steps.push([260 + i * 140, function(){
+          c.classList.add(c.dataset.ok === '1' ? 'ok' : 'no');
+        }]);
+      });
+      steps.push([ 900, function(){
+        chips.filter(function(c){ return c.dataset.ok === '0'; })
+             .forEach(function(c){ c.classList.remove('beat'); void c.offsetWidth; c.classList.add('beat'); });
+      }]);
+      steps.push([1160, function(){ w.classList.add('blocked'); st.textContent = '2 of 4 missing'; }]);
+      seq(root, steps);
+    }
+  });
+
+  /* ═══ 07 · the honest denominator ══════════════════════════════════════ */
+  push({
+    id: 'itl-07',
+    name: 'The honest denominator',
+    purpose: 'GAP — the catalogue headlines "375 insight types" while the enumerated space is 573 and only ~144 are reachable without a POS. The fix is a motion: the track grows to the true total while the lit part shrinks to what this restaurant can actually compute, and the headline counts DOWN. The number that grows is the flattering one.',
+    spec: 'track 65.4%→100% and fill 100%→25.1%, both 520ms cubic-bezier(.16,1,.3,1) · headline 375→144 on the tally spring k=120 c=26 m=1 (zeta 1.187, 0% overshoot, measured within 1% at 827ms) · unit label rolls 320ms',
+    source: '06-pages/recommendations-catalog.md §9 (rule: TIER-MAP.md:121-124, OD-33)',
+    html:
+      '<div class="mx-itl mx-itl-07">' +
+        '<div class="ih"><span class="ik">/recommendations/catalog</span><span class="ik i7-tag">headline</span></div>' +
+        '<div class="i7-big"><b class="i7-n imono">375</b>' +
+          '<span class="i7-u"><span>insight types</span><span>computable for you</span></span></div>' +
+        '<div class="i7-track"><div class="i7-fill"></div></div>' +
+        '<div class="i7-legend">' +
+          '<span class="i7-l1"><i></i>144 computable now</span>' +
+          '<span class="i7-l2"><i></i>429 blocked on POS</span>' +
+        '</div>' +
+        '<div class="i7-note icap">573 enumerated &#183; the catalogue total was never the owner&#8217;s number</div>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-07'); if (!w) return;
+      var n = q(w, '.i7-n'), tag = q(w, '.i7-tag');
+      w.classList.remove('truth','noted');
+      n.textContent = '375'; tag.textContent = 'headline'; tag.classList.remove('on');
+      reflow(w);
+      seq(root, [
+        [ 800, function(){
+          w.classList.add('truth');
+          tag.textContent = 'reachable'; tag.classList.add('on');
+          tally(root, n, 375, 144, 840);
+        }],
+        [1900, function(){ w.classList.add('noted'); }]
+      ]);
+    }
+  });
+
+  /* ═══ 08 · the digest updates under your eyes ══════════════════════════ */
+  push({
+    id: 'itl-08',
+    name: 'The digest updates, and takes nothing',
+    purpose: '/notifications polls every 10s while open. When a newer digest lands the count rolls inside the existing row and the timestamp turns over — the list does not re-stagger, the scroll does not jump, and the row you had selected stays selected. A manager reading at 1am must never lose their place to a refresh.',
+    spec: 'poll 10s in product (1.6s here, linear) · count roll 460ms cubic-bezier(.16,1,.3,1) · accent underline scaleX 260ms then fades · list entrance is first-paint-only, so nothing re-enters',
+    source: 'apps/web/src/pages/Notifications.tsx:157-163,192-200',
+    html:
+      '<div class="mx-itl mx-itl-08">' +
+        '<div class="ih"><span class="ik">/notifications</span><span class="ik i8-poll">poll 10s</span></div>' +
+        '<div class="i8-bar"><i></i></div>' +
+        '<ul class="i8-list">' +
+          '<li class="i8-r unread"><span class="i8-dot"></span>' +
+            '<span class="i8-t">Digest: <span class="roll"><span class="col"><b>3</b><b>7</b></span></span> wines below par<span class="i8-ul"></span></span>' +
+            '<span class="i8-ts"><span class="roll"><span class="col"><b>2m</b><b>now</b></span></span></span></li>' +
+          '<li class="i8-r sel"><span class="i8-dot"></span>' +
+            '<span class="i8-t">PO-1038 awaiting your approval</span>' +
+            '<span class="i8-ts imono">11m</span></li>' +
+          '<li class="i8-r"><span class="i8-dot"></span>' +
+            '<span class="i8-t">Chablis 1er Cru up 8% at Bodega &#193;lvaro</span>' +
+            '<span class="i8-ts imono">1h</span></li>' +
+        '</ul>' +
+        '<div class="i8-keep icap">selection held &#183; <b>no re-stagger</b>, no scroll jump</div>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-08'); if (!w) return;
+      var poll = q(w, '.i8-poll');
+      w.classList.remove('polling','rolled','faded','kept');
+      poll.textContent = 'poll 10s'; poll.classList.remove('on');
+      reflow(w);
+      seq(root, [
+        [  80, function(){ w.classList.add('polling'); }],
+        [1700, function(){
+          w.classList.add('rolled');
+          poll.textContent = '200 · refreshed'; poll.classList.add('on');
+        }],
+        [2400, function(){ w.classList.add('faded'); }],
+        [2500, function(){ w.classList.add('kept'); }]
+      ]);
+    }
+  });
+
+  /* ═══ 09 · what the fold swallowed ═════════════════════════════════════ */
+  push({
+    id: 'itl-09',
+    name: 'What the fold swallowed',
+    purpose: 'GAP — collapseStackedNotifications returns foldedById, and /notifications throws it away (only the header bell renders it), so duplicate low-stock bursts just disappear. Make the fold a physical tuck: the max-count winner rises, the losers slide under it as a visible edge, and the label the library already writes finally shows.',
+    spec: 'tuck spring k=380 c=32 m=1 (zeta .82, 1.1% overshoot) sampled to a CSS linear() over 300ms · label 260ms cubic-bezier(.16,1,.3,1) at +400ms',
+    source: 'apps/web/src/lib/notificationStack.ts:118-121 vs pages/Notifications.tsx:231',
+    html:
+      '<div class="mx-itl mx-itl-09">' +
+        '<div class="ih"><span class="ik">stack key</span><span class="ik i9-mode">mode: max_count</span></div>' +
+        '<div class="i9-deck">' +
+          '<div class="i9-c i9-c3"><span>3 wines dropped below par</span><span class="imono">21:04</span></div>' +
+          '<div class="i9-c i9-c2"><span>2 wines dropped below par</span><span class="imono">20:38</span></div>' +
+          '<div class="i9-c i9-c1"><span>5 wines dropped below par</span><span class="i9-win">kept</span><span class="imono">20:12</span></div>' +
+        '</div>' +
+        '<div class="i9-lbl">2 earlier duplicates grouped</div>' +
+        '<div class="i9-note icap">highest count wins, not the newest &#8212; the fold must say so</div>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-09'); if (!w) return;
+      w.classList.remove('folded','told','noted');
+      reflow(w);
+      seq(root, [
+        [ 600, function(){ w.classList.add('folded'); }],
+        [1000, function(){ w.classList.add('told'); }],
+        [1500, function(){ w.classList.add('noted'); }]
+      ]);
+    }
+  });
+
+  /* ═══ 10 · pivot onto one thread ═══════════════════════════════════════ */
+  push({
+    id: 'itl-10',
+    name: 'The timeline pivots onto one thread',
+    purpose: '/logs. Click any correlation id and the whole six-source feed re-forms around that one thread: unrelated rows collapse out, the per-source counts fall to what actually belongs to it, and a spine draws down the survivors. This is the "show your working" surface for anything an agent did to stock. Click a different id and it pivots there.',
+    spec: 'non-matching rows height 17px→0 in 240ms · chip counts on the tally spring (0% overshoot, 520ms) · spine scaleY 0→1 380ms cubic-bezier(.16,1,.3,1) from the top · filter pill rises 260ms',
+    source: 'apps/web/src/pages/LogsTimelinePage.tsx:72-76,171-179',
+    html:
+      '<div class="mx-itl mx-itl-10">' +
+        '<div class="i10-chips">' +
+          '<span class="i10-ch" data-s="POS">POS <b>2</b></span>' +
+          '<span class="i10-ch" data-s="Agent">Agent <b>1</b></span>' +
+          '<span class="i10-ch" data-s="Stock">Stock <b>1</b></span>' +
+          '<span class="i10-ch" data-s="Doc">Doc <b>1</b></span>' +
+          '<span class="i10-ch" data-s="Audit">Audit <b>1</b></span>' +
+          '<span class="i10-ch" data-s="Event">Event <b>0</b></span>' +
+        '</div>' +
+        '<div class="i10-body"><span class="i10-spine"></span>' +
+        '<ul class="i10-list">' +
+          '<li class="i10-e" data-s="POS" data-cid="c8f4a1e2"><span class="i10-s">POS</span><span class="i10-sum">Check #4471 closed &#183; 3 lines</span><span class="i10-cid">c8f4a1e2</span></li>' +
+          '<li class="i10-e" data-s="Agent" data-cid="c8f4a1e2"><span class="i10-s">Agent</span><span class="i10-sum">Depletion mapped 3 lines &#8594; 3 wines</span><span class="i10-cid">c8f4a1e2</span></li>' +
+          '<li class="i10-e" data-s="POS" data-cid="91b0d7c3"><span class="i10-s">POS</span><span class="i10-sum">Check #4472 closed</span><span class="i10-cid">91b0d7c3</span></li>' +
+          '<li class="i10-e" data-s="Stock" data-cid="c8f4a1e2"><span class="i10-s">Stock</span><span class="i10-sum">Etna Rosso &#8722;2 bottles</span><span class="i10-cid">c8f4a1e2</span></li>' +
+          '<li class="i10-e" data-s="Audit" data-cid=""><span class="i10-s">Audit</span><span class="i10-sum">owner opened /inventory</span><span class="i10-cid none">&#8212;</span></li>' +
+          '<li class="i10-e" data-s="Doc" data-cid="c8f4a1e2"><span class="i10-s">Doc</span><span class="i10-sum">PO-1038 drafted</span><span class="i10-cid">c8f4a1e2</span></li>' +
+        '</ul></div>' +
+        '<span class="i10-pill">correlationId <b>c8f4a1e2</b> <i>clear</i></span>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-10'); if (!w) return;
+      var evs = qa(w, '.i10-e'), chips = qa(w, '.i10-ch'), pill = q(w, '.i10-pill b');
+      function counts(id){
+        var c = {};
+        chips.forEach(function(ch){ c[ch.dataset.s] = 0; });
+        evs.forEach(function(e){
+          if (!id || e.dataset.cid === id) c[e.dataset.s] = (c[e.dataset.s] || 0) + 1;
+        });
+        return c;
+      }
+      function paint(id, animate){
+        var c = counts(id);
+        chips.forEach(function(ch){
+          var to = c[ch.dataset.s] || 0, b = q(ch, 'b'), from = parseInt(b.textContent, 10) || 0;
+          ch.classList.toggle('live', !!id && to > 0);
+          if (animate && to !== from) tally(root, b, from, to, 520);
+          else b.textContent = String(to);
+        });
+        evs.forEach(function(e){ e.classList.toggle('out', !!id && e.dataset.cid !== id); });
+      }
+      function pivot(id){
+        stop(root);
+        pill.textContent = id;
+        w.classList.add('pivot');
+        paint(id, true);
+      }
+      if (!w.__wired){
+        w.__wired = 1;
+        qa(w, '.i10-cid').forEach(function(cid){
+          if (cid.classList.contains('none')) return;
+          cid.addEventListener('click', function(){ pivot(cid.textContent.trim()); });
+        });
+        q(w, '.i10-pill i').addEventListener('click', function(){
+          w.classList.remove('pivot'); paint(null, true);
+        });
+      }
+      w.classList.remove('pivot');
+      qa(w, '.i10-cid').forEach(function(c){ c.classList.remove('hit'); });
+      paint(null, false);
+      reflow(w);
+      var first = q(w, '.i10-cid');
+      seq(root, [
+        [ 620, function(){ first.classList.add('hit'); }],
+        [ 780, function(){
+          pill.textContent = 'c8f4a1e2';
+          w.classList.add('pivot');
+          paint('c8f4a1e2', true);
+        }],
+        [1400, function(){ first.classList.remove('hit'); }]
+      ]);
+    }
+  });
+
+  /* ═══ 11 · a 500 is not a quiet night ══════════════════════════════════ */
+  push({
+    id: 'itl-11',
+    name: 'A 500 is not a quiet night',
+    purpose: 'GAP — /logs never branches query.isError, so a failed timeline renders exactly like an empty one: "No events". Here the two states are made to diverge. Quiet keeps its counts at 0 in muted ink; broken flips every count to an em dash (the house rule: an unknown is never drawn as zero), takes a red hairline, names the status, and offers a retry.',
+    spec: 'skeleton → state cross-fade 260ms · counts 0→em dash on the 160ms ink token · panel hairline to --m-no 200ms · retry rises 5px/320ms cubic-bezier(.16,1,.3,1)',
+    source: 'apps/web/src/pages/LogsTimelinePage.tsx:143-150 (06-pages/logs.md §9)',
+    html:
+      '<div class="mx-itl mx-itl-11">' +
+        '<div class="i11-p">' +
+          '<div class="i11-chips">' +
+            '<span class="i11-ch">POS <b>0</b></span><span class="i11-ch">Agent <b>0</b></span>' +
+            '<span class="i11-ch">Stock <b>0</b></span><span class="i11-ch">Doc <b>0</b></span>' +
+            '<span class="i11-ch">Audit <b>0</b></span><span class="i11-ch">Event <b>0</b></span>' +
+          '</div>' +
+          '<div class="i11-sk"><div class="skb" style="width:70%"></div>' +
+            '<div class="skb" style="width:52%"></div></div>' +
+          '<div class="i11-body i11-q"><div class="i11-qt">No events between 14:00 and 15:00.</div>' +
+            '<div class="icap" style="margin-top:4px">The restaurant was quiet. Nothing failed.</div></div>' +
+          '<div class="i11-body i11-e">' +
+            '<span class="i11-code">500 &#183; GET /logs/timeline</span>' +
+            '<p class="i11-msg">We could not read the timeline. Counts are unknown, not zero.</p>' +
+            '<span class="i11-retry">Retry</span></div>' +
+        '</div>' +
+        '<div class="i11-cap icap">today both of these render <b>&#8220;No events&#8221;</b></div>' +
+      '</div>',
+    play: function(root){
+      var w = mount(root, 'mx-itl-11'); if (!w) return;
+      var vals = qa(w, '.i11-ch b');
+      function setVals(t){ vals.forEach(function(b){ b.textContent = t; }); }
+      w.classList.remove('quiet','err','capped');
+      setVals('0');
+      reflow(w);
+      seq(root, [
+        [ 700, function(){ w.classList.add('quiet'); }],
+        [2300, function(){ w.classList.remove('quiet'); }],
+        [2420, function(){ w.classList.add('err'); setVals('—'); }],
+        [3100, function(){ w.classList.add('capped'); }]
+      ]);
+    }
+  });
+})();
+</script>

@@ -23,12 +23,17 @@ export class CreateStorageLocationDto {
   @IsOptional()
   description?: string;
 
-  @ApiPropertyOptional({ description: "Capacity in bottles", default: 100 })
+  /**
+   * REQUIRED. `storage_locations.capacity_bottles` is NOT NULL, so an omitted
+   * capacity used to be silently recorded as 100 — a number nobody measured,
+   * sitting under the cellar map's fill-bar percentage. ADR 0051: the surface
+   * shows what was recorded, so recording requires someone to record it.
+   */
+  @ApiProperty({ description: "Capacity in bottles" })
   @IsNumber()
   @IsInt()
-  @Min(0)
-  @IsOptional()
-  capacity?: number;
+  @Min(1)
+  capacity: number;
 
   @ApiPropertyOptional({ description: "Temperature setting (e.g. 55°F)" })
   @IsString()

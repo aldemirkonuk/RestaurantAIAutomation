@@ -24,7 +24,7 @@ ship the honest empty state before the pressure arrives to fake a full one.
 | `analytics.insight_feedback_coverage` | **8 of 581** — 8 rules can receive a disposition; 573 insight types cannot |
 | `analytics.top_rank_ignore_rate` | **Unmeasured**, though `position` and `request_id` are stored for exactly this |
 | `analytics.unnamed_threshold_count` | **9** — 5 floors + 4 `scoreOf` constants, none named, none tested |
-| `analytics.consultant_enabled_restaurants` | **Unlisted.** No expiry mechanism; toggle route unguarded |
+| `analytics.consultant_enabled_restaurants` | **Unlisted.** No expiry mechanism. Toggle route was unguarded; closed 2026-08-24 (PR #31, `analytics.controller.ts:51`) |
 | `analytics.insufficient_data_render_rate` | **Unmeasured**, and there is no empty-state screen to measure |
 
 ## How
@@ -70,8 +70,10 @@ demo-pressure vaccine** — M2's failure sequence starts with an uncomfortable e
 
 List every `analytics_insight_prefs` row with `category='consultants'`, `enabled=true`, its
 age and its named owner. Unowned rows revert to OFF — the code's own default
-(`consultants.service.ts:18`), so reverting needs no approval. Cheap to build, and it is the
-only available mitigation for M1 while OD-20 stands.
+(`consultants.service.ts:18`), so reverting needs no approval. Cheap to build, and it was
+the only available mitigation for M1 while OD-20 stood — *OD-20 closed 2026-08-24 (PR #31,
+`analytics.controller.ts:51`); the list is now the mitigation for M1's remaining, internal
+half rather than the only one available.*
 
 ### 6. Then, and only then, tune ranking
 
@@ -89,9 +91,11 @@ Against mechanisms, not rates ([[insight-narrative-generation-directive]] rule 4
   possible win in this department.
 - **The demo pressure is predictable and dateable.** M2 says the support floor gets lowered
   before a customer meeting. Shipping the empty state *first* removes the reason.
-- **OD-20 makes M1 externally triggerable.** While the consultant toggle is unguarded,
-  "someone flips it for a demo" is not even required — anyone can. That raises the priority
-  of the expiry list from hygiene to control.
+- ~~**OD-20 makes M1 externally triggerable.**~~ While the consultant toggle was unguarded,
+  "someone flips it for a demo" was not even required — anyone could. *Corrected 2026-09-01:
+  closed 2026-08-24 (PR #31, `analytics.controller.ts:51`), so M1 is internally triggered
+  again.* The expiry list keeps its priority on the original argument — an enablement that
+  outlives its reason — rather than on external reachability.
 
 ## Next steps
 
@@ -106,7 +110,8 @@ Against mechanisms, not rates ([[insight-narrative-generation-directive]] rule 4
 - [ ] Co-own the threshold-naming work with [[analytics-engine-charter]] (9 constants)
 - [ ] Write the first spec for `recommendations.service.ts` — 8 rules, deterministic,
       trivially fixture-testable, and currently untested
-- [ ] Restate OD-20 and INTEL-F3 every close-time until closed
+- [ ] Restate INTEL-F3 every close-time until closed *(the OD-20 half of this item is
+      **done 2026-08-24** — closed by PR #31, `analytics.controller.ts:51`)*
 
 ## Questions for the founder
 
@@ -125,10 +130,14 @@ Against mechanisms, not rates ([[insight-narrative-generation-directive]] rule 4
    `operator`, or route it outside NF? Until this closes, the strongest human signal the
    product collects is outside the loop graph (foundation §7).
 
-4. **OD-20 — confirm we do not demo the consultant layer until the routes are guarded.**
-   The toggle (`analytics.controller.ts:516`) and the Opus call (`:531`) are unguarded, and
-   the consult call has no retry either (`intelligence.md:81-83`), so a 429 surfaces to the
-   user as a failure. This team's position is: not until it is fixed.
+4. ~~**OD-20 — confirm we do not demo the consultant layer until the routes are guarded.**~~
+   **Withdrawn 2026-09-01, recorded rather than deleted.** The toggle and the Opus call were
+   unguarded and this team's position was: not until it is fixed. It was fixed — PR #31
+   (2026-08-24) added a class-level `@UseGuards(JwtAuthGuard)` to `AnalyticsController`
+   (`analytics.controller.ts:51`) over every route handler on the file, and OD-20 is
+   resolved, so there is nothing left to confirm. **Still live and unrelated to the guard:**
+   the consult call has no retry (`intelligence.md:81-83`), so a 429 surfaces to the user as
+   a failure — that belongs to [[harness-model-routing-charter|harness-and-model-routing-charter]] (RM-1).
 
 5. **Are 8 rules the right number against 573 insight types?** It may be excellent
    judgement — most insights genuinely are not actionable. But nobody has checked, and the

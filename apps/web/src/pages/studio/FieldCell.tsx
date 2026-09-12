@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ReasonInput } from './ReasonInput'
 import { Badge } from '../../components/ui/badge'
+import { studioJsonRequest, studioErrorMessage } from './studioApi'
 
 interface FieldEntry {
   value: string | null
@@ -61,51 +62,25 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
     newValue !== (entry?.value ?? '') &&
     (!requiresReason || reason.trim().length >= 5)
 
-  const parseErrorDetail = async (resp: Response): Promise<string> => {
-    const raw = await resp.text()
-    if (!raw) {
-      if (resp.status === 503) {
-        return 'Service unavailable (503). If you use Vite, ensure FastAPI is running on port 8000 and retry.'
-      }
-      return `HTTP ${resp.status}`
-    }
-    try {
-      const j = JSON.parse(raw) as { detail?: unknown }
-      const d = j.detail
-      if (typeof d === 'string') return d
-      if (Array.isArray(d)) return d.map((x) => (typeof x === 'object' && x && 'msg' in x ? String((x as { msg: string }).msg) : String(x))).join('; ')
-      return typeof d === 'object' && d != null ? JSON.stringify(d) : raw.slice(0, 300)
-    } catch {
-      return raw.slice(0, 300)
-    }
-  }
-
   const handleSave = async () => {
     if (!canSave) return
     setIsSaving(true)
     setSaveError(null)
-    const token = localStorage.getItem('accessToken')
     try {
-      const resp = await fetch(`/api/v1/studio/overrides`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
+      // Orchestrator, not the gateway (studioApi.ts). studioJsonRequest throws on any
+      // non-2xx, so the success toasts below are unreachable unless the write landed.
+      const data = await studioJsonRequest<{ status?: string }>(
+        '/api/v1/studio/overrides',
+        'POST',
+        {
           session_id: sessionId,
           submission_id: submissionId,
           field_name: field,
           new_value: newValue.trim(),
           reason: requiresReason ? reason.trim() : null,
           citation_url: citationUrl.trim() || null,
-        }),
-      })
-      if (!resp.ok) {
-        const msg = await parseErrorDetail(resp)
-        throw new Error(msg)
-      }
-      const data = (await resp.json()) as { status?: string; detail?: unknown }
+        },
+      )
       setIsEditing(false)
       onOverrideSuccess(field, newValue.trim())
       if (data.status === 'pending') {
@@ -114,9 +89,9 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
         toast.success('Override saved', { description: `${field} updated` })
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Save failed. Check your connection.'
+      const message = studioErrorMessage(err)
       setSaveError(message)
-      toast.error('Save failed', { description: message.slice(0, 120) })
+      toast.error('Save failed', { description: message.slice(0, 160) })
     } finally {
       setIsSaving(false)
     }

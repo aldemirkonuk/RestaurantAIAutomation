@@ -52,13 +52,22 @@ def test_build_seed_plan_dry_run_covers_synth03_surfaces():
         tables["restaurant_inventory"]["row_count"] <= tables["menu_items"]["row_count"]
     )
     # Library ALWAYS planned (W6 lock) — one provisional wine per unique signature
+    # One inventory row and one submission per distinct menu line; but the
+    # library collapses lines that share wine_signature_hash(producer, name,
+    # vintage, country, region, grape) into ONE row (ADR 0093, 2026-09-03), so
+    # the wines are fewer than the inventory rows and never more.
+    assert tables["master_wine_library"]["row_count"] == plan["library_identities"]
+    # restaurant_inventory is UNIQUE per (restaurant, wine): exactly one row per
+    # library identity, so wines and inventory rows count the same
     assert (
         tables["master_wine_library"]["row_count"]
         == tables["restaurant_inventory"]["row_count"]
     )
-    assert (
+    # submissions stay one per distinct menu line, so the difference is the
+    # number of lines the library collapsed
+    assert plan["identity_collapsed"] == (
         tables["master_wine_library_submissions"]["row_count"]
-        == tables["master_wine_library"]["row_count"]
+        - tables["master_wine_library"]["row_count"]
     )
     assert tables["sim_ground_truth_runs"]["row_count"] == 1
     assert tables["sim_ground_truth_facts"]["row_count"] >= 6

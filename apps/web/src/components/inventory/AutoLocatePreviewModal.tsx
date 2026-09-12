@@ -199,7 +199,7 @@ export function AutoLocatePreviewModal({
                             >
                               {allLocations.map(loc => (
                                 <option key={loc.id} value={loc.id}>
-                                  {loc.name} ({loc.currentCount}/{loc.capacity})
+                                  {loc.name} ({loc.currentCount}/{loc.capacity ?? '—'})
                                 </option>
                               ))}
                             </select>

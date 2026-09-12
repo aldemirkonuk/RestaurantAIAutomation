@@ -109,7 +109,7 @@ is the most built-out team in the department relative to its mandate.
 - `supabase/migrations/20260805134000_simpos_schema.sql`
 - Namespace guard cited in production code: `agents/drift_agent.py:4-6` (decision C31)
 - E2E: `scripts/e2e_crawl_harness.py`, `scripts/e2e_restaurants.json`
-- Plan: `.planning/SYNTHETIC_DATA_AND_DOCS_PLAN.md`
+- Plan: `.planning/07-reference/SYNTHETIC_DATA_AND_DOCS_PLAN.md`
 
 **The one thing missing is the thing that matters most:** there is **no recorded fidelity
 baseline**. `backtest.py` exists; a published gap between synthetic and real scores does not.

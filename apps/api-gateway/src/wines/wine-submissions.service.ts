@@ -1,7 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { createHash } from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { CreateWineSubmissionDto } from "./dto/wine-submissions.dto";
+import {
+  buildWineSignature,
+  hashProvisionalWineSignature,
+  hashWineSignature,
+  isSpecificWineIdentity,
+  normalizeSignatureText,
+  parsedVintageOrNull,
+  wineSignatureHashOrNull,
+  wineSignatureInputFromPayload,
+} from "./wine-signature";
 
 type SubmissionRow = {
   id: string;
@@ -40,6 +49,17 @@ export interface LibraryResolutionResult {
   matched: boolean;
   libraryTier: number | null;
   /**
+   * True when the identity was too generic to join the shared library, so the
+   * row behind `masterWineId` belongs to the asking venue alone (ADR 0130).
+   *
+   * Reported rather than inferred from `matched`: an unmatched SPECIFIC wine
+   * is a genuinely new bottle the shared library should enrich, and a
+   * provisional one is a label only this venue uses. Collapsing the two is
+   * what sent "House White Wine" to governance review as if it were a
+   * discovery.
+   */
+  provisional?: boolean;
+  /**
    * Score of the best candidate, 0-100, or null when nothing came back.
    *
    * Populated even when `matched` is false: a wine that scored 79 against a
@@ -57,84 +77,20 @@ export class WineSubmissionsService {
   constructor(private readonly dbService: DatabaseService) {}
 
   /**
-   * Diacritics to delete rather than turn into a space.
-   *
-   * This is deliberately an explicit class and not `\p{Diacritic}`, because
-   * the same rule has to run in Postgres (public.wine_normalize_text) to key
-   * the same columns, and Postgres regex has no Unicode property classes.
-   * When the two drifted, one library row diverged: Catalan "Xarel·lo"
-   * normalized to "xarello" here and "xarel lo" there, because U+00B7 is a
-   * Diacritic to JS but was not in the SQL class.
-   *
-   * `\p{Diacritic}` covers 659 codepoints this omits, all of them Hebrew,
-   * Arabic, Indic, Thai, Tibetan, Burmese or CJK. Deleting versus spacing only
-   * changes the outcome when the character sits BETWEEN Latin alphanumerics —
-   * a run of non-Latin text collapses to spaces either way — so the Latin and
-   * Greek subset below is the part that can actually alter a wine name.
-   *
-   * Parity with the SQL function is asserted in the spec, not assumed.
-   */
-  private static readonly DIACRITICS = /[̀-ͯ᪰-᫿᷀-᷿︠-︯^`¨¯´·¸ʰ-˿ʹ͵ͺ΄΅]/g;
-
-  /**
-   * Trade abbreviations a menu prints, expanded to the word they stand for.
-   *
-   * Measured before this existed: of 27 library producers beginning with an
-   * abbreviable trade word, rewritten the way a menu prints them, ZERO reached
-   * the auto-link floor. "Dom. Faiveley" produced no candidate at all against
-   * "Domaine Faiveley"; "Ten. di Arceno" scored 62 against "Tenuta di Arceno".
-   * Every one of them silently created a duplicate.
-   *
-   * Trigram similarity is the wrong instrument for a prefix truncation --
-   * "dom" and "domaine" share two trigrams out of five however exactly the
-   * rest of the name agrees. Lowering the producer gate far enough to reach 62
-   * would admit "chateau musar" vs "chateau de bligny" at 0.571 and every
-   * other shared-trade-word false positive. So the fix belongs here: these are
-   * the same word, and the normalizer should say so.
-   *
-   * The trailing period is required on every pattern. Bare "dom" is not an
-   * abbreviation -- Dom Perignon is a wine, and expanding it would invent a
-   * producer that does not exist. Multi-token patterns come first so
-   * "az. agr." expands as a unit rather than "az." matching alone.
-   *
-   * Mirrored exactly by public.wine_normalize_text; the spec fails on drift.
-   */
-  private static readonly ABBREVIATIONS: ReadonlyArray<
-    readonly [RegExp, string]
-  > = [
-    [/\baz\.\s*agr\.\s*/g, "azienda agricola "],
-    [/\bdom\.\s*/g, "domaine "],
-    [/\bch\.\s*/g, "chateau "],
-    [/\bcht\.\s*/g, "chateau "],
-    [/\bbod\.\s*/g, "bodegas "],
-    [/\bwgt\.\s*/g, "weingut "],
-    [/\bten\.\s*/g, "tenuta "],
-    [/\bfatt\.\s*/g, "fattoria "],
-    [/\bcant\.\s*/g, "cantina "],
-    [/\bmarch\.\s*/g, "marchesi "],
-    [/\bste\.\s*/g, "sainte "],
-    [/\bst\.\s*/g, "saint "],
-    [/\bmt\.\s*/g, "monte "],
-  ];
-
-  /**
    * Public because it is the ONLY correct implementation.
    *
    * There were four: this one, another in wines.service.ts with a narrower
    * diacritic class, a `name.toLowerCase().trim()` in menus.service.ts, and
    * the SQL function. All four wrote the same columns. Anything that needs to
    * normalize a wine string must call this.
+   *
+   * The implementation moved to ./wine-signature — one module, so a fifth copy
+   * cannot appear by accident. This stays as the app-facing name because
+   * menus.service.ts and wines.service.ts call through it and the SQL-parity
+   * spec pins it.
    */
   normalizeText(value?: string | null): string {
-    if (!value) return "";
-    let s = value
-      .normalize("NFD")
-      .replace(WineSubmissionsService.DIACRITICS, "")
-      .toLowerCase();
-    for (const [pattern, expansion] of WineSubmissionsService.ABBREVIATIONS) {
-      s = s.replace(pattern, expansion);
-    }
-    return s.replace(/[^a-z0-9]+/g, " ").trim();
+    return normalizeSignatureText(value);
   }
 
   /**
@@ -149,7 +105,7 @@ export class WineSubmissionsService {
    * it lets a missing producer shift the name into the producer's slot.
    */
   signatureHashFor(input: SignatureInput): string {
-    return this.hashSignature(this.buildSignature(input));
+    return hashWineSignature(input);
   }
 
   /**
@@ -162,21 +118,11 @@ export class WineSubmissionsService {
    * classification rather than an identity attribute — a menu never prints it
    * — so removing it is what makes the two paths agree.
    *
-   * Mirrored by public.wine_signature_hash().
+   * Mirrored by public.wine_signature_hash(). Field order and the constants
+   * behind it now live in ./wine-signature.
    */
   private buildSignature(payload: SignatureInput): string {
-    return [
-      this.normalizeText(payload.producer),
-      this.normalizeText(payload.name),
-      payload.vintage ?? "NV",
-      this.normalizeText(payload.country),
-      this.normalizeText(payload.region),
-      this.normalizeText(payload.grapeVariety),
-    ].join("|");
-  }
-
-  private hashSignature(signature: string): string {
-    return createHash("sha256").update(signature).digest("hex");
+    return buildWineSignature(payload);
   }
 
   private generateWineId(): string {
@@ -190,8 +136,7 @@ export class WineSubmissionsService {
     userId: string,
     payload: CreateWineSubmissionDto,
   ) {
-    const signature = this.buildSignature(payload);
-    const signatureHash = this.hashSignature(signature);
+    const signatureHash = this.signatureHashFor(payload);
     const normalizedFields = {
       normalized_name: this.normalizeText(payload.name),
       normalized_producer: this.normalizeText(payload.producer),
@@ -258,11 +203,37 @@ export class WineSubmissionsService {
 
     for (const submission of submissions) {
       const payload = submission.payload as CreateWineSubmissionDto;
-      const signature = this.buildSignature(payload);
-      const signatureHash =
-        submission.signature_hash || this.hashSignature(signature);
-      const normalizedName = this.normalizeText(payload.name);
-      const normalizedProducer = this.normalizeText(payload.producer);
+      // Read through the tolerant payload reader rather than trusting the cast
+      // above. This table is written by the NestJS DTO (camelCase), the menu
+      // importer, and the Python menu-scan pipeline (snake_case, name under
+      // `wine_name`) — and only the first of those matches the DTO type. Every
+      // identity field below comes from this one reading, so the hash, the
+      // matcher probe and the row eventually inserted cannot disagree about
+      // what wine this is.
+      const identity = wineSignatureInputFromPayload(payload);
+      // Deliberately NOT `submission.signature_hash || …`. The stored value on
+      // scan-pipeline rows comes from a different algorithm; preferring it
+      // guarantees the lookup misses and then writes that foreign key format
+      // into master_wine_library.signature_hash, which is UNIQUE and canonical.
+      // Recomputing is what makes the two paths agree.
+      const signatureHash = wineSignatureHashOrNull(identity);
+      const normalizedName = normalizeSignatureText(identity.name);
+      const normalizedProducer = normalizeSignatureText(identity.producer);
+
+      // No name means no identity. Matching on an empty normalized_name would
+      // pair this row with every other nameless row in the library, and the
+      // provisional insert below would claim a UNIQUE key over nothing.
+      if (!signatureHash) {
+        await this.dbService.supabase
+          .from("master_wine_library_submissions")
+          .update({
+            status: "pending_review",
+            decision_reason: "unidentifiable_payload_no_name",
+          })
+          .eq("id", submission.id);
+        results.push({ id: submission.id, status: "pending_review" });
+        continue;
+      }
 
       // Matching is delegated to the same RPC the menu importer uses. This
       // path used to run its own ladder — exact signature, then
@@ -276,15 +247,15 @@ export class WineSubmissionsService {
       // place.
       const { data: candidates, error: matchError } =
         await this.dbService.supabase.rpc("match_library_wine", {
-          p_name: payload.name,
-          p_producer: payload.producer ?? null,
+          p_name: identity.name,
+          p_producer: identity.producer ?? null,
           p_vintage:
-            typeof payload.vintage === "string"
-              ? parseInt(payload.vintage, 10) || null
-              : (payload.vintage ?? null),
-          p_country: payload.country ?? null,
-          p_region: payload.region ?? null,
-          p_grape_variety: payload.grapeVariety ?? null,
+            typeof identity.vintage === "string"
+              ? parseInt(identity.vintage, 10) || null
+              : (identity.vintage ?? null),
+          p_country: identity.country ?? null,
+          p_region: identity.region ?? null,
+          p_grape_variety: identity.grapeVariety ?? null,
         });
 
       // Leave the submission pending rather than treating an outage as "this
@@ -339,17 +310,25 @@ export class WineSubmissionsService {
       }
 
       const wineId = payload["wineId"] || this.generateWineId();
+      // Identity columns come from the same resolved reading the hash was
+      // computed over. Reading payload.name here directly was the second half
+      // of the same defect: a snake_case payload hashed correctly off
+      // `wine_name` and then wrote NULL into master_wine_library.name, leaving
+      // a canonical row that no future match could ever recognise.
       const insertPayload = {
         wine_id: wineId,
-        name: payload.name,
-        producer: payload.producer,
-        vintage: payload.vintage ?? null,
+        name: identity.name,
+        producer: identity.producer,
+        vintage: identity.vintage ?? null,
         price_reference: payload.priceReference ?? null,
-        primary_type: payload.primaryType ?? "unknown",
-        grape_variety: payload.grapeVariety ?? null,
-        country: payload.country ?? "Unknown",
-        region: payload.region ?? "Unknown",
-        appellation: payload.appellation ?? null,
+        primary_type: identity.primaryType ?? "unknown",
+        grape_variety: identity.grapeVariety ?? null,
+        // Null, not "Unknown". The submission path accounts for the other 251
+        // of production's 328 `country = 'Unknown'` rows, and 'Unknown' sorts,
+        // groups and filters as though it were a country.
+        country: identity.country ?? null,
+        region: identity.region ?? null,
+        appellation: identity.appellation ?? null,
         sub_region: payload.subRegion ?? null,
         wine_structure: payload.wineStructure ?? null,
         sensory_profile: payload.sensoryProfile ?? null,
@@ -444,11 +423,20 @@ export class WineSubmissionsService {
    */
   async resolveOrCreateLibraryWine(
     item: LibraryResolutionInput,
+    restaurantId: string,
   ): Promise<LibraryResolutionResult> {
-    const parsedVintage =
-      typeof item.vintage === "string"
-        ? parseInt(item.vintage, 10) || null
-        : (item.vintage ?? null);
+    const parsedVintage = parsedVintageOrNull(item.vintage);
+
+    // ADR 0130. A generic, producer-less name never reaches the shared
+    // library — not to match it, not to be matched by it. It becomes this
+    // venue's own provisional wine.
+    if (!isSpecificWineIdentity(item)) {
+      return this.resolveVenueProvisionalWine(
+        item,
+        restaurantId,
+        parsedVintage,
+      );
+    }
 
     const { data: candidates, error: matchError } =
       await this.dbService.supabase.rpc("match_library_wine", {
@@ -481,23 +469,35 @@ export class WineSubmissionsService {
       };
     }
 
-    const signatureHash = this.hashSignature(
-      this.buildSignature({
-        name: item.name,
-        producer: item.producer ?? null,
-        vintage: parsedVintage,
-        country: item.country ?? null,
-        region: item.region ?? null,
-        grapeVariety: item.grapeVariety ?? null,
-      }),
-    );
+    const signatureHash = this.signatureHashFor({
+      name: item.name,
+      producer: item.producer ?? null,
+      vintage: parsedVintage,
+      country: item.country ?? null,
+      region: item.region ?? null,
+      grapeVariety: item.grapeVariety ?? null,
+    });
 
     const insertPayload = {
       wine_id: this.generateWineId(),
       name: item.name,
-      producer: item.producer || item.name,
+      // NULL, not the wine's own name and not the word "Unknown". This is the
+      // SHARED catalogue: producer is an identity attribute, so a row whose
+      // producer is "House White Wine" asserts that such a producer exists, to
+      // every tenant matching against it. Measured 2026-09-05: 48 of 77
+      // menu-import rows carried their own name as producer, and all 77
+      // carried country 'Unknown'.
+      //
+      // It also disagreed with the key: `signatureHash` above is computed over
+      // `item.producer ?? null` / `item.country ?? null`, so the stored row
+      // misrepresented the very identity its dedup hash was taken over.
+      //
+      // `primary_type: "unknown"` stays — that is a vocabulary member meaning
+      // "unclassified", read by the beverage_kind trigger, not a placeholder
+      // standing in for an answer.
+      producer: item.producer ?? null,
       primary_type: "unknown",
-      country: item.country || "Unknown",
+      country: item.country ?? null,
       region: item.region ?? null,
       grape_variety: item.grapeVariety ?? null,
       vintage: parsedVintage,
@@ -568,6 +568,137 @@ export class WineSubmissionsService {
   }
 
   /**
+   * The venue's own wine, for a name that identifies nothing (ADR 0130).
+   *
+   * `restaurant_inventory.master_wine_id` is NOT NULL, so "do not join the
+   * shared library" cannot mean "no library row" — it means a library row
+   * that belongs to one venue and is a match target for nobody.
+   * `provisional_for_restaurant_id` says which venue, and
+   * `trg_sync_signature_hash` keys such a row on
+   * `wine_provisional_signature_hash(owner, ...)` instead of the shared
+   * six-field hash. Two venues' "House White Wine" therefore occupy two rows
+   * under the same UNIQUE index, and this venue re-scanning its own menu
+   * lands back on its own row instead of spawning a duplicate.
+   *
+   * The matcher is not consulted at all. Consulting it and discarding the
+   * answer would still leave the decision to a confidence score; the rule is
+   * that a generic identity has nothing to compare, so there is nothing to
+   * score.
+   */
+  private async resolveVenueProvisionalWine(
+    item: LibraryResolutionInput,
+    restaurantId: string,
+    parsedVintage: number | null,
+  ): Promise<LibraryResolutionResult> {
+    if (!restaurantId) {
+      // Better to fail the line than to fall back to the shared library: an
+      // unowned generic row is exactly the cross-tenant collision this exists
+      // to stop.
+      throw new Error(
+        `Cannot resolve "${item.name}" without a restaurant: a name this ` +
+          `generic is only ever one venue's own wine`,
+      );
+    }
+
+    const signatureHash = hashProvisionalWineSignature(restaurantId, {
+      name: item.name,
+      producer: item.producer ?? null,
+      vintage: parsedVintage,
+      country: item.country ?? null,
+      region: item.region ?? null,
+      grapeVariety: item.grapeVariety ?? null,
+    });
+
+    const insertPayload = {
+      wine_id: this.generateWineId(),
+      name: item.name,
+      // Absent, not invented — the same rule the shared path now follows
+      // (`20260906023000_the_library_may_say_it_does_not_know.sql` dropped the
+      // NOT NULLs that used to force a placeholder here). A venue's own row
+      // needs it for a second reason: `trg_sync_signature_hash` rehashes from
+      // the STORED fields, so a row written with "Unknown" in country while
+      // the lookup key is computed from an absent one could never be found
+      // again, and every rescan would add another house wine to the cellar.
+      producer: item.producer ?? null,
+      primary_type: "unknown",
+      country: item.country ?? null,
+      region: item.region ?? null,
+      grape_variety: item.grapeVariety ?? null,
+      vintage: parsedVintage,
+      library_tier: 3, // Provisional — usable now, pending governance review
+      source: "venue_provisional",
+      signature_hash: signatureHash,
+      normalized_name: this.normalizeText(item.name),
+      normalized_producer: this.normalizeText(item.producer),
+      signature_source: "venue_provisional",
+      provisional_for_restaurant_id: restaurantId,
+    };
+
+    const { data: created, error } = await this.dbService.supabase
+      .from("master_wine_library")
+      .upsert(insertPayload, {
+        onConflict: "signature_hash",
+        ignoreDuplicates: true,
+      })
+      .select("id, library_tier")
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error("Failed to create venue provisional wine", {
+        error: error.message,
+        name: item.name,
+        restaurantId,
+      });
+      throw new Error(
+        `Failed to resolve venue wine "${item.name}": ${error.message}`,
+      );
+    }
+
+    if (created?.id) {
+      return {
+        masterWineId: created.id,
+        matched: false,
+        provisional: true,
+        libraryTier: created.library_tier ?? 3,
+        confidence: null,
+      };
+    }
+
+    // ignoreDuplicates returns no row when this venue already has this wine.
+    // Scoped by owner as well as by hash: reading by hash alone would be
+    // correct today only because the hash carries the owner, and a lookup
+    // that relies on that is one refactor away from reading another venue's
+    // row.
+    const { data: existing, error: readError } = await this.dbService.supabase
+      .from("master_wine_library")
+      .select("id, library_tier")
+      .eq("signature_hash", signatureHash)
+      .eq("provisional_for_restaurant_id", restaurantId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new Error(
+        `Failed to read back venue wine "${item.name}": ${readError.message}`,
+      );
+    }
+
+    if (existing?.id) {
+      return {
+        masterWineId: existing.id,
+        matched: false,
+        provisional: true,
+        libraryTier: existing.library_tier ?? 3,
+        confidence: null,
+      };
+    }
+
+    throw new Error(
+      `Failed to resolve venue wine "${item.name}": insert was skipped but ` +
+        `no row carries signature ${signatureHash.slice(0, 12)}`,
+    );
+  }
+
+  /**
    * Resolve a whole menu at once.
    *
    * resolveOrCreateLibraryWine is one round trip per wine, and against this
@@ -590,11 +721,24 @@ export class WineSubmissionsService {
    */
   async resolveLibraryWinesBatch(
     items: LibraryResolutionInput[],
+    restaurantId: string,
   ): Promise<Array<LibraryResolutionResult | null>> {
     if (items.length === 0) return [];
 
-    const parseVintage = (v: LibraryResolutionInput["vintage"]) =>
-      typeof v === "string" ? parseInt(v, 10) || null : (v ?? null);
+    const parseVintage = parsedVintageOrNull;
+
+    // ADR 0130. Every generic line on the menu is this venue's own wine.
+    // The whole array is still sent to the matcher — match_library_wine
+    // returns nothing for a query that is not specific, so the generic lines
+    // come back empty and index alignment is preserved — but the decision is
+    // taken here as well, so the rule survives a matcher that forgets it.
+    const isSpecific = items.map((i) => isSpecificWineIdentity(i));
+    if (isSpecific.some((s) => !s) && !restaurantId) {
+      throw new Error(
+        "Cannot resolve a menu with generic wine names without a restaurant: " +
+          "a name that generic is only ever one venue's own wine",
+      );
+    }
 
     const { data: matches, error: matchError } =
       await this.dbService.supabase.rpc("match_library_wines_batch", {
@@ -627,6 +771,7 @@ export class WineSubmissionsService {
     items.forEach((_, idx) => {
       const best = byIndex.get(idx);
       if (
+        isSpecific[idx] &&
         best &&
         best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
       ) {
@@ -653,33 +798,46 @@ export class WineSubmissionsService {
     for (const idx of needsCreate) {
       const item = items[idx];
       const vintage = parseVintage(item.vintage);
-      const signatureHash = this.hashSignature(
-        this.buildSignature({
-          name: item.name,
-          producer: item.producer ?? null,
-          vintage,
-          country: item.country ?? null,
-          region: item.region ?? null,
-          grapeVariety: item.grapeVariety ?? null,
-        }),
-      );
+      const identity = {
+        name: item.name,
+        producer: item.producer ?? null,
+        vintage,
+        country: item.country ?? null,
+        region: item.region ?? null,
+        grapeVariety: item.grapeVariety ?? null,
+      };
+      // A specific wine that matched nothing is a new bottle for the shared
+      // library. A generic one is this venue's own, keyed behind the venue id
+      // so another venue printing the same words does not collide with it
+      // (ADR 0130).
+      const provisional = !isSpecific[idx];
+      const signatureHash = provisional
+        ? hashProvisionalWineSignature(restaurantId, identity)
+        : this.signatureHashFor(identity);
       signatureOf.set(idx, signatureHash);
       if (!rowBySignature.has(signatureHash)) {
         rowBySignature.set(signatureHash, {
           wine_id: this.generateWineId(),
           name: item.name,
-          producer: item.producer || item.name,
+          // Same rule as the single-row path above: null, never a
+          // placeholder. This is the door 26 of 26 Antalya rows came through.
+          // A venue's own row needs it for a second reason (ADR 0130): the
+          // trigger rehashes from the STORED fields, so a row written with a
+          // placeholder could not be found again by the key computed from the
+          // draft.
+          producer: item.producer ?? null,
           primary_type: "unknown",
-          country: item.country || "Unknown",
+          country: item.country ?? null,
           region: item.region ?? null,
           grape_variety: item.grapeVariety ?? null,
           vintage,
           library_tier: 3,
-          source: "menu_import",
+          source: provisional ? "venue_provisional" : "menu_import",
           signature_hash: signatureHash,
           normalized_name: this.normalizeText(item.name),
           normalized_producer: this.normalizeText(item.producer),
-          signature_source: "menu_import",
+          signature_source: provisional ? "venue_provisional" : "menu_import",
+          provisional_for_restaurant_id: provisional ? restaurantId : null,
         });
       }
     }
@@ -723,8 +881,14 @@ export class WineSubmissionsService {
       results[idx] = {
         masterWineId: row.id,
         matched: false,
+        provisional: !isSpecific[idx],
         libraryTier: row.library_tier ?? 3,
-        confidence: byIndex.get(idx)?.confidence ?? null,
+        // A generic line was never scored, so there is no confidence to
+        // report. Carrying the matcher's number here would attach a score to
+        // a comparison that did not happen.
+        confidence: isSpecific[idx]
+          ? (byIndex.get(idx)?.confidence ?? null)
+          : null,
       };
     }
 

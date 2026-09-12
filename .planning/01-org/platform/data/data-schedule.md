@@ -47,7 +47,7 @@ script or service it would be harvested from.
 | Proposed skill | Tier ([[README]] §3.2) | Trigger | Harvested from — the real past instance |
 |---|---|---|---|
 | `wine-enrichment` | T1 Domain | A batch of unenriched wines reaches the top of the demand queue | `scripts/enrich_wines_insession.py`, `services/…/haiku_enrichment_service.py`; run live in `ef19b81`, `8bbcde6` |
-| `menu-extraction` | T1 Domain | A new menu PDF/photo lands in `datasets/annotation_inbox/` | `.planning/MENU_EXTRACTION_SCALE_PLAN.md`, `datasets/menu_corpus/` |
+| `menu-extraction` | T1 Domain | A new menu PDF/photo lands in `datasets/annotation_inbox/` | `.planning/07-reference/MENU_EXTRACTION_SCALE_PLAN.md`, `datasets/menu_corpus/` |
 | `producer-research` | T1 Domain | An enriched wine has no producer reputation record | `services/…/wine_research_service.py`, `wine_book_scraper.py`; `f7e0ea1` reached 100% producer coverage on the menu corpus |
 | `substrate-progress-report` | T2 Department | Daily, or on demand before any external claim about L0 | The three-number rule; would have prevented [[data-premortem]] M1 and M3 |
 | `provenance-audit` | T2 Department | Weekly, and before any gold-set or benchmark change | `active_learning_service.py:14-17` benchmark loop — the exact place M2 enters |

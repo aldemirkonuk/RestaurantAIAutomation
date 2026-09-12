@@ -2,6 +2,95 @@ import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as Sentry from "@sentry/node";
 
+// PII fields that must never reach the error tracker. `id` and custom
+// pseudonymous keys (e.g. restaurant_id) are retained so errors can still be
+// correlated to an account without identifying a person.
+const PII_USER_KEYS = ["email", "username", "name", "ip_address"];
+const PII_KEYS = new Set([
+  "email",
+  "name",
+  "username",
+  "first_name",
+  "last_name",
+  "phone",
+  "phone_number",
+  "ip_address",
+  "address",
+  "password",
+  "ssn",
+]);
+// Request headers that carry a credential rather than a description. Matched
+// case-insensitively: Node lower-cases incoming header names, but an event can
+// also be assembled by hand, and a case-sensitive delete is the classic way a
+// scrubber silently stops scrubbing.
+const SENSITIVE_HEADERS = new Set([
+  "authorization",
+  "cookie",
+  "x-api-key",
+  "proxy-authorization",
+]);
+
+/**
+ * What the error tracker is allowed to know about a person.
+ *
+ * Deliberately only opaque identifiers. `id` and `restaurantId` are UUIDs that
+ * mean nothing outside our own database, so an issue stays routable to an
+ * account by support without Sentry ever holding an identity. `email` and
+ * `username` used to be accepted here; removing them makes a re-introduction a
+ * compile error at the call site, which `scrubSentryEvent` alone cannot do.
+ *
+ * Do not widen this type. If a new field is genuinely needed for triage, it has
+ * to be an identifier that is meaningless to the processor.
+ */
+export interface SentryUserScope {
+  id: string;
+  restaurantId?: string;
+}
+
+function scrubPiiKeys(obj: Record<string, any> | undefined): void {
+  if (!obj || typeof obj !== "object") return;
+  for (const key of Object.keys(obj)) {
+    if (PII_KEYS.has(key.toLowerCase())) delete obj[key];
+  }
+}
+
+/**
+ * Remove secrets and PII from a Sentry event before transmission.
+ * - drops credential request headers and cookies
+ * - reduces `user` to a pseudonymous id (+ non-PII custom keys like restaurant_id)
+ * - strips common PII keys from free-form extra/contexts/request payloads
+ *
+ * The containers covered here are the contract all three runtimes share;
+ * scripts/check_sentry_pii_scope.py fails the build if one of them stops
+ * covering a container the others do.
+ *
+ * Exported so the scrubbing contract can be unit-tested.
+ */
+export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
+  if (event.request) {
+    const headers = event.request.headers;
+    if (headers) {
+      for (const key of Object.keys(headers)) {
+        if (SENSITIVE_HEADERS.has(key.toLowerCase())) delete headers[key];
+      }
+    }
+    delete event.request.cookies;
+  }
+  if (event.user) {
+    for (const key of PII_USER_KEYS) {
+      delete (event.user as Record<string, any>)[key];
+    }
+  }
+  scrubPiiKeys(event.extra as Record<string, any>);
+  scrubPiiKeys(event.request?.data as Record<string, any>);
+  if (event.contexts) {
+    for (const ctx of Object.values(event.contexts)) {
+      scrubPiiKeys(ctx as Record<string, any>);
+    }
+  }
+  return event;
+}
+
 /**
  * Sentry Error Tracking Service
  *
@@ -41,16 +130,19 @@ export class SentryService implements OnModuleInit {
         environment,
         tracesSampleRate: environment === "production" ? 0.1 : 1.0,
         profilesSampleRate: environment === "production" ? 0.1 : 1.0,
+        // Already the SDK default, stated explicitly because it is a privacy
+        // control and a silent default is not a control anyone can audit.
+        // Keeps the SDK from attaching request bodies, cookies and client IPs
+        // of its own accord. It does NOT cover anything we set ourselves —
+        // Sentry's own docs are explicit that `setUser` bypasses it — which is
+        // why SentryUserScope above exists as well.
+        sendDefaultPii: false,
         integrations: [
           // Add integrations as needed
         ],
+        // Last line of defense: strip secrets and PII from every event.
         beforeSend(event) {
-          // Filter out sensitive data
-          if (event.request?.headers) {
-            delete event.request.headers["authorization"];
-            delete event.request.headers["cookie"];
-          }
-          return event;
+          return scrubSentryEvent(event);
         },
       });
 
@@ -114,19 +206,13 @@ export class SentryService implements OnModuleInit {
   /**
    * Set user context for error tracking
    */
-  setUser(user: {
-    id: string;
-    email?: string;
-    username?: string;
-    restaurantId?: string;
-  }): void {
+  setUser(user: SentryUserScope): void {
     if (!this.initialized) return;
 
+    // Minimize: send only a pseudonymous id and the tenant id. Email and
+    // name are deliberately NOT forwarded to the error tracker.
     Sentry.setUser({
       id: user.id,
-      email: user.email,
-      username: user.username,
-      // Custom data
       restaurant_id: user.restaurantId,
     });
   }

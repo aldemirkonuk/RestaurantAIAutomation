@@ -2,18 +2,31 @@
 type: page
 route: /notifications
 slug: notifications
+softwares: [notifications]
 component: apps/web/src/pages/Notifications.tsx
 audience: owner
 tier: core
-archetype: list+detail # proposed 2026-08-26 (OD-79)
+archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
+maturity: partial
 status: documented
-updated: 2026-08-26
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-09-03
+links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[inventory]]"]
 ---
 
 # /notifications — Notifications
+
+> **Part of** [[08-softwares/notifications|Notifications]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
+
+## Surface — buttons → where they go
+
+- **Notification row / Take Action** → route from the notification's `actionUrl` (varies by type)
+- **Review & Approve Draft** (draft_ready detail) → [[orders]] `/orders?draft=<conversationId>`
+- **Mark all as read** → API `PATCH /api/v1/notifications/read/all`
+- **Settings** → (in-page tab, `/notifications?tab=settings`)
+- **One-tap action "Open"** → [[inventory]] `/inventory` or [[orders]] `/orders` by action type; gmail actions point at `/emails` (no such route)
+- **Copy link** → clipboard deep link back to this page
 
 ## 1. Purpose
 
@@ -49,8 +62,10 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
 
 ## 4. Endpoints
 
-Atlas row: [ENDPOINTS](../foundation/ENDPOINTS.md):300 (`notifications`, 24 —
-**⚠ all unguarded**), plus :389 for the action center's order reads.
+Atlas row: [ENDPOINTS](../foundation/ENDPOINTS.md):300 (`notifications`, 24 — atlas's
+**⚠ all unguarded** is stale; guarded at class level since 2026-08-25 (#60),
+`apps/api-gateway/src/notifications/notifications.controller.ts:45`), plus :389 for
+the action center's order reads.
 
 | Method | Path | Call site |
 |---|---|---|
@@ -92,7 +107,135 @@ dashboard.md §7.
   (`Notifications.tsx:173,575`), rendered at :693-700, gone on refresh. The
   UX-catalog claim "created quick actions never rendered" is therefore *partly*
   stale — rendering shipped, persistence did not (`v3.0-TECH-DEBT.md:389-390`).
-- All 24 notification endpoints unguarded ([ENDPOINTS](../foundation/ENDPOINTS.md):300).
+- All 24 notification endpoints are guarded since 2026-08-25 (#60) — `@UseGuards(JwtAuthGuard)`
+  at class level (`apps/api-gateway/src/notifications/notifications.controller.ts:45`);
+  the atlas row ([ENDPOINTS](../foundation/ENDPOINTS.md):300) still reads "unguarded" and is stale.
 - Agent-side notification writes were silently failing until 44.1d's fix — history
   in `v3.0-TECH-DEBT.md:95-131`; worth remembering when interpreting old gaps in
   this inbox.
+- **The per-channel switches on this page did not reach the router until
+  2026-09-02** ([ADR 0098](../decisions/0098-a-preference-is-read-from-the-column-it-lives-in.md)).
+  `notifications.service.ts:1051-1053` read `email_enabled`/`push_enabled`/
+  `sms_enabled` correctly, so the page rendered a user's choice faithfully — but
+  `RecipientResolverService.checkChannelPreference`, which actually decides who
+  gets sent to, never read those columns at all, and the two category arrays it
+  *did* name (`order_channels`, `report_channels`) have never existed in any
+  migration. Because the row is fetched with `.select("*")`, that produced no
+  error — just `undefined`. On the stock row it inverted both channels at once:
+  **email refused to users who had switched it on, SMS delivered to users who had
+  switched it off**. Anyone reading old reports of "I turned SMS off and still get
+  texts" should treat them as real, not as user error.
+- **Routing is still not category-aware** — the resolver takes a union across
+  three of the six per-category channel arrays and ignores the other three, so
+  enabling email for financial reports also enables it for low stock. Tracked as
+  **OD-121**; it needs a founder call on which category each of the seven
+  `resolveRecipients` call sites belongs to.
+
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** ~~`inventory_alert_state` was advanced for 7 wines while `notifications` holds 2 rows covering 3 — `low-stock-alerts.service.ts:200-215` stamps the ledger before the 15-minute cooldown at `:225-235`, so a suppressed crossing reads as alerted and the four silent wines wait for the once-daily digest (`:127-143`; absence 8). Raising a par through PATCH raises no alert (`inventory.service.ts` hooks only at `:330`, `:451`; defect 8).~~ **Absence 8 closed (#313):** `last_alerted_at`/`alert_count` are stamped only after an inbox row exists, and a crossing HELD by the cooldown or by prefs now has its own record (`last_held_at`, `last_held_reason`), its own read (`GET /notifications/low-stock/held/:rid`) and a banner on this page naming the wines — "the digest will cover it tonight" and "nothing is wrong" no longer render the same. Pre-2026-09-06 timestamps are NOT backfilled and are unreliable; the column comment says so. **Defect 8 closed separately (#312).** Also closed here: the inbox no longer folds two low-stock alerts about different wines into one row (intel finding 3). The page's "7 Wines Need Restocking" recovers the truth by live read; the stream does not.
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** `lib/notificationStack.ts:36-37` keys every `metadata.mode === 'instant'` notification to one stack regardless of the wines it concerns; `pickStackWinner` keeps the higher count and the Alvear Solera 1927 alert (unread, high) never renders — "TODAY (1)" over 2 rows (defect 3). "Unread 3" over 2 rows is unexplained (`Notifications.tsx:307` counts before the fold).
+
+## 10. Maturity
+
+**partial.** The inbox itself is real and has more live producers than any other page
+in this cluster. Two named capabilities are absent or fake.
+
+**Real.** `notifications` rows are written by seven distinct producers across the
+gateway — team broadcast (`team/team.controller.ts:350`), schedule publish and
+acknowledge (`team/schedule.service.ts:254,484`), procurement
+(`procurement/procurement.service.ts:1062,1368`), the low-stock engine
+(`notifications/low-stock-alerts.service.ts:305,347`), the inbound autonomous
+responder (`common/orchestrator/inbound-responder.service.ts:1287`), and the
+scheduled-task crons. Read/unread/archive/delete all hit real JWT-guarded endpoints
+(`notifications/notifications.controller.ts:45` class-level guard, routes :84-276).
+The 10-second poll and the detail-panel resync are implemented as documented.
+
+**Not real:**
+
+| Gap | Evidence |
+|---|---|
+| Custom one-tap actions do not survive a refresh | Created into `useState` at `Notifications.tsx:173`, appended `:575`, rendered `:693-710`. No storage call, no endpoint. §9's reading is confirmed: rendering shipped, persistence did not |
+| The page cannot report a failure | `useNotifications(...)` destructures `isLoading: _isLoading, error: _error` (`Notifications.tsx:157`) — both underscore-discarded. A 500 or a 401 renders as an empty inbox, forever, while the 10s poll keeps retrying silently |
+| The gateway's own one-tap module has no caller from this page | `one-tap-actions.controller.ts:64` is now JWT-guarded (44.1a closed) with 8 routes; the only web callers are on the dashboard (`services/api/dashboard.ts:166,191`). `OneTapActionCenter` keeps its state in `localStorage` (`OneTapActionCenter.tsx:80-83,175-180,502`) and rebuilds actions client-side from inventory + orders (`:395-460`) |
+
+**§0 correction (stale).** "gmail actions point at `/emails` (no such route)" is fixed:
+`openRouteForAction` now returns `/communications` for `gmail_send` and
+`gmail_contextual`, with a comment explaining that no id can be handed over
+(`OneTapActionCenter.tsx:135-141`).
+
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** both notifications that did land carry `delivery_status.email = {ok:false, error:"no_recipients"}` — absence recorded as absence, which is the shape this page is supposed to have. **2026-09-05 (#313):** that shape now reaches the alert ledger too. Email delivery is deliberately NOT the test of whether an owner was told — the inbox row is — which is why those two `ok:false` outcomes were correct and are still recorded as failures.
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** tiles and the TODAY section were read against the rows: 2 real notifications, 1 visible. A manager reading this page the morning after does not see one of the two alerts the night produced.
+
+## 11. Data flow
+
+### Calls out
+
+| Method | Path | Auth | Gateway controller | Returns |
+|---|---|---|---|---|
+| GET | `/notifications?userId=&status=` | JWT (class, `notifications.controller.ts:45`) | `:84-101` | Notification rows for the user |
+| PATCH | `/notifications/:id/read`, `/:id/unread`, `/:id/archive` | JWT | `:203`, `:216`, `:229` | Updated row |
+| PATCH | `/notifications/read/all?userId=` | JWT | `:189-201` | Count marked |
+| DELETE | `/notifications/:id` | JWT | `:263-276` | 204 |
+| GET | `/procurement/orders/pending`, `/procurement/orders` | JWT | `procurement.controller.ts` | Orders the action center turns into cards |
+| GET | `/inventory/:rid` (low stock) | JWT | `inventory` module | Low-stock actions |
+
+### Fed by
+
+| Notification kind | Producer | Live? |
+|---|---|---|
+| Low stock | `@Cron("*/2 * * * *")` edge sweep + `@Cron("0 * * * *")` batched digest (`low-stock-alerts.service.ts:85,110`) → `persistForRestaurant` (`:305,347`) | Yes — memory: notifications-batching-sync |
+| Vendor reply / draft ready | Gmail push → `email.inbound.received` → `rabbitmq-bridge.service.ts:528` → `InboundResponderService.analyzeAndDraftReply` → notification rows `inbound-responder.service.ts:1287` | Yes (live Gmail watch, OD-78) |
+| Schedule published / acknowledged, broadcast | `team/schedule.service.ts:254,484`; `team/team.controller.ts:350` | Yes |
+| Order approval, delivery, price | `procurement.service.ts:1062,1368` | Yes |
+| Weekly report ready, delivery ETA, audit, event prep, custom reminders | **Seven** tenant-scoped `@Cron`s in `communications/scheduled-tasks.service.ts`, anchored on the decorator's `name:` rather than a line: `daily-sms-summary`, `weekly-email-report`, `recurring-order-reminder`, `delivery-eta-notification`, `inventory-audit-reminder`, `event-prep-check`, `custom-reminders-check` (`:193,228,407,522,625,679,734` — an eighth, `payment-due-reminder`, was deleted 2026-09-02 after [ADR 0077](../decisions/0077-there-is-no-payment-due-reminder.md) found it had never sent one email). Separately, `tenant-isolation-check` (`:159`) is the global tenant-isolation RPC, not a tenant-scoped one. **Count them with `grep -nE '^[[:space:]]*@Cron\('`** — a bare `grep @Cron` also hits `:274`, a `@deprecated` note recording that `sendMiddayLowStockReport`'s schedule was *removed* | **Per-tenant since 2026-08-26** (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)) — each iterates `ScheduledTenantsService.runPerTenant`, isolating per-tenant failures. But enumeration is **explicit opt-in** and no restaurant has opted in, so in practice this still serves exactly the `DEFAULT_RESTAURANT_ID` restaurant, which still takes its recipients from `MANAGER_EMAIL`. Whether that stays opt-in is **OD-91** |
+| Agent-side writes | Historically silent-failing until 44.1d (`v3.0-TECH-DEBT.md:95-131`) | Fixed |
+
+### Writes
+
+| Write | Downstream reaction |
+|---|---|
+| read / unread / archive / delete | Unread badge in the sidebar and header bell recompute (`Sidebar.tsx:410`, `Header.tsx:191`) |
+| Custom one-tap action | **none** — lives in `useState` until refresh |
+| One-tap execute (order approve) | Goes through the orders API and dispatches a realtime inventory/order update (`OneTapActionCenter.tsx` dispatchers) |
+| Snooze | `localStorage` only (`OneTapActionCenter.tsx:83,97,111`) — not shared across devices |
+
+## 12. Design intent
+
+**Should be:** the queue of things that need a person, oldest first, each one
+resolvable without leaving the row.
+
+| State | Handled? | Evidence |
+|---|---|---|
+| Loading | **No** | `_isLoading` discarded (`:157`) |
+| Empty | Yes | Empty-inbox render |
+| Error | **No** | `_error` discarded — the single most consequential omission on the page: this is the surface that is supposed to prove the system is watching |
+| Permission-denied | **No** | No 403 branch |
+
+**Where the UI misleads**
+
+1. "Create custom one-tap action" is a full modal with icon/colour/priority/URL
+   pickers and a live preview (`:1368-1691`) for an object that is discarded on
+   navigate-away.
+2. An empty inbox after a failed fetch is indistinguishable from a calm restaurant.
+3. Snoozes are per-browser; nothing says so.
+
+## 13. Roadmap
+
+1. **Branch on `error`** (`Notifications.tsx:157`). A watchdog that cannot say it is
+   blind is worse than no watchdog.
+2. **Persist custom one-tap actions** — the gateway module already exists and is
+   guarded (`one-tap-actions.controller.ts:64`, `POST /` at :138). This is wiring,
+   not new backend.
+3. **Move snoozes server-side** onto the same module (`:246` cancel, `:118` pending).
+4. ~~**Make the eight scheduled crons per-restaurant**~~ — **done 2026-08-26**
+   (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)).
+   All eight now iterate `ScheduledTenantsService.runPerTenant`, with per-tenant
+   failure isolation and a `SCHEDULED_JOB_SUMMARY` line per run. **Still true:
+   "the rest get none, with no UI saying so"** — enumeration is explicit opt-in
+   via `restaurant_feature_flags(flag_name = 'scheduled_communications')`, there
+   are no flag rows, and nothing on this page surfaces which restaurants are
+   opted in. That surface is unbuilt; whether it should exist at all depends on
+   OD-91.
+5. Loading skeleton for the first fetch.
+6. Rebrand `QuickGmailModal` previews (§7).

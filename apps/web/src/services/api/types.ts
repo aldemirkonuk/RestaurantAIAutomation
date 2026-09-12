@@ -445,9 +445,23 @@ export interface DashboardStats {
   totalVolumeOz: number;
   lowStockItems: number;
   pendingOrders: number;
-  todaySales?: number;
-  weekSales?: number;
-  monthSales?: number;
+  /**
+   * Money paid to VENDORS for delivered procurement orders — cost, not income.
+   * These were `todaySales` / `weekSales` / `monthSales`, and `monthSales` was
+   * displayed as "Total Revenue" on the dashboard. Sales revenue would come
+   * from POS checks and is not part of this payload.
+   */
+  todayProcurementSpend?: number;
+  weekProcurementSpend?: number;
+  monthProcurementSpend?: number;
+}
+
+/** Vendor spend summary returned by `GET /dashboard/summary/:id`. */
+export interface ProcurementSpendSummary {
+  totalProcurementSpend: number;
+  monthlyProcurementSpend: number;
+  totalBottlesDelivered: number;
+  spendByMonth: Array<{ month: string; spend: number; bottles: number }>;
 }
 
 export interface DashboardWidget {

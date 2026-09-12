@@ -29,7 +29,7 @@
 > `schema-parity` workflow rebuild from migrations and diff against remote on
 > every push and nightly. Hand-applied DDL now fails a build.
 >
-> Per-object detail as it stood: `.planning/SCHEMA_DRIFT_INVENTORY.txt`.
+> Per-object detail as it stood: `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt`.
 >
 > The advice below — *"read the migrations" stops being a safe way to learn the
 > schema* — is exactly right, and is why the baseline was copied from production

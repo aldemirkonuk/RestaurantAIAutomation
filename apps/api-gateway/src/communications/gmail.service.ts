@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { google, gmail_v1 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import * as nodemailer from "nodemailer";
+import { htmlToText } from "../common/html/html-to-text";
 import {
   lowStockAlertTemplate,
   lowStockDigestTemplate,
@@ -18,6 +19,7 @@ import {
   eventPrepTemplate,
   customReminderTemplate,
   onboardingEmailTemplate,
+  studioInviteEmailTemplate,
   type LowStockAlertData,
   type WeeklyReportData,
   type DailySummaryData,
@@ -171,11 +173,10 @@ export class GmailService implements OnModuleInit {
 
     try {
       const message = this.createMimeMessage(options);
-      const encodedMessage = Buffer.from(message)
-        .toString("base64")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=+$/, "");
+      // Node's native base64url encoding: identical output to the previous
+      // base64-then-three-replaces chain (+ → -, / → _, strip padding), minus
+      // the /=+$/ scan that CodeQL flagged as polynomial-redos.
+      const encodedMessage = Buffer.from(message).toString("base64url");
 
       const requestBody: any = { raw: encodedMessage };
       if (options.threadId) {
@@ -635,16 +636,12 @@ This is an automated alert from WineOps AI.
    * Convert HTML to plain text (simple implementation)
    */
   private htmlToPlainText(html: string): string {
-    return html
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/\s+/g, " ")
-      .trim();
+    // Delegated to the shared single-pass scanner. The previous regex chain
+    // here produced six CodeQL findings (bad-tag-filter, double-escaping,
+    // three incomplete-multi-character-sanitization, polynomial-redos) — all
+    // one root cause, and all reachable, because this runs on outbound email
+    // HTML that includes attacker-influenced vendor and AI-drafted content.
+    return htmlToText(html);
   }
 
   /**
@@ -690,10 +687,20 @@ This is an automated alert from WineOps AI.
       subject: options.subject,
       html: options.html,
       text: options.text || this.htmlToPlainText(options.html),
+      // Honour a pre-minted Message-ID so a caller that recorded the id before
+      // sending (see ProcurementService.approveDraft) is telling the truth on
+      // this path too, not just on the Gmail API path.
+      messageId: options.messageIdHeader || undefined,
+      inReplyTo: options.inReplyTo || undefined,
+      references: options.references || undefined,
     });
 
     this.logger.log(`Email delivered via SMTP. MessageId: ${info.messageId}`);
-    return { success: true, messageId: info.messageId };
+    return {
+      success: true,
+      messageId: info.messageId,
+      rfc822MessageId: options.messageIdHeader || info.messageId || undefined,
+    };
   }
 
   /**
@@ -720,6 +727,32 @@ This is an automated alert from WineOps AI.
     return this.sendEmail({
       to: [data.to],
       subject: `Welcome to WineOps AI — ${data.restaurantName} is ready 🍷`,
+      html,
+    });
+  }
+
+  /**
+   * Send a studio invite (ADR 0020).
+   *
+   * The invite URL is assembled here and never returned to the inviting admin's browser,
+   * so the token exists in exactly two places: the database and the invitee's inbox.
+   */
+  async sendStudioInviteEmail(data: {
+    to: string;
+    roleLabel: string;
+    inviteUrl: string;
+    expiresOn: string;
+  }): Promise<EmailResult> {
+    const html = studioInviteEmailTemplate({
+      roleLabel: data.roleLabel,
+      inviteUrl: data.inviteUrl,
+      expiresOn: data.expiresOn,
+      invitedEmail: data.to,
+    });
+
+    return this.sendEmail({
+      to: [data.to],
+      subject: `You've been invited to WineOps Studio as ${data.roleLabel}`,
       html,
     });
   }

@@ -20,13 +20,13 @@ import {
   Tag,
   Shield,
   Sparkles,
-  Bot,
   MessageSquare,
   Calendar,
   Rocket,
   BookOpen,
   FileText,
   ScrollText,
+  PackageCheck,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
@@ -73,6 +73,19 @@ const mainNavItems: NavItem[] = [
     href: '/orders',
     icon: ShoppingCart,
     description: 'Draft, approve, and track purchase orders through delivery.',
+  },
+  // Between Orders and Inventory because that is where the delivery physically
+  // lands: the goods were asked for, they arrive at the door, then they are on
+  // the shelf. `/receiving` is the S02 golden path and had no nav entry at all —
+  // the only way in was an Orders row, which is the wrong end of the flow for a
+  // porter holding a phone next to a driver who will not wait. `PackageCheck`
+  // pairs with Inventory's `Package` (same goods, one step earlier) and stays
+  // clear of `Truck`, which Providers already owns.
+  {
+    name: 'Receiving',
+    href: '/receiving',
+    icon: PackageCheck,
+    description: 'Check a delivery in at the door and catch short cases.',
   },
   {
     name: 'Wine Library',
@@ -147,18 +160,17 @@ const secondaryNavItems: NavItem[] = [
   },
 ]
 
+// The "Wine Agent" item pointed at `/wineagent`, an under-construction
+// placeholder with nothing behind it; the route is retired (ADR 0019 §B).
+// The Wine Agent FAB, Help card and Learn panel all open `/sommelier` already,
+// so the concept keeps its entry points — this nav row was the only link that
+// actually landed on the dead page.
 const aiNavItems: NavItem[] = [
   {
     name: 'Sommelier AI',
     href: '/sommelier',
     icon: Sparkles,
     description: 'Ask about pairings, pricing, and what to reorder.',
-  },
-  {
-    name: 'Wine Agent',
-    href: '/wineagent',
-    icon: Bot,
-    description: 'Hands-off agent for routine inventory and ordering work.',
   },
 ]
 
@@ -466,13 +478,9 @@ export function Sidebar() {
           to="/"
           onClick={closeMobileNav}
           className={cn('flex items-center', effectiveCollapsed ? 'justify-center' : 'gap-3')}
-          aria-label="WineOps AI home"
+          aria-label="Mudavym home"
         >
-          <BrandMark
-            size={effectiveCollapsed ? 28 : 32}
-            alt=""
-            className="shadow-sm"
-          />
+          {effectiveCollapsed && <BrandMark variant="mark" size={22} alt="" />}
           <AnimatePresence>
             {!effectiveCollapsed && (
               <motion.div
@@ -481,8 +489,10 @@ export function Sidebar() {
                 exit={{ opacity: 0, width: 0 }}
                 className="overflow-hidden"
               >
-                <h1 className="text-lg font-bold text-gray-900 whitespace-nowrap">WineOps AI</h1>
-                <p className="text-xs text-gray-500 -mt-0.5">Inventory Intelligence</p>
+                <h1 className="leading-none whitespace-nowrap">
+                  <BrandMark size={24} alt="Mudavym" />
+                </h1>
+                <p className="text-xs text-gray-500 mt-1">Inventory Intelligence</p>
               </motion.div>
             )}
           </AnimatePresence>

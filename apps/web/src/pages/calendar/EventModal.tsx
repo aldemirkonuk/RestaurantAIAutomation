@@ -38,6 +38,38 @@ export interface ReminderEntry {
   channels: Array<'in_app' | 'email'>
 }
 
+/**
+ * The email reminder channel is offered by the UI and delivered by nothing.
+ *
+ * Audited 2026-08-26, end to end:
+ *   - `apps/api-gateway/src/calendar/` contains no `@Cron` of any kind.
+ *   - `reminder_enabled` and `reminder_days_before` are written on insert/update
+ *     (`calendar.service.ts:124-125,395-398`) and echoed back into the response DTO
+ *     (`:1116-1117`). Nothing reads either column to decide whether to send.
+ *   - `reminder_sent` has NO writer anywhere in the repo — only a row-type field and
+ *     a DTO mapping (`calendar.service.ts:45,1118`). Even a hand-rolled sweep would
+ *     have no dedupe to lean on.
+ *   - The one cron that emails off `calendar_events`,
+ *     `scheduled-tasks.service.ts:670 sendEventPrepReminders`, is not this feature:
+ *     it bails unless `DEFAULT_RESTAURANT_ID` is set (`:671`, `:79-80`) and filters
+ *     to that single tenant (`:685`), uses a hardcoded two-days-out window (`:677-687`)
+ *     rather than the user's offset, ignores all three reminder columns, and mails
+ *     every manager and staff member instead of whoever set the reminder.
+ *   - The iCal feed emits no VALARM, so no external client picks up the slack.
+ *
+ * So the toggle changed a local array and nothing else. Per ADR 0020 a control that
+ * cannot work is disabled and explained rather than left looking functional — an
+ * email reminder that silently never arrives is worse than none, because the manager
+ * stops watching for the delivery it was supposed to cover.
+ *
+ * In-app is the honest channel: `lib/reminder-scheduler.ts` drains a localStorage
+ * queue on a `setInterval` booted in `main.tsx` and calls `createNotification`, so it
+ * fires from a browser with the app open and lands in the notification inbox.
+ */
+const EMAIL_CHANNEL_UNAVAILABLE =
+  'Email reminders are unavailable: no server-side job sends them, so one would never arrive. In-app reminders fire from this browser while the app is open.'
+const EMAIL_CHANNEL_HINT_ID = 'reminder-email-channel-unavailable'
+
 export interface MonthlyConfig {
   mode: 'day_of_month' | 'nth_weekday'
   dayOfMonth: number
@@ -73,6 +105,11 @@ interface EventModalProps {
   initialDate?: Date
   initialEndDate?: Date
   existingEvent?: CalendarEvent
+  /**
+   * Reminders already scheduled for `existingEvent`, so the edit form shows what
+   * will actually fire instead of silently resetting to the create-mode default.
+   */
+  existingReminders?: ReminderEntry[]
   eventTypes: EventType[]
   providers?: Provider[]
 }
@@ -80,7 +117,7 @@ interface EventModalProps {
 // ─────────────────────────────── Constants ────────────────────────────────────
 
 const COLOR_PALETTE = [
-  '#9E4249', // wine-600 / app icon
+  '#1A5E6B', // wine-600 / app icon
   '#3B82F6', // blue
   '#10B981', // green
   '#F59E0B', // amber
@@ -122,7 +159,7 @@ const STATUS_CONFIG = {
 } as const
 
 const LABEL_COLORS: Record<EventLabel['type'], { bg: string; strip: string }> = {
-  provider_meeting: { bg: '#fdf4f5', strip: '#9E4249' },
+  provider_meeting: { bg: '#F1F7F8', strip: '#1A5E6B' },
   call:             { bg: '#f0fdf4', strip: '#10B981' },
   tasting:          { bg: '#f5f3ff', strip: '#8B5CF6' },
   delivery:         { bg: '#fefce8', strip: '#F59E0B' },
@@ -228,6 +265,7 @@ export function EventModal({
   initialDate,
   initialEndDate,
   existingEvent,
+  existingReminders,
   eventTypes,
   providers = [],
 }: EventModalProps) {
@@ -265,8 +303,10 @@ export function EventModal({
   const [labelDismissed, setLabelDismissed] = useState(false)
 
   // Reminders
+  // Default is in-app only. Pre-selecting 'email' asserted a delivery channel the
+  // product does not have — see EMAIL_CHANNEL_UNAVAILABLE.
   const [reminders, setReminders]     = useState<ReminderEntry[]>([
-    { id: uid(), minutesBefore: 60, channels: ['in_app', 'email'] },
+    { id: uid(), minutesBefore: 60, channels: ['in_app'] },
   ])
 
   // Custom event type inline form
@@ -342,6 +382,9 @@ export function EventModal({
       setEndType('never')
       setEndOnDate('')
       setEndAfterCount(10)
+      // Show the reminders that are actually scheduled for this event (empty array
+      // means "none scheduled" and must not fall back to the create-mode default).
+      setReminders(existingReminders ?? [])
     } else {
       setIsViewMode(false)
       const start = initialDate || new Date()
@@ -364,10 +407,10 @@ export function EventModal({
       setEndType('never')
       setEndOnDate('')
       setEndAfterCount(10)
-      setReminders([{ id: uid(), minutesBefore: 60, channels: ['in_app', 'email'] }])
+      setReminders([{ id: uid(), minutesBefore: 60, channels: ['in_app'] }])
       setTimeout(() => titleInputRef.current?.focus(), 100)
     }
-  }, [isOpen, existingEvent, initialDate, initialEndDate, eventTypes])
+  }, [isOpen, existingEvent, existingReminders, initialDate, initialEndDate, eventTypes])
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -487,6 +530,10 @@ export function EventModal({
   }
 
   function toggleReminderChannel(id: string, ch: 'in_app' | 'email') {
+    // Belt and braces: the button is `disabled`, but the state must refuse 'email'
+    // too, so a reminder can never carry a channel nothing delivers — including one
+    // loaded from `existingReminders`.
+    if (ch === 'email') return
     setReminders(prev => prev.map(r => {
       if (r.id !== id) return r
       const channels = r.channels.includes(ch)
@@ -595,6 +642,7 @@ export function EventModal({
               <button
                 type="button"
                 onClick={() => setIsViewMode(false)}
+                aria-label="Edit event"
                 className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
               >
                 <Edit2 className="w-3.5 h-3.5" />
@@ -603,6 +651,7 @@ export function EventModal({
                 <button
                   type="button"
                   onClick={handleDelete}
+                  aria-label="Delete event"
                   className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -611,6 +660,7 @@ export function EventModal({
               <button
                 type="button"
                 onClick={onClose}
+                aria-label="Close event"
                 className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -859,7 +909,7 @@ export function EventModal({
                       </button>
                       <button type="button" onClick={saveEditType} disabled={!editName.trim()}
                         className="px-3 py-1.5 text-[12px] font-semibold text-white rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1"
-                        style={{ backgroundColor: '#9E4249' }}>
+                        style={{ backgroundColor: '#1A5E6B' }}>
                         <Check className="w-3 h-3" /> Save
                       </button>
                     </div>
@@ -951,7 +1001,7 @@ export function EventModal({
                   onClick={saveCustomType}
                   disabled={!newTypeName.trim()}
                   className="px-3 py-1.5 text-[12px] font-semibold text-white rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1"
-                  style={{ backgroundColor: '#9E4249' }}
+                  style={{ backgroundColor: '#1A5E6B' }}
                 >
                   <Check className="w-3 h-3" /> Save
                 </button>
@@ -1343,20 +1393,30 @@ export function EventModal({
                 </div>
                 {/* Channels */}
                 <div className="flex gap-1 px-2 shrink-0 border-r border-gray-100">
-                  {(['in_app', 'email'] as const).map(ch => (
-                    <button
-                      key={ch}
-                      type="button"
-                      onClick={() => toggleReminderChannel(r.id, ch)}
-                      className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors ${
-                        r.channels.includes(ch)
-                          ? ch === 'in_app' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-700'
-                          : 'bg-gray-100 text-gray-400'
-                      }`}
-                    >
-                      {ch === 'in_app' ? 'In-app' : 'Email'}
-                    </button>
-                  ))}
+                  {(['in_app', 'email'] as const).map(ch => {
+                    const unavailable = ch === 'email'
+                    const on = !unavailable && r.channels.includes(ch)
+                    return (
+                      <button
+                        key={ch}
+                        type="button"
+                        onClick={() => toggleReminderChannel(r.id, ch)}
+                        disabled={unavailable}
+                        aria-pressed={on}
+                        aria-describedby={unavailable ? EMAIL_CHANNEL_HINT_ID : undefined}
+                        title={unavailable ? EMAIL_CHANNEL_UNAVAILABLE : undefined}
+                        className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors ${
+                          unavailable
+                            ? 'bg-gray-50 text-gray-300 line-through cursor-not-allowed'
+                            : on
+                              ? 'bg-blue-50 text-blue-600'
+                              : 'bg-gray-100 text-gray-400'
+                        }`}
+                      >
+                        {ch === 'in_app' ? 'In-app' : 'Email'}
+                      </button>
+                    )
+                  })}
                 </div>
                 {/* Remove */}
                 {reminders.length > 1 && (
@@ -1371,6 +1431,12 @@ export function EventModal({
               </div>
             ))}
           </div>
+
+          {/* Stated, not merely implied by a greyed-out button — the user has to know
+              that setting a reminder here does not reach them once the tab is closed. */}
+          <p id={EMAIL_CHANNEL_HINT_ID} className="mt-2 text-[11px] leading-relaxed text-gray-500">
+            {EMAIL_CHANNEL_UNAVAILABLE}
+          </p>
 
           {reminders.length < 3 && (
             <button
@@ -1423,9 +1489,9 @@ export function EventModal({
           <button
             type="submit"
             className="px-4 py-2 text-[13px] font-semibold text-white rounded-lg transition-colors"
-            style={{ backgroundColor: '#9E4249' }}
+            style={{ backgroundColor: '#1A5E6B' }}
             onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#7c1d3c')}
-            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#9E4249')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#1A5E6B')}
           >
             {existingEvent ? 'Save Changes' : 'Create Event'}
           </button>
@@ -1495,7 +1561,7 @@ function ToggleSwitch({ label, checked, onChange }: { label: string; checked: bo
 function ProviderCard({ provider, onClear }: { provider: Provider; onClear?: () => void }) {
   return (
     <div className="flex items-stretch rounded-xl border border-gray-200 overflow-hidden bg-white">
-      <div className="w-1 shrink-0" style={{ backgroundColor: '#9E4249' }} />
+      <div className="w-1 shrink-0" style={{ backgroundColor: '#1A5E6B' }} />
       <div className="w-11 flex items-center justify-center bg-wine-50 shrink-0">
         <div className="w-8 h-8 rounded-full bg-wine-100 flex items-center justify-center text-wine-800 text-[11px] font-bold">
           {provider.name.slice(0, 2).toUpperCase()}

@@ -17,6 +17,7 @@ import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { GmailService } from "../gmail.service";
 import { ScheduledTasksService } from "../scheduled-tasks.service";
+import { ScheduledTenantsService } from "../scheduled-tenants.service";
 import { computeNextFireAt } from "../scheduled-tasks.service";
 import { CommunicationsService } from "../communications.service";
 import { RecipientResolverService } from "../recipient-resolver.service";
@@ -149,6 +150,9 @@ describe("Suite 2 — Custom Reminder → DB notification + real email (requires
           provide: CommunicationsService,
           useValue: {},
         },
+        // OD-87 / ADR 0022 — ScheduledTasksService now depends on the tenant
+        // enumerator; without it Nest cannot construct it.
+        ScheduledTenantsService,
         ScheduledTasksService,
       ],
     }).compile();

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
@@ -21,6 +22,7 @@ from core.base_agent import BaseAgent
 from core.message_bus import EventPriority
 from core.database import DatabaseClient
 from utils.logger import setup_logger
+from config.settings import get_settings
 
 logger = setup_logger("email_parsing_agent")
 
@@ -71,7 +73,7 @@ class EmailParsingAgent(BaseAgent):
             api_key = self.raw_config.get("google_api_key") or ""
             if api_key:
                 genai.configure(api_key=api_key)
-                self.gemini_model = genai.GenerativeModel("gemini-pro")
+                self.gemini_model = genai.GenerativeModel(get_settings().gemini_model)
                 self.logger.info("Gemini Pro initialized for email parsing")
             else:
                 self.logger.warning("GEMINI_API_KEY not set — LLM features disabled")
@@ -357,23 +359,40 @@ class EmailParsingAgent(BaseAgent):
 
     # ── LLM Context Matching ─────────────────────────────────────────
 
-    def _log_gemini_spend(self, response, task_type: str) -> None:
-        """P1: emit one spend/NF row for a Gemini call (never raises)."""
+    def _log_gemini_spend(
+        self,
+        response,
+        task_type: str,
+        duration_ms: Optional[int] = None,
+        restaurant_id: Optional[str] = None,
+    ) -> None:
+        """P1: emit one spend/NF row for a Gemini call (never raises).
+
+        `duration_ms` is measured by the caller around its own model call —
+        timing it here would only measure this helper.
+        """
         try:
             from services.spend_logger import estimate_llm_cost, get_spend_logger
 
+            # label the model actually configured, not a literal (OD-57)
+            _model_id = get_settings().gemini_model
             _usage = getattr(response, "usage_metadata", None)
             _in = getattr(_usage, "prompt_token_count", 0) or 0
-            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                getattr(_usage, "thoughts_token_count", 0) or 0
+            )
             get_spend_logger().log(
                 provider="google",
-                model="gemini-pro",
+                model=_model_id,
                 input_tokens=_in,
                 output_tokens=_out,
-                cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                cost_usd=estimate_llm_cost(_model_id, _in, _out),
+                restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type=task_type,
                 outcome="success",  # call-level: response returned
+                duration_ms=duration_ms,
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:
@@ -429,8 +448,13 @@ Which order is this email most likely about? Respond with ONLY valid JSON:
   "reasoning": "brief explanation"
 }}"""
 
+            _t0 = time.perf_counter()
             response = await self.gemini_model.generate_content_async(prompt)
-            self._log_gemini_spend(response, "order_matching")  # P1
+            self._log_gemini_spend(  # P1
+                response,
+                "order_matching",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+            )
             text = response.text.strip()
 
             # Extract JSON from response
@@ -551,8 +575,14 @@ Respond with ONLY valid JSON:
 }}"""
 
                 try:
+                    _t0 = time.perf_counter()
                     response = await self.gemini_model.generate_content_async(prompt)
-                    self._log_gemini_spend(response, "thread_summary")  # P1
+                    self._log_gemini_spend(  # P1
+                        response,
+                        "thread_summary",
+                        duration_ms=int((time.perf_counter() - _t0) * 1000),
+                        restaurant_id=restaurant_id,
+                    )
                     text = response.text.strip()
                     json_match = re.search(r"\{[^}]+\}", text, re.DOTALL)
                     if json_match:
@@ -627,28 +657,57 @@ Respond with ONLY valid JSON:
         return None
 
     async def _find_provider_by_email(self, email: str) -> Optional[str]:
-        """Find provider ID by contact email"""
-        try:
-            # Search in primary_contact JSONB
-            result = await self.db.supabase.rpc(
-                "find_provider_by_email", {"search_email": email}
-            ).execute()
-            if result.data:
-                return result.data[0].get("id")
+        """
+        Find provider ID by contact email.
 
-            # Fallback: search contact_email column directly
+        OD-99: this used to call an RPC named `find_provider_by_email` first.
+        No CREATE FUNCTION for it exists anywhere in this repository and
+        production does not have it (PGRST202, verified 2026-08-26), so the
+        call raised -- and because the "Fallback: search contact_email column
+        directly" block sat inside the SAME `try`, the exception jumped
+        straight over it to `except: return None`. The fallback was not a
+        fallback; it was unreachable code, and this method has returned None
+        for every inbound email ever parsed. Nothing upstream could tell that
+        apart from "no provider matches this address".
+
+        Both searches are expressible without an RPC, so both now run, each in
+        its own `try` so that one failing cannot silently cancel the other:
+
+          1. `contact_email` -- the plain column, matched case-insensitively.
+          2. `primary_contact->>email` -- the JSONB the RPC was named for.
+        """
+        if not email:
+            return None
+
+        normalized = email.strip().lower()
+
+        try:
             result = (
                 await self.db.supabase.table("providers")
                 .select("id, contact_email")
-                .ilike("contact_email", email)
+                .ilike("contact_email", normalized)
                 .limit(1)
                 .execute()
             )
             if result.data:
                 return result.data[0].get("id")
-            return None
-        except Exception:
-            return None
+        except Exception as exc:
+            self.logger.warning(f"provider lookup by contact_email failed: {exc}")
+
+        try:
+            result = (
+                await self.db.supabase.table("providers")
+                .select("id")
+                .eq("primary_contact->>email", normalized)
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                return result.data[0].get("id")
+        except Exception as exc:
+            self.logger.warning(f"provider lookup by primary_contact failed: {exc}")
+
+        return None
 
     async def _find_thread_for_order(self, order_id: str) -> Optional[str]:
         """Find existing thread_id for an order"""

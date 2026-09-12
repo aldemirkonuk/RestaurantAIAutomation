@@ -70,9 +70,12 @@ graph TD
    revert to OFF, which is the code's own default (`consultants.service.ts:18`), so
    reverting needs no approval.
 
-6. **We do not demo the consultant layer while OD-20 stands.** The toggle
-   (`analytics.controller.ts:516`) and the Opus call (`:531`) are unguarded.
-   [[security-charter]] owns the fix; refusing the demo is the pressure this team can apply.
+6. ~~**We do not demo the consultant layer while OD-20 stands.**~~ **Discharged 2026-08-24.**
+   The toggle and the Opus call were unguarded; [[security-charter]] owned the fix and
+   refusing the demo was the pressure this team could apply. PR #31 landed it — a
+   class-level `@UseGuards(JwtAuthGuard)` on `AnalyticsController`
+   (`analytics.controller.ts:51`) covering every route handler on the file, OD-20 resolved.
+   *Corrected 2026-09-01.* The demo is permitted; rule 5's expiry requirement still gates it.
 
 7. **Coverage travels with acceptance.** Distinct rules served vs distinct rules acted on,
    and `top_rank_ignore_rate`, are published in the same table as the acceptance rate —
@@ -92,5 +95,6 @@ graph TD
 - **INTEL-F3** — the operator has no `subject_type` in the neural footprint
   (`intelligence.md:519`), so this team's primary signal has nowhere to live. Not
   resolvable in-team; interacts with OD-11.
-- **OD-20** — escalated every close-time until closed, with the consultant demo refusal
-  restated each time so the cost of the open decision stays visible.
+- ~~**OD-20** — escalated every close-time until closed, with the consultant demo refusal
+  restated each time so the cost of the open decision stays visible.~~ **Closed 2026-08-24**
+  (PR #31, `analytics.controller.ts:51`); the escalation is retired, not deleted.

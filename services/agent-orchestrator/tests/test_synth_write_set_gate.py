@@ -39,6 +39,31 @@ def test_synth_write_set_includes_required_tables():
     assert "inventory_stock" not in TEARDOWN_TABLES
 
 
+# ── ADR 0093 harness additions (D-11/D-12) ──────────────────────────────────
+# Named one by one rather than looped over an exported constant: a loop over
+# the list under test proves only that it equals itself.
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        "sim_scenario_runs",
+        "restaurant_tables",
+        "pour_events",
+        "inventory_transactions",
+        "inventory_lots",
+        "wine_consumption_log",
+        "notifications",
+        "analytics_insights",
+        "pos_item_mappings",
+        "pos_catalog_match_proposals",
+    ],
+)
+def test_adr_0093_table_is_in_the_write_set_and_teardown(table: str):
+    assert table in SYNTH_WRITE_SET
+    assert table in TEARDOWN_TABLES
+
+
 def test_assert_write_set_equals_teardown_raises_on_drift():
     with pytest.raises(WriteSetTeardownMismatchError):
         assert_write_set_equals_teardown(

@@ -112,6 +112,92 @@ async def test_enrich_raises_on_malformed_json():
             )
 
 
+# ── OD-75: outcome must reflect the PARSE, not just the HTTP call ────────────
+
+
+def _haiku_mocks(text: str):
+    """Anthropic client + spend-logger mocks for the OD-75 grading tests."""
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock()]
+    mock_response.content[0].text = text
+    mock_response.usage.input_tokens = 1200
+    mock_response.usage.output_tokens = 300
+
+    client = AsyncMock()
+    client.messages.create = AsyncMock(return_value=mock_response)
+
+    logger_mock = MagicMock()
+    return client, logger_mock
+
+
+@pytest.mark.asyncio
+async def test_unparseable_haiku_response_records_partial_not_success():
+    """
+    OD-75: a prose answer is NOT a completed enrichment.
+
+    The emit used to sit above json.loads, so this call — which raises
+    ValueError and enriches nothing — was written to api_spend and
+    neural_footprint_event as outcome='success' on the call_level_v0 basis.
+    It must now record 'partial' on the stronger 'parse_v1' basis, and the
+    row must still be written exactly once because the tokens were billed.
+    """
+    service = HaikuEnrichmentService()
+    client, logger_mock = _haiku_mocks("I'm happy to help with that wine!")
+
+    with patch.object(
+        service, "_is_already_enriched", new=AsyncMock(return_value=False)
+    ), patch.object(service, "_get_anthropic", return_value=client), patch(
+        "services.haiku_enrichment_service.get_spend_logger",
+        return_value=logger_mock,
+    ):
+        with pytest.raises(ValueError, match="Haiku returned non-JSON"):
+            await service.enrich(
+                wine_id="wine-od75",
+                wine_name="Mystery Wine",
+                vintage=None,
+            )
+
+    # Exactly one row — the spend is owed, but must not be double-counted.
+    assert logger_mock.log.call_count == 1
+    kwargs = logger_mock.log.call_args.kwargs
+    assert kwargs["outcome"] == "partial"
+    assert kwargs["outcome"] != "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is True
+    # Cost survives the parse failure — the call was paid for either way.
+    assert kwargs["input_tokens"] == 1200
+    assert kwargs["output_tokens"] == 300
+    assert kwargs["cost_usd"] > 0
+
+
+@pytest.mark.asyncio
+async def test_parsed_haiku_response_records_success_on_parse_basis():
+    """OD-75: the happy path keeps 'success' but upgrades the basis to parse_v1."""
+    service = HaikuEnrichmentService()
+    client, logger_mock = _haiku_mocks(
+        '{"region": {"value": "Rioja", "confidence": 0.9, "source": "knowledge"}}'
+    )
+
+    with patch.object(
+        service, "_is_already_enriched", new=AsyncMock(return_value=False)
+    ), patch.object(service, "_get_anthropic", return_value=client), patch(
+        "services.haiku_enrichment_service.get_spend_logger",
+        return_value=logger_mock,
+    ):
+        result = await service.enrich(
+            wine_id="wine-od75-ok",
+            wine_name="Rioja Reserva",
+            vintage="2016",
+        )
+
+    assert result is not None
+    assert logger_mock.log.call_count == 1
+    kwargs = logger_mock.log.call_args.kwargs
+    assert kwargs["outcome"] == "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is False
+
+
 # ── Test 5: EnrichmentResult default enrichment_source ───────────────────────
 
 

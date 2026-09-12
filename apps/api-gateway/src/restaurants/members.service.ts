@@ -8,6 +8,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { AccessChangeReceipt, recordAccessChange } from "../team/access-audit";
 
 @Injectable()
 export class MembersService {
@@ -15,7 +16,13 @@ export class MembersService {
 
   constructor(private readonly databaseService: DatabaseService) {}
 
-  private async assertMembership(
+  /**
+   * PUBLIC because it is the ONE membership check in this module (ADR 0093 A3
+   * reuses it for the operating-hours endpoints rather than writing a second
+   * one). Two membership checks in the same module is how a role gate ends up
+   * enforced on one route and not the next.
+   */
+  async assertMembership(
     actorUserId: string,
     restaurantId: string,
     requiredRole?: "owner" | "manager" | "owner|manager",
@@ -69,22 +76,46 @@ export class MembersService {
       )
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
-      .order("granted_at", { ascending: true });
+      // `user_restaurant_access` has NO `granted_at`. That column lives on
+      // `user_roles` (baseline migration 20260805000000, line 5834); this
+      // table's creation timestamp is `created_at` (same file, line 5815).
+      // Ordering by the absent name made PostgREST answer 42703 for every
+      // tenant, and the catch below turned that into an empty roster.
+      .order("created_at", { ascending: true });
 
     if (error) {
       this.logger.error(
         `getMembers failed for restaurant ${restaurantId}: ${error.message}`,
       );
-      return [];
+      // A failed read is NEVER an empty roster. Returning `[]` here reported
+      // the absence of an answer as "this restaurant has no members" — the
+      // standing fault scripts/check_read_errors_not_swallowed.py exists for.
+      throw new InternalServerErrorException(
+        "Could not read the member roster",
+      );
     }
 
     const userIds = [...new Set((rows ?? []).map((r: any) => r.user_id))];
     if (userIds.length === 0) return [];
 
-    const { data: users } = await this.databaseService.supabase
+    // `public.users` has NO `avatar_url` and NO `auth_provider` (baseline
+    // migration 20260805000000, lines 5848-5861 -- the provider column is
+    // `oauth_provider`, and avatars live on `team_members`). Naming them made
+    // PostgREST answer 42703 and, with `error` unbound, every member came back
+    // with `users: null` -- a roster of anonymous rows that looked like data.
+    const { data: users, error: usersError } = await this.databaseService.supabase
       .from("users")
-      .select("user_id, name, email, avatar_url, auth_provider")
+      .select("user_id, name, email, oauth_provider")
       .in("user_id", userIds);
+
+    if (usersError) {
+      this.logger.error(
+        `getMembers could not read member identities for ${restaurantId}: ${usersError.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the member roster",
+      );
+    }
 
     const userMap = new Map((users ?? []).map((u: any) => [u.user_id, u]));
 
@@ -109,18 +140,32 @@ export class MembersService {
       this.logger.error(
         `getInvites failed for restaurant ${restaurantId}: ${error.message}`,
       );
-      return [];
+      // Same rule: an unreadable invite list is not an empty invite list.
+      throw new InternalServerErrorException(
+        "Could not read the pending invites",
+      );
     }
 
     return invites ?? [];
   }
 
+  /**
+   * Change a member's role.
+   *
+   * This is the other half of ADR 0088 T2. A role change decides whether a
+   * person sees wages and the whole roster, it is owner-gated, it protects only
+   * the last-owner case — and it used to perform two bare UPDATEs with no audit
+   * row, no notification and no before/after capture, so it changed silently
+   * and unrecoverably. It now files itself through the same
+   * `recordAccessChange` the removal uses, and returns a receipt saying whether
+   * the record was actually written.
+   */
   async updateMemberRole(
     actorUserId: string,
     restaurantId: string,
     targetUserId: string,
     newRole: "owner" | "manager" | "staff",
-  ): Promise<void> {
+  ): Promise<AccessChangeReceipt> {
     await this.assertMembership(actorUserId, restaurantId, "owner");
 
     if (actorUserId === targetUserId && newRole !== "owner") {
@@ -137,6 +182,32 @@ export class MembersService {
         );
       }
     }
+
+    // Capture the before-state while it still exists. After the UPDATE below
+    // nothing can reconstruct what the role used to be.
+    // Bound, because `maybeSingle()` answers `data: null` for BOTH "no row" and
+    // "the query failed". Discarding the error made a failed read produce
+    // `previousRole = null`, and the audit row this method exists to write would
+    // then record the change as coming FROM no role at all — a false record,
+    // which is worse than no record and is precisely what ADR 0088 forbids.
+    const { data: before, error: beforeErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", targetUserId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+    if (beforeErr) {
+      this.logger.error(
+        `changeRole: could not read the current role of ${targetUserId} in ` +
+          `${restaurantId}: ${beforeErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the member's current role, so the change was not made " +
+          "— recording it would have meant inventing what it changed from.",
+      );
+    }
+    const previousRole: string | null = before?.role ?? null;
 
     const { error: uraErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
@@ -155,6 +226,20 @@ export class MembersService {
       .from("users")
       .update({ role: newRole })
       .eq("user_id", targetUserId);
+
+    return recordAccessChange(this.databaseService.supabase, this.logger, {
+      restaurantId,
+      actorUserId,
+      targetUserId,
+      action: "member_role_changed",
+      entityType: "restaurant_member",
+      entityId: targetUserId,
+      changes: { role: { from: previousRole, to: newRole } },
+      notice: {
+        title: "Your role in this restaurant changed",
+        message: `An owner changed your role to ${newRole}. What you can see and do here has changed with it.`,
+      },
+    });
   }
 
   async removeMember(

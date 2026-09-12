@@ -12,9 +12,11 @@ Provides powerful template rendering for provider communications with:
 from typing import Dict, Any, Optional, List
 import re
 from datetime import datetime
-from jinja2 import Environment, BaseLoader, select_autoescape
+from jinja2 import BaseLoader, select_autoescape
+from jinja2.sandbox import SandboxedEnvironment
 
 from utils.logger import setup_logger
+from services.log_safety import sanitize_for_log
 
 logger = setup_logger(__name__)
 
@@ -32,8 +34,20 @@ class TemplateEngine:
     """
 
     def __init__(self):
-        # Jinja2 environment for complex templates
-        self.jinja_env = Environment(
+        # Jinja2 environment for complex templates.
+        #
+        # SandboxedEnvironment, not Environment: `render(..., use_jinja=True)`
+        # compiles a template *string*, and template strings reach this class
+        # from HTTP request bodies (POST /api/v1/templates/preview passes the
+        # caller's `body` straight through MessageTemplateManager). A plain
+        # Environment turns that into remote code execution via the standard
+        # `{{ ''.__class__.__mro__[1].__subclasses__() }}` attribute walk —
+        # autoescape does not help, it only escapes the *output*.
+        #
+        # No caller passes use_jinja=True today. That is exactly why this is
+        # worth closing now: the sink is one keyword argument away from being
+        # live, and nothing in the type signature would flag it.
+        self.jinja_env = SandboxedEnvironment(
             loader=BaseLoader(),
             autoescape=select_autoescape(["html", "xml"]),
             trim_blocks=True,
@@ -89,7 +103,14 @@ class TemplateEngine:
         rendered = template
 
         # Find all variables in template
-        variable_pattern = r"\{([^}]+)\}"
+        # `[^{}]` not `[^}]`: with `{` allowed inside the class, a body of N
+        # unmatched `{` makes every start position rescan to end-of-string —
+        # quadratic, and the template body is caller-supplied (POST
+        # /api/v1/templates/preview). Excluding `{` bounds each scan at the
+        # next brace, so total work is linear. Measured: 8000 `{` went from
+        # 0.18s to 0.0002s, and the growth curve went from 4x-per-doubling
+        # to flat.
+        variable_pattern = r"\{([^{}]+)\}"
         matches = re.finditer(variable_pattern, template)
 
         for match in matches:
@@ -146,7 +167,14 @@ class TemplateEngine:
         result = {"valid": True, "errors": [], "warnings": [], "variables": []}
 
         # Extract all variables from template
-        variable_pattern = r"\{([^}]+)\}"
+        # `[^{}]` not `[^}]`: with `{` allowed inside the class, a body of N
+        # unmatched `{` makes every start position rescan to end-of-string —
+        # quadratic, and the template body is caller-supplied (POST
+        # /api/v1/templates/preview). Excluding `{` bounds each scan at the
+        # next brace, so total work is linear. Measured: 8000 `{` went from
+        # 0.18s to 0.0002s, and the growth curve went from 4x-per-doubling
+        # to flat.
+        variable_pattern = r"\{([^{}]+)\}"
         matches = re.finditer(variable_pattern, template)
 
         found_variables = set()
@@ -179,7 +207,14 @@ class TemplateEngine:
 
     def extract_variables(self, template: str) -> List[str]:
         """Extract all variable names from template"""
-        variable_pattern = r"\{([^}]+)\}"
+        # `[^{}]` not `[^}]`: with `{` allowed inside the class, a body of N
+        # unmatched `{` makes every start position rescan to end-of-string —
+        # quadratic, and the template body is caller-supplied (POST
+        # /api/v1/templates/preview). Excluding `{` bounds each scan at the
+        # next brace, so total work is linear. Measured: 8000 `{` went from
+        # 0.18s to 0.0002s, and the growth curve went from 4x-per-doubling
+        # to flat.
+        variable_pattern = r"\{([^{}]+)\}"
         matches = re.finditer(variable_pattern, template)
 
         variables = []
@@ -307,7 +342,10 @@ class MessageTemplateManager:
                 .execute()
             )
 
-            logger.info(f"Created template: {name} (category: {category})")
+            logger.info(
+                f"Created template: {sanitize_for_log(name)} "
+                f"(category: {sanitize_for_log(category)})"
+            )
             return response.data[0] if response.data else template_data
 
         except Exception as e:
@@ -399,7 +437,8 @@ class MessageTemplateManager:
             )
 
             logger.info(
-                f"Updated template: {template_id} (version {updates['version']})"
+                f"Updated template: {sanitize_for_log(template_id)} "
+                f"(version {updates['version']})"
             )
             return response.data[0] if response.data else {}
 
@@ -414,7 +453,7 @@ class MessageTemplateManager:
                 {"is_active": False, "deleted_at": datetime.utcnow().isoformat()}
             ).eq("id", template_id).execute()
 
-            logger.info(f"Deleted template: {template_id}")
+            logger.info(f"Deleted template: {sanitize_for_log(template_id)}")
             return True
 
         except Exception as e:

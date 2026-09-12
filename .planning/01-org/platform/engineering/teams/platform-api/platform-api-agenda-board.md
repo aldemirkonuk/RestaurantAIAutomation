@@ -5,7 +5,7 @@ department: engineering
 team: platform-api
 status: provisional
 metrics: [platform.endpoints_protected_by_default_pct, platform.unguarded_reachable_routes]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[platform-api-charter]]", "[[platform-api-agenda-full]]", "[[platform-api-loops]]", "[[engineering-agenda-board]]", "[[security-charter]]"]
 ---
 
@@ -67,7 +67,11 @@ GROUP BY type
 
 ## First tranche, by consequence not by ease
 
-- [ ] `procurement/recurring-orders` — 6, places orders ([[ENDPOINTS]]:428)
+- [x] `procurement/recurring-orders` — 6, places orders. **Guarded 2026-08-25**: class-level
+  `@UseGuards(JwtAuthGuard)`
+  (`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
+  OD-20); no `@Public()` in the file; [[ENDPOINTS]]:464-473 marks all six ✅. Stays on the
+  tranche and stays allowlist-excluded — the exclusion is about consequence, not status.
 - [ ] `notifications` — 24, sends to humans
 - [ ] `communications` — 18, sends to humans
 - [ ] `contacts` — 8, reads a contact list

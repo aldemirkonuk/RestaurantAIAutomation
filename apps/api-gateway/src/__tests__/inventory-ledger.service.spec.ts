@@ -339,48 +339,53 @@ describe("InventoryLedgerService", () => {
     });
   });
 
-  // Ported to the Phase 2 write model (2026-07-14): reconcileInventory now reads the real
-  // `stock_live` projection and applies the adjustment via the `apply_stock_movement` RPC
-  // (lots + ledger, atomic) instead of the removed record_inventory_transaction path that
-  // direct-updated the ghost `live_stock` column. See .planning/FIX_ERROR_LOG.md.
+  // Ported to the Phase 2 write model (2026-07-14): reconcileInventory applied the
+  // adjustment via `apply_stock_movement` instead of the removed
+  // record_inventory_transaction path that direct-updated the ghost `live_stock`
+  // column. See .planning/FIX_ERROR_LOG.md.
+  //
+  // Re-pointed again 2026-09-02 (ADR 0078 — a count is a record). It now routes
+  // through `record_stock_count`, which writes the count unconditionally and
+  // moves stock only as a consequence of a non-zero difference.
   describe("reconcileInventory", () => {
     const restaurantId = "restaurant-123";
     const userId = "user-456";
 
-    it("should create reconciliation transaction for positive adjustment", async () => {
-      // Current stock is 10, actual count is 12
-      mockSupabaseClient.single.mockResolvedValueOnce({
-        data: { stock_live: 10 },
-        error: null,
-      });
-
+    it("records the count AND the movement when the count disagrees", async () => {
       const transactionId = "txn-reconcile";
-      const mockTransaction = {
-        id: transactionId,
-        restaurant_id: restaurantId,
-        inventory_id: "inv-123",
-        wine_id: "wine-456",
-        transaction_type: "reconciliation",
-        source: "reconciliation",
-        quantity_change: 2,
-        quantity_before: 10,
-        quantity_after: 12,
-        stock_type: "live",
-        performed_by: userId,
-        performed_by_type: "user",
-        reason: "Physical count reconciliation: Expected 10, Actual 12",
-        transaction_date: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        metadata: {},
-      };
 
       mockSupabaseClient.rpc.mockResolvedValue({
-        data: transactionId,
+        data: {
+          count_id: "count-1",
+          expected_qty: 10,
+          counted_qty: 12,
+          variance_qty: 2,
+          transaction_id: transactionId,
+          counted_at: "2026-09-02T10:00:00.000Z",
+          replayed: false,
+        },
         error: null,
       });
 
       mockSupabaseClient.single.mockResolvedValueOnce({
-        data: mockTransaction,
+        data: {
+          id: transactionId,
+          restaurant_id: restaurantId,
+          inventory_id: "inv-123",
+          wine_id: "wine-456",
+          transaction_type: "reconciliation",
+          source: "reconciliation",
+          quantity_change: 2,
+          quantity_before: 10,
+          quantity_after: 12,
+          stock_type: "live",
+          performed_by: userId,
+          performed_by_type: "user",
+          reason: "Physical count reconciliation",
+          transaction_date: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          metadata: {},
+        },
         error: null,
       });
 
@@ -392,15 +397,103 @@ describe("InventoryLedgerService", () => {
         12,
       );
 
-      expect(result.quantityChange).toBe(2);
-      expect(result.transactionType).toBe("reconciliation");
+      // BOTH halves. The count is the record; the movement is its consequence.
+      expect(result.count.countId).toBe("count-1");
+      expect(result.count.varianceQty).toBe(2);
+      expect(result.transaction?.quantityChange).toBe(2);
+      expect(result.transaction?.transactionType).toBe("reconciliation");
     });
 
-    it("should reject reconciliation when counts match", async () => {
+    // The inverse of the assertion this file carried until 2026-09-02, which was
+    // `.rejects.toThrow(BadRequestException)` for exactly this input. That
+    // behaviour is what ADR 0078 removes: a manager who counted a shelf and found
+    // it correct got a 400, and the correct outcome left no record anywhere.
+    it("does NOT 400 when the count matches — agreement is a recorded result", async () => {
+      // Stocked so the PRE-FIX code reaches its own
+      // `throw new BadRequestException("No adjustment needed - counts match")`
+      // rather than failing earlier on an unmocked read: this test must fail for
+      // the reason it is about. The post-fix path never reads this table at all.
       mockSupabaseClient.single.mockResolvedValue({
         data: { stock_live: 10 },
         error: null,
       });
+      mockSupabaseClient.rpc.mockResolvedValue({
+        data: {
+          count_id: "count-2",
+          expected_qty: 10,
+          counted_qty: 10,
+          variance_qty: 0,
+          transaction_id: null,
+          counted_at: "2026-09-02T10:05:00.000Z",
+          replayed: false,
+        },
+        error: null,
+      });
+
+      const result = await service.reconcileInventory(
+        restaurantId,
+        userId,
+        "inv-123",
+        "wine-456",
+        10, // same as current
+      );
+
+      expect(result.count.countId).toBe("count-2");
+      expect(result.count.varianceQty).toBe(0);
+      // Null because nothing had to move — a result, not missing data.
+      expect(result.transaction).toBeNull();
+      // And it did not go looking for a transaction that does not exist.
+      expect(mockSupabaseClient.single).not.toHaveBeenCalled();
+    });
+
+    it("goes through record_stock_count, not apply_stock_movement", async () => {
+      mockSupabaseClient.rpc.mockResolvedValue({
+        data: {
+          count_id: "count-3",
+          expected_qty: 4,
+          counted_qty: 4,
+          variance_qty: 0,
+          transaction_id: null,
+          counted_at: "2026-09-02T10:06:00.000Z",
+          replayed: false,
+        },
+        error: null,
+      });
+
+      await service.reconcileInventory(
+        restaurantId,
+        userId,
+        "inv-123",
+        "wine-456",
+        4,
+        undefined,
+        "client-abc",
+      );
+
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+        "record_stock_count",
+        expect.objectContaining({
+          p_inventory_id: "inv-123",
+          p_counted_qty: 4,
+          p_source: "reconciliation",
+          p_performed_by: userId,
+          p_idempotency_key: "reconcile:inv-123:client-abc",
+        }),
+      );
+      const usedRpcs = mockSupabaseClient.rpc.mock.calls.map((c) => c[0]);
+      expect(usedRpcs).not.toContain("apply_stock_movement");
+      // The old path SELECTed restaurant_inventory.stock_live with no lock and
+      // diffed against it in JS — the A11 race. The expected quantity is now read
+      // inside the RPC, under the row lock.
+      expect(mockSupabaseClient.from).not.toHaveBeenCalledWith(
+        "restaurant_inventory",
+      );
+    });
+
+    it("refuses to report success when the RPC returns no payload", async () => {
+      // A successful record_stock_count always returns an object. Treating an
+      // empty response as "fine" is the absence-as-health fault this ADR removes.
+      mockSupabaseClient.rpc.mockResolvedValue({ data: null, error: null });
 
       await expect(
         service.reconcileInventory(
@@ -408,7 +501,7 @@ describe("InventoryLedgerService", () => {
           userId,
           "inv-123",
           "wine-456",
-          10, // Same as current
+          7,
         ),
       ).rejects.toThrow(BadRequestException);
     });

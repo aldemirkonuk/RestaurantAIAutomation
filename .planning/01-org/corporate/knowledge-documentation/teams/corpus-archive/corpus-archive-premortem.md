@@ -125,7 +125,7 @@ already occurred once here.
 `.planning/` and an archive tree with no marker distinguishing them. This was not
 hypothetical: `.planning/archive/` existed and held v2.0 phase documents, **94% of them
 byte-identical copies of `.planning/phases/`** — M5 had already happened. Both trees were
-deleted on 2026-08-24 ([[VAULT_CLEANUP_AUDIT]]), so this failure mode is currently at zero
+deleted on 2026-08-24 ([[0032-vault-cleanup-cut-line]]), so this failure mode is currently at zero
 and the marker requirement exists to keep it there.
 
 **What would have prevented it.** Archived documents carrying `status: archived` in

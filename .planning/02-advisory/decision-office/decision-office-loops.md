@@ -14,9 +14,12 @@ loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "pro
 
 # Decision Office — Loops
 
-> **One of these now runs.** `scripts/watch_loops.py` + `.github/workflows/loop-watcher.yml`
-> watch the dated rules weekly and report to the job summary. It reports only — a finding
-> belongs in a unit's `questions.md`, written by a person, not by a cron job.
+> **One of these has a mechanism; none of them closes yet.** `scripts/watch_loops.py` +
+> `.github/workflows/loop-watcher.yml` watch the dated rules weekly and report to the job
+> summary (L2). It reports only — a finding belongs in a unit's `questions.md`, written by
+> a person, not by a cron job. Reporting is not closing, so L2 stays `proposed` under
+> [[ORG_STRUCTURE]] §5.1: a loop closes when a measurement produces a change, and this one
+> stops at the measurement.
 
 Every loop names its close-time. A loop that cannot state how fast it closes is a
 diagram, not a loop ([[ORG_STRUCTURE]] §5).
@@ -51,11 +54,19 @@ close_time: weekly
 status: proposed
 ```
 
-**Close-time is weekly and unconditional** — the digest ships in weeks where
+> **Status: `proposed` — nothing emits this yet.** It read `running` until 2026-08-24,
+> when [[0009-loop-vocabulary-contract]] began requiring `active`/`running` to name the
+> mechanism that closes them. This loop could name none: no script, no workflow, no query
+> — only the specification below. The demotion measured no change in the world, only in
+> what this file claims about it. **A governance function that overstates its own liveness
+> is the first thing its own audit should catch**, so it is written here in the tense it
+> has earned.
+
+**Close-time will be weekly and unconditional** — the digest is to ship in weeks where
 nothing moved. A number that appears only when it changes cannot embarrass anyone
 ([[decision-office-premortem]] M2).
 
-**What it emits, in this order, every week:**
+**What it will emit, in this order, every week, once something runs it:**
 
 1. **The single oldest open row**, restated in full, with its age in days. Same row
    next week if it has not closed. Repetition is the mechanism.

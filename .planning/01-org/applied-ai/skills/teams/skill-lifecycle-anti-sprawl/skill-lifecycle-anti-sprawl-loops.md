@@ -41,7 +41,7 @@ status: blocked
 ```
 
 **Blocked on:** `skill_id` does not exist; L4 emits nothing ([[README]] §1); OD-11
-open. **Unblock path, in order:** (a) request `skill_id` **and** the doneability
+open. *Corrected 2026-08-25: L4 emits since P1 — `skill_id` is the live blocker.* **Unblock path, in order:** (a) request `skill_id` **and** the doneability
 verdict in one ask; (b) if it slips twice, adopt a harness-side append-only
 invocation log and close the loop on the crude signal.
 

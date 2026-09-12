@@ -12,6 +12,11 @@ import { OrchestratorService } from "../common/orchestrator/orchestrator.service
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { PhotoCountService } from "./photo-count.service";
+import { NfEventRef } from "../common/model-client/model-client.service";
+import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
+import { mapStockCountResult } from "./stock-count-result";
+import { classifyStock } from "../common/stock-status";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -48,6 +53,12 @@ export class InventoryService {
     @Optional()
     @Inject(PhotoCountService)
     private readonly photoCountService?: PhotoCountService,
+    // Optional for the same reason as the rest: the unit specs construct this
+    // service with a DatabaseService alone, and the grading path is not what
+    // they exercise.
+    @Optional()
+    @Inject(NfVerdictService)
+    private readonly nfVerdicts?: NfVerdictService,
   ) {}
 
   private mapInventoryItem(
@@ -204,7 +215,15 @@ export class InventoryService {
     );
   }
 
-  /** Phase 2 multi-location: move bottles of a wine between locations (null = unassigned). */
+  /**
+   * Phase 2 multi-location: move bottles of a wine between locations (null = unassigned).
+   *
+   * ADR 0078 (attribution): `performedBy` comes from the verified JWT via
+   * `@CurrentUser()`, never from the request body. `transfer_stock` has always
+   * accepted `p_performed_by` (baseline:1838) and this call has always omitted
+   * it, so `performed_by_type` resolved to 'system' on every manual transfer —
+   * a ledger built to answer "who moved this" answering "the system".
+   */
   async transferStock(
     restaurantId: string,
     inventoryId: string,
@@ -214,6 +233,7 @@ export class InventoryService {
       qty: number;
       reason?: string;
     },
+    performedBy?: string | null,
   ) {
     const client = this.dbService.getClient();
     const { error } = await client.rpc("transfer_stock", {
@@ -221,6 +241,7 @@ export class InventoryService {
       p_from_location_id: dto.fromLocationId ?? null,
       p_to_location_id: dto.toLocationId ?? null,
       p_qty: dto.qty,
+      p_performed_by: performedBy ?? null,
       p_reason: dto.reason ?? "location transfer",
     });
     if (error) {
@@ -248,7 +269,13 @@ export class InventoryService {
       : null;
   }
 
-  /** Phase 2 (2c) by-the-glass: record N glass pours (POS or manual). Depletes open bottle ml. */
+  /**
+   * Phase 2 (2c) by-the-glass: record N glass pours (POS or manual). Depletes open bottle ml.
+   *
+   * ADR 0078 (attribution): `performedBy` comes from the verified JWT, never the
+   * body. Null is correct and expected for a POS-sourced pour, which genuinely
+   * has no human actor — the fix is that a MANUAL pour stops claiming to be one.
+   */
   async recordPour(
     restaurantId: string,
     inventoryId: string,
@@ -260,6 +287,7 @@ export class InventoryService {
       reason?: string;
       idempotencyKey?: string | null;
     },
+    performedBy?: string | null,
   ) {
     const client = this.dbService.getClient();
     // pour_events.idempotency_key is now mandatory (spine repair, decision
@@ -277,6 +305,7 @@ export class InventoryService {
       p_pour_ml: dto.pourMl ?? null,
       p_location_id: dto.locationId ?? null,
       p_source: dto.source ?? "manual",
+      p_performed_by: performedBy ?? null,
       p_reason: dto.reason ?? null,
       p_idempotency_key: idempotencyKey,
     });
@@ -319,9 +348,18 @@ export class InventoryService {
 
   /**
    * Spot count (SimPOS testbed plan, decisions E40-E43): per-item count with
-   * immediate adjustment, no session and no separate variance table.
-   * set_stock_absolute both locks the row and computes the delta, so a
-   * count is safe against a concurrent manual override on the same item.
+   * immediate adjustment.
+   *
+   * ADR 0078 — A COUNT IS A RECORD. This used to call set_stock_absolute and
+   * treat the resulting ledger delta as the evidence a count happened. It could
+   * not be: set_stock_absolute returns NULL on a zero delta and
+   * inventory_transactions CHECKs quantity_change <> 0, so a count that AGREED
+   * wrote nothing at all and any variance rate over the ledger was 1.0 by
+   * construction. It now goes through record_stock_count, which writes the count
+   * unconditionally and applies a movement only as a consequence of a non-zero
+   * difference. That RPC also takes the row lock and reads the expected quantity
+   * under it, so the count is still safe against a concurrent manual override —
+   * the property set_stock_absolute was introduced for (decision A11).
    */
   async recordSpotCount(
     restaurantId: string,
@@ -356,40 +394,49 @@ export class InventoryService {
     // Decision E43: client-generated so a retry over flaky signal (the
     // counting UI's declared use case) cannot double-apply a count that
     // already landed but whose response never made it back.
+    // The SAME key covers the stock_counts row and the movement (ADR 0078):
+    // the count row's unique index is the single replay gate, so a retry that
+    // already landed returns the original count and never reaches
+    // apply_stock_movement. Before this table there was nothing to duplicate on
+    // an agreeing count, so this constraint is created by the fix, not inherited
+    // from it.
     const idempotencyKey = `count:${inventoryId}:${dto.clientCountId}`;
 
-    const { error: rpcErr } = await client.rpc("set_stock_absolute", {
-      p_inventory_id: inventoryId,
-      p_stock_state: stockState,
-      p_target_qty: Math.round(Number(dto.countedQty)),
-      p_transaction_type: "reconciliation",
-      p_source: "mobile_count",
-      p_performed_by: dto.performedBy ?? null,
-      p_reason: dto.reason ?? "Spot count",
-      p_idempotency_key: idempotencyKey,
-    });
+    const { data: countResult, error: rpcErr } = await client.rpc(
+      "record_stock_count",
+      {
+        p_inventory_id: inventoryId,
+        p_counted_qty: Math.round(Number(dto.countedQty)),
+        p_idempotency_key: idempotencyKey,
+        p_stock_state: stockState,
+        p_source: "mobile_count",
+        p_transaction_type: "reconciliation",
+        p_performed_by: dto.performedBy ?? null,
+        p_reason: dto.reason ?? "Spot count",
+      },
+    );
     if (rpcErr) {
       this.logger.error(
-        `Spot count set_stock_absolute failed: ${rpcErr.message}`,
+        `Spot count record_stock_count failed: ${rpcErr.message}`,
       );
       throw new HttpException(rpcErr.message, HttpStatus.BAD_REQUEST);
     }
 
-    // Decision E41: stamp last_counted_at on every count, even one whose
-    // implied delta is zero — set_stock_absolute is a no-op write in that
-    // case (nothing to reconcile), but a count still happened and the
-    // count-due badge measures "was this ever counted", not "did the number
-    // change".
-    const { error: touchErr } = await client
-      .from("restaurant_inventory")
-      .update({ last_counted_at: new Date().toISOString() })
-      .eq("restaurant_id", restaurantId)
-      .eq("id", inventoryId);
-    if (touchErr) {
-      this.logger.warn(
-        `Failed to stamp last_counted_at for ${inventoryId}: ${touchErr.message}`,
-      );
-    }
+    // Decision E41 stands but is no longer load-bearing: last_counted_at is
+    // stamped inside record_stock_count's transaction (previously a separate
+    // round trip here whose failure was only a warn, so a count could leave no
+    // trace at all and still report success). It survives as a denormalised
+    // MAX(counted_at) cache for the list's freshness badge — stock_counts is now
+    // the evidence a count happened.
+
+    // OD-59 / P3.0: the count just committed is ground truth for whatever the
+    // photo-count model last suggested for this item. Fire-and-forget and after
+    // the stock write, so a stumbling instrument cannot turn a count that
+    // succeeded into an error the staff member sees.
+    void this.gradePhotoCountSuggestion(
+      inventoryId,
+      Math.round(Number(dto.countedQty)),
+    );
 
     const [row, rollup, locations] = await Promise.all([
       client
@@ -418,6 +465,10 @@ export class InventoryService {
             locations.get(inventoryId),
           )
         : null,
+      // ADR 0078: the count itself, including the case that used to be invisible
+      // — variance 0 with a null transactionId means "counted, and the books were
+      // right", which is a result and not missing data.
+      count: mapStockCountResult(countResult),
     };
   }
 
@@ -457,7 +508,122 @@ export class InventoryService {
       (item as any)?.master_wine_library?.name ||
       "this wine";
 
-    return this.photoCountService.estimate(imageBase64, wineName, restaurantId);
+    // OD-59 / P3.0: record what the model suggested so the count a human commits
+    // minutes later can grade it. This is NOT a stock write — the E46 posture is
+    // unchanged and `restaurant_inventory` stays the only place a quantity means
+    // anything. It is the join that never existed: until now the suggestion went
+    // to the browser and was forgotten, so the model's answer and the truth
+    // lived at different times and could never be compared.
+    const eventRef = new NfEventRef();
+    const estimate = await this.photoCountService.estimate(
+      imageBase64,
+      wineName,
+      restaurantId,
+      eventRef,
+    );
+
+    // Fire-and-forget, and deliberately: a suggestion that cannot be recorded
+    // must not fail the count the staff member is standing there doing. The
+    // instrument never breaks the thing it measures.
+    void this.recordPhotoCountSuggestion(
+      eventRef,
+      restaurantId,
+      inventoryId,
+      estimate,
+    );
+
+    return estimate;
+  }
+
+  private async recordPhotoCountSuggestion(
+    eventRef: NfEventRef,
+    restaurantId: string,
+    inventoryId: string,
+    estimate: { suggestedQty: number | null; confidence: string },
+  ): Promise<void> {
+    try {
+      // The emit is fire-and-forget, so the row id arrives late — or never, if
+      // the emit was dropped, in which case the ref settles null and this
+      // suggestion simply cannot be graded. Recording it anyway keeps the count
+      // of ungraded suggestions honest.
+      const eventId = await eventRef.id;
+      const { error } = await this.dbService
+        .getClient()
+        .from("photo_count_suggestions")
+        .insert({
+          event_id: eventId,
+          restaurant_id: restaurantId,
+          inventory_id: inventoryId,
+          suggested_qty: estimate.suggestedQty,
+          confidence: estimate.confidence,
+        });
+      if (error) {
+        this.logger.warn(
+          `Photo-count suggestion not recorded (${inventoryId}): ${error.message}`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Photo-count suggestion not recorded (${inventoryId}): ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * Grade the most recent unmatched photo-count suggestion for this item
+   * against the number a human just committed (OD-59, `human_count_v1`).
+   *
+   * The only grader in the gateway that compares a model's answer to ground
+   * truth from the world rather than to the model's own output.
+   *
+   * Never throws and never blocks the count: called after the stock write has
+   * already succeeded, and every failure inside is a warn. A count that
+   * succeeded must not be reported as failed because the instrument stumbled.
+   */
+  private async gradePhotoCountSuggestion(
+    inventoryId: string,
+    countedQty: number,
+  ): Promise<void> {
+    if (!this.nfVerdicts) return;
+    try {
+      const client = this.dbService.getClient();
+      const { data: suggestion, error } = await client
+        .from("photo_count_suggestions")
+        .select("id, event_id, suggested_qty, confidence")
+        .eq("inventory_id", inventoryId)
+        .is("graded_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error || !suggestion) return;
+
+      // No event id means the emit was dropped: there is no row to attach a
+      // verdict to. Close the suggestion out anyway so it stops appearing in
+      // the pending queue forever.
+      if (suggestion.event_id) {
+        this.nfVerdicts.recordForEvent(
+          suggestion.event_id,
+          HUMAN_COUNT_BASIS,
+          humanCountVerdict({
+            suggestedQty: suggestion.suggested_qty ?? null,
+            countedQty,
+            confidence: suggestion.confidence ?? null,
+          }),
+        );
+      }
+
+      await client
+        .from("photo_count_suggestions")
+        .update({
+          graded_at: new Date().toISOString(),
+          counted_qty: countedQty,
+        })
+        .eq("id", suggestion.id);
+    } catch (err: any) {
+      this.logger.warn(
+        `Photo-count re-grade skipped for ${inventoryId}: ${err?.message ?? err}`,
+      );
+    }
   }
 
   async getLowStockItems(restaurantId: string) {
@@ -481,55 +647,86 @@ export class InventoryService {
     const { data, error } = await client
       .from("inventory_transactions")
       .select("*")
+      .eq("restaurant_id", restaurantId)
       .eq("inventory_id", itemId)
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: true })
       .limit(2000);
 
+    // A FAILED READ IS NOT AN EMPTY LEDGER (ADR 0067). Returning zeroes here
+    // made an outage indistinguishable from a shelf nothing had moved on.
     if (error) {
-      this.logger.warn(`getItemActivity ledger query failed: ${error.message}`);
-      return { daily: [], heat: [], totalOut28d: 0 };
+      this.logger.error(`getItemActivity ledger query failed: ${error.message}`);
+      throw new Error(
+        `the movement history of item ${itemId} could not be read (${error.message}). Nothing is claimed about this shelf — an empty chart here would mean "nothing moved", which is not what we know.`,
+      );
     }
 
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
-    const dailyMap = new Map<string, number>();
-    // heat[dow][slot]: dow 0=Mon..6=Sun, slot 0..7 = 16:00..23:00
+    const outMap = new Map<string, number>();
+    const inMap = new Map<string, number>();
+    // heat[dow][slot]: dow 0=Mon..6=Sun, slot 0..7 = 16:00..23:00. Depletion
+    // only — the heatmap answers "when do we pour this", and a truck arriving
+    // at 17:00 is not a busy hour.
     const heat: number[][] = Array.from({ length: 7 }, () => Array(8).fill(0));
     let totalOut = 0;
+    let totalIn = 0;
 
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
     for (const row of (data as any[]) || []) {
       const qty = Number(row.quantity_change ?? row.quantity ?? 0);
+      if (!Number.isFinite(qty) || qty === 0) continue;
       const type = String(row.transaction_type || "").toLowerCase();
+      // Sign is the classifier. The type list stays only because some depletion
+      // writers record a positive magnitude; dropping it would move numbers
+      // that were already being reported correctly.
       const isOut = qty < 0 || ["sale", "pour", "glass_pour"].includes(type);
-      if (!isOut) continue;
-      const out = Math.abs(qty);
-      if (!(out > 0)) continue;
-
+      const magnitude = Math.abs(qty);
       const ts = new Date(row.created_at);
-      totalOut += out;
+      const k = dayKey(ts);
 
-      if (ts >= fourteenDaysAgo) {
-        const k = dayKey(ts);
-        dailyMap.set(k, (dailyMap.get(k) ?? 0) + out);
+      if (isOut) {
+        totalOut += magnitude;
+        if (ts >= fourteenDaysAgo)
+          outMap.set(k, (outMap.get(k) ?? 0) + magnitude);
+        const dow = (ts.getDay() + 6) % 7; // Mon=0
+        const slot = ts.getHours() - 16;
+        if (slot >= 0 && slot < 8) heat[dow][slot] += magnitude;
+      } else {
+        // EVERY inbound writer, named or not: a delivery booking
+        // (`reference_type = 'delivery'`, `transaction_type = 'purchase'`), a
+        // manual adjustment, a transfer in. Before 2026-09-06 this branch did
+        // not exist and a booked delivery left no trace on this door at all.
+        totalIn += magnitude;
+        if (ts >= fourteenDaysAgo)
+          inMap.set(k, (inMap.get(k) ?? 0) + magnitude);
       }
-      const dow = (ts.getDay() + 6) % 7; // Mon=0
-      const slot = ts.getHours() - 16;
-      if (slot >= 0 && slot < 8) heat[dow][slot] += out;
     }
 
     // Dense 14-day series (zero-filled) so the chart has a stable x-axis.
-    const daily: Array<{ date: string; out: number }> = [];
+    const daily: Array<{ date: string; out: number; in: number }> = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const k = dayKey(d);
-      daily.push({ date: k, out: dailyMap.get(k) ?? 0 });
+      daily.push({ date: k, out: outMap.get(k) ?? 0, in: inMap.get(k) ?? 0 });
     }
 
-    return { daily, heat, totalOut28d: totalOut };
+    return {
+      daily,
+      heat,
+      totalOut28d: totalOut,
+      totalIn28d: totalIn,
+      // The door SAYS what it counted. A zeroed series means "these movements
+      // did not happen", never "this kind of movement is not looked at".
+      includes: {
+        out: "movements off the shelf: any negative quantity_change, plus sale/pour/glass_pour rows recorded as a positive magnitude",
+        in: "movements onto the shelf: any other positive quantity_change, including deliveries booked at the door (reference_type 'delivery'), manual adjustments and transfers in",
+        window: "28 days for the totals, the last 14 days for the daily series",
+      },
+    };
   }
 
   async getInventoryItem(restaurantId: string, itemId: string) {
@@ -781,7 +978,7 @@ export class InventoryService {
         (line.wineId ? `wine ${line.wineId}` : "unknown");
 
       try {
-        const resolved = await this.resolveBulkLineWine(line);
+        const resolved = await this.resolveBulkLineWine(line, restaurantId);
         const outcome = await this.receiveBulkLine(
           restaurantId,
           line,
@@ -798,6 +995,10 @@ export class InventoryService {
           wineName: resolved.wineName || wineName,
           libraryMatched: resolved.matched,
           libraryTier: resolved.libraryTier,
+          // ADR 0130: this line's name was too generic to join the shared
+          // library, so it became this venue's own wine. Reported so the
+          // receiving screen can say that rather than implying a library hit.
+          venueProvisional: resolved.provisional,
         });
       } catch (error: any) {
         const message =
@@ -839,11 +1040,15 @@ export class InventoryService {
   }
 
   /** Resolves a bulk line to a master wine ID, creating a Provisional row if needed. */
-  private async resolveBulkLineWine(line: BulkInventoryLineDto): Promise<{
+  private async resolveBulkLineWine(
+    line: BulkInventoryLineDto,
+    restaurantId: string,
+  ): Promise<{
     masterWineId: string;
     wineName: string | null;
     matched: boolean;
     libraryTier: number | null;
+    provisional?: boolean;
   }> {
     const client = this.dbService.getClient();
 
@@ -882,20 +1087,24 @@ export class InventoryService {
       );
     }
 
-    const resolution = await this.wineSubmissions.resolveOrCreateLibraryWine({
-      name: line.wineDraft.name,
-      producer: line.wineDraft.producer ?? null,
-      vintage: line.wineDraft.vintage ?? null,
-      country: line.wineDraft.country ?? null,
-      region: line.wineDraft.region ?? null,
-      grapeVariety: line.wineDraft.grapeVariety ?? null,
-    });
+    const resolution = await this.wineSubmissions.resolveOrCreateLibraryWine(
+      {
+        name: line.wineDraft.name,
+        producer: line.wineDraft.producer ?? null,
+        vintage: line.wineDraft.vintage ?? null,
+        country: line.wineDraft.country ?? null,
+        region: line.wineDraft.region ?? null,
+        grapeVariety: line.wineDraft.grapeVariety ?? null,
+      },
+      restaurantId,
+    );
 
     return {
       masterWineId: resolution.masterWineId,
       wineName: line.wineDraft.name,
       matched: resolution.matched,
       libraryTier: resolution.libraryTier,
+      provisional: resolution.provisional,
     };
   }
 
@@ -966,12 +1175,22 @@ export class InventoryService {
       if (line.storageLocationId !== undefined)
         insertData.storage_location_id = line.storageLocationId;
 
-      const { data: mw } = await client
-        .from("master_wine_library")
-        .select("name")
-        .eq("id", masterWineId)
-        .maybeSingle();
-      insertData.wine_name = mw?.name ?? null;
+      // The venue's own label wins (ADR 0130). This used to read the library
+      // row's name and store THAT, which is how "House White Wine" came back
+      // from the Antalya receiving screen as "HOUSE WHITE" — a Sim Meyhouse
+      // row, on every screen, forever, because restaurant_inventory.wine_name
+      // is what /inventory renders. The library name is the fallback for a
+      // line that arrived as a bare wineId and carries no label of its own.
+      let libraryName: string | null = null;
+      if (!line.wineDraft?.name) {
+        const { data: mw } = await client
+          .from("master_wine_library")
+          .select("name")
+          .eq("id", masterWineId)
+          .maybeSingle();
+        libraryName = mw?.name ?? null;
+      }
+      insertData.wine_name = line.wineDraft?.name ?? libraryName;
 
       const { data: created, error: insertError } = await client
         .from("restaurant_inventory")
@@ -1034,10 +1253,37 @@ export class InventoryService {
       (sum: number, item: any) => sum + (item.stock_live || 0),
       0,
     );
-    const lowStockCount = lowStock.length;
-    const criticalCount = inventory.filter(
-      (item) => (item.stock_live || 0) === 0,
+
+    // ONE definition, from common/stock-status.ts, over the SAME rows.
+    //
+    // `criticalCount` was `stock_live === 0` — which is "out of stock", a
+    // different question — so it answered 0 for the sim tenant at the exact
+    // moment the alert service was calling a wine at 2/5 critical. And
+    // `lowStockCount` was `lowStock.length`, a second read of a second source
+    // (`v_low_stock_items`) whose predicate the chip did not share. Counting
+    // both from one classification over one array means the three numbers on
+    // the page can no longer disagree about the same wine.
+    const bands = inventory.map((item: any) =>
+      classifyStock(item.stock_live, item.threshold_min),
+    );
+    const lowStockCount = bands.filter(
+      (b) => b === "low" || b === "critical",
     ).length;
+    const criticalCount = bands.filter((b) => b === "critical").length;
+    const atParCount = bands.filter((b) => b === "at_par").length;
+    // A wine whose stock or par we could not read is NOT healthy. Folding it
+    // into the healthy count is how an unreadable row becomes a reassuring one.
+    const unknownCount = bands.filter((b) => b === "unknown").length;
+
+    // `v_low_stock_items` is still read, and any disagreement with the
+    // classification above is REPORTED rather than reconciled silently: the
+    // view is a database predicate and this is a TypeScript one, and if they
+    // ever drift the page must say so instead of picking a winner.
+    if (rawLowStock !== null && lowStock.length !== lowStockCount) {
+      this.logger.warn(
+        `Low-stock count disagreement for ${restaurantId}: v_low_stock_items says ${lowStock.length}, classifyStock over restaurant_inventory says ${lowStockCount}. One of the two predicates has drifted — see datasets/sim/fixtures/below-par-cases.json.`,
+      );
+    }
 
     // Count Toast mappings
     const toastMappedCount = inventory.filter(
@@ -1050,7 +1296,12 @@ export class InventoryService {
       totalBottles,
       lowStockCount,
       criticalCount,
-      healthyCount: totalItems - lowStockCount,
+      atParCount,
+      unknownCount,
+      // Was `totalItems - lowStockCount`, which counted every unreadable and
+      // every at-par row as healthy. Healthy is now a band a row is IN, not
+      // the remainder after subtracting the rows we noticed.
+      healthyCount: bands.filter((b) => b === "healthy").length,
       toastMappedCount,
       toastUnmappedCount,
     };
@@ -1065,6 +1316,10 @@ export class InventoryService {
     restaurantId: string,
     itemId: string,
     dto: UpdateInventoryItemDto,
+    // ADR 0078 (attribution): from the verified JWT. A manual override is the
+    // most consequential manual write on this table and it was landing in the
+    // ledger as performed_by_type='system'.
+    performedBy?: string | null,
   ) {
     const client = this.dbService.getClient();
 
@@ -1130,6 +1385,7 @@ export class InventoryService {
         p_target_qty: targetQty,
         p_transaction_type: "adjustment",
         p_source: "manual",
+        p_performed_by: performedBy ?? null,
         p_reason: "manual_override",
         p_idempotency_key: `manual-override:${itemId}:${stockState}:${Date.now()}`,
       });
@@ -1201,6 +1457,33 @@ export class InventoryService {
           `Failed to publish stock.manual_override: ${pubErr?.message}`,
         );
       }
+    }
+
+    // A threshold crossing has TWO sides, and only one of them was wired.
+    //
+    // `evaluateInventoryItem` was called from the stock-moving paths only, so
+    // stock falling to meet par alerted and par rising to meet stock did not.
+    // Measured on the 2026-09-03 lens run: three pars raised above current
+    // stock through this door produced 0 notifications; the two-minute sweep
+    // caught two of them about nine minutes later, and the third was never
+    // explained. The sweep is a backstop, not the mechanism — an owner raising
+    // a par is TELLING the system a wine is now short.
+    //
+    // Fired on a lowering too, not only a raise: the alert ledger has to learn
+    // that a crossing was undone, or `last_alert_level` stays advanced and the
+    // wine is never alerted about again when it genuinely falls.
+    //
+    // Fire-and-forget for the same reason the pour path is: an owner's edit
+    // must not fail because the notification service is down. The alert
+    // service logs its own failures — this `catch` drops a rejection, not a
+    // report.
+    const parChanged =
+      dto.thresholdMin !== undefined &&
+      Number(dto.thresholdMin) !== Number(oldItem?.threshold_min ?? NaN);
+    if (parChanged && this.lowStockAlerts) {
+      void this.lowStockAlerts
+        .evaluateInventoryItem(restaurantId, itemId)
+        .catch(() => undefined);
     }
 
     const rollup = await this.fetchLotRollup(restaurantId);

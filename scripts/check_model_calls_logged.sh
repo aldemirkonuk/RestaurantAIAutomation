@@ -209,8 +209,10 @@ if [[ "$wrapper_files" -eq 0 ]]; then
 fi
 
 gateway_hits=()
+gateway_scanned=0
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
+  gateway_scanned=$((gateway_scanned + 1))
   # Match the provider URL only in CODE, never in a comment. Without this a file
   # that merely *documents* a provider — e.g. analytics.controller.ts explaining the
   # PR #31 auth fix — is flagged as an unrouted call site. Strips //, * and # lines
@@ -219,8 +221,13 @@ while IFS= read -r f; do
   # Drop whole COMMENT LINES only. An earlier attempt stripped from '//' anywhere,
   # which also ate the '//' in 'https://' and made every real call site invisible —
   # the NEVER VACUOUS rule caught it, which is what that rule is for.
-  if grep -vE '^[[:space:]]*(//|\*|#)' "$f" 2>/dev/null \
-     | grep -Eq "$GATEWAY_PROVIDER_RE"; then
+  # NO PIPELINE HERE, deliberately. `grep -q` exits on its first match, which can
+  # SIGPIPE the upstream grep; under `set -o pipefail` that turns a genuine match
+  # into a silent false negative, and whether it happens depends on the grep
+  # implementation and the pipe buffer — i.e. it passes on macOS and fails on a
+  # Linux runner. A here-string has no upstream process to kill.
+  code_only="$(grep -vE '^[[:space:]]*(//|\*|#)' "$f" 2>/dev/null || true)"
+  if grep -Eq "$GATEWAY_PROVIDER_RE" <<<"$code_only"; then
     gateway_hits+=("$f")
   fi
 done < <(find "$GATEWAY_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
@@ -230,7 +237,11 @@ done < <(find "$GATEWAY_SRC" -type f \( -name '*.ts' -o -name '*.tsx' \) \
 # — not that the gateway stopped calling models.
 if [[ ${#gateway_hits[@]} -eq 0 ]]; then
   cannot_check \
-    "No file under '$GATEWAY_SRC' references a model provider at all." \
+    "No file under '$GATEWAY_SRC' references a model provider at all," \
+    "across $gateway_scanned scanned .ts/.tsx file(s)." \
+    "" \
+    "If that count is 0 the tree is not where this guard thinks it is. If it is" \
+    "large, the pattern found nothing in files that do exist:" \
     "P1 §1 recorded 7 such call sites. Either they all now go through a client" \
     "library this pattern does not match, or the pattern has rotted:" \
     "  $GATEWAY_PROVIDER_RE"

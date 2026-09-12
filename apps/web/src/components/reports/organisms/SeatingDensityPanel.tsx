@@ -23,8 +23,7 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { useAuth } from '../../../contexts/AuthContext'
-
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+import { apiClient, getErrorMessage } from '../../../services/api/client'
 
 interface TableRow {
   tableId: string
@@ -102,6 +101,7 @@ export function SeatingDensityPanel({ className = '' }: { className?: string }) 
   const [showMethodology, setShowMethodology] = useState(false)
   const [hovered, setHovered] = useState<string | null>(null)
   // Geometry correlations + regression drivers, computed server-side.
+  const [error, setError] = useState<string | null>(null)
   const [correlations, setCorrelations] = useState<Correlation[]>([])
   const [drivers, setDrivers] = useState<Drivers | null>(null)
   // Zone compare (NEW-765/775), zone drill-down (NEW-796), menus (NEW-767/797).
@@ -116,16 +116,18 @@ export function SeatingDensityPanel({ className = '' }: { className?: string }) 
   const load = useCallback(async (refresh = false) => {
     if (!restaurantId) return
     if (refresh) setRefreshing(true)
+    setError(null)
     try {
-      const res = await fetch(`${API_URL}/api/v1/analytics/table-performance/${restaurantId}`)
-      if (res.ok) {
-        const body = await res.json()
-        setRows(Array.isArray(body?.tables) ? body.tables : Array.isArray(body) ? body : [])
-        setCorrelations(Array.isArray(body?.correlations) ? body.correlations : [])
-        setDrivers(body?.drivers ?? null)
-      }
-    } catch {
-      /* additive panel — fail quiet */
+      const { data: body } = await apiClient.get<any>(
+        `/analytics/table-performance/${restaurantId}`,
+      )
+      setRows(Array.isArray(body?.tables) ? body.tables : Array.isArray(body) ? body : [])
+      setCorrelations(Array.isArray(body?.correlations) ? body.correlations : [])
+      setDrivers(body?.drivers ?? null)
+    } catch (e) {
+      // A failed call used to look identical to "no seated-check data yet".
+      setRows([])
+      setError(getErrorMessage(e))
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -373,6 +375,17 @@ export function SeatingDensityPanel({ className = '' }: { className?: string }) 
             {[0, 1, 2].map(i => (
               <div key={i} className="h-4 bg-gray-100 rounded animate-pulse" style={{ width: `${85 - i * 15}%` }} />
             ))}
+          </div>
+        ) : error ? (
+          <div className="text-sm text-red-700">
+            Couldn't load table performance — {error}
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="ml-1 font-medium underline hover:no-underline"
+            >
+              Retry
+            </button>
           </div>
         ) : withData.length === 0 ? (
           <div className="text-sm text-gray-500">

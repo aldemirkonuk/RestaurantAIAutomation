@@ -7,14 +7,19 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getItemActivity, reconcileItem, transferStock } from '../../../services/api/inventory'
+import { getItemActivity, recordPour, reconcileItem, transferStock } from '../../../services/api/inventory'
 import { getOrders } from '../../../services/api/orders'
 import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
+import { MultiLocationCell } from '../../../components/inventory/MultiLocationCell'
+import { formatVolume } from '../../../utils/volumeUtils'
+import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
+import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
 import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
+import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
 
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
@@ -57,13 +62,19 @@ export function RowExpansion({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useNotificationStore()
+  // Volumes render in the unit the restaurant chose in Settings. `/inventory-legacy`
+  // honoured this setting and `/inventory` did not, so retiring that page silently
+  // pinned an oz restaurant back to ml. Restored with the retirement (ADR 0019 §B).
+  const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit)
   const inventoryId = item.inventoryId || ''
+  // The founder's named gap: receipt/invoice depth in the dropdown, gated so
+  // the kept page renders byte-identically until the flag flips (ADR 0045 §5).
+  const receiptDepthOn = useMudavymDesign('inventory')
 
   const [delta, setDelta] = useState(0)
   const [reason, setReason] = useState('Count correction')
-  const [transferQty, setTransferQty] = useState(1)
-  const [transferTo, setTransferTo] = useState<string>(locations[0]?.id ?? '')
   const [showSpotCount, setShowSpotCount] = useState(false)
+  const [pouring, setPouring] = useState(false)
 
   const { data: activity } = useQuery({
     queryKey: ['inventory', 'activity', inventoryId],
@@ -95,15 +106,35 @@ export function RowExpansion({
     onError: (e: any) => toast.error('Adjustment failed', e?.response?.data?.message || e?.message),
   })
 
-  const transfer = useMutation({
-    mutationFn: () =>
-      transferStock(inventoryId, { fromLocationId: null, toLocationId: transferTo, qty: transferQty, reason: 'manual transfer' }),
-    onSuccess: () => {
+  /**
+   * A wine can sit in several locations at once (lots are the source of truth), so a
+   * move has to name where the bottles are leaving from. This used to hard-code
+   * `fromLocationId: null`, which told the server "take them from unassigned stock"
+   * no matter which shelf the manager meant.
+   */
+  const doTransfer = async (fromLocationId: string | null, toLocationId: string, qty: number) => {
+    try {
+      await transferStock(inventoryId, { fromLocationId, toLocationId, qty, reason: 'manual transfer' })
       invalidate()
-      toast.success('Bottles transferred')
-    },
-    onError: (e: any) => toast.error('Transfer failed', e?.response?.data?.message || e?.message),
-  })
+      toast.success(`Moved ${qty} bottle${qty === 1 ? '' : 's'}`)
+    } catch (e: any) {
+      toast.error('Transfer failed', e?.response?.data?.message || e?.message)
+      throw e
+    }
+  }
+
+  const pour = async () => {
+    setPouring(true)
+    try {
+      await recordPour(inventoryId, { pours: 1, source: 'manual', reason: 'manual pour' })
+      invalidate()
+      toast.success('Pour recorded')
+    } catch (e: any) {
+      toast.error('Pour failed', e?.response?.data?.message || e?.message)
+    } finally {
+      setPouring(false)
+    }
+  }
 
   const live = item.liveStock ?? 0
   const shadow = item.shadowStock ?? 0
@@ -126,7 +157,7 @@ export function RowExpansion({
         {[
           ['Grape', item.grape || 'Unknown'],
           ['Region', item.region || 'Unknown'],
-          ['Format', `${item.bottleSizeMl ?? 750} ml`],
+          ['Format', formatVolume(item.bottleSizeMl ?? 750, measurementUnit)],
           ['Vintage', item.vintage || 'NV'],
         ].map(([k, v]) => (
           <div key={k as string} className="text-[11px] text-gray-400">
@@ -198,7 +229,7 @@ export function RowExpansion({
             </span>
           }
         >
-          <KV k={`Market avg (${item.bottleSizeMl ?? 750}ml)`} v={fmtMoneyExact(item.marketPrice)} />
+          <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={fmtMoneyExact(item.marketPrice)} />
           <KV k="You paid (WAC)" v={fmtMoneyExact(paid)} />
           <KV
             k="Delta"
@@ -273,6 +304,8 @@ export function RowExpansion({
             </div>
           )}
         </Card>
+
+        {receiptDepthOn && <ReceiptDepth orders={orders} />}
       </div>
 
       {/* action bar */}
@@ -305,28 +338,42 @@ export function RowExpansion({
 
         <span className="w-px h-6 bg-gray-200" />
 
-        <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Transfer</span>
-        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-          <button onClick={() => setTransferQty((q) => Math.max(1, q - 1))} className="w-8 h-8 text-gray-500 hover:bg-gray-50">-</button>
-          <span className="w-9 text-center font-mono text-sm font-bold border-x border-gray-100 leading-8 text-gray-700">{transferQty}</span>
-          <button onClick={() => setTransferQty((q) => Math.min(live, q + 1))} className="w-8 h-8 text-gray-500 hover:bg-gray-50">+</button>
-        </div>
-        <ThemedSelect
-          value={transferTo}
-          options={locations.map((l) => ({ value: l.id, label: `to ${l.name}` }))}
-          onChange={setTransferTo}
-          align="left"
+        <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Locations</span>
+        <MultiLocationCell
+          totalLive={live}
+          breakdown={item.locations ?? []}
+          locations={locations}
+          onTransfer={doTransfer}
         />
-        <button
-          onClick={() => transfer.mutate()}
-          disabled={!transferTo || transfer.isPending || live < 1}
-          className="h-9 px-4 border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-lg disabled:opacity-40"
-        >
-          Move
-        </button>
 
+        {(item.saleType === 'glass' || item.saleType === 'both') && (live > 0 || (item.openMl ?? 0) > 0) && (
+          <>
+            <span className="w-px h-6 bg-gray-200" />
+            <button
+              onClick={() => void pour()}
+              disabled={pouring}
+              title="Record one by-the-glass pour — depletes the open bottle"
+              className="h-9 px-4 border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-lg disabled:opacity-40"
+            >
+              Record pour
+            </button>
+          </>
+        )}
+
+        {/*
+         * `/documents` is not a route — the documents surface is `/documents-reports`
+         * (App.tsx), so this button was a no-op that fell through to the `*` catch-all
+         * and bounced the user to the dashboard.
+         *
+         * The old `?ledger=<inventoryId>` param is dropped rather than carried over:
+         * DocumentsPage renders generated reports plus classified conversations, and
+         * neither is keyed by an inventory item, so there is nothing on that page for
+         * the id to select. The per-item ledger data does exist server-side
+         * (`GET /inventory-ledger/inventory/:inventoryId/history`) but has no UI yet;
+         * building one is out of scope here.
+         */}
         <button
-          onClick={() => navigate(`/documents?ledger=${inventoryId}`)}
+          onClick={() => navigate('/documents-reports')}
           className="ml-auto text-xs font-semibold text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-100"
         >
           View ledger

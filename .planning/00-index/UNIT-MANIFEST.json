@@ -79,7 +79,8 @@
     "directive": "01-org/platform/engineering/engineering-directive.md",
     "loops": "01-org/platform/engineering/engineering-loops.md",
     "schedule": "01-org/platform/engineering/engineering-schedule.md",
-    "questions": "01-org/platform/engineering/engineering-questions.md"
+    "questions": "01-org/platform/engineering/engineering-questions.md",
+    "agent-stack": "01-org/platform/engineering/engineering-agent-stack.md"
    }
   },
   {
@@ -99,7 +100,8 @@
     "directive": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-directive.md",
     "loops": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-loops.md",
     "schedule": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-schedule.md",
-    "questions": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-questions.md"
+    "questions": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-questions.md",
+    "agent-stack": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-agent-stack.md"
    }
   },
   {
@@ -119,7 +121,8 @@
     "directive": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-directive.md",
     "loops": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-loops.md",
     "schedule": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-schedule.md",
-    "questions": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-questions.md"
+    "questions": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-questions.md",
+    "agent-stack": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-agent-stack.md"
    }
   },
   {
@@ -139,7 +142,8 @@
     "directive": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-directive.md",
     "loops": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-loops.md",
     "schedule": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-schedule.md",
-    "questions": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-questions.md"
+    "questions": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-questions.md",
+    "agent-stack": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-agent-stack.md"
    }
   },
   {
@@ -159,7 +163,8 @@
     "directive": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-directive.md",
     "loops": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-loops.md",
     "schedule": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-schedule.md",
-    "questions": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-questions.md"
+    "questions": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-questions.md",
+    "agent-stack": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-agent-stack.md"
    }
   },
   {
@@ -179,7 +184,8 @@
     "directive": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-directive.md",
     "loops": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-loops.md",
     "schedule": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-schedule.md",
-    "questions": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-questions.md"
+    "questions": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-questions.md",
+    "agent-stack": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-agent-stack.md"
    }
   },
   {
@@ -199,7 +205,8 @@
     "directive": "01-org/platform/engineering/teams/platform-api/platform-api-directive.md",
     "loops": "01-org/platform/engineering/teams/platform-api/platform-api-loops.md",
     "schedule": "01-org/platform/engineering/teams/platform-api/platform-api-schedule.md",
-    "questions": "01-org/platform/engineering/teams/platform-api/platform-api-questions.md"
+    "questions": "01-org/platform/engineering/teams/platform-api/platform-api-questions.md",
+    "agent-stack": "01-org/platform/engineering/teams/platform-api/platform-api-agent-stack.md"
    }
   },
   {
@@ -219,7 +226,8 @@
     "directive": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-directive.md",
     "loops": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-loops.md",
     "schedule": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-schedule.md",
-    "questions": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-questions.md"
+    "questions": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-questions.md",
+    "agent-stack": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-agent-stack.md"
    }
   },
   {
@@ -239,7 +247,8 @@
     "directive": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-directive.md",
     "loops": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-loops.md",
     "schedule": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-schedule.md",
-    "questions": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-questions.md"
+    "questions": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-questions.md",
+    "agent-stack": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-agent-stack.md"
    }
   },
   {
@@ -256,7 +265,8 @@
     "directive": "01-org/platform/data/data-directive.md",
     "loops": "01-org/platform/data/data-loops.md",
     "schedule": "01-org/platform/data/data-schedule.md",
-    "questions": "01-org/platform/data/data-questions.md"
+    "questions": "01-org/platform/data/data-questions.md",
+    "agent-stack": "01-org/platform/data/data-agent-stack.md"
    }
   },
   {
@@ -276,7 +286,8 @@
     "directive": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-directive.md",
     "loops": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-loops.md",
     "schedule": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-schedule.md",
-    "questions": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-questions.md"
+    "questions": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-questions.md",
+    "agent-stack": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-agent-stack.md"
    }
   },
   {
@@ -296,7 +307,8 @@
     "directive": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-directive.md",
     "loops": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-loops.md",
     "schedule": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-schedule.md",
-    "questions": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-questions.md"
+    "questions": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-questions.md",
+    "agent-stack": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-agent-stack.md"
    }
   },
   {
@@ -316,7 +328,8 @@
     "directive": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-directive.md",
     "loops": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-loops.md",
     "schedule": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-schedule.md",
-    "questions": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-questions.md"
+    "questions": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-questions.md",
+    "agent-stack": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-agent-stack.md"
    }
   },
   {
@@ -336,7 +349,8 @@
     "directive": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-directive.md",
     "loops": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-loops.md",
     "schedule": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-schedule.md",
-    "questions": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-questions.md"
+    "questions": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-questions.md",
+    "agent-stack": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-agent-stack.md"
    }
   },
   {
@@ -356,7 +370,8 @@
     "directive": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-directive.md",
     "loops": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-loops.md",
     "schedule": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-schedule.md",
-    "questions": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-questions.md"
+    "questions": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-questions.md",
+    "agent-stack": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-agent-stack.md"
    }
   },
   {
@@ -373,7 +388,8 @@
     "directive": "01-org/platform/reliability-sre/reliability-sre-directive.md",
     "loops": "01-org/platform/reliability-sre/reliability-sre-loops.md",
     "schedule": "01-org/platform/reliability-sre/reliability-sre-schedule.md",
-    "questions": "01-org/platform/reliability-sre/reliability-sre-questions.md"
+    "questions": "01-org/platform/reliability-sre/reliability-sre-questions.md",
+    "agent-stack": "01-org/platform/reliability-sre/reliability-sre-agent-stack.md"
    }
   },
   {
@@ -393,7 +409,8 @@
     "directive": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-directive.md",
     "loops": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-loops.md",
     "schedule": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-schedule.md",
-    "questions": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-questions.md"
+    "questions": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-questions.md",
+    "agent-stack": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-agent-stack.md"
    }
   },
   {
@@ -413,7 +430,8 @@
     "directive": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-directive.md",
     "loops": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-loops.md",
     "schedule": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-schedule.md",
-    "questions": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-questions.md"
+    "questions": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-questions.md",
+    "agent-stack": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-agent-stack.md"
    }
   },
   {
@@ -433,7 +451,8 @@
     "directive": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-directive.md",
     "loops": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-loops.md",
     "schedule": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-schedule.md",
-    "questions": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-questions.md"
+    "questions": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-questions.md",
+    "agent-stack": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-agent-stack.md"
    }
   },
   {
@@ -453,7 +472,8 @@
     "directive": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-directive.md",
     "loops": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-loops.md",
     "schedule": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-schedule.md",
-    "questions": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-questions.md"
+    "questions": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-questions.md",
+    "agent-stack": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-agent-stack.md"
    }
   },
   {
@@ -470,7 +490,8 @@
     "directive": "01-org/applied-ai/ai-orchestration/ai-orchestration-directive.md",
     "loops": "01-org/applied-ai/ai-orchestration/ai-orchestration-loops.md",
     "schedule": "01-org/applied-ai/ai-orchestration/ai-orchestration-schedule.md",
-    "questions": "01-org/applied-ai/ai-orchestration/ai-orchestration-questions.md"
+    "questions": "01-org/applied-ai/ai-orchestration/ai-orchestration-questions.md",
+    "agent-stack": "01-org/applied-ai/ai-orchestration/ai-orchestration-agent-stack.md"
    }
   },
   {
@@ -490,7 +511,8 @@
     "directive": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-directive.md",
     "loops": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-loops.md",
     "schedule": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-schedule.md",
-    "questions": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-questions.md"
+    "questions": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-questions.md",
+    "agent-stack": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-agent-stack.md"
    }
   },
   {
@@ -510,7 +532,8 @@
     "directive": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-directive.md",
     "loops": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-loops.md",
     "schedule": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-schedule.md",
-    "questions": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-questions.md"
+    "questions": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-questions.md",
+    "agent-stack": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-agent-stack.md"
    }
   },
   {
@@ -530,7 +553,8 @@
     "directive": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-directive.md",
     "loops": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-loops.md",
     "schedule": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-schedule.md",
-    "questions": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-questions.md"
+    "questions": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-questions.md",
+    "agent-stack": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-agent-stack.md"
    }
   },
   {
@@ -550,7 +574,8 @@
     "directive": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-directive.md",
     "loops": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-loops.md",
     "schedule": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-schedule.md",
-    "questions": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-questions.md"
+    "questions": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-questions.md",
+    "agent-stack": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-agent-stack.md"
    }
   },
   {
@@ -570,7 +595,8 @@
     "directive": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-directive.md",
     "loops": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-loops.md",
     "schedule": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-schedule.md",
-    "questions": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-questions.md"
+    "questions": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-questions.md",
+    "agent-stack": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-agent-stack.md"
    }
   },
   {
@@ -587,7 +613,8 @@
     "directive": "01-org/applied-ai/skills/skills-directive.md",
     "loops": "01-org/applied-ai/skills/skills-loops.md",
     "schedule": "01-org/applied-ai/skills/skills-schedule.md",
-    "questions": "01-org/applied-ai/skills/skills-questions.md"
+    "questions": "01-org/applied-ai/skills/skills-questions.md",
+    "agent-stack": "01-org/applied-ai/skills/skills-agent-stack.md"
    }
   },
   {
@@ -607,7 +634,8 @@
     "directive": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-directive.md",
     "loops": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-loops.md",
     "schedule": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-schedule.md",
-    "questions": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-questions.md"
+    "questions": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-questions.md",
+    "agent-stack": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-agent-stack.md"
    }
   },
   {
@@ -627,7 +655,8 @@
     "directive": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-directive.md",
     "loops": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-loops.md",
     "schedule": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-schedule.md",
-    "questions": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-questions.md"
+    "questions": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-questions.md",
+    "agent-stack": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-agent-stack.md"
    }
   },
   {
@@ -647,7 +676,8 @@
     "directive": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-directive.md",
     "loops": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-loops.md",
     "schedule": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-schedule.md",
-    "questions": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-questions.md"
+    "questions": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-questions.md",
+    "agent-stack": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-agent-stack.md"
    }
   },
   {
@@ -664,7 +694,8 @@
     "directive": "01-org/research-math/research-math-directive.md",
     "loops": "01-org/research-math/research-math-loops.md",
     "schedule": "01-org/research-math/research-math-schedule.md",
-    "questions": "01-org/research-math/research-math-questions.md"
+    "questions": "01-org/research-math/research-math-questions.md",
+    "agent-stack": "01-org/research-math/research-math-agent-stack.md"
    }
   },
   {
@@ -684,7 +715,8 @@
     "directive": "01-org/research-math/teams/harness-model-routing/harness-model-routing-directive.md",
     "loops": "01-org/research-math/teams/harness-model-routing/harness-model-routing-loops.md",
     "schedule": "01-org/research-math/teams/harness-model-routing/harness-model-routing-schedule.md",
-    "questions": "01-org/research-math/teams/harness-model-routing/harness-model-routing-questions.md"
+    "questions": "01-org/research-math/teams/harness-model-routing/harness-model-routing-questions.md",
+    "agent-stack": "01-org/research-math/teams/harness-model-routing/harness-model-routing-agent-stack.md"
    }
   },
   {
@@ -704,7 +736,8 @@
     "directive": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-directive.md",
     "loops": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-loops.md",
     "schedule": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-schedule.md",
-    "questions": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-questions.md"
+    "questions": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-questions.md",
+    "agent-stack": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-agent-stack.md"
    }
   },
   {
@@ -724,7 +757,8 @@
     "directive": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-directive.md",
     "loops": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-loops.md",
     "schedule": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-schedule.md",
-    "questions": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-questions.md"
+    "questions": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-questions.md",
+    "agent-stack": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-agent-stack.md"
    }
   },
   {
@@ -741,7 +775,8 @@
     "directive": "01-org/intelligence/security/security-directive.md",
     "loops": "01-org/intelligence/security/security-loops.md",
     "schedule": "01-org/intelligence/security/security-schedule.md",
-    "questions": "01-org/intelligence/security/security-questions.md"
+    "questions": "01-org/intelligence/security/security-questions.md",
+    "agent-stack": "01-org/intelligence/security/security-agent-stack.md"
    }
   },
   {
@@ -761,7 +796,8 @@
     "directive": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-directive.md",
     "loops": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-loops.md",
     "schedule": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-schedule.md",
-    "questions": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-questions.md"
+    "questions": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-questions.md",
+    "agent-stack": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-agent-stack.md"
    }
   },
   {
@@ -781,7 +817,8 @@
     "directive": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-directive.md",
     "loops": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-loops.md",
     "schedule": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-schedule.md",
-    "questions": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-questions.md"
+    "questions": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-questions.md",
+    "agent-stack": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-agent-stack.md"
    }
   },
   {
@@ -801,7 +838,8 @@
     "directive": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-directive.md",
     "loops": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-loops.md",
     "schedule": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-schedule.md",
-    "questions": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-questions.md"
+    "questions": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-questions.md",
+    "agent-stack": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-agent-stack.md"
    }
   },
   {
@@ -818,7 +856,8 @@
     "directive": "01-org/intelligence/analytics-bi/analytics-bi-directive.md",
     "loops": "01-org/intelligence/analytics-bi/analytics-bi-loops.md",
     "schedule": "01-org/intelligence/analytics-bi/analytics-bi-schedule.md",
-    "questions": "01-org/intelligence/analytics-bi/analytics-bi-questions.md"
+    "questions": "01-org/intelligence/analytics-bi/analytics-bi-questions.md",
+    "agent-stack": "01-org/intelligence/analytics-bi/analytics-bi-agent-stack.md"
    }
   },
   {
@@ -838,7 +877,8 @@
     "directive": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-directive.md",
     "loops": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-loops.md",
     "schedule": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-schedule.md",
-    "questions": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-questions.md"
+    "questions": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-questions.md",
+    "agent-stack": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-agent-stack.md"
    }
   },
   {
@@ -858,7 +898,8 @@
     "directive": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-directive.md",
     "loops": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-loops.md",
     "schedule": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-schedule.md",
-    "questions": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-questions.md"
+    "questions": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-questions.md",
+    "agent-stack": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-agent-stack.md"
    }
   },
   {
@@ -878,7 +919,8 @@
     "directive": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-directive.md",
     "loops": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-loops.md",
     "schedule": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-schedule.md",
-    "questions": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-questions.md"
+    "questions": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-questions.md",
+    "agent-stack": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-agent-stack.md"
    }
   },
   {
@@ -895,7 +937,8 @@
     "directive": "01-org/product/product-vision/product-vision-directive.md",
     "loops": "01-org/product/product-vision/product-vision-loops.md",
     "schedule": "01-org/product/product-vision/product-vision-schedule.md",
-    "questions": "01-org/product/product-vision/product-vision-questions.md"
+    "questions": "01-org/product/product-vision/product-vision-questions.md",
+    "agent-stack": "01-org/product/product-vision/product-vision-agent-stack.md"
    }
   },
   {
@@ -915,7 +958,8 @@
     "directive": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-directive.md",
     "loops": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-loops.md",
     "schedule": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-schedule.md",
-    "questions": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-questions.md"
+    "questions": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-questions.md",
+    "agent-stack": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-agent-stack.md"
    }
   },
   {
@@ -935,7 +979,8 @@
     "directive": "01-org/product/product-vision/teams/service-floor/service-floor-directive.md",
     "loops": "01-org/product/product-vision/teams/service-floor/service-floor-loops.md",
     "schedule": "01-org/product/product-vision/teams/service-floor/service-floor-schedule.md",
-    "questions": "01-org/product/product-vision/teams/service-floor/service-floor-questions.md"
+    "questions": "01-org/product/product-vision/teams/service-floor/service-floor-questions.md",
+    "agent-stack": "01-org/product/product-vision/teams/service-floor/service-floor-agent-stack.md"
    }
   },
   {
@@ -955,7 +1000,8 @@
     "directive": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-directive.md",
     "loops": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-loops.md",
     "schedule": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-schedule.md",
-    "questions": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-questions.md"
+    "questions": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-questions.md",
+    "agent-stack": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-agent-stack.md"
    }
   },
   {
@@ -975,7 +1021,8 @@
     "directive": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-directive.md",
     "loops": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-loops.md",
     "schedule": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-schedule.md",
-    "questions": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-questions.md"
+    "questions": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-questions.md",
+    "agent-stack": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-agent-stack.md"
    }
   },
   {
@@ -995,7 +1042,8 @@
     "directive": "01-org/product/product-vision/teams/ask-ai/ask-ai-directive.md",
     "loops": "01-org/product/product-vision/teams/ask-ai/ask-ai-loops.md",
     "schedule": "01-org/product/product-vision/teams/ask-ai/ask-ai-schedule.md",
-    "questions": "01-org/product/product-vision/teams/ask-ai/ask-ai-questions.md"
+    "questions": "01-org/product/product-vision/teams/ask-ai/ask-ai-questions.md",
+    "agent-stack": "01-org/product/product-vision/teams/ask-ai/ask-ai-agent-stack.md"
    }
   },
   {
@@ -1012,7 +1060,8 @@
     "directive": "01-org/product/guest-experience/guest-experience-directive.md",
     "loops": "01-org/product/guest-experience/guest-experience-loops.md",
     "schedule": "01-org/product/guest-experience/guest-experience-schedule.md",
-    "questions": "01-org/product/guest-experience/guest-experience-questions.md"
+    "questions": "01-org/product/guest-experience/guest-experience-questions.md",
+    "agent-stack": "01-org/product/guest-experience/guest-experience-agent-stack.md"
    }
   },
   {
@@ -1032,7 +1081,8 @@
     "directive": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-directive.md",
     "loops": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-loops.md",
     "schedule": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-schedule.md",
-    "questions": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-questions.md"
+    "questions": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-questions.md",
+    "agent-stack": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-agent-stack.md"
    }
   },
   {
@@ -1052,7 +1102,8 @@
     "directive": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-directive.md",
     "loops": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-loops.md",
     "schedule": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-schedule.md",
-    "questions": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-questions.md"
+    "questions": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-questions.md",
+    "agent-stack": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-agent-stack.md"
    }
   },
   {
@@ -1072,7 +1123,8 @@
     "directive": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-directive.md",
     "loops": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-loops.md",
     "schedule": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-schedule.md",
-    "questions": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-questions.md"
+    "questions": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-questions.md",
+    "agent-stack": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-agent-stack.md"
    }
   },
   {
@@ -1092,7 +1144,8 @@
     "directive": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-directive.md",
     "loops": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-loops.md",
     "schedule": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-schedule.md",
-    "questions": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-questions.md"
+    "questions": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-questions.md",
+    "agent-stack": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-agent-stack.md"
    }
   },
   {
@@ -1109,7 +1162,8 @@
     "directive": "01-org/product/design/design-directive.md",
     "loops": "01-org/product/design/design-loops.md",
     "schedule": "01-org/product/design/design-schedule.md",
-    "questions": "01-org/product/design/design-questions.md"
+    "questions": "01-org/product/design/design-questions.md",
+    "agent-stack": "01-org/product/design/design-agent-stack.md"
    }
   },
   {
@@ -1129,7 +1183,8 @@
     "directive": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-directive.md",
     "loops": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-loops.md",
     "schedule": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-schedule.md",
-    "questions": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-questions.md"
+    "questions": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-questions.md",
+    "agent-stack": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-agent-stack.md"
    }
   },
   {
@@ -1149,7 +1204,8 @@
     "directive": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-directive.md",
     "loops": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-loops.md",
     "schedule": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-schedule.md",
-    "questions": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-questions.md"
+    "questions": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-questions.md",
+    "agent-stack": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-agent-stack.md"
    }
   },
   {
@@ -1169,7 +1225,8 @@
     "directive": "01-org/product/design/teams/exploration-studio/exploration-studio-directive.md",
     "loops": "01-org/product/design/teams/exploration-studio/exploration-studio-loops.md",
     "schedule": "01-org/product/design/teams/exploration-studio/exploration-studio-schedule.md",
-    "questions": "01-org/product/design/teams/exploration-studio/exploration-studio-questions.md"
+    "questions": "01-org/product/design/teams/exploration-studio/exploration-studio-questions.md",
+    "agent-stack": "01-org/product/design/teams/exploration-studio/exploration-studio-agent-stack.md"
    }
   },
   {
@@ -1189,7 +1246,8 @@
     "directive": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-directive.md",
     "loops": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-loops.md",
     "schedule": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-schedule.md",
-    "questions": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-questions.md"
+    "questions": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-questions.md",
+    "agent-stack": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-agent-stack.md"
    }
   },
   {
@@ -1206,7 +1264,8 @@
     "directive": "01-org/product/partnerships-integrations/partnerships-integrations-directive.md",
     "loops": "01-org/product/partnerships-integrations/partnerships-integrations-loops.md",
     "schedule": "01-org/product/partnerships-integrations/partnerships-integrations-schedule.md",
-    "questions": "01-org/product/partnerships-integrations/partnerships-integrations-questions.md"
+    "questions": "01-org/product/partnerships-integrations/partnerships-integrations-questions.md",
+    "agent-stack": "01-org/product/partnerships-integrations/partnerships-integrations-agent-stack.md"
    }
   },
   {
@@ -1226,7 +1285,8 @@
     "directive": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-directive.md",
     "loops": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-loops.md",
     "schedule": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-schedule.md",
-    "questions": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-questions.md"
+    "questions": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-questions.md",
+    "agent-stack": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-agent-stack.md"
    }
   },
   {
@@ -1246,7 +1306,8 @@
     "directive": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-directive.md",
     "loops": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-loops.md",
     "schedule": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-schedule.md",
-    "questions": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-questions.md"
+    "questions": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-questions.md",
+    "agent-stack": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-agent-stack.md"
    }
   },
   {
@@ -1266,7 +1327,8 @@
     "directive": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-directive.md",
     "loops": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-loops.md",
     "schedule": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-schedule.md",
-    "questions": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-questions.md"
+    "questions": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-questions.md",
+    "agent-stack": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-agent-stack.md"
    }
   },
   {
@@ -1286,7 +1348,8 @@
     "directive": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-directive.md",
     "loops": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-loops.md",
     "schedule": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-schedule.md",
-    "questions": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-questions.md"
+    "questions": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-questions.md",
+    "agent-stack": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-agent-stack.md"
    }
   },
   {
@@ -1303,7 +1366,8 @@
     "directive": "01-org/commercial/growth/growth-directive.md",
     "loops": "01-org/commercial/growth/growth-loops.md",
     "schedule": "01-org/commercial/growth/growth-schedule.md",
-    "questions": "01-org/commercial/growth/growth-questions.md"
+    "questions": "01-org/commercial/growth/growth-questions.md",
+    "agent-stack": "01-org/commercial/growth/growth-agent-stack.md"
    }
   },
   {
@@ -1323,7 +1387,8 @@
     "directive": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-directive.md",
     "loops": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-loops.md",
     "schedule": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-schedule.md",
-    "questions": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-questions.md"
+    "questions": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-questions.md",
+    "agent-stack": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-agent-stack.md"
    }
   },
   {
@@ -1343,7 +1408,8 @@
     "directive": "01-org/commercial/growth/teams/content-production/content-production-directive.md",
     "loops": "01-org/commercial/growth/teams/content-production/content-production-loops.md",
     "schedule": "01-org/commercial/growth/teams/content-production/content-production-schedule.md",
-    "questions": "01-org/commercial/growth/teams/content-production/content-production-questions.md"
+    "questions": "01-org/commercial/growth/teams/content-production/content-production-questions.md",
+    "agent-stack": "01-org/commercial/growth/teams/content-production/content-production-agent-stack.md"
    }
   },
   {
@@ -1363,7 +1429,8 @@
     "directive": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-directive.md",
     "loops": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-loops.md",
     "schedule": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-schedule.md",
-    "questions": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-questions.md"
+    "questions": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-questions.md",
+    "agent-stack": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-agent-stack.md"
    }
   },
   {
@@ -1383,7 +1450,8 @@
     "directive": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-directive.md",
     "loops": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-loops.md",
     "schedule": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-schedule.md",
-    "questions": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-questions.md"
+    "questions": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-questions.md",
+    "agent-stack": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-agent-stack.md"
    }
   },
   {
@@ -1403,7 +1471,8 @@
     "directive": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-directive.md",
     "loops": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-loops.md",
     "schedule": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-schedule.md",
-    "questions": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-questions.md"
+    "questions": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-questions.md",
+    "agent-stack": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-agent-stack.md"
    }
   },
   {
@@ -1420,7 +1489,8 @@
     "directive": "01-org/commercial/finance-pricing/finance-pricing-directive.md",
     "loops": "01-org/commercial/finance-pricing/finance-pricing-loops.md",
     "schedule": "01-org/commercial/finance-pricing/finance-pricing-schedule.md",
-    "questions": "01-org/commercial/finance-pricing/finance-pricing-questions.md"
+    "questions": "01-org/commercial/finance-pricing/finance-pricing-questions.md",
+    "agent-stack": "01-org/commercial/finance-pricing/finance-pricing-agent-stack.md"
    }
   },
   {
@@ -1440,7 +1510,8 @@
     "directive": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-directive.md",
     "loops": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-loops.md",
     "schedule": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-schedule.md",
-    "questions": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-questions.md"
+    "questions": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-questions.md",
+    "agent-stack": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-agent-stack.md"
    }
   },
   {
@@ -1460,7 +1531,8 @@
     "directive": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-directive.md",
     "loops": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-loops.md",
     "schedule": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-schedule.md",
-    "questions": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-questions.md"
+    "questions": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-questions.md",
+    "agent-stack": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-agent-stack.md"
    }
   },
   {
@@ -1477,7 +1549,8 @@
     "directive": "01-org/commercial/sales/sales-directive.md",
     "loops": "01-org/commercial/sales/sales-loops.md",
     "schedule": "01-org/commercial/sales/sales-schedule.md",
-    "questions": "01-org/commercial/sales/sales-questions.md"
+    "questions": "01-org/commercial/sales/sales-questions.md",
+    "agent-stack": "01-org/commercial/sales/sales-agent-stack.md"
    }
   },
   {
@@ -1497,7 +1570,8 @@
     "directive": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-directive.md",
     "loops": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-loops.md",
     "schedule": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-schedule.md",
-    "questions": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-questions.md"
+    "questions": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-questions.md",
+    "agent-stack": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-agent-stack.md"
    }
   },
   {
@@ -1517,7 +1591,8 @@
     "directive": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-directive.md",
     "loops": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-loops.md",
     "schedule": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-schedule.md",
-    "questions": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-questions.md"
+    "questions": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-questions.md",
+    "agent-stack": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-agent-stack.md"
    }
   },
   {
@@ -1534,7 +1609,8 @@
     "directive": "01-org/commercial/media-brand/media-brand-directive.md",
     "loops": "01-org/commercial/media-brand/media-brand-loops.md",
     "schedule": "01-org/commercial/media-brand/media-brand-schedule.md",
-    "questions": "01-org/commercial/media-brand/media-brand-questions.md"
+    "questions": "01-org/commercial/media-brand/media-brand-questions.md",
+    "agent-stack": "01-org/commercial/media-brand/media-brand-agent-stack.md"
    }
   },
   {
@@ -1554,7 +1630,8 @@
     "directive": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-directive.md",
     "loops": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-loops.md",
     "schedule": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-schedule.md",
-    "questions": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-questions.md"
+    "questions": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-questions.md",
+    "agent-stack": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-agent-stack.md"
    }
   },
   {
@@ -1574,7 +1651,8 @@
     "directive": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-directive.md",
     "loops": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-loops.md",
     "schedule": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-schedule.md",
-    "questions": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-questions.md"
+    "questions": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-questions.md",
+    "agent-stack": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-agent-stack.md"
    }
   },
   {
@@ -1594,7 +1672,8 @@
     "directive": "01-org/commercial/media-brand/teams/social-community/social-community-directive.md",
     "loops": "01-org/commercial/media-brand/teams/social-community/social-community-loops.md",
     "schedule": "01-org/commercial/media-brand/teams/social-community/social-community-schedule.md",
-    "questions": "01-org/commercial/media-brand/teams/social-community/social-community-questions.md"
+    "questions": "01-org/commercial/media-brand/teams/social-community/social-community-questions.md",
+    "agent-stack": "01-org/commercial/media-brand/teams/social-community/social-community-agent-stack.md"
    }
   },
   {
@@ -1614,7 +1693,8 @@
     "directive": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-directive.md",
     "loops": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-loops.md",
     "schedule": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-schedule.md",
-    "questions": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-questions.md"
+    "questions": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-questions.md",
+    "agent-stack": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-agent-stack.md"
    }
   },
   {
@@ -1631,7 +1711,8 @@
     "directive": "01-org/corporate/legal/legal-directive.md",
     "loops": "01-org/corporate/legal/legal-loops.md",
     "schedule": "01-org/corporate/legal/legal-schedule.md",
-    "questions": "01-org/corporate/legal/legal-questions.md"
+    "questions": "01-org/corporate/legal/legal-questions.md",
+    "agent-stack": "01-org/corporate/legal/legal-agent-stack.md"
    }
   },
   {
@@ -1651,7 +1732,8 @@
     "directive": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-directive.md",
     "loops": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-loops.md",
     "schedule": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-schedule.md",
-    "questions": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-questions.md"
+    "questions": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-questions.md",
+    "agent-stack": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-agent-stack.md"
    }
   },
   {
@@ -1671,7 +1753,8 @@
     "directive": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-directive.md",
     "loops": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-loops.md",
     "schedule": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-schedule.md",
-    "questions": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-questions.md"
+    "questions": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-questions.md",
+    "agent-stack": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-agent-stack.md"
    }
   },
   {
@@ -1688,7 +1771,8 @@
     "directive": "01-org/corporate/knowledge-documentation/knowledge-documentation-directive.md",
     "loops": "01-org/corporate/knowledge-documentation/knowledge-documentation-loops.md",
     "schedule": "01-org/corporate/knowledge-documentation/knowledge-documentation-schedule.md",
-    "questions": "01-org/corporate/knowledge-documentation/knowledge-documentation-questions.md"
+    "questions": "01-org/corporate/knowledge-documentation/knowledge-documentation-questions.md",
+    "agent-stack": "01-org/corporate/knowledge-documentation/knowledge-documentation-agent-stack.md"
    }
   },
   {
@@ -1708,7 +1792,8 @@
     "directive": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-directive.md",
     "loops": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-loops.md",
     "schedule": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-schedule.md",
-    "questions": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-questions.md"
+    "questions": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-questions.md",
+    "agent-stack": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-agent-stack.md"
    }
   },
   {
@@ -1728,7 +1813,8 @@
     "directive": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-directive.md",
     "loops": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-loops.md",
     "schedule": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-schedule.md",
-    "questions": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-questions.md"
+    "questions": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-questions.md",
+    "agent-stack": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-agent-stack.md"
    }
   },
   {
@@ -1748,7 +1834,8 @@
     "directive": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-directive.md",
     "loops": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-loops.md",
     "schedule": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-schedule.md",
-    "questions": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-questions.md"
+    "questions": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-questions.md",
+    "agent-stack": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-agent-stack.md"
    }
   },
   {
@@ -1765,7 +1852,8 @@
     "directive": "01-org/corporate/compliance-privacy/compliance-privacy-directive.md",
     "loops": "01-org/corporate/compliance-privacy/compliance-privacy-loops.md",
     "schedule": "01-org/corporate/compliance-privacy/compliance-privacy-schedule.md",
-    "questions": "01-org/corporate/compliance-privacy/compliance-privacy-questions.md"
+    "questions": "01-org/corporate/compliance-privacy/compliance-privacy-questions.md",
+    "agent-stack": "01-org/corporate/compliance-privacy/compliance-privacy-agent-stack.md"
    }
   },
   {
@@ -1785,7 +1873,8 @@
     "directive": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-directive.md",
     "loops": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-loops.md",
     "schedule": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-schedule.md",
-    "questions": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-questions.md"
+    "questions": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-questions.md",
+    "agent-stack": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-agent-stack.md"
    }
   },
   {
@@ -1805,7 +1894,8 @@
     "directive": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-directive.md",
     "loops": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-loops.md",
     "schedule": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-schedule.md",
-    "questions": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-questions.md"
+    "questions": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-questions.md",
+    "agent-stack": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-agent-stack.md"
    }
   },
   {
@@ -1825,7 +1915,8 @@
     "directive": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-directive.md",
     "loops": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-loops.md",
     "schedule": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-schedule.md",
-    "questions": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-questions.md"
+    "questions": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-questions.md",
+    "agent-stack": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-agent-stack.md"
    }
   },
   {
@@ -1842,7 +1933,8 @@
     "directive": "01-org/corporate/people-agent-ops/people-agent-ops-directive.md",
     "loops": "01-org/corporate/people-agent-ops/people-agent-ops-loops.md",
     "schedule": "01-org/corporate/people-agent-ops/people-agent-ops-schedule.md",
-    "questions": "01-org/corporate/people-agent-ops/people-agent-ops-questions.md"
+    "questions": "01-org/corporate/people-agent-ops/people-agent-ops-questions.md",
+    "agent-stack": "01-org/corporate/people-agent-ops/people-agent-ops-agent-stack.md"
    }
   },
   {
@@ -1862,7 +1954,8 @@
     "directive": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-directive.md",
     "loops": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-loops.md",
     "schedule": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-schedule.md",
-    "questions": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-questions.md"
+    "questions": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-questions.md",
+    "agent-stack": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-agent-stack.md"
    }
   },
   {
@@ -1882,7 +1975,8 @@
     "directive": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-directive.md",
     "loops": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-loops.md",
     "schedule": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-schedule.md",
-    "questions": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-questions.md"
+    "questions": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-questions.md",
+    "agent-stack": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-agent-stack.md"
    }
   },
   {
@@ -1899,7 +1993,8 @@
     "directive": "01-org/corporate/strategy-fundraising/strategy-fundraising-directive.md",
     "loops": "01-org/corporate/strategy-fundraising/strategy-fundraising-loops.md",
     "schedule": "01-org/corporate/strategy-fundraising/strategy-fundraising-schedule.md",
-    "questions": "01-org/corporate/strategy-fundraising/strategy-fundraising-questions.md"
+    "questions": "01-org/corporate/strategy-fundraising/strategy-fundraising-questions.md",
+    "agent-stack": "01-org/corporate/strategy-fundraising/strategy-fundraising-agent-stack.md"
    }
   },
   {
@@ -1919,7 +2014,8 @@
     "directive": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-directive.md",
     "loops": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-loops.md",
     "schedule": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-schedule.md",
-    "questions": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-questions.md"
+    "questions": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-questions.md",
+    "agent-stack": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-agent-stack.md"
    }
   },
   {
@@ -1936,7 +2032,8 @@
     "directive": "02-advisory/architecture-review/architecture-review-directive.md",
     "loops": "02-advisory/architecture-review/architecture-review-loops.md",
     "schedule": "02-advisory/architecture-review/architecture-review-schedule.md",
-    "questions": "02-advisory/architecture-review/architecture-review-questions.md"
+    "questions": "02-advisory/architecture-review/architecture-review-questions.md",
+    "agent-stack": "02-advisory/architecture-review/architecture-review-agent-stack.md"
    }
   },
   {
@@ -1953,7 +2050,8 @@
     "directive": "02-advisory/red-team/red-team-directive.md",
     "loops": "02-advisory/red-team/red-team-loops.md",
     "schedule": "02-advisory/red-team/red-team-schedule.md",
-    "questions": "02-advisory/red-team/red-team-questions.md"
+    "questions": "02-advisory/red-team/red-team-questions.md",
+    "agent-stack": "02-advisory/red-team/red-team-agent-stack.md"
    }
   },
   {
@@ -1970,7 +2068,8 @@
     "directive": "02-advisory/decision-office/decision-office-directive.md",
     "loops": "02-advisory/decision-office/decision-office-loops.md",
     "schedule": "02-advisory/decision-office/decision-office-schedule.md",
-    "questions": "02-advisory/decision-office/decision-office-questions.md"
+    "questions": "02-advisory/decision-office/decision-office-questions.md",
+    "agent-stack": "02-advisory/decision-office/decision-office-agent-stack.md"
    }
   },
   {
@@ -1989,7 +2088,8 @@
     "agenda-board": "01-org/research-math/teams/backtests/backtests-agenda-board.md",
     "directive": "01-org/research-math/teams/backtests/backtests-directive.md",
     "loops": "01-org/research-math/teams/backtests/backtests-loops.md",
-    "schedule": "01-org/research-math/teams/backtests/backtests-schedule.md"
+    "schedule": "01-org/research-math/teams/backtests/backtests-schedule.md",
+    "agent-stack": "01-org/research-math/teams/backtests/backtests-agent-stack.md"
    }
   }
  ]

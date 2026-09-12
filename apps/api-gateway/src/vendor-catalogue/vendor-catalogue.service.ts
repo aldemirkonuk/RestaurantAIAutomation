@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { SearchVendorsDto } from "./dto/search-vendors.dto";
 import { MatchVendorsDto } from "./dto/match-vendors.dto";
@@ -72,26 +77,33 @@ export class VendorCatalogueService {
       .order("name")
       .range(offset, offset + limit - 1);
 
+    // The fallback that used to live here was the worst instance of the
+    // swallowed-read class (ADR 0067): on ANY error it re-ran a DIFFERENT
+    // query that dropped `country`, `listing_tier`, the `q` text match and
+    // `type`, then returned the result as if it were the search the caller
+    // asked for. A search for "Breakthru" in Texas came back as the
+    // alphabetically-first 20 active vendors on earth, of any tier — the
+    // failure mode is WRONG results, not empty ones, and nothing in the
+    // response distinguished the two.
+    //
+    // Its stated hypothesis ("in case listing_tier column is absent") is also
+    // false: the column has existed since
+    // supabase/migrations/20260807001652_vendor_listing_tier.sql and is
+    // selected by name in 20260811010000_vendor_catalogue_match.sql:53. So the
+    // branch guarded a condition that cannot occur, while silently handling
+    // every condition that can.
+    //
+    // A search that could not run says so. 503 rather than 500 because the
+    // request is well-formed; it is the read that is unavailable.
     if (error) {
-      this.logger.warn(
-        `Vendor catalogue search query warning: ${error.message}`,
+      this.logger.error(
+        `vendor_catalogue search failed (q=${q ? "set" : "empty"} ` +
+          `country=${country} tier=${dto.includeRegistry ? "any" : "curated"} ` +
+          `type=${dto.type ?? "any"}): ${error.code ?? "?"} ${error.message}`,
       );
-      // Fallback query without listing_tier filter in case listing_tier column is absent
-      const fallbackQuery = this.databaseService.supabase
-        .from("vendor_catalogue")
-        .select("*", { count: "exact" })
-        .eq("is_active", true);
-
-      const { data: fbData, count: fbCount } = await fallbackQuery
-        .order("name")
-        .range(offset, offset + limit - 1);
-
-      return {
-        data: (fbData ?? []) as VendorCatalogueRow[],
-        total: fbCount ?? 0,
-        limit,
-        offset,
-      };
+      throw new ServiceUnavailableException(
+        "Vendor catalogue search is unavailable right now.",
+      );
     }
 
     return {
@@ -131,9 +143,17 @@ export class VendorCatalogueService {
     );
 
     if (error) {
-      this.logger.warn(`Vendor catalogue match RPC failed: ${error.message}`);
       // Duplicate detection is a nicety on top of a working form — a failure
-      // here must not block the user from adding their vendor.
+      // here must not block the user from adding their vendor, so this one
+      // deliberately fails OPEN. That is a judgement call, not an oversight,
+      // and it is only defensible while the log says so: `error` level, not
+      // `warn`, because an empty candidate list here is indistinguishable
+      // from "no duplicates exist" to every reader downstream.
+      this.logger.error(
+        `match_vendor_catalogue RPC failed — duplicate detection is failing ` +
+          `OPEN, the form will offer no candidates: ` +
+          `${error.code ?? "?"} ${error.message}`,
+      );
       return [];
     }
 

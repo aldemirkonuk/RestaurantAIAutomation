@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -449,6 +450,7 @@ class ClaudeVisionExtractor:
         b64_image: str,
         page_index: int,
         media_type: Optional[str] = None,
+        restaurant_id: Optional[str] = None,
     ) -> ClaudePageResult:
         """
         Send one page image to Claude Vision. Returns wines + cost.
@@ -459,6 +461,7 @@ class ClaudeVisionExtractor:
 
         try:
             async with self._get_semaphore():
+                _t0 = time.perf_counter()
                 response = await self._get_client().messages.create(
                     model=MODEL_ID,
                     max_tokens=MAX_TOKENS,
@@ -501,11 +504,24 @@ class ClaudeVisionExtractor:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cost_usd=cost_usd,
+                # Without this the row lands with restaurant_id NULL, and the
+                # per-restaurant cap in onboarding_routes.py filters
+                # `.eq("restaurant_id", key)` — matching ZERO rows for every
+                # key. The $2.00 cap had therefore never fired once, on an
+                # endpoint that was also unauthenticated. Found 2026-08-26.
+                restaurant_id=restaurant_id,
                 agent_fallback="claude_vision_extractor",
                 task_type="menu_page_extraction",
                 choice=f"wines:{len(parsed.get('wines', []))}",
-                outcome="partial" if parse_error else "success",  # call-level
+                # OD-59 / P3.0: this outcome has NEVER been call-level. It is
+                # decided by `parse_json_response`, which is a genuine parse
+                # check — the row was stamped `call_level_v0` by default and
+                # therefore understated the code. Correcting the string costs
+                # nothing and stops a later re-grade redoing work already done.
+                outcome="partial" if parse_error else "success",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={
+                    "outcome_basis": "parse_v1",
                     "page_index": page_index,
                     "parse_error": bool(parse_error),
                 },
@@ -542,6 +558,7 @@ class ClaudeVisionExtractor:
         self,
         pages: List[str],
         media_type: Optional[str] = None,
+        restaurant_id: Optional[str] = None,
     ) -> ClaudeExtractionResult:
         """
         Parallel extraction of all menu pages.
@@ -552,7 +569,10 @@ class ClaudeVisionExtractor:
         """
         scan_session_id = str(uuid.uuid4())
 
-        tasks = [self.extract_page(b64, i, media_type) for i, b64 in enumerate(pages)]
+        tasks = [
+            self.extract_page(b64, i, media_type, restaurant_id)
+            for i, b64 in enumerate(pages)
+        ]
         page_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_wines: List[Dict[str, Any]] = []
@@ -590,7 +610,9 @@ class ClaudeVisionExtractor:
             page_errors=page_errors,
         )
 
-    async def extract_pdf(self, pdf_bytes: bytes) -> ClaudeExtractionResult:
+    async def extract_pdf(
+        self, pdf_bytes: bytes, restaurant_id: Optional[str] = None
+    ) -> ClaudeExtractionResult:
         """
         Send a full PDF to Claude via the native Anthropic document content block.
         Single API call covers all pages — Claude handles multi-page PDFs natively.
@@ -602,6 +624,7 @@ class ClaudeVisionExtractor:
 
         try:
             async with self._get_semaphore():
+                _t0 = time.perf_counter()
                 response = await self._get_client().messages.create(
                     model=MODEL_ID,
                     max_tokens=MAX_TOKENS,
@@ -651,11 +674,15 @@ class ClaudeVisionExtractor:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cost_usd=cost_usd,
+                # Same cap defect as the per-page path above.
+                restaurant_id=restaurant_id,
                 agent_fallback="claude_vision_extractor",
                 task_type="pdf_extraction",
                 choice=f"wines:{len(parsed.get('wines', []))}",
-                outcome="partial" if parse_error else "success",  # call-level
-                context={"parse_error": bool(parse_error)},
+                # Same as the per-page path: graded on the parse, not on HTTP.
+                outcome="partial" if parse_error else "success",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                context={"outcome_basis": "parse_v1", "parse_error": bool(parse_error)},
             )
         except Exception:
             pass

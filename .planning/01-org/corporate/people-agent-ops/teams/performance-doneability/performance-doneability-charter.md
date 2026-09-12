@@ -85,8 +85,8 @@ carrying **both** a doneability verdict and an agent-attributed cost. **Baseline
 
 | Metric | Meaning | State today |
 |---|---|---|
-| `nf_a.doneability_verdict_coverage` | Completions with a verdict **and** attributed cost | **0%** — neither half exists |
-| `nf_a.verified_task_success_rate` | Success meaning *correct* | **Unmeasurable** — no verdict anywhere |
+| `nf_a.doneability_verdict_coverage` | Completions with a verdict **and** attributed cost | **~0%** — corrected 2026-08-25: both halves now exist (verdict `reconciliation_v1` on invoices, ADR 0017; cost attributed via `subject_id` since P1), but only one task type is graded |
+| `nf_a.verified_task_success_rate` | Success meaning *correct* | **Unmeasurable outside invoice extraction** — corrected 2026-08-25: `reconciliation_v1` is the one verdict that exists |
 | `nf_a.cost_per_task` | USD per task, per agent | **Not derivable** |
 | `nf_a.cost_per_completed_task` | USD per task with a *passing* verdict — a retried failure is cost with no task | **Not derivable** |
 | `nf_a.agent_attributed_spend_pct` | Share of logged spend naming a worker | **0%** |
@@ -143,7 +143,11 @@ Cost is attributed to a *provider*, a *model*, and a *restaurant* — **never to
 `nf_a.cost_per_task`, a named field in [[README]] §4.2, is **not derivable from what is
 logged today**.
 
-**2. No doneability verdict exists anywhere.** `core/base_agent.py:602` records
+**2. No doneability verdict exists anywhere.** *Corrected 2026-08-25: one now does —
+`reconciliation_v1` on invoice extraction (`procurement/documents/reconciliation-verdict.ts`,
+[[0017-doneability-verdicts-are-sidecar-claims]]). Coverage is ~0% and every other task
+type is ungraded, so the defect below stands; the absolute framing does not.*
+`core/base_agent.py:602` records
 `success=True` when `process_message()` did not raise inside the timeout. That is
 **liveness, not correctness**. An agent that returns confidently wrong output scores 100%,
 and `get_health()` (`:985`) reports it healthy at ≥0.9.

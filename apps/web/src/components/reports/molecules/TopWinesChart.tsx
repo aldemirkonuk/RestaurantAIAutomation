@@ -40,7 +40,7 @@ export function TopWinesChart({
       <Card padding="md" className="h-full relative">
         <ChartHeader
           title="Top Performing Wines"
-          subtitle="By revenue with type breakdown"
+          subtitle="By purchase spend with type breakdown"
           isEditMode={isEditMode}
           onEdit={onEdit}
           className="mb-6"

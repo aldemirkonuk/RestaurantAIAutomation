@@ -75,10 +75,22 @@ DEFAULT_AGENT_SPECS: Dict[str, dict] = {
         "dependencies": [],
         "description": "Communication layer",
     },
+    # CORE, and it stays CORE — but read the tier together with the agent's
+    # autonomy. It is CORE because it owns the order state machine for vendor
+    # replies on orders humans already placed, which must be running whenever
+    # the gateway is. It is *not* CORE because it is allowed to buy things: a
+    # par crossing (`stock.threshold.breached`) now stages a one_tap_actions
+    # proposal and stops. See agents/procurement_agent.py's module docstring —
+    # this agent used to create a NEGOTIATING order and publish the vendor
+    # intent straight off that event, and only the dormant POS pipeline that
+    # feeds buffer_manager kept it from firing.
     "procurement_agent": {
         "tier": AgentTier.CORE,
         "dependencies": ["inventory_engine", "notification_agent"],
-        "description": "Procurement logic",
+        "description": (
+            "Procurement logic — stages reorder proposals (never creates orders "
+            "or contacts vendors); owns the order state machine for replies"
+        ),
     },
     "calendar_agent": {
         "tier": AgentTier.CORE,
@@ -189,6 +201,27 @@ DEFAULT_AGENT_SPECS: Dict[str, dict] = {
         "tier": AgentTier.OPTIONAL,
         "dependencies": ["inventory_engine"],
         "description": "Shrinkage detection",
+    },
+    # Scheduled purchasing (ADR 0039 Track A3).
+    #
+    # OPTIONAL, not ON_DEMAND, and the distinction is load-bearing here. This
+    # agent owns a daily sweep over recurring_orders and stages purchase
+    # proposals; OPTIONAL means it needs AGENT_RECURRING_ORDER_AGENT_ENABLED
+    # before it gets a proxy at all, which is the same gate the five P1 stubs
+    # sit behind. It is deliberately NOT CORE: bringing scheduled purchasing
+    # inside the harness is this slice's job, deciding to run it against live
+    # tenants is not, and a schedule sweep that starts on boot in every
+    # environment is exactly the kind of change that should be a decision rather
+    # than a side effect of a refactor.
+    #
+    # Its dependency on notification_agent is real: the reminder and
+    # approval_needed events it publishes on recurring.events have no other
+    # consumer, so starting it without one would stage proposals nobody is told
+    # about.
+    "recurring_order_agent": {
+        "tier": AgentTier.OPTIONAL,
+        "dependencies": ["notification_agent"],
+        "description": "Recurring order schedule — stages purchase proposals (never places orders)",
     },
     # SimPOS testbed — catalog drift (sim-* tenants only)
     "drift_agent": {

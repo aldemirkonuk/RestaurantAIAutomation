@@ -20,6 +20,8 @@ import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RolesGuard } from "./guards/roles.guard";
 import { Roles } from "./decorators/roles.decorator";
 import { Public } from "./decorators/public.decorator";
+import { AllowsTenantChange } from "../common/tenant/allows-tenant-change.decorator";
+import { AllowUnverified } from "./decorators/allow-unverified.decorator";
 import { CheckEmailDto } from "./dto/check-email.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
@@ -33,8 +35,10 @@ import {
   ResetPasswordDto,
 } from "./dto/password-reset.dto";
 import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
+import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
+import { RateLimit } from "../common/rate-limit";
 import { Request } from "express";
-import { devBypassAllowed } from "./dev-bypass.util";
+import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
 @Controller("auth")
 export class AuthController {
@@ -45,6 +49,8 @@ export class AuthController {
   /**
    * Login with email/password
    */
+  // Public by DECISION, not by omission (ADR 0096): the caller has no token yet; obtaining one is what this route is for.
+  @Public()
   @Post("login")
   @HttpCode(HttpStatus.OK)
   async login(@Body() credentials: LoginCredentials) {
@@ -85,6 +91,8 @@ export class AuthController {
   /**
    * Register new user
    */
+  // Public by DECISION, not by omission (ADR 0096): the caller has no account yet, so there is nobody to authenticate.
+  @Public()
   @Post("register")
   async register(@Body() data: RegisterData) {
     this.logger.log(`Registration attempt: ${data.email}`);
@@ -100,6 +108,8 @@ export class AuthController {
   /**
    * Login with Google OAuth
    */
+  // Public by DECISION, not by omission (ADR 0096): sign-in entry point; the Google ID token in the body is the credential.
+  @Public()
   @Post("oauth/google")
   async loginWithGoogle(@Body() body: { token: string }) {
     this.logger.log("Google OAuth login attempt");
@@ -115,6 +125,8 @@ export class AuthController {
   /**
    * Login with Microsoft OAuth
    */
+  // Public by DECISION, not by omission (ADR 0096): sign-in entry point; the Microsoft ID token in the body is the credential.
+  @Public()
   @Post("oauth/microsoft")
   async loginWithMicrosoft(@Body() body: { token: string }) {
     this.logger.log("Microsoft OAuth login attempt");
@@ -130,6 +142,8 @@ export class AuthController {
   /**
    * Refresh access token
    */
+  // Public by DECISION, not by omission (ADR 0096): the access token is expired by the time this is called; the refresh token in the body is the credential.
+  @Public()
   @Post("refresh")
   async refresh(@Body() body: { refreshToken: string }) {
     const tokens = await this.authService.refreshAccessToken(body.refreshToken);
@@ -145,6 +159,7 @@ export class AuthController {
    */
   @Post("logout")
   @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // leaving must never require verifying first
   async logout(
     @Req() req: Request & { user: any },
     @Headers("authorization") authorization?: string,
@@ -165,13 +180,32 @@ export class AuthController {
    */
   @Get("me")
   @UseGuards(JwtAuthGuard)
+  // The web client populates `user` from here and nowhere else. Gate this and
+  // an unverified session cannot discover that it is unverified — it just
+  // fails to load, which is indistinguishable from a broken login.
+  @AllowUnverified()
   async getProfile(@Req() req: Request & { user: any }) {
     const user = await this.authService.getProfileForUser(req.user.userId);
     // Prefer JWT-scoped restaurant over users.restaurant_id (branch switch)
     const restaurantId = req.user.restaurantId ?? user.restaurantId ?? null;
+    // A dev-bypass session reports ITSELF as verified. The bypass account's
+    // `users.email_verified` is false and stays false; ProtectedRoute
+    // (apps/web/src/components/ProtectedRoute.tsx:42) reads this field and
+    // this field only, so without the override every route on localhost
+    // redirects to /verify-email and no page can be opened at all.
+    //
+    // Three conditions, all re-checked HERE rather than trusted from the
+    // token: the session must carry the marker AND this server must not be
+    // production AND DEV_AUTH_BYPASS must be on. Any one of them false and
+    // the database column stands, so the same token replayed against
+    // production reports exactly what the row says.
+    const emailVerified =
+      req.user.devBypass === true && devBypassEnvEnabled()
+        ? true
+        : user.emailVerified;
     return {
       success: true,
-      user: { ...user, restaurantId },
+      user: { ...user, restaurantId, emailVerified },
     };
   }
 
@@ -297,6 +331,7 @@ export class AuthController {
 
   @Delete("me")
   @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // deleting an account you cannot verify must stay possible
   async deleteAccount(@Req() req: Request & { user: any }) {
     await this.authService.deleteAccount(req.user.userId);
     return { success: true, message: "Account deleted" };
@@ -304,6 +339,7 @@ export class AuthController {
 
   @Get("me/role")
   @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // AuthContext fetches this alongside /auth/me on boot
   async getMyRole(
     @Req() req: Request & { user: any },
     @Query("restaurantId") restaurantId?: string,
@@ -339,6 +375,7 @@ export class AuthController {
    */
   @Get("verify")
   @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // answers "is this token live?", not "may you use the app?"
   async verifyToken() {
     return {
       success: true,
@@ -406,6 +443,8 @@ export class AuthController {
   /**
    * Verify email with the token from the verification email.
    */
+  // Public by DECISION, not by omission (ADR 0096): reached from a link in an email, often before a session exists; the one-time token in the body is the credential.
+  @Public()
   @Post("verify-email")
   async verifyEmail(@Body() body: { token: string }) {
     const tokens = await this.authService.verifyEmail(body.token);
@@ -417,6 +456,7 @@ export class AuthController {
    */
   @Post("resend-verification")
   @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // the escape hatch itself; gating it would be a trap
   async resendVerification(@Req() req: Request & { user: any }) {
     const result = await this.authService.resendVerification(
       req.user.userId,
@@ -431,6 +471,7 @@ export class AuthController {
    */
   @Post("switch-restaurant")
   @UseGuards(JwtAuthGuard)
+  @AllowsTenantChange()
   async switchRestaurant(
     @Req() req: Request & { user: any },
     @Body() body: { restaurantId: string },
@@ -454,5 +495,28 @@ export class AuthController {
       available: !exists,
       email: query.email,
     };
+  }
+
+  /**
+   * Identity-first sign-in: which methods does this identity actually have?
+   *
+   * Public by necessity — the caller has not signed in yet, that being the
+   * point. POST rather than GET so the address stays out of URLs, access logs
+   * and proxy caches (`check-email` above predates that rule).
+   *
+   * Rate-limited to 10 per 10 minutes per IP via the existing `@RateLimit`
+   * decorator on the global `RateLimitGuard` (app.module.ts). That is tighter
+   * than the 10-per-60s default every `/auth/` route already gets, because
+   * this endpoint answers a question about an address a stranger supplied.
+   * Enumeration-revealing here is deliberate and argued in ADR 0024; it does
+   * not extend to `request-password-reset`, which stays enumeration-safe.
+   */
+  @Post("sign-in-methods")
+  @Public()
+  @RateLimit({ limit: 10, windowSeconds: 600, keyPrefix: "sign-in-methods" })
+  @HttpCode(HttpStatus.OK)
+  async signInMethods(@Body() body: SignInMethodsDto) {
+    const result = await this.authService.resolveSignInMethods(body.email);
+    return { success: true, ...result };
   }
 }

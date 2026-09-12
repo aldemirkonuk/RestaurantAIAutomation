@@ -11,7 +11,10 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  UseGuards,
 } from "@nestjs/common";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { Public } from "../auth/decorators/public.decorator";
 import {
   ApiTags,
   ApiOperation,
@@ -49,6 +52,15 @@ import {
  * - Mock data fallback
  */
 @ApiTags("toast")
+// Guarded at class level, same shape as PosHubController. Only the Toast
+// webhook is @Public() — it authenticates by HMAC signature instead. Before
+// this, GET /toast/menus and GET /toast/sales took restaurantId as a QUERY
+// PARAMETER with no guard of any kind, so an anonymous caller could read any
+// restaurant's menus and sales (verified 200 in production, 2026-08-25), and
+// POST /toast/orders could write one. The global TenantGuard fails open by
+// design and never covered this. Found by the ENDPOINTS.md re-verification —
+// this controller predates the auth sweep in #60 and was missed by it.
+@UseGuards(JwtAuthGuard)
 @Controller("toast")
 export class ToastController {
   private readonly logger = new Logger(ToastController.name);
@@ -65,6 +77,7 @@ export class ToastController {
    *
    * Verifies signature using HMAC-SHA256 with TOAST_WEBHOOK_SECRET
    */
+  @Public() // authenticated by HMAC signature, not JWT — Toast cannot send a bearer token
   @Post("webhook")
   @ApiOperation({
     summary: "Receive Toast POS webhooks",
@@ -296,18 +309,32 @@ export class ToastController {
   }
 
   /**
-   * Get Toast API statistics
+   * Get Toast API statistics.
+   *
+   * The upstream route this depends on has never been implemented — see
+   * `toast.service.ts#getStatistics` for the evidence — so the service now
+   * answers 501 rather than a 200 that reports a dead route as reachable.
+   *
+   * The catch below used to hardcode 500 and drop `error.status`, alone among
+   * the handlers in this file (compare `getMenus`, `getMenu`, `createOrder`,
+   * `getOrder`, `getSalesData`, which all forward it). That flattened the 501
+   * into a generic 500 and destroyed the one distinction that matters to a
+   * caller: "this was never built" versus "this just broke".
    */
   @Get("statistics")
   @ApiOperation({ summary: "Get Toast API statistics" })
-  @ApiResponse({ status: 200, description: "Returns API statistics" })
+  @ApiResponse({
+    status: 501,
+    description:
+      "Not implemented upstream — the orchestrator has no /api/v1/toast/statistics route",
+  })
   async getStatistics() {
     try {
       return await this.toastService.getStatistics();
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch statistics",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

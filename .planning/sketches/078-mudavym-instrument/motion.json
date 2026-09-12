@@ -1,0 +1,62 @@
+[
+  {
+    "name": "flip",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.2,
+        0,
+        0,
+        1
+      ]
+    },
+    "durationMs": 120,
+    "purpose": "Binary state change. No spring anywhere in this direction: instruments settle, they do not oscillate.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "settle",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.16,
+        1,
+        0.3,
+        1
+      ]
+    },
+    "durationMs": 180,
+    "purpose": "House curve, held deliberately short.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "reveal",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.16,
+        1,
+        0.3,
+        1
+      ]
+    },
+    "durationMs": 240,
+    "purpose": "Unmask for drawers and expands.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "count",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.2,
+        0,
+        0,
+        1
+      ]
+    },
+    "durationMs": 500,
+    "purpose": "KPI odometer, tabular figures only.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  }
+]

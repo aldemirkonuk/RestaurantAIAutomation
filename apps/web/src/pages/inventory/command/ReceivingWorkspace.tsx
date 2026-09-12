@@ -1,5 +1,5 @@
 /**
- * Receiving workspace — the canonical WineOps invoice.
+ * Receiving workspace — the canonical Mudavym invoice.
  *
  * Vendors send wildly different paperwork; we never make the manager read theirs. This renders
  * OUR normalized FOUR-way match instead, always the same shape:
@@ -179,6 +179,23 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   /** True once a value came from a document, so re-fetches never clobber typing. */
   const [prefilled, setPrefilled] = useState(false)
 
+  /**
+   * What the extraction proposed, frozen at the moment it proposed it (ADR 0059).
+   *
+   * Written once, by the same effect that fills the inputs, and never touched
+   * again — including when the manager edits an input. That is the entire point:
+   * the pre-fill and the final answer must be two separate facts, or a
+   * correction is indistinguishable from a confirmation. Fields the document did
+   * not offer stay null, because "the machine said nothing" and "the machine said
+   * zero" are different statements.
+   */
+  const [proposed, setProposed] = useState<{
+    invoiceQty: number | null
+    invoiceUnitPrice: number | null
+    shippedQty: number | null
+    freeGoodsQty: number | null
+  }>({ invoiceQty: null, invoiceUnitPrice: null, shippedQty: null, freeGoodsQty: null })
+
   const [extras, setExtras] = useState<ExtraLine[]>([])
   const [addingId, setAddingId] = useState('')
 
@@ -203,22 +220,44 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
     if (prefilled || readOnly) return
     if (!invoice && !packingSlip) return
 
+    // ADR 0059: the machine's half, captured in the same pass that fills the
+    // inputs. Every branch below that calls a setter records what it proposed.
+    const machine = {
+      invoiceQty: null as number | null,
+      invoiceUnitPrice: null as number | null,
+      shippedQty: null as number | null,
+      freeGoodsQty: null as number | null,
+    }
+
     if (invoice) {
       const lines = (invoice as any).extracted?.lines as any[] | undefined
       const totalBottles = lines?.reduce((n, l) => n + (Number(l.qtyBottles) || 0), 0)
-      if (totalBottles) setInvoiceQty(totalBottles)
+      if (totalBottles) {
+        setInvoiceQty(totalBottles)
+        machine.invoiceQty = totalBottles
+      }
       const firstPriced = lines?.find((l) => l.unitPrice != null)
-      if (firstPriced?.unitPrice != null) setInvoiceUnitPrice(Number(firstPriced.unitPrice))
+      if (firstPriced?.unitPrice != null) {
+        setInvoiceUnitPrice(Number(firstPriced.unitPrice))
+        machine.invoiceUnitPrice = Number(firstPriced.unitPrice)
+      }
       const free = lines?.reduce((n, l) => n + (Number(l.freeGoodsQty) || 0), 0)
-      if (free) setFreeGoodsQty(free)
+      if (free) {
+        setFreeGoodsQty(free)
+        machine.freeGoodsQty = free
+      }
     }
 
     if (packingSlip) {
       const lines = (packingSlip as any).extracted?.lines as any[] | undefined
       const shipped = lines?.reduce((n, l) => n + (Number(l.qtyBottles) || 0), 0)
-      if (shipped) setShippedQty(shipped)
+      if (shipped) {
+        setShippedQty(shipped)
+        machine.shippedQty = shipped
+      }
     }
 
+    setProposed(machine)
     setPrefilled(true)
   }, [invoice, packingSlip, prefilled, readOnly])
 
@@ -275,15 +314,30 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         // undefined, not a fallback. The server reads an absent invoice quantity as
         // "unknown" and returns `unmatched`, which keeps the order open until the
         // paperwork actually turns up.
-        invoiceQuantity: invoiceQty ?? undefined,
+        // No unit is declared, and that is correct here: every number on this
+        // screen is in the order's own unit — the physical count is seeded from
+        // `order.quantityReceived ?? order.quantity` — and an absent unit means
+        // exactly that to the server. The field names say which declaration each
+        // quantity would belong to, so a future unit picker has one obvious place
+        // to write to rather than a bare number nobody can interpret.
+        invoiceQuantityInInvoiceUom: invoiceQty ?? undefined,
         invoiceUnitPrice: invoiceUnitPrice ?? undefined,
-        shippedQuantity: shippedQty ?? undefined,
-        freeGoodsQuantity: freeGoodsQty || undefined,
+        shippedQuantityInShippedUom: shippedQty ?? undefined,
+        freeGoodsQuantityInCountedUom: freeGoodsQty || undefined,
         allocatedCharges: allocatedCharges || undefined,
-        acceptedQuantity: acceptedQty,
-        rejectedQuantity: rejectedQty,
+        acceptedQuantityInCountedUom: acceptedQty,
+        rejectedQuantityInCountedUom: rejectedQty,
         rejectedReason: rejectedQty > 0 ? rejectedReason || 'damaged on arrival' : undefined,
         priceOverrideReason: priceDiffers ? priceOverrideReason : undefined,
+        // ADR 0059. What the machine put in these fields before the manager
+        // answered, sent alongside — never instead of — what they submitted.
+        // `undefined` where the document proposed nothing: absence of a proposal
+        // is not a proposal of zero, and the final value there is an original
+        // answer rather than a correction.
+        prefilledInvoiceQuantityInInvoiceUom: proposed.invoiceQty ?? undefined,
+        prefilledInvoiceUnitPrice: proposed.invoiceUnitPrice ?? undefined,
+        prefilledShippedQuantityInShippedUom: proposed.shippedQty ?? undefined,
+        prefilledFreeGoodsQuantityInCountedUom: proposed.freeGoodsQty ?? undefined,
         adjustments: extras.map((l) => ({
           inventoryId: l.inventoryId,
           delta: l.countedQty,

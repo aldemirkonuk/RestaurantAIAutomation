@@ -5,6 +5,7 @@ import Constants from "expo-constants";
 import { api } from "@/api/client";
 import { queryClient } from "@/lib/queryClient";
 import { feedKey, pulseKey } from "@/api/queries";
+import { routeForNotificationData } from "@/lib/notificationRoute";
 import { color } from "@/design/tokens";
 
 let registeredToken: string | null = null;
@@ -74,29 +75,45 @@ export async function unregisterPush(): Promise<void> {
   registeredToken = null;
 }
 
-/** Map a notification's payload to an in-app route. */
-export function routeForNotification(data: Record<string, any>): string | null {
-  const orderId = data.orderId ?? data.order_id;
-  const type = String(data.type ?? "");
-  if (type === "invoice_received" && orderId) return `/cellar/receive/${orderId}`;
-  if (orderId) return `/supply/${orderId}`;
-  const inventoryId = data.inventoryId ?? data.inventory_id;
-  if (inventoryId) return `/cellar/${inventoryId}`;
-  return "/";
+/**
+ * Map a notification's payload to an in-app route.
+ * @deprecated kept as the module's public name; the logic lives in
+ * `src/lib/notificationRoute.ts` so both the banner and the inbox agree.
+ */
+export function routeForNotification(data: Record<string, any>): string {
+  return routeForNotificationData(data);
 }
 
-/** Cache-warm on every incoming push so the feed is fresh before open. */
+/**
+ * Cache-warm on every incoming push so the feed is fresh before open, and
+ * deep-link when one is tapped.
+ *
+ * Also handles the cold-start case: a notification tapped while the app was
+ * dead is delivered through `getLastNotificationResponseAsync`, not through
+ * the response listener, so without it the tap is silently lost.
+ */
 export function attachPushListeners(onNavigate: (route: string) => void): () => void {
   const received = Notifications.addNotificationReceivedListener(() => {
     queryClient.invalidateQueries({ queryKey: [...feedKey] });
     queryClient.invalidateQueries({ queryKey: [...pulseKey] });
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
   });
   const response = Notifications.addNotificationResponseReceivedListener((res) => {
     const data = res.notification.request.content.data ?? {};
-    const route = routeForNotification(data as Record<string, any>);
-    if (route) onNavigate(route);
+    onNavigate(routeForNotificationData(data as Record<string, any>));
   });
+
+  let cancelled = false;
+  Notifications.getLastNotificationResponseAsync()
+    .then((res) => {
+      if (cancelled || !res) return;
+      const data = res.notification.request.content.data ?? {};
+      onNavigate(routeForNotificationData(data as Record<string, any>));
+    })
+    .catch(() => {});
+
   return () => {
+    cancelled = true;
     received.remove();
     response.remove();
   };

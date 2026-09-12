@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decision Office — Agenda Canvas · 2026-08-28</title>
+<style>
+  :root{
+    --paper:#F6F5F2; --ink:#14181D; --slate:#46566A; --mute:#7C8794;
+    --rule:#DAD6CE; --rule-2:#EAE7E1;
+    --amber:#B0741C; --amber-bg:#FBF1DF;
+    --green:#2E6A4E; --green-bg:#E7F1EB;
+    --seal:#8B2E2E; --seal-bg:#F8EAE8;
+    --slate-bg:#ECEFF3;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:var(--sans);font-size:15px;line-height:1.45;
+    padding:28px 22px 56px;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:25px;margin:0 0 2px;letter-spacing:-.01em}
+  h2{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--slate);margin:0 0 10px;font-weight:600;
+  }
+  .sub{color:var(--slate);font-size:13.5px;margin:0}
+  .mono{font-family:var(--mono)}
+  .tiny{font-family:var(--mono);font-size:10px;color:var(--mute);letter-spacing:.03em}
+
+  header{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:22px}
+  .headrow{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start;justify-content:space-between}
+  .seal{
+    border:1.5px solid var(--seal);color:var(--seal);background:var(--seal-bg);
+    padding:8px 12px;max-width:330px;
+  }
+  .seal b{font-family:var(--mono);font-size:10px;letter-spacing:.14em;display:block;margin-bottom:3px}
+  .seal span{font-size:12.5px;line-height:1.35;display:block;color:var(--ink)}
+
+  section{margin:0 0 26px}
+  .band{border-top:1px solid var(--rule);padding-top:14px}
+
+  /* ---------- guard panel ---------- */
+  .guards{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:10px}
+  .g{border:1px solid var(--rule);background:#fff;padding:9px 11px}
+  .g.red{border-color:var(--seal);background:var(--seal-bg)}
+  .g.ok{border-color:var(--green);background:var(--green-bg)}
+  .g .name{font-family:var(--mono);font-size:11px;word-break:break-all;display:block}
+  .g .exit{font-family:var(--mono);font-size:10px;letter-spacing:.1em;font-weight:700;display:block;margin:4px 0 3px}
+  .g.red .exit{color:var(--seal)} .g.ok .exit{color:var(--green)}
+  .g .said{font-size:12px;color:var(--slate);line-height:1.35}
+
+  /* ---------- ageing track ---------- */
+  .track{border:1px solid var(--rule);background:#fff;padding:16px 16px 12px;position:relative}
+  .axis{position:relative;height:112px;margin:10px 0 2px}
+  .axis .line{position:absolute;left:0;right:0;top:78px;height:1px;background:var(--ink)}
+  .axis .tickwrap{position:absolute;top:78px;left:0;right:0;height:0}
+  .tk{position:absolute;top:-5px;width:1px;height:11px;background:var(--slate)}
+  .tk b{position:absolute;top:14px;left:-17px;width:36px;text-align:center;
+        font-family:var(--mono);font-size:9.5px;color:var(--mute);font-weight:400}
+  .pin{position:absolute;top:2px;transform:translateX(-50%);text-align:center;width:126px}
+  .pin span{font-family:var(--mono);font-size:10px;color:var(--amber);font-weight:700;
+            letter-spacing:.04em;display:block;white-space:nowrap}
+  .pin i{display:block;width:9px;height:9px;background:var(--amber);border-radius:50%;margin:5px auto 0}
+  .pin u{display:block;width:1px;height:36px;background:var(--amber);margin:0 auto;text-decoration:none}
+  .fog{
+    position:absolute;top:62px;left:11%;right:1%;height:33px;
+    background:repeating-linear-gradient(135deg,var(--slate-bg) 0 6px,transparent 6px 12px);
+    border:1px dashed var(--mute);
+  }
+  .fog em{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--slate);letter-spacing:.04em;
+    text-align:center;padding:0 8px;background:rgba(246,245,242,.82);
+  }
+  .trackfoot{display:flex;flex-wrap:wrap;gap:14px;border-top:1px solid var(--rule-2);padding-top:9px;margin-top:6px}
+  .stat{min-width:126px}
+  .stat b{display:block;font-family:var(--mono);font-size:17px;letter-spacing:-.02em}
+  .stat span{display:block;font-size:11.5px;color:var(--slate);line-height:1.3}
+  .stat.bad b{color:var(--seal)}
+
+  /* ---------- programs grid ---------- */
+  .grid{width:100%;border-collapse:collapse;table-layout:fixed}
+  .grid th{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--slate);text-align:left;font-weight:600;padding:0 6px 7px;border-bottom:1px solid var(--ink);
+    vertical-align:bottom;
+  }
+  .grid th.lane{width:150px}
+  .grid td{border-bottom:1px solid var(--rule-2);padding:8px 6px;vertical-align:top}
+  .grid td.lane{
+    font-family:var(--mono);font-size:10px;letter-spacing:.05em;color:var(--ink);
+    text-transform:uppercase;line-height:1.35;border-right:1px solid var(--rule);padding-right:10px;
+  }
+  .grid td.lane em{display:block;font-style:normal;font-family:var(--sans);font-size:11.5px;
+                   text-transform:none;letter-spacing:0;color:var(--mute);margin-top:3px}
+  .chip{
+    display:block;border:1px solid var(--rule);background:#fff;padding:5px 7px;margin:0 0 5px;
+    font-size:12px;line-height:1.3;cursor:help;
+  }
+  .chip:last-child{margin-bottom:0}
+  .chip b{font-family:var(--mono);font-size:10px;letter-spacing:.05em;display:block;color:var(--slate)}
+  .chip.core{border-left:3px solid var(--slate)}
+  .chip.reach{border-left:3px solid var(--amber);background:var(--amber-bg)}
+  .chip.founder{border-left:3px solid var(--green);background:var(--green-bg)}
+  .chip.route{border-left:3px solid var(--seal);background:var(--seal-bg)}
+
+  /* ---------- node T ---------- */
+  .t{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:14px;align-items:center}
+  .tin div,.tout div{border:1px solid var(--rule);background:#fff;padding:7px 9px;font-size:12px;margin-bottom:6px;line-height:1.3}
+  .tin div{border-left:3px solid var(--mute)}
+  .tnode{border:1.5px solid var(--amber);background:var(--amber-bg);padding:12px;text-align:center}
+  .tnode b{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--amber);margin-bottom:5px}
+  .tnode span{font-size:12.5px;line-height:1.35;display:block}
+  .allow{border-left:3px solid var(--green)!important;background:var(--green-bg)}
+  .deny{
+    border:1.5px solid var(--seal)!important;background:var(--seal-bg);color:var(--seal);
+    position:relative;overflow:hidden;
+  }
+  .deny b{font-family:var(--mono);font-size:10px;letter-spacing:.1em;display:block;color:var(--seal)}
+  .deny s{text-decoration:line-through;color:var(--seal)}
+
+  /* ---------- calendar ---------- */
+  .cal{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:10px}
+  .ev{border:1px solid var(--rule);background:#fff;padding:9px 11px}
+  .ev.warn{border-color:var(--amber);background:var(--amber-bg)}
+  .ev .d{font-family:var(--mono);font-size:12.5px;font-weight:700;letter-spacing:-.01em;display:block}
+  .ev .n{font-family:var(--mono);font-size:22px;line-height:1.1;letter-spacing:-.03em;display:block;margin:2px 0 3px}
+  .ev .w{font-size:11.5px;color:var(--slate);line-height:1.35;display:block}
+
+  /* ---------- refusals ---------- */
+  .refuse{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:10px}
+  .r{border:1px dashed var(--seal);padding:9px 11px;background:transparent}
+  .r b{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--seal);margin-bottom:3px}
+  .r span{font-size:12px;line-height:1.35;color:var(--ink);display:block}
+
+  footer{border-top:1px solid var(--rule);margin-top:8px;padding-top:11px}
+  @media (max-width:860px){
+    .t{grid-template-columns:1fr}
+    .grid th.lane,.grid td.lane{width:auto}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="headrow">
+    <div>
+      <h1>Decision Office — agenda canvas</h1>
+      <p class="sub">Advisory · findings-only · outside the line. Fifteen tasks, five programs,
+      six close-times. <span class="mono">2026-08-28</span></p>
+      <p class="tiny" style="margin-top:6px">Every number below was measured in-tree on 2026-08-28
+      and is cited in <span class="mono">decision-office-agenda-full.md</span>. Hover a task chip for its doneability.</p>
+    </div>
+    <div class="seal">
+      <b>THE LOAD-BEARING SENTENCE</b>
+      <span>This office decides nothing. Every task ends in a finding, a register row, a
+      proposal or an escalation — never an answer. Target, permanent:
+      <span class="mono">decided_here_count&nbsp;=&nbsp;0</span></span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ GUARD PANEL ============ -->
+<section>
+  <h2>Instrument panel · four register guards, run today</h2>
+  <div class="guards">
+    <div class="g ok">
+      <span class="name">check_decision_claims.sh</span>
+      <span class="exit">EXIT 0 · PASS</span>
+      <span class="said">111 executable claims checked, 111 holding.</span>
+    </div>
+    <div class="g red">
+      <span class="name">check_citation_pairing.py</span>
+      <span class="exit">EXIT 1 · FAIL</span>
+      <span class="said">125 citations vs 107 rows · 12 unanchored · 1 disagreeing.
+      Re-run minutes later: 157 · 14 · 2.</span>
+    </div>
+    <div class="g red">
+      <span class="name">check_od_ids_exist.py</span>
+      <span class="exit">EXIT 1 · FAIL</span>
+      <span class="said">Two register ids name nothing; 7 references, all in one
+      audit document.</span>
+    </div>
+    <div class="g ok">
+      <span class="name">build_agent_card_index.py --check</span>
+      <span class="exit">EXIT 0 · PASS</span>
+      <span class="said">100 units · 102 cards · contract holds.</span>
+    </div>
+  </div>
+  <p class="tiny" style="margin-top:9px">
+    Two of four are red — and <b>every flagged citation site is a wave-3 agenda written this week</b>.
+    CI runs all four; the <span class="mono">claim-auditor</span> card runs three. The missing one is
+    routed to its owning unit, not fixed here.
+  </p>
+</section>
+
+<!-- ============ THE AGEING TRACK ============ -->
+<section class="band">
+  <h2>The ageing track · the picture the register cannot draw</h2>
+  <div class="track">
+    <div class="axis">
+      <div class="fog"><em>the other 37 rows · no filed date, therefore no position</em></div>
+      <div class="line"></div>
+      <div class="tickwrap">
+        <span class="tk" style="left:2%"><b>day 0</b></span>
+        <span class="tk" style="left:16%"><b>7</b></span>
+        <span class="tk" style="left:32%"><b>14</b></span>
+        <span class="tk" style="left:48%"><b>30</b></span>
+        <span class="tk" style="left:66%"><b>60</b></span>
+        <span class="tk" style="left:84%"><b>90</b></span>
+        <span class="tk" style="left:98%"><b>90+</b></span>
+      </div>
+      <div class="pin" style="left:7%">
+        <span>OD-25 · day 4</span>
+        <span>TECH-F3 · day 4</span>
+        <i></i><u></u>
+      </div>
+    </div>
+    <div class="trackfoot">
+      <div class="stat"><b>39</b><span>open rows</span></div>
+      <div class="stat bad"><b>39 / 39</b><span>no owner</span></div>
+      <div class="stat bad"><b>39 / 39</b><span>no filed date</span></div>
+      <div class="stat bad"><b>—</b><span>median_age_days<br>still undefined</span></div>
+      <div class="stat"><b>26 / 39</b><span>no severity band</span></div>
+      <div class="stat"><b>72</b><span>resolved rows</span></div>
+    </div>
+  </div>
+  <p class="tiny" style="margin-top:9px">
+    <b>The empty axis is the finding.</b> Only two rows can be plotted, because only two have a
+    knowable filed date — the two this agenda was asked to carry. ADR 0002 named
+    “grows faster than it drains” as its own revisit condition and it has never been computed once.
+    Task DO-1 exists to give this axis its 37 missing pins.
+  </p>
+</section>
+
+<!-- ============ PROGRAMS × CLOSE-TIMES ============ -->
+<section class="band">
+  <h2>Five programs · fifteen tasks · owners as lanes, close-times as columns</h2>
+  <table class="grid">
+    <thead>
+      <tr>
+        <th class="lane">Program</th>
+        <th>2026-09-04<br><span style="font-weight:400;text-transform:none;letter-spacing:0">first weekly pass</span></th>
+        <th>2026-09-11<br><span style="font-weight:400;text-transform:none;letter-spacing:0">two close-times</span></th>
+        <th>2026-09-28<br><span style="font-weight:400;text-transform:none;letter-spacing:0">monthly</span></th>
+        <th>Oct → Nov<br><span style="font-weight:400;text-transform:none;letter-spacing:0">dated</span></th>
+        <th>Standing<br><span style="font-weight:400;text-transform:none;letter-spacing:0">every digest</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="lane">1 · Burn-down cadence<em>the weekly pass ADR 0002 asked for and nobody ran</em></td>
+        <td>
+          <span class="chip core" title="Doneability: the Open header carries owner · filed_date · severity; 39 of 39 rows carry all three; median_age_days returns a number. Done when the number exists, not when the columns do."><b>DO-1</b>Three missing columns → the register</span>
+          <span class="chip core" title="Doneability: one page leading with the OLDEST row, carrying open_count · intake_rate · close_rate · median_age_days on one line, naming every row still missing a DO-1 field, shipped on an unchanged register."><b>DO-2</b>Digest #1, oldest first</span>
+          <span class="chip core" title="Doneability: the digest carries one line per guard with its exit code and headline count; a red guard is named in the first paragraph, never a footer."><b>DO-3</b>Guard panel on the digest</span>
+        </td>
+        <td>
+          <span class="chip route" title="Doneability: every wave-3 agenda graded on three mechanical tests — citations that pair, no task past a lock, doneability + close_time present. One row per agenda, pass or the failing line. Findings go to each unit's questions.md; no other unit's agenda is edited."><b>DO-4</b>Wave-3 conformance sweep</span>
+        </td>
+        <td></td>
+        <td></td>
+        <td>
+          <span class="chip core" title="The digest ships whether or not anything moved — premortem M2: a number that appears only when it changes cannot embarrass anyone."><b>weekly</b>Ships even when nothing moved</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="lane">2 · Carry OD-25 &amp; TECH-F3<em>routing, evidence, escalation — never the answer</em></td>
+        <td>
+          <span class="chip founder" title="Doneability: one page with both sources verbatim and today's path:line, the three candidate owners, what each costs, and NO recommendation. Closed when the founder rules or defers WITH A NEW DATE."><b>DO-5</b>OD-25 evidence pack → founder</span>
+          <span class="chip core" title="Doneability: both forks carry a filed date, an owner, an age and a named next re-raise date. Past two close-times the digest leads with it; third consecutive re-raise goes to founder AND red-team together."><b>DO-8</b>Re-raise ladder armed</span>
+        </td>
+        <td>
+          <span class="chip founder" title="Doneability: (a) FORK-REGISTRY's citation index regenerated and dated; (b) one proposal row for the canonical register carrying the fork and its two options. Time-boxed to two close-times, then abandoned rather than extended."><b>DO-6</b>TECH-F3 re-measured &amp; filed</span>
+          <span class="chip route" title="Doneability: the TECH-F3 pack states that ADR 0036 settled the sibling seam by a named principle and ASKS whether it transfers. It does not answer, and the word 'should' does not appear."><b>DO-7</b>Precedent reported, not applied</span>
+        </td>
+        <td></td>
+        <td></td>
+        <td>
+          <span class="chip core" title="Both forks have survived six ADRs without being re-raised once. The ladder exists to make that visible."><b>weekly</b>Age attached to both</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="lane">3 · Verify ADRs 0034 → 0039<em>a seam is resolved in an ADR and executed elsewhere</em></td>
+        <td>
+          <span class="chip route" title="Doneability: a finding naming the file, the line, the row it names, the row it means, and the guard arm that cannot see it. Closed when FILED and dated — not when corrected; correcting an ADR header is not this office's."><b>DO-10</b>ADR header names the wrong row</span>
+        </td>
+        <td>
+          <span class="chip core" title="Doneability: one table, one row per declared resolution across ADRs 0034-0039, each citing the amended path:line and graded says-what-the-ADR-says / amended-but-diverges / not-amended. A row that cannot be graded from disk says so; it never defaults to pass."><b>DO-9</b>Seam verification table</span>
+          <span class="chip reach" title="Doneability: every staged fork resolves to a register row, a FORK-REGISTRY row with a disposition, or an explicit 'not a decision' note. Method rule: dedupe against the ADR log FIRST, then the register — the 2026-08-24 sweep did only the second."><b>DO-11</b>Intake: RT-F1…F6 + ≥19 staged</span>
+        </td>
+        <td></td>
+        <td></td>
+        <td>
+          <span class="chip core" title="Any future ADR claiming amendments elsewhere gets a verification row within one weekly pass."><b>per-ADR</b>New ADRs get a row</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="lane">4 · The calendar<em>the watcher exists; its trigger arm is noisy</em></td>
+        <td></td>
+        <td>
+          <span class="chip route" title="Doneability: a finding carrying the detector's rule, a dated sample with each hit graded true/false, and one proposal — that a dated trigger be DECLARED in frontmatter rather than grepped from prose. Closed when the proposal reaches the founder, not when a script changes."><b>DO-13</b>Trigger detector precision</span>
+        </td>
+        <td></td>
+        <td>
+          <span class="chip core" title="Doneability: both cliff dates on the calendar with counts, a dry run producing the actual list BEFORE the date, and a stated expectation — a sweep flagging 160 documents is ignored unless it is expected."><b>DO-12</b>Dry run 10-16 → cliffs 10-23 / 10-27</span>
+        </td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="lane">5 · Restraint, made checkable<em>the failure here is not slowness, it is helpfulness</em></td>
+        <td>
+          <span class="chip core" title="Doneability: every digest carries decided_here_count, intake_returned_count and a grep of this office's findings for the word 'should' — printed even when zero."><b>DO-14</b>Three counters, always printed</span>
+        </td>
+        <td></td>
+        <td>
+          <span class="chip reach" title="Doneability: each skill candidate becomes a SKILL.md with a cited past instance, or is written down as ineligible with the reason. No exception for the office that audits everyone else's compliance."><b>DO-15</b>Own §3.3 gate: 4 eligible, 0 written</span>
+        </td>
+        <td></td>
+        <td>
+          <span class="chip route" title="L6, the quarterly authority audit, is owned by red-team — whose agenda is still provisional. Filed as an unowned gap; this office will not staff its own auditor."><b>gap</b>L6 auditor unstaffed</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="tiny" style="margin-top:10px">
+    Chip edge carries <b>grade, not priority</b> —
+    <span style="color:var(--slate)">■</span> department work ·
+    <span style="color:var(--amber)">■</span> reach, may close as BLOCKED with a named holder ·
+    <span style="color:var(--green)">■</span> the founder decides ·
+    <span style="color:var(--seal)">■</span> a finding routed to another unit, never fixed here.
+  </p>
+</section>
+
+<!-- ============ NODE T ============ -->
+<section class="band">
+  <h2>The branch that must not exist · directive node T, drawn because an untraced temptation is an unaudited one</h2>
+  <div class="t">
+    <div class="tin">
+      <div>“One side is <b>obviously</b> right.”</div>
+      <div>“A team is <b>blocked</b> on it.”</div>
+      <div>“The founder is <b>busy</b>.”</div>
+      <div>“A <b>locked ADR</b> already drew this exact line, one seam over.”</div>
+    </div>
+    <div class="tnode">
+      <b>⚠ THE OFFICE KNOWS THE ANSWER</b>
+      <span>TECH-F3 is live in this state today. ADR 0036 settled the sibling seam by a
+      named principle and says so in its own text.</span>
+    </div>
+    <div class="tout">
+      <div class="allow"><b style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--green);display:block">THE ONLY EXIT</b>
+        Write the finding — <i>A and B disagree · X owns the answer · open N days · here is the
+        evidence</i> — then escalate. No “should”.</div>
+      <div class="deny"><b>THE SEALED DOOR</b>
+        <s>Decide it.</s> Inverts CLAUDE.md §0.1 using the office built to enforce it.
+        <span class="mono" style="display:block;margin-top:4px;font-size:11px">decided_here_count = 0 · target 0 · permanent</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CALENDAR ============ -->
+<section class="band">
+  <h2>Calendar · one instrument, one sound arm, one noisy arm</h2>
+  <div class="cal">
+    <div class="ev">
+      <span class="d">2026-10-23</span><span class="n">160</span>
+      <span class="w">agendas share <span class="mono">updated: 2026-08-24</span> and go stale together. Team-level docs, untouched by wave 3.</span>
+    </div>
+    <div class="ev">
+      <span class="d">2026-10-27</span><span class="n">40</span>
+      <span class="w">agendas share <span class="mono">updated: 2026-08-28</span>. Wave 3 split the single predicted cliff of 194 into two, four days apart.</span>
+    </div>
+    <div class="ev">
+      <span class="d">2026-11-22 → 11-24</span><span class="n">3 + 8</span>
+      <span class="w">units judge whether they should still exist. <b>Outside the watcher's 30-day horizon, so invisible today.</b></span>
+    </div>
+    <div class="ev warn">
+      <span class="d">2026-09-04 · in 7 days</span><span class="n">3 ✗</span>
+      <span class="w">“units must judge whether they should still exist” — <b>all three are ordinary wave-3 task rows.</b> The detector matches a word list near a future date.</span>
+    </div>
+    <div class="ev warn">
+      <span class="d">this unit, twice over</span><span class="n">↺</span>
+      <span class="w">The office's <i>catalogue</i> of other units' triggers reads, to the watcher, as the office <i>having</i> them. Drafting this canvas manufactured two more false triggers before they were reworded out.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ REFUSALS ============ -->
+<section class="band">
+  <h2>Deliberately not on this canvas</h2>
+  <div class="refuse">
+    <div class="r"><b>NO ANSWER TO EITHER CARRIED FORK</b>
+      <span>OD-25 and TECH-F3 are drawn as positions on a track, never as outcomes. A resolution
+      rendered here would be a decision made outside <span class="mono">.planning/decisions/</span>.</span></div>
+    <div class="r"><b>NO PROGRESS COLOURS</b>
+      <span>No todo / doing / done. Nothing has been done — this is the first agenda. Chip tint
+      carries grade, not status.</span></div>
+    <div class="r"><b>NO RENUMBERING</b>
+      <span>Not one cited identifier is reassigned anywhere on this page. Minting an unused id is
+      bookkeeping; moving a cited one rewrites what other units' documents mean.</span></div>
+    <div class="r"><b>NO STANDING RULE OF OUR OWN</b>
+      <span>OD-26 asks whether every unit must carry a merge trigger. A standing rule written by
+      its own enforcer has no independent author. Declined, in writing.</span></div>
+  </div>
+</section>
+
+<footer>
+  <p class="tiny">
+    Sketch 076 · one canvas per department under ADR 0039 Track B · source of truth is
+    <span class="mono">.planning/02-advisory/decision-office/decision-office-agenda-full.md</span> (2026-08-28).
+    This page renders that agenda and never adds to it. Throwaway-grade per the sketch conventions —
+    a thinking surface, retired whenever the agenda's shape changes. No assets, no build, no script.
+  </p>
+</footer>
+
+</div>
+</body>
+</html>

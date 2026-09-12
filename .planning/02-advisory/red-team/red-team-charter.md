@@ -161,7 +161,7 @@ Owns outright:
 | `rt.open_finding_age_days` | Median age of open findings | > 30 days → the finding auto-escalates to `OPEN-DECISIONS.md` (L-RT-6). This is the mechanical answer to `0007-org-structure.md:74-76` |
 | `rt.undeclared_decision_count` | Decisions found in prose with no ADR or OD id | Trend, not threshold. Rising with a flat register means the register is fiction |
 | `rt.self_selected_target_share` | Self-selected targets ÷ all targets | < 60% → the function has become a referral service desk (M4) |
-| `nf_a.doneability_verdict` | On any attack run by an agent under a skill | NF-A is unemitted today (foundation README §1, L4: *"emits nothing yet"*) — recorded as a dependency, not a reading |
+| `nf_a.doneability_verdict` | On any attack run by an agent under a skill | *Corrected 2026-08-25:* NF-A **is** emitted since P1; what is missing is a **verdict** for this task type — the first basis (`reconciliation_v1`, invoice extraction) went live 2026-08-25 ([[0017-doneability-verdicts-are-sidecar-claims]]) and every other slice is still ungraded. Still a dependency, not a reading |
 
 ## Evidence today
 
@@ -191,6 +191,11 @@ practice. What follows separates *the function* (NEW) from *the surface it attac
 | Precedent for an argued gate | **EXISTS** | `0006-neural-footprint-architecture.md:80-83` — NF-C argued down from a v0 schema participant to a gated research track |
 
 ### The worked example — PARTIAL, and instructive precisely because it is not closed
+
+> **Corrected 2026-08-25:** the finding itself **is** now closed — OD-20 is RESOLVED and
+> `analytics.controller.ts:51` carries a class-level `@UseGuards(JwtAuthGuard)`. What
+> follows is the finding as written; its instructional value does not depend on the gap
+> still being open.
 
 An independent review agent found `apps/api-gateway/src/analytics/analytics.controller.ts`
 carrying **zero** `@UseGuards` and **zero** `@Public()` — unguarded by omission. Combined

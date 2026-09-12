@@ -7,6 +7,16 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { createClient, RedisClientType } from "redis";
 
+/** True when the URL's host is upstash.io or a subdomain of it. */
+export function isUpstashHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "upstash.io" || host.endsWith(".upstash.io");
+  } catch {
+    return false;
+  }
+}
+
 @Injectable()
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
@@ -21,7 +31,14 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     // Upstash requires TLS — normalise redis:// → rediss://
-    if (redisUrl.startsWith("redis://") && redisUrl.includes("upstash.io")) {
+    //
+    // Match on the parsed hostname, not `.includes("upstash.io")`: the
+    // substring form also matches `redis://upstash.io.attacker.example/`,
+    // where the host is not Upstash at all. The failure here is benign (a
+    // non-Upstash URL would merely be upgraded to TLS) which is why this is
+    // correctness rather than an exploit — but a host check that does not
+    // check the host is worth a line to do properly.
+    if (redisUrl.startsWith("redis://") && isUpstashHost(redisUrl)) {
       redisUrl = "rediss://" + redisUrl.slice("redis://".length);
     }
     try {

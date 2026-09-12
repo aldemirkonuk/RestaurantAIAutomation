@@ -83,6 +83,47 @@ class OntologyValidationResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class _NotApplicable:
+    """
+    A checker that DID NOT RUN — as distinct from one that ran and passed.
+
+    Why this exists
+    ---------------
+    All four ontology checkers returned `None` for both outcomes. `checks_total`
+    was then hard-coded to 4, so a bottle the rules could not judge scored
+    `checks_passed=4, checks_failed=0` — a clean bill of health from four rules
+    that examined nothing.
+
+    That is not hypothetical and it is not rare. A single malt has no
+    appellation, no grape, no vintage and no colour, so **all four** skip; it
+    was graded `success` on every one. Non-wine beverages already flow through
+    this pipeline (`20260817060000_beverage_kind_classification.sql` added
+    `beverage_kind` to `master_wine_library` for exactly that reason), so the
+    population being fabricated a pass for is real and growing.
+
+    It also went further than a wrong number. `ontology_verdict.ontology_verdict`
+    guards `checks_total == 0` and calls it untestable — the honest branch — and
+    that branch was **unreachable**, because the caller's `checks_total` was a
+    constant.
+
+    Falsy on purpose: the call site's `if r1: failures.append(r1)` keeps meaning
+    "a failure was returned", so no caller changes. What changes is that
+    `checks_total` can now COUNT the rules that actually ran.
+    """
+
+    __slots__ = ()
+
+    def __bool__(self) -> bool:
+        return False
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "NOT_APPLICABLE"
+
+
+#: Singleton — compare with `is`, never with `==`.
+NOT_APPLICABLE = _NotApplicable()
+
+
 class OntologyValidationService:
 
     def __init__(self):
@@ -116,11 +157,11 @@ class OntologyValidationService:
         )
 
         if not appellation_value:
-            return None
+            return NOT_APPLICABLE  # did not run: field absent
 
         region_row = lookup_region_by_name(appellation_value)
         if not region_row:
-            return None  # Appellation not in our DB — cannot check
+            return NOT_APPLICABLE  # did not run: appellation not in the region DB
 
         # Determine the country code for this appellation
         known_country_code: Optional[str] = region_row.get("country_code")
@@ -132,7 +173,7 @@ class OntologyValidationService:
                     break
 
         if not known_country_code or not country_value:
-            return None  # Insufficient data to compare
+            return NOT_APPLICABLE  # did not run: no country to compare against
 
         # Normalize claimed country to ISO code
         claimed_lower = country_value.strip().lower()
@@ -181,12 +222,12 @@ class OntologyValidationService:
         )
 
         if not appellation_value or not grape_value:
-            return None
+            return NOT_APPLICABLE  # did not run: field absent
 
         canonical_grape = normalize_grape_name(grape_value) or grape_value
         rules = lookup_appellation_rules(appellation_value)
         if not rules:
-            return None  # No rules in DB for this appellation — skip
+            return NOT_APPLICABLE  # did not run: no appellation rules in the DB
 
         required_grapes: List[Dict[str, Any]] = rules.get("required_grapes") or []
         allowed_grapes: List[Dict[str, Any]] = rules.get("allowed_grapes") or []
@@ -247,7 +288,7 @@ class OntologyValidationService:
           8. If now(UTC) < earliest_release → CRITICAL
         """
         if not vintage_value:
-            return None
+            return NOT_APPLICABLE  # did not run: field absent
 
         if vintage_value.strip().upper() in ("NV", "NON-VINTAGE", "N/V", "NON VINTAGE"):
             return None  # NV always passes
@@ -255,10 +296,10 @@ class OntologyValidationService:
         try:
             vintage_year = int(vintage_value.strip())
         except (ValueError, TypeError):
-            return None  # Not a parseable year — not our job to validate format
+            return NOT_APPLICABLE  # did not run: vintage is not a parseable year
 
         if not appellation_value:
-            return None
+            return NOT_APPLICABLE  # did not run: field absent
 
         try:
             resp = (
@@ -271,10 +312,10 @@ class OntologyValidationService:
             )
         except Exception as exc:
             logger.warning("check_vintage_plausibility DB query failed: %s", exc)
-            return None
+            return NOT_APPLICABLE  # did not run: the DB query itself failed
 
         if not resp.data:
-            return None  # No rule for this appellation
+            return NOT_APPLICABLE  # did not run: no release rule for this appellation
 
         rule = resp.data[0]
         min_release_delay_months: int = rule.get("min_release_delay_months", 0)
@@ -326,12 +367,12 @@ class OntologyValidationService:
         )
 
         if not color_value or not grape_value:
-            return None
+            return NOT_APPLICABLE  # did not run: field absent
 
         canonical_grape = normalize_grape_name(grape_value) or grape_value
         grape_color = get_grape_color(canonical_grape)
         if not grape_color:
-            return None  # Unknown grape color — cannot check
+            return NOT_APPLICABLE  # did not run: grape colour unknown
 
         # Normalize claimed color
         color_lower = color_value.strip().lower()
@@ -580,28 +621,38 @@ class OntologyValidationService:
         # 3. Normalize grape alias before checking
         canonical_grape = normalize_grape_name(grape_variety) if grape_variety else None
 
-        # 4. Run 4 checkers
+        # 4. Run the four checkers.
+        #
+        # `checks_total` COUNTS the rules that actually ran. It used to be the
+        # constant 4, which meant a bottle none of the rules could judge scored
+        # 4/4 — a clean bill of health from four checks that examined nothing.
+        # See `_NotApplicable` above for how far that went.
         failures: List[OntologyCheckFailure] = []
-        checks_total = 4
+        results = []
 
         r1 = self.check_region_country_consistency(appellation, country)
+        results.append(r1)
         if r1:
             failures.append(r1)
 
         r2 = self.check_grape_appellation_compatibility(
             appellation, canonical_grape or grape_variety
         )
+        results.append(r2)
         if r2:
             failures.append(r2)
 
         r3 = self.check_vintage_plausibility(vintage, appellation)
+        results.append(r3)
         if r3:
             failures.append(r3)
 
         r4 = self.check_color_grape_consistency(color, canonical_grape or grape_variety)
+        results.append(r4)
         if r4:
             failures.append(r4)
 
+        checks_total = sum(1 for r in results if r is not NOT_APPLICABLE)
         checks_failed = len(failures)
         checks_passed = checks_total - checks_failed
 

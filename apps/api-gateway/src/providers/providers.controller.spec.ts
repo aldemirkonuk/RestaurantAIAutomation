@@ -133,7 +133,7 @@ describe("ProvidersController", () => {
         email: createDto.email,
         phone: createDto.phone,
         role: createDto.role,
-        isPrimary: createDto.isPrimary,
+        isPrimary: createDto.isPrimary!,
       };
 
       mockProvidersService.addProviderContact.mockResolvedValue(
@@ -174,7 +174,7 @@ describe("ProvidersController", () => {
       const expectedResponse: ProviderContactResponseDto = {
         id: contactId,
         providerId,
-        name: updateDto.name,
+        name: updateDto.name!,
         email: updateDto.email,
         phone: "+1234567890",
         role: "Manager",

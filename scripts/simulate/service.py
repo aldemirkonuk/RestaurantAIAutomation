@@ -73,6 +73,11 @@ class Check:
     server_name: str
     server_external_id: str
     items: list[PouredItem] = field(default_factory=list)
+    #: Whole check voided after close. The hub reverses stock for every line
+    #: instead of depleting it (CanonicalCheck.voided, decision B19). Default
+    #: False, so every existing caller keeps posting exactly what it posted
+    #: before; only the ADR 0093 void scenario ever sets it.
+    voided: bool = False
 
     @property
     def subtotal(self) -> float:
@@ -106,7 +111,16 @@ FOOD_ITEMS: tuple[tuple[str, str, float], ...] = (
     ("Olive Oil Cake", "Dessert", 13.0),
     ("Affogato", "Dessert", 11.0),
     ("Sparkling Water", "Drinks", 6.0),
-    ("Espresso", "Drinks", 5.0),
+    # Coffee, added for ADR 0093: the founder's opening-minute scenario is "a
+    # customer came, ordered a coffee, ordered a wine", and there was no coffee
+    # on the list. "Espresso" moved here from ("Espresso", "Drinks", 5.0) rather
+    # than being added a second time: `external_item_id` is uuid5 over the NAME
+    # alone (`_sim_uuid("food", name)`), so two rows called Espresso would carry
+    # ONE external id with two categories and two prices, and `food_mappings`
+    # would emit a pair that upsert onto each other.
+    ("Espresso", "Coffee", 4.0),
+    ("Cappuccino", "Coffee", 5.5),
+    ("Filter Coffee", "Coffee", 4.5),
 )
 
 SERVERS: tuple[str, ...] = (

@@ -1,0 +1,61 @@
+[
+  {
+    "name": "call",
+    "kind": "spring",
+    "params": {
+      "stiffness": 700,
+      "damping": 34
+    },
+    "durationMs": null,
+    "purpose": "The expo's call — fast, decisive, lands under 400ms.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "slam",
+    "kind": "spring",
+    "params": {
+      "stiffness": 1000,
+      "damping": 42
+    },
+    "durationMs": null,
+    "purpose": "Hardest token: a ticket hitting the rail.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "ticket",
+    "kind": "spring",
+    "params": {
+      "stiffness": 420,
+      "damping": 38
+    },
+    "durationMs": null,
+    "purpose": "Ticket enters the line.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "hold",
+    "kind": "spring",
+    "params": {
+      "stiffness": 120,
+      "damping": 26
+    },
+    "durationMs": null,
+    "purpose": "Hold-to-approve fill — the 600ms press that replaces a confirm dialog.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  },
+  {
+    "name": "settle",
+    "kind": "bezier",
+    "params": {
+      "cubicBezier": [
+        0.16,
+        1,
+        0.3,
+        1
+      ]
+    },
+    "durationMs": 160,
+    "purpose": "Micro-states; everything lands inside 400ms.",
+    "source": "derived from this board's own CSS custom properties and notes.md (wave 1 predates the motion.json convention)"
+  }
+]

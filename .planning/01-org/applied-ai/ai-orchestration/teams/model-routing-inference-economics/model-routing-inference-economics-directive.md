@@ -54,7 +54,7 @@ two.
 | Prompt content | **No** | → [[agent-fleet-charter]] |
 | Whether an endpoint is guarded | **No** | → [[security-charter]] + Engineering. **We own noticing the spend** |
 | Turning cost-per-task into a customer price | **No** | → `[[unit-economics-pricing-charter|fin-unit-economics-pricing]]` |
-| Adopting a non-Anthropic provider | **No, not yet** | OD-04 is downstream of OD-03 (`OPEN-DECISIONS.md:15`) |
+| Adopting a non-Anthropic provider | **No, not yet** | Held here until OD-03 closes; OD-04 (`OPEN-DECISIONS.md:29`) no longer names it as the blocker |
 
 ## Two standing rules
 
@@ -88,4 +88,5 @@ Escalate to [[ai-orchestration-directive]], and onward to
    program nobody can reason about ([[model-routing-inference-economics-premortem]] #5).
    It needs a decision, not a merge.
 6. **Anyone proposes evaluating a non-Anthropic model before OD-03 closes.**
-   `OPEN-DECISIONS.md:15` puts OD-04 downstream of the harness choice.
+   OD-04 (`OPEN-DECISIONS.md:29`) no longer puts the roster downstream of the harness
+   choice, so this hold is this directive's own and lifting it takes a decision.

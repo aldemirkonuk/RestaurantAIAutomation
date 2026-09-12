@@ -45,7 +45,8 @@ These were set on 2026-08-24 and override convenience every time.
 | `supabase/` | Migrations + schema — source of truth for DB shape |
 | `.planning/` | Planning corpus (see §4) |
 | `.planning/decisions/` | **ADRs + the open-decision register** |
-| `md/` | Legacy long-form docs (120 files, historical) |
+| `.planning/00-index/DESIGN-MAP.html` | Generated design map (ADR 0033) + `DESIGN-MAP-CLUSTERS.html` (coupling lens) — open in a browser; regenerate with `scripts/generate_design_atlas.py`, never hand-edit |
+| `md/` | Retired (ADR 0032) — only 5 schema-debt `.sql` files remain, awaiting the ADR 0026 lane |
 | `datasets/`, `scripts/` | Data corpora and one-off tooling |
 
 **Doc entry points, in reading order:** `.planning/PROJECT.md` (identity + current
@@ -112,14 +113,20 @@ point can and should be as deep as the decision warrants.
 
 ## 4. The planning corpus
 
-`.planning/` currently holds 28 top-level documents (~1.2MB). It is **not yet
-restructured** — that work is proposed but undecided (see
-`.planning/decisions/OPEN-DECISIONS.md`, OD-01). Until it is:
+`.planning/` holds ~30 top-level files after the OD-01 cleanup
+([ADR 0032](.planning/decisions/0032-vault-cleanup-cut-line.md), 2026-08-27 —
+closed build trees deleted, recoverable via its tombstone index). **Archive
+means delete + tombstone**: nothing is ever copied or moved into an in-tree
+archive folder; a retirement lists the file in the retiring ADR with its
+recovery commit. Ongoing rules:
 
-- Treat `PROJECT.md`, `STATE.md`, `ROADMAP.md`, `REQUIREMENTS.md`, `FUTURES.md`
-  as the live spine.
-- Treat the large `*_PLAN.md` / `*_ARCHITECTURE.md` / `*_CATALOG.md` files as
-  reference corpora — grep them, cite them by `file.md:line`, do not restate them.
+- Treat `PROJECT.md`, `STATE.md`, `ROADMAP.md`, `FUTURES.md`, `YC_WEDGE_PLAN.md`
+  as the live spine — the only top-level docs besides `v3.0-TECH-DEBT.md` and
+  `config.json`.
+- Closed records and reference corpora (REQUIREMENTS ledger, milestone audits,
+  the `*_PLAN` / `*_CATALOG` files) live in `.planning/07-reference/` — grep
+  them, cite them by `file.md:line`, do not restate them. `07-reference/INDEX.md`
+  says what each one is.
 - `v3.0-TECH-DEBT.md` is the live defect register. Check it before claiming
   something is broken or fixed.
 - Do **not** create new top-level `.planning/*.md` files. New long-form docs go in
@@ -145,6 +152,50 @@ Every decision → one file in `.planning/decisions/NNNN-slug.md`, from the temp
   so there is exactly one source of truth per decision.
 
 ---
+
+## 5b. Claims must be re-checkable
+
+Added 2026-08-25, after five `OPEN-DECISIONS` entries were acted on in one day
+and five were wrong in ways that changed the priority: two had been fixed the
+day before and never struck off, one overstated its severity, one pointed at
+entirely the wrong packages, and one described spurious rows in a table that
+does not exist in production.
+
+None of that was carelessness. **Prose rots because nothing re-reads it.** A
+claim written as a sentence is checked exactly once — the day it is written.
+
+- **If a claim can be checked by a command, write it as one.** Add a line to
+  [`.planning/decisions/CLAIMS.jsonl`](.planning/decisions/CLAIMS.jsonl);
+  `scripts/check_decision_claims.sh` runs them all and blocks CI. `status`
+  drives the expectation: `resolved` means the claim **must** hold, `open` means
+  it must **not** hold yet — so a fixed-but-unstruck entry fails the build.
+  `status` describes the **claim**, not the whole entry: an OD can be partly
+  resolved, and OD-56 is — its Python half is fixed while its Node transitives
+  are not.
+- **Verify an entry before acting on it, not after.** Every fix today was
+  cheaper than the verification that preceded it, and the verification changed
+  what got built more than once. Cite `file:line` or a query result in the
+  commit.
+- **Numbers get re-measured, never copied forward.** Test baselines handed
+  between sessions were stale within hours (65/900 vs the real 69/936). Measure
+  in a clean worktree at `origin/main`.
+- **A patched version is only patched against the CVE you looked up.** Bumping
+  `cryptography` to 49.0.0 closed two advisories and landed inside a third that
+  was already published. Check the version you are moving *to*.
+- **Never reuse an OD number.** Four collisions happened in two days because
+  sessions each took "the next free number" from the same trunk — and **git
+  merges duplicate ids in silence**, since the prose around them differs. One
+  pair turned out to be the same defect filed twice, on `main`, unnoticed by
+  either session. The guard now fails the build on it; when renumbering, move
+  the id with **fewer citations** and prefer a gap over a collision.
+- **Never reuse a migration version either.** `schema_migrations` keys on
+  `version`, so two files sharing a `YYYYMMDDHHMMSS_` prefix make `supabase db
+  reset` die on a duplicate key — and it surfaces as *"Fresh database equals
+  remote"*, a message that says **drift** when the truth is a collision. Same
+  guard, same rule: pick a version past everything on `main`.
+- **What this does not catch:** an entry aimed at the wrong target. Nothing
+  mechanical catches that — but stating a claim precisely enough that someone
+  could *try* to write a check for it is most of the defence.
 
 ## 6. Memory
 

@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from config.settings import get_settings
+from services.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -156,9 +157,14 @@ async def update_wine_tier(wine_id: str, request: TierUpdateRequest):
         if not result.data:
             raise HTTPException(status_code=404, detail=f"Wine {wine_id} not found")
 
+        # wine_id is a path param and reason a free-text body field — both escaped
+        # so neither can forge a second log entry (CodeQL py/log-injection).
+        # library_tier is an int already bounded by Field(ge=0, le=4).
         logger.info(
-            f"Wine {wine_id} tier updated to {request.library_tier} "
-            f"(reason: {request.reason or 'none given'})"
+            "Wine %s tier updated to %s (reason: %s)",
+            sanitize_for_log(wine_id),
+            request.library_tier,
+            sanitize_for_log(request.reason or "none given"),
         )
 
         return {
@@ -219,8 +225,10 @@ async def add_wine_alias(wine_id: str, request: AliasAddRequest):
         supabase.table("wine_aliases").insert(alias_data).execute()
 
         logger.info(
-            f"Alias added for wine {wine_id}: '{request.alias_name}' "
-            f"(source: {request.alias_source})"
+            "Alias added for wine %s: '%s' (source: %s)",
+            sanitize_for_log(wine_id),
+            sanitize_for_log(request.alias_name),
+            sanitize_for_log(request.alias_source),
         )
 
         return {
@@ -294,7 +302,13 @@ async def edit_wine_fields(wine_id: str, request: WineEditRequest):
             "id", wine_id
         ).execute()
 
-        logger.info(f"Wine {wine_id} edited: fields={list(request.fields.keys())}")
+        # The field names are arbitrary keys off the request body dict, so they
+        # are caller-controlled too — not just wine_id.
+        logger.info(
+            "Wine %s edited: fields=%s",
+            sanitize_for_log(wine_id),
+            sanitize_for_log(list(request.fields.keys())),
+        )
 
         return {
             "success": True,

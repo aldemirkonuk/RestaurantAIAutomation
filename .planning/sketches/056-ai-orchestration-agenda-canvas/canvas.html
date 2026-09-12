@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 056 · AI Orchestration Agenda Canvas</title>
+<style>
+  :root{
+    --ink:#0d0f14; --panel:#151922; --panel2:#1c2230; --line:#2a3242;
+    --fg:#e8ecf4; --dim:#8e9bb3; --faint:#5d6779;
+    --spine:#c9563f;      /* Track A1 — the OD-03 bake-off */
+    --a3:#3f8fc9;         /* Track A3 — the action schema */
+    --a24:#8a6fd1;        /* Tracks A2 / A4 */
+    --team:#4f9e79;       /* per-team work */
+    --lock:#c9a23f;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ink); color:var(--fg);
+    font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:28px 26px 60px;
+  }
+  h1{font-size:20px; margin:0 0 4px; letter-spacing:-.01em}
+  h2{font-size:12px; text-transform:uppercase; letter-spacing:.12em;
+     color:var(--dim); margin:30px 0 10px; font-weight:600}
+  .sub{color:var(--dim); font-size:13px; margin:0 0 2px}
+  .stamp{color:var(--faint); font-size:12px; margin:0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.92em}
+
+  /* ---- metric strip ---- */
+  .metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+           gap:8px; margin-top:18px}
+  .m{background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:9px 11px}
+  .m .k{font-size:10.5px; color:var(--faint); font-family:ui-monospace,Menlo,monospace;
+        letter-spacing:.02em; display:block; margin-bottom:3px}
+  .m .v{font-size:17px; font-weight:600; letter-spacing:-.02em}
+  .m .v.none{font-size:13px; font-weight:500; color:var(--dim)}
+  .m .n{font-size:10.5px; color:var(--faint); margin-top:3px}
+
+  /* ---- board ---- */
+  .board{border:1px solid var(--line); border-radius:9px; overflow:hidden;
+         background:var(--panel); margin-top:6px}
+  .grid{display:grid; grid-template-columns:158px repeat(6,minmax(112px,1fr));
+        min-width:900px}
+  .hd{background:var(--panel2); padding:9px 10px; font-size:11px; font-weight:600;
+      color:var(--dim); border-bottom:1px solid var(--line); letter-spacing:.03em}
+  .hd small{display:block; color:var(--faint); font-weight:400; letter-spacing:0}
+  .lane{padding:10px; border-bottom:1px solid var(--line); font-size:12px;
+        line-height:1.35; background:var(--panel2)}
+  .lane b{display:block; font-size:12.5px; font-weight:600}
+  .lane span{color:var(--faint); font-size:11px}
+  .cell{padding:7px 6px; border-bottom:1px solid var(--line);
+        border-left:1px solid var(--line); display:flex; flex-direction:column; gap:5px}
+  .scroll{overflow-x:auto}
+
+  .chip{display:block; border-radius:6px; padding:6px 8px; font-size:11.5px;
+        line-height:1.3; border-left:3px solid var(--team); background:#1e2534;
+        color:var(--fg)}
+  .chip b{font-family:ui-monospace,Menlo,monospace; font-size:10.5px;
+          letter-spacing:.02em; display:block; color:var(--dim); margin-bottom:2px}
+  .chip.spine{border-left-color:var(--spine); background:#2a1d1a}
+  .chip.a3{border-left-color:var(--a3); background:#16232e}
+  .chip.a24{border-left-color:var(--a24); background:#211d2e}
+  .chip.blocked{border-style:dashed; border:1px dashed var(--faint); border-left-width:3px;
+                border-left-style:solid; opacity:.92}
+  .chip .why{display:block; color:var(--faint); font-size:10.5px; margin-top:3px}
+
+  /* ---- two-column lower deck ---- */
+  .deck{display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start}
+  @media(max-width:820px){.deck{grid-template-columns:1fr}}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:14px 16px}
+  .card h3{font-size:12px; margin:0 0 9px; text-transform:uppercase;
+           letter-spacing:.1em; color:var(--dim); font-weight:600}
+  ul{margin:0; padding-left:17px}
+  li{margin:0 0 7px}
+  li .t{color:var(--fg)}
+  li .d{color:var(--dim)}
+  .locks li{color:var(--lock)}
+  .locks li span{color:var(--dim)}
+
+  .legend{display:flex; flex-wrap:wrap; gap:14px; margin:12px 0 0; font-size:11.5px; color:var(--dim)}
+  .legend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px}
+  .foot{color:var(--faint); font-size:11.5px; margin-top:26px; line-height:1.6}
+</style>
+</head>
+<body>
+
+<h1>AI Orchestration — agenda of record</h1>
+<p class="sub">Five teams, five different questions about one agent action. The spine is Track&nbsp;A1: the OD-03 bake-off.</p>
+<p class="stamp">2026-08-28 · sketch 056 · thinking surface, not a product · metrics measured by <code>python3 scripts/agents/run_card.py</code> the same morning</p>
+
+<h2>The board today — measured, not asserted</h2>
+<div class="metrics">
+  <div class="m"><span class="k">fleet.live_agent_ratio</span><span class="v">23 / 24</span><div class="n">charter says 26 / ≈18 — does not reconcile → AIO-13</div></div>
+  <div class="m"><span class="k">harness.core_total_lines</span><span class="v">6,556</span><div class="n">the OD-03 sunk-cost meter → AIO-6</div></div>
+  <div class="m"><span class="k">fleet.orphan_modules</span><span class="v">1</span><div class="n"><code>recurring_order_agent</code> → AIO-9</div></div>
+  <div class="m"><span class="k">routing.url_constants_outside_wrapper</span><span class="v">0</span><div class="n">P1 consolidation holds</div></div>
+  <div class="m"><span class="k">nf_a.cost_per_task</span><span class="v none">not emitted by task type</span><div class="n">blocked on Track A2 → AIO-11</div></div>
+  <div class="m"><span class="k">safety.schema_coverage</span><span class="v none">unmeasured</span><div class="n">four conventions, one mechanism owed → AIO-8</div></div>
+  <div class="m"><span class="k">safety.unconfirmed_mutation_count</span><span class="v none">unmeasured</span><div class="n"><code>gate-auditor</code> unimplemented → AIO-7</div></div>
+  <div class="m"><span class="k">skills.firing_rate_30d</span><span class="v none">unmeasurable</span><div class="n"><code>nf_a.skill_id</code> does not exist — finding, not a task</div></div>
+</div>
+
+<h2>Tasks by owner and close-time</h2>
+<div class="board scroll">
+<div class="grid">
+  <div class="hd">Owner<small>team / seam</small></div>
+  <div class="hd">Sep 4</div>
+  <div class="hd">Sep 11</div>
+  <div class="hd">Sep 18</div>
+  <div class="hd">Sep 25</div>
+  <div class="hd">Oct 2</div>
+  <div class="hd">Oct 9</div>
+
+  <!-- harness-runtime -->
+  <div class="lane"><b>harness-runtime</b><span>can it run?</span></div>
+  <div class="cell">
+    <span class="chip spine"><b>AIO-1</b>Freeze the workload set from <code>cards.json</code> (102 specs)</span>
+    <span class="chip spine"><b>AIO-2</b>Carry OD-52's reframe into the scoring axes</span>
+  </div>
+  <div class="cell">
+    <span class="chip spine"><b>AIO-3</b>Architecture-review adversarial pass — <i>before</i> the run</span>
+    <span class="chip spine"><b>AIO-6</b><code>harness-diet-check</code> becomes a blocking guard</span>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="chip spine blocked"><b>AIO-4</b>Run the scored bake-off<span class="why">needs scripts/bakeoff/ + AIO-3 clear</span></span>
+    <span class="chip"><b>AIO-14</b>Name the DLQ consumer</span>
+  </div>
+  <div class="cell">
+    <span class="chip spine"><b>AIO-5</b>Resolving ADR — OD-03 becomes a Resolved row</span>
+  </div>
+  <div class="cell"></div>
+
+  <!-- agent-fleet -->
+  <div class="lane"><b>agent-fleet</b><span>did it do the job?</span></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="chip"><b>AIO-17</b>Prove <code>subscribed_topics_without_publisher</code> can go red</span>
+  </div>
+  <div class="cell">
+    <span class="chip"><b>AIO-13</b>Reconcile the fleet census; add the count guard</span>
+  </div>
+  <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+
+  <!-- model-routing -->
+  <div class="lane"><b>model-routing &amp;<br>inference-economics</b><span>at what cost, which model?</span></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="chip a24 blocked"><b>AIO-11</b><code>task_type</code> on every metered call<span class="why">needs the A2 api_spend migration</span></span>
+    <span class="chip"><b>AIO-18</b>Generated job → model table (OD-04's input, not its answer)</span>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="chip"><b>AIO-19</b>Substitution gate: no model change on cost without a benchmark</span>
+  </div>
+  <div class="cell"></div>
+
+  <!-- eval gates -->
+  <div class="lane"><b>agent-evaluation-gates</b><span>how do we know it worked?</span></div>
+  <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+  <div class="cell">
+    <span class="chip"><b>AIO-16</b>Per-family coverage — zero-coverage families named, never averaged</span>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="chip blocked"><b>AIO-20</b>Operate A5's vendor-reply rubric<span class="why">wired-and-idle; RM-2 authors it</span></span>
+    <span class="chip"><b>AIO-21</b>Stand up D-25, the weekly AI eval workflow</span>
+  </div>
+
+  <!-- action safety -->
+  <div class="lane"><b>action-safety —<br>the human gate</b><span>was it allowed at all?</span></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <span class="chip a3"><b>AIO-7</b>Implement <code>gate-auditor</code> — the last unimplemented aio mechanical card</span>
+  </div>
+  <div class="cell">
+    <span class="chip a3"><b>AIO-8</b>Census every stock / money / outbound write path</span>
+  </div>
+  <div class="cell">
+    <span class="chip a3"><b>AIO-10</b>Instrument time-to-confirm <i>before</i> volume — publish the distribution</span>
+  </div>
+  <div class="cell">
+    <span class="chip a3"><b>AIO-9</b>Resolve <code>recurring_order_agent</code> to a binary: inside the gate, or deleted with an ADR</span>
+  </div>
+  <div class="cell">
+    <span class="chip a3"><b>AIO-22</b>Audit trail reconstructable — replay the proposal the human saw</span>
+  </div>
+
+  <!-- department -->
+  <div class="lane"><b>department</b><span>the seams between the five</span></div>
+  <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+  <div class="cell">
+    <span class="chip a24 blocked"><b>AIO-12</b>Make <code>run_card.py</code> cron-safe for SRE's tick<span class="why">A4 — SRE owns the cron</span></span>
+  </div>
+  <div class="cell"></div><div class="cell"></div>
+</div>
+</div>
+
+<div class="legend">
+  <span><i style="background:var(--spine)"></i>Track A1 — OD-03 bake-off (the spine)</span>
+  <span><i style="background:var(--a3)"></i>Track A3 — the single action schema</span>
+  <span><i style="background:var(--a24)"></i>Tracks A2 / A4 — spend spine, runner cron</span>
+  <span><i style="background:var(--team)"></i>Per-team work</span>
+  <span><i style="border:1px dashed var(--faint);background:transparent"></i>Blocked — dependency named on the chip</span>
+</div>
+
+<h2>Seams this agenda touches, and what it does not own</h2>
+<div class="deck">
+  <div class="card">
+    <h3>Seams — other units on the other end</h3>
+    <ul>
+      <li><span class="t">architecture-review</span> <span class="d">— the adversarial pass on the bake-off protocol, gating AIO-4. Findings land in <code>ai-orchestration-questions.md</code>.</span></li>
+      <li><span class="t">Research &amp; Math (RM-1 / RM-2 / RM-3)</span> <span class="d">— methodology, the vendor-reply rubric, and <code>nf_a.skill_id</code>. ADR 0036 drew the methodology/operation line; TECH-F3 is still open on the evaluation half.</span></li>
+      <li><span class="t">eng/schema-migrations</span> <span class="d">— <code>api_spend.task_type</code>. AIO-11 is the producer half and starts before the column lands.</span></li>
+      <li><span class="t">reliability-sre</span> <span class="d">— the runner cron (A4) and guardian findings (TECH-F6). We own the code, they own the findings.</span></li>
+      <li><span class="t">finance-pricing</span> <span class="d">— consumes cost-per-task the day A2 lands. No price is implied by producing it.</span></li>
+      <li><span class="t">decision-office</span> <span class="d">— AIO-5's ADR, and the citation-drift finding (a guard exists for register citations, none for charter citations).</span></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Findings — no card or loop can carry these</h3>
+    <ul>
+      <li><span class="t"><code>aio-orchestrator</code> is declared <code>extraction</code>; its job is mechanical.</span> <span class="d">The runner refuses to execute it, so the department board has no producer. Fixing it means amending a card — forbidden this wave.</span></li>
+      <li><span class="t"><code>loop.close_time_breached</code> has no publisher.</span> <span class="d">watch_loops.py and loop-watcher.yml both exist and run Mondays; nothing binds them to the topic.</span></li>
+      <li><span class="t"><code>nf_a.skill_id</code> does not exist.</span> <span class="d">All four registered skills read "unmeasurable" — neither stale nor fresh.</span></li>
+      <li><span class="t">Citation drift is systematic.</span> <span class="d">The merge-policy gate moved from <code>ci.yml:226-230</code> to <code>:555</code>; the fleet numbers moved; the URL-constant finding is now empty.</span></li>
+    </ul>
+  </div>
+</div>
+
+<h2>Locks — respected, not worked around</h2>
+<div class="card locks">
+  <ul>
+    <li>Pricing model <span>— deferred. AIO-11 / AIO-18 produce cost-per-task and a job→model table. Neither implies a price, and no pricing task is scheduled.</span></li>
+    <li>Brand / landing visuals <span>— held. Nothing here touches a visual surface.</span></li>
+    <li>The OD-03 diet <span>— no task extends <code>core/</code>. AIO-9 subclasses an existing base (use, not extension); AIO-6 is a guard script.</span></li>
+    <li><code>mutate_stock_money_outbound: confirm</code> <span>— a constant. AIO-9 brings a purchasing path inside it; it does not tune it.</span></li>
+    <li>No open fork resolved here <span>— OD-03, OD-04, TECH-F3, TECH-F5, TECH-F6 all stay open. AIO-5 closes OD-03 through an ADR with a scored run behind it, which is the register's own resolution path.</span></li>
+  </ul>
+</div>
+
+<p class="foot">
+  Sketch 056 · companion to <code>.planning/01-org/applied-ai/ai-orchestration/ai-orchestration-agenda-full.md</code>
+  and <code>…-agenda-board.md</code>. Throwaway-grade per the sketch conventions: if the agenda and this page
+  disagree, the agenda is right. Every number on this page came from a command that can be re-run.
+</p>
+
+</body>
+</html>

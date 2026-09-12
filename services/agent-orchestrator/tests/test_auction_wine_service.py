@@ -142,5 +142,69 @@ def test_text_response_fallback(auction_service):
     assert result["type"] == "red"
 
 
+@pytest.mark.asyncio
+async def test_prose_gemini_answer_records_partial_not_success(auction_service):
+    """
+    OD-75: _parse_ai_response cannot fail visibly — its regex fallback returns
+    success:True for prose — so the call site logged 'success' for a research
+    call that extracted nothing. It must now grade 'partial' on the parse_v1
+    basis while still returning the degraded text-parsed dict to the caller.
+    """
+    gemini_response = MagicMock()
+    gemini_response.text = "I'd be delighted to tell you about this wine!"
+    gemini_response.usage_metadata = MagicMock(
+        prompt_token_count=400,
+        candidates_token_count=90,
+        thoughts_token_count=10,
+    )
+    mock_model = MagicMock()
+    mock_model.generate_content.return_value = gemini_response
+
+    logger_mock = MagicMock()
+    with patch.object(auction_service, "gemini_available", True), patch.object(
+        auction_service, "gemini_model", mock_model, create=True
+    ), patch("services.spend_logger.get_spend_logger", return_value=logger_mock):
+        result = await auction_service.research_wine("Mystery Auction Lot")
+
+    # Caller behaviour unchanged: the text fallback still answers.
+    assert result["source"] == "gemini"
+
+    assert logger_mock.log.call_count == 1
+    kwargs = logger_mock.log.call_args.kwargs
+    assert kwargs["outcome"] == "partial"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is True
+
+
+@pytest.mark.asyncio
+async def test_json_gemini_answer_records_success_on_parse_basis(auction_service):
+    """OD-75: a real JSON answer keeps 'success', now on the parse_v1 basis."""
+    gemini_response = MagicMock()
+    gemini_response.text = (
+        '{"name": "Opus One 2018", "producer": "Opus One", "vintage": 2018, '
+        '"type": "red", "estimated_price": 350.0, "confidence": "high"}'
+    )
+    gemini_response.usage_metadata = MagicMock(
+        prompt_token_count=400,
+        candidates_token_count=120,
+        thoughts_token_count=0,
+    )
+    mock_model = MagicMock()
+    mock_model.generate_content.return_value = gemini_response
+
+    logger_mock = MagicMock()
+    with patch.object(auction_service, "gemini_available", True), patch.object(
+        auction_service, "gemini_model", mock_model, create=True
+    ), patch("services.spend_logger.get_spend_logger", return_value=logger_mock):
+        result = await auction_service.research_wine("Opus One 2018")
+
+    assert result["vintage"] == 2018
+    assert logger_mock.log.call_count == 1
+    kwargs = logger_mock.log.call_args.kwargs
+    assert kwargs["outcome"] == "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

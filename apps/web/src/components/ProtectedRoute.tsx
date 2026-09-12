@@ -111,7 +111,7 @@ export function ProtectedRoute({
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">Studio Access Required</h2>
           <p className="text-slate-500 mb-8">
-            WineOps Studio is available to developers and certified contributors only.
+            Mudavym Studio is available to developers and certified contributors only.
             Contact a review admin to request access.
           </p>
           <a href="/" className="btn-primary w-full justify-center">

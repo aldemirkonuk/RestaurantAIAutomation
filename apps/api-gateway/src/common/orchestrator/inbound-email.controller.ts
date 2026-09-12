@@ -123,7 +123,12 @@ export class InboundEmailController {
    * change, not a code change.
    */
   private normalizePayload(b: any): NormalizedInbound {
-    const headerMap: Record<string, string> = {};
+    // Null prototype: header names come from the inbound email, so a message
+    // with a header literally named `constructor` or `toString` would
+    // otherwise make `headerMap[name]` read an inherited function for a header
+    // we never received. Reads below (`headerMap["from"]` etc.) then treat
+    // that as a present value.
+    const headerMap: Record<string, string> = Object.create(null);
     if (Array.isArray(b.Headers)) {
       for (const h of b.Headers)
         if (h?.Name)

@@ -54,6 +54,7 @@ import {
   saveManualImportantDates,
 } from '../data/manualImportantDates'
 import { useDashboardPage } from './dashboard/index'
+import { apiClient } from '../services/api/client'
 
 // Animation variants
 const containerVariants = {
@@ -97,7 +98,7 @@ const getImportantDateConfig = (type?: string) => {
   }
 }
 
-type ModalType = 'revenue' | 'inventory' | 'orders' | 'lowStock' | null
+type ModalType = 'procurementSpend' | 'inventory' | 'orders' | 'lowStock' | null
 
 export function Dashboard() {
   const navigate = useNavigate()
@@ -186,7 +187,7 @@ export function Dashboard() {
   const dateMenu = useContextMenu<{ item: ImportantDate; isManual: boolean }>()
   const orderMenu = useContextMenu<(typeof recentOrderRows)[number]>()
   const stockMenu = useContextMenu<(typeof apiLowStock)[number]>()
-  const wineMenu = useContextMenu<{ name: string; wineId?: string; revenue: number; bottles: number }>()
+  const wineMenu = useContextMenu<{ name: string; wineId?: string; spend: number; bottles: number }>()
 
   // Important Dates Modal State
   const [showAddDateModal, setShowAddDateModal] = useState(false)
@@ -263,12 +264,9 @@ export function Dashboard() {
 
   const handleCopyICalUrl = async () => {
     try {
-      const accessToken = localStorage.getItem('accessToken')
-      const res = await fetch('/api/v1/calendar/ical-token', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      if (!res.ok) throw new Error('Failed to fetch token')
-      const { token } = await res.json()
+      const { data: { token } } = await apiClient.get<{ token: string }>(
+        '/calendar/ical-token',
+      )
       const fullUrl = `${window.location.origin}/api/v1/calendar/feed/${token}.ics`
       await navigator.clipboard.writeText(fullUrl)
       toast.success('Calendar subscription URL copied!')
@@ -309,7 +307,7 @@ export function Dashboard() {
 
   const kpiNavigate = (id: ModalType) => {
     switch (id) {
-      case 'revenue':
+      case 'procurementSpend':
         navigate('/reports')
         break
       case 'inventory':
@@ -327,30 +325,30 @@ export function Dashboard() {
   }
 
   const topPerformingWines = useMemo(() => {
-    const agg = new Map<string, { name: string; wineId?: string; revenue: number; bottles: number }>()
+    const agg = new Map<string, { name: string; wineId?: string; spend: number; bottles: number }>()
     for (const order of apiPendingOrders) {
       const key = order.wineId || order.wineName || 'unknown'
       const existing = agg.get(key) || {
         name: order.wineName || order.wineProducer || 'Unknown wine',
         wineId: order.wineId,
-        revenue: 0,
+        spend: 0,
         bottles: 0,
       }
-      existing.revenue += order.totalPrice || 0
+      existing.spend += order.totalPrice || 0
       existing.bottles += order.quantity || 0
       agg.set(key, existing)
     }
-    // Also fold calendar day top sellers when revenue data exists
+    // Also fold calendar day top sellers when spend data exists
     for (const day of Object.values(calendarSalesData)) {
-      if (!day.topSeller || day.topSeller === '—' || day.revenue <= 0) continue
+      if (!day.topSeller || day.topSeller === '—' || day.spend <= 0) continue
       const key = day.topSeller
-      const existing = agg.get(key) || { name: day.topSeller, revenue: 0, bottles: 0 }
-      existing.revenue += day.revenue / Math.max(day.orders, 1)
+      const existing = agg.get(key) || { name: day.topSeller, spend: 0, bottles: 0 }
+      existing.spend += day.spend / Math.max(day.orders, 1)
       existing.bottles += Math.max(1, Math.round(day.bottles / Math.max(day.orders, 1)))
       agg.set(key, existing)
     }
     return Array.from(agg.values())
-      .sort((a, b) => b.revenue - a.revenue || b.bottles - a.bottles)
+      .sort((a, b) => b.spend - a.spend || b.bottles - a.bottles)
       .slice(0, 5)
   }, [apiPendingOrders, calendarSalesData])
 
@@ -500,9 +498,9 @@ export function Dashboard() {
               <div className="hidden md:flex items-center gap-4 px-4 py-2 bg-gray-50 rounded-lg">
                 <div className="text-center">
                   <p className="text-lg font-bold text-gray-900">
-                    {formatMoney(Object.values(calendarSalesData).reduce((sum, d) => sum + d.revenue, 0), 'compact')}
+                    {formatMoney(Object.values(calendarSalesData).reduce((sum, d) => sum + d.spend, 0), 'compact')}
                   </p>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wide">Month Total</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide">Month Total (vendor spend)</p>
                 </div>
                 <div className="w-px h-8 bg-gray-200" />
                 <div className="text-center">
@@ -633,7 +631,7 @@ export function Dashboard() {
                         {dayData && (
                           <>
                             <span className="text-[10px] font-bold text-gray-900 group-hover:text-wine-600 transition-colors">
-                              ${(dayData.revenue / 1000).toFixed(1)}k
+                              ${(dayData.spend / 1000).toFixed(1)}k
                             </span>
                             
                             {/* Event Indicators */}
@@ -1047,7 +1045,7 @@ export function Dashboard() {
             ) : (
               <div className="space-y-2">
                 {topPerformingWines.map((wine, index) => {
-                  const maxRev = topPerformingWines[0]?.revenue || 1
+                  const maxRev = topPerformingWines[0]?.spend || 1
                   return (
                     <div
                       key={`${wine.name}-${index}`}
@@ -1075,15 +1073,15 @@ export function Dashboard() {
                         <div className="mt-1.5 w-full bg-gray-200 rounded-full h-1">
                           <div
                             className="h-1 rounded-full bg-wine-500"
-                            style={{ width: `${Math.min(100, (wine.revenue / maxRev) * 100)}%` }}
+                            style={{ width: `${Math.min(100, (wine.spend / maxRev) * 100)}%` }}
                           />
                         </div>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-sm font-semibold text-gray-900">
-                          {wine.revenue > 0 ? formatCurrency(wine.revenue) : `${wine.bottles} btls`}
+                          {wine.spend > 0 ? formatCurrency(wine.spend) : `${wine.bottles} btls`}
                         </p>
-                        {wine.revenue > 0 && (
+                        {wine.spend > 0 && (
                           <p className="text-[10px] text-gray-500">{wine.bottles} bottles</p>
                         )}
                       </div>
@@ -1113,8 +1111,10 @@ export function Dashboard() {
               onClick={(e) => e.stopPropagation()}
               className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
             >
-              {/* Revenue Modal */}
-              {activeModal === 'revenue' && (
+              {/* Vendor-spend modal. Every figure here is money paid OUT on
+                  delivered procurement orders; it used to be headed "Total
+                  Revenue", which read the restaurant's cost base as income. */}
+              {activeModal === 'procurementSpend' && (
                 <>
                   <div className="flex items-center justify-between px-6 py-4 border-b bg-emerald-50">
                     <div className="flex items-center gap-3">
@@ -1122,8 +1122,8 @@ export function Dashboard() {
                         <DollarSign className="w-5 h-5 text-emerald-600" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900">Total Revenue</h3>
-                        <p className="text-sm text-gray-500">This month's performance</p>
+                        <h3 className="font-semibold text-gray-900">Vendor Spend</h3>
+                        <p className="text-sm text-gray-500">Paid on delivered orders</p>
                       </div>
                     </div>
                     <button onClick={() => setActiveModal(null)} className="p-2 hover:bg-white/50 rounded-lg">
@@ -1133,26 +1133,26 @@ export function Dashboard() {
                   <div className="p-6 space-y-6">
                     <div className="text-center">
                       <p className="text-4xl font-bold text-gray-900">
-                        {typeof apiStats.monthSales === 'number' ? formatCurrency(apiStats.monthSales) : 'No data'}
+                        {typeof apiStats.monthProcurementSpend === 'number' ? formatCurrency(apiStats.monthProcurementSpend) : 'No data'}
                       </p>
-                      <p className="text-sm text-emerald-600 mt-1">This month</p>
+                      <p className="text-sm text-emerald-600 mt-1">Last 30 days</p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 bg-gray-50 rounded-xl">
                         <p className="text-sm text-gray-500">Today</p>
                         <p className="text-xl font-bold text-gray-900">
-                          {typeof apiStats.todaySales === 'number' ? formatCurrency(apiStats.todaySales) : '—'}
+                          {typeof apiStats.todayProcurementSpend === 'number' ? formatCurrency(apiStats.todayProcurementSpend) : '—'}
                         </p>
                       </div>
                       <div className="p-4 bg-gray-50 rounded-xl">
                         <p className="text-sm text-gray-500">This Week</p>
                         <p className="text-xl font-bold text-gray-900">
-                          {typeof apiStats.weekSales === 'number' ? formatCurrency(apiStats.weekSales) : '—'}
+                          {typeof apiStats.weekProcurementSpend === 'number' ? formatCurrency(apiStats.weekProcurementSpend) : '—'}
                         </p>
                       </div>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-700 mb-3">Revenue Breakdown</p>
+                      <p className="text-sm font-medium text-gray-700 mb-3">Spend Breakdown</p>
                       <div className="p-4 bg-gray-50 rounded-xl text-sm text-gray-500 text-center">
                         Breakdown data is not available yet.
                       </div>
@@ -1162,7 +1162,7 @@ export function Dashboard() {
                       onClick={() => { setActiveModal(null); navigate('/reports?focus=revenue') }}
                       className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors"
                     >
-                      View full revenue report →
+                      View full spend report →
                     </button>
                   </div>
                 </>
@@ -1437,13 +1437,13 @@ export function Dashboard() {
                   </button>
                 </div>
                 <div className="p-6 space-y-6">
-                  {selectedDay.data.orders === 0 && selectedDay.data.revenue === 0 ? (
+                  {selectedDay.data.orders === 0 && selectedDay.data.spend === 0 ? (
                     /* Empty state when no real sales data */
                     <div className="text-center py-8">
                       <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <BarChart3 className="w-8 h-8 text-gray-400" />
                       </div>
-                      <h4 className="text-lg font-medium text-gray-700 mb-2">No Sales Data</h4>
+                      <h4 className="text-lg font-medium text-gray-700 mb-2">No spend recorded</h4>
                       <p className="text-sm text-gray-500 max-w-xs mx-auto">
                         Connect your POS system to see real sales data for this day. Go to Settings to configure your Toast POS integration.
                       </p>
@@ -1453,8 +1453,8 @@ export function Dashboard() {
                       {/* Key Metrics */}
                       <div className="grid grid-cols-2 gap-4">
                         <div className="p-4 bg-gray-50 rounded-xl">
-                          <p className="text-sm text-gray-500 mb-1">Total Revenue</p>
-                          <p className="text-3xl font-bold text-gray-900">{formatMoney(selectedDay.data.revenue, 'full')}</p>
+                          <p className="text-sm text-gray-500 mb-1">Vendor Spend</p>
+                          <p className="text-3xl font-bold text-gray-900">{formatMoney(selectedDay.data.spend, 'full')}</p>
                         </div>
                         <div className="p-4 bg-gray-50 rounded-xl">
                           <p className="text-sm text-gray-500 mb-1">Bottles Sold</p>
@@ -1575,7 +1575,7 @@ export function Dashboard() {
             {
               id: 'open',
               label:
-                kpiMenu.target.id === 'revenue'
+                kpiMenu.target.id === 'procurementSpend'
                   ? 'Open Reports'
                   : kpiMenu.target.id === 'inventory'
                     ? 'Open Inventory'

@@ -1,4 +1,5 @@
 import { Module, forwardRef } from "@nestjs/common";
+import { AuthModule } from "../auth/auth.module";
 import { CacheModule } from "../common/cache/cache.module";
 import { DatabaseModule } from "../database/database.module";
 import { ToastController } from "./toast.controller";
@@ -23,7 +24,14 @@ import { NotificationsModule } from "../notifications/notifications.module";
  * Toast POS -> POST /toast/webhook -> Verify signature -> Store event -> Forward to orchestrator
  */
 @Module({
-  imports: [CacheModule, DatabaseModule, forwardRef(() => NotificationsModule)],
+  // AuthModule is NOT @Global — JwtAuthGuard resolves in the importing
+  // module's context, and omitting this import kills the whole app at boot.
+  imports: [
+    AuthModule,
+    CacheModule,
+    DatabaseModule,
+    forwardRef(() => NotificationsModule),
+  ],
   controllers: [ToastController],
   providers: [ToastService, ToastAuthService],
   exports: [ToastService, ToastAuthService],

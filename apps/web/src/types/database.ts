@@ -1,4 +1,4 @@
-// Database Type Definitions for WineOps AI
+// Database Type Definitions for Mudavym
 // Auto-generated from database schema
 // Last updated: February 20, 2026
 

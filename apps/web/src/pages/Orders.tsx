@@ -55,7 +55,6 @@ import { useUIStore, useRestaurantSettingsStore } from '../stores'
 import { useOrdersPage, OrderSummary, OrderFilters, CreateOrderModal } from './orders/index'
 import { ExportMenu } from '../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
-import { useGuidanceOptional } from '../guidance'
 
 const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const isUuid = (value?: string | null) =>
@@ -307,8 +306,11 @@ export function Orders() {
   // First-visit tutorial for the create-order modal. It has no dedicated
   // route (see PAGE_TOUR_ROUTES), so it's started manually on first open
   // rather than via the route-based tip strip.
-  const guidance = useGuidanceOptional()
-  // TODO: Re-enable guidance tutorial — currently disabled due to bug in guider instruction
+  // TODO: Re-enable guidance tutorial — currently disabled due to bug in guider
+  // instruction. The `useGuidanceOptional()` call was left in place when the
+  // effect below was commented out, which made `tsc --noEmit` fail on the web
+  // package (TS6133) — the only error in the tree, and it masked any new one.
+  // Restore it together with the effect.
   // useEffect(() => {
   //   if (!showCreateOrderModal || !guidance) return
   //   const tourStatus = guidance.state.pages['orders-create']?.tour ?? 'unseen'
@@ -427,7 +429,7 @@ export function Orders() {
             providerEmail: draft.provider_email ?? '',
             emailType: draft.outbound_email_type ?? 'PRICE_INQUIRY',
             draftContent: draft.content ?? '',
-            disclaimer: draft.content?.split('\n\n—\n')?.[1] ?? 'Sent via WineOps AI — This message was generated with AI assistance.',
+            disclaimer: draft.content?.split('\n\n—\n')?.[1] ?? 'Sent via Mudavym — This message was generated with AI assistance.',
             constraintWarnings: (draft.constraint_flags?.annotating ?? []).map((c: string) => ({
               code: c, message: c, severity: 'annotating' as const,
             })),
@@ -649,7 +651,11 @@ export function Orders() {
       // Try API call when this is a real backend order
       if (isUuid(orderId)) {
         await apiClient.post(`/procurement/orders/${orderId}/deliver`, {}, {
-          params: { quantityReceived: order.quantity },
+          // In the ORDER's own unit, which is what `order.quantity` is stated in.
+          // The parameter says so in its name; the old unitless `quantityReceived`
+          // is still accepted by the gateway as a deprecated alias for clients
+          // that have not been rebuilt.
+          params: { quantityReceivedInOrderUom: order.quantity },
         })
       }
       
@@ -1036,7 +1042,7 @@ Shadow stock has been moved to Live Stock.`)
                 providerEmail: draft.providerEmail ?? draft.provider_email ?? '',
                 emailType: draft.emailType ?? draft.outbound_email_type ?? 'PRICE_INQUIRY',
                 draftContent: bodyPart ?? rawContent,
-                disclaimer: disclaimerPart ?? 'Sent via WineOps AI — This message was generated with AI assistance.',
+                disclaimer: disclaimerPart ?? 'Sent via Mudavym — This message was generated with AI assistance.',
                 constraintWarnings: (draft.constraintWarnings ?? draft.constraint_flags?.annotating ?? []).map((c: any) => ({
                   code: typeof c === 'string' ? c : (c.code ?? 'C-??'),
                   message: typeof c === 'string' ? c : (c.message ?? ''),
@@ -3454,7 +3460,7 @@ Shadow stock has been moved to Live Stock.`)
               providerEmail: conv.providerEmail ?? '',
               emailType: (conv.emailType as any) ?? 'PRICE_INQUIRY',
               draftContent: conv.draftContent ?? '',
-              disclaimer: 'Sent via WineOps AI — This message was generated with AI assistance.',
+              disclaimer: 'Sent via Mudavym — This message was generated with AI assistance.',
               constraintWarnings: [],
               roundCount: conv.roundCount ?? 1,
               timestamp: conv.createdAt,
@@ -3532,7 +3538,7 @@ Shadow stock has been moved to Live Stock.`)
             providerEmail: conv.providerEmail ?? '',
             emailType: (conv.emailType as any) ?? 'PRICE_INQUIRY',
             draftContent: conv.draftContent ?? '',
-            disclaimer: 'Sent via WineOps AI — This message was generated with AI assistance.',
+            disclaimer: 'Sent via Mudavym — This message was generated with AI assistance.',
             constraintWarnings: [],
             roundCount: conv.roundCount ?? 1,
             timestamp: conv.createdAt,

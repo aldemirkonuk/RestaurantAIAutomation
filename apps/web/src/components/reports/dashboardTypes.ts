@@ -11,6 +11,15 @@ export type BlockType = 'chart' | 'kpi' | 'table'
 
 export type ChartType = 'area' | 'line' | 'bar' | 'donut' | 'stacked-bar' | 'heatmap' | 'labor-overlay' | 'funnel' | 'channel-donut'
 
+/**
+ * Persisted block data-source keys. These strings are written into user
+ * preferences (`DashboardBlock.dataSource`), so they are FROZEN — renaming one
+ * orphans every saved layout that references it.
+ *
+ * `'revenue'`, `'salesTrend'` and `'laborRevenue'` are historical names. The
+ * series they select is vendor SPEND from `procurement_orders`; this page has
+ * no POS sales feed. Their user-visible titles say "spend" — see dashboardMeta.
+ */
 export type DataSource =
   | 'revenue'
   | 'orders'

@@ -404,8 +404,28 @@ export class CatalogMatcherService {
     return data || [];
   }
 
-  /** A human confirms a proposal: writes the mapping and closes the queue row. */
-  async approveProposal(restaurantId: string, proposalId: string) {
+  /**
+   * A human confirms a proposal: writes the mapping and closes the queue row.
+   *
+   * `opts` carries the answer to the SECOND question an approval has always
+   * implied and never asked — how much stock one sale of this button removes.
+   * Until 2026-09-05 this method wrote `is_wine`, `master_wine_id` and
+   * `inventory_id` and nothing else, so every approved mapping carried
+   * `sale_unit`/`sale_volume_ml` null and the next sale of it queued again as
+   * `no_sale_volume` (ADR 0011 fails closed rather than guessing "bottle").
+   * Measured on Sim Meyhouse: 107 approvals, 0 bottles moved, a second
+   * invisible queue behind the first.
+   *
+   * Absent `opts` the mapping is still written with explicit nulls, not a
+   * default: an unanswered unit depletes NOTHING and is visible in the
+   * sale-unit review queue, which is the honest state. Nothing here infers a
+   * unit from a name or a price (decision B36).
+   */
+  async approveProposal(
+    restaurantId: string,
+    proposalId: string,
+    opts: { sale_unit?: string | null; sale_volume_ml?: number | null } = {},
+  ) {
     const db = this.dbService.getClient();
     const { data: proposal, error } = await db
       .from("pos_catalog_match_proposals")
@@ -424,6 +444,8 @@ export class CatalogMatcherService {
       is_wine: true,
       master_wine_id: proposal.candidate_master_wine_id,
       inventory_id: proposal.candidate_inventory_id,
+      sale_unit: opts.sale_unit ?? null,
+      sale_volume_ml: opts.sale_volume_ml ?? null,
     });
 
     const { error: updateError } = await db
@@ -432,6 +454,56 @@ export class CatalogMatcherService {
       .eq("id", proposalId);
     if (updateError) throw new Error(updateError.message);
     return { approved: true, proposalId };
+  }
+
+  /**
+   * Approve many proposals in one request.
+   *
+   * Not a convenience. The lens run approved 107 proposals one POST at a time
+   * and 7 were rejected `429` mid-queue by the default 100-requests-per-60s
+   * limit (`common/rate-limit/rate-limit.guard.ts:28`) — the owner's queue is
+   * naturally the size of their menu, so a per-row endpoint makes the rate
+   * limit a function of how many wines they sell.
+   *
+   * Each entry is applied independently and the response reports per-entry
+   * ok/error, the same posture as `setSaleUnitBatch`: one bad proposal id must
+   * not discard the other hundred. A partial failure is REPORTED, never
+   * summarised away (ADR 0067 — a failed write is not a silent one).
+   */
+  async approveProposalsBatch(
+    restaurantId: string,
+    items: Array<{
+      proposal_id: string;
+      sale_unit?: string | null;
+      sale_volume_ml?: number | null;
+    }>,
+  ) {
+    const results: Array<{
+      proposal_id: string;
+      ok: boolean;
+      error?: string;
+    }> = [];
+    for (const entry of items || []) {
+      try {
+        await this.approveProposal(restaurantId, entry.proposal_id, {
+          sale_unit: entry.sale_unit ?? null,
+          sale_volume_ml: entry.sale_volume_ml ?? null,
+        });
+        results.push({ proposal_id: entry.proposal_id, ok: true });
+      } catch (e: any) {
+        results.push({
+          proposal_id: entry.proposal_id,
+          ok: false,
+          error: e?.message || "approve failed",
+        });
+      }
+    }
+    return {
+      requested: (items || []).length,
+      approved: results.filter((r) => r.ok).length,
+      failed: results.filter((r) => !r.ok).length,
+      results,
+    };
   }
 
   async rejectProposal(restaurantId: string, proposalId: string) {

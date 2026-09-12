@@ -97,6 +97,16 @@ route to is itself an **open decision**, not something to default.
   set — needs a test to confirm the upsert doesn't undo a depletion (§3, unproven).
 
 ## 9. Simulation & deploy gate
+
+> **Half of this executes as a check since 2026-09-02 (ADR 0093):** the `duplicate_webhook`
+> scenario posts one check twice byte-for-byte and `stock.dedupe` / `webhook.duplicate`
+> verify exactly one depletion; the `dropped_webhook` scenario records a check that is never
+> sent and the verifier reports it **`unverifiable` — "absent as expected; no detector
+> exists"** — it can never pass until a missed-webhook detector is built. `void_after_close`
+> also found that a bottle void never returned stock (the void reused the sale's
+> idempotency key); fixed in the same ADR. **Duplicate half PASSED on the record
+> 2026-09-03** (run `937a23f0`: one row per replayed check, stock moved once); the dropped
+> half remains `unverifiable` by construction.
 SimPOS can synthesize every desync class: **drop** (don't fire the webhook), **duplicate**
 (fire twice), **reorder** (fire close then open) — all against the same signed
 `generic_webhook` path (`simpos.service.ts:485-509`), non-production only since PR #32.

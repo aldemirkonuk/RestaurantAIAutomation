@@ -81,7 +81,7 @@ that [[ORG_STRUCTURE]] §3 builds the whole advisory layer to avoid.
 2. **A PR description containing "already applied in prod"** — the phrase itself is the
    trigger.
 3. **A hand-applied DDL with no drift-register entry** in
-   `.planning/SCHEMA_DRIFT_INVENTORY.txt` (premortem M2). The first one.
+   `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt` (premortem M2). The first one.
 4. **A production function body that does not match the repo**, including whitespace — a
    re-created function is a rewritten function (premortem M3).
 5. **A hand-edit to a generated types file** (premortem M4).

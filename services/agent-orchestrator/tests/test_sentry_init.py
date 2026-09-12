@@ -11,6 +11,8 @@ def _run_sentry_init(dsn, environment):
     from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.starlette import StarletteIntegration
 
+    from utils.sentry_client import scrub_sentry_event
+
     if not dsn:
         if environment == "production":
             raise ValueError(
@@ -27,7 +29,9 @@ def _run_sentry_init(dsn, environment):
             dsn=dsn,
             traces_sample_rate=0.1,
             environment=environment,
+            send_default_pii=False,
             integrations=[StarletteIntegration(), FastApiIntegration()],
+            before_send=scrub_sentry_event,
         )
         return mock_init
 

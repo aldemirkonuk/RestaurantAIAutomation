@@ -42,7 +42,8 @@ SORT team ASC, type ASC
 
 - [ ] No `skill_id` on the NF-A event — blocks the 30-day rule, blocks deletion,
       blocks this team from having a function
-- [ ] L4 emits nothing at all ([[README]] §1)
+- [x] ~~L4 emits nothing at all ([[README]] §1)~~ — closed 2026-08-25 by P1; the
+      blocker that remains is `skill_id`, above
 - [ ] OD-11 open — NF production schema column detail undecided
 - [ ] Weekly skill-health job unowned — [[README]] §6 vs [[technology]] §4.2 conflict
 - [ ] Registry ceiling N unset — paired-deletion rule has no threshold

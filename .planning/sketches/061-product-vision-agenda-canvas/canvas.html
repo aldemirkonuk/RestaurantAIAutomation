@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 061 · Product &amp; Vision agenda canvas</title>
+<style>
+  :root{
+    --ink:#0f0d0e; --paper:#f6f2ee; --line:#ddd3c9;
+    --burgundy:#722F37; --burgundy-lift:#9E4249; --dim:#6d635c;
+    --gate:#8a5a00; --blocked:#4a5568; --ok:#3f6b52;
+    --chip:#fffdfb;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+       font-size:13.5px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:34px 26px 70px}
+
+  header{border-bottom:2px solid var(--burgundy);padding-bottom:16px;margin-bottom:22px}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  h1{font-size:27px;margin:7px 0 4px;letter-spacing:-.02em}
+  .thesis{max-width:76ch;color:#3a3330}
+  .thesis b{color:var(--burgundy)}
+
+  /* the finding strip */
+  .finding{margin:20px 0 26px;border:1px solid var(--line);border-left:4px solid var(--burgundy);
+           background:var(--chip);padding:14px 16px}
+  .finding h2{font-size:13px;margin:0 0 8px;letter-spacing:.02em}
+  .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 22px}
+  .fgrid > div{padding:6px 0;border-top:1px dotted var(--line)}
+  .fgrid > div:nth-child(-n+2){border-top:0}
+  .claim{color:var(--dim)}
+  .claim s{text-decoration-color:var(--burgundy-lift)}
+  .truth{font-family:var(--mono);font-size:11.5px;color:var(--burgundy)}
+  .stamp{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+         text-transform:uppercase;color:#fff;background:var(--burgundy);padding:2px 7px;margin-left:6px}
+
+  /* board */
+  h2.sec{font-size:12px;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;
+         color:var(--dim);margin:30px 0 10px;font-weight:600}
+  .board{display:grid;grid-template-columns:150px repeat(5,1fr);gap:1px;background:var(--line);
+         border:1px solid var(--line)}
+  .board > *{background:var(--paper);padding:9px 10px}
+  .colhead{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+           color:var(--dim);background:#efe9e3}
+  .colhead b{display:block;color:var(--ink);font-size:12px;letter-spacing:0;text-transform:none}
+  .lane{font-weight:600;background:#efe9e3;font-size:12.5px}
+  .lane span{display:block;font-weight:400;font-size:10.5px;color:var(--dim);font-family:var(--mono);margin-top:3px}
+  .cell{min-height:64px;display:flex;flex-direction:column;gap:6px}
+
+  .task{border:1px solid var(--line);border-left:3px solid var(--burgundy);background:var(--chip);
+        padding:6px 8px;cursor:help}
+  .task .id{font-family:var(--mono);font-size:10px;color:var(--burgundy);letter-spacing:.06em}
+  .task .t{display:block;font-size:12px;margin-top:1px}
+  .task .d{display:block;font-size:10.5px;color:var(--dim);margin-top:3px;font-style:italic}
+  .task.gate{border-left-color:var(--gate)}
+  .task.gate .id{color:var(--gate)}
+  .task.blocked{border-left-color:var(--blocked);background:#f2f0ee}
+  .task.blocked .id{color:var(--blocked)}
+
+  /* lower panels */
+  .panels{display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:18px;margin-top:30px}
+  .panel{border:1px solid var(--line);background:var(--chip);padding:14px 16px}
+  .panel h3{margin:0 0 9px;font-size:12px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .panel ul{margin:0;padding-left:16px}
+  .panel li{margin-bottom:7px}
+  .panel li b{color:var(--burgundy)}
+  .lock{border-left:3px solid var(--ink)}
+  .lock li b{color:var(--ink)}
+
+  code{font-family:var(--mono);font-size:11px;background:#eee7e0;padding:1px 4px}
+
+  .legend{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;font-size:11.5px;color:var(--dim)}
+  .key{display:inline-block;width:11px;height:11px;border-left:3px solid var(--burgundy);
+       border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+       background:var(--chip);vertical-align:-1px;margin-right:5px}
+  .key.gate{border-left-color:var(--gate)} .key.blocked{border-left-color:var(--blocked)}
+
+  footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);
+         font-size:11px;color:var(--dim);font-family:var(--mono)}
+
+  @media (max-width:1000px){
+    .board{grid-template-columns:1fr}
+    .colhead{display:none}
+    .lane{border-top:2px solid var(--burgundy)}
+    .cell::before{content:attr(data-when);display:block;font-family:var(--mono);font-size:10px;
+                  letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+    .fgrid,.panels{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Sketch 061 · thinking surface, not a product · wave 3 / ADR 0039 Track B</div>
+  <h1>Product &amp; Vision — the agenda as one picture</h1>
+  <p class="thesis">Twenty-four tasks, six lanes, five close windows. The department's job is
+  <b>what the software is</b>, so almost every task below is a verdict, a definition, or a
+  first reading — and the one thing it cannot schedule is <b>a restaurant that pulls on any
+  of it</b>.</p>
+</header>
+
+<section class="finding">
+  <h2>The finding that reordered this agenda <span class="stamp">measured 2026-08-28</span></h2>
+  <div class="fgrid">
+    <div class="claim"><s>P3.C Ask AI — "blocked by design"</s> · <code>STATE.md:94</code></div>
+    <div class="truth">9 files, 1,490 lines, 4 guarded routes — <code>apps/api-gateway/src/ask-ai/</code></div>
+
+    <div class="claim"><s>"No allowlist file, no audit trail"</s> · <code>ask-ai-charter.md:132</code></div>
+    <div class="truth">Allowlist is mechanical (<code>ask-ai-actions.ts:32</code>); a CHECK constraint refuses <code>executed</code> without a confirm</div>
+
+    <div class="claim"><s>"No composer exists"</s> · this department's own board</div>
+    <div class="truth">Mounted globally — <code>DashboardLayout.tsx:91</code>, <code>AskAiBar</code> + <code>ProposalCard</code></div>
+
+    <div class="claim">Verdict coverage on this surface — unmeasured</div>
+    <div class="truth">Three bases recorded: <code>proposal_v1</code> · <code>edit_v1</code> · <code>confirmation_v1</code></div>
+
+    <div class="claim">Planning documents that mention <code>ai_proposed_actions</code></div>
+    <div class="truth">0 of the entire corpus → <b>PV-01 is task one</b></div>
+
+    <div class="claim">What did <i>not</i> change</div>
+    <div class="truth">AGENT_NATIVE_UI "don't build" still holds — this is the narrow deterministic slice, not a chatbot</div>
+  </div>
+</section>
+
+<h2 class="sec">The board — lane × close time</h2>
+<div class="board">
+  <div class="colhead">lane</div>
+  <div class="colhead">by <b>Aug 31</b></div>
+  <div class="colhead">Sep <b>11 – 18</b></div>
+  <div class="colhead">by <b>Sep 30</b></div>
+  <div class="colhead">by <b>Oct 15</b></div>
+  <div class="colhead">standing <b>cadence</b></div>
+
+  <!-- ASK AI -->
+  <div class="lane">Ask AI <span>P3.C · unlocked</span></div>
+  <div class="cell" data-when="by Aug 31">
+    <div class="task" title="Done when: grep -rl ai_proposed_actions .planning returns > 0 files (today 0), and the P3.C row states what shipped and what did not.">
+      <span class="id">PV-01</span><span class="t">Reconcile corpus ↔ disk</span>
+      <span class="d">grep returns &gt; 0 files</span></div>
+  </div>
+  <div class="cell" data-when="Sep 11–18">
+    <div class="task gate" title="Done when: ≥40 labelled dangerous intents in 6 classes, run by a spec in CI; refusal_correctness publishes beside confirm_without_edit_rate or neither publishes.">
+      <span class="id">PV-02</span><span class="t">Refusal corpus v1</span>
+      <span class="d">≥40 intents · a gate, not a target</span></div>
+    <div class="task" title="Done when: a test proves a staff token is refused a procurement.reorder proposal, with a reason.">
+      <span class="id">PV-04</span><span class="t">Role-gate the allowlist</span>
+      <span class="d">a test, not a habit</span></div>
+    <div class="task" title="Done when: a written rule that a 3rd family lands with a typed schema, refusal cases and an already-gated executor — or not at all. No family added under this agenda.">
+      <span class="id">PV-06</span><span class="t">Widening <i>policy</i>, not families</span>
+      <span class="d">0 families added</span></div>
+  </div>
+  <div class="cell" data-when="by Sep 30">
+    <div class="task" title="Done when: entry_point_count reads 1, or each survivor carries a written verdict naming why it is not an AI entry point.">
+      <span class="id">PV-03</span><span class="t">Entry points 4 → 1</span>
+      <span class="d">composer · Reports · /sommelier · FAB</span></div>
+    <div class="task blocked" title="Blocked on a design partner (sales). Done when ≥1 ai_proposed_actions row is created by a non-fixture operator and the four numbers publish with denominators.">
+      <span class="id">PV-05</span><span class="t">The first real ask</span>
+      <span class="d">blocked: needs one restaurant</span></div>
+  </div>
+  <div class="cell" data-when="by Oct 15"></div>
+  <div class="cell" data-when="standing">
+    <div class="task" title="Done when: the mobile FAB calls POST /ask-ai/propose or is retired; counted inside P3.A's 219-feature denominator, never as a second lane.">
+      <span class="id">PV-07</span><span class="t">Mobile — <i>into</i> P3.A</span>
+      <span class="d">monthly, with P3.A's census</span></div>
+  </div>
+
+  <!-- INBOUND -->
+  <div class="lane">Inbound understanding <span>Phase 1 on Phase 0</span></div>
+  <div class="cell" data-when="by Aug 31"></div>
+  <div class="cell" data-when="Sep 11–18">
+    <div class="task" title="Done when: a corrected proposal writes a row the weekly sweep counts, and the first number publishes with its denominator. Zero with a denominator is a pass; zero without one is the defect.">
+      <span class="id">PV-09</span><span class="t">The correction path</span>
+      <span class="d">false_accept_count, with a denominator</span></div>
+  </div>
+  <div class="cell" data-when="by Sep 30">
+    <div class="task" title="Done when: ≥200 labelled messages produce a published agreement rate between transport signals and the LLM class, plus a written promote/hold verdict. The gate flips on the verdict, never on a demo.">
+      <span class="id">PV-08</span><span class="t">Promote the shadow classifier</span>
+      <span class="d">on agreement, not confidence</span></div>
+    <div class="task" title="Done when: a one-page contract names which primitive each module uses and why two is correct if it is; a check fails the third.">
+      <span class="id">PV-10</span><span class="t">One gate primitive — or a written two</span>
+      <span class="d">one-tap vs ai_proposed_actions</span></div>
+  </div>
+  <div class="cell" data-when="by Oct 15">
+    <div class="task" title="Done when: an email with 3 attachments retains all 3 retrievable, and an email matching no order still produces a stored analysis.">
+      <span class="id">PV-11</span><span class="t">Attachments + decouple match</span>
+      <span class="d">plan §5, findings A5/A7</span></div>
+  </div>
+  <div class="cell" data-when="standing"></div>
+
+  <!-- SURFACE -->
+  <div class="lane">Surface portfolio <span>the count is a by-product</span></div>
+  <div class="cell" data-when="by Aug 31"></div>
+  <div class="cell" data-when="Sep 11–18"></div>
+  <div class="cell" data-when="by Sep 30">
+    <div class="task" title="Done when: the denominator is one number with one source (06-pages says 47, PAGE_MAP says 48), then 47 of 47 routes carry keep/merge/kill/make-reachable/intentionally-cold plus an owning module. Unclassified is reported, never absorbed; the headline publishes as 5 buckets.">
+      <span class="id">PV-12</span><span class="t">Route verdict sheet v1</span>
+      <span class="d">settle 47 vs 48, then 5 buckets</span></div>
+    <div class="task" title="Done when: each of the 12 unresolved route components is resolved, or asked of client-surfaces with a named owner and a date. An accepted 'stays dynamic' is an honourable close.">
+      <span class="id">PV-13</span><span class="t">The 12 unresolved components</span>
+      <span class="d">owner + date, or resolved</span></div>
+    <div class="task" title="Done when: a written verdict on /sommelier now that the composer is global. If kill, client-surfaces executes and the count moves for a reason.">
+      <span class="id">PV-14</span><span class="t">Does Ask AI need a route?</span>
+      <span class="d">/sommelier gets a verdict</span></div>
+    <div class="task" title="Done when: a committed target for unowned_surface_count that is NOT zero, with each intentionally-cold route named.">
+      <span class="id">PV-15</span><span class="t">Declare the correct cold entries</span>
+      <span class="d">target ≠ 0, and named</span></div>
+  </div>
+  <div class="cell" data-when="by Oct 15"></div>
+  <div class="cell" data-when="standing"></div>
+
+  <!-- FLOOR -->
+  <div class="lane">Service floor <span>NEW · null inputs</span></div>
+  <div class="cell" data-when="by Aug 31"></div>
+  <div class="cell" data-when="Sep 11–18">
+    <div class="task" title="Done when: every cell of provider × field reads emitted / not emitted / unknown-needs-partner — never blank. Simulator rows never count as emitted.">
+      <span class="id">PV-16</span><span class="t">POS input audit v1</span>
+      <span class="d">no blank cells; simpos ≠ evidence</span></div>
+    <div class="task" title="Done when: filed in pos-bridge's questions file with an owner and a date. A 'no' is an acceptable close; an ask living only in this agenda is not.">
+      <span class="id">PV-18</span><span class="t">Kitchen-ready shape request</span>
+      <span class="d">filed with owner + date</span></div>
+  </div>
+  <div class="cell" data-when="by Sep 30">
+    <div class="task" title="Done when: a one-page spec says exactly what a restaurant or its middleware must POST to /pos-hub/webhook/generic_webhook/:restaurantId for check-in timing to be real — and what it does not unlock.">
+      <span class="id">PV-17</span><span class="t">The <code>generic_webhook</code> unblock</span>
+      <span class="d">the blocker is a counterparty, not code</span></div>
+  </div>
+  <div class="cell" data-when="by Oct 15"></div>
+  <div class="cell" data-when="standing"></div>
+
+  <!-- SUPPLY -->
+  <div class="lane">Supply discovery <span>denominator before crawl</span></div>
+  <div class="cell" data-when="by Aug 31"></div>
+  <div class="cell" data-when="Sep 11–18"></div>
+  <div class="cell" data-when="by Sep 30">
+    <div class="task" title="Done when: needed_sku_denominator_size is an integer for one restaurant and coverage stops printing 'undefined'. No crawl target is added to reach it.">
+      <span class="id">PV-19</span><span class="t">Define "needed SKU" — one restaurant</span>
+      <span class="d">an integer, or still undefined</span></div>
+    <div class="task" title="Done when: the count of displayed prices carrying no age is 0, and price_freshness_p50_days has a first reading.">
+      <span class="id">PV-20</span><span class="t">A price without an age is a defect</span>
+      <span class="d">ageless prices → 0</span></div>
+  </div>
+  <div class="cell" data-when="by Oct 15"></div>
+  <div class="cell" data-when="standing"></div>
+
+  <!-- DEPARTMENT -->
+  <div class="lane">Department <span>pv-orchestrator</span></div>
+  <div class="cell" data-when="by Aug 31">
+    <div class="task" title="Done when: the board's standing counters are regenerated from a read rather than hand-entered; every row is a value, 'unmeasured', or 'undefined' — never a 0 that means we did not look.">
+      <span class="id">PV-21</span><span class="t">Publish the metric SET</span>
+      <span class="d">five numbers, never an average</span></div>
+  </div>
+  <div class="cell" data-when="Sep 11–18">
+    <div class="task gate" title="Done when: a verdict basis is designed BEFORE the product_board_rollup emitter ships, or the task type is never declared. check_task_types_are_graded.py decides, not a review.">
+      <span class="id">PV-24</span><span class="t">A new task type costs a grader</span>
+      <span class="d">gate on P3.0's CI guard</span></div>
+  </div>
+  <div class="cell" data-when="by Sep 30">
+    <div class="task blocked" title="Wave 3 scoped departments only. Done when each of the five team agendas is dated and task-carrying — authored by its own agent, which is why this is an ask and not self-serve.">
+      <span class="id">PV-23</span><span class="t">Five team agendas still provisional</span>
+      <span class="d">blocked: needs a team wave</span></div>
+  </div>
+  <div class="cell" data-when="by Oct 15"></div>
+  <div class="cell" data-when="standing">
+    <div class="task" title="Done when: a digest exists daily and every row carries an owner, an age and a named unblocker — rows missing any of the three listed first. Three no-action runs downgrade the job.">
+      <span class="id">PV-22</span><span class="t">Daily open-decision digest</span>
+      <span class="d">daily · a job, not a team</span></div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="key"></span>scheduled work</span>
+  <span><span class="key gate"></span>a gate — published beside its pair, or not at all</span>
+  <span><span class="key blocked"></span>blocked on a named unblocker, not on effort</span>
+  <span>hover any chip for its doneability line</span>
+</div>
+
+<div class="panels">
+  <div class="panel">
+    <h3>Seams this agenda touches</h3>
+    <ul>
+      <li><b>Research-math (Track A5)</b> — the vendor-reply rubric is theirs; PV-08/PV-09 supply the corpus and the acceptance bar. Two groups must not grade one family two ways.</li>
+      <li><b>Intelligence / security</b> — their AI-surface adversarial corpus and PV-02's refusal corpus overlap; Ask AI contributes the allowlist-specific classes and consumes theirs.</li>
+      <li><b>Partnerships / POS bridge</b> — PV-17 and PV-18 are asks with owners and dates, filed in their questions file.</li>
+      <li><b>Client surfaces</b> — executes every kill in PV-12/PV-14; we decide whether a page exists, they delete it.</li>
+      <li><b>Sales</b> — PV-05's unblocker is a design partner. No partner, no Ask AI number.</li>
+      <li><b>Decision office + knowledge-documentation</b> — PV-01 and finding F1.</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h3>Findings — not tasks</h3>
+    <ul>
+      <li><b>F1</b> Nothing measures docs-vs-disk divergence. L7 catches an agenda that went stale, never one that went <i>wrong</i>.</li>
+      <li><b>F2</b> "Which human-gate primitive" has no owning card.</li>
+      <li><b>F3</b> <code>entry_point_count</code> rose by shipping correctly — the drift check will fire and be right for the wrong reason until PV-03.</li>
+      <li><b>F4</b> Ten restaurants, all fixtures. Every number here is a property of the code, not of anyone's month.</li>
+    </ul>
+  </div>
+
+  <div class="panel lock">
+    <h3>Locks — deliberately unscheduled</h3>
+    <ul>
+      <li><b>Pricing deferred</b> — no billing action family, no per-ask cost model. PV-06 keeps it out by policy, not omission.</li>
+      <li><b>Brand / landing visuals held</b> — PV-03 is a schema-and-count task; not one pixel is a redesign.</li>
+      <li><b>Agent-native UI: don't build</b> — <code>/sommelier</code> gets a verdict, which is the opposite of extension. Superseding needs its own ADR.</li>
+      <li><b>PROD-F1 · F2 · F5 stay open</b> — no task above assumes an answer.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  .planning/sketches/061-product-vision-agenda-canvas · throwaway-grade thinking surface ·
+  tasks and evidence live in product-vision-agenda-full.md · counters in product-vision-agenda-board.md
+</footer>
+
+</div>
+</body>
+</html>

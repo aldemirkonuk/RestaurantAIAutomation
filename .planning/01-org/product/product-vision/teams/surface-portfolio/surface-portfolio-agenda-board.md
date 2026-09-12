@@ -89,8 +89,11 @@ A drop driven entirely by the fourth row is reclassification, not progress
 - [ ] ⚠️ **Overlap correction owed to [[PAGE_MAP]]** — 11 routes appear on **both** lists,
       so this is **26 distinct routes**, not 37
 - [ ] Route verdict sheet — **0 of 51** routes have a verdict
-- [ ] Live duplications awaiting a call — **3**: `/wine-agent`+`/wineagent`
-      (`App.tsx:293-294`), `/inventory`+`/inventory-legacy`, `/calendar`+`/calendar-classic`
+- [ ] Live duplications awaiting a call — **2**: `/inventory`+`/inventory-legacy`,
+      `/calendar`+`/calendar-classic`. Both **failed the 2026-08-26 parity check** and
+      stay routed until the legacy-only capabilities are ported
+      ([ADR 0019](../../../../decisions/0019-p2-build-scope.md) §B-parity).
+      `/wine-agent`+`/wineagent` is **closed** — retired 2026-08-26, not deduplicated.
 - [ ] `surface.routes_without_owning_module` — **unmeasured**; reconciliation against 448
       endpoints / 44 modules not started
 - [ ] Modules with endpoints and no page — **unmeasured** (the other orphan direction)

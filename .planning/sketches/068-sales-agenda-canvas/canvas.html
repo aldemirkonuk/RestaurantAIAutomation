@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 068 · Sales Agenda Canvas · 2026-08-28</title>
+<style>
+  :root{
+    --ink:#F2EDE7; --ink-dim:#A79E96; --ink-faint:#6E6660;
+    --bg:#141110; --panel:#1C1817; --panel-2:#232019; --line:#332C29;
+    --wine:#9E4249; --wine-lo:#5A2A2E; --amber:#C9903F; --moss:#6E8C5A;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1500px;margin:0 auto;padding:28px 24px 60px}
+
+  /* ---------- header ---------- */
+  header{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:20px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+           color:var(--ink-faint)}
+  h1{margin:6px 0 2px;font-size:34px;letter-spacing:-.02em;font-weight:600}
+  h1 span{color:var(--wine)}
+  .sub{color:var(--ink-dim);max-width:74ch}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .chip{font-family:var(--mono);font-size:11px;letter-spacing:.06em;padding:5px 10px;
+        border:1px solid var(--line);border-radius:2px;color:var(--ink-dim);background:var(--panel)}
+  .chip b{color:var(--ink);font-weight:600}
+  .chip.lock{border-color:var(--wine-lo);color:#E2B7B7}
+
+  /* ---------- alert ---------- */
+  .alert{border-left:3px solid var(--wine);background:linear-gradient(90deg,#241A1B,transparent 70%);
+         padding:14px 18px;margin:0 0 24px;border-radius:0 3px 3px 0}
+  .alert h2{margin:0 0 6px;font-size:15px;letter-spacing:-.01em}
+  .alert p{margin:0;color:var(--ink-dim);max-width:100ch}
+  code{font-family:var(--mono);font-size:12px;color:#E4C9A8;background:#241F1D;
+       padding:1px 5px;border-radius:2px}
+
+  /* ---------- section titles ---------- */
+  .sect{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+        color:var(--ink-faint);margin:30px 0 10px;display:flex;align-items:center;gap:12px}
+  .sect::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* ---------- timeline board ---------- */
+  .board{display:grid;grid-template-columns:112px repeat(7,minmax(0,1fr));
+         gap:8px;align-items:stretch}
+  .colhead{font-family:var(--mono);font-size:11px;color:var(--ink-dim);
+           padding:6px 4px;border-bottom:1px solid var(--line);text-align:center}
+  .colhead b{display:block;color:var(--ink);font-size:12px;letter-spacing:.02em}
+  .colhead i{font-style:normal;font-size:10px;color:var(--ink-faint)}
+  .lane{font-family:var(--mono);font-size:11px;color:var(--ink-dim);
+        display:flex;flex-direction:column;justify-content:center;padding:8px 6px;
+        border-right:1px solid var(--line)}
+  .lane b{color:var(--ink);font-size:12px;display:block;letter-spacing:.02em}
+  .lane span{color:var(--ink-faint);font-size:10px;line-height:1.3;margin-top:3px}
+  .lane.s1 b{color:#D7C39B} .lane.s2 b{color:#9FB6C4}
+  .cell{min-height:78px;display:flex;flex-direction:column;gap:6px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:3px;
+        padding:8px 9px;position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--ink-faint)}
+  .card.dept::before{background:var(--wine)}
+  .card.s1::before{background:var(--amber)}
+  .card.s2::before{background:#5F86A0}
+  .card .id{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--ink-faint)}
+  .card .t{font-size:12.5px;line-height:1.3;margin-top:2px}
+  .card .d{font-size:10.5px;color:var(--ink-dim);margin-top:5px;line-height:1.35}
+  .card .d b{color:#C7BDB4;font-weight:600}
+  .card.hot{border-color:var(--wine);background:#231A1B}
+  .flag{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;
+        display:inline-block;margin-top:6px;padding:2px 5px;border-radius:2px}
+  .flag.asp{background:#3A2E14;color:#E0B860;border:1px solid #5A4620}
+  .flag.rec{background:#1E2A18;color:#9CC47F;border:1px solid #33472A}
+
+  /* ---------- lower panels ---------- */
+  .cols{display:grid;grid-template-columns:1.15fr 1fr;gap:20px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:16px 18px}
+  .panel h3{margin:0 0 10px;font-size:13px;letter-spacing:.01em}
+  .seam{display:grid;grid-template-columns:170px 1fr;gap:6px 12px;font-size:12px;
+        padding:7px 0;border-top:1px solid var(--line)}
+  .seam:first-of-type{border-top:0}
+  .seam .u{font-family:var(--mono);font-size:11px;color:#D9B3B5}
+  .seam .w{color:var(--ink-dim)}
+  .seam .w em{font-style:normal;color:var(--ink)}
+  .gate{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);font-size:12px}
+  .gate:first-of-type{border-top:0}
+  .gate .k{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--wine);
+           min-width:76px;padding-top:2px}
+  .gate .v{color:var(--ink-dim)}
+  .gate .v b{color:var(--ink);font-weight:600}
+  .trig{display:flex;gap:12px;padding:9px 0;border-top:1px solid var(--line);font-size:12px}
+  .trig:first-of-type{border-top:0}
+  .trig .dt{font-family:var(--mono);font-size:11px;color:var(--amber);min-width:88px}
+  .trig .tx{color:var(--ink-dim)}
+  .rejected{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .rej{font-size:11.5px;color:var(--ink-faint);border:1px dashed #3A3230;border-radius:2px;
+       padding:5px 9px;text-decoration:line-through;text-decoration-color:#5A3A3C}
+  footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);
+          font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);
+          display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  @media (max-width:1100px){
+    .board{grid-template-columns:100px repeat(2,minmax(0,1fr))}
+    .colhead:nth-child(n+4){display:none}
+    .cols{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Sketch 068 · thinking surface, not a product · commercial / sales</div>
+  <h1>Sales — the agenda as <span>one picture</span></h1>
+  <div class="sub">Fourteen tasks, three lanes, one customer. Every card carries a close-time;
+  every card behind it carries evidence in <code>sales-agenda-full.md</code>. Dated 2026-08-28.</div>
+  <div class="chips">
+    <span class="chip"><b>1</b> customer</span>
+    <span class="chip"><b>0</b> sends, ever, this quarter</span>
+    <span class="chip"><b>$0</b> verified recovered</span>
+    <span class="chip"><b>0 : 5</b> loops running : declared</span>
+    <span class="chip lock">LOCK · target list founder-deferred</span>
+    <span class="chip lock">LOCK · pricing deferred, and not ours</span>
+  </div>
+</header>
+
+<div class="alert">
+  <h2>§0 — the agenda opens by correcting itself</h2>
+  <p>Every document in this department is anchored to <code>DEP-06</code> being unchecked at
+  <code>.planning/PROJECT.md:101</code>. That file is now 115 lines and contains no
+  <code>DEP-06</code> at all. The live row is <code>07-reference/REQUIREMENTS.md:333</code>
+  and it reads <code>[x]</code> — inside a ledger its own header calls historical. 97
+  citations across 46 live files, all pointing at the dead one. The department's top item is either
+  already closed or was never open where we were looking. <b>SAL-01 settles it in seven days.</b></p>
+</div>
+
+<div class="sect">The board — owners down, close-times across</div>
+<div class="board">
+  <div></div>
+  <div class="colhead"><b>Sep 4</b><i>7 days</i></div>
+  <div class="colhead"><b>Sep 11</b><i>14 days</i></div>
+  <div class="colhead"><b>Sep 18</b><i>21 days</i></div>
+  <div class="colhead"><b>Sep 25–27</b><i>30 days</i></div>
+  <div class="colhead"><b>Oct 9–12</b><i>45 days</i></div>
+  <div class="colhead"><b>Oct 23–27</b><i>60 days</i></div>
+  <div class="colhead"><b>Nov 22–24</b><i>the review</i></div>
+
+  <!-- department lane -->
+  <div class="lane"><b>Sales</b><span>dept · card <code>sales-board-keeper</code> (unrunnable — F1)</span></div>
+  <div class="cell">
+    <div class="card dept hot"><div class="id">SAL-01</div>
+      <div class="t">Settle DEP-06; re-anchor 97 citations / 46 files</div>
+      <div class="d"><b>Done:</b> one of two outcomes written into <code>sales-questions</code> with the founder's answer.</div></div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="card dept"><div class="id">SAL-02</div>
+      <div class="t">Three gates → executable claims</div>
+      <div class="d"><b>Done:</b> 3 rows in <code>CLAIMS.jsonl</code>; guard passes and fails <em>closed</em>.</div></div>
+    <div class="card dept"><div class="id">SAL-13</div>
+      <div class="t">File CM-F3 — 61 citations, 24 files</div>
+      <div class="d"><b>Done:</b> register row + executable claim + a real diff against Partnerships' mirror text.</div></div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="card dept"><div class="id">SAL-14</div>
+      <div class="t">Wire the review to <code>watch_loops.py</code></div>
+      <div class="d"><b>Done:</b> <code>--asof 2026-11-24</code> reads two live inputs, not an assumption.
+      <span class="flag rec">half satisfied on save</span></div></div>
+  </div>
+
+  <!-- S1 lane -->
+  <div class="lane s1"><b>S1 · Design Partner Ops</b><span>the one real surface — <code>partial</code></span></div>
+  <div class="cell">
+    <div class="card s1"><div class="id">SAL-03</div>
+      <div class="t">Contact ledger; an ungameable streak</div>
+      <div class="d"><b>Done:</b> streak moves only on an observed usage moment or a named blocker. 4 rows ⇒ the first Sales loop that <em>runs</em>.</div></div>
+    <div class="card s1"><div class="id">SAL-05</div>
+      <div class="t">File the one analytics event</div>
+      <div class="d"><b>Done:</b> resolves to shipped-with-a-date or declined-in-writing. Ages out Oct 9.</div></div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="card s1"><div class="id">SAL-06</div>
+      <div class="t">Sixty-second demo, mechanism only</div>
+      <div class="d"><b>Done:</b> every claim traced to a <code>path:line</code>; <em>zero dollar figures in it</em>.</div></div>
+  </div>
+  <div class="cell">
+    <div class="card s1"><div class="id">SAL-04</div>
+      <div class="t">Blocker ageing, 14d → 28d clock</div>
+      <div class="d"><b>Done:</b> one blocker has aged through a full escalation <em>on its calendar day</em>.</div></div>
+    <div class="card s1"><div class="id">SAL-08</div>
+      <div class="t">Patience budget, published org-wide</div>
+      <div class="d"><b>Done:</b> a <em>declined</em> ask is on the record. A budget that never says no is a calendar.</div></div>
+    <div class="card s1"><div class="id">SAL-07</div>
+      <div class="t">Case-study dossier behind consent</div>
+      <div class="d"><b>Done:</b> facts only, zero prose, zero publication.
+      <span class="flag asp">aspiration · consent gate does not exist</span></div></div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="card s1"><div class="id">SAL-09</div>
+      <div class="t">One landed credit, by hand</div>
+      <div class="d"><b>Done:</b> a figure that names the invoice it landed on. Highest-fanout artifact in the company.
+      <span class="flag asp">aspiration · the landing is theirs, not ours</span></div></div>
+  </div>
+
+  <!-- S2 lane -->
+  <div class="lane s2"><b>S2 · Outbound Engine</b><span>dormant by construction — a machine, never a list</span></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="card s2"><div class="id">SAL-10</div>
+      <div class="t"><code>sending-identity-guard</code> in CI</div>
+      <div class="d"><b>Done:</b> fails closed, and proven red against a deliberate <code>GmailService</code> import. Guard #10 of the same family.</div></div>
+    <div class="card s2"><div class="id">SAL-12</div>
+      <div class="t">Carry OD-77 with the sales consequence</div>
+      <div class="d"><b>Done:</b> "before any customer onboarding" is dated, or accepted as undated. We file; we do not resolve.</div></div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="card s2"><div class="id">SAL-11</div>
+      <div class="t">Unlock readiness pack — five states</div>
+      <div class="d"><b>Done:</b> a reviewer <em>cannot derive a single prospect from it</em>. That is the acceptance test, not a caveat.</div></div>
+  </div>
+  <div class="cell"></div>
+</div>
+
+<div class="sect">Seams this agenda touches — what crosses, and in which direction</div>
+<div class="cols">
+  <div class="panel">
+    <div class="seam"><div class="u">analytics-bi</div><div class="w">← <em>one event</em>: session start carrying <code>seconds_since_last_founder_contact</code>. Unblocks the politeness detector — the loop most likely to decide whether this department survives. <b>SAL-05</b></div></div>
+    <div class="seam"><div class="u">media-brand</div><div class="w">→ verified facts and one verbatim quote. Never prose, never a number we did not watch land. <b>SAL-07</b></div></div>
+    <div class="seam"><div class="u">compliance-privacy</div><div class="w">← the consent gate, and the legal basis for cold contact. Both filed, neither answered. <b>SAL-07 · SAL-11</b></div></div>
+    <div class="seam"><div class="u">pos-bridge</div><div class="w">↔ the adapter, if the connection is faulty. We own the credential conversation; they own the code. <b>SAL-01</b></div></div>
+    <div class="seam"><div class="u">supplier-distributor-network</div><div class="w">↔ CM-F3. Their mirror text and ours have never been diffed. <b>SAL-13</b></div></div>
+    <div class="seam"><div class="u">product-vision</div><div class="w">→ the need queue. We relay; we never commit a build at a table. <b>SAL-04</b></div></div>
+    <div class="seam"><div class="u">finance-pricing</div><div class="w">→ what a prospect said about price. Never a price. Locked-deferred and not ours.</div></div>
+    <div class="seam"><div class="u">strategy-fundraising</div><div class="w">→ the traction input — which is exactly one credit memo away from existing. <b>SAL-09</b></div></div>
+    <div class="seam"><div class="u">guest-experience</div><div class="w">→ the only candidate NF-B source. <em>Held on OD-05/OD-07, not on us</em> — the charter overstates this. <b>F3</b></div></div>
+    <div class="seam"><div class="u">reliability-sre</div><div class="w">→ the outbound-reputation note in the procurement runbook, so a burned identity costs hours not days.</div></div>
+    <div class="seam"><div class="u">decision-office</div><div class="w">↔ CM-F3, the 28-day blocker escalation, and the 2026-11-24 fold review. <b>SAL-04 · SAL-13 · SAL-14</b></div></div>
+  </div>
+
+  <div>
+    <div class="panel" style="margin-bottom:20px">
+      <h3>Gates in force — all three become machine-checked under SAL-02</h3>
+      <div class="gate"><div class="k">EVIDENCE</div><div class="v">No recovery figure in any artifact until <b>verified_dollars_recovered &gt; 0</b>, traced to a credit that landed on a named invoice. "We asked" is not recovery.</div></div>
+      <div class="gate"><div class="k">IDENTITY</div><div class="v">No cold send while <b>sending_identity_isolated == false</b>. It is false today: <code>gmail.service.ts:79</code>. One reputation, three systems.</div></div>
+      <div class="gate"><div class="k">ATTENTION</div><div class="v">While the connection is unsettled, exactly <b>one thing</b> may consume design-partner attention: getting connected.</div></div>
+      <div class="gate"><div class="k">LIST</div><div class="v">No task, card, or agenda item may <b>generate or assume a target list</b>. SAL-11's acceptance test is the enforcement.</div></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:20px">
+      <h3>Dated triggers already running against us</h3>
+      <div class="trig"><div class="dt">2026-10-23</div><div class="tx">All 198 agendas hit the 60-day staleness rule at once — they share one <code>updated:</code>. This file leaves the cohort today; <b>its teams do not.</b></div></div>
+      <div class="trig"><div class="dt">2026-11-22</div><div class="tx">PROD-F2 / CM-F3 day-90 dissolution trigger — and it <em>fires against nothing</em> unless CM-F3 is filed first.</div></div>
+      <div class="trig"><div class="dt">2026-11-24</div><div class="tx">Department review: connection unresolved <b>and</b> $0 recovered ⇒ fold Sales into Growth. Pre-agreed, watched by <code>watch_loops.py</code>.</div></div>
+    </div>
+
+    <div class="panel">
+      <h3>Considered and refused</h3>
+      <div class="rejected">
+        <span class="rej">ICP research "without names"</span>
+        <span class="rej">a CRM / pipeline schema</span>
+        <span class="rej">source a second design partner</span>
+        <span class="rej">build the analytics event ourselves</span>
+        <span class="rej">warm a sending domain now</span>
+        <span class="rej">ask the friend about price</span>
+      </div>
+      <div style="margin-top:12px;font-size:11.5px;color:var(--ink-faint);line-height:1.45">
+        Each refusal is a lock, a boundary, or arithmetic — never a lack of ambition. The
+        ambition went into SAL-08 and SAL-11 instead: one account served as if it were a
+        hundred, and a machine so ready that the unlock costs a decision rather than a quarter.
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span>068-sales-agenda-canvas · throwaway grade · self-contained</span>
+  <span>source of truth: <code>01-org/commercial/sales/sales-agenda-full.md</code></span>
+  <span>ADR 0039 Track B · GENERATION_BRIEF §8</span>
+</footer>
+
+</div>
+</body>
+</html>

@@ -70,7 +70,7 @@ screen mean?" is a defect, not a question (premortem M5).
 - [ ] Track mobile route health separately under the single team (M4)
 - [ ] Grow `apps/web/src/stories/` toward empty / error / partial / stale states (M5)
 - [ ] Open a comprehension-defect channel with [[design-charter]] — named screen, named seam
-- [ ] Reconcile `.planning/UX_PATHS_CATALOG.md` paths against the link graph, so closed
+- [ ] Reconcile `.planning/07-reference/UX_PATHS_CATALOG.md` paths against the link graph, so closed
       paths on unreachable pages are visible as such
 
 ## Questions for the founder

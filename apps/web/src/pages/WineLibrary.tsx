@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import { AddWineModal } from '../components/wines/AddWineModal'
@@ -95,6 +96,7 @@ interface ReorderState {
 }
 
 export function WineLibrary() {
+  const navigate = useNavigate()
   const { setPendingReorder } = useUIStore()
   const { measurementUnit } = useRestaurantSettingsStore()
   const { preferences, updatePreferences } = useUserPreferences()
@@ -367,9 +369,17 @@ The AI will contact the selected provider(s) via Plivo. You'll receive notificat
 Redirecting to Orders page...`)
     
     setReorderModal(null)
-    
-    // Navigate to Orders page
-    window.location.href = '/orders'
+
+    // Client-side navigation is load-bearing here, not a preference.
+    //
+    // setPendingReorder() above writes to the in-memory Zustand store, and
+    // uiStore's partialize() deliberately excludes pendingReorder ("session-only",
+    // stores/uiStore.ts:143). A window.location.href reload tears down the JS
+    // runtime and rehydrates the store from localStorage, where pendingReorder
+    // does not exist — so it came back null and the Orders effect that consumes
+    // it (pages/Orders.tsx:449) never fired. The user got the "Redirecting..."
+    // alert and landed on an Orders page with nothing loaded.
+    navigate('/orders')
   }
 
   const pageSize = viewMode === 'grid' ? 24 : 50

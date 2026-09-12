@@ -56,13 +56,129 @@ export interface ScheduledReport {
   createdAt?: string
 }
 
+/**
+ * Mirrors ReportResponseDto in apps/api-gateway/src/reports/dto/reports.dto.ts,
+ * which in turn mirrors the real `generated_reports` columns.
+ *
+ * OD-45: the previous browser-side shape had `format`, `file_url` and a `metadata`
+ * object holding title/description/period/sentTo/fileSize/tags/status. None of
+ * those columns exist on the table — every one of them read as undefined. The
+ * fields below are the actual ones; `summary`, `periodStart` and `periodEnd`
+ * replace the invented `metadata.description` and `metadata.period`.
+ */
 export interface GeneratedReport {
   id: string
+  restaurantId: string
   title: string
   reportType: string
-  format?: string
-  fileUrl?: string | null
+  status: string
+  pdfUrl?: string | null
+  excelUrl?: string | null
+  csvUrl?: string | null
+  summary?: string | null
+  periodStart?: string | null
+  periodEnd?: string | null
   createdAt?: string
+}
+
+export interface ReportListResponse {
+  reports: GeneratedReport[]
+  /** Null when the gateway could not count. Never the page length — see below. */
+  total: number | null
+}
+
+/**
+ * The server's own page bound (`reports.service.ts:95`, `Math.min(200, … ?? 100)`).
+ *
+ * ADR 0086 capped this read, which until then returned the whole table. A cap
+ * a caller does not know about is a window it will render as a total, so the
+ * number is declared here and sent explicitly rather than inherited from the
+ * server default: a list that comes back at this length is a FLOOR, and the
+ * page that renders it has to say so.
+ */
+export const REPORTS_PAGE_LIMIT = 100
+
+/**
+ * GET /reports — replaces a direct `supabase.from('generated_reports')` read.
+ *
+ * The table has RLS enabled and zero policies, so the anon-key client the browser
+ * uses got `[]` back with no error: the page looked empty rather than broken. The
+ * gateway holds the service-role key and scopes by the restaurant on the JWT.
+ */
+export async function listReports(): Promise<GeneratedReport[]> {
+  const { data } = await apiClient.get<ReportListResponse>('/reports', {
+    params: { limit: REPORTS_PAGE_LIMIT },
+  })
+  return Array.isArray(data?.reports) ? data.reports : []
+}
+
+/**
+ * Same endpoint, with the gateway's `count: "exact"` total kept instead of
+ * thrown away — a register count must be the count, not an array length.
+ *
+ * `limit` bounds the ROWS, never the total: the gateway counts over the whole
+ * filtered set, so a caller that renders twenty rows can ask for a page and
+ * still print the real figure beside it.
+ */
+export async function listReportsWithTotal(
+  opts: { limit?: number; offset?: number } = {},
+): Promise<{
+  reports: GeneratedReport[]
+  total: number | null
+}> {
+  const { data } = await apiClient.get<ReportListResponse>('/reports', {
+    params: { limit: opts.limit, offset: opts.offset },
+  })
+  const reports = Array.isArray(data?.reports) ? data.reports : []
+  // `reports.length` is NOT a fallback for the total. Since ADR 0086 bounded the
+  // query, using it would report the page size as the count — the window-as-total
+  // fault this function's own docblock exists to prevent. Unknown stays unknown.
+  return { reports, total: typeof data?.total === 'number' ? data.total : null }
+}
+
+export const REPORT_TYPES: readonly ReportType[] = [
+  'inventory_summary',
+  'sales_analysis',
+  'procurement_history',
+  'financial_summary',
+  'compliance_report',
+]
+
+export interface ReportCrossFileRegister {
+  count: number
+  sample?: string | null
+}
+
+/** Null paper/conversations = the report names no period; nothing is invented. */
+export interface ReportCrossFile {
+  periodStart: string | null
+  periodEnd: string | null
+  paper: ReportCrossFileRegister | null
+  conversations: ReportCrossFileRegister | null
+}
+
+/** "Cross-filed under" — the other registers holding this report's period. */
+export async function getReportCrossFile(id: string): Promise<ReportCrossFile> {
+  const { data } = await apiClient.get<ReportCrossFile>(`/reports/${id}/cross-file`)
+  return {
+    periodStart: data?.periodStart ?? null,
+    periodEnd: data?.periodEnd ?? null,
+    paper: data?.paper ?? null,
+    conversations: data?.conversations ?? null,
+  }
+}
+
+/** "File to…" — re-file a report under a different type. */
+export async function refileReport(
+  id: string,
+  reportType: ReportType,
+): Promise<GeneratedReport> {
+  const { data } = await apiClient.patch<GeneratedReport>(`/reports/${id}`, { reportType })
+  return data
+}
+
+export async function deleteReport(id: string): Promise<void> {
+  await apiClient.delete(`/reports/${id}`)
 }
 
 export async function generateReport(payload: GenerateReportPayload): Promise<GeneratedReport> {

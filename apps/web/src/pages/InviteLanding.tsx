@@ -4,8 +4,9 @@ import { useAuth } from '../contexts/AuthContext'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { toast } from 'sonner'
+import axios from 'axios'
+import { apiClient, getErrorMessage } from '../services/api/client'
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
 type Preview =
   | { valid: false; reason?: string }
@@ -35,8 +36,9 @@ export function InviteLanding() {
     }
     setLoadingPreview(true)
     try {
-      const resp = await fetch(`${API_URL}/api/v1/auth/invite/${encodeURIComponent(code)}`)
-      const data = await resp.json()
+      const { data } = await apiClient.get<Preview>(
+        `/auth/invite/${encodeURIComponent(code)}`,
+      )
       setPreview(data)
     } catch {
       setPreview({ valid: false })
@@ -56,32 +58,21 @@ export function InviteLanding() {
     setAcceptError(null)
     setAccepting(true)
     try {
-      const resp = await fetch(
-        `${API_URL}/api/v1/auth/invite/${encodeURIComponent(code)}/accept`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        },
+      const { data } = await apiClient.post<{ restaurant?: string }>(
+        `/auth/invite/${encodeURIComponent(code)}/accept`,
       )
-      const data = await resp.json().catch(() => ({}))
-      if (resp.status === 409) {
-        toast.success(`You're already a member of ${(preview as any).restaurant || 'this restaurant'}`)
-        await refreshBranches()
-        navigate('/', { replace: true })
-        return
-      }
-      if (!resp.ok) {
-        throw new Error(data.message || 'Could not accept invite')
-      }
       toast.success(`You've joined ${data.restaurant || 'the restaurant'}!`)
       await refreshBranches()
       navigate('/', { replace: true })
     } catch (e) {
-      setAcceptError(
-        e instanceof Error
-          ? e.message
-          : "Couldn't add you to this restaurant. Please try again or contact the owner.",
-      )
+      // 409 = already a member: still a success from the user's point of view.
+      if (axios.isAxiosError(e) && e.response?.status === 409) {
+        toast.success(`You're already a member of ${(preview as any)?.restaurant || 'this restaurant'}`)
+        await refreshBranches()
+        navigate('/', { replace: true })
+        return
+      }
+      setAcceptError(getErrorMessage(e))
     } finally {
       setAccepting(false)
     }
@@ -91,7 +82,7 @@ export function InviteLanding() {
 
   if (loadingPreview || preview === null) {
     return (
-      <AuthShell title="WineOps AI" subtitle="Loading invite…">
+      <AuthShell title="Mudavym" subtitle="Loading invite…">
         <AuthCard className="flex justify-center py-10">
           <RefreshCw className="w-7 h-7 animate-spin text-wine-600" strokeWidth={1.75} />
         </AuthCard>
@@ -136,7 +127,7 @@ export function InviteLanding() {
             <div className="space-y-3 mt-6">
               <Link
                 to={loginHref}
-                className="block w-full text-center bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(158,66,73,0.55)]"
+                className="block w-full text-center bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)]"
               >
                 Sign in to accept
               </Link>
@@ -155,7 +146,7 @@ export function InviteLanding() {
               type="button"
               disabled={accepting}
               onClick={() => void handleAccept()}
-              className="w-full flex items-center justify-center gap-2 bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 disabled:opacity-60 shadow-[0_10px_28px_-10px_rgba(158,66,73,0.55)]"
+              className="w-full flex items-center justify-center gap-2 bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 disabled:opacity-60 shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)]"
             >
               {accepting ? (
                 <>

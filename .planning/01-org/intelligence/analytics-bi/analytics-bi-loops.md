@@ -169,7 +169,7 @@ changes: [analytics_insight_prefs.enabled, consultants.system_prompt]
 inputs_from: [security, sales]
 outputs_to: [security, decision-office]
 close_time: weekly
-baseline: "default OFF by design (consultants.service.ts:11,18 — 'absent row ⇒ disabled'); no expiry mechanism exists; toggle route analytics.controller.ts:516 is unguarded (OD-20)"
+baseline: "default OFF by design (consultants.service.ts:11,18 — 'absent row ⇒ disabled'); no expiry mechanism exists; the toggle route was unguarded (OD-20) until PR #31 guarded the controller on 2026-08-24 — analytics.controller.ts:51 now carries a class-level @UseGuards(JwtAuthGuard) over every route handler"
 status: proposed
 ```
 
@@ -211,7 +211,7 @@ before publication, and the register records the weaker phrasing as canonical.
 | Loop | Owner | Why we care |
 |---|---|---|
 | NF event contract / cost telemetry | [[neural-footprint-instrumentation-charter]] *(RM-3)* | The consultant layer's spend is invisible: the NestJS surface emits no cost events (`intelligence.md:165-167`) |
-| Endpoint classification & guards | [[security-charter]] + [[platform-api-charter]] | OD-20 — 39 unguarded analytics routes, including the consultant toggle and consult call |
+| Endpoint classification & guards | [[security-charter]] + [[platform-api-charter]] | OD-20 — the analytics routes, including the consultant toggle and consult call, were unguarded. **Closed 2026-08-24** (PR #31, `analytics.controller.ts:51`); we still depend on these charters for the endpoint-classification posture itself |
 | L0 substrate arrival (POS `checks`, `tables`) | [[data-charter]] | Directly sets the ceiling on L1: 25.1% → 100% is a data outcome, not a math outcome |
 | SimPOS ground-truth ledger (§44.7) | [[engineering-charter]] | L4 reads 0% until it ships |
 | NF `subject_type` for operators (INTEL-F3) | [[decision-office-charter]] / OD-11 | L2's metric has no home in the footprint until this closes |

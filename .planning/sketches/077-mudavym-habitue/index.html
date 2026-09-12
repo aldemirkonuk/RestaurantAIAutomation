@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mudavym — The Habitué</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============ THE HABITUÉ — token layer ============ */
+:root{
+  /* Daylight */
+  --bg:#F6F3ED;            /* paper */
+  --surface:#FCFAF6;       /* linen */
+  --raised:#FFFFFF;        /* china */
+  --tint:rgba(59,51,42,.06);
+  --tint-strong:rgba(59,51,42,.11);
+  --line:rgba(59,51,42,.14);
+  --ink-1:#262019; --ink-2:#5A5142; --ink-3:#8B8171; --ink-4:#B5AB9A;
+  --accent:#7A3E47;        /* house wine */
+  --accent-deep:#63333B;
+  --accent-tint:rgba(122,62,71,.10);
+  --brass:#A87B3F; --brass-tint:rgba(168,123,63,.13);
+  --ok:#437A54;  --ok-tint:rgba(67,122,84,.12);
+  --warn:#A9761B; --warn-tint:rgba(169,118,27,.13);
+  --bad:#AC4238; --bad-tint:rgba(172,66,56,.11);
+  --ease-settle:cubic-bezier(.16,1,.3,1);
+  --ease-greet:cubic-bezier(.26,.86,.44,.985);
+  --serif:'Fraunces',Georgia,'Times New Roman',serif;
+  --sans:'Instrument Sans',-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,'SF Mono',monospace;
+}
+.dark{
+  /* After close */
+  --bg:#171210;            /* after-hours */
+  --surface:#201913;       /* back bar */
+  --raised:#2A2119;        /* candle shelf */
+  --tint:rgba(242,235,223,.06);
+  --tint-strong:rgba(242,235,223,.13);
+  --line:rgba(242,235,223,.13);
+  --ink-1:#F2EBDF; --ink-2:#C8BEAE; --ink-3:#9A8F7E; --ink-4:#6B6153;
+  --accent:#C9868F;        /* candlelit wine */
+  --accent-deep:#DDA3AB;
+  --accent-tint:rgba(201,134,143,.14);
+  --brass:#CFA265; --brass-tint:rgba(207,162,101,.15);
+  --ok:#7FB08D;  --ok-tint:rgba(127,176,141,.14);
+  --warn:#D3A24A; --warn-tint:rgba(211,162,74,.15);
+  --bad:#D67A6E; --bad-tint:rgba(214,122,110,.13);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink-1);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+main{max-width:1060px;margin:0 auto;padding:64px 28px 96px}
+section{margin-top:76px;padding-top:44px;border-top:1px solid var(--line)}
+.kicker{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.15em;text-transform:uppercase;color:var(--ink-3)}
+.kicker b{color:var(--accent);font-weight:500}
+h2{font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.2;letter-spacing:-.01em;margin:10px 0 6px}
+.lede{color:var(--ink-2);max-width:640px;margin-bottom:28px}
+.note{font-size:12.5px;color:var(--ink-3);max-width:640px}
+code,kbd{font-family:var(--mono);font-size:12px;background:var(--tint);border:1px solid var(--line);border-radius:4px;padding:1px 5px;white-space:nowrap}
+
+/* masthead */
+.masthead{padding-top:8px}
+.masthead h1{font-family:var(--serif);font-weight:500;font-size:44px;line-height:1.1;letter-spacing:-.015em;margin:14px 0 20px}
+.dict{border-left:2px solid var(--accent);padding:6px 0 6px 20px;margin:26px 0;max-width:620px}
+.dict .word{font-family:var(--serif);font-size:20px;font-weight:500}
+.dict .pron{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-left:8px}
+.dict .def{font-family:var(--serif);font-style:italic;color:var(--ink-2);margin-top:4px}
+.thesis{font-size:16px;color:var(--ink-2);max-width:660px}
+.thesis strong{color:var(--ink-1);font-weight:600}
+
+/* logo chips */
+.logo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-top:8px}
+.concept{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.concept h3{font-family:var(--serif);font-weight:500;font-size:18px;padding:16px 20px 2px}
+.concept p{font-size:13px;color:var(--ink-2);padding:0 20px 14px;line-height:1.5}
+.chiprow{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+.chip{display:flex;align-items:center;justify-content:center;padding:26px 12px;color:var(--ink-1)}
+.chip.light{background:var(--bg)}
+.chip.dark{background:#171210;color:#F2EBDF}
+.chip svg{display:block}
+.chip.light svg{--la:#7A3E47}
+.chip.dark svg{--la:#C9868F}
+.lockup-word{font-family:var(--serif);font-weight:500;letter-spacing:-.01em}
+
+/* slogans */
+.slogans{list-style:none;max-width:720px}
+.slogans li{display:flex;gap:20px;align-items:baseline;padding:16px 0;border-bottom:1px dashed var(--line)}
+.slogans li:last-child{border-bottom:none}
+.slogans .num{font-family:var(--mono);font-size:11px;color:var(--ink-4);min-width:24px}
+.slogans .s{font-family:var(--serif);font-size:21px;font-weight:500;letter-spacing:-.005em;min-width:290px}
+.slogans .why{font-size:13px;color:var(--ink-2);line-height:1.5}
+
+/* voice */
+.rules{counter-reset:r;max-width:700px;margin-bottom:36px}
+.rules li{list-style:none;counter-increment:r;padding:11px 0 11px 44px;position:relative;border-bottom:1px solid var(--line)}
+.rules li::before{content:"0" counter(r);position:absolute;left:0;top:14px;font-family:var(--mono);font-size:11px;color:var(--accent)}
+.rules b{font-weight:600}
+.rw{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.rw-row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+.rw-row:last-child{border-bottom:none}
+.rw-row>div{padding:16px 20px}
+.rw-row .was{color:var(--ink-3);font-size:13.5px;border-right:1px solid var(--line)}
+.rw-row .now{font-size:15px}
+.rw-row .now .serif-voice{font-family:var(--serif)}
+.rw-head{background:var(--tint);font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.rw-head>div{padding:9px 20px}
+
+/* palette */
+.pal-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.pal{border:1px solid var(--line);border-radius:12px;padding:22px;background:var(--bg);color:var(--ink-1)}
+.pal h3{font-family:var(--serif);font-size:19px;font-weight:500;margin-bottom:2px}
+.pal .sub{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:16px}
+.sw{display:flex;align-items:center;gap:12px;padding:5px 0}
+.sw .box{width:34px;height:24px;border-radius:6px;border:1px solid var(--line);flex:none}
+.sw .tname{font-family:var(--mono);font-size:11.5px;min-width:118px;color:var(--ink-1)}
+.sw .hex{font-family:var(--mono);font-size:11px;color:var(--ink-3);min-width:150px}
+.sw .use{font-size:12px;color:var(--ink-2)}
+.pal-sep{height:1px;background:var(--line);margin:10px 0}
+
+/* type */
+.spec{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.spec-row{display:grid;grid-template-columns:210px 1fr;align-items:baseline;gap:18px;padding:16px 22px;border-bottom:1px solid var(--line)}
+.spec-row:last-child{border-bottom:none}
+.spec-meta{font-family:var(--mono);font-size:11px;color:var(--ink-3);line-height:1.7}
+.spec-meta b{color:var(--ink-1);font-weight:500}
+
+/* motion */
+.mtable{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:30px}
+.mtable th{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);text-align:left;font-weight:500;padding:8px 14px;border-bottom:1px solid var(--line)}
+.mtable td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+.mtable td:first-child{font-family:var(--serif);font-size:15px;color:var(--ink-1)}
+.mtable code{font-size:11px}
+.demos{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.demo{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+.demo h4{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500;margin-bottom:14px}
+.demo h4 b{color:var(--accent);font-weight:500}
+.demo .cap{font-size:12px;color:var(--ink-3);margin-top:14px;line-height:1.5}
+/* toggle */
+.tg-line{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0}
+.toggle{width:46px;height:28px;border-radius:99px;background:var(--tint-strong);position:relative;cursor:pointer;flex:none;transition:background .22s var(--ease-settle);border:none;outline-offset:3px}
+.toggle.on{background:var(--accent)}
+.thumb{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#FFF;box-shadow:0 1px 3px rgba(38,32,25,.28);will-change:transform}
+/* row expand */
+.xrow{border:1px solid var(--line);border-radius:10px;background:var(--raised);overflow:hidden}
+.xrow-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;user-select:none}
+.xrow-head .t{font-size:13.5px;font-weight:500}
+.xrow-head .m{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.chev{transition:transform .32s var(--ease-settle);color:var(--ink-3);flex:none;margin-left:10px}
+.xrow.open .chev{transform:rotate(180deg)}
+.expander{display:grid;grid-template-rows:0fr;transition:grid-template-rows .32s var(--ease-settle)}
+.xrow.open .expander{grid-template-rows:1fr}
+.exp-in{overflow:hidden}
+.exp-body{padding:2px 14px 14px;font-size:12.5px;color:var(--ink-2);border-top:1px dashed var(--line)}
+.exp-body .ln{display:flex;justify-content:space-between;padding:6px 0}
+.exp-body .ln span:last-child{font-family:var(--mono);font-size:11.5px}
+/* ticker */
+.tick-num{font-family:var(--mono);font-size:34px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.01em;display:block;padding:6px 0 10px}
+.btn{font-family:var(--sans);font-size:13px;font-weight:500;background:var(--accent);color:#FFF;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;transition:transform .18s var(--ease-settle),opacity .18s}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
+.shimmer{font-family:var(--serif);font-style:italic;font-size:14px;background:linear-gradient(90deg,var(--ink-3) 35%,var(--ink-1) 50%,var(--ink-3) 65%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sweep 1.7s linear infinite}
+@keyframes sweep{from{background-position:160% 0}to{background-position:-60% 0}}
+
+/* screens */
+.screens{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+.frame{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--bg);color:var(--ink-1);box-shadow:0 8px 28px rgba(38,32,25,.06)}
+.frame-label{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);padding:12px 22px;border-bottom:1px solid var(--line);background:var(--surface)}
+.app{padding:26px 24px 24px}
+.greet{font-family:var(--serif);font-weight:500;font-size:25px;letter-spacing:-.01em;line-height:1.25}
+.greet-sub{font-family:var(--serif);font-style:italic;font-size:14.5px;color:var(--ink-2);margin:4px 0 22px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+.kpi .kl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.kpi .kv{font-family:var(--mono);font-size:23px;font-weight:500;font-variant-numeric:tabular-nums;margin:3px 0 1px}
+.kpi .km{font-size:11.5px;color:var(--ink-3)}
+.kpi.alert .kv{color:var(--bad)}
+.kpi.warn .kv{color:var(--warn)}
+.onetap{background:var(--accent-tint);border:1px solid var(--line);border-radius:12px;padding:16px 17px}
+.onetap .ol{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:6px}
+.onetap .ot{font-family:var(--serif);font-size:16.5px;font-weight:500;line-height:1.35;margin-bottom:4px}
+.onetap .om{font-size:12.5px;color:var(--ink-2);margin-bottom:13px}
+.onetap .row{display:flex;gap:10px;align-items:center}
+/* orders strip */
+.strip-kick{font-family:var(--mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin-bottom:14px}
+.po{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 16px}
+.po-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.po-id{font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+.po-vendor{font-weight:600;font-size:15px}
+.po-meta{font-family:var(--mono);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;margin-left:auto}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;border-radius:99px;padding:3px 10px}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.transit{background:var(--brass-tint);color:var(--brass)}
+.pill.draft{background:var(--accent-tint);color:var(--accent-deep);cursor:pointer;border:1px solid transparent;transition:border-color .2s var(--ease-settle)}
+.pill.draft:hover{border-color:var(--accent)}
+.po-actions{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap}
+.drawer-hint{margin-top:14px;background:var(--raised);border:1px solid var(--line);border-bottom:none;border-radius:12px 12px 0 0;padding:11px 16px 15px;cursor:pointer}
+.drawer-hint .handle{width:34px;height:3px;border-radius:99px;background:var(--tint-strong);margin:0 auto 9px}
+.drawer-hint .dh-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.drawer-hint .dh-t{font-size:13px;font-weight:500}
+.drawer-hint .dh-m{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+
+footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
+footer .sig{font-family:var(--serif);font-style:italic;color:var(--ink-2);font-size:14px}
+@media(max-width:820px){.pal-grid,.screens,.rw-row{grid-template-columns:1fr}.rw-row .was{border-right:none;border-bottom:1px dashed var(--line)}.slogans .s{min-width:0}}
+@media(prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main>
+
+<!-- ======================= MASTHEAD ======================= -->
+<header class="masthead">
+  <div class="kicker">Mudavym · Brand direction <b>077 of 5</b> · sketch, not production</div>
+  <h1>The Habitué</h1>
+  <div class="dict">
+    <span class="word">mü·da·vim</span><span class="pron">/mew-dah-VEEM/ · Turkish · noun</span>
+    <div class="def">The regular. The one who is there every day — who the house knows, and who knows the house.</div>
+  </div>
+  <p class="thesis">Most restaurant software watches the restaurant like a security camera. Mudavym sits at the bar like its most loyal regular: it knows every vendor by name, every bottle by vintage, every shift by feel — and it <strong>quietly takes care of things</strong>. This direction puts that story everywhere: a serif voice when the house speaks, warm paper instead of software chrome, one glass of wine's worth of color, and motion that settles like a chair being tucked in. Confident. Never loud.</p>
+</header>
+
+<!-- ======================= 01 LOGO ======================= -->
+<section id="logo">
+  <div class="kicker">01 — Logo</div>
+  <h2>Three ways to draw a regular</h2>
+  <p class="lede">Wordmark set in Fraunces, 500 weight, near-tight tracking — a name on a menu, not a tech mark. Each concept carries one accent stroke in house wine; everything else is ink.</p>
+
+  <div class="logo-grid">
+    <!-- Concept A: The Kept Seat -->
+    <div class="concept">
+      <h3>A · The Kept Seat</h3>
+      <p>A table seen from above, one chair always held below it. The regular's seat — nobody else sits there. Reads at 16px as a favicon.</p>
+      <div class="chiprow">
+        <div class="chip light">
+          <svg width="216" height="52" viewBox="0 0 240 58" role="img" aria-label="Mudavym — kept seat lockup">
+            <circle cx="26" cy="24" r="14" fill="none" stroke="currentColor" stroke-width="2.8"/>
+            <circle cx="26" cy="24" r="2.4" fill="currentColor"/>
+            <rect x="18" y="44" width="16" height="5.5" rx="2.75" fill="var(--la)"/>
+            <text x="56" y="36" class="lockup-word" font-family="Fraunces, Georgia, serif" font-weight="500" font-size="27" fill="currentColor" letter-spacing="-0.3">Mudavym</text>
+          </svg>
+        </div>
+        <div class="chip dark">
+          <svg width="216" height="52" viewBox="0 0 240 58" role="img" aria-label="Mudavym — kept seat lockup, dark">
+            <circle cx="26" cy="24" r="14" fill="none" stroke="currentColor" stroke-width="2.8"/>
+            <circle cx="26" cy="24" r="2.4" fill="currentColor"/>
+            <rect x="18" y="44" width="16" height="5.5" rx="2.75" fill="var(--la)"/>
+            <text x="56" y="36" font-family="Fraunces, Georgia, serif" font-weight="500" font-size="27" fill="currentColor" letter-spacing="-0.3">Mudavym</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Concept B: The Tally -->
+    <div class="concept">
+      <h3>B · The Tally</h3>
+      <p>The habitué's tab, kept in chalk: four visits and the fifth stroke — in wine — that closes the count. Loyalty you can draw with one hand.</p>
+      <div class="chiprow">
+        <div class="chip light">
+          <svg width="216" height="52" viewBox="0 0 240 58" role="img" aria-label="Mudavym — tally lockup">
+            <g stroke="currentColor" stroke-width="3.2" stroke-linecap="round">
+              <line x1="12" y1="13" x2="12" y2="45"/>
+              <line x1="22" y1="13" x2="22" y2="45"/>
+              <line x1="32" y1="13" x2="32" y2="45"/>
+              <line x1="42" y1="13" x2="42" y2="45"/>
+            </g>
+            <line x1="5" y1="40" x2="49" y2="19" stroke="var(--la)" stroke-width="3.2" stroke-linecap="round"/>
+            <text x="64" y="38" font-family="Fraunces, Georgia, serif" font-weight="500" font-size="27" fill="currentColor" letter-spacing="-0.3">Mudavym</text>
+          </svg>
+        </div>
+        <div class="chip dark">
+          <svg width="216" height="52" viewBox="0 0 240 58" role="img" aria-label="Mudavym — tally lockup, dark">
+            <g stroke="currentColor" stroke-width="3.2" stroke-linecap="round">
+              <line x1="12" y1="13" x2="12" y2="45"/>
+              <line x1="22" y1="13" x2="22" y2="45"/>
+              <line x1="32" y1="13" x2="32" y2="45"/>
+              <line x1="42" y1="13" x2="42" y2="45"/>
+            </g>
+            <line x1="5" y1="40" x2="49" y2="19" stroke="var(--la)" stroke-width="3.2" stroke-linecap="round"/>
+            <text x="64" y="38" font-family="Fraunces, Georgia, serif" font-weight="500" font-size="27" fill="currentColor" letter-spacing="-0.3">Mudavym</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Concept C: The Homecoming Dots -->
+    <div class="concept">
+      <h3>C · The Homecoming Dots</h3>
+      <p>“Mudavym” dropped the ü of müdavim to travel. The mark gives the two dots a home: an ü drawn as a cup with its dots restored, in wine. The dots alone become the app badge.</p>
+      <div class="chiprow">
+        <div class="chip light">
+          <svg width="216" height="52" viewBox="0 0 240 58" role="img" aria-label="mudavym — homecoming dots lockup">
+            <path d="M 14 22 v 12 a 11 11 0 0 0 22 0 v -12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+            <circle cx="17.5" cy="11" r="3.1" fill="var(--la)"/>
+            <circle cx="32.5" cy="11" r="3.1" fill="var(--la)"/>
+            <text x="56" y="38" font-family="Fraunces, Georgia, serif" font-weight="500" font-size="27" fill="currentColor" letter-spacing="-0.3">mudavym</text>
+          </svg>
+        </div>
+        <div class="chip dark">
+          <svg width="216" height="52" viewBox="0 0 240 58" role="img" aria-label="mudavym — homecoming dots lockup, dark">
+            <path d="M 14 22 v 12 a 11 11 0 0 0 22 0 v -12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+            <circle cx="17.5" cy="11" r="3.1" fill="var(--la)"/>
+            <circle cx="32.5" cy="11" r="3.1" fill="var(--la)"/>
+            <text x="56" y="38" font-family="Fraunces, Georgia, serif" font-weight="500" font-size="27" fill="currentColor" letter-spacing="-0.3">mudavym</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:16px">Recommendation: <b>A</b> as primary (quietest, scales smallest), <b>C</b> as the app-icon / loading mark — the two dots animate beautifully as a “thinking” state.</p>
+</section>
+
+<!-- ======================= 02 SLOGANS ======================= -->
+<section id="slogans">
+  <div class="kicker">02 — Slogans</div>
+  <h2>Six ways to say it</h2>
+  <ul class="slogans">
+    <li><span class="num">S1</span><span class="s">The regular who runs the place.</span><span class="why">The müdavim metaphor completed — loyalty graduated into stewardship. Says exactly what the software is.</span></li>
+    <li><span class="num">S2</span><span class="s">Always at the table.</span><span class="why">A presence claim for a daily-use tool, made of hospitality furniture instead of software words.</span></li>
+    <li><span class="num">S3</span><span class="s">Knows the house by heart.</span><span class="why">Reframes the data layer — vendors, bottles, shifts — as familiarity. Intelligence worn as memory, not tech.</span></li>
+    <li><span class="num">S4</span><span class="s">Every vendor. Every bottle. Every shift.</span><span class="why">Deadpan rhythm-of-three that inventories the actual product surface. The most literal, the most provable.</span></li>
+    <li><span class="num">S5</span><span class="s">Less counting, more cooking.</span><span class="why">Balanced antithesis (the manus “Less structure, more intelligence” structure) aimed at the owner's real trade-off.</span></li>
+    <li><span class="num">S6</span><span class="s">Quietly takes care of it.</span><span class="why">The voice posture as a promise — the habitué settles things before you notice. Pairs with any of the above as a second line.</span></li>
+  </ul>
+</section>
+
+<!-- ======================= 03 VOICE ======================= -->
+<section id="voice">
+  <div class="kicker">03 — Voice</div>
+  <h2>How the house speaks</h2>
+  <p class="lede">Two registers, strictly separated: the <em>house</em> (serif, warm, speaks first) and the <em>ledger</em> (sans/mono, plain, never performs). Warmth comes from knowing details, never from adjectives.</p>
+
+  <ol class="rules">
+    <li><b>Serif when the house speaks, sans when it works.</b> Greetings, hand-offs and moments of care are set in Fraunces; rows, totals and controls stay in Instrument Sans.</li>
+    <li><b>Talk like a maître d', not a dashboard.</b> Second person, present tense, one clause where one will do.</li>
+    <li><b>Verbs first.</b> Every actionable line opens with what happens: Approve, Close, Walk through.</li>
+    <li><b>Warmth is specificity.</b> Name the vendor, the bottle, the shift — never reach for adjectives or exclamation marks instead.</li>
+    <li><b>Numbers stay plain.</b> The tab is the tab: tabular figures, no celebration, no dramatizing a variance.</li>
+    <li><b>Empty is expectant, not apologetic.</b> An empty state says what will appear here and how to invite it in.</li>
+    <li><b>Grave things said gravely.</b> Destructive and financial actions drop all charm: plain words, full consequence, no softening.</li>
+    <li><b>The Turkish stays a whisper.</b> The müdavim story appears at thresholds — first run, about, sign-off — never as a riddle in the middle of a working screen.</li>
+  </ol>
+
+  <div class="rw">
+    <div class="rw-row rw-head"><div>Today's string</div><div>In the Habitué's voice</div></div>
+    <div class="rw-row">
+      <div class="was">Draft, approve, and track purchase orders through delivery</div>
+      <div class="now">Draft it, approve it, watch it arrive.</div>
+    </div>
+    <div class="rw-row">
+      <div class="was">Alerts that need a decision, oldest first</div>
+      <div class="now">Waiting on you — longest wait first.</div>
+    </div>
+    <div class="rw-row">
+      <div class="was">No checks yet — close an order from the terminal</div>
+      <div class="now"><span class="serif-voice">Nothing on the tab yet.</span> Close an order at the terminal and it lands here.</div>
+    </div>
+    <div class="rw-row">
+      <div class="was">No comparable data</div>
+      <div class="now">Not enough history to compare yet.</div>
+    </div>
+    <div class="rw-row">
+      <div class="was">Permanently delete your Mudavym account.</div>
+      <div class="now">Delete your Mudavym account — permanently. Everything the house knows goes with it.</div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:14px">Note the last rewrite: rule 07 in action — no serif, no comfort, the consequence stated in the product's own metaphor because it is the literal truth.</p>
+</section>
+
+<!-- ======================= 04 PALETTE ======================= -->
+<section id="palette">
+  <div class="kicker">04 — Palette</div>
+  <h2>Daylight and after close</h2>
+  <p class="lede">Warm paper by day, wine-tinted near-black by night. One brand color — <b>house wine</b> — replaces the incumbent burgundies (#9E4249 / #CD2D5B): same family, aged down, poured sparingly. Brass is the only other metal in the room. Semantic hues never sit raw; each ships with its 11–15% tint twin.</p>
+
+  <div class="pal-grid">
+    <!-- LIGHT -->
+    <div class="pal">
+      <h3>Daylight</h3>
+      <div class="sub">Light · default</div>
+      <div class="sw"><span class="box" style="background:#F6F3ED"></span><span class="tname">--bg</span><span class="hex">#F6F3ED · paper</span><span class="use">page ground</span></div>
+      <div class="sw"><span class="box" style="background:#FCFAF6"></span><span class="tname">--surface</span><span class="hex">#FCFAF6 · linen</span><span class="use">cards, rails, tables</span></div>
+      <div class="sw"><span class="box" style="background:#FFFFFF"></span><span class="tname">--raised</span><span class="hex">#FFFFFF · china</span><span class="use">menus, dialogs, drawers</span></div>
+      <div class="sw"><span class="box" style="background:rgba(59,51,42,.06)"></span><span class="tname">--tint</span><span class="hex">ink 3B332A @ 6%</span><span class="use">hovers, quiet fills</span></div>
+      <div class="sw"><span class="box" style="background:rgba(59,51,42,.14)"></span><span class="tname">--line</span><span class="hex">ink 3B332A @ 14%</span><span class="use">hairlines, rules</span></div>
+      <div class="pal-sep"></div>
+      <div class="sw"><span class="box" style="background:#262019"></span><span class="tname">--ink-1</span><span class="hex">#262019</span><span class="use">primary text</span></div>
+      <div class="sw"><span class="box" style="background:#5A5142"></span><span class="tname">--ink-2</span><span class="hex">#5A5142</span><span class="use">secondary text</span></div>
+      <div class="sw"><span class="box" style="background:#8B8171"></span><span class="tname">--ink-3</span><span class="hex">#8B8171</span><span class="use">meta, kickers, icons</span></div>
+      <div class="sw"><span class="box" style="background:#B5AB9A"></span><span class="tname">--ink-4</span><span class="hex">#B5AB9A</span><span class="use">placeholders, disabled</span></div>
+      <div class="pal-sep"></div>
+      <div class="sw"><span class="box" style="background:#7A3E47"></span><span class="tname">--accent</span><span class="hex">#7A3E47 · house wine</span><span class="use">actions, focus, the fifth stroke</span></div>
+      <div class="sw"><span class="box" style="background:rgba(122,62,71,.10)"></span><span class="tname">--accent-tint</span><span class="hex">wine @ 10%</span><span class="use">selection, AI-draft chips</span></div>
+      <div class="sw"><span class="box" style="background:#A87B3F"></span><span class="tname">--brass</span><span class="hex">#A87B3F · brass rail</span><span class="use">in-transit, highlights (rare)</span></div>
+      <div class="pal-sep"></div>
+      <div class="sw"><span class="box" style="background:#437A54"></span><span class="tname">--ok</span><span class="hex">#437A54 (+ 12% tint)</span><span class="use">delivered, settled, in stock</span></div>
+      <div class="sw"><span class="box" style="background:#A9761B"></span><span class="tname">--warn</span><span class="hex">#A9761B (+ 13% tint)</span><span class="use">running low, waiting</span></div>
+      <div class="sw"><span class="box" style="background:#AC4238"></span><span class="tname">--bad</span><span class="hex">#AC4238 (+ 11% tint)</span><span class="use">out, overdue, failed</span></div>
+    </div>
+
+    <!-- DARK -->
+    <div class="pal dark">
+      <h3>After close</h3>
+      <div class="sub">Dark · wine-tinted, not gray</div>
+      <div class="sw"><span class="box" style="background:#171210"></span><span class="tname">--bg</span><span class="hex">#171210 · after-hours</span><span class="use">page ground</span></div>
+      <div class="sw"><span class="box" style="background:#201913"></span><span class="tname">--surface</span><span class="hex">#201913 · back bar</span><span class="use">cards, rails, tables</span></div>
+      <div class="sw"><span class="box" style="background:#2A2119"></span><span class="tname">--raised</span><span class="hex">#2A2119 · candle shelf</span><span class="use">menus, dialogs, drawers</span></div>
+      <div class="sw"><span class="box" style="background:rgba(242,235,223,.06)"></span><span class="tname">--tint</span><span class="hex">cream F2EBDF @ 6%</span><span class="use">hovers, quiet fills</span></div>
+      <div class="sw"><span class="box" style="background:rgba(242,235,223,.13)"></span><span class="tname">--line</span><span class="hex">cream F2EBDF @ 13%</span><span class="use">hairlines, rules</span></div>
+      <div class="pal-sep"></div>
+      <div class="sw"><span class="box" style="background:#F2EBDF"></span><span class="tname">--ink-1</span><span class="hex">#F2EBDF</span><span class="use">primary text</span></div>
+      <div class="sw"><span class="box" style="background:#C8BEAE"></span><span class="tname">--ink-2</span><span class="hex">#C8BEAE</span><span class="use">secondary text</span></div>
+      <div class="sw"><span class="box" style="background:#9A8F7E"></span><span class="tname">--ink-3</span><span class="hex">#9A8F7E</span><span class="use">meta, kickers, icons</span></div>
+      <div class="sw"><span class="box" style="background:#6B6153"></span><span class="tname">--ink-4</span><span class="hex">#6B6153</span><span class="use">placeholders, disabled</span></div>
+      <div class="pal-sep"></div>
+      <div class="sw"><span class="box" style="background:#C9868F"></span><span class="tname">--accent</span><span class="hex">#C9868F · candlelit wine</span><span class="use">actions, focus</span></div>
+      <div class="sw"><span class="box" style="background:rgba(201,134,143,.14)"></span><span class="tname">--accent-tint</span><span class="hex">wine @ 14%</span><span class="use">selection, AI-draft chips</span></div>
+      <div class="sw"><span class="box" style="background:#CFA265"></span><span class="tname">--brass</span><span class="hex">#CFA265 · brass rail</span><span class="use">in-transit, highlights (rare)</span></div>
+      <div class="pal-sep"></div>
+      <div class="sw"><span class="box" style="background:#7FB08D"></span><span class="tname">--ok</span><span class="hex">#7FB08D (+ 14% tint)</span><span class="use">delivered, settled, in stock</span></div>
+      <div class="sw"><span class="box" style="background:#D3A24A"></span><span class="tname">--warn</span><span class="hex">#D3A24A (+ 15% tint)</span><span class="use">running low, waiting</span></div>
+      <div class="sw"><span class="box" style="background:#D67A6E"></span><span class="tname">--bad</span><span class="hex">#D67A6E (+ 13% tint)</span><span class="use">out, overdue, failed</span></div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:16px">Dark is not inverted gray: backgrounds bias warm toward the wine/amber axis (#171210 has more red than blue), so night mode feels like the dining room at 1 a.m., not a code editor.</p>
+</section>
+
+<!-- ======================= 05 TYPE ======================= -->
+<section id="type">
+  <div class="kicker">05 — Type</div>
+  <h2>Three voices, one menu</h2>
+  <p class="lede"><b>Fraunces</b> (the house — soft serif, speaks first) · <b>Instrument Sans</b> (the ledger — warm-neutral UI) · <b>IBM Plex Mono</b> (the receipt — figures, kickers, IDs). All Google-hosted. Headline scale stays modest on purpose: authority by restraint, never a 96px hero.</p>
+
+  <div class="spec">
+    <div class="spec-row">
+      <div class="spec-meta"><b>greeting</b> · Fraunces 500<br>40px / 1.15 / −0.015em</div>
+      <div style="font-family:var(--serif);font-weight:500;font-size:40px;line-height:1.15;letter-spacing:-.015em">Good evening, Aldemir.</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-meta"><b>display</b> · Fraunces 500<br>28px / 1.2 / −0.01em</div>
+      <div style="font-family:var(--serif);font-weight:500;font-size:28px;line-height:1.2;letter-spacing:-.01em">The cellar, at a glance</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-meta"><b>title</b> · Instrument Sans 600<br>21px / 1.3</div>
+      <div style="font-weight:600;font-size:21px;line-height:1.3">Pending orders</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-meta"><b>subtitle</b> · Instrument Sans 500<br>17px / 1.4</div>
+      <div style="font-weight:500;font-size:17px;line-height:1.4">Vinos del Norte — this week's deliveries</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-meta"><b>body</b> · Instrument Sans 400<br>15px / 1.6</div>
+      <div style="font-size:15px">The Rioja crianza is down to four bottles. Based on the last three weekends, that carries you to Saturday — not through it.</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-meta"><b>ui</b> · Instrument Sans 500<br>14px / 1.45</div>
+      <div style="font-weight:500;font-size:14px">Approve draft &nbsp;·&nbsp; Snooze &nbsp;·&nbsp; View thread</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-meta"><b>caption</b> · Instrument Sans 400<br>12.5px / 1.5 · ink-3</div>
+      <div style="font-size:12.5px;color:var(--ink-3)">Last counted yesterday, 11:42 pm, by Deniz.</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-meta"><b>data</b> · IBM Plex Mono 500<br>13px / tabular-nums</div>
+      <div style="font-family:var(--mono);font-weight:500;font-size:13px;font-variant-numeric:tabular-nums">PO-1042 &nbsp; 24 btl &nbsp; $1,860.00 &nbsp; 2026-08-28</div>
+    </div>
+    <div class="spec-row">
+      <div class="spec-meta"><b>kicker</b> · IBM Plex Mono 500<br>11px / +0.15em / uppercase</div>
+      <div class="kicker">Waiting on you — longest wait first</div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:14px">Rule of engagement: Fraunces may appear at most once per screen — the moment the house speaks. If everything is serif, nothing is a greeting. Italic Fraunces is reserved for asides and the AI's working state.</p>
+</section>
+
+<!-- ======================= 06 MOTION ======================= -->
+<section id="motion">
+  <div class="kicker">06 — Motion</div>
+  <h2>Moves like the staff, not the lights</h2>
+  <p class="lede">Springs everywhere motion exists (the react-motion lineage), tuned near-critical — spring-flavored, never oscillating. Decoration animates nowhere; state animates everywhere. All tokens live in one file and map 1:1 to the <code>motion</code> React library; everything gates through <code>useReducedMotion</code>.</p>
+
+  <table class="mtable">
+    <tr><th>Token</th><th>Physics</th><th>Used for</th><th><code>motion</code> mapping</th></tr>
+    <tr><td>settle</td><td>cubic-bezier(.16,1,.3,1) · 180–320ms</td><td>hovers, fades, chevrons, row expand — the house curve</td><td><code>transition=&#123;&#123;duration:.22, ease:[.16,1,.3,1]&#125;&#125;</code></td></tr>
+    <tr><td>tuck</td><td>spring · stiffness 380 · damping 32</td><td>toggles, drawers, sheet modals — a chair tucked in: firm, no bounce</td><td><code>transition=&#123;&#123;type:"spring", stiffness:380, damping:32&#125;&#125;</code></td></tr>
+    <tr><td>pour</td><td>spring · stiffness 120 · damping 20</td><td>number tickers, KPI counters — fast start, gentle level-off</td><td><code>useSpring(v, &#123;stiffness:120, damping:20&#125;)</code> + tabular-nums</td></tr>
+    <tr><td>greet</td><td>cubic-bezier(.26,.86,.44,.985) · 400ms</td><td>the serif greeting's entrance — once per session, 6px lift + fade</td><td><code>initial=&#123;&#123;opacity:0,y:6&#125;&#125; animate=&#123;&#123;opacity:1,y:0&#125;&#125;</code></td></tr>
+    <tr><td>shimmer</td><td>linear · 1.7s loop</td><td>AI working state — a light passing over serif italic text; never spinners</td><td>CSS keyframe, or <code>animate=&#123;&#123;backgroundPosition&#125;&#125;</code> loop</td></tr>
+  </table>
+
+  <div class="demos">
+    <div class="demo">
+      <h4>Live · settings toggle — <b>tuck</b></h4>
+      <div class="tg-line"><span style="font-size:13.5px;font-weight:500">Auto-draft vendor replies</span>
+        <button class="toggle" id="tg" role="switch" aria-checked="false" aria-label="Auto-draft vendor replies"><span class="thumb" id="tgThumb"></span></button>
+      </div>
+      <div class="tg-line" style="border-top:1px dashed var(--line)"><span style="font-size:13.5px;font-weight:500">Nightly digest at close</span>
+        <button class="toggle on" id="tg2" role="switch" aria-checked="true" aria-label="Nightly digest at close"><span class="thumb" id="tg2Thumb" style="transform:translateX(18px)"></span></button>
+      </div>
+      <p class="cap">Thumb rides a real JS spring (380/32) — the same numbers the React build passes to <code>type:"spring"</code>. Track color uses <b>settle</b>.</p>
+    </div>
+
+    <div class="demo">
+      <h4>Live · row expand — <b>settle</b></h4>
+      <div class="xrow" id="xrow">
+        <div class="xrow-head" onclick="document.getElementById('xrow').classList.toggle('open')">
+          <div><div class="t">PO-1038 · Bodega Álvaro</div><div class="m">18 bottles · delivered Tue</div></div>
+          <svg class="chev" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="expander"><div class="exp-in"><div class="exp-body">
+          <div class="ln"><span>Albariño 2023 × 12</span><span>$540.00</span></div>
+          <div class="ln"><span>Mencía 2022 × 6</span><span>$372.00</span></div>
+          <div class="ln" style="border-top:1px dashed var(--line);font-weight:500"><span>Received &amp; shelved</span><span>$912.00</span></div>
+        </div></div></div>
+      </div>
+      <p class="cap">Grid-rows 0fr→1fr on the house curve, chevron on the same token — in React, <code>layout</code> + <b>settle</b> so siblings glide instead of snapping.</p>
+    </div>
+
+    <div class="demo">
+      <h4>Live · number ticker — <b>pour</b></h4>
+      <span class="kicker" style="font-size:10px">Revenue · tonight</span>
+      <span class="tick-num" id="tick">$3,120</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn" id="tickBtn">Run service</button>
+        <span class="shimmer" id="shim" style="display:none">Totting up the night…</span>
+      </div>
+      <p class="cap">Value flows on a loose spring (120/20) with tabular figures so digits never jitter — the AnimateNumber pattern rebuilt on <code>useSpring</code>. The italic sweep is <b>shimmer</b>, the only motion the AI is allowed while thinking.</p>
+    </div>
+  </div>
+  <p class="note" style="margin-top:16px">Portability: these five tokens are the RN contract too — <b>tuck</b> and <b>pour</b> hand their stiffness/damping straight to Reanimated's <code>withSpring</code>.</p>
+</section>
+
+<!-- ======================= 07 SCREENS ======================= -->
+<section id="screens">
+  <div class="kicker">07 — Sample screens</div>
+  <h2>The same two rooms, in this voice</h2>
+  <p class="lede">Left: the dashboard at open, in daylight. Right: the orders strip after close, in the dark palette — same tokens, same furniture.</p>
+
+  <div class="screens">
+    <!-- Screen 1: Dashboard, light -->
+    <div class="frame">
+      <div class="frame-label">Screen 1 · Dashboard snapshot · daylight</div>
+      <div class="app">
+        <div class="greet">Good evening, Aldemir.</div>
+        <div class="greet-sub">Here's the house before service — four numbers and one thing to decide.</div>
+        <div class="kpis">
+          <div class="kpi"><div class="kl">Revenue · tonight</div><div class="kv">$4,280</div><div class="km">tracking 8% over last Thu</div></div>
+          <div class="kpi warn"><div class="kl">Low stock</div><div class="kv">7</div><div class="km">items below par</div></div>
+          <div class="kpi"><div class="kl">Pending orders</div><div class="kv">3</div><div class="km">two arrive tomorrow</div></div>
+          <div class="kpi alert"><div class="kl">Alerts</div><div class="kv">2</div><div class="km">waiting on you</div></div>
+        </div>
+        <div class="onetap">
+          <div class="ol">AI draft · vendor known 2 yrs</div>
+          <div class="ot">Approve Rioja reorder — 12 bottles from Vinos del Norte</div>
+          <div class="om">The usual case, at last month's price. Lands Thursday if it goes out tonight.</div>
+          <div class="row"><button class="btn">Approve</button><button class="btn ghost">Look first</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen 2: Orders strip, dark -->
+    <div class="frame dark">
+      <div class="frame-label">Screen 2 · Orders strip · after close</div>
+      <div class="app">
+        <div class="strip-kick">Orders — in motion</div>
+        <div class="po">
+          <div class="po-top">
+            <span class="po-id">PO-1042</span>
+            <span class="po-vendor">Vinos del Norte</span>
+            <span class="po-meta">24 bottles · $1,860</span>
+          </div>
+          <div class="po-actions">
+            <span class="pill transit"><span class="dot"></span>In transit</span>
+            <span class="pill draft"><span class="dot"></span>AI draft ready — one tap to approve</span>
+          </div>
+        </div>
+        <div class="drawer-hint">
+          <div class="handle"></div>
+          <div class="dh-row">
+            <span class="dh-t">Vendor thread · Vinos del Norte</span>
+            <span class="dh-m">3 messages · last reply 2h ago</span>
+          </div>
+        </div>
+        <p style="font-family:var(--serif);font-style:italic;font-size:13px;color:var(--ink-3);margin-top:14px">Mudavym drafted the confirmation at 4:12 pm. It sends when you say so — never before.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span class="kicker">077 · The Habitué · one of five directions · OD-106 co-design input</span>
+  <span class="sig">— always at the table</span>
+</footer>
+</main>
+
+<script>
+/* Tiny real spring — same physics vocabulary as motion's type:"spring" and Reanimated's withSpring */
+var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function spring(from, to, cfg, onU, onDone){
+  if (reduced){ onU(to); onDone && onDone(); return; }
+  var x = from, v = 0, last = performance.now();
+  function step(now){
+    var dt = Math.min((now - last) / 1000, 1/30); last = now;
+    var F = -cfg.stiffness * (x - to) - cfg.damping * v;
+    v += F * dt; x += v * dt;
+    if (Math.abs(x - to) < 0.05 && Math.abs(v) < 0.05){ onU(to); onDone && onDone(); return; }
+    onU(x); requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+var TUCK = {stiffness: 380, damping: 32};
+var POUR = {stiffness: 120, damping: 20};
+
+/* Toggles — tuck */
+function wireToggle(btnId, thumbId, startOn){
+  var btn = document.getElementById(btnId), th = document.getElementById(thumbId), on = startOn, cur = startOn ? 18 : 0;
+  btn.addEventListener('click', function(){
+    on = !on; btn.classList.toggle('on', on); btn.setAttribute('aria-checked', on);
+    var from = cur, to = on ? 18 : 0;
+    spring(from, to, TUCK, function(v){ cur = v; th.style.transform = 'translateX(' + v + 'px)'; });
+  });
+}
+wireToggle('tg', 'tgThumb', false);
+wireToggle('tg2', 'tg2Thumb', true);
+
+/* Ticker — pour */
+(function(){
+  var el = document.getElementById('tick'), btn = document.getElementById('tickBtn'), shim = document.getElementById('shim');
+  var targets = [4280, 5645, 3120], i = 0, cur = 3120, busy = false;
+  btn.addEventListener('click', function(){
+    if (busy) return; busy = true;
+    shim.style.display = 'inline';
+    setTimeout(function(){
+      shim.style.display = 'none';
+      var to = targets[i % targets.length]; i++;
+      spring(cur, to, POUR, function(v){
+        cur = v; el.textContent = '$' + Math.round(v).toLocaleString('en-US');
+      }, function(){ busy = false; });
+    }, reduced ? 0 : 700);
+  });
+})();
+</script>
+</body>
+</html>

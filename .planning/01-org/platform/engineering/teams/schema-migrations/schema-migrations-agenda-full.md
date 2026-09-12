@@ -6,7 +6,7 @@ team: schema-migrations
 status: provisional
 metrics: [schema.days_since_hand_applied_ddl, schema.parity_job_green_streak]
 updated: 2026-08-24
-links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-agenda-board]]", "[[schema-migrations-loops]]", "[[engineering-agenda-full]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[SCHEMA_DRIFT_INVENTORY]]"]
+links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-agenda-board]]", "[[schema-migrations-loops]]", "[[engineering-agenda-full]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[inventory-ledger-charter]]", "`../../../../SCHEMA_DRIFT_INVENTORY.txt`"]
 ---
 
 # Schema & Migrations — Full Agenda
@@ -68,7 +68,7 @@ the practice stays the path of least resistance (M5).
 ## Next steps
 
 - [ ] Write the emergency DDL runbook; register entries in
-      `.planning/SCHEMA_DRIFT_INVENTORY.txt` (M2)
+      `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt` (M2)
 - [ ] Publish `schema.days_since_hand_applied_ddl` — readable today
 - [ ] Extend parity to compare **function bodies** (M3)
 - [ ] CI regenerates `packages/database` types and fails on any diff (M4)
@@ -76,7 +76,7 @@ the practice stays the path of least resistance (M5).
 - [ ] Confirm with [[state-integrity-invariants-charter|sre-state-integrity]] that only the auditor may declare a red expected
 - [ ] Support [[inventory-ledger-charter]]'s guard extension into
       `supabase/migrations/**` function bodies
-- [ ] Reconcile `.planning/SCHEMA_DRIFT_INVENTORY.txt` against current production; confirm
+- [ ] Reconcile `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt` against current production; confirm
       the 2026-08-05 drift is fully absorbed into migrations
 
 ## Questions for the founder

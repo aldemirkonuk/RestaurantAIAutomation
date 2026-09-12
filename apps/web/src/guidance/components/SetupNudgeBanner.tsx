@@ -48,7 +48,7 @@ export function SetupNudgeBanner() {
     <GuidanceStrip
       data-guidance="setup-nudge-banner"
       ariaLabel="Finish setup"
-      title="Finish setting up WineOps."
+      title="Finish setting up Mudavym."
       body="Upload your wine list and set a low-stock threshold to unlock inventory and ordering."
       primaryLabel="Finish setup"
       onPrimary={() => navigate('/get-started')}

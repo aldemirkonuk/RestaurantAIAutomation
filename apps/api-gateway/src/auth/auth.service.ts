@@ -18,6 +18,49 @@ import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
+import { devBypassEnvEnabled } from "./dev-bypass.util";
+import {
+  IDENTITY_PROVIDERS,
+  IdentityProviderDescriptor,
+  IdentityProviderId,
+  defaultSignInMethods,
+  getIdentityProvider,
+  isKnownIdentityProviderId,
+  sortForDisplay,
+} from "./identity-providers";
+
+/**
+ * What `POST /auth/sign-in-methods` answers: the ways this identity can
+ * actually get in, sourced from facts rather than inference.
+ */
+export interface SignInMethodsResult {
+  /** The address as resolved (trimmed, lower-cased). */
+  email: string;
+  /** Methods usable right now. Empty means exactly that — see `noSignInMethod`. */
+  methods: IdentityProviderDescriptor[];
+  /**
+   * Providers genuinely linked to *this identity* that it cannot use here —
+   * a Microsoft-linked account, say, while Microsoft has no button. Each
+   * carries its `disabledReason`. Usually empty; when it is not, the page must
+   * say so rather than quietly showing a shorter list, because "a method
+   * silently missing" is how the fabricated Google message looked plausible.
+   */
+  unavailable: IdentityProviderDescriptor[];
+  /**
+   * The whole registry, every provider this product declares, usable or not.
+   * Not rendered by default — two permanent "coming soon" rows on every sign-in
+   * is noise, not honesty. It ships so that turning them on is a one-line flag
+   * in the page rather than a new endpoint field.
+   */
+  declared: IdentityProviderDescriptor[];
+  /**
+   * True only when the address resolves to a real account that has no password
+   * and no linked provider — the `aldemirkonuk@hotmail.com` case. Never true
+   * for an address we do not recognise: claiming "this account has none" about
+   * an account that does not exist would be its own fabrication.
+   */
+  noSignInMethod: boolean;
+}
 
 export interface JwtPayload {
   sub: string; // user_id
@@ -25,6 +68,21 @@ export interface JwtPayload {
   role: "owner" | "manager" | "staff";
   /** Present on all tokens issued by this API; omit on very old tokens */
   restaurantId?: string;
+  /**
+   * Signed into every token by `generateTokens`, but was never declared here
+   * and never read back out — see OD-79. Consumers should prefer the database
+   * column; this is a snapshot from issue time.
+   */
+  emailVerified?: boolean;
+  /**
+   * Present ONLY on a token minted by `devBypassLogin`, and never signed as
+   * `false` — a normal session omits the key entirely, so "absent" and "not a
+   * dev session" are the same fact rather than two states a reader could
+   * confuse. It is a marker, not a permission: every reader re-checks
+   * `devBypassEnvEnabled()` at read time, so the claim does nothing on a
+   * production server even though the signature is valid there.
+   */
+  devBypass?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -46,6 +104,12 @@ export interface RegisterData {
   restaurantId: string;
   role: "owner" | "manager" | "staff";
   phone?: string;
+}
+
+/** "Google", "Google and Microsoft", "Google, Microsoft and Apple". */
+function formatList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 @Injectable()
@@ -96,21 +160,58 @@ export class AuthService {
     }
 
     if (!user.password_hash) {
-      // oauth_provider records which identity provider actually created this
-      // account (google or microsoft) — do not assume Google. A hotmail.com
-      // address, for example, is just as likely to have signed up via
-      // Microsoft, and telling that user to use Google sign-in sends them
-      // into a flow that can never work for their account.
-      const provider: "google" | "microsoft" | null =
-        user.oauth_provider === "microsoft" ? "microsoft" : "google";
-      const providerLabel = provider === "microsoft" ? "Microsoft" : "Google";
+      // Say what is TRUE about this account, or say nothing about it.
+      //
+      // This used to read `user.oauth_provider === "microsoft" ? "microsoft"
+      // : "google"`, i.e. "assume Google unless told otherwise". In production
+      // on 2026-08-26 that assumption was wrong for every account it fired on:
+      // all four password-less users had `oauth_provider` NULL and zero rows
+      // in `user_oauth_accounts`, so all four were told "This account uses
+      // Google sign-in" — a guess dressed as a fact, pointing at a flow that
+      // could never work for them. ADR 0020 forbids exactly that; ADR 0024
+      // replaces it with the two honest answers below.
+      //
+      // `oauth_provider` is not the source of truth here and never was: it is
+      // NULL for 9 of 10 production users, including the one user who does
+      // have a linked Google account with a row in user_oauth_accounts.
+      // `resolveLinkedProviderIds` reads the rows and treats the column only
+      // as a legacy hint.
+      const linked = await this.resolveLinkedProviderIds(user.user_id);
+
+      if (linked.length === 0) {
+        throw new UnauthorizedException({
+          message:
+            'This account doesn\'t have a sign-in method set up yet. Use "Forgot password?" below to set a password.',
+          code: "NO_SIGNIN_METHOD",
+        });
+      }
+
+      const descriptors = sortForDisplay(
+        linked
+          .map((id) => getIdentityProvider(id))
+          .filter((p): p is IdentityProviderDescriptor => !!p),
+      );
+      const labels = descriptors.map((p) => p.label);
+      const usable = descriptors.filter((p) => p.enabled);
+
       throw new UnauthorizedException({
         message:
-          provider === "google"
-            ? `This account uses ${providerLabel} sign-in. Use the "Sign in with Google" button below.`
-            : `This account uses ${providerLabel} sign-in, which isn't available on this page yet. Use "Forgot password?" below to set a password instead.`,
+          usable.length > 0
+            ? `This account signs in with ${formatList(labels)}. Use the ${formatList(
+                usable.map((p) => `"Sign in with ${p.label}"`),
+              )} button below.`
+            : `This account signs in with ${formatList(
+                labels,
+              )}, which isn't available on this page yet. Use "Forgot password?" below to set a password instead.`,
         code: "OAUTH_ONLY",
-        provider,
+        // Plural is the real shape — an account can have several linked
+        // providers, and getLinkedProviders has always been able to return
+        // two. `provider` stays alongside it so the existing web client
+        // (AuthContext's LoginError, Login.tsx's redirect) keeps working
+        // unchanged; it is the first *usable* provider, falling back to the
+        // first linked one.
+        providers: linked,
+        provider: usable[0]?.id ?? linked[0],
       });
     }
 
@@ -183,7 +284,13 @@ export class AuthService {
     this.logger.warn(
       `DEV_AUTH_BYPASS active — issuing a real session for ${email} (localhost only).`,
     );
-    return this.generateTokens(user);
+    // `true` here signs `emailVerified: true` and a `devBypass: true` marker.
+    // Without it the session is unusable for its one purpose: the bypass
+    // account's `users.email_verified` is false, and ProtectedRoute
+    // (apps/web/src/components/ProtectedRoute.tsx:42) sends every route to
+    // /verify-email on that. Changing the row instead would edit real data to
+    // work around a dev tool, and would follow the account into production.
+    return this.generateTokens(user, true);
   }
 
   /**
@@ -291,10 +398,26 @@ export class AuthService {
       // reverts the tenant to the default restaurant, causing 500s on resources
       // that belong to the switched-to restaurant.
       const scopedRestaurantId = payload.restaurantId ?? user.restaurant_id;
-      return this.generateTokens({
-        ...user,
-        restaurant_id: scopedRestaurantId,
-      });
+
+      // Carry the dev-bypass marker across the refresh. Without this the
+      // override silently lapsed after 15 minutes: the new payload is rebuilt
+      // from the row, the row says false, and the founder was bounced to
+      // /verify-email mid-session with no event to point at. A lapse on a
+      // timer is the worst shape of this bug — it looks like the fix never
+      // worked rather than like it expired.
+      //
+      // Both gates are re-checked HERE, at refresh time, not inherited: a
+      // marked refresh token presented to a production server mints an
+      // ordinary session, exactly as if the marker were absent.
+      const devBypass = payload.devBypass === true && devBypassEnvEnabled();
+
+      return this.generateTokens(
+        {
+          ...user,
+          restaurant_id: scopedRestaurantId,
+        },
+        devBypass,
+      );
     } catch (error) {
       throw new UnauthorizedException("Invalid refresh token");
     }
@@ -396,7 +519,10 @@ export class AuthService {
    * Studio roles are fetched from user_roles table and embedded in app_metadata.roles
    * so FastAPI require_studio_role() can authorize studio API calls without a DB round-trip.
    */
-  private async generateTokens(user: any): Promise<TokenPair> {
+  private async generateTokens(
+    user: any,
+    devBypass = false,
+  ): Promise<TokenPair> {
     // Fetch active studio roles for this user
     let studioRoles: string[] = [];
     try {
@@ -431,7 +557,14 @@ export class AuthService {
       email: user.email,
       role: restaurantRole,
       restaurantId: user.restaurant_id,
-      emailVerified: user.email_verified ?? false,
+      // `devBypass` is only ever true on the one call from `devBypassLogin`,
+      // which has already re-checked the env gate itself. The database row is
+      // untouched; this is a claim about the SESSION, not about the account.
+      emailVerified: devBypass ? true : (user.email_verified ?? false),
+      // Spread, not `devBypass: devBypass` — a normal token must not carry the
+      // key at all. A signed `false` would be a second way to say "not a dev
+      // session", and readers would have to handle both.
+      ...(devBypass ? { devBypass: true } : {}),
       app_metadata: { roles: studioRoles },
     };
 
@@ -645,7 +778,11 @@ export class AuthService {
         });
 
       // Both emails are fire-and-forget — Gmail latency must never delay the registration response
-      this.queueEmailVerification(userId, dto.email).catch((err) =>
+      // `userId` is declared `string | null` for the rollback path above; by
+      // here it has been assigned from the created row and the throw on
+      // failure means it cannot be null. Asserting that rather than widening
+      // the callee, which would let a genuinely-null id through elsewhere.
+      this.queueEmailVerification(userId as string, dto.email).catch((err) =>
         this.logger.warn(
           `queueEmailVerification failed (non-fatal): ${err.message}`,
         ),
@@ -842,10 +979,20 @@ export class AuthService {
     let code: string;
     let attempts = 0;
     do {
-      const bytes = crypto.randomBytes(8);
-      code = Array.from(bytes)
-        .map((b) => CHARSET[(b as number) % CHARSET.length])
-        .join("");
+      // crypto.randomInt, not randomBytes(...) % CHARSET.length.
+      //
+      // The modulo version is unbiased *only* because CHARSET happens to be
+      // 32 characters and 256 divides evenly by 32. That is a property of the
+      // string literal above, not of the code: drop one ambiguous character
+      // from CHARSET — exactly the edit this "no confusable letters" alphabet
+      // invites — and the first 256 % len values become more likely than the
+      // rest, making organisation invite codes measurably easier to guess.
+      // randomInt does rejection sampling internally, so uniformity no longer
+      // depends on the alphabet length.
+      code = Array.from(
+        { length: 8 },
+        () => CHARSET[crypto.randomInt(CHARSET.length)],
+      ).join("");
       const { data: existing } = await this.databaseService.supabase
         .from("organization_invites")
         .select("id")
@@ -1179,6 +1326,33 @@ export class AuthService {
         throw new ConflictException("already_member");
       }
 
+      // ACCOUNT TAKEOVER, closed 2026-08-26.
+      //
+      // This branch used to run `user = existingUser` and fall straight through
+      // to generateTokens() below. `JoinViaInviteDto` requires a password, but
+      // it was consumed ONLY by the new-user branch — so when the email matched
+      // an existing account, nothing verified anything, and the route (which is
+      // @Public) returned a working token pair for that account.
+      //
+      // The attacker is not exotic: any invited staff member could enter the
+      // owner's email instead of their own and walk away with the owner's
+      // session. One unused invite code plus a known email address.
+      //
+      // Joining an ADDITIONAL restaurant with an existing account is a real
+      // flow, so it is kept — it now costs the account's own password.
+      const passwordMatches =
+        typeof existingUser.password_hash === "string" &&
+        existingUser.password_hash.length > 0 &&
+        (await bcrypt.compare(dto.password ?? "", existingUser.password_hash));
+
+      if (!passwordMatches) {
+        // Deliberately identical to the credential error used elsewhere, and
+        // deliberately NOT "that account exists, wrong password" — this is a
+        // @Public route, so a distinguishable message would turn it into an
+        // account-existence oracle for any invite holder.
+        throw new UnauthorizedException("Invalid credentials");
+      }
+
       user = existingUser;
     } else {
       const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
@@ -1291,6 +1465,17 @@ export class AuthService {
 
   /**
    * Resend verification email — rate-limited to 1 per minute via resend_count.
+   *
+   * A missing `email_verifications` row means "never issued", not "not
+   * allowed". This used to throw `No pending verification found`, which made
+   * the endpoint refuse exactly the accounts that most needed it: anyone whose
+   * row was never created, was pruned, or predates the verification flow.
+   *
+   * That became a lockout the moment enforcement went live (ADR 0023). The
+   * gate bounces an unverified user to `/verify-email`, whose only control is
+   * this endpoint — so for an account with no row, every door was shut at
+   * once. Measured on production 2026-08-26: of three unverified accounts, two
+   * had no row and could not have got back in.
    */
   async resendVerification(
     userId: string,
@@ -1305,7 +1490,33 @@ export class AuthService {
       .limit(1)
       .maybeSingle();
 
-    if (!verif) throw new BadRequestException("No pending verification found");
+    if (!verif) {
+      // No pending row. Before minting one, check the most recent row of ANY
+      // status — otherwise "no pending row" would be an unlimited send button
+      // for an already-verified account, which is the cooldown's whole point.
+      const { data: recent } = await this.databaseService.supabase
+        .from("email_verifications")
+        .select("created_at, last_resent_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recent) {
+        const lastActivity = new Date(
+          recent.last_resent_at ?? recent.created_at,
+        ).getTime();
+        if ((Date.now() - lastActivity) / 1000 < 60) {
+          throw new BadRequestException(
+            "Please wait 1 minute before resending",
+          );
+        }
+      }
+
+      // queueEmailVerification inserts the row and sends in one step.
+      await this.queueEmailVerification(userId, email);
+      return { sent: true };
+    }
 
     if (verif.last_resent_at) {
       const secondsSinceLast =
@@ -1328,9 +1539,22 @@ export class AuthService {
   }
 
   /**
-   * Find or create OAuth user.
-   * If the user doesn't exist, create them and assign to the default restaurant
-   * (or leave restaurant_id null for an onboarding flow).
+   * Find the account an OAuth identity belongs to. Never creates one.
+   *
+   * This used to self-provision: an unknown address that passed Google's token
+   * check was INSERTed as `role: "manager"` into `DEFAULT_RESTAURANT_ID`. That
+   * variable is set in production, `POST /auth/oauth/google` is unauthenticated,
+   * and `verifyGoogleToken` only checks the audience and `email_verified` — no
+   * domain restriction. So anyone on the internet holding any Google account
+   * could mint themselves a manager of a real tenant by signing in. Verified
+   * against production 2026-09-01 (the default id resolved to a live restaurant
+   * carrying real inventory); no account had come in that way yet.
+   *
+   * The auto-create is removed outright rather than re-gated on the env var:
+   * an unset variable was the only thing standing between the public internet
+   * and a manager role, and a stray value in a future environment must not be
+   * able to reopen it. Registration is where a restaurant gets created or an
+   * invite redeemed — OAuth sign-in only ever resolves an EXISTING account.
    */
   async findOrCreateOAuthUser(params: {
     provider: "google" | "microsoft";
@@ -1338,54 +1562,27 @@ export class AuthService {
     email: string;
     name: string;
   }) {
-    const { provider, providerId, email, name } = params;
+    const { provider, email } = params;
 
-    let { data: user } = await this.databaseService.supabase
+    // Normalised like every other lookup (checkEmailExists, resolveSignInMethods).
+    // `users.email` is UNIQUE and case-sensitive, so a mixed-case stored address
+    // against Google's lower-cased claim used to miss and fall through to the
+    // create branch — the same defect wearing a different hat.
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: user } = await this.databaseService.supabase
       .from("users")
       .select("*")
-      .eq("email", email)
+      .eq("email", normalizedEmail)
       .single();
 
     if (!user) {
-      const defaultRestaurantId = this.configService.get<string>(
-        "DEFAULT_RESTAURANT_ID",
+      this.logger.warn(
+        `Rejected ${provider} sign-in for unknown email; no account exists`,
       );
-
-      // Without a restaurant to join, signing up here would mint an account
-      // that can authenticate but belongs to no tenant — it lands on /no-access
-      // with no way forward, and quietly consumes the email address so the
-      // proper registration flow later reports it as taken. Registration is
-      // where a restaurant gets created or an invite gets redeemed.
-      if (!defaultRestaurantId) {
-        this.logger.warn(
-          `Rejected ${provider} sign-in for unknown email; no account exists`,
-        );
-        throw new UnauthorizedException(
-          "No WineOps account uses that address. Create an account or use your invite code first.",
-        );
-      }
-
-      const insertData: Record<string, any> = {
-        email,
-        name,
-        oauth_provider: provider,
-        oauth_id: providerId,
-        role: "manager",
-        restaurant_id: defaultRestaurantId,
-      };
-
-      const { data: newUser, error } = await this.databaseService.supabase
-        .from("users")
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (error || !newUser) {
-        this.logger.error(`OAuth registration failed: ${error?.message}`);
-        throw new UnauthorizedException("OAuth registration failed");
-      }
-
-      user = newUser;
+      throw new UnauthorizedException(
+        "No WineOps account uses that address. Create an account or use your invite code first.",
+      );
     }
 
     return user;
@@ -1410,7 +1607,7 @@ export class AuthService {
     const { data: user, error } = await this.databaseService.supabase
       .from("users")
       .select(
-        "user_id, email, name, phone, role, password_hash, oauth_provider, restaurant_id",
+        "user_id, email, name, phone, role, password_hash, oauth_provider, restaurant_id, email_verified",
       )
       .eq("user_id", userId)
       .single();
@@ -1430,6 +1627,13 @@ export class AuthService {
       restaurantId: user.restaurant_id ?? null,
       hasPassword: !!user.password_hash,
       linkedProviders,
+      // OD-79: the single web reader (ProtectedRoute) compares
+      // `user?.emailVerified === false`, and AuthContext populates `user`
+      // only from this endpoint — never by decoding the JWT. Omitting the
+      // field made that comparison `undefined === false`, so the gate could
+      // not fire. Read from the column, not the token: `verifyEmail` updates
+      // the row, and a token issued before that would still say false.
+      emailVerified: user.email_verified ?? false,
     };
   }
 
@@ -1678,33 +1882,133 @@ export class AuthService {
     // a one-off here.
   }
 
-  async getLinkedProviders(userId: string): Promise<{
-    google: boolean;
-    microsoft: boolean;
-  }> {
+  /**
+   * The providers actually linked to a user, as registry ids.
+   *
+   * `user_oauth_accounts` is the source of truth — one row per linked account.
+   * `users.oauth_provider` is a **legacy hint only** and is consulted just when
+   * there are no rows at all: it is NULL for 9 of the 10 production users as of
+   * 2026-08-26, including the single user who genuinely does have a linked
+   * Google account. Treating that column as the answer is what produced the
+   * fabricated "This account uses Google sign-in" message (ADR 0024).
+   *
+   * Unknown provider strings are dropped rather than passed through, so a stray
+   * row can never make the login page offer a method that does not exist.
+   */
+  async resolveLinkedProviderIds(
+    userId: string,
+  ): Promise<IdentityProviderId[]> {
     const { data: rows } = await this.databaseService.supabase
       .from("user_oauth_accounts")
       .select("provider")
       .eq("user_id", userId);
 
-    const set = new Set(
-      (rows ?? []).map((r: { provider: string }) => r.provider),
-    );
+    const set = new Set<IdentityProviderId>();
+    for (const row of (rows ?? []) as { provider: string }[]) {
+      if (isKnownIdentityProviderId(row.provider)) set.add(row.provider);
+    }
 
-    // Legacy fallback
+    // Legacy fallback — see the note above on why this is a hint, not a fact.
     if (set.size === 0) {
       const { data: user } = await this.databaseService.supabase
         .from("users")
         .select("oauth_provider")
         .eq("user_id", userId)
         .maybeSingle();
-      if (user?.oauth_provider === "google") set.add("google");
-      if (user?.oauth_provider === "microsoft") set.add("microsoft");
+      const legacy = user?.oauth_provider;
+      if (typeof legacy === "string" && isKnownIdentityProviderId(legacy)) {
+        set.add(legacy);
+      }
     }
 
+    return sortForDisplay(
+      [...set]
+        .map((id) => getIdentityProvider(id))
+        .filter((p): p is IdentityProviderDescriptor => !!p),
+    ).map((p) => p.id);
+  }
+
+  /**
+   * Boolean shape kept for existing callers (`GET /auth/me`, link/unlink).
+   * Delegates so provider names live in exactly one place — the registry.
+   */
+  async getLinkedProviders(userId: string): Promise<{
+    google: boolean;
+    microsoft: boolean;
+  }> {
+    const linked = new Set(await this.resolveLinkedProviderIds(userId));
     return {
-      google: set.has("google"),
-      microsoft: set.has("microsoft"),
+      google: linked.has("google"),
+      microsoft: linked.has("microsoft"),
+    };
+  }
+
+  /**
+   * Identity-first sign-in: given an email, which methods does this identity
+   * actually have? Sourced from `password_hash` and `user_oauth_accounts`, not
+   * from guesswork and never from the address's domain.
+   *
+   * Three outcomes, each honest about a different thing:
+   *
+   *   1. Account with methods  -> exactly those methods.
+   *   2. Account with none     -> `methods: []`, `noSignInMethod: true`. True,
+   *      and the only thing this endpoint confirms that `GET /auth/check-email`
+   *      does not already. That population is precisely who this change exists
+   *      to unbreak.
+   *   3. No such account       -> the standard enabled set, indistinguishable
+   *      from a fully-provisioned account. Says nothing about the address, and
+   *      the user falls through to the existing "Invalid credentials".
+   *
+   * On enumeration: revealing is a deliberate choice, not an accident (ADR
+   * 0024). The leak already exists — `GET /auth/check-email` is `@Public()` and
+   * answers `available: true/false` to anyone, and `POST /auth/register`
+   * replies "Email already registered". This makes it intentional, narrower in
+   * shape, and rate-limited. `requestPasswordReset` stays enumeration-safe and
+   * is untouched.
+   */
+  async resolveSignInMethods(email: string): Promise<SignInMethodsResult> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const declared = sortForDisplay([...IDENTITY_PROVIDERS]);
+
+    const { data: user } = await this.databaseService.supabase
+      .from("users")
+      .select("user_id, password_hash")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
+
+    if (!user) {
+      return {
+        email: normalizedEmail,
+        methods: defaultSignInMethods(),
+        unavailable: [],
+        declared,
+        noSignInMethod: false,
+      };
+    }
+
+    const ids: IdentityProviderId[] = [];
+    if (user.password_hash) ids.push("password");
+    ids.push(...(await this.resolveLinkedProviderIds(user.user_id)));
+
+    // A linked provider that is declared-but-disabled is linked-but-unusable:
+    // it belongs in `unavailable` (where it carries its reason), not in
+    // `methods`, which is the set the user can act on right now.
+    const descriptors = sortForDisplay(
+      ids
+        .map((id) => getIdentityProvider(id))
+        .filter((p): p is IdentityProviderDescriptor => !!p),
+    );
+
+    return {
+      email: normalizedEmail,
+      methods: descriptors.filter((p) => p.enabled),
+      unavailable: descriptors.filter((p) => !p.enabled),
+      declared,
+      // Keyed on *linked at all*, not on *usable*: an account with a linked
+      // Microsoft identity does have a sign-in method, it just has none this
+      // page can drive yet. Telling that user "you have no sign-in method"
+      // would be false.
+      noSignInMethod: descriptors.length === 0,
     };
   }
 

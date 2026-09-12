@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engineering — Agenda Canvas (2026-08-28)</title>
+<style>
+  :root{
+    --bg:#f7f6f4; --panel:#ffffff; --ink:#1b1a19; --ink-2:#55514c; --ink-3:#8a847d;
+    --rule:#e3ded7; --rule-2:#cfc8bf;
+    --measure:#2f6f5e;      /* Program A — give it a producer */
+    --pages:#8a4b7a;        /* Program B — per-page audit */
+    --shrink:#8a5a24;       /* Program C — shrink-only */
+    --track:#9e4249;        /* Track A obligation */
+    --decide:#3c5c92;       /* decision / proposal, not a build */
+    --seam:#b0472f;
+    --unreadable:#a8a29a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#141312; --panel:#1c1b1a; --ink:#ece8e2; --ink-2:#b3aca3; --ink-3:#7d766e;
+      --rule:#2c2a28; --rule-2:#3b3835;
+      --measure:#6fc0a6; --pages:#cb92bd; --shrink:#d69a55; --track:#e0868c;
+      --decide:#8fb0e8; --seam:#e4805f; --unreadable:#6b655e;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.45 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1280px;margin:0 auto;padding:28px 22px 56px}
+  header{border-bottom:1px solid var(--rule-2);padding-bottom:14px;margin-bottom:22px}
+  h1{font-size:19px;margin:0 0 4px;letter-spacing:-.01em}
+  h1 small{font-weight:400;color:var(--ink-3);letter-spacing:0}
+  .thesis{margin:8px 0 0;color:var(--ink-2);max-width:74ch}
+  h2{font-size:11px;letter-spacing:.10em;text-transform:uppercase;color:var(--ink-3);
+     margin:30px 0 10px;font-weight:600}
+  .panel{background:var(--panel);border:1px solid var(--rule);border-radius:9px}
+
+  /* ---- the eight numbers ---- */
+  .nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+  .num{padding:10px 11px;border-radius:8px;border:1px solid var(--rule);background:var(--panel)}
+  .num b{display:block;font-size:10px;font-weight:600;color:var(--ink-2);
+        letter-spacing:0;margin-bottom:5px;overflow-wrap:anywhere;line-height:1.3;
+        font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .num .v{font-size:17px;font-weight:650;letter-spacing:-.02em}
+  .num .v.u{color:var(--unreadable);font-size:14px;font-style:italic;font-weight:500}
+  .num .t{font-size:10.5px;color:var(--ink-3);margin-top:5px}
+  .num.read{border-color:var(--measure)}
+  .num.zero{border-color:var(--track)}
+
+  /* ---- timeline ---- */
+  .tl{position:relative;padding:0 0 6px}
+  .axis{display:flex;border-bottom:1px solid var(--rule-2);height:22px}
+  .axis .name{width:var(--gut);flex:0 0 var(--gut)}
+  .axis .track{position:relative;flex:1}
+  .axis span{position:absolute;top:4px;font-size:10.5px;color:var(--ink-3);
+        transform:translateX(-50%);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .lane{display:flex;border-bottom:1px solid var(--rule);min-height:40px}
+  .lane:last-child{border-bottom:0}
+  .lane .name{width:var(--gut);flex:0 0 var(--gut);padding:9px 10px 9px 0;
+        font-size:11.5px;color:var(--ink-2);text-align:right;line-height:1.25}
+  .lane .name em{display:block;font-style:normal;color:var(--ink-3);font-size:10px;margin-top:2px}
+  .lane .track{position:relative;flex:1;min-height:40px}
+  .grid{position:absolute;inset:0;pointer-events:none}
+  .grid i{position:absolute;top:0;bottom:0;width:1px;background:var(--rule)}
+  .chip{position:absolute;white-space:nowrap;border:1px solid currentColor;
+        border-radius:5px;padding:2.5px 7px 3px;font-size:11px;line-height:1.2;
+        background:var(--panel);cursor:default}
+  .chip b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:650;
+        font-size:10.5px;letter-spacing:.02em}
+  .chip span{color:var(--ink);opacity:.86;margin-left:5px}
+  .chip.dot::before{content:"";position:absolute;left:-4px;top:50%;width:6px;height:6px;
+        margin-top:-3px;border-radius:50%;background:currentColor}
+  .p-measure{color:var(--measure)} .p-pages{color:var(--pages)}
+  .p-shrink{color:var(--shrink)}   .p-track{color:var(--track)}
+  .p-decide{color:var(--decide)}
+  .chip.seam{box-shadow:0 0 0 2px color-mix(in srgb, var(--seam) 26%, transparent)}
+  svg.seams{position:absolute;inset:0;pointer-events:none;overflow:visible}
+  svg.seams path{fill:none;stroke:var(--seam);stroke-width:1.3;stroke-dasharray:3 3}
+  svg.seams text{fill:var(--seam);font-size:9.5px;
+        font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* ---- legend / notes ---- */
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:14px}
+  .card{padding:13px 14px}
+  .card h3{margin:0 0 6px;font-size:12.5px;letter-spacing:-.005em}
+  .card p{margin:0;color:var(--ink-2);font-size:12px}
+  .key{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 12px;font-size:11.5px;color:var(--ink-2)}
+  .key i{display:inline-block;width:9px;height:9px;border-radius:2px;
+        background:currentColor;margin-right:5px;vertical-align:-1px}
+  ul.tight{margin:6px 0 0;padding-left:16px;color:var(--ink-2);font-size:12px}
+  ul.tight li{margin:3px 0}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+        background:color-mix(in srgb,var(--ink) 7%,transparent);padding:.5px 4px;border-radius:3px}
+  footer{margin-top:30px;padding-top:12px;border-top:1px solid var(--rule);
+        color:var(--ink-3);font-size:11px}
+  @media (max-width:720px){
+    :root{--gut:96px}
+    .lane .name{font-size:10.5px}
+    .chip span{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Engineering — the agenda as one picture <small>· 2026-08-28 · ADR 0039 Track B</small></h1>
+  <p class="thesis">Eight teams are eight incommensurable ways the product can be wrong, so this
+  is not a backlog stacked by team — it is <b>what kind of wrongness each task removes</b>, plotted
+  against the date it must have moved by. Seven of the department's eight numbers are
+  <i>unreadable</i> today; that is the shape of the whole picture.</p>
+</header>
+
+<h2>The eight numbers, 2026-08-28 — never summed</h2>
+<div class="nums" id="nums"></div>
+
+<h2>Tasks by team and close-time</h2>
+<div class="key">
+  <span><i class="p-measure"></i>A · give the number a producer</span>
+  <span><i class="p-pages"></i>B · per-page audit &amp; dead ends</span>
+  <span><i class="p-shrink"></i>C · shrink-only debt</span>
+  <span><i class="p-track"></i>Track A obligation</span>
+  <span><i class="p-decide"></i>proposal — a lock or an open OD sits behind it</span>
+  <span style="color:var(--seam)">— — seam: one defect, two teams</span>
+</div>
+<div class="panel" style="padding:12px 14px 8px" id="tlpanel">
+  <div class="tl" id="tl"></div>
+</div>
+
+<h2>What the picture is arguing</h2>
+<div class="cols">
+  <div class="panel card">
+    <h3 style="color:var(--measure)">The left edge is measurement, not features</h3>
+    <p>Five of eight metrics have no producer at all. The directive's rule — a change to a
+    number never read is a guess — puts every producer before every fix. Nothing in
+    September ships a capability; everything in September makes a claim checkable.</p>
+  </div>
+  <div class="panel card">
+    <h3 style="color:var(--pages)">Hollow outranks broken in volume, broken outranks hollow in order</h3>
+    <p>49 page notes read 8 complete · 25 partial · <b>9 hollow</b> · <b>5 broken</b>, and 45 of
+    47 emit no signal. Broken pages get fixed first because a restaurant reports them; hollow
+    pages get fixed second because nothing but this audit can see them.</p>
+  </div>
+  <div class="panel card">
+    <h3 style="color:var(--track)">The department has no agent that runs</h3>
+    <p>Nine cards declared, <b>zero</b> <code>mechanical</code>, so <code>run_card.py</code> runs 8 agents
+    and none is Engineering's. Four of its numbers are pure disk-and-grep work. <b>D-4</b> is the
+    highest-leverage item here and it is a card edit, not a feature.</p>
+  </div>
+  <div class="panel card">
+    <h3 style="color:var(--seam)">Two live seams, found while writing this</h3>
+    <p><b>MD-2 ↔ IE-2</b>: every SMS declares its delivery-status callback at a domain we do not
+    own (<code>plivo_client.py:196</code>) — a send path and a wire path own one defect.
+    <b>CI-2 ↔ SM-2</b>: 1,431 of 4,094 rows carried a drifted <code>signature_hash</code>, silently
+    disabling the duplicate index; the trigger fixed the cause, nobody counted the residue.</p>
+  </div>
+</div>
+
+<h2>Corrections this canvas is drawn on</h2>
+<div class="panel card">
+  <p>The charter's evidence is dated 2026-08-24. Re-measured at HEAD on 2026-08-28:</p>
+  <ul class="tight">
+    <li>448 routes / 44 controllers → <b>463 / 48</b></li>
+    <li><b>137 unguarded endpoints → 6</b>, and all six are <code>auth</code> credential routes that
+        cannot carry a JWT. 457 of 463 (98.7%) are guarded or explicitly <code>@Public()</code></li>
+    <li><code>recurring-orders</code>, "6 unguarded routes that place real orders" → <b>guarded</b>
+        (<code>recurring-orders.controller.ts:35</code>)</li>
+    <li>62 migrations → <b>79</b></li>
+    <li>Still true, and now the only real exposure: <b><code>endpoints_protected_by_default_pct</code>
+        = 0%</b> — <code>app.module.ts:127-133</code> registers no global <code>JwtAuthGuard</code></li>
+  </ul>
+</div>
+
+<footer>
+  Throwaway thinking surface, not a product. Source of record:
+  <code>01-org/platform/engineering/engineering-agenda-full.md</code> §3 (tasks) and §5 (findings).
+  Every chip here maps to one task id there; a task with no card or loop to carry it is a
+  finding and is deliberately <i>absent</i> from this picture.
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var START = new Date(2026,7,28), END = new Date(2026,9,30);   // Aug 28 → Oct 30
+  var SPAN  = (END-START)/86400000;
+
+  var NUMS = [
+    {k:"platform.endpoints_protected_by_default_pct", v:"0%", cls:"zero",
+     t:"457/463 guarded or @Public — default still nothing · PA-1, PA-3"},
+    {k:"surfaces.reachable_route_ratio", u:1, t:"24-orphan baseline never re-derived; 7 dead-end pages · CS-4"},
+    {k:"integration.verified_signature_coverage", u:1, t:"no unsigned-request test on any of 25 public routes · IE-1"},
+    {k:"identity.false_merge_count", u:1, t:"gate wired, labelled set absent · CI-1"},
+    {k:"inventory.projection_divergence_rows", u:1, t:"no daily sampler cited anywhere · IL-1"},
+    {k:"messaging.duplicate_delivery_rate", u:1, t:"no notification_id ledger; SMS structurally unreadable · MD-1, MD-2"},
+    {k:"procurement.order_to_delivery_reconciliation_rate", u:1, t:"no reconciliation measurement · PV-1"},
+    {k:"schema.days_since_hand_applied_ddl", v:"readable", cls:"read",
+     t:"parity job, cron 0 6 * * * — production arm red while 3 migrations sit unapplied · SM-2"}
+  ];
+  var nums = document.getElementById("nums");
+  NUMS.forEach(function(n){
+    var d=document.createElement("div");
+    d.className="num "+(n.cls||"");
+    d.innerHTML = "<b>"+n.k+"</b><div class='v"+(n.u?" u":"")+"'>"+(n.u?"unreadable":n.v)+
+                  "</div><div class='t'>"+n.t+"</div>";
+    nums.appendChild(d);
+  });
+
+  var LANES = [
+    ["— department —","the seams, the board"],
+    ["platform-api","unauthenticated request"],
+    ["client-surfaces","unusable screen"],
+    ["schema-migrations","drifted database"],
+    ["catalogue-identity","wrong product identity"],
+    ["inventory-ledger","wrong stock number"],
+    ["messaging-delivery","undelivered / duplicated"],
+    ["integration-engineering","broken 3rd-party contract"],
+    ["procurement-vendor-network","wrong money"]
+  ];
+
+  // id, lane index, date, program, short label
+  var T = [
+    ["D-1",0,"09-01","measure","first honest board"],
+    ["D-2",0,"09-01","measure","publish corrections"],
+    ["D-5",0,"09-01","measure","seam arbitration"],
+    ["D-3",0,"09-25","shrink","guard ↔ outcome"],
+    ["D-4",0,"10-09","track","cards become mechanical"],
+
+    ["PA-1",1,"09-11","measure","route-guard census"],
+    ["PA-2",1,"09-11","measure","regenerate ENDPOINTS"],
+    ["PA-4",1,"09-18","measure","gate the E2E write routes"],
+    ["PA-3",1,"10-02","decide","protection-by-default case"],
+
+    ["CS-4",2,"09-18","measure","reachability as a job"],
+    ["CS-5",2,"09-30","pages","mobile parity 11%"],
+    ["CS-2",2,"10-02","pages","the 5 broken pages"],
+    ["CS-1",2,"10-16","pages","51-route audit"],
+    ["CS-3",2,"10-30","pages","9 hollow pages"],
+
+    ["SM-2",3,"09-04","shrink","apply + parity green"],
+    ["SM-4",3,"09-11","track","A2 · api_spend.task_type"],
+    ["SM-1",3,"09-18","shrink","schema-debt ratchet"],
+    ["SM-3",3,"10-16","decide","OD-110 re-measure"],
+
+    ["CI-3",4,"09-04","shrink","wire or delete 2 guards"],
+    ["CI-1",4,"09-18","measure","labelled identity set"],
+    ["CI-2",4,"09-25","measure","duplicate residue"],
+
+    ["IL-1",5,"09-11","measure","daily divergence sample"],
+    ["IL-2",5,"09-25","measure","green guard ∧ bad data"],
+
+    ["MD-2",6,"09-11","measure","the callback to nowhere"],
+    ["MD-1",6,"10-02","measure","notification_id ledger"],
+
+    ["IE-2",7,"09-11","measure","placeholder-host sweep"],
+    ["IE-1",7,"10-02","measure","signature coverage"],
+    ["IE-3",7,"10-16","measure","arrival baselines"],
+
+    ["PV-2",8,"09-04","measure","republish money exposure"],
+    ["PV-1",8,"10-02","measure","reconciliation rate"],
+    ["PV-3",8,"10-30","track","A3 · executor half"]
+  ];
+  var SEAMS = [["MD-2","IE-2","one callback"],["CI-2","SM-2","one invariant"]];
+
+  function pct(mmdd){
+    var p=mmdd.split("-"), d=new Date(2026,(+p[0])-1,+p[1]);
+    return ((d-START)/86400000)/SPAN*100;
+  }
+  var CLS={measure:"p-measure",pages:"p-pages",shrink:"p-shrink",track:"p-track",decide:"p-decide"};
+
+  var tl=document.getElementById("tl");
+  var gut = window.innerWidth<720 ? 96 : 168;
+  document.documentElement.style.setProperty("--gut", gut+"px");
+
+  var MARKS=["09-01","09-08","09-15","09-22","09-29","10-06","10-13","10-20","10-27"];
+  var MLAB =["Sep 1","Sep 8","Sep 15","Sep 22","Sep 29","Oct 6","Oct 13","Oct 20","Oct 27"];
+  var axis=document.createElement("div"); axis.className="axis";
+  axis.innerHTML="<div class='name'></div>";
+  var atr=document.createElement("div"); atr.className="track";
+  MARKS.forEach(function(m,i){
+    var s=document.createElement("span"); s.textContent=MLAB[i];
+    s.style.left=pct(m)+"%"; atr.appendChild(s);
+  });
+  axis.appendChild(atr); tl.appendChild(axis);
+
+  var chipEls={};
+  LANES.forEach(function(l,i){
+    var lane=document.createElement("div"); lane.className="lane";
+    lane.innerHTML="<div class='name'>"+l[0]+"<em>"+l[1]+"</em></div>";
+    var tr=document.createElement("div"); tr.className="track";
+    var g=document.createElement("div"); g.className="grid";
+    MARKS.forEach(function(m){ var b=document.createElement("i"); b.style.left=pct(m)+"%"; g.appendChild(b); });
+    tr.appendChild(g);
+    T.filter(function(t){return t[1]===i;}).forEach(function(t){
+      var c=document.createElement("div");
+      c.className="chip dot "+CLS[t[3]];
+      if(SEAMS.some(function(s){return s[0]===t[0]||s[1]===t[0];})) c.className+=" seam";
+      c.innerHTML="<b>"+t[0]+"</b><span>"+t[4]+"</span>";
+      c.title=t[0]+" · closes 2026-"+t[2];
+      c.style.left=pct(t[2])+"%";
+      tr.appendChild(c); chipEls[t[0]]=c;
+    });
+    lane.appendChild(tr); tl.appendChild(lane);
+  });
+
+  // pack overlapping chips into rows, then grow the lane to fit
+  function layout(){
+    LANES.forEach(function(l,i){
+      var tr=tl.querySelectorAll(".lane")[i].querySelector(".track");
+      var cs=[].slice.call(tr.querySelectorAll(".chip"));
+      cs.sort(function(a,b){return parseFloat(a.style.left)-parseFloat(b.style.left);});
+      var W=tr.clientWidth, rows=[];
+      cs.forEach(function(c){
+        c.style.transform="";
+        var x0=parseFloat(c.style.left)/100*W, w=c.offsetWidth+10;
+        var x=Math.min(x0, Math.max(0, W-w));          // clamp inside the track first
+        if(x<x0) c.style.transform="translateX("+(x-x0)+"px)";
+        var r=0;
+        while(rows[r]!==undefined && rows[r]>x) r++;    // then pack on the effective x
+        rows[r]=x+w; c.style.top=(6+r*25)+"px";
+      });
+      tr.parentNode.style.minHeight=(12+Math.max(1,rows.length)*25)+"px";
+    });
+    drawSeams();
+  }
+
+  var svg=null;
+  function drawSeams(){
+    if(svg) svg.remove();
+    svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+    svg.setAttribute("class","seams");
+    var host=document.getElementById("tlpanel"), hb=host.getBoundingClientRect();
+    SEAMS.forEach(function(s){
+      var a=chipEls[s[0]].getBoundingClientRect(), b=chipEls[s[1]].getBoundingClientRect();
+      var x1=a.left-hb.left+a.width/2, y1=a.top-hb.top+a.height/2;
+      var x2=b.left-hb.left+b.width/2, y2=b.top-hb.top+b.height/2;
+      var mx=Math.max(x1,x2)+34;
+      var p=document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.setAttribute("d","M"+x1+","+y1+" C"+mx+","+y1+" "+mx+","+y2+" "+x2+","+y2);
+      svg.appendChild(p);
+      var t=document.createElementNS("http://www.w3.org/2000/svg","text");
+      t.setAttribute("x",mx-4); t.setAttribute("y",(y1+y2)/2-3); t.textContent=s[2];
+      svg.appendChild(t);
+    });
+    host.style.position="relative";
+    host.appendChild(svg);
+  }
+
+  layout();
+  window.addEventListener("resize",function(){
+    var g=window.innerWidth<720?96:168;
+    document.documentElement.style.setProperty("--gut",g+"px");
+    layout();
+  });
+})();
+</script>
+</body>
+</html>

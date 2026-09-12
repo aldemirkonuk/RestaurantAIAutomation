@@ -19,12 +19,14 @@ import base64
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from google import genai as _genai
 from pydantic import BaseModel, Field
 
+from services.log_safety import sanitize_for_log
 from services.spend_logger import get_spend_logger
 
 logger = logging.getLogger(__name__)
@@ -293,6 +295,7 @@ class VLMExtractionService:
         try:
             image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
+            _t0 = time.perf_counter()
             response = self._client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=[
@@ -317,7 +320,10 @@ class VLMExtractionService:
             try:
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model="gemini-2.5-flash",
@@ -328,6 +334,7 @@ class VLMExtractionService:
                     task_type="vision_extraction",
                     choice=f"wines:{result.total_wines}",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={
                         "document_type": document_type,
                         "wines_found": result.total_wines,
@@ -387,6 +394,7 @@ class VLMExtractionService:
             prompt += f"\n\nRestaurant: {restaurant_name}"
 
         try:
+            _t0 = time.perf_counter()
             response = self._client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
@@ -399,7 +407,10 @@ class VLMExtractionService:
             try:
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model="gemini-2.5-flash",
@@ -410,6 +421,7 @@ class VLMExtractionService:
                     task_type="text_extraction",
                     choice=f"wines:{result.total_wines}",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={
                         "document_type": document_type,
                         "wines_found": result.total_wines,
@@ -530,7 +542,8 @@ class VLMExtractionService:
             # to its in-memory buffer, so anything surfacing here is a bug in
             # this call — log it loudly rather than as a benign warning.
             logger.error(
-                f"Failed to save VLM training data for vlm_{document_type}",
+                "Failed to save VLM training data for vlm_%s",
+                sanitize_for_log(document_type),
                 exc_info=True,
             )
 
@@ -585,8 +598,15 @@ Return ONLY valid JSON (no markdown fences):
 class GeminiFlashCrawlerExtractor:
     """
     Async Gemini Flash extractor for the background crawl pipeline.
-    Uses AsyncClient + gemini-2.0-flash (not gemini-2.5-flash).
-    Do NOT use for onboarding (that is ClaudeVisionExtractor).
+    Uses AsyncClient + `MODEL_ID` below. Do NOT use for onboarding (that is
+    ClaudeVisionExtractor).
+
+    This docstring used to read "gemini-2.0-flash (not gemini-2.5-flash)" while
+    MODEL_ID on the very next line said gemini-2.5-flash — it had been wrong, and
+    emphatically so, since the model was changed under it. gemini-2.0-flash is
+    now retired (404) as well, so the sentence named a dead model AND contradicted
+    the code one line away. Naming the constant instead of restating its value is
+    what stops that drifting again.
     """
 
     MODEL_ID = "gemini-2.5-flash"
@@ -609,6 +629,7 @@ class GeminiFlashCrawlerExtractor:
     ) -> VLMExtractionResult:
         try:
             client = self._get_client()
+            _t0 = time.perf_counter()
             response = await client.aio.models.generate_content(
                 model=self.MODEL_ID,
                 contents=CRAWL_TEXT_PROMPT.format(
@@ -622,7 +643,10 @@ class GeminiFlashCrawlerExtractor:
             try:
                 usage = getattr(response, "usage_metadata", None)
                 input_tokens = getattr(usage, "prompt_token_count", 0) or 0
-                output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                output_tokens = (getattr(usage, "candidates_token_count", 0) or 0) + (
+                    getattr(usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model=self.MODEL_ID,
@@ -633,6 +657,7 @@ class GeminiFlashCrawlerExtractor:
                     task_type="crawl_extraction",
                     choice=f"wines:{result.total_wines}",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={"wines_found": result.total_wines},
                 )
             except Exception:

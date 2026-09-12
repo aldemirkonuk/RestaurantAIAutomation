@@ -135,6 +135,11 @@ export function parse810(
           // IT104 is type R — an explicit decimal. Running it through n2()
           // would divide every unit price by one hundred.
           unitPrice: real(el(seg, 4)),
+          // EDI states a unit price against IT102/IT103 and prints no
+          // separate price basis, so BT-149/BT-150 are genuinely absent here
+          // rather than unread.
+          priceBaseQty: null,
+          priceBaseUom: null,
           lineTotal: null,
           allowance: null,
           deposit: null,

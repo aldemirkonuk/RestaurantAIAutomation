@@ -1,0 +1,889 @@
+<style>
+/* == sig (07-11) -- Signature moments =====================================
+   The ceremonies: the five moments where money and proof change state.
+   Every selector is prefixed .mx-sig. Colours come only from the host's
+   variables -- never a hex. ASCII only in this block (the build escapes
+   non-ASCII outside <script> to HTML entities, which would break CSS).
+
+   ---------------------------------------------------------------------
+   RESEARCH -- what was borrowed, re-aimed, and rejected.
+   ---------------------------------------------------------------------
+   * Accounting rule convention (single rule = subtotal, double rule = grand
+     total; excelbianalytics.com/single-underlining-double-underlining-in-
+     accounting, bizfluent.com/info-11368429). BORROWED and re-aimed in
+     sig-09: the double rule is treated as a CLAIM OF PROVABILITY. A total
+     that cannot be proved gets a dashed single rule and no second stroke.
+     The house em-dash rule (documents.ts:62-66, decision E49) then has a
+     typographic body, not just a character.
+   * Wise, "prove fairness inside the interface" -- the calculation is part
+     of the transfer visualisation, not fine print, and lands BEFORE
+     commitment (raw.studio/blog/how-wise-uses-3-transparency-first-ux-
+     principles). BORROWED for sig-09 (arithmetic is the surface) and for
+     sig-08 (the tie-out closes before the countersign unlocks -- the
+     operator sees the outcome while they can still refuse).
+     REJECTED: Wise's progressive disclosure of the breakdown. An operator
+     checking whether a vendor shorted them is not a consumer being
+     reassured; the working is the primary content, so it is never folded.
+   * Stripe hosted invoice / itemised receipts -- line items, discounts and
+     taxes itemised on the receipt itself (docs.stripe.com/receipts,
+     /invoicing/group-line-items). BORROWED: tax is shown, not omitted.
+     RE-AIMED: shown and then visibly SET ASIDE, because tax is not cost of
+     goods (documents.ts:134-141).
+   * Ramp / Brex / Expensify receipt compliance -- a receipt is proof
+     ATTACHED to a transaction; Expensify SmartScan fills fields from a
+     photo (use.expensify.com/resource-center/guides). BORROWED for sig-07:
+     the action set's centre of gravity is attachment, and for sig-09 the
+     missing unit price is read off the stored photo -- which is exactly
+     what the side-by-side pane at ReceiptsPage.tsx:336-350 is for.
+     REJECTED: auto-matching that commits. Decision E46 in the repo already
+     says a photo estimate fills the field and never commits
+     (SpotCountPanel.tsx:163) -- the motion honours that.
+   * DocuSign's own term for the signing flow is the "signing ceremony";
+     Jamie Myrold, "Signatures and Ceremony" (UX Collective) argues the
+     physical act carries weight an instant click destroys. BORROWED for
+     sig-08: the countersign is a HOLD that produces attribution as its
+     by-product. REJECTED: a modal "Are you sure?" -- friction with no
+     product. The hold is the confirmation AND the signature.
+   * YNAB reconciliation: reconciled transactions are LOCKED and marked
+     (support.ynab.com/reconciling-accounts-a-guide). BORROWED for sig-11 --
+     committed reads as locked, not as ticked. A tick says "done"; a lock
+     says "no longer editable", which is what committing a count is.
+   * Confetti: Peter Ramsey (UX Planet) and Rowdy Vass (UX Collective) --
+     frequency first, "in serious industries like banking a celebration can
+     feel tone-deaf", "confetti is optional, meaning is not". REJECTED
+     outright for sig-10. The celebration is made OF the fact: the money
+     conserves -- it leaves Outstanding and arrives in Recovered by the same
+     amount on the same clock -- and the shortfall is named in the same
+     breath. Also rejected: a full-screen success takeover, because claims
+     are settled in a batch and the queue must not be blocked.
+   * Letterpress / deboss via opposed shadows (smashingmagazine.com/2012/07/
+     letterpress-effect-fireworks-css). BORROWED sparingly: the invoice seal
+     lands and then presses in with an inset edge; the receipt seal does not.
+     REJECTED: feTurbulence torn-paper edges (codrops SVG filter series) --
+     handsome, and pure decoration on a 280x150 card; nothing about a
+     vendor shorting you is expressed by a ragged edge.
+   ---------------------------------------------------------------------  */
+
+.mx-sig{
+  font-family:var(--m-sans);
+  font-size:11px;line-height:1.35;color:var(--m-ink);
+  position:relative;width:100%;
+  -webkit-font-smoothing:antialiased;
+}
+.mx-sig *{box-sizing:border-box}
+.mx-sig .s-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:7px}
+.mx-sig .s-k{font:500 8.5px/1.2 var(--m-mono);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--m-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-sig .s-k.on{color:var(--m-accent)}
+.mx-sig .s-k.ok{color:var(--m-ok)}
+.mx-sig .s-k.w{color:var(--m-warn)}
+.mx-sig .s-k.no{color:var(--m-no)}
+.mx-sig .num{font-family:var(--m-mono);font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.mx-sig .s-note{margin-top:6px;font-size:9px;line-height:1.3;color:var(--m-mut)}
+.mx-sig .s-b{font:500 9px/1 var(--m-sans);background:transparent;color:var(--m-ink);
+  border:1px solid var(--m-line2);border-radius:3px;padding:5px 4px;cursor:pointer;
+  font-weight:600;letter-spacing:.01em}
+.mx-sig .s-b:focus-visible{outline:1px solid var(--m-accent);outline-offset:1px}
+
+/* -- 07 . the receipt files itself ------------------------------------- */
+.mx-sig-07 .a7-lanes{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:8px;height:50px}
+.mx-sig-07 .a7-col{border:1px dashed var(--m-line);border-radius:4px;position:relative;
+  display:flex;align-items:flex-end;justify-content:center;padding-bottom:2px}
+.mx-sig-07 .a7-cl{font:500 7px/1 var(--m-mono);letter-spacing:.11em;text-transform:uppercase;color:var(--m-mut)}
+/* Geometry in calc(), not in measured pixels. The lanes are a 1fr/1fr grid with
+   an 8px gap, so a column is calc(50% - 4px) and the gap between column centres
+   is calc(50% + 4px) -- which is the paper's own width + 8px, i.e. exactly
+   translateX(calc(100% + 8px)). Measuring this at play time instead left stale
+   inline widths behind when the grid reflowed to a narrower column. */
+.mx-sig-07 .a7-trail{position:absolute;top:22px;height:1px;background:var(--m-accent);
+  left:calc(25% - 2px);width:calc(50% + 4px);
+  transform-origin:0 50%;transform:scaleX(0);opacity:.5;pointer-events:none}
+.mx-sig-07 .a7-paper{position:absolute;top:4px;left:0;width:calc(50% - 4px);height:36px;
+  background:var(--m-surface);border:1px solid var(--m-line2);border-radius:3px;
+  padding:4px 5px;box-shadow:0 1px 0 var(--m-sunk);overflow:hidden}
+.mx-sig-07 .a7-paper.filed{border-color:var(--m-accent)}
+.mx-sig-07 .a7-paper.held{border-color:var(--m-warn)}
+.mx-sig-07 .a7-pt{font:500 8px/1.1 var(--m-mono);color:var(--m-ink);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.mx-sig-07 .a7-pl{height:1px;background:var(--m-line2);margin-top:4px;opacity:.75}
+.mx-sig-07 .a7-pl.b{width:72%}
+.mx-sig-07 .a7-pl.c{width:44%}
+/* the receipt's seal DOES tilt -- it is tossed on, where the invoice's descends
+   square (sig-08). Origin at the bottom-right so the tilt stays on the paper,
+   which clips its own overflow. */
+.mx-sig-07 .a7-seal{position:absolute;right:4px;bottom:5px;width:15px;height:15px;border-radius:50%;
+  border:1px solid var(--m-accent);color:var(--m-accent);display:flex;align-items:center;
+  justify-content:center;font:600 8px/1 var(--m-mono);opacity:0;
+  transform:scale(1.9) rotate(-12deg);transform-origin:100% 100%}
+.mx-sig-07 .a7-clip{position:absolute;right:3px;top:3px;font:500 7px/1 var(--m-mono);
+  color:var(--m-accent-ink);background:var(--m-accent);border-radius:2px;padding:2px 3px;
+  opacity:0;transform:translate(14px,-6px) rotate(9deg)}
+.mx-sig-07 .a7-acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:7px}
+.mx-sig-07 .a7-acts .s-b{opacity:0;transform:translateY(-6px)}
+.mx-sig-07 .s-b.prime{border-color:var(--m-accent);color:var(--m-accent)}
+.mx-sig-07 .a7-why{display:grid;grid-template-rows:0fr;overflow:hidden;
+  transition:grid-template-rows 420ms cubic-bezier(.32,.72,0,1)}
+.mx-sig-07 .a7-why.open{grid-template-rows:1fr}
+.mx-sig-07 .a7-why > div{min-height:0;overflow:hidden}
+.mx-sig-07 .a7-wi{margin-top:6px;border-left:2px solid var(--m-warn);padding:2px 0 2px 6px;
+  font-size:9px;color:var(--m-mut)}
+
+/* -- 08 . the counter-signature ---------------------------------------- */
+.mx-sig-08 .a8-tie{border:1px solid var(--m-line);border-radius:4px;padding:5px 6px}
+.mx-sig-08 .a8-row{display:flex;justify-content:space-between;align-items:baseline;gap:6px;
+  font-size:10px;height:13px}
+.mx-sig-08 .a8-row > span{color:var(--m-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-sig-08 .a8-row > b{font-weight:500;flex:none}
+.mx-sig-08 .a8-hr{height:0;border-top:1px solid var(--m-line2);margin:3px 0 3px auto;width:64px;
+  transform-origin:100% 50%;transform:scaleX(0)}
+.mx-sig-08 .a8-row.d > b{color:var(--m-mut)}
+.mx-sig-08 .a8-row.d.ok > b{color:var(--m-ok)}
+.mx-sig-08 .a8-hold{position:relative;overflow:hidden;width:100%;margin-top:7px;
+  font:600 9px/1 var(--m-sans);letter-spacing:.02em;background:transparent;
+  border:1px solid var(--m-line);border-radius:3px;color:var(--m-mut);
+  padding:7px 6px;cursor:not-allowed;user-select:none;touch-action:none;text-align:center}
+.mx-sig-08 .a8-hold.live{border-color:var(--m-accent);color:var(--m-ink);cursor:pointer}
+.mx-sig-08 .a8-hold:focus-visible{outline:1px solid var(--m-accent);outline-offset:1px}
+.mx-sig-08 .a8-fill{position:absolute;left:0;top:0;bottom:0;right:0;background:var(--m-accent);
+  opacity:.2;transform-origin:0 50%;transform:scaleX(0);pointer-events:none}
+.mx-sig-08 .a8-lab{position:relative}
+.mx-sig-08 .a8-sign{display:grid;grid-template-rows:0fr;overflow:hidden;
+  transition:grid-template-rows 420ms cubic-bezier(.32,.72,0,1)}
+.mx-sig-08 .a8-sign.open{grid-template-rows:1fr}
+.mx-sig-08 .a8-sign > div{min-height:0;overflow:hidden}
+.mx-sig-08 .a8-sl{height:0;border-top:1px solid var(--m-ink);opacity:.45;margin-top:8px;
+  transform-origin:0 50%;transform:scaleX(0)}
+.mx-sig-08 .a8-who{display:block;margin-top:3px;padding-right:92px;font:500 8px/1.3 var(--m-mono);
+  color:var(--m-mut);clip-path:inset(0 100% 0 0);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+/* The seal belongs beside the name it attributes, at the foot of the card.
+   Parked by the header it merely repeated the status chip; placed INSIDE the
+   signature row it was clipped by that row's own overflow:hidden (measured: an
+   18px seal in a 13px box). Anchored to the root it costs no layout and lands
+   where a countersignature goes.
+   NO rotation, and the origin pinned to the bottom-right corner, so the seal
+   only ever grows up and to the left. A -8deg tilt about that corner swung the
+   far corner 21px BELOW the card (measured) and clipped. It also earns its
+   difference: the receipt's seal in sig-07 is tossed on at an angle; the
+   invoice's descends square, because it is a counter-signature. */
+.mx-sig-08 .a8-seal{position:absolute;right:1px;bottom:0;font:600 7.5px/1 var(--m-mono);
+  letter-spacing:.14em;text-transform:uppercase;color:var(--m-mut);
+  border:1px solid var(--m-line2);border-radius:2px;padding:4px 5px;background:var(--m-surface);
+  opacity:0;transform:scale(1.8);transform-origin:100% 100%;pointer-events:none}
+.mx-sig-08 .a8-seal.set{color:var(--m-accent);border-color:var(--m-accent)}
+.mx-sig-08 .a8-seal.pressed{box-shadow:inset 0 1px 0 var(--m-line2),inset 0 -1px 0 var(--m-sunk)}
+
+/* -- 09 . it adds up, or it says an em dash ---------------------------- */
+.mx-sig-09 .a9-tape{position:relative}
+.mx-sig-09 .a9-r{display:flex;align-items:baseline;gap:5px;height:12.5px;font-size:10px}
+.mx-sig-09 .a9-r > span{color:var(--m-mut);flex:none;max-width:96px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.mx-sig-09 .a9-r > i{flex:1;font-style:normal;font-size:8.5px;color:var(--m-mut);opacity:.72;
+  font-family:var(--m-mono);text-align:right;white-space:nowrap}
+.mx-sig-09 .a9-r > b{width:64px;flex:none;text-align:right;font-weight:500}
+.mx-sig-09 .a9-r.lit > span{color:var(--m-ink)}
+.mx-sig-09 .a9-r.sub > span,.mx-sig-09 .a9-r.tot > span{color:var(--m-ink)}
+.mx-sig-09 .a9-r.tot > b{font-weight:600;font-size:11px}
+.mx-sig-09 .a9-r.nul > b{color:var(--m-warn)}
+.mx-sig-09 .a9-r.tax{opacity:.42}
+/* the AMOUNT is what gets set aside; striking the reason instead read as if
+   "not cost of goods" were the thing being retracted */
+.mx-sig-09 .a9-r.tax > b{text-decoration:line-through}
+.mx-sig-09 .a9-rule{height:5px;display:flex;align-items:center}
+.mx-sig-09 .a9-rule > i{display:block;width:64px;margin-left:auto;height:0;
+  border-top:1px dashed var(--m-line2);transform-origin:100% 50%;transform:scaleX(0)}
+.mx-sig-09 .a9-rule.solid > i{border-top-style:solid;border-top-color:var(--m-mut)}
+.mx-sig-09 .a9-rule2{height:7px;display:flex;flex-direction:column;justify-content:center;
+  align-items:flex-end;gap:2px}
+.mx-sig-09 .a9-rule2 > i{display:block;width:64px;height:0;border-top:1px solid var(--m-ink);
+  opacity:.62;transform-origin:100% 50%;transform:scaleX(0)}
+.mx-sig-09 .a9-chip{position:absolute;right:66px;font:500 7.5px/1 var(--m-mono);
+  color:var(--m-accent-ink);background:var(--m-accent);border-radius:2px;padding:3px 4px;
+  opacity:0;pointer-events:none;white-space:nowrap}
+
+/* -- 10 . money came back ---------------------------------------------- */
+.mx-sig-10 .a10-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mx-sig-10 .a10-t{position:relative;border:1px solid var(--m-line);border-radius:4px;padding:6px 7px 9px}
+.mx-sig-10 .a10-t > span{display:block;font:500 7px/1 var(--m-mono);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--m-mut);margin-bottom:4px}
+.mx-sig-10 .a10-t > b{display:block;font-size:15px;font-weight:600}
+.mx-sig-10 .a10-t.arrived{border-color:var(--m-accent)}
+.mx-sig-10 .a10-under{position:absolute;left:7px;right:7px;bottom:4px;height:0;
+  border-top:1px solid var(--m-accent);transform-origin:0 50%;transform:scaleX(0)}
+.mx-sig-10 .a10-fly{position:absolute;left:0;top:0;font-size:14px;font-weight:600;font-style:normal;
+  color:var(--m-accent);opacity:0;pointer-events:none;white-space:nowrap}
+.mx-sig-10 .a10-memo{display:flex;align-items:center;gap:5px;margin-top:8px;height:16px}
+.mx-sig-10 .a10-mc{font:500 8px/1 var(--m-mono);letter-spacing:.06em;border:1px solid var(--m-line2);
+  border-radius:2px;padding:3px 4px;color:var(--m-mut);opacity:0;
+  transform:translateX(-22px) rotate(-6deg)}
+.mx-sig-10 .a10-mc.on{color:var(--m-accent);border-color:var(--m-accent)}
+.mx-sig-10 .a10-ml{font-size:9px;color:var(--m-mut);opacity:0}
+.mx-sig-10 .a10-res{margin-top:5px;display:flex;justify-content:space-between;align-items:baseline;
+  gap:6px;font-size:9px;color:var(--m-mut);opacity:0;height:12px}
+.mx-sig-10 .a10-res b{color:var(--m-warn);font-weight:500;flex:none}
+
+/* -- 11 . the count is committed --------------------------------------- */
+.mx-sig-11 .a11-m{position:relative;border:1px dashed var(--m-line2);border-radius:4px;
+  padding:4px 6px;margin-bottom:5px;background:var(--m-surface)}
+.mx-sig-11 .a11-m.done{border-style:solid;border-color:var(--m-accent)}
+.mx-sig-11 .a11-m.dead{border-color:var(--m-no)}
+.mx-sig-11 .a11-top{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.mx-sig-11 .a11-name{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-sig-11 .a11-n{font-size:13px;font-weight:600;flex:none}
+.mx-sig-11 .a11-key{font:500 7.5px/1.2 var(--m-mono);color:var(--m-mut);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-sig-11 .a11-key.reused{color:var(--m-accent)}
+.mx-sig-11 .a11-hr{height:0;border-top:1px dashed var(--m-line2);margin:4px 0 3px;
+  transform-origin:0 50%}
+.mx-sig-11 .a11-m.done .a11-hr{border-top-style:solid;border-top-color:var(--m-accent)}
+.mx-sig-11 .a11-meta{display:flex;justify-content:space-between;align-items:baseline;gap:6px;
+  font:500 7.5px/1 var(--m-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--m-mut)}
+/* both children are absolute so they can cross-fade in place; without an
+   explicit height the span collapses to 0 and "live" hangs 8px below its row */
+.mx-sig-11 .a11-state{position:relative;display:inline-block;min-width:34px;height:9px}
+.mx-sig-11 .a11-state i{font-style:normal;position:absolute;left:0;top:0}
+.mx-sig-11 .a11-state i.live{color:var(--m-accent);opacity:0}
+.mx-sig-11 .a11-seal{position:absolute;right:5px;top:16px;font:600 7px/1 var(--m-mono);
+  letter-spacing:.13em;text-transform:uppercase;color:var(--m-accent);
+  border:1px solid var(--m-accent);border-radius:2px;padding:3px 4px;background:var(--m-surface);
+  opacity:0;transform:scale(1.8) rotate(-9deg);transform-origin:100% 50%;pointer-events:none}
+.mx-sig-11 .a11-f{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.mx-sig-11 .a11-fl{font-size:9px;color:var(--m-mut);min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.mx-sig-11 .a11-m.dead .a11-fl{color:var(--m-no)}
+.mx-sig-11 .a11-re{font:600 8px/1 var(--m-sans);background:transparent;color:var(--m-ink);
+  border:1px solid var(--m-line2);border-radius:3px;padding:3px 5px;cursor:pointer;
+  opacity:0;flex:none}
+.mx-sig-11 .a11-re:focus-visible{outline:1px solid var(--m-accent);outline-offset:1px}
+@keyframes mx-sig-breathe{0%,100%{opacity:.78}50%{opacity:1}}
+.mx-sig-11 .a11-m.waiting{animation:mx-sig-breathe 2200ms ease-in-out infinite}
+
+@media (prefers-reduced-motion: reduce){
+  .mx-sig *{
+    animation-duration:1ms!important;animation-delay:0ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:1ms!important;transition-delay:0ms!important;
+  }
+  .mx-sig-11 .a11-m.waiting{animation:none!important;opacity:1!important}
+}
+</style>
+<script>
+(function(){
+  var M = window.MUDAVYM_MOTIONS = window.MUDAVYM_MOTIONS || [];
+  var FAM = 'Signature moments';
+  var REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  /* -- real spring: integrate, then sample into a CSS linear() easing --
+     a = (-k(x-1) - c*v)/m, 1ms Euler-Cromer steps, stop at restDelta.    */
+  var LINEAR_OK = (function(){
+    try { return CSS.supports('animation-timing-function','linear(0, 0.5, 1)'); } catch(e){ return false; }
+  })();
+  function spring(k, c, m, restDelta){
+    m = m || 1; restDelta = restDelta || 0.005;
+    var dt = 1/1000, x = 0, v = 0, t = 0, tr = [0], peak = 0, cap = 4;
+    while (t < cap){
+      v += ((-k*(x-1) - c*v)/m)*dt; x += v*dt; t += dt;
+      tr.push(x); if (x > peak) peak = x;
+      if (Math.abs(1-x) < restDelta && Math.abs(v) < restDelta*8) break;
+    }
+    var n = 46, pts = [], i, idx;
+    for (i=0;i<=n;i++){ idx = Math.round(i/n*(tr.length-1)); pts.push(+tr[idx].toFixed(4)); }
+    pts[0] = 0; pts[n] = 1;
+    return {
+      k:k, c:c, trace:tr,
+      duration: Math.round(t*1000),
+      overshoot: +(Math.max(0,peak-1)*100).toFixed(1),
+      easing: LINEAR_OK ? 'linear('+pts.join(',')+')' : 'cubic-bezier(.16,1,.3,1)'
+    };
+  }
+  var SP = {
+    stamp: spring(520,26),          // house "stamp" -- the one permitted ceremony
+    tally: spring(120,26,1,0.0015), // house "tally" -- overdamped, figures never bounce
+    tuck : spring(380,32),          // house "tuck"  -- weight under a finger
+    seat : spring(300,34)           // near-critical: a control that resists and returns
+  };
+  function sp(s,label){ return label+' spring '+s.k+'/'+s.c+' -> '+s.duration+'ms, '+s.overshoot+'% overshoot'; }
+
+  var EZ = {
+    settle:'cubic-bezier(.16,1,.3,1)',   // house
+    turn  :'cubic-bezier(.32,.72,0,1)',  // house -- opening a record
+    ink   :'cubic-bezier(.16,1,.3,1)',   // house -- micro states
+    exit  :'cubic-bezier(.4,0,.9,1)',
+    glide :'cubic-bezier(.22,.61,.36,1)'
+  };
+
+  /* the canvas speed slider; 1 = as authored */
+  function R(){ try{ var f=window.MUDAVYM_RATE; var v=f?f():1; return (v>0?v:1); }catch(e){ return 1; } }
+
+  /* per-root bookkeeping so play() is idempotent under repeat calls */
+  function ctl(root){
+    (root._pt||[]).forEach(clearTimeout);
+    (root._pa||[]).forEach(function(a){ try{ a.cancel(); }catch(e){} });
+    if (root._pr){ cancelAnimationFrame(root._pr); root._pr = null; }
+    root._pt = []; root._pa = []; root._gen = (root._gen||0) + 1;
+    var gen = root._gen;
+    void root.offsetWidth;
+    return {
+      gen: function(){ return gen === root._gen; },
+      at: function(ms, fn){ root._pt.push(setTimeout(function(){ if (gen===root._gen) fn(); }, REDUCED?0:ms/R())); },
+      an: function(el, kf, o){
+        o = o || {};
+        var opt = { duration:(o.duration||300)/R(), delay:(o.delay||0)/R(),
+                    easing:o.easing||EZ.settle, fill:o.fill||'both',
+                    iterations:o.iterations||1, direction:o.direction };
+        if (REDUCED){ opt.duration = 1; opt.delay = 0; opt.iterations = 1; }
+        var a = el.animate(kf, opt); root._pa.push(a); return a;
+      },
+      sweep: function(ms, fn, done){
+        if (REDUCED){ fn(1); if (done) done(); return; }
+        var t0 = performance.now(), dur = ms/R();
+        (function step(now){
+          if (gen !== root._gen) return;
+          var p = Math.min(1,(now-t0)/dur);
+          fn(p);
+          if (p < 1) root._pr = requestAnimationFrame(step);
+          else if (done) done();
+        })(t0);
+      },
+      stop: function(){ if (root._pr){ cancelAnimationFrame(root._pr); root._pr = null; } }
+    };
+  }
+  function q(root,s){ return Array.prototype.slice.call(root.querySelectorAll(s)); }
+  function money(n){ return '$'+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+  var DASH = '—';
+
+  /* overdamped tally: read the integrated spring trace, so a figure never bounces */
+  function tallyTo(c, el, from, to, ms, fmt){
+    c.sweep(ms, function(p){
+      var tr = SP.tally.trace;
+      var x = tr[Math.min(tr.length-1, Math.round(p*(tr.length-1)))];
+      el.textContent = fmt(from + (to-from)*x);
+    }, function(){ el.textContent = fmt(to); });
+  }
+
+  /* WRITE a value rather than count it: reveal left-to-right. Used where the
+     figure is an arithmetic RESULT being transcribed, not a quantity moving. */
+  function write(c, el, text, ms){
+    el.textContent = text;
+    el.style.clipPath = 'inset(0 100% 0 0)';
+    c.an(el, [{clipPath:'inset(0 100% 0 0)'},{clipPath:'inset(0 0 0 0)'}],
+         {duration:ms||200, easing:EZ.glide});
+    el.style.clipPath = 'inset(0 0 0 0)';
+  }
+  /* draw a rule: accounting convention -- a rule is drawn across the figure
+     column, right to left, because that is the column it certifies. */
+  function draw(c, el, ms, ez){
+    el.style.transform = 'scaleX(0)';
+    c.an(el, [{transform:'scaleX(0)'},{transform:'scaleX(1)'}],
+         {duration:ms||220, easing:ez||EZ.settle});
+    el.style.transform = 'scaleX(1)';
+  }
+
+  /* ===== sig-07 . the receipt files itself ================================ */
+  M.push({
+    id:'sig-07', name:'The receipt files itself', family:FAM,
+    purpose:'Acting on a receipt in the /receipts needs-review lane. Today Verify calls the API then does setSelectedId(null) + setLane("verified") — the document you were reading blinks out and you are dropped into another lane with nothing selected. Here the three actions rise out of the paper\'s own edge and are not peers: Verify seals it and it TRAVELS to the verified column along a path you can follow; Dispute holds it and opens a reason, because a claim against a vendor has to be justified; Attach clips it to the order (the page note records it has no route to the order at all). Press any of the three.',
+    spec:'actions rise 6px, '+EZ.settle+' 320ms, 40ms stagger · seal '+sp(SP.stamp,'stamp')+' · travel '+EZ.turn+' 460ms with a trail drawn 300ms · dispute strip grid-rows 0fr->1fr turn 420ms · clip '+sp(SP.tuck,'tuck'),
+    source:'apps/web/src/pages/ReceiptsPage.tsx:99-113,323-332 · documents.ts:102-105 · 06-pages/receipts.md §9 ("no way out", no dispute action)',
+    html:'<div class="mx-sig mx-sig-07">'+
+      '<div class="s-h"><span class="s-k">Delivery receipt · #R-8841</span>'+
+      '<span class="s-k a7-st">needs review</span></div>'+
+      '<div class="a7-lanes">'+
+        '<div class="a7-col" data-l="0"><span class="a7-cl">needs review</span></div>'+
+        '<div class="a7-col" data-l="1"><span class="a7-cl">verified</span></div>'+
+        '<i class="a7-trail"></i>'+
+        '<div class="a7-paper">'+
+          '<div class="a7-pt">Vinos del Norte · $412.80</div>'+
+          '<div class="a7-pl"></div><div class="a7-pl b"></div><div class="a7-pl c"></div>'+
+          '<span class="a7-seal">✓</span><span class="a7-clip">PO-1042</span>'+
+        '</div>'+
+      '</div>'+
+      '<div class="a7-acts">'+
+        '<button type="button" class="s-b prime" data-a="v">Verify</button>'+
+        '<button type="button" class="s-b" data-a="d">Dispute</button>'+
+        '<button type="button" class="s-b" data-a="c">Attach</button>'+
+      '</div>'+
+      '<div class="a7-why"><div><div class="a7-wi">Say what is wrong. A dispute leaves the building; it needs a reason attached.</div></div></div>'+
+      '</div>',
+    play:function(root){
+      var c = ctl(root),
+          paper = root.querySelector('.a7-paper'),
+          trail = root.querySelector('.a7-trail'),
+          seal  = root.querySelector('.a7-seal'),
+          clip  = root.querySelector('.a7-clip'),
+          why   = root.querySelector('.a7-why'),
+          st    = root.querySelector('.a7-st'),
+          acts  = q(root,'.a7-acts .s-b'),
+          acted = false;
+
+      /* the filed position, in the paper's own units -- survives any reflow */
+      var DX = 'translateX(calc(100% + 8px))';
+
+      paper.style.transform = 'translateX(0)';
+      paper.classList.remove('filed','held');
+      trail.style.transform = 'scaleX(0)';
+      seal.style.opacity = '0'; seal.style.transform = 'scale(1.9) rotate(-12deg)';
+      clip.style.opacity = '0'; clip.style.transform = 'translate(14px,-6px) rotate(9deg)';
+      why.classList.remove('open');
+      st.textContent = 'needs review'; st.className = 's-k a7-st';
+      acts.forEach(function(b){ b.style.opacity='0'; b.style.transform='translateY(-6px)'; b.disabled=false; });
+
+      /* the actions rise out of the paper's edge, not out of a toolbar */
+      acts.forEach(function(b,i){
+        c.at(260 + i*40, function(){
+          c.an(b, [{opacity:0,transform:'translateY(-6px)'},{opacity:1,transform:'translateY(0)'}],
+               {duration:320, easing:EZ.settle});
+          b.style.opacity='1'; b.style.transform='translateY(0)';
+        });
+      });
+
+      function verify(){
+        if (acted) return; acted = true;
+        st.textContent = 'sealing'; st.className = 's-k a7-st on';
+        /* the seal lands -- the only emphatic motion in the system */
+        c.an(seal, [{opacity:0,transform:'scale(1.9) rotate(-12deg)'},
+                    {opacity:1,transform:'scale(1) rotate(0deg)'}],
+             {duration:SP.stamp.duration, easing:SP.stamp.easing});
+        seal.style.opacity='1'; seal.style.transform='scale(1) rotate(0deg)';
+        paper.classList.add('filed');
+        /* then it TRAVELS, leaving a trail. It does not blink out of the list. */
+        c.at(300, function(){ draw(c, trail, 300, EZ.glide); });
+        c.at(360, function(){
+          c.an(paper, [{transform:'translateX(0)'},{transform:DX}],
+               {duration:460, easing:EZ.turn});
+          paper.style.transform = DX;
+        });
+        c.at(830, function(){
+          st.textContent = 'verified'; st.className = 's-k a7-st ok';
+          c.an(trail,[{opacity:.5},{opacity:0}],{duration:260,easing:EZ.exit});
+          trail.style.opacity = '0';
+        });
+      }
+      function dispute(){
+        if (acted) return; acted = true;
+        paper.classList.add('held');
+        st.textContent = 'disputed · held'; st.className = 's-k a7-st w';
+        /* held, not filed: 2px counter-travel then back. Nothing leaves. */
+        c.an(paper, [{transform:'translateX(0)'},{transform:'translateX(-3px)'},
+                     {transform:'translateX(0)'}],
+             {duration:SP.seat.duration, easing:SP.seat.easing});
+        why.classList.add('open');
+      }
+      function attach(){
+        if (acted) return; acted = true;
+        st.textContent = 'attached to PO-1042'; st.className = 's-k a7-st on';
+        c.an(clip, [{opacity:0,transform:'translate(14px,-6px) rotate(9deg)'},
+                    {opacity:1,transform:'translate(0,0) rotate(0deg)'}],
+             {duration:SP.tuck.duration, easing:SP.tuck.easing});
+        clip.style.opacity='1'; clip.style.transform='translate(0,0) rotate(0deg)';
+      }
+      /* Hang the handlers on the ROOT, and bind the listener once to read them
+         live. Binding the closure directly meant every click after the first
+         play still ran the FIRST play's functions -- whose `acted` was already
+         true from the demo's own auto-verify, so Dispute and Attach silently
+         did nothing. (Same stale-closure trap the State set hit on st-04/05/06.) */
+      root._sigAct = { v:verify, d:dispute, c:attach };
+      acts.forEach(function(b){
+        if (b._b) return; b._b = 1;
+        b.addEventListener('click', function(){
+          var fn = root._sigAct && root._sigAct[b.dataset.a];
+          if (fn) fn();
+        });
+      });
+      c.at(1150, verify);   /* the demo drives the ceremonial one */
+    }
+  });
+
+  /* ===== sig-08 . the counter-signature =================================== */
+  M.push({
+    id:'sig-08', name:'The counter-signature', family:FAM,
+    purpose:'The same page, an invoice — which binds where a receipt only records. Related to sig-07 and deliberately heavier: the tie-out has to close in the open before the control unlocks (ties_out / tie_out_delta exist on the document type and this page renders neither), the confirmation is a HOLD rather than a click, and it produces what a receipt never gets — an attribution rule with a name and a time. The same house stamp lands, then presses in and stays. Hold it yourself; let go early and nothing is signed.',
+    spec:'sum '+sp(SP.tally,'tally')+' · delta closes on the same clock · unlock ink 160ms (2px, no travel) · hold fill strictly linear 620ms (house "press": the operator times it against their own thumb), release '+EZ.settle+' 160ms · rule turn 420ms and the name written 260ms BEFORE the seal · seal '+sp(SP.stamp,'stamp')+' with no tilt, then a 140ms dwell into an inset edge',
+    source:'apps/web/src/services/api/documents.ts:24-33 (ties_out, tie_out_delta) · ReceivingWorkspace.tsx:78 · 06-pages/receipts.md §9',
+    html:'<div class="mx-sig mx-sig-08">'+
+      '<div class="s-h"><span class="s-k">Invoice #6612 · binding</span>'+
+      '<span class="s-k a8-st">tie-out —</span></div>'+
+      '<div class="a8-tie">'+
+        '<div class="a8-row"><span>invoice says</span><b class="num">$1,344.00</b></div>'+
+        '<div class="a8-row"><span>lines + charges</span><b class="num a8-sum">—</b></div>'+
+        '<div class="a8-hr"></div>'+
+        '<div class="a8-row d"><span>delta</span><b class="num a8-d">—</b></div>'+
+      '</div>'+
+      '<button type="button" class="a8-hold"><i class="a8-fill"></i>'+
+        '<span class="a8-lab">Locked until the tie-out closes</span></button>'+
+      '<div class="a8-sign"><div><i class="a8-sl"></i>'+
+        '<span class="a8-who">—</span></div></div><span class="a8-seal">Countersigned</span>'+
+      '</div>',
+    play:function(root){
+      var c = ctl(root),
+          sum = root.querySelector('.a8-sum'), d = root.querySelector('.a8-d'),
+          drow= root.querySelector('.a8-row.d'), hr = root.querySelector('.a8-hr'),
+          hold= root.querySelector('.a8-hold'), fill = root.querySelector('.a8-fill'),
+          lab = root.querySelector('.a8-lab'), sign = root.querySelector('.a8-sign'),
+          sl  = root.querySelector('.a8-sl'), who = root.querySelector('.a8-who'),
+          seal= root.querySelector('.a8-seal'), st = root.querySelector('.a8-st'),
+          unlocked = false, signed = false, holding = false;
+
+      sum.textContent = DASH; d.textContent = DASH;
+      drow.classList.remove('ok'); hr.style.transform = 'scaleX(0)';
+      hold.classList.remove('live'); lab.textContent = 'Locked until the tie-out closes';
+      fill.style.transform = 'scaleX(0)';
+      sign.classList.remove('open'); who.textContent = DASH; who.style.clipPath = 'inset(0 100% 0 0)';
+      sl.style.transform = 'scaleX(0)';
+      seal.style.opacity='0'; seal.style.transform='scale(1.8)';
+      seal.classList.remove('set','pressed');
+      st.textContent = 'tie-out —'; st.className = 's-k a8-st';
+
+      /* stage 1 -- the arithmetic closes in the open, before commitment */
+      c.at(240, function(){ tallyTo(c, sum, 0, 1344, 620, money); });
+      c.at(300, function(){ draw(c, hr, 220, EZ.settle); });
+      c.at(520, function(){
+        tallyTo(c, d, 18.4, 0, 560, function(v){ return (v<0.005?'':'+')+v.toFixed(2); });
+      });
+      c.at(1120, function(){
+        drow.classList.add('ok'); d.textContent = '0.00';
+        st.textContent = 'ties out'; st.className = 's-k a8-st ok';
+        unlock();
+      });
+
+      function unlock(){
+        if (unlocked) return; unlocked = true;
+        hold.classList.add('live');
+        lab.textContent = 'Hold to counter-sign';
+        /* ink: a state change, not a movement -- nothing travels more than 2px */
+        c.an(hold, [{transform:'translateY(2px)'},{transform:'translateY(0)'}],
+             {duration:160, easing:EZ.ink});
+      }
+
+      /* stage 2 -- the hold. Linear on purpose: it is timed against a thumb. */
+      function start(){
+        if (!unlocked || signed || holding) return;
+        holding = true;
+        c.sweep(620, function(p){ fill.style.transform = 'scaleX('+p+')'; },
+                function(){ if (holding) commit(); });
+      }
+      function cancel(){
+        if (!holding || signed) return;
+        holding = false; c.stop();
+        var now = fill.style.transform;
+        c.an(fill, [{transform:now},{transform:'scaleX(0)'}], {duration:160, easing:EZ.settle});
+        fill.style.transform = 'scaleX(0)';
+        lab.textContent = 'Released — nothing signed';
+        c.at(900, function(){ if(!signed) lab.textContent = 'Hold to counter-sign'; });
+      }
+      function commit(){
+        if (signed) return; signed = true; holding = false;
+        fill.style.transform = 'scaleX(1)';
+        lab.textContent = 'Counter-signed';
+        st.textContent = 'bound'; st.className = 's-k a8-st on';
+        /* stage 3 -- the line is drawn and the name written FIRST; the seal
+           then presses onto a signature that already exists. Landing the seal
+           first also made it jump, because the card grows as the row opens. */
+        sign.classList.add('open'); draw(c, sl, 420, EZ.turn);
+        c.at(250, function(){ write(c, who, 'M. Aydin · 28 Aug 2026, 17:04', 260); });
+        c.at(340, function(){
+          seal.classList.add('set');
+          c.an(seal, [{opacity:0,transform:'scale(1.8)'},
+                      {opacity:1,transform:'scale(1.02)'}],
+               {duration:SP.stamp.duration, easing:SP.stamp.easing});
+          seal.style.opacity='1'; seal.style.transform='scale(1.02)';
+        });
+        /* the dwell, then it presses in and stays -- a receipt's seal does not */
+        c.at(340 + SP.stamp.duration + 140, function(){
+          c.an(seal, [{transform:'scale(1.02)'},{transform:'scale(1)'}],
+               {duration:180, easing:EZ.settle});
+          seal.style.transform = 'scale(1)';
+          seal.classList.add('pressed');
+        });
+      }
+      /* live on the root, not captured -- see the note on sig-07 */
+      root._sigStart = start; root._sigCancel = cancel;
+      if (!hold._b){
+        hold._b = 1;
+        var down = function(e){ if (e) e.preventDefault(); if (root._sigStart) root._sigStart(); },
+            up   = function(){ if (root._sigCancel) root._sigCancel(); };
+        hold.addEventListener('pointerdown', down);
+        hold.addEventListener('pointerup', up);
+        hold.addEventListener('pointerleave', up);
+        hold.addEventListener('keydown', function(e){ if(e.key===' '||e.key==='Enter') down(e); });
+        hold.addEventListener('keyup', up);
+      }
+      /* the demo drives itself, but only if nobody has taken the control */
+      c.at(1620, function(){ if(!signed && !holding) start(); });
+    }
+  });
+
+  /* ===== sig-09 . it adds up, or it says an em dash ======================= */
+  M.push({
+    id:'sig-09', name:'It adds up, or it says an em dash', family:FAM,
+    purpose:'The receipt showing its working, for an operator checking whether the vendor shorted them. Borrowed from the ledger: a single rule certifies a subtotal, a double rule a grand total — re-aimed so the double rule is a CLAIM OF PROVABILITY. One line has a null unit price, so its extension is an em dash that never moves while everything around it does; the subtotal cannot be proved, so its rule stays dashed and the landed total gets no second stroke at all. When the price is read off the stored photo the arithmetic completes, the rule goes solid, the double rule draws and only then does a figure animate. Tax is shown and visibly set aside — it is not cost of goods.',
+    spec:'extensions WRITTEN left-to-right, clip-path 190ms '+EZ.glide+' (a transcribed result, not a quantity moving) · the em dash has no animation at all, in either pass · rules drawn right-to-left across the figure column, 220ms '+EZ.settle+', second stroke +90ms · provable total '+sp(SP.tally,'tally')+', tabular-nums',
+    source:'apps/web/src/services/api/documents.ts:62-66 (dashNull, decision E49) · :142-151 (allocatedChargesFor, tax excluded) · ReceiptsPage.tsx:352-388',
+    html:'<div class="mx-sig mx-sig-09">'+
+      '<div class="s-h"><span class="s-k">Receipt #R-8841 · the working</span>'+
+      '<span class="s-k a9-st">—</span></div>'+
+      '<div class="a9-tape">'+
+        '<div class="a9-r" data-k="l1"><span>Rioja Crianza</span><i>12 × 18.40</i><b class="num x">—</b></div>'+
+        '<div class="a9-r" data-k="l2"><span>Albariño</span><i>6 × 14.25</i><b class="num x">—</b></div>'+
+        '<div class="a9-r nul" data-k="l3"><span>Cava Brut</span><i class="qq">9 × —</i><b class="num x">—</b></div>'+
+        '<div class="a9-rule"><i></i></div>'+
+        '<div class="a9-r sub"><span>goods</span><i></i><b class="num a9-sub">—</b></div>'+
+        '<div class="a9-r" data-k="ch"><span>freight + fuel + split-case</span><i></i><b class="num a9-chg">—</b></div>'+
+        '<div class="a9-r tax"><span>tax</span><i>not cost of goods</i><b class="num">$96.42</b></div>'+
+        '<div class="a9-rule2"><i></i><i></i></div>'+
+        '<div class="a9-r tot"><span>landed</span><i></i><b class="num a9-tot">—</b></div>'+
+        '<span class="a9-chip">read from the photo · 11.90</span>'+
+      '</div>'+
+      '<div class="s-note a9-note">A total nobody can prove is an em dash, not a number.</div>'+
+      '</div>',
+    play:function(root){
+      var c = ctl(root),
+          rows = {}, st = root.querySelector('.a9-st'),
+          rule = root.querySelector('.a9-rule'), r1 = rule.querySelector('i'),
+          r2 = q(root,'.a9-rule2 i'),
+          sub = root.querySelector('.a9-sub'), chg = root.querySelector('.a9-chg'),
+          tot = root.querySelector('.a9-tot'), chip = root.querySelector('.a9-chip'),
+          qq  = root.querySelector('.qq'), note = root.querySelector('.a9-note');
+      q(root,'.a9-r').forEach(function(r){ if (r.dataset.k) rows[r.dataset.k] = r; r.classList.remove('lit'); });
+
+      /* the exact figures, so the arithmetic can be checked by hand:
+         220.80 + 85.50 + 107.10 = 413.40 goods; + 59.40 charges = 472.80 landed.
+         Tax 96.42 is excluded on purpose (documents.ts:134-141).            */
+      var X = { l1:220.80, l2:85.50, l3:107.10 }, CHARGES = 59.40, GOODS = 413.40, LANDED = 472.80;
+
+      ['l1','l2','l3'].forEach(function(k){
+        var b = rows[k].querySelector('.x'); b.textContent = DASH; b.style.clipPath = 'none';
+      });
+      qq.textContent = '9 × ' + DASH;
+      rows.l3.classList.add('nul');
+      sub.textContent = DASH; chg.textContent = DASH; tot.textContent = DASH;
+      rule.classList.remove('solid'); r1.style.transform = 'scaleX(0)';
+      r2.forEach(function(i){ i.style.transform = 'scaleX(0)'; });
+      chip.style.opacity = '0';
+      st.textContent = DASH; st.className = 's-k a9-st';
+      note.textContent = 'A total nobody can prove is an em dash, not a number.';
+
+      /* pass 1 -- what can be transcribed, is. What cannot, does not move. */
+      c.at(220, function(){ rows.l1.classList.add('lit'); write(c, rows.l1.querySelector('.x'), money(X.l1), 190); });
+      c.at(400, function(){ rows.l2.classList.add('lit'); write(c, rows.l2.querySelector('.x'), money(X.l2), 190); });
+      /* l3: nothing. Deliberately no c.at() here -- the em dash is untouched. */
+      c.at(640, function(){ draw(c, r1, 220, EZ.settle); });   /* dashed: unproved */
+      c.at(880, function(){ write(c, chg, money(CHARGES), 190); });
+      c.at(1060, function(){
+        st.textContent = 'not provable'; st.className = 's-k a9-st w';
+        /* no second stroke, and no total. The space stays empty. */
+      });
+
+      /* pass 2 -- a human reads the missing price off the stored image */
+      c.at(1900, function(){
+        chip.style.top = (rows.l3.offsetTop - 1) + 'px';
+        c.an(chip, [{opacity:0,transform:'translateX(10px)'},{opacity:1,transform:'translateX(0)'}],
+             {duration:260, easing:EZ.settle});
+        chip.style.opacity = '1';
+      });
+      c.at(2260, function(){
+        qq.textContent = '9 × 11.90';
+        rows.l3.classList.remove('nul'); rows.l3.classList.add('lit');
+        write(c, rows.l3.querySelector('.x'), money(X.l3), 190);
+        c.an(chip, [{opacity:1},{opacity:0}], {duration:220, easing:EZ.exit});
+        chip.style.opacity = '0';
+      });
+      c.at(2500, function(){
+        rule.classList.add('solid');                 /* the subtotal can now be certified */
+        draw(c, r1, 200, EZ.settle);
+        write(c, sub, money(GOODS), 200);
+      });
+      c.at(2760, function(){
+        st.textContent = 'provable'; st.className = 's-k a9-st ok';
+        draw(c, r2[0], 220, EZ.settle);
+      });
+      c.at(2850, function(){
+        draw(c, r2[1], 220, EZ.settle);              /* the second stroke: a grand total */
+        tallyTo(c, tot, 0, LANDED, SP.tally.duration, money);
+        note.textContent = 'Now it can be proved: 220.80 + 85.50 + 107.10 + 59.40.';
+      });
+    }
+  });
+
+  /* ===== sig-10 . money came back ========================================= */
+  M.push({
+    id:'sig-10', name:'Money came back', family:FAM,
+    purpose:'A vendor credit finally settles on /receipts?tab=credits — the rarest good news in procurement, and the only motion in the system allowed to celebrate. No confetti: the celebration is made of the fact. The memo arrives first, because claimed is not recovered until a credit memo exists (which also replaces the window.prompt asking the operator to type a UUID). Then the money is CONSERVED on screen: the whole $312 claim leaves Outstanding, $284 travels into Recovered, and the $28 the vendor would not allow counts up as written off on the same clock — so Outstanding + Recovered + written off equals the opening balance on every frame. Nothing appears from nowhere, and nothing quietly stays owed. A single rule closes it, not a double one: recovery is a subtotal, the chase continues.',
+    spec:'memo pins '+sp(SP.stamp,'stamp')+' · travel '+EZ.turn+' 460ms · all three figures '+sp(SP.tally,'tally')+' driven from ONE clock · single rule 380ms '+EZ.glide+' · whole ceremony 1.2s and it never blocks the next claim',
+    source:'apps/web/src/services/api/credits.ts:1-7,62-73 · ReceiptsPage.tsx:120-140 (window.prompt for the memo id) · :407-421 (Recovered / Outstanding tiles)',
+    html:'<div class="mx-sig mx-sig-10">'+
+      '<div class="s-h"><span class="s-k">Claim · 4 cases short · Vinos del Norte</span></div>'+
+      '<div class="a10-tiles">'+
+        '<div class="a10-t" data-k="out"><span>Outstanding</span><b class="num a10-out">$1,204.00</b></div>'+
+        '<div class="a10-t" data-k="rec"><span>Recovered</span><b class="num a10-rec">$0.00</b>'+
+          '<i class="a10-under"></i></div>'+
+      '</div>'+
+      '<i class="a10-fly num">$284.00</i>'+
+      '<div class="a10-memo"><span class="a10-mc">CM-4471</span>'+
+        '<span class="a10-ml">credit memo attached — this is what makes it recovery</span></div>'+
+      '<div class="a10-res"><span>written off — vendor allowed $284.00 of $312.00</span>'+
+        '<b class="num a10-off">$0.00</b></div>'+
+      '</div>',
+    play:function(root){
+      var c = ctl(root),
+          out = root.querySelector('.a10-out'), rec = root.querySelector('.a10-rec'),
+          recT= root.querySelector('[data-k="rec"]'),
+          fly = root.querySelector('.a10-fly'), und = root.querySelector('.a10-under'),
+          mc  = root.querySelector('.a10-mc'), ml = root.querySelector('.a10-ml'),
+          res = root.querySelector('.a10-res'), off = root.querySelector('.a10-off');
+
+      /* The claim was $312. Settling it removes all $312 from Outstanding:
+         $284 becomes Recovered, $28 is written off. The write-off therefore
+         has to be a live third figure on the same clock -- leaving it as a
+         footnote left $28 sitting in Outstanding that is never coming.      */
+      var OUT0 = 1204.00, CLAIM = 312.00, AMT = 284.00, OFF = CLAIM - AMT;  /* 28.00 */
+      var OUT1 = OUT0 - CLAIM;                                              /* 892.00 */
+
+      out.textContent = money(OUT0); rec.textContent = money(0); off.textContent = money(0);
+      recT.classList.remove('arrived');
+      und.style.transform = 'scaleX(0)';
+      fly.style.opacity = '0';
+      mc.style.opacity='0'; mc.style.transform='translateX(-22px) rotate(-6deg)';
+      mc.classList.remove('on');
+      ml.style.opacity='0'; res.style.opacity='0';
+
+      /* 1 -- the proof arrives first. No memo, no recovery. */
+      c.at(260, function(){
+        mc.classList.add('on');
+        c.an(mc, [{opacity:0,transform:'translateX(-22px) rotate(-6deg)'},
+                  {opacity:1,transform:'translateX(0) rotate(0deg)'}],
+             {duration:SP.stamp.duration, easing:SP.stamp.easing});
+        mc.style.opacity='1'; mc.style.transform='translateX(0) rotate(0deg)';
+        c.an(ml,[{opacity:0},{opacity:1}],{duration:220}); ml.style.opacity='1';
+      });
+
+      /* 2 -- the money moves. Measured geometry, so it lands on the figure. */
+      c.at(560, function(){
+        var rr = root.getBoundingClientRect(),
+            a  = out.getBoundingClientRect(), b = rec.getBoundingClientRect();
+        fly.textContent = money(AMT);
+        fly.style.left = (a.left - rr.left) + 'px';
+        fly.style.top  = (a.top  - rr.top ) + 'px';
+        var dx = b.left - a.left, dy = b.top - a.top;
+        c.an(fly, [{opacity:0,transform:'translate(0,0) scale(.94)'},
+                   {opacity:1,transform:'translate('+(dx*0.16)+'px,'+(dy*0.16-3)+'px) scale(1)',offset:.18},
+                   {opacity:1,transform:'translate('+(dx*0.86)+'px,'+(dy*0.86)+'px) scale(1)',offset:.86},
+                   {opacity:0,transform:'translate('+dx+'px,'+dy+'px) scale(.98)'}],
+             {duration:460, easing:EZ.turn});
+        /* ONE clock for all three figures. Outstanding + Recovered + written off
+           equals the opening balance on EVERY frame -- nothing appears from
+           nowhere and nothing quietly stays owed. */
+        c.an(res, [{opacity:0},{opacity:1}], {duration:220}); res.style.opacity = '1';
+        c.sweep(460, function(p){
+          var tr = SP.tally.trace, x = tr[Math.min(tr.length-1, Math.round(p*(tr.length-1)))];
+          /* round the two travelling figures, then derive the third from what
+             is left. Rounding all three off the same x independently let the
+             displayed sum drift a cent mid-flight -- on a ceremony whose whole
+             claim is that the money conserves, a phantom penny is the bug. */
+          var o = Math.round((OUT0 - CLAIM*x)*100)/100,
+              r = Math.round((AMT*x)*100)/100;
+          out.textContent = money(o);
+          rec.textContent = money(r);
+          off.textContent = money(Math.round((OUT0 - o - r)*100)/100);
+        }, function(){
+          out.textContent = money(OUT1); rec.textContent = money(AMT); off.textContent = money(OFF);
+          recT.classList.add('arrived');
+          draw(c, und, 380, EZ.glide);   /* a SINGLE rule: recovery is a subtotal */
+        });
+      });
+    }
+  });
+
+  /* ===== sig-11 . the count is committed ================================== */
+  M.push({
+    id:'sig-11', name:'The count is committed', family:FAM,
+    purpose:'A floor spot count locking and shadow stock becoming truth. The commit may land minutes later and somewhere else — spotCountOutbox mints a client idempotency key at the tap and syncs when the network returns — but SpotCountPanel calls onCommitted() and onClose() straight away, so the moment it actually becomes true is invisible today. Here the tap leaves a pencilled mark carrying its key; the mark waits, and does not pretend to be sending; and when the commit lands the seal writes the count\'s OWN time, not now. The ceremony belongs to 17:42. Below it, the honest half: a count dropped after 8 attempts gets no seal at all — which is the signal, since watchSpotCountOutbox throws away the failed tally. Press Recount.',
+    spec:'no spinner while queued — a 2.2s opacity breath at .78-1 (killed under reduced motion), because this is a queue waiting, not the AI working · pencil rule -> solid draw 260ms '+EZ.settle+' · shadow/live cross-fade 200ms in place · seal '+sp(SP.stamp,'stamp')+' · the failed mark gets NO stamp: its ceremony is its absence',
+    source:'apps/web/src/lib/spotCountOutbox.ts:12-13,38-42,90-127,133-145 · SpotCountPanel.tsx:187-201 · InventoryCommandPage.tsx:110',
+    html:'<div class="mx-sig mx-sig-11">'+
+      '<div class="s-h"><span class="s-k">Spot count · cellar B</span>'+
+      '<span class="s-k a11-net">offline</span></div>'+
+      '<div class="a11-m a11-one">'+
+        '<div class="a11-top"><span class="a11-name">Rioja Crianza 2019</span>'+
+          '<b class="num a11-n">34</b></div>'+
+        '<div class="a11-key">count:INV-2291:9f3a…</div>'+
+        '<div class="a11-hr"></div>'+
+        '<div class="a11-meta"><span class="a11-when">17:42 · waiting <b class="a11-el">0m</b></span>'+
+          '<span class="a11-state"><i class="sh">shadow</i><i class="live">live</i></span></div>'+
+        '<span class="a11-seal">Committed</span>'+
+      '</div>'+
+      '<div class="a11-m a11-two">'+
+        '<div class="a11-f"><span class="a11-fl">Albariño · 12 · queued 17:39</span>'+
+          '<button type="button" class="a11-re">Recount</button></div>'+
+      '</div>'+
+      '</div>',
+    play:function(root){
+      var c = ctl(root),
+          net = root.querySelector('.a11-net'),
+          m1 = root.querySelector('.a11-one'), m2 = root.querySelector('.a11-two'),
+          key= root.querySelector('.a11-key'), when = root.querySelector('.a11-when'),
+          hr = root.querySelector('.a11-hr'),
+          sh = root.querySelector('.a11-state .sh'), lv = root.querySelector('.a11-state .live'),
+          seal = root.querySelector('.a11-seal'),
+          fl = root.querySelector('.a11-fl'), re = root.querySelector('.a11-re');
+
+      function reset2(){
+        m2.classList.remove('dead'); m2.classList.add('waiting');
+        fl.textContent = 'Albariño · 12 · queued 17:39';
+        re.style.opacity = '0'; re.disabled = true;
+      }
+      net.textContent = 'offline'; net.className = 's-k a11-net w';
+      m1.className = 'a11-m a11-one waiting';
+      key.textContent = 'count:INV-2291:9f3a…'; key.classList.remove('reused');
+      when.innerHTML = '17:42 · waiting <b class="a11-el">0m</b>';
+      var el = when.querySelector('.a11-el');
+      hr.style.transform = 'scaleX(1)';
+      sh.style.opacity = '1'; lv.style.opacity = '0';
+      seal.style.opacity = '0'; seal.style.transform = 'scale(1.8) rotate(-9deg)';
+      reset2();
+
+      /* the wait is real time passing, not a spinner. 12 minutes, compressed. */
+      c.sweep(1400, function(p){ el.textContent = Math.round(p*12) + 'm'; });
+
+      c.at(1500, function(){ net.textContent = 'online'; net.className = 's-k a11-net ok'; });
+
+      /* the commit lands -- and the ceremony fires on the RECORD, not on now */
+      c.at(1700, function(){
+        m1.classList.remove('waiting'); m1.classList.add('done');
+        draw(c, hr, 260, EZ.settle);
+        key.textContent = 'key reused · server no-op';
+        key.classList.add('reused');
+        /* both times named: when it was counted, and how much later it landed */
+        when.textContent = 'counted 17:42 · synced 12m later';
+        c.an(key, [{opacity:0},{opacity:1}], {duration:160, easing:EZ.ink});
+        c.an(sh, [{opacity:1},{opacity:0}], {duration:200}); sh.style.opacity = '0';
+        c.an(lv, [{opacity:0},{opacity:1}], {duration:200}); lv.style.opacity = '1';
+      });
+      c.at(1820, function(){
+        c.an(seal, [{opacity:0,transform:'scale(1.8) rotate(-9deg)'},
+                    {opacity:1,transform:'scale(1) rotate(0deg)'}],
+             {duration:SP.stamp.duration, easing:SP.stamp.easing});
+        seal.style.opacity = '1'; seal.style.transform = 'scale(1) rotate(0deg)';
+        seal.textContent = 'Committed 17:42';   /* the count's time, not the network's */
+      });
+
+      /* the honest half: no seal, because nothing was committed */
+      c.at(2400, function(){
+        m2.classList.remove('waiting'); m2.classList.add('dead');
+        fl.textContent = 'Albariño · dropped after 8 attempts — never counted';
+        c.an(re, [{opacity:0},{opacity:1}], {duration:200});
+        re.style.opacity = '1'; re.disabled = false;
+      });
+
+      if (!re._b){
+        re._b = 1;
+        re.addEventListener('click', function(){
+          reset2();
+          fl.textContent = 'Albariño · 12 · re-queued, new key';
+          re.disabled = true;
+        });
+      }
+    }
+  });
+})();
+</script>

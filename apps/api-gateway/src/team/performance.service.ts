@@ -2,6 +2,7 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { TeamService } from "./team.service";
@@ -14,6 +15,8 @@ import { IngestSalesDto } from "./dto/team.dto";
  */
 @Injectable()
 export class PerformanceService {
+  private readonly logger = new Logger(PerformanceService.name);
+
   constructor(
     private readonly db: DatabaseService,
     private readonly team: TeamService,
@@ -131,21 +134,38 @@ export class PerformanceService {
     const wineAttach = totalNet > 0 ? totalWine / totalNet : 0;
 
     // Team benchmark (same recent window, all members).
-    const { data: teamRows } = await this.sb
+    //
+    // The error used to be discarded, and `percentile([])` returned 0 — so a
+    // failed benchmark query rendered a peer median of $0/cover and a band of
+    // [0, 0], which puts EVERY server above their team. A comparison that
+    // flatters everyone is worse than no comparison. Per ADR 0051 an unknown
+    // figure is the em dash, never a zero, so the benchmark is now `null` both
+    // when the read fails and when the restaurant genuinely has no peer rows,
+    // and the caller draws no median line for either.
+    const { data: teamRows, error: teamError } = await this.sb
       .from("server_sales")
       .select("member_id, net_sales, covers")
       .eq("restaurant_id", restaurantId)
       .order("service_date", { ascending: false })
       .limit(200);
-    const teamPerCover = (teamRows ?? [])
-      .map((r: any) => (r.covers > 0 ? Number(r.net_sales) / r.covers : 0))
-      .filter((n) => n > 0)
-      .sort((a, b) => a - b);
+    if (teamError) {
+      this.logger.error(
+        `server_sales team benchmark failed for r=${restaurantId} — this ` +
+          `member's card will show no peer comparison rather than a false ` +
+          `one: ${teamError.code ?? "?"} ${teamError.message}`,
+      );
+    }
+    const teamPerCover = teamError
+      ? []
+      : (teamRows ?? [])
+          .map((r: any) => (r.covers > 0 ? Number(r.net_sales) / r.covers : 0))
+          .filter((n) => n > 0)
+          .sort((a, b) => a - b);
     const median = percentile(teamPerCover, 0.5);
-    const band: [number, number] = [
-      percentile(teamPerCover, 0.25),
-      percentile(teamPerCover, 0.75),
-    ];
+    const band: [number, number] | null =
+      median == null
+        ? null
+        : [percentile(teamPerCover, 0.25)!, percentile(teamPerCover, 0.75)!];
 
     return {
       hasData: true,
@@ -157,8 +177,10 @@ export class PerformanceService {
       analytic: {
         unit: "/cover",
         series: series.map((r) => round(perCover(r))),
-        median: round(median),
-        band: [round(band[0]), round(band[1])],
+        // null, not 0, when the peer benchmark is unknown — the client draws
+        // no median line and no band rather than a flattering one at zero.
+        median: median == null ? null : round(median),
+        band: band == null ? null : ([round(band[0]), round(band[1])] as const),
       },
       services: series.map((r) => ({ date: r.service_date, covers: r.covers })),
     };
@@ -171,8 +193,15 @@ function avg(nums: number[]): number {
 function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
-function percentile(sorted: number[], p: number): number {
-  if (!sorted.length) return 0;
+/**
+ * `null` — not 0 — when there is nothing to take a percentile of.
+ *
+ * The old `return 0` was the whole peer-median defect: an empty array is
+ * "unknown", and rendering unknown as zero made every restaurant's every
+ * server beat the house average. ADR 0051: unknown is the em dash.
+ */
+function percentile(sorted: number[], p: number): number | null {
+  if (!sorted.length) return null;
   const idx = Math.min(sorted.length - 1, Math.floor(p * sorted.length));
   return sorted[idx];
 }

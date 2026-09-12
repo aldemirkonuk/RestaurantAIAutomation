@@ -21,7 +21,12 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import (
+    Environment,
+    FileSystemLoader,
+    StrictUndefined,
+    select_autoescape,
+)
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 
@@ -60,6 +65,18 @@ def find_chrome() -> str:
 def _env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(TEMPLATE_DIR),
+        # autoescape: these templates interpolate invoice data — producer
+        # names, wine names, addresses, line-item descriptions — straight into
+        # HTML that Chrome then renders to PDF. Without escaping, a value
+        # containing `<` or `&` produces broken markup at best, and injected
+        # markup into the rendered document at worst; the renderer executing
+        # attacker-authored script during PDF generation is a much larger
+        # problem than a mangled invoice.
+        #
+        # Safe to switch on: no template in scripts/docgen/templates/ uses the
+        # `|safe` filter or Markup, so nothing here depends on a variable
+        # carrying raw HTML through.
+        autoescape=select_autoescape(["html", "xml"]),
         # StrictUndefined: a template that references a field the composer does
         # not produce should fail loudly at generation time, not silently render
         # an invoice with a blank where a quantity belongs.

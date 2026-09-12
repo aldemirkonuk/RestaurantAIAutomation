@@ -4,7 +4,12 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ModelClientService } from "../common/model-client/model-client.service";
+import {
+  ModelClientService,
+  NfEventRef,
+} from "../common/model-client/model-client.service";
+import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import { PARSE_BASIS, photoCountParseVerdict } from "./photo-count-verdict";
 
 const COUNT_PROMPT =
   "You are helping a bar/restaurant staff member count bottles of a specific " +
@@ -39,12 +44,20 @@ export class PhotoCountService {
   constructor(
     private readonly configService: ConfigService,
     private readonly modelClient: ModelClientService,
+    private readonly nfVerdicts: NfVerdictService,
   ) {}
 
+  /**
+   * @param eventRef optional handle on the NF row this call writes, supplied by
+   * a caller that intends to grade the suggestion later (OD-59). Created by the
+   * caller rather than returned from here so the response shape the controller
+   * serialises to the browser is unchanged.
+   */
   async estimate(
     imageBase64: string,
     wineName: string,
     restaurantId?: string,
+    eventRef?: NfEventRef,
   ): Promise<PhotoCountEstimate> {
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
@@ -90,11 +103,24 @@ export class PhotoCountService {
           stimulus: "shelf_photo",
           choice: "count_estimate",
           restaurantId: restaurantId ?? null,
+          eventRef,
         },
       });
 
       const content: string = payload?.content?.[0]?.text ?? "";
-      return this.parseResponse(content);
+      const { estimate, parsed } = this.parseResponseGraded(content);
+      if (eventRef) {
+        this.nfVerdicts.record(
+          eventRef,
+          PARSE_BASIS,
+          photoCountParseVerdict({
+            parsed,
+            suggestedQty: estimate.suggestedQty,
+            confidence: estimate.confidence,
+          }),
+        );
+      }
+      return estimate;
     } catch (error: any) {
       this.logger.error(`Photo count estimate failed: ${error.message}`);
       throw new ServiceUnavailableException(
@@ -113,6 +139,20 @@ export class PhotoCountService {
   }
 
   private parseResponse(text: string): PhotoCountEstimate {
+    return this.parseResponseGraded(text).estimate;
+  }
+
+  /**
+   * The same parse, plus whether the response parsed at all.
+   *
+   * OD-59: a model that DECLINED to count and a response nothing could read
+   * both produce `suggestedQty: null` with the same note, and they are
+   * different outcomes — one is the prompt working, the other is a wasted call.
+   */
+  private parseResponseGraded(text: string): {
+    estimate: PhotoCountEstimate;
+    parsed: boolean;
+  } {
     try {
       const cleaned = text.replace(/```(?:json)?\n?/g, "").trim();
       const parsed = JSON.parse(cleaned);
@@ -127,21 +167,27 @@ export class PhotoCountService {
           ? parsed.confidence
           : "low";
       return {
-        suggestedQty,
-        confidence,
-        note:
-          typeof parsed.note === "string" && parsed.note
-            ? parsed.note
-            : "Could not read a confident count from this photo.",
+        estimate: {
+          suggestedQty,
+          confidence,
+          note:
+            typeof parsed.note === "string" && parsed.note
+              ? parsed.note
+              : "Could not read a confident count from this photo.",
+        },
+        parsed: true,
       };
     } catch {
       this.logger.warn(
         `Failed to parse photo count response: ${text.slice(0, 200)}`,
       );
       return {
-        suggestedQty: null,
-        confidence: "low",
-        note: "Could not read a confident count from this photo.",
+        estimate: {
+          suggestedQty: null,
+          confidence: "low",
+          note: "Could not read a confident count from this photo.",
+        },
+        parsed: false,
       };
     }
   }

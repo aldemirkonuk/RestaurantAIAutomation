@@ -1,0 +1,943 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mudavym — 079 · The Cellar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   079 · THE CELLAR — dark is the primary theme, light is derived
+   ============================================================ */
+:root{
+  /* grounds — near-black tinted toward wine; the cellar itself */
+  --bg-vault:#0F0909;          /* deepest ground, page underlay        */
+  --bg:#171010;                /* the cellar — page background         */
+  --surface:#201616;           /* card                                  */
+  --surface-2:#2A1D1B;         /* raised / hover                        */
+  --border:rgba(246,217,184,.10);        /* candlelight on the wall     */
+  --border-strong:rgba(246,217,184,.20);
+  /* ink — warm off-whites, never pure white (low glare)               */
+  --ink-hi:#F3EAE0;
+  --ink-mid:#C9BCB0;
+  --ink-low:#96897E;
+  --ink-faint:#665B52;
+  /* the one luminous accent — the candle                              */
+  --candle:#E5A44C;
+  --candle-bright:#FFC474;
+  --candle-tint:rgba(229,164,76,.10);
+  --candle-ring:rgba(229,164,76,.40);
+  --on-candle:#201304;
+  /* semantics — settled / danger; ATTENTION IS THE CANDLE ITSELF      */
+  --settled:#9BBF7E;      --settled-tint:rgba(155,191,126,.12);
+  --danger:#E4635C;       --danger-tint:rgba(228,99,92,.12);
+  --shadow:0 12px 40px rgba(0,0,0,.45);
+  /* motion tokens — house curve family                                 */
+  --ease-settle:cubic-bezier(.16,1,.3,1);
+  --ease-drift:cubic-bezier(.25,1,.5,1);
+  --dur-strike:140ms; --dur-settle:240ms; --dur-hearth:420ms;
+  /* type */
+  --serif:"Fraunces",Georgia,serif;
+  --sans:"Hanken Grotesk",system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+}
+[data-theme="light"]{
+  /* the doorway — daylight at the cellar door, warm paper             */
+  --bg-vault:#EDE4D6;
+  --bg:#F7F1E6;
+  --surface:#FDFAF3;
+  --surface-2:#FFFFFF;
+  --border:rgba(62,42,28,.12);
+  --border-strong:rgba(62,42,28,.22);
+  --ink-hi:#221812;
+  --ink-mid:#52463C;
+  --ink-low:#83766A;
+  --ink-faint:#B0A497;
+  --candle:#A96F1E;
+  --candle-bright:#C2882B;
+  --candle-tint:rgba(169,111,30,.12);
+  --candle-ring:rgba(169,111,30,.35);
+  --on-candle:#FFF6E6;
+  --settled:#5E8C43;      --settled-tint:rgba(94,140,67,.14);
+  --danger:#C24A43;       --danger-tint:rgba(194,74,67,.12);
+  --shadow:0 10px 30px rgba(80,60,40,.14);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--ink-hi);
+  font:400 15px/1.55 var(--sans);
+  transition:background .4s var(--ease-drift), color .4s var(--ease-drift);
+  min-height:100vh;
+}
+/* faint candle vignette — atmosphere without glare */
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:radial-gradient(900px 480px at 50% -10%, var(--candle-tint), transparent 70%);
+  opacity:.55;
+}
+.wrap{position:relative; z-index:1; max-width:1080px; margin:0 auto; padding:0 clamp(20px,5vw,56px)}
+
+/* ---------- typography roles ---------- */
+.kick{font:500 11px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--candle)}
+.kick.dim{color:var(--ink-low)}
+h1,.hero-t{font:560 44px/1.12 var(--serif); letter-spacing:-.015em}
+h2{font:520 32px/1.15 var(--serif); letter-spacing:-.01em}
+.title{font:650 24px/1.2 var(--sans); letter-spacing:-.01em}
+.heading{font:600 18px/1.3 var(--sans)}
+.small{font:450 13px/1.5 var(--sans); color:var(--ink-mid)}
+.caption{font:550 12px/1.4 var(--sans)}
+.data{font:450 14px/1 var(--mono); font-variant-numeric:tabular-nums}
+.data-lg{font:500 28px/1 var(--mono); font-variant-numeric:tabular-nums}
+p.note{color:var(--ink-mid); max-width:640px}
+strong{font-weight:600; color:var(--ink-hi)}
+
+/* ---------- scaffolding ---------- */
+.masthead{display:flex; align-items:center; justify-content:space-between; gap:16px; padding:26px 0; border-bottom:1px solid var(--border)}
+.masthead .brand{display:flex; align-items:center; gap:12px}
+.sec{padding:68px 0 76px; border-top:1px solid var(--border)}
+.sec:first-of-type{border-top:none}
+.sec-head{margin-bottom:34px}
+.sec-head h2{margin-top:10px}
+.sec-head p{margin-top:10px}
+.grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px}
+.grid3{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:20px}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:22px;
+  transition:background .4s var(--ease-drift), border-color .4s var(--ease-drift)}
+footer{padding:40px 0 64px; color:var(--ink-faint); font:400 12px/1.6 var(--mono); border-top:1px solid var(--border)}
+
+/* ---------- controls ---------- */
+.switch{appearance:none; -webkit-appearance:none; width:46px; height:26px; border-radius:999px;
+  background:var(--surface-2); border:1px solid var(--border-strong); position:relative; cursor:pointer; flex:none;
+  transition:background var(--dur-settle) var(--ease-settle), border-color var(--dur-settle) var(--ease-settle), box-shadow var(--dur-settle) var(--ease-settle)}
+.switch .thumb{position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%;
+  background:var(--ink-low); transition:transform var(--dur-settle) var(--ease-settle), background var(--dur-settle) var(--ease-settle)}
+.switch[aria-checked="true"]{background:var(--candle-tint); border-color:var(--candle); box-shadow:0 0 14px var(--candle-tint)}
+.switch[aria-checked="true"] .thumb{transform:translateX(20px); background:var(--candle)}
+.switch:focus-visible{outline:2px solid var(--candle-ring); outline-offset:2px}
+.switch-row{display:flex; align-items:center; gap:10px}
+
+.btn{font:600 13px/1 var(--sans); padding:11px 16px; border-radius:10px; cursor:pointer;
+  border:1px solid var(--border-strong); background:var(--surface-2); color:var(--ink-hi);
+  transition:transform var(--dur-strike) var(--ease-settle), background var(--dur-settle) var(--ease-settle),
+             border-color var(--dur-settle) var(--ease-settle), box-shadow var(--dur-settle) var(--ease-settle), color var(--dur-settle) var(--ease-settle)}
+.btn:hover{transform:translateY(-1px); border-color:var(--candle)}
+.btn:active{transform:translateY(0)}
+.btn.primary{background:var(--candle); color:var(--on-candle); border-color:transparent}
+.btn.primary:hover{background:var(--candle-bright)}
+.btn.ghost{background:transparent}
+.btn:focus-visible{outline:2px solid var(--candle-ring); outline-offset:2px}
+
+.chip{display:inline-flex; align-items:center; gap:6px; font:550 12px/1 var(--sans);
+  padding:5px 11px; border-radius:999px; border:1px solid var(--border); color:var(--ink-mid); white-space:nowrap}
+.chip.candle{color:var(--candle); background:var(--candle-tint); border-color:transparent; position:relative; overflow:hidden}
+.chip.candle::after{content:""; position:absolute; inset:0;
+  background:linear-gradient(110deg, transparent 32%, rgba(255,196,116,.22) 50%, transparent 68%);
+  background-size:220% 100%; animation:shimmer 2.8s linear infinite}
+.chip.settled{color:var(--settled); background:var(--settled-tint); border-color:transparent}
+.chip.danger{color:var(--danger); background:var(--danger-tint); border-color:transparent}
+@keyframes shimmer{from{background-position:200% 0} to{background-position:-200% 0}}
+
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
+.dot.candle{background:var(--candle)} .dot.settled{background:var(--settled)} .dot.danger{background:var(--danger)}
+
+kbd{font:500 10px/1 var(--mono); letter-spacing:.06em; color:var(--ink-low);
+  border:1px solid var(--border-strong); border-radius:5px; padding:3px 6px; background:var(--surface)}
+
+/* ---------- 01 logo ---------- */
+.logo-set{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px}
+.logo-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden}
+.logo-card .info{padding:18px 20px}
+.logo-card .info .small{margin-top:6px}
+.logo-chip{display:flex; align-items:center; justify-content:center; padding:30px 20px; min-height:118px}
+.logo-chip.on-dark{background:#171010; color:#F3EAE0; --logo-candle:#E5A44C}
+.logo-chip.on-light{background:#F7F1E6; color:#221812; --logo-candle:#A96F1E; border-top:1px solid rgba(62,42,28,.12)}
+.logo-chip svg{display:block; max-width:100%; height:auto}
+
+/* ---------- 02 slogans ---------- */
+.slogan{display:grid; grid-template-columns:52px 1fr; gap:18px; padding:22px 0; border-top:1px solid var(--border); align-items:baseline}
+.slogan:first-child{border-top:none}
+.slogan .n{font:500 12px/1 var(--mono); color:var(--ink-faint); letter-spacing:.1em}
+.slogan .line{font:520 26px/1.2 var(--serif); letter-spacing:-.01em}
+.slogan .why{margin-top:8px; font:400 13px/1.55 var(--sans); color:var(--ink-mid); max-width:560px}
+.slogan.lead .line{color:var(--candle)}
+
+/* ---------- 03 voice ---------- */
+.rule{border-left:2px solid var(--candle); padding:2px 0 2px 16px}
+.rule .heading{margin-bottom:4px}
+.rewrite{display:grid; grid-template-columns:1fr 24px 1.2fr; gap:14px; align-items:start; padding:18px 0; border-top:1px solid var(--border)}
+.rewrite .before{color:var(--ink-low); font-size:14px}
+.rewrite .arrow{color:var(--candle); font:500 14px/1.5 var(--mono); text-align:center}
+.rewrite .after{color:var(--ink-hi); font-size:14px}
+.rewrite .after em{font-style:normal; color:var(--ink-low); display:block; margin-top:5px; font-size:12px}
+
+/* ---------- 04 palette ---------- */
+.pal-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:22px}
+.pal-col{border-radius:14px; border:1px solid var(--border); overflow:hidden}
+.pal-col .pal-head{padding:16px 20px 12px}
+.pal-col.dark{background:#171010; color:#F3EAE0}
+.pal-col.dark .pal-head{border-bottom:1px solid rgba(246,217,184,.1)}
+.pal-col.light{background:#F7F1E6; color:#221812}
+.pal-col.light .pal-head{border-bottom:1px solid rgba(62,42,28,.12)}
+.pal-group{padding:12px 20px 4px; font:500 10px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; opacity:.55}
+.sw{display:flex; align-items:center; gap:12px; padding:7px 20px}
+.sw .box{width:46px; height:30px; border-radius:6px; flex:none; border:1px solid rgba(127,110,90,.25)}
+.sw .tk{font:500 11px/1.3 var(--mono); flex:1}
+.sw .hex{font:400 11px/1.3 var(--mono); opacity:.6}
+.pal-note{margin-top:18px}
+.ramp{display:flex; gap:4px; padding:8px 20px 20px}
+.ramp i{height:26px; flex:1; border-radius:4px}
+
+/* ---------- 05 type ---------- */
+.face-card .sample{font-size:30px; line-height:1.15; margin:10px 0 12px; min-height:72px}
+.trow{display:grid; grid-template-columns:1fr 260px; gap:20px; align-items:baseline; padding:16px 0; border-top:1px solid var(--border)}
+.trow:first-child{border-top:none}
+.trow .spec{font:400 11px/1.6 var(--mono); color:var(--ink-low); text-align:right}
+@media(max-width:720px){.trow{grid-template-columns:1fr}.trow .spec{text-align:left}}
+
+/* ---------- 06 motion ---------- */
+table.mtok{width:100%; border-collapse:collapse; font-size:13px}
+table.mtok th{font:500 10px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-low); text-align:left; padding:10px 12px 10px 0; border-bottom:1px solid var(--border-strong)}
+table.mtok td{padding:12px 12px 12px 0; border-bottom:1px solid var(--border); vertical-align:top; color:var(--ink-mid)}
+table.mtok td:first-child{font:600 13px/1.4 var(--sans); color:var(--candle); white-space:nowrap}
+table.mtok td code{font:400 11px/1.5 var(--mono); color:var(--ink-mid); background:var(--surface); border:1px solid var(--border); border-radius:5px; padding:2px 6px; white-space:nowrap}
+.mtok-wrap{overflow-x:auto}
+.demo-card .kick{display:block; margin-bottom:14px}
+.demo-stage{background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:20px; margin-top:6px}
+
+/* expandable row (motion demo + orders mock) */
+.xrow{border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface)}
+.xrow .rowbar{display:flex; align-items:center; gap:12px; padding:13px 16px; cursor:pointer; width:100%;
+  background:none; border:none; color:inherit; font:inherit; text-align:left;
+  transition:background var(--dur-strike) var(--ease-settle)}
+.xrow .rowbar:hover{background:var(--surface-2)}
+.xrow .chev{margin-left:auto; flex:none; transition:transform var(--dur-hearth) var(--ease-drift); color:var(--ink-low)}
+.xrow.open .chev{transform:rotate(180deg)}
+.xrow .drawer{display:grid; grid-template-rows:0fr; transition:grid-template-rows var(--dur-hearth) var(--ease-drift)}
+.xrow .drawer>div{overflow:hidden; min-height:0}
+.xrow .drawer .inner{padding:4px 16px 16px; opacity:0; transform:translateY(-4px);
+  transition:opacity .3s var(--ease-settle), transform .3s var(--ease-settle)}
+.xrow.open .drawer{grid-template-rows:1fr}
+.xrow.open .drawer .inner{opacity:1; transform:none; transition-delay:.08s}
+
+/* ticker */
+.ticker-val{font:500 34px/1 var(--mono); font-variant-numeric:tabular-nums;
+  transition:color .5s var(--ease-settle), text-shadow .5s var(--ease-settle)}
+.ticker-val.lit{color:var(--candle-bright); text-shadow:0 0 22px var(--candle-tint)}
+
+/* ---------- 07 sample screens ---------- */
+.mock{background:var(--bg-vault); border:1px solid var(--border); border-radius:16px; overflow:hidden; box-shadow:var(--shadow);
+  transition:background .4s var(--ease-drift)}
+.mock .mbar{display:flex; align-items:center; gap:8px; padding:11px 16px; border-bottom:1px solid var(--border); background:var(--surface)}
+.mock .mbar .dots i{display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--ink-faint); opacity:.5; margin-right:5px}
+.mock .mbar .url{font:400 11px/1 var(--mono); color:var(--ink-low); flex:1; text-align:center}
+.mock .mbody{padding:26px clamp(16px,3.5vw,34px) 30px; background:var(--bg)}
+.mock-cap{margin-top:12px; font:400 12px/1.6 var(--mono); color:var(--ink-faint)}
+
+.kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:22px 0}
+.kpi{background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 16px}
+.kpi .lab{display:flex; align-items:center; gap:7px; font:500 10px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--ink-low)}
+.kpi .val{font:500 27px/1.1 var(--mono); font-variant-numeric:tabular-nums; margin-top:9px}
+.kpi .sub{font:450 11.5px/1.4 var(--sans); color:var(--ink-low); margin-top:5px}
+.kpi .sub.up{color:var(--settled)}
+.kpi.warm .val{color:var(--candle)}
+.kpi.hot .val{color:var(--danger)}
+
+.approve{border:1px solid var(--candle-ring); border-radius:12px; padding:20px; background:var(--candle-tint);
+  animation:ember 2s ease-in-out infinite alternate}
+@keyframes ember{
+  from{box-shadow:0 0 0 0 rgba(229,164,76,0), 0 0 18px rgba(229,164,76,.05)}
+  to  {box-shadow:0 0 0 1px var(--candle-tint), 0 0 34px rgba(229,164,76,.13)}
+}
+.approve .heading{margin:8px 0 4px}
+.approve .actions{display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; align-items:center}
+
+.holdbtn{position:relative; overflow:hidden}
+.holdbtn .fill{position:absolute; inset:0; background:var(--candle-bright); opacity:.38; transform:scaleX(0);
+  transform-origin:left; transition:transform .1s linear; pointer-events:none}
+.holdbtn.holding .fill{transform:scaleX(1); transition:transform .7s linear}
+.holdbtn span.lb{position:relative; z-index:1}
+.holdbtn.done{background:var(--settled-tint); color:var(--settled); border:1px solid var(--settled)}
+.holdbtn.done .fill{display:none}
+
+.orders-head{display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap}
+.orders-head .title{margin-right:auto}
+.olist .xrow{border-radius:0; border-left:none; border-right:none; border-bottom:none; background:transparent}
+.olist{border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface)}
+.olist .xrow:first-child .rowbar{border-top:none}
+.ocells{display:flex; align-items:center; gap:14px; flex:1; min-width:0; flex-wrap:wrap}
+.ocells .po{font:500 13px/1 var(--mono); color:var(--ink-hi)}
+.ocells .vendor{font:600 14px/1.2 var(--sans)}
+.ocells .qty{font:450 13px/1 var(--sans); color:var(--ink-mid)}
+.ocells .amt{font:500 13px/1 var(--mono); font-variant-numeric:tabular-nums}
+.thread{border-left:2px solid var(--candle); padding:10px 14px; background:var(--bg); border-radius:0 8px 8px 0}
+.thread .who{font:500 11px/1 var(--mono); color:var(--ink-low); letter-spacing:.06em}
+.thread .msg{font:400 14px/1.5 var(--sans); color:var(--ink-mid); margin-top:6px}
+.thread .msg q{font-family:var(--serif); font-style:italic; color:var(--ink-hi)}
+.thread .next{display:flex; gap:10px; margin-top:12px; align-items:center; flex-wrap:wrap}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ======================= masthead ======================= -->
+<header class="masthead">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M10 42 V25 a14 14 0 0 1 28 0 V42" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M6 42 H42" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M24 25 c3.1 3.3 3.1 6.2 0 8.4 c-3.1-2.2-3.1-5.1 0-8.4 Z" fill="var(--candle)"/>
+    </svg>
+    <div>
+      <span class="kick">Mudavym · Direction 05</span>
+      <div class="heading" style="font-family:var(--serif); font-weight:520">The Cellar</div>
+    </div>
+  </div>
+  <div class="switch-row">
+    <span class="caption" style="color:var(--ink-low)">Daylight</span>
+    <button class="switch" id="themeSwitch" role="switch" aria-checked="false" aria-label="Toggle derived light theme"><span class="thumb"></span></button>
+  </div>
+</header>
+
+<!-- ======================= hero ======================= -->
+<section class="sec" style="border-top:none">
+  <span class="kick">00 — Premise</span>
+  <h1 style="margin-top:14px; max-width:720px">The cellar, lit.</h1>
+  <p class="note" style="margin-top:16px">
+    Mudavym's home is the room where the restaurant already keeps its most valuable things:
+    dark, calm, temperature-controlled, lit by one flame. Dark is the <strong>primary</strong> theme —
+    built for the hours the product is actually used, from prep to close — and daylight is the
+    derived one. The darkness is wine-tinted, never gray. One accent, the candle, marks the
+    only thing that ever matters on a busy Friday: <strong>what needs your hand next.</strong>
+  </p>
+  <div style="display:flex; gap:8px; margin-top:22px; flex-wrap:wrap">
+    <span class="chip">dark-first</span>
+    <span class="chip">one luminous accent</span>
+    <span class="chip">low-glare ink</span>
+    <span class="chip">wine-tinted near-blacks</span>
+    <span class="chip candle">attention = the candle</span>
+  </div>
+</section>
+
+<!-- ======================= 01 logo ======================= -->
+<section class="sec" id="logo">
+  <div class="sec-head">
+    <span class="kick">01 — Logo</span>
+    <h2>Three marks, one room</h2>
+    <p class="note">Strokes are ink (<code class="data" style="font-size:11px">currentColor</code>); the flame is always the candle accent. Wordmark set in Fraunces — the voice face — except concept B, which pairs the quiet ring with the working sans.</p>
+  </div>
+  <div class="logo-set">
+
+    <div class="logo-card">
+      <div class="logo-chip on-dark">
+        <svg width="228" height="52" viewBox="0 0 228 52" role="img" aria-label="Mudavym vault logo">
+          <path d="M10 44 V27 a14 14 0 0 1 28 0 V44" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M6 44 H42" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="24" cy="31.5" r="7.5" fill="var(--logo-candle)" opacity=".16"/>
+          <path d="M24 27 c3.1 3.3 3.1 6.2 0 8.4 c-3.1-2.2-3.1-5.1 0-8.4 Z" fill="var(--logo-candle)"/>
+          <text x="56" y="41" font-family="Fraunces, Georgia, serif" font-size="27" font-weight="560" letter-spacing="-0.5" fill="currentColor">Mudavym</text>
+        </svg>
+      </div>
+      <div class="logo-chip on-light">
+        <svg width="228" height="52" viewBox="0 0 228 52" aria-hidden="true">
+          <path d="M10 44 V27 a14 14 0 0 1 28 0 V44" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M6 44 H42" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="24" cy="31.5" r="7.5" fill="var(--logo-candle)" opacity=".16"/>
+          <path d="M24 27 c3.1 3.3 3.1 6.2 0 8.4 c-3.1-2.2-3.1-5.1 0-8.4 Z" fill="var(--logo-candle)"/>
+          <text x="56" y="41" font-family="Fraunces, Georgia, serif" font-size="27" font-weight="560" letter-spacing="-0.5" fill="currentColor">Mudavym</text>
+        </svg>
+      </div>
+      <div class="info">
+        <div class="heading">A · The Vault</div>
+        <div class="small">The cellar arch with a single flame inside — the room and its light. Primary candidate: reads at 16px favicon (arch + dot), and the flame alone works as an app icon.</div>
+      </div>
+    </div>
+
+    <div class="logo-card">
+      <div class="logo-chip on-dark">
+        <svg width="232" height="52" viewBox="0 0 232 52" role="img" aria-label="Mudavym ring logo">
+          <g transform="rotate(-35 24 26)">
+            <circle cx="24" cy="26" r="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="80 14.2"/>
+          </g>
+          <circle cx="35.5" cy="15.5" r="3" fill="var(--logo-candle)"/>
+          <text x="54" y="35" font-family="'Hanken Grotesk', system-ui, sans-serif" font-size="24" font-weight="650" letter-spacing="-0.4" fill="currentColor">Mudavym</text>
+        </svg>
+      </div>
+      <div class="logo-chip on-light">
+        <svg width="232" height="52" viewBox="0 0 232 52" aria-hidden="true">
+          <g transform="rotate(-35 24 26)">
+            <circle cx="24" cy="26" r="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="80 14.2"/>
+          </g>
+          <circle cx="35.5" cy="15.5" r="3" fill="var(--logo-candle)"/>
+          <text x="54" y="35" font-family="'Hanken Grotesk', system-ui, sans-serif" font-size="24" font-weight="650" letter-spacing="-0.4" fill="currentColor">Mudavym</text>
+        </svg>
+      </div>
+      <div class="info">
+        <div class="heading">B · The Regular's Ring</div>
+        <div class="small">The ring a glass leaves on the bar — the mark of the müdavim, the one whose seat is always kept. Open circle + candle point. Quietest of the three; strongest story.</div>
+      </div>
+    </div>
+
+    <div class="logo-card">
+      <div class="logo-chip on-dark">
+        <svg width="228" height="52" viewBox="0 0 228 52" role="img" aria-label="Mudavym ember monogram">
+          <path d="M8 42 V14 L24 32 L40 14 V42" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M24 12 l4.2 6.5 -4.2 6.5 -4.2 -6.5 Z" fill="var(--logo-candle)"/>
+          <text x="56" y="41" font-family="Fraunces, Georgia, serif" font-size="27" font-weight="500" font-style="italic" letter-spacing="-0.3" fill="currentColor">Mudavym</text>
+        </svg>
+      </div>
+      <div class="logo-chip on-light">
+        <svg width="228" height="52" viewBox="0 0 228 52" aria-hidden="true">
+          <path d="M8 42 V14 L24 32 L40 14 V42" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M24 12 l4.2 6.5 -4.2 6.5 -4.2 -6.5 Z" fill="var(--logo-candle)"/>
+          <text x="56" y="41" font-family="Fraunces, Georgia, serif" font-size="27" font-weight="500" font-style="italic" letter-spacing="-0.3" fill="currentColor">Mudavym</text>
+        </svg>
+      </div>
+      <div class="info">
+        <div class="heading">C · The Ember M</div>
+        <div class="small">The monogram M as two cellar walls; an ember floats in the valley between them. Most conventional — a safe fallback if A/B read too abstract in the wild.</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ======================= 02 slogans ======================= -->
+<section class="sec" id="slogans">
+  <div class="sec-head">
+    <span class="kick">02 — Slogans</span>
+    <h2>Six candidates</h2>
+  </div>
+
+  <div class="slogan lead">
+    <span class="n">S1</span>
+    <div><div class="line">The cellar remembers.</div>
+    <div class="why">The direction's flagship. Heritage (wine cellar) and the actual product promise (the system never forgets a price, a case, a vendor's word) in three words. Deadpan, no adjective.</div></div>
+  </div>
+  <div class="slogan">
+    <span class="n">S2</span>
+    <div><div class="line">The house that runs itself.</div>
+    <div class="why">"House" is hospitality's own word for the restaurant; the autonomy claim lands in its native vocabulary. Name-period pattern: "Mudavym. The house that runs itself."</div></div>
+  </div>
+  <div class="slogan">
+    <span class="n">S3</span>
+    <div><div class="line">Every night, like a regular.</div>
+    <div class="why">The etymology made into a promise — müdavim, the regular who shows up every single night. Reliability as character, not as uptime percentage.</div></div>
+  </div>
+  <div class="slogan">
+    <span class="n">S4</span>
+    <div><div class="line">Less counting, more cooking.</div>
+    <div class="why">Balanced antithesis — names the pain it removes (counting) and the craft it returns (cooking). The most campaign-ready of the six.</div></div>
+  </div>
+  <div class="slogan">
+    <span class="n">S5</span>
+    <div><div class="line">Set the table. We'll keep the books.</div>
+    <div class="why">A clean division of labor: the craft stays theirs, the ledger becomes ours. Two short imperatives; warm without praising itself.</div></div>
+  </div>
+  <div class="slogan">
+    <span class="n">S6</span>
+    <div><div class="line">Your back of house, front of mind.</div>
+    <div class="why">Names the product's actual territory (BOH operations) with an idiom flip. Best suited to sales material aimed at owners rather than the app itself.</div></div>
+  </div>
+</section>
+
+<!-- ======================= 03 voice ======================= -->
+<section class="sec" id="voice">
+  <div class="sec-head">
+    <span class="kick">03 — Voice</span>
+    <h2>The maître d', not the megaphone</h2>
+    <p class="note">Mudavym speaks the way a great floor manager does at 9pm on a Friday: quietly, precisely, already knowing what happens next.</p>
+  </div>
+
+  <div class="grid2" style="margin-bottom:44px">
+    <div class="rule"><div class="heading">1 · Calm is the register</div><div class="small">Second person, present tense, never an exclamation mark. If the copy would sound wrong said quietly across a pass, rewrite it.</div></div>
+    <div class="rule"><div class="heading">2 · Verbs first, outcomes over features</div><div class="small">"Approve the reorder", never "Reorder approval workflow". Every sentence starts with what the reader does or what the house did.</div></div>
+    <div class="rule"><div class="heading">3 · Numbers do the boasting</div><div class="small">"12 bottles · $930 · Thursday" is the eloquence. No adjectives where a figure can stand — the brand never says "powerful" or "smart".</div></div>
+    <div class="rule"><div class="heading">4 · Deadpan house, quoted warmth</div><div class="small">Mudavym's own copy stays terse. Warmth enters only in quotation — a vendor's reply, a staff note, the agent's drafted words. The house never praises itself.</div></div>
+    <div class="rule"><div class="heading">5 · Three voices, three faces</div><div class="small">Serif (Fraunces) only when the product speaks to you — greetings, questions, decisions asked. Sans works the interface. Mono keeps the ledger: money, counts, IDs, time.</div></div>
+    <div class="rule"><div class="heading">6 · Always say what happens next</div><div class="small">Every message ends on a state or an action, never an apology. "It lands here" beats "sorry, nothing to show".</div></div>
+    <div class="rule"><div class="heading">7 · A candle, not a siren</div><div class="small">Something needing a decision is lit amber, calmly. Urgency words — now, immediately, warning — are reserved for genuine danger, which is red and rare.</div></div>
+    <div class="rule"><div class="heading">8 · Empty states set the table</div><div class="small">An empty screen is a table set before service, not a void. Say what will appear, and how to summon it sooner.</div></div>
+  </div>
+
+  <span class="kick dim">Rewrites — incumbent copy → cellar voice</span>
+  <div class="rewrite">
+    <div class="before">Draft, approve, and track purchase orders through delivery</div>
+    <div class="arrow">→</div>
+    <div class="after">Draft it, approve it, watch it arrive.<em>Three beats, verb-first, ends on the outcome (rule 2, 6).</em></div>
+  </div>
+  <div class="rewrite">
+    <div class="before">Alerts that need a decision, oldest first</div>
+    <div class="arrow">→</div>
+    <div class="after">Waiting on your call — oldest first.<em>The candle register: attention without alarm (rule 1, 7).</em></div>
+  </div>
+  <div class="rewrite">
+    <div class="before">No checks yet — close an order from the terminal</div>
+    <div class="arrow">→</div>
+    <div class="after">No checks yet tonight. Close one at the terminal and it lands here.<em>Empty state sets the table and says what happens next (rule 6, 8).</em></div>
+  </div>
+  <div class="rewrite">
+    <div class="before">No comparable data</div>
+    <div class="arrow">→</div>
+    <div class="after">Nothing to compare yet — history builds every night.<em>Honest, forward-pointing, and quietly on-brand: the cellar remembers (rule 6).</em></div>
+  </div>
+  <div class="rewrite">
+    <div class="before">Permanently delete your Mudavym account.</div>
+    <div class="arrow">→</div>
+    <div class="after">Delete your account, permanently. Orders, ledgers, history — all of it goes, and none of it comes back. Export the books first if you need them.<em>Gravity without melodrama: full consequence stated, one practical exit (rule 1, 6).</em></div>
+  </div>
+</section>
+
+<!-- ======================= 04 palette ======================= -->
+<section class="sec" id="palette">
+  <div class="sec-head">
+    <span class="kick">04 — Palette</span>
+    <h2>The cellar and the doorway</h2>
+    <p class="note">Dark is authored first; light is <strong>derived</strong> — the same room with the door open. Near-blacks are tinted toward wine, never gray. The candle is the only accent; green means settled, red means danger, and <strong>"needs a decision" is the candle itself</strong> — no separate warning hue competes with it.</p>
+  </div>
+
+  <div class="pal-grid">
+    <div class="pal-col dark">
+      <div class="pal-head">
+        <span class="kick">The Cellar — primary (dark)</span>
+        <div class="small" style="color:#C9BCB0; margin-top:6px">Evening service. Low glare, wine-tinted grounds.</div>
+      </div>
+      <div class="pal-group">Grounds</div>
+      <div class="sw"><span class="box" style="background:#0F0909"></span><span class="tk">--bg-vault</span><span class="hex">#0F0909</span></div>
+      <div class="sw"><span class="box" style="background:#171010"></span><span class="tk">--bg · the cellar</span><span class="hex">#171010</span></div>
+      <div class="sw"><span class="box" style="background:#201616"></span><span class="tk">--surface</span><span class="hex">#201616</span></div>
+      <div class="sw"><span class="box" style="background:#2A1D1B"></span><span class="tk">--surface-2</span><span class="hex">#2A1D1B</span></div>
+      <div class="sw"><span class="box" style="background:rgba(246,217,184,.10)"></span><span class="tk">--border · candlelight on the wall</span><span class="hex">#F6D9B8 @ 10%</span></div>
+      <div class="pal-group">Ink — warm, never pure white</div>
+      <div class="sw"><span class="box" style="background:#F3EAE0"></span><span class="tk">--ink-hi</span><span class="hex">#F3EAE0</span></div>
+      <div class="sw"><span class="box" style="background:#C9BCB0"></span><span class="tk">--ink-mid</span><span class="hex">#C9BCB0</span></div>
+      <div class="sw"><span class="box" style="background:#96897E"></span><span class="tk">--ink-low</span><span class="hex">#96897E</span></div>
+      <div class="sw"><span class="box" style="background:#665B52"></span><span class="tk">--ink-faint</span><span class="hex">#665B52</span></div>
+      <div class="pal-group">The candle — the one accent</div>
+      <div class="sw"><span class="box" style="background:#E5A44C"></span><span class="tk">--candle</span><span class="hex">#E5A44C</span></div>
+      <div class="sw"><span class="box" style="background:#FFC474"></span><span class="tk">--candle-bright</span><span class="hex">#FFC474</span></div>
+      <div class="sw"><span class="box" style="background:rgba(229,164,76,.10)"></span><span class="tk">--candle-tint</span><span class="hex">@ 10%</span></div>
+      <div class="sw"><span class="box" style="background:rgba(229,164,76,.40)"></span><span class="tk">--candle-ring · focus</span><span class="hex">@ 40%</span></div>
+      <div class="pal-group">Semantics — settled · danger</div>
+      <div class="sw"><span class="box" style="background:#9BBF7E"></span><span class="tk">--settled (+ tint @ 12%)</span><span class="hex">#9BBF7E</span></div>
+      <div class="sw"><span class="box" style="background:#E4635C"></span><span class="tk">--danger (+ tint @ 12%)</span><span class="hex">#E4635C</span></div>
+      <div class="pal-group">Chart ramp — grayscale-warm; chroma = anomaly</div>
+      <div class="ramp">
+        <i style="background:#F3EAE0"></i><i style="background:#D6C8B8"></i><i style="background:#B3A492"></i>
+        <i style="background:#8A7C6D"></i><i style="background:#665B52"></i><i style="background:#E5A44C"></i>
+      </div>
+    </div>
+
+    <div class="pal-col light">
+      <div class="pal-head">
+        <span class="kick" style="color:#A96F1E">The Doorway — derived (light)</span>
+        <div class="small" style="color:#52463C; margin-top:6px">Morning office work. Warm paper, same room.</div>
+      </div>
+      <div class="pal-group">Grounds</div>
+      <div class="sw"><span class="box" style="background:#EDE4D6"></span><span class="tk">--bg-vault</span><span class="hex">#EDE4D6</span></div>
+      <div class="sw"><span class="box" style="background:#F7F1E6"></span><span class="tk">--bg · warm paper</span><span class="hex">#F7F1E6</span></div>
+      <div class="sw"><span class="box" style="background:#FDFAF3"></span><span class="tk">--surface</span><span class="hex">#FDFAF3</span></div>
+      <div class="sw"><span class="box" style="background:#FFFFFF"></span><span class="tk">--surface-2</span><span class="hex">#FFFFFF</span></div>
+      <div class="sw"><span class="box" style="background:rgba(62,42,28,.12)"></span><span class="tk">--border</span><span class="hex">#3E2A1C @ 12%</span></div>
+      <div class="pal-group">Ink</div>
+      <div class="sw"><span class="box" style="background:#221812"></span><span class="tk">--ink-hi</span><span class="hex">#221812</span></div>
+      <div class="sw"><span class="box" style="background:#52463C"></span><span class="tk">--ink-mid</span><span class="hex">#52463C</span></div>
+      <div class="sw"><span class="box" style="background:#83766A"></span><span class="tk">--ink-low</span><span class="hex">#83766A</span></div>
+      <div class="sw"><span class="box" style="background:#B0A497"></span><span class="tk">--ink-faint</span><span class="hex">#B0A497</span></div>
+      <div class="pal-group">The candle — darkened for daylight</div>
+      <div class="sw"><span class="box" style="background:#A96F1E"></span><span class="tk">--candle</span><span class="hex">#A96F1E</span></div>
+      <div class="sw"><span class="box" style="background:#C2882B"></span><span class="tk">--candle-bright</span><span class="hex">#C2882B</span></div>
+      <div class="sw"><span class="box" style="background:rgba(169,111,30,.12)"></span><span class="tk">--candle-tint</span><span class="hex">@ 12%</span></div>
+      <div class="sw"><span class="box" style="background:rgba(169,111,30,.35)"></span><span class="tk">--candle-ring · focus</span><span class="hex">@ 35%</span></div>
+      <div class="pal-group">Semantics</div>
+      <div class="sw"><span class="box" style="background:#5E8C43"></span><span class="tk">--settled (+ tint @ 14%)</span><span class="hex">#5E8C43</span></div>
+      <div class="sw"><span class="box" style="background:#C24A43"></span><span class="tk">--danger (+ tint @ 12%)</span><span class="hex">#C24A43</span></div>
+      <div class="pal-group">Chart ramp</div>
+      <div class="ramp">
+        <i style="background:#221812"></i><i style="background:#4A3E33"></i><i style="background:#7A6D5F"></i>
+        <i style="background:#AB9E8E"></i><i style="background:#D8CCBB"></i><i style="background:#A96F1E"></i>
+      </div>
+    </div>
+  </div>
+
+  <p class="note pal-note small">
+    Derivation rules, not a second palette: light grounds are the dark grounds' warm hue at paper
+    lightness; the ink ladder inverts step-for-step; the candle drops ~2 lightness steps to hold
+    contrast on paper (use <span class="data" style="font-size:11px">--candle</span> for text, never the dark theme's hex).
+    Charts stay grayscale-warm in both — color appears only where meaning does.
+  </p>
+</section>
+
+<!-- ======================= 05 type ======================= -->
+<section class="sec" id="type">
+  <div class="sec-head">
+    <span class="kick">05 — Type</span>
+    <h2>Three voices, three faces</h2>
+  </div>
+
+  <div class="grid3" style="margin-bottom:40px">
+    <div class="card face-card">
+      <span class="kick dim">The voice — Fraunces</span>
+      <div class="sample" style="font-family:var(--serif); font-weight:520">Good evening, chef.</div>
+      <div class="small">Variable serif, warm and slightly wonky — a wine label that learned software. Used <strong>only</strong> when the product speaks: greetings, questions, decisions asked. Google Fonts.</div>
+    </div>
+    <div class="card face-card">
+      <span class="kick dim">The work — Hanken Grotesk</span>
+      <div class="sample" style="font-family:var(--sans); font-weight:600">Approve the reorder before Thursday.</div>
+      <div class="small">Humanist grotesque; warm at 13–15px where the product lives, sturdy at title weights. All interface text. Google Fonts.</div>
+    </div>
+    <div class="card face-card">
+      <span class="kick dim">The ledger — JetBrains Mono</span>
+      <div class="sample" style="font-family:var(--mono); font-weight:500; font-size:24px">PO-1042 · $1,860 · 21:42</div>
+      <div class="small">Money, counts, IDs, timestamps, kickers — always tabular-nums so columns and tickers never shiver. Google Fonts.</div>
+    </div>
+  </div>
+
+  <span class="kick dim">Scale — px, dark-first sizes</span>
+  <div style="margin-top:8px">
+    <div class="trow"><div style="font:560 44px/1.1 var(--serif); letter-spacing:-.015em">What needs your hand?</div><div class="spec">hero · Fraunces 560 · 44/48 · -0.015em<br>the product speaks — one per screen, max</div></div>
+    <div class="trow"><div style="font:520 32px/1.15 var(--serif)">The cellar remembers.</div><div class="spec">display · Fraunces 520 · 32/37</div></div>
+    <div class="trow"><div style="font:650 24px/1.2 var(--sans); letter-spacing:-.01em">Orders in transit</div><div class="spec">title · Hanken 650 · 24/29 · -0.01em</div></div>
+    <div class="trow"><div style="font:600 18px/1.3 var(--sans)">Vendor thread — Vinos del Norte</div><div class="spec">heading · Hanken 600 · 18/23</div></div>
+    <div class="trow"><div style="font:400 15px/1.55 var(--sans)">The draft covers 12 bottles at the last agreed price. Approving sends it tonight.</div><div class="spec">body · Hanken 400 · 15/23</div></div>
+    <div class="trow"><div style="font:450 13px/1.5 var(--sans); color:var(--ink-mid)">Last ordered 11 days ago · par 18 · at 6</div><div class="spec">small · Hanken 450 · 13/19 · ink-mid</div></div>
+    <div class="trow"><div style="font:550 12px/1.4 var(--sans)">In transit</div><div class="spec">caption · Hanken 550 · 12/17 · chips, labels</div></div>
+    <div class="trow"><div style="font:500 28px/1 var(--mono); font-variant-numeric:tabular-nums">$4,280</div><div class="spec">data-lg · JetBrains 500 · 28 · tabular · KPIs</div></div>
+    <div class="trow"><div style="font:450 14px/1 var(--mono); font-variant-numeric:tabular-nums">PO-1042 · 24 × $77.50</div><div class="spec">data · JetBrains 450 · 14 · tabular · rows</div></div>
+    <div class="trow"><div class="kick">Friday · 21:42 · Service</div><div class="spec">kicker · JetBrains 500 · 11 · +0.14em · UPPERCASE<br>the system voice; 11px floor, never smaller</div></div>
+  </div>
+</section>
+
+<!-- ======================= 06 motion ======================= -->
+<section class="sec" id="motion">
+  <div class="sec-head">
+    <span class="kick">06 — Motion</span>
+    <h2>Candlelight physics</h2>
+    <p class="note">Nothing snaps and nothing bounces — flames don't. Fast out of the gate, long warm settle: the house curve is <span class="data" style="font-size:12px">cubic-bezier(.16,1,.3,1)</span>, springs never oscillate, hovers move ≤2px, transform/opacity only, everything gated by <span class="data" style="font-size:12px">useReducedMotion</span>.</p>
+  </div>
+
+  <div class="mtok-wrap" style="margin-bottom:36px">
+  <table class="mtok">
+    <tr><th>token</th><th>physics</th><th>feel / use</th><th><code style="border:none;background:none">motion</code> (React) mapping</th></tr>
+    <tr>
+      <td>strike</td>
+      <td><span class="data" style="font-size:11px">140ms · (.16,1,.3,1)</span></td>
+      <td>A match struck — hover, press, chip state. Movement ≤2px.</td>
+      <td><code>{ duration:.14, ease:[.16,1,.3,1] }</code></td>
+    </tr>
+    <tr>
+      <td>settle</td>
+      <td><span class="data" style="font-size:11px">spring 260/32 ≈ 240ms</span></td>
+      <td>A glass set down — toggles, chips landing, list reorder, layout shifts.</td>
+      <td><code>{ type:'spring', stiffness:260, damping:32 }</code></td>
+    </tr>
+    <tr>
+      <td>hearth</td>
+      <td><span class="data" style="font-size:11px">420ms · (.25,1,.5,1)</span></td>
+      <td>A door swung open — drawers, row expands, sheets; reveal by unmasking, not fading.</td>
+      <td><code>{ duration:.42, ease:[.25,1,.5,1] }</code></td>
+    </tr>
+    <tr>
+      <td>pour</td>
+      <td><span class="data" style="font-size:11px">spring 90/22 · ~900ms</span></td>
+      <td>Wine poured — number tickers, KPI deltas; heavy start, gentle level-off.</td>
+      <td><code>{ type:'spring', stiffness:90, damping:22 }</code> on AnimateNumber / useSpring</td>
+    </tr>
+    <tr>
+      <td>ember</td>
+      <td><span class="data" style="font-size:11px">1.9s · ease-in-out · mirror ∞</span></td>
+      <td>The flame breathing — AI working / draft ready. Replaces every spinner in the product.</td>
+      <td><code>transition={{ repeat:Infinity, repeatType:'mirror', duration:1.9 }}</code></td>
+    </tr>
+    <tr>
+      <td>stagger</td>
+      <td><span class="data" style="font-size:11px">30ms</span></td>
+      <td>First paint only — lists and KPI tiles arrive like candles being lit down a corridor.</td>
+      <td><code>staggerChildren: 0.03</code></td>
+    </tr>
+  </table>
+  </div>
+
+  <div class="grid3">
+    <div class="card demo-card">
+      <span class="kick dim">Live · settle — settings toggle</span>
+      <div class="demo-stage">
+        <div class="switch-row" style="justify-content:space-between">
+          <div>
+            <div class="heading" style="font-size:15px">Low-glare mode</div>
+            <div class="small" id="demoToggleState">Dimmed for service hours</div>
+          </div>
+          <button class="switch" id="demoToggle" role="switch" aria-checked="true" aria-label="Low-glare mode"><span class="thumb"></span></button>
+        </div>
+      </div>
+      <div class="mock-cap">spring(260, 32) — the thumb lands like a glass on wood; track warms to candle-tint.</div>
+    </div>
+
+    <div class="card demo-card">
+      <span class="kick dim">Live · hearth — row expand</span>
+      <div class="demo-stage" style="padding:12px">
+        <div class="xrow" id="demoRow">
+          <button class="rowbar" aria-expanded="false">
+            <span class="data" style="color:var(--ink-hi)">PO-1038</span>
+            <span class="small" style="color:var(--ink-mid)">Quesos Aitana · $412</span>
+            <svg class="chev" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 6l5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="drawer"><div><div class="inner">
+            <div class="small">Delivered Tuesday · signed by M. · 2 substitutions noted at the door.</div>
+          </div></div></div>
+        </div>
+      </div>
+      <div class="mock-cap">420ms drift, grid-rows unmask; content fades in 80ms behind the door.</div>
+    </div>
+
+    <div class="card demo-card">
+      <span class="kick dim">Live · pour — number ticker</span>
+      <div class="demo-stage" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap">
+        <span class="ticker-val" id="tickerVal">$3,847</span>
+        <button class="btn" id="tickerBtn">Close a check</button>
+      </div>
+      <div class="mock-cap">spring(90, 22) with tabular-nums — the figure pours to $4,280 and glows once on landing.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 07 sample screens ======================= -->
+<section class="sec" id="screens">
+  <div class="sec-head">
+    <span class="kick">07 — Sample screens</span>
+    <h2>The system, at work</h2>
+    <p class="note">Both mocks run on the live token set — flip the Daylight switch above to watch the derived theme hold. The approve card breathes with <strong>ember</strong>; the order row opens with <strong>hearth</strong>; hold-to-approve replaces the confirm dialog.</p>
+  </div>
+
+  <!-- Mock 1: dashboard snapshot -->
+  <div class="mock" style="margin-bottom:8px">
+    <div class="mbar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="url">mudavym.app/dashboard</span>
+      <kbd>⌘K</kbd>
+    </div>
+    <div class="mbody">
+      <span class="kick">Friday · 21:42 · Service</span>
+      <div style="font:520 30px/1.2 var(--serif); margin-top:10px">Good evening, chef.</div>
+      <div class="small" style="margin-top:6px">The house is holding. One decision is waiting.</div>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="lab">Revenue tonight</div>
+          <div class="val">$4,280</div>
+          <div class="sub up">▲ 12% on last Friday</div>
+        </div>
+        <div class="kpi warm">
+          <div class="lab"><span class="dot candle"></span>Low stock</div>
+          <div class="val">7</div>
+          <div class="sub">items below par</div>
+        </div>
+        <div class="kpi">
+          <div class="lab">Pending orders</div>
+          <div class="val">3</div>
+          <div class="sub">2 in transit</div>
+        </div>
+        <div class="kpi hot">
+          <div class="lab"><span class="dot danger"></span>Alerts</div>
+          <div class="val">2</div>
+          <div class="sub">1 urgent</div>
+        </div>
+      </div>
+
+      <div class="approve">
+        <span class="kick">AI draft · needs your hand</span>
+        <div class="heading">Approve Rioja reorder — 12 bottles from Vinos del Norte</div>
+        <div class="small">Par 18, at 6 · last agreed price $77.50 · arrives Thursday · drafted from your last four orders.</div>
+        <div class="actions">
+          <button class="btn primary holdbtn" id="holdApprove"><span class="fill"></span><span class="lb">Hold to approve</span></button>
+          <button class="btn ghost">View draft</button>
+          <span class="caption" style="color:var(--ink-faint)">approving sends the PO tonight</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mock-cap" style="margin-bottom:40px">Mock 1 — dashboard snapshot. Serif greets, mono counts, one candle-lit card carries the single decision. Alerts are red only because one is genuinely urgent.</div>
+
+  <!-- Mock 2: orders strip -->
+  <div class="mock">
+    <div class="mbar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="url">mudavym.app/orders</span>
+      <kbd>⌘K</kbd>
+    </div>
+    <div class="mbody">
+      <div class="orders-head">
+        <div class="title">Orders</div>
+        <span class="chip" style="border-color:var(--candle); color:var(--candle)">All</span>
+        <span class="chip">Drafts</span>
+        <span class="chip">In transit</span>
+        <span class="chip">Delivered</span>
+      </div>
+
+      <div class="olist">
+        <div class="xrow" id="orderRow">
+          <button class="rowbar" aria-expanded="false" style="border-top:none">
+            <span class="ocells">
+              <span class="po">PO-1042</span>
+              <span class="vendor">Vinos del Norte</span>
+              <span class="qty">24 bottles</span>
+              <span class="amt">$1,860</span>
+              <span class="chip">In transit</span>
+              <span class="chip candle">AI draft ready — one tap to approve</span>
+            </span>
+            <svg class="chev" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 6l5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="drawer"><div><div class="inner">
+            <div class="thread">
+              <div class="who">Vendor thread · Vinos del Norte · 14:02</div>
+              <div class="msg"><q>Confirmed for Thursday — 24 bottles of the 2019, same terms as March.</q></div>
+              <div class="next">
+                <button class="btn primary holdbtn" id="holdReply" style="padding:9px 14px; font-size:12px"><span class="fill"></span><span class="lb">Hold to send reply</span></button>
+                <span class="small">Mudavym drafted a confirmation · <span style="color:var(--candle); cursor:pointer">View full thread ↗</span></span>
+              </div>
+            </div>
+          </div></div></div>
+        </div>
+
+        <div class="xrow">
+          <button class="rowbar" aria-expanded="false" style="cursor:default">
+            <span class="ocells">
+              <span class="po">PO-1041</span>
+              <span class="vendor">Bodega Central</span>
+              <span class="qty">6 cases</span>
+              <span class="amt">$742</span>
+              <span class="chip settled">Delivered</span>
+            </span>
+          </button>
+        </div>
+        <div class="xrow">
+          <button class="rowbar" aria-expanded="false" style="cursor:default">
+            <span class="ocells">
+              <span class="po">PO-1039</span>
+              <span class="vendor">Fresh Farms Co.</span>
+              <span class="qty">18 kg produce</span>
+              <span class="amt">$318</span>
+              <span class="chip">Awaiting vendor</span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mock-cap">Mock 2 — orders strip. Tap PO-1042 to open the vendor-thread drawer (hearth). The AI-draft chip shimmers — the only moving thing on the strip — and the reply itself is hold-to-send, never auto-sent.</div>
+</section>
+
+<footer>
+  079 · mudavym-cellar — brand direction board · dark-first, one accent, low glare<br>
+  .planning/sketches/079-mudavym-cellar/index.html · tokens are authoritative in this file's :root
+</footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* theme switch — light is the DERIVED theme */
+  var themeSw = document.getElementById("themeSwitch");
+  themeSw.addEventListener("click", function(){
+    var on = themeSw.getAttribute("aria-checked") === "true";
+    themeSw.setAttribute("aria-checked", String(!on));
+    if(on){ document.documentElement.removeAttribute("data-theme"); }
+    else  { document.documentElement.setAttribute("data-theme","light"); }
+  });
+
+  /* demo toggle — settle */
+  var dt = document.getElementById("demoToggle");
+  var dts = document.getElementById("demoToggleState");
+  dt.addEventListener("click", function(){
+    var on = dt.getAttribute("aria-checked") === "true";
+    dt.setAttribute("aria-checked", String(!on));
+    dts.textContent = on ? "Full brightness" : "Dimmed for service hours";
+  });
+
+  /* expandable rows — hearth */
+  function wireRow(id){
+    var row = document.getElementById(id);
+    if(!row) return;
+    var bar = row.querySelector(".rowbar");
+    bar.addEventListener("click", function(){
+      var open = row.classList.toggle("open");
+      bar.setAttribute("aria-expanded", String(open));
+    });
+  }
+  wireRow("demoRow");
+  wireRow("orderRow");
+
+  /* number ticker — pour: damped spring integrator */
+  var tv = document.getElementById("tickerVal");
+  var tb = document.getElementById("tickerBtn");
+  var A = 3847, B = 4280, current = A, target = B, animating = false;
+  function fmt(n){ return "$" + Math.round(n).toLocaleString("en-US"); }
+  tb.addEventListener("click", function(){
+    if(animating) return;
+    var to = target, from = current;
+    target = (to === B) ? A : B;
+    tb.textContent = (to === B) ? "Reopen the check" : "Close a check";
+    if(reduced){ current = to; tv.textContent = fmt(to); return; }
+    animating = true;
+    var v = from, vel = 0, stiff = 90, damp = 22, last = performance.now();
+    function frame(now){
+      var dt2 = Math.min((now - last) / 1000, 1/30); last = now;
+      var F = -stiff * (v - to) - damp * vel;
+      vel += F * dt2; v += vel * dt2;
+      if(Math.abs(v - to) < .5 && Math.abs(vel) < 2){
+        v = to; current = to; tv.textContent = fmt(v); animating = false;
+        tv.classList.add("lit");
+        setTimeout(function(){ tv.classList.remove("lit"); }, 650);
+        return;
+      }
+      tv.textContent = fmt(v);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  });
+
+  /* hold-to-approve — no confirm dialogs in the cellar */
+  function wireHold(id, doneLabel){
+    var btn = document.getElementById(id);
+    if(!btn) return;
+    var lb = btn.querySelector(".lb");
+    var timer = null;
+    function start(e){
+      if(btn.classList.contains("done")) return;
+      e.preventDefault();
+      btn.classList.add("holding");
+      timer = setTimeout(function(){
+        btn.classList.remove("holding");
+        btn.classList.add("done");
+        lb.textContent = doneLabel;
+      }, reduced ? 0 : 700);
+    }
+    function cancel(){
+      if(timer){ clearTimeout(timer); timer = null; }
+      btn.classList.remove("holding");
+    }
+    btn.addEventListener("pointerdown", start);
+    btn.addEventListener("pointerup", cancel);
+    btn.addEventListener("pointerleave", cancel);
+    btn.addEventListener("keydown", function(e){
+      if((e.key === "Enter" || e.key === " ") && !btn.classList.contains("done")){
+        btn.classList.add("done"); lb.textContent = doneLabel;
+      }
+    });
+  }
+  wireHold("holdApprove", "Approved — PO sent");
+  wireHold("holdReply", "Reply sent");
+})();
+</script>
+</body>
+</html>

@@ -68,39 +68,6 @@ export type {
   Provider,
 } from '../services/api/types'
 
-// ==================== Re-export Company Class Types ====================
-// Modular ID system for entity classification
-export type {
-  CompanyClass,
-  CompanyClassCategory,
-  ProviderClass,
-  WineTypeClass,
-  EventClass,
-  LabelClass,
-  OrderClass,
-  ClassifiedEntity,
-  CompanyClassConfig,
-} from './companyClass'
-
-export {
-  COMPANY_CLASS_CONFIG,
-  getClassesByCategory,
-  getClassConfig,
-  isValidClass,
-  generateClassifiedId,
-  parseClassFromId,
-  getClassBadge,
-  providerTypeToClass,
-  wineTypeToClass,
-  filterEntitiesByClass,
-  groupEntitiesByCategory,
-  isProviderClass,
-  isWineTypeClass,
-  isEventClass,
-  isLabelClass,
-  isOrderClass,
-} from './companyClass'
-
 // ==================== Re-export Database Types ====================
 // These are Supabase-specific types
 export type {

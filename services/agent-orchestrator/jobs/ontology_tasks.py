@@ -119,6 +119,70 @@ def _validate_sync(wine_id: str) -> Optional[Dict[str, Any]]:
         result.autofills_applied,
     )
 
+    # OD-59 / P3.0 `ontology_v1`: attach the strongest machine ground truth we
+    # have to the extraction that produced this wine. Deferred by construction —
+    # this task runs minutes after that call, in another process — which is what
+    # the nf_verdict sidecar exists for.
+    #
+    # Non-fatal by design and placed after the validation result is in hand: an
+    # instrument that can kill a validation run is worse than one with a gap.
+    try:
+        from services.ontology_verdict import grade_wine_extractions
+
+        graded = grade_wine_extractions(
+            service.supabase,
+            wine_id,
+            result.checks_passed,
+            result.checks_failed,
+            result.checks_total,
+        )
+        if graded:
+            logger.info(
+                "_validate_sync: wine_id=%s graded %d extraction event(s) on ontology_v1",
+                wine_id,
+                graded,
+            )
+    except Exception as exc:
+        logger.warning(
+            "_validate_sync: ontology_v1 re-grade skipped for wine_id=%s: %s",
+            wine_id,
+            exc,
+        )
+
+    # ADR 0029 P3.B `beverage_ontology_v1`: the rows above are wines. Everything
+    # else on a drinks list — Scotch, mezcal, saison, tawny — has no appellation,
+    # no grape, no vintage and no colour, so all four wine rules skip and
+    # `ontology_v1` returns SUCCESS having examined nothing (its caller's
+    # `checks_total` is the constant 4 at ontology_validation_service.py:585).
+    # This grader covers exactly those rows, counts the rules that actually ran,
+    # and declines to write anything at all when the row IS a wine.
+    #
+    # It rides the same deferred rail rather than a task of its own: the wine is
+    # already fetched, already locked, and a second Celery task would double the
+    # scheduling surface to grade the same event.
+    try:
+        from services.beverage_verdict import grade_beverage_extractions
+
+        beverage_graded = grade_beverage_extractions(service.supabase, wine_id)
+        if beverage_graded is None:
+            logger.debug(
+                "_validate_sync: wine_id=%s is wine — beverage_ontology_v1 declined",
+                wine_id,
+            )
+        elif beverage_graded:
+            logger.info(
+                "_validate_sync: wine_id=%s graded %d extraction event(s) on "
+                "beverage_ontology_v1",
+                wine_id,
+                beverage_graded,
+            )
+    except Exception as exc:
+        logger.warning(
+            "_validate_sync: beverage_ontology_v1 grade skipped for wine_id=%s: %s",
+            wine_id,
+            exc,
+        )
+
     # CRIT-01 / D-03a: Trigger score + dataset enrichment after ontology validation (chain end)
     try:
         from jobs.score_tasks import score_lookup_task, dataset_enrich_task

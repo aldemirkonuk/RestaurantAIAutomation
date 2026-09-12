@@ -46,7 +46,7 @@
     "@tremor/react": "^3.14.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
-    "framer-motion": "^11.0.3",
+    "framer-motion": "^13.1.1",
     "lucide-react": "^0.312.0",
     "recharts": "^2.10.3",
     "tailwind-merge": "^2.2.0",

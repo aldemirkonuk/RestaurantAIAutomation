@@ -27,7 +27,7 @@ below is read as capability, here is the true state:
 | Department | EXISTS | PARTIAL | NEW |
 |---|---|---|---|
 | Legal | — | — | **all 15 document types** |
-| Knowledge & Documentation | 1,082 `.md` under `.planning/` + `md/` (113) + `md_files/` (42); one stale index | Obsidian **adopted** ([ADR 0004](../../decisions/0004-obsidian-as-backlink-layer.md)), **not installed** — no `.obsidian` vault exists | frontmatter contract, staleness detection, archive policy |
+| Knowledge & Documentation | the `.planning/` vault (post-ADR-0032 cleanup); legacy `md/`+`md_files/` retired 2026-08-27 — 5 schema-debt `.sql` files remain for the ADR 0026 lane | Obsidian **adopted** ([ADR 0004](../../decisions/0004-obsidian-as-backlink-layer.md)), **not installed** — no `.obsidian` vault exists | frontmatter contract, staleness detection, archive policy |
 | Compliance & Privacy | versioned consent + erasure schema; 4 independent PII guards; a privacy notice | privacy notice says "WineOps"; erasure untested end-to-end | **every word of GDPR/CCPA** — zero occurrences in source |
 | People & Agent Ops | 26 agent modules, `AgentMetrics`, agent registry, spend logging | metrics have no cost attribution and no doneability verdict | NF-A spine, review rubric, onboarding gate |
 | Strategy & Fundraising | `YC_WEDGE_PLAN.md` (406 lines), a prior YC-lens business review | wedge metric named but not instrumented as a company metric | cap table, data room, SAFE, board consents |
@@ -153,7 +153,7 @@ corpus today, and fixing one does not fix the others.
   - Largest planning docs: `claude_full_architectural.md` (186KB),
     `UX_PATHS_CATALOG.md` (158KB), `INVOICE_DOC_UX_RESEARCH.md` (83KB) — the grep-target
     set named in [`CLAUDE.md`](../../../CLAUDE.md) §2.
-  - Open fork: **OD-01** ([`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md):13).
+  - Open fork: **OD-01** ([`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md):82).
 - **Primary metric.** **Duplicate + orphan document count.** Baseline: 38 duplicated
   basenames, 3 of them ambiguous. Unlike most metrics here it has a real, reachable zero.
 - **Premortem.** *OD-01 is treated as a one-time cleanup, gets done once, and six months of
@@ -172,7 +172,7 @@ corpus today, and fixing one does not fix the others.
   (OD-08) plus a *continuous* enforcement duty on every doc written thereafter.
 - **Evidence.** **PARTIAL — adopted, not installed.**
   - Adoption is **LOCKED**: [ADR 0004](../../decisions/0004-obsidian-as-backlink-layer.md).
-    Mechanics are **open**: OD-08 ([`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md):19).
+    Mechanics are **open**: OD-08 ([`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md):146).
   - **No `.obsidian` directory exists anywhere in the repo.** Obsidian is a decision, not
     yet a tool.
   - **10 files** in all of `.planning/` contain a `[[wiki-link]]` — and 3 of those 10 are
@@ -436,7 +436,7 @@ dismissed.**
       catalogue, a sommelier AI — *"A YC partner reads that as no wedge."*
     - an honest competitive read against MarginEdge (line 328).
     - §4's track table has real ✅ statuses (A, B0, B0a, B0b, B0c, B1 complete).
-  - [`AGENT_NATIVE_UI_DECISION.md`](../../AGENT_NATIVE_UI_DECISION.md):78 — a prior
+  - [`AGENT_NATIVE_UI_DECISION.md`](../../decisions/AGENT_NATIVE_UI_DECISION.md):78 — a prior
     *"Business review (YC-partner lens) — verdict: don't build."* Strategy review is
     already a practice here, not a new habit.
   - [ADR 0005](../../decisions/0005-v3-to-v0-version-reset.md) — the deliberate v3→v0

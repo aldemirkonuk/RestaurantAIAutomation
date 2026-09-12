@@ -38,6 +38,7 @@ interface PlacesAutocompleteProps {
   className?: string;
   disabled?: boolean;
   country?: string;
+  id?: string;
 }
 
 // country display name → ISO 3166-1 alpha-2
@@ -133,6 +134,7 @@ export function PlacesAutocomplete({
   className,
   disabled,
   country,
+  id,
 }: PlacesAutocompleteProps) {
   const [query, setQuery] = useState(value);
   const [rows, setRows] = useState<SuggestionRow[]>([]);
@@ -282,6 +284,7 @@ export function PlacesAutocomplete({
   if (!MAPS_API_KEY) {
     return (
       <input
+        id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -315,6 +318,7 @@ export function PlacesAutocomplete({
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none z-10" />
 
       <input
+        id={id}
         ref={inputRef}
         value={query}
         onChange={handleChange}

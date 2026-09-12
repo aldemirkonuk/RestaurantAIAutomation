@@ -2,15 +2,17 @@
 type: agenda-board
 division: intelligence
 department: security
-status: provisional
+status: active
 metrics: []
-updated: 2026-08-24
-links: ["[[security-charter]]", "[[security-agenda-full]]", "[[security-loops]]", "[[security-schedule]]", "[[security-premortem]]", "[[security-directive]]"]
+updated: 2026-08-28
+links: ["[[security-charter]]", "[[security-agenda-full]]", "[[security-loops]]", "[[security-schedule]]", "[[security-premortem]]", "[[security-directive]]", "[[security-agent-stack]]"]
 ---
 
 # Security — Board
 
-> **PROVISIONAL — no work done yet.**
+> **Active — agenda dated 2026-08-28** ([[security-agenda-full]]). Standing counters below
+> are hand-entered until task **S19** gives each one a committed script. Every reading names
+> its date; a number without one is not a reading.
 
 ## Every Security artifact, live
 
@@ -68,36 +70,73 @@ FROM "01-org/intelligence/security"
 WHERE type = "premortem" AND !contains(file.content, "Counter-pressure")
 ```
 
-## Standing counters (hand-entered until the jobs exist)
+## Standing counters — read 2026-08-28
 
 The two-number rule: exposure and coverage are always published **together**. A single
-number here is the failure described in [[security-premortem]] M2.
+number here is [[security-premortem]] M2 happening. Six metrics, **never summed** — a
+department that reports one security score has hidden which control failed.
 
-- [ ] `sec.unguarded_authenticated_surface` — **94** of 448 · target **0**
-- [ ] `sec.public_decorator_count` — **12** (`@Public()` rows in [[ENDPOINTS]]) · the number that must *not* rise while the first falls
-- [ ] `sec.recurrence_guard_present` — **false** · no endpoint-guard CI check exists
-- [ ] `sec.unverified_public_ingress` — **unmeasured** of 43 in-scope routes
-- [ ] `sec.fail_open_defaults` — **4** · `tenant.guard.ts:38-46` + 3 × `JWT_SECRET` fallback
-- [ ] `sec.checklist_12c_items_with_a_reading` — **8 of 15** ([[security-agenda-full]])
-- [ ] `sec.injection_corpus_size` — **0** cases
-- [ ] `sec.autonomous_send_rate` — **unmeasured** · replies sent with no human in the path
-- [ ] `nf_a.unauthenticated_inference_spend` — **unmeasurable** · blocked on [[neural-footprint-instrumentation-charter]]
-- [ ] `sec.tenants_with_inference_budget` — **0** of all
+| Metric | Founding (08-24) | **Now (08-28)** | Target | Task |
+|---|---|---|---|---|
+| `sec.unguarded_authenticated_surface` | 94 | **6** provisional | 0 | S2 |
+| `sec.public_decorator_count` | 12 | **17** | must not rise while the first falls | S3 |
+| `sec.recurrence_guard_present` | false | **false** | true **before** the first moves | S1 |
+| `sec.unverified_public_ingress` | unmeasured of 43 | **unmeasured of 23** | a per-route verdict each | S6 |
+| `sec.fail_open_defaults` | 4 | **1 live + 1 dev-only** ⚠️ pending escalation | 0 | S7 |
+| `sec.checklist_12c_items_with_a_reading` | 8 of 15 | **11 of 15** | ≥12 by 09-25 | S18 |
+| `sec.injection_corpus_size` | 0 | **0** | ≥60 dual-keyed cases | S12 |
+| `sec.corpus_detection_rate` | undefined | **undefined** — no corpus | read only beside size | S13 |
+| `sec.autonomous_send_rate` | unmeasured | **unmeasured** | a number, not an adjective | S14 |
+| `sec.model_callsites_emitting_cost` | 0 of 7 | **25 of 25** ✅ | held by `check_model_calls_logged.sh` | — |
+| `sec.tenants_with_inference_budget` | 0 | **10 of 10** ✅ | ceilings placeholder pending OD-23 | — |
+| `sec.distributed_rate_limit_present` | false | **false** | a spec, not a build | S10 |
+| `nf_a.unauthenticated_inference_spend` | unmeasurable | **0 — bounded by census, NOT measured** | measured | S16 |
+| `sec.cross_tenant_write_paths` | unmeasured | **unmeasured** | a script behind the number | S4 |
+
+**Denominator ledger — 86 → 103 → 94 → 40 → 6.** Five statements in four days, none of them
+yet reproducible by a committed script. Task **S19** exists to end this line.
 
 ## Blocked, with an owner (not absorbed)
 
-- 🔴 **OD-20** — `fix/analytics-endpoint-auth` (`99da5eb`) is **unmerged**. Owner: founder. One file, +7 lines.
-- ⛔ **`nf_a.unauthenticated_inference_spend`** — blocked on RM-3 emitting cost events from NestJS callsites. Owner: [[neural-footprint-instrumentation-charter]]. Escalation loop: L-SEC-5, monthly.
-- ⬦ **INTEL-F4** — merged-vs-split team shape. Owner: founder. Recommendation on record in [[security-charter]].
+- ⛔ **`nf_a.unauthenticated_inference_spend`** — NF-A records *which agent*, never *whether
+  the caller was authenticated*. Owner: [[neural-footprint-instrumentation-charter]] (RM-3).
+  Escalation loop L-SEC-5, monthly; `sec.days_dependency_open` keeps counting. **Bounding by
+  census is not measuring**, and the loop stays `blocked`.
+- ⬦ **INTEL-F4** — merged-vs-split team shape. Owner: founder. The written split trigger is
+  now six routes and one CI script away.
+- ⚠️ **`sec.fail_open_defaults` republication at 1** — held pending the
+  [[security-directive]] trigger-5 escalation (S7). The value moved; the metric may not be
+  restated until the escalation is filed.
 
-## Severity queue — live, ordered
+## Severity queue — live, ordered, re-read 2026-08-28
 
 | # | Item | Class | State |
 |---|---|---|---|
-| 1 | `/analytics/consult` + `/toggle` — paid model, anonymous | denial-of-wallet | fixed on branch, **unmerged** |
-| 2 | `simpos` 11 routes — unguarded, server-signed webhook into stock movement | confused deputy | **open, unclassified** |
-| 3 | JWT secret defaults to a public string in 3 places | fail-open credential | **open** |
-| 4 | `accessToken` + `refreshToken` in `localStorage` | XSS → account takeover | **open, out of OD-19 scope** |
-| 5 | 9 × `communications/test/e2e/*` public, trigger real vendor email | test harness in prod | **open, verdict may be `delete`** |
-| 6 | `?secret=` query-string credential on `inbound-email` | credential in logs/proxies/referrers | **open** (fails closed, which is right) |
-| 7 | `injection_suspected` self-reported by the model under attack, untested | prompt injection | **open, no corpus** |
+| 1 | `accessToken` + `refreshToken` in `localStorage` (`AuthContext.tsx:146-147`) | XSS → account takeover | **open** · unmoved · measured by no metric (finding F1) |
+| 2 | Injection corpus size 0 while `injection_suspected` is self-reported by the model under attack | prompt injection | **open** · S12 |
+| 3 | 6 `auth` routes public by intent, public by no declaration | undeclared intent | **open** · S2, founder Q2 |
+| 4 | `?secret=` query-string credential (`inbound-email.controller.ts:57-58`) | credential in logs/proxies/referrers | **open** · fails closed, which is right · S8 |
+| 5 | `GET /calendar/feed/:token.ics` capability URL — no rotation, no revocation | enumeration + log exposure | **open, never audited** · S9 |
+| 6 | `GET /events/metrics` public ingestion counters | information disclosure | **open** · verdict may be `delete` · founder Q5 |
+| 7 | In-memory rate-limit `Map` (`rate-limit.guard.ts:70`) | limit × instance count | **open** · S10 |
+| 8 | CORS `*.vercel.app` + `credentials: true` in production (`main.ts:24`) | shared multi-tenant origin | **open** · S11, founder call |
+| — | ~~`/analytics/consult` + `/toggle` — paid model, anonymous~~ | denial-of-wallet | ✅ closed PR #31 |
+| — | ~~`simpos` 11 routes — server-signed webhook into stock movement~~ | confused deputy | ✅ closed — guarded (`simpos.controller.ts:54`) + non-prod gated (`app.module.ts:89`) |
+| — | ~~3 × JWT secret defaulting to a published string~~ | fail-open credential | ✅ closed — `auth/jwt-secret.ts:21-25` refuses to start outside development |
+| — | ~~9 × `communications/test/e2e/*` public, trigger real vendor email~~ | test harness in prod | ✅ closed — `NonProductionGuard`, ADR 0019 D2 |
+
+## This agenda's close-times
+
+| Close | Tasks |
+|---|---|
+| 2026-09-04 | S1 (guard check red) · S3 weekly starts · S21 weekly starts |
+| 2026-09-11 | S2 (classify the 40) · S6 (ingress re-baseline) · S8 · S14 |
+| 2026-09-18 | S7 (fail-open re-baseline + guard) |
+| 2026-09-25 | S4 · S9 · S12 (corpus v1) · S18 (≥12 of 15) |
+| 2026-09-30 | S13 · S16 (monthly, first run) |
+| 2026-10-02 | S15 (allowlist coverage audit — audit only) |
+| 2026-10-09 | S5 ◈ · S10 · S11 ◈ |
+| 2026-10-16 | S19 ◈ (measurement ledger) |
+| 2026-10-30 | S17 ◈ · S20 (Red Team handoff #1) |
+
+**Canvas:** [`sketches/059-security-agenda-canvas/canvas.html`](../../../sketches/059-security-agenda-canvas/canvas.html)

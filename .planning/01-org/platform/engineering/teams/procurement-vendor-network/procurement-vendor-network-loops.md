@@ -5,7 +5,7 @@ department: engineering
 team: procurement-vendor-network
 status: provisional
 metrics: [procurement.order_to_delivery_reconciliation_rate, procurement.no_touch_reconciliation_rate, procurement.unguarded_money_moving_routes]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-premortem]]", "[[procurement-vendor-network-directive]]", "[[engineering-loops]]", "[[action-safety-the-human-gate-charter|action-safety-the-human-gate]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_ids: ["pv-order-delivery-reconciliation", "pv-money-path-exposure", "pv-price-contract-integrity", "pv-spend-authority-boundary", "pv-vendor-portal-surface"]
@@ -54,10 +54,14 @@ close_time: daily
 status: proposed
 ```
 
-Counters premortem M1 — the department's single most consequential live exposure: 6
-unguarded routes on the module that places automated orders ([[ENDPOINTS]]:428). **Daily**
-close-time, because it is exposure rather than debt. Feeds [[engineering-loops]] L-ENG-5.
-Runs on logging alone until the platform guard exists; the log is the point.
+Counters premortem M1, whose named exposure is now **closed**: the 6 routes on the module
+that places automated orders were guarded on 2026-08-25
+(`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
+OD-20; [[ENDPOINTS]]:464-473 marks all six ✅). The loop stays and the **daily** close-time
+stays, so that the closure is a measured state rather than a memory — and because guarding
+is opt-in per controller, the loop's real job is now catching the *next* money-moving route
+added without a guard decision. Feeds [[engineering-loops]] L-ENG-5. Runs on logging alone
+until the platform guard exists; the log is the point.
 
 ---
 

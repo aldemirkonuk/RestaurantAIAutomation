@@ -142,16 +142,23 @@ Counters **M4**. `status: blocked` is set deliberately rather than `proposed`, a
 to make a blocked dependency accrue a visible number** instead of quietly becoming
 someone's excuse.
 
-`sec.model_callsites_emitting_cost` is **0 of 7** today. Grepping `apps/api-gateway/src`
-for `api_spend`, `cost_usd` or `input_tokens` returns nothing
-(`intelligence.md:165-167`), so the department's AI metric is unmeasurable through no
-fault of the AI team. Hard dependency on
-[[neural-footprint-instrumentation-charter]], stated as a contract at
-`intelligence.md:488`.
+`sec.model_callsites_emitting_cost` was **0 of 7**. It is **25 of 25** as of 2026-08-24 —
+7 gateway sites routed through `common/model-client/`, 18 Python sites through
+`SpendLogger`, with `scripts/check_model_calls_logged.sh` failing the build if a new one
+skips the ledger. The hard dependency on
+[[neural-footprint-instrumentation-charter]] (`intelligence.md:488`) is discharged.
 
-The loop still closes monthly while blocked, and what it reports is the crude substitute:
-`sec.tenants_with_inference_budget`, today **0**. A per-tenant daily call ceiling needs no
-telemetry at all and closes the worst of the window while RM-3 is pending.
+`sec.tenants_with_inference_budget` was **0**; it is **10 of 10**. Every restaurant now
+resolves to an allowance through `restaurants.subscription_tier`, and an unrecognised tier
+resolves to the *most* restrictive one rather than to none — all 10 live tenants read
+`pilot`, which maps to core. The ceilings themselves are placeholders pending OD-23.
+
+**Still blocked, and now on one thing rather than three.**
+`nf_a.unauthenticated_inference_spend` remains unreadable: the NF-A event records *who the
+agent was*, never *whether the caller that triggered it was authenticated*. The route
+census can bound it — every model-calling route is guarded after #31/#32 — but bounding is
+not measuring, and this loop exists to hold a real number. That is the remaining
+dependency, and `sec.days_dependency_open` should keep counting against it.
 
 ---
 

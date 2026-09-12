@@ -85,7 +85,7 @@ function buildHtmlDocument(title: string, headers: string[], matrix: string[][])
   h1 { font-size: 18px; margin: 0 0 4px; }
   p.meta { color: #6b7280; font-size: 12px; margin: 0 0 20px; }
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  th { background: #9E4249; color: #fff; text-align: left; padding: 8px; }
+  th { background: #1A5E6B; color: #fff; text-align: left; padding: 8px; }
   td { border-bottom: 1px solid #e5e7eb; padding: 8px; }
   tr:nth-child(even) td { background: #fafafa; }
 </style>
@@ -146,7 +146,12 @@ export async function exportTable<T>({
     }
 
     case 'markdown': {
-      const cell = (v: string) => v.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+      // Backslash first: escaping `|` before `\` turns a cell containing `\|`
+      // into `\\|`, which markdown reads as an escaped backslash followed by a
+      // live column separator — the value breaks out of its own cell and
+      // shifts every column after it.
+      const cell = (v: string) =>
+        v.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\n/g, ' ')
       const lines = [
         `# ${title}`,
         '',
@@ -169,7 +174,7 @@ export async function exportTable<T>({
     case 'excel': {
       const ExcelJS = (await import('exceljs')).default
       const workbook = new ExcelJS.Workbook()
-      workbook.creator = 'WineOps AI'
+      workbook.creator = 'Mudavym'
       workbook.created = new Date()
 
       const sheet = workbook.addWorksheet(title.slice(0, 31) || 'Export', {
@@ -227,7 +232,7 @@ export async function exportTable<T>({
         body: matrix,
         theme: 'grid',
         styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [158, 66, 73], textColor: 255 },
+        headStyles: { fillColor: [26,94,107], textColor: 255 },
         alternateRowStyles: { fillColor: [250, 250, 250] },
       })
 

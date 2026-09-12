@@ -54,6 +54,9 @@ from agents.email_parsing_agent import EmailParsingAgent
 # Phase 32 Agents
 from agents.provider_communication_agent import ProviderCommunicationAgent
 
+# ADR 0039 Track A3 — scheduled purchasing, brought under the harness
+from agents.recurring_order_agent import RecurringOrderAgent
+
 logger = setup_logger(__name__)
 
 
@@ -208,6 +211,16 @@ class AgentOrchestrator:
             "email_parsing_agent": EmailParsingAgent,
             # Phase 32 agents
             "provider_communication_agent": ProviderCommunicationAgent,
+            # ADR 0039 Track A3 — scheduled purchasing.
+            #
+            # This agent was a plain class registered nowhere, with an
+            # auto-execute branch that placed orders whenever a schedule row had
+            # auto_approve set. Registering it is what puts scheduled purchasing
+            # under retry/idempotency/DLQ/health for the first time; it is
+            # OPTIONAL and gated off (AGENT_RECURRING_ORDER_AGENT_ENABLED) so
+            # bringing it inside the harness does not also switch it on. The
+            # execution path is gone, not flag-guarded — see the module docstring.
+            "recurring_order_agent": RecurringOrderAgent,
         }
 
         # Register with the new registry (includes tier and dependency info)
@@ -295,15 +308,20 @@ class AgentOrchestrator:
                 "default_threshold": self.settings.default_threshold_min,
             },
             "provider_conversation_agent": {
+                # Both land inside a Gemini client — extraction_model in this
+                # agent's genai.GenerativeModel, response_model in the one
+                # EmailComposerService builds. They defaulted to llm_primary_model,
+                # a CLAUDE id, so a Claude name was handed to the Gemini SDK on
+                # every boot (OD-57). Extraction-shaped work stays on Gemini.
                 "extraction_model": getattr(
                     self.settings,
                     "provider_convo_extraction_model",
-                    self.settings.llm_primary_model,
+                    self.settings.gemini_model,
                 ),
                 "response_model": getattr(
                     self.settings,
                     "provider_convo_response_model",
-                    self.settings.llm_primary_model,
+                    self.settings.gemini_model,
                 ),
                 "embedding_model": getattr(
                     self.settings,
@@ -361,7 +379,9 @@ class AgentOrchestrator:
                 "mock_mode": self.settings.mock_llm,
             },
             "sommelier_agent": {
-                "llm_model": self.settings.llm_primary_model,
+                # Wine enrichment is extraction-shaped and this agent uses the
+                # Gemini SDK; llm_primary_model is a Claude id (OD-57).
+                "llm_model": self.settings.gemini_model,
                 "google_api_key": self.settings.google_api_key,
                 "mock_mode": self.settings.mock_llm,
             },
@@ -655,8 +675,12 @@ class AgentOrchestrator:
         for agent_name, agent in self.agents.items():
             metrics = agent.metrics.to_dict()
             agent_metrics[agent_name] = metrics
-            total_messages += metrics["messages_processed"]
-            total_errors += metrics["errors"]
+            # to_dict() nests these — `messages.processed` and `health.errors`
+            # (base_agent.py:158-177). Reading them flat raised KeyError on the
+            # first agent, so this endpoint 500'd for as long as any agent was
+            # registered. Found 2026-08-25 during the P2.4 burn-down.
+            total_messages += metrics.get("messages", {}).get("processed", 0)
+            total_errors += metrics.get("health", {}).get("errors", 0)
 
         # Message bus metrics
         bus_stats = await self.message_bus.get_statistics()

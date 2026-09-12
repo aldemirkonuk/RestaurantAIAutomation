@@ -27,7 +27,7 @@ Make the invariant **measurable** before making it stronger. Four deliverables, 
    deliverable is a falling number.
 4. **End-to-end idempotency keyed on the originating event**, not minted per hop.
 
-`.planning/INVENTORY_SOTA_PLAN.md` already carries the architecture — three gated phases
+`.planning/07-reference/INVENTORY_SOTA_PLAN.md` already carries the architecture — three gated phases
 and thirteen locked decisions. This agenda is not a competing plan; it is the measurement
 scaffolding that plan needs in order to be verifiable.
 
@@ -72,7 +72,7 @@ the objection ([[engineering-directive]]).
 - [ ] Assert every count adjustment has a corresponding movement row (M5)
 - [ ] Agree idempotency-key derivation with [[integration-engineering-charter]] and
       [[messaging-delivery-charter]] — one seam decision, one close-time
-- [ ] Cross-check `.planning/INVENTORY_ADD_REMOVE_SCENARIOS.md` against the sampler's
+- [ ] Cross-check `.planning/07-reference/INVENTORY_ADD_REMOVE_SCENARIOS.md` against the sampler's
       definition of divergence, so the scenarios and the metric agree
 
 ## Questions for the founder

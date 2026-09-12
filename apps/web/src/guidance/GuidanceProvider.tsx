@@ -9,7 +9,10 @@ import {
   type ReactNode,
 } from 'react'
 import { useLocation } from 'react-router-dom'
-import { useUserPreferences } from '../hooks/useUserPreferences'
+import { useQueryClient } from '@tanstack/react-query'
+import { useUserPreferences, type UserPreferences } from '../hooks/useUserPreferences'
+import { useAuthStore } from '../stores'
+import { queryKeys } from '../lib/query-keys'
 import {
   DEFAULT_GUIDANCE_STATE,
   DEFAULT_SETUP_NUDGE,
@@ -18,7 +21,6 @@ import {
   type GuidanceState,
   type PageGuidanceState,
   type PageTourId,
-  type SetupNudgeState,
 } from './types'
 import { useTourEngine } from './tours/TourEngine'
 import { trackGuidance } from './analytics'
@@ -50,6 +52,35 @@ interface GuidanceContextValue {
 const GuidanceContext = createContext<GuidanceContextValue | null>(null)
 
 const SESSION_KEY = 'wineops_guidance_session'
+const LOCAL_GUIDANCE_KEY = 'wineops_guidance_v1'
+
+/** Offline-safe mirror of dismiss/snooze — survives API failures and query rollbacks. */
+function readLocalGuidance(): Partial<GuidanceState> | null {
+  try {
+    const raw = localStorage.getItem(LOCAL_GUIDANCE_KEY)
+    return raw ? (JSON.parse(raw) as Partial<GuidanceState>) : null
+  } catch {
+    return null
+  }
+}
+
+function writeLocalGuidance(state: GuidanceState) {
+  try {
+    localStorage.setItem(
+      LOCAL_GUIDANCE_KEY,
+      JSON.stringify({
+        global: {
+          hide_all_tips: state.global.hide_all_tips,
+          tips_snoozed_until: state.global.tips_snoozed_until,
+        },
+        pages: state.pages,
+        setup_nudge: state.setup_nudge,
+      }),
+    )
+  } catch {
+    // ignore quota / private mode
+  }
+}
 
 type SessionFatigue = {
   /** Pages whose first-visit tip has already been surfaced this session (dedupes analytics). */
@@ -82,13 +113,21 @@ function writeSession(s: SessionFatigue) {
 
 function mergeGuidance(raw: unknown): GuidanceState {
   const g = (raw && typeof raw === 'object' ? raw : {}) as Partial<GuidanceState>
-  return {
+  const local = readLocalGuidance()
+  const base: GuidanceState = {
     global: { ...DEFAULT_GUIDANCE_STATE.global, ...g.global },
     pages: { ...DEFAULT_GUIDANCE_STATE.pages, ...g.pages },
     guide: {
       use_cards_seen: g.guide?.use_cards_seen ?? [],
     },
     setup_nudge: { ...DEFAULT_SETUP_NUDGE, ...g.setup_nudge },
+  }
+  if (!local) return base
+  return {
+    ...base,
+    global: { ...base.global, ...local.global },
+    pages: { ...base.pages, ...local.pages },
+    setup_nudge: { ...base.setup_nudge, ...local.setup_nudge },
   }
 }
 
@@ -118,6 +157,8 @@ function defaultPageState(): PageGuidanceState {
 
 export function GuidanceProvider({ children }: { children: ReactNode }) {
   const location = useLocation()
+  const queryClient = useQueryClient()
+  const userId = useAuthStore((s) => s.user?.userId) ?? null
   const { preferences, updatePreferences } = useUserPreferences()
   const state = useMemo(
     () => mergeGuidance(preferences.guidance),
@@ -132,23 +173,44 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
 
   const persist = useCallback(
     (next: GuidanceState) => {
-      updatePreferences({ guidance: next })
+      writeLocalGuidance(next)
+      if (userId) {
+        queryClient.setQueryData<UserPreferences>(
+          queryKeys.user.preferences(userId),
+          (old) => ({ ...old, guidance: next }),
+        )
+        updatePreferences({ guidance: next })
+      }
     },
-    [updatePreferences],
+    [queryClient, updatePreferences, userId],
+  )
+
+  /** Read the latest guidance from cache + local overlay — avoids stale closure overwrites. */
+  const persistGuidance = useCallback(
+    (updater: (prev: GuidanceState) => GuidanceState) => {
+      const cached = userId
+        ? queryClient.getQueryData<UserPreferences>(queryKeys.user.preferences(userId))
+        : undefined
+      const prev = mergeGuidance(cached?.guidance ?? preferences.guidance)
+      persist(updater(prev))
+    },
+    [persist, preferences.guidance, queryClient, userId],
   )
 
   const patchPage = useCallback(
     (pageId: PageTourId, patch: Partial<PageGuidanceState>) => {
-      const prev = state.pages[pageId] ?? defaultPageState()
-      persist({
-        ...state,
-        pages: {
-          ...state.pages,
-          [pageId]: { ...prev, ...patch },
-        },
+      persistGuidance((prev) => {
+        const pagePrev = prev.pages[pageId] ?? defaultPageState()
+        return {
+          ...prev,
+          pages: {
+            ...prev.pages,
+            [pageId]: { ...pagePrev, ...patch },
+          },
+        }
       })
     },
-    [persist, state],
+    [persistGuidance],
   )
 
   const tourHandlers = useMemo(
@@ -261,70 +323,64 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   )
 
   const hideAllTips = useCallback(() => {
-    persist({
-      ...state,
-      global: { ...state.global, hide_all_tips: true },
-    })
-  }, [persist, state])
+    persistGuidance((prev) => ({
+      ...prev,
+      global: { ...prev.global, hide_all_tips: true },
+    }))
+  }, [persistGuidance])
 
   const resetTips = useCallback(() => {
-    const pages = { ...state.pages }
-    for (const key of Object.keys(pages) as PageTourId[]) {
-      pages[key] = { tip: 'unseen', tour: pages[key]?.tour ?? 'unseen' }
-    }
-    sessionRef.current = { offeredPageIds: [], skips: 0 }
-    writeSession(sessionRef.current)
-    setSessionTick((n) => n + 1)
-    persist({
-      ...state,
-      global: {
-        ...state.global,
-        hide_all_tips: false,
-        tips_snoozed_until: undefined,
-      },
-      pages,
+    persistGuidance((prev) => {
+      const pages = { ...prev.pages }
+      for (const key of Object.keys(pages) as PageTourId[]) {
+        pages[key] = { tip: 'unseen', tour: pages[key]?.tour ?? 'unseen' }
+      }
+      sessionRef.current = { offeredPageIds: [], skips: 0 }
+      writeSession(sessionRef.current)
+      setSessionTick((n) => n + 1)
+      try {
+        localStorage.removeItem(LOCAL_GUIDANCE_KEY)
+      } catch {
+        // ignore
+      }
+      return {
+        ...prev,
+        global: {
+          ...prev.global,
+          hide_all_tips: false,
+          tips_snoozed_until: undefined,
+        },
+        pages,
+      }
     })
-  }, [persist, state])
+  }, [persistGuidance])
 
   const setShowWineAgentFab = useCallback(
     (show: boolean) => {
-      persist({
-        ...state,
+      persistGuidance((prev) => ({
+        ...prev,
         global: {
-          ...state.global,
+          ...prev.global,
           show_wine_agent_fab: show,
-          // Unlock when user explicitly enables from Learn
-          wine_agent_fab_unlocked: show
-            ? true
-            : state.global.wine_agent_fab_unlocked,
+          wine_agent_fab_unlocked: show ? true : prev.global.wine_agent_fab_unlocked,
         },
-      })
+      }))
     },
-    [persist, state],
+    [persistGuidance],
   )
 
   const markUseCardSeen = useCallback(
     (cardId: string) => {
       if (state.guide.use_cards_seen.includes(cardId)) return
       trackGuidance('guide_card_clicked', { cardId })
-      persist({
-        ...state,
+      persistGuidance((prev) => ({
+        ...prev,
         guide: {
-          use_cards_seen: [...state.guide.use_cards_seen, cardId],
+          use_cards_seen: [...prev.guide.use_cards_seen, cardId],
         },
-      })
+      }))
     },
-    [persist, state],
-  )
-
-  const patchSetupNudge = useCallback(
-    (patch: Partial<SetupNudgeState>) => {
-      persist({
-        ...state,
-        setup_nudge: { ...state.setup_nudge, ...patch },
-      })
-    },
-    [persist, state],
+    [persistGuidance, state.guide.use_cards_seen],
   )
 
   // Fires once per render pass when the banner actually becomes visible —
@@ -332,25 +388,43 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   // activation status) since GuidanceProvider doesn't know those.
   const markSetupNudgeShown = useCallback(() => {
     trackGuidance('tip_shown', { pageId: 'setup-nudge' })
-    patchSetupNudge({
-      last_shown_at: new Date().toISOString(),
-      session_count: state.setup_nudge.session_count + 1,
-    })
-  }, [patchSetupNudge, state.setup_nudge.session_count])
+    persistGuidance((prev) => ({
+      ...prev,
+      setup_nudge: {
+        ...prev.setup_nudge,
+        last_shown_at: new Date().toISOString(),
+        session_count: prev.setup_nudge.session_count + 1,
+      },
+    }))
+  }, [persistGuidance])
 
   const snoozeSetupNudge = useCallback(() => {
     writeNudgeSessionDismissed(true)
     setNudgeDismissedThisSession(true)
     trackGuidance('tip_snoozed', { pageId: 'setup-nudge' })
-    patchSetupNudge({ snooze_count: state.setup_nudge.snooze_count + 1 })
-  }, [patchSetupNudge, state.setup_nudge.snooze_count])
+    persistGuidance((prev) => ({
+      ...prev,
+      setup_nudge: {
+        ...prev.setup_nudge,
+        snooze_count: prev.setup_nudge.snooze_count + 1,
+        last_shown_at: new Date().toISOString(),
+      },
+    }))
+  }, [persistGuidance])
 
   const dismissSetupNudgeForever = useCallback(() => {
     writeNudgeSessionDismissed(true)
     setNudgeDismissedThisSession(true)
     trackGuidance('tip_dismissed', { pageId: 'setup-nudge' })
-    patchSetupNudge({ dismissed_forever: true })
-  }, [patchSetupNudge])
+    persistGuidance((prev) => ({
+      ...prev,
+      setup_nudge: {
+        ...prev.setup_nudge,
+        dismissed_forever: true,
+        last_shown_at: new Date().toISOString(),
+      },
+    }))
+  }, [persistGuidance])
 
   const value: GuidanceContextValue = {
     state,

@@ -91,7 +91,7 @@ exact proxies [[product-vision-directive]] forbids.
 | Prospects | `apps/api-gateway/src/common/orchestrator/prospects.service.ts` / `prospects.controller.ts` | |
 | Catalogue | `apps/api-gateway/src/vendor-catalogue/` | |
 | Surfaces | `/distributors`, `/vendor-prices` (`VendorPriceCompare`), `/providers` | [[PAGE_MAP]]:36-37,56 |
-| Architecture | `.planning/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md` | |
+| Architecture | `.planning/07-reference/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md` | |
 
 **Verified this session:** `vendor-intel/` contains 10 files including three spec files, and
 `distributor-discovery/` contains 8 including three specs. This is one of the better-tested

@@ -31,6 +31,40 @@
     "name": "Sim Fine Dining",
     "timezone": "America/Chicago",
     "city": "Chicago",
-    "country": "USA"
+    "country": "USA",
+    "operating_hours": {
+      "mon": [],
+      "tue": [
+        {
+          "open": "17:30",
+          "close": "22:30"
+        }
+      ],
+      "wed": [
+        {
+          "open": "17:30",
+          "close": "22:30"
+        }
+      ],
+      "thu": [
+        {
+          "open": "17:30",
+          "close": "22:30"
+        }
+      ],
+      "fri": [
+        {
+          "open": "17:30",
+          "close": "22:30"
+        }
+      ],
+      "sat": [
+        {
+          "open": "17:30",
+          "close": "22:30"
+        }
+      ],
+      "sun": []
+    }
   }
 }

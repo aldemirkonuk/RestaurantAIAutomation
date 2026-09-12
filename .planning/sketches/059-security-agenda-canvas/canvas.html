@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sketch 059 · Security Agenda Canvas — 2026-08-28</title>
+<style>
+  :root{
+    --bg:#0d0e11;
+    --panel:#14161b;
+    --panel-2:#191c22;
+    --line:#262a33;
+    --line-soft:#1e222a;
+    --ink:#e8e6e3;
+    --ink-2:#a6a9b2;
+    --ink-3:#6d717c;
+    --burgundy:#cd2d5b;
+    --burgundy-dim:#7a2038;
+    --amber:#d99a2b;
+    --green:#4a9d6a;
+    --blue:#4d7fbf;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  body{padding:28px 26px 60px;max-width:1600px;margin:0 auto}
+  a{color:inherit}
+
+  /* ---------- header ---------- */
+  header{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:22px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+  h1{font-size:30px;margin:8px 0 6px;font-weight:600;letter-spacing:-.015em}
+  h1 span{color:var(--burgundy)}
+  .thesis{color:var(--ink-2);font-size:14.5px;max-width:78ch;line-height:1.55;margin:10px 0 0}
+  .thesis em{color:var(--ink);font-style:normal;border-bottom:1px solid var(--burgundy-dim)}
+
+  /* ---------- ledger ---------- */
+  .ledger{display:flex;align-items:stretch;gap:0;margin:22px 0 8px;flex-wrap:wrap}
+  .lstep{position:relative;padding:10px 22px 10px 16px;background:var(--panel);border:1px solid var(--line-soft);border-right:none;min-width:92px}
+  .lstep:last-child{border-right:1px solid var(--line-soft)}
+  .lstep .n{font-family:var(--mono);font-size:22px;font-weight:600;line-height:1}
+  .lstep .l{font-size:10.5px;color:var(--ink-3);margin-top:5px;font-family:var(--mono);letter-spacing:.04em}
+  .lstep.now{background:linear-gradient(180deg,#22141b,#191115);border-color:var(--burgundy-dim)}
+  .lstep.now .n{color:var(--burgundy)}
+  .ledger-note{font-size:12.5px;color:var(--ink-2);align-self:center;padding-left:18px;max-width:46ch;line-height:1.5}
+
+  /* ---------- board ---------- */
+  .board{display:grid;grid-template-columns:150px repeat(5,1fr);gap:8px;margin-top:26px}
+  .colhead{padding:8px 10px;border-bottom:2px solid var(--line);font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-2)}
+  .colhead b{display:block;color:var(--ink);font-size:12.5px;font-weight:600;letter-spacing:0}
+  .lanehead{padding:12px 10px;border-right:2px solid var(--line);display:flex;flex-direction:column;justify-content:center;gap:5px}
+  .lanehead .code{font-family:var(--mono);font-size:10.5px;color:var(--burgundy);letter-spacing:.1em}
+  .lanehead .name{font-size:13px;font-weight:600;line-height:1.25}
+  .lanehead .q{font-size:11px;color:var(--ink-3);line-height:1.4;font-style:italic}
+  .cell{display:flex;flex-direction:column;gap:7px;padding:4px 2px;min-height:74px}
+
+  .card{background:var(--panel);border:1px solid var(--line-soft);border-left:3px solid var(--line);border-radius:3px;padding:8px 9px 9px;transition:border-color .15s,background .15s}
+  .card:hover{background:var(--panel-2);border-left-color:var(--burgundy)}
+  .card .top{display:flex;align-items:baseline;gap:7px}
+  .card .id{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--burgundy)}
+  .card .when{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);white-space:nowrap}
+  .card .t{font-size:12.2px;line-height:1.35;margin-top:4px;color:var(--ink)}
+  .card .d{font-size:10.5px;line-height:1.4;margin-top:6px;color:var(--ink-3);border-top:1px dotted var(--line);padding-top:5px}
+  .card .d b{color:var(--ink-2);font-weight:600}
+  .card.reach{border-left-color:var(--amber)}
+  .card.reach .id::after{content:" ◈";color:var(--amber)}
+  .card.gate{border-left-color:var(--blue)}
+  .card.recur .when::before{content:"↻ ";color:var(--ink-3)}
+
+  /* ---------- strips ---------- */
+  h2{font-size:12px;font-family:var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:34px 0 12px;padding-bottom:7px;border-bottom:1px solid var(--line-soft)}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+  .metric{background:var(--panel);border:1px solid var(--line-soft);border-radius:3px;padding:9px 10px}
+  .metric .k{font-family:var(--mono);font-size:10px;color:var(--ink-3);line-height:1.35;word-break:break-word}
+  .metric .v{font-family:var(--mono);font-size:17px;font-weight:600;margin-top:6px}
+  .metric .arc{font-size:10px;color:var(--ink-3);margin-top:4px;font-family:var(--mono)}
+  .v.bad{color:var(--burgundy)} .v.warn{color:var(--amber)} .v.ok{color:var(--green)} .v.blocked{color:var(--ink-3)}
+  .neversum{font-size:11.5px;color:var(--ink-2);margin:10px 0 0;font-style:italic}
+
+  .seams{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:8px}
+  .seam{background:var(--panel);border:1px solid var(--line-soft);border-radius:3px;padding:10px 11px}
+  .seam .dir{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+  .seam .who{font-size:12.5px;font-weight:600;margin:5px 0 4px}
+  .seam .what{font-size:11px;color:var(--ink-2);line-height:1.45}
+  .seam.out{border-top:2px solid var(--blue)}
+  .seam.in{border-top:2px solid var(--burgundy-dim)}
+  .seam.gap{border-top:2px solid var(--amber)}
+
+  .two{display:grid;grid-template-columns:1.35fr 1fr;gap:26px;align-items:start}
+  ol.q{margin:0;padding-left:20px}
+  ol.q li{font-size:12.4px;line-height:1.55;color:var(--ink-2);margin-bottom:9px}
+  ol.q li b{color:var(--ink);font-weight:600}
+  .locks{background:var(--panel);border:1px solid var(--line-soft);border-left:3px solid var(--burgundy-dim);border-radius:3px;padding:12px 14px}
+  .locks p{font-size:12.2px;line-height:1.55;color:var(--ink-2);margin:0 0 9px}
+  .locks p:last-child{margin-bottom:0}
+  .locks b{color:var(--ink)}
+
+  .legend{display:flex;gap:20px;flex-wrap:wrap;margin-top:26px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:11px;color:var(--ink-3);font-family:var(--mono)}
+  .legend span b{color:var(--ink-2);font-weight:600}
+  footer{margin-top:26px;font-size:11px;color:var(--ink-3);line-height:1.6;font-family:var(--mono)}
+
+  @media (max-width:1100px){
+    .board{grid-template-columns:1fr}
+    .colhead{display:none}
+    .lanehead{border-right:none;border-bottom:2px solid var(--line);margin-top:18px}
+    .cell{min-height:0}
+    .two{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Sketch 059 · Intelligence ▸ Security · agenda canvas · dated 2026-08-28</div>
+  <h1>Whether an attacker <span>can</span> — one quarter, on one page</h1>
+  <p class="thesis">
+    The department's thesis is that <em>the codebase's habit is to warn and continue</em>.
+    Four days of measurement produced a second thesis about the department itself:
+    <em>the habit here is to state a count by hand and publish it as fact</em>. The residual
+    endpoint backlog is now six routes — small enough that the recurrence guard will never be
+    funded once it is drained. So the lid ships first, red, and the last task on this board
+    makes every number above it reproducible by a script instead of by a person.
+  </p>
+</header>
+
+<div class="ledger">
+  <div class="lstep"><div class="n">86</div><div class="l">README / OD-19</div></div>
+  <div class="lstep"><div class="n">103</div><div class="l">module headers</div></div>
+  <div class="lstep"><div class="n">94</div><div class="l">row-by-row</div></div>
+  <div class="lstep"><div class="n">40</div><div class="l">08-26 recount</div></div>
+  <div class="lstep now"><div class="n">6</div><div class="l">08-28 · residual</div></div>
+  <p class="ledger-note">
+    Five denominators in four days, none reproducible by a committed script. All six
+    residual routes are <b>public by intent and public by no declaration</b> —
+    <code>login · register · oauth/google · oauth/microsoft · refresh · verify-email</code>.
+    Not holes. Undeclared intent, which CI cannot tell apart from a forgotten guard.
+  </p>
+</div>
+
+<!-- ============ BOARD ============ -->
+<div class="board">
+  <div></div>
+  <div class="colhead"><b>Sep 4</b>the lid</div>
+  <div class="colhead"><b>Sep 11 – 18</b>verdicts</div>
+  <div class="colhead"><b>Sep 25 – 30</b>the corpus</div>
+  <div class="colhead"><b>Oct 2 – 9</b>specs &amp; audits</div>
+  <div class="colhead"><b>Oct 16 – 30</b>the ledger</div>
+
+  <!-- SEC-1 -->
+  <div class="lanehead">
+    <div class="code">SEC-1</div>
+    <div class="name">Access control &amp; tenant isolation</div>
+    <div class="q">“Should this request be rejected?”</div>
+  </div>
+  <div class="cell">
+    <div class="card">
+      <div class="top"><span class="id">S1</span><span class="when">09-04</span></div>
+      <div class="t">Ship the endpoint-guard check <b>red</b>, with the allowlist</div>
+      <div class="d"><b>Done:</b> fails on a synthetic unguarded controller; <code>recurrence_guard_present</code> flips true <b>before</b> the primary moves</div>
+    </div>
+    <div class="card recur">
+      <div class="top"><span class="id">S3</span><span class="when">weekly</span></div>
+      <div class="t">Publish the pair — exposure <b>6</b> beside coverage <b>17</b></div>
+      <div class="d"><b>Done:</b> one number without the other is a failed run</div>
+    </div>
+  </div>
+  <div class="cell">
+    <div class="card">
+      <div class="top"><span class="id">S2</span><span class="when">09-11</span></div>
+      <div class="t">Classify all 40 residual routes, five fields each</div>
+      <div class="d"><b>Done:</b> 40/40 verdicts; every <code>unknown</code> returns an escalation; output is an allowlist diff, not a report</div>
+    </div>
+  </div>
+  <div class="cell">
+    <div class="card">
+      <div class="top"><span class="id">S4</span><span class="when">09-25</span></div>
+      <div class="t">Measure <code>cross_tenant_write_paths</code> across 463 routes</div>
+      <div class="d"><b>Done:</b> a number with a script behind it</div>
+    </div>
+  </div>
+  <div class="cell">
+    <div class="card reach">
+      <div class="top"><span class="id">S5</span><span class="when">10-09</span></div>
+      <div class="t">Guard the <b>booted router table</b>, not the source text</div>
+      <div class="d"><b>Done:</b> a dynamically composed route no grep can see shows up in the diff. Falls back to S1 cleanly</div>
+    </div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- SEC-2 -->
+  <div class="lanehead">
+    <div class="code">SEC-2</div>
+    <div class="name">Perimeter &amp; ingress integrity</div>
+    <div class="q">“No identity — can we prove where it came from?”</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="card">
+      <div class="top"><span class="id">S6</span><span class="when">09-11</span></div>
+      <div class="t">Re-baseline public ingress: <b>23 in scope, not 43</b></div>
+      <div class="d"><b>Done:</b> 23 rows of <code>sender · proof · fail-direction</code>. A proof with no named sender is a FAILED check</div>
+    </div>
+    <div class="card">
+      <div class="top"><span class="id">S8</span><span class="when">09-11</span></div>
+      <div class="t">Verdict on the <code>?secret=</code> query credential</div>
+      <div class="d"><b>Done:</b> header-only proposal handed to platform-api. Fails closed today — the finding is the channel</div>
+    </div>
+    <div class="card gate">
+      <div class="top"><span class="id">S7</span><span class="when">09-18</span></div>
+      <div class="t">Fail-open re-baseline <b>4 → 1</b> (+1 dev-only) + the grep guard</div>
+      <div class="d"><b>Done:</b> escalation filed <b>before</b> the number is republished; guard proven against the pre-fix tree</div>
+    </div>
+  </div>
+  <div class="cell">
+    <div class="card">
+      <div class="top"><span class="id">S9</span><span class="when">09-25</span></div>
+      <div class="t">Audit the iCal capability URL — never audited</div>
+      <div class="d"><b>Done:</b> rotation · revocation · enumeration · log exposure, each answered or named <code>unmeasured</code></div>
+    </div>
+  </div>
+  <div class="cell">
+    <div class="card">
+      <div class="top"><span class="id">S10</span><span class="when">10-09</span></div>
+      <div class="t">Specify — not build — a distributed rate limit</div>
+      <div class="d"><b>Done:</b> a spec naming the store and its failure direction. We specify; engineering authors</div>
+    </div>
+    <div class="card reach">
+      <div class="top"><span class="id">S11</span><span class="when">10-09</span></div>
+      <div class="t">Propose narrowing production CORS off <code>*.vercel.app</code></div>
+      <div class="d"><b>Done:</b> named origin list + the breakage stated. <b>Aspiration pending a founder call</b></div>
+    </div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- SEC-3 -->
+  <div class="lanehead">
+    <div class="code">SEC-3</div>
+    <div class="name">AI surface security</div>
+    <div class="q">“The request was legitimate. The content was hostile.”</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="card">
+      <div class="top"><span class="id">S14</span><span class="when">09-11</span></div>
+      <div class="t">Reconcile “it never sends” against the 2-minute auto-send</div>
+      <div class="d"><b>Done:</b> one of the two changes, and <b>which</b> is recorded — they have different owners</div>
+    </div>
+  </div>
+  <div class="cell">
+    <div class="card">
+      <div class="top"><span class="id">S12</span><span class="when">09-25</span></div>
+      <div class="t"><b>Adversarial corpus v1</b> — ≥60 dual-keyed cases</div>
+      <div class="d"><b>Done:</b> ≥1 case fails without the quarantine and passes with it. Failing test first, or the mitigation is a hypothesis</div>
+    </div>
+    <div class="card recur">
+      <div class="top"><span class="id">S13</span><span class="when">monthly</span></div>
+      <div class="t">Report the <b>triple</b>: size · detection rate · false-positive rate</div>
+      <div class="d"><b>Done:</b> all-pass is reported <code>suspicious</code>, never green</div>
+    </div>
+    <div class="card recur">
+      <div class="top"><span class="id">S16</span><span class="when">monthly</span></div>
+      <div class="t">Publish spend as <b>0 — bounded by census, NOT measured</b></div>
+      <div class="d"><b>Done:</b> the bound and the words “not measured” in the same cell; <code>days_dependency_open</code> keeps counting</div>
+    </div>
+  </div>
+  <div class="cell">
+    <div class="card gate">
+      <div class="top"><span class="id">S15</span><span class="when">10-02</span></div>
+      <div class="t">Allowlist coverage <b>audit</b> — ADR 0035 narrowed this line</div>
+      <div class="d"><b>Done:</b> every model-reachable action listed with its gate owner, and <b>zero enforcement changes proposed by us</b></div>
+    </div>
+  </div>
+  <div class="cell">
+    <div class="card reach">
+      <div class="top"><span class="id">S17</span><span class="when">10-30</span></div>
+      <div class="t">Prompt/log content audit — two deepest callsites</div>
+      <div class="d"><b>Done:</b> field-by-field; anything touching personal data is handed to compliance <b>unruled</b></div>
+    </div>
+  </div>
+
+  <!-- DEPT -->
+  <div class="lanehead">
+    <div class="code">DEPT</div>
+    <div class="name">sec-orchestrator</div>
+    <div class="q">Keeps six numbers un-summed and fifteen items readable</div>
+  </div>
+  <div class="cell">
+    <div class="card recur">
+      <div class="top"><span class="id">S21</span><span class="when">weekly</span></div>
+      <div class="t">Dependabot + SARIF triage — the queue nobody reads</div>
+      <div class="d"><b>Done:</b> merged, or deferred in writing with a date. Zero silent deferrals</div>
+    </div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="card recur">
+      <div class="top"><span class="id">S18</span><span class="when">09-25</span></div>
+      <div class="t">§12C pass with dated readings — <b>11 of 15</b> → ≥12</div>
+      <div class="d"><b>Done:</b> every unread item <b>names why</b> it cannot be read; three passes unread becomes a memory fact about the obstacle</div>
+    </div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="card reach">
+      <div class="top"><span class="id">S19</span><span class="when">10-16</span></div>
+      <div class="t"><b>The measurement ledger</b> — one committed script per metric</div>
+      <div class="d"><b>Done:</b> six metrics, six executables, or the word <code>unmeasured</code>. A number published without one is a failed publication</div>
+    </div>
+    <div class="card">
+      <div class="top"><span class="id">S20</span><span class="when">10-30</span></div>
+      <div class="t">Red Team handoff #1 — “which verdict is most likely wrong?”</div>
+      <div class="d"><b>Done:</b> filed into their queue <b>and</b> polled — nothing notifies them (declared gap)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ METRICS ============ -->
+<h2>Six numbers, never summed — read 2026-08-28</h2>
+<div class="metrics">
+  <div class="metric"><div class="k">sec.unguarded_authenticated_surface</div><div class="v bad">6</div><div class="arc">94 → 40 → 6 · provisional</div></div>
+  <div class="metric"><div class="k">sec.public_decorator_count</div><div class="v warn">17</div><div class="arc">12 → 17 · must not rise</div></div>
+  <div class="metric"><div class="k">sec.recurrence_guard_present</div><div class="v bad">false</div><div class="arc">unmoved · S1</div></div>
+  <div class="metric"><div class="k">sec.unverified_public_ingress</div><div class="v warn">? of 23</div><div class="arc">scope 43 → 23 · S6</div></div>
+  <div class="metric"><div class="k">sec.fail_open_defaults</div><div class="v warn">1 <span style="font-size:11px">+1 dev</span></div><div class="arc">4 → 1 · escalation-gated</div></div>
+  <div class="metric"><div class="k">sec.checklist_12c_items_with_a_reading</div><div class="v warn">11 / 15</div><div class="arc">8 → 11 · S18</div></div>
+  <div class="metric"><div class="k">sec.injection_corpus_size</div><div class="v bad">0</div><div class="arc">unmoved since founding · S12</div></div>
+  <div class="metric"><div class="k">sec.autonomous_send_rate</div><div class="v blocked">unmeasured</div><div class="arc">an adjective, not a number · S14</div></div>
+  <div class="metric"><div class="k">nf_a.unauthenticated_inference_spend</div><div class="v blocked">0 ⛔</div><div class="arc">bounded by census · NOT measured</div></div>
+  <div class="metric"><div class="k">sec.model_callsites_emitting_cost</div><div class="v ok">25 / 25</div><div class="arc">0 of 7 → held by CI</div></div>
+  <div class="metric"><div class="k">sec.tenants_with_inference_budget</div><div class="v ok">10 / 10</div><div class="arc">unknown tier → most restrictive</div></div>
+  <div class="metric"><div class="k">sec.distributed_rate_limit_present</div><div class="v bad">false</div><div class="arc">limit × instance count · S10</div></div>
+</div>
+<p class="neversum">A department that reports one security score has hidden which control failed. These are published as a set, and exposure never travels without coverage.</p>
+
+<!-- ============ SEAMS ============ -->
+<h2>Seams this agenda touches</h2>
+<div class="seams">
+  <div class="seam out"><div class="dir">we specify → they author</div><div class="who">Platform &amp; API</div><div class="what">S8 header-only ingress · S10 distributed rate limit · S11 CORS. Nothing measures the gap between a filed verdict and a merged fix — finding F3.</div></div>
+  <div class="seam out"><div class="dir">audit only — ADR 0035 §7</div><div class="who">Action Safety · the human gate</div><div class="what">S15 lists coverage and gate owners. Enforcement is theirs; we propose none.</div></div>
+  <div class="seam in"><div class="dir">blocks us · L-SEC-5</div><div class="who">NF Instrumentation (RM-3)</div><div class="what">NF-A records <i>which agent</i>, never <i>whether the caller was authenticated</i>. S16 files the ask with a date and keeps counting days.</div></div>
+  <div class="seam out"><div class="dir">we hand over unruled</div><div class="who">Compliance &amp; Privacy</div><div class="what">S17's PII half. They own whether we <i>may</i>; we own whether an attacker <i>can</i>.</div></div>
+  <div class="seam out"><div class="dir">attacks what we build</div><div class="who">Red Team</div><div class="what">S20 hands the 40 verdicts and asks which is wrong. Nothing notifies them — the handoff is a doc edit they must poll.</div></div>
+  <div class="seam gap"><div class="dir">declared gap</div><div class="who"><code>security.finding_filed</code></div><div class="what">No publisher exists. Findings are vault PRs; the weekly pass bounds the blind spot at 7 days. That bound <i>is</i> the mitigation today.</div></div>
+</div>
+
+<!-- ============ QUESTIONS + LOCKS ============ -->
+<h2>Open to the founder · and what stays locked</h2>
+<div class="two">
+  <ol class="q">
+    <li><b>INTEL-F4 — merged or split?</b> Still merged. New: the written split trigger is now six routes and one CI script away, so the live question is whether we pre-commit the split to the day S1 goes green.</li>
+    <li><b>The six undeclared <code>auth</code> routes — declare or leave?</b> Recommend declare. Correct by absence is not correct by intent, and CI cannot tell them apart until the intent is written down. Last of OD-19.</li>
+    <li><b>Tokens in <code>localStorage</code>.</b> Open it as a platform change, or accept it in writing with an owner and a date. Both legitimate. Silence is not, and it has been silent since 08-24.</li>
+    <li><b><code>fail_open_defaults</code> 4 → 1.</b> The value genuinely moved — three JWT fallbacks became one fail-closed resolver. Confirm we may republish it at 1.</li>
+    <li><b><code>GET /events/metrics</code> is public.</b> Deliberate, or a decorator that outlived its reason? <code>delete</code> is an available verdict and not ours to take alone.</li>
+  </ol>
+  <div class="locks">
+    <p><b>Pricing model — deferred.</b> No task proposes a price, a tier boundary, or a revenue-linked ceiling. The spend allowances read here are <b>safety defaults</b>, exactly as their own source comment describes them.</p>
+    <p><b>Brand / landing visuals — held.</b> Untouched. This canvas is a throwaway thinking surface under the sketch conventions, not brand work.</p>
+    <p><b>No open decision is resolved here.</b> OD-19 gets its enumeration and a recommendation; OD-11 stays the named blocker on L-SEC-5; INTEL-F4 gets a sharper question. All three remain open.</p>
+  </div>
+</div>
+
+<div class="legend">
+  <span><b>◈</b> reach — graded aspiration, not routine</span>
+  <span><b>↻</b> recurring, close-time is the cadence</span>
+  <span><b>▍amber</b> reach · <b>▍blue</b> escalation- or seam-gated · <b>▍burgundy</b> on hover</span>
+  <span><b>⛔</b> blocked with a named owner and a day counter</span>
+</div>
+
+<footer>
+  Source of record: <code>.planning/01-org/intelligence/security/security-agenda-full.md</code> ·
+  board: <code>security-agenda-board.md</code> · ADR 0039 Track B, GENERATION_BRIEF §8.<br />
+  Every count on this page was re-measured 2026-08-28 against the worktree; the method is
+  stated in the agenda's header. None of them is yet reproducible by a committed script — that is task S19.
+</footer>
+
+</body>
+</html>

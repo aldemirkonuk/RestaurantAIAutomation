@@ -108,3 +108,36 @@ export interface CalendarEvent {
   metadata?: Record<string, any>;
   [key: string]: any;
 }
+
+/**
+ * Mirrors the gateway's `mapNotificationRow`
+ * (apps/api-gateway/src/notifications/notifications.service.ts:731) — the
+ * server already camel-cases the row, so this is the wire shape, not a guess.
+ */
+export type NotificationStatus = "unread" | "read" | "archived";
+
+export interface AppNotification {
+  id: string;
+  userId?: string;
+  restaurantId?: string;
+  type: string;
+  title: string;
+  message: string;
+  priority?: FeedPriority;
+  status: NotificationStatus;
+  actionUrl?: string | null;
+  actionLabel?: string | null;
+  metadata?: Record<string, any> | null;
+  readAt?: string | null;
+  timestamp?: string;
+  createdAt?: string;
+}
+
+/** `GET /notifications` paginates; `getNotifications` returns this envelope. */
+export interface NotificationPage {
+  data: AppNotification[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}

@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { DashboardController } from "./dashboard.controller";
 import { DashboardService } from "./dashboard.service";
 import { DatabaseModule } from "../database/database.module";
+import { AuthModule } from "../auth/auth.module";
 
 /**
  * Dashboard Module - Aggregated API endpoints
@@ -13,7 +14,7 @@ import { DatabaseModule } from "../database/database.module";
  * - Provides graceful degradation on partial failures
  */
 @Module({
-  imports: [DatabaseModule],
+  imports: [AuthModule, DatabaseModule],
   controllers: [DashboardController],
   providers: [DashboardService],
   exports: [DashboardService],
