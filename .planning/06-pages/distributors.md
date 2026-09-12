@@ -5,10 +5,11 @@ slug: distributors
 component: none (inline <Navigate> redirect)
 audience: owner
 tier: core
+archetype: redirect # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[providers]]"]
 ---
 
@@ -18,6 +19,9 @@ links: ["[[PAGE-CONTRACT]]", "[[providers]]"]
 Compatibility route only. Distributor discovery moved into Providers as its
 **discover** tab; this path survives "so existing links and bookmarks land in the
 right place" (comment at `App.tsx:269-270`).
+
+## 1a. Features
+none — redirect. Distributor discovery lives on [[providers]] §1a (discover tab).
 
 ## 2. Entry
 No inbound in-app link (`PAGE_MAP.md` entry-point list). Old bookmarks/external links

@@ -5,10 +5,11 @@ slug: wines
 component: apps/web/src/pages/WineLibrary.tsx
 audience: owner
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[TIER-MAP]]"]
 ---
 
@@ -18,6 +19,15 @@ links: ["[[PAGE-CONTRACT]]", "[[TIER-MAP]]"]
 Browse the master wine catalogue as this restaurant sees it — search/filter/sort ~500
 wines, see stock overlay from inventory, compare list price to market price, and add
 catalogue wines into inventory. Owner/manager surface; staff can read.
+
+## 1a. Features
+- Browse the master wine catalogue as your restaurant sees it: search, 9 filters, sort cycle, view modes (~500 wines)
+- Stock overlay from inventory; list price vs market price (🚧 market price renders "—" until enrichment data exists)
+- Add a catalogue wine into inventory
+- Vendor recommendations for the selected wine
+- Scan a menu photo to add wines; manual add modals
+- Bulk selection and column sorting
+- Live wine updates over WebSocket
 
 ## 2. Entry
 Sidebar item (`apps/web/src/components/layout/Sidebar.tsx:79`). PAGE_MAP records

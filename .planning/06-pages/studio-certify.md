@@ -5,10 +5,11 @@ slug: studio-certify
 component: apps/web/src/pages/studio/StudioCertify.tsx
 audience: dev
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 1
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[studio]]", "[[studio-queue]]"]
 ---
 
@@ -17,6 +18,11 @@ links: ["[[PAGE-CONTRACT]]", "[[studio]]", "[[studio-queue]]"]
 ## 1. Purpose
 Manage the certified-contributor roster: invite (single-use link), revoke, and
 enable/disable contributors who feed the studio ingestion pipeline.
+
+## 1a. Features *(internal admin)*
+- Certified-contributor roster table
+- Invite a contributor with a single-use link
+- Revoke, enable, or disable a contributor
 
 ## 2. Entry
 No inbound in-app link (`PAGE_MAP.md` entry-point list) except the studio header's

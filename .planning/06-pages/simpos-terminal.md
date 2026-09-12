@@ -5,10 +5,11 @@ slug: simpos-terminal
 component: apps/web/src/pages/simpos/SimposTerminalPage.tsx
 audience: dev
 tier: public
+archetype: dev # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 3
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]", "[[logs]]"]
 ---
 
@@ -16,6 +17,13 @@ links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]", "[[logs]]"]
 
 ## 1. Purpose
 Chrome-free fake POS terminal (decisions C26–C30, `SimposTerminalPage.tsx:1-11`): open check + loss tracker, wine→vintage→size menu, void/comp lines, Edit POS catalog editor ("drift generator"), disabled Tables 1–20 (C29), and a Receipts/Invoices tab over the fake restaurant's `procurement_documents`. Closing a check makes the *server* HMAC-sign a webhook into PosHub, which depletes real stock — the only channel into WineOps (C25, `services/api/simpos.ts:2-5`). Footer says what it is: "Synthetic test fixture — not a WineOps feature" (`:335`).
+
+## 1a. Features *(synthetic test fixture, not a product page; dev-only server-side)*
+- Fake POS terminal: open check with loss tracker; wine → vintage → size menu
+- Void/comp lines; close a check (the server then HMAC-signs a webhook that depletes real stock)
+- "Edit POS" catalog editor — the drift generator
+- Tables 1–20 rendered disabled; Receipts/Invoices tab over the fixture's documents
+- Full-page check log via the header button
 
 ## 2. Entry
 **No inbound in-app link** ([PAGE_MAP](../foundation/PAGE_MAP.md) entry-points list; also listed among untraced route components). Cold URL, or the Vercel subdomain rewrite mapped in production (`App.tsx:208-213` comment). Requires login: wrapped in `ProtectedRoute` (`App.tsx:214-221`) but outside `DashboardLayout` to preserve the terminal illusion.

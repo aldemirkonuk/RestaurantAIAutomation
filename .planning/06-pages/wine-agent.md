@@ -5,10 +5,11 @@ slug: wine-agent
 component: apps/web/src/App.tsx (inline PlaceholderPage)
 audience: owner
 tier: core
+archetype: placeholder # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[wineagent-alias]]", "[[sommelier]]"]
 ---
 
@@ -17,6 +18,9 @@ links: ["[[PAGE-CONTRACT]]", "[[wineagent-alias]]", "[[sommelier]]"]
 ## 1. Purpose
 Intended home of the hands-off inventory/ordering agent. Today it renders a generic
 "under construction" placeholder — the page has no product function.
+
+## 1a. Features
+none — 🚧 placeholder ("under construction" card). The working Wine Agent behaviour lives at [[sommelier]].
 
 ## 2. Entry
 **No inbound in-app link** (`.planning/foundation/PAGE_MAP.md` entry-point list — and

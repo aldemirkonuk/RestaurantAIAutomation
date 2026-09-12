@@ -5,10 +5,11 @@ slug: receipts
 component: apps/web/src/pages/ReceiptsPage.tsx
 audience: owner
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -21,6 +22,13 @@ document shows the stored image beside the extracted lines for side-by-side
 verification. Tri-state nulls … render as an em dash, never as a pass. Credits live
 as a second tab on the same page so the chase list is one click away from the
 documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
+
+## 1a. Features
+- **Documents** tab, two lanes: needs review / verified
+- Select a document → its stored image beside the extracted lines for side-by-side verification; unknown values render as "—", never as a pass
+- Verify a document
+- **Credits** tab: the vendor credit-claim ledger with stats; move a claim through its states
+- Deep-linkable tab (`?tab=credits` — where `/credits` lands)
 
 ## 2. Entry
 

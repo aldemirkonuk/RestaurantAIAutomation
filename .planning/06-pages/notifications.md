@@ -5,10 +5,11 @@ slug: notifications
 component: apps/web/src/pages/Notifications.tsx
 audience: owner
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -21,6 +22,13 @@ The durable-notification inbox: read/unread/archive/delete, stacked digests that
 live-update while the page is open (10s poll, `Notifications.tsx:157-163`), a detail
 panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, and a
 "create custom one-tap action" modal.
+
+## 1a. Features
+- Notification inbox: read / unread / archive / delete, mark-all-read
+- Stacked digests that live-update while the page is open
+- Detail panel, deep-linkable from the header bell straight to one notification
+- One-Tap Action Center embedded (approve orders, low-stock reorders)
+- Create a custom one-tap action (🚧 not persisted — gone on refresh)
 
 ## 2. Entry
 

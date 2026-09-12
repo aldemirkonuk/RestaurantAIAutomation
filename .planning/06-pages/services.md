@@ -5,10 +5,11 @@ slug: services
 component: none (inline <Navigate> redirect)
 audience: owner
 tier: core
+archetype: redirect # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[help]]"]
 ---
 
@@ -17,6 +18,9 @@ links: ["[[PAGE-CONTRACT]]", "[[help]]"]
 ## 1. Purpose
 Compatibility route. "Services & permissions" (email, web, and privacy access grants)
 lives as a Settings tab; this path exists so the old standalone URL keeps working.
+
+## 1a. Features
+none — redirect. Services & permissions live on [[settings]] §1a (services tab).
 
 ## 2. Entry
 No inbound in-app link (`PAGE_MAP.md` entry-point list) — the surfaces that send users

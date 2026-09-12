@@ -5,10 +5,11 @@ slug: wineagent-alias
 component: apps/web/src/App.tsx (inline PlaceholderPage)
 audience: owner
 tier: core
+archetype: placeholder # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[wine-agent]]", "[[sommelier]]"]
 ---
 
@@ -17,6 +18,9 @@ links: ["[[PAGE-CONTRACT]]", "[[wine-agent]]", "[[sommelier]]"]
 ## 1. Purpose
 Duplicate of [[wine-agent]] — same inline placeholder, second spelling. This is the
 variant real users can reach, because the sidebar links here.
+
+## 1a. Features
+none — 🚧 same placeholder as [[wine-agent]], but this is the spelling the sidebar actually links to.
 
 ## 2. Entry
 **Sidebar "Wine Agent" item links to `/wineagent`**

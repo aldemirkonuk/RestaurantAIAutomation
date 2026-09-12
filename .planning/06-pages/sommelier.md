@@ -5,10 +5,11 @@ slug: sommelier
 component: apps/web/src/pages/SommelierAI.tsx
 audience: owner
 tier: core
+archetype: chat # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[wineagent-alias]]", "[[wines]]"]
 ---
 
@@ -18,6 +19,13 @@ links: ["[[PAGE-CONTRACT]]", "[[wineagent-alias]]", "[[wines]]"]
 Chat assistant for pairings, pricing, reorders and staff coaching, with three personas
 (Sommelier / Buyer / Floor training — `SommelierAI.tsx:77-81`). It is also the de-facto
 "Wine Agent": every Wine Agent launcher redirects here.
+
+## 1a. Features
+- Chat about pairings, pricing, reorders and staff coaching
+- Three personas: Sommelier / Buyer / Floor training (persisted per device)
+- Answers are wine-context aware (your first 50 wines are sent along)
+- Conversations persist per user; "Ask AI" from other pages prefills a prompt here
+- 🚧 The chat backend route is unregistered — today every message falls back to a local rules answer (§9)
 
 ## 2. Entry
 - Sidebar `aiNavItems` (`components/layout/Sidebar.tsx:153`); PAGE_MAP in-degree 1

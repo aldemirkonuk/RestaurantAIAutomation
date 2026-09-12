@@ -5,10 +5,11 @@ slug: dashboard
 component: apps/web/src/pages/Dashboard.tsx
 audience: owner
 tier: core
+archetype: canvas # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -21,6 +22,15 @@ reminders list, a calendar strip with important dates, recent activity, and the
 One-Tap Action Center for approvals and low-stock reorders. Sidebar tooltip says it
 plainly: "Today's KPIs, alerts, and the actions worth doing first"
 (`apps/web/src/components/layout/Sidebar.tsx:63`).
+
+## 1a. Features
+- See today's KPI tiles: revenue, stock, orders, alerts
+- One-Tap Action Center: approve pending orders and low-stock reorders in one tap (with email preview)
+- Reminders list and a calendar strip with important dates; add your own important date
+- Recent activity feed and sales chart
+- Quick-actions panel; right-click context menus on cards
+- Switch between restaurants/branches
+- Live updates while the page is open (realtime calendar/inventory events)
 
 ## 2. Entry
 

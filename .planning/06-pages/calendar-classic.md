@@ -5,10 +5,11 @@ slug: calendar-classic
 component: apps/web/src/pages/Calendar.tsx
 audience: owner
 tier: core
+archetype: calendar # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -19,6 +20,12 @@ links: ["[[PAGE-CONTRACT]]"]
 The previous single-file calendar, kept routed after the modular calendar took over
 `/calendar`. Month-grid CRUD with custom event types, client-scheduled reminders and
 entity autocomplete — the same domain as `/calendar`, rendered the old way.
+
+## 1a. Features *(superseded rendering — `/calendar` is the live one)*
+- Month-grid calendar with create/edit/delete events
+- Create your own event types (🚧 stored per-browser only — lost on device change)
+- Set reminders (🚧 browser-tab-bound: fire only while a tab is open)
+- Autocomplete linking events to vendors and other entities
 
 ## 2. Entry
 

@@ -2,7 +2,7 @@
 type: contract
 title: Page Contract
 status: proposed
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE_MAP]]", "[[SCENARIO-CONTRACT]]", "[[TIER-MAP]]", "[[AGENDA]]"]
 ---
 
@@ -18,6 +18,7 @@ links: ["[[PAGE_MAP]]", "[[SCENARIO-CONTRACT]]", "[[TIER-MAP]]", "[[AGENDA]]"]
 | § | Section | Holds |
 |---|---|---|
 | 1 | **Purpose** | What the page is for, in the user's words — and which user (owner / staff / guest / dev) |
+| 1a | **Features** | What the page presents to the user, one bullet per capability, in plain product language ("see the shopping list", "chat with the vendor") — the founder-readable layer (mandated 2026-08-26). No `path:line` needed; broken or dark features are marked, never omitted. Redirects/placeholders write *none*. Improve these as pages evolve |
 | 2 | **Entry** | How people reach it: nav link, deep link, redirect, cold URL. Cite [PAGE_MAP](../foundation/PAGE_MAP.md) — 24 routes have no inbound link; say so if this is one |
 | 3 | **Files** | Component file + the co-located tree that renders it (`path:line` for the route binding in `App.tsx`) |
 | 4 | **Endpoints** | Every API call the page makes — method, path, auth. Grep the component tree; cite [ENDPOINTS](../foundation/ENDPOINTS.md) rows |
@@ -39,7 +40,7 @@ tier: core | plus | pro | public
 signals_today: none | partial | instrumented
 rebrand_strings: 0        # count of user-visible WineOps strings on this page
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: []
 ```
 

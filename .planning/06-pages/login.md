@@ -5,10 +5,11 @@ slug: login
 component: apps/web/src/pages/Login.tsx
 audience: public
 tier: public
+archetype: focused # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 3
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[PAGE_MAP]]"]
 ---
 
@@ -16,6 +17,12 @@ links: ["[[PAGE-CONTRACT]]", "[[PAGE_MAP]]"]
 
 ## 1. Purpose
 Sign in with email/password or Google. The front door for every returning user (owner, staff, dev alike). Gmail addresses are auto-routed to Google's account chooser instead of attempting a password (`Login.tsx:35-37`); OAuth-only accounts flagged by the backend (`code: OAUTH_ONLY`) get the same treatment (`Login.tsx:52-58`).
+
+## 1a. Features
+- Sign in with email/password
+- Sign in with Google (Gmail addresses are auto-routed to Google's chooser; 🚧 no Microsoft button though the backend supports it)
+- Return-to-where-you-were after signing in (`?redirect=`)
+- Links out: forgot password, create account
 
 ## 2. Entry
 Most-linked page in the app — in-degree 6 per [PAGE_MAP](../foundation/PAGE_MAP.md) (`/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/invite/:code`, `/no-access` all link back). Also the default redirect target of every `ProtectedRoute` when unauthenticated (`components/ProtectedRoute.tsx:16,38`), carrying `?redirect=` or router state so login returns you where you were (`Login.tsx:24-26`).

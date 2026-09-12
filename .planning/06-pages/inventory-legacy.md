@@ -5,10 +5,11 @@ slug: inventory-legacy
 component: apps/web/src/pages/Inventory.tsx
 audience: staff
 tier: core
+archetype: command # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -20,6 +21,12 @@ The pre-SOTA-rebuild inventory table, parked when `/inventory` was repointed at
 `InventoryCommandPage`. Same domain (stock list, add/override/locate wines, storage
 locations, auto-locate engine) rendered as the older single-table page. Kept routed
 as a fallback during the dual-bookkeeping migration (memory: inventory-sota-rebuild-plan).
+
+## 1a. Features *(superseded rendering — `/inventory` is the live one)*
+- Single-table stock list with live realtime updates
+- Add wines to inventory; manual stock override
+- Manage storage locations; per-location stock cells
+- Auto-locate engine with preview before applying
 
 ## 2. Entry
 
