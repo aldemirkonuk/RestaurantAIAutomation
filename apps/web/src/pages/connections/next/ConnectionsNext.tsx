@@ -83,6 +83,11 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+// The one write this page makes to a text sender: a manager ending the house's
+// use of it (ADR 0114 — the attachment is the house's, and a manager may stop
+// it). Declaring one is still disabled and still carries the server's reason.
+import { revokeTextSender } from '../../../services/api/textSenders';
+import { getErrorMessage } from '../../../services/api/client';
 import {
   CalendarDays,
   CreditCard,
@@ -564,8 +569,16 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             />
           ) : (
             <>
-              <TextSenderRow channel="whatsapp" vm={d.textSenders.data} />
-              <TextSenderRow channel="sms" vm={d.textSenders.data} />
+              <TextSenderRow
+                channel="whatsapp"
+                vm={d.textSenders.data}
+                onStopped={d.reloadTextSenders}
+              />
+              <TextSenderRow
+                channel="sms"
+                vm={d.textSenders.data}
+                onStopped={d.reloadTextSenders}
+              />
             </>
           )}
 
@@ -1408,10 +1421,19 @@ const STATE_WORDS: Record<
 function TextSenderRow({
   channel,
   vm,
+  onStopped,
 }: {
   channel: 'whatsapp' | 'sms';
   vm: import('./useConnectionsNextData').TextSendersVM | null;
+  /**
+   * Re-read the register after a stop. Optional because the row renders inside
+   * a page whose data hook is stubbed in tests; a stop with no re-read leaves
+   * the old state on screen, which is worse than a no-op but is not a lie.
+   */
+  onStopped?: () => void;
 }) {
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const definition =
     channel === 'whatsapp'
       ? vm?.catalogue?.whatsapp_business ?? null
@@ -1489,10 +1511,42 @@ function TextSenderRow({
       controls={[
         { label: 'Bring our own', disabled: true },
         { label: 'Ask Mudavym to register one', disabled: true },
+        // ADR 0114: the attachment is the HOUSE's, and a manager may end it.
+        // Enabled only when there is a live sender to stop — a control that is
+        // always clickable would suggest an act that has nothing to act on.
+        // The reason is fixed and truthful rather than blank: the gateway
+        // requires one and keeps it on the row, and a placeholder would satisfy
+        // the validator while destroying what the field is for.
+        ...(sender && sender.state !== 'revoked'
+          ? [
+              {
+                label: stopping ? 'Stopping…' : 'Stop it',
+                busy: stopping,
+                onClick: () => {
+                  if (stopping) return;
+                  setStopping(true);
+                  setStopError(null);
+                  void revokeTextSender({
+                    senderId: sender.id,
+                    reason: 'Stopped by a manager from the Connections page.',
+                  })
+                    // Re-read rather than patch the row locally: the row's
+                    // state is the SERVER's, and a client that painted
+                    // 'Stopped' itself would be claiming a write it only asked
+                    // for (ADR 0083).
+                    .then(() => onStopped?.())
+                    .catch((e) => setStopError(getErrorMessage(e)))
+                    .finally(() => setStopping(false));
+                },
+              } as const,
+            ]
+          : []),
       ]}
       stopNote={
-        vm?.transport.words ??
-        'The deployment did not say whether anything could be sent.'
+        stopError
+          ? `This sender was NOT stopped, so the house can still send through it: ${stopError}`
+          : (vm?.transport.words ??
+            'The deployment did not say whether anything could be sent.')
       }
     />
   );

@@ -31,6 +31,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   UseGuards,
 } from "@nestjs/common";
@@ -49,7 +50,10 @@ import {
   RequestRegistrationDto,
   RevokeSenderDto,
   TextConsentDto,
+  WhatsAppReplyDto,
 } from "./text-senders.dto";
+import { WhatsAppSendService } from "./whatsapp-send.service";
+import { WhatsAppBookService } from "./inbound/whatsapp-book.service";
 
 interface Actor {
   id: string;
@@ -63,6 +67,8 @@ export class TextSendersController {
   constructor(
     private readonly senders: TextSenderService,
     private readonly organizations: OrganizationsService,
+    private readonly whatsapp: WhatsAppSendService,
+    private readonly book: WhatsAppBookService,
   ) {}
 
   /**
@@ -116,15 +122,12 @@ export class TextSendersController {
         sms: surveyedMarkets("sms"),
       },
       /**
-       * Stated by the server rather than assumed by the page. Nothing on this
-       * deployment can hand a message to a transport, and a surface that drew
-       * an enabled control would be claiming otherwise.
+       * MEASURED for this house, not asserted for the deployment. This used to
+       * be `{ built: false }` written out by hand; a constant cannot notice the
+       * day a dispatch lands, and a page repeating it would have told a wired
+       * house that nothing could be sent while its messages went.
        */
-      transport: {
-        built: false,
-        words:
-          "No provider credential for a per-house sender exists on this deployment, so nothing can leave through one yet. The shared Plivo number is deliberately not a fallback: on a shared number a STOP reply opts a person out of every restaurant here, for five years.",
-      },
+      transport: await this.senders.transportReadout(user.restaurantId),
       myConsent: mine,
       /**
        * Live consents in this house. `null` means either the caller may not see
@@ -251,6 +254,71 @@ export class TextSendersController {
   }
 
   // ── The person's half. Any member; never a manager on their behalf. ──────
+
+  /**
+   * The house answers a vendor on WhatsApp, inside the open 24-hour window.
+   *
+   * FREE-FORM AND REPLY-SHAPED ONLY (ADR 0121 P1). There is no template
+   * argument and no way to start a conversation: the service refuses when the
+   * vendor has not written inside 24 hours, and says that nothing was queued.
+   * The recipient is not a field — it is the number the vendor wrote from, off
+   * the mirrored inbound row — so ADR 0118 D3's book-only rule holds by
+   * construction rather than by validation.
+   */
+  @Post("whatsapp/reply")
+  @ApiOperation({
+    summary:
+      "Reply to a vendor on WhatsApp, inside the open 24-hour customer service window. Refuses outside it with the reason; nothing is ever queued.",
+  })
+  async whatsappReply(
+    @CurrentUser() user: Actor,
+    @Body() dto: WhatsAppReplyDto,
+  ) {
+    await this.organizations.assertCanManageRestaurant(
+      user.id,
+      user.restaurantId,
+      "send a WhatsApp message for this restaurant",
+    );
+    return this.whatsapp.reply({
+      restaurantId: user.restaurantId,
+      userId: user.id,
+      providerId: dto.providerId,
+      body: dto.body,
+    });
+  }
+
+  /**
+   * Whether the house may write to this vendor right now, and why.
+   *
+   * Read separately from the send so a composer can show the state BEFORE a
+   * manager types — ADR 0121: *"The 24-hour window becomes a state the surface
+   * must show, because whether the next message is free-form or must be a
+   * template … changes what the manager may write."*
+   */
+  @Get("whatsapp/window/:providerId")
+  @ApiOperation({
+    summary:
+      "Is the 24-hour WhatsApp window with this vendor open, closed, or unreadable? Three answers, never two.",
+  })
+  window(@CurrentUser() user: Actor, @Param("providerId") providerId: string) {
+    return this.book.windowFor(user.restaurantId, providerId);
+  }
+
+  /**
+   * Every number this house holds, with the verdict on each.
+   *
+   * This is P0 item 2 made visible: `mobile`, `landline` and — the one that
+   * matters — `unstated`, which is what a row carrying the column's own
+   * `main_line` default reports.
+   */
+  @Get("phone-book")
+  @ApiOperation({
+    summary:
+      "The house's phone book with each number's reach. A failed read reports `readable: false`, never an empty book.",
+  })
+  phoneBook(@CurrentUser() user: Actor) {
+    return this.book.phoneBook(user.restaurantId);
+  }
 
   @Get("consent")
   @ApiOperation({ summary: "Your own consent to be texted by this house." })
