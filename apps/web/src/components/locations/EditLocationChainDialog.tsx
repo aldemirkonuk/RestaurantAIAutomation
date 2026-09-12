@@ -1,4 +1,23 @@
-import { useState, useEffect } from 'react'
+/**
+ * Edit one location: its name, its city, the chain it belongs to.
+ *
+ * SHAPE: `Sheet`. ADR 0112's rule is "what is the overlay FOR" — this one edits
+ * ONE OBJECT that already exists, which is the Sheet's definition (right
+ * slide-in, 440px, motion `tuck`). The three chain radio cards do not make it a
+ * picker: the picking is a field on the record, not the point of the overlay.
+ *
+ * THE LEGACY BRANCH IS FROZEN. With `useMudavymShell().on` false this file
+ * renders the Radix dialog byte for byte as `origin/main` has it, and
+ * `locationDialogs.test.tsx` pins the literal class strings against
+ * `git show origin/main:<path>` so a drift is loud rather than silent.
+ *
+ * WHAT THIS DIALOG DOES NOT DO: it never deletes. Clearing the chain writes
+ * `chainId: null` on the location row — the location stays, the chain stays.
+ * That is why there is no hold-to-approve seal here; the seal is reserved for
+ * an irreversible act and this one is a PATCH you can undo by re-selecting.
+ */
+
+import { useState, useEffect, useRef } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
 import { MapPin, X, Check } from 'lucide-react'
@@ -7,6 +26,9 @@ import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
 import type { RestaurantBranch } from '../../contexts/AuthContext'
 import { apiClient, getErrorMessage } from '../../services/api/client'
+import { Sheet } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import './locations-mudavym.css'
 
 export interface Chain {
   id: string
@@ -34,6 +56,13 @@ export function EditLocationChainDialog({
   const [locationName, setLocationName] = useState(branch.name)
   const [city, setCity] = useState(branch.city ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  /* The failure, in words, on the surface that caused it. The toast still
+     fires (behaviour unchanged); a toast that has already faded is not a
+     record, and an overlay that shows nothing after a failed save is the
+     absence-reported-as-health shape (ADR 0020). House branch only. */
+  const [failure, setFailure] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement | null>(null)
+  const shell = useMudavymShell()
 
   useEffect(() => {
     setSelectedChainId(branch.chain_id ?? '')
@@ -57,10 +86,12 @@ export function EditLocationChainDialog({
 
   const handleSubmit = async () => {
     if (!locationName.trim()) {
+      setFailure('Location name cannot be empty')
       toast.error('Location name cannot be empty')
       return
     }
     setIsSubmitting(true)
+    setFailure(null)
     try {
       await apiClient.patch(`/organizations/locations/${branch.id}`, {
         chainId: selectedChainId || null,
@@ -70,6 +101,7 @@ export function EditLocationChainDialog({
       toast.success(`${locationName.trim()} updated`)
       onSaved()
     } catch (err: unknown) {
+      setFailure(getErrorMessage(err))
       toast.error(getErrorMessage(err))
     } finally {
       setIsSubmitting(false)
@@ -80,6 +112,7 @@ export function EditLocationChainDialog({
     setSelectedChainId(branch.chain_id ?? '')
     setLocationName(branch.name)
     setCity(branch.city ?? '')
+    setFailure(null)
     onClose()
   }
 
@@ -93,6 +126,114 @@ export function EditLocationChainDialog({
         : 'Chain',
     })),
   ]
+
+  /* ── the house shape ─────────────────────────────────────────────────────
+     Copy is the legacy dialog's, word for word. Only the surface changes. */
+  if (shell.on) {
+    return (
+      <Sheet
+        open={open}
+        onClose={handleClose}
+        label="Edit location"
+        eyebrow="The locations"
+        title="Edit location"
+        initialFocusRef={nameRef}
+        bodyClassName="mdv-ovl__body--flush"
+        footer={<span>Update name, city, or chain assignment.</span>}
+      >
+        <div className="mdv-form">
+          {failure ? (
+            <div className="mdv-alert" role="alert">
+              <p className="mdv-alert__head">Not saved</p>
+              <p>{failure}</p>
+            </div>
+          ) : null}
+
+          <div>
+            <label className="mdv-label" htmlFor="mdv-loc-name">
+              Name
+            </label>
+            <input
+              id="mdv-loc-name"
+              ref={nameRef}
+              className="mdv-input"
+              value={locationName}
+              onChange={(e) => setLocationName(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="mdv-label" htmlFor="mdv-loc-city">
+              City
+            </label>
+            <input
+              id="mdv-loc-city"
+              className="mdv-input"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+
+          <div>
+            <span className="mdv-label">Chain</span>
+            {/* `radiogroup` + `aria-checked`: one of these is true at a time,
+                which `aria-pressed` (independent toggles) would misreport. */}
+            <div className="mdv-picks" role="radiogroup" aria-label="Chain">
+              {chainOptions.map((opt) => {
+                const selected = selectedChainId === opt.id
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    className="mdv-pick"
+                    onClick={() => setSelectedChainId(opt.id)}
+                  >
+                    <span>
+                      <span className="mdv-pick__label">{opt.label}</span>
+                      <span className="mdv-pick__sub">{opt.sub}</span>
+                    </span>
+                    {selected ? (
+                      <Check size={14} className="mdv-pick__mark" aria-hidden />
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {isSwitchingChain && selectedChain && (
+            <p className="mdv-consequence">
+              Moving from <strong>{branch.chain_name}</strong> →{' '}
+              <strong>{selectedChain.name}</strong>
+            </p>
+          )}
+          {isRemovingFromChain && (
+            <p className="mdv-consequence">
+              This will remove <strong>{branch.name}</strong> from{' '}
+              <strong>{branch.chain_name}</strong>.
+            </p>
+          )}
+
+          <div className="mdv-actions">
+            <button type="button" className="mdv-btn" onClick={handleClose} disabled={isSubmitting}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="mdv-btn mdv-btn--seal"
+              onClick={handleSubmit}
+              disabled={isSubmitting || !isDirty}
+            >
+              {isSubmitting ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </Sheet>
+    )
+  }
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && handleClose()}>

@@ -42,6 +42,18 @@ export const MUDAVYM_PAGES = [
   'inventory',
   'receipts',
   'documents_reports',
+  'reports',
+  'notifications',
+  'recommendations',
+  'calendar',
+  'settings',
+  'profile',
+  'cellar',
+  // Not a redesign of a shipping page: `/connections` is a NEW route (ADR
+  // 0114). With the flag off the route redirects to `/profile` and the nav
+  // entry is absent, so OFF means "this surface does not exist here" rather
+  // than "the old design".
+  'connections',
   // ADR 0104 D12 slice 2 — the canonical document at /documents/:id. OFF by
   // default like every other page here; the gate's `legacy` branch redirects
   // to /receipts, which is this view's other face.

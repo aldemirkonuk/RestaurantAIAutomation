@@ -2,7 +2,10 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { HttpException, HttpStatus, NotFoundException } from "@nestjs/common";
 import { CalendarController } from "./calendar.controller";
 import { CalendarService } from "./calendar.service";
+import { CalendarRemindersService } from "./calendar-reminders.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { WeatherService } from "../weather/weather.service";
+import { DayRecordService } from "./day-record.service";
 import {
   CalendarEventType,
   CalendarEventStatus,
@@ -40,6 +43,26 @@ describe("CalendarController", () => {
         {
           provide: CalendarService,
           useValue: mockCalendarService,
+        },
+        {
+          // The reminder job is a constructor dependency of the controller now
+          // (GET /calendar/reminders/status). Its own behaviour is specified in
+          // calendar-reminders.service.spec.ts; here it only has to resolve.
+          provide: CalendarRemindersService,
+          useValue: { statusFor: jest.fn() },
+        },
+        {
+          // The weather overlay is a constructor dependency of the controller
+          // now (GET /calendar/weather). Its behaviour is specified in
+          // weather/weather.service.spec.ts; here it only has to resolve.
+          provide: WeatherService,
+          useValue: { windowFor: jest.fn() },
+        },
+        {
+          // Slice 3's reconciliation (GET /calendar/day-record). Specified in
+          // calendar/day-record.spec.ts; here it only has to resolve.
+          provide: DayRecordService,
+          useValue: { windowFor: jest.fn() },
         },
       ],
     })

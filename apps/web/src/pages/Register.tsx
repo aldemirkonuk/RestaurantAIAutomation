@@ -6,6 +6,8 @@ import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, Alert
 import { BrandMark } from '../components/brand/BrandMark'
 import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
+import { currencyForCountry, currencyToRecord } from '../lib/currency'
+import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { Button } from '../components/ui'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
@@ -72,6 +74,47 @@ export function Register() {
   const [neighborhood, setNeighborhood] = useState('')
   const [phone, setPhone] = useState('')
   const [cuisineType, setCuisineType] = useState('')
+
+  /**
+   * The money this house reports in — asked, never assumed.
+   *
+   * `restaurants.currency` carried `DEFAULT 'USD'` and this form never named the
+   * column, so all fourteen production houses asserted dollars: two in Turkiye,
+   * one in London, none of them ever asked (ADR 0117 Q25, founder 2026-09-05).
+   * The default is dropped and the question is asked here.
+   *
+   * Three states, and they are deliberately distinct:
+   *   - `null`  the manager has not touched it, so the STATED DEFAULT below
+   *             stands and is what gets sent. The screen says so in words
+   *             before it is recorded (ADR 0083).
+   *   - a code  the manager confirmed or changed it.
+   *   - `''`    the manager explicitly chose "not now". NOTHING is sent, the row
+   *             stores NULL, and every screen says "currency not recorded"
+   *             rather than printing a dollar sign.
+   */
+  const [currencyChoice, setCurrencyChoice] = useState<string | null>(null)
+
+  /**
+   * The point the house asserted, taken from the Google Places selection.
+   *
+   * `restaurants.latitude` / `.longitude` have existed since
+   * `supabase/migrations/20260807001252_distributor_geo_foundation.sql:50-51`
+   * and were NULL on all 14 production rows, because this form resolved the
+   * coordinate as part of the same `fetchFields` call that fills in the city and
+   * postcode (PlacesAutocomplete.tsx:248-260) and then dropped it. Nothing that
+   * needs a location — the calendar's weather overlay first — can exist without
+   * it (ADR 0111 slice 1).
+   *
+   * It is null until a place is CHOSEN from the list, and it is cleared the
+   * moment the address is edited by hand: a coordinate that no longer matches
+   * the address on screen is worse than none, because nothing downstream can
+   * tell the two apart.
+   */
+  const [placePoint, setPlacePoint] = useState<{
+    latitude: number
+    longitude: number
+    googlePlaceId: string | null
+  } | null>(null)
 
   // Restaurant form section (left-rail sub-navigation within pathBStep 2)
   const [restaurantSection, setRestaurantSection] = useState<1 | 2 | 3>(1)
@@ -939,6 +982,17 @@ export function Register() {
         phone: phone ? toE164(phone, countryToPhoneDefault(country)) : undefined,
         cuisineType: cuisineType || undefined,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // Sent only when the currency step produced an answer — the stated
+        // default the manager left standing, or the code they picked. Omitted
+        // when they chose "not now", and the gateway then writes NULL rather
+        // than USD (ADR 0117 Q25). Never `|| 'USD'`: that fallback is exactly
+        // what put dollars on a restaurant in Fethiye.
+        currency: willRecordCurrency ?? undefined,
+        // Sent only when a place was chosen from the list. A hand-typed address
+        // carries no point, and the gateway stores NULL rather than a guess.
+        latitude: placePoint?.latitude,
+        longitude: placePoint?.longitude,
+        googlePlaceId: placePoint?.googlePlaceId ?? undefined,
       })
       navigate('/verify-email', { replace: true })
     } catch (err: unknown) {
@@ -950,6 +1004,13 @@ export function Register() {
 
   // Country entered enough to trigger the rest of the form
   const countryReady = country.trim().length >= 2
+
+  // The default worked out from the address's country, or null when this table
+  // has no row for it. `null` is shown as a question, never filled with USD.
+  const currencyDefault = currencyForCountry(country)
+  // What will actually be recorded: the manager's answer if they gave one, the
+  // stated default otherwise, and nothing at all if they chose "not now".
+  const willRecordCurrency = currencyToRecord(currencyChoice, currencyDefault)
 
   // Left-rail section labels
   const railSections = [
@@ -1121,7 +1182,12 @@ export function Register() {
                   id="restaurant-address"
                   country={country}
                   value={address}
-                  onChange={setAddress}
+                  onChange={(next) => {
+                    setAddress(next)
+                    // Typed by hand: whatever point was captured belongs to a
+                    // different address now.
+                    setPlacePoint(null)
+                  }}
                   onPlaceSelect={(place: PlaceResult) => {
                     setAddress(place.streetAddress)
                     if (place.city) setCity(place.city)
@@ -1129,6 +1195,17 @@ export function Register() {
                     if (place.postalCode) setPostalCode(place.postalCode)
                     if (place.country) setCountry(place.country)
                     if (place.neighborhood) setNeighborhood(place.neighborhood)
+                    // Google declines a location for some predictions; that is a
+                    // real "no coordinate", never 0,0.
+                    setPlacePoint(
+                      typeof place.latitude === 'number' && typeof place.longitude === 'number'
+                        ? {
+                            latitude: place.latitude,
+                            longitude: place.longitude,
+                            googlePlaceId: place.googlePlaceId,
+                          }
+                        : null,
+                    )
                   }}
                   placeholder="Start typing your street address…"
                   className="py-3 border-gray-300 bg-white/80 focus:ring-2 focus:ring-wine-500"
@@ -1189,6 +1266,18 @@ export function Register() {
                   />
                 </div>
               </div>
+
+              {/*
+                The currency step, extracted so the decision can be rendered and
+                asserted on its own (`components/onboarding/CurrencyStep.tsx`).
+                It sits under the address because it is DERIVED from it: the
+                default comes from the country above and moves when that moves.
+              */}
+              <CurrencyStep
+                country={country}
+                choice={currencyChoice}
+                onChange={setCurrencyChoice}
+              />
 
               {/* Nav */}
               <div className="flex gap-[10px] mt-5">

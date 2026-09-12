@@ -3,19 +3,54 @@ import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 
 /**
+ * What `timezone` carries when the house has not set one.
+ *
+ * NOT a zone. Until 2026-09-03 this service substituted `"America/New_York"`
+ * for a missing `restaurants.timezone`, which meant a house that had never been
+ * asked was scheduled as if somebody had answered New York — and after
+ * `20260903170000_a_default_is_not_an_answer.sql` dropped
+ * `restaurants.timezone DEFAULT 'America/Los_Angeles'`, a great many more rows
+ * are NULL and would have inherited that invention.
+ *
+ * The empty string is deliberate and it is load-bearing: it is not a valid IANA
+ * zone, so every consumer's existing unknown-zone branch fires and says so out
+ * loud — `NotificationProducersService.zoneOf`
+ * (`notifications/producers/notification-producers.service.ts:339-347`) and
+ * `CalendarRemindersService.sweepTenant`
+ * (`calendar/calendar-reminders.service.ts:176-185`) both log
+ * `TIMEZONE_UNKNOWN … falling back to UTC` and run in UTC. That is the
+ * behaviour the decision asked for: refuse in words, or fall back to something
+ * explicit and say so — never silently to somebody else's wall clock.
+ *
+ * `timezoneIsSet` is the same fact without the sentinel, for a caller that
+ * wants to render the absence rather than infer it from a length check. It is
+ * optional so the existing spec fixtures that build a `ScheduledTenant` by hand
+ * keep compiling.
+ */
+export const TIMEZONE_NOT_SET = "";
+
+/**
  * One restaurant a scheduled job is meant to serve.
  *
- * `timezone` is carried but NOT yet honoured — every `@Cron` in
+ * `timezone` is carried but NOT yet honoured for SCHEDULING — every `@Cron` in
  * scheduled-tasks.service.ts is still pinned to `America/New_York`, so a 9am
  * digest fires at 9am New York for a restaurant in Istanbul. That is a separate
  * defect (OD-90), deliberately not fixed here: honouring it needs per-tenant
  * scheduling, not a per-tenant loop. The field exists so the fix has somewhere
- * to land and so the gap is visible in the type rather than only in prose.
+ * to land and so the gap is visible in the type rather than only in prose. It
+ * IS honoured by the per-tenant work inside those jobs — quiet hours, service
+ * days, reminder windows — which is why an invented zone here was never
+ * cosmetic.
+ *
+ * `timezone` is `TIMEZONE_NOT_SET` (the empty string) when the house has set
+ * none. See that constant for why it is not a zone.
  */
 export interface ScheduledTenant {
   id: string;
   name: string;
   timezone: string;
+  /** False when `timezone` is `TIMEZONE_NOT_SET`. Absent means "not stated". */
+  timezoneIsSet?: boolean;
   /**
    * True for the single restaurant named by `DEFAULT_RESTAURANT_ID` — the one
    * that already receives scheduled mail today.
@@ -129,12 +164,26 @@ export class ScheduledTenantsService {
       throw new Error(`could not enumerate restaurants: ${error.message}`);
     }
 
-    const tenants: ScheduledTenant[] = (rows || []).map((row: any) => ({
-      id: row.id,
-      name: row.name || "Restaurant",
-      timezone: row.timezone || "America/New_York",
-      isLegacyDefault: row.id === this.legacyTenantId,
-    }));
+    const tenants: ScheduledTenant[] = (rows || []).map((row: any) => {
+      // An absent zone is carried as an absence, not replaced with New York.
+      // See TIMEZONE_NOT_SET for why the sentinel is the empty string and what
+      // each consumer does with it.
+      const zone: string = row.timezone || TIMEZONE_NOT_SET;
+      if (zone === TIMEZONE_NOT_SET) {
+        this.logger.warn(
+          `SCHEDULED_TENANT_TIMEZONE_UNSET restaurant=${row.id} — restaurants.timezone is empty. ` +
+            "Per-tenant work inside the scheduled jobs (quiet hours, service days, reminder windows) " +
+            "will run in UTC and say so; nothing is scheduled against an invented zone.",
+        );
+      }
+      return {
+        id: row.id,
+        name: row.name || "Restaurant",
+        timezone: zone,
+        timezoneIsSet: zone !== TIMEZONE_NOT_SET,
+        isLegacyDefault: row.id === this.legacyTenantId,
+      };
+    });
 
     if (this.legacyTenantId && !tenants.some((t) => t.isLegacyDefault)) {
       this.logger.error(

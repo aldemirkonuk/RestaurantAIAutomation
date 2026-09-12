@@ -6,6 +6,15 @@
  * revision and an audit row the database refuses to update or delete. The claim
  * workflow and the mapping memory are still later slices.
  *
+ * BOTH ARE SEALED (founder, 2026-09-11, batch 69: *"Seal corrections and
+ * fields/verify too"* — *"the decision then holds on both faces of the
+ * document"*). Each write is preceded by a MINT, called at the moment the hold
+ * BEGINS, and carries the token back in `X-Seal-Challenge`. A token fetched at
+ * the moment of the write would be one more thing the same request asked for
+ * itself, which is the assertion model with extra steps — `HoldToApprove`'s
+ * `onChallenge` is the hook that guarantees the timing, and a mint that fails
+ * or resolves null does NOT write.
+ *
  * The shapes mirror `apps/api-gateway/src/procurement/canonical/canonical-types.ts`
  * and `delivery-spine.service.ts`. Two nullabilities carry meaning and must not
  * be collapsed on the way in:
@@ -18,6 +27,7 @@
  */
 
 import { apiClient } from "./client";
+import { rethrowSpoken, sealed } from "./seal";
 
 export type Source =
   | "extracted"
@@ -342,22 +352,86 @@ export const canonicalApi = {
   },
 
   /**
-   * Correct one layer-1 field (ADR 0104 D5).
+   * Mint the one-time seal a FIELD CORRECTION has to carry back — at the moment
+   * the hold BEGINS.
+   *
+   * THE PATH AND THE VALUE GO TO THE MINT TOO, and that is the point: the seal
+   * is taken over the correction about to be made, so a token obtained to change
+   * a unit price cannot be spent to change the issue date. The caller must send
+   * the SAME body to both; the page does, because both read one captured object.
+   *
+   * `reason` may differ between the two calls without refusing anything — the
+   * gateway does not hash it, because it is what a person types ABOUT the
+   * decision rather than the decision.
+   */
+  async mintCorrectFieldSeal(
+    documentId: string,
+    body: { path: string; value: unknown },
+  ): Promise<string | null> {
+    try {
+      const { data } = await apiClient.post<{ challenge?: string }>(
+        `/procurement/documents/${documentId}/corrections-seal-challenge`,
+        body,
+      );
+      return data?.challenge ?? null;
+    } catch (error) {
+      return rethrowSpoken(error);
+    }
+  },
+
+  /**
+   * Correct one layer-1 field (ADR 0104 D5), carrying the seal minted when the
+   * hold began.
    *
    * `value: null` is a real correction and means "the document states nothing
    * here" — the answer when an extraction invented a figure the paper never
    * printed. The gateway refuses any path outside its closed list with a 400
    * that names the field, so nothing here needs to guess.
+   *
+   * `challenge` is not optional in practice — the gateway refuses a correction
+   * without one, in words. It is typed optional so a caller that does not yet
+   * mint keeps COMPILING and receives the gateway's refusal sentence rather than
+   * a type error; that refusal is the honest outcome, because it says that the
+   * seal has to be proven and that nothing was changed.
    */
   async correctField(
     documentId: string,
     body: { path: string; value: unknown; reason?: string },
+    challenge?: string | null,
   ): Promise<CorrectionOutcome> {
-    const { data } = await apiClient.post(
-      `/procurement/documents/${documentId}/corrections`,
-      body,
-    );
-    return data;
+    try {
+      const { data } = await apiClient.post(
+        `/procurement/documents/${documentId}/corrections`,
+        body,
+        sealed(challenge),
+      );
+      return data;
+    } catch (error) {
+      return rethrowSpoken(error);
+    }
+  },
+
+  /**
+   * Mint the one-time seal a FIELD TICK has to carry back.
+   *
+   * The gateway binds it to the value that field shows NOW, so a tick obtained
+   * while a figure read 142,00 cannot be spent after somebody corrected it to
+   * 132,00 — the person's name would otherwise stand against a number they
+   * never saw, which is the one thing a tick exists to prevent.
+   */
+  async mintVerifyFieldSeal(
+    documentId: string,
+    path: string,
+  ): Promise<string | null> {
+    try {
+      const { data } = await apiClient.post<{ challenge?: string }>(
+        `/procurement/documents/${documentId}/fields/verify-seal-challenge`,
+        { path },
+      );
+      return data?.challenge ?? null;
+    } catch (error) {
+      return rethrowSpoken(error);
+    }
   },
 
   /**
@@ -400,11 +474,17 @@ export const canonicalApi = {
   async verifyField(
     documentId: string,
     path: string,
+    challenge?: string | null,
   ): Promise<CorrectionOutcome> {
-    const { data } = await apiClient.post(
-      `/procurement/documents/${documentId}/fields/verify`,
-      { path },
-    );
-    return data;
+    try {
+      const { data } = await apiClient.post(
+        `/procurement/documents/${documentId}/fields/verify`,
+        { path },
+        sealed(challenge),
+      );
+      return data;
+    } catch (error) {
+      return rethrowSpoken(error);
+    }
   },
 };

@@ -3,6 +3,8 @@
  * tri-state null (a check that could not run) is never rendered as a pass.
  */
 
+import { formatMoney } from '@/lib/currency';
+
 export const EM = '—';
 
 /** ADR 0051 clause 2 — a windowed count renders as a floor, never as a total. */
@@ -12,9 +14,29 @@ export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif';
 
-export function fmtMoney(n: number | null | undefined): string {
+/**
+ * Money, in the currency the DOCUMENT is in — or the sentence saying it has
+ * none.
+ *
+ * Until 2026-09-06 this interpolated the amount straight after a literal dollar
+ * sign, so every figure on this page printed one whatever the vendor billed —
+ * including the two TRY invoices production already holds (measured 2026-09-05,
+ * `20260905120000_a_house_names_its_money.sql`). The currency now travels with
+ * the number because `procurement_documents.currency` was always in the
+ * payload and this function simply never asked for it.
+ *
+ * `undefined` currency is DELIBERATELY not the same as an omitted argument: a
+ * caller that has no currency to give gets the number and the caveat from
+ * `formatMoney`, which is honest and legible, rather than a wrong symbol. The
+ * argument is required so a caller has to think about it — the same reason
+ * `PriceCurrencyClaim` has no default form on the gateway side.
+ */
+export function fmtMoney(
+  n: number | null | undefined,
+  currency: string | null | undefined,
+): string {
   if (n == null || !Number.isFinite(Number(n))) return EM;
-  return `$${Number(n).toFixed(2)}`;
+  return formatMoney(Number(n), currency);
 }
 
 /**

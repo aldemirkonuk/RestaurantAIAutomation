@@ -38,7 +38,9 @@ function makeController(overrides: Partial<NotificationsService> = {}) {
     ...overrides,
   } as unknown as NotificationsService;
 
-  const controller = new NotificationsController(service);
+  // The controller also takes NotificationProducersService (this branch) and an
+  // optional LowStockAlertsService (main); neither is exercised by these cases.
+  const controller = new NotificationsController(service, {} as never);
   return { controller, service, calls };
 }
 

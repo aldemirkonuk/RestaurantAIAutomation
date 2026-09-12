@@ -12,6 +12,30 @@ export { parse812 } from "./x12-credit";
 /** Transaction sets we can turn into documents. */
 export const SUPPORTED_SETS = ["810", "856", "812"] as const;
 
+/**
+ * What the file's PARSE is told about the house it arrived at.
+ *
+ * One field, and it exists because an 810 with no `CUR` segment used to file
+ * its totals as `USD` (founder, 2026-09-06; `../invoice-currency.ts`). Absent
+ * means the caller does not know the house's currency, and a file with no `CUR`
+ * then has its money refused rather than dollarised.
+ */
+export interface X12ParseOptions {
+  /** `restaurants.currency`, or null/absent when the house has stated none. */
+  houseCurrency?: string | null;
+  /**
+   * B3 (founder, 2026-09-06 batch 65): the currency of the ORDER this document
+   * is matched to. `procurement_orders.currency`, or null when the order named
+   * none. The invoice takes it when the file states nothing, and is HELD when
+   * the file states something else.
+   */
+  orderCurrency?: string | null;
+  /** Whether the document is matched to an order at all. Not the same as the code being null. */
+  hasMatchedOrder?: boolean;
+  /** The matched order's number, for the sentence. Never load-bearing. */
+  orderLabel?: string | null;
+}
+
 export interface X12ParseResult {
   interchange: Omit<X12Interchange, "transactions">;
   documents: ParsedDocument[];
@@ -30,7 +54,10 @@ export interface X12ParseResult {
  * be routed elsewhere, not coerced into producing an empty invoice that then
  * looks like a vendor who billed nothing.
  */
-export function parseX12(raw: string): X12ParseResult {
+export function parseX12(
+  raw: string,
+  options: X12ParseOptions = {},
+): X12ParseResult {
   const interchange = parseInterchange(raw);
   const { transactions, ...envelope } = interchange;
 
@@ -42,7 +69,12 @@ export function parseX12(raw: string): X12ParseResult {
       case "810":
         documents.push(
           withEnvelopeWarnings(
-            parse810(tx, interchange.delimiters),
+            parse810(tx, interchange.delimiters, {
+              houseCurrency: options.houseCurrency,
+              orderCurrency: options.orderCurrency,
+              hasMatchedOrder: options.hasMatchedOrder,
+              orderLabel: options.orderLabel,
+            }),
             envelope.warnings,
           ),
         );
@@ -58,7 +90,15 @@ export function parseX12(raw: string): X12ParseResult {
       case "812":
         documents.push(
           withEnvelopeWarnings(
-            parse812(tx, interchange.delimiters),
+            // A credit carries a real `totalCredit` (BCD04) and settles against
+            // an 810, so it takes the same house currency the invoice does. The
+            // 856 above deliberately does not: it states no money at all.
+            parse812(tx, interchange.delimiters, {
+              houseCurrency: options.houseCurrency,
+              orderCurrency: options.orderCurrency,
+              hasMatchedOrder: options.hasMatchedOrder,
+              orderLabel: options.orderLabel,
+            }),
             envelope.warnings,
           ),
         );
