@@ -163,6 +163,12 @@ jobs:
             fi
           done
           case "$E2E_BASE_URL" in *localhost*|*127.0.0.1*) echo "::error::E2E_BASE_URL points at localhost"; exit 2;; esac
+          # The gateway URL is the one that RECEIVES E2E_TEST_EMAIL and
+          # E2E_TEST_PASSWORD on every login (audit of PR #349, finding 1.2), so it
+          # gets the same refusal, plus a scheme check: a plain-http gateway would
+          # carry the password in the clear.
+          case "$API_GATEWAY_URL" in *localhost*|*127.0.0.1*|*0.0.0.0*) echo "::error::API_GATEWAY_URL points at a local address"; exit 2;; esac
+          case "$API_GATEWAY_URL" in https://*) ;; *) echo "::error::API_GATEWAY_URL is not https"; exit 2;; esac
 
       - name: Checkout repository
         uses: actions/checkout@v7

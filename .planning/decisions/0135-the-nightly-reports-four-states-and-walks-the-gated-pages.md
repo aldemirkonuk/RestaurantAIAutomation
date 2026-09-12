@@ -239,6 +239,26 @@ the comment its `verify` greps for) and the wrong `Co-Authored-By: Claude Fable 
 trailer on commit `5e4f21f1` (CLAUDE.md §7 wants `Claude Opus 5`; the trailer that
 actually lands is whatever the eventual squash-merge body carries).
 
+## Audit fixes (2026-09-12, orchestrating session, on the founder's instruction)
+
+The founder chose "Fix trace, then land it". Findings from the 2026-09-11 audit, by status:
+- **1.1 critical (trace leak): fixed.** `playwright.nightly.config.ts` sets `trace: 'off'`
+  with the reason in a comment. Screenshots stay, since the audit found they carry no
+  headers or bodies.
+- **1.2 high (gateway URL unguarded): fixed.** `e2e-prod.yml` refuses an `API_GATEWAY_URL`
+  that points at a local address, as it already did for `E2E_BASE_URL`. It also refuses a
+  URL that is not https, because that URL receives the test password on every login.
+- **1.4 low (a reporter crash read as a product failure): fixed.** `_load_json` returns an
+  OS or decode error as a parse error, so the summary records `cannot_check`.
+- **1.3 medium (`E2E_LEGACY_RESTAURANT_ID` unconstrained): not fixed.** The id is optional
+  and unset (the secret does not exist). F3, the second sim house, is not built. The
+  constraint that it resolve to a `sim-` slug belongs with F3.
+- **Correctness finding 1 (`absent` inferred and missing from the verdict): not fixed.** It
+  was APPROVE WITH NOTES, not blocking.
+
+**Merged without a re-audit.** Per the founder's 2026-09-12 answer ("Your word as PASS, no
+agents"), no auditor re-read this head.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |

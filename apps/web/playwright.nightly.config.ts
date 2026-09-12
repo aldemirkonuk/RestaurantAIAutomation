@@ -46,7 +46,13 @@ export default defineConfig({
     baseURL,
     headless: true,
     viewport: { width: 1440, height: 900 },
-    trace: 'retain-on-failure',
+    // OFF, deliberately (audit of PR #349, finding 1.1, critical). A Playwright
+    // trace is a full network capture, headers and bodies, so a failed run's
+    // trace carried E2E_TEST_PASSWORD and live session JWTs -- proven with a
+    // sentinel password -- into a 30-day artifact on a public repository. This
+    // nightly has failed 127 of 130 historical runs, so a trace would be made
+    // almost every night. Screenshots stay: they carry no headers or bodies.
+    trace: 'off',
     screenshot: 'only-on-failure',
     video: 'off',
   },

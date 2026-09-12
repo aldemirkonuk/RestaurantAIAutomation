@@ -61,6 +61,11 @@ def _load_json(path: Path) -> Any | None:
         return None
     except json.JSONDecodeError as exc:
         return {"__parse_error__": str(exc)}
+    except (OSError, UnicodeDecodeError) as exc:
+        # A truncated or unreadable artifact is the REPORTER failing to read its
+        # own inputs, not a product failure (audit of PR #349, finding 1.4). It is
+        # returned as a parse error so the caller records cannot_check.
+        return {"__parse_error__": f"{type(exc).__name__}: {exc}"}
 
 
 def collect(results: Path) -> list[dict[str, Any]]:
