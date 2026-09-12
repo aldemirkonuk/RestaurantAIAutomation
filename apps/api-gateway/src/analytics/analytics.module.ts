@@ -10,6 +10,7 @@ import { ConsultantsService } from "./consultants.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
 import { DatabaseModule } from "../database/database.module";
+import { AuthModule } from "../auth/auth.module";
 
 /**
  * Analytics Module — the quantitative core of WineOps.
@@ -20,7 +21,10 @@ import { DatabaseModule } from "../database/database.module";
  * Supabase data and exposes it for the dashboard and AI layers.
  */
 @Module({
-  imports: [DatabaseModule],
+  // AuthModule supplies TokenBlacklistService, which JwtAuthGuard injects. The
+  // guard resolves in *this* module's context, so without this import the whole
+  // app fails to boot — not just this route. AuthModule is not @Global().
+  imports: [DatabaseModule, AuthModule],
   controllers: [AnalyticsController],
   providers: [
     AnalyticsService,

@@ -567,8 +567,7 @@ class DriftAgent(BaseAgent):
                 return existing.data[0].get("id")
 
             result = (
-                sb.table("pos_catalog_match_proposals")
-                .insert(
+                sb.table("pos_catalog_match_proposals").insert(
                     {
                         "restaurant_id": restaurant_id,
                         "source": POS_SOURCE,
@@ -581,7 +580,9 @@ class DriftAgent(BaseAgent):
                         "status": "pending",
                     }
                 )
-                .select("id")
+                # No .select() — supabase-py >= 2.x already returns the inserted
+                # representation; chaining .select() onto an insert builder raises
+                # AttributeError (see BaseAgent.log_decision for the same bug).
                 .execute()
             )
             if result.data:
@@ -612,9 +613,8 @@ class DriftAgent(BaseAgent):
             if decision_log_id:
                 row["decision_log_id"] = decision_log_id
             result = (
-                self.database.supabase.table("drift_findings")
-                .insert(row)
-                .select("id")
+                self.database.supabase.table("drift_findings").insert(row)
+                # No .select() — see BaseAgent.log_decision.
                 .execute()
             )
             if result.data:
