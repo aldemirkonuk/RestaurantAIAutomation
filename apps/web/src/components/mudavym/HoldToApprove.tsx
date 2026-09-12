@@ -1,9 +1,9 @@
 /**
- * Hold-to-approve — the press→seal interaction from sketch 063 `sig-hero`,
+ * Hold-to-approve — the press→seal interaction from sketch 087 `sig-hero`,
  * as a production control. One deliberate gesture replaces a confirm dialog,
  * and nothing fires on release short of the full hold.
  *
- * Motion (059 tokens, lib/mudavym/motion.ts):
+ * Motion (083 tokens, lib/mudavym/motion.ts):
  * - the fill is `pour` — deliberately linear, because the operator is timing
  *   it against their own thumb;
  * - an early release retreats on `tuck` and says exactly what did not happen
