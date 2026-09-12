@@ -208,6 +208,38 @@ jobs:
           ./scripts/check_db_reachable.sh
           ./scripts/check_schema_parity.sh
 
+      # ADR 0031 named this script as the standing enforcement for the
+      # bidirectional ledger reconciliation it did by hand on 2026-08-25, and
+      # it never existed until 2026-09-12 -- found while diagnosing the SAME
+      # DAY's incident, where production had fallen behind supabase/migrations/
+      # far enough to block every open pull request (see the memory
+      # main-wedges-when-production-falls-behind). This is that enforcement.
+      #
+      # Deliberately placed HERE, between "Compare against remote" and "Put
+      # the held-back migrations back" -- not as its own job -- so it gets the
+      # SAME merge-awareness as the schema diff above for free, with no
+      # `--base` logic of its own to keep in lockstep with
+      # parity_migrations_added_by_pr.py. This PR's own added migration files
+      # are physically absent from supabase/migrations/ at this point in the
+      # job (moved to /tmp/parity-held-back/ above), so the file list this
+      # guard reads is already the merge-base one: on a PR that adds a
+      # migration, production correctly has no row for it yet, and holding the
+      # file out of the comparison is what keeps that from reading as drift --
+      # exactly the question ADR 0092/0095 stopped the sibling checks from
+      # asking. On push/schedule nothing is held back, so this runs against
+      # the full, strict set, unchanged.
+      #
+      # A MODIFIED migration is not held back by the step above (only `git
+      # status A` files are), so editing an already-applied migration still
+      # reports as drift here, in both directions -- the ratchet is not
+      # loosened by piggybacking on this mechanism.
+      - name: Migration ledger matches production, both directions
+        env:
+          SUPABASE_DIRECT_CONNECTION_STRING: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+        run: |
+          ./scripts/check_db_reachable.sh
+          ./scripts/check_migration_ledger.py
+
       - name: Put the held-back migrations back
         if: always()
         run: |
@@ -226,6 +258,13 @@ jobs:
           echo "::notice::as a migration, then: supabase migration repair --status applied <version>"
           echo "::notice::Columns/functions only in LOCAL are unpushed — run: supabase db push"
           echo "::notice::Background: .planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt"
+          echo "::notice::A failure under 'Migration ledger matches production' is ADR 0031, not the"
+          echo "::notice::schema diff above: FILES - LEDGER is a migration file with no row in"
+          echo "::notice::production (register it, or it was never applied); LEDGER - FILES is a"
+          echo "::notice::ledger row with no file in the repo (recover its SQL from"
+          echo "::notice::supabase_migrations.schema_migrations.statements). Run"
+          echo "::notice::./scripts/check_migration_ledger.py --self-test locally if the guard itself"
+          echo "::notice::looks wrong rather than the ledger."
 
   # The arm of the schema-code guard that needs a database.
   #
