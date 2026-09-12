@@ -39,6 +39,29 @@ const STRANDED_MARKER =
   'Given up on, and this device could not save a record of it. Kept here so the delivery is not lost — keep the paperwork.'
 
 /**
+ * The strands this SESSION has seen, held in memory on purpose.
+ *
+ * THE MARK CANNOT BE THE ONLY SOURCE, because the condition that creates a
+ * strand is `localStorage` refusing a write — and the mark is written through
+ * the same storage. Measured, against the real `offlineStorage` on its
+ * localStorage fallback (the path this file's header advertises for "the old
+ * iPads a receiving desk actually has"): the parking update is swallowed by
+ * `localStoragePut`'s `console.error`, `updatePendingMutation` RESOLVES having
+ * written nothing, the entry stays at `retryCount: 0` with no `lastError`, and
+ * a reader that trusted the mark returned `[]` for a delivery that is gone. The
+ * screen then said "still trying". That is this repo's named fault — absence
+ * reported as health — sitting under the loudest alarm in the app.
+ *
+ * So the ledger is memory first and disk second, and the reader takes the
+ * UNION. Identity is the queue id, so a strand re-seen on a later pass is the
+ * same strand; entries that leave the queue are pruned on every read. What this
+ * cannot survive is a full page reload on a device whose disk is refusing
+ * writes — and nothing can. The next flush re-derives it within the second,
+ * because the receipt is still queued and the server refuses it again.
+ */
+const strandedThisSession = new Set<string>()
+
+/**
  * A receipt the outbox GAVE UP ON, kept after the receipt itself is gone.
  *
  * The queue entry is deleted on a drop, so without this the only record of a
@@ -406,7 +429,7 @@ export interface StrandedDoorReceipt {
 }
 
 /**
- * Every receipt currently STRANDED on this device, derived from the queue.
+ * Every receipt currently STRANDED on this device.
  *
  * READ, never accumulated. `DoorFlushResult.stranded` is a statement about one
  * pass, and a strand is re-reported by every later pass because the entry is
@@ -414,10 +437,19 @@ export interface StrandedDoorReceipt {
  * into "3 deliveries could not be sent" by the third screen unlock, while
  * holding the total in component state turned it back into nothing on the
  * navigate that Finish triggers. Both halves are the mistake this module
- * already fixed for `dropped`: a count where a record belongs. The queue is
- * that record — the strand exists exactly as long as the entry does, which also
- * means one that HEALS clears itself on the next read instead of leaving a
- * permanent alarm standing beside the drop pin for the same receipt.
+ * already fixed for `dropped`: a count where a record belongs.
+ *
+ * The record is the QUEUE ENTRY, identified two ways and taken as a union:
+ * `strandedThisSession` (memory — see its docblock for why the mark alone is
+ * not enough) and the mark the flush tries to park on the entry, which is what
+ * carries a strand across a reload on a device whose disk still works. Either
+ * alone is silent in a case the other covers.
+ *
+ * Disjointness from `dropped` is DERIVED here rather than asserted: an entry
+ * that has a drop record is not a strand, whatever is on it. That is what makes
+ * the claim true for the two states that used to break it — a record written on
+ * a later pass whose delete then failed, and a receipt the server finally
+ * accepted while its delete failed.
  *
  * `null` means the queue could not be READ — not that nothing is stranded. A
  * caller must keep what it last knew rather than render the absence as an
@@ -436,8 +468,23 @@ export async function readStrandedDoorReceipts(
   } catch {
     return null
   }
+
+  // Prune: a strand exists only while its entry does. Delivered, dropped, or
+  // cleared by hand, the id stops being one — and this is the only place that
+  // can see it, since the removal may have happened in another pass.
+  const live = new Set(pending.map((m) => m.id))
+  for (const id of strandedThisSession) if (!live.has(id)) strandedThisSession.delete(id)
+
+  const recorded = new Set(readDroppedDoorReceipts(restaurantId).map((d) => d.id))
+
   return pending
-    .filter((m) => m.retryCount >= MAX_ATTEMPTS && m.lastError === STRANDED_MARKER)
+    .filter(
+      (m) =>
+        !recorded.has(m.id) &&
+        (strandedThisSession.has(m.id) ||
+          m.lastError === STRANDED_MARKER ||
+          m.retryCount >= MAX_ATTEMPTS),
+    )
     .map((m) => {
       const entry = m.data as QueuedDoorReceipt | undefined
       return {
@@ -577,12 +624,25 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
       const entry = m.data as QueuedDoorReceipt | undefined
       try {
         await receivingApi.recordDoorReceipt(entry!.orderId, entry!.body)
+        // The server has it. Whatever this entry was before — including a
+        // strand from an earlier pass — it is not a lost delivery now, and the
+        // alarm must stop even if the delete below fails and the entry lingers.
+        strandedThisSession.delete(m.id)
         try {
           await offlineStorage.removePendingMutation(m.id)
         } catch {
           // Sent, but still queued. The idempotency key makes the re-send a
           // no-op on the server, so this costs a request, never a double
-          // booking.
+          // booking. Best-effort: take the strand mark off it too, so a reload
+          // that finds the entry still here does not alarm about a delivery
+          // that landed. If this write fails as well the screen over-reports,
+          // which is the direction to fail in.
+          try {
+            await offlineStorage.updatePendingMutation(m.id, { lastError: undefined })
+          } catch {
+            /* nothing more to try; the read's drop-record check still covers
+               the recorded case, and a false alarm is loud, not silent */
+          }
         }
         sent++
       } catch (err) {
@@ -616,25 +676,37 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
             // disk. It is parked at the ceiling with the reason on it, which
             // the rail renders, and every later flush retries the record —
             // so the moment storage frees up it becomes an ordinary drop.
+            // MEMORY FIRST. The disk just refused a write, so it cannot be
+            // asked to remember that it refused one — and `localStoragePut`
+            // swallows the refusal and resolves anyway, so the update below
+            // reports success having written nothing. This line is what makes
+            // the alarm certain; the update is what lets it survive a reload
+            // when the disk recovers, and nothing depends on it landing.
+            strandedThisSession.add(m.id)
             try {
               await offlineStorage.updatePendingMutation(m.id, {
                 retryCount: MAX_ATTEMPTS,
                 lastError: STRANDED_MARKER,
               })
             } catch {
-              /* even the queue update failed; the entry itself survives, which
-                 is the property that matters */
+              /* the entry itself survives, and the ledger above already holds
+                 the strand for this session */
             }
             failed++
             stranded++
             continue
           }
 
+          // Recorded. If an earlier pass stranded this id, it is a drop now —
+          // one receipt, one alarm, and the drop pin is the one that names it.
+          strandedThisSession.delete(m.id)
           try {
             await offlineStorage.removePendingMutation(m.id)
           } catch {
             // The record is already durable and keyed on this id, so a retry
-            // that sees the entry again cannot double-count the loss.
+            // that sees the entry again cannot double-count the loss — and the
+            // reader excludes any entry that has a drop record, so an entry
+            // that lingers here cannot be read as a strand either.
           }
           failed++
           dropped++
@@ -675,9 +747,11 @@ export function watchDoorOutbox(
 ): () => void {
   /**
    * The pass already reported. Two triggers firing together join ONE pass and
-   * would otherwise hand the caller its single result twice — and a caller that
-   * accumulates `dropped` would then show two lost receipts where one was lost.
-   * Identity is the whole test: a genuinely later pass is a different promise.
+   * would otherwise hand the caller its single result twice. No caller in this
+   * repo accumulates the counts any more — both door screens re-read instead,
+   * and that is the durable fix — but the result is a public shape and a caller
+   * that did accumulate would show two lost receipts where one was lost, so the
+   * guard stays. Identity is the whole test: a later pass is a different promise.
    */
   let reported: Promise<DoorFlushResult> | null = null
   const run = () => {

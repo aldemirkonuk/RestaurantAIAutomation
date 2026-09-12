@@ -689,12 +689,15 @@ function belongsToRestaurant(m: PendingMutation, restaurantId: string): boolean 
  * exactly as it does on a delivery and a permanent loss is indistinguishable
  * from a success.
  *
- * CORRECTED 2026-09-12 — this used to say the legacy page "calls
- * `watchDoorOutbox` and throws the flush result away", which was true when it
- * was written and is not true of this tree. `watchDoorOutbox` now hands its
- * `DoorFlushResult` to the callback (`onChange?.(result)`, lib/doorOutbox.ts),
- * the result carries a `dropped` count separate from the retryable `failed`,
- * and DoorReceipt.tsx accumulates it. The distinction is held on BOTH pages.
+ * ON THE LEGACY PAGE, stated as a mechanism rather than as a description,
+ * because this paragraph has been wrong twice in four days — once saying that
+ * page "throws the flush result away", once saying it "accumulates `dropped`".
+ * Grep `watchDoorOutbox(` in DoorReceipt.tsx: the callback takes no argument.
+ * That page consults no field of the result at all; it re-reads the drop record
+ * and the strand on every pass, which is the same thing this hook does, for the
+ * same reason — a count cannot say WHICH receipt, and a count in component
+ * state does not survive the navigate. The distinction is held on both pages;
+ * neither holds it in a number.
  *
  * CORRECTED AGAIN 2026-09-12 — the paragraph here used to say this hook "keeps
  * its own reconstruction rather than reading `dropped`", snapshotting the queue

@@ -101,12 +101,16 @@ export default function DoorReceipt() {
    * this screen is the only thing that can say so, and saying nothing is the
    * one outcome that is never allowed.
    *
-   * Read from the queue, not added up. The entry stays put until the record
-   * can be written, so every later pass reports the same strand again and a
-   * running total told the receiver two deliveries were gone when one was —
-   * the same count-where-a-record-belongs mistake as the paragraph above.
-   * Reading also means a strand that heals stops being reported instead of
-   * standing forever beside the drop pin for the same receipt.
+   * Read, not added up. The entry stays put until the record can be written, so
+   * every later pass reports the same strand again and a running total told the
+   * receiver two deliveries were gone when one was — the same
+   * count-where-a-record-belongs mistake as the paragraph above. Reading also
+   * means a strand that heals stops being reported instead of standing forever
+   * beside the drop pin for the same receipt.
+   *
+   * `readStrandedDoorReceipts` unions the queue entry with the outbox's
+   * in-memory ledger, and the ledger is not optional: a strand is caused by the
+   * disk refusing a write, so the disk cannot be the only witness to it.
    */
   const [stranded, setStranded] = useState<StrandedDoorReceipt[]>([])
 

@@ -172,13 +172,17 @@ export default function DoorNext() {
    * Gave up on, and the record could NOT be written — so the outbox kept the
    * queue ENTRY instead of deleting it. Louder than a drop, and never silent.
    *
-   * Read from the queue, not counted up. `DoorFlushResult.stranded` describes
-   * one pass, and the entry is still there on the next one, so every later
-   * flush reports the same strand again — accumulating them read "3 deliveries
-   * could not be sent" after three screen unlocks with one receipt at stake,
-   * and a `useState(0)` total died on the navigate Finish triggers. The queue
-   * is the record; reading it makes one strand one strand, and lets a strand
-   * that heals disappear instead of standing next to its own drop pin.
+   * Read, not counted up. `DoorFlushResult.stranded` describes one pass, and
+   * the entry is still there on the next one, so every later flush reports the
+   * same strand again — accumulating them read "3 deliveries could not be sent"
+   * after three screen unlocks with one receipt at stake, and a `useState(0)`
+   * total died on the navigate Finish triggers.
+   *
+   * What is read is the QUEUE ENTRY plus the outbox's in-memory ledger, unioned
+   * by id (`readStrandedDoorReceipts`). Deriving it from the disk alone was the
+   * round after that one, and it was worse: the mark cannot be written in the
+   * one condition that creates a strand, so the alarm went silent and this
+   * screen said "still trying" about a delivery that exists nowhere.
    */
   const [stranded, setStranded] = useState<StrandedDoorReceipt[]>([]);
 

@@ -16,10 +16,15 @@
  *    name and stays until a person dismisses it. Nothing vanishes; the drop
  *    becomes a pin (turn, then the stamp landing).
  *
- *    (This used to say the legacy page "throws that `failed` count away". That
- *    was true when written; as of 2026-09-12 the legacy DoorReceipt page pins
- *    the same distinction — `watchDoorOutbox` hands it the `DoorFlushResult`
- *    and it accumulates `dropped`. What this rail still adds is the NAMES.)
+ *    (This sentence has now rotted twice in four days — first claiming the
+ *    legacy page "throws that `failed` count away", then claiming it
+ *    "accumulates `dropped`" from the flush result. Neither describes the
+ *    tree. State the mechanism instead: grep `watchDoorOutbox(` in
+ *    DoorReceipt.tsx — that page consults NO field of the result; it re-reads
+ *    `readDroppedDoorReceipts` and `readStrandedDoorReceipts` on every pass,
+ *    and it names the orders, as this rail does. What is left to this rail
+ *    alone is the QUEUE: the entries still waiting, with their attempt count
+ *    and last error, which neither door screen shows.)
  *
  * Honesty: a storage read that throws renders as "unknown", never as an
  * empty queue — and the empty state says what emptiness means.
