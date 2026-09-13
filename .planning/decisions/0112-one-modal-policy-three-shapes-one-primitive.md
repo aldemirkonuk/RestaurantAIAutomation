@@ -385,3 +385,29 @@ With these, F12 is closed. The build order this implies: the ledger first (every
 writes to it), then the authority rule and grants, then step-up, then the seal ceremony on both
 platforms together, then break-glass.
 
+
+## Execution reconciliation — 2026-09-13
+
+The overlay foundation was recovered from the resolved working files in
+`wt-port-ov0` onto main `60ed83a7` in `codex/page-wave-ports`. The original dirty
+worktree and its unresolved index were preserved. Only the foundation source,
+its behavior tests, the Team accessible-name expectation and the existing motion
+reference were selected; the old bulk decision-register renumbering was not
+replayed. Current-main topmost Escape dispatch and focus-return fallbacks remain.
+
+This patch adds contract text, page compression, dirty-draft tear/hold behavior,
+three-level sheet navigation, phone detents, denial and resumable-draft vocabulary,
+and an explicit seal receipt. The recovered receipt fired before an asynchronous
+write completed; reconciliation now waits for a returned write promise, refuses
+a failed write without claiming either success or that nothing was sent, and
+blocks duplicate gestures while awaiting confirmation. Callers must return their
+write promise for this guarantee. Native keyboard/assistive activation also
+cycles a phone sheet height, while a pointer gesture is counted once. Renaming
+an underlying sheet updates its spine in place instead of moving it above its
+child. These changes preserve the accepted paper/charcoal palette and named motion tokens.
+
+Validation: the recovered foundation passed the full web suite (188 files; 2704
+passed, 14 skipped) and `@wineops/web typecheck`. Targeted follow-up validation
+for the async receipt and keyboard correction is recorded with the integration
+commit. This is source/test evidence; rendering, release and tenant activation
+remain separate checks. No production action or database mutation occurred.
