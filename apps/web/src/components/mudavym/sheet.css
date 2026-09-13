@@ -79,17 +79,33 @@
   appearance: none;
 }
 
-/* A popover does not dim the page — it only needs to catch the click that
-   dismisses it, which is what the header's own `fixed inset-0` catcher does
-   today (Header.tsx:143-146). Same behaviour, one implementation.
-   `data-modal` puts the dim back for the one anchored surface that is a form
-   rather than a picker — see the `modal` prop's note in Sheet.tsx. */
-.mdv-ovl--popover .mdv-ovl__scrim {
+/* Who dims, and who does not — `data-scrim` is resolved once in the component
+   (`scrim` prop > the shape's own default) so the CSS never re-derives it.
+
+   A Sheet is `off` by default since 2026-09-06 (sketch 103 · 1a): the sheet
+   takes width, never light, and the list behind it keeps its pulse. A Panel is
+   `on` — a question dims the page, because nothing else matters until it is
+   answered. A Popover is `off` unless it is `modal`, which is exactly the
+   behaviour it already had (Header.tsx:143-146's own `fixed inset-0` catcher,
+   one implementation).
+
+   The element is still there and still catches the click either way: this is
+   paint, not modality. */
+.mdv-ovl[data-scrim='off'] .mdv-ovl__scrim {
   background: transparent;
 }
-.mdv-ovl--popover[data-modal='true'] .mdv-ovl__scrim {
-  background: var(--mdv-scrim);
-}
+
+/* ── the page gives up columns, not light (1a) ────────────────────────────
+   The primitive sets `data-sheet-open` and `--sheet-width` on the page's own
+   `.mudavym` root while a Sheet is open; the page answers. Nothing here styles
+   a page — a page that has written no rule renders exactly as it did. The
+   house's own default, for a page that opts in with `layout="compress"`:
+
+     .mudavym[data-sheet-open='compress'] .my-list {
+       padding-right: var(--sheet-width);
+     }
+
+   `--sheet-width` is 440px, or 640px for a `wide` sheet. */
 
 /* ── the panel, all shapes ───────────────────────────────────────────────── */
 .mdv-ovl__panel {
@@ -156,14 +172,36 @@
 }
 
 /* ── header ──────────────────────────────────────────────────────────────── */
+/* A column since 2026-09-06: the row it always was, and under it the contract
+   sentence (sketch 103 · 1e). The padding and the rule are unchanged, so a page
+   that measured its own body inset against this header still lines up. */
 .mdv-ovl__head {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 16px 11px;
+  border-bottom: 1px solid var(--paper-2);
+  flex: none;
+}
+.mdv-ovl__headrow {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px 11px;
-  border-bottom: 1px solid var(--paper-2);
-  flex: none;
+}
+
+/* The contract, in the eyebrow's voice but sentence case and readable: this is
+   the one line the reader must be able to READ, not scan. It is the same string
+   the screen reader gets from `aria-describedby`, never a second wording. */
+.mdv-ovl__contract {
+  margin: 0;
+  font-family: var(--mdv-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  letter-spacing: 0.005em;
+  color: var(--ink-2);
+  border-left: 2px solid var(--seal-ring);
+  padding-left: 9px;
 }
 .mdv-ovl__eyebrow {
   display: block;
@@ -217,6 +255,139 @@
   outline-offset: 2px;
 }
 
+/* ── the spine, and the cap said out loud (1c) ────────────────────────────
+   One line under the contract: where you are, how you got here, how deep. Every
+   level before the last is a control; the last is where you stand. */
+.mdv-ovl__spine {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  font-family: var(--mdv-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.mdv-ovl__spine-part {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.mdv-ovl__spine-sep {
+  color: var(--ink-3);
+}
+.mdv-ovl__spine-back {
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--seal-deep);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  /* 24px of target on a 10px word — WCAG 2.2 SC 2.5.8, without a box. */
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+}
+.mdv-ovl__spine-back:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.mdv-ovl__spine-back:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.mdv-ovl__spine-here {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.mdv-ovl__depth {
+  margin-left: auto;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+/* The refusal. Ink and a rule, never red — the house has one chromatic colour
+   and this is not it (ADR 0042). */
+.mdv-ovl__refusal {
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+/* ── the phone form (F9) ──────────────────────────────────────────────────
+   The same sheet, resting at three heights on the bottom edge, with one
+   breadcrumb — the spine above, unchanged, on one line. */
+.mdv-ovl--sheet[data-form='bottom'] .mdv-ovl__panel {
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  max-width: none;
+  border-left: 0;
+  border-top: 1px solid var(--paper-2);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -18px 48px rgba(23, 19, 15, 0.18);
+}
+.mdv-ovl--sheet[data-form='bottom'][data-detent='peek'] .mdv-ovl__panel {
+  height: 34vh;
+}
+.mdv-ovl--sheet[data-form='bottom'][data-detent='half'] .mdv-ovl__panel {
+  height: 58vh;
+}
+.mdv-ovl--sheet[data-form='bottom'][data-detent='full'] .mdv-ovl__panel {
+  height: 92vh;
+}
+/* One line, whatever the depth: the phone gets a breadcrumb, not a spine that
+   wraps to three rows on a 375px screen. */
+.mdv-ovl--sheet[data-form='bottom'] .mdv-ovl__spine {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mdv-ovl--sheet[data-form='bottom'] .mdv-ovl__depth {
+  display: none;
+}
+
+/* The grabber. A 44px target around a 36×4 bar — the bar is the affordance,
+   the button is the target. */
+.mdv-ovl__grab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+.mdv-ovl__grab-bar {
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--paper-2);
+}
+.mdv-ovl__grab:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -3px;
+  border-radius: 8px;
+}
+
 /* `0 1 auto`, not `1 1 auto`: a Panel or Popover must be as tall as its
    CONTENT and no taller — max-height then caps it and the body scrolls. With
    `1 1 auto` an overlay holding one sentence ("No recent pages yet") still
@@ -228,6 +399,23 @@
   min-height: 0;
   overflow-y: auto;
 }
+/* What the paper is holding (1d). Empty until the panel leans, and it takes no
+   height when it is empty — a reserved band that says nothing is a band the
+   reader learns to ignore. */
+.mdv-ovl__weight {
+  flex: none;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.mdv-ovl__weight:not(:empty) {
+  padding: 8px 16px 9px;
+  border-top: 1px solid var(--paper-2);
+  border-left: 2px solid var(--seal-ring);
+  background: var(--paper-1);
+}
+
 .mdv-ovl__foot {
   flex: none;
   padding: 9px 16px 12px;
@@ -583,4 +771,154 @@
   background: var(--paper-1);
   border: 1px solid var(--paper-2);
   border-radius: 10px;
+}
+
+/* ============================================================
+   The stub — sketch 103 · 1b
+   ============================================================
+   Not an overlay: a piece of paper left on the row, in the page's own token
+   column. It is drawn like a torn edge — a heavier left rule than `.mdv-alert`
+   and no shadow, because nothing here is floating above anything.
+*/
+.mdv-stub {
+  display: block;
+  padding: 9px 12px 10px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--seal-ring);
+  border-radius: 10px;
+  background: var(--paper-1);
+  font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
+}
+.mdv-stub__eyebrow {
+  display: block;
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--seal-deep);
+}
+/* Discarded is a FACT, not an alarm: it steps back to plain ink rather than
+   reaching for a second colour the house does not have. */
+.mdv-stub[data-state='discarded'] .mdv-stub__eyebrow {
+  color: var(--ink-3);
+}
+.mdv-stub[data-state='discarded'] {
+  border-left-color: var(--ink-3);
+}
+.mdv-stub__words {
+  margin: 4px 0 0;
+  font-family: var(--mdv-serif, Georgia, serif);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.mdv-stub__note {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.mdv-stub__acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.mdv-stub__foot {
+  margin: 7px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* ============================================================
+   What the seal bound — sketch 103 · 1d
+   ============================================================
+   The census draws a failure line on four of sixty rows and nothing at all on
+   success (finder B, D17). This is the success line: after the wax lands, the
+   control reads back exactly what it bound, in the caller's own figures.
+*/
+.mdv-bound {
+  margin-top: 8px;
+  padding: 8px 12px 9px;
+  border: 1px solid var(--seal-ring);
+  border-left: 2px solid var(--seal);
+  border-radius: 10px;
+  background: var(--seal-tint);
+}
+.mdv-bound__head {
+  display: block;
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--seal-deep);
+  margin-bottom: 3px;
+}
+.mdv-bound__body {
+  font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-1);
+}
+/* A figure inside the read-back is a figure of record. */
+.mdv-bound__body strong {
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* ============================================================
+   Permission-denied, and what did not happen
+   ============================================================
+   Ink and a rule, never a second colour: the house has exactly one chromatic
+   colour and it is the seal (ADR 0042). A refusal earns its attention from
+   the words and the rule, and the seal is reserved for what was actually bound.
+*/
+.mdv-denied {
+  padding: 9px 12px 10px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+}
+.mdv-denied__head {
+  display: block;
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: 3px;
+}
+.mdv-denied__body {
+  margin: 0;
+  font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+.mdv-denied__grant {
+  margin: 5px 0 0;
+  font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* The server's own sentence, and the one thing to do. Both step back from the
+   headline, which is the clause that answers the reader's real question. */
+.mdv-refused__because {
+  margin: 4px 0 0 !important;
+  font-size: 11.5px !important;
+  color: var(--ink-2) !important;
+}
+.mdv-refused__next {
+  margin: 4px 0 0 !important;
+  font-size: 11.5px !important;
+  color: var(--ink-3) !important;
 }
