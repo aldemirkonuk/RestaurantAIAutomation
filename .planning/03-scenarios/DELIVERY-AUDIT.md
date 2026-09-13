@@ -130,11 +130,23 @@ reads as *"nothing to report"* forever.
 |---|---|---|
 | At 1f4717cc, before this work | **215** | 47 |
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
-| **Remaining, baselined and non-growing** | **192 of 215** | 43 |
+| **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
 > **186 as of 2026-09-12, on `fix/page-endpoints-tenant-faults`** (`check_read_errors_not_swallowed.py` on that tree: 1449 files scanned, 186 sites, 186 baselined, 0 allowlisted). ADR 0147 retired four rows: `organizations.service.ts` restaurants/r and one of users/user (the branches read now throws), and `prospects.service.ts` providers/existing and providers/raced (promote no longer treats a failed read as empty). The figure below was measured on another tree and branches merge in any order, so re-measure before citing either.
 >
 > **192 as of 2026-09-12** (`check_read_errors_not_swallowed.py` on this tree:
+
+> **191 as of 2026-09-12, second measurement** (`check_read_errors_not_swallowed.py`
+> on this tree: 1062 files scanned, 191 sites, 191 baselined, 0 allowlisted).
+> ADR 0141 lowered one — `procurement.service.ts`'s `restaurant_inventory::inv`
+> from 2 to 1. `releaseOrderShadowStock` read the on-order balance scoped to the
+> restaurant and tested only `if (inv)`, so a FAILED read meant "no row", which
+> meant "release nothing", which read on the way out as a successful release of
+> zero. It fails closed on the write either way; what it did not do was say so.
+> Lowered rather than removed, because the file's other `inv` binding is
+> untouched.
+>
+> **192 as of 2026-09-12** (`check_read_errors_not_swallowed.py` on that tree:
 > 1061 files scanned, 192 sites, 192 baselined, 0 allowlisted). ADR 0139 removed
 > one — `auth.service.ts`'s `users::legacy`, the read inside
 > `unlinkOAuthProvider` that fetched `oauth_provider` in order to decide whether
@@ -180,9 +192,9 @@ reads as *"nothing to report"* forever.
 > the baseline with them, but did not update this table. The number
 > above is re-derived from `scripts/read_error_baseline.json`
 > (`total_sites: 195`, `total_files: 43`); the guard is the authority and this
-> row follows it, never the other way round. **Superseded twice: the table now
-> reads 192** — see the 2026-09-12 and 2026-09-04 notes above; the guard on this
-> tree measures 192.
+> row follows it, never the other way round. **Superseded three times: the table
+> now reads 191** — see the two 2026-09-12 notes and the 2026-09-04 one above;
+> the guard on this tree measures 191.
 
 Plus **37** further sites that bind `data`, discard `error`, and immediately refuse on a
 falsy value (`if (!x) throw NotFoundException`). Those report a failed read as a *missing
@@ -213,8 +225,7 @@ row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: 
 > totals are now RECOMPUTED from the rows rather than decremented, which is why
 > 192 − 1 reads as 191.
 
-The 191 are recorded in `scripts/read_error_baseline.json` and held by
-The 192 are recorded in `scripts/read_error_baseline.json` and held by
+The 189 are recorded in `scripts/read_error_baseline.json` and held by
 `scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the
 baseline fails the build, and a baseline row the tree no longer contains **also** fails it
 — so the number above can only shrink, and it cannot rot in prose the way the "~29" did.

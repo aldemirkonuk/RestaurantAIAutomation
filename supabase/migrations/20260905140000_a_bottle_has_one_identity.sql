@@ -367,6 +367,12 @@ DECLARE
   probe_a     uuid;
   probe_b     uuid;
   gen_key     text;
+  identities_before  bigint;
+  keys_before        bigint;
+  candidates_before  bigint;
+  identities_after   bigint;
+  keys_after         bigint;
+  candidates_after   bigint;
 BEGIN
   FOREACH t IN ARRAY new_tables LOOP
     IF to_regclass('public.' || t) IS NULL THEN
@@ -413,12 +419,15 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- Nothing was backfilled. If a later edit adds an INSERT above, this fails.
-  IF (SELECT count(*) FROM public.beverage_identities) <> 0
-     OR (SELECT count(*) FROM public.beverage_identity_keys) <> 0
-     OR (SELECT count(*) FROM public.beverage_identity_candidates) <> 0 THEN
-    RAISE EXCEPTION 'this migration must not write rows -- every identity is an assertion someone makes';
-  END IF;
+  -- Baseline, not a zero-row assertion: an absolute "this table has 0 rows"
+  -- check is only ever true by accident of what else has written to it, and
+  -- this migration is already applied to production where that accident no
+  -- longer holds once a real identity is confirmed. The DELTA below is what
+  -- "this migration must not write rows" actually means, and it holds on a
+  -- populated table too.
+  SELECT count(*) INTO identities_before FROM public.beverage_identities;
+  SELECT count(*) INTO keys_before       FROM public.beverage_identity_keys;
+  SELECT count(*) INTO candidates_before FROM public.beverage_identity_candidates;
 
   -- PROVE the two properties the design rests on, then roll the probes back.
   -- (a) the generated key separates two formats of the same wine;
@@ -458,11 +467,19 @@ BEGIN
   DELETE FROM public.beverage_identity_keys WHERE identity_id IN (probe_a, probe_b);
   DELETE FROM public.beverage_identities WHERE id IN (probe_a, probe_b);
 
-  IF (SELECT count(*) FROM public.beverage_identities) <> 0
-     OR (SELECT count(*) FROM public.beverage_identity_keys) <> 0 THEN
-    RAISE EXCEPTION 'the probes did not roll back';
+  SELECT count(*) INTO identities_after FROM public.beverage_identities;
+  SELECT count(*) INTO keys_after       FROM public.beverage_identity_keys;
+  SELECT count(*) INTO candidates_after FROM public.beverage_identity_candidates;
+
+  IF identities_after <> identities_before
+     OR keys_after       <> keys_before
+     OR candidates_after <> candidates_before THEN
+    RAISE EXCEPTION
+      'the probes did not roll back -- identities % -> %, keys % -> %, candidates % -> %',
+      identities_before, identities_after, keys_before, keys_after,
+      candidates_before, candidates_after;
   END IF;
 
-  RAISE NOTICE 'beverage_identities/_keys/_candidates created, RLS on, anon+authenticated revoked, identity_id added nullable to 3 registers, 0 rows written, key generation and GTIN ambiguity both proved.';
+  RAISE NOTICE 'beverage_identities/_keys/_candidates created, RLS on, anon+authenticated revoked, identity_id added nullable to 3 registers, no net rows written (identities % -> %, keys % -> %, candidates % -> %), key generation and GTIN ambiguity both proved.', identities_before, identities_after, keys_before, keys_after, candidates_before, candidates_after;
 END
 $$;

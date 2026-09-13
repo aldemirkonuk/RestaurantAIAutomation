@@ -67,6 +67,7 @@ DO $$
 DECLARE
   nullable text;
   admits_bad boolean;
+  probe_posting_id uuid;
 BEGIN
   IF to_regclass('public.price_index_postings') IS NULL THEN
     RAISE EXCEPTION 'price_index_postings does not exist; this migration is out of order';
@@ -115,19 +116,22 @@ BEGIN
         ('constraint-probe', 'retail_reference', 'GB-ENG', 'probe', DATE '2026-01-01',
          'probe', 'probe', 1, 'per bottle', 'https://example.invalid',
          'constraint-probe', repeat('0', 64), 'guessed')
-    $q$;
+      RETURNING id
+    $q$ INTO probe_posting_id;
     admits_bad := true;
   EXCEPTION WHEN check_violation THEN
     admits_bad := false;
   END;
   IF admits_bad THEN
-    -- Never reached with the CHECK in place; the DELETE is here so that a
-    -- failure of this assertion does not also leave a probe row behind.
-    DELETE FROM public.price_index_postings WHERE source_ref = 'constraint-probe';
+    -- Scoped by the id the INSERT itself just returned, never by source_ref:
+    -- a magic string is not a key, and price_index_postings is a real, live
+    -- table -- it would delete any genuine posting that happened to share
+    -- this source_ref, not only this probe's row.
+    DELETE FROM public.price_index_postings WHERE id = probe_posting_id;
     RAISE EXCEPTION 'issued_at_basis accepted a value outside its CHECK';
   END IF;
 
-  IF EXISTS (SELECT 1 FROM public.price_index_postings WHERE source_ref = 'constraint-probe') THEN
+  IF EXISTS (SELECT 1 FROM public.price_index_postings WHERE id = probe_posting_id) THEN
     RAISE EXCEPTION 'the constraint probe left a row behind';
   END IF;
 

@@ -52,7 +52,10 @@ import type {
   Notification,
   NotificationType,
 } from "../services/api/notifications";
-import { collapseStackedNotifications } from "../lib/notificationStack";
+import {
+  collapseStackedNotifications,
+  stackedNotificationLabel,
+} from "../lib/notificationStack";
 
 type NotificationStatus = "unread" | "read";
 type NotificationPriority = "low" | "medium" | "high" | "critical";
@@ -307,10 +310,18 @@ export function Notifications() {
     return () => clearInterval(interval);
   }, [refetch]);
 
+  // Collapse once, and keep BOTH halves of the result. `foldedById` says how
+  // many duplicates each surviving row swallowed; dropping it (as this page did)
+  // hides a count the library already computed and the header already shows.
+  const { items: dedupedNotifications, foldedById } = useMemo(
+    () =>
+      collapseStackedNotifications(
+        Array.isArray(notifications) ? notifications : [],
+      ),
+    [notifications],
+  );
+
   const filteredNotifications = useMemo(() => {
-    const safeNotifications = Array.isArray(notifications) ? notifications : [];
-    const { items: dedupedNotifications } =
-      collapseStackedNotifications(safeNotifications);
     return dedupedNotifications
       .filter((n) => {
         const matchesFilter = filter === "all" || n.status === filter;
@@ -346,7 +357,7 @@ export function Notifications() {
         );
       });
   }, [
-    notifications,
+    dedupedNotifications,
     filter,
     priorityFilter,
     searchQuery,
@@ -1298,6 +1309,13 @@ export function Notifications() {
                       const isStarred = starredNotifications.has(
                         notification.id,
                       );
+                      // Same treatment as Header.tsx: how many duplicates this
+                      // row stands for, so the inbox does not silently swallow
+                      // a count the bell menu shows.
+                      const stackLabel = stackedNotificationLabel(
+                        notification,
+                        foldedById[notification.id],
+                      );
                       // Display-order index so j/k focus matches what's on screen.
                       const displayIndex =
                         flatDisplayNotifications.indexOf(notification);
@@ -1363,6 +1381,11 @@ export function Notifications() {
                                   {formatTimestamp(notification.timestamp)}
                                 </span>
                               </div>
+                              {stackLabel && (
+                                <p className="text-[11px] text-gray-500 mb-1">
+                                  {stackLabel}
+                                </p>
+                              )}
                               <p className="text-sm text-gray-600 mb-2">
                                 {notification.message}
                               </p>

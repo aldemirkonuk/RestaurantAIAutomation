@@ -530,3 +530,8 @@ of them is kept.
   half**; typing needs neither, and neither can be retrofitted once someone has spoken into a
   microphone. **Open: Q4, Q6, Q7.**
   **Nothing built** — no file under `apps/`, `supabase/` or `services/` was changed.
+- 2026-09-12 — **fifth founder call: Q6 and Q7 closed**, recorded in ADR 0143's founder
+  answers. **Q6:** the speech provider is the browser's on-device recognition, the pattern
+  `SpotCountPanel.tsx:84-86` already uses. No audio and no transcript leave the device.
+  **Q7:** a spoken configuration is recorded as its rows, each marked `spoken`, and the
+  transcript is not kept. **Open: Q4.**

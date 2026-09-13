@@ -15,7 +15,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { creditsApi, type ProcurementCredit, type CreditStats } from '@/services/api/credits';
 import type { UnverifiedDelivery } from '@/services/api/receiving';
-import { flushDoorOutbox, type QueuedDoorReceipt } from '@/lib/doorOutbox';
+import {
+  dismissDroppedDoorReceipt,
+  flushDoorOutbox,
+  readDroppedDoorReceipts,
+  type DroppedDoorReceipt,
+  type QueuedDoorReceipt,
+} from '@/lib/doorOutbox';
 import { offlineStorage, type PendingMutation } from '@/lib/offline-storage';
 import { num } from './rc-format';
 
@@ -167,7 +173,7 @@ export interface StaffLaneData {
  * restaurant's deliveries/credits for a beat (or until refetch) after a
  * restaurant switch — the cross-tenant leak class found on the p3 wave.
  */
-function useActiveRestaurantId(): string {
+export function useActiveRestaurantId(): string {
   const { activeRestaurantId, user } = useAuth();
   return activeRestaurantId || user?.restaurantId || '';
 }
@@ -567,28 +573,25 @@ export function useOwnerRecovery(): RecoveryData {
 /**
  * `doorOutbox.ts` keeps this literal private; cited here rather than
  * re-exported so this page cannot drift from the queue it watches
- * (lib/doorOutbox.ts:24).
+ * (`const MUTATION_TYPE` — lib/doorOutbox.ts:23).
  */
 const DOOR_MUTATION_TYPE = 'receiving.door';
 
 /**
- * Storage key for drops this page has pinned, PER RESTAURANT. Survives reload
- * on purpose.
+ * ONE store for a drop, and it is not this file's.
  *
- * It used to be one global key. A receiving tablet at the door is shared, and
- * restaurant switching is a first-class gesture, so a receipt dropped under
- * restaurant A rendered as a `role="alert"` under restaurant B — naming that
- * receipt's label and its order-id prefix to a tenant with no right to either.
+ * This page used to keep its own per-restaurant pins AND reconstruct which
+ * receipts had been dropped by diffing the queue around each flush, while
+ * `doorOutbox.ts` wrote its own record of the same event and `DoorNext` kept a
+ * third count in memory. One drop wrote to two of them and dismissing it in
+ * one cleared neither of the others.
+ *
+ * The flush is now the only writer, into the key family this page defined
+ * (`mudavym.receiving.outboxDrops.<restaurantId>`), and this page reads and
+ * dismisses through `lib/doorOutbox.ts`. The reconstruction is gone with it:
+ * the record is written by the code that caused the drop, so it names the
+ * order exactly instead of guessing from a diff.
  */
-const DROPS_KEY_PREFIX = 'mudavym.receiving.outboxDrops';
-
-/** The pre-scoping key. Read exactly once per browser, then removed — see `readDrops`. */
-const DROPS_KEY_LEGACY = 'mudavym.receiving.outboxDrops';
-
-function dropsKey(restaurantId: string): string {
-  // An empty id would collapse back to the legacy key and re-create the leak.
-  return `${DROPS_KEY_PREFIX}.${restaurantId || 'unscoped'}`;
-}
 
 export interface QueuedReceiptVM {
   id: string;
@@ -604,30 +607,40 @@ export interface DroppedReceiptVM {
   label: string;
   droppedAt: string;
   /**
-   * False when a flush both sent and dropped in one pass — the diff cannot
-   * then prove WHICH removed receipt was the dropped one, and the pin says so
-   * instead of guessing.
-   */
-  exact: boolean;
-  /**
-   * True for a pin inherited from the pre-scoping global key. The restaurant
-   * it belongs to was never recorded, so it is shown — losing a pinned drop is
-   * the inv-09 defect this rail exists to fix — but it is NOT claimed as this
+   * True for a pin inherited from a pre-scoping key. The restaurant it belongs
+   * to was never recorded, so it is shown — losing a pinned drop is the inv-09
+   * defect this rail exists to fix — but it is NOT claimed as this
    * restaurant's.
    */
   tenantUnknown?: boolean;
 }
 
 /**
+ * There is no `exact` flag any more. It existed because this page inferred the
+ * dropped receipts by diffing the queue, and a pass that both sent and dropped
+ * could not prove which removed entry was which. The flush writes the record
+ * itself now, keyed on the queue id, so every pin names its own order.
+ */
+function toDroppedVM(d: DroppedDoorReceipt): DroppedReceiptVM {
+  return {
+    id: d.id,
+    label: d.orderLabel,
+    droppedAt: d.droppedAt,
+    ...(d.tenantUnknown ? { tenantUnknown: true as const } : {}),
+  };
+}
+
+/**
  * The most recent flush. `attempted: false` is a first-class state: the outbox
- * returns `{sent:0, failed:0}` without touching the network when the device is
- * offline (lib/doorOutbox.ts:94), and stamping that with a timestamp printed
- * "last sync 14:32 · sent 0 · failed 0" directly under a header reading
- * "offline — holding".
+ * returns a zeroed result without touching the network when the device is
+ * offline (the `if (!navigator.onLine)` guard near the top of
+ * `flushDoorOutbox`), and stamping that with a timestamp printed
+ * "last sync 14:32 · sent 0 · failed 0"
+ * directly under a header reading "offline — holding".
  */
 export type FlushRecord =
   | { attempted: true; sent: number; failed: number; at: string }
-  | { attempted: false; reason: 'offline'; at: string };
+  | { attempted: false; reason: 'offline' | 'unreachable'; at: string };
 
 export interface OutboxData {
   /** Null when local storage itself could not be read — unknown, not empty. */
@@ -638,58 +651,6 @@ export interface OutboxData {
   online: boolean;
   dismissDrop: (id: string) => void;
   flushNow: () => void;
-}
-
-function parseDrops(raw: string | null): DroppedReceiptVM[] {
-  if (!raw) return [];
-  try {
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? (arr as DroppedReceiptVM[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * MIGRATION, decided rather than defaulted. The pre-scoping key holds pins
- * whose restaurant was never recorded, and the three options were:
- *
- *   discard      — silently loses a receipt that needs a person. That IS the
- *                  inv-09 defect; refused.
- *   re-attribute — moves them to whichever restaurant is active now and claims
- *                  them as its own. That is the leak this fix exists to close,
- *                  performed once by hand; refused.
- *   adopt, marked — taken by the first restaurant to open the page, stamped
- *                  `tenantUnknown`, and rendered saying the restaurant was not
- *                  recorded. Nothing is lost and nothing is claimed.
- *
- * The legacy key is removed on adoption so the pins land in exactly one place
- * instead of fanning out to every tenant that later opens the page.
- */
-function readDrops(restaurantId: string): DroppedReceiptVM[] {
-  try {
-    const scoped = parseDrops(window.localStorage.getItem(dropsKey(restaurantId)));
-    const legacyRaw = window.localStorage.getItem(DROPS_KEY_LEGACY);
-    if (!legacyRaw) return scoped;
-
-    const inherited = parseDrops(legacyRaw)
-      .filter((d) => !scoped.some((s) => s.id === d.id))
-      .map((d) => ({ ...d, tenantUnknown: true }));
-    const merged = [...scoped, ...inherited];
-    window.localStorage.setItem(dropsKey(restaurantId), JSON.stringify(merged));
-    window.localStorage.removeItem(DROPS_KEY_LEGACY);
-    return merged;
-  } catch {
-    return [];
-  }
-}
-
-function writeDrops(restaurantId: string, drops: DroppedReceiptVM[]): void {
-  try {
-    window.localStorage.setItem(dropsKey(restaurantId), JSON.stringify(drops));
-  } catch {
-    /* storage blocked — the in-memory pins still render this session */
-  }
 }
 
 function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
@@ -704,14 +665,14 @@ function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
 }
 
 /**
- * TODO(door-outbox, blocked): the QUEUE itself is still untenanted.
- * `doorOutbox.ts` writes every receipt under the single mutation type
- * `receiving.door` and `QueuedDoorReceipt` (`{orderId, orderLabel, body}`)
- * carries no restaurant id, so a queued receipt cannot be attributed to a
- * tenant from this side at all — filtering the read alone would return zero,
- * which is strictly worse. The write side needs to stamp the id; that file is
- * owned by a separate review. This filter is the consuming half, and it is
- * INERT until then: nothing sets the field today, so every entry passes.
+ * The consuming half of the queue's tenant stamp. `QueuedDoorReceipt` now
+ * carries `restaurantId`, written at the tap (lib/doorOutbox.ts), so this is
+ * live rather than inert.
+ *
+ * An UNSTAMPED entry still passes, on purpose: those were queued before the
+ * stamp existed and their house was never recorded. Hiding them would lose a
+ * pending delivery to make a filter tidy, which is the trade this whole rail
+ * refuses.
  */
 function belongsToRestaurant(m: PendingMutation, restaurantId: string): boolean {
   const tagged = (m.data as { restaurantId?: unknown } | undefined)?.restaurantId;
@@ -721,19 +682,38 @@ function belongsToRestaurant(m: PendingMutation, restaurantId: string): boolean 
 
 /**
  * The pending-outbox rail's data. This is the defect fix the motion canvas
- * named (inv-09, "Nothing vanishes; the drop becomes a pin"): the legacy page
- * calls `watchDoorOutbox` and throws the flush result away, so a receipt that
- * `flushDoorOutbox` permanently drops (4xx, or 8 failed attempts —
- * doorOutbox.ts:115) is indistinguishable from one that was delivered. Here
- * the queue is snapshotted around each flush; anything that left the queue
- * beyond what `sent` accounts for is pinned, named, and stays until a person
- * dismisses it.
+ * named (inv-09, "Nothing vanishes; the drop becomes a pin"): `flushDoorOutbox`
+ * DELETES a receipt it gives up on (a 4xx, or the eighth failed attempt — the
+ * `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)` branch of
+ * `flushDoorOutbox`, lib/doorOutbox.ts), so the pending count falls by one
+ * exactly as it does on a delivery and a permanent loss is indistinguishable
+ * from a success.
+ *
+ * ON THE LEGACY PAGE, stated as a mechanism rather than as a description,
+ * because this paragraph has been wrong twice in four days — once saying that
+ * page "throws the flush result away", once saying it "accumulates `dropped`".
+ * Grep `watchDoorOutbox(` in DoorReceipt.tsx: the callback takes no argument.
+ * That page consults no field of the result at all; it re-reads the drop record
+ * and the strand on every pass, which is the same thing this hook does, for the
+ * same reason — a count cannot say WHICH receipt, and a count in component
+ * state does not survive the navigate. The distinction is held on both pages;
+ * neither holds it in a number.
+ *
+ * CORRECTED AGAIN 2026-09-12 — the paragraph here used to say this hook "keeps
+ * its own reconstruction rather than reading `dropped`", snapshotting the queue
+ * around each flush and pinning whatever left beyond what `sent` accounts for.
+ * That was true for two commits. `57e59ae2` made the flush the ONLY writer: it
+ * records each drop keyed on the queue id BEFORE deleting the entry, so the
+ * names are read back (`readDroppedDoorReceipts`), not inferred — see the
+ * "The drops are READ, not reconstructed" note inside `flushNow` below, which
+ * is the code this paragraph had started to contradict. A pin still stays until
+ * a person dismisses it.
  */
 export function useDoorOutbox(): OutboxData {
   const rid = useActiveRestaurantId();
   const [queued, setQueued] = useState<QueuedReceiptVM[] | null>(null);
   const [drops, setDrops] = useState<DroppedReceiptVM[]>(() =>
-    typeof window === 'undefined' ? [] : readDrops(rid),
+    typeof window === 'undefined' ? [] : readDroppedDoorReceipts(rid).map(toDroppedVM),
   );
   const [lastFlush, setLastFlush] = useState<FlushRecord | null>(null);
   const [online, setOnline] = useState(() =>
@@ -746,30 +726,23 @@ export function useDoorOutbox(): OutboxData {
   // arriving through React state instead of through storage.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    setDrops(readDrops(rid));
+    setDrops(readDroppedDoorReceipts(rid).map(toDroppedVM));
     setLastFlush(null);
   }, [rid]);
 
   const refreshQueue = useCallback(async () => {
     try {
       const pending = await offlineStorage.getPendingMutationsByType(DOOR_MUTATION_TYPE);
+      // Rendered exactly as stored — attempt count and last error, both read
+      // from the entry. The rail deliberately does NOT ask whether the outbox
+      // gave up on one: five attempts to answer that durably each shipped a
+      // defect, and ADR 0140 records why the question has no honest answer
+      // while the storage layer reports a failed write as a success.
       setQueued(pending.filter((m) => belongsToRestaurant(m, rid)).map(toQueuedVM));
     } catch {
       setQueued(null); // unknown, and rendered as unknown — never as empty
     }
   }, [rid]);
-
-  const pinDrops = useCallback(
-    (next: DroppedReceiptVM[]) => {
-      if (next.length === 0) return;
-      setDrops((prev) => {
-        const merged = [...prev, ...next.filter((d) => !prev.some((p) => p.id === d.id))];
-        writeDrops(rid, merged);
-        return merged;
-      });
-    },
-    [rid],
-  );
 
   const flushNow = useCallback(async () => {
     if (busyRef.current) return;
@@ -783,56 +756,48 @@ export function useDoorOutbox(): OutboxData {
         beforeKnown = false;
       }
 
-      // `flushDoorOutbox` returns {sent:0, failed:0} WITHOUT attempting
-      // anything when the device is offline (lib/doorOutbox.ts:94). Two
-      // independent readings separate that non-attempt from a real flush that
-      // found nothing to send, neither of which requires touching that file:
+      // `flushDoorOutbox` returns a zeroed result WITHOUT attempting anything
+      // when the device is offline, and never rejects — a pass that could not
+      // read the queue says `unreachable` instead. Three readings separate a
+      // non-attempt from a real flush that found nothing to send:
       //
       //  1. the same predicate it guards on, read here first;
-      //  2. its own loop invariant — it iterates the pending queue and every
+      //  2. its own `unreachable` flag;
+      //  3. its loop invariant — it iterates the pending queue and every
       //     iteration increments exactly one of sent/failed, so a non-empty
       //     queue returning 0+0 cannot have run.
       const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
-      const res = offlineNow ? { sent: 0, failed: 0 } : await flushDoorOutbox();
-      const raced = beforeKnown && before.length > 0 && res.sent + res.failed === 0;
+      const res = offlineNow ? null : await flushDoorOutbox();
+      const raced =
+        beforeKnown && before.length > 0 && res !== null && res.sent + res.failed === 0;
       const at = new Date().toISOString();
-      setLastFlush(
-        offlineNow || raced ? { attempted: false, reason: 'offline', at } : { ...res, attempted: true, at },
-      );
+      if (res === null || raced) {
+        setLastFlush({ attempted: false, reason: 'offline', at });
+      } else if (res.unreachable) {
+        setLastFlush({ attempted: false, reason: 'unreachable', at });
+      } else {
+        setLastFlush({ attempted: true, sent: res.sent, failed: res.failed, at });
+      }
 
-      if (beforeKnown && res.failed > 0) {
-        let after: PendingMutation[] = [];
-        try {
-          after = await offlineStorage.getPendingMutationsByType(DOOR_MUTATION_TYPE);
-        } catch {
-          after = [];
-        }
-        const afterIds = new Set(after.map((m) => m.id));
-        const removed = before.filter((m) => !afterIds.has(m.id));
-        // removed = delivered + permanently dropped. `sent` accounts for the
-        // delivered ones; the remainder were dropped by flushDoorOutbox.
-        const droppedCount = Math.max(0, removed.length - res.sent);
-        if (droppedCount > 0) {
-          // When nothing was sent in the same pass, every removed item was a
-          // drop and the names are exact. Otherwise the pin is honest about
-          // the ambiguity rather than pointing at the wrong receipt.
-          const exact = res.sent === 0;
-          const candidates = exact ? removed : removed.slice(0, droppedCount);
-          pinDrops(
-            candidates.map((m) => ({
-              id: m.id,
-              label: toQueuedVM(m).label,
-              droppedAt: new Date().toISOString(),
-              exact,
-            })),
-          );
-        }
+      // The drops are READ, not reconstructed. The flush wrote each one down
+      // itself, keyed on the queue id and scoped to this restaurant, so there
+      // is nothing left to infer from a before/after diff — and nothing that
+      // can point at the wrong receipt when a pass both sends and drops.
+      //
+      // A receipt the flush gave up on but could not RECORD produces no drop
+      // pin: it was not dropped, it is still in the queue, and it renders in
+      // the queue list above like any other entry. The flush tries to leave the
+      // reason on it as `lastError`, which this rail shows — best-effort, since
+      // that write goes through the storage that refused the record in the
+      // first place. ADR 0140 is why nothing here claims more than that.
+      if (res !== null && res.dropped > 0) {
+        setDrops(readDroppedDoorReceipts(rid).map(toDroppedVM));
       }
       await refreshQueue();
     } finally {
       busyRef.current = false;
     }
-  }, [pinDrops, refreshQueue]);
+  }, [refreshQueue, rid]);
 
   useEffect(() => {
     void refreshQueue();
@@ -859,11 +824,9 @@ export function useDoorOutbox(): OutboxData {
 
   const dismissDrop = useCallback(
     (id: string) => {
-      setDrops((prev) => {
-        const next = prev.filter((d) => d.id !== id);
-        writeDrops(rid, next);
-        return next;
-      });
+      // Through the shared store, so the door screen and this rail cannot end
+      // up disagreeing about which losses are still outstanding.
+      setDrops(dismissDroppedDoorReceipt(rid, id).map(toDroppedVM));
     },
     [rid],
   );

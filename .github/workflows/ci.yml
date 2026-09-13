@@ -771,6 +771,28 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_fk_targets_exist.py --self-test
 
+      # Added 2026-09-12. Two migrations applied to production that day passed
+      # only because production happened to be empty in the two specific ways
+      # each one's own DO $$ block assumed: an absolute "this table has 0
+      # rows" assertion, and a DELETE scoped by a magic string rather than a
+      # returned key. Both assumptions broke the moment real data existed.
+      # Measured against a tree holding the pre-fix files, this guard exits 1
+      # naming both; against the fixed tree it exits 0. Eight further files
+      # carry the magic-string DELETE shape and one more carries the absolute
+      # count shape, all pre-existing and out of this fix's scope -- named in
+      # the script's own docstring as a grandfather list, not silently
+      # excluded by loosening the pattern.
+      #
+      # Exit 2 = could not check: no migrations directory, or zero .sql files
+      # found. Never a silent pass.
+      - name: A migration's own probe cannot corrupt a populated table
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_migration_probe_safety.py
+
+      - name: ...and that guard's own failure path fires
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_migration_probe_safety.py --self-test
+
       # OD-72/OD-73 ratchet, added 2026-08-26. Both were closed by one-time
       # sweeps, and the class came back the NEXT DAY: OD-73's row records
       # "0 public tables remain RLS-off", verified against the live database,
@@ -800,6 +822,27 @@ jobs:
       - name: Every route declares whether it is authenticated
         if: ${{ !cancelled() }}
         run: ./scripts/check_route_exposure.py
+
+      # ADR 0146. Ask AI turns an utterance into a model call and then into a
+      # purchase order, so it is the one surface where a caller sets the pace
+      # of the spending. Four faults were measured on it on 2026-09-12 and all
+      # four were of the shape this repository keeps meeting: the defence
+      # LOOKED present. A global ValidationPipe validated nothing there because
+      # an inline `@Body()` type erases and leaves the pipe no metatype; the
+      # global rate limiter is an APP_GUARD and so runs before JwtAuthGuard,
+      # keys on the IP, and let this route fall through to 100/minute; the
+      # spend ceiling was consulted only in the two retry branches; and the
+      # controller's only guard was JwtAuthGuard, so any member could confirm
+      # any other member's proposal.
+      #
+      # A careful pass would close all four and survive until the next
+      # refactor. This is the guard instead. Every check in it was proven to
+      # go red by mutating exactly the thing it protects -- seventeen of them,
+      # including one that initially did NOT fire and was tightened because a
+      # substring matched a call site after the declaration was renamed.
+      - name: Ask AI is bounded, not merely guarded
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_ask_ai_is_gated.py
 
       # ADR 0110's addendum. The seal on a card-on-file change was added to
       # `payment-methods/**` and stopped at that module's edge: an instrument is

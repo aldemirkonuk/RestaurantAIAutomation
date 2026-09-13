@@ -142,7 +142,7 @@
 | OD-25 | **Agreed** — weekly skill-health job owner to be fixed to one department (Decision Office to reconcile the two conflicting docs) | 2026-08-24 |
 | OD-28 | **Research & Math promoted to its own division** (7 total), honouring ADR 0001's compensation term | 2026-08-24 |
 | OD-34 | **Retire-to-write adopted org-wide** — initial 693-doc generation exempt (CLAUDE.md §3). **Exemption scope ratified by the founder 2026-08-28** (after the adversarial audit flagged that waves 2–3 had read themselves into it without asking): structured wave-generated unit artifacts — agent-stacks, agendas, canvases — ARE the generation; retire-to-write continues to bind every non-wave document | 2026-08-24 |
-| OD-27 | **Deferred by founder** — `wineops` strings stay for now; full recalibration into Mudavym is a planned migration, not a hotfix | 2026-08-24 |
+| OD-27 | **Deferred by founder** — `wineops` strings stay for now; full recalibration into Mudavym is a planned migration, not a hotfix [PARTLY LIFTED 2026-09-12 by the founder: the verification, password-reset and team-invite emails are renamed to Mudavym now, because a WineOps email that opens a Mudavym door reads like phishing. Every other string still waits for the migration. ADR 0143, founder answers.] | 2026-08-24 |
 | OD-08 | **Folded into OD-21** and resolved with it | 2026-08-24 |
 | OD-21 | **Obsidian structure locked** — `.planning/` vault root, corpus in place now with clean slate as end goal, Dataview adopted, unique prefixed filenames ([OBSIDIAN_VAULT.md](../foundation/OBSIDIAN_VAULT.md)) | 2026-08-24 |
 | — | **Skills live in `.claude/skills/`** — auto-discovered, committed, PR-reviewable | 2026-08-24 |
