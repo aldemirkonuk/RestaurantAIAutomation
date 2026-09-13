@@ -1,4 +1,8 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../../database/database.service";
 
@@ -48,8 +52,9 @@ export interface CaptureResult {
  * fix (transport-derived attribution via a dedicated inbound domain) is Phases 1–2 in
  * .planning/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md.
  *
- * Best-effort throughout: every method swallows its own errors (and tolerates the table not
- * yet existing) so inbound processing is never blocked.
+ * Best-effort on the capture and read paths: those methods swallow their own errors (and
+ * tolerate the table not yet existing) so inbound processing is never blocked. `promote` is the
+ * exception: it creates a vendor, so a read or write it cannot complete is a 503, not a guess.
  */
 @Injectable()
 export class ProspectsService {
@@ -420,87 +425,126 @@ export class ProspectsService {
    * Promote a prospect to a real (custom) provider and mark it promoted. Deduped: if a provider
    * with the same email already exists for this restaurant, reuse it instead of manufacturing a
    * duplicate (which would destabilize the inbound provider match).
+   *
+   * Not best-effort, unlike the capture path: this creates a vendor. supabase-js resolves
+   * { data, error } rather than throwing, so every read here binds `error`. Unbound, a failed
+   * dedupe read looked exactly like "no vendor with this email yet" and a second vendor was
+   * inserted, a failed prospect read looked like "no such prospect", and a failed status update
+   * still answered { promoted: true }. Each of those is now a 503. { promoted: false } is kept
+   * for the two answers that were actually read: no such prospect in this house, and an insert
+   * the database refused with no winning row to link.
    */
   async promote(
     restaurantId: string,
     prospectId: string,
   ): Promise<{ promoted: boolean; providerId?: string; reused?: boolean }> {
-    try {
-      const { data: prospect } = await this.databaseService.supabase
+    const { data: prospect, error: prospectError } =
+      await this.databaseService.supabase
         .from("email_prospects")
         .select("id, domain, sender_email, sender_name, status")
         .eq("restaurant_id", restaurantId)
         .eq("id", prospectId)
         .maybeSingle();
-      if (!prospect) return { promoted: false };
-      const p = prospect as any;
+    if (prospectError) {
+      this.logger.error(
+        `promote: prospect read failed for ${prospectId} — ${prospectError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read this prospect; no vendor was added",
+      );
+    }
+    if (!prospect) return { promoted: false };
+    const p = prospect as any;
 
-      // Dedupe: an existing (non-deleted) provider with this email on this restaurant wins.
-      let providerId: string | null = null;
-      let reused = false;
-      if (p.sender_email) {
-        const { data: existing } = await this.databaseService.supabase
+    // Dedupe: an existing (non-deleted) provider with this email on this restaurant wins.
+    let providerId: string | null = null;
+    let reused = false;
+    if (p.sender_email) {
+      const { data: existing, error: existingError } =
+        await this.databaseService.supabase
           .from("providers")
           .select("id")
           .eq("restaurant_id", restaurantId)
           .ilike("contact_email", p.sender_email)
           .is("deleted_at", null)
           .limit(1);
-        if (existing?.[0]) {
-          providerId = (existing[0] as any).id;
-          reused = true;
-        }
+      if (existingError) {
+        this.logger.error(
+          `promote: vendor dedupe read failed for ${prospectId} — ${existingError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not check for an existing vendor with this email; no vendor was added",
+        );
       }
+      if (existing?.[0]) {
+        providerId = (existing[0] as any).id;
+        reused = true;
+      }
+    }
 
-      if (!providerId) {
-        const { data: provider, error } = await this.databaseService.supabase
-          .from("providers")
-          .insert({
-            restaurant_id: restaurantId,
-            name: p.sender_name || p.domain,
-            contact_email: p.sender_email ?? null,
-            is_custom: true,
-            is_active: true,
-          })
-          .select("id")
-          .single();
-        if (error) {
-          // Lost a race against the unique index — re-select the winner.
-          const { data: raced } = await this.databaseService.supabase
+    if (!providerId) {
+      const { data: provider, error } = await this.databaseService.supabase
+        .from("providers")
+        .insert({
+          restaurant_id: restaurantId,
+          name: p.sender_name || p.domain,
+          contact_email: p.sender_email ?? null,
+          is_custom: true,
+          is_active: true,
+        })
+        .select("id")
+        .single();
+      if (error) {
+        // Lost a race against the unique index — re-select the winner.
+        const { data: raced, error: racedError } =
+          await this.databaseService.supabase
             .from("providers")
             .select("id")
             .eq("restaurant_id", restaurantId)
             .ilike("contact_email", p.sender_email ?? "")
             .is("deleted_at", null)
             .limit(1);
-          if (raced?.[0]) {
-            providerId = (raced[0] as any).id;
-            reused = true;
-          } else {
-            this.logger.error(
-              `promote: provider insert failed — ${error.message}`,
-            );
-            return { promoted: false };
-          }
-        } else {
-          providerId = (provider as any).id;
+        if (racedError) {
+          this.logger.error(
+            `promote: provider insert refused (${error.message}) and the re-read failed — ${racedError.message}`,
+          );
+          throw new ServiceUnavailableException(
+            "Adding the vendor was refused and the re-check could not be read; retry",
+          );
         }
+        if (raced?.[0]) {
+          providerId = (raced[0] as any).id;
+          reused = true;
+        } else {
+          this.logger.error(
+            `promote: provider insert failed — ${error.message}`,
+          );
+          return { promoted: false };
+        }
+      } else {
+        providerId = (provider as any).id;
       }
-
-      await this.databaseService.supabase
-        .from("email_prospects")
-        .update({
-          status: "promoted",
-          promoted_provider_id: providerId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", prospectId);
-
-      return { promoted: true, providerId: providerId ?? undefined, reused };
-    } catch (e: any) {
-      this.logger.warn(`promote failed for ${prospectId}: ${e?.message}`);
-      return { promoted: false };
     }
+
+    const { error: markError } = await this.databaseService.supabase
+      .from("email_prospects")
+      .update({
+        status: "promoted",
+        promoted_provider_id: providerId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("restaurant_id", restaurantId)
+      .eq("id", prospectId);
+    if (markError) {
+      this.logger.error(
+        `promote: marking ${prospectId} promoted failed — ${markError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        `The vendor was ${reused ? "linked" : "added"}, but the prospect could not be marked promoted; retrying links the same vendor`,
+      );
+    }
+
+    return { promoted: true, providerId: providerId ?? undefined, reused };
   }
 
   /** Dismiss a prospect (won't be resurrected by a repeat outreach). */

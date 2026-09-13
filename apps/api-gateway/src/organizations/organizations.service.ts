@@ -7,6 +7,7 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 
@@ -406,13 +407,17 @@ export class OrganizationsService {
           .select("id, name, city, chain_id, updated_at, restaurant_chains(name)")
           .in("organization_id", orgIds);
 
+      // Every read below refuses on error rather than carrying on. An empty
+      // list here routes the person to /no-access (ADR 0133), and a list
+      // missing one read's branches is served as the whole list, so a failed
+      // read must never look like "no branches" or "these are all of them".
       if (restErr) {
         this.logger.error(
           `Failed to fetch branches for user ${userId}: ${restErr.message}`,
         );
-      } else {
-        for (const r of restaurants ?? []) byId.set(r.id, mapRow(r));
+        throw new ServiceUnavailableException("Could not read branches");
       }
+      for (const r of restaurants ?? []) byId.set(r.id, mapRow(r));
     }
 
     // Legacy / org-less restaurants: still list anything the user can access via URA.
@@ -428,26 +433,38 @@ export class OrganizationsService {
       this.logger.error(
         `Failed to fetch URA branches for user ${userId}: ${uraErr.message}`,
       );
-    } else {
-      for (const row of uraRows ?? []) {
-        const r = (row as any).restaurants;
-        if (r?.id && !byId.has(r.id)) byId.set(r.id, mapRow(r));
-      }
+      throw new ServiceUnavailableException("Could not read branches");
+    }
+    for (const row of uraRows ?? []) {
+      const r = (row as any).restaurants;
+      if (r?.id && !byId.has(r.id)) byId.set(r.id, mapRow(r));
     }
 
     // Final fallback: users.restaurant_id (pre-org single-restaurant accounts)
     if (byId.size === 0) {
-      const { data: user } = await this.databaseService.supabase
+      const { data: user, error: userErr } = await this.databaseService.supabase
         .from("users")
         .select("restaurant_id")
         .eq("user_id", userId)
         .maybeSingle();
+      if (userErr) {
+        this.logger.error(
+          `Failed to read legacy restaurant_id for user ${userId}: ${userErr.message}`,
+        );
+        throw new ServiceUnavailableException("Could not read branches");
+      }
       if (user?.restaurant_id) {
-        const { data: r } = await this.databaseService.supabase
+        const { data: r, error: rowErr } = await this.databaseService.supabase
           .from("restaurants")
           .select("id, name, city, chain_id, updated_at, restaurant_chains(name)")
           .eq("id", user.restaurant_id)
           .maybeSingle();
+        if (rowErr) {
+          this.logger.error(
+            `Failed to read legacy branch for user ${userId}: ${rowErr.message}`,
+          );
+          throw new ServiceUnavailableException("Could not read branches");
+        }
         if (r) byId.set(r.id, mapRow(r));
       }
     }

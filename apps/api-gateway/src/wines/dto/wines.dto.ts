@@ -1,16 +1,36 @@
 import {
   IsIn,
+  IsInt,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
+  Max,
+  MaxLength,
   Min,
 } from "class-validator";
 import { Transform } from "class-transformer";
 
+/**
+ * Longest free-text term a library search accepts. The longest name or producer
+ * in datasets/menu_corpus/extracted/*.json is 63 characters (9,598 strings
+ * measured 2026-09-12); OCR'd names reach this endpoint too
+ * (apps/web/src/services/wineDetection.ts:343), so the cap leaves headroom
+ * rather than sitting on the corpus maximum.
+ */
+export const WINE_SEARCH_MAX_LENGTH = 200;
+
+/**
+ * Largest page GET /wines serves. The largest page any client asks for is 500
+ * (useCellarNextData.ts BOOK_READ_LIMIT, useWineLibraryPage.ts:98,
+ * SommelierAI.tsx:138, useDashboardPage.ts:148, OneTapActionCenter.tsx:502).
+ */
+export const WINE_SEARCH_MAX_LIMIT = 500;
+
 export class GetWinesQueryDto {
   @IsOptional()
   @IsString()
+  @MaxLength(WINE_SEARCH_MAX_LENGTH)
   search?: string;
 
   @IsOptional()
@@ -49,8 +69,9 @@ export class GetWinesQueryDto {
 
   @IsOptional()
   @Transform(({ value }) => Number(value))
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(WINE_SEARCH_MAX_LIMIT)
   limit?: number;
 
   @IsOptional()
@@ -69,12 +90,15 @@ export class WineMetaQueryDto {
 export class WineSuggestionsQueryDto {
   @IsOptional()
   @IsString()
+  @MaxLength(WINE_SEARCH_MAX_LENGTH)
   text?: string;
 
+  /** An autocomplete list. The web's only definition defaults to 10. */
   @IsOptional()
   @Transform(({ value }) => Number(value))
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(50)
   limit?: number;
 }
 

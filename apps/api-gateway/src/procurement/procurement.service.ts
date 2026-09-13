@@ -5586,7 +5586,10 @@ export class ProcurementService {
         restaurantId,
         error: error.message,
       });
-      return [];
+      // A failed read is not an empty queue. Returning `[]` here made
+      // `GET /orders/pending/count` answer `{ count: 0 }` -- "nothing is
+      // waiting on you" -- over a read that never happened.
+      throw new ServiceUnavailableException("Could not read pending orders");
     }
 
     return (data || []).map((row: any) => {

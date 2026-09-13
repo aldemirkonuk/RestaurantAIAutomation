@@ -51,9 +51,13 @@ export enum NotificationPriority {
 // ============================================================================
 
 export class GetNotificationsQueryDto {
-  @ApiProperty({ description: "User ID" })
+  @ApiPropertyOptional({
+    description:
+      "Ignored unless it names the caller: the token decides the user",
+  })
+  @IsOptional()
   @IsUUID()
-  userId: string;
+  userId?: string;
 
   @ApiPropertyOptional({ description: "Restaurant ID filter" })
   @IsUUID()
@@ -96,9 +100,13 @@ export class GetNotificationsQueryDto {
 }
 
 export class GetUnreadQueryDto {
-  @ApiProperty({ description: "User ID" })
+  @ApiPropertyOptional({
+    description:
+      "Ignored unless it names the caller: the token decides the user",
+  })
+  @IsOptional()
   @IsUUID()
-  userId: string;
+  userId?: string;
 
   @ApiPropertyOptional({ description: "Restaurant ID filter" })
   @IsUUID()
@@ -115,9 +123,13 @@ export class GetUnreadQueryDto {
 }
 
 export class GetUnreadCountQueryDto {
-  @ApiProperty({ description: "User ID" })
+  @ApiPropertyOptional({
+    description:
+      "Ignored unless it names the caller: the token decides the user",
+  })
+  @IsOptional()
   @IsUUID()
-  userId: string;
+  userId?: string;
 
   @ApiPropertyOptional({ description: "Restaurant ID filter" })
   @IsUUID()
@@ -126,15 +138,25 @@ export class GetUnreadCountQueryDto {
 }
 
 export class GetPreferencesQueryDto {
-  @ApiProperty({ description: "User ID" })
+  // The user comes from the token. A supplied id is accepted only when it names
+  // the caller (the web client sends its own); any other id is a 403.
+  @ApiPropertyOptional({
+    description:
+      "Optional. Must equal the signed-in user's id if sent; the token decides.",
+  })
   @IsUUID()
-  userId: string;
+  @IsOptional()
+  userId?: string;
 }
 
 export class GetHistoryQueryDto {
-  @ApiProperty({ description: "User ID" })
+  @ApiPropertyOptional({
+    description:
+      "Ignored unless it names the caller: the token decides the user",
+  })
+  @IsOptional()
   @IsUUID()
-  userId: string;
+  userId?: string;
 
   @ApiPropertyOptional({ default: 30 })
   @Transform(({ value }) => parseInt(value, 10))
@@ -146,9 +168,13 @@ export class GetHistoryQueryDto {
 }
 
 export class MarkAllReadQueryDto {
-  @ApiProperty({ description: "User ID" })
+  @ApiPropertyOptional({
+    description:
+      "Ignored unless it names the caller: the token decides the user",
+  })
+  @IsOptional()
   @IsUUID()
-  userId: string;
+  userId?: string;
 
   @ApiPropertyOptional({ description: "Restaurant ID filter" })
   @IsUUID()
@@ -157,9 +183,13 @@ export class MarkAllReadQueryDto {
 }
 
 export class DeleteAllReadQueryDto {
-  @ApiProperty({ description: "User ID" })
+  @ApiPropertyOptional({
+    description:
+      "Ignored unless it names the caller: the token decides the user",
+  })
+  @IsOptional()
   @IsUUID()
-  userId: string;
+  userId?: string;
 }
 
 // ============================================================================
@@ -249,9 +279,15 @@ export class LowStockPrefsDto {
 }
 
 export class UpdatePreferencesDto {
-  @ApiProperty({ description: "User ID" })
+  // Kept whitelisted so the web client's body (which carries its own id) still
+  // passes forbidNonWhitelisted. The token decides; a different id is a 403.
+  @ApiPropertyOptional({
+    description:
+      "Optional. Must equal the signed-in user's id if sent; the token decides.",
+  })
   @IsUUID()
-  userId: string;
+  @IsOptional()
+  userId?: string;
 
   @ApiPropertyOptional()
   @IsBoolean()
@@ -298,9 +334,13 @@ export class UpdatePreferencesDto {
 }
 
 export class PushSubscribeDto {
-  @ApiProperty({ description: "User ID" })
+  @ApiPropertyOptional({
+    description:
+      "Ignored unless it names the caller: the token decides the user",
+  })
+  @IsOptional()
   @IsUUID()
-  userId: string;
+  userId?: string;
 
   @ApiProperty({ description: "Web Push subscription object" })
   @IsObject()
@@ -308,7 +348,11 @@ export class PushSubscribeDto {
 }
 
 export class PushUnsubscribeDto {
-  @ApiProperty({ description: "User ID" })
+  @ApiPropertyOptional({
+    description:
+      "Ignored unless it names the caller: the token decides the user",
+  })
+  @IsOptional()
   @IsUUID()
-  userId: string;
+  userId?: string;
 }

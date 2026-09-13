@@ -222,6 +222,14 @@ export class IntegrationsOauthController {
     return res.redirect(destination);
   }
 
+  /**
+   * Revoke this person's grant, in THIS restaurant.
+   *
+   * The tenant comes from the signed token and is passed through, as on
+   * `/connections`. Before 2026-09-12 only the person was passed, so a token
+   * scoped to house B revoked the grant recorded against house A; the service
+   * now refuses a grant recorded against a different house.
+   */
   @Delete(":integrationId")
   @UseGuards(JwtAuthGuard)
   async disconnect(
@@ -231,7 +239,11 @@ export class IntegrationsOauthController {
     if (!isIntegrationId(integrationId)) {
       throw new BadRequestException("Unknown integration");
     }
-    await this.service.disconnect(req.user.userId, integrationId);
+    await this.service.disconnect(
+      req.user.userId,
+      integrationId,
+      req.user.restaurantId ?? null,
+    );
     return { success: true, message: "Integration disconnected" };
   }
 }

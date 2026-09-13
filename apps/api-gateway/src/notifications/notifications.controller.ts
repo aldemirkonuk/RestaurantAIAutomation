@@ -15,6 +15,8 @@ import {
   Inject,
   forwardRef,
   Req,
+  ForbiddenException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import type { Request } from "express";
 import { ApiOperation } from "@nestjs/swagger";
@@ -71,6 +73,86 @@ function scopeRestaurantId(req: {
 }
 
 /**
+ * The user whose notification preferences a request may read or change: the
+ * one on the VERIFIED token (`JwtStrategy.validate` returns `userId`).
+ *
+ * Found 2026-09-12: GET and PATCH /notifications/preferences took the id from
+ * `?userId=` or the body and read or upserted `notification_preferences` by
+ * it, so any signed-in user could read another user's channels or switch their
+ * low-stock alerts off by naming a uuid.
+ *
+ * A client-supplied id is still ACCEPTED when it names the caller, because the
+ * web client sends its own id in both places
+ * (apps/web/src/services/api/notifications.ts:230,243-246). One that names
+ * anybody else is refused, not silently replaced, so a client bug that sends
+ * the wrong id is a visible 403 rather than a write to the wrong row going
+ * unnoticed. No user on the token is a 401, never a fallback to the client's id.
+ */
+/** A request after JwtAuthGuard: `JwtStrategy.validate` put both ids on it. */
+type ScopedRequest = Request & {
+  user?: { userId?: string | null; restaurantId?: string | null };
+};
+
+/**
+ * Refuse a client-supplied restaurant id that is not the token's. Returns the
+ * token's id. Same rule as scopeOwnUserId: a mismatch is a visible 403, never
+ * a silent replacement.
+ */
+function scopeOwnRestaurant(
+  req: ScopedRequest,
+  ...named: Array<string | null | undefined>
+): string {
+  const own = scopeRestaurantId(req);
+  if (
+    named.some(
+      (v) =>
+        typeof v === "string" &&
+        v.length > 0 &&
+        v.toLowerCase() !== own.toLowerCase(),
+    )
+  ) {
+    throw new ForbiddenException(
+      "Notifications can only be read or changed in the caller's own restaurant.",
+    );
+  }
+  return own;
+}
+
+/** A refusal chosen above stays itself; anything else is a 500. */
+function rethrow(error: any): never {
+  if (error instanceof HttpException) throw error;
+  throw new HttpException(
+    error?.message ?? "Notification request failed",
+    HttpStatus.INTERNAL_SERVER_ERROR,
+  );
+}
+
+function scopeOwnUserId(
+  req: { user?: { userId?: string | null } } | undefined,
+  ...named: Array<string | null | undefined>
+): string {
+  const own = req?.user?.userId;
+  if (!own || String(own).trim() === "") {
+    throw new UnauthorizedException(
+      "No user on this session; notification preferences cannot be scoped.",
+    );
+  }
+  const ownId = String(own);
+  const mismatched = named.some(
+    (value) =>
+      typeof value === "string" &&
+      value.length > 0 &&
+      value.toLowerCase() !== ownId.toLowerCase(),
+  );
+  if (mismatched) {
+    throw new ForbiddenException(
+      "A notification, its preferences or its push subscription can only be read or changed by its own user.",
+    );
+  }
+  return ownId;
+}
+
+/**
  * OD-20 — guarded at class level 2026-08-25.
  *
  * This controller had no guard and no @Public(). It was not protected by
@@ -120,24 +202,35 @@ export class NotificationsController {
       actionLabel?: string;
       metadata?: Record<string, any>;
     },
+    @Req() req: ScopedRequest,
   ) {
+    // Scoped 2026-09-12: this wrote a row for any user id and any restaurant id
+    // the body named. The web caller (lib/reminder-scheduler.ts:193-195) sends
+    // its own user and active restaurant, which both still pass.
+    const userId = scopeOwnUserId(req, body?.userId);
+    const restaurantId = scopeOwnRestaurant(req, body?.restaurantId);
     try {
-      return await this.notificationsService.createNotification(body);
+      return await this.notificationsService.createNotification({
+        ...body,
+        userId,
+        restaurantId,
+      });
     } catch (error) {
       this.logger.error(`Failed to create notification: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Get()
   async getNotifications(
     @Query() query: GetNotificationsQueryDto,
-    @Req() req: Request & { user?: { restaurantId?: string | null } },
+    @Req() req: ScopedRequest,
   ) {
     const restaurantId = scopeRestaurantId(req);
+    const userId = scopeOwnUserId(req, query?.userId);
     try {
       return await this.notificationsService.getNotifications({
-        userId: query.userId,
+        userId,
         restaurantId,
         type: query.type,
         status: query.status,
@@ -148,43 +241,45 @@ export class NotificationsController {
       });
     } catch (error) {
       this.logger.error(`Failed to get notifications: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Get("unread")
   async getUnreadNotifications(
     @Query() query: GetUnreadQueryDto,
-    @Req() req: Request & { user?: { restaurantId?: string | null } },
+    @Req() req: ScopedRequest,
   ) {
     const restaurantId = scopeRestaurantId(req);
+    const userId = scopeOwnUserId(req, query?.userId);
     try {
       return await this.notificationsService.getUnreadNotifications({
-        userId: query.userId,
+        userId,
         restaurantId,
         limit: query.limit,
       });
     } catch (error) {
       this.logger.error(`Failed to get unread notifications: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Get("unread/count")
   async getUnreadCount(
     @Query() query: GetUnreadCountQueryDto,
-    @Req() req: Request & { user?: { restaurantId?: string | null } },
+    @Req() req: ScopedRequest,
   ) {
     const restaurantId = scopeRestaurantId(req);
+    const userId = scopeOwnUserId(req, query?.userId);
     try {
       const count = await this.notificationsService.getUnreadCount({
-        userId: query.userId,
+        userId,
         restaurantId,
       });
       return { count };
     } catch (error) {
       this.logger.error(`Failed to get unread count: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
@@ -194,7 +289,12 @@ export class NotificationsController {
     description:
       'Wines that crossed below par and were deliberately held — by the 15-minute instant cooldown, or by the restaurant\'s own notification preferences — with the reason and when. Before this existed, a held crossing and a crossing that never happened looked identical in `inventory_alert_state`, so "tonight\'s digest will cover it" and "nothing is wrong" rendered the same (POS lens, absence-as-health 8). A failed read is an error, never an empty list (ADR 0067).',
   })
-  async getHeldLowStock(@Param("restaurantId") restaurantId: string) {
+  async getHeldLowStock(
+    @Param("restaurantId") restaurantId: string,
+    @Req() req: ScopedRequest,
+  ) {
+    // Scoped 2026-09-12: the path named any restaurant and this read it.
+    scopeOwnRestaurant(req, restaurantId);
     if (!this.lowStockAlerts) {
       throw new HttpException(
         "Low-stock alerts are not available on this deployment",
@@ -207,27 +307,41 @@ export class NotificationsController {
       this.logger.error(
         `Failed to read held low-stock crossings: ${error.message}`,
       );
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Get("history")
-  async getNotificationHistory(@Query() query: GetHistoryQueryDto) {
+  async getNotificationHistory(
+    @Query() query: GetHistoryQueryDto,
+    @Req() req: ScopedRequest,
+  ) {
+    // Scoped 2026-09-12: this read any user's history by `?userId=`, across
+    // every restaurant.
+    const userId = scopeOwnUserId(req, query?.userId);
+    const restaurantId = scopeRestaurantId(req);
     try {
       return await this.notificationsService.getNotificationHistory(
-        query.userId,
+        userId,
         query.days,
+        restaurantId,
       );
     } catch (error) {
       this.logger.error(`Failed to get notification history: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Get("preferences")
-  async getPreferences(@Query() query: GetPreferencesQueryDto) {
+  async getPreferences(
+    @Query() query: GetPreferencesQueryDto,
+    @Req() req: Request & { user?: { userId?: string | null } },
+  ) {
+    // Outside the try: the catch below turns every error into a 500, and a
+    // refused scope must stay a 401/403.
+    const userId = scopeOwnUserId(req, query?.userId);
     try {
-      return await this.notificationsService.getPreferences(query.userId);
+      return await this.notificationsService.getPreferences(userId);
     } catch (error) {
       this.logger.error(`Failed to get preferences: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -238,9 +352,12 @@ export class NotificationsController {
   async updatePreferences(
     @Query() query: GetPreferencesQueryDto,
     @Body() body: UpdatePreferencesDto,
+    @Req() req: Request & { user?: { userId?: string | null } },
   ) {
+    // Both places are compared: `body.userId || query.userId` used to let the
+    // body win and ignore a query naming someone else.
+    const userId = scopeOwnUserId(req, body?.userId, query?.userId);
     try {
-      const userId = body.userId || query.userId;
       return await this.notificationsService.updatePreferences({
         userId,
         email: body.email,
@@ -259,98 +376,131 @@ export class NotificationsController {
   }
 
   @Patch("read/bulk")
-  async markBulkAsRead(@Body() body: BulkIdsDto) {
+  async markBulkAsRead(@Body() body: BulkIdsDto, @Req() req: ScopedRequest) {
+    const userId = scopeOwnUserId(req);
     try {
-      const count = await this.notificationsService.markBulkAsRead(body.ids);
+      const count = await this.notificationsService.markBulkAsRead(
+        body.ids,
+        userId,
+      );
       return { success: true, count };
     } catch (error) {
       this.logger.error(`Failed to bulk mark as read: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Patch("read/all")
-  async markAllAsRead(@Query() query: MarkAllReadQueryDto) {
+  async markAllAsRead(
+    @Query() query: MarkAllReadQueryDto,
+    @Req() req: ScopedRequest,
+  ) {
+    // Scoped 2026-09-12: both ids came from the query string.
+    const userId = scopeOwnUserId(req, query?.userId);
+    const restaurantId = scopeOwnRestaurant(req, query?.restaurantId);
     try {
       const count = await this.notificationsService.markAllAsRead({
-        userId: query.userId,
-        restaurantId: query.restaurantId,
+        userId,
+        restaurantId,
       });
       return { success: true, count };
     } catch (error) {
       this.logger.error(`Failed to mark all as read: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Patch(":id/read")
-  async markAsRead(@Param("id") id: string) {
+  async markAsRead(@Param("id") id: string, @Req() req: ScopedRequest) {
+    const userId = scopeOwnUserId(req);
     try {
-      const notification = await this.notificationsService.markAsRead(id);
+      const notification = await this.notificationsService.markAsRead(
+        id,
+        userId,
+      );
       return notification;
     } catch (error) {
       this.logger.error(
         `Failed to mark notification as read: ${error.message}`,
       );
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Patch(":id/unread")
-  async markAsUnread(@Param("id") id: string) {
+  async markAsUnread(@Param("id") id: string, @Req() req: ScopedRequest) {
+    const userId = scopeOwnUserId(req);
     try {
-      const notification = await this.notificationsService.markAsUnread(id);
+      const notification = await this.notificationsService.markAsUnread(
+        id,
+        userId,
+      );
       return notification;
     } catch (error) {
       this.logger.error(
         `Failed to mark notification as unread: ${error.message}`,
       );
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Patch(":id/archive")
-  async archiveNotification(@Param("id") id: string) {
+  async archiveNotification(
+    @Param("id") id: string,
+    @Req() req: ScopedRequest,
+  ) {
+    const userId = scopeOwnUserId(req);
     try {
-      const notification =
-        await this.notificationsService.archiveNotification(id);
+      const notification = await this.notificationsService.archiveNotification(
+        id,
+        userId,
+      );
       return notification;
     } catch (error) {
       this.logger.error(`Failed to archive notification: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Delete("bulk")
-  async deleteBulk(@Body() body: BulkIdsDto) {
+  async deleteBulk(@Body() body: BulkIdsDto, @Req() req: ScopedRequest) {
+    const userId = scopeOwnUserId(req);
     try {
-      const count = await this.notificationsService.deleteBulk(body.ids);
+      const count = await this.notificationsService.deleteBulk(
+        body.ids,
+        userId,
+      );
       return { success: true, count };
     } catch (error) {
       this.logger.error(`Failed to bulk delete: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Delete("read/all")
-  async deleteAllRead(@Query() query: DeleteAllReadQueryDto) {
+  async deleteAllRead(
+    @Query() query: DeleteAllReadQueryDto,
+    @Req() req: ScopedRequest,
+  ) {
+    const userId = scopeOwnUserId(req, query?.userId);
     try {
-      const count = await this.notificationsService.deleteAllRead(query.userId);
+      const count = await this.notificationsService.deleteAllRead(userId);
       return { success: true, count };
     } catch (error) {
       this.logger.error(`Failed to delete all read: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Delete(":id")
-  async deleteNotification(@Param("id") id: string) {
+  async deleteNotification(@Param("id") id: string, @Req() req: ScopedRequest) {
+    const userId = scopeOwnUserId(req);
     try {
-      await this.notificationsService.deleteNotification(id);
+      await this.notificationsService.deleteNotification(id, userId);
       return { success: true };
     } catch (error) {
       this.logger.error(`Failed to delete notification: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
@@ -359,27 +509,36 @@ export class NotificationsController {
   // =========================================================================
 
   @Post("push/subscribe")
-  async subscribeToPush(@Body() body: PushSubscribeDto) {
+  async subscribeToPush(
+    @Body() body: PushSubscribeDto,
+    @Req() req: ScopedRequest,
+  ) {
+    // Scoped 2026-09-12: this upserted any user's push subscription, so a
+    // caller could point a victim's alerts at their own browser.
+    const userId = scopeOwnUserId(req, body?.userId);
     try {
       return await this.notificationsService.registerPushSubscription(
-        body.userId,
+        userId,
         body.subscription as any,
       );
     } catch (error) {
       this.logger.error(`Failed to subscribe to push: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
   @Post("push/unsubscribe")
-  async unsubscribeFromPush(@Body() body: PushUnsubscribeDto) {
+  async unsubscribeFromPush(
+    @Body() body: PushUnsubscribeDto,
+    @Req() req: ScopedRequest,
+  ) {
+    // Scoped 2026-09-12: this switched off any user's push alerts.
+    const userId = scopeOwnUserId(req, body?.userId);
     try {
-      return await this.notificationsService.unregisterPushSubscription(
-        body.userId,
-      );
+      return await this.notificationsService.unregisterPushSubscription(userId);
     } catch (error) {
       this.logger.error(`Failed to unsubscribe from push: ${error.message}`);
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      rethrow(error);
     }
   }
 
@@ -388,10 +547,15 @@ export class NotificationsController {
   // =========================================================================
 
   @Post("test")
-  async sendTestNotification(@Body() body: { userId: string }) {
-    this.logger.log(`Sending test notification to user ${body.userId}`);
+  async sendTestNotification(
+    @Body() body: { userId?: string },
+    @Req() req: ScopedRequest,
+  ) {
+    // Scoped 2026-09-12: a test goes to the caller only; it sent to any id.
+    const userId = scopeOwnUserId(req, body?.userId);
+    this.logger.log(`Sending test notification to user ${userId}`);
 
-    await this.notificationsService.sendToUser(body.userId, {
+    await this.notificationsService.sendToUser(userId, {
       type: "system_alert",
       title: "WineOps AI test",
       body: "Notifications are working! You'll receive alerts here.",

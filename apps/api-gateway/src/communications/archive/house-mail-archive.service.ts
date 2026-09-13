@@ -14,6 +14,7 @@ import {
   type JurisdictionCode,
 } from "../retention/retention-rules";
 import { DriveArchiveWriter } from "./drive-archive.writer";
+import { assertNamedActor } from "../letters/house-letters.actor";
 import type { HouseMailArchivePort } from "./house-mail-archive.port";
 import {
   ARCHIVE_DISCLOSURE_COPY,
@@ -424,6 +425,9 @@ export class HouseMailArchiveService implements HouseMailArchivePort {
     /** own_cloud only: whose Drive grant carries it. */
     connectionId?: string | null;
   }): Promise<ArchiveSettings> {
+    // `chosen_by` is a nullable FK: a blank actor would record a choice made
+    // by nobody on the row the retention sweep acts on.
+    assertNamedActor(params.actorUserId, "recorded");
     const now = new Date().toISOString();
 
     if (params.mode === "mudavym_archive") {

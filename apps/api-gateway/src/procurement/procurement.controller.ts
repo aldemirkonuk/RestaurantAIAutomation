@@ -178,6 +178,9 @@ export class ProcurementController {
       );
       return { count: pending.length };
     } catch (error) {
+      // The service refuses a failed read with 503; keep that status instead
+      // of re-wrapping it as a 500 with the same message.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to fetch pending order count",
         HttpStatus.INTERNAL_SERVER_ERROR,

@@ -46,11 +46,7 @@ import {
   HOUSE_MAIL_ARCHIVE_MODES,
   type HouseMailArchiveMode,
 } from "./house-mail-archive.constants";
-
-interface Actor {
-  id: string;
-  restaurantId: string;
-}
+import { houseActor, type TokenUser } from "../letters/house-letters.actor";
 
 interface ChallengeBody {
   act: "choose" | "export";
@@ -112,8 +108,9 @@ export class HouseMailArchiveController {
     description:
       "`chosen: false` means NO row exists: nobody has been asked, which is a different fact from a recorded `none`. `armed` is whether the mode is actually operating; an unarmed mode changes nothing and `refusedBecause` says why. A `mudavym_archive` row is unarmed on every deployment until OD-23 fixes a price. `owner.keptIn` is the sentence /connections prints about WHOSE Drive holds the archive; it distinguishes a name that was read, an account that records none, and a read that failed, and is never blank.",
   })
-  async settings(@CurrentUser() user: Actor) {
-    const archive = await this.archive.settingsFor(user.restaurantId);
+  async settings(@CurrentUser() user: TokenUser) {
+    const { restaurantId } = houseActor(user);
+    const archive = await this.archive.settingsFor(restaurantId);
     // WHOSE Drive, composed here and printed verbatim by /connections (ADR 0118
     // D16, founder answer to question 1). A second read rather than part of
     // `settingsFor`, because that method is the retention sweep's nightly hot
@@ -134,23 +131,26 @@ export class HouseMailArchiveController {
     description:
       "`challenge` is spendable exactly once, by this person, for this act, over these arguments. A seal minted to choose one destination cannot be spent to choose another.",
   })
-  async challenge(@CurrentUser() user: Actor, @Body() body: ChallengeBody) {
+  async challenge(@CurrentUser() user: TokenUser, @Body() body: ChallengeBody) {
+    // The seal names the person who asked for it (`actor_user_id` is NOT NULL)
+    // and redemption compares against the same id: `userId`, never `id`.
+    const { userId, restaurantId } = houseActor(user);
     if (body?.act === "export") {
       return this.seals.issue({
-        restaurantId: user.restaurantId,
-        actorUserId: user.id,
+        restaurantId,
+        actorUserId: userId,
         subjectKind: "house_mail_export",
-        subjectId: user.restaurantId,
+        subjectId: restaurantId,
         action: ARCHIVE_EXPORT_ACTION,
         args: this.exportArgs(),
       });
     }
     const mode = this.modeOf(body?.mode);
     return this.seals.issue({
-      restaurantId: user.restaurantId,
-      actorUserId: user.id,
+      restaurantId,
+      actorUserId: userId,
       subjectKind: "house_mail_export",
-      subjectId: user.restaurantId,
+      subjectId: restaurantId,
       action: ARCHIVE_ARM_ACTION,
       args: this.chooseArgs(mode, body?.connectionId ?? null),
     });
@@ -180,25 +180,28 @@ export class HouseMailArchiveController {
       "The caller is not a manager or owner, or carried no redeemed seal.",
   })
   async choose(
-    @CurrentUser() user: Actor,
+    @CurrentUser() user: TokenUser,
     @Body() body: ChooseBody,
     @Headers("x-seal-challenge") challenge?: string,
   ) {
+    // Before the seal is checked: a refusal is FILED in the audit log under
+    // this id, and a nameless session would file one that names nobody.
+    const { userId, restaurantId } = houseActor(user);
     const mode = this.modeOf(body?.mode);
     const connectionId = body?.connectionId ?? null;
     const { sealId } = await this.seals.redeem({
-      restaurantId: user.restaurantId,
-      actorUserId: user.id,
+      restaurantId,
+      actorUserId: userId,
       subjectKind: "house_mail_export",
-      subjectId: user.restaurantId,
+      subjectId: restaurantId,
       action: ARCHIVE_ARM_ACTION,
       args: this.chooseArgs(mode, connectionId),
       challenge: challenge ?? null,
     });
 
     const archive = await this.archive.choose({
-      restaurantId: user.restaurantId,
-      actorUserId: user.id,
+      restaurantId,
+      actorUserId: userId,
       mode,
       connectionId,
       sealId,
@@ -225,14 +228,15 @@ export class HouseMailArchiveController {
       "Returns `considered`, `exported`, `failed` and one outcome per conversation. A conversation that could not be written is a FAILURE with a stated reason, never absence — and the retention sweep will hold it rather than delete it. A run that exported nothing still records its count.",
   })
   async runExport(
-    @CurrentUser() user: Actor,
+    @CurrentUser() user: TokenUser,
     @Headers("x-seal-challenge") challenge?: string,
   ) {
+    const { userId, restaurantId } = houseActor(user);
     const { sealId } = await this.seals.redeem({
-      restaurantId: user.restaurantId,
-      actorUserId: user.id,
+      restaurantId,
+      actorUserId: userId,
       subjectKind: "house_mail_export",
-      subjectId: user.restaurantId,
+      subjectId: restaurantId,
       action: ARCHIVE_EXPORT_ACTION,
       args: this.exportArgs(),
       challenge: challenge ?? null,
@@ -241,7 +245,7 @@ export class HouseMailArchiveController {
     return {
       success: true,
       run: await this.archive.runExport({
-        restaurantId: user.restaurantId,
+        restaurantId,
         trigger: "requested",
         sealId,
       }),
