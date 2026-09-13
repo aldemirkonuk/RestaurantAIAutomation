@@ -319,6 +319,7 @@ DECLARE
   probe_review UUID;
   probe_user UUID;
   probe_restaurant UUID;
+  probe_posting_id UUID;
 BEGIN
   IF to_regclass('public.price_index_upload_reviews') IS NULL THEN
     RAISE EXCEPTION 'price_index_upload_reviews was not created';
@@ -382,13 +383,18 @@ BEGIN
         ('admit-probe', 'posted_wholesale_list', 'US-MI', 'probe',
          DATE '2026-01-01', 'probe', 'probe', 1, 'per bottle',
          'https://example.invalid', 'admit-probe', repeat('0', 64), NOW())
-    $q$;
+      RETURNING id
+    $q$ INTO probe_posting_id;
     admits_stamped_fetch := true;
   EXCEPTION WHEN check_violation THEN
     admits_stamped_fetch := false;
   END;
   IF admits_stamped_fetch THEN
-    DELETE FROM public.price_index_postings WHERE source_ref = 'admit-probe';
+    -- Scoped by the id the INSERT itself just returned, never by source_ref:
+    -- a magic string is not a key, and price_index_postings is a real, live
+    -- table -- it would delete any genuine posting that happened to share
+    -- this source_ref, not only this probe's row.
+    DELETE FROM public.price_index_postings WHERE id = probe_posting_id;
     RAISE EXCEPTION
       'a fetched row was admitted; only a row somebody carried can carry an admission';
   END IF;

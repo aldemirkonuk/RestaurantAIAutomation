@@ -4,6 +4,8 @@
 > the 789-line history it replaces is archived verbatim at
 > [archive/STATE-pre-P2-20260825.md](archive/STATE-pre-P2-20260825.md).
 > If this file and any other doc disagree about what is current, fix the other doc.
+>
+> **2026-09-12 handoff:** the merge queue, the seven unlanded branches, and the page wave in flight are in [handoff/PROGRESS.md](handoff/PROGRESS.md). Read it before continuing any of them.
 
 **Current milestone: P3 — Grade, then scale** ([ADR 0029](decisions/0029-p3-plan-of-record.md)).
 **P2 closed 2026-08-26** — all five stages deployed and verified, both held items resolved.

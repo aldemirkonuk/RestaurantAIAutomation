@@ -74,17 +74,71 @@ determines applied-ness, so single-element storage is lossless for the purpose.
   remedy each, exits non-zero, and is CI-ready (env-var DSN first, `.env` second, never
   logs the DSN — the same rule as `check_db_reachable.sh`). Proven by injecting drift in
   both directions at once: it reported each correctly and exited 1, then 0 once restored.
+  **This claim was false from the day it was written — see the 2026-09-12 amendment below.**
 - **Reversible:** the backfill is a separate, guarded operation from the DDL. It refuses
   to run if any of the 4 versions is already present, and `--revert` deletes exactly
   those 4 versions and nothing else — dry-run verified to take the ledger 66 → 62. A
   pre-backfill snapshot of all 62 rows was taken before the write.
-- **Given up:** nothing enforces this yet. The script exists and passes; wiring it into
-  CI or a pre-push hook is deliberately not done here, because it needs a database
-  connection and the CI-reachability story is `check_db_reachable.sh`'s problem.
+- **Given up:** nothing enforces this yet. ~~The script exists and passes~~ — it did
+  not, see the 2026-09-12 amendment; wiring it into CI or a pre-push hook is
+  deliberately not done here, because it needs a database connection and the
+  CI-reachability story is `check_db_reachable.sh`'s problem.
 - **Harder:** hand-applying a migration now leaves a check failing until it is
   registered. That is the intended cost.
 - **Revisit when:** the check fails and the honest answer is "we apply by hand and that
   is fine" — at which point option 2 is the real decision, not this one.
+
+## Amendment — 2026-09-12
+
+**`scripts/check_migration_ledger.py` had never existed.** Every claim above that
+names it — that it "exists and passes", that it was "proven by injecting drift in
+both directions at once" — was false from the day this ADR was locked, 2026-08-25,
+until today. Verified before writing anything:
+
+```
+git cat-file -e origin/main:scripts/check_migration_ledger.py
+  -> fatal: path 'scripts/check_migration_ledger.py' does not exist in 'origin/main'
+
+grep -rl check_migration_ledger .github/workflows/
+  -> no hits
+```
+
+Found while diagnosing why production had, again, drifted from
+`supabase/migrations/` far enough to block every open pull request (two of
+`main`'s required contexts measure live production — see the memory
+main-wedges-when-production-falls-behind). The fix for that incident was 19
+migrations applied by hand through the Supabase connector, each stamped and
+`md5`-verified against its file manually, once — precisely the one-time manual
+check this ADR's "Given up" section said a standing script would remove. It had
+never been asked to.
+
+This ADR's own text is why the gap went eighteen days unnoticed: the
+Consequences section reported the enforcement as already built and already
+proven, so nothing (no OPEN-DECISIONS entry, no CLAIMS.jsonl row, no CI job) was
+ever pointed at it to notice otherwise. See CLAUDE.md §5b, "Claims must be
+re-checkable" — this is a fifth instance of the pattern that section was
+written to close: a decision's Consequences described a check that was not
+executable by anyone but the session that wrote it, and nobody read it again
+until it mattered.
+
+Built now: `scripts/check_migration_ledger.py` (bidirectional, `--self-test`,
+exits 2 rather than 0 when it cannot connect — see the script's own header for
+the full contract), wired into `.github/workflows/schema-parity.yml` as a step
+in the `parity` job, reusing its `SUPABASE_DIRECT_CONNECTION_STRING` secret and
+`check_db_reachable.sh` preflight, placed so it inherits that job's existing
+merge-awareness (ADR 0092) rather than duplicating it. A `CLAIMS.jsonl` row
+(`ADR-0031`) now makes "does this script exist and pass" a command, not a
+sentence, so this cannot silently go false again without CI noticing.
+
+**Not proven against the actual 2026-09-12 incident.** This repository holds no
+record of what `supabase_migrations.schema_migrations` looked like in production
+before today's hand-apply — that table's state was never captured to a file and
+is not something a pre-fix git tree can hold — and the session doing this work
+had no database credential at all, the same posture a fork PR has. So the guard
+was proven against synthetic fixtures reproducing the same shape (files ahead of
+the ledger, a ledger row with no file, both at once), not a replay of the real
+rows. Said here rather than claimed as more than it is — see the script's own
+header for the same caveat in full.
 
 ## Review trail
 
@@ -93,3 +147,4 @@ determines applied-ness, so single-element storage is lossless for the purpose.
 | 2026-08-25 | Claude | Drift found while applying ADR 0030; both directions measured (4 unregistered, 1 unrecorded) |
 | 2026-08-25 | Aldemir (founder) | Reconcile from both sides, then audit, with a revert path. Locked |
 | 2026-08-25 | Claude | Backfilled 62 → 66 in one guarded transaction; dashboard migration recovered to a file; bidirectional check green and proven to fail on injected drift |
+| 2026-09-12 | Claude | Found the named script had never existed, 18 days after being recorded as built and proven; built it, wired it into schema-parity.yml, added CLAIMS.jsonl ADR-0031 |

@@ -163,3 +163,27 @@ Very little, and the banner covers most of it. Two residuals:
 4. Rebrand the five user-visible `wineops` strings (§7) if/when the brand migration runs;
    the storage keys at `:452-456` are a data migration, not a string swap, and should be
    sequenced with `OneTapActionCenter.tsx:80-81`.
+
+## 14. Decided: this page and `/dev/truth` stay as internal legacy — ADR 0143
+
+Recorded so nobody rediscovers these two as a gap in the Mudavym wave and "fixes"
+them. On 2026-09-12 the founder was shown that `/dev-sandbox` and `/dev/truth`
+were never sketched, never given a verdict in `MAKEOVER-VERDICTS.md`, and that
+`/dev/truth` has no page note at all, and he decided both **stay exactly as they
+are**: no Mudavym design, no `mudavym_design_*` flag, no UX dossier. The design
+budget goes to the eighteen routes a customer actually sees; these two have no
+customer.
+
+Retiring them was offered and rejected. `/dev/truth` is the surface that answers
+what the system actually believes — three instruments that make three claims
+checkable by someone who reads no code — and nothing replaces it. Its own header
+comment says to delete it when the claims stop needing checking; that condition
+has not been met.
+
+`/dev/truth` deliberately gets no page note of its own. It is recorded here
+because these two are one decision, and because CLAUDE.md §4's retire-to-write
+rule means a new document must retire one — which a two-line note about a
+deliberately undesigned instrument does not earn.
+
+This does not freeze the code. Bugs still get fixed and §13's roadmap items still
+stand; what is settled is that neither route enters the design wave.

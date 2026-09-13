@@ -383,7 +383,19 @@ fingerprint() {
     cannot_check "could not read the $label schema"
   fi
   # Drop blank lines psql emits between statement result sets.
-  grep -v '^[[:space:]]*$' "$out.raw" | LC_ALL=C sort > "$out" || true
+  #
+  # Every locale override in this file is passed through `env`, never written
+  # as a prefix assignment in front of the command. When bash itself sets a
+  # locale variable it has to restore it afterwards, and on macOS Homebrew bash 5.3
+  # does that by calling setlocale -> gettext's libintl -> CoreFoundation, which
+  # is not safe in a process that forked without exec. With LANG unset (Claude
+  # Code sessions run that way) that crashes the `( compare ... )` subshells of
+  # --self-test-offline with SIGSEGV, exit 139. It failed 47 of 1000 runs on
+  # 2026-09-12, and the decision-claims register reported the ADR-0072 claim
+  # REGRESSED at random. `env` hands the command exactly the same environment
+  # without bash touching its own locale. ADR 0072, Correction 2026-09-12;
+  # CLAIMS.jsonl carries a check that no script under scripts/ reintroduces it.
+  grep -v '^[[:space:]]*$' "$out.raw" | env LC_ALL=C sort > "$out" || true
   [[ -s "$out" ]] || cannot_check "the $label schema returned ZERO rows"
   # "Zero tables compared" is exit 2 PER SIDE, not just when both sides are
   # empty. `server` always returns a row, so a file that is merely non-empty
@@ -396,7 +408,7 @@ fingerprint() {
     cannot_check "the $label schema has $nrel relations and $ncol columns in public — nothing to compare"
 }
 
-category_counts() { cut -f1 "$1" | LC_ALL=C uniq -c | awk '{printf "%s=%s ", $2, $1}'; }
+category_counts() { cut -f1 "$1" | env LC_ALL=C uniq -c | awk '{printf "%s=%s ", $2, $1}'; }
 count_of() { awk -F'\t' -v c="$2" '$1==c{n++} END{print n+0}' "$1"; }
 
 # ---------------------------------------------------------------------------
@@ -485,7 +497,10 @@ compare() {
   # TO REMOVE A ROW: rebuild that table in migration order, or accept that its
   # order is now production's. Removing a row is always safe; ADDING one needs a
   # founder decision and an amendment to ADR 0072, exactly as this one did.
-  LC_ALL=C awk -F'\t' -v OL="$d.only_local" -v OR="$d.only_remote" -v CH="$d.changed" -v RO="$d.reordered" \
+  #
+  # `env`, not a prefix assignment -- this is the line whose prefix form crashed the
+  # self-test's subshells. See fingerprint().
+  env LC_ALL=C awk -F'\t' -v OL="$d.only_local" -v OR="$d.only_remote" -v CH="$d.changed" -v RO="$d.reordered" \
       -v ALLOWED="$REORDERED_BY_THE_2026_09_12_APPLY" '
     BEGIN { n = split(ALLOWED, t, " "); for (i = 1; i <= n; i++) if (t[i] != "") ALLOW[t[i]] = 1 }
     function same_set(a, b,   xa, xb, i, n, m, sa, sb) {
@@ -528,7 +543,7 @@ compare() {
     [[ "$n" -eq 0 ]] && return 0
     echo
     echo "== $title ($n)"
-    LC_ALL=C sort "$file" | head -40 | $fmt
+    env LC_ALL=C sort "$file" | head -40 | $fmt
     [[ "$n" -gt 40 ]] && echo "   ... $((n - 40)) more"
     echo "   -> $hint"
   }

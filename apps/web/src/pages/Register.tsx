@@ -13,6 +13,34 @@ import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAut
 import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { CuisinePicker } from '../components/ui/CuisinePicker'
 import { apiClient } from '../services/api/client'
+import { usePublicDesign } from '../lib/mudavym/publicDesign'
+import '../components/brand/auth-house.css'
+
+/*
+ * THE HOUSE PATH (ADR 0133 §Decision 1). `usePublicDesign()` is the public
+ * door's one switch; off, every className in this file is today's string,
+ * untouched. On, the SAME elements take token colours and nothing else — the
+ * founder chose "improve today's pages in place, no redraw" (ADR 0143 §1), and
+ * `pages/__tests__/authPages.publicDesign.test.tsx` fails if anything but a
+ * colour, shadow, ring or opacity class differs between the two.
+ *
+ * The swaps follow the rules written out in Login.tsx (grays by value to ink
+ * and paper, the wine scale to the seal, card = paper-1 plate on the paper-0
+ * ground with paper-0 fields inside, no hand-drawn focus rings, status hues
+ * unchanged because the house stylesheet has no status token, `!` on <p>/<h*> colours
+ * to outrank globals.css's `.dark p`). Two more that only this page needs:
+ *   - white-alpha on the seal fill (`bg-white/20`, `text-white/75`) becomes
+ *     the same alpha of `--paper-0`, the ink that sits on the seal, through
+ *     `color-mix` — var-backed colours cannot take a Tailwind `/20` modifier.
+ *   - literal İznik shadows keep their geometry and take `--seal-ring` (0.32,
+ *     today 0.30/0.35) or `--seal-tint` (0.10, today 0.18/0.08) as colour.
+ */
+const HOUSE_SHADOW = 'shadow-[0_24px_64px_-24px_var(--seal-tint),0_8px_24px_-12px_var(--seal-tint)]'
+/** The shared Button merges `className` last (tailwind-merge), so this replaces
+ *  its wine fill and its literal-rgba shadow rather than stacking on them. */
+const HOUSE_BUTTON = 'bg-seal text-paper-0 hover:bg-seal-deep shadow-none hover:shadow-none'
+/** BrandMark's ink tone is two literals; `cn()` lets these replace both. */
+const HOUSE_WORDMARK = 'text-inkm-1 dark:text-inkm-1'
 
 // Email availability check result
 type EmailAvailability = {
@@ -39,6 +67,7 @@ export function Register() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { registerRestaurant, joinViaInvite, error: authError } = useAuth()
+  const on = usePublicDesign()
 
   const [path, setPath] = useState<Path>('selector')
   const [pathAStep, setPathAStep] = useState<PathAStep>(1)
@@ -227,24 +256,24 @@ export function Register() {
         <button
           type="button"
           onClick={() => setPath('join')}
-          className="bg-white border border-gray-200 rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:shadow-card-hover hover:border-gray-300"
+          className={on ? 'bg-paper-0 border border-paper-2 rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:border-seal-ring' : 'bg-white border border-gray-200 rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:shadow-card-hover hover:border-gray-300'}
         >
-          <div className="w-[50px] h-[50px] rounded-[13px] bg-wine-100 flex items-center justify-center mb-[18px]">
-            <Users className="w-[22px] h-[22px] text-wine-600" />
+          <div className={on ? 'w-[50px] h-[50px] rounded-[13px] bg-seal-tint flex items-center justify-center mb-[18px]' : 'w-[50px] h-[50px] rounded-[13px] bg-wine-100 flex items-center justify-center mb-[18px]'}>
+            <Users className={on ? 'w-[22px] h-[22px] text-seal' : 'w-[22px] h-[22px] text-wine-600'} />
           </div>
-          <p className="font-bold text-gray-900 text-[1.1rem] leading-tight mb-2">Join Your Team</p>
-          <p className="text-[0.8rem] text-gray-500 leading-[1.55] mb-5">
+          <p className={on ? 'font-bold !text-inkm-1 text-[1.1rem] leading-tight mb-2' : 'font-bold text-gray-900 text-[1.1rem] leading-tight mb-2'}>Join Your Team</p>
+          <p className={on ? 'text-[0.8rem] !text-inkm-3 leading-[1.55] mb-5' : 'text-[0.8rem] text-gray-500 leading-[1.55] mb-5'}>
             Your manager sent you an invite. Enter the 8-character code to join their restaurant.
           </p>
           <ul className="space-y-[7px] mb-6">
             {['Instant dashboard access', 'Role assigned by owner', 'No email verification needed'].map((item) => (
-              <li key={item} className="flex items-center gap-[7px] text-[0.8rem] text-gray-500">
-                <Check className="w-[11px] h-[11px] text-wine-600 flex-shrink-0" />
+              <li key={item} className={on ? 'flex items-center gap-[7px] text-[0.8rem] text-inkm-3' : 'flex items-center gap-[7px] text-[0.8rem] text-gray-500'}>
+                <Check className={on ? 'w-[11px] h-[11px] text-seal flex-shrink-0' : 'w-[11px] h-[11px] text-wine-600 flex-shrink-0'} />
                 {item}
               </li>
             ))}
           </ul>
-          <div className="w-full py-[11px] px-[18px] rounded-[9px] bg-wine-600 text-white text-[0.9rem] font-bold text-center">
+          <div className={on ? 'w-full py-[11px] px-[18px] rounded-[9px] bg-seal text-paper-0 text-[0.9rem] font-bold text-center' : 'w-full py-[11px] px-[18px] rounded-[9px] bg-wine-600 text-white text-[0.9rem] font-bold text-center'}>
             Enter Invite Code →
           </div>
         </button>
@@ -253,25 +282,25 @@ export function Register() {
         <button
           type="button"
           onClick={() => setPath('create')}
-          className="bg-wine-600 rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:bg-wine-700"
-          style={{ boxShadow: '0 8px 24px rgba(26,94,107,0.3)' }}
+          className={on ? 'bg-seal rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:bg-seal-deep' : 'bg-wine-600 rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:bg-wine-700'}
+          style={on ? { boxShadow: '0 8px 24px var(--seal-ring)' } : { boxShadow: '0 8px 24px rgba(26,94,107,0.3)' }}
         >
-          <div className="w-[50px] h-[50px] rounded-[13px] bg-white/20 flex items-center justify-center mb-[18px]">
-            <Wine className="w-[22px] h-[22px] text-white" />
+          <div className={on ? 'w-[50px] h-[50px] rounded-[13px] bg-[color:color-mix(in_srgb,var(--paper-0)_20%,transparent)] flex items-center justify-center mb-[18px]' : 'w-[50px] h-[50px] rounded-[13px] bg-white/20 flex items-center justify-center mb-[18px]'}>
+            <Wine className={on ? 'w-[22px] h-[22px] text-paper-0' : 'w-[22px] h-[22px] text-white'} />
           </div>
-          <p className="font-bold text-white text-[1.1rem] leading-tight mb-2">Open a Restaurant</p>
-          <p className="text-[0.8rem] text-white/75 leading-[1.55] mb-5">
+          <p className={on ? 'font-bold !text-paper-0 text-[1.1rem] leading-tight mb-2' : 'font-bold text-white text-[1.1rem] leading-tight mb-2'}>Open a Restaurant</p>
+          <p className={on ? 'text-[0.8rem] !text-[color:color-mix(in_srgb,var(--paper-0)_75%,transparent)] leading-[1.55] mb-5' : 'text-[0.8rem] text-white/75 leading-[1.55] mb-5'}>
             Register your restaurant and start managing wine inventory with AI in minutes.
           </p>
           <ul className="space-y-[7px] mb-6">
             {['AI inventory agents', 'POS + supplier sync', 'Multi-location ready'].map((item) => (
-              <li key={item} className="flex items-center gap-[7px] text-[0.8rem] text-white/85">
-                <Check className="w-[11px] h-[11px] text-white/90 flex-shrink-0" />
+              <li key={item} className={on ? 'flex items-center gap-[7px] text-[0.8rem] text-[color:color-mix(in_srgb,var(--paper-0)_85%,transparent)]' : 'flex items-center gap-[7px] text-[0.8rem] text-white/85'}>
+                <Check className={on ? 'w-[11px] h-[11px] text-[color:color-mix(in_srgb,var(--paper-0)_90%,transparent)] flex-shrink-0' : 'w-[11px] h-[11px] text-white/90 flex-shrink-0'} />
                 {item}
               </li>
             ))}
           </ul>
-          <div className="w-full py-[11px] px-[18px] rounded-[9px] bg-white/20 text-white text-[0.9rem] font-bold text-center hover:bg-white/30 transition-colors">
+          <div className={on ? 'w-full py-[11px] px-[18px] rounded-[9px] bg-[color:color-mix(in_srgb,var(--paper-0)_20%,transparent)] text-paper-0 text-[0.9rem] font-bold text-center hover:bg-[color:color-mix(in_srgb,var(--paper-0)_30%,transparent)] transition-colors' : 'w-full py-[11px] px-[18px] rounded-[9px] bg-white/20 text-white text-[0.9rem] font-bold text-center hover:bg-white/30 transition-colors'}>
             Get Started Free →
           </div>
         </button>
@@ -283,58 +312,58 @@ export function Register() {
         <button
           type="button"
           onClick={() => setPath('create')}
-          className="relative bg-wine-600 rounded-[20px] p-[26px] text-left overflow-hidden hover:-translate-y-0.5 transition-all"
-          style={{ boxShadow: '0 8px 24px rgba(26,94,107,0.3)' }}
+          className={on ? 'relative bg-seal rounded-[20px] p-[26px] text-left overflow-hidden hover:-translate-y-0.5 transition-all' : 'relative bg-wine-600 rounded-[20px] p-[26px] text-left overflow-hidden hover:-translate-y-0.5 transition-all'}
+          style={on ? { boxShadow: '0 8px 24px var(--seal-ring)' } : { boxShadow: '0 8px 24px rgba(26,94,107,0.3)' }}
         >
           <span
-            className="inline-flex items-center gap-[5px] bg-white/20 text-white text-[0.65rem] font-bold tracking-widest uppercase px-[9px] py-[3px] rounded-full mb-3"
+            className={on ? 'inline-flex items-center gap-[5px] bg-[color:color-mix(in_srgb,var(--paper-0)_20%,transparent)] text-paper-0 text-[0.65rem] font-bold tracking-widest uppercase px-[9px] py-[3px] rounded-full mb-3' : 'inline-flex items-center gap-[5px] bg-white/20 text-white text-[0.65rem] font-bold tracking-widest uppercase px-[9px] py-[3px] rounded-full mb-3'}
           >
             Most Popular
           </span>
-          <p className="font-bold text-white text-[1.2rem] mb-[5px]">Create a New Restaurant</p>
-          <p className="text-[0.8125rem] text-white/80">Set up your restaurant in under 3 minutes</p>
-          <div className="absolute right-[22px] top-1/2 -translate-y-1/2 w-[34px] h-[34px] rounded-full bg-white/20 flex items-center justify-center">
-            <ArrowRight className="w-[14px] h-[14px] text-white" />
+          <p className={on ? 'font-bold !text-paper-0 text-[1.2rem] mb-[5px]' : 'font-bold text-white text-[1.2rem] mb-[5px]'}>Create a New Restaurant</p>
+          <p className={on ? 'text-[0.8125rem] !text-[color:color-mix(in_srgb,var(--paper-0)_80%,transparent)]' : 'text-[0.8125rem] text-white/80'}>Set up your restaurant in under 3 minutes</p>
+          <div className={on ? 'absolute right-[22px] top-1/2 -translate-y-1/2 w-[34px] h-[34px] rounded-full bg-[color:color-mix(in_srgb,var(--paper-0)_20%,transparent)] flex items-center justify-center' : 'absolute right-[22px] top-1/2 -translate-y-1/2 w-[34px] h-[34px] rounded-full bg-white/20 flex items-center justify-center'}>
+            <ArrowRight className={on ? 'w-[14px] h-[14px] text-paper-0' : 'w-[14px] h-[14px] text-white'} />
           </div>
         </button>
 
         {/* Divider */}
-        <div className="flex items-center gap-3 text-gray-400 text-[0.75rem]">
-          <div className="flex-1 h-px bg-gray-200" />
+        <div className={on ? 'flex items-center gap-3 text-inkm-3 text-[0.75rem]' : 'flex items-center gap-3 text-gray-400 text-[0.75rem]'}>
+          <div className={on ? 'flex-1 h-px bg-paper-2' : 'flex-1 h-px bg-gray-200'} />
           or
-          <div className="flex-1 h-px bg-gray-200" />
+          <div className={on ? 'flex-1 h-px bg-paper-2' : 'flex-1 h-px bg-gray-200'} />
         </div>
 
         {/* Join — secondary glassmorphism */}
         <button
           type="button"
           onClick={() => setPath('join')}
-          className="bg-white/70 backdrop-blur border border-gray-200 rounded-[18px] px-[22px] py-[20px] flex items-center gap-[14px] hover:border-wine-400 hover:-translate-y-0.5 transition-all"
+          className={on ? 'bg-paper-0 backdrop-blur border border-paper-2 rounded-[18px] px-[22px] py-[20px] flex items-center gap-[14px] hover:border-seal hover:-translate-y-0.5 transition-all' : 'bg-white/70 backdrop-blur border border-gray-200 rounded-[18px] px-[22px] py-[20px] flex items-center gap-[14px] hover:border-wine-400 hover:-translate-y-0.5 transition-all'}
         >
-          <div className="w-[40px] h-[40px] rounded-[11px] bg-wine-100 flex items-center justify-center flex-shrink-0">
-            <Users className="w-[18px] h-[18px] text-wine-600" />
+          <div className={on ? 'w-[40px] h-[40px] rounded-[11px] bg-seal-tint flex items-center justify-center flex-shrink-0' : 'w-[40px] h-[40px] rounded-[11px] bg-wine-100 flex items-center justify-center flex-shrink-0'}>
+            <Users className={on ? 'w-[18px] h-[18px] text-seal' : 'w-[18px] h-[18px] text-wine-600'} />
           </div>
           <div className="text-left">
-            <p className="font-bold text-gray-900 text-[0.9375rem] mb-[2px]">Join an Existing Restaurant</p>
-            <p className="text-[0.78rem] text-gray-500">I have an invite code from my manager</p>
+            <p className={on ? 'font-bold !text-inkm-1 text-[0.9375rem] mb-[2px]' : 'font-bold text-gray-900 text-[0.9375rem] mb-[2px]'}>Join an Existing Restaurant</p>
+            <p className={on ? 'text-[0.78rem] !text-inkm-3' : 'text-[0.78rem] text-gray-500'}>I have an invite code from my manager</p>
           </div>
-          <ChevronRight className="w-[14px] h-[14px] text-gray-400 ml-auto" />
+          <ChevronRight className={on ? 'w-[14px] h-[14px] text-inkm-3 ml-auto' : 'w-[14px] h-[14px] text-gray-400 ml-auto'} />
         </button>
       </div>
 
       {/* Trust row — desktop only */}
       <div className="hidden sm:flex items-center justify-center gap-[18px] mt-4">
         {['No credit card', '3-minute setup', 'Cancel anytime'].map((item) => (
-          <span key={item} className="flex items-center gap-[5px] text-xs text-gray-400">
+          <span key={item} className={on ? 'flex items-center gap-[5px] text-xs text-inkm-3' : 'flex items-center gap-[5px] text-xs text-gray-400'}>
             <Check className="w-[11px] h-[11px] text-green-600 flex-shrink-0" />
             {item}
           </span>
         ))}
       </div>
 
-      <p className="text-center text-sm text-gray-500 mt-6">
+      <p className={on ? 'text-center text-sm !text-inkm-3 mt-6' : 'text-center text-sm text-gray-500 mt-6'}>
         Already have an account?{' '}
-        <Link to="/login" className="text-wine-600 hover:text-wine-700 font-medium">
+        <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium' : 'text-wine-600 hover:text-wine-700 font-medium'}>
           Sign in
         </Link>
       </p>
@@ -354,7 +383,7 @@ export function Register() {
       <button
         type="button"
         onClick={() => setPath('selector')}
-        className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6"
+        className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-6' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
@@ -363,35 +392,35 @@ export function Register() {
       <div className="flex items-start mb-7">
         {/* Step 1 — active */}
         <div className="flex flex-col items-center gap-1">
-          <div className="w-7 h-7 rounded-full bg-wine-600 text-white text-[0.7rem] font-bold flex items-center justify-center shadow-[0_2px_8px_rgba(26,94,107,0.3)]">
+          <div className={on ? 'w-7 h-7 rounded-full bg-seal text-paper-0 text-[0.7rem] font-bold flex items-center justify-center shadow-[0_2px_8px_var(--seal-ring)]' : 'w-7 h-7 rounded-full bg-wine-600 text-white text-[0.7rem] font-bold flex items-center justify-center shadow-[0_2px_8px_rgba(26,94,107,0.3)]'}>
             1
           </div>
-          <span className="text-[0.68rem] font-semibold text-wine-600">Code</span>
+          <span className={on ? 'text-[0.68rem] font-semibold text-seal' : 'text-[0.68rem] font-semibold text-wine-600'}>Code</span>
         </div>
         {/* Connector line */}
-        <div className="flex-1 h-[2px] bg-gray-200 mt-[13px] mx-1" />
+        <div className={on ? 'flex-1 h-[2px] bg-paper-2 mt-[13px] mx-1' : 'flex-1 h-[2px] bg-gray-200 mt-[13px] mx-1'} />
         {/* Step 2 — pending */}
         <div className="flex flex-col items-center gap-1">
-          <div className="w-7 h-7 rounded-full bg-gray-100 border-2 border-gray-200 text-gray-400 text-[0.7rem] font-bold flex items-center justify-center">
+          <div className={on ? 'w-7 h-7 rounded-full bg-paper-1 border-2 border-paper-2 text-inkm-3 text-[0.7rem] font-bold flex items-center justify-center' : 'w-7 h-7 rounded-full bg-gray-100 border-2 border-gray-200 text-gray-400 text-[0.7rem] font-bold flex items-center justify-center'}>
             2
           </div>
-          <span className="text-[0.68rem] font-semibold text-gray-400">Account</span>
+          <span className={on ? 'text-[0.68rem] font-semibold text-inkm-3' : 'text-[0.68rem] font-semibold text-gray-400'}>Account</span>
         </div>
       </div>
 
       {/* Heading */}
       <div className="mb-[22px]">
-        <h2 className="font-display text-[1.4rem] font-extrabold text-gray-900 tracking-tight mb-[5px]">
+        <h2 className={on ? 'font-display text-[1.4rem] font-extrabold !text-inkm-1 tracking-tight mb-[5px]' : 'font-display text-[1.4rem] font-extrabold text-gray-900 tracking-tight mb-[5px]'}>
           Enter your invite code
         </h2>
-        <p className="text-[0.875rem] text-gray-500">8-character code — check your email or Slack</p>
+        <p className={on ? 'text-[0.875rem] !text-inkm-3' : 'text-[0.875rem] text-gray-500'}>8-character code — check your email or Slack</p>
       </div>
 
       {/* Code input */}
       <div className="mb-[14px]">
-        <div className="flex justify-between items-center text-[0.8rem] font-semibold text-gray-900 mb-[7px]">
+        <div className={on ? 'flex justify-between items-center text-[0.8rem] font-semibold text-inkm-1 mb-[7px]' : 'flex justify-between items-center text-[0.8rem] font-semibold text-gray-900 mb-[7px]'}>
           Invite Code
-          <span className="font-normal text-gray-400 text-[0.74rem]">Auto-validates when complete</span>
+          <span className={on ? 'font-normal text-inkm-3 text-[0.74rem]' : 'font-normal text-gray-400 text-[0.74rem]'}>Auto-validates when complete</span>
         </div>
         <div className="relative">
           <input
@@ -404,11 +433,20 @@ export function Register() {
               'block w-full py-4 px-[18px] pr-[50px]',
               'font-mono text-2xl font-bold tracking-[0.2em] uppercase text-center',
               'border-2 rounded-xl outline-none transition-all',
+              // House path: the status border stays (no status token), and
+              // the three hand-drawn focus halos go — the seal outline comes
+              // from auth-house.css.
               invitePreview?.valid === true
-                ? 'border-green-500 focus:border-green-500 shadow-[0_0_0_3px_rgba(5,150,105,0.08)]'
+                ? on
+                  ? 'border-green-500'
+                  : 'border-green-500 focus:border-green-500 shadow-[0_0_0_3px_rgba(5,150,105,0.08)]'
                 : invitePreview?.valid === false
-                  ? 'border-red-400 focus:border-red-400 shadow-[0_0_0_3px_rgba(220,38,38,0.08)]'
-                  : 'border-gray-200 focus:border-wine-600 focus:shadow-[0_0_0_3px_rgba(26,94,107,0.08)]',
+                  ? on
+                    ? 'border-red-400'
+                    : 'border-red-400 focus:border-red-400 shadow-[0_0_0_3px_rgba(220,38,38,0.08)]'
+                  : on
+                    ? 'border-paper-2'
+                    : 'border-gray-200 focus:border-wine-600 focus:shadow-[0_0_0_3px_rgba(26,94,107,0.08)]',
             ].join(' ')}
             placeholder="········"
             maxLength={8}
@@ -419,7 +457,7 @@ export function Register() {
           {/* Status icon */}
           {validating && (
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
-              <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+              <Loader2 className={on ? 'w-5 h-5 text-inkm-3 animate-spin' : 'w-5 h-5 text-gray-400 animate-spin'} />
             </div>
           )}
           {!validating && invitePreview?.valid === true && (
@@ -452,7 +490,7 @@ export function Register() {
                 <Wine className="w-[18px] h-[18px] text-green-600" />
               </div>
               <div>
-                <p className="font-display font-bold text-green-900 text-[0.9375rem]">
+                <p className={on ? 'font-display font-bold !text-green-900 text-[0.9375rem]' : 'font-display font-bold text-green-900 text-[0.9375rem]'}>
                   {invitePreview.restaurant}
                   {invitePreview.city && ` — ${invitePreview.city}`}
                 </p>
@@ -462,20 +500,20 @@ export function Register() {
               </div>
             </div>
             {/* White bottom */}
-            <div className="bg-white px-4 py-[10px] flex justify-between">
+            <div className={on ? 'bg-paper-0 px-4 py-[10px] flex justify-between' : 'bg-white px-4 py-[10px] flex justify-between'}>
               <div className="flex flex-col gap-[2px]">
-                <span className="text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold">Invited by</span>
-                <span className="text-[0.8rem] font-bold text-gray-900">{invitePreview.inviter}</span>
+                <span className={on ? 'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold' : 'text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold'}>Invited by</span>
+                <span className={on ? 'text-[0.8rem] font-bold text-inkm-1' : 'text-[0.8rem] font-bold text-gray-900'}>{invitePreview.inviter}</span>
               </div>
-              <div className="w-px bg-gray-100" />
+              <div className={on ? 'w-px bg-paper-2' : 'w-px bg-gray-100'} />
               <div className="flex flex-col gap-[2px]">
-                <span className="text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold">Your Role</span>
-                <span className="text-[0.8rem] font-bold text-wine-600">{invitePreview.role}</span>
+                <span className={on ? 'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold' : 'text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold'}>Your Role</span>
+                <span className={on ? 'text-[0.8rem] font-bold text-seal' : 'text-[0.8rem] font-bold text-wine-600'}>{invitePreview.role}</span>
               </div>
-              <div className="w-px bg-gray-100" />
+              <div className={on ? 'w-px bg-paper-2' : 'w-px bg-gray-100'} />
               <div className="flex flex-col gap-[2px]">
-                <span className="text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold">Expires</span>
-                <span className="text-[0.8rem] font-bold text-gray-900">7 days</span>
+                <span className={on ? 'text-[0.67rem] uppercase tracking-[0.07em] text-inkm-3 font-semibold' : 'text-[0.67rem] uppercase tracking-[0.07em] text-gray-400 font-semibold'}>Expires</span>
+                <span className={on ? 'text-[0.8rem] font-bold text-inkm-1' : 'text-[0.8rem] font-bold text-gray-900'}>7 days</span>
               </div>
             </div>
           </motion.div>
@@ -505,7 +543,7 @@ export function Register() {
       </AnimatePresence>
 
       <Button
-        className="w-full h-12"
+        className={on ? `w-full h-12 ${HOUSE_BUTTON}` : 'w-full h-12'}
         disabled={!invitePreview?.valid || loading}
         type="button"
         onClick={() => setPathAStep(2)}
@@ -548,44 +586,44 @@ export function Register() {
       <button
         type="button"
         onClick={() => setPathAStep(1)}
-        className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4"
+        className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
       {invitePreview?.valid && (
         <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
-          <p className="text-sm text-green-700 font-medium">
+          <p className={on ? 'text-sm !text-green-700 font-medium' : 'text-sm text-green-700 font-medium'}>
             Joining <strong>{invitePreview.restaurant}</strong>
             {invitePreview.city && ` · ${invitePreview.city}`}
           </p>
-          <p className="text-xs text-green-600 mt-0.5">
+          <p className={on ? 'text-xs !text-green-600 mt-0.5' : 'text-xs text-green-600 mt-0.5'}>
             Invited by {invitePreview.inviter} · Role: {invitePreview.role}
           </p>
         </div>
       )}
-      <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>
+      <h2 className={on ? 'text-xl font-bold !text-inkm-1 mb-5' : 'text-xl font-bold text-gray-900 mb-5'}>Your Account</h2>
       <div className="space-y-4">
         {/* Full Name */}
         <div>
-          <label htmlFor="join-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+          <label htmlFor="join-name" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Full Name *</label>
           <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <User className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-name"
               type="text"
               value={joinName}
               onChange={(e) => setJoinName(e.target.value)}
               placeholder="Jane Smith"
-              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
         </div>
 
         {/* Email with availability check */}
         <div>
-          <label htmlFor="join-email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+          <label htmlFor="join-email" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Email *</label>
           <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Mail className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-email"
               type="email"
@@ -596,18 +634,20 @@ export function Register() {
               }}
               placeholder="jane@restaurant.com"
               className={[
-                'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
+                on
+                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all'
+                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
                 joinEmailCheck.available === false
-                  ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20'
+                  ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
                   : joinEmailCheck.available === true
-                    ? 'border-green-400 focus:border-green-500 focus:ring-green-500/20'
-                    : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20'
+                    ? (on ? 'border-green-400' : 'border-green-400 focus:border-green-500 focus:ring-green-500/20')
+                    : (on ? 'border-paper-2' : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20')
               ].join(' ')}
             />
             {/* Status icon */}
             {joinEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin' : 'w-4 h-4 text-gray-400 animate-spin'} />
               </div>
             )}
             {!joinEmailCheck.checking && joinEmailCheck.available === true && (
@@ -632,7 +672,7 @@ export function Register() {
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{joinEmailCheck.error}</span>
-                <Link to="/login" className="text-wine-600 hover:text-wine-700 font-medium underline">
+                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
                   Sign in
                 </Link>
               </motion.div>
@@ -642,7 +682,7 @@ export function Register() {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className="mt-1 text-xs text-green-600"
+                className={on ? 'mt-1 text-xs !text-green-600' : 'mt-1 text-xs text-green-600'}
               >
                 Email is available
               </motion.p>
@@ -652,33 +692,33 @@ export function Register() {
 
         {/* Password */}
         <div>
-          <label htmlFor="join-password" className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+          <label htmlFor="join-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Password *</label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-password"
               type="password"
               value={joinPassword}
               onChange={(e) => setJoinPassword(e.target.value)}
               placeholder="••••••••"
-              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
-          <p className="text-xs text-gray-400 mt-1">Min. 8 characters</p>
+          <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
         </div>
 
         {/* Confirm Password */}
         <div>
-          <label htmlFor="join-confirm-password" className="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
+          <label htmlFor="join-confirm-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Confirm Password *</label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-confirm-password"
               type="password"
               value={joinConfirm}
               onChange={(e) => setJoinConfirm(e.target.value)}
               placeholder="••••••••"
-              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
         </div>
@@ -686,11 +726,11 @@ export function Register() {
       {(error || authError) && (
         <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-          <p className="text-sm text-red-700">{error || authError}</p>
+          <p className={on ? 'text-sm !text-red-700' : 'text-sm text-red-700'}>{error || authError}</p>
         </div>
       )}
       <Button
-        className="w-full h-12 mt-5"
+        className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
         disabled={loading || joinEmailCheck.checking || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
         onClick={async () => {
           // If debounced check hasn't settled, run immediately before submitting
@@ -734,39 +774,39 @@ export function Register() {
       <button
         type="button"
         onClick={() => setPath('selector')}
-        className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4"
+        className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
       {/* Step indicator (simple bar for Path B step 1) */}
       <div className="flex items-center gap-2 mb-6">
-        <div className="h-1.5 flex-1 rounded-full bg-wine-600" />
-        <div className="h-1.5 flex-1 rounded-full bg-gray-200" />
-        <span className="text-xs text-gray-400 ml-1">Step 1 of 2</span>
+        <div className={on ? 'h-1.5 flex-1 rounded-full bg-seal' : 'h-1.5 flex-1 rounded-full bg-wine-600'} />
+        <div className={on ? 'h-1.5 flex-1 rounded-full bg-paper-2' : 'h-1.5 flex-1 rounded-full bg-gray-200'} />
+        <span className={on ? 'text-xs text-inkm-3 ml-1' : 'text-xs text-gray-400 ml-1'}>Step 1 of 2</span>
       </div>
-      <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>
+      <h2 className={on ? 'text-xl font-bold !text-inkm-1 mb-5' : 'text-xl font-bold text-gray-900 mb-5'}>Your Account</h2>
       <div className="space-y-4">
         {/* Full Name */}
         <div>
-          <label htmlFor="create-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+          <label htmlFor="create-name" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Full Name *</label>
           <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <User className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-name"
               type="text"
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="John Smith"
-              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
         </div>
 
         {/* Email with availability check */}
         <div>
-          <label htmlFor="create-email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+          <label htmlFor="create-email" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Email *</label>
           <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Mail className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-email"
               type="email"
@@ -777,18 +817,20 @@ export function Register() {
               }}
               placeholder="john@myrestaurant.com"
               className={[
-                'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
+                on
+                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all'
+                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
                 createEmailCheck.available === false
-                  ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20'
+                  ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
                   : createEmailCheck.available === true
-                    ? 'border-green-400 focus:border-green-500 focus:ring-green-500/20'
-                    : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20'
+                    ? (on ? 'border-green-400' : 'border-green-400 focus:border-green-500 focus:ring-green-500/20')
+                    : (on ? 'border-paper-2' : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20')
               ].join(' ')}
             />
             {/* Status icon */}
             {createEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin' : 'w-4 h-4 text-gray-400 animate-spin'} />
               </div>
             )}
             {!createEmailCheck.checking && createEmailCheck.available === true && (
@@ -813,7 +855,7 @@ export function Register() {
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{createEmailCheck.error}</span>
-                <Link to="/login" className="text-wine-600 hover:text-wine-700 font-medium underline">
+                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
                   Sign in
                 </Link>
               </motion.div>
@@ -823,7 +865,7 @@ export function Register() {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className="mt-1 text-xs text-green-600"
+                className={on ? 'mt-1 text-xs !text-green-600' : 'mt-1 text-xs text-green-600'}
               >
                 Email is available
               </motion.p>
@@ -833,40 +875,40 @@ export function Register() {
 
         {/* Password */}
         <div>
-          <label htmlFor="create-password" className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+          <label htmlFor="create-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Password *</label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-password"
               type="password"
               value={createPassword}
               onChange={(e) => setCreatePassword(e.target.value)}
               placeholder="••••••••"
-              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
-          <p className="text-xs text-gray-400 mt-1">Min. 8 characters</p>
+          <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
         </div>
 
         {/* Confirm Password */}
         <div>
-          <label htmlFor="create-confirm-password" className="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
+          <label htmlFor="create-confirm-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Confirm Password *</label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-confirm-password"
               type="password"
               value={createConfirm}
               onChange={(e) => setCreateConfirm(e.target.value)}
               placeholder="••••••••"
-              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
         </div>
       </div>
       <Button
         type="button"
-        className="w-full h-12 mt-5"
+        className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
         disabled={
           !createName ||
           !createEmail ||
@@ -1031,8 +1073,8 @@ export function Register() {
       <div className="sm:grid sm:grid-cols-[200px_1fr] sm:gap-6">
 
         {/* Left Rail — hidden on mobile */}
-        <div className="hidden sm:block bg-white/50 backdrop-blur border border-white/40 rounded-2xl p-5 h-fit sticky top-6">
-          <p className="text-xs uppercase tracking-wider text-gray-400 font-bold mb-4">Step 2 of 2</p>
+        <div className={on ? 'hidden sm:block bg-paper-1 backdrop-blur border border-paper-2 rounded-2xl p-5 h-fit sticky top-6' : 'hidden sm:block bg-white/50 backdrop-blur border border-white/40 rounded-2xl p-5 h-fit sticky top-6'}>
+          <p className={on ? 'text-xs uppercase tracking-wider !text-inkm-3 font-bold mb-4' : 'text-xs uppercase tracking-wider text-gray-400 font-bold mb-4'}>Step 2 of 2</p>
           <div className="space-y-0">
             {railSections.map(({ num, label, sub }) => {
               const isDone = num < restaurantSection
@@ -1041,15 +1083,23 @@ export function Register() {
                 <div key={num} className="relative">
                   {/* Connector line between items */}
                   {num > 1 && (
-                    <div className="absolute left-[9px] top-0 w-[2px] h-[7px] bg-gray-200" />
+                    <div className={on ? 'absolute left-[9px] top-0 w-[2px] h-[7px] bg-paper-2' : 'absolute left-[9px] top-0 w-[2px] h-[7px] bg-gray-200'} />
                   )}
                   <div className="flex items-start gap-[9px] py-[7px]">
                     <div
                       className={[
                         'w-5 h-5 rounded-full flex items-center justify-center text-[0.62rem] font-bold flex-shrink-0 transition-all',
                         isDone ? 'bg-green-500 text-white' : '',
-                        isActive ? 'bg-wine-600 text-white shadow-[0_2px_6px_rgba(26,94,107,0.35)]' : '',
-                        !isDone && !isActive ? 'bg-gray-100 text-gray-400 border border-gray-200' : '',
+                        isActive
+                          ? on
+                            ? 'bg-seal text-paper-0 shadow-[0_2px_6px_var(--seal-ring)]'
+                            : 'bg-wine-600 text-white shadow-[0_2px_6px_rgba(26,94,107,0.35)]'
+                          : '',
+                        !isDone && !isActive
+                          ? on
+                            ? 'bg-paper-0 text-inkm-3 border border-paper-2'
+                            : 'bg-gray-100 text-gray-400 border border-gray-200'
+                          : '',
                       ].join(' ')}
                     >
                       {isDone ? <Check className="w-[9px] h-[9px] stroke-[3]" /> : num}
@@ -1058,14 +1108,14 @@ export function Register() {
                       <p
                         className={[
                           'text-[0.8rem] font-semibold',
-                          isDone ? 'text-gray-500' : '',
-                          isActive ? 'text-wine-600' : '',
-                          !isDone && !isActive ? 'text-gray-400' : '',
+                          isDone ? (on ? '!text-inkm-3' : 'text-gray-500') : '',
+                          isActive ? (on ? '!text-seal' : 'text-wine-600') : '',
+                          !isDone && !isActive ? (on ? '!text-inkm-3' : 'text-gray-400') : '',
                         ].join(' ')}
                       >
                         {label}
                       </p>
-                      <p className="text-[0.68rem] text-gray-400">{sub}</p>
+                      <p className={on ? 'text-[0.68rem] !text-inkm-3' : 'text-[0.68rem] text-gray-400'}>{sub}</p>
                     </div>
                   </div>
                 </div>
@@ -1073,14 +1123,14 @@ export function Register() {
             })}
           </div>
           {/* Progress bar */}
-          <div className="mt-[18px] pt-[14px] border-t border-gray-200">
-            <div className="h-[5px] bg-gray-100 rounded-full overflow-hidden">
+          <div className={on ? 'mt-[18px] pt-[14px] border-t border-paper-2' : 'mt-[18px] pt-[14px] border-t border-gray-200'}>
+            <div className={on ? 'h-[5px] bg-paper-2 rounded-full overflow-hidden' : 'h-[5px] bg-gray-100 rounded-full overflow-hidden'}>
               <div
-                className="h-full bg-wine-600 rounded-full transition-all duration-300"
+                className={on ? 'h-full bg-seal rounded-full transition-all duration-300' : 'h-full bg-wine-600 rounded-full transition-all duration-300'}
                 style={{ width: `${(restaurantSection / 3) * 100}%` }}
               />
             </div>
-            <p className="text-[0.75rem] text-gray-500 mt-1">Section {restaurantSection} of 3</p>
+            <p className={on ? 'text-[0.75rem] !text-inkm-3 mt-1' : 'text-[0.75rem] text-gray-500 mt-1'}>Section {restaurantSection} of 3</p>
           </div>
         </div>
 
@@ -1088,31 +1138,31 @@ export function Register() {
         <div>
           {/* Panel 1: Identity */}
           {restaurantSection === 1 && (
-            <div className="bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7">
-              <span className="inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]">
+            <div className={on ? `bg-paper-1 backdrop-blur-md border border-paper-2 rounded-2xl ${HOUSE_SHADOW} p-7` : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
+              <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
                 Section 1 of 3
               </span>
-              <h2 className="font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]">
+              <h2 className={on ? 'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]' : 'font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]'}>
                 Restaurant Identity
               </h2>
-              <p className="text-[0.84rem] text-gray-500 mb-[22px]">
+              <p className={on ? 'text-[0.84rem] !text-inkm-3 mb-[22px]' : 'text-[0.84rem] text-gray-500 mb-[22px]'}>
                 What's the name and type of your restaurant?
               </p>
 
               {/* Restaurant Name */}
               <div className="mb-[18px]">
-                <label htmlFor="restaurant-name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Restaurant Name <span className="text-wine-600">*</span>
+                <label htmlFor="restaurant-name" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
+                  Restaurant Name <span className={on ? 'text-seal' : 'text-wine-600'}>*</span>
                 </label>
                 <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Building2 className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
                   <input
                     id="restaurant-name"
                     type="text"
                     value={restaurantName}
                     onChange={(e) => setRestaurantName(e.target.value)}
                     placeholder="The Oak Room"
-                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
                     autoFocus
                   />
                 </div>
@@ -1124,8 +1174,8 @@ export function Register() {
                     group label for the CuisinePicker composite: associated via the
                     wrapper's role="group" + aria-labelledby, which the rule cannot see.
                     An htmlFor at the trigger would overwrite its accessible name. */}
-                <label id="restaurant-cuisine-label" className="block text-sm font-medium text-gray-700 mb-1">
-                  Cuisine Type <span className="text-gray-400 font-normal text-xs">(optional)</span>
+                <label id="restaurant-cuisine-label" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
+                  Cuisine Type <span className={on ? 'text-inkm-3 font-normal text-xs' : 'text-gray-400 font-normal text-xs'}>(optional)</span>
                 </label>
                 <CuisinePicker value={cuisineType} onChange={setCuisineType} />
               </div>
@@ -1135,14 +1185,14 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => { setPathBStep(1); setError(null) }}
-                  className="flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors"
+                  className={on ? 'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors' : 'flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors'}
                 >
                   ← Back
                 </button>
                 <button
                   type="button"
                   onClick={() => setRestaurantSection(2)}
-                  className="flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px]"
+                  className={on ? 'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px]' : 'flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px]'}
                 >
                   Next: Location
                   <ArrowRight className="w-[13px] h-[13px]" />
@@ -1153,30 +1203,30 @@ export function Register() {
 
           {/* Panel 2: Location */}
           {restaurantSection === 2 && (
-            <div className="bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7">
-              <span className="inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]">
+            <div className={on ? `bg-paper-1 backdrop-blur-md border border-paper-2 rounded-2xl ${HOUSE_SHADOW} p-7` : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
+              <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
                 Section 2 of 3
               </span>
-              <h2 className="font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]">
+              <h2 className={on ? 'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]' : 'font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]'}>
                 Location
               </h2>
-              <p className="text-[0.84rem] text-gray-500 mb-[22px]">
+              <p className={on ? 'text-[0.84rem] !text-inkm-3 mb-[22px]' : 'text-[0.84rem] text-gray-500 mb-[22px]'}>
                 Where is your restaurant located?
               </p>
 
               {/* Country */}
               <div className="mb-[18px]">
-                <label htmlFor="restaurant-country" className="block text-sm font-medium text-gray-700 mb-1">Country <span className="text-wine-600">*</span></label>
+                <label htmlFor="restaurant-country" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Country <span className={on ? 'text-seal' : 'text-wine-600'}>*</span></label>
                 <CountryCombobox id="restaurant-country" value={country} onChange={setCountry} />
                 {!countryReady && (
-                  <p className="text-xs text-gray-400 mt-1">Enter your country to continue filling in the address</p>
+                  <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Enter your country to continue filling in the address</p>
                 )}
               </div>
 
               {/* Street Address — Google Places Autocomplete */}
               <div className="mb-[18px]">
-                <label htmlFor="restaurant-address" className="block text-sm font-medium text-gray-700 mb-1">
-                  Street Address <span className="text-wine-600">*</span>
+                <label htmlFor="restaurant-address" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
+                  Street Address <span className={on ? 'text-seal' : 'text-wine-600'}>*</span>
                 </label>
                 <PlacesAutocomplete
                   id="restaurant-address"
@@ -1208,32 +1258,32 @@ export function Register() {
                     )
                   }}
                   placeholder="Start typing your street address…"
-                  className="py-3 border-gray-300 bg-white/80 focus:ring-2 focus:ring-wine-500"
+                  className={on ? 'py-3 border-paper-2 bg-paper-0' : 'py-3 border-gray-300 bg-white/80 focus:ring-2 focus:ring-wine-500'}
                 />
               </div>
 
               {/* City + State */}
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label htmlFor="restaurant-city" className="block text-sm font-medium text-gray-700 mb-1">City <span className="text-wine-600">*</span></label>
+                  <label htmlFor="restaurant-city" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>City <span className={on ? 'text-seal' : 'text-wine-600'}>*</span></label>
                   <input
                     id="restaurant-city"
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="Chicago"
-                    className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
                   />
                 </div>
                 <div>
-                  <label htmlFor="restaurant-state" className="block text-sm font-medium text-gray-700 mb-1">{countryLocale.stateLabel}</label>
+                  <label htmlFor="restaurant-state" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>{countryLocale.stateLabel}</label>
                   <input
                     id="restaurant-state"
                     type="text"
                     value={stateProvince}
                     onChange={(e) => setStateProvince(e.target.value)}
                     placeholder={countryLocale.statePlaceholder}
-                    className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
                   />
                 </div>
               </div>
@@ -1241,20 +1291,20 @@ export function Register() {
               {/* ZIP + Neighborhood */}
               <div className="grid grid-cols-2 gap-3 mb-0">
                 <div>
-                  <label htmlFor="restaurant-postal-code" className="block text-sm font-medium text-gray-700 mb-1">{countryLocale.postalLabel}</label>
+                  <label htmlFor="restaurant-postal-code" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>{countryLocale.postalLabel}</label>
                   <input
                     id="restaurant-postal-code"
                     type="text"
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}
                     placeholder={countryLocale.postalPlaceholder}
-                    className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
                   />
                 </div>
                 <div>
-                  <label htmlFor="restaurant-neighborhood" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="restaurant-neighborhood" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
                     {countryLocale.areaLabel}
-                    <span className="text-gray-400 font-normal ml-1 text-xs">(optional)</span>
+                    <span className={on ? 'text-inkm-3 font-normal ml-1 text-xs' : 'text-gray-400 font-normal ml-1 text-xs'}>(optional)</span>
                   </label>
                   <input
                     id="restaurant-neighborhood"
@@ -1262,7 +1312,7 @@ export function Register() {
                     value={neighborhood}
                     onChange={(e) => setNeighborhood(e.target.value)}
                     placeholder={countryLocale.areaPlaceholder}
-                    className="block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none"
+                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
                   />
                 </div>
               </div>
@@ -1284,14 +1334,14 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => setRestaurantSection(1)}
-                  className="flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors"
+                  className={on ? 'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors' : 'flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors'}
                 >
                   ← Identity
                 </button>
                 <button
                   type="button"
                   onClick={() => setRestaurantSection(3)}
-                  className="flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px]"
+                  className={on ? 'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px]' : 'flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px]'}
                 >
                   Next: Contact
                   <ArrowRight className="w-[13px] h-[13px]" />
@@ -1302,34 +1352,34 @@ export function Register() {
 
           {/* Panel 3: Contact */}
           {restaurantSection === 3 && (
-            <div className="bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7">
-              <span className="inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]">
+            <div className={on ? `bg-paper-1 backdrop-blur-md border border-paper-2 rounded-2xl ${HOUSE_SHADOW} p-7` : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
+              <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
                 Section 3 of 3
               </span>
-              <h2 className="font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]">
+              <h2 className={on ? 'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]' : 'font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]'}>
                 Contact Details
               </h2>
-              <p className="text-[0.84rem] text-gray-500 mb-[22px]">
+              <p className={on ? 'text-[0.84rem] !text-inkm-3 mb-[22px]' : 'text-[0.84rem] text-gray-500 mb-[22px]'}>
                 Optional. Helps with reservations.
               </p>
 
               {/* Phone */}
               <div className="mb-0">
-                <label htmlFor="restaurant-phone" className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number <span className="text-gray-400 font-normal text-xs">(optional)</span>
+                <label htmlFor="restaurant-phone" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
+                  Phone Number <span className={on ? 'text-inkm-3 font-normal text-xs' : 'text-gray-400 font-normal text-xs'}>(optional)</span>
                 </label>
                 <PhoneNumberInput
                   id="restaurant-phone"
                   value={phone}
                   onChange={setPhone}
                   countryHint={country}
-                  className="bg-white/80 py-3"
+                  className={on ? 'bg-paper-0 py-3' : 'bg-white/80 py-3'}
                   invalid={Boolean(phone.trim() && !isValidPhone(phone))}
                 />
                 {phone.trim() && !isValidPhone(phone) && (
-                  <p className="text-xs text-rose-600 mt-1">Enter a valid phone number for the selected country.</p>
+                  <p className={on ? 'text-xs !text-rose-600 mt-1' : 'text-xs text-rose-600 mt-1'}>Enter a valid phone number for the selected country.</p>
                 )}
-                <p className="text-xs text-gray-400 mt-1">You can add this any time from Settings.</p>
+                <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>You can add this any time from Settings.</p>
               </div>
 
               {/* Error banner */}
@@ -1342,7 +1392,7 @@ export function Register() {
                     className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2"
                   >
                     <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-red-700 flex-1">{error || authError}</p>
+                    <p className={on ? 'text-sm !text-red-700 flex-1' : 'text-sm text-red-700 flex-1'}>{error || authError}</p>
                     <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-600 ml-1">
                       <X className="w-4 h-4" />
                     </button>
@@ -1355,7 +1405,7 @@ export function Register() {
                 <button
                   type="button"
                   onClick={() => setRestaurantSection(2)}
-                  className="flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors"
+                  className={on ? 'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors' : 'flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors'}
                 >
                   ← Location
                 </button>
@@ -1363,7 +1413,7 @@ export function Register() {
                   type="button"
                   onClick={handleCreateSubmit}
                   disabled={loading || !restaurantName || !address || !city || !country}
-                  className="flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px] disabled:opacity-45 disabled:cursor-not-allowed disabled:transform-none"
+                  className={on ? 'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px] disabled:opacity-45 disabled:cursor-not-allowed disabled:transform-none' : 'flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px] disabled:opacity-45 disabled:cursor-not-allowed disabled:transform-none'}
                 >
                   {loading ? (
                     <>
@@ -1395,10 +1445,10 @@ export function Register() {
   const isRestaurantForm = path === 'create' && pathBStep === 2
 
   return (
-    <div className="relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]">
+    <div className={on ? 'mdv-auth mudavym relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-paper-0' : 'relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]'}>
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(26,94,107,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(26,94,107,0.07),transparent_45%)]"
+        className={on ? 'pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,var(--seal-tint),transparent_50%),radial-gradient(ellipse_at_100%_100%,var(--seal-tint),transparent_45%)]' : 'pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(26,94,107,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(26,94,107,0.07),transparent_45%)]'}
       />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1413,10 +1463,10 @@ export function Register() {
             transition={{ delay: 0.1, type: 'spring' }}
             className="inline-flex mb-5"
           >
-            <BrandMark size={34} />
+            <BrandMark size={34} className={on ? HOUSE_WORDMARK : undefined} />
           </motion.div>
-          <h1 className="text-3xl font-semibold tracking-tight text-gray-900 mb-2">Join Mudavym</h1>
-          <p className="text-[15px] text-gray-500">Transform your restaurant&apos;s wine operations</p>
+          <h1 className={on ? 'text-3xl font-semibold tracking-tight !text-inkm-1 mb-2' : 'text-3xl font-semibold tracking-tight text-gray-900 mb-2'}>Join Mudavym</h1>
+          <p className={on ? 'text-[15px] !text-inkm-3' : 'text-[15px] text-gray-500'}>Transform your restaurant&apos;s wine operations</p>
         </div>
 
         <AnimatePresence mode="wait" initial={false}>
@@ -1429,14 +1479,14 @@ export function Register() {
             /* All other steps: standard glass card */
             <div
               key={stepKey}
-              className="rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8 overflow-hidden shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]"
+              className={on ? `rounded-2xl border border-seal-tint bg-paper-1 backdrop-blur-md p-8 overflow-hidden ${HOUSE_SHADOW}` : 'rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8 overflow-hidden shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]'}
             >
               {content}
             </div>
           )}
         </AnimatePresence>
 
-        <p className="text-center text-xs text-gray-400 mt-8">© 2026 Mudavym. All rights reserved.</p>
+        <p className={on ? 'text-center text-xs !text-inkm-3 mt-8' : 'text-center text-xs text-gray-400 mt-8'}>© 2026 Mudavym. All rights reserved.</p>
       </motion.div>
     </div>
   )

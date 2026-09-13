@@ -1,0 +1,335 @@
+/* ============================================================
+   The public shell — one door, seven pages (ADR 0143 §1)
+   ============================================================
+
+   Tokens only. There is NOT ONE hex literal in this file, no
+   `prefers-color-scheme` block and no `[data-theme]` block — every colour is a
+   `.mudavym` custom property from `styles/mudavym.css`, so both grounds arrive
+   by the three routes ADR 0042 already defines (the app's `.dark` class, an
+   explicit `data-ground="charcoal"`, and mudavym.css's own pre-hydration media
+   query) and none of them can be contradicted from here.
+   `PublicShell.test.tsx` reads this file back and asserts all three.
+
+   There are also no `box-shadow` colours, deliberately: the separation in this
+   house is a hairline and a change of ground (`--paper-1` on `--paper-0`,
+   `--paper-2` between), which is `.mdv-panelbox`'s shape in `sheet.css` at page
+   scale. A shadow would have been the one colour here that is not a token.
+
+   PHONE FIRST. These are pages a person opens from an email link, standing up.
+   Every base rule is the 375px rule; the `min-width` blocks are the concession
+   to a desk, not the other way round.
+
+   Motion is `settle` — cubic-bezier(0.16, 1, 0.3, 1) at 320ms, the house curve
+   from lib/mudavym/motion.ts:103 — and only a `door` moves. A document and a
+   board do not arrive; they are simply there.
+*/
+
+.mdv-pub {
+  /* `sheet.css` declares these on `.mdv-ovl`, so they do not reach a page that
+     is not an overlay. Same values, one place to change them. */
+  --mdv-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mdv-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --mdv-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* The measure of the column, overridden per shape below. */
+  --mdv-pub-measure: 420px;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 28px 16px 36px;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: var(--mdv-sans);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.mdv-pub[data-measure='document'] {
+  --mdv-pub-measure: 680px;
+}
+
+.mdv-pub[data-measure='board'] {
+  --mdv-pub-measure: 1080px;
+}
+
+@media (min-width: 640px) {
+  .mdv-pub {
+    padding: 48px 24px 56px;
+  }
+}
+
+/* `margin-block: auto` rather than `align-items: center`: a column taller than
+   the viewport is centred by `align-items` too, which pushes its own top edge
+   off-screen where nothing can scroll it back. `auto` margins collapse to zero
+   the moment there is no spare room, so a `door` centres and a `document`
+   starts at the top — one mechanism, no conditional. */
+.mdv-pub__col {
+  width: 100%;
+  max-width: var(--mdv-pub-measure);
+  margin-inline: auto;
+  margin-block: auto;
+  flex: 0 0 auto;
+}
+
+/* ── the skip link ───────────────────────────────────────────────────────
+   Rendered only when the masthead can take focus (see PublicShell.tsx). Off
+   screen until focused, then a plate at the top-left corner — never
+   `display: none`, which takes it out of the tab order entirely. */
+
+.mdv-pub__skip {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 2;
+  transform: translateY(-180%);
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-pub__skip:focus-visible,
+.mdv-pub__skip:focus {
+  transform: none;
+}
+
+/* ── the masthead: the seal, the name, the sign, the sentence ──────────── */
+
+.mdv-pub__mast {
+  display: block;
+}
+
+.mdv-pub[data-measure='door'] .mdv-pub__mast {
+  text-align: center;
+}
+
+.mdv-pub__sign {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.mdv-pub__signlink {
+  display: inline-flex;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-pub__signlink:hover {
+  opacity: 0.78;
+}
+
+.mdv-pub__seal {
+  flex: 0 0 auto;
+}
+
+.mdv-pub__eyebrow {
+  display: block;
+  margin-top: 18px;
+  font-family: var(--mdv-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--seal-deep);
+}
+
+.mdv-pub__title {
+  margin: 14px 0 0;
+  font-family: var(--mdv-serif);
+  font-size: 25px;
+  font-weight: 600;
+  line-height: 1.14;
+  letter-spacing: -0.015em;
+  color: var(--ink-1);
+  text-wrap: balance;
+}
+
+/* An eyebrow already opened the space above the title. */
+.mdv-pub__eyebrow + .mdv-pub__title {
+  margin-top: 6px;
+}
+
+.mdv-pub[data-measure='board'] .mdv-pub__title {
+  font-size: 22px;
+}
+
+@media (min-width: 640px) {
+  .mdv-pub__title {
+    font-size: 29px;
+  }
+
+  .mdv-pub[data-measure='board'] .mdv-pub__title {
+    font-size: 26px;
+  }
+}
+
+/* The one sentence in the house voice. Its measure is capped independently of
+   the column's: at `board` width a single sentence run to 1080px is a ruler,
+   not a sentence. */
+.mdv-pub__voice {
+  margin: 9px 0 0;
+  max-width: 54ch;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.mdv-pub[data-measure='door'] .mdv-pub__voice {
+  margin-inline: auto;
+}
+
+/* ── the content ─────────────────────────────────────────────────────────
+   `<main>` is a focus target for the skip link and nothing else; the ring
+   belongs to the controls inside it, so its own outline is suppressed. */
+
+.mdv-pub__main {
+  margin-top: 22px;
+  outline: none;
+}
+
+@media (min-width: 640px) {
+  .mdv-pub__main {
+    margin-top: 28px;
+  }
+}
+
+.mdv-pub__foot {
+  margin-top: 22px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+.mdv-pub[data-measure='door'] .mdv-pub__foot {
+  text-align: center;
+}
+
+/* ── focus, on a paper gap ───────────────────────────────────────────────
+   The app ships a GLOBAL `*:focus-visible { ring-2 ring-wine-500 }`
+   (styles/globals.css:221-264) — a wine ring, a colour this house does not
+   have. Tailwind's `ring` is a box-shadow, so an `outline` alone does not
+   replace it and the shadow has to be cancelled explicitly. Identical to
+   `sheet.css`'s rule, because it is the same defect on a different surface. */
+
+.mdv-pub :focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  border-radius: 4px;
+  --tw-ring-shadow: 0 0 transparent;
+  --tw-ring-offset-shadow: 0 0 transparent;
+  box-shadow: none;
+}
+
+/* ── content vocabulary ──────────────────────────────────────────────────
+   Three classes, and only three. Everything else a page in this shell needs —
+   `.mdv-label`, `.mdv-input`, `.mdv-btn`, `.mdv-btn--seal`, `.mdv-actions`,
+   `.mdv-alert`, `.mdv-link`, `.mdv-note`, `.mdv-quiet`, `.mdv-record`,
+   `.mdv-panelbox` — is already declared unscoped in `sheet.css` and is
+   imported with it. A second vocabulary is exactly the drift the one-shell
+   decision was made to end. */
+
+/* `.mdv-panelbox` at page scale: the plate a door's form or a document's
+   section sits on. */
+.mdv-pub__plate {
+  padding: 18px 16px;
+  background: var(--paper-1);
+  border: 1px solid var(--paper-2);
+  border-radius: 14px;
+}
+
+@media (min-width: 640px) {
+  .mdv-pub__plate {
+    padding: 22px 20px;
+  }
+}
+
+/* Prose rhythm for the one page that is a document. Headings inside `<main>`
+   start at `h2` — the shell owns the only `h1`. */
+.mdv-pub__prose h2 {
+  margin: 0 0 6px;
+  font-family: var(--mdv-serif);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+}
+
+.mdv-pub__prose h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.mdv-pub__prose p,
+.mdv-pub__prose li {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--ink-2);
+}
+
+.mdv-pub__prose > * + * {
+  margin-top: 14px;
+}
+
+.mdv-pub__prose ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+/* A board's table is six columns wide and a phone is 375px. The table scrolls
+   inside this, never the page: a public page that scrolls sideways as a whole
+   is a page a stranger cannot read. Measured in Chrome at 375px on the harness
+   — the page's scrollWidth stays 375 while this scroller's is 620.
+
+   A page using this MUST give the element `tabIndex={0}`, `role="region"` and
+   an accessible name: a scrollable box that no keyboard can reach is WCAG
+   2.1.1, and only recent Chrome focuses one on its own. The class cannot do
+   that for the page, so it is said here rather than discovered later. */
+.mdv-pub__scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── arrival ─────────────────────────────────────────────────────────────
+   Only a door arrives. A document and a board are already open. */
+
+@keyframes mdv-pub-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mdv-pub[data-measure='door'] .mdv-pub__col {
+  animation: mdv-pub-arrive 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-pub[data-measure='door'] .mdv-pub__col {
+    animation: none;
+  }
+
+  .mdv-pub__skip,
+  .mdv-pub__signlink {
+    transition: none;
+  }
+}

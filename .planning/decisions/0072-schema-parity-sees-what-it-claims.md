@@ -667,9 +667,145 @@ It no longer claims column order is compared when it was not. On a run where any
 of the three was exempted it says so and gives the count, and the exclusion list
 it prints on every run names the three tables.
 
+## Correction, 2026-09-12: `--self-test-offline` failed at random on macOS because bash crashed, not because the exception moved
+
+### What was reported
+
+In the worktree `wt-askai` (branch `fix/ask-ai-is-gated`, based on `d6b264a2`),
+`scripts/check_decision_claims.sh` reported the second ADR-0072 claim as
+**REGRESSED** on one run and holding on the next, with no file touched. That is
+the claim *"`--self-test-offline` needs no database and is a step in the parity
+workflow"*. The brief's working hypothesis was shared mutable state: temp files
+at fixed paths, colliding between invocations.
+
+### That hypothesis was checked, and it is false
+
+`WORK` is a fresh `mktemp -d` per invocation, removed by an EXIT trap
+(`scripts/check_schema_parity.sh:106-107`). Every file `self_test_offline()`
+writes lives under it: `st_offline_failures`, `sto_*`, and the comparison's
+`d.$$.*`. Nothing is shared between two invocations, or between two claims in one
+run of the register.
+
+### Reproduced, with the evidence the register throws away
+
+For a REGRESSED row the register prints only `id — claim`. It captures the
+verify's stderr and discards it. Run by hand with stderr kept (worktree at
+`87a6cb25`, the founder's Mac):
+
+| loop | runs | failed |
+|---|---|---|
+| `--self-test-offline` by itself | 1000 | **47** |
+| the claim's verify, invoked exactly as the register invokes it (`bash -c "$verify" 2>&1 >/dev/null`) | 300 | **19** |
+| `check_decision_claims.sh`, unmodified, whole register, looped until it failed twice | 48 | **2** (runs 29 and 48) |
+
+Every failure had the same shape. All five `( compare … )` subshells in that run
+died with **SIGSEGV**, `Segmentation fault: 11 ( compare "$WORK/sto_a"
+"$WORK/sto_b" --quiet )`, exit 139. The suite reported `exited 139, not 0` five
+times and exited 1. The sixth case never crashed; it leaves `compare` through
+`cannot_check` before reaching the awk. A run lost either all five subshells or
+none: 235 crashed subshells across 47 failed runs. The register's two failures are the
+same event. Run 29's window holds two crash reports carrying the stack below,
+siblings of a single parent process. Run 48 has none of its own, because macOS
+kept only 34 bash crash reports that day for several hundred crashed subshells.
+
+### Cause
+
+macOS wrote a crash report for every one
+(`~/Library/Logs/DiagnosticReports/bash-*.ips`). Every one sampled carries the
+same stack:
+
+    dispose_temporary_env → sv_locale → set_locale_var → reset_locale_vars
+      → libintl_setlocale → CFLocaleCopyPreferredLanguages → … → os_log → SIGSEGV
+
+On the founder's Mac, `#!/usr/bin/env bash` resolves to Homebrew bash 5.3.15,
+which links Homebrew gettext's `libintl`. `LC_ALL=C awk …` (formerly `:488`,
+inside `compare()`) is a **prefix assignment**. Bash sets `LC_ALL` in a temporary
+environment, runs awk, then restores it. Restoring calls `setlocale`, and on this
+build that reaches CoreFoundation. CoreFoundation is not safe in a process that
+forked and did not exec. `( compare … )` is exactly such a process: the self-test
+runs `compare` in a subshell so that a `cannot_check` exit cannot kill the suite.
+The production comparison calls `compare` in the main shell, which is why that
+path has never crashed.
+
+Measured in isolation, 300 fresh processes per row, `LANG` unset. Bare line
+numbers in this Correction are as of `87a6cb25`, before the fix moved them.
+
+| shape | segfaults |
+|---|---|
+| `( LC_ALL=C awk …; touch … )`, the shape at `:488` | **20 / 300** |
+| `( env LC_ALL=C awk …; touch … )` | 0 / 300 |
+| `LC_ALL=C awk …` in the main shell | 0 / 300 |
+| `( LC_ALL=C true; : )` with `LANG=en_US.UTF-8` exported | 0 / 300 |
+| `y=$(LC_ALL=C cat </dev/null)` | **18 / 300** |
+| `:386`, `:399`, `:531` in their real shapes (all pipeline elements) | 0 / 300 each |
+| the whole `--self-test-offline` under `/bin/bash` 3.2 | 0 / 300 |
+
+So two conditions: Homebrew bash 5.3 on macOS, and `LANG` unset. Claude Code
+sessions run with `LANG` unset, and a terminal with it exported never sees the
+crash. Ubuntu CI has no CoreFoundation, so it should be unaffected there, but that
+is **reasoned, not measured**. One thing was **not established**: why a run's fate
+is all-or-nothing, decided before its first fork. The three rates (47 / 1000
+alone, 19 / 300 in the register's invocation shape, 2 / 48 in the whole register)
+are not distinguishable from one another at these sample sizes.
+
+### What it was not
+
+It was not a regression of the exception, and the self-test did not lie. It
+refused to pass when bash crashed, and said so. The red was real, but it meant
+"bash crashed", and the only channel that said so is the one the register
+discards.
+
+### Fix
+
+All four locale overrides now go through `env`: `env LC_ALL=C awk`, `sort` and
+`uniq`. `env` is an external command, so bash never sets, restores or reads a
+locale variable of its own. awk, sort and uniq receive exactly the environment
+they received before, so **the comparison's semantics do not change**.
+
+Only `:488` was measured crashing in its real shape. `:386`, `:399` and `:531`
+were changed anyway, so the rule is one line (*bash never sets a locale variable
+in this file*) rather than a judgment about which shapes bash happens to exec
+directly. A pipeline element survived 300 of 300; `$(LC_ALL=C cat </dev/null)`
+did not.
+
+Deliberately **not** done: the self-test's cases and expectations are untouched,
+the claim's verify string is untouched, and `compare` still runs in a subshell.
+
+### Guard
+
+There is a new ADR-0072 row in `CLAIMS.jsonl`. It requires that
+`scripts/check_schema_parity.sh` carries `env LC_ALL=C awk`, and that no `*.sh`
+under `scripts/` has bash set `LC_*`, `LANG` or `LANGUAGE` itself. Proven:
+
+- it does **not** hold on `87a6cb25`: four bare prefixes, all in this file. A sweep
+  of the tracked shell scripts under `scripts/` and `.claude/`, and of the
+  workflows under `.github/`, found none anywhere else;
+- it holds on the fix;
+- it fails on a line mixing an `env` form with a bare prefix, on `export LANG=…`,
+  and on a bare prefix in another script;
+- it ignores look-alike names such as `MY_LANG=`;
+- with the file missing it exits 2 with `No such file or directory`, which the
+  register reads as COULD NOT RUN rather than as holding. Without the presence
+  check it did hold: `grep -r --include` over a missing directory printed nothing
+  and exited 1.
+
+### Proof
+
+| loop | before | after |
+|---|---|---|
+| `--self-test-offline` by itself | 47 / 1000 | **0 / 1000** |
+| the claim's verify in the register's invocation shape | 19 / 300 | **0 / 300** |
+| `check_decision_claims.sh`, whole register | 2 in 48 | **0 in 150** |
+
+If the crash still happened at the register's own measured rate (2 in 48), the
+chance of 150 clean runs would be about 1.7e-03. The
+after-loops ran the same loop scripts, on the same Mac, in a worktree of the
+same base commit carrying only this change.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | — | Created. Diagnosis verified against a fixture and against production; fix proven to fail where the old one passed; self-test proven non-vacuous by mutation. |
 | 2026-09-12 | — | **Amended.** The "revisit when" signal fired: the first run after production caught up on #289's nineteen migrations was red on three `column-order` rows that were not drift. Narrowed BY NAME (three tables) per this ADR's own instruction, never by deleting the category. `:199` and the not-compared list rewritten; the PASS message corrected; `--self-test-offline` added and wired into CI, and proven to fail under two widening mutations. |
+| 2026-09-12 | — | **Corrected.** The ADR-0072 self-test claim was flaking REGRESSED. The cause was not shared temp state (`WORK` is `mktemp -d`); it was a Homebrew bash 5.3 segfault on macOS in `libintl` → CoreFoundation, triggered when bash itself restores a prefixed `LC_ALL` inside the self-test's forked subshells (47 / 1000). All four locale overrides now pass through `env`; the exception, the self-test and the claim are unchanged; a new CLAIMS row refuses a bare locale prefix anywhere under `scripts/`. |

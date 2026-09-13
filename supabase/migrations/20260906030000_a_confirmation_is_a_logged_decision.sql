@@ -166,6 +166,12 @@ DECLARE
   cand_id    uuid;
   first_id   uuid;
   blocked    boolean;
+  decisions_before   bigint;
+  candidates_before  bigint;
+  identities_before  bigint;
+  decisions_after    bigint;
+  candidates_after   bigint;
+  identities_after   bigint;
 BEGIN
   IF to_regclass('public.beverage_identity_decisions') IS NULL THEN
     RAISE EXCEPTION 'beverage_identity_decisions was not created';
@@ -196,9 +202,16 @@ BEGIN
     RAISE EXCEPTION 'columns the gateway reads are missing: %', absent;
   END IF;
 
-  IF (SELECT count(*) FROM public.beverage_identity_decisions) <> 0 THEN
-    RAISE EXCEPTION 'this migration must not write rows';
-  END IF;
+  -- Baseline, not a zero-row assertion: on 2026-09-12 this passed only because
+  -- all three tables happened to be empty in production at that moment. A
+  -- confirmed decision since then makes an absolute "must be 0" assertion
+  -- fail for a reason that has nothing to do with what this block checks --
+  -- whether ITS OWN probe rolled back. The DELTA below is what "this
+  -- migration must not write rows" actually means, and it holds on a
+  -- populated table too.
+  SELECT count(*) INTO decisions_before  FROM public.beverage_identity_decisions;
+  SELECT count(*) INTO candidates_before FROM public.beverage_identity_candidates;
+  SELECT count(*) INTO identities_before FROM public.beverage_identities;
 
   -- PROVE the append-only trigger, and prove the undo constraint, on probes
   -- that are removed again. A trigger nobody tried is a trigger nobody has.
@@ -254,12 +267,19 @@ BEGIN
   DELETE FROM public.beverage_identity_candidates WHERE id = cand_id;
   DELETE FROM public.beverage_identities WHERE id = ident_id;
 
-  IF (SELECT count(*) FROM public.beverage_identity_decisions) <> 0
-     OR (SELECT count(*) FROM public.beverage_identity_candidates) <> 0
-     OR (SELECT count(*) FROM public.beverage_identities) <> 0 THEN
-    RAISE EXCEPTION 'the probes did not roll back';
+  SELECT count(*) INTO decisions_after  FROM public.beverage_identity_decisions;
+  SELECT count(*) INTO candidates_after FROM public.beverage_identity_candidates;
+  SELECT count(*) INTO identities_after FROM public.beverage_identities;
+
+  IF decisions_after  <> decisions_before
+     OR candidates_after <> candidates_before
+     OR identities_after <> identities_before THEN
+    RAISE EXCEPTION
+      'the probes did not roll back -- decisions % -> %, candidates % -> %, identities % -> %',
+      decisions_before, decisions_after, candidates_before, candidates_after,
+      identities_before, identities_after;
   END IF;
 
-  RAISE NOTICE 'beverage_identity_decisions created, RLS on, anon/authenticated revoked, append-only trigger proved against a real UPDATE, undo constraint proved, 0 rows written.';
+  RAISE NOTICE 'beverage_identity_decisions created, RLS on, anon/authenticated revoked, append-only trigger proved against a real UPDATE, undo constraint proved, no net rows written (decisions % -> %, candidates % -> %, identities % -> %).', decisions_before, decisions_after, candidates_before, candidates_after, identities_before, identities_after;
 END
 $$;
