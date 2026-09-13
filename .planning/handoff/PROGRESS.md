@@ -12,6 +12,29 @@ disagrees with the tree, the tree wins. Re-measure before acting on any line her
 marked "agent died" has partial or no edits in its worktree. Inspect `git status` there
 before continuing.
 
+## 0a. Final state, 2026-09-13 (supersedes sections 0 and 3 wherever they differ)
+
+**On main:** #363, #366, #361, and merge train 2 (#372). The train carried #367 parity,
+#328 go-live docs, #365 ledger guard, #364 probe safety with its two sibling commits, #370
+p4 after #289, #369 MCP port, and this handoff doc. Those PRs and train 1 (#371) are closed
+as landed or superseded. The endpoint faults (ADR 0147) follow in their own PR.
+
+**Still open, in priority order:**
+1. **#368 text-sender port.** Its five ADR-0121 CLAIMS rows (P0-PUSH, P0-PHONE,
+   P1-WEBHOOK, P1-WINDOW, P1-HTTP-CENSUS) hold locally but REGRESSED in CI's "Decision
+   register matches reality" job. The likely cause is a verify command that depends on
+   the local environment (node_modules or jest). Read those rows' `verify` fields
+   against what that CI job installs.
+2. **#362 security gate.** Rewrite the guard on PyYAML (brief in section 3).
+3. **#349 nightly E2E.** Its merge of main is in progress in wt-e2e, with 6 conflicts.
+4. **Ports:** calpush, ov0, ov1, ov2, motions (section 4). The founder chose to land all
+   of them.
+5. **The pages build** (section 5), and the open founder forks (section 6).
+
+**Two findings that are fixed nowhere:**
+- `GET /logs` correlationId reads across houses.
+- No unique index on Meta phone number id.
+
 ## 0. Latest state (supersedes section 3 wherever they differ)
 
 Written while API credit was down to its last $15. Subagents failed on the weekly limit on
