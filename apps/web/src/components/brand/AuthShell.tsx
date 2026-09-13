@@ -50,10 +50,10 @@ export function AuthShell({
   const isBrandTitle = title === 'Mudavym'
 
   return (
-    <div data-ground="paper"
+    <div
       className={
         house
-          ? 'mudavym mdv-auth relative min-h-screen flex items-center justify-center px-4 py-12 overflow-hidden bg-paper-0'
+          ? 'mdv-auth mudavym relative min-h-screen flex items-center justify-center px-4 py-12 overflow-hidden bg-paper-0'
           : 'relative min-h-screen flex items-center justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]'
       }
     >

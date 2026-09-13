@@ -27,7 +27,7 @@ import '../components/brand/auth-house.css'
  * The swaps follow the rules written out in Login.tsx (grays by value to ink
  * and paper, the wine scale to the seal, card = paper-1 plate on the paper-0
  * ground with paper-0 fields inside, no hand-drawn focus rings, status hues
- * unchanged because mudavym.css has no status token, `!` on <p>/<h*> colours
+ * unchanged because the house stylesheet has no status token, `!` on <p>/<h*> colours
  * to outrank globals.css's `.dark p`). Two more that only this page needs:
  *   - white-alpha on the seal fill (`bg-white/20`, `text-white/75`) becomes
  *     the same alpha of `--paper-0`, the ink that sits on the seal, through
@@ -1445,7 +1445,7 @@ export function Register() {
   const isRestaurantForm = path === 'create' && pathBStep === 2
 
   return (
-    <div data-ground="paper" className={on ? 'mudavym mdv-auth relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-paper-0' : 'relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]'}>
+    <div className={on ? 'mdv-auth mudavym relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-paper-0' : 'relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]'}>
       <div
         aria-hidden
         className={on ? 'pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,var(--seal-tint),transparent_50%),radial-gradient(ellipse_at_100%_100%,var(--seal-tint),transparent_45%)]' : 'pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(26,94,107,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(26,94,107,0.07),transparent_45%)]'}

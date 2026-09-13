@@ -87,3 +87,10 @@ html .mudavym.mdv-auth textarea::placeholder {
   color: var(--ink-3) !important;
   -webkit-text-fill-color: var(--ink-3) !important;
 }
+
+/* The auth page root paints its own ground from the house tokens, so the
+   ground follows the visitor's theme and the root needs no data-ground
+   attribute. Same colour the root's bg-paper-0 utility paints. */
+.mudavym.mdv-auth {
+  background-color: var(--paper-0);
+}
