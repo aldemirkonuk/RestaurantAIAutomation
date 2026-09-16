@@ -80,15 +80,20 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
   cycle from the container. The brief therefore tells the founder to take a bundle
   *before* logging out, as insurance against the reasoning being wrong.
 - **Artifacts: decided but not delivered.** The founder chose to pull the twelve Mudavym
-  artifacts into the repo as files. Measured 2026-09-16, that is currently impossible from
-  a cloud session: `cb024e8e` and `47322370` were each requested through both `WebFetch`
-  and the Artifact tool's read path, and all four attempts returned *"artifact not found —
-  it may have been deleted, or it has not been shared with you"*. Two artifacts, two
-  paths, one error rules out deletion and points at org access — they live under
-  `1138b209-aed5-4cfe-9199-186b04b76545`, which this session's account cannot see. The
-  decision stands; only the index landed (`ONBOARDING.md` §7), and §7 names the three
-  ways to unblock it. **The exposure this ADR set out to remove is therefore still open
-  for the artifacts specifically.**
+  artifacts into the repo as files. Measured 2026-09-16 across 16 requests and both link
+  formats, that is not possible from a cloud session. The org-scoped
+  `claude.ai/code/artifact/<uuid>` links returned *"artifact not found — it may have been
+  deleted, or it has not been shared with you"* through `WebFetch` and the Artifact read
+  tool alike. The founder then supplied public share links
+  (`claude.ai/artifact/<short>`), and **all twelve resolved to their internal ids** —
+  proving none is deleted and every link is live — but each returned *"this artifact is
+  served to you as a public (non-member) reader, and reading public artifacts that way is
+  not enabled yet"*. The distinction matters for the fix: **wider sharing does not help,
+  because the blocker is non-membership, not permission.** The reader must be a member of
+  org `1138b209-aed5-4cfe-9199-186b04b76545`, or the pull must run from a local session
+  signed into the owning account. Only the index landed (`ONBOARDING.md` §7), plus a
+  standalone prompt for the local run (§8). **The exposure this ADR set out to remove is
+  therefore still open for the artifacts specifically.**
 - **Revisit when:** the brief's "in flight" section disagrees with `gh pr list` twice
   running, or `PROGRESS.md` is retired — either signals the brief has become a second
   source of truth rather than an index into the first.

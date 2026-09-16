@@ -146,37 +146,113 @@ Twelve Mudavym artifacts live on claude.ai under org `1138b209-aed5-4cfe-9199-18
 ADR 0148 chose to **pull their content into the repo as files**. That has not happened —
 the URLs below are an index, not a copy.
 
-| Artifact | Link |
-|---|---|
-| Mudavym Atlas | [a14766c1](https://claude.ai/code/artifact/a14766c1-b4e3-4578-8338-8b68375f636f) |
-| Mudavym Cluster Map | [cb024e8e](https://claude.ai/code/artifact/cb024e8e-8687-4043-9742-beba93727003) |
-| Mudavym Build Board | [47322370](https://claude.ai/code/artifact/47322370-4b81-445d-ab74-09624d65c847) |
-| Mudavym Go-Live Board | [260e2af7](https://claude.ai/code/artifact/260e2af7-8a3c-4bd0-8ff8-4fd1618007ee) |
-| Mudavym Wave Four | [fb2f9455](https://claude.ai/code/artifact/fb2f9455-8d35-411c-85c9-cfb0dbbf7abe) |
-| Mudavym Overlay Census | [23f77c68](https://claude.ai/code/artifact/23f77c68-7766-40c8-934a-cfa7148c7508) |
-| Mudavym Shortlist | [91236693](https://claude.ai/code/artifact/91236693-6fe1-40c8-bb0d-91f428ef9458) |
-| Mudavym Identity | [95e8857e](https://claude.ai/code/artifact/95e8857e-5bc9-4719-acc4-57a94e4e4158) |
-| Mudavym Motion Canvas | [e281272f](https://claude.ai/code/artifact/e281272f-c403-4780-a675-0e9a0a4289ba) |
-| The Arrival, Five Ways | [1d40bc3d](https://claude.ai/code/artifact/1d40bc3d-6ddd-49c6-b894-e626fc7f72ad) |
-| Documents and Reports Redesign | [620c531d](https://claude.ai/code/artifact/620c531d-d060-449b-a5e1-cd2b35f9f533) |
-| Sim Meyhouse, One Friday | [d59646d4](https://claude.ai/code/artifact/d59646d4-0021-43dd-87e9-9fc70135849e) |
+★ = founder-flagged as current and highest-reference (2026-09-16).
 
-**Why the content is not here yet.** Measured 2026-09-16: two of the twelve
-(`cb024e8e`, `47322370`) were requested through both `WebFetch` and the Artifact tool's
-own read path. All four attempts returned the same thing — *"artifact not found — it may
-have been deleted, or it has not been shared with you"*. Identical errors on two
-different artifacts through two different paths rules out a deleted artifact and points
-at access: the cloud session's account cannot see that org.
+| Artifact | Public link | Internal id |
+|---|---|---|
+| **Mudavym Wave Four** ★ | [Y21sZP2xKshpbGBsnqQ8M3](https://claude.ai/artifact/Y21sZP2xKshpbGBsnqQ8M3) | `fb2f9455` |
+| **The Arrival, Five Ways** ★ | [4cWg73gb6zidey1sVKcao6](https://claude.ai/artifact/4cWg73gb6zidey1sVKcao6) | `1d40bc3d` |
+| **Sim Meyhouse, One Friday** ★ | [TNjGu67KRetqdmanZhnatd](https://claude.ai/artifact/TNjGu67KRetqdmanZhnatd) | `d59646d4` |
+| **Mudavym Motion Canvas** ★ | [UyFDGQPXVheake4EVkEG8H](https://claude.ai/artifact/UyFDGQPXVheake4EVkEG8H) | `e281272f` |
+| Mudavym Go-Live Board | [5hZELUz2SuswDPGm3boWkD](https://claude.ai/artifact/5hZELUz2SuswDPGm3boWkD) | `260e2af7` |
+| Mudavym Overlay Census | [5Sbd8DEPctRGpNztw5rez3](https://claude.ai/artifact/5Sbd8DEPctRGpNztw5rez3) | `23f77c68` |
+| Mudavym Build Board | [9nuqKGDTVxK7LWqfr912Vk](https://claude.ai/artifact/9nuqKGDTVxK7LWqfr912Vk) | `47322370` |
+| Mudavym Atlas | [Lv6S1GgMycyLEZYrFRdPWe](https://claude.ai/artifact/Lv6S1GgMycyLEZYrFRdPWe) | `a14766c1` |
+| Mudavym Cluster Map | [S4yACzsFqvBLJVQsv8rE9g](https://claude.ai/artifact/S4yACzsFqvBLJVQsv8rE9g) | `cb024e8e` |
+| Mudavym Shortlist | [JvVbe21swPgQE2iKeKhSL7](https://claude.ai/artifact/JvVbe21swPgQE2iKeKhSL7) | `91236693` |
+| Mudavym Identity | [KWf4ZygrDXjQQ9NDq2g5KD](https://claude.ai/artifact/KWf4ZygrDXjQQ9NDq2g5KD) | `95e8857e` |
+| Documents and Reports Redesign | [D7EJZaPTV2cvSXX9obixAe](https://claude.ai/artifact/D7EJZaPTV2cvSXX9obixAe) | `620c531d` |
 
-**What unblocks it** — any one of:
+**Why the content is not here yet, measured 2026-09-16.** Two access paths were tried
+against both link formats, 16 requests in total:
 
-- Open each artifact from an account that can see it and share it with the account
-  running the session, then re-run the read.
-- Run the pull from a **local** Claude Code session on the Mac that is signed into the
-  owning account.
-- Use each artifact's own export/download and drop the files into the repo by hand.
+- `claude.ai/code/artifact/<uuid>` (org-scoped), via `WebFetch` and the Artifact read
+  tool → *"artifact not found — it may have been deleted, or it has not been shared
+  with you"*.
+- `claude.ai/artifact/<short>` (public share links, all twelve) → *"this artifact is
+  served to you as a public (non-member) reader, and reading public artifacts that way
+  is not enabled yet"*.
 
-Until one of those happens the artifacts remain account-bound, which is exactly the
-exposure ADR 0148 set out to remove. The index above at least makes the set itself
-durable: twelve titles and twelve ids that survive in git regardless of which account
-can open them.
+The second error is the informative one. **All twelve resolved to their internal ids**,
+so none is deleted and every link is live — the block is that a non-member reader cannot
+read artifact content through this path yet. Sharing them more widely will not help; the
+reader has to be a **member** of org `1138b209-aed5-4cfe-9199-186b04b76545`.
+
+**What unblocks it,** in order of cost:
+
+1. **Run the pull from a local Claude Code session** signed into the owning account — it
+   reads as a member, not a public reader. The prompt for that is §8.
+2. Add the session's account to that org as a member, then re-run the read from anywhere.
+3. Export each artifact by hand and drop the files in.
+
+Until one happens the artifacts remain account-bound — the exposure ADR 0148 set out to
+remove, still open for the artifacts specifically. The table above at least makes the set
+durable: twelve titles, twelve public links and twelve ids that survive in git whatever
+happens to any one account.
+
+## 8. The local-session prompt
+
+Paste this into a Claude Code session **running on the Mac, signed into the account that
+owns the artifacts**, with the repo as the working directory. It is written to stand
+alone — a fresh session has none of this conversation.
+
+```text
+You are picking up the Mudavym repo (RestaurantAIAutomation) after an account move.
+Read CLAUDE.md first and follow it — especially the two-sentence chat cap, the
+grep-don't-read rule for large planning docs, and retire-to-write. Then read
+.planning/handoff/ONBOARDING.md, which is the day-one brief and explains the rest.
+
+Work on branch claude/artifact-pull (create it from main). Two jobs.
+
+JOB 1 — confirm the session history survived the account switch.
+Run, in order, and paste the real output:
+    scripts/claude_state_migrate.sh list
+    scripts/claude_state_migrate.sh verify
+`list` should show every past session with its first prompt, branch and CLI version;
+`verify` should exit 0 and report that every session records this repo's cwd. If either
+comes back empty, the history did NOT survive — import the insurance bundle:
+    scripts/claude_state_migrate.sh inspect ~/Desktop/claude-state_*.tar.gz
+    scripts/claude_state_migrate.sh import  ~/Desktop/claude-state_*.tar.gz
+    scripts/claude_state_migrate.sh verify
+Report which of the two paths you took. Do not claim success without the command output.
+
+JOB 2 — pull the twelve artifacts into the repo as files (ADR 0148 decided this; it
+could not be done from the cloud session because that account is not a member of the
+owning org, so it is yours to finish).
+
+The twelve links, ids and titles are in ONBOARDING.md §7. Do these four FIRST — the
+founder flagged them as the current ones, and prefer anything modified in the last
+three weeks over anything older:
+    Mudavym Wave Four        https://claude.ai/artifact/Y21sZP2xKshpbGBsnqQ8M3
+    The Arrival, Five Ways   https://claude.ai/artifact/4cWg73gb6zidey1sVKcao6
+    Sim Meyhouse, One Friday https://claude.ai/artifact/TNjGu67KRetqdmanZhnatd
+    Mudavym Motion Canvas    https://claude.ai/artifact/UyFDGQPXVheake4EVkEG8H
+
+For each artifact:
+  - Read it with the Artifact tool (action "read"). If that refuses, try WebFetch on the
+    same URL. If BOTH refuse, record the exact error and move on — do not guess at
+    content, and do not reconstruct an artifact from memory or from the repo.
+  - Write it to .planning/07-reference/artifacts/<kebab-slug>.md with a short frontmatter
+    header: title, source URL, internal id, the date you pulled it, and one line on what
+    it is. Keep the artifact's own structure; do not summarise it away.
+  - If it is an interactive page (a canvas, a board, a map), preserve the underlying
+    content and note in the header that the live version is interactive and the file is
+    a snapshot.
+
+Then:
+  - Add one row per artifact to .planning/07-reference/INDEX.md.
+  - Rewrite ONBOARDING.md §7 to point at the local files instead of saying the content is
+    missing, keeping the links. Say plainly which artifacts failed, if any.
+  - Update ADR 0148's artifacts consequence: it currently records the pull as decided but
+    NOT delivered. If you delivered it, say so and cite the files.
+  - Run both guards and paste the output:
+        python3 scripts/check_onboarding_citations.py
+        bash scripts/check_decision_claims.sh
+  - Commit (Co-Authored-By trailer per CLAUDE.md §7) and push with
+        git push -u origin claude/artifact-pull
+    Do not open a pull request unless asked.
+
+Report at the end, in two sentences plus a list: which artifacts landed, which failed and
+the exact error for each. If you could not do part of it, say so — a partial result
+reported as complete is the one unrecoverable failure here (CLAUDE.md §0.5).
+```
