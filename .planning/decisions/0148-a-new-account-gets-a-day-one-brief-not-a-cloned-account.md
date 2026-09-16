@@ -79,6 +79,16 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
   **This is reasoned, not verified**: it was not possible to test a real logout/login
   cycle from the container. The brief therefore tells the founder to take a bundle
   *before* logging out, as insurance against the reasoning being wrong.
+- **Artifacts: decided but not delivered.** The founder chose to pull the twelve Mudavym
+  artifacts into the repo as files. Measured 2026-09-16, that is currently impossible from
+  a cloud session: `cb024e8e` and `47322370` were each requested through both `WebFetch`
+  and the Artifact tool's read path, and all four attempts returned *"artifact not found —
+  it may have been deleted, or it has not been shared with you"*. Two artifacts, two
+  paths, one error rules out deletion and points at org access — they live under
+  `1138b209-aed5-4cfe-9199-186b04b76545`, which this session's account cannot see. The
+  decision stands; only the index landed (`ONBOARDING.md` §7), and §7 names the three
+  ways to unblock it. **The exposure this ADR set out to remove is therefore still open
+  for the artifacts specifically.**
 - **Revisit when:** the brief's "in flight" section disagrees with `gh pr list` twice
   running, or `PROGRESS.md` is retired — either signals the brief has become a second
   source of truth rather than an index into the first.

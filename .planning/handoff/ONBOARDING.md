@@ -140,12 +140,43 @@ authenticate the new machine as the old account. `inspect` separately scans tran
 for secret-shaped strings and reports counts only, never values; it cannot tell a real key
 from an example one, so treat a hit as "go look", not "you leaked something".
 
-## 7. Artifacts — open thread
+## 7. Artifacts — index only, content still outside the repo
 
-The Mudavym artifacts live on a claude.ai account and are not in this repo. Per ADR 0148
-they are to be **pulled in as files** so they survive any account move.
+Twelve Mudavym artifacts live on claude.ai under org `1138b209-aed5-4cfe-9199-186b04b76545`.
+ADR 0148 chose to **pull their content into the repo as files**. That has not happened —
+the URLs below are an index, not a copy.
 
-**Blocked on:** the artifact URLs. `WebFetch` can open `claude.ai/artifact/...` links
-directly, so Safari is not needed — but this session's artifact listing came back empty,
-meaning they sit under a different account, and whether this login can open them is
-untested. Paste one link to find out; the rest follows automatically.
+| Artifact | Link |
+|---|---|
+| Mudavym Atlas | [a14766c1](https://claude.ai/code/artifact/a14766c1-b4e3-4578-8338-8b68375f636f) |
+| Mudavym Cluster Map | [cb024e8e](https://claude.ai/code/artifact/cb024e8e-8687-4043-9742-beba93727003) |
+| Mudavym Build Board | [47322370](https://claude.ai/code/artifact/47322370-4b81-445d-ab74-09624d65c847) |
+| Mudavym Go-Live Board | [260e2af7](https://claude.ai/code/artifact/260e2af7-8a3c-4bd0-8ff8-4fd1618007ee) |
+| Mudavym Wave Four | [fb2f9455](https://claude.ai/code/artifact/fb2f9455-8d35-411c-85c9-cfb0dbbf7abe) |
+| Mudavym Overlay Census | [23f77c68](https://claude.ai/code/artifact/23f77c68-7766-40c8-934a-cfa7148c7508) |
+| Mudavym Shortlist | [91236693](https://claude.ai/code/artifact/91236693-6fe1-40c8-bb0d-91f428ef9458) |
+| Mudavym Identity | [95e8857e](https://claude.ai/code/artifact/95e8857e-5bc9-4719-acc4-57a94e4e4158) |
+| Mudavym Motion Canvas | [e281272f](https://claude.ai/code/artifact/e281272f-c403-4780-a675-0e9a0a4289ba) |
+| The Arrival, Five Ways | [1d40bc3d](https://claude.ai/code/artifact/1d40bc3d-6ddd-49c6-b894-e626fc7f72ad) |
+| Documents and Reports Redesign | [620c531d](https://claude.ai/code/artifact/620c531d-d060-449b-a5e1-cd2b35f9f533) |
+| Sim Meyhouse, One Friday | [d59646d4](https://claude.ai/code/artifact/d59646d4-0021-43dd-87e9-9fc70135849e) |
+
+**Why the content is not here yet.** Measured 2026-09-16: two of the twelve
+(`cb024e8e`, `47322370`) were requested through both `WebFetch` and the Artifact tool's
+own read path. All four attempts returned the same thing — *"artifact not found — it may
+have been deleted, or it has not been shared with you"*. Identical errors on two
+different artifacts through two different paths rules out a deleted artifact and points
+at access: the cloud session's account cannot see that org.
+
+**What unblocks it** — any one of:
+
+- Open each artifact from an account that can see it and share it with the account
+  running the session, then re-run the read.
+- Run the pull from a **local** Claude Code session on the Mac that is signed into the
+  owning account.
+- Use each artifact's own export/download and drop the files into the repo by hand.
+
+Until one of those happens the artifacts remain account-bound, which is exactly the
+exposure ADR 0148 set out to remove. The index above at least makes the set itself
+durable: twelve titles and twelve ids that survive in git regardless of which account
+can open them.
