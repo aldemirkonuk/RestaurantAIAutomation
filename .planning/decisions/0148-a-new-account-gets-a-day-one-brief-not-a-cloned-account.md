@@ -86,7 +86,7 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
   whether `claude --resume` under the new org offers the old org's sessions was not
   tested. `verify` exited 1 on a false alarm, sessions whose cwd is a subdirectory or
   worktree of the repo; `ONBOARDING.md` §6 has the detail.]
-- **Artifacts: decided but not delivered.** The founder chose to pull the twelve Mudavym
+- **Artifacts: decided and delivered, 2026-09-16.** The founder chose to pull the twelve Mudavym
   artifacts into the repo as files. Measured 2026-09-16 across 16 requests and both link
   formats, that is not possible from a cloud session. The org-scoped
   `claude.ai/code/artifact/<uuid>` links returned *"artifact not found — it may have been
@@ -114,12 +114,18 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
   extension was not connected. `ONBOARDING.md` §7 has every exact error and the revised
   unblock order: run the pull from a session in org `1138b209-…`.]
   Only the index landed (`ONBOARDING.md` §7), plus a standalone prompt for the local run
-  (§8). **Still not delivered after the second attempt** — no file exists under
-  `.planning/07-reference/artifacts/`, and CLAIMS row `ADR-0148-ARTIFACTS-PULLED`
-  (`open`) fails the build once all twelve ids land there, forcing this consequence to be
-  rewritten when they do. §4 retire-to-write for those twelve files is already waived
-  (ADR 0032, founder call 2026-09-16). **The exposure this ADR set out to remove is
-  therefore still open for the artifacts specifically.**
+  (§8), after the second attempt. [Delivered 2026-09-16, third attempt: a terminal
+  `claude` session confirmed (via `~/.claude.json`'s `oauthAccount`) to be in org
+  `1138b209-…` ran the same §8 prompt's Job 2 on branch `claude/artifact-pull`. The
+  Artifact tool's `read` action succeeded for all twelve public links with no refusal,
+  confirming the diagnosis above: the blocker was org membership, not the tool. All
+  twelve are committed as raw HTML snapshots under
+  `.planning/07-reference/artifacts/<kebab-slug>.md`, and CLAIMS row
+  `ADR-0148-ARTIFACTS-PULLED` is now `resolved` — its `verify` command greps all twelve
+  internal ids under that directory and passes. §4 retire-to-write for those twelve files
+  was already waived (ADR 0032, founder call 2026-09-16). **The exposure this ADR set out
+  to remove is closed for the artifacts specifically: the content is durable in git, not
+  account-bound.**]
 - **Revisit when:** the brief's "in flight" section disagrees with `gh pr list` twice
   running, or `PROGRESS.md` is retired — either signals the brief has become a second
   source of truth rather than an index into the first.
@@ -128,6 +134,7 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-16 | — | Third run of ONBOARDING §8 Job 2, from a terminal session confirmed in owning org `1138b209-…`: all twelve artifacts pulled and committed under `.planning/07-reference/artifacts/`; CLAIMS row flipped to `resolved`; artifacts consequence rewritten as delivered |
 | 2026-09-16 | Aldemir | Waived §4 retire-to-write for the twelve artifact files (row in ADR 0032). Same session measured the pull's blocker: the desktop app's org `03017808-…` is a viewer of owner org `1138b209-…`; artifacts consequence re-bracketed |
 | 2026-09-16 | — | Local run of ONBOARDING §8 on `claude/artifact-pull`: artifact pull failed for all twelve; the artifacts and same-Mac consequences amended in brackets, decision unchanged |
 | 2026-09-16 | Aldemir | Reframed the request from account-clone to onboarding; chose the brief, chose to pull artifacts into the repo as files, confirmed same-Mac destination |

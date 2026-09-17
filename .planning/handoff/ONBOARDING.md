@@ -154,31 +154,35 @@ authenticate the new machine as the old account. `inspect` separately scans tran
 for secret-shaped strings and reports counts only, never values; it cannot tell a real key
 from an example one, so treat a hit as "go look", not "you leaked something".
 
-## 7. Artifacts — index only; the pull failed twice
+## 7. Artifacts — pulled 2026-09-16, all twelve
 
 ADR 0148 chose to **pull the twelve Mudavym artifacts on claude.ai into the repo as
-files**. **None of the twelve is in the repo.** Two attempts on 2026-09-16 — a cloud
-session, then a local desktop session on branch `claude/artifact-pull` — could not read
-any of them, so `.planning/07-reference/artifacts/` does not exist and the table below
-is an index, not a copy. Nothing was reconstructed from memory or from the repo.
+files**. **All twelve are now in the repo**, under `.planning/07-reference/artifacts/`
+as raw HTML snapshots with a frontmatter header (title, source URL, internal id, pull
+date, one-line note). Two earlier attempts on 2026-09-16 — a cloud session, then a local
+desktop session on branch `claude/artifact-pull` — could not read any of them (§7's
+prior text below the table records exactly what failed and why); a third session, run
+from a terminal `claude` confirmed to be in the owning org `1138b209-…`, read all twelve
+successfully via the Artifact tool and committed them. Nothing was reconstructed from
+memory or from the repo — every file is what the Artifact tool returned.
 
 ★ = founder-flagged as current and highest-reference (2026-09-16). Full ids are as the
 Artifact tool resolved each public link on the second attempt.
 
 | Artifact | Public link | Internal id | In repo |
 |---|---|---|---|
-| **Mudavym Wave Four** ★ | [Y21sZP2xKshpbGBsnqQ8M3](https://claude.ai/artifact/Y21sZP2xKshpbGBsnqQ8M3) | `fb2f9455-8d35-411c-85c9-cfb0dbbf7abe` | no |
-| **The Arrival, Five Ways** ★ | [4cWg73gb6zidey1sVKcao6](https://claude.ai/artifact/4cWg73gb6zidey1sVKcao6) | `1d40bc3d-6ddd-49c6-b894-e626fc7f72ad` | no |
-| **Sim Meyhouse, One Friday** ★ | [TNjGu67KRetqdmanZhnatd](https://claude.ai/artifact/TNjGu67KRetqdmanZhnatd) | `d59646d4-0021-43dd-87e9-9fc70135849e` | no |
-| **Mudavym Motion Canvas** ★ | [UyFDGQPXVheake4EVkEG8H](https://claude.ai/artifact/UyFDGQPXVheake4EVkEG8H) | `e281272f-c403-4780-a675-0e9a0a4289ba` | no |
-| Mudavym Go-Live Board | [5hZELUz2SuswDPGm3boWkD](https://claude.ai/artifact/5hZELUz2SuswDPGm3boWkD) | `260e2af7-8a3c-4bd0-8ff8-4fd1618007ee` | no |
-| Mudavym Overlay Census | [5Sbd8DEPctRGpNztw5rez3](https://claude.ai/artifact/5Sbd8DEPctRGpNztw5rez3) | `23f77c68-7766-40c8-934a-cfa7148c7508` | no |
-| Mudavym Build Board | [9nuqKGDTVxK7LWqfr912Vk](https://claude.ai/artifact/9nuqKGDTVxK7LWqfr912Vk) | `47322370-4b81-445d-ab74-09624d65c847` | no |
-| Mudavym Atlas | [Lv6S1GgMycyLEZYrFRdPWe](https://claude.ai/artifact/Lv6S1GgMycyLEZYrFRdPWe) | `a14766c1-b4e3-4578-8338-8b68375f636f` | no |
-| Mudavym Cluster Map | [S4yACzsFqvBLJVQsv8rE9g](https://claude.ai/artifact/S4yACzsFqvBLJVQsv8rE9g) | `cb024e8e-8687-4043-9742-beba93727003` | no |
-| Mudavym Shortlist | [JvVbe21swPgQE2iKeKhSL7](https://claude.ai/artifact/JvVbe21swPgQE2iKeKhSL7) | `91236693-6fe1-40c8-bb0d-91f428ef9458` | no |
-| Mudavym Identity | [KWf4ZygrDXjQQ9NDq2g5KD](https://claude.ai/artifact/KWf4ZygrDXjQQ9NDq2g5KD) | `95e8857e-5bc9-4719-acc4-57a94e4e4158` | no |
-| Documents and Reports Redesign | [D7EJZaPTV2cvSXX9obixAe](https://claude.ai/artifact/D7EJZaPTV2cvSXX9obixAe) | `620c531d-d060-449b-a5e1-cd2b35f9f533` | no |
+| **Mudavym Wave Four** ★ | [Y21sZP2xKshpbGBsnqQ8M3](https://claude.ai/artifact/Y21sZP2xKshpbGBsnqQ8M3) | `fb2f9455-8d35-411c-85c9-cfb0dbbf7abe` | [artifacts/mudavym-wave-four.md](../07-reference/artifacts/mudavym-wave-four.md) |
+| **The Arrival, Five Ways** ★ | [4cWg73gb6zidey1sVKcao6](https://claude.ai/artifact/4cWg73gb6zidey1sVKcao6) | `1d40bc3d-6ddd-49c6-b894-e626fc7f72ad` | [artifacts/the-arrival-five-ways.md](../07-reference/artifacts/the-arrival-five-ways.md) |
+| **Sim Meyhouse, One Friday** ★ | [TNjGu67KRetqdmanZhnatd](https://claude.ai/artifact/TNjGu67KRetqdmanZhnatd) | `d59646d4-0021-43dd-87e9-9fc70135849e` | [artifacts/sim-meyhouse-one-friday.md](../07-reference/artifacts/sim-meyhouse-one-friday.md) |
+| **Mudavym Motion Canvas** ★ | [UyFDGQPXVheake4EVkEG8H](https://claude.ai/artifact/UyFDGQPXVheake4EVkEG8H) | `e281272f-c403-4780-a675-0e9a0a4289ba` | [artifacts/mudavym-motion-canvas.md](../07-reference/artifacts/mudavym-motion-canvas.md) |
+| Mudavym Go-Live Board | [5hZELUz2SuswDPGm3boWkD](https://claude.ai/artifact/5hZELUz2SuswDPGm3boWkD) | `260e2af7-8a3c-4bd0-8ff8-4fd1618007ee` | [artifacts/mudavym-go-live-board.md](../07-reference/artifacts/mudavym-go-live-board.md) |
+| Mudavym Overlay Census | [5Sbd8DEPctRGpNztw5rez3](https://claude.ai/artifact/5Sbd8DEPctRGpNztw5rez3) | `23f77c68-7766-40c8-934a-cfa7148c7508` | [artifacts/mudavym-overlay-census.md](../07-reference/artifacts/mudavym-overlay-census.md) |
+| Mudavym Build Board | [9nuqKGDTVxK7LWqfr912Vk](https://claude.ai/artifact/9nuqKGDTVxK7LWqfr912Vk) | `47322370-4b81-445d-ab74-09624d65c847` | [artifacts/mudavym-build-board.md](../07-reference/artifacts/mudavym-build-board.md) |
+| Mudavym Atlas | [Lv6S1GgMycyLEZYrFRdPWe](https://claude.ai/artifact/Lv6S1GgMycyLEZYrFRdPWe) | `a14766c1-b4e3-4578-8338-8b68375f636f` | [artifacts/mudavym-atlas.md](../07-reference/artifacts/mudavym-atlas.md) |
+| Mudavym Cluster Map | [S4yACzsFqvBLJVQsv8rE9g](https://claude.ai/artifact/S4yACzsFqvBLJVQsv8rE9g) | `cb024e8e-8687-4043-9742-beba93727003` | [artifacts/mudavym-cluster-map.md](../07-reference/artifacts/mudavym-cluster-map.md) |
+| Mudavym Shortlist | [JvVbe21swPgQE2iKeKhSL7](https://claude.ai/artifact/JvVbe21swPgQE2iKeKhSL7) | `91236693-6fe1-40c8-bb0d-91f428ef9458` | [artifacts/mudavym-shortlist.md](../07-reference/artifacts/mudavym-shortlist.md) |
+| Mudavym Identity | [KWf4ZygrDXjQQ9NDq2g5KD](https://claude.ai/artifact/KWf4ZygrDXjQQ9NDq2g5KD) | `95e8857e-5bc9-4719-acc4-57a94e4e4158` | [artifacts/mudavym-identity.md](../07-reference/artifacts/mudavym-identity.md) |
+| Documents and Reports Redesign | [D7EJZaPTV2cvSXX9obixAe](https://claude.ai/artifact/D7EJZaPTV2cvSXX9obixAe) | `620c531d-d060-449b-a5e1-cd2b35f9f533` | [artifacts/documents-and-reports-redesign.md](../07-reference/artifacts/documents-and-reports-redesign.md) |
 
 **Attempt 1 — cloud session, an account outside the org.** 16 requests.
 `claude.ai/code/artifact/<uuid>` through `WebFetch` and the Artifact read tool →
@@ -232,12 +236,16 @@ Four's metadata also gave: created 2026-09-02T23:18:42Z, last updated
 0032](../decisions/0032-vault-cleanup-cut-line.md), founder call 2026-09-16), so the
 pull commit owes no retirement.
 
-"Not delivered" is an executable claim: CLAIMS row `ADR-0148-ARTIFACTS-PULLED` is `open`
-and fails the build once all twelve ids appear under `07-reference/artifacts/`, so this
-section and ADR 0148 cannot go on saying "not delivered" after the pull lands. Until then
-the artifacts stay account-bound — the exposure ADR 0148 set out to remove, still open
-for the artifacts specifically. The table at least keeps the set durable in git: twelve
-titles, twelve public links, twelve full ids.
+**Delivered, 2026-09-16.** A third session ran from a terminal `claude` confirmed (via
+`~/.claude.json`'s `oauthAccount`) to be in org `1138b209-…` — the owning org — on branch
+`claude/artifact-pull`. Option 1 above worked exactly as predicted: the Artifact tool's
+`read` action succeeded for all twelve public links, each returning the full HTML with no
+refusal. All twelve are now committed under `07-reference/artifacts/<kebab-slug>.md`
+(frontmatter + raw HTML snapshot; the table above links each one). CLAIMS row
+`ADR-0148-ARTIFACTS-PULLED` is now `resolved` — its `verify` command greps every one of
+the twelve internal ids under that directory and passes. The exposure ADR 0148 set out to
+remove is closed for the artifacts specifically: the content is durable in git, not
+account-bound.
 
 ## 8. The local-session prompt
 
