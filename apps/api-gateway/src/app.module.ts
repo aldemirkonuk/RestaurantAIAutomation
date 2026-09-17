@@ -15,6 +15,7 @@ import { DatabaseModule } from "./database/database.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { VendorPortalModule } from "./vendor-portal/vendor-portal.module";
+import { SeoModule } from "./seo/seo.module";
 import { VendorIntelModule } from "./vendor-intel/vendor-intel.module";
 import { PriceIndexModule } from "./price-index/price-index.module";
 import { CommodityModule } from "./commodity/commodity.module";
@@ -95,6 +96,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     DashboardModule, // Aggregated dashboard endpoint (API Bus pattern)
     AnalyticsModule, // Quantitative analytics engine (finance/stats/risk/forecast)
     VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
+    SeoModule, // Sitemaps and the /v/:slug served head (ADR 0158)
     VendorIntelModule, // Vendor price scraping + multi-source comparison
     PriceIndexModule, // Public price-index register (posted lists / shelf prices), state-scoped (ADR 0117)
     CommodityModule, // Class-E index-series register: FAO + ONS d7bu, a context line, and one dark alert (ADR 0117; commodity-signals-plan.md phase 0)

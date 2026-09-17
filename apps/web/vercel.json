@@ -2,14 +2,81 @@
   "installCommand": "cd ../.. && corepack enable && corepack prepare pnpm@8.15.0 --activate && pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && pnpm exec turbo run build --filter=@wineops/web",
   "outputDirectory": "dist",
+  "redirects": [
+    {
+      "source": "/:path((?!api(?:/|$)).*)",
+      "has": [
+        {
+          "type": "host",
+          "value": {
+            "eq": "restaurant-ai-automation-web.vercel.app"
+          }
+        }
+      ],
+      "destination": "https://mudavym.com/:path",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
       "destination": "https://wineopsapi-gateway-production.up.railway.app/api/:path*"
     },
     {
-      "source": "/((?!api/|assets/).*)",
-      "destination": "/index.html"
+      "source": "/robots.txt",
+      "has": [
+        {
+          "type": "host",
+          "value": {
+            "eq": "mudavym.com"
+          }
+        }
+      ],
+      "destination": "/crawl/robots-mudavym.txt"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/crawl/robots-other.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "has": [
+        {
+          "type": "host",
+          "value": {
+            "eq": "mudavym.com"
+          }
+        }
+      ],
+      "destination": "https://wineopsapi-gateway-production.up.railway.app/api/v1/seo/sitemap.xml"
+    },
+    {
+      "source": "/sitemap-vendors-:page(\\d+).xml",
+      "has": [
+        {
+          "type": "host",
+          "value": {
+            "eq": "mudavym.com"
+          }
+        }
+      ],
+      "destination": "https://wineopsapi-gateway-production.up.railway.app/api/v1/seo/sitemap-vendors/:page"
+    },
+    {
+      "source": "/login",
+      "destination": "/crawl/heads/login.html"
+    },
+    {
+      "source": "/register",
+      "destination": "/crawl/heads/register.html"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/crawl/heads/privacy.html"
+    },
+    {
+      "source": "/(admin|authorize|beer|calendar|calendar-classic|cellar|cocktails|communications|connections|credits|dev|dev-sandbox|distributors|documents|documents-reports|forgot-password|get-started|help|inventory|inventory-legacy|invite|login|logs|no-access|non-alcoholic|notifications|onboarding|orders|privacy|profile|promotions|providers|receipts|receiving|recommendations|register|reports|reset-password|services|settings|simpos|soft-drinks|sommelier|spirits|studio|team|v|vendor-prices|verify-email|whiskey|wines)(/.*)?",
+      "destination": "/crawl/app.html"
     }
   ],
   "headers": [
@@ -37,6 +104,36 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "missing": [
+        {
+          "type": "host",
+          "value": {
+            "eq": "mudavym.com"
+          }
+        }
+      ],
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
+    {
+      "source": "/(reset-password|verify-email|invite/.*|studio/invite/.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
         }
       ]
     }

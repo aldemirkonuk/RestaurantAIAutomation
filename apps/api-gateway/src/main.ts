@@ -57,6 +57,19 @@ async function bootstrap() {
     }),
   );
 
+  // Nothing this host answers belongs in a search index. Its JSON, the
+  // Swagger page and its error bodies are data for the apps, and the one
+  // public document built here (the catalogue) is served from mudavym.com
+  // (ADR 0158). Set with app.use rather than an interceptor so 404s, 429s
+  // and /api/docs carry it too. The sitemap XML is exempt: mudavym.com serves
+  // it through a rewrite, and a crawler must be free to read it.
+  app.use((req: { path: string }, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {
+    if (!req.path.startsWith("/api/v1/seo/sitemap")) {
+      res.setHeader("X-Robots-Tag", "noindex");
+    }
+    next();
+  });
+
   // API prefix
   app.setGlobalPrefix("api/v1");
 

@@ -30,7 +30,7 @@
   },
   // ".storybook" needs an explicit glob: TypeScript's include patterns skip
   // dot-prefixed directories, so listing it bare would silently match nothing.
-  "include": ["src", ".storybook/**/*"],
+  "include": ["src", ".storybook/**/*", "middleware.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
 
