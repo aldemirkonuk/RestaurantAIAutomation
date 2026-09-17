@@ -206,24 +206,44 @@ security/privacy/scale/collision) tried to kill this design after it was built, 
 §3. It confirmed the fixes above against production evidence and found one real bug, which is
 fixed; the rest are named here rather than silently accepted.
 
-- **`/v/:slug` 500'd on every request when this PR's preview deployment first went live, found
-  and fixed.** `middleware.ts` imported `./src/lib/seo/vendor-edge` with no extension —
-  correct under `tsc`'s "bundler" resolution and under Vite, both of which resolve an
-  extensionless specifier to the sibling `.ts` file, so `tsc`, `vitest`, `eslint` and
-  `vite build` all passed locally and gave no signal. Vercel's Node.js middleware runtime does
-  not bundle the file; it runs it through Node's own ESM loader, which never appends
-  extensions the way `require` does, and every request failed with
-  `Error [ERR_MODULE_NOT_FOUND]: Cannot find module
-  '/var/task/apps/web/src/lib/seo/vendor-edge'` (`vercel logs`). Fixed: every relative import
-  reachable from `middleware.ts` now carries an explicit `.js` extension (`middleware.ts`,
-  `vendor-edge.ts`, `vendor.ts`, `head.ts`) — valid under `"moduleResolution": "bundler"`,
-  which resolves a `.js` specifier to the sibling `.ts` file. `middleware-imports.test.ts`
-  walks the graph and fails by name if a future edit drops one; proven against the exact
-  regression before being kept. Re-verified live on the fixed deployment (see the PR thread):
-  `/`, `/login`, the real 404, and `/v/:slug` all now correct. This is the one gap the local
-  test suite structurally cannot see — nothing in this repo runs Node.js middleware the way
-  Vercel does — which is also why "verified locally" was never treated as equivalent to
-  "verified on the platform" for this build (§9/S10 of the ADR).
+- **`/v/:slug` never actually ran on Vercel — two independent bugs, both found by curling this
+  PR's own preview deployment before merge, neither visible to any local check.**
+  1. `middleware.ts` imported `./src/lib/seo/vendor-edge` with no extension — correct under
+     `tsc`'s "bundler" resolution and under Vite, both of which resolve an extensionless
+     specifier to the sibling `.ts` file, so `tsc`, `vitest`, `eslint` and `vite build` all
+     passed locally. Vercel's Node.js middleware runtime does not bundle the file; it runs it
+     through Node's own ESM loader, which never appends extensions the way `require` does, and
+     every request 500'd with `Error [ERR_MODULE_NOT_FOUND]: Cannot find module
+     '/var/task/apps/web/src/lib/seo/vendor-edge'` (`vercel logs <deployment> --expand`).
+     Fixed: every relative import reachable from `middleware.ts` now carries an explicit `.js`
+     extension (`middleware.ts`, `vendor-edge.ts`, `vendor.ts`, `head.ts`) — valid under
+     `"moduleResolution": "bundler"`, which resolves a `.js` specifier to the sibling `.ts`
+     file. `middleware-imports.test.ts` walks the graph and fails by name if a future edit
+     drops one; proven against the exact regression (reverted it, watched the test fail,
+     restored it) before being kept.
+  2. With that fixed, `/v/:slug` **still** never reached the middleware — every slug served an
+     identical, CDN-cached copy of the closed default shell (same `etag` for different slugs,
+     `x-vercel-cache: HIT`), meaning the request fell straight through to the plain SPA
+     rewrite. `vercel inspect --logs` on the exact deployment showed why: `middleware.ts(21,24):
+     error TS2580: Cannot find name 'process'` — `apps/web` is a browser project with no
+     `@types/node` anywhere in it, and Vercel type-checks `middleware.ts` in an isolated
+     context that does not see the rest of the monorepo's dependency tree the way this
+     worktree's own `tsc` (following symlinked, hoisted `node_modules`) happens to. The build
+     still reported "completed successfully" and the deploy still went green — the middleware
+     was just silently dropped, no build error surfaced anywhere CI or a human would see it.
+     Fixed with a local `declare const process: { env: ... }` in `middleware.ts` — no new
+     dependency, nothing the rest of the app inherits.
+
+  Both were caught, and both fixes verified, entirely locally and pre-merge with **`vercel
+  build`**, which reproduces Vercel's own build (including its middleware type-check) without
+  a deploy: it reproduced bug 2's exact error message, confirmed clean after the fix, and
+  showed `middleware.func` present in `.vercel/output` for the first time. The compiled
+  `middleware.js` was then executed directly in Node with a synthetic `Request` to confirm it
+  runs without throwing. This is the one class of gap `tsc`/`vitest`/`vite build` structurally
+  cannot see — nothing else in this repo runs Node.js middleware the way Vercel does, which is
+  why "verified locally" was never treated as equivalent to "verified on the platform" for
+  this build (§9/S10), and why `vercel build` is now the check that closes that gap for any
+  future `middleware.ts` change (see [[vercel-node-middleware-needs-js-extensions]]).
 - **A FIFO-not-LRU cache bug, found and fixed.** `headLoader`'s per-instance cache (S6a) only
   re-inserted an entry on a miss, so eviction removed the oldest-inserted catalogue rather than
   the least-recently-viewed one — a crawl walking many slugs could evict a hot catalogue while

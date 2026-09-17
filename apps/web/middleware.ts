@@ -17,6 +17,19 @@ export const config = {
   runtime: 'nodejs',
 };
 
+/**
+ * `apps/web` is a browser project with no `@types/node` anywhere in its tree
+ * (it never needed one before this file). Vercel type-checks `middleware.ts`
+ * in isolation as part of building it, so a bare `process.env` reference
+ * failed that check with `Cannot find name 'process'` and the deployment
+ * silently served every /v/:slug request from the SPA rewrite instead of
+ * this file — no build error, no runtime error, just a route that never ran
+ * (found by curling this PR's own preview deployment; see ADR 0158's "Known
+ * limits"). This local declaration is enough for `process.env` and adds no
+ * dependency the rest of the app would inherit.
+ */
+declare const process: { env: Record<string, string | undefined> };
+
 /** The same gateway the host's /api rewrite points at (vercel.json). */
 const GATEWAY_ORIGIN = process.env.SEO_GATEWAY_ORIGIN || 'https://wineopsapi-gateway-production.up.railway.app';
 
