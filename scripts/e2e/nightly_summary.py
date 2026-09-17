@@ -46,14 +46,7 @@ BADGE = {
     "absent": "⬜ absent",
     "cannot_check": "🚫 cannot_check",
 }
-WAVE_NAMES = {
-    "a": "A — orchestrator API contracts",
-    "b": "B — orchestrator agent health",
-    "c": "C — RabbitMQ triggers",
-    # d, e, g retired 2026-09-12 (ADR 0137); a stray wave_d/e/g.xml still renders by letter
-    "f": "F — browser walk (Playwright)",
-    "h": "H — gateway contracts + backtest honesty (read-only)",
-}
+# (The wave-letter names table was removed 2026-09-17: nothing read it.)
 
 
 def _load_json(path: Path) -> Any | None:
@@ -322,22 +315,22 @@ def unrecorded_junit(
                 "source": f"wave_{letter}",
             }
         ]
-    nonpass_tests = [
-        c.get("test", "")
+    # Exact ids first; a record without a parameter stands in for the bare name
+    # only, so one parametrised case cannot mask its siblings (re-audit N2).
+    nonpass_ids = {
+        c.get("test", "").split("::")[-1]
         for c in checks
         if c.get("source") == f"wave_{letter}"
         and c["state"] in ("fail", "cannot_check")
-    ]
+    }
+    nonpass_ids.discard("")
     out: list[dict[str, Any]] = []
     for tc in cases:
         node = tc.find("error") if tc.find("error") is not None else tc.find("failure")
         if node is None:
             continue
         name = tc.get("name") or ""
-        if any(
-            t and t.split("::")[-1].split("[")[0] == name.split("[")[0]
-            for t in nonpass_tests
-        ):
+        if name in nonpass_ids:
             continue
         first = (node.get("message") or "").split("\n")[0][:160]
         out.append(
@@ -396,10 +389,7 @@ def junit_checks(letter: str, xml_path: Path) -> list[dict[str, Any]]:
             )
         else:
             tally["pass"] += 1
-    if letter == "f":
-        # The browser wave's real verdict is in nightly-summary.json; the XML is the runner's view.
-        state = "fail" if tally["fail"] else "pass"
-    elif tally["fail"]:
+    if tally["fail"]:
         state = "fail"
     elif tally["pass"] == 0:
         # Every case skipped: the wave asserted nothing about production.
@@ -493,7 +483,7 @@ def render(
         for c in by_source[src]:
             lines.append(
                 f"| `{_cell(c['id'])}` | {BADGE[c['state']]} | {_cell(c['reason'])} |"
-            )
+            )  # ids are redacted with the reasons in main()
         lines.append("")
     if design_calls:
         # Context from design-verdicts.json, joined by the browser reporter.
@@ -538,6 +528,9 @@ def main(argv: list[str] | None = None) -> int:
         password = None
     checks = collect(results)
     for c in checks:
+        # Ids carry JUnit test names (wave.h.unrecorded.<name>), so they are
+        # scrubbed too before anything renders them.
+        c["id"] = redact_text(str(c.get("id", "")), password)
         c["reason"] = redact_text(str(c.get("reason", "")), password)
     counts = {s: 0 for s in STATES}
     for c in checks:
@@ -609,10 +602,12 @@ def self_test() -> int:
         (root / "nightly" / "nightly-summary.json").write_text(
             json.dumps({"checks": pw_checks}), encoding="utf-8"
         )
+        # The same shape conftest.record_check writes (the phase is stripped there).
         (root / "wave_h_checks.jsonl").write_bytes(
             over.get(
                 "h",
-                b'{"id": "h.x", "state": "pass", "reason": "ok", "test": "t.py::test_x (call)"}\n',
+                b'{"id": "h.x", "state": "pass", "reason": "ok", '
+                b'"test": "tests/e2e_gateway/test_wave_h.py::test_x"}\n',
             )
         )
         (root / "orchestrator-preflight.json").write_text(
@@ -699,6 +694,32 @@ def self_test() -> int:
             "cannot_check",
         ),
     ]
+    # M8: a Wave H record that IS a non-pass, so per-test matching is
+    # distinguishable from the round-2 "any non-pass record silences the XML" bug.
+    cases.append(
+        (
+            "one parametrised Wave H failure does not mask its sibling",
+            {
+                "h": b'{"id": "h.guarded", "state": "fail", "reason": "500", '
+                b'"test": "tests/e2e_gateway/test_wave_h.py::test_guarded[/auth/me]"}\n',
+                "xh": '<testsuite><testcase name="test_guarded[/auth/me]"><failure message="500"/></testcase>'
+                '<testcase name="test_guarded[/procurement/documents]"><error message="ReadTimeout"/></testcase></testsuite>',
+            },
+            1,
+            "wave.h.unrecorded.test_guarded[/procurement/documents]",
+            "cannot_check",
+        )
+    )
+    # M9: the empty-corpus guard has a case behind it.
+    cases.append(
+        (
+            "a corpus of almost nothing is cannot_check",
+            {"pw": [{"id": "only.one", "state": "pass", "reason": "ok"}]},
+            2,
+            "summary.corpus",
+            "cannot_check",
+        )
+    )
     failures = 0
     for label, over, want_exit, check_id, want_state in cases:
         with tempfile.TemporaryDirectory() as tmp:

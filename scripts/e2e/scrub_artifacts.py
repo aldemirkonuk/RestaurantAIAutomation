@@ -9,16 +9,28 @@ redacts at the source; this step is the fail-closed backstop for every file,
 whoever wrote it.
 
 WHAT: for each file under --dir:
-  * text (UTF-8): the value of E2E_TEST_PASSWORD, JWT-shaped strings and
-    `Bearer <token>` are replaced in place;
-  * binary: a file whose bytes contain the password is deleted.
+  * text (UTF-8): the password value, JWT-shaped strings, `Bearer <token>` and
+    `name: value` pairs for token / password / authorization / api-key / secret
+    / cookie names are replaced in place — the same set lib.ts `redact()` uses,
+    so the two halves of the suite cannot drift apart;
+  * a file that does NOT decode cleanly (a truncated log, a gzip) is scanned
+    lossily and by gzip-decompression, and DELETED if it carries a credential,
+    because it cannot be rewritten safely. Deleted and redacted files are named
+    in the log and in <dir>/scrub-report.json, which the summary reads: evidence
+    must never vanish quietly (this repo's absence-reported-as-health fault).
+    The alternatives — refusing the whole upload, or zeroing the matched bytes —
+    were rejected in ADR 0135: a lost screenshot must not cost the whole run's
+    evidence, and a partially zeroed binary is still a file nobody can trust.
+  * a symlink is never followed; its presence fails the step, because
+    actions/upload-artifact would follow it out of the scrubbed set.
 Then the whole set is scanned again. Anything left means nothing may upload.
 
 EXIT CODES
     0  the set is clean (or the directory does not exist: nothing to upload)
     1  something survived the scrub, or a file could not be rewritten — the
        upload step must not run
-    2  cannot check (argument error)
+    2  cannot check — no --dir, or E2E_TEST_PASSWORD is unset or too short to
+       match, so "no password found" would mean "nothing was looked for"
 
 Only names and counts are printed, never a matched value.
 """
@@ -26,6 +38,8 @@ Only names and counts are printed, never a matched value.
 from __future__ import annotations
 
 import argparse
+import gzip
+import json
 import os
 import re
 import sys
@@ -34,50 +48,79 @@ from pathlib import Path
 
 JWT = re.compile(r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
 BEARER = re.compile(r"(?i)(bearer\s+)(?!\[redacted\])[^\s\"',;]+")
+# The same names lib.ts `redact()` covers; kept in step with it on purpose.
+SECRET_PAIR = re.compile(
+    r"(?i)\b((?:access|refresh|id)?[_-]?token|password|passwd|authorization"
+    r"|x-api-key|api[_-]?key|secret|cookie|set-cookie)(\s*[:=]\s*)"
+    r"(?!\[redacted\])[^\s,;]+"
+)
 
 
 def redact_text(text: str, password: str | None) -> str:
     out = JWT.sub("[redacted-jwt]", text)
     out = BEARER.sub(r"\1[redacted]", out)
+    out = SECRET_PAIR.sub(r"\1\2[redacted]", out)
     if password:
         out = out.replace(password, "[redacted]")
     return out
 
 
+def _scannable(data: bytes) -> str:
+    """Everything worth scanning in a file, whether or not it decodes cleanly."""
+    text = data.decode("utf-8", errors="replace")
+    if data[:2] == b"\x1f\x8b":  # gzip: a compressed log hides its own bytes
+        try:
+            text += gzip.decompress(data).decode("utf-8", errors="replace")
+        except Exception:  # a broken gzip is scanned as raw bytes above
+            pass
+    return text
+
+
 def _leaks(data: bytes, password: str | None) -> bool:
     if password and password.encode("utf-8") in data:
         return True
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError:
-        return False
-    return bool(JWT.search(text) or BEARER.search(text))
+    text = _scannable(data)
+    return bool(JWT.search(text) or BEARER.search(text) or SECRET_PAIR.search(text))
 
 
-def scrub(root: Path, password: str | None) -> tuple[int, int, list[str]]:
-    """Return (files rewritten, files deleted, files still leaking)."""
-    rewritten = deleted = 0
-    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+def scrub(root: Path, password: str | None) -> dict[str, list[str]]:
+    """Return what was redacted, deleted, refused and left leaking — by name."""
+    report: dict[str, list[str]] = {
+        "redacted": [],
+        "deleted": [],
+        "symlinks": [],
+        "still_leaking": [],
+    }
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            # upload-artifact follows a symlinked directory out of this set.
+            report["symlinks"].append(str(path.relative_to(root)))
+            continue
+        if not path.is_file():
+            continue
         data = path.read_bytes()
         if not _leaks(data, password):
             continue
+        name = str(path.relative_to(root))
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
+            # Cannot be rewritten safely (a truncated log, a compressed one, an
+            # image): it goes, and it is named.
             path.unlink()
-            deleted += 1
+            report["deleted"].append(name)
             continue
         try:
             path.write_text(redact_text(text, password), encoding="utf-8")
-            rewritten += 1
+            report["redacted"].append(name)
         except OSError:
             pass  # the rescan below reports it
-    remaining = [
+    report["still_leaking"] = [
         str(p.relative_to(root))
         for p in sorted(root.rglob("*"))
-        if p.is_file() and _leaks(p.read_bytes(), password)
+        if p.is_file() and not p.is_symlink() and _leaks(p.read_bytes(), password)
     ]
-    return rewritten, deleted, remaining
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -93,21 +136,61 @@ def main(argv: list[str] | None = None) -> int:
         print("CANNOT CHECK — no --dir given")
         return 2
     password = os.environ.get("E2E_TEST_PASSWORD") or None
-    if password and len(password) < 4:
-        password = None  # too short to match safely; JWT/bearer rules still run
+    if not password or len(password) < 4:
+        # "No password found" would mean "nothing was looked for" — the repo's
+        # own cross-cutting fault. Refuse instead (re-audit 2026-09-17, N3).
+        print(
+            "CANNOT CHECK — E2E_TEST_PASSWORD is unset or shorter than 4 characters, "
+            "so this step cannot tell a clean set from an unscanned one; nothing uploads"
+        )
+        return 2
     worst = 0
     for d in args.dir:
         root = Path(d)
         if not root.is_dir():
             print(f"{d}: does not exist — nothing to upload from it")
             continue
-        rewritten, deleted, remaining = scrub(root, password)
+        report = scrub(root, password)
         print(
-            f"{d}: {rewritten} file(s) redacted, {deleted} binary file(s) deleted, "
-            f"{len(remaining)} still carrying a credential"
+            f"{d}: {len(report['redacted'])} file(s) redacted, "
+            f"{len(report['deleted'])} file(s) deleted, "
+            f"{len(report['symlinks'])} symlink(s), "
+            f"{len(report['still_leaking'])} still carrying a credential"
         )
-        if remaining:
-            print("FAIL — refusing to upload; still leaking: " + ", ".join(remaining))
+        for key in ("redacted", "deleted", "symlinks"):
+            if report[key]:
+                print(f"  {key}: " + ", ".join(report[key]))
+        try:
+            (root / "scrub-report.json").write_text(
+                json.dumps(report, indent=2) + "\n", encoding="utf-8"
+            )
+        except OSError as e:
+            print(f"  could not write scrub-report.json: {e.strerror}")
+            worst = 1
+        step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if step_summary and (
+            report["deleted"] or report["still_leaking"] or report["symlinks"]
+        ):
+            # A file removed from the evidence is named where the run is read,
+            # not only in a log line nobody opens.
+            with open(step_summary, "a", encoding="utf-8") as fh:
+                fh.write(
+                    f"\n**Artifact scrub ({d}):** {len(report['deleted'])} file(s) deleted"
+                    f" ({', '.join(report['deleted']) or 'none'}), "
+                    f"{len(report['still_leaking'])} still leaking, "
+                    f"{len(report['symlinks'])} symlink(s).\n"
+                )
+        if report["still_leaking"]:
+            print(
+                "FAIL — refusing to upload; still leaking: "
+                + ", ".join(report["still_leaking"])
+            )
+            worst = 1
+        if report["symlinks"]:
+            print(
+                "FAIL — refusing to upload; a symlink leaves the scrubbed set: "
+                + ", ".join(report["symlinks"])
+            )
             worst = 1
     return worst
 
@@ -116,6 +199,12 @@ def self_test() -> int:
     pw = "PW_SENTINEL_self_test_9"
     jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZWxmLXRlc3QifQ.c2lnbmF0dXJlLXNlbGY"
     failures = 0
+
+    def case(label: str, ok: bool) -> None:
+        nonlocal failures
+        failures += 0 if ok else 1
+        print(f"self-test {'ok  ' if ok else 'FAIL'} {label}")
+
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         (root / "nightly").mkdir()
@@ -125,26 +214,67 @@ def self_test() -> int:
         (root / "wave_f.xml").write_text(
             f"<failure>authorization: Bearer {jwt}</failure>", encoding="utf-8"
         )
-        (root / "clean.md").write_text("nothing secret here\n", encoding="utf-8")
+        # A bare JWT with no Bearer and no secret-named key in front, so the JWT
+        # rule alone is what has to catch it.
+        (root / "wave_h.log").write_text(
+            f"the walk saw {jwt} in a body\n", encoding="utf-8"
+        )
+        # Names lib.ts redacts that the scrub used to miss entirely.
+        (root / "cascading_report.md").write_text(
+            "x-api-key: ADMINKEY_SENTINEL_r3\nrefresh_token: REFRESH_SENTINEL_r3\n",
+            encoding="utf-8",
+        )
+        # A truncated log: it does not decode, and used to be reported clean.
+        (root / "wave_a.log").write_bytes(
+            b"\xff\xfe authorization: Bearer " + jwt.encode()
+        )
         (root / "shot.png").write_bytes(b"\x89PNG\x00\xff" + pw.encode() + b"\x00")
-        rewritten, deleted, remaining = scrub(root, pw)
-        checks = [
-            ("two text files redacted", rewritten == 2),
-            ("the binary carrying the password deleted", deleted == 1),
-            ("nothing left", remaining == []),
-            (
-                "clean file untouched",
-                (root / "clean.md").read_text() == "nothing secret here\n",
-            ),
-            (
-                "password gone from error-context.md",
-                pw not in (root / "nightly" / "error-context.md").read_text(),
-            ),
-            ("jwt gone from wave_f.xml", jwt not in (root / "wave_f.xml").read_text()),
-        ]
-        for label, ok in checks:
-            failures += 0 if ok else 1
-            print(f"self-test {'ok  ' if ok else 'FAIL'} {label}")
+        (root / "clean.md").write_text("nothing secret here\n", encoding="utf-8")
+        report = scrub(root, pw)
+        case("the four text files are redacted", len(report["redacted"]) == 4)
+        case(
+            "the two undecodable files are deleted and named",
+            sorted(report["deleted"]) == ["shot.png", "wave_a.log"],
+        )
+        case("nothing is left leaking", report["still_leaking"] == [])
+        case(
+            "the clean file is untouched",
+            (root / "clean.md").read_text() == "nothing secret here\n",
+        )
+        case(
+            "the password is gone",
+            pw not in (root / "nightly" / "error-context.md").read_text(),
+        )
+        case("a bare JWT is gone", jwt not in (root / "wave_h.log").read_text())
+        case(
+            "an api key and a refresh token are gone",
+            "ADMINKEY_SENTINEL_r3" not in (root / "cascading_report.md").read_text()
+            and "REFRESH_SENTINEL_r3" not in (root / "cascading_report.md").read_text(),
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        import gzip as _gzip
+
+        (root / "wave_h.log.gz").write_bytes(_gzip.compress(f"Bearer {jwt}".encode()))
+        report = scrub(root, pw)
+        case(
+            "a gzip carrying a token is deleted", report["deleted"] == ["wave_h.log.gz"]
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        outside = Path(tmp).parent / "scrub-self-test-outside.txt"
+        outside.write_text("untouched\n", encoding="utf-8")
+        (root / "link.txt").symlink_to(outside)
+        report = scrub(root, pw)
+        case("a symlink is refused, not followed", report["symlinks"] == ["link.txt"])
+        case(
+            "the file behind the symlink is untouched",
+            outside.read_text() == "untouched\n",
+        )
+        outside.unlink()
+
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         f = root / "locked.md"
@@ -152,15 +282,35 @@ def self_test() -> int:
         f.chmod(0o444)
         root.chmod(0o555)
         try:
-            _, _, remaining = scrub(root, pw)
-            ok = remaining == ["locked.md"] or os.geteuid() == 0
+            report = scrub(root, pw)
+            ok = report["still_leaking"] == ["locked.md"] or os.geteuid() == 0
         finally:
             root.chmod(0o755)
             f.chmod(0o644)
-        failures += 0 if ok else 1
-        print(
-            f"self-test {'ok  ' if ok else 'FAIL'} a file that cannot be rewritten is reported, so the upload is refused"
+        case(
+            "a file that cannot be rewritten is reported, so the upload is refused", ok
         )
+
+    import contextlib
+    import io
+
+    for label, env, want in (
+        ("an unset password is cannot_check", {}, 2),
+        ("a 3-character password is cannot_check", {"E2E_TEST_PASSWORD": "abc"}, 2),
+    ):
+        before = os.environ.pop("E2E_TEST_PASSWORD", None)
+        os.environ.update(env)
+        try:
+            with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(
+                io.StringIO()
+            ):
+                got = main(["--dir", tmp])
+        finally:
+            os.environ.pop("E2E_TEST_PASSWORD", None)
+            if before is not None:
+                os.environ["E2E_TEST_PASSWORD"] = before
+        case(f"{label} (exit {got})", got == want)
+
     print(
         "self-test: every case behaved"
         if not failures

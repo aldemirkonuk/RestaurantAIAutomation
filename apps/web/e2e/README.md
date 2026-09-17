@@ -159,12 +159,20 @@ the pages reported in words:
   - On failure, the sign-in test empties the password field and throws only a
     scrubbed line.
   - Before any upload, `scripts/e2e/scrub_artifacts.py` removes the password,
-    JWTs and bearer tokens from every file. If anything survives, neither the
+    JWTs, bearer tokens and secret-named `name: value` pairs — the same set
+    `lib.ts redact()` covers — from every file. A file that cannot be decoded
+    (a truncated log, a gzip, an image) is scanned lossily and **deleted** if it
+    carries a credential; a symlink fails the step. It names every file it
+    redacts, deletes or refuses in `scrub-report.json` and in the job summary,
+    so lost evidence is never silent. With `E2E_TEST_PASSWORD` unset it exits 2
+    rather than report a set it never scanned. If anything survives, neither the
     upload nor the deploy-gate PR comment runs.
   - Screenshots carry no headers or bodies.
 - **Target URLs are guarded.** The workflow refuses a local or non-https
-  `E2E_BASE_URL`, where the sign-in test types the password. It refuses the
-  same for `API_GATEWAY_URL`, which receives the password.
+  `E2E_BASE_URL`, where the sign-in test types the password, and the same for
+  `API_GATEWAY_URL`, which receives it. A `workflow_dispatch` may only name
+  hosts this repo already targets: the `API_GATEWAY_URL` secret's host for
+  `api_url`, and `mudavym.com` or the Vercel host for `base_url`.
 - **Secrets are step-scoped.** `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD` are
   mapped only into the steps that sign in, summarise or scrub. `SUPABASE_*`,
   `ADMIN_API_KEY` and `RABBITMQ_URL` go only into the legacy-wave steps. No
@@ -215,8 +223,12 @@ The guard runs in CI (job `decision-claims`) and fails, naming the entry, when:
 Prefer sentences that belong to one state of one page.
 
 Two more self-tests run in the same CI job: `nightly_summary.py --self-test`
-(verdict precedence, Wave C, unrecorded errors, skips, crashes, truncation,
-redaction) and `scrub_artifacts.py --self-test`.
+(10 cases: verdict precedence, Wave C, unrecorded errors including a
+parametrised one, skips, crashes, truncation, an almost-empty corpus,
+redaction) and `scrub_artifacts.py --self-test` (13 cases: the password, a bare
+JWT, secret-named pairs, an undecodable file, a gzip, a symlink, an unwritable
+file, and refusing to run with no password). Each case was proven to fail when
+the behaviour it asserts is mutated away.
 
 ## 7. The founder's recorded design calls
 

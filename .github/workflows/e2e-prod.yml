@@ -159,6 +159,10 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Required secrets are present
         env:
+          SECRET_API_GATEWAY_URL: ${{ secrets.API_GATEWAY_URL }}
+          SECRET_VERCEL_URL: ${{ secrets.VERCEL_PRODUCTION_URL }}
+          INPUT_API_URL: ${{ inputs.api_url }}
+          INPUT_BASE_URL: ${{ inputs.base_url }}
           E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
           E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -196,6 +200,18 @@ jobs:
           # carry the password in the clear.
           case "$API_GATEWAY_URL" in *localhost*|*127.0.0.1*|*0.0.0.0*) echo "::error::API_GATEWAY_URL points at a local address"; exit 2;; esac
           case "$API_GATEWAY_URL" in https://*) ;; *) echo "::error::API_GATEWAY_URL is not https"; exit 2;; esac
+          # A dispatch input is where the password would go if someone typed the
+          # wrong host, so an input may only name the hosts this repo already
+          # targets (re-audit 2026-09-17, N4). Hosts, never values, are printed.
+          host() { printf '%s' "${1#*://}" | cut -d/ -f1; }
+          ALLOWED_API=$(host "$SECRET_API_GATEWAY_URL")
+          ALLOWED_WEB="mudavym.com $(host "${SECRET_VERCEL_URL:-}")"
+          if [ -n "${INPUT_API_URL:-}" ] && [ "$(host "$INPUT_API_URL")" != "$ALLOWED_API" ]; then
+            echo "::error::api_url names a host this workflow may not target"; exit 2
+          fi
+          if [ -n "${INPUT_BASE_URL:-}" ]; then
+            case " $ALLOWED_WEB " in *" $(host "$INPUT_BASE_URL") "*) ;; *) echo "::error::base_url names a host this workflow may not target"; exit 2;; esac
+          fi
 
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -289,7 +305,9 @@ jobs:
       # 3. WAVE F — the browser walk (every rebuilt page, flag on and off)
       # -----------------------------------------------------------------------
       # Playwright's own output stays on the runner: its stdout goes to the job log
-      # only (GitHub masks secret values there, not in files), and
+      # only — note GitHub masks REGISTERED SECRETS there, not a JWT minted during
+      # the run; what keeps a token out of that log is lib.ts `gateway()` plus the
+      # manifest guard's rule 7 (a text match). And
       # apps/web/test-results/ (error-context.md holds every input's value when a
       # test fails) is never uploaded (re-audit 2026-09-17, B2). The reporter's
       # redacted summary and screenshots are copied out; wave_f.xml is copied for

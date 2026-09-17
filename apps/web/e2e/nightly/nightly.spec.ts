@@ -185,8 +185,10 @@ test('sign-in: the two-step login form signs the account in', async ({ page, req
     // snapshots every input's value into error-context.md when a test fails;
     // a failed fill() also prints the value in its call log. Empty the field
     // and throw only a scrubbed first line (re-audit 2026-09-17, B2).
-    await page.locator('#password').fill('').catch(() => undefined)
+    // Record BEFORE clearing: the clear has no action timeout, so on a detached
+    // field it would hang to the test timeout and take the diagnosis with it.
     recordAndAssert({ id: 'signin.ui', state: 'fail', reason: `the form did not sign the account in: ${safeMessage(e)}`, evidence: budget.summary() })
+    await page.locator('#password').fill('', { timeout: 5_000 }).catch(() => undefined)
     throw new Error(`signin.ui: ${safeMessage(e)}`)
   }
   const wall = await settleWalls(page, manifest.shared_phrases.walls, 3, 2_000)

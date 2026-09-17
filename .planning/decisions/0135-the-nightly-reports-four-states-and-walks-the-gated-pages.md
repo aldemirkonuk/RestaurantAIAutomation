@@ -128,7 +128,8 @@ corpus.** Concretely:
 - **Easier:** a red nightly now carries its reason in the row that is red; the founder's
   go-live flip can be gated by `expect_flags=on` the day he wants it; the nineteen pages
   slot in as #289 merges with no suite change (the manifest already names them; today
-  eight report `absent`); every walk leaves screenshots.
+  eight report `absent` **[superseded 2026-09-17, founder call 10: an enrolled page cannot
+  report `absent` any more — it is a fail]**); every walk leaves screenshots.
 - **Harder / given up:** the walk tells nothing about figures by design; the door and
   document routes stay `absent` until the e2e house holds an order and a document; Wave
   H's build-identity check is `cannot_check` against a local gateway (no build variable)
@@ -152,7 +153,7 @@ corpus.** Concretely:
   regenerated canned day (21 checks · $5,549.56 · 52 wine · 82 food); the forecast fixture
   pins 7 series and its drift assertion was proven red on a 1e-6 perturbation; the summary
   script exits 2 on an empty results directory and 1 on this local result set.
-- **Revisit when:** #289 merges (expect the eight `absent` rows to turn into pass/fail
+- **Revisit when:** #289 merges — it did, 2026-09-12 (expect the eight `absent` rows to turn into pass/fail
   the next night); the founder's secrets land (the first real production run is the
   evidence this ADR lacks — its verdict goes into the review trail); a second house is
   granted for the legacy pass; the orchestrator's real URL is known.
@@ -313,7 +314,8 @@ what it rejected. The first question allowed several answers; he chose two of it
   11 `public_pages`; 7 `pending_pages`; and `signed_out_redirects`. The stale sentences
   were replaced with the pages' current ones.
 - **`scripts/check_nightly_manifest.py`** runs in CI (`decision-claims`), with a
-  `--self-test` of 10 cases, each asserting the named finding. It holds the manifest
+  `--self-test` of 12 cases (10 on 2026-09-16; two added by the re-audits), each asserting
+  the named finding. It holds the manifest
   equal to `MUDAVYM_PAGES`, each sentence to its page's source outside comments,
   testids, the public-switch claim per file, and pending pages not yet enrolled. Run
   against the 2026-09-11 manifest (with each page's new `source` field copied in; as-is it reports 21, most of them the missing field) it reports 8 mismatches (6 of the 9 dead
@@ -339,7 +341,7 @@ what it rejected. The first question allowed several answers; he chose two of it
 
 **Verified 2026-09-16:** `tsc --strict` exits 0 over the four nightly files (a
 deliberate type error exits 2, so the check is real). Web ESLint is clean, with no
-file ignored. The guard passes, and its self-test passes all 10 cases.
+file ignored. The guard passes, and its self-test passed all 10 cases that day (12 now).
 `extract_design_verdicts.py --check` returns 0 against `origin/claude/artifact-pull`
 and 2 with no snapshots. `check_decision_claims.sh` passes. The **signed-out walk ran
 against production** (`https://mudavym.com`, system Chrome, no account): 11 pass,
@@ -508,7 +510,8 @@ The findings were posted to the PR, not committed.
   - Redaction also covers `refresh-token`, `x-api-key`, `token=`, `secret` and `cookie`.
 - **Summary:** it redacts every reason, not just the browser wave's.
 - **Tests:** committed self-tests for the verdict logic (`nightly_summary.py --self-test`,
-  8 cases) and the scrub (`scrub_artifacts.py --self-test`, 7 cases) now run in CI (N6).
+  then 8 cases, 10 now) and the scrub (`scrub_artifacts.py --self-test`, then 7, 13 now)
+  run in CI (N6).
 - **Skips:** a skipped case is now `cannot_check`, not `absent`. This restores this ADR's
   "never green by skipping" (compliance). Wave C unarmed stays the one decided absence.
 - **Guard:** rule 7 also matches `request[` and scans subdirectories. It is still a text
@@ -522,6 +525,54 @@ client emits are subscribe and ping, so no write goes that way. Both are recorde
 limits. There is no host allowlist for dispatch inputs: anyone who can dispatch can
 already read the secrets.
 
+## Third round on b14835d0 (2026-09-17)
+
+All three angles returned **APPROVE WITH NOTES**. No third path from a credential to a
+public place was found, and both earlier blockers were re-proven closed on this head with
+the loopback reproductions: 0 files carrying the sentinel, and each failure path confirmed
+to run. The notes were fixed rather than carried.
+
+**The scrub was fail-open in three ways, each proven with sentinels.**
+- A file that did not decode as UTF-8 — a truncated log, a gzip — was reported clean
+  unless it held the password itself. It is now scanned lossily and by decompression, and
+  deleted when it carries a credential.
+- Its redaction covered less than `lib.ts` did: `x-api-key`, `refresh_token` and the rest
+  passed through. Both halves now cover the same names.
+- With `E2E_TEST_PASSWORD` unset or under 4 characters it printed "0 still carrying a
+  credential" and exited 0 — absence reported as health, inside the guard written to
+  prevent exactly that. It now exits 2, and nothing uploads.
+
+**Deleting evidence is recorded, and its alternatives are on the record.** The scrub names
+every file it redacts, deletes or refuses, writes `scrub-report.json` into the artifact,
+and appends a line to the job summary. **Rejected:** refusing the whole upload, which costs
+a run's entire evidence for one chance byte match; and zeroing the matched bytes, which
+leaves a file nobody can trust. A symlink now fails the step, because `upload-artifact`
+follows one out of the scrubbed set.
+
+**Dispatch inputs are bounded** (N4, carried from round 2): `api_url` and `base_url` may
+only name hosts this repo already targets — the `API_GATEWAY_URL` secret's host, and
+`mudavym.com` or the Vercel host. Anything else exits 2, proven with four cases.
+
+**Also fixed:** one parametrised Wave H failure no longer masks its siblings (ids match
+exactly); the summary redacts check ids as well as reasons, because an id can carry a JUnit
+test name; the sign-in catch records before clearing the field, so a hung clear cannot take
+the diagnosis with it; the dead wave-name table and the unreachable Wave F branch are gone;
+and the workflow no longer claims GitHub's masking protects a JWT minted during the run.
+
+**The self-tests now fail when the behaviour fails.** Three cases that passed against a
+mutated tree are covered: the per-test Wave H matching, the empty-corpus guard, and the JWT
+rule standing alone. Each was re-proven by mutation — restoring the old behaviour turns the
+self-test red. Counts: scrub 13 cases, summary 10, manifest guard 12.
+
+**Still not fixed, recorded:** `redact()` mangles ordinary prose (legibility, never a
+state); the guard's comment detection misses `"x"// phrase` and `return/* phrase */`; rule
+7 is a text match, so a renamed variable escapes it; `ADR-0135-j` still passes if a call is
+commented out; WebSocket frames bypass the read-only guard, and the client sends only
+subscribe and ping. **One forward hazard:** once F2 is actioned, an unset `ADMIN_API_KEY`
+turns Wave B's skips into `cannot_check` and the nightly is red every night for an unarmed
+secret — the outcome founder call 8 rejected for Wave C. Wave B needs the same call before
+F2 lands. It cannot fire today, because the preflight refuses first.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -532,3 +583,4 @@ already read the secrets.
 | 2026-09-17 | This session, on the founder's "complete e2e and review" | First full pipeline run against production (from a laptop). It found 2 live product defects and a suite defect (the summary expected the retired waves D/E/G), and CodeQL's high alert on the extractor. The suite defect and the alert are fixed; the product defects are filed. |
 | 2026-09-17 | In-session audit gate on `e18b1d48` (3 Opus angles) | **BLOCK**: security B1 (bearer token through the Playwright call log); correctness and compliance APPROVE WITH NOTES. Fixed on `881fec82`. |
 | 2026-09-17 | In-session re-audit on `881fec82` | **BLOCK**: security B2 (password through `error-context.md`); correctness and compliance APPROVE WITH NOTES. Fixed on the next head; founder calls 10–11. |
+| 2026-09-17 | In-session third round on `b14835d0` | **APPROVE WITH NOTES** from all three angles; both earlier leaks re-proven closed. Its notes (the scrub fail-open in three ways, unbounded dispatch hosts, per-test masking, self-tests passing a mutated tree) are fixed on the head after it. |
