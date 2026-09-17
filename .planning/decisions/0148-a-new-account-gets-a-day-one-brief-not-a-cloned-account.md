@@ -125,7 +125,17 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
   internal ids under that directory and passes. §4 retire-to-write for those twelve files
   was already waived (ADR 0032, founder call 2026-09-16). **The exposure this ADR set out
   to remove is closed for the artifacts specifically: the content is durable in git, not
-  account-bound.**]
+  account-bound.**] [Corrected the same day: that bracket overclaimed. `625ccb98` saved
+  each artifact's page and nothing else, and its id-grep claim still passed. The
+  Arrival's five direction files were missing, and so were the recorded calls: Wave Four
+  7 documents, The Arrival 5. The completion checked all twelve against claude.ai's
+  owner metadata, which lists each artifact's files, sizes, hashes and database document
+  count. The five files came from the owning-org terminal session's export. Each, with claude.ai's frame-runtime block removed, matches its published size and sha256. It wrote
+  in the verdicts the owner's own page load received, matched to the counts. The
+  twelve are now whole, with a guard that proves it:
+  `scripts/check_artifact_snapshots.py`, claim `ADR-0148-ARTIFACTS-WHOLE`. It fails
+  all twelve on `625ccb98` and passes after. `ONBOARDING.md` §7 *Completed* has the
+  detail.]
 - **The Claude Design project behind the brand canvases is also account-bound** (added
   2026-09-16). The founder supplied its export. Compared byte for byte, its three
   canvases and its build prompt were already in `.planning/brand/`. The only files git
@@ -140,6 +150,7 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-16 | — | Audit of `625ccb98` found the pull incomplete: The Arrival's five direction files and the verdict databases were missing, and the id-grep claim could not see it. Completed and verified against claude.ai's owner metadata (file lists, sizes, sha256, document counts). New guard `scripts/check_artifact_snapshots.py` (claim `ADR-0148-ARTIFACTS-WHOLE`) fails on `625ccb98` and passes after |
 | 2026-09-16 | Aldemir | Claude Design export: chose to add the two monogram images to `.planning/brand/` (§4 waived, ADR 0032). The rest of the export matched git byte for byte; `support.js`, a redundant screenshot and the thumbnail were left out |
 | 2026-09-16 | — | Third run of ONBOARDING §8 Job 2, from a terminal session confirmed in owning org `1138b209-…`: all twelve artifacts pulled and committed under `.planning/07-reference/artifacts/`; CLAIMS row flipped to `resolved`; artifacts consequence rewritten as delivered |
 | 2026-09-16 | Aldemir | Waived §4 retire-to-write for the twelve artifact files (row in ADR 0032). Same session measured the pull's blocker: the desktop app's org `03017808-…` is a viewer of owner org `1138b209-…`; artifacts consequence re-bracketed |

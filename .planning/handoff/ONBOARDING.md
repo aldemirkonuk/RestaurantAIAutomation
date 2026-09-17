@@ -164,7 +164,14 @@ desktop session on branch `claude/artifact-pull` — could not read any of them 
 prior text below the table records exactly what failed and why); a third session, run
 from a terminal `claude` confirmed to be in the owning org `1138b209-…`, read all twelve
 successfully via the Artifact tool and committed them. Nothing was reconstructed from
-memory or from the repo — every file is what the Artifact tool returned.
+memory or from the repo — every file is what the Artifact tool returned. [Same day, that
+turned out to be incomplete, and was then completed; see *Completed* below. Each file now
+has:
+- a header: title, source URL, internal id, pull date, `live_version`, every published
+  file, a one-line `description` and a `note`;
+- the page as claude.ai serves it;
+- after the page, any other published files and the artifact's database.
+`scripts/check_artifact_snapshots.py` proves all of it.]
 
 ★ = founder-flagged as current and highest-reference (2026-09-16). Full ids are as the
 Artifact tool resolved each public link on the second attempt.
@@ -247,6 +254,47 @@ the twelve internal ids under that directory and passes. The exposure ADR 0148 s
 remove is closed for the artifacts specifically: the content is durable in git, not
 account-bound.
 
+**Completed, 2026-09-16 — the paragraph above overclaimed.** `625ccb98` saved each
+artifact's *page* and nothing else. Its only check, claim `ADR-0148-ARTIFACTS-PULLED`,
+greps for the twelve ids, so it passed with this still only on claude.ai:
+- The Arrival's five direction files, `direction-a.html` to `direction-e.html`. Its index
+  page only loads them in frames.
+- The founder's recorded calls: Wave Four's `verdicts` (7 documents) and The Arrival's
+  (5). The Go-Live Board's collection is empty.
+
+The completion used three sources, each for what it could reach:
+
+1. **Owner metadata.** Signed in as the owner in the desktop app's browser pane,
+   claude.ai's frame metadata gave, for each of the twelve: the live version, every
+   published file, the database document count, and for The Arrival a size and sha256
+   per file. Eleven are a single `index.html` and no other artifact has a database.
+2. **Verdict documents.** They are the API responses the artifact pages themselves
+   received on load in that owner session. They were written into the files, and their
+   counts and ids match claude.ai's own document counts. **Not done:** a second, machine
+   `read_db` cross-check of their text. The guard pins their digest as read.
+3. **The five direction files.** The terminal session in org `1138b209-…` exported them
+   as claude.ai serves them. Each export carries the same 36,864-byte frame-runtime block.
+   With that block removed, each file matches its published size and sha256. Those
+   published bytes are what the snapshot file holds.
+
+The same check proves the served-page snapshots lose nothing. The Arrival's `index.html`,
+in the committed snapshot and in the export alike, reproduces its published sha256 once
+the frame-runtime block is removed.
+
+**Check it:** `python3 scripts/check_artifact_snapshots.py`, which is CLAIMS row
+`ADR-0148-ARTIFACTS-WHOLE`. It pins every fact it checks, and does not trust the file's
+own header:
+- published bytes: a sha256 for every page. The Arrival's is claude.ai's published hash.
+  The other eleven agree byte for byte across two independent owner reads;
+- the frame-runtime block;
+- every other file's size and sha256;
+- every database's document ids and digest.
+
+An adversarial pass broke the first, header-trusting version: 59 of 104 fixture attacks
+passed. The pinned version fails a middle cut, a database removed together with its
+header line, stray bytes, an edited verdict, an extra file, and `625ccb98`'s tree. It
+passes all twelve now.
+
 **The Claude Design project, 2026-09-16.** The project behind the brand canvases is
 covered too. Its export (`CSS animation demos with spring physics.zip`) was compared
 byte for byte with `.planning/brand/`. Its three canvases and its build prompt were
@@ -266,7 +314,12 @@ stand alone — a fresh session has none of this conversation.
 `verify` really reports. Job 2 failed for all twelve because that session, the desktop
 app, was in org `03017808-…` rather than the owning org (§7, *Why*). Run Job 2 again
 only from a session in org `1138b209-…`, from that branch, so §7 and ADR 0148 are
-current when it starts.
+current when it starts. [Job 2 then ran from a terminal session in that org
+(`625ccb98`) and was completed the same day (§7, *Completed*). **Do not re-run it.**
+The lesson for any future pull: the Artifact tool's `read` returns only `index.html`, so
+also run `list_files`/`read_file` for the other published files and `read_db` for the
+database. Re-pull an artifact only when its live version has moved past the
+`live_version` in its header, then run `python3 scripts/check_artifact_snapshots.py`.]
 
 ```text
 You are picking up the Mudavym repo (RestaurantAIAutomation) after an account move.
