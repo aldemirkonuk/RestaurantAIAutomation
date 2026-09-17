@@ -1,6 +1,6 @@
 # 0126 — A price behind a licence is not a posting
 
-- **Status:** **[LOCKED 2026-09-16 — the founder, in session, via [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] row 13 (*"Lock 0124, 0126 and 0113"*). The status as written before the lock is kept below.]**
+- **Status:** **[LOCKED 2026-09-16 — the founder, in session, via [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] row 13 (the option he chose, "Lock the built, keep research", which named 0124, 0126 and 0113). The status as written before the lock is kept below.]**
   ~~Proposed.~~ **All three founder questions answered on 2026-09-05, and all three built.**
   ~~Q1 is open and narrowed — he is asking about sanctioned APIs and a sign-in hand-over instead~~ —
   **Q1 CLOSED in batch 56: "Invoices + the built 810 ingest, and a letter for a feed."** **No mirror

@@ -298,7 +298,7 @@ founder-answers table; the row numbers below are that table's. None of this is b
 **Studio and SimPOS (row 4).** The founder: *"/studio was getting another update I'm not
 sure tho, check codex convos but imPOS keep-asis"*. **SimPOS stays as it is**: an internal
 tool, outside the Mudavym design and outside the legacy deletion, the same standing section 5
-gives `/dev-sandbox` and `/dev/truth`. **Studio is open**: it waits on a check of the Codex
+gives `/dev-sandbox` and `/dev/truth`. **Studio is open** [2026-09-17: closed by ADR 0149 row 32 — kept as an internal tool; see §5]: it waits on a check of the Codex
 conversations, and nothing about its design or deletion is decided until that check is read
 back to him.
 

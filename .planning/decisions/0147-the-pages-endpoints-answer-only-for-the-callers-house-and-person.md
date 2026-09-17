@@ -54,21 +54,21 @@ By module (details and failing output in the named report):
 - **Vendor intel, faults 1 and 2.** Decisions on public-register rows with no house can
   be undone from any house, and name a person from another house. This is a founder
   fork with options A-D; the recommendation is C.
-  [FOUNDER ANSWERED 2026-09-16, being built — ADR 0149 row 17: a new nullable deciding-house
+  [FOUNDER ANSWERED 2026-09-16, build pending (not merged) — ADR 0149 row 17: a new nullable deciding-house
   column, and the person's name and the undo only inside that house. Also carried into
   ADR 0124.]
 - **Integrations.** Who may disconnect an integration for a user with no tenant is a
   founder fork. The spec pins today's refusal.
-  [FOUNDER ANSWERED 2026-09-16, being built — ADR 0149 row 18: the creator of a grant may
+  [FOUNDER ANSWERED 2026-09-16, build pending (not merged) — ADR 0149 row 18: the creator of a grant may
   always end it, an ex-member included, and the ADR 0118 mail sweep runs on that
   disconnect (0118 D15). Until built, the spec above still pins the refusal.]
 - **Notification senders.** POST `/notifications/order-approval`, `low-stock`,
   `delivery`, `price-negotiation`, `system-alert` and `send-email` still send to any
   user id or email address the body names. Who may notify whom is a product rule,
   not a scoping bug.
-  [FOUNDER ANSWERED 2026-09-16, being built — ADR 0149 row 15: the five uncalled POST
+  [FOUNDER ANSWERED 2026-09-16, build pending (not merged) — ADR 0149 row 15: the five uncalled POST
   senders are closed (internal only); `send-email` is owner/manager, with recipients
-  limited to the house's members and its vendors' contacts; and the seven resolver sites
+  limited to the house's members and its vendors' contacts; and the resolver sites
   are mapped to categories, an unmapped category refused (OD-121).]
 - **Notification preferences.** `ordersMode`, `reportsMode` and `digestFrequency` are
   free strings with no allowlist. `startTime`, `endTime` and `digestTime` have no HH:mm

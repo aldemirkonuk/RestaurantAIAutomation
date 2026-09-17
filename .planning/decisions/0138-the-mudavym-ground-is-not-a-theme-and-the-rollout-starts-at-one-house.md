@@ -216,5 +216,6 @@ but a per-surface decision written into the markup.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-16 | Aldemir (founder), in session (ADR 0149) | Row 6: light/dark toggle retired — charcoal everywhere, declared paper surfaces only; D1 extends app-wide. D2's one-house rollout superseded by 0149's single cutover. Answered, not built |
+| 2026-09-17 | Aldemir (founder), in session | ADR 0149 row 36: sixteen locked pages resolve to Mudavym in code for every house before the cutover; the other four gated pages keep following their flags |
 | 2026-09-12 | Aldemir (founder) | D1 and D2 asked directly in session and answered; both Locked |
 | 2026-09-12 | — | Created; D1 shipped in `fix/motion-sweep-defects`, D2 live in production as one row |

@@ -1,6 +1,6 @@
 # 0113 — The assistant proposes the house's configuration; the seal applies it
 
-- **Status:** **[LOCKED 2026-09-16 — the founder, in session, via [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] row 13 (*"Lock 0124, 0126 and 0113"*, Q4 asked separately). Q4 was answered the same evening: per house (see Q4 below). Q6 and Q7 had closed on 2026-09-12 (review trail), so no question in this record is open. The lock records the decision, not a build — 0149 row 13 adds that pages build only on built behaviour. The status as written before the lock is kept below.]**
+- **Status:** **[LOCKED 2026-09-16 — the founder, in session, via [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] row 13 (the option he chose, "Lock the built, keep research", which named 0124, 0126 and 0113, Q4 asked separately). Q4 was answered the same evening: per house (see Q4 below). Q6 and Q7 had closed on 2026-09-12 (review trail), so no question in this record is open. The lock records the decision, not a build — 0149 row 13 adds that pages build only on built behaviour. The status as written before the lock is kept below.]**
   ~~**Proposed**~~ **— research and design only, nothing built.** The founder asked for
   the approach, not the build: *"research this and understand how should we approach this."*
   **Four of the five open questions were answered by the founder on 2026-09-04 and are now

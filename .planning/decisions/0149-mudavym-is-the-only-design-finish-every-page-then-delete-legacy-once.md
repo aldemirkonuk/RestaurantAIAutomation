@@ -1,17 +1,17 @@
 # 0149 — Mudavym is the only design: finish every page, then delete legacy once
 
-- **Status:** Locked 2026-09-16 — the founder's goal for the session and his answers to nine rounds of forks in session (verbatim below). The deletion itself is a gated stop inside this record: the deletion manifest goes to him file group by file group, and nothing is deleted without his word on that manifest.
+- **Status:** Locked 2026-09-16 — the founder's goal for the session and his answers to nine rounds of forks in session (his typed words in italics, chosen options named, below). The deletion itself is a gated stop inside this record: the deletion manifest goes to him file group by file group, and nothing is deleted without his word on that manifest.
 - **Date:** 2026-09-16
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** cutover, legacy deletion, dark launch superseded, mudavym_design flags, PageGate, useMudavymDesign, VITE_MUDAVYM_PUBLIC, deletion manifest, Codex adoption, theme toggle, SimPOS, Studio, app shell, finish
-- **Links:** supersedes the per-house rollout of [[0131-the-new-house-goes-live-dark-then-one-house-at-a-time]] (its dark-merge half already happened) · [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] (the one public switch becomes permanent-on at cutover) · [[0138-the-mudavym-ground-is-not-a-theme-and-the-rollout-starts-at-one-house]] · [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] · [[0144-the-book-opens-on-evidence-and-three-pages-get-a-job]] · [[0145-mudavym-answers-out-of-a-reading]] · [[0147-the-pages-endpoints-answer-only-for-the-callers-house-and-person]] · [[0134-one-motion-per-act-across-every-page]] (Proposed, on branch `docs/motions-and-overlays-per-page`) · `.planning/handoff/PROGRESS.md` §5–6
+- **Links:** supersedes the per-house rollout of [[0131-the-new-house-goes-live-dark-then-one-house-at-a-time]] (its dark-merge half already happened) · [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] (the one public switch becomes permanent-on at cutover; [2026-09-17, row 37: turned on in code before cutover]) · [[0138-the-mudavym-ground-is-not-a-theme-and-the-rollout-starts-at-one-house]] · [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] · [[0144-the-book-opens-on-evidence-and-three-pages-get-a-job]] · [[0145-mudavym-answers-out-of-a-reading]] · [[0147-the-pages-endpoints-answer-only-for-the-callers-house-and-person]] · [[0134-one-motion-per-act-across-every-page]] (Proposed, on branch `docs/motions-and-overlays-per-page`) · `.planning/handoff/PROGRESS.md` §5–6
 
 ## Context
 
 On 2026-09-16 the founder set one goal for a session: *"complete every page there is
 with every UI, UX page detected, planned, tracked ... and remove legacy pages and
-actually full delete them. Commit push deploy everything ... So finish the mudavym.com
-and deploy it."*
+actually full delete them. Commit oush deploy everyhting ... So finish the mudavim.com
+and deploy it."* (verbatim, typos kept)
 
 Measured at `origin/main` `60ed83a7` that day (census in the session scratchpad, outside the repo;
 the numbers below were measured that day and are not yet CLAIMS rows):
@@ -49,6 +49,10 @@ stand beside this goal.
    building; a production write per flip.
 3. **Delete the built pages' legacy now, the rest as each lands** — fastest, but nine
    pages no house has ever had switched on go live for every house with no soak.
+   [2026-09-17, row 36: the founder then chose to put sixteen locked pages live before
+   cutover, six of them among those nine (reports, calendar, profile, connections,
+   notifications, logs); the sweep in that change is their soak. The rest of Option 3
+   stays rejected: legacy is still deleted only at the one approved cutover.]
 4. *(Keep the dark launch)* — contradicts the goal; legacy never goes.
 
 ## Decision
@@ -87,16 +91,16 @@ the current restaurants or users, or tables, dbs or such"*. So:
 | 9 | Fonts on public pages | Self-host every face; no Google Fonts request | ADR 0133 |
 | 10 | `/admin` desk defaults | Keep: the five local-only knobs removed, other tabs linked out, owners-only health read | ADR 0143 §2 |
 | 11 | Arrival threshold and `/onboarding` | The house-wide low-stock threshold is one line on folio 2; `/onboarding` redirects permanently to `/get-started`; *"+ improve the UI for tutorial action boxes"* | ADR 0143 §4, 0144 |
-| 12 | ADR 0134 motion rules | *"Review motion first"* — rendered as live specimens (sketch 116) before locking; 0134 stays Proposed until then | ADR 0134 (to carry when 0134 lands on main) |
+| 12 | ADR 0134 motion rules | option chosen: "Review motion first" — rendered as live specimens (sketch 116) before locking; 0134 stays Proposed until then | ADR 0134 (to carry when 0134 lands on main) |
 | 13 | Proposed ADRs the page ADRs lean on | Lock 0124, 0126 and 0113 (0113 Q4 asked separately); 0054, 0108, 0117, 0128 stay Proposed; pages build only on built behaviour | ADRs 0113, 0124, 0126, 0144 |
 | 14 | Consent panel (opened only from legacy `/settings`, no reader) | Delete it and say plainly on `/settings` that no analytics consent is collected yet | page note settings.md (to carry) |
-| 15 | Who may notify whom | Close the five uncalled POST senders (internal only); `send-email` owner/manager, recipients limited to the house's members and its vendors' contacts; map the seven resolver sites to categories, an unmapped category is refused | ADR 0147; OD-121 |
+| 15 | Who may notify whom | Close the five uncalled POST senders (internal only); `send-email` owner/manager, recipients limited to the house's members and its vendors' contacts; map every resolver site to a category (eleven measured 2026-09-17, not the seven first counted), an unmapped category is refused | ADR 0147; OD-121 |
 | 16 | `/authorize` residue | The disclosure and every factual claim the page makes are served by the gateway and sealed; the connection keeps the seal id and words digest as a receipt; each return page reads the outcome | ADR 0144 |
 | 17 | Vendor-intel public-register rows | A new nullable deciding-house column; the person's name and undo only inside that house | ADR 0124, 0147 |
 | 18 | Ex-member OAuth disconnect | The creator of a grant may always end it, and the ADR 0118 mail sweep runs | ADR 0147, 0118 |
 | 19 | `POST /communications/email` open relay | Two locked doors: the orchestrator through the internal service key; users by JWT, owner/manager, own house, recipients limited to its vendor contacts and members, an audit row per send | ADR 0147 |
 | 20 | Report generation (OD-81) | Build a real export: CSV plus a print-ready page, stored, with an honest queued/ready/failed status | OD-81 (carried); page note reports.md (to carry) |
-| 21 | Settings, Cellar, Recommendations "rework" verdicts | *"Sketch all three again"* — 2-3 new directions each for his review | page notes settings.md, wines.md, recommendations.md (to carry) |
+| 21 | Settings, Cellar, Recommendations "rework" verdicts | option chosen: "Sketch all three again" — 2-3 new directions each for his review | page notes settings.md, wines.md, recommendations.md (to carry) |
 | 22 | Capabilities with no Mudavym home | Rebuild all four before cutover: discovery in `/providers`, hours in `/settings`, thread actions in `/orders`, a credits lane in `/receipts` | this record |
 | 23 | Receiving verdict shape | Append-only records, plus a sketch of more structure for his review | page note receiving.md (to carry) |
 | 24 | `/soft-drinks` | *"when there is no alcohols in a restaurants then it's already soft-drinks only, and some restaurants do not like non-alcoholic term"* — the adaptive name of the non-alcoholic register in an alcohol-free house, not a new classification | page note wines.md (to carry) |
@@ -110,9 +114,9 @@ the current restaurants or users, or tables, dbs or such"*. So:
 | 32 | Studio, after the Codex-conversation check (no Studio update exists; the pages date from April 2026) | Keep as an internal tool, outside the redesign and outside the deletion | ADR 0143 §5 |
 | 33 | `/ask` launch | Codex's fifteen house readings after audit; standing questions later in their own record; the floating "Wine Agent" button removed, so `/ask` and the palette panel are the two doors | ADR 0145 |
 | 34 | OD-121's two ambiguous senders | The weekly report is `financial_reports`; the recurring-order reminder is `order_approval` | OD-121 |
-| 35 | `/login` and `/register` look | *"Flyleaf look on login too"* — the paper-book look of sketch 104 direction C, same fields and flow; sketch 118 first | ADR 0143 |
-| 36 | Pages to give life now | *"16 locked pages"* — Mudavym resolves for every house in code on dashboard, orders, receiving door, providers, communications, team, inventory, receipts, documents-reports, document, reports, calendar, profile, connections, notifications and logs; no database write; legacy code stays until the manifest is approved; settings, cellar, recommendations and the receiving desk wait for their sketch review | this record; ADR 0131, 0138 |
-| 37 | Public doors switch | *"Yes, turn on now"* — the public design switch is on in code once the doors pass their fixes | ADR 0133 |
+| 35 | `/login` and `/register` look | option chosen: "Flyleaf look on login too" — the paper-book look of sketch 104 direction C, same fields and flow; sketch 118 first | ADR 0143 |
+| 36 | Pages to give life now | option chosen: "16 locked pages" — Mudavym resolves for every house in code on dashboard, orders, receiving door, providers, communications, team, inventory, receipts, documents-reports, document, reports, calendar, profile, connections, notifications and logs; no database write; legacy code stays until the manifest is approved; settings, cellar, recommendations and the receiving desk wait for their sketch review | this record; ADR 0131, 0138 |
+| 37 | Public doors switch | option chosen: "Yes, turn on now" — the public design switch is on in code once the doors pass their fixes | ADR 0133 |
 | 38 | Sketch style | People-facing pages follow the Wave Four, The Arrival and Documents and Reports artifacts (simpler, easy to read); technical pages (the logs and admin designs he liked) may stay dense; Fable used minimally, Sonnet where it is capable | this record |
 
 ## Consequences
