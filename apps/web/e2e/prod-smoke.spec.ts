@@ -23,7 +23,14 @@
  *   npx playwright test --config playwright.prod.config.ts
  */
 
-import { test, expect, type Page, type ConsoleMessage, type APIRequestContext } from '@playwright/test'
+import {
+  test,
+  expect,
+  request as playwrightRequest,
+  type Page,
+  type ConsoleMessage,
+  type APIRequestContext,
+} from '@playwright/test'
 
 // ---------------------------------------------------------------------------
 // Auth helper — real Supabase login via production UI
@@ -140,7 +147,6 @@ test('Wave F-3: dashboard loads within 5s with no console errors', async ({ page
 
 test('Wave F-4: /studio write-flow creates a session record and is torn down', async ({
   page,
-  request,
 }) => {
   // Skip gracefully if Supabase credentials unavailable — teardown requires them.
   const supabaseUrl = process.env.SUPABASE_URL
@@ -222,7 +228,7 @@ test('Wave F-4: /studio write-flow creates a session record and is torn down', a
   // SUPABASE_SERVICE_ROLE_KEY is used here in Node.js (request context), NOT in browser.
   // This satisfies: "Delete the record via Supabase REST (service_role_key)".
   if (capturedSessionId && supabaseUrl && serviceKey) {
-    const apiCtx: APIRequestContext = await request.newContext({
+    const apiCtx: APIRequestContext = await playwrightRequest.newContext({
       baseURL: supabaseUrl,
       extraHTTPHeaders: {
         apikey: serviceKey,

@@ -538,6 +538,9 @@ importers:
       '@types/google.maps':
         specifier: ^3.66.0
         version: 3.66.1
+      '@types/node':
+        specifier: ^20.10.6
+        version: 20.19.27
       '@types/react':
         specifier: 18.2.47
         version: 18.2.47
