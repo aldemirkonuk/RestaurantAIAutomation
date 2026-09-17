@@ -121,12 +121,17 @@ export const CRAWL_PREFIXES: readonly CrawlPrefix[] = [
   // Sitemap: directive below named a file every group's own Disallow: /
   // closed, so the file this build's whole point is to make discoverable
   // was, by its own robots.txt, never fetchable by any compliant crawler.
-  // The index and the pages file list nothing a reader could not already
-  // read directly (the four PUBLIC_ROUTES entries are unconditional above),
-  // so they follow the index's own robots.txt-serving host rule: open to
-  // everyone. The vendor file lists /v/:slug URLs, so it follows /v/'s own
-  // rule — the same "split by purpose" the founder gave for the pages
-  // themselves, now applied to the file that indexes them.
+  // The pages file lists nothing a reader could not already read directly
+  // (the four PUBLIC_ROUTES entries are unconditional above), so it is open
+  // to everyone. The vendor file lists /v/:slug URLs, so it follows /v/'s
+  // own rule — the same "split by purpose" the founder gave for the pages
+  // themselves, now applied to the file that indexes them. The index is
+  // open to everyone too, but for a narrower reason: `Sitemap:` is a single
+  // directive with no per-group form, so it cannot itself be gated, and it
+  // is what the built index lists — including the vendor file's URL — that
+  // a training crawler is told about without being able to fetch. That
+  // costs nothing today (the index carries no vendor slugs, only sitemap
+  // filenames), and matches ADR 0158's own "Known limits" on this point.
   { pattern: '/sitemap.xml', readers: 'everyone', why: 'the sitemap index' },
   { pattern: '/sitemap-pages.xml', readers: 'everyone', why: 'lists only pages already open to everyone' },
   { pattern: '/sitemap-vendors-', readers: 'answer', why: 'lists vendor catalogue URLs' },

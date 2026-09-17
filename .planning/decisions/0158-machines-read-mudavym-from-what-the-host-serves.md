@@ -282,10 +282,17 @@ fixed; the rest are named here rather than silently accepted.
   and the `ADR-0158-TRAINING-CRAWLERS-NEVER-GET-VENDOR-CATALOGUES` CLAIMS row asserted "may
   fetch" and was certified `resolved` by a `grep` for string presence. All three are the
   `absence-reported-as-health` shape, in the one artifact this build exists to make honest.
-  Fixed: three `CRAWL_PREFIXES` entries (`routes.ts`) — the index and the pages file open to
-  every reader (they name nothing a reader could not already fetch directly, since
-  `PUBLIC_ROUTES` is unconditional across groups); the vendor file `answer`-only, matching the
-  founder's split-by-purpose rule for the catalogues it lists. A new `seo.test.ts` case asserts
+  Fixed: three `CRAWL_PREFIXES` entries (`routes.ts`) — the pages file open to every reader (it
+  names nothing a reader could not already fetch directly, since `PUBLIC_ROUTES` is
+  unconditional across groups); the vendor file `answer`-only, matching the founder's
+  split-by-purpose rule for the catalogues it lists. The index is open to every reader too, for
+  a narrower reason found by the fix's own re-audit: `Sitemap:` is a single directive with no
+  per-group form, so it cannot itself be gated by reader — and the built index's own content
+  names the vendor file's URL, which a training crawler is then told about without being able
+  to fetch. Costed at zero today (the index lists sitemap filenames, not vendor slugs), and
+  named here rather than in the code comment's original, inaccurate claim that the index "names
+  nothing a reader could not already fetch directly" — it does, just not anything sensitive. A
+  new `seo.test.ts` case asserts
   every group can fetch the sitemap files it should be able to, reverted-and-restored against
   the exact regression before being kept. `crawl_surface_census.py` gained
   `check_robots_permits_sitemap`, which reads the first (most permissive) group and asserts an
