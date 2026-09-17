@@ -59,6 +59,25 @@ const ONE = {
   note: 'checked the label',
   linkWritten: 'restaurant_inventory.identity_id',
   undoesDecisionId: null,
+  decidedIn: 'this_house' as const,
+  personShown: true,
+  undoRefusal: null,
+}
+
+/** A shared-register decision another house took, as the gateway returns it here. */
+const THEIRS = {
+  ...ONE,
+  id: 'd9',
+  restaurantId: null,
+  decidedBy: null,
+  decidedByLabel: null,
+  decidedByRole: null,
+  note: null,
+  linkWritten: 'price_index_postings.identity_id',
+  decidedIn: 'another_house' as const,
+  personShown: false,
+  undoRefusal:
+    'That decision on a shared register was taken in another house. Only an owner or manager of the house that took it may take it back; this house can see the outcome and when it was taken, not who took it.',
 }
 
 describe('the identity decision log', () => {
@@ -222,6 +241,42 @@ describe('the identity decision log', () => {
     expect(screen.queryByText('Provisional')).toBeNull()
     expect(screen.queryByText('Library')).toBeNull()
     expect(screen.queryByText('From a source file')).toBeNull()
+  })
+
+  it('names no person on another house\'s shared decision, and prints the refusal where the undo would be', async () => {
+    vi.mocked(fetchIdentityDecisions).mockResolvedValue({
+      items: [THEIRS],
+      scope: '',
+      limit: 50,
+      complete: true,
+    })
+    renderWithProviders(<IdentityDecisionLog />)
+    await waitFor(() => expect(screen.getByText('Another house')).toBeInTheDocument())
+    expect(screen.getByText('Confirmed')).toBeInTheDocument()
+    expect(screen.queryByText('Aylin')).toBeNull()
+    expect(screen.queryByText(/\(staff\)/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /undo/i })).toBeNull()
+    expect(screen.getByText(/taken in another house/)).toBeInTheDocument()
+  })
+
+  it('says the house was not recorded on a shared decision logged before houses were', async () => {
+    vi.mocked(fetchIdentityDecisions).mockResolvedValue({
+      items: [
+        {
+          ...THEIRS,
+          decidedIn: 'unrecorded' as const,
+          undoRefusal:
+            'That decision on a shared register was taken before Mudavym recorded which house took each decision (migration 20260917010000), so no house can be shown to own it and no house may take it back. The decision and its link stand as logged.',
+        },
+      ],
+      scope: '',
+      limit: 50,
+      complete: true,
+    })
+    renderWithProviders(<IdentityDecisionLog />)
+    await waitFor(() => expect(screen.getByText('House not recorded')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /undo/i })).toBeNull()
+    expect(screen.getByText(/no house may take it back/)).toBeInTheDocument()
   })
 
   it('says the identity was not read rather than inventing a bottle name', async () => {
