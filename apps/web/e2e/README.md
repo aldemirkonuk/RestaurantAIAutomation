@@ -79,9 +79,18 @@ it broke). The walk never asserts on a figure.
   take the manifest's word for it.
 - `/authorize/:integrationId` must send a signed-out visitor to `/login`.
 
-Measured against production on 2026-09-16, signed out: 11 pass, 9 absent, 0
-fail. The switch reads OFF on the production build. The signed-in walk has not
-run against production yet (§8).
+**First full run against production** (2026-09-17, from a laptop as the Sim
+Bistro owner, not yet from CI): **100 pass · 2 fail · 20 absent · 0
+cannot_check.** All 20 flags read OFF for the house. The public switch reads OFF
+as built. Absent means: two parameter routes, because the house holds no order
+and no document; 7 pending routes; 9 public doors not rebuilt; and the legacy
+pass of the two parameter routes. Both failures are real production reads that
+the pages reported in words:
+
+| Page | What the page said | Measured cause |
+|---|---|---|
+| `/communications` | "Saved schedules could not be loaded" | `GET /reports/schedules` → 500: `public.scheduled_reports` does not exist in production. First seen 2026-09-11, still live. |
+| `/profile` | "Your own agreement could not be read" | `GET /communications/text-senders` returns `myConsent.reason` "invalid input syntax for type uuid: \"undefined\"". `text-senders.controller.ts` reads `user.id`, but the JWT user carries `userId`. |
 
 ## 4. The files
 
@@ -110,8 +119,10 @@ run against production yet (§8).
 - **Writes are aborted, not just avoided.** `ReadOnlyGuard` routes every browser
   request. GET, HEAD and OPTIONS pass. So do two read-shaped POSTs: the token
   refresh and the flag read. Everything else is aborted and listed in
-  `walk.*.readonly` / `public.*.readonly`. In the signed-out run of 2026-09-16
-  it held only Sentry envelopes (48).
+  `walk.*.readonly` / `public.*.readonly`. Ids in the list are folded to
+  `:id`. In the first production run it aborted Sentry envelopes and one real
+  write: the legacy app's `PATCH /users/:id/preferences`, sent just from
+  viewing pages.
 - **No traces.** A Playwright trace is a full network capture. A failed run's
   trace once carried the test password and live JWTs (audit finding 1.1).
   Traces stay `off`. Screenshots carry no headers or bodies.
@@ -194,7 +205,14 @@ then from `apps/web`:
 env -u CI E2E_BASE_URL=https://mudavym.com E2E_API_URL=https://unused.invalid E2E_TEST_EMAIL=unused@example.invalid E2E_TEST_PASSWORD=unused npx playwright test --config <your throwaway config> --grep "public:"
 ```
 
-**Locally, the full walk** (proven 2026-09-11). Run a gateway on `:4010`, and
+**Locally, the full walk against production** (how the 2026-09-17 run was made).
+Use the same throwaway config, and pass the simulator-owner credentials from
+the root `.env.sim` as `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD`. Set
+`E2E_API_URL=https://wineopsapi-gateway-production.up.railway.app` (the host the
+production bundle calls) and `E2E_BASE_URL=https://mudavym.com`. It takes about
+3 minutes. The house must be on `sim-houses.json`, or every walk is refused.
+
+**Locally, against a local gateway** (proven 2026-09-11). Run a gateway on `:4010`, and
 point `apps/web/.env.local` at it with `VITE_API_GATEWAY_URL`. Start Vite on
 `127.0.0.1:5276`. Load simulator-owner credentials, then run the config with
 `E2E_BASE_URL=http://127.0.0.1:5276 E2E_API_URL=http://localhost:4010`. Add
@@ -206,9 +224,13 @@ Results land in `apps/web/test-results/nightly/`: `nightly-summary.md`,
 
 ## 9. Open, and not yet proven
 
-- **No signed-in production run has happened.** The e2e account secrets are
-  not set, and on 2026-09-11 `aldemirkonuk@mudavym.com` was not in
-  `public.users` (not re-measured 2026-09-16).
+- **CI has never run the signed-in walk.** It has run once from a laptop
+  (§3). The workflow's `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD` secrets are not
+  set. On 2026-09-11 `aldemirkonuk@mudavym.com` was not in `public.users` (not
+  re-measured since). Setting the secrets to an account that belongs to a house
+  on `sim-houses.json` is the founder's step.
+- **Two production reads fail today** (§3's table). Both are product defects
+  the walk reports, not suite defects.
 - **Founder forks still open (ADR 0135):** F1, whether to gate on flags being
   ON; F5, flipping the sims. **Answered but not yet actioned:** F2, retargeting
   the `RAILWAY_ORCHESTRATOR_URL` secret to the live orchestrator host (a

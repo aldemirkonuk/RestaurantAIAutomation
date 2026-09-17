@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import html
+from html.parser import HTMLParser
 import json
 import re
 import subprocess
@@ -120,15 +120,99 @@ def db_block(text: str, name: str) -> list[dict[str, Any]]:
     return docs
 
 
-def body_text(text: str) -> str:
-    s = re.sub(
-        r"<!-- frame-runtime -->.*?<!-- /frame-runtime -->", "", text, flags=re.S
-    )
-    return re.sub(r"<script.*?</script>|<style.*?</style>", "", s, flags=re.S)
+class BoardParser(HTMLParser):
+    """Reads the Build Board's cards with a real HTML parser, not regexes.
+
+    A card is `<div class="card">` holding an `<h3>` (the route), a
+    `<span class="verdict">` (the label) and a `<div class="state ...">`. Text
+    inside <script> and <style> is never collected, whatever its case.
+    """
+
+    SKIP = {"script", "style"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.cards: list[dict[str, str]] = []
+        self.text: list[str] = []
+        self._skip = 0
+        self._card_depth: int | None = None
+        self._depth = 0
+        self._field: str | None = None
+        self._field_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() in self.SKIP:
+            self._skip += 1
+            return
+        if tag.lower() in VOID:
+            return
+        self._depth += 1
+        classes = (dict(attrs).get("class") or "").split()
+        if tag.lower() == "div" and "card" in classes and self._card_depth is None:
+            self._card_depth = self._depth
+            self.cards.append({"title": "", "label": "", "state": ""})
+        elif self._card_depth is not None and self._field is None:
+            field = (
+                "title"
+                if tag.lower() == "h3"
+                else (
+                    "label"
+                    if tag.lower() == "span" and "verdict" in classes
+                    else (
+                        "state" if tag.lower() == "div" and "state" in classes else None
+                    )
+                )
+            )
+            if field:
+                self._field, self._field_depth = field, self._depth
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in self.SKIP:
+            self._skip = max(0, self._skip - 1)
+            return
+        if tag.lower() in VOID:
+            return
+        if self._field is not None and self._depth == self._field_depth:
+            self._field = None
+        if self._card_depth is not None and self._depth == self._card_depth:
+            self._card_depth = None
+        self._depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._skip:
+            return
+        self.text.append(data)
+        if self._field is not None and self.cards:
+            self.cards[-1][self._field] += data
 
 
-def strip_tags(s: str) -> str:
-    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", s))).strip()
+VOID = {
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "source",
+    "track",
+    "wbr",
+}
+
+
+def squash(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def without_frame_runtime(text: str) -> str:
+    start = text.find("<!-- frame-runtime -->")
+    end = text.find("<!-- /frame-runtime -->")
+    if start == -1 or end == -1:
+        return text
+    return text[:start] + text[end + len("<!-- /frame-runtime -->") :]
 
 
 def route_to_slug(manifest: dict[str, Any]) -> dict[str, str]:
@@ -178,18 +262,19 @@ def extract(ref: str | None) -> dict[str, Any]:
                     }
                 )
         elif name == "mudavym-build-board":
-            body = body_text(text)
-            date = re.search(r"Build board · (\d{1,2} \w+ \d{4})", strip_tags(body))
+            parser = BoardParser()
+            parser.feed(without_frame_runtime(text))
+            parser.close()
+            date = re.search(
+                r"Build board · (\d{1,2} \w+ \d{4})", squash(" ".join(parser.text))
+            )
             as_of = date.group(1) if date else None
-            for card in re.findall(r'<div class="card">(.*?)\n    </div>', body, re.S):
-                title = re.search(r"<h3>(.*?)</h3>", card, re.S)
-                label = re.search(r'<span class="verdict">(.*?)</span>', card, re.S)
-                state = re.search(r'<div class="state[^"]*">(.*?)</div>', card, re.S)
-                if not (title and label and state):
+            for card in parser.cards:
+                if not all(squash(card[k]) for k in ("title", "label", "state")):
                     # A card the parser cannot read is named, never dropped.
                     unmapped.append(f"{name}:unreadable card #{len(unmapped) + 1}")
                     continue
-                t = strip_tags(title.group(1))
+                t = squash(card["title"])
                 slug = routes.get(t) or routes.get(t.lower())
                 if not slug:
                     unmapped.append(f"{name}:{t}")
@@ -198,8 +283,8 @@ def extract(ref: str | None) -> dict[str, Any]:
                     {
                         "source": name,
                         "kind": "board",
-                        "label": strip_tags(label.group(1)),
-                        "state": strip_tags(state.group(1)),
+                        "label": squash(card["label"]),
+                        "state": squash(card["state"]),
                         "as_of": as_of,
                     }
                 )

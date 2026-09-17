@@ -216,7 +216,9 @@ export class ReadOnlyGuard {
       if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return route.continue()
       const p = pathOf(req.url())
       if (READ_SHAPED_POSTS.includes(p)) return route.continue()
-      this.blocked.push(`${method} ${new URL(req.url()).host}${p}`)
+      // Ids are folded to :id — this list lands in a public artifact, and the
+      // first production run listed a person's uuid (PATCH /users/<id>/preferences).
+      this.blocked.push(`${method} ${new URL(req.url()).host}${p.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ':id')}`)
       return route.abort('blockedbyclient')
     })
   }

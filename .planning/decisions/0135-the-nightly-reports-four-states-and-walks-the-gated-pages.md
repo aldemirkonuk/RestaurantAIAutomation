@@ -335,11 +335,39 @@ against production** (`https://mudavym.com`, system Chrome, no account): 11 pass
 were said in words. 48 Sentry envelope POSTs were aborted. The suite without account
 secrets records 6 `cannot_check` and nothing else.
 
-**Not verified, said plainly:** the signed-in walk (preconditions, flags, both walks,
-pending pages) has **not run** after this rebuild. No local gateway was running, and
-the account secrets are the founder's. The pending-page and sim-house code paths are
-typechecked and linted, not exercised. The pr-audit-gate has not re-run on the new
-head. #349 is not merged.
+**First full production run (2026-09-17)**, requested by the founder ("complete e2e and
+review, make it ready for merge"). It ran from a laptop, not from CI: system Chrome, the
+Sim Bistro owner's credentials from `.env.sim`, and the gateway host the production bundle
+calls. The workflow's steps ran in order into one results directory and were merged by
+`nightly_summary.py`:
+- **Browser walk: 100 pass · 2 fail · 20 absent · 0 cannot_check.** All 20 flags read
+  OFF for the house, the house check passed, and auth pacing peaked at 4 per 60 s.
+- **Wave H: 10 passed. Backtests: canned day, pinned forecast and the scenario engine,
+  all exit 0.**
+- **Merged: 134 pass · 2 fail · 21 absent · 4 cannot_check.** The 4 are the preflight and
+  waves A–C: `RAILWAY_ORCHESTRATOR_URL` was unset locally. In CI, the secret still
+  names the dead host until F2 is actioned.
+- **The two fails are production defects the pages named in words. Measured directly:**
+  - `/communications`: `GET /reports/schedules` → 500 *"Could not find the table
+    'public.scheduled_reports'"*. This is the 2026-09-11 finding, still live.
+  - `/profile`: `GET /communications/text-senders` → 200 with `myConsent.reason`
+    *"invalid input syntax for type uuid: \"undefined\""*. `JwtStrategy` returns
+    `userId`, but `text-senders.controller.ts` reads `user.id` in 11 places, consent
+    writes included. `providers.controller.ts` and
+    `provider-intelligence.controller.ts` declare the same shape. Filed as its own task,
+    not fixed on this PR; CLAIMS `TD-2026-09-17-TEXT-SENDERS-USER-ID` is `open`.
+- **The read-only guard earned its place:** the legacy walk aborted a real
+  `PATCH /users/:id/preferences` that the legacy app sends just from being viewed. Ids in
+  the aborted list are now folded to `:id`, because the first run printed a person's uuid.
+- **A suite defect the run exposed, fixed:** `nightly_summary.py` still expected
+  `wave_d/e/g.xml`, so every nightly would have ended `cannot_check` (exit 2) forever
+  after ADR 0137. It now expects A–C only.
+- **CodeQL (high, `py/bad-tag-filter`)** flagged the extractor's regex HTML filtering. It
+  now reads the board with `html.parser`, and the regenerated file is byte-identical.
+
+**Still not verified:** CI has never run the signed-in walk, because the account secrets
+are unset. Waves A–C have not run. The in-CI PR Audit Gate cannot run (the CI Anthropic key
+is out of credit, `CANNOT CHECK [no-credit]`).
 
 ## Review trail
 
@@ -348,3 +376,4 @@ head. #349 is not merged.
 | 2026-09-11 | — | Created; measured locally as above; awaits the founder's secrets for the first production verdict |
 | 2026-09-11 | pr-audit-gate (3 Opus auditor angles) | **BLOCK** — security angle (trace-file credential leak on a public repo); correctness and compliance both APPROVE WITH NOTES; adversarial pass skipped per step 6. See "Audit result" above and the full report. |
 | 2026-09-16 | Founder (six calls in session) + this session | Rebuilt on the PR: new pages, public doors, pending routes, design calls, the manifest guard, fix-list items 3, 5, 6 and 7. The 2026-09-12 "merged" line was corrected. Audit gate not re-run. |
+| 2026-09-17 | This session, on the founder's "complete e2e and review" | First full pipeline run against production (from a laptop). It found 2 live product defects and a suite defect (the summary expected the retired waves D/E/G), and CodeQL's high alert on the extractor. The suite defect and the alert are fixed; the product defects are filed. |

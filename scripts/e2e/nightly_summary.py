@@ -182,7 +182,10 @@ def collect(results: Path) -> list[dict[str, Any]]:
                 "source": "preflight",
             }
         )
-    for letter in "abcdeg":
+    # D, E and G were deleted 2026-09-12 (ADR 0137). Expecting their XML made
+    # every run end cannot_check (exit 2) forever; measured 2026-09-17 on the
+    # first full local pipeline run. A stray wave_d/e/g.xml is ignored.
+    for letter in "abc":
         xml_path = results / f"wave_{letter}.xml"
         if not xml_path.exists():
             if reachable is False:
