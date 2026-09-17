@@ -632,9 +632,30 @@ parses, and both cover URL passwords; the docstring says where a deletion is act
 reported (the artifact file and the job summary line). `ADR-0135-m` now states each
 behaviour it proves, and requires 19 self-test cases.
 
-**Left as recorded limits:** the job summary is written before the scrub, so it is guarded
-only by the in-process redaction; `redact()` still mangles ordinary prose; and the door and
-document routes legitimately report `absent`, which the supersession note above now says.
+**A second adversarial pass on `bb0b3c28` HOLDS.** It ran 13 mutations against the scrub
+(11 turn the self-test red), re-derived the CLAIMS merge (358 rows, nothing lost against
+either parent), ran the scrub over a real 64-file local run (0 false deletions), and could
+not break the B3 fix, the claims or the merge. Its five notes are fixed here too: the
+gzip case now asserts the deletion rather than the exit code alone; `scrub-report.json`
+and the job-summary line have cases of their own; a value that starts unquoted and then
+quotes is fully redacted; and `ADR-0135-l` now binds every upload path to a directory the
+scrub was actually given.
+
+**Left as recorded limits:**
+- The job summary is written before the scrub, so it is guarded only by the in-process
+  redaction.
+- The scrub reads UTF-8 text and gzip. A zip (a Playwright trace), a UTF-16 log or a
+  base64 body would pass it — none is in the upload set today, because traces and video
+  are off and `apps/web/test-results/` is never copied. Its docstring now says so, and
+  adding any of them to the upload means teaching the scan first.
+- `redact()` still mangles ordinary prose.
+- The door and document routes legitimately report `absent`.
+- **`apps/web/e2e` is in no tsconfig** (`tsconfig.json` includes `src`, `.storybook` and
+  `middleware.ts`), so `pnpm type-check` never sees the 1,425 lines of this suite. Every
+  `tsc 0` in this record comes from an explicit invocation with `--typeRoots`, not from
+  CI. This predates the rebuild — the retired `prod-smoke.spec.ts` was in no tsconfig
+  either — and fixing it means adding `@types/node` to `apps/web`, a dependency change
+  that belongs in its own PR (pnpm refused a lockfile-only add here). Filed as a task.
 
 ## Review trail
 

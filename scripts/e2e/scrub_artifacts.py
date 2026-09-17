@@ -5,8 +5,11 @@ WHY: the repository is public and the nightly uploads a 30-day artifact. Two
 audits of PR #349 reproduced a credential reaching files: a bearer token through
 Playwright's "Call log" (2026-09-17, B1) and the plaintext test password through
 `error-context.md` and a failed `fill()` call log (2026-09-17, B2). The walk now
-redacts at the source; this step is the fail-closed backstop for every file,
-whoever wrote it.
+redacts at the source; this step is the fail-closed backstop for the files the
+nightly actually produces: UTF-8 text, and gzip. It does NOT read a zip (a
+Playwright trace), a UTF-16 log, or a base64 body — none of which the upload set
+contains today, because traces and video are off and apps/web/test-results is
+never copied. Adding any of those to the upload means teaching this scan first.
 
 WHAT: for each file under --dir:
   * text (UTF-8): the password value, JWT-shaped strings, `Bearer <token>` and
@@ -57,7 +60,7 @@ BEARER = re.compile(r"(?i)(bearer\s+)(?!\[redacted\])[^\s\"',;]+")
 SECRET_PAIR = re.compile(
     r"(?i)\b((?:access|refresh|id)?[_-]?token|password|passwd|authorization"
     r"|x-api-key|api[_-]?key|secret|cookie|set-cookie)\b([\"']?\s*[:=]\s*)"
-    r"([\"']?)(?!\[redacted\])[^\s,;\"']+"
+    r"(?![\"']?\[redacted\])(?:([\"'])(?:[^\"']*)\3|[^\s,;]*?[\"'][^\"']*[\"']|[^\s,;\"']+)"
 )
 # user:password@host in a URL (amqp://, postgres://): the password half only.
 URL_USERINFO = re.compile(
@@ -68,7 +71,10 @@ URL_USERINFO = re.compile(
 def redact_text(text: str, password: str | None) -> str:
     out = JWT.sub("[redacted-jwt]", text)
     out = BEARER.sub(r"\1[redacted]", out)
-    out = SECRET_PAIR.sub(r"\1\2\3[redacted]", out)
+    out = SECRET_PAIR.sub(
+        lambda m: f"{m.group(1)}{m.group(2)}{m.group(3) or ''}[redacted]{m.group(3) or ''}",
+        out,
+    )
     out = URL_USERINFO.sub(r"\1[redacted]\2", out)
     if password:
         out = out.replace(password, "[redacted]")
@@ -355,7 +361,7 @@ def self_test() -> int:
 
     got = run_main(gzipped_password)
     case(
-        f"a gzipped error-context carrying the password is deleted (exit {got})",
+        f"a gzipped error-context leaves the step clean once deleted (exit {got})",
         got == 0,
     )
     with tempfile.TemporaryDirectory() as tmp:
@@ -387,6 +393,43 @@ def self_test() -> int:
             "a password inside a URL is redacted",
             "RABBITPASS_SENTINEL"
             not in (root / "wave_c.xml").read_text(encoding="utf-8")
+            and report["still_leaking"] == [],
+        )
+
+    # The two channels that replaced the false "the summary reads it" claim are
+    # themselves checked (adversarial pass 2026-09-17, N2).
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        summary = root / "step-summary.md"
+        summary.write_text("", encoding="utf-8")
+        gzipped_password(root)
+        os.environ["E2E_TEST_PASSWORD"] = pw
+        os.environ["GITHUB_STEP_SUMMARY"] = str(summary)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                main(["--dir", str(root)])
+        finally:
+            os.environ.pop("E2E_TEST_PASSWORD", None)
+            os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        written = json.loads((root / "scrub-report.json").read_text(encoding="utf-8"))
+        case(
+            "scrub-report.json names the deleted file",
+            written["deleted"] == ["error-context.md.gz"],
+        )
+        case(
+            "the job summary says a file was deleted",
+            "error-context.md.gz" in summary.read_text(encoding="utf-8"),
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "x.md").write_text(
+            'set-cookie: sb-token="VALUE_SENTINEL_adv"', encoding="utf-8"
+        )
+        report = scrub(root, pw)
+        case(
+            "a value that starts unquoted and then quotes is fully redacted",
+            "VALUE_SENTINEL_adv" not in (root / "x.md").read_text(encoding="utf-8")
             and report["still_leaking"] == [],
         )
 

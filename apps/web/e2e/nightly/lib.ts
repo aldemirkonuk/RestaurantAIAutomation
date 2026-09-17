@@ -306,7 +306,7 @@ const BEARER = /(bearer\s+)[^\s"',;]+/gi
 // quote and corrupt the record (re-audit 2026-09-17, correctness N1).
 // The VALUE is replaced and its quotes are kept, so a redacted string that is
 // JSON still parses (adversarial pass 2026-09-17).
-const SECRET_PAIR = /\b((?:access|refresh|id)?[_-]?token|password|passwd|authorization|x-api-key|api[_-]?key|secret|cookie|set-cookie)\b(["']?\s*[:=]\s*)(["']?)(?!\[redacted\])[^\s,;"']+/gi
+const SECRET_PAIR = /\b((?:access|refresh|id)?[_-]?token|password|passwd|authorization|x-api-key|api[_-]?key|secret|cookie|set-cookie)\b(["']?\s*[:=]\s*)(["']?)(?!\[redacted\])[^\s,;"']+\3?/gi
 /** user:password@host in a URL (amqp://, postgres://) — the password half only. */
 const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)(?!\[redacted\]@)[^\s@/]+(@)/gi
 const SECRET_KEY = /^(?:(?:access|refresh|id)?[_-]?token|password|passwd|authorization|x-api-key|api[_-]?key|secret|cookie|set-cookie)$/i

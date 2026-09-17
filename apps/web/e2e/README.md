@@ -307,6 +307,12 @@ Results land in `apps/web/test-results/nightly/`: `nightly-summary.md`,
   repository-settings change for the founder. Until it happens, waves A and B
   are `cannot_check` every night; Wave C is `absent` by decision.
 - The design-call snapshots live on an unmerged branch (§7).
+- **These files are in no tsconfig,** so `pnpm type-check` does not see them. The
+  `tsc` runs behind this suite were explicit invocations. Fixing it needs
+  `@types/node` in `apps/web` — its own PR.
+- **The scrub reads UTF-8 text and gzip only.** A zip, a UTF-16 log or a base64
+  body would pass it. None is in the upload set today; adding one means
+  teaching the scan first.
 - **ADR 0149's cutover will retire parts of this suite.** It deletes `PageGate`,
   `useMudavymDesign` and the flag registry, which the flags test, the legacy
   walk, the public switch test and the guard's checks 1 and 4 all read. The
