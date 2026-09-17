@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-17
 links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[vendor-prices]]"]
 ---
 
@@ -75,11 +75,14 @@ which also means zero Mudavym attribution (see §9).
   "absent is not cheapest" (`:172-182`); prices normalized to per-750ml (`:51-57`)
 
 ## 9. Gaps
-- **JSON-LD is client-injected** (`:118-158`): crawlers that don't execute JS see an
-  empty SPA shell — the SEO value of the schema.org block is conditional on Google-class
-  rendering. The server-side `/jsonld` endpoint exists but nothing wires it into the
-  served HTML.
-- No OpenGraph/meta tags → vendor links shared in chat/social unfurl blank.
+- ~~**JSON-LD is client-injected**~~ and ~~no OpenGraph/meta tags~~ — **closed by
+  [[0158-machines-read-mudavym-from-what-the-host-serves]] (2026-09-17):** the host now
+  serves `/v/:slug` with its own title, canonical, Open Graph, one JSON-LD document and a
+  no-JS body of the page's facts (`apps/web/middleware.ts` + `GET /api/v1/seo/vendors/:slug/head`),
+  a true 404 for anything unpublished and a 503 on outage. Search and answer engines may
+  read it; training crawlers are asked not to (robots.txt). **Still open:** the page's own
+  client injection (`:118-158`) now duplicates the served block until it is deleted at the
+  ADR 0149 cutover (ADR 0158 "Integration at cutover" 2).
 - No platform attribution or sign-up path anywhere on the page — the Growth loop
   (vendor's customer → Mudavym) has no hook.
 - No pagination; entire catalogue in one payload/table.
@@ -222,13 +225,10 @@ appears SEO-ready — schema.org markup, a proper title — but only to JS-execu
 
 ## 13. Roadmap
 
-1. **Serve the JSON-LD and `<title>` server-side.** The endpoint already exists
-   (`vendor-portal.controller.ts:39-45`); it needs an HTML shell that embeds them before
-   the SPA boots. Highest-value item: without it every other Growth investment on this page
-   compounds from zero.
-2. **Add OpenGraph/Twitter meta** so vendor links unfurl. Same mechanism as #1.
-3. **Delete the client-side JSON-LD once #1 lands** (`VendorPortal.tsx:115-158`) rather
-   than maintaining two diverging serialisers (§10).
+1. ~~Serve the JSON-LD and `<title>` server-side.~~ **Done, ADR 0158.**
+2. ~~Add OpenGraph/Twitter meta.~~ **Done, ADR 0158** (square mark; a large card is held by ADR 0039).
+3. **Delete the client-side JSON-LD** (`VendorPortal.tsx:115-158`) — now unblocked; owned by
+   the ADR 0149 cutover, which is replacing this page.
 4. **Instrument page views.** This is the page where `signals_today: none` costs the most —
    Growth cannot tell a vendor their page is working. *Blocked: needs the first real
    telemetry sink; see [[help]] §13, which has the same blocker from the opposite side
