@@ -1,11 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { crawlSurface } from './src/lib/seo/vite-plugin'
 
 // https://vitejs.dev/config/
 // Using @vitejs/plugin-react (Babel) instead of react-swc due to SWC binary issues
 export default defineConfig({
-  plugins: [react()],
+  // crawlSurface writes robots.txt, sitemaps, llms.txt and each public
+  // route's served head from the built shell (ADR 0158). Build only.
+  plugins: [react(), crawlSurface()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

@@ -53,10 +53,25 @@ By module (details and failing output in the named report):
 
 - **Vendor intel, faults 1 and 2.** Decisions on public-register rows with no house can
   be undone from any house, and name a person from another house. This is a founder
-  fork with options A-D; the recommendation is C.
-  [FOUNDER ANSWERED 2026-09-16, build pending (not merged) — ADR 0149 row 17: a new nullable deciding-house
-  column, and the person's name and the undo only inside that house. Also carried into
-  ADR 0124.]
+  fork with options A-D; the recommendation is C. **[2026-09-17: answered C by the
+  founder on 2026-09-16 (ADR 0149 answer 17) and built on `feat/finish-vintel`.
+  Migration `20260917010000` adds the nullable `beverage_identity_decisions.deciding_restaurant_id`.
+  Decide and undo write it from the token's active house. The log names the person
+  only inside that house; other houses see the outcome and when. [Corrected
+  2026-09-17, review round 2: another house's OWN row is a 404, identical to a
+  missing id — a 403 there would confirm the id exists. A SHARED row decided
+  elsewhere stays a readable 403.] A shared decision logged before the column is
+  shown to no house with its person and cannot be undone. That is not because no
+  platform-operator role exists — a person-naming allowlist
+  (`PLATFORM_ADMIN_USER_IDS`) already exists (`ProspectsController.assertPlatformAdmin`,
+  one route today) and was deliberately not extended here: letting an operator undo a
+  decision no house owns is a new permission and the founder's call, surfaced in the
+  lane's fix report rather than filed as a register row (filing one here repoints ~178
+  citations across ~89 unrelated files — `scripts/check_citation_pairing.py:69` — a
+  blast radius this lane declined to take on unasked).
+  `decide` also gained a claim-first write order (claim, then link, then log) that
+  answers a new 409 when two houses decide one shared candidate at the same moment.
+  See ADR 0124's review trail, 2026-09-17.]**
 - **Integrations.** Who may disconnect an integration for a user with no tenant is a
   founder fork. The spec pins today's refusal.
   [FOUNDER ANSWERED 2026-09-16, build pending (not merged) — ADR 0149 row 18: the creator of a grant may

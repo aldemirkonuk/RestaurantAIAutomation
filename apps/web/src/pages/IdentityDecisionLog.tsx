@@ -34,6 +34,12 @@ import {
  *     sentence saying why rather than a button that fails. The gateway refuses
  *     staff independently, so hiding the control is a courtesy and not the
  *     protection.
+ *
+ * [2026-09-17, ADR 0149 answer 17] A decision on a shared register names its
+ * person, and offers its undo, only inside the house that took it. Elsewhere the
+ * row reads "Another house" (or "House not recorded" for a shared decision
+ * logged before the gateway recorded houses) with the outcome and when, and the
+ * gateway's own refusal sentence stands where the undo control would be.
  */
 
 const ACTION_META: Record<
@@ -107,6 +113,19 @@ function evidenceLine(d: IdentityDecision): string {
   const how = e?.method ?? 'unstated'
   const subject = e?.subject?.table ?? 'unstated'
   return `${bottle} · shown at ${conf} by ${how} · for ${subject}`
+}
+
+const WITHHELD_LABEL: Record<'another_house' | 'unrecorded', { label: string; title: string }> = {
+  another_house: {
+    label: 'Another house',
+    title:
+      'Decided on a shared register by another house. The person is named only inside the house that took the decision.',
+  },
+  unrecorded: {
+    label: 'House not recorded',
+    title:
+      'Decided on a shared register before Mudavym recorded which house took each decision, so the person is not named to any house.',
+  },
 }
 
 function fmtWhen(iso: string): string {
@@ -205,10 +224,29 @@ export function IdentityDecisionLog() {
                       >
                         {meta.label}
                       </span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {d.decidedByLabel}
-                      </span>
-                      <span className="text-xs text-gray-500">({d.decidedByRole})</span>
+                      {d.personShown ? (
+                        <>
+                          <span className="text-sm font-medium text-gray-900">
+                            {d.decidedByLabel}
+                          </span>
+                          {d.decidedByRole && (
+                            <span className="text-xs text-gray-500">({d.decidedByRole})</span>
+                          )}
+                        </>
+                      ) : (
+                        <span
+                          className="text-sm font-medium text-gray-500"
+                          title={
+                            WITHHELD_LABEL[d.decidedIn === 'unrecorded' ? 'unrecorded' : 'another_house']
+                              .title
+                          }
+                        >
+                          {
+                            WITHHELD_LABEL[d.decidedIn === 'unrecorded' ? 'unrecorded' : 'another_house']
+                              .label
+                          }
+                        </span>
+                      )}
                       <span className="text-xs text-gray-500">{fmtWhen(d.decidedAt)}</span>
                       {(() => {
                         const st = standingOf(d)
@@ -228,7 +266,7 @@ export function IdentityDecisionLog() {
                           takes back an earlier decision
                         </span>
                       )}
-                      {canUndo && d.action !== 'undone' && (
+                      {canUndo && d.action !== 'undone' && !d.undoRefusal && (
                         <button
                           type="button"
                           onClick={() => undo.mutate(d.id)}
@@ -245,6 +283,9 @@ export function IdentityDecisionLog() {
                       )}
                     </div>
                     <p className="mt-1 text-xs text-gray-600">{evidenceLine(d)}</p>
+                    {canUndo && d.action !== 'undone' && d.undoRefusal && (
+                      <p className="mt-0.5 text-xs text-gray-500">{d.undoRefusal}</p>
+                    )}
                     {d.linkWritten && (
                       <p className="mt-0.5 text-xs text-gray-500">
                         wrote {d.linkWritten}

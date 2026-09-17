@@ -137,14 +137,14 @@ Seams:
 
 1. **No writer, for either table or for `edit_token`** (§5). Every capability below is
    therefore unexercised, and every screenshot of this page is of a page that cannot exist.
-2. **Two implementations of one JSON-LD contract, already diverged.** The server emits
-   `countryOfOrigin`, `size` as a `QuantitativeValue`, and `eligibleQuantity`
-   (`vendor-portal.service.ts:140-166`); the client-injected copy omits all three
-   (`VendorPortal.tsx:131-150`). The server one has no consumer.
-3. **The SEO payload requires JavaScript** — JSON-LD and `document.title` are set after
-   fetch (`VendorPortal.tsx:115-158`), so a non-rendering crawler sees the SPA shell.
-   `GET /vendor-portal/:slug/jsonld` exists and is `@Public()` and nothing wires it into
-   served HTML.
+2. **Two implementations of one JSON-LD contract** — *narrowed by
+   [[0158-machines-read-mudavym-from-what-the-host-serves]] (2026-09-17):* the one statement
+   is now `apps/api-gateway/src/seo/vendor-head.ts`, served in the page's head and returned
+   by `/jsonld` (which no longer takes a caller-supplied `?url=`). It stopped publishing
+   unknown stock as InStock and a region as a country. Left for the ADR 0149 cutover: the
+   client injection in `VendorPortal.tsx` and the now-unused `VendorPortalService.buildJsonLd`.
+3. ~~**The SEO payload requires JavaScript.**~~ **Closed, ADR 0158:** `/v/:slug` is served
+   with its head, JSON-LD and facts by `apps/web/middleware.ts`.
 4. **Zero telemetry.** The one page whose entire purpose is external reach cannot report a
    single visit ([[vendor-public-page]] §5).
 5. **No platform attribution and no sign-up path** — the growth loop this page exists to

@@ -1,6 +1,7 @@
-import { Controller, Get, Param, Query } from "@nestjs/common";
+import { Controller, Get, Param } from "@nestjs/common";
 import { ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { Public } from "../auth/decorators/public.decorator";
+import { buildVendorHead } from "../seo/vendor-head";
 import { VendorPortalService } from "./vendor-portal.service";
 
 /**
@@ -35,12 +36,17 @@ export class VendorPortalController {
    * Split from the page payload rather than embedded because the two have
    * different consumers and different cache lifetimes: the app renders from
    * the former, crawlers and our own ingester read the latter.
+   *
+   * It is the document mudavym.com serves in the catalogue's own head
+   * (seo/vendor-head.ts, ADR 0158), so there is one statement of the catalogue.
+   * The canonical URL is computed; it used to be a caller-supplied `?url=`,
+   * which let any request write any URL into the markup.
    */
   @Get(":slug/jsonld")
   @Public()
-  @ApiOperation({ summary: "schema.org ItemList for a published vendor page" })
-  async getJsonLd(@Param("slug") slug: string, @Query("url") url?: string) {
+  @ApiOperation({ summary: "schema.org WebPage > ItemList for a published vendor page" })
+  async getJsonLd(@Param("slug") slug: string) {
     const page = await this.vendorPortalService.getPublishedPage(slug);
-    return this.vendorPortalService.buildJsonLd(page, url ?? "");
+    return buildVendorHead(page).jsonLd;
   }
 }
