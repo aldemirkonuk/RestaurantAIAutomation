@@ -64,6 +64,22 @@ production; touches auth, tenancy, secrets, or the commitment/UCC guardrail; pro
 amends an ADR, or resolves a founder fork; sends anything outward to a vendor or guest;
 or deletes more than it creates.
 
+**[2026-09-17 bracket, scoped exception, does not change the rule above.]** The
+production/security overrides in this paragraph would put both PR-audit reviewer
+roles on Opus, since a pre-merge audit touches production and its diff routinely
+touches auth/tenancy/secrets. Per the founder's direct 2026-09-17 pipeline
+redesign for ADR 0090 (*"1 opus starts -> stops -> 2 sonnet handles opus's
+plan-> opus takes final say"*), those two reviewer roles
+(`pr-merge-auditor`/correctness-compliance and `pr-merge-adversary`/security-
+adversarial) now run on Sonnet, executing a plan an Opus planner already wrote
+and scoped — with the same Opus planner resumed to render final judgment
+against both reports. This is a named, scoped exception for that one pipeline,
+not a revision of the override table: the rule above is unchanged for every
+other production/auth/secrets-touching dispatch, and the ADR 0090 audit still
+keeps Opus at both ends (planning, final say) — only the bounded, plan-scoped
+execution step moved to Sonnet. See ADR 0090's matching "Amendment —
+2026-09-17" section for the full rationale.
+
 **Override to Sonnet, whatever the score.** The output is a pure enumeration in which
 every claim is mechanically checkable and no recommendation is attached. If a task has a
 separable cheap half, **split it and route each half** rather than paying frontier price
