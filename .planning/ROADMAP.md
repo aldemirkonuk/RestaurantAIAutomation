@@ -23,6 +23,17 @@ frame; v-numbers reset at publish (ADR 0005).
 
 ## Now — P3: Grade, then scale  ·  [ADR 0029](decisions/0029-p3-plan-of-record.md)
 
+> **2026-09-16:** this list is the milestone's order of operations, not the live queue.
+> The ranked next task is [handoff/PROGRESS.md §00](handoff/PROGRESS.md), and the Claude
+> tooling the repo relies on is in its §8.
+> - P3.0 shipped 2026-08-27 ([STATE.md](STATE.md), P3 table).
+> - P3.A's code shipped with its exit criterion unmet (OD-109).
+> - P3.C Ask AI shipped 2026-08-27 as #125. #366 bounded it on 2026-09-12
+>   ([ADR 0146](decisions/0146-asking-costs-money-so-asking-is-bounded.md)). The /ask
+>   surface of ADR 0145 is not built.
+> - The Mudavym design wave landed as #289 on 2026-09-12. No ADR has re-framed the
+>   milestone around it.
+
 Goal: make the instrument tell the truth about whether AI work *succeeded*, then
 scale on top of it — while the two lanes that do not depend on grading run from
 day one. One gate, two parallel lanes, two gated stages, one candidate held.
@@ -32,7 +43,7 @@ day one. One gate, two parallel lanes, two gated stages, one candidate held.
 `outcome_basis: "call_level_v0"` — *"the HTTP request returned 200"*
 (`model-client.service.ts:387`).
 
-- [ ] **P3.0 Doneability coverage** *(gate)* — every emitting task type carries a
+- [x] **P3.0 Doneability coverage** *(gate)* — every emitting task type carries a
       basis better than `call_level_v0`, or is named in the human-rubric exemption
       list. Not open research: `04-specs/OD-59-VERDICT-CENSUS.md` §4 ranks 18 of
       them cheapest-first with each existing check cited at `file:line`
@@ -70,4 +81,4 @@ direction lands.
 - **Pricing** — founder-deferred (OD-23).
 
 ---
-*Last updated: 2026-08-26 — P2 closed and moved to Done; P3 opened under ADR 0029 (one gate, two parallel lanes, NF-B held).*
+*Last updated: 2026-09-16. P3.0 ticked, and a pointer added to the live queue and the Claude tooling (handoff/PROGRESS.md §00, §8). Previously 2026-08-26: P2 closed and moved to Done; P3 opened under ADR 0029 (one gate, two parallel lanes, NF-B held).*

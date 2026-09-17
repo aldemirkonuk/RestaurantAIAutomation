@@ -12,6 +12,82 @@ disagrees with the tree, the tree wins. Re-measure before acting on any line her
 marked "agent died" has partial or no edits in its worktree. Inspect `git status` there
 before continuing.
 
+## 00. The next task, re-measured 2026-09-16 (supersedes 0a, 0 and 3 wherever they differ)
+
+Written by the ADR 0148 session on `claude/artifact-pull`. Its sources were a
+skills-and-tooling inventory, a next-task ranking with a skeptic pass, and a line-by-line
+staleness audit of this file, `STATE.md` and `ONBOARDING.md`. Re-measure before acting.
+Two lines below in section 0 were already false. Both are bracketed in place:
+- `c1221a9f` is **not** pushed.
+- The #362 PyYAML rewrite **does** exist, uncommitted.
+
+**In order.** "[founder]" marks a call only the founder can make.
+
+1. **Save the work that exists on no remote, before anything else** [founder yes, then any
+   session]. A clean-up or a closed worktree loses it silently:
+   - `c1221a9f`, #349's fix for its BLOCK. `git branch -r --contains c1221a9f` is empty;
+     the branch's origin head is `82add0f6`.
+   - `wt-secgate`: the #362 PyYAML rewrite, 3 files uncommitted.
+   - `.claude/worktrees/quizzical-pascal-a5efd8` (`fix/claude-state-help-flag`): the
+     `claude_state_migrate.sh --help` fix, uncommitted.
+   - The section 4 port applies, uncommitted, on branches with no origin ref:
+     `wt-port-ov0` (3 conflicts), `wt-port-ov1` (applied clean), `wt-port-ov2` (4),
+     `wt-port-calpush` (1), `wt-port-motions` (4).
+   - `98229aeb`, the PR 354 audit report, which is on no remote.
+   - **Five Codex worktrees under `~/Documents/ChatGPT/Mudavym/worktrees/`**
+     (`page-actions`, `page-finalization`, `page-ports`, `public-pages`,
+     `token-efficiency-ci`). They are iCloud-synced and mostly uncommitted; only
+     `codex/page-finalization` has an origin ref, #374's first commit. By the scout's
+     reading they already hold:
+     - the `GET /logs` tenant fix, in `page-actions` and `page-finalization`;
+     - a byte-identical copy of the #362 rewrite;
+     - an uncommitted port of the text sender, in `page-finalization` and `page-ports`.
+       It carries no ADR-0121 CLAIMS rows; #368's five rows still run jest;
+     - the /admin desk, /authorize and the public pages.
+     Their own uncommitted PROGRESS.md records a founder direction of 2026-09-13: finish
+     all pages, with authority to merge and deploy. That is not in git. Confirm it with
+     the founder before acting on it.
+2. **Decide how a PR is audited before merge** [founder]. The CI PR Audit Gate cannot run:
+   its Anthropic account has no credit. The last merges carry "PASS on the founder's word.
+   No audit ran." The options:
+   - top up the credit;
+   - run `/pr-audit-gate` from a Claude session that has usage (section 8);
+   - keep merging on the founder's word;
+   - finish the uncommitted Codex `token-efficiency-ci` lane. It rebuilds the gate to cost
+     less and amends ADR 0090 and CLAUDE.md.
+3. **Fix `GET /logs`, which reads across houses on main.** With a `correlationId`,
+   `fetchEventStore` in `apps/api-gateway/src/logs/logs-timeline.service.ts` filters
+   `event_store` on `correlation_id` only, with no house. A fix exists uncommitted in the
+   Codex `page-actions` and `page-finalization` worktrees: verify it and land it, do not
+   rewrite it.
+   - Who may notify whom (ADR 0147, "Named and not fixed") stays a founder fork; it is in
+     section 6.
+   - The Meta `sender_ref` unique index is **not** a live defect on main, because nothing
+     on main routes by it. It belongs with #368.
+4. **Pick one overlay lane** [founder]. Draft #374 (Codex) overlaps the ov0 port on
+   `feat/overlays-packet-0-primitive` in 17 of its 19 files. Resolving either one first
+   wastes the other.
+5. **Land the open PRs once 1 to 4 are settled:**
+   - **#368.** It has 3 merge conflicts with main: `06-pages/connections.md`,
+     `CLAIMS.jsonl` and `house-letters.service.ts`. Its five ADR-0121 CLAIMS rows run
+     `npx jest`, and CI's "Decision register matches reality" job installs no Node.
+     Rewrite those `verify` commands or drop them.
+   - **#362.** Commit the rewrite and resolve its one CLAIMS conflict.
+   - **#349.** Push `c1221a9f` and finish the `wt-e2e` merge (6 conflicts). Every scheduled
+     Production E2E run on main has failed since 2026-09-03. From at least 09-06 to 09-16,
+     each failed as CANNOT CHECK on the same six missing secrets. Once #349 lands
+     only `E2E_TEST_EMAIL` and `E2E_TEST_PASSWORD` are missing, and setting them is the
+     founder's keystroke.
+6. **Merge the ADR 0148 lane as one PR.** It combines `claude/artifact-pull` (the day-one
+   brief `ONBOARDING.md` and the twelve pulled artifacts), `f16f5a36` from
+   `fix/claude-state-verify-subdir-cwd`, and the `--help` fix. Expect conflicts in ADR
+   0148 and `CLAIMS.jsonl`. Until it merges, a new account starting from main has no
+   `ONBOARDING.md`.
+7. **The pages build** (section 5) and the founder forks (section 6). Part of it is already
+   built, uncommitted, in the Codex lane (item 1).
+8. **Parked by the founder:** 17 open Dependabot PRs. Open alerts include 8 critical and 153
+   high.
+
 ## 0a. Final state, 2026-09-13 (supersedes sections 0 and 3 wherever they differ)
 
 **On main:** #363, #366, #361, and merge train 2 (#372). The train carried #367 parity,
@@ -73,8 +149,12 @@ out), re-verify, commit, and land it alone.
 **Not landed, and why:**
 - **#362 (the security gate can fail).** The PyYAML rewrite of
   `scripts/check_security_gate_can_fail.py` was never done. The agent died twice, leaving 1
-  changed file in wt-secgate; inspect it. The full brief is in section 3.
-- **#349 (nightly E2E).** c1221a9f is pushed (trace off, gateway URL guard, loader). The
+  changed file in wt-secgate; inspect it. The full brief is in section 3. [Wrong by
+  2026-09-16: the rewrite exists, uncommitted. `wt-secgate` has 3 changed files
+  (+815/-274), and the guard now imports `yaml`. See section 00, item 1.]
+- **#349 (nightly E2E).** c1221a9f is pushed (trace off, gateway URL guard, loader). [Wrong
+  by 2026-09-16: `c1221a9f` is on no remote, and the branch's origin head is `82add0f6`.
+  See section 00, item 1.] The
   merge of main is IN PROGRESS in wt-e2e with 6 conflicts:
   - e2e-prod.yml and conftest_prod.py (apply ADR 0137: waves D/E/G retired, their secrets
     removed)
@@ -269,6 +349,52 @@ validated and tenant-scoped. Sources: `/Users/aldemirkonuk/Projects/p4-scratch/w
 - `p4-scratch/verify-index-<pid>.log`: every verify_index run
 - this session's transcript:
   `~/.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-automation/b3992196-3993-4dfd-b3d7-f5b7b880c747.jsonl`
+
+## 8. Claude tooling this repo relies on (re-measured 2026-09-16)
+
+**In the repo.** This travels with any clone.
+
+| Tool | Use it when | What it does |
+|---|---|---|
+| `/pr-audit-gate` skill ([ADR 0090](../decisions/0090-pr-audit-gate-autonomous-merge.md)) | Before merging any PR to main | Requires main's required contexts to be green. Spawns 3 `pr-merge-auditor` agents (Opus; correctness, CLAUDE.md/ADR compliance, security and blast radius). If all three lean approve, spawns 1 `pr-merge-adversary`. Writes `.planning/07-reference/pr-audits/<pr>-<sha7>.md` locally (never commit it before the merge). Posts the `<!-- pr-audit-gate: pr=<n> sha=<sha> verdict=PASS\|BLOCK -->` comment, and on PASS runs `gh pr merge --squash`. Since 2026-09-12 markers are posted on the founder's word with no audit (section 1) |
+| `/fleet-census` (ADR 0038) | How many agents; before quoting a fleet number | `python3 scripts/agents/run_card.py --agent fleet-census-agent`. No model call. Today: 24 modules on disk, all 24 subclass BaseAgent and are registered; 18 start by default; 6 are OPTIONAL and gated off; 0 orphans |
+| `/harness-contract-audit` (ADR 0038) | A new `agents/*.py`, or work on `core/` | `run_card.py --agent harness-sentinel`: modules outside the BaseAgent contract, `core/` size, test count |
+| `/model-pin-census` (ADR 0038) | A PR touches a model call site | `run_card.py --agent spend-sentinel`: raw API URL constants and hard-coded model ids. It prints file names and pins, not the `path:line` its description promises |
+| `/registry-index-refresh` (ADR 0038) | After any change under `.claude/skills/`, and weekly | `run_card.py --agent registry-clerk`. Today: 5 skills, 5 of 5 carry the required sections |
+| `.claude/agents/pr-merge-auditor.md`, `pr-merge-adversary.md` | Spawned only by `/pr-audit-gate` | The three audit angles and the adversarial pass (CLAUDE.md section 3) |
+| `.claude/settings.json` hook: `scripts/hooks/require_pr_audit.py` | Runs before every Bash call | Blocks `gh pr merge <n>` until a PR comment *starts with* a PASS marker for the current head, posted by the CI bot (`github-actions`) or by the current `gh` user. Also blocks the usual `git push origin main` forms. It is a regex speed bump, not a wall: a bare `git push` or `git push origin HEAD` gets through, and branch protection on main is the real stop. It tells you to run the skill; it does not run it |
+| `.claude/settings.json` env | Always | `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=50`, for the fan-out CLAUDE.md section 3 asks for |
+| `.claude/launch.json` | Browser-pane previews | `web` on :3000; `api-gateway` on :4000; `web-p4` attaches to :5274 only if something already serves it |
+
+CI runs the same runners without a session:
+- `.github/workflows/pr-audit-gate.yml`, advisory and out of credit;
+- the `run_card` smoke run in `ci.yml`;
+- `agent-cards-weekly.yml`, Mondays 08:00 UTC.
+
+Known inaccuracies, not fixed here:
+- `.claude/skills/README.md` says `pr-audit-gate` is not census-tracked. The registry
+  census counts it.
+- Its 30-day deletion review cannot be measured. The column
+  `neural_footprint_event.skill_id` exists (migration `20260828103059`), but nothing fills
+  it, and `scripts/agents/run_card.py` still reports it as missing.
+- `pr-audit-gate`'s description says the hook runs it. The hook only blocks.
+
+**Not in the repo.** None of this travels with a clone or a new Claude account:
+- The user-level agents `opus-low` and `sonnet-auditor` (`~/.claude/agents/`). Past
+  sessions and memory use them; no tracked file does.
+- `/Users/aldemirkonuk/Projects/p4-scratch/`, including `verify_index.sh` (section 1) and
+  the evidence in section 7.
+- Project memory in `~/.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-automation/memory/`
+  (CLAUDE.md section 6).
+- The GSD toolkit: user-level skills, agents and hooks. `.planning/config.json` is its
+  config. Also `~/.claude/settings.json`.
+- Harness tools CLAUDE.md assumes: `Workflow`, `AskUserQuestion`, the Browser pane. These
+  are app and account features, not files; check that a new account has them.
+- `gh` authentication, in the machine keyring as `aldemirkonuk`. The audit hook trusts
+  markers from the current `gh` user.
+- `.claude/settings.local.json` in the main checkout (permission allow-rules only), and the
+  untracked root `AGENTS.md`, which holds another assistant's instructions.
+- The `ANTHROPIC_API_KEY` Actions secret exists, but its account has no credit.
 
 *This document adds a file under `.planning/handoff/` without naming a document to
 retire (CLAUDE.md section 4). The founder asked for it explicitly. That is named here as

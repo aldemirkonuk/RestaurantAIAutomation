@@ -6,8 +6,18 @@
 > If this file and any other doc disagree about what is current, fix the other doc.
 >
 > **2026-09-12 handoff:** the merge queue, the seven unlanded branches, and the page wave in flight are in [handoff/PROGRESS.md](handoff/PROGRESS.md). Read it before continuing any of them.
+>
+> **The next task, 2026-09-16:** ranked in [handoff/PROGRESS.md §00](handoff/PROGRESS.md). In order:
+> 1. Save the work that exists on no remote: `c1221a9f`, the `wt-secgate` rewrite, the port worktrees, and five uncommitted Codex worktrees.
+> 2. The founder decides how a PR is audited now that the CI gate has no credit.
+> 3. Fix `GET /logs`, which reads across houses.
+> 4. The founder picks one overlay lane (#374 or ov0).
+> 5. Land #368, #362 and #349.
+> 6. Merge the ADR 0148 lane.
+>
+> **Claude tooling:** the repo's skills (`/pr-audit-gate`, `/fleet-census`, `/harness-contract-audit`, `/model-pin-census`, `/registry-index-refresh`), its two audit agents, its merge hook, and what does *not* travel with a clone or a new account are in [handoff/PROGRESS.md §8](handoff/PROGRESS.md).
 
-**Current milestone: P3 — Grade, then scale** ([ADR 0029](decisions/0029-p3-plan-of-record.md)).
+**Current milestone: P3 — Grade, then scale** ([ADR 0029](decisions/0029-p3-plan-of-record.md)). [2026-09-16: no ADR has re-framed the milestone. Since 2026-09-01 the work has been the Mudavym page rebuild and go-live: design wave 4 merged as #289 on 2026-09-12, nineteen pages behind per-house flags. The live queue is [handoff/PROGRESS.md §00](handoff/PROGRESS.md).]
 **P2 closed 2026-08-26** — all five stages deployed and verified, both held items resolved.
 **Read order:** [PROJECT.md](PROJECT.md) → [decisions/README.md](decisions/README.md) → this file → [ROADMAP.md](ROADMAP.md).
 
@@ -116,9 +126,9 @@
 | Stage | Gate | Status |
 |---|---|---|
 | **P3.0 Doneability coverage** | *is* the gate | ✅ **shipped 2026-08-27** — 7/7 gateway task types graded, Python restamped, CI guard blocks a regression. One migration awaiting production (below) |
-| **P3.A Mobile parity** | none — runs alongside | not started |
+| **P3.A Mobile parity** | none — runs alongside | not started [2026-09-16: the code shipped with its exit criterion unmet, recorded rather than waived: OD-109] |
 | **P3.B Backend-kitchen expansion** (beverages first) | none — runs alongside | not started |
-| **P3.C Ask AI** | behind P3.0 | blocked by design |
+| **P3.C Ask AI** | behind P3.0 | blocked by design [2026-09-16: wrong since 2026-08-27, when P3.C shipped as #125 (backend, plus the web AskAiBar). #366 (2026-09-12, [ADR 0146](decisions/0146-asking-costs-money-so-asking-is-bounded.md)) later added validation, rate and daily spend limits, and role checks. The /ask surface of ADR 0145 is not built] |
 | **P3.D Job → model registry** (OD-04) | behind P3.0 + traffic | blocked by design |
 | **NF-B guests** | — | **held** — blocked on OD-05/OD-07, not on work |
 
@@ -134,7 +144,11 @@ cannot be graded when it can is the same rot pointing the other way.
 **Not done until applied:** `20260827100000_photo_count_suggestions.sql` is
 committed and **not yet applied to production**. `schema-parity.yml`'s production
 arm is red until it is, and that is the guard working as designed — an unapplied
-migration is the phantom-table class this repo found five times in one day.
+migration is the phantom-table class this repo found five times in one day. [2026-09-16:
+applied. On main, schema parity's step "Migration ledger matches production, both
+directions" passed daily from 2026-09-13 to 09-16. On 09-13 one push run failed first,
+on "Code queries only relations production has", before a later run passed. The next
+action below is therefore done.]
 
 **Next action:** apply the photo-count migration, then **P3.C (Ask AI)** and
 **P3.D (model registry)** are unblocked — the gate they sat behind is closed.
@@ -156,7 +170,7 @@ their tenant; two harness faults). Details in ADR 0093, "The live day, on the re
 **Canonical document, slice 2 (ADR 0104 D12/D13, 2026-09-04, branch `feat/canonical-document-slice-2`):** the canonical document is on screen at `/documents/:id` behind `mudavym_design_document` (OFF) — B's verdict block, C's delivery spine, A's sheet — served by `GET /procurement/documents/:id/canonical`; three synthetic PDFs went through the real intake door on the sim tenant and NONE was extracted (the model account has no credit), so every screenshot is of the degraded state and the four-way table has still never rendered real lines.
 
 **Canonical document, slice 1 (ADR 0104 D12, 2026-09-03, branch
-- **2026-09-03 — lens phase closed by the founder ("stop here, document it").** POS → inventory → alerts lens and customer + intelligence lens run on a real venue's menu (Sim Meyhouse) and filed (#292, #293; founder page linked from `06-pages/simpos-terminal.md` §10); ADRs 0103/0104/0105 recorded and locked where the founder answered (#288, #294); the Square day measured 0/42 vs 42/42 (0105); canonical document slice 1 merged and verified in production (#295, gaps filed in #296). **Next session starts from:** close the two data-shape gaps (`coerceDocType`, BT-149 + per-field confidence), then ADR 0104 slice 2 (C-led template + door view); the Antalya venue after that; the YMM clock question (0103 A8) still open.
+- **2026-09-03 — lens phase closed by the founder ("stop here, document it").** POS → inventory → alerts lens and customer + intelligence lens run on a real venue's menu (Sim Meyhouse) and filed (#292, #293; founder page linked from `06-pages/simpos-terminal.md` §10); ADRs 0103/0104/0105 recorded and locked where the founder answered (#288, #294); the Square day measured 0/42 vs 42/42 (0105); canonical document slice 1 merged and verified in production (#295, gaps filed in #296). **Next session starts from:** close the two data-shape gaps (`coerceDocType`, BT-149 + per-field confidence), then ADR 0104 slice 2 (C-led template + door view); the Antalya venue after that; the YMM clock question (0103 A8) still open. [Superseded: slice 2 merged as #300 on 2026-09-04, and main has moved well past this line. The next task is [handoff/PROGRESS.md §00](handoff/PROGRESS.md).]
 `feat/canonical-document-slice-1`):** the delivery is now a table — `deliveries`,
 `document_deliveries`, `delivery_proposals`, `vendor_terms`, `document_revisions`
 (append-only by trigger) and `document_corrections` — and
@@ -182,4 +196,4 @@ founder-readable layer are CI-claimed (ADR-0018 claims in `CLAIMS.jsonl`).
 - Real data, never mock-only; docs bulletproof before features (ADR 0018).
 
 ---
-*Last updated: 2026-08-27 — P3.0 shipped: every task type graded or knowingly exempt, guarded in CI.*
+*Last updated: 2026-09-16. Added the next-task and Claude-tooling pointers to handoff/PROGRESS.md §00 and §8, and bracket-corrected P3.A, P3.C, the photo-count migration, and the stale "next session" line. The body is otherwise as of 2026-08-27, when P3.0 shipped: every task type graded or knowingly exempt, guarded in CI.*

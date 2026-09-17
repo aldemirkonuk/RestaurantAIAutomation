@@ -59,29 +59,36 @@ Scale, as of 2026-09-16 — all re-countable, none to be taken on faith:
 
 | | Count | How to re-check |
 |---|---|---|
-| ADRs | 137 | `ls .planning/decisions/0*.md \| wc -l` |
-| Executable claims | 321 resolved, 16 open | `scripts/check_decision_claims.sh` |
-| Agent modules | 25 | `/fleet-census` — the honest answer has four different counts |
-| Repo skills | 5 | `ls .claude/skills/` |
-| Commits, last 30d | 51 | `git log --since=30.days --oneline \| wc -l` |
+| ADRs | 137 on this branch; 136 on main, which lacks ADR 0148 | `ls .planning/decisions/0*.md \| wc -l` |
+| Executable claims | 323 resolved, 15 open | `scripts/check_decision_claims.sh`: 338 checked, 338 holding |
+| Agent modules | 24 on disk; 18 start by default; 6 OPTIONAL, gated off | `/fleet-census` — the honest answer has four different counts |
+| Repo skills | 5, plus 2 audit agents and 1 merge hook | `ls .claude/skills/`; what each does is in [`PROGRESS.md`](PROGRESS.md) §8 |
+| Commits on main, last 30d | 311 first-parent; 443 in all | `git log --first-parent origin/main --since=30.days --oneline \| wc -l` |
 
 The stack is **Vite SPA + react-router-dom, not Next.js** — a recurring wrong assumption.
 
 ## 4. What is in flight, broken, and open
 
-**In flight.** [`PROGRESS.md`](PROGRESS.md) §0a is the live queue; its priority list still
-matched GitHub on 2026-09-16 (`PROGRESS.md:22`):
+**The next task.** [`PROGRESS.md`](PROGRESS.md) §00 ranks it, re-measured 2026-09-16. It
+supersedes §0a, §0 and §3; two facts in §0 were already wrong and are bracketed there. The first item is saving work that
+exists on no remote, including five uncommitted Codex worktrees. The open PRs:
 
 | PR | What | Blocker |
 |---|---|---|
-| [#368](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/368) | WhatsApp dispatch, ADR 0121 P0/P1 | 5 CLAIMS rows pass locally, regress in CI — suspect env-dependent `verify` commands |
-| [#362](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/362) | Security gate can fail loudly | PyYAML guard needs a rewrite |
-| [#349](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/349) | Nightly prod E2E, ADR 0135 | mid-merge in `wt-e2e`, 6 conflicts |
-| [#374](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/374) | Overlays + action receipts | draft |
+| [#368](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/368) | WhatsApp dispatch, ADR 0121 P0/P1 | 3 merge conflicts with main (`connections.md`, `CLAIMS.jsonl`, `house-letters.service.ts`). Its 5 CLAIMS rows run `npx jest`, and CI's register job installs no Node |
+| [#362](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/362) | Security gate can fail loudly | PyYAML rewrite exists but is uncommitted in `wt-secgate`; 1 CLAIMS conflict |
+| [#349](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/349) | Nightly prod E2E, ADR 0135 | `c1221a9f` not pushed; `wt-e2e` mid-merge, 6 conflicts |
+| [#374](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/374) | Overlays + action receipts | Codex draft; overlaps the ov0 port in 17 of its 19 files, so the founder picks one lane |
 
-Plus ~16 open Dependabot PRs. Per CLAUDE.md §5b, that queue has burned a session before:
-15 Dependabot PRs once had **zero** package overlap with the CVEs they were assumed to
-fix. Verify overlap before merging any of them.
+Plus 17 open Dependabot PRs, parked by the founder. Open alerts: 8 critical, 153 high,
+130 medium, 31 low. Verify package overlap before merging any of them. An earlier
+"zero overlap" finding was measured while alerts were disabled, and OD-56 struck it.
+
+**Claude tooling.** The repo's skills, its two audit agents, its merge hook, and what does
+*not* travel with a clone or a new account are listed in [`PROGRESS.md`](PROGRESS.md) §8.
+Before any merge, run `/pr-audit-gate`. The hook blocks `gh pr merge` without a PASS
+marker, and blocks the usual `git push origin main` forms. It is a regex speed bump, so
+branch protection on main is the real stop.
 
 **Broken.** [`v3.0-TECH-DEBT.md`](../v3.0-TECH-DEBT.md) is the live defect register,
 62 sections in four tracks — Track A is live defects (`v3.0-TECH-DEBT.md:65`). Check it
@@ -96,7 +103,8 @@ not exist in production. That incident is why claims are executable now.
 ## 5. Reading order
 
 `PROJECT.md` (identity, milestone) → `decisions/README.md` (what is locked, what is open)
-→ `STATE.md` (where the build is) → `handoff/PROGRESS.md` (what is mid-flight) →
+→ `STATE.md` (where the build is) → `handoff/PROGRESS.md` (§00 the next task, §8 the Claude
+tooling, the rest what is mid-flight) →
 `ROADMAP.md`. Then `.planning/00-index/DESIGN-MAP.html` in a browser for the design map —
 generated, never hand-edited.
 
@@ -107,6 +115,16 @@ Tooling: [`scripts/claude_state_migrate.sh`](../../scripts/claude_state_migrate.
 
 **What moves:** session transcripts, project memory, user-level config — plain files
 under `~/.claude`. The repo, `.planning/`, all 137 ADRs travel by `git clone`.
+
+**What a clone does not bring:**
+- the user-level agents `opus-low` and `sonnet-auditor`;
+- `p4-scratch/verify_index.sh` and its evidence;
+- the GSD toolkit;
+- `gh` authentication;
+- the harness tools CLAUDE.md assumes (`Workflow`, `AskUserQuestion`, the Browser pane).
+
+The repo's own skills, agents and merge hook do travel. [`PROGRESS.md`](PROGRESS.md) §8
+has both lists.
 
 **What cannot:** claude.ai conversations, Claude Code *web* sessions, Routines, the
 GitHub App connection. Server-side and account-bound; export exists, import does not.
