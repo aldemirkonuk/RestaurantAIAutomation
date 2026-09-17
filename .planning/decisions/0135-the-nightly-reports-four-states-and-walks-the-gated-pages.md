@@ -573,6 +573,26 @@ turns Wave B's skips into `cannot_check` and the nightly is red every night for 
 secret — the outcome founder call 8 rejected for Wave C. Wave B needs the same call before
 F2 lands. It cannot fire today, because the preflight refuses first.
 
+## What ADR 0149's cutover does to this suite (noted 2026-09-17, not built)
+
+[[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] was locked
+2026-09-16 and merged to main 2026-09-17, after this PR's work began. It deletes
+`PageGate`, `useMudavymDesign`, the gateway's flag registry entries and the public
+switch's off branch. Four of this suite's mechanisms rest on exactly those:
+
+- the **flags test** reads `/settings/feature-flags/check` per page;
+- the **legacy walk** forces the design off through the per-browser override;
+- the **public** test forces ADR 0133's switch on and off;
+- the **manifest guard** holds `manifest.pages` equal to `MUDAVYM_PAGES` and checks each
+  flag against the registry (checks 1 and 4).
+
+On the day the cutover merges, `scripts/check_nightly_manifest.py` exits **2** —
+`MUDAVYM_PAGES not found` — and says so, which is the honest answer for a guard whose
+subject is gone, not a failure to fix in a hurry. The rework is one operation of its own:
+drop the flags test and the legacy walk, keep the page walk and its sentences, and turn
+the guard's page list into a check against the router. Nothing here should be changed
+before the cutover lands, because until then both designs exist and both are walked.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |

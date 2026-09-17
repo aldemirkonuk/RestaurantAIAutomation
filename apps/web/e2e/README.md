@@ -307,3 +307,9 @@ Results land in `apps/web/test-results/nightly/`: `nightly-summary.md`,
   repository-settings change for the founder. Until it happens, waves A and B
   are `cannot_check` every night; Wave C is `absent` by decision.
 - The design-call snapshots live on an unmerged branch (§7).
+- **ADR 0149's cutover will retire parts of this suite.** It deletes `PageGate`,
+  `useMudavymDesign` and the flag registry, which the flags test, the legacy
+  walk, the public switch test and the guard's checks 1 and 4 all read. The
+  guard will exit 2 (`MUDAVYM_PAGES not found`) the day that lands. Reworking
+  this suite is the cutover's own follow-up, not something to pre-empt: until
+  then both designs exist and both are walked. See ADR 0135's last section.
