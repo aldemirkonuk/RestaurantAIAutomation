@@ -126,6 +126,12 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
   was already waived (ADR 0032, founder call 2026-09-16). **The exposure this ADR set out
   to remove is closed for the artifacts specifically: the content is durable in git, not
   account-bound.**]
+- **The Claude Design project behind the brand canvases is also account-bound** (added
+  2026-09-16). The founder supplied its export. Compared byte for byte, its three
+  canvases and its build prompt were already in `.planning/brand/`. The only files git
+  held in no form were two uploaded monogram images, now
+  `.planning/brand/mudavym-monogram-{1024,2048}.png` (founder call; §4 waived in ADR 0032).
+  `support.js` was deliberately not added: `brand/README.md` relies on its absence.
 - **Revisit when:** the brief's "in flight" section disagrees with `gh pr list` twice
   running, or `PROGRESS.md` is retired — either signals the brief has become a second
   source of truth rather than an index into the first.
@@ -134,6 +140,7 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-16 | Aldemir | Claude Design export: chose to add the two monogram images to `.planning/brand/` (§4 waived, ADR 0032). The rest of the export matched git byte for byte; `support.js`, a redundant screenshot and the thumbnail were left out |
 | 2026-09-16 | — | Third run of ONBOARDING §8 Job 2, from a terminal session confirmed in owning org `1138b209-…`: all twelve artifacts pulled and committed under `.planning/07-reference/artifacts/`; CLAIMS row flipped to `resolved`; artifacts consequence rewritten as delivered |
 | 2026-09-16 | Aldemir | Waived §4 retire-to-write for the twelve artifact files (row in ADR 0032). Same session measured the pull's blocker: the desktop app's org `03017808-…` is a viewer of owner org `1138b209-…`; artifacts consequence re-bracketed |
 | 2026-09-16 | — | Local run of ONBOARDING §8 on `claude/artifact-pull`: artifact pull failed for all twelve; the artifacts and same-Mac consequences amended in brackets, decision unchanged |

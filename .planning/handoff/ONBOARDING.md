@@ -247,6 +247,14 @@ the twelve internal ids under that directory and passes. The exposure ADR 0148 s
 remove is closed for the artifacts specifically: the content is durable in git, not
 account-bound.
 
+**The Claude Design project, 2026-09-16.** The project behind the brand canvases is
+covered too. Its export (`CSS animation demos with spring physics.zip`) was compared
+byte for byte with `.planning/brand/`. Its three canvases and its build prompt were
+already there. Its only files that git held in no form were two monogram images the
+project had uploaded, and they are now `.planning/brand/mudavym-monogram-1024.png` and
+`-2048.png`. [brand/README.md](../brand/README.md) lists what was deliberately left out,
+including `support.js`.
+
 ## 8. The local-session prompt
 
 Paste this into a Claude Code session **running on the Mac, in the org that owns the

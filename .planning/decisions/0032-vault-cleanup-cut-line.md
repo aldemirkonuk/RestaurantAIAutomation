@@ -81,6 +81,16 @@ Every deleted path is recoverable with
 | `md/` + `md_files/` doc corpus — the Apr-13 WineOps import: 48 build logs in `04-updates-builds/` (incl. `POS_INTEGRATION_COMPLETE.md`, formally superseded by `04-specs/POS-BRIDGE-AUDIT.md`), getting-started/setup guides, package READMEs, architecture/planning/feature essays, the 8 top-level overview docs, `PROJECT_ANALYSIS_AND_CHAT_CONTEXT.md` (both copies), and the `md_files/` duplicates | 108 | `docs/md-cleanup` deletion commit | Founder batch calls 2026-08-27: superseded by the `.planning` spine and git history; five later-touched keepers moved to `07-reference/` instead (`FEATURE_ROADMAP`, `MOBILE_APP_SETUP_AND_STATUS`, `GOOGLE_AND_API_CREDENTIALS_SETUP`, both Toast API reports) |
 | The 5 schema-debt `.sql` files (`md/02-architecture/` ×4, `md_files/02-architecture/DATABASE_SCHEMA.sql`) — the last tracked content of both trees | 5 | `fix/md-sql-schema-debt` | Exited via the ADR 0026 shrink path (guard `--update`, inventory −5). Evidence, measured 2026-08-27: every table they define is also defined in `supabase/migrations/`; `pending_ai_approvals` and all three cron functions return **404 PGRST205/202-class to the service-role key** in production (never applied) and have **zero consumers** in code — the REGISTER-AUDIT:422 sole-DDL worry was moot. Nothing captured, per ADR 0028 ("repointed or deleted, never created") |
 
+Kept deliberately: `phases/999.1-consumer-food-profiles…/.gitkeep` (FUTURES §7
+backlog marker, not history); `archive/{ROADMAP,STATE}-pre-P2-20260825.md` (the
+only archive files anything references — STATE.md:5, ROADMAP.md:5, ADR 0018);
+`sketches/` (96 files, 20 live code citations); `debug/` (1 note, folded later
+if ever); `FIX_ERROR_LOG.md` — the audit and the founder's first instinct both
+had it archivable, but `.cursor/skills/fix-error/` still exists and maintains
+it: it is live.
+
+Vault: 1,677 → 1,152 files. Top level: 35 → 30.
+
 ## Retire-to-write waiver — PR #353 (2026-09-12)
 
 **Founder call 2026-09-12: retire-to-write is waived for PR #353's nine
@@ -109,17 +119,31 @@ ADR 0148 is the decision that asked for them. Recorded before the files exist,
 because the pull is still blocked (ADR 0148, artifacts consequence). The waiver
 covers exactly those twelve, whenever they land, and nothing else: an artifact
 outside §7's twelve, or any other new doc, still owes a real trade or its own row
-here.
+here. [The twelve landed 2026-09-16 in `625ccb98`. Anything fetched later for the same
+twelve artifacts, such as their other published files or database records, is appended
+*inside* those twelve files. It adds no file, so it needs no row.]
 
-Kept deliberately: `phases/999.1-consumer-food-profiles…/.gitkeep` (FUTURES §7
-backlog marker, not history); `archive/{ROADMAP,STATE}-pre-P2-20260825.md` (the
-only archive files anything references — STATE.md:5, ROADMAP.md:5, ADR 0018);
-`sketches/` (96 files, 20 live code citations); `debug/` (1 note, folded later
-if ever); `FIX_ERROR_LOG.md` — the audit and the founder's first instinct both
-had it archivable, but `.cursor/skills/fix-error/` still exists and maintains
-it: it is live.
+**Second founder call, 2026-09-16: two brand images from the Claude Design export.**
+The founder supplied the export of the Claude Design project behind the brand canvases
+(`CSS animation demos with spring physics.zip`, GitHub-associated with this repo). Its
+three canvases and its build prompt are byte-identical to files already in
+`.planning/brand/`, so they add nothing:
+- `Mudavym Mark.dc.html` matches `Mudavym Mark1.dc.html`.
+- `Mudavym Motion Canvas.dc.html` matches `Mudavym Motion Canvas.dc.html`; the export's "copy" of it is identical too.
+- `Mudavym Overlay Sketches.dc.html` matches `Mudavym Overlay Sketches.dc.html`.
+- `uploads/brief_files-…md` matches `BUILDPROMPT.md`.
 
-Vault: 1,677 → 1,152 files. Top level: 35 → 30.
+Retire-to-write is waived for the only two things in the export that git held in no form.
+Both are monogram images the project had uploaded on 2026-08-29:
+- `.planning/brand/mudavym-monogram-1024.png`, uploaded as `pasted-1788037299110-0.png`;
+- `.planning/brand/mudavym-monogram-2048.png`, uploaded as `pasted-1788039283057-0.png`.
+
+Left out deliberately:
+- `support.js` — [`brand/README.md`](../brand/README.md) records the canvases as inert only because it is absent.
+- A screenshot of the instrument and house logo-search waves — already in git as sketches `078-mudavym-instrument` and `083-mudavym-house`.
+- The project thumbnail.
+
+Nothing else is covered.
 
 ## Consequences
 
@@ -162,3 +186,11 @@ Vault: 1,677 → 1,152 files. Top level: 35 → 30.
   `fix/md-sql-schema-debt`: production probes showed none of their DDL was ever
   applied and nothing queries it; guard inventory shrank 5 lines; both trees
   are now empty and gone.
+- 2026-09-16 — two founder waiver calls for ADR 0148:
+  - the twelve artifact files;
+  - the two monogram images from the Claude Design export.
+
+  Same day, the "Kept deliberately" and "Vault" paragraphs moved back under the
+  tombstone table. The PR #353 and ADR 0148 waiver sections had each been inserted
+  above them, so they read as part of whichever waiver came last. Their text is
+  unchanged.
