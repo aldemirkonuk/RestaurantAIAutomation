@@ -54,6 +54,27 @@ export interface PageEntry {
   provenance?: string[]
   provenance_testids?: string[]
   provenance_required?: boolean
+  /** Sentences the page ALWAYS renders that contain a shared phrase; removed before matching. */
+  static_text?: string[]
+}
+
+/** A signed-out door behind ADR 0133's one switch (VITE_MUDAVYM_PUBLIC). */
+export interface PublicEntry {
+  slug: string
+  route: string
+  file: string
+  /** "public" = the page's own file reads the switch on the manifest's tree; "none" = it does not yet. */
+  switch: 'public' | 'none'
+  /** Sentences the route must render when opened with a harmless invalid param. */
+  honest?: string[]
+}
+
+/** A signed-in route the new-pages list names that is not yet enrolled in MUDAVYM_PAGES. */
+export interface PendingEntry {
+  slug: string
+  route: string
+  file: string | null
+  held_by: string
 }
 
 export interface Manifest {
@@ -67,6 +88,10 @@ export interface Manifest {
     walls: Record<string, string>
   }
   pages: PageEntry[]
+  public_override_key: string
+  public_pages: PublicEntry[]
+  signed_out_redirects: { route: string; to: string }[]
+  pending_pages: PendingEntry[]
 }
 
 // apps/web is an ES module package, so there is no __dirname here.
@@ -78,9 +103,127 @@ export function loadManifest(): Manifest {
   // The empty-corpus guard: a manifest with no pages would make every walk
   // pass by walking nothing (absence-reported-as-health, instance 2).
   if (!Array.isArray(m.pages) || m.pages.length < 10) {
-    throw new Error(`CANNOT CHECK — manifest at ${MANIFEST_PATH} lists ${m.pages?.length ?? 0} pages; expected the Mudavym set (19).`)
+    throw new Error(`CANNOT CHECK — manifest at ${MANIFEST_PATH} lists ${m.pages?.length ?? 0} pages; expected the Mudavym set (20 on 2026-09-16; scripts/check_nightly_manifest.py holds it equal to MUDAVYM_PAGES).`)
+  }
+  if (!Array.isArray(m.public_pages) || !Array.isArray(m.pending_pages) || !Array.isArray(m.signed_out_redirects)) {
+    throw new Error(`CANNOT CHECK — manifest at ${MANIFEST_PATH} lacks public_pages / pending_pages / signed_out_redirects (manifest_version ${m.manifest_version}).`)
   }
   return m
+}
+
+// ---------------------------------------------------------------------------
+// The houses the walk may open (audit of PR #349, finding 1.3)
+// ---------------------------------------------------------------------------
+
+export interface SimHouses {
+  measured: string
+  name_prefix: string
+  houses: { id: string; slug: string; name: string }[]
+}
+
+export function loadSimHouses(): SimHouses {
+  const file = path.join(path.dirname(MANIFEST_PATH), 'sim-houses.json')
+  const h = JSON.parse(fs.readFileSync(file, 'utf8')) as SimHouses
+  if (!Array.isArray(h.houses) || h.houses.length === 0 || !h.name_prefix) {
+    throw new Error(`CANNOT CHECK — ${file} lists no simulator house; the walk refuses to open any house without the list.`)
+  }
+  return h
+}
+
+/**
+ * A house may be walked only when its id is on the committed simulator list AND
+ * the gateway's own branch list names it with the simulator prefix. The walk
+ * screenshots every page into a public artifact, so any other answer — an id
+ * off the list, a renamed house, a branch read that failed — refuses the walk
+ * as cannot_check. The gateway returns no slug (organizations.service.ts
+ * getBranchesForUser), which is why the id list is committed.
+ */
+export async function checkSimHouse(
+  request: APIRequestContext,
+  env: NightlyEnv,
+  session: Session,
+  restaurantId: string | null,
+): Promise<{ ok: boolean; reason: string }> {
+  if (!restaurantId) return { ok: false, reason: 'no house id to check' }
+  const sims = loadSimHouses()
+  const listed = sims.houses.find((h) => h.id === restaurantId)
+  if (!listed) {
+    return { ok: false, reason: `house ${restaurantId} is not on apps/web/e2e/nightly/sim-houses.json (measured ${sims.measured}); the walk opens simulator houses only` }
+  }
+  const res = await request.get(`${env.apiUrl}/api/v1/organizations/branches`, { headers: authHeaders(session, restaurantId) })
+  if (!res.ok()) {
+    return { ok: false, reason: `/organizations/branches answered ${res.status()}, so the house's name cannot be confirmed` }
+  }
+  const branches = (await res.json()) as { id: string; name: string }[]
+  const branch = Array.isArray(branches) ? branches.find((b) => b.id === restaurantId) : undefined
+  if (!branch) {
+    return { ok: false, reason: `the account's branch list does not include ${listed.slug} (${restaurantId})` }
+  }
+  if (!branch.name.startsWith(sims.name_prefix)) {
+    return { ok: false, reason: `house ${restaurantId} is listed as ${listed.slug} but the gateway names it "${branch.name}", not "${sims.name_prefix}…" — refused until someone re-measures the list` }
+  }
+  return { ok: true, reason: `${listed.slug} ("${branch.name}") is a simulator house on the committed list` }
+}
+
+// ---------------------------------------------------------------------------
+// Founder's recorded design calls — reported beside pages, never gating
+// ---------------------------------------------------------------------------
+
+export interface DesignCall {
+  source: string
+  kind: 'verdict' | 'board'
+  call?: string
+  at?: string
+  label?: string
+  state?: string
+  as_of?: string | null
+}
+
+export function loadDesignCalls(): Record<string, DesignCall[]> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(path.dirname(MANIFEST_PATH), 'design-verdicts.json'), 'utf8')) as { pages?: Record<string, DesignCall[]> }
+    return raw.pages ?? {}
+  } catch {
+    return {}
+  }
+}
+
+export function describeCall(c: DesignCall): string {
+  return c.kind === 'verdict' ? `${c.call} (${c.source}, ${(c.at ?? '').slice(0, 10)})` : `${c.label} · ${c.state} (${c.source}, ${c.as_of ?? 'undated'})`
+}
+
+// ---------------------------------------------------------------------------
+// Read-only, enforced rather than promised (audit of PR #349, fix-list item 5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Every request the page makes is routed through here. A GET, HEAD or OPTIONS
+ * passes. Any other method is ABORTED unless its path is one of the two
+ * read-shaped POSTs the app makes to render at all: the token refresh and the
+ * per-house flag read (useMudavymDesign.ts fetchFlag). Everything aborted is
+ * listed — the app's own view telemetry (/ux/signals, /events) is a write to
+ * production, and a page whose function needed a write shows up here by name.
+ */
+export const READ_SHAPED_POSTS = ['/api/v1/auth/refresh', '/api/v1/settings/feature-flags/check']
+
+export class ReadOnlyGuard {
+  public blocked: string[] = []
+
+  async attach(page: Page): Promise<void> {
+    await page.route('**/*', async (route) => {
+      const req = route.request()
+      const method = req.method()
+      if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return route.continue()
+      const p = pathOf(req.url())
+      if (READ_SHAPED_POSTS.includes(p)) return route.continue()
+      this.blocked.push(`${method} ${new URL(req.url()).host}${p}`)
+      return route.abort('blockedbyclient')
+    })
+  }
+
+  summary(): { blocked: number; distinct: string[] } {
+    return { blocked: this.blocked.length, distinct: [...new Set(this.blocked)].sort() }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -395,7 +538,8 @@ export async function readPage(page: Page, m: Manifest, entry: PageEntry): Promi
 
 async function readPageOnce(page: Page, m: Manifest, entry: PageEntry): Promise<Reading> {
   const nextRoots = await page.locator(m.next_root_selector).count()
-  const body = straighten((await page.locator('body').innerText().catch(() => '')) ?? '')
+  let body = straighten((await page.locator('body').innerText().catch(() => '')) ?? '')
+  for (const t of entry.static_text ?? []) body = body.split(straighten(t)).join(' ')
   const find = (phrases: string[] | undefined) => (phrases ?? []).filter((p) => body.includes(straighten(p)))
   const testIds = async (ids: string[] | undefined) => {
     const out: string[] = []

@@ -587,6 +587,17 @@ jobs:
       - name: Every task type is graded or knowingly exempt
         run: ./scripts/check_task_types_are_graded.py
 
+      # ADR 0135 (2026-09-16 rebuild). The nightly's page manifest names each
+      # page's own empty / failed-read / provenance sentences; on 2026-09-16 nine
+      # of them no longer rendered and /logs had no entry, and the walk reads a
+      # missing sentence as a quiet page. This holds the manifest to MUDAVYM_PAGES,
+      # to each page's source directory, and to the public switch.
+      - name: The nightly manifest describes this tree
+        run: ./scripts/check_nightly_manifest.py
+
+      - name: The nightly manifest guard fires on a stale sentence, and a missing manifest exits 2
+        run: ./scripts/check_nightly_manifest.py --self-test
+
       - name: Explain a failure
         if: failure()
         run: |

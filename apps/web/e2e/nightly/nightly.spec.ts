@@ -8,6 +8,11 @@
  * data, an empty state in words, a failed read in words, or a refusal. It
  * never asserts on a figure.
  *
+ * It also opens the signed-in routes still waiting for a design (pending_pages)
+ * and the signed-out doors behind ADR 0133's one switch (public_pages), refuses
+ * any house not on sim-houses.json, and aborts every write the app attempts.
+ * apps/web/e2e/README.md explains the whole suite.
+ *
  * Every check lands in the summary as pass / fail / absent / cannot_check
  * (see lib.ts). Run against production only through
  * .github/workflows/e2e-prod.yml; locally:
@@ -19,10 +24,14 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, type APIRequestContext, type Browser, type Page } from '@playwright/test'
 import {
   AuthBudget,
   authHeaders,
+  checkSimHouse,
+  describeCall,
+  loadDesignCalls,
+  ReadOnlyGuard,
   injectSession,
   loadManifest,
   mintSession,
@@ -132,6 +141,13 @@ test('precondition: secrets, account and house are what the run needs', async ({
     state: houseId ? 'pass' : 'cannot_check',
     reason: houseId ? `the account belongs to house ${houseId}` : 'the account has no restaurant_id — grant it a simulator house first',
   })
+  if (!houseId) return
+  const sim = await checkSimHouse(request, env, session, houseId)
+  recordAndAssert({ id: 'precondition.house.sim', state: sim.ok ? 'pass' : 'cannot_check', reason: sim.reason })
+  if (env.legacyRestaurantId) {
+    const legacy = await checkSimHouse(request, env, session, env.legacyRestaurantId)
+    recordAndAssert({ id: 'precondition.legacy_house.sim', state: legacy.ok ? 'pass' : 'cannot_check', reason: legacy.reason })
+  }
 })
 
 // ---------------------------------------------------------------------------
@@ -208,9 +224,19 @@ test('flags: every manifest page reports its flag for this house', async ({ requ
 type Mode = 'next' | 'legacy'
 
 async function walk(page: Page, request: APIRequestContext, mode: Mode, restaurantId: string, overrides: Record<string, '1' | '0'>): Promise<void> {
+  // Re-checked here, not trusted from the precondition test: a worker restart
+  // loses module state, and the walk is the step that screenshots the house.
+  const sim = await checkSimHouse(request, env, session!, restaurantId)
+  if (!sim.ok) {
+    recordAndAssert({ id: `walk.${mode}.house`, state: 'cannot_check', reason: `refused to walk: ${sim.reason}` })
+    return
+  }
   const absentOnBuild = readAbsent()
+  const designCalls = loadDesignCalls()
   const budget = new AuthBudget()
   budget.attach(page)
+  const guard = new ReadOnlyGuard()
+  await guard.attach(page)
   const pageErrors: string[] = []
   page.on('pageerror', (err) => pageErrors.push(`${err.name}: ${err.message}`.slice(0, 300)))
 
@@ -248,7 +274,7 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, restaura
     await test.info().attach(`${entry.slug}.${mode}.png`, { body: await page.screenshot(), contentType: 'image/png' })
 
     const newErrors = pageErrors.slice(errorsBefore)
-    const evidence = { route, landed, nextRoots: reading.nextRoots, bodyChars: reading.bodyChars, klass: reading.klass, matched: reading.matched, testids: reading.matchedTestIds, pageErrors: newErrors, firstReadingWasFailedRead: reading.firstReadingWasFailedRead ?? false }
+    const evidence = { route, landed, founderCalls: (designCalls[entry.slug] ?? []).map(describeCall), nextRoots: reading.nextRoots, bodyChars: reading.bodyChars, klass: reading.klass, matched: reading.matched, testids: reading.matchedTestIds, pageErrors: newErrors, firstReadingWasFailedRead: reading.firstReadingWasFailedRead ?? false }
 
     if (reading.bodyChars < 40) {
       recordAndAssert({ id: `page.${entry.slug}.${mode}`, state: 'fail', reason: `${route} rendered ${reading.bodyChars} characters — a blank page`, evidence })
@@ -325,15 +351,49 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, restaura
       recordAndAssert({ id: `page.${entry.slug}.${mode}.pageerrors`, state: 'fail', reason: `${newErrors.length} uncaught page error(s) on ${route}: ${newErrors[0]}`, evidence: { pageErrors: newErrors } })
     }
   }
-  if (mode === 'next') writeAbsent(absentOnBuild)
+  if (mode === 'next') {
+    writeAbsent(absentOnBuild)
+    await walkPending(page)
+  }
+  const ro = guard.summary()
+  record({
+    id: `walk.${mode}.readonly`,
+    state: 'pass',
+    reason: ro.blocked ? `${ro.blocked} write(s) the app attempted were aborted before leaving the browser: ${ro.distinct.join(', ')}` : 'the app attempted no write during the walk',
+    evidence: ro,
+  })
   const pacing = budget.summary() as { auth_requests_max_per_route_in_any_60s: number }
   recordAndAssert({ id: `walk.${mode}.pacing`, state: pacing.auth_requests_max_per_route_in_any_60s < 10 ? 'pass' : 'fail', reason: `auth calls per route peaked at ${pacing.auth_requests_max_per_route_in_any_60s}/60 s against the gateway's 10 (rate-limit.guard.ts DEFAULT_RATE_LIMITS.auth)`, evidence: budget.summary() })
+}
+
+/**
+ * The signed-in routes the new-pages list names that are not enrolled in
+ * MUDAVYM_PAGES yet. The override key is set for each anyway, so the day one
+ * enrols without the manifest moving, its Mudavym root renders here and the
+ * walk says so instead of calling it absent from a note.
+ */
+async function walkPending(page: Page): Promise<void> {
+  for (const entry of manifest.pending_pages) {
+    await spaNavigate(page, entry.route)
+    const landed = pathOf(page.url())
+    const roots = await page.locator(manifest.next_root_selector).count()
+    if (landed === '/' && entry.route !== '/') {
+      record({ id: `pending.${entry.slug}`, state: 'absent', reason: `${entry.route} is not a route on this build (the catch-all sent it to /); held by ${entry.held_by}` })
+    } else if (landed !== entry.route) {
+      record({ id: `pending.${entry.slug}`, state: 'absent', reason: `${entry.route} landed on ${landed} for this account; held by ${entry.held_by}`, evidence: { landed } })
+    } else if (roots === 0) {
+      record({ id: `pending.${entry.slug}`, state: 'absent', reason: `${entry.route} renders its current page with no ${manifest.next_root_selector} root — not rebuilt yet (${entry.held_by})`, evidence: { landed, roots } })
+    } else {
+      recordAndAssert({ id: `pending.${entry.slug}`, state: 'fail', reason: `${entry.route} rendered ${roots} Mudavym root(s) but the manifest still lists it as pending — move it into pages with its sentences`, evidence: { landed, roots } })
+    }
+  }
 }
 
 test('walk: every rebuilt page with the Mudavym override on', async ({ page, request }) => {
   if (!(await ensureSession(request))) return
   const overrides: Record<string, '1' | '0'> = {}
   for (const p of manifest.pages) overrides[p.slug] = '1'
+  for (const p of manifest.pending_pages) overrides[p.slug] = '1'
   await walk(page, request, 'next', houseId!, overrides)
 })
 
@@ -348,4 +408,101 @@ test('walk: every page with the flag off (legacy)', async ({ page, request }) =>
     reason: legacyHouse ? `legacy pass uses second house ${legacyHouse} with its real flags (E2E_LEGACY_RESTAURANT_ID)` : 'legacy pass uses the same house with the per-browser override forcing legacy (no second house configured)',
   })
   await walk(page, request, 'legacy', legacyHouse ?? houseId!, overrides)
+})
+
+// ---------------------------------------------------------------------------
+// 6. The signed-out doors (ADR 0133: one switch, VITE_MUDAVYM_PUBLIC)
+// ---------------------------------------------------------------------------
+
+type PublicPass = 'default' | 'on' | 'off'
+
+async function openSignedOut(browser: Browser, pass: PublicPass): Promise<{ page: Page; close: () => Promise<void>; guard: ReadOnlyGuard; errors: string[] }> {
+  const context = await browser.newContext()
+  if (pass !== 'default') {
+    await context.addInitScript(
+      (a: { key: string; value: string }) => {
+        try {
+          window.localStorage.setItem(a.key, a.value)
+        } catch {
+          /* storage blocked — recorded by the switch check */
+        }
+      },
+      { key: manifest.public_override_key, value: pass === 'on' ? '1' : '0' },
+    )
+  }
+  const page = await context.newPage()
+  const guard = new ReadOnlyGuard()
+  await guard.attach(page)
+  const errors: string[] = []
+  page.on('pageerror', (err) => errors.push(`${err.name}: ${err.message}`.slice(0, 300)))
+  await page.goto(`${env.baseUrl}/login`, { waitUntil: 'domcontentloaded', timeout: 40_000 })
+  await settleDom(page)
+  return { page, close: () => context.close(), guard, errors }
+}
+
+async function readPublic(page: Page, route: string): Promise<{ landed: string; roots: number; body: string }> {
+  await spaNavigate(page, route)
+  const body = ((await page.locator('body').innerText().catch(() => '')) ?? '').replace(/[‘’]/g, "'").toLowerCase()
+  return { landed: pathOf(page.url()), roots: await page.locator(manifest.next_root_selector).count(), body }
+}
+
+test('public: the signed-out doors, with the one switch as built and forced each way', async ({ browser }) => {
+  try {
+    env = env ?? readEnv()
+  } catch (e) {
+    record({ id: 'public.precondition', state: 'cannot_check', reason: (e as Error).message })
+    return
+  }
+
+  // As built: what a stranger sees on this deploy, reported, not gated.
+  const asBuilt = await openSignedOut(browser, 'default')
+  const loginRoots = await asBuilt.page.locator(manifest.next_root_selector).count()
+  record({
+    id: 'public.switch',
+    state: 'pass',
+    reason: `VITE_MUDAVYM_PUBLIC reads ${loginRoots > 0 ? 'ON' : 'OFF'} on this build (measured on /login: ${loginRoots} ${manifest.next_root_selector} root${loginRoots === 1 ? '' : 's'}; reported, not gated)`,
+  })
+  await asBuilt.close()
+
+  for (const pass of ['on', 'off'] as const) {
+    const s = await openSignedOut(browser, pass)
+    for (const entry of manifest.public_pages) {
+      const before = s.errors.length
+      const r = await readPublic(s.page, entry.route)
+      const id = `public.${entry.slug}.${pass}`
+      const shot = await s.page.screenshot()
+      await test.info().attach(`public.${entry.slug}.${pass}.png`, { body: shot, contentType: 'image/png' })
+      if (r.body.length < 40) {
+        recordAndAssert({ id, state: 'fail', reason: `${entry.route} rendered ${r.body.length} characters signed out — a blank page`, evidence: r })
+        continue
+      }
+      if (pass === 'on') {
+        if (entry.switch === 'public') {
+          if (r.roots > 0) recordAndAssert({ id, state: 'pass', reason: `${entry.route} rendered the Mudavym public design with the switch forced on`, evidence: { landed: r.landed, roots: r.roots } })
+          else record({ id, state: 'absent', reason: `${entry.route} rendered no ${manifest.next_root_selector} root with the switch forced on — this build's page does not read the switch`, evidence: { landed: r.landed } })
+        } else if (r.roots === 0) {
+          record({ id, state: 'absent', reason: `${entry.route} is not rebuilt on this build — ${entry.file} reads no switch (ADR 0133's public wave)`, evidence: { landed: r.landed } })
+        } else {
+          recordAndAssert({ id, state: 'fail', reason: `${entry.route} rendered ${r.roots} Mudavym root(s) but the manifest says its file reads no switch — update public_pages`, evidence: { landed: r.landed, roots: r.roots } })
+        }
+      } else if (entry.switch === 'public') {
+        recordAndAssert({ id, state: r.roots === 0 ? 'pass' : 'fail', reason: r.roots === 0 ? `${entry.route} rendered its legacy design with the switch forced off` : `${entry.route} rendered ${r.roots} Mudavym root(s) with the switch forced off`, evidence: { landed: r.landed, roots: r.roots } })
+      }
+      if (entry.honest?.length && pass === 'off') {
+        const said = entry.honest.find((h) => r.body.includes(h.replace(/[‘’]/g, "'").toLowerCase()))
+        recordAndAssert({ id: `public.${entry.slug}.honest`, state: said ? 'pass' : 'fail', reason: said ? `${entry.route} named the dead link in words: “${said}”` : `${entry.route} opened with an invalid value and said none of: ${entry.honest.join(' / ')}`, evidence: { landed: r.landed } })
+      }
+      const errs = s.errors.slice(before)
+      if (errs.length) recordAndAssert({ id: `${id}.pageerrors`, state: 'fail', reason: `${errs.length} uncaught page error(s) on ${entry.route}: ${errs[0]}` })
+    }
+    if (pass === 'off') {
+      for (const redirect of manifest.signed_out_redirects) {
+        const r = await readPublic(s.page, redirect.route)
+        recordAndAssert({ id: `public.redirect${redirect.route.replace(/\//g, '.')}`, state: r.landed.startsWith(redirect.to) ? 'pass' : 'fail', reason: r.landed.startsWith(redirect.to) ? `${redirect.route} sent a signed-out visitor to ${redirect.to}` : `${redirect.route} signed out landed on ${r.landed}, expected ${redirect.to}` })
+      }
+    }
+    const ro = s.guard.summary()
+    record({ id: `public.${pass}.readonly`, state: 'pass', reason: ro.blocked ? `${ro.blocked} write(s) aborted in the browser: ${ro.distinct.join(', ')}` : 'no write attempted', evidence: ro })
+    await s.close()
+  }
 })

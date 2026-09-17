@@ -258,6 +258,88 @@ The founder chose "Fix trace, then land it". Findings from the 2026-09-11 audit,
 
 **Merged without a re-audit.** Per the founder's 2026-09-12 answer ("Your word as PASS, no
 agents"), no auditor re-read this head.
+**[CORRECTED 2026-09-16: #349 was NOT merged.** The fix commit `c1221a9f` existed only in
+the local worktree `wt-e2e`, never pushed, with a merge of `origin/main` (`beb00db4`) left
+half-done over all six conflicts. `gh pr view 349` on 2026-09-16: OPEN, head `82add0f6`.
+The fixes above reached the PR with the rebuild below.]**
+
+## Rebuild (2026-09-16) — new pages, the design artifacts, and the rest of the fix list
+
+The founder's instruction: *"Rebuild E2E test with new pages artifacts and updated
+parts, there should be docs to understand it."* Six calls were put to him in session and
+answered; each is recorded here with what it rejected.
+
+| Fork | Chosen | Rejected, and why |
+|---|---|---|
+| What "new pages" covers | The 20 pages now in `MUDAVYM_PAGES` (adds `/logs`), plus the new-pages routes listed and **measured** absent until they land | A readable per-run board (not chosen) |
+| The design artifacts | **Used as a source**: the founder's recorded calls | — |
+| Where it lands | **Update PR #349** (merge main, clear the fix list) | A fresh branch that closes #349: the audit trail would stay on a closed PR |
+| Where the doc lives | **`apps/web/e2e/README.md`**, next to the code; the stale nightly section of `.planning/testing/README.md` is retired into it | `.planning/testing/NIGHTLY-E2E.md` (away from the code); ADR-only (hard to onboard from) |
+| How the calls travel | **A small pinned file**, `design-verdicts.json`, generated from the ADR 0148 snapshots | Stacking #349 on `claude/artifact-pull` and its unmerged base (about 6 MB of snapshot HTML; #349 could not merge before both) |
+| What a call does | **Reported beside the page, never gating** | Failing a `rework` page whose flag is on: it would partly decide F1 |
+| Where sentences come from | **The page's own source, held by a CI guard** | Also reporting drift against the artifacts' wording: measured at most 1 match per page (0 on 12 of 18), so the report would be almost all noise |
+
+**Measured before building** (2026-09-16, clean worktree at `origin/main` `60ed83a7` merged in):
+- **The manifest had rotted in five days.** Of its page sentences, 9 no longer rendered from
+  their page. Four existed only in source comments, three had been rewritten, one
+  (`nothing yet today`) belonged to `/documents-reports` rather than the dashboard, and one
+  (`empty registers`) named the exact behaviour a test forbids. The shared denied phrase
+  `you don't have access` renders nowhere. `/logs` had been enrolled 2026-09-12 with no
+  entry. `/logs` would also have read as a failed read on **every** run, because its intro
+  says *"A register that could not be read is named."* This is a new `static_text` field.
+  Nothing had noticed, because the walk reads a missing sentence as a quiet page.
+- **Public doors.** Of the nine public routes ADR 0133 names, only `/login` and `/register`
+  read `VITE_MUDAVYM_PUBLIC` on main. `/authorize/:integrationId` is `ProtectedRoute`-wrapped,
+  not public. `/ask` has no route on any ref.
+- **The gateway exposes no house slug** (`getBranchesForUser` selects id, name, city,
+  chain), so the audit's suggested "assert `sim-%` via `/organizations/branches`" was not
+  buildable as written. Production's four `sim-*` houses were read-only-selected and
+  committed by id.
+
+**Built:**
+- **Manifest v1.1.0** holds 20 `pages`, each with a `source` directory; `static_text`;
+  11 `public_pages`; 7 `pending_pages`; and `signed_out_redirects`. The stale sentences
+  were replaced with the pages' current ones.
+- **`scripts/check_nightly_manifest.py`** runs in CI (`decision-claims`), with a
+  `--self-test` of 10 cases, each asserting the named finding. It holds the manifest
+  equal to `MUDAVYM_PAGES`, each sentence to its page's source outside comments,
+  testids, the public-switch claim per file, and pending pages not yet enrolled. Run
+  against the 2026-09-11 manifest it reports 8 mismatches (6 of the 9 dead
+  sentences, `/logs` missing, the dead denied phrase). It cannot see the other three,
+  because `nothing here` also renders from a shared component. That limit is stated in
+  its docstring.
+- **Fix-list item 3 (finding 1.3):** `sim-houses.json` plus `checkSimHouse`. The id must be
+  on the list AND the gateway must name the branch `Sim …`. Otherwise the result is
+  `cannot_check`. It is checked in the precondition and again at the start of each walk.
+- **Fix-list item 5:** `ReadOnlyGuard` aborts every non-GET request except the token
+  refresh and the flag read, and lists what it aborted.
+- **Fix-list item 6:** the workflow header's "values are never printed" was **not true of
+  the two target URLs**. The summary prints them unmasked. The sentence now says so, and
+  says why that is acceptable (the web bundle carries the gateway URL).
+- **Fix-list item 7:** Wave G was retired by ADR 0137, so `ADR-0135-f` is rewritten as
+  resolved-by-deletion.
+- **The walk:** `pending.<slug>`, a signed-out `public` test (as built, switch forced on,
+  forced off; honest dead-link sentences; the redirect), and the founder's calls joined
+  into a separate summary table. `extract_design_verdicts.py` pins 17 pages and 2 sets
+  from four snapshots, with 0 unmapped.
+- **ADR 0137 applied** to this branch's workflow: waves D, E and G are gone, and the Toast
+  and Gmail secrets are unmapped.
+
+**Verified 2026-09-16:** `tsc --strict` exits 0 over the four nightly files (a
+deliberate type error exits 2, so the check is real). Web ESLint is clean, with no
+file ignored. The guard passes, and its self-test passes all 10 cases.
+`extract_design_verdicts.py --check` returns 0 against `origin/claude/artifact-pull`
+and 2 with no snapshots. `check_decision_claims.sh` passes. The **signed-out walk ran
+against production** (`https://mudavym.com`, system Chrome, no account): 11 pass,
+9 absent, 0 fail, 0 cannot_check. The switch reads OFF as built. The three dead links
+were said in words. 48 Sentry envelope POSTs were aborted. The suite without account
+secrets records 6 `cannot_check` and nothing else.
+
+**Not verified, said plainly:** the signed-in walk (preconditions, flags, both walks,
+pending pages) has **not run** after this rebuild. No local gateway was running, and
+the account secrets are the founder's. The pending-page and sim-house code paths are
+typechecked and linted, not exercised. The pr-audit-gate has not re-run on the new
+head. #349 is not merged.
 
 ## Review trail
 
@@ -265,3 +347,4 @@ agents"), no auditor re-read this head.
 |---|---|---|
 | 2026-09-11 | — | Created; measured locally as above; awaits the founder's secrets for the first production verdict |
 | 2026-09-11 | pr-audit-gate (3 Opus auditor angles) | **BLOCK** — security angle (trace-file credential leak on a public repo); correctness and compliance both APPROVE WITH NOTES; adversarial pass skipped per step 6. See "Audit result" above and the full report. |
+| 2026-09-16 | Founder (six calls in session) + this session | Rebuilt on the PR: new pages, public doors, pending routes, design calls, the manifest guard, fix-list items 3, 5, 6 and 7. The 2026-09-12 "merged" line was corrected. Audit gate not re-run. |

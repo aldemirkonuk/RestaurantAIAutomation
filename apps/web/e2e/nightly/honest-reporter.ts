@@ -5,13 +5,41 @@
  * recorded as `cannot_check` — a walk that recorded nothing must not look like
  * a walk that passed (absence-reported-as-health, instance 2 and 16).
  *
+ * It also joins the founder's recorded design calls (design-verdicts.json,
+ * generated from the ADR 0148 artifact snapshots) with each page's walked
+ * state into `design_calls`: context printed beside the page, never counted
+ * as a check and never able to pass or fail one.
+ *
  * Output: <outputDir>/nightly-summary.json and nightly-summary.md.
  * scripts/e2e/nightly_summary.py merges this with the Python waves.
  */
 
 import * as fs from 'fs'
 import * as path from 'path'
+import { fileURLToPath } from 'url'
 import type { FullConfig, FullResult, Reporter, TestCase, TestResult } from '@playwright/test/reporter'
+
+interface DesignCallRow {
+  page: string
+  walked: string
+  calls: string[]
+}
+
+function designCalls(records: CheckRecord[]): DesignCallRow[] {
+  let pages: Record<string, { source: string; kind: string; call?: string; at?: string; label?: string; state?: string; as_of?: string | null }[]> = {}
+  try {
+    const file = path.join(path.dirname(fileURLToPath(import.meta.url)), 'design-verdicts.json')
+    pages = (JSON.parse(fs.readFileSync(file, 'utf8')) as { pages?: typeof pages }).pages ?? {}
+  } catch {
+    return []
+  }
+  const stateOf = (slug: string) => records.find((r) => r.id === `page.${slug}.next`)?.state ?? 'not walked'
+  return Object.entries(pages).map(([page, calls]) => ({
+    page,
+    walked: stateOf(page),
+    calls: calls.map((c) => (c.kind === 'verdict' ? `${c.call} (${c.source}, ${(c.at ?? '').slice(0, 10)})` : `${c.label} · ${c.state} (${c.source}, ${c.as_of ?? 'undated'})`)),
+  }))
+}
 
 interface CheckRecord {
   id: string
@@ -87,6 +115,7 @@ export default class HonestReporter implements Reporter {
       verdict,
       counts,
       checks: this.records,
+      design_calls: designCalls(this.records),
       tests: this.tests,
     }
     fs.mkdirSync(this.outDir, { recursive: true })
@@ -96,7 +125,7 @@ export default class HonestReporter implements Reporter {
   }
 }
 
-function renderMarkdown(s: { verdict: string; counts: Record<string, number>; target: string; api: string; checks: CheckRecord[] }): string {
+function renderMarkdown(s: { verdict: string; counts: Record<string, number>; target: string; api: string; checks: CheckRecord[]; design_calls: DesignCallRow[] }): string {
   const lines: string[] = []
   lines.push(`## Nightly — browser walk: **${s.verdict.toUpperCase()}**`)
   lines.push('')
@@ -113,6 +142,14 @@ function renderMarkdown(s: { verdict: string; counts: Record<string, number>; ta
   }
   lines.push('')
   lines.push('_absent_ = not on this build (never a pass) · _cannot_check_ = the check did not run (never a pass).')
+  if (s.design_calls.length) {
+    lines.push('')
+    lines.push("### Founder's recorded calls (context — not counted, never gating)")
+    lines.push('')
+    lines.push('| page | walked (override on) | recorded call |')
+    lines.push('|---|---|---|')
+    for (const d of s.design_calls) lines.push(`| \`${cell(d.page)}\` | ${badge(d.walked)} | ${cell(d.calls.join('; '))} |`)
+  }
   return lines.join('\n') + '\n'
 }
 

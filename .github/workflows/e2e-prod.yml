@@ -13,8 +13,11 @@
 #                   to open it on — reported, never a pass
 #     cannot_check  the check did not run (missing secret, unreachable service,
 #                   empty corpus) — RED on purpose (exit 2), never a pass
-#   Nothing here asserts on a figure. Nothing here writes to production: the
-#   browser walk and Wave H are read-only, and the legacy waves' session
+#   Nothing here asserts on a figure. Nothing here writes to production: Wave H
+#   is read-only, and the browser walk ABORTS every non-GET request the app
+#   attempts except the token refresh and the flag read (ReadOnlyGuard in
+#   apps/web/e2e/nightly/lib.ts), listing what it aborted. The walk opens only
+#   the houses on apps/web/e2e/nightly/sim-houses.json. The legacy waves' session
 #   teardown no longer deletes the `sim-*` houses unless E2E_SIM_TEARDOWN=1
 #   (tests/e2e/conftest_prod.py — measured 2026-09-11: it would have deleted
 #   all four simulator houses on the first run with a service-role key).
@@ -27,7 +30,13 @@
 #   found" on 2026-09-11; the preflight below turns that into cannot_check with
 #   the reason in the name instead of six waves of red.
 #
-# SECRETS (names only; values are never printed)
+# HOW TO READ, RUN AND CHANGE IT: apps/web/e2e/README.md
+#
+# SECRETS (names only). Credential values are never printed: the steps below
+# echo names, and pytest runs --tb=short (no locals). The two TARGET URLs are
+# printed in the job summary and the artifact, unmasked, because they are
+# public — the web bundle carries the gateway URL (re-verified 2026-09-16,
+# audit of PR #349 fix-list item 6).
 #   REQUIRED — without any one of these the run proves NOTHING and the first
 #   step exits 2 with the missing names in its log:
 #     API_GATEWAY_URL            the NestJS gateway (already set — deploy.yml)
@@ -141,7 +150,7 @@ jobs:
     steps:
       # -----------------------------------------------------------------------
       # 0. SECRETS PRECONDITION — first, before any install. exit 2 = the check
-      #    itself could not run (repo-wide guard convention); values never printed.
+      #    itself could not run (repo-wide guard convention); names only, never values.
       # -----------------------------------------------------------------------
       - name: Required secrets are present
         run: |

@@ -46,10 +46,8 @@ WAVE_NAMES = {
     "a": "A — orchestrator API contracts",
     "b": "B — orchestrator agent health",
     "c": "C — RabbitMQ triggers",
-    "d": "D — Toast pipeline",
-    "e": "E — Gmail pipeline",
+    # d, e, g retired 2026-09-12 (ADR 0137); a stray wave_d/e/g.xml still renders by letter
     "f": "F — browser walk (Playwright)",
-    "g": "G — calendar",
     "h": "H — gateway contracts + backtest honesty (read-only)",
 }
 
@@ -343,6 +341,7 @@ def render(
     counts: dict[str, int],
     verdict: str,
     meta: dict[str, Any],
+    design_calls: list[dict[str, Any]] | None = None,
 ) -> str:
     lines = [f"# Production E2E nightly — **{verdict.upper()}**", ""]
     lines.append(
@@ -371,6 +370,19 @@ def render(
         for c in by_source[src]:
             lines.append(
                 f"| `{_cell(c['id'])}` | {BADGE[c['state']]} | {_cell(c['reason'])} |"
+            )
+        lines.append("")
+    if design_calls:
+        # Context from design-verdicts.json, joined by the browser reporter.
+        # Never counted and never gating (founder's call, 2026-09-16).
+        lines.append("## Founder's recorded design calls (context, not checks)")
+        lines.append("")
+        lines.append("| page | walked (override on) | recorded call |")
+        lines.append("|---|---|---|")
+        for d in design_calls:
+            walked = str(d.get("walked", ""))
+            lines.append(
+                f"| `{_cell(str(d.get('page', '')))}` | {BADGE.get(walked, _cell(walked))} | {_cell('; '.join(str(c) for c in d.get('calls') or []))} |"
             )
         lines.append("")
     return "\n".join(lines) + "\n"
@@ -416,7 +428,13 @@ def main(argv: list[str] | None = None) -> int:
         "run_id": os.environ.get("GITHUB_RUN_ID"),
         "sha": os.environ.get("GITHUB_SHA"),
     }
-    md = render(checks, counts, verdict, meta)
+    pw = _load_json(results / "nightly" / "nightly-summary.json")
+    design_calls = (
+        pw.get("design_calls")
+        if isinstance(pw, dict) and isinstance(pw.get("design_calls"), list)
+        else None
+    )
+    md = render(checks, counts, verdict, meta, design_calls)
     results.mkdir(parents=True, exist_ok=True)
     (results / "nightly-summary.json").write_text(
         json.dumps(
