@@ -139,7 +139,7 @@ describe('loaders', () => {
   });
 
   it('a hit re-inserts, so eviction is least-recently-used, not oldest-inserted', async () => {
-    let now = 0;
+    const now = 0;
     const fetchImpl = vi.fn(async (url: string) => {
       const slug = url.split('/').pop();
       return new Response(JSON.stringify({ ...PAYLOAD, slug }), { status: 200 });

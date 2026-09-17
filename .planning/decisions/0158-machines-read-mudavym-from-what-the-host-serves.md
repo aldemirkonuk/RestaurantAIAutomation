@@ -228,11 +228,19 @@ fixed; the rest are named here rather than silently accepted.
   to that session directly. Tracked: `ADR-0158-VENDORPORTAL-CLIENT-INJECTION-REMOVED`
   (`status: open`).
 - **Query-string preservation on the old-host redirect is proven for Vercel's domain-level
-  `www`→apex redirect, not yet for this project-level path-capture rule specifically.** The
-  highest-consequence case is a mailed `?token=` link. Verify with
-  `curl -sI 'https://restaurant-ai-automation-web.vercel.app/reset-password?token=x'` on the
-  PR's preview deployment before merging; `scripts/crawl_surface_census.py --old-host` checks
-  the same thing against a live deployment.
+  `www`→apex redirect, not yet for this project-level path-capture rule specifically, and it
+  cannot be proven pre-merge.** The rule's `has` condition matches the literal hostname
+  `restaurant-ai-automation-web.vercel.app`, which is production's alias, not this PR's preview
+  deployment (previews get their own `*.vercel.app` subdomain) — so there is no way to address
+  a request at this exact rule before the code that defines it is live. The highest-consequence
+  case is a mailed `?token=` link. **First-thing-after-merge check, not a precondition of it:**
+  `curl -sI 'https://restaurant-ai-automation-web.vercel.app/reset-password?token=x'` must show
+  `location: https://mudavym.com/reset-password?token=x`; `scripts/crawl_surface_census.py
+  --old-host` checks the same thing. What the preview deployment *can* prove pre-merge, because
+  these rules are not host-conditioned to the alias: the host-agnostic pieces (`/v/:slug`,
+  the four per-route heads, the real 404) and the rules conditioned on "not mudavym.com" (the
+  preview's own hostname satisfies that "missing" test) — noindex headers and the closed
+  robots.txt. Verified on this PR's own preview deployment before merge; see the PR thread.
 - **robots.txt is cached by a compliant crawler for up to 24 hours** (RFC 9309 §3.7) after the
   file itself changes — a change here is not seen everywhere at once, and that lag should not
   be mistaken for a bug the day after this ships.
