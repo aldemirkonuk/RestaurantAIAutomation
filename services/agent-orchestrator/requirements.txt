@@ -156,7 +156,7 @@ cryptography==50.0.0
 python-dotenv==1.0.0
 python-multipart==0.0.6
 typer==0.9.0  # CLI tools
-rich==13.7.0  # Pretty printing
+rich==15.0.0  # Pretty printing
 
 # =============================================================================
 # SCHEDULING
