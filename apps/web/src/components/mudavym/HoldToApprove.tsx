@@ -20,8 +20,13 @@
  */
 
 import { CSSProperties, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { animate, pour, stamp, tuck, useReducedMotion } from '../../lib/mudavym/motion';
+import { animate, ink, pour, stamp, tuck, useReducedMotion } from '../../lib/mudavym/motion';
 import { Seal } from './Seal';
+/* `.mdv-bound` lives in the overlay stylesheet with the rest of the house
+   content vocabulary; the control is mounted inside a Sheet or a Panel most of
+   the time, but not always (dashboard's OneTapPanel mounts it inline), so it
+   carries its own import rather than assuming an overlay above it. */
+import './sheet.css';
 
 export interface HoldToApproveProps {
   /**
@@ -30,8 +35,10 @@ export interface HoldToApproveProps {
    * Receives the challenge token when `onChallenge` supplied one, so a caller
    * that needs a PROVABLE seal can pass it straight to the write. Callers that
    * do not use `onChallenge` keep the `() => void` shape and get `null`.
+   * Return the write promise for asynchronous work: the success receipt waits
+   * for it to resolve, and a rejection never stamps the seal.
    */
-  onApprove: (challenge?: string | null) => void;
+  onApprove: (challenge?: string | null) => void | Promise<unknown>;
   /**
    * Mint the proof, at the moment the hold BEGINS.
    *
@@ -53,13 +60,73 @@ export interface HoldToApproveProps {
   label?: ReactNode;
   /** Shown next to the seal once approved. */
   approvedLabel?: ReactNode;
+  /**
+   * What the seal bound — sketch 103 · 1d, accepted 2026-09-06.
+   *
+   * "Hold it, and read back exactly what was bound." Rendered under the seal
+   * once the hold completes, headed "What the seal bound". This closes finder
+   * B's D17: every drawn footer in the census covers FAILURE, and nothing said
+   * what happens on success.
+   *
+   * It is the caller's own words — the amount, the payee, the rows summed —
+   * because only the caller knows what the write actually contained. The
+   * primitive supplies the ceremony and the heading, never the figures.
+   */
+  boundSummary?: ReactNode;
+  /**
+   * Called after the seal lands, with the summary it bound.
+   *
+   * Separate from `onApprove` on purpose: `onApprove` is the WRITE, and it runs
+   * before anything is read back. `onSealed` is the receipt — it is what a
+   * ledger line, a trail row or a toast is written from, and it carries the
+   * same `boundSummary` the reader can see, so the two cannot drift.
+   */
+  onSealed?: (bound: { summary: ReactNode; challenge: string | null }) => void;
   /** Hold duration in ms. Default: the `pour` token's 620. */
   holdMs?: number;
+  /**
+   * How long a returned write may stay unsettled before the control stops
+   * waiting and says the outcome could not be confirmed. Omitted, it waits for
+   * as long as the write takes — the behaviour every caller had before
+   * 2026-09-17. A write that settles AFTER the wait is still honoured: a
+   * success seals (it is now confirmed, and a re-send would duplicate it)
+   * unless a newer gesture has already committed its own write, and a failure
+   * leaves the "could not be confirmed" line where it is.
+   *
+   * Whether a hold should time out by default is the founder's call (A-fix
+   * open question); until then this is opt-in.
+   */
+  confirmTimeoutMs?: number;
+  /**
+   * The words the control uses around the act, for a hold that is not an
+   * approval — "Confirming the send…", "The deletion could not be confirmed.
+   * Check the record before trying again." Each key falls back to the approval
+   * wording below.
+   */
+  copy?: Partial<HoldCopy>;
   disabled?: boolean;
   className?: string;
 }
 
-type Phase = 'idle' | 'holding' | 'armed' | 'sealed';
+export interface HoldCopy {
+  /** Face of the control while armed by keyboard or reduced motion. */
+  armed: string;
+  /** Status line while armed. */
+  armedHint: string;
+  /** Face of the control while the write is awaited. */
+  pending: string;
+  /** Status line when the write failed or could not be confirmed in time. */
+  unconfirmed: string;
+}
+
+const APPROVAL_COPY: HoldCopy = {
+  armed: 'Enter again to approve',
+  armedHint: 'Press Enter again to approve — Esc cancels.',
+  pending: 'Confirming approval…',
+  unconfirmed: 'Approval could not be confirmed. Check the record before trying again.',
+};
+
+type Phase = 'idle' | 'holding' | 'armed' | 'pending' | 'sealed';
 
 const ARM_WINDOW_MS = 3000;
 const RELEASE_NOTE_MS = 1800;
@@ -69,16 +136,32 @@ export function HoldToApprove({
   onChallenge,
   label = 'Hold to approve',
   approvedLabel = 'Approved',
+  boundSummary,
+  onSealed,
   holdMs = pour.ms,
+  confirmTimeoutMs,
+  copy: copyProp,
   disabled = false,
   className,
 }: HoldToApproveProps) {
+  const copy: HoldCopy = { ...APPROVAL_COPY, ...copyProp };
+  /* Read inside `commit` through a ref, like `boundSummary`: a caller's inline
+     `copy={{…}}` is a new object every render and must not rebuild `commit`. */
+  const unconfirmedRef = useRef(copy.unconfirmed);
+  unconfirmedRef.current = copy.unconfirmed;
   const reduced = useReducedMotion();
   const [phase, setPhase] = useState<Phase>('idle');
   const [releaseNote, setReleaseNote] = useState<string | null>(null);
+  const [sealedSummary, setSealedSummary] = useState<ReactNode>();
 
   const fillRef = useRef<HTMLDivElement | null>(null);
   const sealRef = useRef<HTMLDivElement | null>(null);
+  const boundRef = useRef<HTMLDivElement | null>(null);
+  /* `boundSummary` is usually a freshly-created element on every render; read
+     it through a ref so `commit` is not rebuilt each time and the seal cannot
+     fire twice for one gesture. */
+  const boundSummaryRef = useRef<ReactNode>(boundSummary);
+  boundSummaryRef.current = boundSummary;
   const rafRef = useRef(0);
   const holdStartRef = useRef(0);
   const progressRef = useRef(0);
@@ -87,6 +170,10 @@ export function HoldToApprove({
   const challengeRef = useRef<Promise<string | null> | null>(null);
   const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Which gesture a settling write belongs to — a late answer to an older
+      gesture must never stamp over a newer one. */
+  const attemptRef = useRef(0);
 
   const setFill = (p: number) => {
     if (fillRef.current) fillRef.current.style.transform = `scaleX(${p})`;
@@ -97,6 +184,8 @@ export function HoldToApprove({
     cancelAnimationFrame(rafRef.current);
     if (armTimerRef.current) clearTimeout(armTimerRef.current);
     if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    confirmTimerRef.current = null;
   };
   useEffect(() => clearTimers, []);
 
@@ -105,35 +194,79 @@ export function HoldToApprove({
     committedRef.current = true;
     clearTimers();
 
-    // No proof was asked for: the original behaviour, unchanged.
+    setFill(1);
+    setPhase('pending');
+    setReleaseNote(null);
+    const attempt = ++attemptRef.current;
+    /* Still this gesture's to answer: no newer gesture has begun. */
+    const current = () => attemptRef.current === attempt;
+    // Capture the description when the action is committed, before a parent
+    // render can replace it while the write is awaiting confirmation.
+    const summary = boundSummaryRef.current;
+    let timedOut = false;
+    const refuse = (message: string) => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+      committedRef.current = false;
+      setFill(0);
+      setPhase('idle');
+      setReleaseNote(message);
+    };
+    const writeFailed = () => {
+      // After a timeout the line already says the outcome is unconfirmed; a
+      // late failure changes nothing the reader has not been told.
+      if (timedOut || !current()) return;
+      refuse(unconfirmedRef.current);
+    };
+    const approve = (challenge: string | null) => {
+      const seal = () => {
+        // A late confirmation after the wait ran out is still the truth, and
+        // stamping it is what stops the reader re-sending a write that landed —
+        // unless a newer gesture has already committed a write of its own.
+        if (!current()) return;
+        clearTimers();
+        committedRef.current = true;
+        setFill(1);
+        setReleaseNote(null);
+        setSealedSummary(summary);
+        setPhase('sealed');
+        onSealed?.({ summary, challenge });
+      };
+      let result: void | Promise<unknown>;
+      try {
+        result = onApprove(challenge);
+      } catch {
+        writeFailed();
+        return;
+      }
+      if (result && typeof result.then === 'function') {
+        if (confirmTimeoutMs !== undefined) {
+          confirmTimerRef.current = setTimeout(() => {
+            confirmTimerRef.current = null;
+            if (!current()) return;
+            refuse(unconfirmedRef.current);
+            timedOut = true;
+          }, confirmTimeoutMs);
+        }
+        // Use the rejection branch rather than catch: an error in a receipt
+        // callback is not evidence that an already confirmed write failed.
+        void result.then(seal, writeFailed);
+      } else {
+        seal();
+      }
+    };
+
     if (!challengeRef.current) {
-      setFill(1);
-      setPhase('sealed');
-      onApprove(null);
+      approve(null);
       return;
     }
-
     const pending = challengeRef.current;
     challengeRef.current = null;
-    void pending
-      .then((token) => {
-        if (!token) throw new Error('no seal');
-        setFill(1);
-        setPhase('sealed');
-        onApprove(token);
-      })
-      .catch(() => {
-        // Not sealed, and said so. The gesture completed and the approval did
-        // not — which is a different sentence from "released early", because
-        // the operator did nothing wrong.
-        committedRef.current = false;
-        setFill(0);
-        setPhase('idle');
-        setReleaseNote('The seal could not be issued — nothing sent.');
-        if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
-        noteTimerRef.current = setTimeout(() => setReleaseNote(null), RELEASE_NOTE_MS);
-      });
-  }, [onApprove]);
+    void pending.then((token) => {
+      if (token) approve(token);
+      else refuse('The seal could not be issued — nothing sent.');
+    }, () => refuse('The seal could not be issued — nothing sent.'));
+  }, [onApprove, onSealed, confirmTimeoutMs]);
 
   /** Begin minting the proof, once per gesture. */
   const beginChallenge = useCallback(() => {
@@ -143,9 +276,18 @@ export function HoldToApprove({
       .catch(() => null);
   }, [onChallenge]);
 
-  // The seal lands on the stamp spring once its node exists.
+  /* The read-back arrives on `ink` — a micro-state under a control that has
+     not moved. Under reduced motion it is simply there, which is the end state
+     and not a shorter version of it. */
   useEffect(() => {
-    if (phase === 'sealed' && sealRef.current) {
+    if (phase !== 'sealed' || reduced || !boundRef.current) return;
+    animate(boundRef.current, [{ opacity: 0 }, { opacity: 1 }], ink);
+  }, [phase, reduced]);
+
+  // The seal lands on the stamp spring once its node exists. Under reduced
+  // motion nothing is scheduled at all — not a stamp collapsed to zero.
+  useEffect(() => {
+    if (phase === 'sealed' && sealRef.current && !reduced) {
       animate(
         sealRef.current,
         [
@@ -155,10 +297,13 @@ export function HoldToApprove({
         stamp,
       );
     }
-  }, [phase]);
+  }, [phase, reduced]);
 
   const arm = () => {
     beginChallenge();
+    // A failure line from the last attempt must not hide the armed hint: the
+    // reader is being told what the next key press does (judge probe J4).
+    setReleaseNote(null);
     setPhase('armed');
     if (armTimerRef.current) clearTimeout(armTimerRef.current);
     armTimerRef.current = setTimeout(() => {
@@ -200,7 +345,7 @@ export function HoldToApprove({
     if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
     noteTimerRef.current = setTimeout(() => setReleaseNote(null), RELEASE_NOTE_MS);
     // Retreat on tuck (the rubber-band home).
-    if (fillRef.current) {
+    if (fillRef.current && !reduced) {
       animate(fillRef.current, [{ transform: `scaleX(${p})` }, { transform: 'scaleX(0)' }], tuck);
     }
     setFill(0);
@@ -228,7 +373,16 @@ export function HoldToApprove({
   };
 
   const sealed = phase === 'sealed';
+  const pending = phase === 'pending';
   const armed = phase === 'armed';
+
+  /* Pending and sealed are NOT `disabled`: a focused button that becomes
+     disabled drops focus to <body> in browsers that apply the focus-fixup rule,
+     which walks the reader out of an overlay's focus trap mid-confirmation.
+     `aria-disabled` says the same thing to assistive technology, and every
+     handler already refuses while `committedRef` holds. The caller's own
+     `disabled` stays a real `disabled`. */
+  const inert = sealed || pending;
 
   const trackStyle: CSSProperties = {
     position: 'relative',
@@ -246,7 +400,7 @@ export function HoldToApprove({
     color: 'var(--ink-1, #211C16)',
     fontWeight: 600,
     fontSize: 14,
-    cursor: disabled || sealed ? 'default' : 'pointer',
+    cursor: disabled || sealed || pending ? 'default' : 'pointer',
     touchAction: 'none',
     userSelect: 'none',
     WebkitUserSelect: 'none',
@@ -258,7 +412,9 @@ export function HoldToApprove({
       <button
         type="button"
         style={trackStyle}
-        disabled={disabled || sealed}
+        disabled={disabled}
+        aria-disabled={inert || undefined}
+        aria-busy={pending}
         aria-label={typeof label === 'string' ? label : 'Hold to approve'}
         onPointerDown={onPointerDown}
         onPointerUp={releaseHold}
@@ -286,10 +442,19 @@ export function HoldToApprove({
           </span>
         ) : (
           <span style={{ position: 'relative' }}>
-            {armed ? 'Enter again to approve' : label}
+            {pending ? copy.pending : armed ? copy.armed : label}
           </span>
         )}
       </button>
+      {/* What the seal bound (1d). Only after the wax lands, and only when the
+          caller gave something to read back — a heading over nothing would be
+          a receipt for a write nobody described. */}
+      {sealed && sealedSummary ? (
+        <div ref={boundRef} className="mdv-bound" role="status" aria-live="polite">
+          <span className="mdv-bound__head">What the seal bound</span>
+          <div className="mdv-bound__body">{sealedSummary}</div>
+        </div>
+      ) : null}
       {/* status line — honest, and reserved so nothing jumps */}
       <div
         aria-live="polite"
@@ -301,7 +466,7 @@ export function HoldToApprove({
           color: 'var(--ink-3, #7C7365)',
         }}
       >
-        {releaseNote ?? (armed ? 'Press Enter again to approve — Esc cancels.' : '')}
+        {releaseNote ?? (armed ? copy.armedHint : '')}
       </div>
     </div>
   );
