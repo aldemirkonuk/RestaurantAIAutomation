@@ -30,7 +30,12 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Was `true`: production served a 6.86 MB source map with sourcesContent,
+    // from which the whole deployed src/ (including security reasoning in
+    // comments) could be rebuilt (2026-09-17 finding). No @sentry/vite-plugin
+    // is installed, so nothing consumes a map to upload it — 'hidden' would
+    // still write and ship the file. `false` stops generating it.
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
