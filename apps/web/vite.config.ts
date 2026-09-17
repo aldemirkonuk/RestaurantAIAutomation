@@ -7,7 +7,7 @@ import { crawlSurface } from './src/lib/seo/vite-plugin'
 // Using @vitejs/plugin-react (Babel) instead of react-swc due to SWC binary issues
 export default defineConfig({
   // crawlSurface writes robots.txt, sitemaps, llms.txt and each public
-  // route's served head from the built shell (ADR_SEO). Build only.
+  // route's served head from the built shell (ADR 0158). Build only.
   plugins: [react(), crawlSurface()],
   resolve: {
     alias: {

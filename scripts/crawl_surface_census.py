@@ -28,7 +28,12 @@ WHAT IT CHECKS (each line of output is one check)
   duplicate   (--duplicate-host) every response carries X-Robots-Tag noindex
 
 Metrics printed for the team's census record: seo.soft_404_rate and
-seo.title_in_source_pct.
+seo.title_in_source_pct. seo.soft_404_rate only samples unknown FIRST path
+segments (an SPA rewrite necessarily matches every sub-path under a known
+first segment, e.g. /login/x or /v/acme/x, to the same shell) — a rate of
+0.0 means "no unknown top-level route serves 200", not "no soft 404 exists
+anywhere on the site". That is harmless for indexing (the shell those
+sub-paths get is noindex,nofollow) but is not the same claim.
 
 EXIT CODES
 ----------

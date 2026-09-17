@@ -4,7 +4,7 @@
 - **Date:** 2026-09-17
 - **Decider:** Aldemir (founder) — the policy answers; the SEO/GEO session — the mechanism, under that delegation
 - **Keywords:** seo, geo, robots.txt, sitemap, llms.txt, served head, canonical, noindex, soft 404, vendor catalogue, JSON-LD, routing middleware, vercel.json, crawl census, AI crawlers
-- **Links:** [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]], [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]], [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] (uncommitted in `wt-finish` when this was written), [[0039]] (pricing and landing visuals held), [[0047-am-interlock-supersedes-rivet-m]] (the mark), `.planning/01-org/commercial/growth/teams/technical-seo-ai-answer-surface/`, [[app-shell-support]], [[vendor-public-page]]
+- **Links:** [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]], [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]], [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] (uncommitted in `wt-finish` when this was written, merged to main as #384 by the time this ADR merged), [[0039]] (pricing and landing visuals held), [[0047-am-interlock-supersedes-rivet-m]] (the mark), `.planning/01-org/commercial/growth/teams/technical-seo-ai-answer-surface/`, [[app-shell-support]], [[vendor-public-page]]
 
 ## Context
 
