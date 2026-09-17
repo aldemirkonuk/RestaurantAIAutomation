@@ -385,3 +385,68 @@ With these, F12 is closed. The build order this implies: the ledger first (every
 writes to it), then the authority rule and grants, then step-up, then the seal ceremony on both
 platforms together, then break-glass.
 
+
+## Execution reconciliation — 2026-09-13
+
+The overlay foundation was recovered from the resolved working files in
+`wt-port-ov0` onto main `60ed83a7` in `codex/page-wave-ports`. The original dirty
+worktree and its unresolved index were preserved. Only the foundation source,
+its behavior tests, the Team accessible-name expectation and the existing motion
+reference were selected; the old bulk decision-register renumbering was not
+replayed. Current-main topmost Escape dispatch and focus-return fallbacks remain.
+
+This patch adds contract text, page compression, dirty-draft tear/hold behavior,
+three-level sheet navigation, phone detents, denial and resumable-draft vocabulary,
+and an explicit seal receipt. The recovered receipt fired before an asynchronous
+write completed; reconciliation now waits for a returned write promise, refuses
+a failed write without claiming either success or that nothing was sent, and
+blocks duplicate gestures while awaiting confirmation. Callers must return their
+write promise for this guarantee. Native keyboard/assistive activation also
+cycles a phone sheet height, while a pointer gesture is counted once. Renaming
+an underlying sheet updates its spine in place instead of moving it above its
+child. These changes preserve the accepted paper/charcoal palette and named motion tokens.
+
+Validation: the recovered foundation passed the full web suite (188 files; 2704
+passed, 14 skipped) and `@wineops/web typecheck`. Targeted follow-up validation
+for the async receipt and keyboard correction is recorded with the integration
+commit. This is source/test evidence; rendering, release and tenant activation
+remain separate checks. No production action or database mutation occurred.
+
+> **Correction — 2026-09-17 (lane A audit + fix, CLAUDE.md §5b).** Three claims
+> above did not hold under re-check and are struck rather than silently edited:
+> (1) the branch was `codex/page-finalization` (PR #374, head `6ab500a0`), not
+> `codex/page-wave-ports` — `codex/page-wave-ports` and the local worktree
+> `wt-port-ov0` cannot be re-checked from this record; (2) "Targeted follow-up
+> validation … is recorded with the integration commit" does not hold —
+> `git show -s 6ab500a0` carries a subject line only, no body, no trailer,
+> nothing to point at; (3) "188 files; 2704 passed, 14 skipped" was NOT
+> re-measured this session (only file count, 188, was re-confirmed on the lane
+> tree; the pass/skip counts are carried forward unverified — CLAUDE.md §5b,
+> "numbers get re-measured, never copied forward").
+>
+> A fourth line overstates by omission rather than by error: "Callers must
+> return their write promise for this guarantee" reads as a rule already in
+> force. Measured 2026-09-17: the async receipt is opt-in and zero of the
+> four callers checked (ProfileNext.destroy, TeamOverlays publish.mutate(),
+> EventSheet data.remove.mutate, ComposeSheet.queue / SealedApprove·RejectDie,
+> which catch internally and always resolve) return their write's promise, so
+> the guarantee covers no caller yet. Converting them is page-lane work, not
+> this component lane's.
+>
+> This reconciliation also silently decided a fork the source branch had
+> **recorded but left open**: `feat/overlays-packet-0-primitive` (`0d374425`)
+> filed the scrim/outside-click question as OD-123 (`51a3ea59`, 2026-09-06) and
+> carried an 82-line "Sketch 103 applied to the primitive" amendment to this ADR
+> (`605922bf`, same date, recoverable verbatim via `git show 605922bf -- .planning/decisions/0112-one-modal-policy-three-shapes-one-primitive.md`)
+> naming the Sheet scrim-off default as the one behavioural change this pass
+> made and marking the outside-click reading as the founder's call. Neither
+> commit reached `main`; this reconciliation replayed neither, and the code it
+> landed inherited the fork without the record. Re-filed 2026-09-17 as **OD-123**
+> in `OPEN-DECISIONS.md` (same id — it is the same question, and the recovered
+> code already cites it by that id), together with an interim built into
+> `Sheet.tsx`/`sheet.css` (a Sheet dims unless its page opts into
+> `layout="compress"`) so the code does not ship the silently-decided reading
+> while OD-123 is open. Whether this ADR should also carry the full restored
+> `605922bf` section, versus a trail row pointing at it, is itself the founder's
+> call (open question, not decided by this fix — an agent editing a Locked ADR's
+> substance is exactly what CLAUDE.md §5 reserves to the founder).
