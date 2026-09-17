@@ -16,7 +16,7 @@ export function studioInviteEmailTemplate(data: StudioInviteEmailData): string {
 
   const content = `
     <h2 style="margin: 0 0 8px; color: #111827; font-size: 22px; font-weight: 700;">
-      You've been invited to WineOps Studio 🍷
+      You've been invited to Mudavym Studio 🍷
     </h2>
     <p style="margin: 0 0 24px; color: #6b7280; font-size: 15px; line-height: 1.6;">
       Studio is where our wine data is built and reviewed. You're being given the
@@ -29,7 +29,7 @@ export function studioInviteEmailTemplate(data: StudioInviteEmailData): string {
           <p style="margin: 0 0 6px; color: #111827; font-size: 14px; font-weight: 700;">Before you click</p>
           <p style="margin: 0; color: #6b7280; font-size: 13px; line-height: 1.5;">
             This invite is tied to <strong>${invitedEmail}</strong>. Sign in with that account
-            or it won't be accepted. If you don't have a WineOps account yet, create one with
+            or it won't be accepted. If you don't have a Mudavym account yet, create one with
             that address first, then come back to this email.
           </p>
         </td>
@@ -42,8 +42,8 @@ export function studioInviteEmailTemplate(data: StudioInviteEmailData): string {
   `;
 
   return baseTemplate({
-    title: "Your WineOps Studio invite",
-    preheader: `You've been invited to WineOps Studio as ${roleLabel}.`,
+    title: "Your Mudavym Studio invite",
+    preheader: `You've been invited to Mudavym Studio as ${roleLabel}.`,
     content,
     ctaButton: {
       text: "Accept invite",

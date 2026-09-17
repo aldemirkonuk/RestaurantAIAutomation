@@ -155,7 +155,7 @@ function base(): Fixture {
     }),
     payments: reg({ provider: { connected: false, mode: null, reason: null }, methods: [] }),
     sender: reg({
-      address: 'notifications@wineops.ai',
+      address: 'notifications@mudavym.com',
       scope: 'deployment',
       configuredBy: 'GMAIL_SENDER_EMAIL',
       resolvedFromProfile: false,
@@ -895,7 +895,7 @@ describe('a manager may see, not approve', () => {
         scopes: [
           {
             scope: 'https://www.googleapis.com/auth/drive.file',
-            label: 'Create and manage files WineOps puts in your Drive',
+            label: 'Create and manage files Mudavym puts in your Drive',
           },
         ],
         notRequested: ['Your Gmail messages'],
@@ -926,7 +926,7 @@ describe('a manager may see, not approve', () => {
       '';
 
     const driveScope = scopeOf('Google Drive');
-    expect(driveScope).toContain('Create and manage files WineOps puts in your Drive');
+    expect(driveScope).toContain('Create and manage files Mudavym puts in your Drive');
     expect(driveScope).toContain('Your Gmail messages');
 
     const gmailScope = scopeOf('Gmail — sending only');

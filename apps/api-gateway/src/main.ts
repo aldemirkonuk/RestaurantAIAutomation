@@ -62,7 +62,7 @@ async function bootstrap() {
 
   // Swagger documentation
   const config = new DocumentBuilder()
-    .setTitle("WineOps AI API")
+    .setTitle("Mudavym API")
     .setDescription(
       `
 ## Overview
@@ -108,10 +108,10 @@ Events:
     `,
     )
     .setVersion("1.0.0")
-    .setContact("WineOps Team", "https://wineops.ai", "support@wineops.ai")
-    .setLicense("Proprietary", "https://wineops.ai/license")
+    .setContact("Mudavym Team", "https://mudavym.com", "support@mudavym.com")
+    .setLicense("Proprietary", "https://mudavym.com/license")
     .addServer("http://localhost:4000", "Development")
-    .addServer("https://api.wineops.ai", "Production")
+    .addServer("https://api.mudavym.com", "Production")
     .addBearerAuth(
       {
         type: "http",
@@ -143,7 +143,7 @@ Events:
   });
 
   SwaggerModule.setup("api/docs", app, document, {
-    customSiteTitle: "WineOps AI API Documentation",
+    customSiteTitle: "Mudavym API Documentation",
     customfavIcon: "/favicon.ico",
     customCss: `
       .swagger-ui .topbar { display: none }
