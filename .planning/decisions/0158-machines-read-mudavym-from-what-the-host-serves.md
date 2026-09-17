@@ -236,14 +236,35 @@ fixed; the rest are named here rather than silently accepted.
 
   Both were caught, and both fixes verified, entirely locally and pre-merge with **`vercel
   build`**, which reproduces Vercel's own build (including its middleware type-check) without
-  a deploy: it reproduced bug 2's exact error message, confirmed clean after the fix, and
-  showed `middleware.func` present in `.vercel/output` for the first time. The compiled
-  `middleware.js` was then executed directly in Node with a synthetic `Request` to confirm it
-  runs without throwing. This is the one class of gap `tsc`/`vitest`/`vite build` structurally
-  cannot see — nothing else in this repo runs Node.js middleware the way Vercel does, which is
-  why "verified locally" was never treated as equivalent to "verified on the platform" for
-  this build (§9/S10), and why `vercel build` is now the check that closes that gap for any
-  future `middleware.ts` change (see [[vercel-node-middleware-needs-js-extensions]]).
+  a deploy: it reproduced each bug's exact error message, confirmed clean after each fix, and
+  showed `middleware.func` present in `.vercel/output` — absent before either fix — with `.js`
+  paths in its compiled tree matching the fixed source. The compiled `middleware.js` was then
+  executed directly in Node with a synthetic `Request` to confirm it runs without throwing.
+  This is the one class of gap `tsc`/`vitest`/`vite build` structurally cannot see — nothing
+  else in this repo runs Node.js middleware the way Vercel does, which is why "verified
+  locally" was never treated as equivalent to "verified on the platform" for this build
+  (§9/S10), and why `vercel build` is now the check that closes that gap for any future
+  `middleware.ts` change (see [[vercel-node-middleware-needs-js-extensions]]).
+
+  **What curling the live preview after both fixes actually showed, precisely stated:**
+  `/`, `/login` and a real 404 all serve correctly. `/v/:slug` for a fresh slug returned 200
+  with the closed app shell rather than the middleware's own 404/200 response — at first read
+  this looked like a third bug, until a raw `curl` (no CLI bypass) to *any* path on that same
+  preview host, including `/`, showed the identical SSO redirect: this project's Deployment
+  Protection walls every request to a preview hostname, and a middleware's own same-origin
+  `fetch()` for its template is indistinguishable, at the edge, from an external request. This
+  is exactly the case `vendor-edge.ts`'s design already names and defends against ("a protected
+  preview answers the self-fetch with a sign-in redirect" → `loadTemplate`'s marker check
+  rejects the SSO HTML → `continueRequest()`) — confirmed by `vercel env ls` showing no
+  `VERCEL_AUTOMATION_BYPASS_SECRET` configured for this project, so there is no credential this
+  code could have used to see through the wall even if it tried. **What this build's own
+  fallback path proves on a live, protected deployment: correct, safe behaviour under exactly
+  the platform condition it was written for.** It does not, and structurally cannot, exercise
+  `/v/:slug`'s 200/404/503 branches against a real gateway on THIS preview; those are proven by
+  `vendor-edge.test.ts`'s mocked-dependency cases plus the Node execution above. mudavym.com
+  itself carries no Deployment Protection (measured, §2.1), so production is where those
+  branches get their first live exercise — the "After merging" census step is not a formality
+  here, it is the only place those branches can be observed running for real.
 - **A FIFO-not-LRU cache bug, found and fixed.** `headLoader`'s per-instance cache (S6a) only
   re-inserted an entry on a miss, so eviction removed the oldest-inserted catalogue rather than
   the least-recently-viewed one — a crawl walking many slugs could evict a hot catalogue while
