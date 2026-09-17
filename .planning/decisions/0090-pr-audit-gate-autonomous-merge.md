@@ -25,6 +25,92 @@
 
 ## Context
 
+### Amendment — 2026-09-17, founder pipeline redesign
+
+**Founder decision, verbatim, in the main session:** *"change ADR 90 to be a
+better pipeline, 1 opus starts -> stops -> 2 sonnet handles opus's plan-> opus
+takes final say."*
+
+This replaces the pipeline below (3 Opus auditor angles fanned out in
+parallel, plus a mandatory Opus adversarial pass on any approve-leaning
+verdict) with:
+
+1. **One Opus planner** (`pr-merge-planner`) reads the SHA-pinned PR bundle
+   (diff, CI state, gate-owned-path check) and writes an audit plan — risk
+   surface plus two reviewer angles, correctness/regression/decision-compliance
+   and security/adversarial counterexamples, each with files, commands and
+   BLOCK criteria — then stops. It does not approve anything on this call
+   (`PLAN: READY` / `PLAN: BLOCK`).
+2. **Two Sonnet reviewers run that plan in parallel, independently** —
+   `pr-merge-auditor` (correctness/regression/decision-compliance) and
+   `pr-merge-adversary` (security/adversarial counterexamples). Neither sees
+   the other's report; neither waits for the other. The plan is guidance, not
+   a cap on either reviewer's research or a license to suppress contradictory
+   evidence.
+3. **The SAME Opus planner is resumed** with both complete reports and gives
+   final say. Only a complete final `VERDICT: HOLDS` permits PASS. Any
+   reviewer BLOCK, an incomplete report from either reviewer, or an
+   unparseable verdict anywhere in the chain blocks — the resumed planner
+   cannot override a reviewer BLOCK.
+
+**Why.** [[agent-dispatch-hardness-threshold]] (ADR 0050) scores model choice
+on judgment-and-consequence, not mechanical effort, with an override to Opus
+for production/ADR/outward-send work. Planning the audit and rendering final
+judgment on a merge that ships to production unattended is exactly that class
+of consequential, hard-to-reverse judgment — it stays Opus, on both ends of
+the chain. Independently executing an already-scoped research plan against a
+diff and CI evidence — trace this call path, check this file, run this
+command, report BLOCK or APPROVE against stated criteria — is bounded
+investigation with a checkable output, ADR 0050's Sonnet tier. Net: three
+roles, up to four model calls (two Opus, two Sonnet) in place of the prior
+four Opus calls (three angles + adversary) for the same PR — a stated cost
+tradeoff, not a claim of equivalent defect detection. See "What's tracked"
+below for what validates or overturns that tradeoff.
+
+**What stays, unchanged from the Decision below.** CI must already be green
+before any model call runs (`SKILL.md` step 2 — this audit is a semantic
+layer on top of green CI, never a replacement for it). A diff touching the
+gate's own owned paths (`_GATE_OWNED_PATHS`, mirrored in
+`.claude/skills/pr-audit-gate/SKILL.md` step 4, now also naming
+`.planning/decisions/0050-*.md`) still force-escalates to BLOCK and the
+founder regardless of what any reviewer or the planner concludes — the gate
+still cannot self-clear a PR that modifies itself. The marker contract is
+unchanged: a PR comment carrying the exact
+`<!-- pr-audit-gate: pr=<n> sha=<sha> verdict=PASS|BLOCK -->` line for the
+PR's *current* head SHA is what `require_pr_audit.py` checks, never a
+committed file. Merge is still
+`gh pr merge <n> --squash --match-head-commit <audited-full-sha>` — never
+`--auto` (races an unaudited later push past this exact-SHA audit) and never
+`--admin`.
+
+**What this amendment does NOT touch.** Scope is the three
+`.claude/agents/pr-merge-*.md` definitions and
+`.claude/skills/pr-audit-gate/SKILL.md` only, per the founder's session-scoped
+authorization — not `CLAUDE.md`, not `.github/workflows/`, not
+`scripts/pr_audit_gate.py`. The CI-side half of this gate
+(`.github/workflows/pr-audit-gate.yml` / `scripts/pr_audit_gate.py`) is left
+exactly as it was and still describes and runs the OLD three-Opus-angle-plus-
+adversary composition (see that script's own module docstring) — this is a
+real, documented divergence between the two paths, not a claim they match.
+In practice this is not live drift today: `PR Audit Gate` has never been one
+of `main`'s required status contexts (unchanged — see "What this does NOT
+yet do" below), and the account behind its `ANTHROPIC_API_KEY` has had no
+credit since 2026-09-12, so a CI run of that path currently fails closed or
+reports COULD NOT RUN rather than actually auditing anything either
+composition. Bringing the CI script onto this pipeline, restoring its
+credit, or making it a required check are all separate, un-started pieces of
+work — named here so this amendment is not read as having quietly done any
+of the three.
+
+**What's tracked to validate the tradeoff.** Same discipline the Decision's
+own Review trail already runs on: a Sonnet reviewer's BLOCK that the resumed
+Opus planner overturns without new evidence, or a production incident that
+passed this pipeline, are both grounds to revisit the tier split
+specifically — not evidence to reopen the whole gate. See ADR 0050's own
+2026-09-17 amendment bracket for the corresponding model-routing change.
+
+Historical context, and the pipeline this amendment supersedes, follow.
+
 The founder asked for a standing gate: before any PR merges to `main`, an
 Opus-based audit (originally asked as "Sonnet max"; corrected same day — see
 Decision) reviews the CI reports and diff, and on approval the PR merges and ships to
@@ -803,3 +889,4 @@ un-anchored and 0 when restored.
 | 2026-09-12 | pr-merge-adversary (Opus subagent), auditing commit `0284c387` only | **OVERTURNED** -- an `upstream-wait` tag that could never fire because `wait_upstream` never reaches `_fail_closed` (so the ADR paragraph describing it was false); a bare `\"429\"` match that would name any gh failure on PR #429 a rate limit; and an exit-code invariant that compared tag names and passed on `return 0`. All three reproduced by the adversary with commands, all three fixed the same day, every new invariant re-proven by mutation, `--self-test` 39 -> 47. Nothing it found changed a merge decision: 313 inputs to `_fail_closed` all returned 1 |
 | 2026-09-12 | Live symptom across every open PR, not an audit round | `PR Audit Gate` red on every PR from a `NEUTRAL` `CodeQL` — a check that has never been required and cannot block a merge, reached only because branch protection is unreadable and the fallback waits for everything. Fixed by narrowing the FALLBACK wait list, never the state allow-list; `_fallback_names()` extracted so the self-test exercises the real selection; `--self-test` grown 35 → 39 and proven to fail on the pre-fix tuple. Touches `scripts/pr_audit_gate.py` and this ADR, so it escalates to the founder — same shape as PRs #297 and #299. |
 | 2026-09-12 | pr-merge-adversary (Opus subagent), second pass on `e59bf901` | **HOLDS** -- nothing changes a merge decision. Notes acted on the same day: "and never raises" was false (struck, bracketed); a timed-out `gh pr comment` classified by the report text in its argv (the reason now names the command, never its arguments); "Nothing was audited" was false when a merge or dispatch call timed out after a PASS (reworded); stderr noise from the stubbed invariant (silenced); `empty-diff` and the no-bare-word rule unpinned (pinned). `--self-test` 47 -> 50 |
+| 2026-09-17 | Aldemir (chat, main session, direct authorization) | Pipeline redesign, verbatim: *"change ADR 90 to be a better pipeline, 1 opus starts -> stops -> 2 sonnet handles opus's plan-> opus takes final say."* Replaces the 3-Opus-angle-plus-adversary fan-out with one Opus planner (stops after planning) -> two independent parallel Sonnet reviewers (correctness/regression/decision-compliance; security/adversarial) -> the same Opus planner resumed for final HOLDS/OVERTURNED judgment. `.claude/agents/pr-merge-auditor.md` and `pr-merge-adversary.md` re-scoped to `model: sonnet`; new `.claude/agents/pr-merge-planner.md` added (`model: opus`); `.claude/skills/pr-audit-gate/SKILL.md` steps 4-7 and 10 updated to match, `.planning/decisions/0050-*.md` added to the owned-paths list. Scope held to those files only — `CLAUDE.md`, `.github/workflows/`, and `scripts/pr_audit_gate.py` were explicitly left unchanged; the CI-side path still runs the old composition and has had no `ANTHROPIC_API_KEY` credit since 2026-09-12, unchanged by this amendment. See the "Amendment — 2026-09-17" subsection under Context above and ADR 0050's matching dated bracket |
