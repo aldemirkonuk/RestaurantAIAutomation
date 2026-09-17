@@ -1,6 +1,6 @@
 # 0144 — The book opens on evidence, and three pages are given a job
 
-- **Status:** Locked on four founder calls, 2026-09-12, in session.
+- **Status:** Locked on four founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 11, 13 and 16: the arrival's threshold, `/onboarding` redirect and tutorial action boxes; a correction to section 3's count of locked records; and the `/authorize` residue. Answered, not built. Each is a bracket at the sentence it touches.]**
 - **Date:** 2026-09-12
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** mudavym, onboarding, folio zero, first evidence, help, vendor-prices, price register, promotions, offers, landed cost, design wave
@@ -77,6 +77,12 @@ behind a price. Six locked ADRs already constrain what this page may *say*
 ([[0117-a-price-sighting-names-its-source-its-date-and-its-unit]],
 [[0124-a-bottle-has-one-identity-and-every-price-names-it]] and the four beside
 them); none of them said what it *is*.
+[CORRECTED 2026-09-16: "six locked ADRs" was not true when written — both records named were
+Proposed on 2026-09-12, and the other four were never named. Measured on 2026-09-16 over the
+ADRs `06-pages/vendor-prices.md` cites, reading each file's Status line: **Locked** — 0124 and
+0126 (both locked that day by the founder, ADR 0149 row 13) and the cross-cutting 0016 and
+0020; **Proposed** — 0117 and 0128 (kept Proposed by the same row), 0125 and 0078. Row 13 adds
+the rule that applies here: the page builds only on built behaviour.]
 
 This also fixes the page's oddest property as a consequence rather than as a
 separate repair: it is **unreachable by navigation** — no page links to it. A
@@ -115,6 +121,10 @@ the page would stay the least finished surface in the product indefinitely.
   folio 0 as the last invoice, spoken input landing as rows with a provenance,
   one held seal on the batch. Nothing about `/get-started` or `/onboarding` is
   waiting on a founder call any more.
+  [ADDED 2026-09-16, ADR 0149 row 11: the house-wide low-stock threshold is one line on
+  folio 2; `/onboarding` redirects permanently to `/get-started`; and, in the founder's
+  words, *"+ improve the UI for tutorial action boxes"* — drawn as sketch 115 for his
+  review before it is built. Also carried into ADR 0143.]
 - `/vendor-prices` gains a link from the cellar and from a document, which is a
   change to two pages outside itself.
 - `/promotions` becomes a consumer of the price register, so the two pages are
@@ -133,6 +143,7 @@ the page would stay the least finished surface in the product indefinitely.
 - `/authorize/:integrationId` — answered the same day (the seal ceremony with the
   server's verbatim words held intact), likewise.
   [ANSWERED FURTHER 2026-09-12 by the founder: the seal on `/authorize` is a **server challenge, redeemed at authorize** -- minted when the hold starts and spent once by the authorize call, bound to the integration id, a digest of the exact words the person was shown, and the retention figure. The provider URL is bound to the browser that sealed it, so a leaked link cannot complete the grant elsewhere. That is a third seal kind and a migration, and it extends the founder's 2026-09-04 decision -- challenge-and-redeem for sealing an order and changing how the house pays, ordinary sealed settings left as a logged assertion -- by one place: a grant that opens the house's documents to an outside provider. Rejected: a deliberate hold, logged only (anything holding a session could post authorize without one); the passkey-backed house seal of ADR 0112 (its ledger, authority rule and step-up are not built).]
+  [ANSWERED FURTHER 2026-09-16 by the founder, ADR 0149 row 16 — the residue: **the disclosure and every factual claim the page makes are served by the gateway and sealed**, never written into the page; **the connection keeps the seal id and the words digest as its receipt**; and **each return page reads the outcome** rather than assuming it. Answered, not built.]
 - `/ask` — [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]]
   defers the assistant's design to its own record *after a research fan-out*. The
   fan-out has not run. Nothing about `/ask` is decided here and nothing should be
@@ -146,5 +157,6 @@ the page would stay the least finished surface in the product indefinitely.
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-16 | Aldemir, via ADR 0149 | Rows 11, 13, 16: threshold on folio 2, `/onboarding` redirect, tutorial action boxes for review; "six locked ADRs" corrected to the measured statuses; `/authorize` serves and seals its disclosure and claims, keeps the seal id and words digest, and each return page reads the outcome. Brackets only, nothing rewritten |
 | 2026-09-12 | Aldemir | Four calls: folio 0 is the last invoice and is skippable; `/help` is the FAQ with the house's own state; `/vendor-prices` is the price register with identity as a drawer; `/promotions` is the money page and dismissal is house-wide |
 | 2026-09-12 | — | Created. Answers the one question [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] left open by design |
