@@ -465,7 +465,7 @@ scope (<https://owasp.org/www-project-top-10-for-large-language-model-applicatio
    migration, or is one number for every house correct for now?~~ **ANSWERED 2026-09-16 —
    PER HOUSE.** The founder, in the ADR 0149 session: *"per house, everything will must
    deployed finished"*. Carried as: an **additive** per-house column, defaulting to the value
-   the deployment resolves today (`DEFAULT_DROP_THRESHOLD = 0.1` at `market-signal.ts:92`,
+   the deployment resolves today (`DEFAULT_DROP_THRESHOLD = 0.1` at `market-signal.ts:93`,
    unless `MARKET_SIGNAL_DROP_PCT` is set; the production environment was not read for this
    record), so no house's behaviour changes on the migration; **settable in `/settings`**; and
    **proposable by the arrival assistant** under rules 1-4 like any other threshold. Answered,

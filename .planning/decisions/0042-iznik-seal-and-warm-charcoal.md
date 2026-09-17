@@ -1,6 +1,6 @@
 # 0042 — İznik is the seal; Warm Charcoal is the dark ground
 
-- **Status:** Locked (palette) · canvas re-skinned 2026-08-29 · live on dev.mudavym.com 2026-08-30 (`feat/mudavym-brand`) · **[AMENDED 2026-09-16 by the founder, in the ADR 0149 session — closes OD-112: captions on the paper ground use `--ink-4`; `--ink-3` is decorative only. No value in the table below changes. Answered, sweep not yet done.]**
+- **Status:** Locked (palette) · canvas re-skinned 2026-08-29 · live on dev.mudavym.com 2026-08-30 (`feat/mudavym-brand`) · **[AMENDED 2026-09-16 by the founder, in the ADR 0149 session — answers OD-112 (the caption sweep is build work, so the OD row stays open until it lands): captions on the paper ground use `--ink-4`; `--ink-3` is decorative only. No value in the table below changes. Answered, sweep not yet done.]**
 - **Date:** 2026-08-29
 - **Decider:** Aldemir (founder), 2026-08-29
 - **Keywords:** palette, seal, İznik, 1A5E6B, 5FB0BC, warm charcoal, 15130F, re-skin, CD2D5B, OD-106, sketch 083

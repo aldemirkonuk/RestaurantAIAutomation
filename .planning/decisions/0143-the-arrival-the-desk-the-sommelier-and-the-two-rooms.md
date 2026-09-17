@@ -33,6 +33,8 @@ seven separate treatments. One thing to get right, one thing to review, and a
 stranger meets the same house at every door. The component does not exist yet;
 building it is the first task of that group. [2026-09-16, ADR 0149 row 7: the treatment Codex drew for these doors is ratified — see the founder answers of that date below and ADR 0133's amendment. "Both grounds" is read under 0149 row 6: charcoal, and paper only where a surface declares it.]
 
+[2026-09-17, ADR 0149 row 35: **`/login` and `/register` take the flyleaf look of sketch 104 direction C** (same fields and flow; nothing moves), reopening this record's improve-in-place-only reading for those two pages. A sketch (118) goes to the founder before the build; the flyleaf itself still lives on `/get-started`.]
+
 `login` and `register` are NOT in this set. The founder rejected their redrawn
 versions (*"It looks too modern... This just looks like an AI web page"*) and
 asked for today's pages improved instead, so their treatment is open.
@@ -124,14 +126,14 @@ page note at all. They are internal tooling with no customer. They keep working
 exactly as they do: no Mudavym design, no flag, no dossier, and the design budget
 goes to the eighteen routes a customer actually sees.
 
-[2026-09-16, ADR 0149 row 4: SimPOS (`/simpos/:restaurantId` and its two children) joins these two — an internal tool kept as it is, outside the design and outside the legacy deletion. Studio (`/studio` and its children) is NOT decided: it waits on a check of the Codex conversations for an update in flight.] This is recorded so nobody rediscovers them later as a gap and "fixes" them. A
-
-[2026-09-17, ADR 0149 row 32: the Codex-conversation check found no Studio update (the founder never named Studio to Codex; the Studio pages date from April 2026). **Studio is kept as an internal tool**, beside SimPOS, `/dev-sandbox` and `/dev/truth`, outside the design and outside the legacy deletion.]
-
-[2026-09-17, ADR 0149 row 35: **`/login` and `/register` take the flyleaf look of sketch 104 direction C** (same fields and flow; nothing moves), reopening this record's improve-in-place-only reading for those two pages. A sketch (118) goes to the founder before the build; the flyleaf itself still lives on `/get-started`.]
+This is recorded so nobody rediscovers them later as a gap and "fixes" them. A
 line goes in each page note saying it was decided, not overlooked. Retiring them
 was rejected: `/dev/truth` is the surface that answers what the system actually
 believes, which is a diagnostic that has been used and that nothing replaces.
+
+[2026-09-16, ADR 0149 row 4: SimPOS (`/simpos/:restaurantId` and its two children) joins these two — an internal tool kept as it is, outside the design and outside the legacy deletion. Studio (`/studio` and its children) is NOT decided: it waits on a check of the Codex conversations for an update in flight.]
+
+[2026-09-17, ADR 0149 row 32: the Codex-conversation check found no Studio update (the founder never named Studio to Codex; the Studio pages date from April 2026). **Studio is kept as an internal tool**, beside SimPOS, `/dev-sandbox` and `/dev/truth`, outside the design and outside the legacy deletion.]
 
 ## Alternatives rejected
 

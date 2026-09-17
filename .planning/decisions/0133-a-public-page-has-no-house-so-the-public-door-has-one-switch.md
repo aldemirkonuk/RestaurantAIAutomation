@@ -83,7 +83,7 @@ Wire it (a house-less person lands there; the fabricated house goes) · retire i
    `apps/web/src/lib/mudavym/publicDesign.ts`, whose precedence is the same as the per-house
    hook's: `localStorage["mudavym.design.public"]` (`1|true|on` / `0|false|off`) for a
    designer's browser, then `import.meta.env.VITE_MUDAVYM_PUBLIC` (`1|true|on`), then
-   `false`. Absence is off, and off is byte-identical. [2026-09-16, ADR 0149: this holds only until the cutover merge, which makes the switch permanent-on and deletes the off branch — see "Amendment 2026-09-16" below.]
+   `false`. Absence is off, and off is byte-identical. [2026-09-16, ADR 0149: this holds only until the cutover merge, which makes the switch permanent-on and deletes the off branch — see "Amendment 2026-09-16" below.] [2026-09-17, ADR 0149 row 37: overtaken — the founder chose to turn the switch ON in code now, once the public doors pass their fixes, rather than waiting for the cutover; the off branch is still deleted only at cutover.]
 2. **The assistant: a page plus the Ask AI panel.** The page's route is `/ask`; the panel
    stays where it is and opens the same backend. The page is a NEW route, so like
    `/connections` (ADR 0114) its flag, `mudavym_design_ask`, means "this surface exists
@@ -148,7 +148,7 @@ cutover, it carries a bracket pointing here. **All of this is answered, none of 
 1. **The switch becomes permanent-on at cutover** (0149 §Decision). `VITE_MUDAVYM_PUBLIC`
    stops being a choice: the cutover merge deletes "the public switch's off branch" with the
    rest of the gate machinery, once the founder approves that file group on the deletion
-   manifest. Until that merge, decision 1 above holds exactly as written. Every
+   manifest. Until that merge, decision 1 above holds exactly as written. [2026-09-17, ADR 0149 row 37: except that the switch is turned on in code before the cutover, as soon as the doors pass their fixes; the off branch stays until the cutover deletes it.] Every
    `mudavym_design_*` column that exists stays in the table, unread (0149: no table, column
    or row is deleted). The ten-column migration named under "Mechanics" above is not on
    `main` (`supabase/migrations/` at `60ed83a7` holds five `mudavym_design` files, none of
