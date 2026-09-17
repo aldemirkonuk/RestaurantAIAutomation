@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   ConflictException,
+  ServiceUnavailableException,
   Logger,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -28,6 +29,10 @@ import {
   isKnownIdentityProviderId,
   sortForDisplay,
 } from "./identity-providers";
+import {
+  MicrosoftIdTokenVerifier,
+  resolveMicrosoftOidcConfig,
+} from "./microsoft-id-token";
 
 /**
  * What `POST /auth/sign-in-methods` answers: the ways this identity can
@@ -112,12 +117,54 @@ function formatList(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
+/**
+ * The ONE sentence an OAuth sign-in gets when it does not resolve to an account
+ * it is allowed to use.
+ *
+ * It is deliberately the same for "no account uses that address" and for "that
+ * account does not use this provider". `POST /auth/oauth/{provider}` is
+ * `@Public()`, so anyone on the internet can call it with any address; two
+ * different sentences would turn it into an address oracle that answers
+ * "someone here uses that address" to a stranger holding a token for their own
+ * account. ADR 0024 made the enumeration on `sign-in-methods` deliberate,
+ * narrow and rate-limited; this route was never part of that grant.
+ *
+ * It also names no brand, so it survives the WineOps -> Mudavym rename that the
+ * string it replaces ("No WineOps account uses that address...") was filed
+ * under in `.planning/06-pages/login.md` section 7.
+ */
+function oauthSignInRefused(provider: IdentityProviderId): string {
+  const label = getIdentityProvider(provider)?.label ?? provider;
+  return `We could not sign you in with ${label}. If you already have an account, sign in another way and link ${label} from your profile first.`;
+}
+
+/**
+ * What a FAILED READ of the link table says. Distinct from the refusal above on
+ * purpose: "we could not check" is not "you are not linked", and collapsing the
+ * two is precisely the absence-reported-as-health fault this repo tracks.
+ * supabase-js RESOLVES `{ data, error }` rather than throwing, so without this
+ * branch an unreachable table reads as an empty link list, which reads as "not
+ * linked" — an answer, produced by a question that was never answered.
+ */
+const LINK_CHECK_UNAVAILABLE =
+  "We could not check your sign-in methods just now. Please try again.";
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly SALT_ROUNDS = 10;
   private readonly jwtSecret: string;
   private readonly jwtRefreshSecret: string;
+
+  /**
+   * Verifies Microsoft ID tokens against Microsoft's published JWKS.
+   *
+   * A plain field rather than a constructor parameter: every existing spec
+   * builds `new AuthService(...)` with five arguments, and a sixth injected
+   * dependency would rewrite all of them for no gain. Tests that need a stub
+   * key set replace this field with a verifier over a stub fetcher.
+   */
+  private microsoftIdTokens = new MicrosoftIdTokenVerifier();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -593,9 +640,20 @@ export class AuthService {
       const response = await axios.get(tokenInfoUrl);
       const data = response.data;
 
-      const expectedClientId =
-        this.configService.get<string>("GOOGLE_CLIENT_ID");
-      if (expectedClientId && data.aud !== expectedClientId) {
+      const expectedClientId = (
+        this.configService.get<string>("GOOGLE_CLIENT_ID") ?? ""
+      ).trim();
+      // Fail closed, as the Microsoft path now does. This used to read
+      // `if (expectedClientId && data.aud !== expectedClientId)` — so an unset
+      // GOOGLE_CLIENT_ID silently removed the audience check entirely, and any
+      // Google ID token minted for any application would have been accepted.
+      // An unconfigured provider must refuse, never wave through.
+      if (!expectedClientId) {
+        throw new UnauthorizedException(
+          "Google sign-in is not configured on this server.",
+        );
+      }
+      if (data.aud !== expectedClientId) {
         throw new UnauthorizedException("Invalid Google token audience");
       }
 
@@ -612,6 +670,13 @@ export class AuthService {
         throw new UnauthorizedException("Google token missing email");
       }
 
+      // `sub` is what binds the token to a row in `user_oauth_accounts`. The
+      // address is not the identity, so a token that will not say WHICH Google
+      // account it is cannot be matched against a link.
+      if (typeof data.sub !== "string" || data.sub.length === 0) {
+        throw new UnauthorizedException("Google token missing subject");
+      }
+
       return {
         sub: data.sub,
         email: data.email,
@@ -625,33 +690,34 @@ export class AuthService {
   }
 
   /**
-   * Verify Microsoft OAuth token
+   * Verify a Microsoft ID token.
+   *
+   * This used to send the body string to `https://graph.microsoft.com/v1.0/me`
+   * as a Bearer token and trust whatever address came back. Graph answers for
+   * ANY valid Microsoft access token, including one minted by an unrelated
+   * Azure application: no audience, no issuer, no signature, no verified
+   * address. Combined with resolving the account by email alone, that let a
+   * token for one of our users' addresses sign the holder in as that user.
+   *
+   * The verification now lives in `microsoft-id-token.ts` and does the work
+   * itself — RS256 against the published JWKS, `aud` equal to
+   * MICROSOFT_CLIENT_ID, exact `iss`, expiry, and a verified address. It fails
+   * closed on every unset piece of configuration; see that file's header.
    */
-  private async verifyMicrosoftToken(token: string): Promise<any> {
-    try {
-      const response = await axios.get("https://graph.microsoft.com/v1.0/me", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const data = response.data;
-      const email = data.mail || data.userPrincipalName;
-
-      if (!email) {
-        throw new UnauthorizedException("Microsoft token missing email");
-      }
-
-      return {
-        oid: data.id,
-        email,
-        name: data.displayName || email,
-      };
-    } catch (error) {
-      if (error instanceof UnauthorizedException) throw error;
-      this.logger.error(`Microsoft token verification failed: ${error}`);
-      throw new UnauthorizedException("Failed to verify Microsoft token");
-    }
+  private async verifyMicrosoftToken(token: string): Promise<{
+    oid: string;
+    email: string;
+    name: string;
+  }> {
+    const config = resolveMicrosoftOidcConfig((key) =>
+      this.configService.get<string>(key),
+    );
+    const identity = await this.microsoftIdTokens.verify(token, config);
+    return {
+      oid: identity.oid,
+      email: identity.email,
+      name: identity.name,
+    };
   }
 
   /**
@@ -669,6 +735,52 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  /**
+   * The coordinate columns to write for a sign-up, or nothing.
+   *
+   * The whole of the calendar's weather overlay rests on this pair, and the
+   * measurement that started ADR 0111 was that it is NULL on all 14 production
+   * rows while 13 of them carry an address — the sign-up form resolved the
+   * point from Google Places and dropped it. So the rule is stated once, here,
+   * and it is deliberately conservative:
+   *
+   *  - Both numbers, or neither. A longitude with no latitude is not a location,
+   *    and `restaurants.geog` (a generated column) only materialises when both
+   *    are present anyway.
+   *  - Finite and in range, or neither. `Infinity` and `NaN` survive JSON in
+   *    some clients and would poison a `decimal` insert.
+   *  - **Never a default.** There is no fallback city, no 0,0, no geocode of the
+   *    typed address. NULL is the honest value for "this house has not asserted
+   *    a point", and `/settings` renders it as a sentence.
+   *
+   * `google_place_id` is written only alongside a real pair: on its own it would
+   * assert that the row is tied to a Google place while carrying no location,
+   * and the column has a UNIQUE index that a stray value would occupy.
+   */
+  private coordinateColumns(dto: RegisterRestaurantDto): {
+    latitude?: number;
+    longitude?: number;
+    google_place_id?: string;
+  } {
+    const { latitude, longitude } = dto;
+    const usable =
+      typeof latitude === "number" &&
+      Number.isFinite(latitude) &&
+      Math.abs(latitude) <= 90 &&
+      typeof longitude === "number" &&
+      Number.isFinite(longitude) &&
+      Math.abs(longitude) <= 180;
+
+    if (!usable) return {};
+
+    const placeId =
+      typeof dto.googlePlaceId === "string" && dto.googlePlaceId.trim() !== ""
+        ? { google_place_id: dto.googlePlaceId.trim() }
+        : {};
+
+    return { latitude, longitude, ...placeId };
   }
 
   /**
@@ -704,6 +816,13 @@ export class AuthService {
         .replace(/^-|-$/g, "");
       const slug = `${baseSlug}-${crypto.randomBytes(3).toString("hex")}`;
 
+      // The point the house asserted at sign-up, or nothing at all: a
+      // half-pair and an out-of-range pair are both dropped rather than
+      // half-written. Spelled as three explicit keys (undefined when absent,
+      // which the client omits) so the capture-contract guard can read every
+      // column this insert writes — a conditional spread is unreadable to it.
+      const coords = this.coordinateColumns(dto);
+
       const { data: restaurant, error: restErr } =
         await this.databaseService.supabase
           .from("restaurants")
@@ -720,7 +839,24 @@ export class AuthService {
             phone: dto.phone,
             cuisine_type: dto.cuisineType,
             timezone: dto.timezone || "America/New_York",
+            // The money this house reports in, as CONFIRMED on the form's
+            // currency step — or NULL, which means the question has not been
+            // answered and every reader must say so rather than print a dollar
+            // sign (ADR 0117 Q25, founder 2026-09-05).
+            //
+            // This key did not exist here until 2026-09-05, and its absence was
+            // the whole defect: `restaurants.currency` carried `DEFAULT 'USD'`
+            // (baseline:3576), so the column was the writer and all fourteen
+            // production houses asserted dollars — two of them in Turkiye, one
+            // in London. `20260905120000_a_house_names_its_money.sql` drops that
+            // default; naming the key here is what makes "not asked" reachable.
+            // Spelled explicitly, `?? null` rather than left off, so the
+            // capture-contract guard can read what this insert claims.
+            currency: dto.currency ?? null,
             organization_id: org.id,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            google_place_id: coords.google_place_id,
           })
           .select()
           .single();
@@ -907,7 +1043,7 @@ export class AuthService {
    * @Public() endpoint — no auth required.
    */
   async getInvitePreview(code: string): Promise<object> {
-    const { data: invite } = await this.databaseService.supabase
+    const { data: invite, error } = await this.databaseService.supabase
       .from("organization_invites")
       .select(
         `
@@ -919,6 +1055,17 @@ export class AuthService {
       )
       .eq("code", code.toUpperCase())
       .maybeSingle();
+
+    if (error) {
+      // supabase-js RESOLVES `{ data, error }`; it does not throw. Without this
+      // branch a failed read arrives as `invite: null` and is answered
+      // `not_found`, which the invite page renders as "This invite has
+      // expired". The database's own words stay in the log: this is public.
+      this.logger.error(`Invite preview read failed: ${error.message}`);
+      throw new ServiceUnavailableException(
+        "Could not read this invite right now. Please try again.",
+      );
+    }
 
     if (!invite) return { valid: false, reason: "not_found" };
     if (invite.used_at) return { valid: false, reason: "used" };
@@ -1432,11 +1579,25 @@ export class AuthService {
    * Returns a new token pair with emailVerified: true in the payload.
    */
   async verifyEmail(token: string): Promise<TokenPair> {
-    const { data: verif } = await this.databaseService.supabase
-      .from("email_verifications")
-      .select("id, expires_at, verified_at, user_id")
-      .eq("token", token)
-      .maybeSingle();
+    const { data: verif, error: verifError } =
+      await this.databaseService.supabase
+        .from("email_verifications")
+        .select("id, expires_at, verified_at, user_id")
+        .eq("token", token)
+        .maybeSingle();
+
+    if (verifError) {
+      // A failed read is not an invalid link. Before this branch the database
+      // being down answered 400 "Invalid verification token". VerifyEmailDto
+      // guarantees `token` is UUID-shaped, so a malformed token can no longer
+      // be what raised this error.
+      this.logger.error(
+        `Email verification lookup failed: ${verifError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not check this verification link right now. Please try again.",
+      );
+    }
 
     if (!verif) throw new BadRequestException("Invalid verification token");
     if (verif.verified_at)
@@ -1580,12 +1741,143 @@ export class AuthService {
       this.logger.warn(
         `Rejected ${provider} sign-in for unknown email; no account exists`,
       );
-      throw new UnauthorizedException(
-        "No WineOps account uses that address. Create an account or use your invite code first.",
+      throw new UnauthorizedException(oauthSignInRefused(provider));
+    }
+
+    // An address is not an authorisation. Resolving by email alone is what let
+    // a Microsoft token for an address sign the holder in as the user who owns
+    // it — including a password-only user who had never used Microsoft. The
+    // account must actually USE this provider.
+    const linked = await this.oauthAccountIsLinked(user, params);
+    if (!linked) {
+      this.logger.warn(
+        `Rejected ${provider} sign-in for ${user.user_id}; account is not linked to that provider`,
       );
+      // Same sentence as the unknown-address branch above, on purpose: this
+      // route is public, and two sentences would tell a stranger which
+      // addresses have accounts.
+      throw new UnauthorizedException(oauthSignInRefused(provider));
     }
 
     return user;
+  }
+
+  /**
+   * Does this account actually use this provider?
+   *
+   * Follows `resolveLinkedProviderIds` rather than forming a second opinion:
+   * `user_oauth_accounts` is the source of truth, and `users.oauth_provider` is
+   * a legacy hint consulted ONLY when there are no rows at all.
+   *
+   * TWO CENSUSES, TWO DATES. They are different measurements and must not be
+   * read as one:
+   *
+   *   - **2026-08-26 (ADR 0024):** `oauth_provider` was NULL for 9 of 10
+   *     production users, including the one user who genuinely had a linked
+   *     Google account. That is why the column is a hint and not the answer —
+   *     treating it as the answer produced the fabricated "this account uses
+   *     Google sign-in" message.
+   *   - **2026-09-12 (this change):** 8 users; all 8 carry a password hash; 1
+   *     row in `user_oauth_accounts` (google); 0 Microsoft links; 1 user with
+   *     the legacy column set — and that user is the SAME user who has the link
+   *     row. So requiring a link locks nobody out, and there is no production
+   *     account today that reaches the legacy branch below.
+   *
+   * Three differences from `resolveLinkedProviderIds`, all deliberate:
+   *
+   *   1. It reads `provider_user_id` as well, and the token's own subject id
+   *      must match it — ALWAYS, with no branch that settles for the provider
+   *      name. The address is not the identity: two different Microsoft
+   *      accounts can present the same address over time, and only the
+   *      provider's subject id distinguishes them. Both providers supply one —
+   *      Google's `sub` and Microsoft's `oid`.
+   *
+   *      An earlier version of this method matched a row with a BLANK
+   *      `provider_user_id` on the provider alone, justified as "a row this
+   *      codebase could have written". That justification was an assumption,
+   *      and checking it killed it: `provider_user_id` is `text NOT NULL`
+   *      (`20260805000000_baseline_from_production.sql:5768`, unaltered by any
+   *      later migration), and the ONE insert in this repo
+   *      (`linkOAuthProvider`'s upsert) writes a subject that came out of a
+   *      verified token — both verifiers now refuse a token with no subject.
+   *      So no writer here can produce a blank, the carve-out protected nobody,
+   *      and it was the one branch that could authorise on an address alone.
+   *      Removed, which is what makes the rule above a rule rather than a
+   *      tendency.
+   *   2. **The legacy branch compares a subject too**, against `users.oauth_id`
+   *      — the column `linkOAuthProvider` writes beside `oauth_provider` and
+   *      which nothing had ever read back. Without this, `oauth_provider =
+   *      'google'` with no row is an UNBOUND claim: it names a provider but no
+   *      account, so any Google identity presenting that verified address
+   *      signs in. That state was reachable — `unlinkOAuthProvider` produced it
+   *      until this change (see the note there) — so a legacy hint with no
+   *      `oauth_id`, or with one that does not match, refuses.
+   *   3. A FAILED READ REFUSES. `resolveLinkedProviderIds` answers a display
+   *      question, where an empty list is a survivable wrong answer; this
+   *      answers an authorisation question, where "I could not read the table"
+   *      must never resolve to either "linked" or "not linked".
+   */
+  private async oauthAccountIsLinked(
+    user: {
+      user_id: string;
+      oauth_provider?: string | null;
+      oauth_id?: string | null;
+    },
+    params: { provider: "google" | "microsoft"; providerId: string },
+  ): Promise<boolean> {
+    const { provider, providerId } = params;
+
+    const { data: rows, error } = await this.databaseService.supabase
+      .from("user_oauth_accounts")
+      .select("provider, provider_user_id")
+      .eq("user_id", user.user_id);
+
+    if (error) {
+      // supabase-js RESOLVES `{ data, error }`; it does not throw. Without this
+      // branch an unreachable table would arrive as `rows: null`, read as "no
+      // links", and be reported as "not linked" — an answer manufactured out
+      // of a question that was never answered.
+      this.logger.error(
+        `Link check failed for ${provider} sign-in: ${error.message}`,
+      );
+      throw new UnauthorizedException(LINK_CHECK_UNAVAILABLE);
+    }
+
+    const linkRows = (rows ?? []) as {
+      provider: string | null;
+      provider_user_id: string | null;
+    }[];
+
+    if (linkRows.length > 0) {
+      const forProvider = linkRows.filter((row) => row.provider === provider);
+      if (forProvider.length === 0) return false;
+
+      // No `withSubject.length === 0 -> return true` escape. A row that will
+      // not say WHICH account it is does not authorise a sign-in; see the note
+      // above on why that branch protected nobody.
+      return (
+        typeof providerId === "string" &&
+        providerId.length > 0 &&
+        forProvider.some(
+          (row) =>
+            typeof row.provider_user_id === "string" &&
+            row.provider_user_id.length > 0 &&
+            row.provider_user_id === providerId,
+        )
+      );
+    }
+
+    // Legacy branch: no rows at all. The column names a provider; `oauth_id`
+    // names the account. Both must be present and the subject must match, or
+    // this is an unbound claim and refuses.
+    if (user.oauth_provider !== provider) return false;
+    const legacySubject =
+      typeof user.oauth_id === "string" ? user.oauth_id.trim() : "";
+    return (
+      legacySubject.length > 0 &&
+      typeof providerId === "string" &&
+      legacySubject === providerId
+    );
   }
 
   /**
@@ -2096,7 +2388,7 @@ export class AuthService {
     const linked = await this.getLinkedProviders(userId);
     const { data: user } = await this.databaseService.supabase
       .from("users")
-      .select("password_hash")
+      .select("password_hash, oauth_provider")
       .eq("user_id", userId)
       .single();
 
@@ -2116,26 +2408,98 @@ export class AuthService {
       .eq("user_id", userId)
       .eq("provider", provider);
 
-    const { data: legacy } = await this.databaseService.supabase
-      .from("users")
-      .select("oauth_provider")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (legacy?.oauth_provider === provider) {
-      const remaining = await this.getLinkedProviders(userId);
-      const next = remaining.google
-        ? "google"
-        : remaining.microsoft
-          ? "microsoft"
-          : null;
+    // Recompute the legacy columns FROM THE ROWS, unconditionally.
+    //
+    // This used to ask `getLinkedProviders` what to put in `oauth_provider` —
+    // and `resolveLinkedProviderIds`, underneath it, falls back to reading
+    // `oauth_provider` when there are no rows. Having just deleted the last
+    // row, it read the very column it was about to overwrite and answered with
+    // its current value, so unlinking Google left `oauth_provider = 'google'`
+    // with ZERO rows and `oauth_id = null`: a claim naming a provider but no
+    // account. Under ADR 0139's legacy branch that is an UNBOUND claim, and
+    // before that branch learned to compare `oauth_id` it would have admitted
+    // any Google identity presenting the same verified address. Proven with a
+    // probe; the regression test is "unlink leaves no unbound legacy claim" in
+    // oauth-provider-binding.spec.ts.
+    //
+    // The rows are the source of truth, so the rows are what this reads.
+    //
+    // THE ONE THING IT MUST NOT DO is touch a binding that belongs to another
+    // provider. The first version of this fix recomputed unconditionally, and
+    // that was a regression the merge gate's re-audit caught: a user with ZERO
+    // rows and a legacy pair of (google, sub) who unlinks MICROSOFT — a
+    // provider they never had — computed survivors `[]` and nulled BOTH
+    // columns, destroying the Google binding. Worse, the pre-flight guard above
+    // computes `linked` BEFORE the delete and could not see it, so a
+    // password-less account in that state would have been locked out through
+    // the very guard that exists to prevent that.
+    //
+    // So the rule has two cases, and the second is "not mine to touch":
+    //
+    //   rows survive   -> mirror one of them. `oauth_id` is carried over from
+    //                     that row rather than nulled, which is what keeps the
+    //                     pair bound (the old code nulled it even when it kept
+    //                     a provider name — the same unbound pair from the
+    //                     other direction).
+    //   no rows at all -> the legacy pair IS the only binding. Clear it only if
+    //                     it names the provider just unlinked. If it names the
+    //                     other provider, leave it alone: this operation has no
+    //                     business deciding anything about it, and an unbound
+    //                     pair is already refused on the read side.
+    const { data: remainingRows, error: remainingError } =
       await this.databaseService.supabase
+        .from("user_oauth_accounts")
+        .select("provider, provider_user_id")
+        .eq("user_id", userId);
+
+    if (remainingError) {
+      // The delete already happened. Refusing to guess beats writing a legacy
+      // pair derived from a read that failed.
+      this.logger.error(
+        `unlinkOAuthProvider could not re-read links for ${userId}: ${remainingError.message}`,
+      );
+      throw new BadRequestException(
+        "Unlinked, but we could not refresh your sign-in methods. Reload and check before linking again.",
+      );
+    }
+
+    const survivors = (
+      (remainingRows ?? []) as {
+        provider: string | null;
+        provider_user_id: string | null;
+      }[]
+    ).filter(
+      (row) =>
+        typeof row.provider === "string" &&
+        isKnownIdentityProviderId(row.provider) &&
+        row.provider !== provider,
+    );
+    const next = survivors[0] ?? null;
+    const legacyNamesThisProvider = user?.oauth_provider === provider;
+
+    if (next || legacyNamesThisProvider) {
+      const { error: legacyError } = await this.databaseService.supabase
         .from("users")
         .update({
-          oauth_provider: next,
-          oauth_id: null,
+          oauth_provider: next?.provider ?? null,
+          oauth_id: next?.provider_user_id ?? null,
         })
         .eq("user_id", userId);
+
+      // Bound and acted on, because ADR 0139 arm 5 RESTS on this write. If it
+      // fails silently the delete has already happened, the caller gets a 200,
+      // and the columns still name the account the user just revoked — so that
+      // subject keeps signing in. Note for whoever reads this next:
+      // `check_read_errors_not_swallowed.py` cannot see an un-destructured
+      // `.update()`, so no guard catches this class. It has to be written.
+      if (legacyError) {
+        this.logger.error(
+          `unlinkOAuthProvider could not rewrite the legacy pair for ${userId}: ${legacyError.message}`,
+        );
+        throw new BadRequestException(
+          "Unlinked, but your saved sign-in details may still name that account. Reload and check before linking again.",
+        );
+      }
     }
 
     return this.getLinkedProviders(userId);

@@ -1,5 +1,9 @@
 import { create } from "zustand";
 import { api, ApiError } from "@/api/client";
+import {
+  alreadyDeliveredRefusal,
+  alreadyDeliveredWords,
+} from "@/api/delivered-once";
 import { GRACE_MS } from "@/design/motion";
 import { outboxStorage } from "@/lib/mmkv";
 import { queryClient } from "@/lib/queryClient";
@@ -28,6 +32,12 @@ export interface OutboxEntry {
   attempts: number;
   status: OutboxStatus;
   lastError?: string;
+  /**
+   * True when the entry failed because the house had ALREADY done it — a 409
+   * carrying the earlier delivery, not a rejection. `lastError` then holds what
+   * already happened, so a screen must not head it "didn't go through".
+   */
+  alreadyDone?: boolean;
   /** Query keys to invalidate after success. */
   invalidate?: unknown[][];
   /** Feed item to restore if the entry is undone or permanently fails. */
@@ -180,10 +190,27 @@ async function runDispatch() {
     const isPermanent =
       err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 429;
     if (isPermanent) {
+      // ALREADY DELIVERED IS NOT "didn't go through".
+      //
+      // Founder, 2026-09-05 (batch 46): the refusal is a 409 so a screen can
+      // show the earlier delivery instead of an error. On this app that matters
+      // most, because a delivery is marked at the truck door and the entry may
+      // sit in this queue for minutes: by the time it dispatches a colleague may
+      // have booked the same truck in. The receiver then read "Marked delivered
+      // didn't go through" under an order that HAD gone through. Now the line
+      // says who took it in and when. The retry rule is unchanged — a 4xx is
+      // permanent — and that is exactly why 409 is the right status: the request
+      // was well-formed, so repeating it could never change the answer.
+      const refused = alreadyDeliveredRefusal(err);
       // The server said no — surface it, don't retry into the same wall.
       mark(next.id, {
         status: "failed",
-        lastError: err instanceof Error ? err.message : "Rejected",
+        lastError: refused
+          ? alreadyDeliveredWords(refused)
+          : err instanceof Error
+            ? err.message
+            : "Rejected",
+        alreadyDone: refused != null,
       });
       scheduleDispatch(0);
     } else {

@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>099 &middot; The panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens (ADR 0042), copied inline from apps/web/src/styles/mudavym.css ── */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --mdv-scrim:rgba(23,19,15,.28);
+  color-scheme:light;
+}
+/* Warm Charcoal — mudavym.css:48-66. A specimen that carries the ground itself
+   stays charcoal on a paper page: that is the whole point of the portal rule. */
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --mdv-scrim:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    --mdv-scrim:rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:35px;font-weight:600;letter-spacing:-.018em;line-height:1.07;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+
+/* ── the specimen numbers strip ── */
+.nums{display:flex;flex-wrap:wrap;gap:0;margin:16px 0 0;padding:12px 0 2px;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.nums div{padding:0 16px 10px 0;margin-right:16px;border-right:1px solid var(--paper-2)}
+.nums div:last-child{border-right:0}
+.nums .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+
+/* ══ THE STAGE — an app viewport, the page beneath, the overlay on top ══ */
+.stage{position:relative;overflow:hidden;border:1px solid var(--paper-2);background:var(--paper-0);margin:14px 0 0}
+.stage.xl{height:730px}
+.stage.tall{height:560px}
+.stage.mid{height:470px}
+.stage.short{height:400px}
+.under{position:absolute;inset:0;padding:16px 20px;overflow:hidden}
+.scrim{position:absolute;inset:0;background:var(--mdv-scrim)}
+
+/* the page beneath — deliberately plain; it exists to prove it stays legible */
+.u-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.u-h{font-family:var(--serif);font-size:21px;font-weight:600;margin:2px 0 10px;color:var(--ink-1)}
+.u-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.u-card{border:1px solid var(--paper-2);background:var(--paper-1);padding:10px 12px}
+.u-card .t{font-weight:600;font-size:12.5px;color:var(--ink-1)}
+.u-card .s{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.u-row{display:grid;grid-template-columns:1.6fr 1fr 1fr .8fr;gap:10px;padding:7px 0;border-top:1px solid var(--paper-2);font-size:12px;color:var(--ink-2)}
+.u-row .t{color:var(--ink-1);font-weight:500}
+.u-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--paper-2);border:1px solid var(--paper-2)}
+.u-cal div{background:var(--paper-0);min-height:52px;padding:4px 5px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.u-cal div .e{display:block;font-family:var(--sans);font-size:9.5px;color:var(--ink-2);margin-top:3px;border-left:2px solid var(--seal);padding-left:4px;line-height:1.25}
+
+/* the app header bar — popovers hang off it */
+.bar{position:absolute;top:0;left:0;right:0;height:52px;background:var(--paper-0);border-bottom:1px solid var(--paper-2);display:flex;align-items:center;gap:10px;padding:0 16px}
+.bar .sp{flex:1}
+.ctl{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:9px;color:var(--ink-2);font-size:12px}
+.ctl.hot{background:var(--paper-1);box-shadow:inset 0 0 0 1px var(--paper-2)}
+.ctl .nm{font-weight:600;color:var(--ink-1);font-size:12.5px}
+.ctl .sub{font-family:var(--mono);font-size:9px;color:var(--ink-3);display:block}
+.av{width:26px;height:26px;border-radius:999px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);color:var(--seal-deep);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px}
+.dotmark{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:999px;background:var(--seal)}
+
+/* ══ THE OVERLAY SURFACES — numbers from sheet.css ══ */
+.ovl{background:var(--paper-0);color:var(--ink-1);display:flex;flex-direction:column;font-family:var(--sans)}
+/* sheet.css:72-82 */
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14);overflow:hidden}
+.sheet.wide{max-width:640px}
+/* sheet.css:88-97 */
+.panel{position:absolute;left:50%;transform:translateX(-50%);top:10%;width:min(620px,100% - 32px);max-height:76%;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.5);overflow:hidden}
+/* sheet.css:99-106 */
+.pop{position:absolute;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42);overflow:hidden}
+/* sheet.css:109-141 */
+.oh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--paper-2);flex:none}
+.oh-eyebrow{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.oh-title{margin:2px 0 0;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.16;letter-spacing:-.01em;color:var(--ink-1)}
+.oh-side{display:flex;align-items:center;gap:8px;flex:none}
+/* sheet.css:146-162 — the close control is WORDS */
+.oclose{font-family:var(--sans);font-size:12px;line-height:1.2;padding:5px 10px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.obody{flex:1 1 auto;min-height:0;overflow:hidden}
+.ofoot{flex:none;padding:9px 16px 12px;border-top:1px solid var(--paper-2);font-size:11px;line-height:1.5;color:var(--ink-3);display:flex;justify-content:space-between;gap:12px}
+
+/* content vocabulary — sheet.css:198-351 */
+.sect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:10px 16px 4px}
+.item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border-left:2px solid transparent;font-size:13px;color:var(--ink-1)}
+.item.on{background:var(--seal-tint);border-left-color:var(--seal)}
+.item .txt{flex:1 1 auto;min-width:0}
+.item .lab{display:block;font-weight:500;color:var(--ink-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .sub{display:block;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .ico{flex:none;color:var(--ink-3)}
+.item.on .ico{color:var(--seal)}
+.kbd{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink-3);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.quiet{margin:0;padding:8px 16px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+.field{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--paper-2)}
+.field .fin{flex:1 1 auto;padding:13px 0;font-family:var(--serif);font-size:17px;color:var(--ink-1)}
+.field .fph{color:var(--ink-3);font-family:var(--sans);font-size:14px}
+.lnk{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--seal-deep)}
+
+/* sheet body furniture */
+.fact{display:grid;grid-template-columns:118px 1fr;gap:10px;padding:6px 16px;font-size:12.5px}
+.fact .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding-top:3px}
+.fact .v{color:var(--ink-1)}
+.fact .v.em{color:var(--ink-3)}
+.frow{padding:8px 16px 0}
+.flab{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.fin2{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:7px;padding:7px 9px;font-size:12.5px;color:var(--ink-1);min-height:31px}
+.fin2.ph{color:var(--ink-3)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 16px 0}
+.two .frow{padding:0}
+.chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.chip{font-family:var(--sans);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--paper-2);color:var(--ink-2);display:inline-flex;align-items:center;gap:5px}
+.chip.on{color:var(--ink-1);background:var(--seal-tint);border-color:var(--seal-ring)}
+.sw{width:8px;height:8px;border-radius:2px;display:inline-block}
+.notice{margin:10px 16px 0;padding:9px 11px;background:var(--paper-1);border-left:2px solid var(--ink-4);font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.notice b{color:var(--ink-1)}
+.hta{margin:12px 16px 0;position:relative;border:1px solid var(--seal);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--seal-deep);font-weight:500;display:flex;align-items:center;gap:9px;overflow:hidden;background:linear-gradient(90deg,var(--seal-tint) 38%,transparent 38%)}
+.hta .sealdot{width:18px;height:18px;border-radius:999px;background:var(--seal);color:var(--paper-0);display:flex;align-items:center;justify-content:center;flex:none}
+.btnrow{display:flex;gap:8px;padding:12px 16px 0}
+.btn{font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--paper-2);color:var(--ink-1);background:transparent}
+.btn.pri{border-color:var(--ink-4)}
+.btn[data-disabled]{color:var(--ink-3);border-color:var(--paper-2)}
+
+/* callouts and lists on the page itself */
+.callout{border-left:2px solid var(--seal);padding:11px 0 11px 15px;margin:16px 0 0;font-size:12.5px;line-height:1.66;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 62%);max-width:960px}
+.never{margin:16px 0 0;padding:0;list-style:none;max-width:960px}
+.never li{padding:8px 0;border-top:1px solid var(--paper-2);font-size:12.5px;line-height:1.6;color:var(--ink-2);display:grid;grid-template-columns:150px 1fr;gap:14px}
+.never li .h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
+.never li b{color:var(--ink-1)}
+.cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:7px 0 0}
+.foot{margin:42px 0 0;padding-top:14px;border-top:1px solid var(--ink-1);font-size:11.5px;line-height:1.72;color:var(--ink-3);max-width:980px}
+.foot b{color:var(--ink-2)}
+.foot a{color:var(--seal-deep)}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 099 &middot; the panel &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<a class="back" href="index.html">&larr; 099 index</a>
+<div class="wordmark">Mudavym</div>
+<h1>The panel &mdash; a question, in the middle<span class="dot">.</span></h1>
+<p class="lede">Something wants an answer from you, and until it has one nothing else matters. It sits where the eye already is, and the page behind it is deliberately unimportant.</p>
+<div class="dbl"></div>
+
+<div class="nums">
+  <div><span class="n">min(620px, 100vw&minus;32)</span><span class="k">width</span></div>
+  <div><span class="n">10vh</span><span class="k">top margin</span></div>
+  <div><span class="n">76vh</span><span class="k">max height</span></div>
+  <div><span class="n">settle &middot; 320ms</span><span class="k">motion token</span></div>
+  <div><span class="n">translateY 6&rarr;0</span><span class="k">enter keyframe</span></div>
+  <div><span class="n">14px</span><span class="k">radius</span></div>
+  <div><span class="n">aria-modal</span><span class="k">focus trapped, scroll locked</span></div>
+</div>
+<p class="cap">from <code>sheet.css:88-97</code>; the panel's numbers were the reports panel's before they were shared (<code>reports-next.css:656-657</code>)</p>
+
+<div class="sec-h"><span class="sec-n">Purpose I</span><h2>The command palette &mdash; &#8984;K</h2></div>
+<p class="sec-k">from <code>components/command/CommandPalette.tsx:256</code>, already migrated behind the shell gate</p>
+<p>Four sections in a fixed order &mdash; Recent, Insights, Create, Navigation &mdash; and the top row is not a page but the engine's own leading recommendation, fetched once per open. The palette is the clearest case for this shape: the page you were on is irrelevant the moment you press the keys.</p>
+<div class="stage" style="height:640px">
+  
+<div class="under">
+  <div class="u-eyebrow">Wednesday, 18 March</div>
+  <div class="u-h">The house took &#8378;41,280 last night. Nine tables turned twice.</div>
+  <div class="u-grid">
+    <div class="u-card"><div class="t">&#8378;41,280</div><div class="s">covers 128 &middot; avg &#8378;322</div></div>
+    <div class="u-card"><div class="t">31.4%</div><div class="s">wine attach</div></div>
+    <div class="u-card"><div class="t">&#8378;9,140</div><div class="s">purchasing, week</div></div>
+  </div>
+  <div style="margin-top:12px">
+    <div class="u-row"><span class="t">Waiting on you</span><span>3 approvals</span><span>1 invoice</span><span>2 replies</span></div>
+    <div class="u-row"><span class="t">Deliveries today</span><span>Fikri 09:00</span><span>Deniz 11:30</span><span>&mdash;</span></div>
+    <div class="u-row"><span class="t">Low stock</span><span>6 lines</span><span>2 critical</span><span>&mdash;</span></div>
+  </div>
+</div>
+
+  <div class="scrim"></div>
+  <div class="ovl panel">
+    <div class="field"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--ink-3);flex:none"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><span class="fin fph">Search pages, actions, insights&hellip;</span><span class="kbd">esc</span></div>
+    <div class="obody">
+      <span class="sect">Insights</span>
+      <div class="item on"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg></span><span class="txt"><span class="lab">Wednesday came in 38% under its average Wednesday</span><span class="sub">Top recommendation &middot; sales</span></span><span class="kbd">&#8629;</span></div>
+      <span class="sect">Recent</span>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></span><span class="txt"><span class="lab">Providers</span><span class="sub">The vendor book</span></span></div>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg></span><span class="txt"><span class="lab">Calendar</span><span class="sub">The book of days</span></span></div>
+      <span class="sect">Create</span>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg></span><span class="txt"><span class="lab">Ask AI to do something</span><span class="sub">Reorder stock or draft a vendor reply &mdash; you confirm before it runs</span></span><span class="kbd">&#8984; &#8679; K</span></div>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg></span><span class="txt"><span class="lab">Write to a vendor</span><span class="sub">Opens the composer on /communications</span></span></div>
+      <span class="sect">Navigation</span>
+      <div class="item"><span class="ico"><svg class="" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg></span><span class="txt"><span class="lab">Set &ldquo;Dashboard&rdquo; as default landing page</span><span class="sub">Opens this page after sign-in on this device</span></span></div>
+    </div>
+    <div class="ofoot"><span><span class="kbd">&uarr;</span> <span class="kbd">&darr;</span> to move, <span class="kbd">&#8629;</span> to run</span><span><span class="kbd">?</span> for all shortcuts</span></div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">Purpose II</span><h2>Ask the book</h2></div>
+<p class="sec-k">from <code>pages/reports/next/AskTheBook.tsx:104</code> &middot; the foot is the honesty, and it never moves</p>
+<p>An ask with a real answer &mdash; and a stated refusal underneath it. The panel searches sentences the engine already computed from the house's own rows; it does not answer free text, and it says so in the one place a reader cannot miss.</p>
+<div class="stage mid">
+  
+<div class="under">
+  <div class="u-eyebrow">The sheet &middot; 28 days to 18 March</div>
+  <div class="u-h">Eleven cuttings, seven of them arranged.</div>
+  <div class="u-grid">
+    <div class="u-card"><div class="t">Sales by day</div><div class="s">28 points &middot; POS</div></div>
+    <div class="u-card"><div class="t">Wine attach</div><div class="s">ratio &middot; checks</div></div>
+    <div class="u-card"><div class="t">Purchasing</div><div class="s">by vendor</div></div>
+    <div class="u-card"><div class="t">Waste</div><div class="s">by category</div></div>
+    <div class="u-card"><div class="t">Labour</div><div class="s">by shift</div></div>
+    <div class="u-card"><div class="t">Top pours</div><div class="s">by margin</div></div>
+  </div>
+</div>
+
+  <div class="scrim"></div>
+  <div class="ovl panel">
+    <div class="oh"><div><span class="oh-eyebrow">Ask the book</span><h3 class="oh-title">wednesday</h3></div><div class="oh-side"><span class="oclose">Close</span></div></div>
+    <div class="obody">
+      <div style="padding:10px 16px 0">
+        <span class="oh-eyebrow" style="color:var(--ink-3)">sales &middot; Wednesday</span>
+        <p style="font-family:var(--serif);font-size:15px;line-height:1.45;color:var(--ink-1);margin:3px 0 0">Wednesday sales came in 38% lower than your average Wednesday (&#8378;2.6k vs &#8378;4.2k).</p>
+      </div>
+      <div style="padding:12px 16px 0">
+        <span class="oh-eyebrow" style="color:var(--ink-3)">covers &middot; Wednesday</span>
+        <p style="font-family:var(--serif);font-size:15px;line-height:1.45;color:var(--ink-1);margin:3px 0 0">Wednesday covers held steady while spend per head fell &#8378;41.</p>
+      </div>
+      <div style="padding:12px 16px 0">
+        <span class="oh-eyebrow" style="color:var(--ink-3)">purchasing &middot; Fikri Tar&#305;m G&#305;da</span>
+        <p style="font-family:var(--serif);font-size:15px;line-height:1.45;color:var(--ink-1);margin:3px 0 0">The Wednesday standing order has not changed size in eleven weeks.</p>
+      </div>
+      <p class="quiet" style="padding-top:14px">Three of eighteen sentences mention that.</p>
+    </div>
+    <div class="ofoot"><span>This searches sentences the engine computed from your own rows. It does not answer free-text questions &mdash; no endpoint in this product does, and a fluent invented answer is the one thing the book will not give you.</span></div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">Purpose III</span><h2>A confirmation that carries the seal &mdash; publish week</h2></div>
+<p class="sec-k">the seal is <code>components/mudavym/HoldToApprove.tsx</code> &middot; charcoal ground, carried through the portal</p>
+<p>The house ceremony, rationed. A panel earns the seal when the act reaches people outside this screen and cannot be quietly undone &mdash; publishing a week sends nineteen notifications. Routine and bulk acts get the same die pressed dry: a button, no wax. The panel states the consequence in full before the thumb goes down, because a confirmation that only says &ldquo;are you sure?&rdquo; has told the reader nothing they did not already know.</p>
+<div class="stage mid mudavym" data-ground="charcoal">
+  
+<div class="under">
+  <div class="u-eyebrow">The week ahead</div>
+  <div class="u-h">Publishing week 12 to nineteen people.</div>
+  <div style="margin-top:6px">
+    <div class="u-row"><span class="t">Monday 16</span><span>4 on</span><span>Ay&#351;e closing</span><span>ok</span></div>
+    <div class="u-row"><span class="t">Tuesday 17</span><span>5 on</span><span>tasting</span><span>ok</span></div>
+    <div class="u-row"><span class="t">Wednesday 18</span><span>6 on</span><span>&mdash;</span><span>ok</span></div>
+    <div class="u-row"><span class="t">Thursday 19</span><span>7 on</span><span>private party</span><span>ok</span></div>
+    <div class="u-row"><span class="t">Friday 20</span><span>8 on</span><span>&mdash;</span><span>1 gap</span></div>
+    <div class="u-row"><span class="t">Saturday 21</span><span>8 on</span><span>&mdash;</span><span>ok</span></div>
+  </div>
+</div>
+
+  <div class="scrim"></div>
+  <div class="ovl panel">
+    <div class="oh"><div><span class="oh-eyebrow">Before it leaves the house</span><h3 class="oh-title">Publish week 12</h3></div><div class="oh-side"><span class="oclose">Close</span></div></div>
+    <div class="obody">
+      <p class="quiet" style="font-family:var(--serif);font-size:15px;line-height:1.5;color:var(--ink-1);padding-top:12px">Nineteen people will be told their shifts for 16&ndash;22 March. Four of them are changed from what they were told last Tuesday.</p>
+      <div class="fact"><span class="k">Notified</span><span class="v">19 people &middot; email where held, in-app for all</span></div>
+      <div class="fact"><span class="k">Changed</span><span class="v">Mert Kaya, Selin Ayd&#305;n, Emre &Ouml;zt&uuml;rk, Deniz Ko&ccedil;</span></div>
+      <div class="fact"><span class="k">Uncovered</span><span class="v">Friday 20, 22:00 close &mdash; one gap, publishing anyway</span></div>
+      <div class="fact"><span class="k">Undo</span><span class="v em">Not available. A published week can be edited and re-published; the first notification has already been sent.</span></div>
+      <div class="hta"><span class="sealdot"><svg class="" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M14 13V8.5C14 7 15 7 15 5a3 3 0 0 0-6 0c0 2 1 2 1 3.5V13"/><path d="M20 15.5a2.5 2.5 0 0 0-2.5-2.5h-11A2.5 2.5 0 0 0 4 15.5V17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1z"/><path d="M5 22h14"/></svg></span>Hold to publish the week</div>
+      <p class="quiet" style="padding-bottom:14px">Release early and nothing is sent &mdash; the control says at what percentage you let go.</p>
+    </div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">The boundary</span><h2>What a panel may never be</h2></div>
+<ul class="never">
+  <li><span class="h">Never a record</span><span>A centred panel covers the middle of the page, which is where a list lives. Put a vendor in one and you have hidden the comparison the reader opened it to make. <b>An object is a sheet.</b></span></li>
+  <li><span class="h">Never a menu</span><span>Centring a list of four choices breaks the tie to the control that produced them and makes a small decision feel like a large one. <b>A choice is a popover.</b></span></li>
+  <li><span class="h">Never a form of ten fields</span><span>At 620 &times; 76vh a long form scrolls inside a box inside a page. If it does not fit, it is an object being edited &mdash; a sheet &mdash; or a route.</span></li>
+  <li><span class="h">Never a notice</span><span>A panel demands an answer. Something with nothing to answer &mdash; &ldquo;saved&rdquo;, &ldquo;seven rows imported&rdquo; &mdash; belongs on the page it happened on, not over it.</span></li>
+</ul>
+
+<div class="foot">
+  <b>Drawn from, and verified against:</b>
+  <code>sheet.css:84-97</code> (width, 10vh, 76vh, radius, shadow) &middot;
+  <code>components/command/CommandPalette.tsx:42,256-333</code> (the four sections in order; the top row is the engine's leading recommendation, fetched per open at <code>:79-102</code>) &middot;
+  <code>pages/reports/next/AskTheBook.tsx:104,148-152</code> (the refusal sentence, verbatim) &middot;
+  <code>components/mudavym/HoldToApprove.tsx:1-20</code> (<code>pour</code> fill, early release says what did not happen, <code>stamp</code> lands the seal) &middot;
+  <code>lib/mudavym/motion.ts:103</code> (<code>settle</code> 320ms).
+  <br><b>Example data, not a tenant.</b>
+</div>
+</div>
+</body>
+</html>

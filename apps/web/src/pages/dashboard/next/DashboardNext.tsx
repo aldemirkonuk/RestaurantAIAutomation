@@ -11,10 +11,13 @@
  *    that are labelled as what they are (vendor spend, never "revenue").
  *
  * Reachable only when `mudavym.design.dashboard` / the feature flag is on —
- * PageGate wraps this tree in the `.mudavym` token scope; the root here
- * carries the class too so the page stands alone in tests and sandboxes.
- * Both grounds ship: paper by default, Warm Charcoal under the app's dark
- * theme (`.dark .mudavym`) or an explicit data-ground="charcoal".
+ * the root here carries the `.mudavym` token scope itself, so the page stands
+ * alone in tests and sandboxes (PageGate adds no second scope).
+ *
+ * The ground is Warm Charcoal in EVERY app theme (founder, 2026-09-12): the
+ * `.mudavym` scope paints the decided ground and the light/dark toggle does
+ * not reach into it. The page does NOT follow the user's theme; the rest of
+ * the app still does.
  */
 
 import { useEffect, useMemo, useRef } from 'react';
@@ -26,7 +29,9 @@ import { ensureFraunces, SERIF } from './fonts';
 import KpiRow from './KpiRow';
 import SalesCalendar from './SalesCalendar';
 import WaitingOnYou from './WaitingOnYou';
+import OneTapPanel from './OneTapPanel';
 import { ActivityPanel, LowStockPanel, WeekAhead } from './RailPanels';
+import { noteCloseReportLine, useNoteCloseReport } from './note-close-experiment';
 import './dashboard-next.css';
 
 /** Time-of-day voice — the Editorial opening the founder named as liked. */
@@ -39,13 +44,20 @@ function voice(now: Date): { greeting: string; service: string } {
 }
 
 export interface DashboardNextProps {
-  /** Force the Warm Charcoal ground regardless of app theme (ADR 0042). */
+  /**
+   * State the ground out loud. Charcoal is now the `.mudavym` default in every
+   * theme, so this changes nothing on its own — it is kept because a surface
+   * may want to name its ground, and because `[data-ground="charcoal"]` is a
+   * hook other rules hang off (see DoorNext).
+   */
   ground?: 'charcoal';
 }
 
 export default function DashboardNext({ ground }: DashboardNextProps) {
   const { user, activeRestaurantId } = useAuth();
   const spine = useDashboardSpine(activeRestaurantId);
+  const noteReport = useNoteCloseReport(activeRestaurantId);
+  const reportLine = noteCloseReportLine(noteReport);
   const headRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -98,9 +110,16 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
     day: 'numeric',
   });
 
+  // `min-h-screen`, NOT `min-h-full`. DashboardLayout's <main> is itself
+  // `min-h-screen` with no resolved height on the chain above it
+  // (components/layout/DashboardLayout.tsx:85), so a percentage minimum
+  // resolves against a content-sized parent: measured, this child came out at
+  // 18.5px against a 563px viewport, leaving the light app shell showing below
+  // a charcoal band — a seam across the first page a manager lands on. Every
+  // other Next page states the viewport minimum directly; this one now matches.
   return (
     <div
-      className="mudavym min-h-full bg-paper-0 text-inkm-1"
+      className="mudavym min-h-screen bg-paper-0 text-inkm-1"
       data-ground={ground}
       style={{ fontFamily: '"Plus Jakarta Sans", "DM Sans", system-ui, sans-serif' }}
     >
@@ -135,6 +154,11 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
           />
           <div className="space-y-4">
             <WaitingOnYou pending={spine.pending} onChanged={spine.refetch} />
+            {/* Directly under the approvals queue, by the founder's decision of
+                2026-09-03: an action the house raised is a cousin of an order
+                waiting to be sealed, and belongs beside it rather than inside
+                the day-book at /notifications. */}
+            <OneTapPanel restaurantId={activeRestaurantId} />
             <WeekAhead restaurantId={activeRestaurantId} />
             <LowStockPanel items={spine.lowStock} />
             <ActivityPanel items={spine.activity} />
@@ -142,11 +166,29 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
         </div>
 
         {/* ── the signature ─────────────────────────────────────────────── */}
-        <footer className="mt-10 flex items-baseline justify-between border-t border-paper-2 pt-4">
-          <Wordmark size={14} />
-          <p className="text-[11px] text-inkm-3">
-            Figures on this page are procurement — money paid to vendors — not sales.
-          </p>
+        <footer className="mt-10 border-t border-paper-2 pt-4">
+          <div className="flex items-baseline justify-between">
+            <Wordmark size={14} />
+            <p className="text-[11px] text-inkm-3">
+              Figures on this page are procurement — money paid to vendors — not sales.
+            </p>
+          </div>
+          {/* The note-control experiment's standing count.
+              WHY HERE AND NOT ON /notifications. The day-book is a RECORD —
+              lines the house wrote, worked downwards until the account is ruled
+              off — and that is the argument by which the one-tap desk was moved
+              off it on 2026-09-03 (notifications.md §1b). A running tally is
+              not a line the house wrote either, so the same reasoning keeps it
+              off the book. It sits at the foot of the page that holds the
+              control instead: readable by whoever is here, and out from under
+              the card it is counting.
+              COUNTS, NEVER A VERDICT — the sentence is built in
+              `noteCloseReportLine`, which has no comparison in it. */}
+          {reportLine && (
+            <p className="mt-2 text-[11px] text-inkm-4" data-note-report>
+              {reportLine}
+            </p>
+          )}
         </footer>
       </div>
     </div>

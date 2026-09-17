@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, FileText, Loader2, RefreshCw } from 'lucide-react'
+import { FileText, Loader2, RefreshCw } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import {
   documentsApi,
@@ -26,6 +26,9 @@ import {
 } from '../services/api/credits'
 import { cn } from '../lib/utils'
 import { useNotificationStore } from '../stores'
+// The house's hold-to-approve control, reused rather than re-styled: the seal on
+// a verification is the same mechanism the order and payment acts carry.
+import { HoldToApprove } from '../components/mudavym'
 
 type Lane = 'needs_review' | 'verified'
 type Tab = 'receipts' | 'credits'
@@ -96,11 +99,22 @@ export function ReceiptsPage() {
     setSelectedId(null)
   }, [lane])
 
-  const handleVerify = useCallback(async () => {
+  /**
+   * Verify, carrying the seal minted when the hold BEGAN.
+   *
+   * Founder, 2026-09-06 (batch 64): "Decide as a module: seal all three." This
+   * is the LEGACY page — `/receipts` renders it whenever the Mudavym flag is off
+   * — and it is sealed here rather than left to receive the gateway's refusal,
+   * because a live page whose only confirm control cannot work is a page that
+   * teaches people to re-key an invoice somewhere else.
+   *
+   * `challenge` comes from `HoldToApprove`'s `onChallenge`, never from here.
+   */
+  const handleVerify = useCallback(async (challenge?: string | null) => {
     if (!selectedId) return
     setVerifying(true)
     try {
-      await documentsApi.verify(selectedId)
+      await documentsApi.verify(selectedId, challenge)
       toast.success('Document verified', 'Extraction confirmed against the paper.')
       await qc.invalidateQueries({ queryKey: ['procurement-documents'] })
       setSelectedId(null)
@@ -245,6 +259,11 @@ export function ReceiptsPage() {
                     lines={selected.lines}
                     verifying={verifying}
                     onVerify={lane === 'needs_review' ? handleVerify : undefined}
+                    onMintSeal={
+                      selectedId
+                        ? () => documentsApi.mintVerifySeal(selectedId)
+                        : undefined
+                    }
                   />
                 ) : null}
               </div>
@@ -302,11 +321,13 @@ function DocDetail({
   lines,
   verifying,
   onVerify,
+  onMintSeal,
 }: {
   document: ProcurementDocument
   lines: ProcurementDocumentLine[]
   verifying: boolean
-  onVerify?: () => void
+  onVerify?: (challenge?: string | null) => void
+  onMintSeal?: () => Promise<string | null>
 }) {
   return (
     <div className="flex flex-col h-full">
@@ -321,14 +342,22 @@ function DocDetail({
           </p>
         </div>
         {onVerify && (
-          <button
-            onClick={onVerify}
-            disabled={verifying}
-            className="flex items-center gap-1.5 h-9 px-3.5 bg-wine-600 hover:bg-wine-700 text-white text-xs font-bold rounded-lg disabled:opacity-50"
-          >
-            {verifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-            Verify extraction
-          </button>
+          /*
+            A HOLD, not a click. The seal is minted at the START of the gesture
+            (`onChallenge`) and redeemed by the write; a token this request
+            fetched for itself would be the assertion model with extra steps.
+            A mint that fails does NOT verify: the control says the seal could
+            not be issued and nothing is sent.
+          */
+          <div className="w-48">
+            <HoldToApprove
+              label={verifying ? 'Confirming…' : 'Hold to verify extraction'}
+              approvedLabel="Sealed"
+              disabled={verifying}
+              onChallenge={onMintSeal}
+              onApprove={(challenge) => onVerify(challenge)}
+            />
+          </div>
         )}
       </div>
 

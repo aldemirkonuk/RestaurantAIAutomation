@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Globe, ChevronDown, Check } from 'lucide-react'
-import { COUNTRIES } from '../../lib/countries'
+import { COUNTRY_NAMES as COUNTRIES } from '../../lib/countries'
 
 interface CountryComboboxProps {
   value: string

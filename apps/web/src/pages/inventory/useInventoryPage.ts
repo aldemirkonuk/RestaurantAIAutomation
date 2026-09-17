@@ -201,6 +201,12 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         deadStock: (item as any).deadStock ?? false,
         daysSinceSale: (item as any).daysSinceSale ?? undefined,
         locations: (item as any).locations ?? [],
+        // The library's own name, carried for SEARCH only and never rendered
+        // in place of the house's alias (ADR 0124, the naming rule). Read
+        // through `as any` like every other field on this object that the
+        // shared `InventoryItem` type does not declare -- this file's own
+        // idiom, so the shared type is not widened for one page's filter.
+        libraryName: (item as any).libraryName ?? null,
       } as InventoryItem;
     });
   }, [visibleApiInventory, inventoryLoading, winesById]);
@@ -215,6 +221,13 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
       items = items.filter(
         (item) =>
           item.name.toLowerCase().includes(query) ||
+          // BOTH NAMES ARE SEARCHABLE (ADR 0124, the naming rule, founder
+          // 2026-09-05). `item.name` is the house's alias when it has set one,
+          // so matching only on it makes the library's own name unfindable —
+          // a house that renames "1988 Wine X" to "Wine X" could no longer
+          // search "1988". The library name is never DISPLAYED here; it is
+          // only matched.
+          ((item as any).libraryName ?? "").toLowerCase().includes(query) ||
           item.producer.toLowerCase().includes(query) ||
           item.grape.toLowerCase().includes(query),
       );

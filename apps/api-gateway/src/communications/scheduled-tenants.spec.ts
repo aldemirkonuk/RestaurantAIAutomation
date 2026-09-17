@@ -1,5 +1,8 @@
 import { ScheduledTasksService } from "./scheduled-tasks.service";
-import { ScheduledTenantsService } from "./scheduled-tenants.service";
+import {
+  ScheduledTenantsService,
+  TIMEZONE_NOT_SET,
+} from "./scheduled-tenants.service";
 import { RecipientResolverService } from "./recipient-resolver.service";
 
 /**
@@ -130,6 +133,55 @@ function makeTenantsService(opts: {
   const databaseService = { getClient: () => client, supabase: client };
   return new ScheduledTenantsService(config as any, databaseService as any);
 }
+
+describe("ScheduledTenantsService — an unset zone is an absence, not New York", () => {
+  /**
+   * Until 2026-09-03 this service wrote `row.timezone || "America/New_York"`,
+   * so a restaurant that had never been asked was scheduled as if somebody had
+   * answered New York. That was already wrong; migration
+   * `20260903170000_a_default_is_not_an_answer.sql` made it common, because it
+   * dropped `restaurants.timezone DEFAULT 'America/Los_Angeles'` and set every
+   * row carrying it to NULL.
+   *
+   * The absence is now carried through as `TIMEZONE_NOT_SET`, which is not a
+   * valid IANA zone, so every consumer's unknown-zone branch fires and logs
+   * before falling back to UTC. That is the founder's rule: refuse in words, or
+   * fall back to something explicit and say so.
+   */
+  it("carries a NULL timezone as TIMEZONE_NOT_SET, never as a zone", async () => {
+    const tenants = await makeTenantsService({
+      restaurants: [restaurant(LEGACY_ID, "No zone", { timezone: null })],
+      flags: [],
+    }).list();
+
+    expect(tenants).toHaveLength(1);
+    expect(tenants[0].timezone).toBe(TIMEZONE_NOT_SET);
+    expect(tenants[0].timezoneIsSet).toBe(false);
+    // The two zones this code has invented at one time or another.
+    expect(tenants[0].timezone).not.toBe("America/New_York");
+    expect(tenants[0].timezone).not.toBe("America/Los_Angeles");
+  });
+
+  it("TIMEZONE_NOT_SET is not a zone any consumer will accept", () => {
+    // The whole mechanism rests on this: `Intl` rejects it, so
+    // `isKnownTimeZone` is false and both consumers take their loud UTC path.
+    expect(() =>
+      new Intl.DateTimeFormat("en-US", { timeZone: TIMEZONE_NOT_SET }),
+    ).toThrow();
+  });
+
+  it("a zone the house DID set is passed through untouched", async () => {
+    const tenants = await makeTenantsService({
+      restaurants: [
+        restaurant(LEGACY_ID, "Istanbul", { timezone: "Europe/Istanbul" }),
+      ],
+      flags: [],
+    }).list();
+
+    expect(tenants[0].timezone).toBe("Europe/Istanbul");
+    expect(tenants[0].timezoneIsSet).toBe(true);
+  });
+});
 
 describe("ScheduledTenantsService — who the crons serve", () => {
   it("serves only DEFAULT_RESTAURANT_ID when nobody has opted in (behaviour unchanged)", async () => {

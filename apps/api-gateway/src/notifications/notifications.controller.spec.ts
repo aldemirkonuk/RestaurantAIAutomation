@@ -13,6 +13,7 @@ import {
   UpdatePreferencesDto,
 } from "./dto/notifications.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { NotificationProducersService } from "./producers/notification-producers.service";
 
 /**
  * Notification reads are scoped to the restaurant on the VERIFIED token, not to
@@ -47,6 +48,14 @@ describe("NotificationsController", () => {
     deleteAllRead: jest.fn(),
   };
 
+  // The producers' own account of themselves — `GET /notifications/producers/
+  // status`. Stubbed here rather than wired: a unit spec for the handlers should
+  // not have to construct the cron graph, and `check_gateway_boots.sh` is what
+  // proves the real provider resolves.
+  const mockProducersService = {
+    statusFor: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [NotificationsController],
@@ -54,6 +63,10 @@ describe("NotificationsController", () => {
         {
           provide: NotificationsService,
           useValue: mockNotificationsService,
+        },
+        {
+          provide: NotificationProducersService,
+          useValue: mockProducersService,
         },
       ],
     })
@@ -245,11 +258,12 @@ describe("NotificationsController", () => {
 
       mockNotificationsService.markAsRead.mockResolvedValue(expectedResponse);
 
-      const result = await controller.markAsRead(notificationId);
+      const result = await controller.markAsRead(notificationId, REQ);
 
       expect(result).toEqual(expectedResponse);
       expect(mockNotificationsService.markAsRead).toHaveBeenCalledWith(
         notificationId,
+        "user-123",
       );
     });
 
@@ -258,7 +272,7 @@ describe("NotificationsController", () => {
         new Error("Not found"),
       );
 
-      await expect(controller.markAsRead(notificationId)).rejects.toThrow(
+      await expect(controller.markAsRead(notificationId, REQ)).rejects.toThrow(
         HttpException,
       );
     });
@@ -272,18 +286,19 @@ describe("NotificationsController", () => {
     it("should mark multiple notifications as read", async () => {
       mockNotificationsService.markBulkAsRead.mockResolvedValue(3);
 
-      const result = await controller.markBulkAsRead(bulkDto);
+      const result = await controller.markBulkAsRead(bulkDto, REQ);
 
       expect(result).toEqual({ success: true, count: 3 });
       expect(mockNotificationsService.markBulkAsRead).toHaveBeenCalledWith(
         bulkDto.ids,
+        "user-123",
       );
     });
 
     it("should return zero count when no notifications updated", async () => {
       mockNotificationsService.markBulkAsRead.mockResolvedValue(0);
 
-      const result = await controller.markBulkAsRead(bulkDto);
+      const result = await controller.markBulkAsRead(bulkDto, REQ);
 
       expect(result).toEqual({ success: true, count: 0 });
     });
@@ -298,7 +313,7 @@ describe("NotificationsController", () => {
     it("should mark all notifications as read", async () => {
       mockNotificationsService.markAllAsRead.mockResolvedValue(10);
 
-      const result = await controller.markAllAsRead(mockQuery);
+      const result = await controller.markAllAsRead(mockQuery, REQ);
 
       expect(result).toEqual({ success: true, count: 10 });
       expect(mockNotificationsService.markAllAsRead).toHaveBeenCalledWith({
@@ -322,11 +337,12 @@ describe("NotificationsController", () => {
         expectedResponse,
       );
 
-      const result = await controller.archiveNotification(notificationId);
+      const result = await controller.archiveNotification(notificationId, REQ);
 
       expect(result).toEqual(expectedResponse);
       expect(mockNotificationsService.archiveNotification).toHaveBeenCalledWith(
         notificationId,
+        "user-123",
       );
     });
   });
@@ -337,11 +353,12 @@ describe("NotificationsController", () => {
     it("should delete notification", async () => {
       mockNotificationsService.deleteNotification.mockResolvedValue(undefined);
 
-      const result = await controller.deleteNotification(notificationId);
+      const result = await controller.deleteNotification(notificationId, REQ);
 
       expect(result).toEqual({ success: true });
       expect(mockNotificationsService.deleteNotification).toHaveBeenCalledWith(
         notificationId,
+        "user-123",
       );
     });
 
@@ -351,7 +368,7 @@ describe("NotificationsController", () => {
       );
 
       await expect(
-        controller.deleteNotification(notificationId),
+        controller.deleteNotification(notificationId, REQ),
       ).rejects.toThrow(HttpException);
     });
   });
@@ -364,11 +381,12 @@ describe("NotificationsController", () => {
     it("should delete multiple notifications", async () => {
       mockNotificationsService.deleteBulk.mockResolvedValue(2);
 
-      const result = await controller.deleteBulk(bulkDto);
+      const result = await controller.deleteBulk(bulkDto, REQ);
 
       expect(result).toEqual({ success: true, count: 2 });
       expect(mockNotificationsService.deleteBulk).toHaveBeenCalledWith(
         bulkDto.ids,
+        "user-123",
       );
     });
   });
@@ -400,7 +418,9 @@ describe("NotificationsController", () => {
         expectedResponse,
       );
 
-      const result = await controller.getPreferences(mockQuery);
+      // REQ's token user is "user-123", the same id the query names. A query
+      // naming anyone else is refused: notification-preferences-belong-to-the-caller.spec.ts.
+      const result = await controller.getPreferences(mockQuery, REQ);
 
       expect(result).toEqual(expectedResponse);
       expect(mockNotificationsService.getPreferences).toHaveBeenCalledWith(
@@ -439,7 +459,11 @@ describe("NotificationsController", () => {
         expectedResponse,
       );
 
-      const result = await controller.updatePreferences(mockQuery, updateDto);
+      const result = await controller.updatePreferences(
+        mockQuery,
+        updateDto,
+        REQ,
+      );
 
       expect(result).toEqual(expectedResponse);
       expect(mockNotificationsService.updatePreferences).toHaveBeenCalledWith({
@@ -452,20 +476,50 @@ describe("NotificationsController", () => {
       });
     });
 
-    it("should use userId from query if not in body", async () => {
+    it("writes the token's user when the body names none and the query names the same user", async () => {
+      // Was "should use userId from query if not in body". The id now comes
+      // from the token; the query is only compared against it.
       const updateDtoWithoutUserId = {
         email: true,
       } as UpdatePreferencesDto;
 
       mockNotificationsService.updatePreferences.mockResolvedValue({});
 
-      await controller.updatePreferences(mockQuery, updateDtoWithoutUserId);
+      await controller.updatePreferences(
+        mockQuery,
+        updateDtoWithoutUserId,
+        REQ,
+      );
 
       expect(mockNotificationsService.updatePreferences).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: mockQuery.userId,
         }),
       );
+    });
+  });
+
+  describe("GET /notifications/producers/status", () => {
+    const USER = { userId: "user-123", restaurantId: "restaurant-456" };
+
+    it("takes the tenant from the token, never from the request", async () => {
+      mockProducersService.statusFor.mockResolvedValue({ armed: false });
+      await controller.getProducerStatus(USER);
+      expect(mockProducersService.statusFor).toHaveBeenCalledWith(
+        "restaurant-456",
+      );
+    });
+
+    it("[REVERT-FAILS] a failed read is a 500 with the reason, never an empty status", async () => {
+      mockProducersService.statusFor.mockRejectedValue(
+        new Error("statement timeout"),
+      );
+      await expect(controller.getProducerStatus(USER)).rejects.toThrow(
+        HttpException,
+      );
+      await expect(controller.getProducerStatus(USER)).rejects.toMatchObject({
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
     });
   });
 });

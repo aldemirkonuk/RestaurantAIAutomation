@@ -62,7 +62,11 @@ function makeService(opts: { oldThreshold?: number | null } = {}) {
     chain[m] = jest.fn().mockReturnValue(chain);
   }
   chain.single = single;
-  chain.maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
+  // ADR 0141, second correction: updateInventoryItem refuses an item that is
+  // not the house's before any write, so the ownership read must find it.
+  chain.maybeSingle = jest
+    .fn()
+    .mockResolvedValue({ data: { id: "inv-1" }, error: null });
   chain.then = (resolve: any) => resolve({ data: [], error: null });
 
   const client = {

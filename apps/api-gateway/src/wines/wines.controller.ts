@@ -7,6 +7,7 @@ import {
   Query,
   HttpException,
   HttpStatus,
+  Logger,
   UseGuards,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
@@ -30,6 +31,8 @@ import {
 @Controller("wines")
 @UseGuards(JwtAuthGuard)
 export class WinesController {
+  private readonly logger = new Logger(WinesController.name);
+
   constructor(
     private readonly winesService: WinesService,
     private readonly wineSubmissionsService: WineSubmissionsService,
@@ -42,8 +45,15 @@ export class WinesController {
     try {
       return await this.winesService.searchWines(query);
     } catch (error) {
+      // The service already chose the status: 503 for a failed library read,
+      // 400 for a malformed id. Rewriting every failure to 500 hid that, and
+      // copying error.message onto the wire published the database's own text.
+      if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `GET /wines failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new HttpException(
-        error.message || "Failed to fetch wines",
+        "Failed to fetch wines",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

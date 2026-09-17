@@ -196,19 +196,30 @@ back (base type only, no typmod / nullability / default; function keyed on
   differs between a fresh `supabase db reset` and production. **This has not been
   run against the real pair** (see Not verified), so the first real run may need
   a triage pass.
-- **Given up:** nothing that was previously compared. The new comparison is a
-  strict superset of the old one, minus 19 information_schema column rows that
-  belonged to extension-owned relations and were never migration-owned anyway
-  (3,391 old keys = 3,396 new column facts − 24 matview columns + 19 extension
-  columns; the arithmetic closes exactly).
+- **Given up:** nothing that was previously compared, *as written on 2026-09-02*.
+  The new comparison is a strict superset of the old one, minus 19
+  information_schema column rows that belonged to extension-owned relations and
+  were never migration-owned anyway (3,391 old keys = 3,396 new column facts −
+  24 matview columns + 19 extension columns; the arithmetic closes exactly).
+  **Amended 2026-09-12: one thing has since been given up, for three tables by
+  name — see the amendment below.**
 - **Still not compared, and named so it is not mistaken for coverage:** grants
   and role membership, table and column comments, schemas other than `public`
   (`auth`, `storage`, `extensions`), table data, physical storage parameters,
-  publication/replication membership, and the *ordering* of enum labels beyond
-  their sort order. The PASS message prints this list on every run.
+  publication/replication membership, the *ordering* of enum labels beyond their
+  sort order, and — **added 2026-09-12, for `public.providers`,
+  `public.restaurants` and `public.restaurant_feature_flags` only** — the
+  physical column ORDER of those three tables when both sides hold the same
+  columns. The PASS message prints this list on every run, and says how many of
+  the three were exempted on that run rather than printing an unqualified
+  agreement.
 - **Revisit when:** the first real run against production produces a red that is
   not drift. That is the signal that a category needs narrowing, and it should be
   narrowed by name in this ADR, never by deleting the category quietly.
+  **That signal fired on 2026-09-12 and the amendment below is its answer.** It
+  narrows by naming three tables, not by deleting the `column-order` category:
+  every other table's reordering still fails, and so does a named table whose
+  column sets differ.
 - **Fork PRs cannot merge whatever of this file is required (deliberate, not a
   bug).** Every job in this workflow carries `if: github.event_name !=
   'pull_request' || github.event.pull_request.head.repo.full_name ==
@@ -524,8 +535,277 @@ whoever owns `purchase_reasons` so they renumber before CI tells them.
   every run). Unchanged behaviour, restated because an exclusion nobody re-reads
   becomes a blind spot.
 
+## Amendment, 2026-09-12 — three tables are exempt from the column-order comparison
+
+### What happened
+
+Production applied the nineteen migrations that arrived with PR #289 on
+2026-09-12, months after four migrations authored *later* than them had already
+landed from their own PRs (`20260906163412`, `20260906233000`, `20260907120000`,
+`20260911120000`). The nineteen had never applied because the first of them,
+`20260906020000`, failed its own assertion: its history CHECK evaluated to NULL,
+and a CHECK whose expression is NULL **passes** in Postgres.
+
+A fresh `supabase db reset` applies all twenty-three in version order. Production
+did not. So three tables now hold exactly the same columns in a different
+physical order:
+
+| table | what moved |
+|---|---|
+| `public.restaurants` | `carrying_cost_*` before `tax_id*` locally; the other way round on production |
+| `public.providers` | `usual_currency*` before `tax_id*` locally; after on production |
+| `public.restaurant_feature_flags` | `mudavym_design_document` late locally; earlier on production |
+
+Everything else agrees: **7461 facts on each side, every category count equal**,
+and the entire residual was those three `column-order` rows. The production order
+cannot be undone without rewriting three live tables, one of which is the tenant
+root.
+
+### What was decided
+
+`scripts/check_schema_parity.sh` carries a **named list of three tables**, in a
+file-level constant, whose `column-order` rows are reported as REORDERED and do
+not fail the build **when both sides hold the same set of columns**. Nothing else
+changes:
+
+- a column present on one side only still fails, in the `column` category;
+- a listed table whose column SETS differ still fails, as CHANGED;
+- **any other table's reordering still fails**, as CHANGED;
+- every other category is untouched.
+
+Removing a name from that list is always safe. Adding one needs a founder
+decision and another amendment here, exactly as this one did.
+
+### What this gives up, stated rather than implied
+
+One shape, for three tables: `DROP COLUMN x; ADD COLUMN x <identical
+definition>` applied by hand on production. That destroys the column's data and
+its only schema residue is `attnum` order, so on those three tables it would now
+pass. It still fails on every other table. This is the loss; it is not
+hypothetical and it is not zero.
+
+**On ONE of the three the reset direction is fail-OPEN, not fail-closed.**
+Worth saying because "destroys the column's data" reads as a loss of function,
+and on this one column it is a grant:
+
+- `restaurant_feature_flags.enable_ai_negotiation` is `boolean NOT NULL DEFAULT
+  true` (`20260826120000_od86_feature_flag_settings_row.sql:24-25`) -- the only
+  fail-open flag on that table, since `enabled`, `enable_ai_autonomous_send` and
+  all eleven `mudavym_design_*` flags default `false`. A drop-and-re-add
+  backfills `true` into every row, so a house that deliberately turned
+  autonomous negotiation OFF has it back ON. Nothing would cascade and catch it:
+  the table's three constraints (`restaurant_feature_flags_pkey`, the
+  `(restaurant_id, flag_name)` UNIQUE, and the `restaurant_id` FOREIGN KEY) and
+  its one btree all sit on OTHER columns, no view references the table, and no
+  CLAIMS row names it.
+
+**CORRECTED 2026-09-12, before this record was merged.** An earlier draft of this
+section said *two* of the three were fail-open and named
+`providers.agent_permissions` as the second, "defaulting to a permissive tier-1
+object". Measured, `20260805000000_baseline_from_production.sql:4889`:
+
+```
+agent_permissions jsonb DEFAULT '{"tier": 1, "auto_complaints": false,
+  "auto_operational": false, "recurring_orders": []}'::jsonb
+```
+
+That is tier 1 with both auto-grants FALSE and an empty recurring-order list --
+the LEAST capable value on the axis, not a permissive one, so a reset to it can
+only narrow. And a repo-wide grep over `apps/`, `services/` and `scripts/` finds
+**zero readers and zero writers** of the column, so no house can have set a
+narrowing to lose. The claim was false in both halves. It is corrected here
+rather than deleted, because a security claim that turned out to be wrong is
+worth more on the record than a clean paragraph.
+
+On `restaurants` the worst case is `deleted_at`: nothing indexes it, so nothing
+cascades, and every soft-deleted house returns into every `deleted_at IS NULL`
+read. `is_active` and `calendar_ical_token` ARE indexed, so dropping either
+cascades an index and the `index` category still catches it -- which is the
+shape of the accidental protection the other columns lack.
+
+### Why it is safe for these three, checked rather than assumed
+
+Physical column order is load-bearing only for positional SQL. Every shape was
+swept on `941d9cb4`:
+
+| shape | result |
+|---|---|
+| `INSERT INTO t VALUES (...)` with no column list | none (2,829 `INSERT INTO` occurrences; every one with no following column list is prose, a comment, a guard's search string, or a multi-line fragment whose column list is on the next line) |
+| `INSERT INTO t SELECT ...` with no column list | none |
+| `COPY ... FROM/TO` with no column list | none; no `copy_from` / `copy_expert` / `copy_to` |
+| indexed row access (`rows[N][M]`, `fetchone()[0]`, `rowMode: 'array'`) | none |
+| `%ROWTYPE` | two, both `SELECT * INTO` from the same table the rowtype is derived from, so both sides reorder together; neither table is on the list |
+| `RETURNS SETOF <table>` with an explicit column list | none |
+| `SELECT *` against the three listed tables | **ten**, and none of them positional: six on `providers` (`apps/api-gateway/src/providers/providers.service.ts:217,276,383,765,810` and `apps/api-gateway/src/procurement/procurement.service.ts:665`) and four on `restaurants` (four `services/agent-orchestrator/demo/*.py` scripts). Every one goes through PostgREST or supabase-py, which return objects keyed by column NAME, so physical order reaches none of them. An earlier draft of this table said "none", which was false; the conclusion it supported is unchanged, and the row now says what is actually there. |
+
+The orchestrator reaches the database only through supabase-py's builder, which
+names columns; the gateway only through the Supabase client, which does the same.
+
+### The guard, and the proof that it is not vacuous
+
+`--self-test-offline` is a new mode that needs no database, and it runs in CI as
+its own step in `.github/workflows/schema-parity.yml`, before the comparison is
+asked to judge anything. The full `--self-test` needs Docker and a running local
+stack, so it runs nowhere automatic and never has — which was tolerable while
+every invariant it proved was about SQL rendering, and stopped being tolerable
+the moment three cases became the only thing standing between "three rows" and
+"a category nobody compares any more".
+
+Seven invariants, proven to fail when the exception is widened:
+
+| mutation | result |
+|---|---|
+| the allow-list gate removed from the awk | exit **1**, "an UNLISTED table reordered exited 0, not 1" |
+| the named list emptied | exit **1**, "the reordered-table list is empty; every case above would be vacuous" |
+
+The second exists because an empty list would make every other case pass for the
+wrong reason.
+
+### The PASS message
+
+It no longer claims column order is compared when it was not. On a run where any
+of the three was exempted it says so and gives the count, and the exclusion list
+it prints on every run names the three tables.
+
+## Correction, 2026-09-12: `--self-test-offline` failed at random on macOS because bash crashed, not because the exception moved
+
+### What was reported
+
+In the worktree `wt-askai` (branch `fix/ask-ai-is-gated`, based on `d6b264a2`),
+`scripts/check_decision_claims.sh` reported the second ADR-0072 claim as
+**REGRESSED** on one run and holding on the next, with no file touched. That is
+the claim *"`--self-test-offline` needs no database and is a step in the parity
+workflow"*. The brief's working hypothesis was shared mutable state: temp files
+at fixed paths, colliding between invocations.
+
+### That hypothesis was checked, and it is false
+
+`WORK` is a fresh `mktemp -d` per invocation, removed by an EXIT trap
+(`scripts/check_schema_parity.sh:106-107`). Every file `self_test_offline()`
+writes lives under it: `st_offline_failures`, `sto_*`, and the comparison's
+`d.$$.*`. Nothing is shared between two invocations, or between two claims in one
+run of the register.
+
+### Reproduced, with the evidence the register throws away
+
+For a REGRESSED row the register prints only `id — claim`. It captures the
+verify's stderr and discards it. Run by hand with stderr kept (worktree at
+`87a6cb25`, the founder's Mac):
+
+| loop | runs | failed |
+|---|---|---|
+| `--self-test-offline` by itself | 1000 | **47** |
+| the claim's verify, invoked exactly as the register invokes it (`bash -c "$verify" 2>&1 >/dev/null`) | 300 | **19** |
+| `check_decision_claims.sh`, unmodified, whole register, looped until it failed twice | 48 | **2** (runs 29 and 48) |
+
+Every failure had the same shape. All five `( compare … )` subshells in that run
+died with **SIGSEGV**, `Segmentation fault: 11 ( compare "$WORK/sto_a"
+"$WORK/sto_b" --quiet )`, exit 139. The suite reported `exited 139, not 0` five
+times and exited 1. The sixth case never crashed; it leaves `compare` through
+`cannot_check` before reaching the awk. A run lost either all five subshells or
+none: 235 crashed subshells across 47 failed runs. The register's two failures are the
+same event. Run 29's window holds two crash reports carrying the stack below,
+siblings of a single parent process. Run 48 has none of its own, because macOS
+kept only 34 bash crash reports that day for several hundred crashed subshells.
+
+### Cause
+
+macOS wrote a crash report for every one
+(`~/Library/Logs/DiagnosticReports/bash-*.ips`). Every one sampled carries the
+same stack:
+
+    dispose_temporary_env → sv_locale → set_locale_var → reset_locale_vars
+      → libintl_setlocale → CFLocaleCopyPreferredLanguages → … → os_log → SIGSEGV
+
+On the founder's Mac, `#!/usr/bin/env bash` resolves to Homebrew bash 5.3.15,
+which links Homebrew gettext's `libintl`. `LC_ALL=C awk …` (formerly `:488`,
+inside `compare()`) is a **prefix assignment**. Bash sets `LC_ALL` in a temporary
+environment, runs awk, then restores it. Restoring calls `setlocale`, and on this
+build that reaches CoreFoundation. CoreFoundation is not safe in a process that
+forked and did not exec. `( compare … )` is exactly such a process: the self-test
+runs `compare` in a subshell so that a `cannot_check` exit cannot kill the suite.
+The production comparison calls `compare` in the main shell, which is why that
+path has never crashed.
+
+Measured in isolation, 300 fresh processes per row, `LANG` unset. Bare line
+numbers in this Correction are as of `87a6cb25`, before the fix moved them.
+
+| shape | segfaults |
+|---|---|
+| `( LC_ALL=C awk …; touch … )`, the shape at `:488` | **20 / 300** |
+| `( env LC_ALL=C awk …; touch … )` | 0 / 300 |
+| `LC_ALL=C awk …` in the main shell | 0 / 300 |
+| `( LC_ALL=C true; : )` with `LANG=en_US.UTF-8` exported | 0 / 300 |
+| `y=$(LC_ALL=C cat </dev/null)` | **18 / 300** |
+| `:386`, `:399`, `:531` in their real shapes (all pipeline elements) | 0 / 300 each |
+| the whole `--self-test-offline` under `/bin/bash` 3.2 | 0 / 300 |
+
+So two conditions: Homebrew bash 5.3 on macOS, and `LANG` unset. Claude Code
+sessions run with `LANG` unset, and a terminal with it exported never sees the
+crash. Ubuntu CI has no CoreFoundation, so it should be unaffected there, but that
+is **reasoned, not measured**. One thing was **not established**: why a run's fate
+is all-or-nothing, decided before its first fork. The three rates (47 / 1000
+alone, 19 / 300 in the register's invocation shape, 2 / 48 in the whole register)
+are not distinguishable from one another at these sample sizes.
+
+### What it was not
+
+It was not a regression of the exception, and the self-test did not lie. It
+refused to pass when bash crashed, and said so. The red was real, but it meant
+"bash crashed", and the only channel that said so is the one the register
+discards.
+
+### Fix
+
+All four locale overrides now go through `env`: `env LC_ALL=C awk`, `sort` and
+`uniq`. `env` is an external command, so bash never sets, restores or reads a
+locale variable of its own. awk, sort and uniq receive exactly the environment
+they received before, so **the comparison's semantics do not change**.
+
+Only `:488` was measured crashing in its real shape. `:386`, `:399` and `:531`
+were changed anyway, so the rule is one line (*bash never sets a locale variable
+in this file*) rather than a judgment about which shapes bash happens to exec
+directly. A pipeline element survived 300 of 300; `$(LC_ALL=C cat </dev/null)`
+did not.
+
+Deliberately **not** done: the self-test's cases and expectations are untouched,
+the claim's verify string is untouched, and `compare` still runs in a subshell.
+
+### Guard
+
+There is a new ADR-0072 row in `CLAIMS.jsonl`. It requires that
+`scripts/check_schema_parity.sh` carries `env LC_ALL=C awk`, and that no `*.sh`
+under `scripts/` has bash set `LC_*`, `LANG` or `LANGUAGE` itself. Proven:
+
+- it does **not** hold on `87a6cb25`: four bare prefixes, all in this file. A sweep
+  of the tracked shell scripts under `scripts/` and `.claude/`, and of the
+  workflows under `.github/`, found none anywhere else;
+- it holds on the fix;
+- it fails on a line mixing an `env` form with a bare prefix, on `export LANG=…`,
+  and on a bare prefix in another script;
+- it ignores look-alike names such as `MY_LANG=`;
+- with the file missing it exits 2 with `No such file or directory`, which the
+  register reads as COULD NOT RUN rather than as holding. Without the presence
+  check it did hold: `grep -r --include` over a missing directory printed nothing
+  and exited 1.
+
+### Proof
+
+| loop | before | after |
+|---|---|---|
+| `--self-test-offline` by itself | 47 / 1000 | **0 / 1000** |
+| the claim's verify in the register's invocation shape | 19 / 300 | **0 / 300** |
+| `check_decision_claims.sh`, whole register | 2 in 48 | **0 in 150** |
+
+If the crash still happened at the register's own measured rate (2 in 48), the
+chance of 150 clean runs would be about 1.7e-03. The
+after-loops ran the same loop scripts, on the same Mac, in a worktree of the
+same base commit carrying only this change.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | — | Created. Diagnosis verified against a fixture and against production; fix proven to fail where the old one passed; self-test proven non-vacuous by mutation. |
+| 2026-09-12 | — | **Amended.** The "revisit when" signal fired: the first run after production caught up on #289's nineteen migrations was red on three `column-order` rows that were not drift. Narrowed BY NAME (three tables) per this ADR's own instruction, never by deleting the category. `:199` and the not-compared list rewritten; the PASS message corrected; `--self-test-offline` added and wired into CI, and proven to fail under two widening mutations. |
+| 2026-09-12 | — | **Corrected.** The ADR-0072 self-test claim was flaking REGRESSED. The cause was not shared temp state (`WORK` is `mktemp -d`); it was a Homebrew bash 5.3 segfault on macOS in `libintl` → CoreFoundation, triggered when bash itself restores a prefixed `LC_ALL` inside the self-test's forked subshells (47 / 1000). All four locale overrides now pass through `env`; the exception, the self-test and the claim are unchanged; a new CLAIMS row refuses a bare locale prefix anywhere under `scripts/`. |

@@ -4,6 +4,7 @@ import {
   Inject,
   Optional,
   forwardRef,
+  NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
@@ -236,7 +237,7 @@ export class NotificationsService {
   }): Promise<void> {
     const payload: NotificationPayload = {
       type: "order_approval",
-      title: "🍷 New Order Awaiting Approval",
+      title: "New order awaiting approval",
       body: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}${
         data.price ? ` ($${data.price.toFixed(2)}/bottle)` : ""
       }`,
@@ -249,8 +250,8 @@ export class NotificationsService {
       },
       requireInteraction: true,
       actions: [
-        { action: "approve", title: "✅ Approve" },
-        { action: "view", title: "👁️ View Details" },
+        { action: "approve", title: "Approve" },
+        { action: "view", title: "View details" },
       ],
     };
 
@@ -271,12 +272,11 @@ export class NotificationsService {
     managerPhone?: string;
   }): Promise<void> {
     const severity =
-      data.currentStock <= data.threshold * 0.5 ? "Critical" : "Low Stock";
-    const emoji = data.currentStock <= data.threshold * 0.5 ? "🚨" : "⚠️";
+      data.currentStock <= data.threshold * 0.5 ? "Critical" : "Low stock";
 
     const payload: NotificationPayload = {
       type: "low_stock",
-      title: `${emoji} ${severity}: ${data.wineName}`,
+      title: `${severity}: ${data.wineName}`,
       body: `Only ${data.currentStock} bottles remaining (threshold: ${data.threshold})`,
       data: {
         wineId: data.wineId,
@@ -287,8 +287,8 @@ export class NotificationsService {
       },
       requireInteraction: data.currentStock <= data.threshold * 0.5,
       actions: [
-        { action: "reorder", title: "🛒 Reorder Now" },
-        { action: "view", title: "📊 View Inventory" },
+        { action: "reorder", title: "Reorder now" },
+        { action: "view", title: "View inventory" },
       ],
     };
 
@@ -301,7 +301,7 @@ export class NotificationsService {
       data.restaurantId,
       {
         type: "inventory_low_stock",
-        title: `${emoji} ${severity}: ${data.wineName}`,
+        title: `${severity}: ${data.wineName}`,
         message: `Only ${data.currentStock} bottles remaining (threshold: ${data.threshold})`,
         priority:
           data.currentStock <= data.threshold * 0.5 ? "critical" : "high",
@@ -353,7 +353,7 @@ export class NotificationsService {
   }): Promise<void> {
     const payload: NotificationPayload = {
       type: "delivery",
-      title: "📦 Delivery Arrived",
+      title: "Delivery arrived",
       body: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}`,
       data: {
         orderId: data.orderId,
@@ -363,8 +363,8 @@ export class NotificationsService {
       },
       requireInteraction: true,
       actions: [
-        { action: "confirm", title: "✅ Confirm Receipt" },
-        { action: "view", title: "👁️ View Order" },
+        { action: "confirm", title: "Confirm receipt" },
+        { action: "view", title: "View order" },
       ],
     };
 
@@ -373,7 +373,7 @@ export class NotificationsService {
     // Sync to the in-app inbox so the signal survives past the live toast.
     await this.persistForRestaurant(data.restaurantId, {
       type: "order_delivered",
-      title: `📦 Delivery arrived: ${data.wineName}`,
+      title: `Delivery arrived: ${data.wineName}`,
       message: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}`,
       priority: "medium",
       actionUrl: "/orders",
@@ -404,7 +404,7 @@ export class NotificationsService {
 
     const payload: NotificationPayload = {
       type: "price_negotiation",
-      title: "💰 New Price Offer",
+      title: "New price offer",
       body: `${data.providerName} offered $${data.proposedPrice.toFixed(2)}/bottle for ${
         data.wineName
       } (${Math.abs(Number(percentage))}% ${direction})`,
@@ -417,8 +417,8 @@ export class NotificationsService {
       },
       requireInteraction: true,
       actions: [
-        { action: "accept", title: "✅ Accept" },
-        { action: "negotiate", title: "↔️ Counter" },
+        { action: "accept", title: "Accept" },
+        { action: "negotiate", title: "Counter" },
       ],
     };
 
@@ -434,28 +434,29 @@ export class NotificationsService {
     message: string;
     severity: "info" | "warning" | "error";
   }): Promise<void> {
-    const emoji = {
-      info: "ℹ️",
-      warning: "⚠️",
-      error: "🚨",
-    }[data.severity];
-
+    // The severity used to be prefixed as an emoji onto both the
+    // push title and the STORED inbox title. It is gone: `severity` is already
+    // carried structurally — in `data.severity`, in `metadata.severity`, in the
+    // row's `priority`, and in `requireInteraction` — so the picture added no
+    // fact, and a picture written into a database row cannot be restyled,
+    // searched or read aloud. The inbox draws its own mark from `type`
+    // (`pages/notifications/next/nt-format.ts`).
     const payload: NotificationPayload = {
       type: "system_alert",
-      title: `${emoji} ${data.title}`,
+      title: data.title,
       body: data.message,
       data: {
         severity: data.severity,
       },
       requireInteraction: data.severity === "error",
-      actions: [{ action: "view", title: "👁️ View Details" }],
+      actions: [{ action: "view", title: "View details" }],
     };
 
     await this.sendToRestaurant(data.restaurantId, payload);
 
     await this.persistForRestaurant(data.restaurantId, {
       type: "system",
-      title: `${emoji} ${data.title}`,
+      title: data.title,
       message: data.message,
       priority: data.severity === "error" ? "high" : "medium",
       metadata: { severity: data.severity },
@@ -475,7 +476,7 @@ export class NotificationsService {
     bcc?: string[];
   }): Promise<{ success: boolean; messageId: string }> {
     this.logger.log(
-      `📧 Sending email to: ${data.to.join(", ")} — ${data.subject}`,
+      `Sending email to: ${data.to.join(", ")} — ${data.subject}`,
     );
 
     if (this.gmailService) {
@@ -488,7 +489,7 @@ export class NotificationsService {
         bcc: data.bcc,
       });
       this.logger.log(
-        `✅ Email ${result.success ? "sent" : "failed"} — MessageID: ${result.messageId}`,
+        `Email ${result.success ? "sent" : "failed"} — MessageID: ${result.messageId}`,
       );
       return {
         success: result.success,
@@ -499,7 +500,7 @@ export class NotificationsService {
     // Fallback mock (no GmailService available)
     const messageId = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     this.logger.warn(
-      `⚠ GmailService not available — email mocked. MessageID: ${messageId}`,
+      `GmailService not available — email mocked. MessageID: ${messageId}`,
     );
     return { success: true, messageId };
   }
@@ -893,19 +894,29 @@ export class NotificationsService {
     return count || 0;
   }
 
-  async markAsRead(id: string) {
+  /**
+   * Every write by notification id below is scoped to the OWNER'S user id
+   * (2026-09-12). They matched on `id` alone, so any signed-in user could
+   * read, archive or delete another user's notification, in any restaurant,
+   * by naming its uuid. A row that is not the caller's is a 404, the same
+   * answer as a row that does not exist, so the refusal says nothing about
+   * whether the id is real.
+   */
+  async markAsRead(id: string, userId: string) {
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .update({ status: "read", read_at: now })
       .eq("id", id)
+      .eq("user_id", userId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error(`markAsRead error: ${error.message}`);
       throw error;
     }
+    if (!data) throw new NotFoundException("Notification not found");
 
     return this.mapNotificationRow(data);
   }
@@ -914,28 +925,31 @@ export class NotificationsService {
    * Inverse of markAsRead (UX path NEW-474). Clears read_at so the unread
    * count and the "unread" filter both agree with the row's status again.
    */
-  async markAsUnread(id: string) {
+  async markAsUnread(id: string, userId: string) {
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .update({ status: "unread", read_at: null })
       .eq("id", id)
+      .eq("user_id", userId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error(`markAsUnread error: ${error.message}`);
       throw error;
     }
+    if (!data) throw new NotFoundException("Notification not found");
 
     return this.mapNotificationRow(data);
   }
 
-  async markBulkAsRead(ids: string[]): Promise<number> {
+  async markBulkAsRead(ids: string[], userId: string): Promise<number> {
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .update({ status: "read", read_at: now })
       .in("id", ids)
+      .eq("user_id", userId)
       .select("id");
 
     if (error) {
@@ -972,40 +986,48 @@ export class NotificationsService {
     return data?.length || 0;
   }
 
-  async archiveNotification(id: string) {
+  async archiveNotification(id: string, userId: string) {
     const now = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .update({ status: "archived", archived_at: now })
       .eq("id", id)
+      .eq("user_id", userId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error(`archiveNotification error: ${error.message}`);
       throw error;
     }
+    if (!data) throw new NotFoundException("Notification not found");
 
     return this.mapNotificationRow(data);
   }
 
-  async deleteNotification(id: string): Promise<void> {
-    const { error } = await this.databaseService.supabase
+  async deleteNotification(id: string, userId: string): Promise<void> {
+    const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("id");
 
     if (error) {
       this.logger.error(`deleteNotification error: ${error.message}`);
       throw error;
     }
+    if (!data || data.length === 0) {
+      throw new NotFoundException("Notification not found");
+    }
   }
 
-  async deleteBulk(ids: string[]): Promise<number> {
+  async deleteBulk(ids: string[], userId: string): Promise<number> {
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .delete()
       .in("id", ids)
+      .eq("user_id", userId)
       .select("id");
 
     if (error) {
@@ -1032,16 +1054,23 @@ export class NotificationsService {
     return data?.length || 0;
   }
 
-  async getNotificationHistory(userId: string, days: number = 30) {
+  async getNotificationHistory(
+    userId: string,
+    days: number = 30,
+    restaurantId?: string,
+  ) {
     const sinceDate = new Date();
     sinceDate.setDate(sinceDate.getDate() - days);
 
-    const { data, error } = await this.databaseService.supabase
+    let query = this.databaseService.supabase
       .from("notifications")
       .select("*")
       .eq("user_id", userId)
-      .gte("created_at", sinceDate.toISOString())
-      .order("created_at", { ascending: false });
+      .gte("created_at", sinceDate.toISOString());
+    if (restaurantId) query = query.eq("restaurant_id", restaurantId);
+    const { data, error } = await query.order("created_at", {
+      ascending: false,
+    });
 
     if (error) {
       this.logger.error(`getNotificationHistory error: ${error.message}`);

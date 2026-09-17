@@ -12,7 +12,7 @@
 - **`runs?=yes`** only if a named CI job invokes that runner on push ([`ci.yml`](../../.github/workflows/ci.yml): `test-typescript`, `test-python`, `test-e2e`) or schedule ([`e2e-prod.yml`](../../.github/workflows/e2e-prod.yml): `e2e-prod`).
 - **`passes?` default `unknown`** unless this phase has a green local run artifact. **Never claim CI green** from file presence alone.
 - **Do not treat TFND-05 as green CI (H5).** As of 2026-07-27, push CI fails Black on `services/agent-orchestrator/api/studio_routes.py` (recent failing run `30299009969`). Lint gates `test-python` / `test-typescript` — test jobs are not trustworthy until lint is green.
-- **Layer inference:** path + `pytest.ini` markers (`unit`, `integration`, `e2e`, `prod_e2e`). Nest/Vitest default `unit` unless path/name clearly integration (`*.e2e.spec.ts`, reports integration folders). `wave_*.py` → `prod_e2e` + `ci_job=e2e-prod`. Local Playwright → `e2e` + `test-e2e`. `apps/web/e2e/nightly/nightly.spec.ts` notes Wave F / `e2e-prod` (ADR 0135, 2026-09-11 — replaced the retired `prod-smoke.spec.ts`).
+- **Layer inference:** path + `pytest.ini` markers (`unit`, `integration`, `e2e`, `prod_e2e`). Nest/Vitest default `unit` unless path/name clearly integration (`*.e2e.spec.ts`, reports integration folders). `wave_*.py` → `prod_e2e` + `ci_job=e2e-prod`. Local Playwright → `e2e` + `test-e2e`. `apps/web/e2e/nightly/nightly.spec.ts` notes Wave F / `e2e-prod` (ADR 0135, 2026-09-11 — replaced the retired `prod-smoke.spec.ts`). Waves D, E, G retired 2026-09-12 (ADR 0137) — their rows are removed, not marked absent, since the files no longer exist.
 - **`test-e2e` (local Playwright on push) ≠ `e2e-prod` (nightly/cloud waves).** Do not conflate them.
 - **T1-eligible evidence excludes `passes?=stale-suspect`** (C3/M1). Rows remain inventoried; scorecard must not count them toward T1.
 - **Group column** uses locked N-shortname slugs only, matching [FUNCTIONALITY-REGISTRY.md](./FUNCTIONALITY-REGISTRY.md) primaries (H1).
@@ -26,25 +26,25 @@
 | jest | 42 |
 | vitest | 30 |
 | playwright | 4 |
-| pytest | 68 |
-| **Total** | **144** |
+| pytest | 65 |
+| **Total** | **141** |
 
 | Group slug | Rows | T1-eligible (`runs?=yes` ∧ not stale-suspect) |
 |------------|-----:|----------------------------------------------:|
 | `1-identity` | 4 | 4 |
 | `2-catalog` | 31 | 31 |
 | `3-inventory` | 6 | 6 |
-| `4-pos` | 6 | 6 |
+| `4-pos` | 5 | 5 |
 | `5-procurement` | 16 | 16 |
-| `6-comms` | 13 | 13 |
-| `7-calendar` | 5 | 5 |
+| `6-comms` | 12 | 12 |
+| `7-calendar` | 4 | 4 |
 | `8-analytics` | 25 | 25 |
 | `9-notifications` | 6 | 6 |
 | `10-ai` | 0 | 0 |
 | `11-platform` | 32 | 31 |
 
 - **stale-suspect rows:** 1 (excluded from T1-eligible)  
-- **T1-eligible row total:** 143  
+- **T1-eligible row total:** 140  
 - **Corpus floors (2026-07-27 find):** api-gateway `*.spec.ts`=41 · web `src` Vitest=30 · `e2e/*.spec.ts`=4 · orch `test_*.py`+`wave_*.py`=67
 
 ---
@@ -139,9 +139,6 @@
 | 11-platform | services/agent-orchestrator/tests/e2e/wave_a_api_contracts.py | pytest | prod_e2e | e2e-prod | yes | unknown | wave_*.py → prod_e2e + e2e-prod |
 | 11-platform | services/agent-orchestrator/tests/e2e/wave_b_agent_health.py | pytest | prod_e2e | e2e-prod | yes | unknown | wave_*.py → prod_e2e + e2e-prod |
 | 11-platform | services/agent-orchestrator/tests/e2e/wave_c_agent_triggers.py | pytest | prod_e2e | e2e-prod | yes | unknown | wave_*.py → prod_e2e + e2e-prod |
-| 4-pos | services/agent-orchestrator/tests/e2e/wave_d_toast_pipeline.py | pytest | prod_e2e | e2e-prod | yes | unknown | Toast pipeline wave |
-| 6-comms | services/agent-orchestrator/tests/e2e/wave_e_gmail_pipeline.py | pytest | prod_e2e | e2e-prod | yes | unknown | Gmail pipeline wave |
-| 7-calendar | services/agent-orchestrator/tests/e2e/wave_g_calendar.py | pytest | prod_e2e | e2e-prod | yes | unknown | calendar wave |
 | 8-analytics | services/agent-orchestrator/tests/test_analytics_routes.py | pytest | unit | test-python | yes | unknown |  |
 | 2-catalog | services/agent-orchestrator/tests/test_auction_wine_service.py | pytest | unit | test-python | yes | unknown |  |
 | 11-platform | services/agent-orchestrator/tests/test_base_agent_infra.py | pytest | unit | test-python | yes | unknown |  |

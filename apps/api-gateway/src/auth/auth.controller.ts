@@ -23,6 +23,7 @@ import { Public } from "./decorators/public.decorator";
 import { AllowsTenantChange } from "../common/tenant/allows-tenant-change.decorator";
 import { AllowUnverified } from "./decorators/allow-unverified.decorator";
 import { CheckEmailDto } from "./dto/check-email.dto";
+import { VerifyEmailDto } from "./dto/verify-email.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
@@ -446,8 +447,11 @@ export class AuthController {
   // Public by DECISION, not by omission (ADR 0096): reached from a link in an email, often before a session exists; the one-time token in the body is the credential.
   @Public()
   @Post("verify-email")
-  async verifyEmail(@Body() body: { token: string }) {
-    const tokens = await this.authService.verifyEmail(body.token);
+  // A class DTO, not an inline `{ token: string }`: an inline type erases to
+  // `Object` and the global ValidationPipe skips it, so a malformed token
+  // reached `.eq("token", ...)` on a uuid column unvalidated.
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    const tokens = await this.authService.verifyEmail(dto.token);
     return { success: true, ...tokens, message: "Email verified" };
   }
 

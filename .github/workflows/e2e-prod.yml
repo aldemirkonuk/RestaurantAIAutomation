@@ -39,7 +39,7 @@
 #     E2E_TEST_PASSWORD          its password — same readers
 #   OPTIONAL — each changes what is covered, and its absence is reported:
 #     VERCEL_PRODUCTION_URL      the web app; defaults to https://mudavym.com
-#     RAILWAY_ORCHESTRATOR_URL   the FastAPI orchestrator (Waves A–E, G).
+#     RAILWAY_ORCHESTRATOR_URL   the FastAPI orchestrator (Waves A–C).
 #                                Probed first; unreachable = cannot_check
 #     ADMIN_API_KEY              Wave B (orchestrator agent health)
 #     SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY
@@ -47,12 +47,16 @@
 #                                fixtures (conftest_prod.py). NOT needed by the
 #                                browser walk or Wave H. The service-role key
 #                                arms the legacy session teardown — see above
-#     RABBITMQ_URL / TOAST_WEBHOOK_SECRET / GMAIL_USER   Waves C / D / E
+#     RABBITMQ_URL               Wave C
 #     SENTRY_DSN                 failure alerting only
 #     E2E_LEGACY_RESTAURANT_ID   a second house whose flags are OFF, for the
 #                                legacy pass; without it the same house is
 #                                walked with the per-browser override forcing
 #                                legacy (useMudavymDesign.ts precedence 1)
+#   RETIRED — Waves D (Toast), E (Gmail) and G (Calendar) were deleted
+#   2026-09-12 (ADR 0137), and with them the Toast webhook secret and both Gmail
+#   credentials: an unused secret mapped into a job env is readable by every
+#   step and action in it.
 #
 # PACING
 #   Every /api/v1/auth/* route is limited to 10 requests per 60 s per IP+route
@@ -128,8 +132,7 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
       RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
-      TOAST_WEBHOOK_SECRET: ${{ secrets.TOAST_WEBHOOK_SECRET }}
-      GMAIL_USER: ${{ secrets.GMAIL_USER }}
+      # The Toast and Gmail secrets are not mapped: waves D and E are retired (ADR 0137)
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       GITHUB_SHA: ${{ github.sha }}
       TRIGGERED_BY_DEPLOY: ${{ inputs.triggered_by_deploy || 'false' }}
@@ -143,7 +146,7 @@ jobs:
       - name: Required secrets are present
         run: |
           REQUIRED="API_GATEWAY_URL E2E_TEST_EMAIL E2E_TEST_PASSWORD E2E_BASE_URL"
-          OPTIONAL="RAILWAY_ORCHESTRATOR_URL ADMIN_API_KEY SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY RABBITMQ_URL TOAST_WEBHOOK_SECRET GMAIL_USER SENTRY_DSN E2E_LEGACY_RESTAURANT_ID"
+          OPTIONAL="RAILWAY_ORCHESTRATOR_URL ADMIN_API_KEY SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY RABBITMQ_URL SENTRY_DSN E2E_LEGACY_RESTAURANT_ID"
           MISSING=""
           for name in $REQUIRED; do
             if [ -z "${!name:-}" ]; then MISSING="$MISSING $name"; fi
@@ -219,7 +222,7 @@ jobs:
         run: |
           OUT=test-results/orchestrator-preflight.json
           if [ -z "${RAILWAY_ORCHESTRATOR_URL:-}" ]; then
-            printf '{"reachable": false, "status": null, "reason": "RAILWAY_ORCHESTRATOR_URL is unset -- Waves A-E, G cannot run"}\n' > "$OUT"
+            printf '{"reachable": false, "status": null, "reason": "RAILWAY_ORCHESTRATOR_URL is unset -- Waves A-C cannot run"}\n' > "$OUT"
             echo "reachable=false" >> "$GITHUB_OUTPUT"; cat "$OUT"; exit 0
           fi
           CODE=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "${RAILWAY_ORCHESTRATOR_URL%/}/health" || echo "000")
@@ -227,9 +230,9 @@ jobs:
             printf '{"reachable": true, "status": 200, "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered 200"}\n' > "$OUT"
             echo "reachable=true" >> "$GITHUB_OUTPUT"
           else
-            printf '{"reachable": false, "status": %s, "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered HTTP %s -- the orchestrator is not deployed at that URL; Waves A-E, G are cannot_check, not failed"}\n' "${CODE:-null}" "$CODE" > "$OUT"
+            printf '{"reachable": false, "status": %s, "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered HTTP %s -- the orchestrator is not deployed at that URL; Waves A-C are cannot_check, not failed"}\n' "${CODE:-null}" "$CODE" > "$OUT"
             echo "reachable=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Orchestrator unreachable::HTTP $CODE from RAILWAY_ORCHESTRATOR_URL/health -- Waves A-E, G recorded as cannot_check"
+            echo "::warning title=Orchestrator unreachable::HTTP $CODE from RAILWAY_ORCHESTRATOR_URL/health -- Waves A-C recorded as cannot_check"
           fi
           cat "$OUT"
 
@@ -259,7 +262,7 @@ jobs:
           cp -R test-results/nightly/. ../../test-results/nightly/ 2>/dev/null || true
 
       # -----------------------------------------------------------------------
-      # 4. LEGACY WAVES A–E, G — only when the orchestrator answered.
+      # 4. LEGACY WAVES A–C — only when the orchestrator answered.
       #    Their session teardown is dry-run unless E2E_SIM_TEARDOWN=1 (never set here).
       # -----------------------------------------------------------------------
       - name: Wave A — API Contract Tests (orchestrator)
@@ -278,23 +281,12 @@ jobs:
           C=$!
           wait $B || true; wait $C || true
 
-      - name: Wave D — Toast Pipeline (orchestrator)
-        if: steps.preflight.outputs.reachable == 'true'
-        working-directory: services/agent-orchestrator
+      # Waves D, E, G — RETIRED 2026-09-12 (ADR 0137): deleted, not skipped. Each
+      # tested a table or endpoint with no production consumer; repointing one
+      # would re-arm a real write. This step states the reason in the log.
+      - name: Waves D, E, G — retired
         run: |
-          pytest tests/e2e/wave_d_toast_pipeline.py --junitxml=../../test-results/wave_d.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_d.log || true
-
-      - name: Wave E — Gmail Pipeline (orchestrator)
-        if: steps.preflight.outputs.reachable == 'true'
-        working-directory: services/agent-orchestrator
-        run: |
-          pytest tests/e2e/wave_e_gmail_pipeline.py --junitxml=../../test-results/wave_e.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_e.log || true
-
-      - name: Wave G — Calendar (orchestrator)
-        if: steps.preflight.outputs.reachable == 'true'
-        working-directory: services/agent-orchestrator
-        run: |
-          pytest tests/e2e/wave_g_calendar.py --junitxml=../../test-results/wave_g.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_g.log || true
+          echo "::notice::Waves D (Toast), E (Gmail), G (Calendar) retired 2026-09-12 (ADR 0137) -- see .planning/decisions/0137-legacy-e2e-waves-d-e-g-are-retired-not-repointed.md"
 
       # -----------------------------------------------------------------------
       # 5. BACKTESTS — offline, this checkout. The canned day (ADR 0093, bistro /

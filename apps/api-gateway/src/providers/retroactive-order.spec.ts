@@ -43,6 +43,9 @@ function makeDb(opts: {
   existingOpenOrders?: Row[];
   insertedOrder?: Row;
   inventory?: Row | null;
+  /** ADR 0141: what the ownership probe (`select("id")`) sees. `null` = the
+   *  item is not this restaurant's, which is a 403 and not a missing wine. */
+  ownedInventory?: Row | null;
 }) {
   const calls: Calls = {
     orderInserts: [],
@@ -61,8 +64,26 @@ function makeDb(opts: {
       const settle = (shape: "one" | "many") => {
         if (table === "providers")
           return { data: null, count: opts.providerCount ?? 1, error: null };
-        if (table === "restaurant_inventory")
+        if (table === "restaurant_inventory") {
+          // ADR 0141 split this table into TWO reads on the createOrder path,
+          // and the mock has to tell them apart or the test cannot say what it
+          // means. `select("id")` is the OWNERSHIP probe — does this item belong
+          // to the caller — and `opts.inventory` answers the WINE IDENTITY
+          // lookup, which selects master_wine_id/wine_name. A test passing
+          // `inventory: null` is saying "the identity cannot be resolved", not
+          // "the item is another restaurant's"; conflating them would make
+          // `writes a line even when the wine identity cannot be resolved`
+          // assert a 403 instead.
+          if (lastSelect.trim() === "id")
+            return {
+              data:
+                opts.ownedInventory === undefined
+                  ? { id: "inv-1" }
+                  : opts.ownedInventory,
+              error: null,
+            };
           return { data: opts.inventory ?? null, error: null };
+        }
         if (table === "procurement_orders") {
           if (op === "insert")
             return { data: opts.insertedOrder ?? null, error: null };
@@ -82,8 +103,12 @@ function makeDb(opts: {
         return { data: shape === "many" ? [] : null, error: null };
       };
 
+      let lastSelect = "";
       const q: any = {
-        select: () => q,
+        select: (cols?: string) => {
+          lastSelect = cols ?? "";
+          return q;
+        },
         eq: () => q,
         neq: () => q,
         not: () => q,
@@ -210,6 +235,26 @@ function services(db: DatabaseService, orchestrator?: OrchestratorService) {
  * absence IS the defect.
  */
 const PROCUREMENT_ORDER_COLUMNS = new Set([
+  // 20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql
+  // (2026-09-06): the ORDER carries the currency it was placed in and says where
+  // that came from. Both are always written together -- the CHECK
+  // `procurement_orders_currency_states_its_source` refuses either half alone --
+  // and on a RETROACTIVE order both are normally null: nobody chose a currency
+  // for an invoice that had already been paid.
+  "currency",
+  "currency_source",
+  // 20260905235800_an_order_that_repeats_says_so_on_itself.sql (2026-09-05):
+  // nine additive recurrence columns; createOrder writes the last two on a
+  // generated child (ADR 0125 recurrence addendum).
+  "recurrence_frequency",
+  "recurrence_anchor_day",
+  "recurrence_anchored_on",
+  "recurrence_next_due_on",
+  "recurrence_status",
+  "recurrence_status_by",
+  "recurrence_status_at",
+  "recurrence_parent_order_id",
+  "recurrence_occurrence_on",
   "id",
   "order_number",
   "restaurant_id",

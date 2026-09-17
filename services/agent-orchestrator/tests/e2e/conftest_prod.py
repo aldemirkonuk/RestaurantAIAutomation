@@ -54,12 +54,11 @@ def _extract_wave(nodeid: str) -> str:
         "wave_a_api_contracts": "A",
         "wave_b_agent_health": "B",
         "wave_c_agent_triggers": "C",
-        "wave_d_toast_pipeline": "D",
-        "wave_e_gmail_pipeline": "E",
+        # D, E, G retired 2026-09-12 (ADR 0137) — tested schema with no
+        # production consumer; see the ADR before reusing these letters.
         "prod_smoke": "F",  # retired 2026-09-11 (ADR 0135); kept so old XML still maps
         "nightly": "F",  # apps/web/e2e/nightly/*.spec.ts — the browser wave
         "e2e_gateway": "H",  # tests/e2e_gateway — the NestJS gateway, read-only
-        "wave_g_calendar": "G",
     }
     for key, letter in wave_map.items():
         if key in nodeid:
@@ -211,7 +210,7 @@ def e2e_created_ids() -> List[Dict[str, str]]:
     """Mutable session registry of {table, id} pairs created during this run.
 
     Populated by individual test fixtures. Consumed by teardown_e2e_records.
-    Format: [{"table": "inventory_stock", "id": "e2e-stock-001"}, ...]
+    Format: [{"table": "notification_deliveries", "id": "e2e-notif-001"}, ...]
     """
     return []
 
@@ -250,13 +249,14 @@ def teardown_e2e_records(prod_supabase, e2e_created_ids):
     # H-02 audit of services/agent-orchestrator/agents/*.py — all tables that
     # receive writes with restaurant_id or id fields that could contain e2e data.
     # Missing tables = orphan rows silently accumulate in production.
+    # inventory_stock, calendar_events and pos_webhook_logs removed 2026-09-12
+    # (ADR 0137) — the only writers (waves D, E, G) are retired; none of the
+    # three exist in production as tables anyway (inventory_stock/pos_webhook_logs)
+    # or were ever written by this suite for real (calendar_events, wave-G only).
     E2E_TABLES = [
-        "inventory_stock",
         "notification_deliveries",
         "notification_logs",  # notification_agent.py: notification_logs.insert
         "order_interactions",
-        "calendar_events",
-        "pos_webhook_logs",
         "system_audit_log",  # inventory_engine.py + state_invariant_enforcer.py
         "master_wine_library_submissions",
     ]

@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -9,9 +11,14 @@ import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import {
   ModelClientService,
+  ModelSpendCeilingError,
   NfEventRef,
 } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import {
+  resolveModel,
+  routingContext,
+} from "../common/model-client/model-routing";
 import { ProcurementService } from "../procurement/procurement.service";
 import { AskAiAction, validateAction } from "./ask-ai-actions";
 import { ProposalCandidates, checkActionGrounded } from "./ask-ai-grounding";
@@ -134,8 +141,21 @@ export class AskAiService {
     private readonly procurement: ProcurementService,
   ) {}
 
-  private model(): string {
-    return this.configService.get<string>("ASK_AI_MODEL") || "claude-haiku-4-5";
+  /**
+   * A proposal is a CONFIGURATION the operator will confirm and a service will
+   * execute — a purchase order, a vendor email. That is the `compose` class
+   * (ADR 0120), so the founder's routing sends it to Sonnet 5 rather than the
+   * Haiku this defaulted to. `ASK_AI_MODEL` still outranks the class.
+   *
+   * Returned as the whole `Routing` rather than a bare string because the row
+   * this call writes records WHICH rule chose the model, not only which model.
+   */
+  private routing() {
+    return resolveModel({
+      config: this.configService,
+      taskClass: "compose",
+      siteEnvVar: "ASK_AI_MODEL",
+    });
   }
 
   /**
@@ -310,14 +330,44 @@ export class AskAiService {
     const ask = (utterance ?? "").trim();
     if (!ask) throw new BadRequestException("Say what you would like to do.");
 
-    const { candidates, prompt } = await this.loadCandidates(restaurantId);
+    const { candidates, lists, prompt } =
+      await this.loadCandidates(restaurantId);
+
+    // Refuse BEFORE the model call when there is nothing an action could point
+    // at. Every action this surface can propose is grounded against these three
+    // lists (`checkActionGrounded`), so with all three empty no proposal can
+    // pass grounding however the model answers -- the call would be paid for
+    // and then rejected. ADR 0145 build item 8 asked for exactly this cheap
+    // gate, and it is also the house for which a first call is most likely to
+    // be a curious tap rather than a real ask.
+    //
+    // Deliberately the narrow rule the record states -- all three empty -- and
+    // not a per-action one. A reorder needs an item AND a vendor, so a house
+    // with items and no active vendors still reaches the model and is refused
+    // by grounding afterwards. That wastes one call; a per-action rule that got
+    // the allowlist's required fields wrong would refuse an ask that could
+    // have succeeded, which is the worse failure.
+    if (
+      lists.inventory.length === 0 &&
+      lists.providers.length === 0 &&
+      lists.orders.length === 0
+    ) {
+      return {
+        proposed: false,
+        reason:
+          "There is nothing here yet for Ask AI to act on: no stock items, no active vendors and no open orders. " +
+          "Add one and ask again. Nothing was sent to the model.",
+      };
+    }
 
     const eventRef = new NfEventRef();
+    const routing = this.routing();
+    const meter = routingContext(routing, userId);
     let payload: any;
     try {
       payload = await this.modelClient.call({
         body: {
-          model: this.model(),
+          model: routing.model,
           max_tokens: 1024,
           system: SYSTEM_PROMPT,
           messages: [
@@ -328,17 +378,41 @@ export class AskAiService {
           ],
         },
         timeoutMs: 30_000,
+        // The one call site in the gateway a member can trigger at will, so
+        // the one that opts into metering its FIRST attempt and not only its
+        // retries. Everywhere else the ceiling stays retry-only, because
+        // adding a ledger read to a background path's happy route would give
+        // it a failure mode it was never written to handle.
+        gateFirstAttempt: true,
         nf: {
           subjectId: "AskAi",
           taskType: "ask_ai_proposal",
           stimulus: "operator_utterance",
           choice: "proposed_action",
           restaurantId,
-          context: { utterance_chars: ask.length },
+          // Literal keys, for the same reason `goals.service.ts` writes them
+          // literally: the ledger's shape must be readable from the call site.
+          context: {
+            utterance_chars: ask.length,
+            task_class: meter.task_class,
+            model_routed_by: meter.model_routed_by,
+            asked_by: meter.asked_by,
+          },
           eventRef,
         },
       });
     } catch (err: any) {
+      // A spend refusal is not an outage and must not be dressed as one. The
+      // model is fine, nothing was charged, and the condition clears by
+      // itself — so it answers 429 with the ceiling's own words rather than
+      // 503 with "temporarily unavailable", which would send an operator
+      // looking for a fault that does not exist.
+      if (err instanceof ModelSpendCeilingError) {
+        this.logger.warn(
+          `Ask AI refused before the first call: ${err.message} (restaurant ${restaurantId})`,
+        );
+        throw new HttpException(err.message, HttpStatus.TOO_MANY_REQUESTS);
+      }
       this.logger.error(`Ask AI model call failed: ${err?.message}`);
       throw new ServiceUnavailableException(
         "Ask AI is temporarily unavailable.",

@@ -42,10 +42,26 @@ export const MUDAVYM_PAGES = [
   'inventory',
   'receipts',
   'documents_reports',
+  'reports',
+  'notifications',
+  'recommendations',
+  'calendar',
+  'settings',
+  'profile',
+  'cellar',
+  // Not a redesign of a shipping page: `/connections` is a NEW route (ADR
+  // 0114). With the flag off the route redirects to `/profile` and the nav
+  // entry is absent, so OFF means "this surface does not exist here" rather
+  // than "the old design".
+  'connections',
   // ADR 0104 D12 slice 2 — the canonical document at /documents/:id. OFF by
   // default like every other page here; the gate's `legacy` branch redirects
   // to /receipts, which is this view's other face.
   'document',
+  // ADR 0133 (2026-09-06), new-pages wave. `/logs` only — the other nine
+  // pages that ADR covers are not part of this addition; see the migration
+  // 20260912080000's own note for why they arrive separately.
+  'logs',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];

@@ -216,13 +216,26 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     }
   });
 
-  it("keeps revenue and COGS, which do not depend on unit cost", async () => {
+  it("keeps revenue, which does not depend on unit cost", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
     );
     // 10 × 100 + 5 × 60 — menu price is recorded for both rows.
     expect(out.revenue).toBe(1300);
-    expect(out.cogs).toBe(0);
+    expect(out.basis.revenue).toContain("2 inventory rows valued");
+  });
+
+  it("withholds COGS when no delivered order came back at all", async () => {
+    // This assertion used to read `expect(out.cogs).toBe(0)`. There is no
+    // procurement_orders fixture here, so the loader returned [] — and it
+    // returns [] for a FAILED query too. $0 claimed "this restaurant bought
+    // nothing in a year" on the strength of an empty array (fixed 2026-09-03).
+    const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
+      RESTAURANT,
+    );
+    expect(out.cogs).toBeNull();
+    expect(out.cogs).not.toBe(0);
+    expect(out.basis.cogs).toContain("null");
   });
 
   it("stops the basis claiming WAC for a value that never touched WAC", async () => {

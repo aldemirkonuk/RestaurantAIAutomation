@@ -27,6 +27,13 @@ const MODEL_PRICING_USD_PER_MTOK: Record<
   { input: number; output: number }
 > = {
   "claude-haiku-4-5": { input: 1.0, output: 5.0 },
+  // Added 2026-09-04 with `model-routing.ts`, and NOT optional: the founder's
+  // routing decision sends the two `compose` sites to Sonnet 5, and an
+  // unrecognised model writes `cost_usd = NULL`. The spend ceiling below sums
+  // `cost_usd`, so an unpriced model would have made those calls invisible to
+  // the valve that exists to bound them — a model swap silently disarming a
+  // safety check. Rate from the Anthropic model table: $2.00 in / $10.00 out.
+  "claude-sonnet-5": { input: 2.0, output: 10.0 },
   "claude-opus-4-8": { input: 5.0, output: 25.0 },
 };
 
@@ -35,13 +42,37 @@ const MODEL_PRICING_USD_PER_MTOK: Record<
  * core = a $5 CREDIT that depletes (menu upload + trial), plus = $5/day, pro = $10/day.
  * All PLACEHOLDERS — pricing is founder-deferred (OD-23) and no ADR records a price.
  *
- * The ceiling suppresses RETRY attempts, never first attempts: gating a first call on a
- * ledger read would add a new failure mode to seven production paths, which the migration
- * contract ("preserve everything except retry/timeout/emission") forbids. A retry storm is
- * exactly how transport flakiness turns into surprise spend, so that is where the cap bites.
- * MODEL_DAILY_SPEND_CEILING_USD still overrides the NUMBER for incident response.
+ * The ceiling suppresses RETRY attempts by default, and first attempts ONLY where a call
+ * site opts in with `gateFirstAttempt`. Gating every first call on a ledger read would add
+ * a new failure mode to the seven production paths that predate this client, which the
+ * migration contract ("preserve everything except retry/timeout/emission") forbids — so the
+ * default is unchanged and those paths are untouched. A retry storm is how transport
+ * flakiness turns into surprise spend, which is why the cap bit there first; a caller who
+ * can trigger a first call at will is the other way it happens, which is what the opt-in
+ * closes (added 2026-09-12 for Ask AI). MODEL_DAILY_SPEND_CEILING_USD still overrides the
+ * NUMBER for incident response, never the mode.
  */
 const SPEND_CACHE_TTL_MS = 60_000;
+/** PostgREST's `max_rows` (supabase/config.toml:18). A response never holds more. */
+const SPEND_PAGE_ROWS = 1000;
+/** A ceiling on pages read per check, so a runaway ledger cannot stall a call. */
+const SPEND_MAX_PAGES = 200;
+
+/**
+ * How long until the next 00:00 UTC, in words a person reads. Exported so the
+ * refusal's promise is tested against a clock rather than trusted.
+ */
+export function untilUtcMidnight(now: Date = new Date()): string {
+  const next = new Date(now.getTime());
+  next.setUTCHours(24, 0, 0, 0);
+  const minutes = Math.max(
+    1,
+    Math.ceil((next.getTime() - now.getTime()) / 60_000),
+  );
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.ceil(minutes / 60);
+  return `about ${hours} hour${hours === 1 ? "" : "s"}`;
+}
 const TIER_CACHE_TTL_MS = 300_000;
 
 /**
@@ -50,6 +81,20 @@ const TIER_CACHE_TTL_MS = 300_000;
  * document-extractor and vendor-page-extractor produced before the migration,
  * so their callers' logs read the same. Emission failures NEVER surface here.
  */
+/**
+ * Thrown when a call site that opted into `gateFirstAttempt` is over its spend
+ * allowance. A SEPARATE type from ModelClientError on purpose: this is not a
+ * transport failure and must not be retried, logged as an outage, or reported
+ * to an operator as "the model is down". Nothing reached the API, nothing was
+ * charged, and the condition clears on its own.
+ */
+export class ModelSpendCeilingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ModelSpendCeilingError";
+  }
+}
+
 export class ModelClientError extends Error {
   constructor(
     message: string,
@@ -143,6 +188,30 @@ export interface ModelCallOptions {
   headers?: Record<string, string>;
   /** Transport retry on by default (founder decision); opt out per call. */
   retry?: boolean;
+  /**
+   * Refuse the FIRST attempt too when the restaurant is over its allowance,
+   * not only the retries. Off by default, and that default is load-bearing.
+   *
+   * The ceiling was built to suppress retry storms, and the migration
+   * contract that produced this client ("preserve everything except
+   * retry/timeout/emission") forbids adding a new failure mode to the seven
+   * production paths that existed before it. Turning the gate on globally
+   * would do exactly that: every one of those paths would gain a way to fail
+   * that it has never had, on a ledger read, at a moment none of them were
+   * written to handle.
+   *
+   * So it is opt-in, per call site, for the sites where a caller can drive
+   * the spend directly — today that is Ask AI, where an authenticated member
+   * can loop `POST /ask-ai/propose` and reach the model on every first call.
+   * A route a person taps is not the same risk as a background job.
+   *
+   * The gate still FAILS OPEN on an unreadable ledger, exactly as it does for
+   * retries. That is deliberate and it is why this is never the only defence:
+   * `RateLimitGuard` bounds the RATE in one process, this bounds the COST
+   * across the fleet, and a ledger outage degrades to the first of those
+   * rather than to nothing.
+   */
+  gateFirstAttempt?: boolean;
 }
 
 /**
@@ -208,6 +277,30 @@ export class ModelClientService {
     const retryEnabled = opts.retry !== false;
     const model = String((opts.body as any)?.model ?? "");
     const startedAt = Date.now();
+
+    // Opt-in first-attempt gate. Sites that set `gateFirstAttempt` are the
+    // ones a caller can drive directly; for everyone else this is unreachable
+    // and the seven pre-existing paths are byte-for-byte unchanged.
+    //
+    // It throws BEFORE any NF row is emitted, deliberately: nothing was spent,
+    // so writing a zero-cost row would put a call in the ledger that never
+    // happened and make the ledger disagree with the bill.
+    //
+    // It counts TODAY's spend (UTC) against the tier's number, whatever the
+    // tier's own mode (ADR 0146, founder's answer 2026-09-12). Every house in
+    // production is on `pilot`, which resolves to a lifetime credit that never
+    // resets, so a lifetime read here made the refusal permanent while its
+    // message said it would pass. Reading today only is what makes "it resets
+    // at midnight UTC" true.
+    if (opts.gateFirstAttempt === true) {
+      if (!(await this.allowedBySpendCeiling(opts.nf.restaurantId, "daily"))) {
+        throw new ModelSpendCeilingError(
+          "This restaurant has used today's AI allowance. " +
+            `It resets at midnight UTC, ${untilUtcMidnight()} from now; ` +
+            "nothing was charged for this request.",
+        );
+      }
+    }
 
     let attempts = 0;
     let lastError: ModelClientError | null = null;
@@ -514,6 +607,18 @@ export class ModelClientService {
   private async retryAllowedBySpendCeiling(
     restaurantId?: string | null,
   ): Promise<boolean> {
+    return this.allowedBySpendCeiling(restaurantId);
+  }
+
+  /**
+   * The ceiling read itself, with no opinion about which attempt is asking.
+   * `retryAllowedBySpendCeiling` is the retry-path name for it and is kept so
+   * the three existing call sites and their tests read unchanged.
+   */
+  private async allowedBySpendCeiling(
+    restaurantId?: string | null,
+    window: "tier" | "daily" = "tier",
+  ): Promise<boolean> {
     const key = restaurantId ?? "__unattributed__";
     try {
       const allowance = allowanceForTier(await this.tierFor(restaurantId));
@@ -525,34 +630,33 @@ export class ModelClientService {
       const limit = Number.isFinite(override) ? override : allowance.limitUsd;
       if (limit <= 0) return true; // 0 or negative disables the gate
 
-      const cached = this.spendCache.get(key);
+      // credit = lifetime sum (it depletes); daily = today only (it resets).
+      // The first-attempt gate always asks the daily question (see call()).
+      const since = windowStartIso(
+        window === "daily" ? "daily" : allowance.mode,
+      );
+      // One cache entry PER WINDOW. A lifetime sum cached under the same key
+      // as today's would answer the other question for up to a minute, and
+      // the day's key carries its date, so it rolls over at midnight by itself.
+      const cacheKey = `${key}|${since ?? "lifetime"}`;
+      const cached = this.spendCache.get(cacheKey);
       let spendUsd: number;
       if (cached && Date.now() - cached.at < SPEND_CACHE_TTL_MS) {
         spendUsd = cached.spendUsd;
       } else {
-        let query = this.databaseService.supabase
-          .from("neural_footprint_event")
-          .select("cost_usd")
-          .eq("subject_type", "agent");
-        // credit = lifetime sum (it depletes); daily = today only (it resets).
-        const since = windowStartIso(allowance.mode);
-        if (since) query = query.gte("occurred_at", since);
-        query = restaurantId
-          ? query.eq("restaurant_id", restaurantId)
-          : query.is("restaurant_id", null);
-        const { data, error } = await query;
-        if (error) return true;
-        spendUsd = (data ?? []).reduce(
-          (sum: number, row: any) => sum + (Number(row.cost_usd) || 0),
-          0,
-        );
-        this.spendCache.set(key, { at: Date.now(), spendUsd });
+        const read = await this.sumAgentSpend(restaurantId, since);
+        if (read === null) return true;
+        spendUsd = read;
+        this.spendCache.set(cacheKey, { at: Date.now(), spendUsd });
       }
 
       if (spendUsd >= limit) {
         this.logger.warn(
-          `Spend allowance reached for ${key} [${allowance.label}] ` +
-            `($${spendUsd.toFixed(4)} >= $${limit.toFixed(2)}) — transport retry suppressed`,
+          `Spend allowance reached for ${key} [${allowance.label}, ${since ? "since " + since : "lifetime"}] ` +
+            `($${spendUsd.toFixed(4)} >= $${limit.toFixed(2)}) — ` +
+            (window === "daily"
+              ? "first attempt refused"
+              : "transport retry suppressed"),
         );
         return false;
       }
@@ -560,6 +664,50 @@ export class ModelClientService {
     } catch {
       return true;
     }
+  }
+
+  /**
+   * The restaurant's agent spend since `since` (all time when null), summed
+   * over EVERY page. PostgREST caps a response at `max_rows = 1000`
+   * (supabase/config.toml:18) and says nothing when it does, so one read
+   * undercounts a busy house and admits it past its allowance. Pages are keyset
+   * on `id`, so a row written during the read cannot shift an offset and be
+   * counted twice; such a row may be missed, which a 60-second cache already
+   * tolerates. Returns null when a page cannot be read, so the caller applies
+   * its own failure policy instead of a partial sum passing for a whole one.
+   * At SPEND_MAX_PAGES it stops and returns what it has, which is a LOWER
+   * bound: a house already over is still refused, and the log says it stopped.
+   */
+  private async sumAgentSpend(
+    restaurantId: string | null | undefined,
+    since: string | null,
+  ): Promise<number | null> {
+    let total = 0;
+    let after: string | null = null;
+    for (let page = 0; page < SPEND_MAX_PAGES; page++) {
+      let query = this.databaseService.supabase
+        .from("neural_footprint_event")
+        .select("id, cost_usd")
+        .eq("subject_type", "agent");
+      if (since) query = query.gte("occurred_at", since);
+      query = restaurantId
+        ? query.eq("restaurant_id", restaurantId)
+        : query.is("restaurant_id", null);
+      if (after) query = query.gt("id", after);
+      const { data, error } = await query
+        .order("id", { ascending: true })
+        .limit(SPEND_PAGE_ROWS);
+      if (error) return null;
+      const rows = (data ?? []) as Array<{ id: unknown; cost_usd: unknown }>;
+      for (const row of rows) total += Number(row.cost_usd) || 0;
+      if (rows.length < SPEND_PAGE_ROWS) return total;
+      after = String(rows[rows.length - 1].id);
+    }
+    this.logger.error(
+      `Spend read for ${restaurantId ?? "__unattributed__"} stopped at ` +
+        `${SPEND_MAX_PAGES} pages; $${total.toFixed(4)} is a lower bound`,
+    );
+    return total;
   }
 
   /** Reads restaurants.subscription_tier. Unknown/unreadable resolves to core. */
@@ -581,6 +729,20 @@ export class ModelClientService {
       return null;
     }
   }
+}
+
+/**
+ * Whether this model would write a real `cost_usd` rather than NULL.
+ *
+ * Exported so `model-routing.spec.ts` can assert the thing that is easy to get
+ * wrong once routing exists: a task class pointed at a model nobody priced
+ * still WORKS — the call succeeds, the row is written, the tokens are recorded
+ * — and only `cost_usd` is NULL, which sums as nothing, which silently removes
+ * those calls from the spend ceiling. A disarmed safety valve that passes every
+ * other test is exactly the "absence reported as health" shape.
+ */
+export function isModelPriced(model: string): boolean {
+  return resolvePricing(model) !== null;
 }
 
 /** Exact match first, then prefix (dated pins like claude-haiku-4-5-20251001). */

@@ -1,5 +1,11 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { escapeLikeWildcards } from "../distributor-discovery/distributor-query";
 import {
   normalizeSignatureText,
   wineSignatureHashOrNull,
@@ -13,6 +19,50 @@ import {
 } from "./dto/wines.dto";
 
 const ML_PER_OZ = 29.5735;
+
+/**
+ * A case-insensitive "contains" match on any of `columns`, written as a
+ * PostgREST `or` filter in which the search term is only ever a value.
+ *
+ * postgrest-js does not escape `or()` (2.103.0, dist/index.cjs:2952-2955), and
+ * this used to paste the raw term between `name.ilike.%` and `%`. A comma, which
+ * 417 of 9,598 wine names and producers in the local menu corpus contain, ended
+ * the condition: the filter failed to parse and GET /wines answered 500 with the
+ * database's message. A crafted term could add conditions of its own.
+ *
+ * Two layers, in this order:
+ *  1. LIKE: `\`, `%` and `_` are escaped so they match themselves ("100%" no
+ *     longer matches every row).
+ *  2. PostgREST: a value holding a character its documentation reserves in a
+ *     logic tree (`,` `.` `:` `(` `)`), or a `"` or `\`, is double-quoted with
+ *     `"` and `\` backslash-escaped. A term with none of those goes out
+ *     unquoted, byte-identical to what this endpoint has always sent.
+ *
+ * Not covered: PostgREST rewrites `*` to `%` inside a like pattern, so a
+ * literal asterisk still matches as a wildcard. No wine in the corpus has one.
+ */
+export function ilikeValue(term: string): string {
+  const pattern = `%${escapeLikeWildcards(term)}%`;
+  return /[,.:()"\\]/.test(pattern)
+    ? `"${pattern.replace(/[\\"]/g, (ch) => `\\${ch}`)}"`
+    : pattern;
+}
+
+/**
+ * The same filter for a list of columns. Kept for callers and tests that name
+ * columns as data. The two reads in this file write their columns out
+ * literally instead, `name.ilike.${v},producer.ilike.${v}`, so that
+ * check_read_columns_exist.py can still see which columns they filter on.
+ * A column list passed through a helper counts as an unreadable read, and that
+ * count has a shrink-only ceiling (ADR 0074).
+ */
+export function ilikeAnyOf(columns: readonly string[], term: string): string {
+  const value = ilikeValue(term);
+  return columns.map((column) => `${column}.ilike.${value}`).join(",");
+}
+
+const LIBRARY_READ_FAILED =
+  "The wine library could not be read. That is a failed read, not an empty result.";
 
 interface WineRow {
   id: string;
@@ -30,6 +80,15 @@ interface WineRow {
   producer_story?: string | null;
   tasting_notes?: string | null;
   bottle_size_ml?: number | null;
+  /**
+   * Alcohol by volume, as a percentage, TYPED BY A PERSON
+   * (20260906120000_a_strength_is_stated_by_a_person.sql). Nullable and
+   * normally null: no default and no inference from a category, because this
+   * is the multiplicand in a duty figure on a row every house that stocks the
+   * bottle reads. `null` means nobody has stated one; `0` is a person stating
+   * a de-alcoholised product and is a different answer.
+   */
+  abv_percent?: number | string | null;
   created_at?: string | null;
   updated_at?: string | null;
   // Plan §1: derived full descriptive name ("2016 Gravner Ribolla
@@ -49,6 +108,19 @@ interface WineRow {
   // silently drop what it received.
   library_tier?: number | null;
   review_status?: string | null;
+  // 20260817060000_beverage_kind_classification.sql:44-48. The database's own
+  // answer to "what IS this row" — wine / beer / spirit / sake / cider /
+  // cocktail / non_alcoholic / unknown — computed by trigger from a real
+  // primary_type, else the menu's own section header, else `unknown`.
+  //
+  // It was arriving on every `select("*")` and being dropped here, which is why
+  // the browser could not COUNT the beers in a library that had already
+  // classified them. Optional for the same reason the provenance block is:
+  // undefined means "this query did not ask for the column", which is a
+  // different sentence from "the classifier said unknown" — and this pair is
+  // precisely the distinction classification_status exists to preserve.
+  beverage_kind?: string | null;
+  classification_status?: string | null;
   field_confidences?: Record<string, number> | null;
   data_enrichment?: { knowledge?: string | null; [k: string]: unknown } | null;
   enrichment_observed_at?: string | null;
@@ -100,8 +172,22 @@ export class WinesService {
       tastingNotes: row.tasting_notes ?? undefined,
       bottleSizeMl,
       bottleSizeOz,
+      // Carried through as a NUMBER or as null, never coerced to 0: `Number(null)`
+      // is 0 and a zero here is a real, stateable strength (a de-alcoholised
+      // wine). Postgres returns NUMERIC as a string over PostgREST, so the
+      // conversion is explicit rather than implicit.
+      abvPercent:
+        row.abv_percent === null || row.abv_percent === undefined
+          ? undefined
+          : Number(row.abv_percent),
       createdAt: row.created_at ?? undefined,
       updatedAt: row.updated_at ?? undefined,
+      // Carried, not dropped. `unknown` is a real classifier verdict and is
+      // passed through as itself; `undefined` means the column was not
+      // selected. A consumer that cannot tell those apart will render "no
+      // beer" over a query that never asked.
+      beverageKind: row.beverage_kind ?? undefined,
+      classificationStatus: row.classification_status ?? undefined,
       // N4: present only when the query selected these columns (row.* is
       // undefined, not null, for a column that was never asked for) — so a
       // narrow list projection doesn't advertise provenance it doesn't have,
@@ -364,9 +450,8 @@ export class WinesService {
     }
 
     if (query.search) {
-      supa = supa.or(
-        `name.ilike.%${query.search}%,producer.ilike.%${query.search}%`,
-      );
+      const v = ilikeValue(query.search);
+      supa = supa.or(`name.ilike.${v},producer.ilike.${v}`);
     }
 
     if (query.type) {
@@ -411,8 +496,19 @@ export class WinesService {
 
     const { data, error } = await supa;
     if (error) {
-      this.logger.error(`Failed to search wines: ${error.message}`);
-      throw error;
+      this.logger.error(`Failed to search wines: ${error.message}`, {
+        code: error.code,
+      });
+      // 22P02 is invalid_text_representation. Every other input here is
+      // validated or whitelisted by GetWinesQueryDto, so the only text that can
+      // fail a cast is an entry in `ids` that is not a uuid. That is the
+      // caller's mistake, not the library being unavailable.
+      if (error.code === "22P02" && query.ids) {
+        throw new BadRequestException(
+          "ids must be a comma-separated list of wine ids.",
+        );
+      }
+      throw new ServiceUnavailableException(LIBRARY_READ_FAILED);
     }
 
     return (data || []).map((row: WineRow) => this.mapWine(row));
@@ -478,20 +574,23 @@ export class WinesService {
     if (!query.text || query.text.length < 2) {
       return [];
     }
+    const textValue = ilikeValue(query.text);
 
     const client = this.dbService.getClient();
-    const { data, error } = await client
-      .from("master_wine_library")
-      .select(
-        // display_name added (plan §1): this is the search/autocomplete
-        // list, exactly where the "same wine, different vintage, reads
-        // identical" complaint was visible.
-        "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at",
-      )
-      .or(`name.ilike.%${query.text}%,producer.ilike.%${query.text}%`)
-      .limit(query.limit || 10);
+    let suggestions = client.from("master_wine_library").select(
+      "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at",
+    );
+    suggestions = suggestions.or(
+      `name.ilike.${textValue},producer.ilike.${textValue}`,
+    );
+    const { data, error } = await suggestions.limit(query.limit || 10);
 
-    if (error) throw error;
+    if (error) {
+      this.logger.error(`Failed to read wine suggestions: ${error.message}`, {
+        code: error.code,
+      });
+      throw new ServiceUnavailableException(LIBRARY_READ_FAILED);
+    }
     return (data || []).map((row: WineRow) => this.mapWine(row));
   }
 
