@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 110C — The Wall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="house.css">
+<style>
+.shelf-block { margin-top: 22px; }
+.shelf-h {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin: 0 0 8px;
+}
+.shelf-h h2 {
+  font-family: var(--serif); font-size: 18px; font-weight: 600;
+  letter-spacing: -.014em; margin: 0;
+}
+.shelf-h .n { font-size: 12px; color: var(--ink-3); }
+.rail {
+  height: 7px;
+  background:
+    linear-gradient(90deg, var(--ink-1) 0 1px, transparent 1px) 0 0 / 28px 100%,
+    var(--paper-2);
+  border-radius: 1px;
+  margin-bottom: 8px;
+}
+.wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px 7px;
+}
+.tile {
+  position: relative;
+  aspect-ratio: 2 / 3.15;
+  border: 1px solid var(--paper-2);
+  border-radius: 3px 3px 5px 5px;
+  background: var(--paper-1);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+}
+.tile:hover { border-color: var(--seal-ring); }
+.tile[data-on="true"] {
+  border-color: var(--ink-1);
+  box-shadow: 0 0 0 1px var(--ink-1);
+}
+.tile[data-under="true"] { box-shadow: 0 0 0 1.5px var(--seal-ring); }
+.tile[data-off="true"] { border-style: dashed; }
+.tile[data-out="true"] { opacity: .55; border-style: dashed; }
+.fill {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--seal-tint);
+  pointer-events: none;
+}
+.tile[data-under="true"] .fill { background: var(--seal); opacity: .28; }
+.neck {
+  position: absolute; top: 0; left: 50%;
+  width: 28%; height: 18%;
+  transform: translateX(-50%);
+  border: 1px solid var(--paper-2);
+  border-top: 0;
+  border-radius: 0 0 3px 3px;
+  background: var(--paper-0);
+  pointer-events: none;
+}
+.label {
+  position: absolute; left: 6px; right: 6px; bottom: 8px;
+  z-index: 1;
+}
+.label .p {
+  display: block;
+  font-family: var(--serif);
+  font-size: 11.5px;
+  line-height: 1.15;
+  font-weight: 500;
+}
+.label .n {
+  display: block;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  margin-top: 2px;
+  line-height: 1.2;
+}
+.label .v {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-4);
+  margin-top: 3px;
+}
+
+.caption {
+  position: sticky; bottom: 0;
+  margin: 22px -24px 0;
+  padding: 14px 24px 16px;
+  background: var(--paper-1);
+  border-top: 1px solid var(--paper-2);
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+.caption h3 {
+  font-family: var(--serif); font-size: 22px; font-weight: 600;
+  letter-spacing: -.018em; margin: 2px 0 0;
+}
+.caption .kicker {
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
+}
+.caption .prose {
+  font-family: var(--serif); font-size: 14.5px; line-height: 1.5;
+  color: var(--ink-2); margin: 8px 0 0; max-width: 68ch;
+}
+.cap-facts {
+  display: flex; gap: 22px; flex-wrap: wrap;
+  font-size: 12.5px; color: var(--ink-2);
+}
+.cap-facts dt { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.cap-facts dd { margin: 2px 0 0; font-family: var(--mono); color: var(--ink-1); }
+
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); margin-top: 16px; }
+.legend i { font-style: normal; display: inline-flex; align-items: center; gap: 6px; }
+.lg {
+  width: 12px; height: 16px; border: 1px solid var(--paper-2); border-radius: 2px;
+  background: linear-gradient(to top, var(--seal-tint) 55%, transparent 55%);
+  display: inline-block;
+}
+.lg.under { box-shadow: 0 0 0 1.5px var(--seal-ring); }
+.lg.off { border-style: dashed; background: transparent; }
+</style>
+</head>
+<body>
+<div class="mudavym" data-ground="charcoal" id="root">
+  <div class="sk-banner">
+    <span><b>SKETCH</b> · 110C · the wall · example data, not a tenant</span>
+    <span>bottles as tiles · scan with your eyes</span>
+    <span id="ground-slot"></span>
+  </div>
+  <div class="wrap">
+    <div class="head">
+      <div>
+        <p class="sk-crumb" id="crumb"></p>
+        <h1 class="sk-h1">The wall<span class="dot">.</span></h1>
+        <p class="sk-standing">
+          You do not read a cellar. You look at it. Each tile is a bottle,
+          filled from the bottom with what is actually on hand.
+        </p>
+      </div>
+      <div class="head-actions">
+        <nav class="dirs" aria-label="Directions">
+          <a class="btn" href="index.html">110</a>
+          <a class="btn" href="the-list.html">A · List</a>
+          <a class="btn" href="the-gazetteer.html">B · Gazetteer</a>
+          <a class="btn" href="the-wall.html" aria-current="page">C · Wall</a>
+        </nav>
+      </div>
+    </div>
+    <hr class="rule">
+    <nav class="regs" id="regs" style="margin-top:14px" aria-label="Registers"></nav>
+    <div id="walls"></div>
+    <p class="legend">
+      <i><span class="lg"></span> fill is on hand against its own par</i>
+      <i><span class="lg under"></span> at or under par — the seal ring</i>
+      <i><span class="lg off"></span> dashed — off this read, or not in the building</i>
+    </p>
+    <p class="sk-note">
+      Empty glass is not a zero: a tile with no fill was not counted, or is
+      not a bottle (cocktails have no on-hand). Colour is the seal at one
+      opacity, not a second brand. Five hundred titles on this wall would
+      be a mosaic; this house's five registers still fit a glance. That is
+      the condition C is honest under, and the one it fails when the
+      library is the 500-row catalogue the shipped register was built for.
+    </p>
+    <div class="caption" id="caption" hidden></div>
+    <footer class="sig">
+      <span class="wordmark">Mudavym<span>.</span></span>
+      <span><a href="index.html">Sketch 110</a> · the wall · Kadıköy Meyhane</span>
+    </footer>
+  </div>
+</div>
+<script src="house.js"></script>
+<script>
+(function () {
+  const H = HOUSE;
+  const root = document.getElementById("root");
+  let reg = "cellar";
+  let selected = "w6";
+
+  document.getElementById("crumb").textContent = "What the house keeps · " + H.name;
+
+  const groundBtn = document.createElement("button");
+  groundBtn.className = "btn quiet";
+  groundBtn.type = "button";
+  groundBtn.textContent = "Paper";
+  groundBtn.addEventListener("click", function () {
+    const next = root.getAttribute("data-ground") === "charcoal" ? "paper" : "charcoal";
+    root.setAttribute("data-ground", next);
+    groundBtn.textContent = next === "charcoal" ? "Paper" : "Charcoal";
+  });
+  document.getElementById("ground-slot").appendChild(groundBtn);
+
+  function visible() {
+    return H.bottles.filter(function (b) { return H.inRegister(b, reg); });
+  }
+
+  function draw() {
+    const rows = visible();
+    const regs = document.getElementById("regs");
+    regs.innerHTML = "";
+    [{ id: "cellar", title: "The Cellar" }].concat(H.registers).forEach(function (r) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "btn";
+      b.setAttribute("data-on", r.id === reg ? "true" : "false");
+      b.textContent = r.title;
+      b.addEventListener("click", function () {
+        reg = r.id;
+        const first = visible()[0];
+        selected = first ? first.id : null;
+        draw();
+      });
+      regs.appendChild(b);
+    });
+
+    const walls = document.getElementById("walls");
+    walls.innerHTML = "";
+    const groups = [{ id: "none", name: "Not in the building", holds: "on the list only", when: "" }].concat(H.zones);
+    groups.forEach(function (z) {
+      const tiles = rows.filter(function (b) {
+        return z.id === "none" ? !b.zone : b.zone === z.id;
+      });
+      if (!tiles.length) return;
+      tiles.sort(function (a, b) {
+        const sa = a.shelf || 99, sb = b.shelf || 99;
+        if (sa !== sb) return sa - sb;
+        return (a.producer || a.name).localeCompare(b.producer || b.name);
+      });
+      const block = document.createElement("section");
+      block.className = "shelf-block";
+      const counted = tiles.filter(function (b) { return typeof b.onHand === "number"; }).length;
+      block.innerHTML = "<div class='shelf-h'><h2>" + z.name + "</h2><span class='n'>" +
+        (z.holds ? z.holds + " · " : "") + tiles.length + " titles · " + counted + " counted" +
+        (z.when ? " · confirmed " + z.when : "") + "</span></div><div class='rail'></div>";
+      const wall = document.createElement("div");
+      wall.className = "wall";
+      tiles.forEach(function (b) {
+        const t = document.createElement("button");
+        t.type = "button";
+        t.className = "tile";
+        t.setAttribute("data-on", b.id === selected ? "true" : "false");
+        t.setAttribute("data-under", H.underPar(b) ? "true" : "false");
+        t.setAttribute("data-off", H.offRead(b) ? "true" : "false");
+        t.setAttribute("data-out", H.notInBuilding(b) ? "true" : "false");
+        t.setAttribute("aria-label", (b.producer ? b.producer + " " : "") + b.name);
+        const d = H.depth(b);
+        const fill = d === null ? 0 : Math.round(d * 100);
+        t.innerHTML =
+          (b.r === "cocktails" || b.r === "non_alcoholic" && b.onHand == null ? "" : "<span class='neck'></span>") +
+          "<span class='fill' style='height:" + fill + "%'></span>" +
+          "<span class='label'><span class='p'>" + (b.producer || b.name) + "</span>" +
+          (b.producer ? "<span class='n'>" + b.name + "</span>" : "") +
+          "<span class='v'>" + H.year(b.vintage) + (typeof b.onHand === "number" ? " · " + b.onHand : "") + "</span></span>";
+        t.addEventListener("click", function () { selected = b.id; draw(); });
+        wall.appendChild(t);
+      });
+      block.appendChild(wall);
+      walls.appendChild(block);
+    });
+
+    const cap = document.getElementById("caption");
+    const b = H.bottles.find(function (x) { return x.id === selected; });
+    if (!b) { cap.hidden = true; return; }
+    cap.hidden = false;
+    const z = H.zoneOf(b.zone);
+    cap.innerHTML =
+      "<div><p class='kicker'>" + (z ? z.name : "not in the building") + " · " +
+      (H.registers.find(function (r) { return r.id === b.r; }) || { title: b.r }).title +
+      "</p><h3>" + (b.producer ? b.producer + " · " : "") + b.name +
+      (b.vintage ? " " + b.vintage : "") + "</h3>" +
+      "<p class='prose'>" + b.memo + "</p></div>" +
+      "<dl class='cap-facts'>" +
+      "<div><dt>On hand</dt><dd>" + H.count(b.onHand) + (b.par != null ? " · par " + b.par : "") + "</dd></div>" +
+      "<div><dt>List</dt><dd>" + H.money(b.list) + "</dd></div>" +
+      "<div><dt>Last counted</dt><dd>" + (b.lastCounted || H.EM) + "</dd></div>" +
+      "<div><dt>First bought</dt><dd>" + (b.firstBought || H.EM) + "</dd></div>" +
+      "</dl>";
+  }
+
+  document.addEventListener("keydown", function (e) {
+    const rows = visible();
+    const i = rows.findIndex(function (b) { return b.id === selected; });
+    if (e.key === "j" || e.key === "ArrowRight") {
+      e.preventDefault();
+      selected = rows[Math.min(rows.length - 1, Math.max(0, i) + 1)].id;
+      draw();
+    } else if (e.key === "k" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      selected = rows[Math.max(0, i - 1)].id;
+      draw();
+    }
+  });
+
+  draw();
+})();
+</script>
+</body>
+</html>

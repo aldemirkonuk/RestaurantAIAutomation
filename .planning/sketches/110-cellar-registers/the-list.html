@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 110A — The List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="house.css">
+<style>
+.page { display: grid; grid-template-columns: var(--gutter, 44px) minmax(0,1fr); gap: 0; margin-top: 18px; align-items: start; }
+.page.is-open { --gutter: 248px; }
+.margin {
+  position: sticky; top: 12px;
+  min-height: 72vh;
+  border-right: 1px solid var(--paper-2);
+  padding: 0 10px 24px 0;
+}
+.margin .track { position: relative; min-height: 100%; }
+.tick {
+  position: absolute; left: 0; width: 100%;
+  display: flex; align-items: center; gap: 8px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.tick .bar {
+  width: 4px; border-radius: 2px; background: var(--ink-4); flex: 0 0 4px;
+}
+.tick[data-under="true"] .bar { background: var(--seal); }
+.tick[data-off="true"] .bar { background: transparent; box-shadow: inset 0 0 0 1px var(--paper-2); height: 10px !important; }
+.tick[data-out="true"] .bar { display: none; }
+.tick[data-on="true"] .bar { width: 6px; flex-basis: 6px; background: var(--seal-deep); }
+.reading {
+  display: none;
+  pointer-events: auto;
+  padding: 8px 0 8px 8px;
+  max-width: 220px;
+}
+.tick[data-on="true"] .reading { display: block; }
+.reading .who {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -.015em;
+  margin: 0;
+  line-height: 1.2;
+}
+.reading dl { margin: 8px 0 0; }
+.reading dt {
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); margin: 7px 0 0;
+}
+.reading dd { margin: 1px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.reading dd.num { font-family: var(--mono); color: var(--ink-1); }
+.thermo {
+  width: 10px; height: 84px; border: 1px solid var(--paper-2); border-radius: 6px;
+  background: var(--paper-0); position: relative; overflow: hidden; margin: 8px 0 0;
+}
+.thermo i {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--seal);
+}
+.marks { display: flex; gap: 3px; margin-top: 8px; }
+.mark {
+  width: 16px; height: 16px; line-height: 16px; text-align: center;
+  font-family: var(--mono); font-size: 9px;
+  border: 1px solid var(--paper-2); border-radius: 4px; color: var(--ink-3);
+}
+.mark[data-on="true"] { border-color: var(--seal-ring); background: var(--seal-tint); color: var(--seal-deep); font-weight: 600; }
+
+.lists { min-width: 0; padding-left: 18px; }
+.sec-h {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin: 22px 0 4px;
+}
+.sec-h h2 {
+  font-family: var(--serif); font-size: 22px; font-weight: 600; margin: 0;
+  letter-spacing: -.018em;
+}
+.sec-h h2 a { color: inherit; text-decoration: none; }
+.sec-h .n { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+.row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) minmax(160px, 1.4fr) 64px minmax(90px, 1fr) 88px;
+  column-gap: 16px;
+  align-items: baseline;
+  padding: 7px 8px 7px 4px;
+  border-bottom: 1px solid var(--paper-2);
+  cursor: pointer;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  color: inherit; font: inherit;
+}
+.row:hover { background: var(--paper-1); }
+.row[data-on="true"] {
+  background: var(--paper-1);
+  box-shadow: inset 2px 0 0 var(--ink-1);
+}
+.row .p { font-family: var(--serif); font-size: 14.5px; font-weight: 500; }
+.row .nm { font-size: 13.5px; color: var(--ink-1); }
+.row .v, .row .pr { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+.row .pr { text-align: right; }
+.row .og { font-size: 12px; color: var(--ink-3); }
+.row[data-under="true"] .nm { color: var(--seal-deep); }
+.row[data-off="true"], .row[data-out="true"] { opacity: .72; }
+.row[data-out="true"] .nm { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--ink-3); }
+.cols {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) minmax(160px, 1.4fr) 64px minmax(90px, 1fr) 88px;
+  column-gap: 16px;
+  padding: 0 8px 6px 4px;
+  font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
+  border-bottom: 1px solid var(--ink-1);
+}
+.cols span:last-child { text-align: right; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); margin-top: 16px; }
+.legend i { font-style: normal; display: inline-flex; align-items: center; gap: 6px; }
+.lg {
+  width: 4px; height: 14px; border-radius: 2px; background: var(--ink-4); display: inline-block;
+}
+.lg.seal { background: var(--seal); }
+.lg.off { background: transparent; box-shadow: inset 0 0 0 1px var(--paper-2); height: 10px; }
+
+.tally { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
+.tally div { min-width: 90px; }
+.tally dt { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.tally dd { font-family: var(--mono); font-size: 22px; margin: 2px 0 0; letter-spacing: -.02em; }
+.keys { font-size: 11.5px; color: var(--ink-3); margin-top: 8px; }
+kbd {
+  font-family: var(--mono); font-size: 10px;
+  border: 1px solid var(--paper-2); border-radius: 3px; padding: 0 4px;
+}
+</style>
+</head>
+<body>
+<div class="mudavym" data-ground="charcoal" id="root">
+  <div class="sk-banner">
+    <span><b>SKETCH</b> · 110A · the list · example data, not a tenant</span>
+    <span>depth in the margin · one list per register</span>
+    <span id="ground-slot"></span>
+  </div>
+  <div class="wrap">
+    <div class="head">
+      <div>
+        <p class="sk-crumb" id="crumb"></p>
+        <h1 class="sk-h1">The Cellar<span class="dot">.</span></h1>
+        <p class="sk-standing" id="standing"></p>
+      </div>
+      <div class="head-actions">
+        <nav class="dirs" aria-label="Directions">
+          <a class="btn" href="index.html">110</a>
+          <a class="btn" href="the-list.html" aria-current="page">A · List</a>
+          <a class="btn" href="the-gazetteer.html">B · Gazetteer</a>
+          <a class="btn" href="the-wall.html">C · Wall</a>
+        </nav>
+      </div>
+    </div>
+    <hr class="rule">
+
+    <div class="tally" id="tally"></div>
+    <nav class="regs" id="regs" style="margin-top:14px" aria-label="Registers"></nav>
+    <p class="keys"><kbd>j</kbd> <kbd>k</kbd> move · <kbd>enter</kbd> open the margin · <kbd>esc</kbd> close it</p>
+
+    <div class="page" id="page">
+      <aside class="margin" aria-label="Depth">
+        <div class="track" id="track"></div>
+      </aside>
+      <div class="lists" id="lists"></div>
+    </div>
+
+    <p class="legend">
+      <i><span class="lg"></span> on hand, against its own par</i>
+      <i><span class="lg seal"></span> at or under par</i>
+      <i><span class="lg off"></span> carried, off this read</i>
+      <i>struck through — on the list, not in the building</i>
+    </p>
+    <p class="sk-note">
+      No on-hand number on the row. The margin is the number, as a length, so
+      the eye can compare depth without leaving the name. A bottle with no
+      count has no bar. A bottle with no par has a bar against eight, which
+      is a scale of convenience and is said here rather than drawn as a
+      claim. Market price is not a column: it is the dash on every bottle
+      this house has, and a column of dashes is crowding.
+    </p>
+    <footer class="sig">
+      <span class="wordmark">Mudavym<span>.</span></span>
+      <span><a href="index.html">Sketch 110</a> · the list · Kadıköy Meyhane</span>
+    </footer>
+  </div>
+</div>
+<script src="house.js"></script>
+<script>
+(function () {
+  const H = HOUSE;
+  const root = document.getElementById("root");
+  let reg = "cellar";
+  let selected = "w6";
+  let open = true;
+
+  document.getElementById("crumb").textContent = "What the house keeps · " + H.name;
+  document.getElementById("standing").textContent = H.why;
+
+  const groundBtn = document.createElement("button");
+  groundBtn.className = "btn quiet";
+  groundBtn.type = "button";
+  groundBtn.textContent = "Paper";
+  groundBtn.addEventListener("click", function () {
+    const next = root.getAttribute("data-ground") === "charcoal" ? "paper" : "charcoal";
+    root.setAttribute("data-ground", next);
+    groundBtn.textContent = next === "charcoal" ? "Paper" : "Charcoal";
+  });
+  document.getElementById("ground-slot").appendChild(groundBtn);
+
+  const tally = document.getElementById("tally");
+  [
+    ["Bottles on hand", H.tonight.bottlesOnHand],
+    ["Titles carried", H.tonight.titlesCarried],
+    ["At or under their own par", H.tonight.atPar],
+    ["Carried but off this read", H.tonight.offRead],
+  ].forEach(function (row) {
+    const d = document.createElement("div");
+    d.innerHTML = "<dt>" + row[0] + "</dt><dd>" + row[1] + "</dd>";
+    tally.appendChild(d);
+  });
+
+  const regs = document.getElementById("regs");
+  function renderRegs() {
+    regs.innerHTML = "";
+    [{ id: "cellar", title: "The Cellar" }].concat(H.registers).forEach(function (r) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn";
+      b.setAttribute("data-on", r.id === reg ? "true" : "false");
+      b.textContent = r.title;
+      b.addEventListener("click", function () { reg = r.id; selected = visible()[0] && visible()[0].id; draw(); });
+      regs.appendChild(b);
+    });
+  }
+
+  function visible() {
+    return H.bottles.filter(function (b) { return H.inRegister(b, reg); });
+  }
+
+  function draw() {
+    renderRegs();
+    const rows = visible();
+    const page = document.getElementById("page");
+    page.classList.toggle("is-open", open && !!selected);
+
+    const lists = document.getElementById("lists");
+    lists.innerHTML = "";
+    const groups = reg === "cellar"
+      ? H.registers.map(function (r) {
+          return { id: r.id, title: r.title, rows: rows.filter(function (b) { return b.r === r.id; }) };
+        })
+      : [{ id: reg, title: H.registers.find(function (r) { return r.id === reg; }).title, rows: rows }];
+
+    groups.forEach(function (g) {
+      const head = document.createElement("div");
+      head.className = "sec-h";
+      const countIn = g.rows.filter(function (b) { return typeof b.onHand === "number"; }).length;
+      head.innerHTML = "<h2><a href='#' data-reg='" + g.id + "'>" + g.title + "</a></h2><span class='n'>" + g.rows.length + " · " + countIn + " counted</span>";
+      lists.appendChild(head);
+      const cols = document.createElement("div");
+      cols.className = "cols";
+      cols.innerHTML = "<span>Producer</span><span>Bottle</span><span>Vintage</span><span>Origin</span><span>List</span>";
+      lists.appendChild(cols);
+      g.rows.forEach(function (b) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "row";
+        btn.id = "row-" + b.id;
+        btn.setAttribute("data-on", b.id === selected ? "true" : "false");
+        btn.setAttribute("data-under", H.underPar(b) ? "true" : "false");
+        btn.setAttribute("data-off", H.offRead(b) ? "true" : "false");
+        btn.setAttribute("data-out", H.notInBuilding(b) ? "true" : "false");
+        btn.innerHTML =
+          "<span class='p'>" + (b.producer || H.EM) + "</span>" +
+          "<span class='nm'>" + b.name + "</span>" +
+          "<span class='v'>" + H.year(b.vintage) + "</span>" +
+          "<span class='og'>" + (b.origin || H.EM) + "</span>" +
+          "<span class='pr'>" + H.money(b.list) + "</span>";
+        btn.addEventListener("click", function () {
+          if (selected === b.id && open) { open = false; }
+          else { selected = b.id; open = true; }
+          draw();
+        });
+        lists.appendChild(btn);
+      });
+    });
+    lists.querySelectorAll("[data-reg]").forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        reg = a.getAttribute("data-reg");
+        selected = visible()[0] && visible()[0].id;
+        open = true;
+        draw();
+      });
+    });
+
+    placeTicks(rows);
+  }
+
+  function placeTicks(rows) {
+    const track = document.getElementById("track");
+    track.innerHTML = "";
+    requestAnimationFrame(function () {
+      const lists = document.getElementById("lists");
+      const pageTop = document.getElementById("page").getBoundingClientRect().top;
+      rows.forEach(function (b) {
+        const rowEl = document.getElementById("row-" + b.id);
+        if (!rowEl) return;
+        const y = rowEl.getBoundingClientRect().top - pageTop + rowEl.offsetHeight / 2;
+        const d = H.depth(b);
+        const tick = document.createElement("div");
+        tick.className = "tick";
+        tick.style.top = y + "px";
+        tick.setAttribute("data-on", b.id === selected && open ? "true" : "false");
+        tick.setAttribute("data-under", H.underPar(b) ? "true" : "false");
+        tick.setAttribute("data-off", H.offRead(b) ? "true" : "false");
+        tick.setAttribute("data-out", H.notInBuilding(b) ? "true" : "false");
+        const barH = d === null ? 10 : Math.round(10 + d * 22);
+        let html = "<span class='bar' style='height:" + barH + "px'></span>";
+        if (b.id === selected && open) {
+          const z = H.zoneOf(b.zone);
+          const fill = d === null ? 0 : Math.round(d * 100);
+          html += "<div class='reading'>" +
+            "<p class='who'>" + (b.producer ? b.producer + " · " : "") + b.name + "</p>" +
+            "<div class='thermo' aria-hidden='true'><i style='height:" + fill + "%'></i></div>" +
+            "<dl>" +
+            "<dt>On hand</dt><dd class='num'>" + H.count(b.onHand) + (b.par != null ? " · par " + b.par : " · no par of its own") + "</dd>" +
+            "<dt>Where</dt><dd>" + (z ? z.name + " · shelf " + (b.shelf || H.EM) : "not in the building") + "</dd>" +
+            "<dt>Last counted</dt><dd>" + (b.lastCounted || H.EM) + "</dd>" +
+            "<dt>First bought</dt><dd>" + (b.firstBought || H.EM) + "</dd>" +
+            "<dt>The books</dt><dd><span class='marks'>" +
+            H.booksMarks(b.books).map(function (m) {
+              return "<span class='mark' data-on='" + m.on + "' title='" + m.label + "'>" + m.k + "</span>";
+            }).join("") + "</span></dd>" +
+            "</dl></div>";
+        }
+        tick.innerHTML = html;
+        track.appendChild(tick);
+      });
+    });
+  }
+
+  document.addEventListener("keydown", function (e) {
+    const rows = visible();
+    const i = rows.findIndex(function (b) { return b.id === selected; });
+    if (e.key === "j" || e.key === "ArrowDown") {
+      e.preventDefault();
+      selected = rows[Math.min(rows.length - 1, i + 1)].id;
+      open = true;
+      draw();
+      const el = document.getElementById("row-" + selected);
+      if (el) el.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "k" || e.key === "ArrowUp") {
+      e.preventDefault();
+      selected = rows[Math.max(0, i - 1)].id;
+      open = true;
+      draw();
+      const el = document.getElementById("row-" + selected);
+      if (el) el.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") {
+      open = true; draw();
+    } else if (e.key === "Escape") {
+      open = false; draw();
+    }
+  });
+
+  window.addEventListener("resize", function () { placeTicks(visible()); });
+  draw();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 110 — /cellar and its registers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="house.css">
+<style>
+.lede-wrap { max-width: 900px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 22px; }
+@media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+a.card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--paper-2);
+  border-radius: 12px;
+  background: var(--paper-1);
+  padding: 18px 18px 16px;
+  min-height: 280px;
+}
+a.card:hover { border-color: var(--seal-ring); }
+.n {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--seal-deep);
+}
+a.card h2 {
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -.018em;
+  margin: 8px 0 0;
+}
+a.card p { font-size: 13px; line-height: 1.55; color: var(--ink-2); margin: 10px 0 0; }
+a.card .meta { font-size: 11.5px; color: var(--ink-3); margin-top: 14px; }
+.thumb {
+  height: 72px;
+  margin: 14px 0 0;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-0);
+  overflow: hidden;
+  position: relative;
+}
+.thumb-list { display: flex; }
+.thumb-list .gutter {
+  width: 22px;
+  background: var(--paper-1);
+  border-right: 1px solid var(--paper-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: center;
+  padding: 6px 0;
+}
+.thumb-list .bar { width: 4px; border-radius: 2px; background: var(--seal); }
+.thumb-list .lines { flex: 1; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-around; }
+.thumb-list .ln { height: 3px; background: var(--ink-4); opacity: .45; border-radius: 1px; }
+.thumb-gaz {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  height: 100%;
+}
+.thumb-gaz .idx { background: var(--paper-1); border-right: 1px solid var(--paper-2); padding: 8px 6px; }
+.thumb-gaz .idx i { display: block; height: 4px; background: var(--ink-4); opacity: .35; margin: 5px 0; border-radius: 1px; }
+.thumb-gaz .entry { padding: 10px 12px; }
+.thumb-gaz .entry b { display: block; height: 5px; width: 55%; background: var(--ink-2); opacity: .5; border-radius: 1px; }
+.thumb-gaz .entry i { display: block; height: 3px; background: var(--ink-4); opacity: .3; margin-top: 6px; border-radius: 1px; }
+.thumb-wall { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; padding: 8px; height: 100%; }
+.thumb-wall span {
+  display: block;
+  border: 1px solid var(--paper-2);
+  border-radius: 2px 2px 3px 3px;
+  background: linear-gradient(to top, var(--seal-tint) 0%, var(--seal-tint) var(--f), transparent var(--f));
+}
+.sec { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin: 36px 0 10px; }
+.panel { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 16px 18px; }
+.panel p { font-size: 13px; line-height: 1.6; color: var(--ink-2); margin: 0; max-width: 88ch; }
+.panel p + p { margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="mudavym" data-ground="charcoal" id="root">
+  <div class="sk-banner">
+    <span><b>SKETCH</b> · 110 · /cellar and its registers · example data, not a tenant</span>
+    <span>three directions · nothing here is built</span>
+    <button class="btn quiet" type="button" id="ground" style="margin-left:auto">Paper</button>
+  </div>
+  <div class="wrap lede-wrap" style="max-width:1180px">
+    <p class="sk-crumb">Mudavym · /cellar · third pass, 2026-09-17</p>
+    <h1 class="sk-h1">How a register is looked at<span class="dot">.</span></h1>
+    <p class="sk-standing">
+      Sketch 092 asked what the parent is (a floor, or one table). Sketch 095
+      merged them: registers the house carries, a floor strip of confirmed
+      zones, a whole-cellar table. This pass asks the question those two left
+      open. A register is open. What do you actually see?
+    </p>
+    <hr class="rule">
+
+    <div class="grid">
+      <a class="card" href="the-list.html">
+        <span class="n">Direction A</span>
+        <h2>The List</h2>
+        <div class="thumb thumb-list" aria-hidden="true">
+          <div class="gutter">
+            <span class="bar" style="height:28px"></span>
+            <span class="bar" style="height:12px;opacity:.7"></span>
+            <span class="bar" style="height:22px"></span>
+            <span class="bar" style="height:6px;opacity:.45"></span>
+          </div>
+          <div class="lines">
+            <span class="ln" style="width:92%"></span>
+            <span class="ln" style="width:74%"></span>
+            <span class="ln" style="width:86%"></span>
+            <span class="ln" style="width:60%"></span>
+          </div>
+        </div>
+        <p>
+          One plain list per register. Producer, name, vintage, the list
+          price. Depth lives in the margin as a hairline of stock against the
+          bottle's own par &mdash; not a column competing with the name.
+          Choose a row and the margin is the reading.
+        </p>
+        <p class="meta">the shipped table, with the columns that were crowding it taken off the row</p>
+      </a>
+
+      <a class="card" href="the-gazetteer.html">
+        <span class="n">Direction B</span>
+        <h2>The Gazetteer</h2>
+        <div class="thumb thumb-gaz" aria-hidden="true">
+          <div class="idx"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="entry"><b></b><i></i><i style="width:88%"></i><i style="width:70%"></i></div>
+        </div>
+        <p>
+          The cellar as a place. You walk a confirmed zone and read each
+          bottle as an entry in the house's own words &mdash; first bought,
+          what we poured, who counted it, the memo someone here actually
+          wrote. A gazetteer of this building, not a catalogue of the trade.
+        </p>
+        <p class="meta">DESIGN-FOUNDATION's exponential idea, drawn as the page</p>
+      </a>
+
+      <a class="card" href="the-wall.html">
+        <span class="n">Direction C</span>
+        <h2>The Wall</h2>
+        <div class="thumb thumb-wall" aria-hidden="true">
+          <span style="--f:70%"></span><span style="--f:40%"></span><span style="--f:85%"></span>
+          <span style="--f:20%"></span><span style="--f:60%"></span><span style="--f:90%"></span>
+          <span style="--f:35%"></span><span style="--f:55%"></span><span style="--f:15%"></span>
+        </div>
+        <p>
+          Bottles laid out as a wall of tiles you scan with your eyes the way
+          you scan a cellar wall. Each tile fills from the bottom with what
+          is on hand. Below-par wears the seal ring. Off this read is an
+          empty slot. A caption bar names the one you are looking at.
+        </p>
+        <p class="meta">the Shelf view, taken at its word</p>
+      </a>
+    </div>
+
+    <h2 class="sec">What all three are being compared against</h2>
+    <div class="panel">
+      <p>
+        The shipped cellar (behind <span class="num">mudavym_design_cellar</span>,
+        sketch 095): a parent of the registers this house carries, <i>In the
+        building tonight</i>, a floor strip of confirmed zones, and a register
+        that is an eight-to-ten-column table with a reading stand above it.
+        Breadth on the page, depth on the stand. Character is Fraunces on the
+        titles and the seal on the hold that sends a real order.
+      </p>
+      <p>
+        The founder's verdict on the first rebuild was <i>crowded</i>, and
+        that he used to like the page <i>where we could see everything</i>,
+        and to <i>put more character into it</i>. The stand was the answer
+        that made those two sentences compatible. These three directions
+        each pick a different sentence to obey first.
+      </p>
+    </div>
+
+    <h2 class="sec">The fork, stated once</h2>
+    <div class="panel">
+      <p>
+        <b>A</b> keeps "see everything" as a list you can run a finger down,
+        and puts character in the margin rather than in more columns. It is
+        the shipped register with the crowding actually removed, not moved
+        onto a stand. It needs nothing the gateway does not already serve.
+      </p>
+      <p>
+        <b>B</b> is the brand thesis as a page: one house's memory, not
+        CellarTracker's 7.5 million strangers. It is also the one that cannot
+        be built honestly today. The house ledger is dark until its
+        migration is applied; 76% of library notes are inferred, not
+        recalled; most bottles have no memo a person here wrote. Drawn with
+        invented sentences it would be a picture of a cellar that remembers
+        more than it does.
+      </p>
+      <p>
+        <b>C</b> is how a person actually looks at a cellar: not by reading
+        a table, by scanning a wall. It answers "where is the Yakut" in the
+        time it takes the eye to travel. It trades away the founder's "see
+        everything" the moment the house carries more than a couple of
+        hundred titles &mdash; a wall of 500 tiles is a mosaic, not a list.
+      </p>
+      <p>
+        Same invented house on every direction (Kadıköy Meyhane, five
+        registers, four confirmed zones). Soft drinks are not drawn, because
+        this house does not carry them. Two zones are not drawn, because
+        nobody here has confirmed them.
+      </p>
+    </div>
+    <footer class="sig">
+      <span class="wordmark">Mudavym<span>.</span></span>
+      <span>Sketch 110 · example data · charcoal default, paper as the escape</span>
+    </footer>
+  </div>
+</div>
+<script>
+document.getElementById("ground").addEventListener("click", function () {
+  const root = document.getElementById("root");
+  const next = root.getAttribute("data-ground") === "charcoal" ? "paper" : "charcoal";
+  root.setAttribute("data-ground", next);
+  this.textContent = next === "charcoal" ? "Paper" : "Charcoal";
+});
+</script>
+</body>
+</html>
