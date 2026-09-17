@@ -385,6 +385,14 @@ seeing this one.**
    B still trades away is one row grammar per kind, which is what the four-child
    IA was chosen to keep. It is a live fork, and it is the founder's.
 
+**Sketch 110, 2026-09-17 — how a register is looked at.** 092/095 settled the
+parent. The register itself is still the eight-to-ten-column table with a
+stand. Three other readings are drawn in
+`.planning/sketches/110-cellar-registers/`: **A the list** (one plain list per
+register, depth in the margin), **B the gazetteer** (the cellar as a place,
+entries in the house's own words), **C the wall** (bottles as tiles you scan).
+No winner. 092 and 095 are not retired.
+
 **Verified against the running app, not only against tests.** The page was
 opened on the local dev server with `localStorage['mudavym.design.cellar']='1'`
 against a real gateway (500 catalogue titles, 48 cellar rows) and both grounds

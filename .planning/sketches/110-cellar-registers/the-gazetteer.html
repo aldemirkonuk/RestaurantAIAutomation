@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 110B — The Gazetteer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="house.css">
+<style>
+.desk {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 28px;
+  margin-top: 20px;
+  align-items: start;
+}
+@media (max-width: 860px) { .desk { grid-template-columns: 1fr; } }
+.idx { position: sticky; top: 12px; }
+.idx h2 {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; margin: 0 0 8px;
+}
+.place {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: 0; border-bottom: 1px solid var(--paper-2);
+  color: inherit; font: inherit; cursor: pointer;
+  padding: 8px 0;
+}
+.place:hover .nm { color: var(--seal-deep); }
+.place[data-on="true"] { box-shadow: inset 2px 0 0 var(--ink-1); padding-left: 8px; }
+.place .nm { display: block; font-family: var(--serif); font-size: 16px; font-weight: 500; }
+.place .h { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+.place .c { font-family: var(--mono); font-size: 11px; color: var(--ink-4); float: right; margin-top: 4px; }
+.unconf { margin-top: 18px; padding: 10px 12px; border: 1.5px dashed var(--seal-ring); border-radius: 10px; }
+.unconf p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
+
+.running {
+  display: flex; justify-content: space-between; align-items: baseline;
+  border-bottom: 1px solid var(--ink-1);
+  padding-bottom: 6px;
+  margin: 0 0 18px;
+}
+.running h2 {
+  font-family: var(--serif); font-size: 28px; font-weight: 600;
+  letter-spacing: -.02em; margin: 0;
+}
+.running .meta { font-size: 12px; color: var(--ink-3); }
+
+.entry {
+  padding: 16px 0 18px;
+  border-bottom: 1px solid var(--paper-2);
+}
+.entry header { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+.entry h3 {
+  font-family: var(--serif); font-size: 20px; font-weight: 600;
+  letter-spacing: -.016em; margin: 0;
+}
+.entry .kicker {
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
+  margin: 0 0 4px;
+}
+.entry .headnum { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.prose {
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin: 8px 0 0;
+  max-width: 62ch;
+}
+.prose[data-k="inferred"] { font-style: italic; }
+.facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 18px;
+  margin-top: 12px;
+  max-width: 62ch;
+}
+@media (max-width: 720px) { .facts { grid-template-columns: 1fr 1fr; } }
+.facts dt { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.facts dd { margin: 2px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.facts dd.num { font-family: var(--mono); color: var(--ink-1); }
+.know {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  border: 1px solid var(--paper-2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--ink-3);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.know[data-k="known"] { border-color: var(--seal-ring); color: var(--seal-deep); }
+.origins { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
+.see { font-size: 12.5px; color: var(--ink-3); margin: 10px 0 0; }
+.see button { background: none; border: 0; color: var(--seal-deep); font: inherit; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="mudavym" data-ground="charcoal" id="root">
+  <div class="sk-banner">
+    <span><b>SKETCH</b> · 110B · the gazetteer · example data, not a tenant</span>
+    <span>the cellar as a place · the house's own words</span>
+    <span id="ground-slot"></span>
+  </div>
+  <div class="wrap">
+    <div class="head">
+      <div>
+        <p class="sk-crumb" id="crumb"></p>
+        <h1 class="sk-h1">A gazetteer of the building<span class="dot">.</span></h1>
+        <p class="sk-standing">
+          Not a table of what the trade knows. A walking book of what this
+          house remembers, arranged by the rooms it has confirmed.
+        </p>
+      </div>
+      <div class="head-actions">
+        <nav class="dirs" aria-label="Directions">
+          <a class="btn" href="index.html">110</a>
+          <a class="btn" href="the-list.html">A · List</a>
+          <a class="btn" href="the-gazetteer.html" aria-current="page">B · Gazetteer</a>
+          <a class="btn" href="the-wall.html">C · Wall</a>
+        </nav>
+      </div>
+    </div>
+    <hr class="rule">
+    <nav class="regs" id="regs" style="margin-top:14px" aria-label="Registers"></nav>
+    <nav class="origins" id="origins" aria-label="Origins"></nav>
+
+    <div class="desk">
+      <aside class="idx">
+        <h2>Places in this house</h2>
+        <div id="places"></div>
+        <div class="unconf">
+          <p>
+            <b>Two zones are not yet confirmed and are not drawn.</b>
+            Reserve Room — Rare Collection, and Overflow Storage, were
+            written by a seeder. A gazetteer of fabricated rooms is worse
+            than a missing chapter. Confirm them in the floor strip; they
+            join this index the moment somebody here names them.
+          </p>
+        </div>
+      </aside>
+      <article id="chapter"></article>
+    </div>
+
+    <p class="sk-note">
+      Every paragraph above is written as if the house had written it. On
+      the live page that sentence would have to come from a recorded memo,
+      a counted walk, or an invoice line &mdash; never from a reasoned
+      profile of the grape. An entry with only catalogue knowledge is
+      marked <i>reasoned</i> and set in italic, so a stranger's sentence
+      cannot pass as this house's. 76% of the library is in that state
+      today; this sketch is denser in recalled words than the books are.
+    </p>
+    <footer class="sig">
+      <span class="wordmark">Mudavym<span>.</span></span>
+      <span><a href="index.html">Sketch 110</a> · the gazetteer · Kadıköy Meyhane</span>
+    </footer>
+  </div>
+</div>
+<script src="house.js"></script>
+<script>
+(function () {
+  const H = HOUSE;
+  const root = document.getElementById("root");
+  let place = "north";
+  let reg = "cellar";
+  let origin = null;
+
+  document.getElementById("crumb").textContent = "What the house keeps · " + H.name;
+
+  const groundBtn = document.createElement("button");
+  groundBtn.className = "btn quiet";
+  groundBtn.type = "button";
+  groundBtn.textContent = "Paper";
+  groundBtn.addEventListener("click", function () {
+    const next = root.getAttribute("data-ground") === "charcoal" ? "paper" : "charcoal";
+    root.setAttribute("data-ground", next);
+    groundBtn.textContent = next === "charcoal" ? "Paper" : "Charcoal";
+  });
+  document.getElementById("ground-slot").appendChild(groundBtn);
+
+  function matching() {
+    return H.bottles.filter(function (b) {
+      if (!H.inRegister(b, reg)) return false;
+      if (origin && b.origin !== origin) return false;
+      return true;
+    });
+  }
+
+  function draw() {
+    const rows = matching();
+    const regs = document.getElementById("regs");
+    regs.innerHTML = "";
+    [{ id: "cellar", title: "The building" }].concat(H.registers).forEach(function (r) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "btn";
+      b.setAttribute("data-on", r.id === reg ? "true" : "false");
+      b.textContent = r.title;
+      b.addEventListener("click", function () { reg = r.id; draw(); });
+      regs.appendChild(b);
+    });
+
+    const origins = {};
+    rows.forEach(function (b) {
+      if (!b.origin) return;
+      origins[b.origin] = (origins[b.origin] || 0) + 1;
+    });
+    const og = document.getElementById("origins");
+    og.innerHTML = "";
+    const all = document.createElement("button");
+    all.type = "button"; all.className = "chip";
+    all.setAttribute("data-seal", origin === null ? "true" : "false");
+    all.textContent = "Every origin";
+    all.addEventListener("click", function () { origin = null; draw(); });
+    og.appendChild(all);
+    Object.keys(origins).sort().forEach(function (name) {
+      const c = document.createElement("button");
+      c.type = "button"; c.className = "chip";
+      c.setAttribute("data-seal", origin === name ? "true" : "false");
+      c.textContent = name + " · " + origins[name];
+      c.addEventListener("click", function () { origin = origin === name ? null : name; draw(); });
+      og.appendChild(c);
+    });
+
+    const places = document.getElementById("places");
+    places.innerHTML = "";
+    const byZone = { none: rows.filter(function (b) { return !b.zone; }) };
+    H.zones.forEach(function (z) {
+      byZone[z.id] = rows.filter(function (b) { return b.zone === z.id; });
+    });
+    H.zones.forEach(function (z) {
+      const n = (byZone[z.id] || []).length;
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "place";
+      btn.setAttribute("data-on", place === z.id ? "true" : "false");
+      btn.innerHTML = "<span class='c'>" + n + "</span><span class='nm'>" + z.name + "</span><span class='h'>" + z.holds + " · confirmed " + z.when + "</span>";
+      btn.addEventListener("click", function () { place = z.id; draw(); document.getElementById("chapter").scrollIntoView({ block: "start" }); });
+      places.appendChild(btn);
+    });
+    if (byZone.none.length) {
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "place";
+      btn.setAttribute("data-on", place === "none" ? "true" : "false");
+      btn.innerHTML = "<span class='c'>" + byZone.none.length + "</span><span class='nm'>Not in the building</span><span class='h'>on the list, no cellar row</span>";
+      btn.addEventListener("click", function () { place = "none"; draw(); });
+      places.appendChild(btn);
+    }
+
+    const chapter = document.getElementById("chapter");
+    const z = place === "none" ? null : H.zoneOf(place);
+    const entries = place === "none" ? byZone.none : (byZone[place] || []);
+    const run = document.createElement("div");
+    run.className = "running";
+    if (z) {
+      run.innerHTML = "<h2>" + z.name + "</h2><span class='meta'>" + z.holds + " · confirmed by " + z.confirmedBy + " · " + z.when + (z.provenance ? " · " + z.provenance : "") + "</span>";
+    } else {
+      run.innerHTML = "<h2>Not in the building</h2><span class='meta'>On a list. Never invoiced, never counted.</span>";
+    }
+    chapter.innerHTML = "";
+    chapter.appendChild(run);
+    if (!entries.length) {
+      const p = document.createElement("p");
+      p.className = "prose";
+      p.textContent = "Nothing this house carries in the current register lives here.";
+      chapter.appendChild(p);
+      return;
+    }
+    entries.forEach(function (b) {
+      const el = document.createElement("section");
+      el.className = "entry";
+      const know = b.knowledge === "known" ? "recalled" : (b.knowledge === "inferred" ? "reasoned" : "unrecorded");
+      const on = H.count(b.onHand);
+      const par = b.par == null ? "no par of its own" : "par " + b.par;
+      el.innerHTML =
+        "<p class='kicker'>" + (H.registers.find(function (r) { return r.id === b.r; }) || { title: b.r }).title +
+        (b.style ? " · " + b.style : "") +
+        (b.format ? " · " + b.format : "") +
+        "<span class='know' data-k='" + b.knowledge + "'>" + know + "</span></p>" +
+        "<header><h3>" + (b.producer ? b.producer + " · " : "") + b.name +
+        (b.vintage ? " " + b.vintage : "") + "</h3>" +
+        "<span class='headnum'>" + on + " on hand · " + par + "</span></header>" +
+        "<p class='prose' data-k='" + b.knowledge + "'>" + b.memo + "</p>" +
+        "<dl class='facts'>" +
+        "<div><dt>List</dt><dd class='num'>" + H.money(b.list) + "</dd></div>" +
+        "<div><dt>First bought</dt><dd>" + (b.firstBought || H.EM) + "</dd></div>" +
+        "<div><dt>Paid, this house</dt><dd class='num'>" + H.money(b.paid) + "</dd></div>" +
+        "<div><dt>Last counted</dt><dd>" + (b.lastCounted || H.EM) + "</dd></div>" +
+        "</dl>";
+      if (b.origin && b.origin !== "this house") {
+        const see = document.createElement("p");
+        see.className = "see";
+        see.appendChild(document.createTextNode("Filed also under "));
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = b.origin;
+        btn.addEventListener("click", function () { origin = b.origin; draw(); });
+        see.appendChild(btn);
+        see.appendChild(document.createTextNode("."));
+        el.appendChild(see);
+      }
+      chapter.appendChild(el);
+    });
+  }
+
+  draw();
+})();
+</script>
+</body>
+</html>
