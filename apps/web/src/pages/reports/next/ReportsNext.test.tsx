@@ -78,6 +78,23 @@ function broke(status: number | null, message = 'boom') {
 
 const saveSheet = vi.fn();
 
+/** The export desk (OD-81), stubbed; its own render contract is ExportsShelf.test.tsx. */
+const exportStub = {
+  canExport: true,
+  readOnlyReason: null as string | null,
+  exports: [] as unknown[] | undefined,
+  total: 0 as number | null,
+  loading: false,
+  listFailure: null,
+  refetch: vi.fn(),
+  busy: null as string | null,
+  error: null as string | null,
+  clearError: vi.fn(),
+  request: vi.fn(),
+  retry: vi.fn(),
+  download: vi.fn(),
+};
+
 const READING = [
   {
     ruleKey: 'insight:a',
@@ -328,6 +345,7 @@ function base() {
   return {
     restaurantId: 'r1',
     goalsDesk: deskStub,
+    exportDesk: exportStub,
     reading: ok(READING),
     registers: {
       reading: ok(READING),
@@ -964,12 +982,14 @@ describe('ReportsNext — honesty', () => {
     expect(within(quad).getByText(/an uncosted wine is unknown, not a dog/)).toBeInTheDocument();
   });
 
-  it('renders the report generator disabled, with the reason it writes nothing', () => {
+  it('the writing desk points at where reports are really written, and offers no dead button (OD-81)', () => {
     paint();
     const desk = screen.getByRole('region', { name: 'The writing desk' });
-    const button = within(desk).getByRole('button', { name: 'Write this sheet up' });
-    expect(button).toBeDisabled();
-    expect(within(desk).getByText(/files a row marked/)).toBeInTheDocument();
+    // The disabled "Write this sheet up" stood for a writer that did not exist.
+    expect(within(desk).queryByRole('button', { name: 'Write this sheet up' })).toBeNull();
+    expect(within(desk).getByText(/is written up under the sheet/)).toBeInTheDocument();
+    expect(within(desk).getByRole('link', { name: 'Go to what is written up' })).toHaveAttribute('href', '#rp-exports');
+    expect(document.getElementById('rp-exports')).not.toBeNull();
     expect(within(desk).getByText('Open the document archive')).toBeInTheDocument();
   });
 
@@ -1449,5 +1469,34 @@ describe('ReportsNext — the benchmark cutting', () => {
     expect(
       within(bench).getByText(/The buying lens did not answer inside the overview call/),
     ).toBeInTheDocument();
+  });
+});
+
+describe('ReportsNext — written up (OD-81)', () => {
+  it('lays the export shelf under the sheet, offering the cuttings on the sheet and not the writing desk', () => {
+    paint();
+    const shelf = screen.getByRole('region', { name: 'Written up' });
+    const picker = within(shelf).getByLabelText('Cutting to write up') as HTMLSelectElement;
+    const offered = Array.from(picker.options).map((o) => o.textContent);
+    expect(offered).toContain('Figures of record');
+    expect(offered).not.toContain('The writing desk');
+    expect(within(shelf).getByText('Nothing has been written up for this house yet.')).toBeInTheDocument();
+  });
+
+  it('asks for the till over the window the till cutting is set to', () => {
+    paint();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    fireEvent.click(within(till).getByRole('button', { name: '7d' }));
+    const shelf = screen.getByRole('region', { name: 'Written up' });
+    fireEvent.change(within(shelf).getByLabelText('Cutting to write up'), { target: { value: 'till' } });
+    expect(within(shelf).getByText('over the last 7 days, as the till is set')).toBeInTheDocument();
+    fireEvent.click(within(shelf).getByRole('button', { name: 'Write it up' }));
+    expect(exportStub.request).toHaveBeenCalledWith('till', 7);
+  });
+
+  it('is not on the page while the sheet is being arranged', () => {
+    paint();
+    arrange();
+    expect(screen.queryByRole('region', { name: 'Written up' })).toBeNull();
   });
 });
