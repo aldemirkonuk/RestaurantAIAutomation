@@ -11,7 +11,7 @@ api_modules: []
 agents: []
 owner_unit: ""
 gap_reason: "**By design, not a defect** — a shell/legal/support surface, not a product. Listed so the pages are visibly accounted for"
-updated: 2026-09-01
+updated: 2026-09-17
 links: ["[[help]]", "[[privacy]]", "[[credits]]", "[[SOFTWARE-CONTRACT]]", "[[SOFTWARE-MAP]]"]
 ---
 
@@ -33,6 +33,11 @@ silence (`SOFTWARE-CONTRACT.md:81-83`).
 - Read four FAQ entries and jump off to tours, Get Started, services, or the Wine Agent
 - Contact support by email or Slack — **unverified**: both fall back to `wineops.*`
   defaults if the env vars are unset (`Help.tsx:18,20`)
+- **The crawl surface** ([[0158-machines-read-mudavym-from-what-the-host-serves]],
+  2026-09-17) — what the host serves to machines: `robots.txt` (company-specific, split by
+  reader purpose), `sitemap.xml` + `sitemap-pages.xml` + `sitemap-vendors-N.xml`, `llms.txt`,
+  each public page's head, `noindex` on everything signed-in, a real 404, and the old
+  vercel.app host's 308. One registry: `apps/web/src/lib/seo/routes.ts`.
 
 ## §2 Screens
 
@@ -47,8 +52,13 @@ silence (`SOFTWARE-CONTRACT.md:81-83`).
 
 ## §3 Backend
 
-`none` — no gateway module, no endpoint, no API client. Everything on these three routes is
-static text, a link, or a redirect.
+`none` for the three pages — static text, a link, or a redirect.
+
+The crawl surface (ADR 0158) has a gateway half, `apps/api-gateway/src/seo/`: the sitemap
+index and vendor blocks (XML, CDN-cached through `apps/web/vercel.json` rewrites) and the
+`/v/:slug` head payload the web middleware reads. Host rules live in `apps/web/vercel.json`
+(the live config for mudavym.com; the repo-root file configures only the second Vercel
+project). A deployment is checked with `scripts/crawl_surface_census.py <origin>`.
 
 ## §4 Automation
 
@@ -60,7 +70,9 @@ static text, a link, or a redirect.
 
 ## §6 Owner
 
-`unowned — gap`. Grep over `01-org` finds no charter naming `Help.tsx` or the `/credits`
+The crawl surface: **Technical SEO & AI-answer surface (G4)** — its charter names robots,
+sitemap, canonical, `llms.txt`, status codes and structured data
+(`technical-seo-ai-answer-surface-charter.md:43-55`). The three pages: `unowned — gap`. Grep over `01-org` finds no charter naming `Help.tsx` or the `/credits`
 redirect. One of the three has a partial answer: `legal-charter.md:72,114` routes *the
 privacy notice* to **Compliance §3.2**, on the reasoning that *"a notice is a public
 statement, not an agreement"* — the department is [[compliance-privacy-charter]], though
