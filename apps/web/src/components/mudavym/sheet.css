@@ -307,7 +307,7 @@
 }
 .mdv-ovl__depth {
   margin-left: auto;
-  color: var(--ink-3);
+  color: var(--ink-4);
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-size: 9px;
@@ -812,7 +812,7 @@
 /* Discarded is a FACT, not an alarm: it steps back to plain ink rather than
    reaching for a second colour the house does not have. */
 .mdv-stub[data-state='discarded'] .mdv-stub__eyebrow {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .mdv-stub[data-state='discarded'] {
   border-left-color: var(--ink-3);
@@ -841,7 +841,7 @@
   margin: 7px 0 0;
   font-size: 11px;
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 /* ============================================================
@@ -918,7 +918,7 @@
   font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
   font-size: 11px;
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 /* The route the surface offers instead — the caller's words and controls, set
    under the sentence, never styled as the refusal itself. */
@@ -936,5 +936,5 @@
 .mdv-refused__next {
   margin: 4px 0 0 !important;
   font-size: 11.5px !important;
-  color: var(--ink-3) !important;
+  color: var(--ink-4) !important;
 }

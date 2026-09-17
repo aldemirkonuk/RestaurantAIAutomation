@@ -420,16 +420,19 @@ remain separate checks. No production action or database mutation occurred.
 > validation … is recorded with the integration commit" does not hold —
 > `git show -s 6ab500a0` carries a subject line only, no body, no trailer,
 > nothing to point at; (3) "188 files; 2704 passed, 14 skipped" was NOT
-> re-measured this session (only file count, 188, was re-confirmed on the lane
-> tree; the pass/skip counts are carried forward unverified — CLAUDE.md §5b,
-> "numbers get re-measured, never copied forward").
+> re-measured when this correction was first written; it has since been
+> re-measured on the train tree (2026-09-17, PR #387 reviewer 1): **189 files,
+> 2736 passed, 14 skipped, 0 failed** — so the recorded counts were stale, not
+> merely unverified.
 >
 > A fourth line overstates by omission rather than by error: "Callers must
 > return their write promise for this guarantee" reads as a rule already in
-> force. Measured 2026-09-17: the async receipt is opt-in and zero of the
-> four callers checked (ProfileNext.destroy, TeamOverlays publish.mutate(),
-> EventSheet data.remove.mutate, ComposeSheet.queue / SealedApprove·RejectDie,
-> which catch internally and always resolve) return their write's promise, so
+> force. Measured 2026-09-17: the async receipt is opt-in. Re-measured
+> 2026-09-17 (PR #387 reviewer 1): four of the twenty-eight callers do return a
+> promise (ReceiptsPage, SealedApproveDie, SealedRejectDie, ComposeSheet), but
+> each catches internally and always resolves, so the "never seal on rejection"
+> guarantee protects none of them today, and none passes confirmTimeoutMs
+> (zero hits repo-wide); the wait is bounded only by the API client timeout, so
 > the guarantee covers no caller yet. Converting them is page-lane work, not
 > this component lane's.
 >
