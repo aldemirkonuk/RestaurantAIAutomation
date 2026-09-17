@@ -128,8 +128,9 @@ corpus.** Concretely:
 - **Easier:** a red nightly now carries its reason in the row that is red; the founder's
   go-live flip can be gated by `expect_flags=on` the day he wants it; the nineteen pages
   slot in as #289 merges with no suite change (the manifest already names them; today
-  eight report `absent` **[superseded 2026-09-17, founder call 10: an enrolled page cannot
-  report `absent` any more — it is a fail]**); every walk leaves screenshots.
+  eight report `absent` **[superseded 2026-09-17, founder call 10: an enrolled page whose
+  route renders nothing Mudavym is a fail, not an absence. A page still reports `absent`
+  when the HOUSE has nothing to open it on — the door and document routes]**); every walk leaves screenshots.
 - **Harder / given up:** the walk tells nothing about figures by design; the door and
   document routes stay `absent` until the e2e house holds an order and a document; Wave
   H's build-identity check is `cannot_check` against a local gateway (no build variable)
@@ -593,6 +594,48 @@ drop the flags test and the legacy walk, keep the page walk and its sentences, a
 the guard's page list into a check against the router. Nothing here should be changed
 before the cutover lands, because until then both designs exist and both are walked.
 
+## Adversarial pass on 2eef4663 (2026-09-17): OVERTURNED, and what it found
+
+The three angles' APPROVE WITH NOTES did not survive the adversarial pass, and it was
+right on every count. Its verdict is recorded here before the fixes, because the pattern
+matters more than the defect: **each round's fix introduced the next round's finding, and
+this round's checks were written so that the property they assert could be removed without
+them noticing.**
+
+- **B3, blocking: the scrub's new gzip and lossy scan never looked for the password.** It
+  matched the password against raw bytes only; the decompressed text was searched by the
+  three token regexes, and the B2 shape — `textbox "Password" [ref=e7]: <pw>` — matches
+  none of them. A gzipped `error-context.md` was reported clean and would have uploaded.
+  Reproduced with the self-test's own password. Nothing is gzipped in the upload set today
+  (traces and video are off), so nothing leaked — but a fail-closed backstop and a
+  `resolved` claim both asserted a property the code did not have, on the exact credential
+  the previous block was about.
+- **The self-test could not see its own gate removed.** Deleting `worst = 1` on either the
+  surviving-credential branch or the symlink branch left all 13 cases green: every case
+  tested `scrub()`'s returned dict, none ran `main()` and asserted its exit code.
+- **`ADR-0135-l` tested for a string, not a gate.** Changing the upload's `if` from
+  `always() && steps.scrub.outcome == 'success'` to `always() || …` — an upload that runs
+  whatever the scrub found — left the claim green.
+- **Two redaction shapes were missed by both halves:** a quoted key (`"x-api-key":"…"`),
+  because the closing quote broke the pattern; and a password inside a URL
+  (`amqp://user:pass@host`, the shape `RABBITMQ_URL` takes into a failure message and from
+  there into the public job summary, which no scrub precedes).
+- **A false safeguard:** the scrub's docstring said `scrub-report.json` is what "the
+  summary reads". Nothing reads it, and nothing can — the summary step runs first.
+
+**Fixed:** the password is searched in the scannable text as well as the raw bytes; the
+self-test gained six cases that run `main()` (a surviving credential, a symlink, a gzipped
+password, a quoted key, a URL password, and the two refusals), and five mutations were
+proven to turn it red; `ADR-0135-l` now requires the gate to be conjoined, proven against
+an OR-gated upload; both redactions keep the value's quotes, so a redacted JSON file still
+parses, and both cover URL passwords; the docstring says where a deletion is actually
+reported (the artifact file and the job summary line). `ADR-0135-m` now states each
+behaviour it proves, and requires 19 self-test cases.
+
+**Left as recorded limits:** the job summary is written before the scrub, so it is guarded
+only by the in-process redaction; `redact()` still mangles ordinary prose; and the door and
+document routes legitimately report `absent`, which the supersession note above now says.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -604,3 +647,4 @@ before the cutover lands, because until then both designs exist and both are wal
 | 2026-09-17 | In-session audit gate on `e18b1d48` (3 Opus angles) | **BLOCK**: security B1 (bearer token through the Playwright call log); correctness and compliance APPROVE WITH NOTES. Fixed on `881fec82`. |
 | 2026-09-17 | In-session re-audit on `881fec82` | **BLOCK**: security B2 (password through `error-context.md`); correctness and compliance APPROVE WITH NOTES. Fixed on the next head; founder calls 10–11. |
 | 2026-09-17 | In-session third round on `b14835d0` | **APPROVE WITH NOTES** from all three angles; both earlier leaks re-proven closed. Its notes (the scrub fail-open in three ways, unbounded dispatch hosts, per-test masking, self-tests passing a mutated tree) are fixed on the head after it. |
+| 2026-09-17 | Adversarial pass on `2eef4663` | **OVERTURNED — BLOCK**: the scrub's gzip scan never looked for the password (B3), the self-test could not see its own gate removed, and `ADR-0135-l` tested for a string rather than a gate. All fixed on the head after it, each with a mutation proving the check now fires. |

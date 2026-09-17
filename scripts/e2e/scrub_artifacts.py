@@ -16,8 +16,11 @@ WHAT: for each file under --dir:
   * a file that does NOT decode cleanly (a truncated log, a gzip) is scanned
     lossily and by gzip-decompression, and DELETED if it carries a credential,
     because it cannot be rewritten safely. Deleted and redacted files are named
-    in the log and in <dir>/scrub-report.json, which the summary reads: evidence
-    must never vanish quietly (this repo's absence-reported-as-health fault).
+    in the log, in <dir>/scrub-report.json (inside the artifact) and in the job
+    summary: evidence must never vanish quietly (this repo's
+    absence-reported-as-health fault). The four-state summary runs BEFORE this
+    step, so it cannot carry the deletion; the job-summary line is what a reader
+    sees next to the verdict.
     The alternatives — refusing the whole upload, or zeroing the matched bytes —
     were rejected in ADR 0135: a lost screenshot must not cost the whole run's
     evidence, and a partially zeroed binary is still a file nobody can trust.
@@ -49,17 +52,24 @@ from pathlib import Path
 JWT = re.compile(r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
 BEARER = re.compile(r"(?i)(bearer\s+)(?!\[redacted\])[^\s\"',;]+")
 # The same names lib.ts `redact()` covers; kept in step with it on purpose.
+# The VALUE is replaced and the quotes around it are kept, so a redacted JSON
+# file still parses (adversarial pass 2026-09-17).
 SECRET_PAIR = re.compile(
     r"(?i)\b((?:access|refresh|id)?[_-]?token|password|passwd|authorization"
-    r"|x-api-key|api[_-]?key|secret|cookie|set-cookie)(\s*[:=]\s*)"
-    r"(?!\[redacted\])[^\s,;]+"
+    r"|x-api-key|api[_-]?key|secret|cookie|set-cookie)\b([\"']?\s*[:=]\s*)"
+    r"([\"']?)(?!\[redacted\])[^\s,;\"']+"
+)
+# user:password@host in a URL (amqp://, postgres://): the password half only.
+URL_USERINFO = re.compile(
+    r"(?i)([a-z][a-z0-9+.-]*://[^\s:/@]+:)(?!\[redacted\]@)[^\s@/]+(@)"
 )
 
 
 def redact_text(text: str, password: str | None) -> str:
     out = JWT.sub("[redacted-jwt]", text)
     out = BEARER.sub(r"\1[redacted]", out)
-    out = SECRET_PAIR.sub(r"\1\2[redacted]", out)
+    out = SECRET_PAIR.sub(r"\1\2\3[redacted]", out)
+    out = URL_USERINFO.sub(r"\1[redacted]\2", out)
     if password:
         out = out.replace(password, "[redacted]")
     return out
@@ -77,10 +87,19 @@ def _scannable(data: bytes) -> str:
 
 
 def _leaks(data: bytes, password: str | None) -> bool:
-    if password and password.encode("utf-8") in data:
-        return True
+    # The password is looked for in the SCANNABLE text as well as the raw bytes:
+    # a gzipped error-context.md hides it from a byte search, and its aria shape
+    # (`textbox "Password" [ref=e7]: <pw>`) matches none of the regexes
+    # (adversarial pass 2026-09-17, B3).
     text = _scannable(data)
-    return bool(JWT.search(text) or BEARER.search(text) or SECRET_PAIR.search(text))
+    if password and (password.encode("utf-8") in data or password in text):
+        return True
+    return bool(
+        JWT.search(text)
+        or BEARER.search(text)
+        or SECRET_PAIR.search(text)
+        or URL_USERINFO.search(text)
+    )
 
 
 def scrub(root: Path, password: str | None) -> dict[str, list[str]]:
@@ -293,6 +312,83 @@ def self_test() -> int:
 
     import contextlib
     import io
+
+    # main() itself, not just scrub(): the step's exit code is the fail-closed
+    # gate, and deleting `worst = 1` used to leave every case green
+    # (adversarial pass 2026-09-17).
+    def run_main(build) -> int:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            build(root)
+            os.environ["E2E_TEST_PASSWORD"] = pw
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    return main(["--dir", str(root)])
+            finally:
+                os.environ.pop("E2E_TEST_PASSWORD", None)
+
+    def unwritable(root: Path) -> None:
+        # The FILE is unwritable, the directory is not: the exit code must come
+        # from the surviving credential, not from a failed report write.
+        f = root / "locked.md"
+        f.write_text(pw, encoding="utf-8")
+        f.chmod(0o444)
+
+    got = run_main(unwritable)
+    case(
+        f"main() exits 1 when a credential survives (exit {got})",
+        got == 1 or os.geteuid() == 0,
+    )
+
+    def with_symlink(root: Path) -> None:
+        (root / "link.txt").symlink_to(root.parent / "nowhere.txt")
+
+    got = run_main(with_symlink)
+    case(f"main() exits 1 on a symlink (exit {got})", got == 1)
+
+    def gzipped_password(root: Path) -> None:
+        import gzip as _g
+
+        (root / "error-context.md.gz").write_bytes(
+            _g.compress(f'- textbox "Password" [ref=e7]: {pw}\n'.encode())
+        )
+
+    got = run_main(gzipped_password)
+    case(
+        f"a gzipped error-context carrying the password is deleted (exit {got})",
+        got == 0,
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        gzipped_password(root)
+        report = scrub(root, pw)
+        case(
+            "and it is named as deleted, not reported clean",
+            report["deleted"] == ["error-context.md.gz"]
+            and report["still_leaking"] == [],
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "x.json").write_text(
+            '{"x-api-key":"ADMINKEY_SENTINEL_adv","ok":1}', encoding="utf-8"
+        )
+        (root / "wave_c.xml").write_text(
+            "<failure>amqp://user:RABBITPASS_SENTINEL@rabbit:5672 refused</failure>",
+            encoding="utf-8",
+        )
+        report = scrub(root, pw)
+        body = (root / "x.json").read_text(encoding="utf-8")
+        case(
+            "a quoted key is redacted and the JSON still parses",
+            "ADMINKEY_SENTINEL_adv" not in body and json.loads(body)["ok"] == 1,
+        )
+        case(
+            "a password inside a URL is redacted",
+            "RABBITPASS_SENTINEL"
+            not in (root / "wave_c.xml").read_text(encoding="utf-8")
+            and report["still_leaking"] == [],
+        )
 
     for label, env, want in (
         ("an unset password is cannot_check", {}, 2),

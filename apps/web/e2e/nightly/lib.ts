@@ -304,7 +304,11 @@ const BEARER = /(bearer\s+)[^\s"',;]+/gi
 // Plain-text `name: value` / `name=value` pairs (a call log, a header dump).
 // Applied to STRINGS only, never to serialized JSON — it would eat a closing
 // quote and corrupt the record (re-audit 2026-09-17, correctness N1).
-const SECRET_PAIR = /\b((?:access|refresh|id)?[_-]?token|password|passwd|authorization|x-api-key|api[_-]?key|secret|cookie|set-cookie)(\s*[:=]\s*)(?!\[redacted\])[^\s,;]+/gi
+// The VALUE is replaced and its quotes are kept, so a redacted string that is
+// JSON still parses (adversarial pass 2026-09-17).
+const SECRET_PAIR = /\b((?:access|refresh|id)?[_-]?token|password|passwd|authorization|x-api-key|api[_-]?key|secret|cookie|set-cookie)\b(["']?\s*[:=]\s*)(["']?)(?!\[redacted\])[^\s,;"']+/gi
+/** user:password@host in a URL (amqp://, postgres://) — the password half only. */
+const URL_USERINFO = /([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)(?!\[redacted\]@)[^\s@/]+(@)/gi
 const SECRET_KEY = /^(?:(?:access|refresh|id)?[_-]?token|password|passwd|authorization|x-api-key|api[_-]?key|secret|cookie|set-cookie)$/i
 
 /**
@@ -316,7 +320,11 @@ const SECRET_KEY = /^(?:(?:access|refresh|id)?[_-]?token|password|passwd|authori
  * check records goes through here; so does every error a gateway call throws.
  */
 export function redact(text: string): string {
-  let out = text.replace(JWT, '[redacted-jwt]').replace(BEARER, '$1[redacted]').replace(SECRET_PAIR, '$1$2[redacted]')
+  let out = text
+    .replace(JWT, '[redacted-jwt]')
+    .replace(BEARER, '$1[redacted]')
+    .replace(SECRET_PAIR, '$1$2$3[redacted]')
+    .replace(URL_USERINFO, '$1[redacted]$2')
   // The configured password itself, wherever it appears — e.g. a failed
   // `fill()` call log (re-audit 2026-09-17, B2).
   const pw = process.env.E2E_TEST_PASSWORD

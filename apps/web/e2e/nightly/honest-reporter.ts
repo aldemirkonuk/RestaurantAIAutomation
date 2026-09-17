@@ -207,7 +207,8 @@ function redact(text: string): string {
   let out = text
     .replace(/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted-jwt]')
     .replace(/(bearer\s+)[^\s"',;]+/gi, '$1[redacted]')
-    .replace(new RegExp(`\\b(${SECRET_NAMES})(\\s*[:=]\\s*)(?!\\[redacted\\])[^\\s,;]+`, 'gi'), '$1$2[redacted]')
+    .replace(new RegExp(`\\b(${SECRET_NAMES})\\b(["']?\\s*[:=]\\s*)(["']?)(?!\\[redacted\\])[^\\s,;"']+`, 'gi'), '$1$2$3[redacted]')
+    .replace(/([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)(?!\[redacted\]@)[^\s@/]+(@)/gi, '$1[redacted]$2')
   const pw = process.env.E2E_TEST_PASSWORD
   if (pw && pw.length >= 4) out = out.split(pw).join('[redacted]')
   return out
