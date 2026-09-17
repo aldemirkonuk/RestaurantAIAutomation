@@ -224,6 +224,16 @@ reason**, never as an empty log; a capped page reads "at least N" and says the
 page stopped; staff see no undo control and a sentence saying why; and the query
 key carries the active house so `switchRestaurant` cannot serve the previous
 one's log from cache. Eight vitest cases assert exactly those.
+
+[2026-09-17, ADR 0149 answer 17, built on `feat/finish-vintel`] **A decision on a
+shared register now names its person, and offers its undo, only inside the house
+that took it.** The gateway records the deciding house in migration `20260917010000`
+and takes it from the token. Every other house's log shows the row as "Another
+house" with the outcome and the time. The gateway's refusal sentence appears where
+the undo control would be. A shared decision logged before the column existed reads
+"House not recorded" to every house and cannot be undone from any house. See ADR
+0124's review trail, 2026-09-17.
+
 6. **Seventeen vendors said "verified" because a geocoder ran.** ADR 0117 Q26, answered 2026-09-05: every `vendor_catalogue.verified_at` came from the two 2026-08-07 geocoding migrations applying on 2026-08-10 (`20260807001352` :32, `20260807001552` :36,52), never from a check of the website or the business; three of those websites were a casino, a wine school and a clothes shop. Cleared on the founder's word at 2026-09-05T20:35:56Z (`scripts/clear_vendor_catalogue_verified_at.py`, 17 of 17, re-read 0 left), and `20260906040000` now refuses a `verified_at` with no `source_ref`. The page prints "verified" for no vendor until something with a name verifies one.
 
 ### 13.x A price names the bottle it priced (ADR 0124 Q5, 2026-09-05)
