@@ -40,6 +40,15 @@
 #   scripts/claude_state_migrate.sh verify  [--repo PATH]
 #
 # Run `list` and `verify` on both sides. They are the evidence that the move worked.
+#
+# WHAT VERIFY ACCEPTS
+# It reads the last cwd each transcript records, and sessions move: one opened at the
+# root and left in apps/web records apps/web. So a cwd passes when it is the repo or a
+# path under it, compared on path boundaries (restaurant-ai-automation-other is outside).
+# A cwd outside the repo fails, exit 1, every such session named and tagged with whether
+# that path exists here; a transcript import never rewrote looks like that. A cwd inside
+# the repo whose directory is gone (a removed worktree, or one a fresh clone never had)
+# only warns. Cases: scripts/test_claude_state_verify.py, ADR 0148 verification record.
 
 set -euo pipefail
 

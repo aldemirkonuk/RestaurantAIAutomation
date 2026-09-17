@@ -131,12 +131,16 @@ If `verify` comes back empty, the history did not survive — import the bundle:
 `scripts/claude_state_migrate.sh import ~/Desktop/claude-state_*.tar.gz`.
 
 **Measured on this Mac, 2026-09-16** (branch `claude/artifact-pull`): `list` found 71
-sessions, 582.7 MB. `verify` **exited 1, and that was a false alarm** — read it before
-importing anything. It compares each session's recorded cwd to the repo root by exact
-string (`scripts/_claude_state.py:247`), so six sessions opened in `apps/web`,
-`apps/api-gateway`, `.planning` or a worktree were called stale, with a message saying
-their paths do not exist; all six exist. It also names only the first five. Import only
-if the cwds it lists are outside the repo or missing. Nor does that run test the
+sessions, 582.7 MB. `verify` exited 1 on a false alarm, fixed since on branch
+`fix/claude-state-verify-subdir-cwd`. It compared each session's last recorded cwd to the
+repo root by exact string, so six sessions opened at the root and left in `apps/web`,
+`apps/api-gateway`, `.planning` or a worktree were called stale. The message said their
+paths did not exist, though all six did, and it named only five. Now any cwd inside the
+repo passes, compared on path boundaries (`scripts/_claude_state.py:240`), and on the same
+store `verify` exits 0. If it exits 1, every session it names records a cwd outside this
+repo, each tagged with whether that path exists. Re-import only if those are another
+clone's paths. A cwd inside the repo whose directory is gone, such as a removed worktree,
+only warns. Nor does that run test the
 same-Mac reasoning above. No bundle existed at `~/Desktop/claude-state_*.tar.gz`. Two
 logins now share this store — the desktop app's session runs as org
 `03017808-9f02-4503-8679-8b71c4f82859`, while the terminal CLI's profile in

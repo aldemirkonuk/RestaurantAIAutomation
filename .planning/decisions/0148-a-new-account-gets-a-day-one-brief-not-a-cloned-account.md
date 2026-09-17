@@ -85,7 +85,10 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
   CLI's profile still names org `1138b209-…` — and `list` reads the files under either;
   whether `claude --resume` under the new org offers the old org's sessions was not
   tested. `verify` exited 1 on a false alarm, sessions whose cwd is a subdirectory or
-  worktree of the repo; `ONBOARDING.md` §6 has the detail.]
+  worktree of the repo; `ONBOARDING.md` §6 has the detail.] [Fixed 2026-09-16 on branch
+  `fix/claude-state-verify-subdir-cwd`: `verify` now passes any cwd inside the repo and
+  exits 1 only for one outside it. On the same live store it exits 0; see the
+  verification record below.]
 - **Artifacts: decided but not delivered.** The founder chose to pull the twelve Mudavym
   artifacts into the repo as files. Measured 2026-09-16 across 16 requests and both link
   formats, that is not possible from a cloud session. The org-scoped
@@ -128,6 +131,7 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-16 | Aldemir | `verify`'s cwd false alarm fixed on `fix/claude-state-verify-subdir-cwd`. Chose that a cwd inside the repo whose directory is gone (a removed worktree) warns, exit 0, instead of failing. Verification record extended; decision unchanged |
 | 2026-09-16 | Aldemir | Waived §4 retire-to-write for the twelve artifact files (row in ADR 0032). Same session measured the pull's blocker: the desktop app's org `03017808-…` is a viewer of owner org `1138b209-…`; artifacts consequence re-bracketed |
 | 2026-09-16 | — | Local run of ONBOARDING §8 on `claude/artifact-pull`: artifact pull failed for all twelve; the artifacts and same-Mac consequences amended in brackets, decision unchanged |
 | 2026-09-16 | Aldemir | Reframed the request from account-clone to onboarding; chose the brief, chose to pull artifacts into the repo as files, confirmed same-Mac destination |
@@ -141,7 +145,7 @@ moving to a new machine at a different path, 2026-09-16:
 | Case | Result |
 |---|---|
 | `list` against this repo's live store | 1 session, correct branch and CLI version |
-| export → inspect → import → verify, path changed | 2 sessions, `✅ every session records cwd=<new>` |
+| export → inspect → import → verify, path changed | 2 sessions, `✅ every session records cwd=<new>` [since the cwd fix below, that line reads `✅ every recorded cwd is inside <new>`] |
 | `.credentials.json` planted in the source store | purged from bundle; absent from destination |
 | Pasted `ghp_…` token in a transcript | flagged as 1 × github-token, value not printed |
 | `memory/` + per-session sidecar dirs | carried across intact |
@@ -153,3 +157,24 @@ moving to a new machine at a different path, 2026-09-16:
 
 Not verified: a real macOS → Linux move (fixture was Linux on both sides), `--resume`
 inside the `claude` binary after import, and the logout/login claim above.
+
+**`verify`'s cwd rule, after the fix.** Run 2026-09-16 on macOS, on branch
+`fix/claude-state-verify-subdir-cwd`. The first five rows are
+`scripts/test_claude_state_verify.py`. It runs the real entry point on throwaway stores,
+and CI runs it as CLAIMS row `ADR-0148-VERIFY-CWD-INSIDE-REPO`.
+
+| Case | Result |
+|---|---|
+| Sessions ending at the root, in `apps/web`, in a live worktree | exit 0 |
+| A different absolute path: sibling `restaurant-ai-automation-other`, and `<repo>/../restaurant-ai-automation-other` | exit 1, both named, `(path exists)`; the session inside the repo is not named |
+| A missing path: another machine's clone, at its root and in `apps/api-gateway` | exit 1, both named, `(path does not exist)` |
+| A cwd inside the repo whose directory is gone (a removed worktree) | exit 0, named under a warning (the founder's call) |
+| Six sessions outside the repo | exit 1, all six named; before the fix, five |
+| export → import → verify, path changed, with sessions ending in `apps/web` and in a worktree | exit 0, with a warning naming the worktree session, because a fresh clone has no worktrees; before the fix, exit 1 at source and destination |
+| `--no-rewrite` into a different path, old clone present, then deleted | exit 1, all three named, `(path exists)` then `(path does not exist)` |
+| Same test file run against the pre-fix `_claude_state.py` | all five cases fail |
+| Seven broken versions of the fix: bare `startswith`, no `normpath`, a gone directory inside the repo fails, a `[:5]` cap, no warning, each existence tag hard-coded | each fails exactly the case written for it |
+| This Mac's live store, 71 sessions | before: exit 1, six sessions inside the repo flagged (five on one re-run, because live sessions move); after: exit 0 |
+
+Not verified: the test file on Linux. CI runs it through the CLAIMS row once the branch
+is in a pull request.

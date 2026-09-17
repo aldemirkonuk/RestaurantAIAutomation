@@ -237,6 +237,16 @@ def _parses(line: str) -> bool:
         return False
 
 
+def _inside(path: str, root: str) -> bool:
+    """`path` is `root` or lies under it, compared on path boundaries.
+
+    A bare startswith would count /x/restaurant-ai-automation-other as part of
+    /x/restaurant-ai-automation, and without normpath `root/../elsewhere` would pass.
+    """
+    path, root = os.path.normpath(path), os.path.normpath(root)
+    return path == root or path.startswith(root.rstrip("/") + "/")
+
+
 def cmd_verify(store: str, repo: str) -> int:
     rows = _print_table(Path(store))
     if not rows:
@@ -244,15 +254,28 @@ def cmd_verify(store: str, repo: str) -> int:
         return 1
 
     problems = 0
-    stale = [r for r in rows if r["cwd"] and r["cwd"] != repo]
-    if stale:
-        print(f"   ❌ {len(stale)} session(s) still record a different cwd:")
-        for r in stale[:5]:
-            print(f"      {r['id']}  cwd={r['cwd']}")
-        print(f"      Re-run import with the correct --repo, or these will resume against a path that does not exist.")
+    # summarize() keeps the LAST cwd a transcript records, and sessions move: one
+    # opened at the repo root that ends in apps/web records apps/web. So the test is
+    # "inside this repo", never "equal to it" (ADR 0148, verification record).
+    recorded = [r for r in rows if r["cwd"]]
+    outside = [r for r in recorded if not _inside(r["cwd"], repo)]
+    if outside:
+        print(f"   ❌ {len(outside)} session(s) record a cwd outside this repo:")
+        for r in outside:
+            where = "path exists" if os.path.isdir(r["cwd"]) else "path does not exist"
+            print(f"      {r['id']}  cwd={r['cwd']}  ({where})")
+        print("      If these are another clone's paths, re-run import with the correct --repo.")
         problems += 1
     else:
-        print(f"   ✅ every session records cwd={repo}")
+        print(f"   ✅ every recorded cwd is inside {repo}")
+
+    # Inside the repo but gone: a removed worktree, or one a fresh clone never had.
+    # The path already points into this clone, so it warns rather than fails.
+    gone = [r for r in recorded if _inside(r["cwd"], repo) and not os.path.isdir(r["cwd"])]
+    if gone:
+        print(f"   ⚠️  {len(gone)} session(s) record a cwd inside this repo that no longer exists:")
+        for r in gone:
+            print(f"      {r['id']}  cwd={r['cwd']}")
 
     broken = [r for r in rows if r["bad_lines"]]
     if broken:
