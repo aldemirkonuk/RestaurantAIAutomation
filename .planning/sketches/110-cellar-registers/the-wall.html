@@ -229,7 +229,7 @@
 
     const walls = document.getElementById("walls");
     walls.innerHTML = "";
-    const groups = [{ id: "none", name: "Not in the building", holds: "on the list only", when: "" }].concat(H.zones);
+    const groups = H.zones.concat([{ id: "none", name: "Not in the building", holds: "on the list only", when: "" }]);
     groups.forEach(function (z) {
       const tiles = rows.filter(function (b) {
         return z.id === "none" ? !b.zone : b.zone === z.id;
