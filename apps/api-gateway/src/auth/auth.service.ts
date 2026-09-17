@@ -10,6 +10,7 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
+import { appOrigin } from "../common/app-origin";
 import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GmailService } from "../communications/gmail.service";
 import * as bcrypt from "bcrypt";
@@ -930,9 +931,7 @@ export class AuthService {
           ownerName: dto.name,
           restaurantName: dto.restaurantName,
           restaurantCity: dto.city,
-          frontendBaseUrl:
-            this.configService.get("FRONTEND_URL") ||
-            "https://restaurant-ai-automation-web.vercel.app",
+          frontendBaseUrl: appOrigin(this.configService),
         })
         .catch((err) =>
           this.logger.warn(
@@ -976,10 +975,7 @@ export class AuthService {
         .single();
       if (!verif) return;
 
-      const frontendUrl =
-        this.configService.get("FRONTEND_URL") ||
-        "https://restaurant-ai-automation-web.vercel.app";
-      const verifyUrl = `${frontendUrl}/verify-email?token=${verif.token}`;
+      const verifyUrl = `${appOrigin(this.configService)}/verify-email?token=${verif.token}`;
 
       // Always call sendEmail() — it handles lazy-init and falls back to mock if OAuth unconfigured
       const result = await this.gmailService.sendEmail({
@@ -1188,7 +1184,7 @@ export class AuthService {
     return {
       code: invite.code,
       expiresAt: invite.expires_at,
-      inviteUrl: `${this.configService.get("FRONTEND_URL") || "https://restaurant-ai-automation-web.vercel.app"}/invite/${invite.code}`,
+      inviteUrl: `${appOrigin(this.configService)}/invite/${invite.code}`,
     };
   }
 
@@ -2090,10 +2086,7 @@ export class AuthService {
       return { sent: true };
     }
 
-    const frontendUrl =
-      this.configService.get("FRONTEND_URL") ||
-      "https://restaurant-ai-automation-web.vercel.app";
-    const resetUrl = `${frontendUrl}/reset-password?token=${reset.token}`;
+    const resetUrl = `${appOrigin(this.configService)}/reset-password?token=${reset.token}`;
 
     try {
       const { passwordResetEmailTemplate } =

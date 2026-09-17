@@ -33,6 +33,7 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { TenantBypass } from "../tenant/tenant.decorator";
 import { OrchestratorService } from "./orchestrator.service";
 import { GmailService } from "../../communications/gmail.service";
+import { appOrigin } from "../app-origin";
 
 const ROLE_LABELS: Record<string, string> = {
   developer: "Developer",
@@ -89,10 +90,7 @@ export class StudioInviteController {
       );
     }
 
-    const base =
-      this.config.get<string>("FRONTEND_URL")?.split(",")[0]?.trim() ||
-      "https://restaurant-ai-automation-web.vercel.app";
-    const inviteUrl = `${base}/studio/invite/${token}`;
+    const inviteUrl = `${appOrigin(this.config)}/studio/invite/${token}`;
     const roleLabel = ROLE_LABELS[data.role] ?? data.role;
     const expiresOn = data.expires_at
       ? new Date(data.expires_at).toLocaleDateString("en-US", {

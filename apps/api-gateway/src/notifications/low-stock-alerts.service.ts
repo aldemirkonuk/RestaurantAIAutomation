@@ -1003,6 +1003,13 @@ export class LowStockAlertsService {
       .filter(Boolean);
   }
 
+  // KNOWN BUG (not fixed here — this file is owned by another lane in-flight,
+  // see fix/frontend-url-comma-list-in-links): FRONTEND_URL on Railway is a
+  // comma-separated CORS allow-list, e.g.
+  // "https://mudavym.com,https://www.mudavym.com,https://restaurant-ai-automation-web.vercel.app".
+  // `base` below is the whole raw string, so this link is unresolvable in
+  // production. Fix: replace with `appOrigin(this.config)` from
+  // ../common/app-origin, as done at the other six FRONTEND_URL call sites.
   private inventoryUrl(): string {
     const base = this.config.get<string>("FRONTEND_URL") || "";
     return base ? `${base}/inventory?filter=low-stock` : "#";

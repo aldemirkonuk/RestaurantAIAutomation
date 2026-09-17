@@ -12,6 +12,7 @@ import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { TokenCryptoService } from "../common/crypto/token-crypto.service";
+import { appOrigin } from "../common/app-origin";
 // The SERVICE file, not `retention.module`. Importing the module here would put
 // `AuthModule` on this file's require chain twice over; the service itself
 // imports only DatabaseService and NotificationsService, so requiring it
@@ -157,11 +158,7 @@ export class IntegrationsOauthService {
   }
 
   private webAppUrl(): string {
-    const raw =
-      this.config.get<string>("FRONTEND_URL") ?? "http://localhost:3000";
-    // FRONTEND_URL is a comma-separated CORS allow-list; the first entry is the
-    // canonical app origin.
-    return raw.split(",")[0].trim().replace(/\/$/, "");
+    return appOrigin(this.config);
   }
 
   /**
