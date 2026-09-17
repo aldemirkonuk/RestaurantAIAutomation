@@ -164,6 +164,21 @@ describe('robots.txt', () => {
     }
   });
 
+  it('every group may fetch the sitemap the file itself advertises (adversarial review, ADR 0158)', () => {
+    // Found live: the Sitemap: directive named a file every group's own
+    // Disallow: / closed, so no compliant crawler could ever fetch it.
+    for (const g of groups) {
+      expect(allowed(g.rules, '/sitemap.xml'), g.agents.join(',')).toBe(true);
+      expect(allowed(g.rules, '/sitemap-pages.xml'), g.agents.join(',')).toBe(true);
+    }
+    for (const bot of ['Googlebot', 'OAI-SearchBot', 'Twitterbot']) {
+      expect(allowed(groupFor(bot).rules, '/sitemap-vendors-1.xml'), bot).toBe(true);
+    }
+    for (const bot of [...TRAINING_BOTS, 'SomeUnknownBot']) {
+      expect(allowed(groupFor(bot).rules, '/sitemap-vendors-1.xml'), bot).toBe(false);
+    }
+  });
+
   it('only the root is anchored, and source maps stay out while the bundle is readable', () => {
     const anchored = renderRobots().split('\n').filter((l) => l.endsWith('$'));
     expect(new Set(anchored)).toEqual(new Set(['Allow: /$', 'Disallow: /assets/*.map$']));

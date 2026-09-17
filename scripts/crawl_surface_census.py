@@ -159,12 +159,54 @@ class Census:
         return self.base.rstrip("/") + path
 
 
-def check_text_file(c: Census, name: str, path: str, first_line: str) -> None:
+def check_text_file(c: Census, name: str, path: str, first_line: str) -> str:
     r = fetch(c.url(path))
     ctype = r.headers.get("content-type", "")
     head = r.body.splitlines()[0] if r.body else ""
     c.check(name, r.status == 200 and ctype.startswith("text/plain") and head == first_line,
             f"{path}: {r.status} {ctype!r} first line {head[:60]!r}")
+    return r.body
+
+
+def check_robots_permits_sitemap(c: Census, robots_body: str) -> None:
+    """robots.txt is worthless as a sitemap pointer if its own rules forbid
+    fetching the file it names. Found live (adversarial review, ADR 0158):
+    the generated file advertised a Sitemap: line inside every group's own
+    Disallow: /, so no compliant crawler could ever fetch it — and this
+    census's own sitemap check would have kept reporting PASS regardless,
+    because it fetches /sitemap.xml directly rather than asking whether
+    robots.txt permits that fetch first. This check closes that gap: read
+    only the FIRST group (the most permissive one, search/answer engines),
+    up to its first blank line, and require an Allow line for the sitemap
+    the file names in its own Sitemap: directive.
+    """
+    lines = [ln.strip() for ln in robots_body.splitlines()]
+    first_group: list[str] = []
+    seen_group = False
+    for ln in lines:
+        if ln.startswith("User-agent:"):
+            seen_group = True
+        elif not ln and seen_group:
+            break
+        if seen_group:
+            first_group.append(ln)
+    sitemap_line = next((ln for ln in lines if ln.startswith("Sitemap:")), None)
+    if not sitemap_line:
+        c.check("robots-permits-sitemap", False, "no Sitemap: directive in robots.txt")
+        return
+    sitemap_path = "/" + sitemap_line.split("/", 3)[-1]
+
+    def matches(pattern: str) -> bool:
+        # `$` anchors an EXACT match; its absence is a PREFIX match. Treating
+        # both the same by stripping `$` before comparing is the exact bug
+        # this check exists to catch: "/$".rstrip("$") is "/", and every path
+        # starts with "/", so an anchored root rule would wrongly cover
+        # everything — which is what let the real regression pass silently.
+        return sitemap_path == pattern[:-1] if pattern.endswith("$") else sitemap_path.startswith(pattern)
+
+    allowed = any(ln.startswith("Allow:") and matches(ln.split(":", 1)[1].strip()) for ln in first_group)
+    c.check("robots-permits-sitemap", allowed,
+            f"the most permissive group has no Allow: line covering {sitemap_path}")
 
 
 def check_heads(c: Census) -> None:
@@ -292,7 +334,8 @@ def main() -> int:
         print("Nothing was measured. This is a failure, not a pass.", file=sys.stderr)
         return 2
     try:
-        check_text_file(c, "robots", "/robots.txt", ROBOTS_MARKER)
+        robots_body = check_text_file(c, "robots", "/robots.txt", ROBOTS_MARKER)
+        check_robots_permits_sitemap(c, robots_body)
         check_text_file(c, "llms", "/llms.txt", "# Mudavym")
         check_heads(c)
         check_soft_404(c)

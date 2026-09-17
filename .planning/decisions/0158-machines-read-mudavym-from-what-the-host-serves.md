@@ -265,6 +265,35 @@ fixed; the rest are named here rather than silently accepted.
   itself carries no Deployment Protection (measured, §2.1), so production is where those
   branches get their first live exercise — the "After merging" census step is not a formality
   here, it is the only place those branches can be observed running for real.
+- **robots.txt disallowed the very sitemap it advertised — found only by the dedicated
+  adversarial pass, after three independent Opus audits (correctness, compliance, security)
+  each returned APPROVE WITH NOTES without catching it.** `CRAWL_PREFIXES` (`routes.ts`) had no
+  entry for `/sitemap*`, so `rulesFor()` emitted an `Allow:` line for every registry route and
+  crawl prefix, then closed every group with `Disallow: /` — and the `Sitemap:` directive
+  named a file none of those `Allow:` lines covered. Proven with the repo's own RFC 9309
+  matcher against the built file: `allowed(group.rules, '/sitemap.xml')` was `false` for
+  **every** group, search-and-answer engines included. Since `/v/:slug` catalogues have no
+  inbound link from any allowed page (`PUBLIC_ROUTES` is only `/`, `/login`, `/register`,
+  `/privacy`), the sitemap was their only discovery path — so the crawl surface this ADR
+  exists to build would have been undiscoverable the moment a search engine actually obeyed
+  the file. Three things let it through: `seo.test.ts`'s original test asserted the
+  `Sitemap:` **line exists** as a string, never that it is fetchable; `crawl_surface_census.py`
+  fetched `/sitemap.xml` directly and never consulted the robots.txt it had just validated;
+  and the `ADR-0158-TRAINING-CRAWLERS-NEVER-GET-VENDOR-CATALOGUES` CLAIMS row asserted "may
+  fetch" and was certified `resolved` by a `grep` for string presence. All three are the
+  `absence-reported-as-health` shape, in the one artifact this build exists to make honest.
+  Fixed: three `CRAWL_PREFIXES` entries (`routes.ts`) — the index and the pages file open to
+  every reader (they name nothing a reader could not already fetch directly, since
+  `PUBLIC_ROUTES` is unconditional across groups); the vendor file `answer`-only, matching the
+  founder's split-by-purpose rule for the catalogues it lists. A new `seo.test.ts` case asserts
+  every group can fetch the sitemap files it should be able to, reverted-and-restored against
+  the exact regression before being kept. `crawl_surface_census.py` gained
+  `check_robots_permits_sitemap`, which reads the first (most permissive) group and asserts an
+  `Allow:` line covers the sitemap the file names — itself caught one bug on the way in (a
+  naive `str.startswith` after stripping `$` treated the anchored root rule `Allow: /$` as
+  matching every path, since `/`.startswith itself matches everything; fixed to exact-match an
+  anchored pattern and prefix-match an unanchored one, then re-proven against both the buggy
+  and fixed robots.txt as fixtures before being kept).
 - **A FIFO-not-LRU cache bug, found and fixed.** `headLoader`'s per-instance cache (S6a) only
   re-inserted an entry on a miss, so eviction removed the oldest-inserted catalogue rather than
   the least-recently-viewed one — a crawl walking many slugs could evict a hot catalogue while
@@ -353,3 +382,4 @@ Vercel API for this team's two projects. Parser behaviour measured locally: Pyth
 |---|---|---|
 | 2026-09-17 | Founder | Three policy forks answered (table above) |
 | 2026-09-17 | Research workflow `wf_ac349d93-063` | 4 finders (Vercel mechanics, crawler standards, team docs, repo mechanics) against the BUILT tree; 2 adversaries (platform/crawler correctness; security/privacy/scale/collision) against the built tree, each re-running the full test suite live rather than trusting a prior report. One real bug found and fixed (the FIFO/LRU cache); the rest are named in "Known limits" above rather than silently accepted |
+| 2026-09-17 | `pr-audit-gate` skill, PR #385 | 3 parallel Opus auditor angles (correctness, CLAUDE.md/ADR compliance, security/blast-radius), each APPROVE WITH NOTES — findings applied: the `ADR_SEO` placeholder, a `CLAIMS.jsonl` UTF-8 re-encode, this ADR's own stale cross-references, a missing `decisions/README.md` row, and the PR description's inaccurate "additive" claim. A mandatory adversarial pass over all three reports then found and OVERTURNED the consensus: robots.txt disallowed its own advertised sitemap (see "Known limits"). Fixed and guarded (a test proven against the exact regression; a census check proven against both the buggy and fixed file as fixtures, catching a bug in the check itself along the way) |

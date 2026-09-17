@@ -117,6 +117,19 @@ export const CRAWL_PREFIXES: readonly CrawlPrefix[] = [
   { pattern: '/api/v1/vendor-portal/', readers: 'render', why: 'the catalogue data a renderer fetches' },
   { pattern: '/favicon.svg', readers: 'render', why: 'search result icon' },
   { pattern: SITE.logo.path, readers: 'render', why: 'share image' },
+  // Found by adversarial review (ADR 0158): without these three lines the
+  // Sitemap: directive below named a file every group's own Disallow: /
+  // closed, so the file this build's whole point is to make discoverable
+  // was, by its own robots.txt, never fetchable by any compliant crawler.
+  // The index and the pages file list nothing a reader could not already
+  // read directly (the four PUBLIC_ROUTES entries are unconditional above),
+  // so they follow the index's own robots.txt-serving host rule: open to
+  // everyone. The vendor file lists /v/:slug URLs, so it follows /v/'s own
+  // rule — the same "split by purpose" the founder gave for the pages
+  // themselves, now applied to the file that indexes them.
+  { pattern: '/sitemap.xml', readers: 'everyone', why: 'the sitemap index' },
+  { pattern: '/sitemap-pages.xml', readers: 'everyone', why: 'lists only pages already open to everyone' },
+  { pattern: '/sitemap-vendors-', readers: 'answer', why: 'lists vendor catalogue URLs' },
 ];
 
 /**
