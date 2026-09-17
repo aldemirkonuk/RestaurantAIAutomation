@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { IdentityService } from "./identity.service";
 
 /**
@@ -42,6 +42,13 @@ function makeService(opts: {
   insertError?: any;
   identity?: any;
   identityError?: any;
+  /** Rows the conditional claim gets back. Default: the candidate, i.e. it won. */
+  claimRows?: any[];
+  claimError?: any;
+  /** An error from the link write (the subject table's update). */
+  linkError?: any;
+  releaseRows?: any[];
+  releaseError?: any;
 }) {
   const rec: Recorded = { inserts: [], updates: [], deletes: [], reads: [] };
 
@@ -109,6 +116,22 @@ function makeService(opts: {
         if (table === "beverage_identity_decisions" && mode === "select") {
           return resolve({ data: opts.logRows ?? [], error: opts.logError ?? null });
         }
+        if (table === "beverage_identity_candidates" && mode === "update") {
+          // A release (or an undo) sets pending; a claim sets the decision.
+          if (patch?.status === "pending") {
+            return resolve({
+              data: opts.releaseError ? null : (opts.releaseRows ?? [{ id: "cand-1" }]),
+              error: opts.releaseError ?? null,
+            });
+          }
+          return resolve({
+            data: opts.claimError ? null : (opts.claimRows ?? [{ id: "cand-1" }]),
+            error: opts.claimError ?? null,
+          });
+        }
+        if (mode === "update" && table !== "beverage_identity_candidates" && opts.linkError) {
+          return resolve({ data: null, error: opts.linkError });
+        }
         return resolve({ data: [], error: null });
       },
     };
@@ -145,7 +168,7 @@ const CANDIDATE = {
 };
 
 describe("a confirmation is a logged decision", () => {
-  it("writes the link, then the log, then the candidate's status", async () => {
+  it("claims the candidate, then writes the link, then the log", async () => {
     const { svc, rec } = makeService({
       candidate: CANDIDATE,
       identity: { id: "ident-1", display_label: "Krug (750ml)", identity_key: "k" },
@@ -163,8 +186,21 @@ describe("a confirmation is a logged decision", () => {
     expect(out.linkWritten).toBe("restaurant_inventory.identity_id");
     expect(out.decisionId).toBe("beverage_identity_decisions-new");
 
+    // The claim is the FIRST write, and it is conditional on the row still
+    // reading pending: that condition is what makes a concurrent decision lose.
+    expect(rec.updates[0].table).toBe("beverage_identity_candidates");
+    expect(rec.updates[0].patch).toEqual(
+      expect.objectContaining({ status: "confirmed", decided_by: "user-staff" }),
+    );
+    expect(rec.updates[0].filters).toEqual([
+      ["id", "cand-1"],
+      ["status", "pending"],
+    ]);
     const link = rec.updates.find((u) => u.table === "restaurant_inventory");
     expect(link?.patch).toEqual({ identity_id: "ident-1" });
+    expect(rec.updates.indexOf(link!)).toBeGreaterThan(0);
+    // One candidate write only: nothing re-stamps the status after the log.
+    expect(rec.updates.filter((u) => u.table === "beverage_identity_candidates")).toHaveLength(1);
 
     const logged = rec.inserts.find(
       (i) => i.table === "beverage_identity_decisions",
@@ -242,11 +278,62 @@ describe("a confirmation is a logged decision", () => {
     expect(shown.identity).toEqual({ unread: true, reason: "connection reset" });
   });
 
-  it("fails the whole call when the decision cannot be logged", async () => {
-    const { svc } = makeService({
+  it("fails the whole call when the decision cannot be logged, says the link stands, and releases the claim", async () => {
+    const { svc, rec } = makeService({
       candidate: CANDIDATE,
       identity: { id: "ident-1", display_label: "x", identity_key: "k" },
       insertError: { message: "log table unreachable" },
+    });
+    const err = await svc
+      .decide({
+        candidateId: "cand-1",
+        decision: "confirmed",
+        actor: STAFF,
+        restaurantId: "house-1",
+      })
+      .catch((e) => e);
+    expect(err.message).toMatch(/could not be logged/);
+    expect(err.message).toMatch(/link was written \(restaurant_inventory\.identity_id\) and stays written/);
+    expect(err.message).toMatch(/returned to pending/);
+
+    const cand = rec.updates.filter((u) => u.table === "beverage_identity_candidates");
+    expect(cand).toHaveLength(2);
+    const [claim, release] = cand;
+    expect(release.patch).toEqual({
+      status: "pending",
+      decided_by: null,
+      decided_at: null,
+      decision_note: null,
+    });
+    // Only THIS call's claim is released: same status, same stamp.
+    expect(release.filters).toEqual([
+      ["id", "cand-1"],
+      ["status", "confirmed"],
+      ["decided_at", claim.patch.decided_at],
+    ]);
+  });
+
+  it("loses to a decision taken at the same moment: 409, nothing linked, nothing logged", async () => {
+    const { svc, rec } = makeService({ candidate: CANDIDATE, claimRows: [] });
+    const err = await svc
+      .decide({
+        candidateId: "cand-1",
+        decision: "confirmed",
+        actor: STAFF,
+        restaurantId: "house-1",
+      })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.getStatus()).toBe(409);
+    expect(err.message).toMatch(/nothing was linked or logged/);
+    expect(rec.updates.map((u) => u.table)).toEqual(["beverage_identity_candidates"]);
+    expect(rec.inserts).toHaveLength(0);
+  });
+
+  it("reports a failed claim as a failure and writes nothing after it", async () => {
+    const { svc, rec } = makeService({
+      candidate: CANDIDATE,
+      claimError: { message: "lock timeout" },
     });
     await expect(
       svc.decide({
@@ -255,7 +342,61 @@ describe("a confirmation is a logged decision", () => {
         actor: STAFF,
         restaurantId: "house-1",
       }),
-    ).rejects.toThrow(/could not be logged/);
+    ).rejects.toThrow(/could not be taken for this decision \(lock timeout\)\. Nothing was linked or logged/);
+    expect(rec.updates.map((u) => u.table)).toEqual(["beverage_identity_candidates"]);
+    expect(rec.inserts).toHaveLength(0);
+  });
+
+  it("releases the claim when the link cannot be written, and logs nothing", async () => {
+    const { svc, rec } = makeService({
+      candidate: CANDIDATE,
+      linkError: { message: "permission denied" },
+    });
+    const err = await svc
+      .decide({
+        candidateId: "cand-1",
+        decision: "confirmed",
+        actor: STAFF,
+        restaurantId: "house-1",
+      })
+      .catch((e) => e);
+    expect(err.message).toMatch(/could not be written to restaurant_inventory: permission denied/);
+    expect(err.message).toMatch(/No link was written and nothing was logged\. The candidate was returned to pending\./);
+    expect(rec.inserts).toHaveLength(0);
+    const cand = rec.updates.filter((u) => u.table === "beverage_identity_candidates");
+    expect(cand.map((u) => u.patch.status)).toEqual(["confirmed", "pending"]);
+  });
+
+  it("says so when a released claim could not be returned to pending", async () => {
+    const { svc } = makeService({
+      candidate: CANDIDATE,
+      linkError: { message: "permission denied" },
+      releaseError: { message: "connection reset" },
+    });
+    await expect(
+      svc.decide({
+        candidateId: "cand-1",
+        decision: "confirmed",
+        actor: STAFF,
+        restaurantId: "house-1",
+      }),
+    ).rejects.toThrow(/could NOT be returned to pending \(connection reset\): it reads confirmed with no logged decision behind it/);
+  });
+
+  it("leaves a candidate alone when it is no longer this call's claim to release", async () => {
+    const { svc } = makeService({
+      candidate: CANDIDATE,
+      linkError: { message: "permission denied" },
+      releaseRows: [],
+    });
+    await expect(
+      svc.decide({
+        candidateId: "cand-1",
+        decision: "confirmed",
+        actor: STAFF,
+        restaurantId: "house-1",
+      }),
+    ).rejects.toThrow(/no longer this decision's to return/);
   });
 
   it("refuses a decision from an account with no name and no email", async () => {
@@ -270,30 +411,110 @@ describe("a confirmation is a logged decision", () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it("refuses a decision on another house's candidate", async () => {
-    const { svc } = makeService({ candidate: CANDIDATE });
-    await expect(
-      svc.decide({
-        candidateId: "cand-1",
-        decision: "confirmed",
-        actor: STAFF,
-        restaurantId: "house-2",
-      }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+  it("answers another house's candidate with the 404 a missing id gets, and writes nothing", async () => {
+    // ADR 0147: a row that is not the caller's is a 404. Asked of a DECIDED
+    // candidate too, because the status check used to run first and answered
+    // another house with "already confirmed" (vintel review 2026-09-17, defect 5).
+    for (const status of ["pending", "confirmed"]) {
+      const { svc, rec } = makeService({ candidate: { ...CANDIDATE, status } });
+      const err = await svc
+        .decide({
+          candidateId: "cand-1",
+          decision: "confirmed",
+          actor: STAFF,
+          restaurantId: "house-2",
+        })
+        .catch((e) => e);
+      const missing = await makeService({})
+        .svc.decide({
+          candidateId: "cand-1",
+          decision: "confirmed",
+          actor: STAFF,
+          restaurantId: "house-2",
+        })
+        .catch((e) => e);
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect(err.getResponse()).toEqual(missing.getResponse());
+      expect(rec.updates).toHaveLength(0);
+      expect(rec.inserts).toHaveLength(0);
+      // Nothing about the candidate was read past the row itself: not its log.
+      expect(rec.reads.filter((r) => r.table === "beverage_identity_decisions")).toHaveLength(0);
+    }
   });
 
-  it("refuses to decide a candidate that was already decided", async () => {
-    const { svc } = makeService({
+  it("refuses to decide a candidate that was already decided, without promising an undo", async () => {
+    const { svc, rec } = makeService({
       candidate: { ...CANDIDATE, status: "confirmed" },
+      logRows: [{ id: "dec-1", action: "confirmed", undoes_decision_id: null }],
     });
-    await expect(
-      svc.decide({
+    const err = await svc
+      .decide({
         candidateId: "cand-1",
         decision: "rejected",
         actor: STAFF,
         restaurantId: "house-1",
-      }),
-    ).rejects.toThrow(/already confirmed/);
+      })
+      .catch((e) => e);
+    expect(err.message).toMatch(/already confirmed/);
+    // A decision logged before the deciding house was recorded has no house
+    // that can undo it, so the refusal must not say one can.
+    expect(err.message).not.toMatch(/can undo it/);
+    expect(err.message).toMatch(/only where the log recorded which house/);
+    expect(rec.updates).toHaveLength(0);
+  });
+
+  /**
+   * A candidate's status is what the application believes; the log is the
+   * record. `decide` claims, then links, then logs, in three writes, so a
+   * process that dies after the claim leaves a candidate reading decided with
+   * no logged decision behind it (vintel review 2026-09-17, defect 4). The one
+   * surface for that state is here: the refusal says what is true.
+   */
+  it("answers a decided candidate with NO logged decision behind it with a 409 that says so", async () => {
+    const { svc, rec } = makeService({
+      candidate: { ...CANDIDATE, status: "confirmed" },
+      logRows: [],
+    });
+    const err = await svc
+      .decide({ candidateId: "cand-1", decision: "rejected", actor: STAFF, restaurantId: "house-1" })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toMatch(/reads confirmed, but no logged decision stands behind it/);
+    expect(err.message).toMatch(/cannot be undone from any session/);
+    expect(err.message).not.toMatch(/already confirmed/);
+    const logRead = rec.reads.find((r) => r.table === "beverage_identity_decisions")!;
+    expect(logRead.filters).toEqual([["candidate_id", "cand-1"]]);
+    expect(rec.updates).toHaveLength(0);
+    expect(rec.inserts).toHaveLength(0);
+  });
+
+  it("counts an undone decision as no decision: decided, undone, re-claimed and never logged is stranded", async () => {
+    const { svc } = makeService({
+      candidate: { ...CANDIDATE, status: "rejected" },
+      logRows: [
+        { id: "dec-1", action: "confirmed", undoes_decision_id: null },
+        { id: "dec-2", action: "undone", undoes_decision_id: "dec-1" },
+      ],
+    });
+    const err = await svc
+      .decide({ candidateId: "cand-1", decision: "confirmed", actor: STAFF, restaurantId: "house-1" })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toMatch(/reads rejected, but no logged decision stands behind it/);
+  });
+
+  it("reports an unreadable log as a failure, never as already decided or as stranded", async () => {
+    const { svc, rec } = makeService({
+      candidate: { ...CANDIDATE, status: "confirmed" },
+      logError: { message: "statement timeout" },
+    });
+    const err = await svc
+      .decide({ candidateId: "cand-1", decision: "rejected", actor: STAFF, restaurantId: "house-1" })
+      .catch((e) => e);
+    expect(err.getStatus()).toBe(400);
+    expect(err.message).toMatch(/could not be read \(statement timeout\)\. Nothing was decided/);
+    expect(err.message).not.toMatch(/already confirmed|no logged decision stands/);
+    expect(rec.updates).toHaveLength(0);
   });
 
   it("reports a failed candidate read as a failure, not as no such candidate", async () => {

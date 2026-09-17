@@ -142,21 +142,43 @@ export function apiErrorMessage(error: unknown, fallback = 'Unknown error'): str
 
 export type IdentityDecisionAction = 'confirmed' | 'rejected' | 'undone'
 
+/**
+ * Which house took a decision, relative to the reader (ADR 0149 answer 17).
+ * `null` means the gateway did not say (a gateway older than the deciding-house
+ * column), which is not the same as "this house".
+ */
+export type IdentityDecidedIn = 'this_house' | 'another_house' | 'unrecorded'
+
 export interface IdentityDecision {
   id: string
   candidateId: string
   restaurantId: string | null
   action: IdentityDecisionAction
-  /** Null when the person has since been removed; the label still names them. */
+  /**
+   * Null when the person has since been removed (the label still names them),
+   * or when the gateway withheld the person from this house.
+   */
   decidedBy: string | null
-  decidedByLabel: string
-  decidedByRole: string
+  /**
+   * Null when the person is withheld: a decision on a shared register names its
+   * person only inside the house that took it.
+   */
+  decidedByLabel: string | null
+  decidedByRole: string | null
   decidedAt: string
   /** What the SERVER showed the person, captured at the moment they decided. */
   evidenceShown: Record<string, unknown>
   note: string | null
   linkWritten: string | null
   undoesDecisionId: string | null
+  decidedIn: IdentityDecidedIn | null
+  /** False when the gateway withheld who decided from this house. */
+  personShown: boolean
+  /**
+   * Why this house may not take the decision back, in the gateway's words;
+   * null when the house rule allows it (the role rule is separate).
+   */
+  undoRefusal: string | null
 }
 
 export interface IdentityDecisionLog {
@@ -183,13 +205,23 @@ export async function fetchIdentityDecisions(limit = 50): Promise<IdentityDecisi
       restaurantId: r.restaurant_id ?? null,
       action: r.action,
       decidedBy: r.decided_by ?? null,
-      decidedByLabel: r.decided_by_label,
-      decidedByRole: r.decided_by_role,
+      decidedByLabel: typeof r.decided_by_label === 'string' ? r.decided_by_label : null,
+      decidedByRole: typeof r.decided_by_role === 'string' ? r.decided_by_role : null,
       decidedAt: r.decided_at,
       evidenceShown: r.evidence_shown ?? {},
       note: r.note ?? null,
       linkWritten: r.link_written ?? null,
       undoesDecisionId: r.undoes_decision_id ?? null,
+      decidedIn:
+        r.decided_in === 'this_house' ||
+        r.decided_in === 'another_house' ||
+        r.decided_in === 'unrecorded'
+          ? r.decided_in
+          : null,
+      // A withheld person is never rendered as a blank name: the gateway's
+      // `person_shown: false` wins, and a row with no label is not "shown".
+      personShown: r.person_shown !== false && typeof r.decided_by_label === 'string',
+      undoRefusal: typeof r.undo_refusal === 'string' ? r.undo_refusal : null,
     })),
     scope: typeof data?.scope === 'string' ? data.scope : '',
     limit: typeof data?.limit === 'number' ? data.limit : limit,
