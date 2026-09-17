@@ -1,6 +1,6 @@
 # 0118 — The house writes its own mail
 
-- **Status:** Proposed — built behind `mudavym_design_communications`, founder review open
+- **Status:** Proposed — built behind `mudavym_design_communications`, founder review open **[2026-09-16, [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] row 18, answered and being built: the creator of a grant may always end it, an ex-member included, and this record's mail sweep runs on that disconnect (D15, revoking the grant deletes the raw mail). The fork was named in ADR 0147's "Named and not fixed". This record stays Proposed; 0149 did not lock it.]**
   - **2026-09-05 (batch 45):** amended with **D16** — the house is offered its own
     copy of the mail. **A (`own_cloud`, export to the house's Drive) is built end to
     end**; **B (`mudavym_archive`, billed) is designed and NOT armed**, gated on OD-23,
