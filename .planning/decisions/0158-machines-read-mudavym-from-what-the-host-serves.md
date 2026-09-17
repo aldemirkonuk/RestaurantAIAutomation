@@ -206,6 +206,24 @@ security/privacy/scale/collision) tried to kill this design after it was built, 
 §3. It confirmed the fixes above against production evidence and found one real bug, which is
 fixed; the rest are named here rather than silently accepted.
 
+- **`/v/:slug` 500'd on every request when this PR's preview deployment first went live, found
+  and fixed.** `middleware.ts` imported `./src/lib/seo/vendor-edge` with no extension —
+  correct under `tsc`'s "bundler" resolution and under Vite, both of which resolve an
+  extensionless specifier to the sibling `.ts` file, so `tsc`, `vitest`, `eslint` and
+  `vite build` all passed locally and gave no signal. Vercel's Node.js middleware runtime does
+  not bundle the file; it runs it through Node's own ESM loader, which never appends
+  extensions the way `require` does, and every request failed with
+  `Error [ERR_MODULE_NOT_FOUND]: Cannot find module
+  '/var/task/apps/web/src/lib/seo/vendor-edge'` (`vercel logs`). Fixed: every relative import
+  reachable from `middleware.ts` now carries an explicit `.js` extension (`middleware.ts`,
+  `vendor-edge.ts`, `vendor.ts`, `head.ts`) — valid under `"moduleResolution": "bundler"`,
+  which resolves a `.js` specifier to the sibling `.ts` file. `middleware-imports.test.ts`
+  walks the graph and fails by name if a future edit drops one; proven against the exact
+  regression before being kept. Re-verified live on the fixed deployment (see the PR thread):
+  `/`, `/login`, the real 404, and `/v/:slug` all now correct. This is the one gap the local
+  test suite structurally cannot see — nothing in this repo runs Node.js middleware the way
+  Vercel does — which is also why "verified locally" was never treated as equivalent to
+  "verified on the platform" for this build (§9/S10 of the ADR).
 - **A FIFO-not-LRU cache bug, found and fixed.** `headLoader`'s per-instance cache (S6a) only
   re-inserted an entry on a miss, so eviction removed the oldest-inserted catalogue rather than
   the least-recently-viewed one — a crawl walking many slugs could evict a hot catalogue while

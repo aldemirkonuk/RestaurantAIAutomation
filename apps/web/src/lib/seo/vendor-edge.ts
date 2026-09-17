@@ -21,8 +21,8 @@
  * gateway fetch" rule for the app does not apply to server code.
  */
 
-import { VENDOR_SHELL_FILE, VENDOR_SLUG_RE, renderVendorClosed, renderVendorPage, type VendorHeadPayload } from './vendor';
-import { titleWithSite } from './site';
+import { VENDOR_SHELL_FILE, VENDOR_SLUG_RE, renderVendorClosed, renderVendorPage, type VendorHeadPayload } from './vendor.js';
+import { titleWithSite } from './site.js';
 
 export type HeadResult =
   | { kind: 'ok'; payload: VendorHeadPayload }

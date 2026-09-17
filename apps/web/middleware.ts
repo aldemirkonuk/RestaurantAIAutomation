@@ -10,7 +10,7 @@
  * Directory is apps/web. All behaviour lives in src/lib/seo/vendor-edge.ts.
  */
 
-import { handleVendorRequest, headLoader, templateLoader } from './src/lib/seo/vendor-edge';
+import { handleVendorRequest, headLoader, templateLoader } from './src/lib/seo/vendor-edge.js';
 
 export const config = {
   matcher: ['/v/:slug'],

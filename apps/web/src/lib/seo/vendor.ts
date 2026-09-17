@@ -13,9 +13,9 @@
  * escapeHtml, JSON-LD through serializeJsonLd (escape.ts).
  */
 
-import { clip, escapeHtml } from './escape';
-import { HEAD_END, HEAD_START, fillRoot, renderHeadBlock, replaceHeadBlock } from './head';
-import { SITE } from './site';
+import { clip, escapeHtml } from './escape.js';
+import { HEAD_END, HEAD_START, fillRoot, renderHeadBlock, replaceHeadBlock } from './head.js';
+import { SITE } from './site.js';
 
 export const VENDOR_SHELL_FILE = 'crawl/vendor-shell.html';
 export const VENDOR_HEAD_SLOT = '<!-- seo:vendor-head -->';

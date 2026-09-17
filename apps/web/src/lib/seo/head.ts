@@ -13,8 +13,8 @@
  * the AI crawlers do not run JavaScript at all.
  */
 
-import { escapeHtml, serializeJsonLd } from './escape';
-import { SITE, absoluteUrl } from './site';
+import { escapeHtml, serializeJsonLd } from './escape.js';
+import { SITE, absoluteUrl } from './site.js';
 
 const SITE_SUFFIX = ` · ${SITE.name}`;
 
