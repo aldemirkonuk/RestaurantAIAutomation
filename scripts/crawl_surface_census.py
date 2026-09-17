@@ -205,8 +205,12 @@ def check_robots_permits_sitemap(c: Census, robots_body: str) -> None:
         return sitemap_path == pattern[:-1] if pattern.endswith("$") else sitemap_path.startswith(pattern)
 
     allowed = any(ln.startswith("Allow:") and matches(ln.split(":", 1)[1].strip()) for ln in first_group)
-    c.check("robots-permits-sitemap", allowed,
-            f"the most permissive group has no Allow: line covering {sitemap_path}")
+    detail = (
+        f"the most permissive group has an Allow: line covering {sitemap_path}"
+        if allowed
+        else f"the most permissive group has no Allow: line covering {sitemap_path}"
+    )
+    c.check("robots-permits-sitemap", allowed, detail)
 
 
 def check_heads(c: Census) -> None:
