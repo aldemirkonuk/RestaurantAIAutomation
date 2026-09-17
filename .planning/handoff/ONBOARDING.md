@@ -137,11 +137,12 @@ string (`scripts/_claude_state.py:247`), so six sessions opened in `apps/web`,
 `apps/api-gateway`, `.planning` or a worktree were called stale, with a message saying
 their paths do not exist; all six exist. It also names only the first five. Import only
 if the cwds it lists are outside the repo or missing. Nor does that run test the
-same-Mac reasoning above: no bundle existed at `~/Desktop/claude-state_*.tar.gz`, and
-nothing that session could see showed an account switch on this machine — the CLI
-profile in `~/.claude.json` names org `1138b209-aed5-4cfe-9199-186b04b76545` (the org §7
-attributes the artifacts to) and was last fetched at 05:07 UTC that day, some 18 hours
-before this brief was first committed.
+same-Mac reasoning above. No bundle existed at `~/Desktop/claude-state_*.tar.gz`. Two
+logins now share this store — the desktop app's session runs as org
+`03017808-9f02-4503-8679-8b71c4f82859`, while the terminal CLI's profile in
+`~/.claude.json` still names org `1138b209-aed5-4cfe-9199-186b04b76545` — and `list`
+reads the files whichever is signed in. Whether `claude --resume` under the new org
+offers the sessions made under the old one was not tested.
 
 **Different machine instead?** The trap is that Claude Code keys its session store on the
 repo's absolute path with every non-alphanumeric dashed, so a clone at a new path makes
@@ -188,8 +189,8 @@ to its internal id, so none is deleted and every link is live. Diagnosis then: t
 reader must be a member of org `1138b209-aed5-4cfe-9199-186b04b76545`, so run the pull
 locally under the owning account (§8).
 
-**Attempt 2 — local Claude desktop session, CLI login admin of that same org.** Exact
-errors:
+**Attempt 2 — this Mac, the Claude desktop app's Code tab (branch `claude/artifact-pull`).**
+Exact results:
 
 | Path tried | Artifacts | Result |
 |---|---|---|
@@ -200,23 +201,36 @@ errors:
 | Artifact `list_files` | `fb2f9455` | *"file list failed: this artifact is served to you as a public (non-member) reader, and its files are not readable that way"* |
 | Artifact `read_db`, collection `verdicts` | `fb2f9455` | *"db read failed (invalid-argument): no such artifact, collection, or document (or no access — the two are deliberately indistinguishable)"* |
 | Artifact `list`, scope `all` | — | *"No published or shared artifacts yet."* |
+| The app's browser pane — signed out, then signed in as org `03017808-…`, then as org `1138b209-…` | `fb2f9455` | Renders in all three states, but inside a sandboxed cross-origin frame (`<uuid>.frame.claudeusercontent.com`) the pane's text tools cannot enter. Opening the frame URL directly redirects to the claude.ai shell, a `fetch` of it from the page fails, and synthetic ⌘A/⌘C never reached the clipboard. The owner's menu (Rename, Duplicate, Share, Refresh, Pin, Delete) has no download or source view |
+| Claude in Chrome extension | — | *"Claude in Chrome is not connected"*, twice |
+| Control Chrome | `fb2f9455` | Opened a tab, then *"Error: Google Chrome is not running. Please launch Chrome and try again."* on both reads — likely Chrome's "Allow JavaScript from Apple Events" being off, a security setting this session left alone |
 
-**What attempt 2 changes.** Attempt 1's fix did not work. The second session's CLI
-login (`~/.claude.json`, `oauthAccount`) is org `1138b209-aed5-4cfe-9199-186b04b76545`
-with role **admin**, yet it got the identical non-member error, and `list` saw no
-artifacts at all. Two explanations fit, and that session could not tell them apart:
-(a) the artifact tools do not read with the CLI login's org membership, or (b) the
-twelve do not belong to that org — nothing records how that attribution was made.
+**Why — measured, not guessed.** The artifact tools read with the desktop app's
+signed-in org, `03017808-9f02-4503-8679-8b71c4f82859`. The terminal CLI's login is a separate
+credential (`~/.claude.json`, `oauthAccount`: org `1138b209-…`, role admin), and the
+tools do not use it. claude.ai's own frame metadata (`/api/frame/<uuid>`) settles
+ownership: in the browser pane, Wave Four answered `perm.role` `reader` while signed in
+as org `03017808-…`, and `owner` once signed in as org `1138b209-…`. So attempt 1's
+diagnosis holds — the reader has to be in the owning org — and attempt 2 failed because
+the desktop app session is not in it, even though this machine's CLI login is. Wave
+Four's metadata also gave: created 2026-09-02T23:18:42Z, last updated
+2026-09-16T23:48:04Z, 14 published versions, one file (`index.html`), 7 db documents.
 
 **What unblocks it,** in order of cost:
 
-1. Open Wave Four's public link in a browser signed into claude.ai. If it opens there as
-   its owner, a session with the Claude in Chrome extension can read the rendered pages
-   from that browser — it acts in the founder's real signed-in browser, so only on the
-   founder's explicit go-ahead.
-2. If that browser is also served a public reader's view, the owner is a different
-   account: find the account that published them and pull or export from there.
-3. Export each artifact by hand into `.planning/07-reference/artifacts/<kebab-slug>.md`.
+1. Run §8's Job 2 from a session **in org `1138b209-…`** — a terminal `claude` session
+   (confirm the org with `/status` first), or this desktop app switched to that org with
+   a new Code session. The Artifact tool then reads as owner and returns the raw files;
+   its `read_db` also reaches the data behind the interactive ones (Wave Four's
+   verdicts).
+2. Export each artifact by hand from claude.ai while signed into that org, into
+   `.planning/07-reference/artifacts/<kebab-slug>.md`.
+3. Claude in Chrome — only once the extension is connected and that Chrome is signed
+   into the owning org, and the same cross-origin frame may still stop it reading.
+
+§4 retire-to-write for the twelve files is waived in advance ([ADR
+0032](../decisions/0032-vault-cleanup-cut-line.md), founder call 2026-09-16), so the
+pull commit owes no retirement.
 
 "Not delivered" is an executable claim: CLAIMS row `ADR-0148-ARTIFACTS-PULLED` is `open`
 and fails the build once all twelve ids appear under `07-reference/artifacts/`, so this
@@ -227,14 +241,16 @@ titles, twelve public links, twelve full ids.
 
 ## 8. The local-session prompt
 
-Paste this into a Claude Code session **running on the Mac, signed into the account that
-owns the artifacts**, with the repo as the working directory. It is written to stand
-alone — a fresh session has none of this conversation.
+Paste this into a Claude Code session **running on the Mac, in the org that owns the
+artifacts (`1138b209-…`)**, with the repo as the working directory. Check the org with
+`/status` first: the desktop app's Code tab was not in it. The prompt is written to
+stand alone — a fresh session has none of this conversation.
 
 **Run once, 2026-09-16, on branch `claude/artifact-pull`.** Job 1 ran — §6 records what
-`verify` really reports. Job 2 failed for all twelve even though that session's CLI login
-was admin of the org named in §7. Do not re-run Job 2 unchanged; clear §7's first
-unblock step before trying again.
+`verify` really reports. Job 2 failed for all twelve because that session, the desktop
+app, was in org `03017808-…` rather than the owning org (§7, *Why*). Run Job 2 again
+only from a session in org `1138b209-…`, from that branch, so §7 and ADR 0148 are
+current when it starts.
 
 ```text
 You are picking up the Mudavym repo (RestaurantAIAutomation) after an account move.

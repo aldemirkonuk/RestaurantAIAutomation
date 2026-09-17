@@ -98,6 +98,19 @@ this PR's specific nine files, not a standing exemption from §4 — the next
 new top-level-or-subdirectory doc still owes a real trade or its own waiver
 row here.
 
+## Retire-to-write waiver — ADR 0148 artifact pull (2026-09-16)
+
+**Founder call 2026-09-16, answering the §4 question in session: retire-to-write
+is waived for the twelve Mudavym artifact files** that ADR 0148's pull adds under
+`.planning/07-reference/artifacts/` — one `<kebab-slug>.md` per artifact indexed
+in `handoff/ONBOARDING.md` §7. They are copies of content that already exists on
+claude.ai, moved into git so it stops being account-bound, not new writing, and
+ADR 0148 is the decision that asked for them. Recorded before the files exist,
+because the pull is still blocked (ADR 0148, artifacts consequence). The waiver
+covers exactly those twelve, whenever they land, and nothing else: an artifact
+outside §7's twelve, or any other new doc, still owes a real trade or its own row
+here.
+
 Kept deliberately: `phases/999.1-consumer-food-profiles…/.gitkeep` (FUTURES §7
 backlog marker, not history); `archive/{ROADMAP,STATE}-pre-P2-20260825.md` (the
 only archive files anything references — STATE.md:5, ROADMAP.md:5, ADR 0018);
