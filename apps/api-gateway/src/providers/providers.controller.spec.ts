@@ -18,7 +18,13 @@ describe("ProvidersController", () => {
   let controller: ProvidersController;
   let providersService: ProvidersService;
 
-  const mockUser = { id: "user-123", restaurantId: "restaurant-123" };
+  // `userId`, never `id` — JwtStrategy.validate builds `request.user` with
+  // `userId` (auth/strategies/jwt.strategy.ts) and has never set `id`. A
+  // double shaped `{ id, restaurantId }` would let a controller regress to
+  // reading `user.id` and this suite would not notice, which is exactly how
+  // createProvider/setUsualCurrency/deleteProvider went undefined in
+  // production (found 2026-09-17 by the nightly E2E walk).
+  const mockUser = { userId: "user-123", restaurantId: "restaurant-123" };
 
   const mockProvidersService = {
     getProviderContacts: jest.fn(),
@@ -29,6 +35,9 @@ describe("ProvidersController", () => {
     getRecommendations: jest.fn(),
     updateLastContactDate: jest.fn(),
     bulkImportProviders: jest.fn(),
+    createProvider: jest.fn(),
+    softDeleteProvider: jest.fn(),
+    setUsualCurrency: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -406,6 +415,61 @@ describe("ProvidersController", () => {
 
       await expect(
         controller.updateContactDate(providerId, updateDto, mockUser),
+      ).rejects.toThrow(HttpException);
+    });
+  });
+
+  describe("POST /providers — actor identity", () => {
+    // REGRESSION (2026-09-17): createProvider used to read `user.id`, which
+    // `JwtStrategy.validate` never sets (only `userId`) — the actor argument
+    // was `undefined` on every call. mockUser above carries no `id` at all,
+    // so a regression back to `.id` fails these on `undefined` rather than
+    // silently passing.
+    it("passes the caller's userId as the actor, never undefined", async () => {
+      mockProvidersService.createProvider.mockResolvedValue({
+        id: "provider-1",
+        name: "New Vendor",
+      });
+
+      await controller.createProvider({ name: "New Vendor" } as any, mockUser);
+
+      expect(mockProvidersService.createProvider).toHaveBeenCalledWith(
+        { name: "New Vendor" },
+        mockUser.restaurantId,
+        mockUser.userId,
+      );
+      const actor = mockProvidersService.createProvider.mock.calls[0][2];
+      expect(actor).toBeDefined();
+      expect(actor).not.toBe("undefined");
+    });
+  });
+
+  describe("DELETE /providers/:id — actor identity", () => {
+    const providerId = "provider-123";
+
+    // REGRESSION (2026-09-17): softDeleteProvider used to read `user.id` too.
+    // The service only emits its cross-page `provider_change` sync event when
+    // BOTH restaurantId and userId are truthy — an undefined actor silently
+    // dropped that event on every delete, with no error anywhere.
+    it("passes the caller's userId so the removal event can be emitted", async () => {
+      mockProvidersService.softDeleteProvider.mockResolvedValue(undefined);
+
+      await controller.deleteProvider(providerId, mockUser);
+
+      expect(mockProvidersService.softDeleteProvider).toHaveBeenCalledWith(
+        providerId,
+        mockUser.restaurantId,
+        mockUser.userId,
+      );
+    });
+
+    it("still returns success when the service rejects", async () => {
+      mockProvidersService.softDeleteProvider.mockRejectedValue(
+        new Error("delete failed"),
+      );
+
+      await expect(
+        controller.deleteProvider(providerId, mockUser),
       ).rejects.toThrow(HttpException);
     });
   });

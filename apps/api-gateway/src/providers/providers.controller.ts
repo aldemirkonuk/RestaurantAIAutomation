@@ -81,7 +81,7 @@ export class ProvidersController {
       "A count and the names that are missing, for the providers page's prompt panel and the order sheet's empty currency field. It PRE-FILLS NOTHING and writes nothing: the repair for an unstated vendor is a person stating it on that vendor's profile, never a house-derived default recorded as somebody's choice. Live vendors only (is_active is not false and deleted_at is null) — the retired ones can take no order. A stored value that is not an ISO 4217 currency counts as unstated and is returned with the code it holds. A failed read is a 503 with the reason, never a coverage of zero.",
   })
   async usualCurrencyCoverage(
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { restaurantId: string },
   ): Promise<{
     stated: number;
     total: number;
@@ -107,7 +107,7 @@ export class ProvidersController {
   @ApiQuery({ name: "isActive", required: false })
   @ApiResponse({ status: 200, type: [ProviderResponseDto] })
   async searchProviders(
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { restaurantId: string },
     @Query("q") q?: string,
     @Query("specialties") specialties?: string | string[],
     @Query("isActive") isActive?: string,
@@ -138,7 +138,7 @@ export class ProvidersController {
   @ApiQuery({ name: "wineType", required: true })
   @ApiResponse({ status: 200, type: [ProviderResponseDto] })
   async searchByWineType(
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { restaurantId: string },
     @Query("wineType") wineType: string,
   ): Promise<ProviderResponseDto[]> {
     try {
@@ -194,7 +194,7 @@ export class ProvidersController {
   })
   @ApiResponse({ status: 200, description: "Ranked duplicate candidates" })
   async matchProviders(
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { restaurantId: string },
     @Query("name") name?: string,
     @Query("address") address?: string,
     @Query("excludeId") excludeId?: string,
@@ -247,13 +247,13 @@ export class ProvidersController {
   @ApiResponse({ status: 201, type: ProviderResponseDto })
   async createProvider(
     @Body() dto: CreateProviderDto,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<ProviderResponseDto> {
     try {
       return await this.providersService.createProvider(
         dto,
         user.restaurantId,
-        user.id,
+        user.userId,
       );
     } catch (error) {
       // Deliberate HTTP semantics from the service (409 for an already-added
@@ -273,7 +273,7 @@ export class ProvidersController {
   @ApiOperation({ summary: "List providers" })
   @ApiResponse({ status: 200, type: [ProviderResponseDto] })
   async listProviders(
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { restaurantId: string },
   ): Promise<ProviderResponseDto[]> {
     try {
       return await this.providersService.listProviders(user.restaurantId);
@@ -303,7 +303,7 @@ export class ProvidersController {
   })
   async getUsualCurrency(
     @Param("id") providerId: string,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { restaurantId: string },
   ) {
     const stated = await this.providersService.getUsualCurrency(
       providerId,
@@ -332,7 +332,7 @@ export class ProvidersController {
   async setUsualCurrency(
     @Param("id") providerId: string,
     @Body() body: { currency?: string },
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ) {
     const typed = readVendorCurrency(body?.currency);
     if (!typed.ok)
@@ -342,7 +342,7 @@ export class ProvidersController {
     // failed read and a person with no row are indistinguishable at this layer
     // and neither may pass (`procurement/order-approval-gate.ts`'s header).
     const role = await this.organizations.resolveRestaurantRole(
-      user.id,
+      user.userId,
       user.restaurantId,
     );
     if (!roleSatisfies(role, "manager"))
@@ -356,7 +356,7 @@ export class ProvidersController {
       providerId,
       restaurantId: user.restaurantId,
       code: typed.code,
-      userId: user.id,
+      userId: user.userId,
     });
 
     return {
@@ -376,7 +376,7 @@ export class ProvidersController {
   @ApiResponse({ status: 200, type: ProviderResponseDto })
   async getProvider(
     @Param("id") providerId: string,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { restaurantId: string },
   ): Promise<ProviderResponseDto> {
     try {
       return await this.providersService.getProvider(
@@ -426,13 +426,13 @@ export class ProvidersController {
   @ApiResponse({ status: 200, description: "Provider deleted" })
   async deleteProvider(
     @Param("id") providerId: string,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{ success: boolean }> {
     try {
       await this.providersService.softDeleteProvider(
         providerId,
         user.restaurantId,
-        user.id,
+        user.userId,
       );
       return { success: true };
     } catch (error) {
@@ -588,7 +588,7 @@ export class ProvidersController {
   async updateContactDate(
     @Param("id") providerId: string,
     @Body() dto: UpdateContactDateDto,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: { restaurantId: string },
   ): Promise<ProviderResponseDto> {
     try {
       return await this.providersService.updateLastContactDate(

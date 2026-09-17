@@ -52,7 +52,7 @@ import {
 } from "./text-senders.dto";
 
 interface Actor {
-  id: string;
+  userId: string;
   restaurantId: string;
 }
 
@@ -83,7 +83,7 @@ export class TextSendersController {
   })
   async readout(@CurrentUser() user: Actor) {
     const readout = await this.senders.readout(user.restaurantId);
-    const mine = await this.senders.myConsent(user.restaurantId, user.id);
+    const mine = await this.senders.myConsent(user.restaurantId, user.userId);
 
     /**
      * The crew-wide count is a MANAGER's fact and a staff member's business is
@@ -94,7 +94,7 @@ export class TextSendersController {
     let crewConsents: number | null = null;
     try {
       await this.organizations.assertCanManageRestaurant(
-        user.id,
+        user.userId,
         user.restaurantId,
         "read how many people in this restaurant have consented to be texted",
       );
@@ -167,13 +167,13 @@ export class TextSendersController {
     @Body() dto: DeclareOwnSenderDto,
   ) {
     await this.organizations.assertCanManageRestaurant(
-      user.id,
+      user.userId,
       user.restaurantId,
       "connect a text sender for this restaurant",
     );
     const row = await this.senders.declareOwn({
       restaurantId: user.restaurantId,
-      declaredBy: user.id,
+      declaredBy: user.userId,
       channel: dto.channel,
       market: dto.market,
       identity: dto.identity,
@@ -201,13 +201,13 @@ export class TextSendersController {
     @Body() dto: RequestRegistrationDto,
   ) {
     await this.organizations.assertCanManageRestaurant(
-      user.id,
+      user.userId,
       user.restaurantId,
       "request a text sender registration for this restaurant",
     );
     const row = await this.senders.requestRegistration({
       restaurantId: user.restaurantId,
-      declaredBy: user.id,
+      declaredBy: user.userId,
       channel: dto.channel,
       market: dto.market,
       legalName: dto.legalName,
@@ -238,14 +238,14 @@ export class TextSendersController {
   })
   async revoke(@CurrentUser() user: Actor, @Body() dto: RevokeSenderDto) {
     await this.organizations.assertCanManageRestaurant(
-      user.id,
+      user.userId,
       user.restaurantId,
       "revoke a text sender for this restaurant",
     );
     return this.senders.revoke({
       restaurantId: user.restaurantId,
       senderId: dto.senderId,
-      revokedBy: user.id,
+      revokedBy: user.userId,
       reason: dto.reason,
     });
   }
@@ -255,7 +255,7 @@ export class TextSendersController {
   @Get("consent")
   @ApiOperation({ summary: "Your own consent to be texted by this house." })
   myConsent(@CurrentUser() user: Actor) {
-    return this.senders.myConsent(user.restaurantId, user.id);
+    return this.senders.myConsent(user.restaurantId, user.userId);
   }
 
   @Post("consent")
@@ -266,7 +266,7 @@ export class TextSendersController {
   async consent(@CurrentUser() user: Actor, @Body() dto: TextConsentDto) {
     const consent = await this.senders.consent({
       restaurantId: user.restaurantId,
-      userId: user.id,
+      userId: user.userId,
       phone: dto.phone,
       channel: dto.channel,
     });
@@ -285,7 +285,7 @@ export class TextSendersController {
   async withdraw(@CurrentUser() user: Actor) {
     const result = await this.senders.withdraw({
       restaurantId: user.restaurantId,
-      userId: user.id,
+      userId: user.userId,
       via: "person",
     });
     return {

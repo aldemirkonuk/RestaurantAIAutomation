@@ -65,12 +65,12 @@ export class ProviderIntelligenceController {
   @ApiOperation({ summary: "Verify an extracted knowledge fact" })
   async verifyKnowledge(
     @Param("knowledgeId") knowledgeId: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { userId: string },
   ) {
     try {
       return await this.intelligenceService.verifyKnowledge(
         knowledgeId,
-        user.id,
+        user.userId,
       );
     } catch (error) {
       throw new HttpException(

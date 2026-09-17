@@ -174,7 +174,12 @@ describe("orderCurrencySource — the provenance the order records", () => {
 // "this vendor has stated none".
 // ---------------------------------------------------------------------------
 describe("ProvidersController — the vendor's usual currency", () => {
-  const user = { id: "u1", restaurantId: "rest-1" };
+  // `userId`, never `id` — this is the shape JwtStrategy.validate actually
+  // builds request.user with (auth/strategies/jwt.strategy.ts). A double
+  // shaped `{ id, restaurantId }` would let the controller read `user.id`
+  // (always undefined at runtime) and this file would never notice, which is
+  // exactly how it shipped broken (found 2026-09-17 by the nightly E2E walk).
+  const user = { userId: "u1", restaurantId: "rest-1" };
 
   function build(opts: {
     role?: string | null;
@@ -183,6 +188,7 @@ describe("ProvidersController — the vendor's usual currency", () => {
     written?: any;
   }) {
     const writes: any[] = [];
+    const roleChecks: any[] = [];
     const providersService: any = {
       getUsualCurrency: async () => {
         if (opts.statedThrows) throw opts.statedThrows;
@@ -207,10 +213,18 @@ describe("ProvidersController — the vendor's usual currency", () => {
       },
     };
     const organizations: any = {
-      resolveRestaurantRole: async () => opts.role ?? null,
+      // Keyed on the userId actually passed, like the real service
+      // (resolveRestaurantRole reads `user_restaurant_access.user_id`): an
+      // undefined or wrong userId gets no role, same as production.
+      resolveRestaurantRole: async (userId: string, restaurantId: string) => {
+        roleChecks.push({ userId, restaurantId });
+        return userId === "u1" && restaurantId === "rest-1"
+          ? (opts.role ?? null)
+          : null;
+      },
     };
     const controller = new ProvidersController(providersService, organizations);
-    return { controller, writes };
+    return { controller, writes, roleChecks };
   }
 
   it("refuses staff in a sentence naming what they are and who can do it", async () => {
@@ -246,12 +260,13 @@ describe("ProvidersController — the vendor's usual currency", () => {
   });
 
   it("writes for a manager, filing the author from the session", async () => {
-    const { controller, writes } = build({ role: "manager" });
+    const { controller, writes, roleChecks } = build({ role: "manager" });
     const res = await controller.setUsualCurrency(
       "p1",
       { currency: "try" },
       user,
     );
+    expect(roleChecks).toEqual([{ userId: "u1", restaurantId: "rest-1" }]);
     expect(writes).toEqual([
       {
         providerId: "p1",
@@ -262,6 +277,19 @@ describe("ProvidersController — the vendor's usual currency", () => {
     ]);
     expect(res.code).toBe("TRY");
     expect(res.sentence).toContain("It files no invoice");
+  });
+
+  it("REGRESSION (2026-09-17): a session with no `id` field still resolves a role and writes a real actor", async () => {
+    // The exact shape @CurrentUser() hands over in production: JwtStrategy
+    // never sets `id`, so a controller reading `user.id` gets `undefined`.
+    // `user` here carries no `id` at all -- proving the controller does not
+    // depend on it.
+    const bareUser = { userId: "u1", restaurantId: "rest-1" } as any;
+    expect("id" in bareUser).toBe(false);
+    const { controller, writes, roleChecks } = build({ role: "owner" });
+    await controller.setUsualCurrency("p1", { currency: "eur" }, bareUser);
+    expect(roleChecks).toEqual([{ userId: "u1", restaurantId: "rest-1" }]);
+    expect(writes[0].userId).toBe("u1");
   });
 
   it("names the previous value when it changes", async () => {

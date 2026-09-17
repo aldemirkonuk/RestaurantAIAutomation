@@ -21,7 +21,6 @@ import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { RawMailRetentionService } from "./raw-mail-retention.service";
 
 interface Actor {
-  id: string;
   restaurantId: string;
 }
 
