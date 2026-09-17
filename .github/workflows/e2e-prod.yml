@@ -32,11 +32,16 @@
 #
 # HOW TO READ, RUN AND CHANGE IT: apps/web/e2e/README.md
 #
-# SECRETS (names only). Credential values are never printed: the steps below
-# echo names, and pytest runs --tb=short (no locals). The two TARGET URLs are
-# printed in the job summary and the artifact, unmasked, because they are
-# public — the web bundle carries the gateway URL (re-verified 2026-09-16,
-# audit of PR #349 fix-list item 6).
+# SECRETS (names only). Credential values are not printed: the steps below echo
+# names; pytest runs --tb=short (no locals); every gateway call in the browser
+# walk goes through lib.ts `gateway()`, which rethrows only a redacted first
+# line, and every recorded reason and evidence passes `redact()` — because a
+# Playwright network error's "Call log" lists `authorization: Bearer <jwt>`, and
+# before 2026-09-17 that reached the summary and the artifact (audit of PR #349
+# at e18b1d48, finding B1; reproduced with sentinels, fixed, re-proven).
+# scripts/check_nightly_manifest.py fails the build on a raw request call. The
+# two TARGET URLs ARE printed, unmasked, because they are public — the web
+# bundle carries the gateway URL.
 #   REQUIRED — without any one of these the run proves NOTHING and the first
 #   step exits 2 with the missing names in its log:
 #     API_GATEWAY_URL            the NestJS gateway (already set — deploy.yml)
@@ -135,12 +140,10 @@ jobs:
       E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
       E2E_EXPECT_FLAGS: ${{ inputs.expect_flags || 'report' }}
       E2E_LEGACY_RESTAURANT_ID: ${{ secrets.E2E_LEGACY_RESTAURANT_ID }}
-      # Legacy waves (optional)
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
-      RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
+      # The legacy waves' SUPABASE_* / ADMIN_API_KEY / RABBITMQ_URL are mapped
+      # ONLY into the steps that read them (audit 2026-09-17, security N4): a
+      # secret in the job env is readable by every step and action, pnpm
+      # install included.
       # The Toast and Gmail secrets are not mapped: waves D and E are retired (ADR 0137)
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       GITHUB_SHA: ${{ github.sha }}
@@ -153,6 +156,12 @@ jobs:
       #    itself could not run (repo-wide guard convention); names only, never values.
       # -----------------------------------------------------------------------
       - name: Required secrets are present
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
         run: |
           REQUIRED="API_GATEWAY_URL E2E_TEST_EMAIL E2E_TEST_PASSWORD E2E_BASE_URL"
           OPTIONAL="RAILWAY_ORCHESTRATOR_URL ADMIN_API_KEY SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY RABBITMQ_URL SENTRY_DSN E2E_LEGACY_RESTAURANT_ID"
@@ -174,7 +183,9 @@ jobs:
               echo "::notice title=Optional secret unset::$name is unset -- what it gates is reported as cannot_check or absent, never as a pass."
             fi
           done
-          case "$E2E_BASE_URL" in *localhost*|*127.0.0.1*) echo "::error::E2E_BASE_URL points at localhost"; exit 2;; esac
+          case "$E2E_BASE_URL" in *localhost*|*127.0.0.1*|*0.0.0.0*) echo "::error::E2E_BASE_URL points at a local address"; exit 2;; esac
+          # The sign-in test types the password into the page at this URL.
+          case "$E2E_BASE_URL" in https://*) ;; *) echo "::error::E2E_BASE_URL is not https"; exit 2;; esac
           # The gateway URL is the one that RECEIVES E2E_TEST_EMAIL and
           # E2E_TEST_PASSWORD on every login (audit of PR #349, finding 1.2), so it
           # gets the same refusal, plus a scheme check: a plain-http gateway would
@@ -228,18 +239,28 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Orchestrator preflight
         id: preflight
+        env:
+          RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
         run: |
+          # Wave C stays unarmed by the founder's F2 answer; while RABBITMQ_URL is
+          # unset the summary reports it absent by decision (2026-09-17), not unchecked.
+          if [ -z "${RABBITMQ_URL:-}" ]; then
+            printf '{"unarmed": true, "reason": "Wave C is unarmed by decision (founder F2, ADR 0135): RABBITMQ_URL is unset, so it publishes nothing and is reported absent"}\n' > test-results/wave_c_unarmed.json
+          fi
           OUT=test-results/orchestrator-preflight.json
           if [ -z "${RAILWAY_ORCHESTRATOR_URL:-}" ]; then
             printf '{"reachable": false, "status": null, "reason": "RAILWAY_ORCHESTRATOR_URL is unset -- Waves A-C cannot run"}\n' > "$OUT"
             echo "reachable=false" >> "$GITHUB_OUTPUT"; cat "$OUT"; exit 0
           fi
-          CODE=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "${RAILWAY_ORCHESTRATOR_URL%/}/health" || echo "000")
+          # `-w` already prints 000 on a connection failure; `|| true` keeps it from
+          # becoming "000000", which made the file invalid JSON (correctness 4).
+          CODE=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "${RAILWAY_ORCHESTRATOR_URL%/}/health" || true)
+          case "$CODE" in ''|*[!0-9]*) CODE=000;; esac
           if [ "$CODE" = "200" ]; then
             printf '{"reachable": true, "status": 200, "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered 200"}\n' > "$OUT"
             echo "reachable=true" >> "$GITHUB_OUTPUT"
           else
-            printf '{"reachable": false, "status": %s, "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered HTTP %s -- the orchestrator is not deployed at that URL; Waves A-C are cannot_check, not failed"}\n' "${CODE:-null}" "$CODE" > "$OUT"
+            printf '{"reachable": false, "status": "%s", "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered HTTP %s (000 = no answer) -- Waves A-C are cannot_check, not failed"}\n' "$CODE" "$CODE" > "$OUT"
             echo "reachable=false" >> "$GITHUB_OUTPUT"
             echo "::warning title=Orchestrator unreachable::HTTP $CODE from RAILWAY_ORCHESTRATOR_URL/health -- Waves A-C recorded as cannot_check"
           fi
@@ -277,12 +298,23 @@ jobs:
       - name: Wave A — API Contract Tests (orchestrator)
         if: steps.preflight.outputs.reachable == 'true'
         working-directory: services/agent-orchestrator
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
         run: |
           pytest tests/e2e/wave_a_api_contracts.py --junitxml=../../test-results/wave_a.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_a.log || true
 
       - name: Waves B+C — Agent Health + RabbitMQ Triggers (orchestrator, concurrent)
         if: steps.preflight.outputs.reachable == 'true'
         working-directory: services/agent-orchestrator
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
         run: |
           pytest tests/e2e/wave_b_agent_health.py --junitxml=../../test-results/wave_b.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_b.log || true &
           B=$!

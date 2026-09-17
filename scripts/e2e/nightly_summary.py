@@ -13,11 +13,11 @@ cannot_check, never dropped):
 Output: test-results/nightly-summary.json + nightly-summary.md, and the same
 Markdown appended to $GITHUB_STEP_SUMMARY when set.
 
-Exit codes follow the repo's guard convention:
+Exit codes (founder's call 2026-09-17: a failure is always the headline):
   0  every recorded check passed or was an honest absence
-  1  at least one check FAILED (a production signal)
-  2  at least one check COULD NOT RUN, or the corpus was empty — the run proves
-     nothing and must not read as a pass
+  1  at least one check FAILED (a production signal) — whatever else could not run
+  2  no check failed, but at least one COULD NOT RUN, or the corpus was empty —
+     the run proves nothing about those surfaces and must not read as a pass
 
 Why a separate script: JUnit knows pass/fail/skip; it has no word for "the
 thing I would have checked is not on this build" and no word for "the check
@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -113,9 +114,23 @@ def collect(results: Path) -> list[dict[str, Any]]:
 
     # 2. Wave H records
     hp = results / "wave_h_checks.jsonl"
-    if hp.exists():
+    try:
+        h_lines = hp.read_text(encoding="utf-8").splitlines() if hp.exists() else None
+    except (OSError, UnicodeDecodeError) as exc:
+        # A truncated artifact is the summary failing to read its input, never a
+        # product failure (security N5, 2026-09-17).
+        checks.append(
+            {
+                "id": "wave.h",
+                "state": "cannot_check",
+                "reason": f"wave_h_checks.jsonl unreadable: {type(exc).__name__}",
+                "source": "wave_h",
+            }
+        )
+        h_lines = []
+    if h_lines is not None:
         n = 0
-        for line in hp.read_text(encoding="utf-8").splitlines():
+        for line in h_lines:
             if not line.strip():
                 continue
             try:
@@ -150,6 +165,7 @@ def collect(results: Path) -> list[dict[str, Any]]:
                     "source": "wave_h",
                 }
             )
+        checks.extend(unrecorded_junit("h", results / "wave_h.xml", checks))
     else:
         checks.append(
             {
@@ -185,8 +201,25 @@ def collect(results: Path) -> list[dict[str, Any]]:
     # D, E and G were deleted 2026-09-12 (ADR 0137). Expecting their XML made
     # every run end cannot_check (exit 2) forever; measured 2026-09-17 on the
     # first full local pipeline run. A stray wave_d/e/g.xml is ignored.
+    unarmed = _load_json(results / "wave_c_unarmed.json")
     for letter in "abc":
         xml_path = results / f"wave_{letter}.xml"
+        if letter == "c" and isinstance(unarmed, dict) and unarmed.get("unarmed"):
+            # Founder's F2 answer keeps Wave C unarmed; decided 2026-09-17 that
+            # this reads as an absence, not as an unrun check. The day
+            # RABBITMQ_URL is set the marker is not written and C counts again.
+            checks.append(
+                {
+                    "id": "wave.c",
+                    "state": "absent",
+                    "reason": str(
+                        unarmed.get("reason")
+                        or "Wave C is unarmed by decision (RABBITMQ_URL unset)"
+                    ),
+                    "source": "junit",
+                }
+            )
+            continue
         if not xml_path.exists():
             if reachable is False:
                 checks.append(
@@ -233,11 +266,7 @@ def collect(results: Path) -> list[dict[str, Any]]:
             )
         for st in steps:
             code = st.get("exit")
-            state = (
-                "pass"
-                if code == 0
-                else ("cannot_check" if code in (2, 5, None) else "fail")
-            )
+            state = backtest_state(st.get("name"), code, results)
             checks.append(
                 {
                     "id": f"backtest.{st.get('name')}",
@@ -247,6 +276,75 @@ def collect(results: Path) -> list[dict[str, Any]]:
                 }
             )
     return checks
+
+
+def backtest_state(name: Any, code: Any, results: Path) -> str:
+    """0 passes. Only a run that reached its assertions and saw them fail is a
+    fail: pytest exits 1 for that and 2-5 for interruption, internal error,
+    usage error or no tests; Jest exits 1 for failures AND for a config crash,
+    so its log must show a failed test count (correctness 4, 2026-09-17)."""
+    if code == 0:
+        return "pass"
+    if code != 1:
+        return "cannot_check"
+    if name == "forecast_pinned":
+        try:
+            log = (results / "backtest_forecast.log").read_text(
+                encoding="utf-8", errors="replace"
+            )
+        except OSError:
+            return "cannot_check"
+        return "fail" if re.search(r"Tests:\s.*\d+ failed", log) else "cannot_check"
+    return "fail"
+
+
+def unrecorded_junit(
+    letter: str, xml_path: Path, checks: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """A test that raised before, or after, recording its check leaves only the
+    runner's XML behind. More failed/errored cases than recorded non-pass
+    checks means some were never recorded: that is cannot_check, not silence
+    (correctness 1, 2026-09-17: an errored Wave H merged to PASS)."""
+    if not xml_path.exists():
+        return []
+    try:
+        cases = list(ET.parse(xml_path).getroot().iter("testcase"))
+    except ET.ParseError as exc:
+        return [
+            {
+                "id": f"wave.{letter}.junit",
+                "state": "cannot_check",
+                "reason": f"wave_{letter}.xml unparseable: {exc}",
+                "source": f"wave_{letter}",
+            }
+        ]
+    bad = [
+        tc
+        for tc in cases
+        if tc.find("failure") is not None or tc.find("error") is not None
+    ]
+    recorded = sum(
+        1
+        for c in checks
+        if c.get("source") == f"wave_{letter}"
+        and c["state"] in ("fail", "cannot_check")
+    )
+    if len(bad) <= recorded:
+        return []
+    node = (
+        bad[0].find("error")
+        if bad[0].find("error") is not None
+        else bad[0].find("failure")
+    )
+    first = (node.get("message") or "").split("\n")[0][:160] if node is not None else ""
+    return [
+        {
+            "id": f"wave.{letter}.unrecorded",
+            "state": "cannot_check",
+            "reason": f"{len(bad)} Wave {letter.upper()} test(s) failed or errored but only {recorded} recorded a non-pass check — first: {bad[0].get('name')}: {first}",
+            "source": f"wave_{letter}",
+        }
+    ]
 
 
 def junit_checks(letter: str, xml_path: Path) -> list[dict[str, Any]]:
@@ -314,6 +412,17 @@ def junit_checks(letter: str, xml_path: Path) -> list[dict[str, Any]]:
     out.append(
         {"id": f"wave.{letter}", "state": state, "reason": reason, "source": "junit"}
     )
+    if state == "pass" and tally["skipped"]:
+        # A case skipped for an unset optional secret asserted nothing; it is
+        # an absence, never folded into the wave's pass (correctness 4).
+        out.append(
+            {
+                "id": f"wave.{letter}.skipped",
+                "state": "absent",
+                "reason": f"{tally['skipped']} case(s) skipped — first: {first_skip}",
+                "source": "junit",
+            }
+        )
     return out
 
 
@@ -347,6 +456,11 @@ def render(
     design_calls: list[dict[str, Any]] | None = None,
 ) -> str:
     lines = [f"# Production E2E nightly — **{verdict.upper()}**", ""]
+    if verdict == "fail" and counts["cannot_check"]:
+        lines.append(
+            f"_{counts['cannot_check']} other check(s) could not run; they are listed below. A failure is the headline either way._"
+        )
+        lines.append("")
     lines.append(
         f"Target `{meta.get('base_url') or '(unset)'}` · gateway `{meta.get('api_url') or '(unset)'}` · run {meta.get('run_id') or '-'} · sha `{(meta.get('sha') or '')[:12]}`"
     )
@@ -421,9 +535,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         counts["cannot_check"] += 1
     verdict = (
-        "cannot_check"
-        if counts["cannot_check"]
-        else ("fail" if counts["fail"] else "pass")
+        "fail"
+        if counts["fail"]
+        else ("cannot_check" if counts["cannot_check"] else "pass")
     )
     meta = {
         "base_url": args.base_url,

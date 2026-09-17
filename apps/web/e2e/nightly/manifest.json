@@ -20,9 +20,7 @@
     "denied": [
       "not allowed to",
       "You don't have permission to access this page",
-      "403",
-      "was refused",
-      "denied"
+      "was refused"
     ],
     "walls": {
       "/login": "signed out",

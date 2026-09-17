@@ -19,8 +19,10 @@
  * 60 s per (IP, route) by apps/api-gateway/src/common/rate-limit/rate-limit.guard.ts
  * (DEFAULT_RATE_LIMITS.auth; generateKey appends the route). A fresh SPA boot
  * costs one GET /auth/me and one GET /auth/me/role, so the suite boots the app
- * ONCE per pass, navigates with pushState (no reload), and `AuthBudget` waits
- * whenever eight auth calls have fired inside any rolling minute.
+ * ONCE per pass, navigates with pushState (no reload), and one `AuthBudget`
+ * shared by every test in the worker waits whenever eight calls to one auth
+ * route sit inside a rolling minute. A worker restart (after a failed test)
+ * starts the budget empty; the walk's pacing record measures what happened.
  */
 
 import * as fs from 'fs'
@@ -150,7 +152,7 @@ export async function checkSimHouse(
   if (!listed) {
     return { ok: false, reason: `house ${restaurantId} is not on apps/web/e2e/nightly/sim-houses.json (measured ${sims.measured}); the walk opens simulator houses only` }
   }
-  const res = await request.get(`${env.apiUrl}/api/v1/organizations/branches`, { headers: authHeaders(session, restaurantId) })
+  const res = await gateway(request, 'get', `${env.apiUrl}/api/v1/organizations/branches`, { headers: authHeaders(session, restaurantId) })
   if (!res.ok()) {
     return { ok: false, reason: `/organizations/branches answered ${res.status()}, so the house's name cannot be confirmed` }
   }
@@ -209,13 +211,16 @@ export const READ_SHAPED_POSTS = ['/api/v1/auth/refresh', '/api/v1/settings/feat
 export class ReadOnlyGuard {
   public blocked: string[] = []
 
+  /** `alsoAllow` is for the sign-in test only: the form's two POSTs ARE the check. */
+  constructor(private readonly alsoAllow: string[] = []) {}
+
   async attach(page: Page): Promise<void> {
     await page.route('**/*', async (route) => {
       const req = route.request()
       const method = req.method()
       if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return route.continue()
       const p = pathOf(req.url())
-      if (READ_SHAPED_POSTS.includes(p)) return route.continue()
+      if (READ_SHAPED_POSTS.includes(p) || this.alsoAllow.includes(p)) return route.continue()
       // Ids are folded to :id — this list lands in a public artifact, and the
       // first production run listed a person's uuid (PATCH /users/<id>/preferences).
       this.blocked.push(`${method} ${new URL(req.url()).host}${p.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ':id')}`)
@@ -290,16 +295,67 @@ export interface CheckRecord {
   evidence?: Record<string, unknown>
 }
 
+// ---------------------------------------------------------------------------
+// Nothing secret leaves this process (audit of PR #349 at e18b1d48, finding B1)
+// ---------------------------------------------------------------------------
+
+const JWT = /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g
+const BEARER = /(bearer\s+)[^\s"',;]+/gi
+const SECRET_FIELD = /("?(?:access_?token|refresh_?token|password|authorization)"?\s*[:=]\s*)("[^"]*"|[^\s,}]+)/gi
+
+/**
+ * Scrub a string that may have passed near a credential. Playwright's API
+ * errors end in a "Call log" that lists every request header — including
+ * `authorization: Bearer <jwt>` — so a network error on a signed-in call put a
+ * live session token into the public summary, the job summary and the 30-day
+ * artifact (reproduced with sentinels by the 2026-09-17 audit). Everything a
+ * check records goes through here; so does every error a gateway call throws.
+ */
+export function redact(text: string): string {
+  return text.replace(JWT, '[redacted-jwt]').replace(BEARER, '$1[redacted]').replace(SECRET_FIELD, '$1[redacted]')
+}
+
+/** The first line of an error, redacted — never the call log beneath it. */
+export function safeMessage(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e)
+  const head = raw.split(/\n|Call log:/)[0] ?? ''
+  return redact(head).slice(0, 300)
+}
+
+type GatewayMethod = 'get' | 'post'
+
+/**
+ * The only way this suite calls the gateway. A thrown Playwright error is
+ * replaced by one carrying just its redacted first line, so neither a
+ * recorded reason nor the list/JUnit reporters ever see the call log.
+ * scripts/check_nightly_manifest.py fails the build on any other direct
+ * APIRequestContext call anywhere in e2e/nightly.
+ */
+export async function gateway(
+  request: APIRequestContext,
+  method: GatewayMethod,
+  url: string,
+  options?: Parameters<APIRequestContext['get']>[1],
+) {
+  try {
+    return await (method === 'get' ? request.get(url, options) : request.post(url, options))
+  } catch (e) {
+    throw new Error(`${method.toUpperCase()} ${redact(new URL(url).pathname)} failed: ${safeMessage(e)}`)
+  }
+}
+
 /** Attach one record to the running test; the honest reporter collects them. */
 export function record(rec: CheckRecord): void {
-  test.info().annotations.push({ type: 'nightly-check', description: JSON.stringify(rec) })
+  const safe: CheckRecord = { ...rec, reason: redact(rec.reason) }
+  if (rec.evidence) safe.evidence = JSON.parse(redact(JSON.stringify(rec.evidence))) as Record<string, unknown>
+  test.info().annotations.push({ type: 'nightly-check', description: JSON.stringify(safe) })
 }
 
 /** Record AND fail the test when a check fails or cannot run. */
 export function recordAndAssert(rec: CheckRecord): void {
   record(rec)
   if (rec.state === 'fail' || rec.state === 'cannot_check') {
-    expect.soft(rec.state, `${rec.id}: ${rec.reason}`).toBe('pass')
+    expect.soft(rec.state, `${rec.id}: ${redact(rec.reason)}`).toBe('pass')
   }
 }
 
@@ -324,7 +380,7 @@ export interface Session {
  * The token is held in memory only — never written to disk, XML or logs.
  */
 export async function mintSession(request: APIRequestContext, env: NightlyEnv): Promise<Session> {
-  const login = await request.post(`${env.apiUrl}/api/v1/auth/login`, {
+  const login = await gateway(request, 'post', `${env.apiUrl}/api/v1/auth/login`, {
     data: { email: env.email, password: env.password },
   })
   if (login.status() === 429) {
@@ -337,7 +393,7 @@ export async function mintSession(request: APIRequestContext, env: NightlyEnv): 
   if (!body.accessToken || !body.refreshToken) {
     throw new Error('CANNOT CHECK — /auth/login returned no token pair; the response shape changed.')
   }
-  const me = await request.get(`${env.apiUrl}/api/v1/auth/me`, {
+  const me = await gateway(request, 'get', `${env.apiUrl}/api/v1/auth/me`, {
     headers: { authorization: `Bearer ${body.accessToken}` },
   })
   if (!me.ok()) {
@@ -575,20 +631,22 @@ export async function resolveRoute(
   session: Session,
   restaurantId: string | null,
   entry: PageEntry,
-): Promise<{ route: string | null; reason: string }> {
+): Promise<{ route: string | null; reason: string; state?: 'absent' | 'cannot_check' }> {
   if (!entry.needs) return { route: entry.route, reason: 'static route' }
-  const res = await request.get(`${env.apiUrl}/api/v1${entry.needs.list}`, {
+  const res = await gateway(request, 'get', `${env.apiUrl}/api/v1${entry.needs.list}`, {
     headers: authHeaders(session, restaurantId),
     params: { limit: '5', page: '1' },
   })
   if (!res.ok()) {
-    return { route: null, reason: `${entry.needs.list} answered ${res.status()} — the id this route needs cannot be read` }
+    // A failed list read is not an empty house (audit 2026-09-17, correctness 2):
+    // the route could not be checked, which is never reported as an absence.
+    return { route: null, state: 'cannot_check', reason: `${entry.needs.list} answered ${res.status()} — the id this route needs could not be read, so the route was not checked` }
   }
   const body = (await res.json()) as Record<string, unknown>
   const items = (Array.isArray(body) ? body : (body[entry.needs.items_key] as unknown[])) ?? []
   const first = items.find((it) => it && typeof it === 'object' && (it as Record<string, unknown>)[entry.needs!.id_key])
   if (!first) {
-    return { route: null, reason: `${entry.needs.list} holds no row for this house, so there is no ${entry.needs.param} to open the route on` }
+    return { route: null, state: 'absent', reason: `${entry.needs.list} holds no row for this house, so there is no ${entry.needs.param} to open the route on` }
   }
   const id = String((first as Record<string, unknown>)[entry.needs.id_key])
   return { route: entry.route.replace(`{${entry.needs.param}}`, id), reason: `id from ${entry.needs.list}` }

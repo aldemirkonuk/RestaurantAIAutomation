@@ -36,6 +36,9 @@ WHAT IT CHECKS
      into pages), and a declared route and existing file unless file is null.
   6. design-verdicts.json names only manifest pages; sim-houses.json lists
      UUIDs with sim- slugs.
+  7. No e2e/nightly file calls `request.get(`/`post(`/… except lib.ts's
+     `gateway()` wrapper, whose errors are redacted (a Playwright call log
+     carries the bearer token).
 
 WHAT IT DOES NOT CHECK (said, not implied)
 ------------------------------------------
@@ -76,7 +79,6 @@ APP_TSX = "apps/web/src/App.tsx"
 SRC = "apps/web/src"
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 SHARED_SOURCE = ("apps/web/src/components/mudavym/", "apps/web/src/lib/mudavym/")
-COMMENT_LINE = re.compile(r"^\s*(//|\*|/\*|\{/\*)")
 
 
 class CannotCheck(Exception):
@@ -97,12 +99,16 @@ def load_json(path: Path) -> dict:
 
 
 class Corpus:
-    """Non-test web source, whitespace-collapsed, with a map back to lines."""
+    """Non-test web source, whitespace-collapsed, with a map back to the raw text.
+
+    Comments are masked by CHARACTER, not by line: a sentence counts only when
+    none of it sits inside a /* */ block or after a // on its line. A `/*` or
+    `//` counts as a comment opener only where code could start one — not
+    inside `accept="image/*"` or a URL (audit 2026-09-17, correctness 5).
+    """
 
     def __init__(self, root: Path) -> None:
-        self.files: list[
-            tuple[str, str, list[int], list[str], set[tuple[int, int]]]
-        ] = []
+        self.files: list[tuple[str, str, list[int], str, list[bool]]] = []
         for p in sorted((root / SRC).rglob("*")):
             if p.suffix not in (".ts", ".tsx") or not p.is_file():
                 continue
@@ -110,21 +116,21 @@ class Corpus:
             if re.search(r"\.(test|spec|stories)\.tsx?$", rel) or "/__tests__/" in rel:
                 continue
             raw = p.read_text(encoding="utf-8", errors="replace")
-            lines = raw.splitlines()
-            flat, line_of = [], []
+            in_comment = comment_mask(raw)
+            flat: list[str] = []
+            raw_of: list[int] = []
             prev_space = False
-            for n, line in enumerate(lines, 1):
-                for ch in line + "\n":
-                    ch = "'" if ch in "‘’" else ch
-                    if ch.isspace():
-                        if prev_space:
-                            continue
-                        ch, prev_space = " ", True
-                    else:
-                        prev_space = False
-                    flat.append(ch.lower())
-                    line_of.append(n)
-            self.files.append((rel, "".join(flat), line_of, lines, comment_mask(raw)))
+            for i, ch in enumerate(raw):
+                ch = "'" if ch in "\u2018\u2019" else ch
+                if ch.isspace():
+                    if prev_space:
+                        continue
+                    ch, prev_space = " ", True
+                else:
+                    prev_space = False
+                flat.append(ch.lower())
+                raw_of.append(i)
+            self.files.append((rel, "".join(flat), raw_of, raw, in_comment))
         if not self.files:
             raise CannotCheck(f"{SRC} scanned to zero source files")
 
@@ -132,19 +138,15 @@ class Corpus:
         """(rendered somewhere, comment-only hits) for one phrase, optionally inside some directories."""
         needle = norm(phrase)
         comment_hits: list[str] = []
-        for rel, flat, line_of, lines, commented in self.files:
+        for rel, flat, raw_of, raw, in_comment in self.files:
             if within and not rel.startswith(within):
                 continue
             start = flat.find(needle)
             while start != -1:
-                n = line_of[start]
-                if (
-                    not COMMENT_LINE.match(lines[n - 1])
-                    and (n, 0) not in commented
-                    and not trailing_comment(lines[n - 1], needle)
-                ):
+                a, b = raw_of[start], raw_of[start + len(needle) - 1]
+                if not any(in_comment[a : b + 1]):
                     return True, []
-                comment_hits.append(f"{rel}:{n}")
+                comment_hits.append(f"{rel}:{raw.count(chr(10), 0, a) + 1}")
                 start = flat.find(needle, start + 1)
         return False, comment_hits
 
@@ -158,23 +160,33 @@ class Corpus:
         return any(pat.search(flat) for _, flat, _, _, _ in self.files)
 
 
-def comment_mask(raw: str) -> set[tuple[int, int]]:
-    """Lines wholly inside a /* ... */ or {/* ... */} block, as (line, 0) keys."""
-    inside: set[tuple[int, int]] = set()
-    for m in re.finditer(r"/\*.*?\*/", raw, re.S):
-        first = raw.count("\n", 0, m.start()) + 1
-        last = raw.count("\n", 0, m.end()) + 1
-        for n in range(first, last + 1):
-            inside.add((n, 0))
-    return inside
+BLOCK_OPEN = re.compile(r"(?:^|(?<=[\s{(,;=:)}\]]))/\*", re.M)
+LINE_OPEN = re.compile(r"(?:^|(?<=[\s{(,;=)}\]]))//", re.M)
 
 
-def trailing_comment(line: str, needle: str) -> bool:
-    """True when the phrase sits after a `//` that is not part of a URL."""
-    low = norm(line)
-    at = low.find(needle)
-    cut = re.search(r"(?<![:'\"`])//", low)
-    return bool(cut) and at > cut.start()
+def comment_mask(raw: str) -> list[bool]:
+    """True for every character inside a comment a code position could open."""
+    mask = [False] * len(raw)
+    pos = 0
+    b = BLOCK_OPEN.search(raw, pos)
+    l = LINE_OPEN.search(raw, pos)
+    while b or l:
+        m = b if (b and (not l or b.start() <= l.start())) else l
+        if m is b:
+            end = raw.find("*/", m.end())
+            end = len(raw) if end == -1 else end + 2
+        else:
+            end = raw.find("\n", m.end())
+            end = len(raw) if end == -1 else end
+        mask[m.start() : end] = [True] * (end - m.start())
+        pos = end
+        # Re-search a pattern only when its cached match was swallowed; the
+        # naive loop re-scanned whole files per comment and took minutes.
+        if b and b.start() < pos:
+            b = BLOCK_OPEN.search(raw, pos)
+        if l and l.start() < pos:
+            l = LINE_OPEN.search(raw, pos)
+    return mask
 
 
 def mudavym_pages(root: Path) -> list[str]:
@@ -197,8 +209,11 @@ def check(root: Path) -> list[str]:
     manifest = load_json(root / NIGHTLY / "manifest.json")
     verdicts = load_json(root / NIGHTLY / "design-verdicts.json")
     sims = load_json(root / NIGHTLY / "sim-houses.json")
-    registry = (root / REGISTRY_TS).read_text(encoding="utf-8")
-    app = (root / APP_TSX).read_text(encoding="utf-8")
+    try:
+        registry = (root / REGISTRY_TS).read_text(encoding="utf-8")
+        app = (root / APP_TSX).read_text(encoding="utf-8")
+    except OSError as e:
+        raise CannotCheck(f"cannot read {e.filename}: {e.strerror}")
     corpus = Corpus(root)
     enrolled = mudavym_pages(root)
 
@@ -245,7 +260,7 @@ def check(root: Path) -> list[str]:
 
     shared = manifest.get("shared_phrases", {})
     for key in ("failed_read", "denied"):
-        sentences("shared_phrases", key, [x for x in shared.get(key, []) if x != "403"])
+        sentences("shared_phrases", key, shared.get(key, []))
     for p in pages:
         source = p.get("source")
         if not source or not (root / source).is_dir():
@@ -299,6 +314,26 @@ def check(root: Path) -> list[str]:
                 )
             if not (root / e["file"]).is_file():
                 problems.append(f"[5] pending {e['slug']}: {e['file']} does not exist")
+
+    # 7. No raw gateway call outside lib.ts `gateway()` (audit 2026-09-17, B1):
+    #    a Playwright request error's call log carries the bearer token.
+    raw_call = re.compile(r"\brequest\.(get|post|put|patch|delete|fetch|head)\(")
+    for f in sorted((root / NIGHTLY).glob("*.ts")):
+        text = f.read_text(encoding="utf-8")
+        if f.name == "lib.ts":
+            start = text.find("export async function gateway(")
+            end = text.find("\n}\n", start)
+            if start == -1 or end == -1:
+                problems.append(
+                    "[7] lib.ts has no `export async function gateway(` — the only allowed gateway caller is gone"
+                )
+            else:
+                text = text[:start] + text[end:]
+        for m in raw_call.finditer(text):
+            line = text.count("\n", 0, m.start()) + 1
+            problems.append(
+                f"[7] {NIGHTLY}/{f.name}:{line}: raw `{m.group(0)}` — call the gateway through lib.ts gateway(), which redacts the error"
+            )
 
     # 6. verdicts and houses
     known = set(slugs)
@@ -452,6 +487,41 @@ def self_test() -> int:
             1,
             f'"nightly self-test {kind} sentence" renders from no non-test source',
         )
+
+    def raw_request(t: Path) -> None:
+        f = t / NIGHTLY / "nightly.spec.ts"
+        f.write_text(
+            f.read_text(encoding="utf-8")
+            + "\nexport async function leak(request: any) { return request.get('x') }\n",
+            encoding="utf-8",
+        )
+
+    mutate(
+        "a raw gateway call outside gateway()",
+        raw_request,
+        1,
+        "[7] apps/web/e2e/nightly/nightly.spec.ts",
+    )
+
+    def slash_star_in_string(t: Path) -> None:
+        f = t / SRC / "pages/dashboard/next/nightly_self_test_probe.tsx"
+        f.write_text(
+            'export const P = () => <><input accept="image/*" /><p>nightly self-test rendered after a string</p></>\n'
+            "/* a later real comment */\n",
+            encoding="utf-8",
+        )
+        edit_manifest(
+            lambda m: m["pages"][0]
+            .setdefault("empty", [])
+            .append("nightly self-test rendered after a string")
+        )(t)
+
+    mutate(
+        "a rendered sentence after `image/*` in a string",
+        slash_star_in_string,
+        0,
+        "PASS",
+    )
     mutate(
         "a missing manifest",
         lambda t: (t / NIGHTLY / "manifest.json").unlink(),

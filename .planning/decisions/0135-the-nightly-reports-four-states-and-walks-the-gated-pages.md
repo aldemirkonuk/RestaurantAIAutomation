@@ -4,7 +4,7 @@
 - **Date:** 2026-09-11
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** e2e-prod, nightly, playwright, wave-h, backtest, canned-day, forecast-fixture, four-state, absent, cannot_check, mudavym_design flags, teardown_sim, rate-limit
-- **Links:** [[0089-a-page-can-start-the-engine-it-reports-on]], [[0093-a-scenario-is-replayed-and-verified-against-its-own-expectation]], [[0097-the-gateway-says-which-build-it-is]], [[0106-every-dependabot-pr-resolved-by-measurement]], ADR 0131 "the new house goes live" (unmerged as of 2026-09-11 — not a wikilink, since it is not yet a file on `main`; see the audit note below), `.planning/v3.0-TECH-DEBT.md` "CI — the nightly production E2E…", `.planning/testing/README.md`, PR #349 for `test/nightly-e2e-modernised`
+- **Links:** [[0089-a-page-can-start-the-engine-it-reports-on]], [[0093-a-scenario-is-replayed-and-verified-against-its-own-expectation]], [[0097-the-gateway-says-which-build-it-is]], [[0106-every-dependabot-pr-resolved-by-measurement]], [[0131-the-new-house-goes-live-dark-then-one-house-at-a-time]] (unmerged when this ADR was written 2026-09-11; on `main` since #289, 2026-09-12), `.planning/v3.0-TECH-DEBT.md` "CI — the nightly production E2E…", `.planning/testing/README.md`, PR #349 for `test/nightly-e2e-modernised`
 
 ## Context
 
@@ -78,7 +78,7 @@ Measured on 2026-09-11 before a line was written:
 and on `cannot_check` (exit 2) — never green by skipping, never green over an empty
 corpus.** Concretely:
 
-- **One manifest** (`apps/web/e2e/nightly/manifest.json`, 19 pages) read by both walkers.
+- **One manifest** (`apps/web/e2e/nightly/manifest.json`, 19 pages) read by both walkers. **[Superseded 2026-09-16 by § Rebuild: 20 pages, 11 public doors, 7 pending routes, held equal to `MUDAVYM_PAGES` by a CI guard.]**
   Each page carries its route, its legacy behaviour (`page` / `same` / `redirect:/x`), and
   its *own* honest-state sentences grepped from its `next/` directory — never a figure.
 - **The browser walk** (`apps/web/e2e/nightly/nightly.spec.ts`, config
@@ -116,7 +116,7 @@ corpus.** Concretely:
   `E2E_TEST_EMAIL`, `E2E_TEST_PASSWORD` (+ `E2E_BASE_URL`, defaulting to
   `https://mudavym.com`); missing = exit 2 before any install. An orchestrator preflight
   turns an unreachable `RAILWAY_ORCHESTRATOR_URL` into `cannot_check` with the HTTP code
-  in the reason; Waves A–E, G run only when it answers. `workflow_dispatch` takes
+  in the reason; Waves A–E, G run only when it answers. **[Waves D, E, G were deleted 2026-09-12 by ADR 0137; A–C remain.]** `workflow_dispatch` takes
   `expect_flags` (report | on | off), `base_url`, `api_url`. `scripts/e2e/nightly_summary.py`
   merges everything into one table (job summary + artifact) and sets the job's colour.
   `GMAIL_PASSWORD`, mapped and read by nothing, is no longer mapped.
@@ -266,18 +266,21 @@ The fixes above reached the PR with the rebuild below.]**
 ## Rebuild (2026-09-16) — new pages, the design artifacts, and the rest of the fix list
 
 The founder's instruction: *"Rebuild E2E test with new pages artifacts and updated
-parts, there should be docs to understand it."* Six calls were put to him in session and
-answered; each is recorded here with what it rejected.
+parts, there should be docs to understand it."* Six calls were put to him in session on
+2026-09-16, and three more on 2026-09-17 after the audit (below). Each is recorded with
+what it rejected. The first question allowed several answers; he chose two of its three.
 
-| Fork | Chosen | Rejected, and why |
-|---|---|---|
-| What "new pages" covers | The 20 pages now in `MUDAVYM_PAGES` (adds `/logs`), plus the new-pages routes listed and **measured** absent until they land | A readable per-run board (not chosen) |
-| The design artifacts | **Used as a source**: the founder's recorded calls | — |
-| Where it lands | **Update PR #349** (merge main, clear the fix list) | A fresh branch that closes #349: the audit trail would stay on a closed PR |
-| Where the doc lives | **`apps/web/e2e/README.md`**, next to the code; the stale nightly section of `.planning/testing/README.md` is retired into it | `.planning/testing/NIGHTLY-E2E.md` (away from the code); ADR-only (hard to onboard from) |
-| How the calls travel | **A small pinned file**, `design-verdicts.json`, generated from the ADR 0148 snapshots | Stacking #349 on `claude/artifact-pull` and its unmerged base (about 6 MB of snapshot HTML; #349 could not merge before both) |
-| What a call does | **Reported beside the page, never gating** | Failing a `rework` page whose flag is on: it would partly decide F1 |
-| Where sentences come from | **The page's own source, held by a CI guard** | Also reporting drift against the artifacts' wording: measured at most 1 match per page (0 on 12 of 18), so the report would be almost all noise |
+| # | Fork | Chosen | Rejected, and why |
+|---|---|---|---|
+| 1 | What "new pages artifacts" means | **Both:** the 20 pages now in `MUDAVYM_PAGES` (adds `/logs`), with the new-pages routes listed and *measured* absent until they land; **and** the design artifacts as a source (the founder's recorded calls) | A readable per-run board (four states plus one screenshot per page, as its own artifact): not chosen |
+| 2 | Where it lands | **Update PR #349** (merge main, clear the fix list) | A fresh branch that closes #349: the audit trail would stay on a closed PR |
+| 3 | Where the doc lives | **`apps/web/e2e/README.md`**, next to the code; the stale nightly section of `.planning/testing/README.md` (recoverable at `82add0f6`) is retired into it | `.planning/testing/NIGHTLY-E2E.md` (away from the code); ADR-only (hard to onboard from) |
+| 4 | How the calls travel | **A small pinned file**, `design-verdicts.json`, generated from the ADR 0148 snapshots (ADR 0148 is itself on the unmerged `claude/artifact-pull`) | Stacking #349 on `claude/artifact-pull` and its unmerged base: about 6 MB of snapshot HTML, and #349 could not merge before both |
+| 5 | What a call does | **Reported beside the page, never gating** | Failing a `rework` page whose flag is on: it would partly decide F1 |
+| 6 | Where sentences come from | **The page's own source, held by a CI guard** | Also reporting drift against the artifacts' wording: measured at most 1 match per page (0 on 12 of 18), so almost all noise |
+| 7 | (2026-09-17) A run with both a fail and an unrun check | **Fail wins, exit 1**; the unrun checks are listed under it | Could-not-check wins, exit 2 (as first written): a live production failure could never be the headline while any wave is unconfigured |
+| 8 | (2026-09-17) Wave C, kept unarmed by F2 | **Absent, by decision**, while `RABBITMQ_URL` is unset | `cannot_check`: every nightly would be red for that reason alone |
+| 9 | (2026-09-17) F3's second house, now that the gateway is known to scope by the token | **Refuse a second house** (`cannot_check` with the reason); the legacy walk uses the account's own house with the design forced off. **F3 is reopened**: a second house needs a second account | Allowing `POST /auth/switch-restaurant` in the walk: works with one account, but mints a 7-day session on every run |
 
 **Measured before building** (2026-09-16, clean worktree at `origin/main` `60ed83a7` merged in):
 - **The manifest had rotted in five days.** Of its page sentences, 9 no longer rendered from
@@ -304,7 +307,7 @@ answered; each is recorded here with what it rejected.
   `--self-test` of 10 cases, each asserting the named finding. It holds the manifest
   equal to `MUDAVYM_PAGES`, each sentence to its page's source outside comments,
   testids, the public-switch claim per file, and pending pages not yet enrolled. Run
-  against the 2026-09-11 manifest it reports 8 mismatches (6 of the 9 dead
+  against the 2026-09-11 manifest (with each page's new `source` field copied in; as-is it reports 21, most of them the missing field) it reports 8 mismatches (6 of the 9 dead
   sentences, `/logs` missing, the dead denied phrase). It cannot see the other three,
   because `nothing here` also renders from a shared component. That limit is stated in
   its docstring.
@@ -368,6 +371,90 @@ calls. The workflow's steps ran in order into one results directory and were mer
 **Still not verified:** CI has never run the signed-in walk, because the account secrets
 are unset. Waves A–C have not run. The in-CI PR Audit Gate cannot run (the CI Anthropic key
 is out of credit, `CANNOT CHECK [no-credit]`).
+
+## Audit on e18b1d48 (2026-09-17) and what it changed
+
+The founder asked for a review that makes the PR ready to merge. The in-CI PR Audit
+Gate cannot run: it reports `CANNOT CHECK [no-credit]`, because the CI Anthropic key is
+out of credit. So the skill's three Opus angles ran in-session.
+- **Correctness:** APPROVE WITH NOTES.
+- **Compliance:** APPROVE WITH NOTES.
+- **Security:** **BLOCK.**
+
+Full findings are in the PR comment keyed to `e18b1d48`, not committed: another report file would be a new document with no retirement (§4).
+
+**B1, blocking: a bearer token could reach the public artifact.** Playwright API errors
+end in a "Call log" that lists `authorization: Bearer <jwt>`. The walk copied error
+messages into reasons, so one network error on a signed-in call put a live session token
+into the summary, the job summary, `wave_f.xml` and `error-context.md`.
+- The auditor reproduced it with a fake loopback gateway and sentinel tokens.
+- This session re-ran the same reproduction against the pre-fix head: 5 files carried
+  the sentinel. On the fixed code: none.
+- **Fixed** by three changes: every gateway call goes through `gateway()`, which rethrows
+  a redacted first line; `record()` redacts every reason and evidence field; and the
+  manifest guard's new rule 7 fails on any direct request call.
+
+**Fixed from the notes:**
+- **The token's house is the walked house** (security N1). The gateway never reads
+  `X-Restaurant-Id`, so `ensureSimSession` checks the token's own house before the
+  sign-in test, the flag read and each walk. Wave H checks the same list.
+- **Nothing else escapes the guard or leaks** (security N2–N5):
+  - the sign-in page is guarded, and only the form's two POSTs pass;
+  - a non-https `E2E_BASE_URL` is refused;
+  - the legacy-wave secrets are scoped to the steps that read them;
+  - a truncated `wave_h_checks.jsonl` records `cannot_check` instead of crashing.
+- **Unrecorded errors no longer vanish** (correctness 1). The reporter records
+  `cannot_check` when a test throws or times out after recording, which a Playwright
+  probe proved. The summary records `cannot_check` when Wave H's XML shows more
+  errored tests than recorded non-pass checks. On the auditor's reproduction, the
+  summary said PASS/exit 0 before and CANNOT_CHECK/exit 2 after.
+- **Inferred absences are gone** (correctness 2). An enrolled page with no Mudavym
+  root, or landing elsewhere, is a fail. So is a public page whose file reads the
+  switch but renders no root. A failed list read is `cannot_check`. The two walks no
+  longer share an absent-pages file.
+- **A failure is the headline** (correctness 3, founder calls 7 and 8). The run's
+  verdict is FAIL/exit 1 whenever anything failed. Wave C unarmed is `absent` by
+  decision.
+- **Reports tell the truth about what ran** (correctness 4):
+  - the preflight writes valid JSON on a connection failure (it wrote `000000` before);
+  - a partially skipped wave records its skips as `absent` instead of folding them
+    into a pass;
+  - a backtest crash (pytest exit 2–5, or Jest exit 1 with no failed-test count) is
+    `cannot_check`.
+- **Loose matching tightened** (correctness 5, 6):
+  - the shared denied phrases `403` and `denied` are removed;
+  - `AuthBudget` is shared by the worker's tests, so it can actually wait;
+  - the guard masks comments by character, and only where code could open one
+    (`accept="image/*"` no longer hides a sentence); a self-test proves it;
+  - the extractor exits 2 on a malformed snapshot;
+  - `ADR-0135-d`, `ADR-0135-h` and `TD-2026-09-17-TEXT-SENDERS-USER-ID` now check what
+    their claims say. The TD row now watches all three controllers.
+- **Stale records corrected** (compliance):
+  - this ADR's calls table (nine calls, each with its rejected alternative);
+  - the index row's forks sentence, and its "Still unmerged" line (removed);
+  - the unrecorded `timeout-minutes` 15 → 25, annotated at `REQUIREMENTS.md`
+    TEST-PROD-10;
+  - Wave G's "still open" line in the tech-debt register;
+  - the ADR 0131 link, and ADR 0148 marked unmerged;
+  - `05-library/playwright-cli.md`'s file list;
+  - the "8 mismatches" figure, which needs the `source` field (21 as-is).
+
+**Re-run on the fixed code, against production (2026-09-17, laptop, Sim Bistro owner).**
+- Walk: **101 pass · 2 fail · 20 absent · 0 cannot_check**. The new pass is
+  `signin.readonly`, and the same two product defects fail.
+- Wave H: 10 passed, and its new house check passed.
+- Merged: **FAIL, exit 1 · 135 · 2 · 22 · 3**. The 3 `cannot_check` are the preflight
+  and waves A and B (F2). Wave C is `absent` by decision.
+- No JWT appears in any output. The aborted-write list reads `PATCH …/users/:id/preferences`.
+
+**Not fixed, said plainly:**
+- The committed 2026-09-11 audit report names no retirement (§4). Recorded here as a
+  deviation for the founder.
+- Commit `5e4f21f1` carries a `Claude Fable 5.1` trailer. The squash body must carry
+  only `Claude Opus 5`.
+- **Gate-owned paths.** The diff touches `.github/workflows/ci.yml` and
+  `.planning/decisions/README.md`. Under the gate skill's step 4, a merge needs the
+  founder's explicit word whatever the angles conclude.
 
 ## Review trail
 

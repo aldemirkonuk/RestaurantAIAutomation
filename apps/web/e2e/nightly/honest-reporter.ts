@@ -70,13 +70,29 @@ export default class HonestReporter implements Reporter {
       if (seen.has(a.description)) continue
       seen.add(a.description)
       try {
-        const rec = JSON.parse(a.description) as CheckRecord
+        const rec = JSON.parse(redact(a.description)) as CheckRecord
         rec.test = test.title
         this.records.push(rec)
         recorded += 1
       } catch {
         this.records.push({ id: 'reporter.parse', state: 'cannot_check', reason: 'a nightly-check annotation was not JSON', test: test.title })
       }
+    }
+    // A test that recorded some checks and then threw, or ran out of time, must
+    // not let the checks it never reached vanish from the summary (audit
+    // 2026-09-17, correctness 1: a timed-out walk merged to PASS). Soft
+    // assertions from recordAndAssert carry their record id in the message;
+    // any other error is something the test did not record.
+    const mine = this.records.slice(this.records.length - recorded)
+    const explained = (msg: string) => mine.some((r) => r.state !== 'pass' && r.state !== 'absent' && msg.includes(`${r.id}:`))
+    const unexplained = (result.errors ?? []).map((e) => redact(firstLine(e.message))).filter((m) => m && !explained(m))
+    if (recorded > 0 && (result.status === 'timedOut' || result.status === 'interrupted' || (result.status === 'failed' && unexplained.length > 0))) {
+      this.records.push({
+        id: `test.${slug(test.title)}.ended`,
+        state: 'cannot_check',
+        reason: `the test ended ${result.status} after recording ${recorded} check(s); everything it had not reached is unchecked${unexplained.length ? `: ${unexplained[0]}` : ''}`,
+        test: test.title,
+      })
     }
     if (recorded === 0) {
       this.records.push({
@@ -85,11 +101,11 @@ export default class HonestReporter implements Reporter {
         reason:
           result.status === 'passed'
             ? 'the test passed but recorded no check — a pass with nothing behind it is not a pass'
-            : `the test ended ${result.status} before recording a check: ${firstLine(result.error?.message)}`,
+            : `the test ended ${result.status} before recording a check: ${redact(firstLine(result.error?.message))}`,
         test: test.title,
       })
     }
-    this.tests.push({ title: test.title, status: result.status, durationMs: result.duration, error: firstLine(result.error?.message) })
+    this.tests.push({ title: test.title, status: result.status, durationMs: result.duration, error: redact(firstLine(result.error?.message)) })
     // Screenshots attached with a body live only in memory unless a reporter
     // writes them; the nightly artifact must carry the evidence, not just the verdict.
     const shots = path.join(this.outDir, 'shots')
@@ -104,7 +120,8 @@ export default class HonestReporter implements Reporter {
   onEnd(result: FullResult): void {
     const counts = { pass: 0, fail: 0, absent: 0, cannot_check: 0 }
     for (const r of this.records) counts[r.state] += 1
-    const verdict = counts.cannot_check > 0 ? 'cannot_check' : counts.fail > 0 ? 'fail' : counts.pass > 0 ? 'pass' : 'cannot_check'
+    // A failure is the headline even when other checks could not run (founder's call, 2026-09-17).
+    const verdict = counts.fail > 0 ? 'fail' : counts.cannot_check > 0 ? 'cannot_check' : counts.pass > 0 ? 'pass' : 'cannot_check'
     const summary = {
       suite: 'nightly-playwright',
       started_at: this.startedAt,
@@ -178,5 +195,14 @@ function slug(s: string): string {
 }
 
 function firstLine(s: string | undefined): string {
-  return (s ?? '').split('\n')[0].slice(0, 300)
+  // eslint-disable-next-line no-control-regex
+  return (s ?? '').replace(/\u001b\[[0-9;]*m/g, '').split(/\n|Call log:/)[0].slice(0, 300)
+}
+
+/** Same scrub as lib.ts `redact` — duplicated so the reporter never imports the test runtime. */
+function redact(text: string): string {
+  return text
+    .replace(/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted-jwt]')
+    .replace(/(bearer\s+)[^\s"',;]+/gi, '$1[redacted]')
+    .replace(/("?(?:access_?token|refresh_?token|password|authorization)"?\s*[:=]\s*)("[^"]*"|[^\s,}]+)/gi, '$1[redacted]')
 }

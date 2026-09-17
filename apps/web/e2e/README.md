@@ -42,12 +42,22 @@ Every check ends in exactly one of these. The summary counts each one separately
 |---|---|---|
 | `pass` | The assertion held | green |
 | `fail` | The assertion ran and did not hold: a production signal | red (exit 1) |
-| `absent` | The surface is not on this build, or the house has nothing to open it on | Reported. Never counted as a pass. |
-| `cannot_check` | The check did not run: missing secret, refused house, unreachable service, empty corpus | red on purpose (exit 2) |
+| `absent` | Something not built yet (a pending route, an unrebuilt public door), a house with nothing to open a route on, or a wave unarmed by decision (Wave C while `RABBITMQ_URL` is unset) | Reported. Never counted as a pass. |
+| `cannot_check` | The check did not run: missing secret, refused house, unreachable service, a failed list read, a test that threw or timed out after recording, empty corpus | red on purpose (exit 2) |
+
+**The run's verdict:** any `fail` makes it FAIL (exit 1), even when other
+checks could not run; they are listed under it. With no fail, any
+`cannot_check` makes it CANNOT_CHECK (exit 2). Otherwise it is PASS (exit 0).
+The founder decided on 2026-09-17 that a failure is always the headline.
 
 A page that prints its own "could not be read" sentence gets two records. The
 page's honesty passes (it said so in words). The read fails (something behind
 it broke). The walk never asserts on a figure.
+
+An enrolled page (one in `MUDAVYM_PAGES`) that renders no Mudavym root with the
+override on, or lands somewhere other than its route, is a **fail**, not an
+absence. The manifest is held equal to `MUDAVYM_PAGES`, so the page must exist:
+either it broke, or production is behind main.
 
 ## 3. What the browser walk opens
 
@@ -56,10 +66,10 @@ it broke). The walk never asserts on a figure.
 | Test | Record ids | What it checks |
 |---|---|---|
 | precondition | `precondition.*` | Secrets are set. The account signs in through `/auth/login`, is verified, has a house, and that house is a **simulator house** (§5). |
-| sign-in | `signin.ui` | The real two-step login form signs the account in. |
+| sign-in | `signin.ui`, `signin.readonly` | The real two-step login form signs the account in. Only the form's own two POSTs are let through. |
 | flags | `flag.<slug>`, `flags.tally` | Reads each page's `mudavym_design_*` flag for the house. With `expect_flags=report` (the default) it reports without gating. |
 | walk, override on | `page.<slug>.next`, `.reads`, `.provenance`, `pending.<slug>`, `walk.next.readonly` | Opens every page in `manifest.pages` with the Mudavym design forced on, then every `pending_pages` route. |
-| walk, flag off | `page.<slug>.legacy`, `walk.legacy.readonly` | Opens every page with legacy forced, or with a second simulator house's real flags if `E2E_LEGACY_RESTAURANT_ID` is set. |
+| walk, flag off | `page.<slug>.legacy`, `walk.legacy.readonly` | Opens every page with legacy forced, in the account's own house. A different `E2E_LEGACY_RESTAURANT_ID` is refused (`precondition.legacy_house`), because the gateway takes the house from the sign-in token. |
 | public | `public.switch`, `public.<slug>.on/off`, `.honest`, `public.redirect.*` | Opens the signed-out doors three ways: as built, with ADR 0133's one switch forced on, and forced off. |
 
 ### The pages, as of 2026-09-16
@@ -81,7 +91,10 @@ it broke). The walk never asserts on a figure.
 
 **First full run against production** (2026-09-17, from a laptop as the Sim
 Bistro owner, not yet from CI): **100 pass · 2 fail · 20 absent · 0
-cannot_check.** All 20 flags read OFF for the house. The public switch reads OFF
+cannot_check.** Re-run the same day on the audit-fixed code: **101 · 2 · 20 · 0**
+(the extra pass is `signin.readonly`). Merged with Wave H (10 passed) and the
+backtests: **FAIL, exit 1 · 135 pass · 2 fail · 22 absent · 3 cannot_check**. The
+3 are the orchestrator preflight and waves A and B, which wait on F2. All 20 flags read OFF for the house. The public switch reads OFF
 as built. Absent means: two parameter routes, because the house holds no order
 and no document; 7 pending routes; 9 public doors not rebuilt; and the legacy
 pass of the two parameter routes. Both failures are real production reads that
@@ -109,10 +122,20 @@ the pages reported in words:
 
 ## 5. Safety rails, and why each exists
 
-- **Only simulator houses.** The walk screenshots every page into a public
-  30-day artifact. Before any page opens, it checks the house id against
-  `sim-houses.json` and checks that the gateway's branch list names the house
-  `Sim …`. Any other answer is `cannot_check` (audit of PR #349, finding 1.3).
+- **Nothing secret reaches a report.** A Playwright network error ends in a
+  "Call log" that lists `authorization: Bearer <jwt>`. Before 2026-09-17 that
+  reached the summary and the artifact; an audit reproduced it with sentinel
+  tokens. Every gateway call now goes through `gateway()` in `lib.ts`, which
+  rethrows only a redacted first line. Every recorded reason and piece of
+  evidence passes through `redact()`. The CI guard fails on any direct request
+  call elsewhere in `nightly/`.
+- **Only simulator houses, and only the token's own.** The walk screenshots
+  every page into a public 30-day artifact. The gateway takes the house from
+  the sign-in token and never reads `X-Restaurant-Id`. So before the sign-in
+  test, the flag read and each walk, the TOKEN's house id is checked against
+  `sim-houses.json`, and the gateway's branch list must name it `Sim …`. Wave H
+  checks the same list. Any other answer is `cannot_check` (audit findings 1.3
+  and N1).
   The gateway returns no slug, so the id list is committed. To add a house,
   re-measure with a read-only `restaurants?select=id,slug,name&slug=like.sim-*`.
   Never add one by name.
@@ -126,13 +149,19 @@ the pages reported in words:
 - **No traces.** A Playwright trace is a full network capture. A failed run's
   trace once carried the test password and live JWTs (audit finding 1.1).
   Traces stay `off`. Screenshots carry no headers or bodies.
-- **Target URLs are guarded.** The workflow refuses a local `E2E_BASE_URL`, and
-  refuses an `API_GATEWAY_URL` that is local or not `https`.
+- **Target URLs are guarded.** The workflow refuses a local or non-https
+  `E2E_BASE_URL`, where the sign-in test types the password. It refuses the
+  same for `API_GATEWAY_URL`, which receives the password.
+- **Legacy-wave secrets are scoped.** `SUPABASE_*`, `ADMIN_API_KEY` and
+  `RABBITMQ_URL` are mapped only into the steps that read them, not into the
+  whole job.
 - **Legacy teardown is opt-in.** `tests/e2e/conftest_prod.py` deletes `sim-*`
   houses only when `E2E_SIM_TEARDOWN=1`. The workflow never sets it.
 - **Auth pacing.** `/api/v1/auth/*` allows 10 requests per 60 s per IP and route.
-  The walk boots the app once per pass, navigates with `pushState`, and
-  `AuthBudget` waits whenever a route nears the limit.
+  The walk boots the app once per pass and navigates with `pushState`. One
+  `AuthBudget` shared across the worker's tests waits whenever a route nears
+  the limit. A worker restart starts it empty; `walk.*.pacing` records what
+  actually happened.
 
 ## 6. Adding or changing a page
 
@@ -231,10 +260,13 @@ Results land in `apps/web/test-results/nightly/`: `nightly-summary.md`,
   on `sim-houses.json` is the founder's step.
 - **Two production reads fail today** (§3's table). Both are product defects
   the walk reports, not suite defects.
-- **Founder forks still open (ADR 0135):** F1, whether to gate on flags being
-  ON; F5, flipping the sims. **Answered but not yet actioned:** F2, retargeting
-  the `RAILWAY_ORCHESTRATOR_URL` secret to the live orchestrator host (a
-  repository-settings change for the founder); F3, a second simulator house
-  for the legacy pass (`E2E_LEGACY_RESTAURANT_ID`, now constrained to
-  `sim-houses.json`).
+- **Founder forks still open (ADR 0135):**
+  - F1: whether to gate on flags being ON.
+  - F5: flipping the sims.
+  - F3, reopened 2026-09-17: a second house for the legacy pass needs a second
+    account, because the gateway scopes by the token.
+- **Answered but not yet actioned:** F2, retargeting the
+  `RAILWAY_ORCHESTRATOR_URL` secret to the live orchestrator host. That is a
+  repository-settings change for the founder. Until it happens, waves A and B
+  are `cannot_check` every night; Wave C is `absent` by decision.
 - The design-call snapshots live on an unmerged branch (§7).

@@ -153,7 +153,38 @@ def session(client: httpx.Client) -> dict[str, Any]:
         f"signed in via /auth/login as role {user.get('role')}",
         emailVerified=user.get("emailVerified"),
     )
-    record_check("h.precondition.house", "pass", f"the account belongs to house {rid}")
+    # The gateway scopes by the token's house, and this wave's readings reach the
+    # summary, so it reads only a simulator house — the same committed list and
+    # name check as the browser walk (audit of PR #349, 2026-09-17, security N1).
+    sims = json.loads(
+        (REPO_ROOT / "apps/web/e2e/nightly/sim-houses.json").read_text(encoding="utf-8")
+    )
+    listed = next((h for h in sims.get("houses", []) if h.get("id") == rid), None)
+    branches = client.get(
+        "/organizations/branches", headers={"authorization": f"Bearer {token}"}
+    )
+    branch = (
+        next((b for b in branches.json() if b.get("id") == rid), None)
+        if branches.status_code == 200 and isinstance(branches.json(), list)
+        else None
+    )
+    if (
+        not listed
+        or not branch
+        or not str(branch.get("name", "")).startswith(sims.get("name_prefix", "Sim "))
+    ):
+        record_check(
+            "h.precondition.house",
+            "cannot_check",
+            f"house {rid} is not a simulator house on apps/web/e2e/nightly/sim-houses.json "
+            f"with a matching branch name (branches read {branches.status_code}); refused",
+        )
+        pytest.fail("CANNOT CHECK — not a simulator house")
+    record_check(
+        "h.precondition.house",
+        "pass",
+        f"{listed['slug']} is a simulator house on the committed list",
+    )
     return {"token": token, "restaurant_id": rid, "user": user}
 
 

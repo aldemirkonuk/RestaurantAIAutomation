@@ -343,7 +343,15 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     try:
         data = extract(args.ref)
-    except (CannotCheck, json.JSONDecodeError, KeyError) as e:
+    except (
+        CannotCheck,
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        ValueError,
+    ) as e:
+        # A snapshot the parser cannot read is 'cannot check', never 'drift' (correctness 5).
         print(f"CANNOT CHECK — {e}", file=sys.stderr)
         return 2
     rendered = json.dumps(data, indent=2, ensure_ascii=False) + "\n"

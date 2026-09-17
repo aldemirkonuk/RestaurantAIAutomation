@@ -22,12 +22,11 @@
  *   npx playwright test --config playwright.nightly.config.ts
  */
 
-import * as fs from 'fs'
-import * as path from 'path'
 import { test, expect, type APIRequestContext, type Browser, type Page } from '@playwright/test'
 import {
   AuthBudget,
   authHeaders,
+  gateway,
   checkSimHouse,
   describeCall,
   loadDesignCalls,
@@ -41,6 +40,7 @@ import {
   record,
   recordAndAssert,
   resolveRoute,
+  safeMessage,
   settleDom,
   settleWalls,
   spaNavigate,
@@ -63,23 +63,10 @@ let houseId: string | null = null
  * Playwright restarts the worker after any failed test, and module state goes
  * with it — a failed check in the override-on walk must not turn the legacy
  * walk into "no session". So every test re-mints when it has to (one
- * /auth/login + one /auth/me), and the set of pages the next-walk found
- * absent is written to disk for the legacy walk to read.
+ * /auth/login + one /auth/me). Each walk measures its own landings; nothing
+ * one walk found is trusted by the next (audit 2026-09-17, correctness 1).
  */
-const ABSENT_PATH = path.join(process.cwd(), 'test-results', 'nightly', 'absent-on-build.json')
-
-function readAbsent(): Set<string> {
-  try {
-    return new Set(JSON.parse(fs.readFileSync(ABSENT_PATH, 'utf8')) as string[])
-  } catch {
-    return new Set()
-  }
-}
-
-function writeAbsent(set: Set<string>): void {
-  fs.mkdirSync(path.dirname(ABSENT_PATH), { recursive: true })
-  fs.writeFileSync(ABSENT_PATH, JSON.stringify([...set].sort()))
-}
+const budget = new AuthBudget()
 
 async function ensureSession(request: APIRequestContext): Promise<boolean> {
   if (session && houseId) return true
@@ -88,14 +75,28 @@ async function ensureSession(request: APIRequestContext): Promise<boolean> {
     session = await mintSession(request, env)
     houseId = session.user.restaurantId
   } catch (e) {
-    record({ id: 'precondition.session', state: 'cannot_check', reason: `re-minting the session failed: ${(e as Error).message}` })
+    record({ id: 'precondition.session', state: 'cannot_check', reason: `re-minting the session failed: ${safeMessage(e)}` })
     return false
   }
   return Boolean(houseId)
 }
 
-// beforeAll runs again in every restarted worker, so the absent-set file is
-// cleared in the FIRST test only (below), never here.
+/**
+ * The gateway scopes every read by the sign-in token's own house — it never
+ * reads X-Restaurant-Id — so the house that gets screenshotted is
+ * session.user.restaurantId, whatever else is configured. Every test that
+ * opens a signed-in page checks THAT house first (audit 2026-09-17, security N1).
+ */
+async function ensureSimSession(request: APIRequestContext, id: string): Promise<boolean> {
+  if (!(await ensureSession(request))) return false
+  const sim = await checkSimHouse(request, env, session!, houseId)
+  if (!sim.ok) {
+    recordAndAssert({ id: `${id}.house`, state: 'cannot_check', reason: `refused: ${sim.reason}` })
+    return false
+  }
+  return true
+}
+
 test.beforeAll(() => {
   manifest = loadManifest()
 })
@@ -105,20 +106,19 @@ test.beforeAll(() => {
 // ---------------------------------------------------------------------------
 
 test('precondition: secrets, account and house are what the run needs', async ({ request }) => {
-  fs.rmSync(ABSENT_PATH, { force: true })
   try {
     env = readEnv()
   } catch (e) {
-    record({ id: 'precondition.secrets', state: 'cannot_check', reason: (e as Error).message })
-    throw e
+    record({ id: 'precondition.secrets', state: 'cannot_check', reason: safeMessage(e) })
+    throw new Error(safeMessage(e))
   }
   record({ id: 'precondition.secrets', state: 'pass', reason: `base ${env.baseUrl}, api ${env.apiUrl}, target ${env.target}` })
 
   try {
     session = await mintSession(request, env)
   } catch (e) {
-    record({ id: 'precondition.account', state: 'cannot_check', reason: (e as Error).message })
-    throw e
+    record({ id: 'precondition.account', state: 'cannot_check', reason: safeMessage(e) })
+    throw new Error(safeMessage(e))
   }
   const u = session.user
   houseId = u.restaurantId
@@ -144,9 +144,14 @@ test('precondition: secrets, account and house are what the run needs', async ({
   if (!houseId) return
   const sim = await checkSimHouse(request, env, session, houseId)
   recordAndAssert({ id: 'precondition.house.sim', state: sim.ok ? 'pass' : 'cannot_check', reason: sim.reason })
-  if (env.legacyRestaurantId) {
-    const legacy = await checkSimHouse(request, env, session, env.legacyRestaurantId)
-    recordAndAssert({ id: 'precondition.legacy_house.sim', state: legacy.ok ? 'pass' : 'cannot_check', reason: legacy.reason })
+  if (env.legacyRestaurantId && env.legacyRestaurantId !== houseId) {
+    // Founder's call 2026-09-17: refuse. The gateway takes the house from the
+    // token, so a second house needs a second account (F3 reopened).
+    recordAndAssert({
+      id: 'precondition.legacy_house',
+      state: 'cannot_check',
+      reason: `E2E_LEGACY_RESTAURANT_ID names a house other than the account's own; the gateway scopes by the sign-in token and never reads X-Restaurant-Id, so that house cannot be walked with this account (the legacy walk uses the account's house with the design forced off)`,
+    })
   }
 })
 
@@ -155,9 +160,12 @@ test('precondition: secrets, account and house are what the run needs', async ({
 // ---------------------------------------------------------------------------
 
 test('sign-in: the two-step login form signs the account in', async ({ page, request }) => {
-  if (!(await ensureSession(request))) return
-  const budget = new AuthBudget()
+  if (!(await ensureSimSession(request, 'signin'))) return
   budget.attach(page)
+  // The form's own two POSTs are the thing under test; every other write the
+  // app attempts after landing is aborted and listed (security N2).
+  const guard = new ReadOnlyGuard(['/api/v1/auth/sign-in-methods', '/api/v1/auth/login'])
+  await guard.attach(page)
   await page.goto(`${env.baseUrl}/login`, { waitUntil: 'networkidle', timeout: 30_000 })
   await page.fill('#email', env.email)
   await page.getByRole('button', { name: /continue/i }).click()
@@ -178,6 +186,8 @@ test('sign-in: the two-step login form signs the account in', async ({ page, req
     reason: wall ? `the form signed in but the app settled on ${wall} (${manifest.shared_phrases.walls[wall]})` : `landed on ${pathOf(page.url())}`,
     evidence: budget.summary(),
   })
+  const ro = guard.summary()
+  record({ id: 'signin.readonly', state: 'pass', reason: ro.blocked ? `${ro.blocked} write(s) beyond the form's own were aborted: ${ro.distinct.join(', ')}` : 'no write beyond the form', evidence: ro })
 })
 
 // ---------------------------------------------------------------------------
@@ -185,12 +195,12 @@ test('sign-in: the two-step login form signs the account in', async ({ page, req
 // ---------------------------------------------------------------------------
 
 test('flags: every manifest page reports its flag for this house', async ({ request }) => {
-  if (!(await ensureSession(request))) return
+  if (!(await ensureSimSession(request, 'flags'))) return
   let on = 0
   let off = 0
   let unregistered = 0
   for (const entry of manifest.pages) {
-    const res = await request.post(`${env.apiUrl}/api/v1/settings/feature-flags/check`, {
+    const res = await gateway(request, 'post', `${env.apiUrl}/api/v1/settings/feature-flags/check`, {
       headers: authHeaders(session!, houseId),
       data: { restaurant_id: houseId, feature_name: entry.flag },
     })
@@ -223,17 +233,13 @@ test('flags: every manifest page reports its flag for this house', async ({ requ
 
 type Mode = 'next' | 'legacy'
 
-async function walk(page: Page, request: APIRequestContext, mode: Mode, restaurantId: string, overrides: Record<string, '1' | '0'>): Promise<void> {
+async function walk(page: Page, request: APIRequestContext, mode: Mode, overrides: Record<string, '1' | '0'>): Promise<void> {
   // Re-checked here, not trusted from the precondition test: a worker restart
   // loses module state, and the walk is the step that screenshots the house.
-  const sim = await checkSimHouse(request, env, session!, restaurantId)
-  if (!sim.ok) {
-    recordAndAssert({ id: `walk.${mode}.house`, state: 'cannot_check', reason: `refused to walk: ${sim.reason}` })
-    return
-  }
-  const absentOnBuild = readAbsent()
+  // The house is the TOKEN's (see ensureSimSession), never a configured id.
+  if (!(await ensureSimSession(request, `walk.${mode}`))) return
+  const restaurantId = houseId!
   const designCalls = loadDesignCalls()
-  const budget = new AuthBudget()
   budget.attach(page)
   const guard = new ReadOnlyGuard()
   await guard.attach(page)
@@ -255,11 +261,11 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, restaura
 
   for (const entry of manifest.pages) {
     const errorsBefore = pageErrors.length
-    const { route, reason: routeReason } = await resolveRoute(request, env, session!, restaurantId, entry)
+    const { route, reason: routeReason, state: routeState } = await resolveRoute(request, env, session!, restaurantId, entry)
     if (!route) {
-      // The route exists; the HOUSE has nothing to open it on. That is an
-      // absence in the house's data, said as one — not a missing precondition.
-      record({ id: `page.${entry.slug}.${mode}`, state: 'absent', reason: routeReason })
+      // `absent`: the house has nothing to open the route on — an absence in the
+      // house's data. `cannot_check`: the list read itself failed.
+      recordAndAssert({ id: `page.${entry.slug}.${mode}`, state: routeState ?? 'absent', reason: routeReason })
       continue
     }
     await spaNavigate(page, route)
@@ -283,20 +289,20 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, restaura
 
     // The router's catch-all (`path="*"` → `/`) turns an unknown route into the
     // dashboard. Without this check a build that lacks the page would render
-    // the dashboard's Mudavym root and the page would read as PRESENT.
+    // the dashboard's Mudavym root and the page would read as PRESENT. Every
+    // page here is in MUDAVYM_PAGES (scripts/check_nightly_manifest.py holds
+    // the manifest equal to it), so landing elsewhere is a FAIL, never an
+    // absence: the route broke, or production is behind main (correctness 2).
     const routePath = route.split('?')[0]
     const landedElsewhere = landed !== routePath
-    if (mode === 'next' && landedElsewhere) {
-      if (landed === '/' && routePath !== '/') {
-        absentOnBuild.add(entry.slug)
-        record({ id: `page.${entry.slug}.next`, state: 'absent', reason: `${route} is not a route on this build — the router's catch-all sent it to /`, evidence })
-      } else {
-        recordAndAssert({ id: `page.${entry.slug}.next`, state: 'fail', reason: `${route} with the override on landed on ${landed}`, evidence })
-      }
-      continue
-    }
-    if (mode === 'legacy' && absentOnBuild.has(entry.slug)) {
-      record({ id: `page.${entry.slug}.legacy`, state: 'absent', reason: `${route} is not a route on this build (see page.${entry.slug}.next)`, evidence })
+    const redirects = mode === 'legacy' && entry.legacy.startsWith('redirect:')
+    if (landedElsewhere && !redirects) {
+      recordAndAssert({
+        id: `page.${entry.slug}.${mode}`,
+        state: 'fail',
+        reason: landed === '/' && routePath !== '/' ? `${route} is not a route on the build under test (the catch-all sent it to /) although MUDAVYM_PAGES enrols it — the route broke, or production is behind main` : `${route} landed on ${landed}`,
+        evidence,
+      })
       continue
     }
 
@@ -304,8 +310,7 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, restaura
       if (entry.legacy === 'same') {
         recordAndAssert({ id: `page.${entry.slug}.next`, state: 'pass', reason: `${route} rendered (no page swap behind ${entry.flag}; .mudavym roots recorded, not asserted)`, evidence })
       } else if (reading.nextRoots === 0) {
-        absentOnBuild.add(entry.slug)
-        record({ id: `page.${entry.slug}.next`, state: 'absent', reason: `${route} is not gated on this build — with the override on, no ${manifest.next_root_selector} root rendered (legacy showed)`, evidence })
+        recordAndAssert({ id: `page.${entry.slug}.next`, state: 'fail', reason: `${route} rendered no ${manifest.next_root_selector} root with the override on although MUDAVYM_PAGES enrols it — the override, the gate or the page is broken on this build, or production is behind main`, evidence })
         continue
       } else {
         recordAndAssert({ id: `page.${entry.slug}.next`, state: 'pass', reason: `${route} rendered the Mudavym design (${reading.nextRoots} root${reading.nextRoots === 1 ? '' : 's'})`, evidence })
@@ -340,7 +345,7 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, restaura
       if (reading.klass === 'failed_read') {
         recordAndAssert({ id: `page.${entry.slug}.legacy.reads`, state: 'fail', reason: `the legacy page reported a failed read: “${reading.matched.failed_read[0]}”`, evidence })
       }
-      for (const alias of absentOnBuild.has(entry.slug) ? [] : entry.aliases ?? []) {
+      for (const alias of entry.aliases ?? []) {
         await spaNavigate(page, alias.route)
         const aliasLanded = pathOf(page.url())
         const target = alias.legacy.startsWith('redirect:') ? alias.legacy.slice('redirect:'.length) : alias.route
@@ -351,10 +356,7 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, restaura
       recordAndAssert({ id: `page.${entry.slug}.${mode}.pageerrors`, state: 'fail', reason: `${newErrors.length} uncaught page error(s) on ${route}: ${newErrors[0]}`, evidence: { pageErrors: newErrors } })
     }
   }
-  if (mode === 'next') {
-    writeAbsent(absentOnBuild)
-    await walkPending(page)
-  }
+  if (mode === 'next') await walkPending(page)
   const ro = guard.summary()
   record({
     id: `walk.${mode}.readonly`,
@@ -390,24 +392,21 @@ async function walkPending(page: Page): Promise<void> {
 }
 
 test('walk: every rebuilt page with the Mudavym override on', async ({ page, request }) => {
-  if (!(await ensureSession(request))) return
   const overrides: Record<string, '1' | '0'> = {}
   for (const p of manifest.pages) overrides[p.slug] = '1'
   for (const p of manifest.pending_pages) overrides[p.slug] = '1'
-  await walk(page, request, 'next', houseId!, overrides)
+  await walk(page, request, 'next', overrides)
 })
 
 test('walk: every page with the flag off (legacy)', async ({ page, request }) => {
-  if (!(await ensureSession(request))) return
-  const legacyHouse = env.legacyRestaurantId
   const overrides: Record<string, '1' | '0'> = {}
-  if (!legacyHouse) for (const p of manifest.pages) overrides[p.slug] = '0'
+  for (const p of manifest.pages) overrides[p.slug] = '0'
   record({
     id: 'walk.legacy.house',
     state: 'pass',
-    reason: legacyHouse ? `legacy pass uses second house ${legacyHouse} with its real flags (E2E_LEGACY_RESTAURANT_ID)` : 'legacy pass uses the same house with the per-browser override forcing legacy (no second house configured)',
+    reason: "legacy pass uses the account's own house with the per-browser override forcing legacy (a second house is refused: the gateway scopes by the sign-in token)",
   })
-  await walk(page, request, 'legacy', legacyHouse ?? houseId!, overrides)
+  await walk(page, request, 'legacy', overrides)
 })
 
 // ---------------------------------------------------------------------------
@@ -450,7 +449,7 @@ test('public: the signed-out doors, with the one switch as built and forced each
   try {
     env = env ?? readEnv()
   } catch (e) {
-    record({ id: 'public.precondition', state: 'cannot_check', reason: (e as Error).message })
+    record({ id: 'public.precondition', state: 'cannot_check', reason: safeMessage(e) })
     return
   }
 
@@ -479,7 +478,7 @@ test('public: the signed-out doors, with the one switch as built and forced each
       if (pass === 'on') {
         if (entry.switch === 'public') {
           if (r.roots > 0) recordAndAssert({ id, state: 'pass', reason: `${entry.route} rendered the Mudavym public design with the switch forced on`, evidence: { landed: r.landed, roots: r.roots } })
-          else record({ id, state: 'absent', reason: `${entry.route} rendered no ${manifest.next_root_selector} root with the switch forced on — this build's page does not read the switch`, evidence: { landed: r.landed } })
+          else recordAndAssert({ id, state: 'fail', reason: `${entry.route} rendered no ${manifest.next_root_selector} root with the switch forced on although ${entry.file} reads the switch — the override or the page is broken, or production is behind main`, evidence: { landed: r.landed } })
         } else if (r.roots === 0) {
           record({ id, state: 'absent', reason: `${entry.route} is not rebuilt on this build — ${entry.file} reads no switch (ADR 0133's public wave)`, evidence: { landed: r.landed } })
         } else {
