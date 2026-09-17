@@ -1,6 +1,6 @@
 # 0133 — A public page has no house, so the public door has one switch
 
-- **Status:** Locked 2026-09-06 — the founder's four answers in session (the public pages ship in place behind one deployment switch; the general assistant is a page plus the Ask AI panel, named **Mudavym**; `/no-access` is wired, not retired). The assistant's design is NOT decided here — it becomes its own record after the research fan-out (see §Consequences). **Amended 2026-09-11: the `/sommelier` HOLD clause is lifted — see Review trail.** Everything else in this record stands.
+- **Status:** Locked 2026-09-06 — the founder's four answers in session (the public pages ship in place behind one deployment switch; the general assistant is a page plus the Ask AI panel, named **Mudavym**; `/no-access` is wired, not retired). The assistant's design is NOT decided here — it becomes its own record after the research fan-out (see §Consequences). **Amended 2026-09-11: the `/sommelier` HOLD clause is lifted — see Review trail.** Everything else in this record stands. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]]: the one public switch becomes permanent-on at cutover and its off branch is deleted; the founder also ratified the public doors' treatment, self-hosted fonts, a permanent redirect for the legacy hostname, and a search direction — see "Amendment 2026-09-16" below. Answered, not yet built.]**
 - **Date:** 2026-09-06
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** public pages, login, register, feature flags, mudavym_design, VITE_MUDAVYM_PUBLIC, dark launch, no-access, wine-agent, Ask Mudavym, onboarding, sketch 104, ADR 0044, ADR 0131
@@ -83,7 +83,7 @@ Wire it (a house-less person lands there; the fabricated house goes) · retire i
    `apps/web/src/lib/mudavym/publicDesign.ts`, whose precedence is the same as the per-house
    hook's: `localStorage["mudavym.design.public"]` (`1|true|on` / `0|false|off`) for a
    designer's browser, then `import.meta.env.VITE_MUDAVYM_PUBLIC` (`1|true|on`), then
-   `false`. Absence is off, and off is byte-identical.
+   `false`. Absence is off, and off is byte-identical. [2026-09-16, ADR 0149: this holds only until the cutover merge, which makes the switch permanent-on and deletes the off branch — see "Amendment 2026-09-16" below.]
 2. **The assistant: a page plus the Ask AI panel.** The page's route is `/ask`; the panel
    stays where it is and opens the same backend. The page is a NEW route, so like
    `/connections` (ADR 0114) its flag, `mudavym_design_ask`, means "this surface exists
@@ -138,6 +138,38 @@ Wire it (a house-less person lands there; the fabricated house goes) · retire i
 - **Retiring `/no-access`** — the state it describes is real, and the fabricated house is a
   defect on its own (no-access.md §13.3).
 
+## Amendment 2026-09-16 — the cutover, the doors, the fonts, the old hostname, and search
+
+Carried from [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]]
+(its founder-answers table, verbatim words in session) and from answers the founder gave
+the same evening. Nothing above is rewritten; where a sentence above no longer holds after
+cutover, it carries a bracket pointing here. **All of this is answered, none of it is built.**
+
+1. **The switch becomes permanent-on at cutover** (0149 §Decision). `VITE_MUDAVYM_PUBLIC`
+   stops being a choice: the cutover merge deletes "the public switch's off branch" with the
+   rest of the gate machinery, once the founder approves that file group on the deletion
+   manifest. Until that merge, decision 1 above holds exactly as written. Every
+   `mudavym_design_*` column that exists stays in the table, unread (0149: no table, column
+   or row is deleted). The ten-column migration named under "Mechanics" above is not on
+   `main` (`supabase/migrations/` at `60ed83a7` holds five `mudavym_design` files, none of
+   them `20260907010000`).
+2. **The public doors' treatment is ratified** (0149 row 7): a readable `/privacy`, the vendor
+   board at `/v/:slug`, sign in before resending verification, today's invite preview
+   fields, and publisher attribution with no Mudavym seal. This ratifies the *treatment*
+   Codex drew; adopting its uncommitted *code* is still row 1's audit (adopted only if the
+   quality baseline is great and it aligns with our needs).
+3. **Every face is self-hosted** (0149 row 9): no public page makes a Google Fonts request.
+4. **The legacy hostname redirects permanently.** `restaurant-ai-automation-web.vercel.app`
+   answers with a permanent redirect to `https://mudavym.com` — **after** the OAuth redirect
+   URIs registered with each provider have been checked, because a callback still
+   registered on the old host would break sign-in the moment it redirects.
+5. **Search and answer engines.** The founder: *"robots.txt must be unique, use already
+   created teams to build upon geo, seo and the projectile it will go."* Recorded as
+   given: `robots.txt` is Mudavym's own, and SEO and GEO build on the teams already
+   created (`.planning/01-org/commercial/growth/teams/`) rather than a new structure. What
+   "unique" requires and where the work goes is the separate spec being researched; this
+   record decides nothing beyond his sentence.
+
 ## Review trail
 
 | When | Who | What |
@@ -145,3 +177,4 @@ Wire it (a house-less person lands there; the fabricated house goes) · retire i
 | 2026-09-06 | parent session (new-pages fork) | Measured the gate's dependence on a restaurant id (`useMudavymDesign.ts:141-143`); framed the four forks; asked. |
 | 2026-09-06 | founder, in session | Four answers recorded above. |
 | 2026-09-11 | founder, in the feat/mudavym-design-p4 session (relayed cross-session, then confirmed directly with the founder in the new-pages fork's own session before this row was written) | **AMENDMENT: `/sommelier` HOLD is lifted.** Founder's ruling on a same-night route-ownership collision between the two Mudavym-design sessions: the new-pages fork keeps only `/logs` (its one finished, wired page) going forward; the feat/mudavym-design-p4 session takes over every other route this ADR forked to the new-pages session (once that session's completed work is confirmed), *and* `/sommelier` — previously HOLD, not forked to either session — is released to feat/mudavym-design-p4 to build. Every design decision that session applies must come from a locked record; where one is missing, the founder is asked before a new one is added. This is the only clause 0133 had authority over; the ownership handoff itself is a working-allocation call, not a design decision, and is not recorded as an ADR. |
+| 2026-09-16 | founder, in session (ADR 0149 and the same evening) | **AMENDMENT 2026-09-16** (section above): the switch permanent-on at cutover; the public doors' treatment ratified (0149 row 7); fonts self-hosted (row 9); the legacy Vercel hostname redirects permanently to mudavym.com after the OAuth redirect URIs are checked; robots.txt and SEO/GEO recorded as his sentence, spec researched separately. Answered, not built. |

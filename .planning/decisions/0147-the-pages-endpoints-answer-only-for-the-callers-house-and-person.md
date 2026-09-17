@@ -1,6 +1,6 @@
 # 0147 — The pages' endpoints answer only for the caller's house and person
 
-- **Status:** Locked 2026-09-12. The founder set the scope in session: *"What the pages need, plus the named gaps"*. Built on `fix/page-endpoints-tenant-faults`.
+- **Status:** Locked 2026-09-12. The founder set the scope in session: *"What the pages need, plus the named gaps"*. Built on `fix/page-endpoints-tenant-faults`. **[AMENDED 2026-09-16: the founder answered four of the gaps below in the [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] session (rows 15, 17, 18, 19). Each answer is a bracket beside its item; being built, not built.]**
 - **Deciders:** Aldemir (scope); the orchestrating session (the fixes)
 - **Related:** [[0141-a-stock-write-names-the-house-it-is-for]], [[0146-asking-costs-money-so-asking-is-bounded]], [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]]
 
@@ -54,17 +54,32 @@ By module (details and failing output in the named report):
 - **Vendor intel, faults 1 and 2.** Decisions on public-register rows with no house can
   be undone from any house, and name a person from another house. This is a founder
   fork with options A-D; the recommendation is C.
+  [FOUNDER ANSWERED 2026-09-16, being built — ADR 0149 row 17: a new nullable deciding-house
+  column, and the person's name and the undo only inside that house. Also carried into
+  ADR 0124.]
 - **Integrations.** Who may disconnect an integration for a user with no tenant is a
   founder fork. The spec pins today's refusal.
+  [FOUNDER ANSWERED 2026-09-16, being built — ADR 0149 row 18: the creator of a grant may
+  always end it, an ex-member included, and the ADR 0118 mail sweep runs on that
+  disconnect (0118 D15). Until built, the spec above still pins the refusal.]
 - **Notification senders.** POST `/notifications/order-approval`, `low-stock`,
   `delivery`, `price-negotiation`, `system-alert` and `send-email` still send to any
   user id or email address the body names. Who may notify whom is a product rule,
   not a scoping bug.
+  [FOUNDER ANSWERED 2026-09-16, being built — ADR 0149 row 15: the five uncalled POST
+  senders are closed (internal only); `send-email` is owner/manager, with recipients
+  limited to the house's members and its vendors' contacts; and the seven resolver sites
+  are mapped to categories, an unmapped category refused (OD-121).]
 - **Notification preferences.** `ordersMode`, `reportsMode` and `digestFrequency` are
   free strings with no allowlist. `startTime`, `endTime` and `digestTime` have no HH:mm
   check, and the columns have no CHECK constraint.
 - **Wines.** The bottle picker searches only the wine library. That is the open fork
   between ADR 0144 and ADR 0124, not a code fault.
+- [ADDED 2026-09-16 — not in this list as written. **`POST /communications/email` as an
+  open relay** (`communications.controller.ts:214`). FOUNDER ANSWERED 2026-09-16, being
+  built — ADR 0149 row 19: two locked doors. The orchestrator through the internal service
+  key; users by JWT, owner/manager, their own house only, recipients limited to its vendor
+  contacts and members, and an audit row per send.]
 
 ## Alternatives rejected
 
@@ -95,3 +110,4 @@ By module (details and failing output in the named report):
 | 2026-09-12 | Per-module fixers (workflow) | Each fault reproduced by a failing spec before its fix; reports in p4-scratch/endpoint-faults |
 | 2026-09-12 | Adversarial pass | OVERTURNED the notifications fix: the push subscribe and unsubscribe siblings still wrote a victim's row |
 | 2026-09-12 | Orchestrating session | Every notification route scoped; two read-error baseline rows retired. Not re-audited: the founder's decision "Your word as PASS, no agents" |
+| 2026-09-16 | Aldemir, via ADR 0149 | Rows 15, 17, 18, 19 answered: notification senders and categories, public-register rows, the ex-member disconnect, and the `/communications/email` relay. Brackets beside "Named and not fixed"; being built, none claimed built |

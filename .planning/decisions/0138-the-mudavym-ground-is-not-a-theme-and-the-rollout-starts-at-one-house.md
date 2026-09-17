@@ -1,6 +1,6 @@
 # 0138 — The Mudavym ground is not a theme, and the rollout starts at one house
 
-- **Status:** Locked 2026-09-12 — both answers given by the founder directly in session, asked one at a time
+- **Status:** Locked 2026-09-12 — both answers given by the founder directly in session, asked one at a time **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]]: row 6 retires the light/dark toggle — charcoal everywhere, paper only on surfaces that declare it — which extends D1 from the `.mudavym` scope to the whole app; and 0149 supersedes the one-house rollout D2 began, in favour of one cutover for every house. Answered, not built. Nothing below is rewritten.]**
 - **Date:** 2026-09-12
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** mudavym, warm charcoal, 15130F, ground, theme, ThemeContext, dark mode, prefers-color-scheme, feature flags, restaurant_feature_flags, mudavym_design, rollout, one house, ALDEMIR, go-live
@@ -76,6 +76,7 @@ reachable from the trunk, so the rollout had no mechanism either.
 
 **D1. The `.mudavym` scope paints Warm Charcoal `#15130F` regardless of the app's
 light/dark toggle; the rest of the app still respects the user's theme.**
+[2026-09-16, ADR 0149 row 6: the toggle itself is retired. Charcoal is the ground everywhere, and paper renders only where a surface declares it (`[data-ground="paper"]` is today's one such declaration). The second clause of D1 stops holding when that is built.]
 
 The charcoal column moves onto the bare `.mudavym` selector
 (`apps/web/src/styles/mudavym.css:45-46`, `--paper-0: #15130F` at `:54`) and the
@@ -182,7 +183,7 @@ but a per-surface decision written into the markup.
   Mudavym page, with no dependency on a theme toggle, an OS setting, or the
   forced-light migration. One house is live, so the redesign gets real use before
   thirteen more houses can be hurt by a defect. Rolling back is deleting one row.
-- **What becomes harder.** Two grounds now coexist in one app, and a user in light
+- **What becomes harder.** [2026-09-16: with the toggle retired by ADR 0149 row 6, this seam goes away once that is built.] Two grounds now coexist in one app, and a user in light
   mode crosses a hard visual seam entering a rebuilt page — accepted by D1, not
   overlooked. Every future token added to the `.mudavym` scope must be added as
   part of the ground *set*, or it will be a light-mode value on charcoal.
@@ -214,5 +215,6 @@ but a per-surface decision written into the markup.
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-16 | Aldemir (founder), in session (ADR 0149) | Row 6: light/dark toggle retired — charcoal everywhere, declared paper surfaces only; D1 extends app-wide. D2's one-house rollout superseded by 0149's single cutover. Answered, not built |
 | 2026-09-12 | Aldemir (founder) | D1 and D2 asked directly in session and answered; both Locked |
 | 2026-09-12 | — | Created; D1 shipped in `fix/motion-sweep-defects`, D2 live in production as one row |

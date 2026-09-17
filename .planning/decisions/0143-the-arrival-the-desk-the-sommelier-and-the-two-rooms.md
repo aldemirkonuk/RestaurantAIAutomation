@@ -1,6 +1,6 @@
 # 0143 — The arrival, the desk, the sommelier, and the two rooms nobody visits
 
-- **Status:** Locked on six founder calls, 2026-09-12, in session.
+- **Status:** Locked on six founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 4, 7, 8, 10 and 11 — Studio and SimPOS, the public doors, the contact address, the desk's defaults, and the arrival's threshold, `/onboarding` redirect and tutorial action boxes. See "Founder answers, 2026-09-16" below. Answered, not built.]**
 - **Numbering:** drafted as 0140; 0140 was claimed on a pushed ref by a peer session (`0140-the-door-outbox-keeps-the-receipt-and-claims-nothing-it-cannot-prove.md`) while this sat unfiled, and 0141 and 0142 were taken by this session's own work. Renumbered rather than collided: see CLAUDE.md 5b, "never reuse a number".
 - **Date:** 2026-09-12
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
@@ -31,7 +31,7 @@ questions the analysis produced. Those four answers are this record.
 wordmark, the seal, one sentence in the house voice, both grounds — rather than
 seven separate treatments. One thing to get right, one thing to review, and a
 stranger meets the same house at every door. The component does not exist yet;
-building it is the first task of that group.
+building it is the first task of that group. [2026-09-16, ADR 0149 row 7: the treatment Codex drew for these doors is ratified — see the founder answers of that date below and ADR 0133's amendment. "Both grounds" is read under 0149 row 6: charcoal, and paper only where a surface declares it.]
 
 `login` and `register` are NOT in this set. The founder rejected their redrawn
 versions (*"It looks too modern... This just looks like an AI web page"*) and
@@ -41,7 +41,7 @@ asked for today's pages improved instead, so their treatment is open.
 
 Both page notes had already concluded this in their own section 13. `/admin`
 becomes the operations desk with health as a section inside it; `/admin/health`
-stays as a redirect so no bookmark breaks.
+stays as a redirect so no bookmark breaks. [2026-09-16, ADR 0149 row 10: the desk's defaults are kept — see the founder answers of that date below.]
 
 ### 3. The sommelier is routed to the assistant that exists
 
@@ -124,7 +124,11 @@ page note at all. They are internal tooling with no customer. They keep working
 exactly as they do: no Mudavym design, no flag, no dossier, and the design budget
 goes to the eighteen routes a customer actually sees.
 
-This is recorded so nobody rediscovers them later as a gap and "fixes" them. A
+[2026-09-16, ADR 0149 row 4: SimPOS (`/simpos/:restaurantId` and its two children) joins these two — an internal tool kept as it is, outside the design and outside the legacy deletion. Studio (`/studio` and its children) is NOT decided: it waits on a check of the Codex conversations for an update in flight.] This is recorded so nobody rediscovers them later as a gap and "fixes" them. A
+
+[2026-09-17, ADR 0149 row 32: the Codex-conversation check found no Studio update (the founder never named Studio to Codex; the Studio pages date from April 2026). **Studio is kept as an internal tool**, beside SimPOS, `/dev-sandbox` and `/dev/truth`, outside the design and outside the legacy deletion.]
+
+[2026-09-17, ADR 0149 row 35: **`/login` and `/register` take the flyleaf look of sketch 104 direction C** (same fields and flow; nothing moves), reopening this record's improve-in-place-only reading for those two pages. A sketch (118) goes to the founder before the build; the flyleaf itself still lives on `/get-started`.]
 line goes in each page note saying it was decided, not overlooked. Retiring them
 was rejected: `/dev/truth` is the surface that answers what the system actually
 believes, which is a diagnostic that has been used and that nothing replaces.
@@ -177,7 +181,7 @@ believes, which is a diagnostic that has been used and that nothing replaces.
 - The six questions of the twelve that are still open: `/help`,
   `/vendor-prices`, `/promotions`, `/authorize/:integrationId`, `/ask`,
   `/recommendations/catalog`, and the public-document treatment for `privacy`
-  and `/v/:slug` beyond the shared shell.
+  and `/v/:slug` beyond the shared shell. [2026-09-16: that treatment is now settled by ADR 0149 row 7.]
 - Whether any page other than the sommelier reads the database directly from the
   browser. That is a measurement nobody has run.
 
@@ -283,6 +287,40 @@ Rejected:
 pages are improved in place behind the public design switch (`publicDesign.ts`), not
 redrawn. With the switch off, each renders exactly as main does. Built in 78910028.
 
+## Founder answers, 2026-09-16 — carried from ADR 0149
+
+Answered in session and recorded verbatim in
+[[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]]'s
+founder-answers table; the row numbers below are that table's. None of this is built yet.
+
+**Studio and SimPOS (row 4).** The founder: *"/studio was getting another update I'm not
+sure tho, check codex convos but imPOS keep-asis"*. **SimPOS stays as it is**: an internal
+tool, outside the Mudavym design and outside the legacy deletion, the same standing section 5
+gives `/dev-sandbox` and `/dev/truth`. **Studio is open**: it waits on a check of the Codex
+conversations, and nothing about its design or deletion is decided until that check is read
+back to him.
+
+**The public doors (row 7).** The treatment Codex built is ratified: a readable `/privacy`,
+the vendor board at `/v/:slug`, sign in before resending verification, today's invite
+preview fields, and publisher attribution with no Mudavym seal. Adopting the code itself
+stays under 0149 row 1 (audited, adversarially judged, adopted only if the quality baseline
+is great). Carried also into ADR 0133's amendment of the same date.
+
+**The contact address (row 8).** `support@mudavym.com` everywhere a person is told how to
+reach us: `/privacy`, `/help`, and the auth-email footers. Measured when this was written:
+`support@wineops.ai` appears 5 times under `apps/web/src` and `apps/api-gateway/src`
+(`grep -rnoE 'support@[a-z.-]+'` at `60ed83a7`), and no other support address appears.
+
+**The desk's defaults (row 10).** Kept: the five local-only knobs removed, the other tabs
+linked out, and the health read for owners only (read-only, consistent with the 2026-09-12
+restart answer above).
+
+**The arrival (row 11).** Three things: **(a)** the house-wide low-stock threshold is one
+line on folio 2; **(b)** `/onboarding` redirects permanently to
+`/get-started`; **(c)** in his words, *"+ improve the UI for tutorial action boxes"* — drawn
+first as sketch 115 for his review, one of 0149's gated stops, before it is built. Carried
+also into ADR 0144.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -291,3 +329,5 @@ redrawn. With the switch off, each renders exactly as main does. Built in 789100
 | 2026-09-12 | Aldemir | Two more: the arrival is C plus the held seal plus talking; the two dev routes stay as internal legacy |
 | 2026-09-12 | — | Renumbered 0140 to 0143 after a peer claimed 0140 on a pushed ref |
 | 2026-09-12 | Aldemir | Three more: on-device speech keeping only the rows (closes 0113 Q6/Q7); only what Mudavym proposed waits for the seal; the auth emails renamed, OD-27 partly lifted |
+| 2026-09-17 | Aldemir | Via ADR 0149 rows 32 and 35: Studio kept as an internal tool; `/login` and `/register` take the flyleaf look (sketch 118 first) |
+| 2026-09-16 | Aldemir | Five more, via ADR 0149 (rows 4, 7, 8, 10, 11): SimPOS kept as-is and Studio waiting on the Codex-conversation check; the public doors' treatment ratified; `support@mudavym.com` everywhere; the desk's defaults kept; the threshold on folio 2, `/onboarding` redirecting permanently to `/get-started`, and the tutorial action boxes redrawn for review |

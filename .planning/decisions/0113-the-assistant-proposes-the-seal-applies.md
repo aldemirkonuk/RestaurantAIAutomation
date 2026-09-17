@@ -1,6 +1,7 @@
 # 0113 — The assistant proposes the house's configuration; the seal applies it
 
-- **Status:** **Proposed — research and design only, nothing built.** The founder asked for
+- **Status:** **[LOCKED 2026-09-16 — the founder, in session, via [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] row 13 (*"Lock 0124, 0126 and 0113"*, Q4 asked separately). Q4 was answered the same evening: per house (see Q4 below). Q6 and Q7 had closed on 2026-09-12 (review trail), so no question in this record is open. The lock records the decision, not a build — 0149 row 13 adds that pages build only on built behaviour. The status as written before the lock is kept below.]**
+  ~~**Proposed**~~ **— research and design only, nothing built.** The founder asked for
   the approach, not the build: *"research this and understand how should we approach this."*
   **Four of the five open questions were answered by the founder on 2026-09-04 and are now
   binding on this ADR** — Q1, *"talk with you"* means **both voice and typing, on both
@@ -336,7 +337,7 @@ that have a write path today, and it is honest about the one that does not:
 | approval ceiling + role | `PUT /settings/approval-thresholds` (`settings.controller.ts:107`) — **behind the role gate of rule 2** |
 | notification channel + quiet hours | `PATCH /notifications/preferences` (`notifications.controller.ts:159`) |
 | vendor terms for vendors already added | `PUT /vendor-terms/:providerId` (`vendor-terms.controller.ts:71`) |
-| **market drop threshold** | **none.** It is read from the `MARKET_SIGNAL_DROP_PCT` environment variable, per deployment, not per house (`notifications/producers/market-price.producer.ts:95-97`; `market-signal.ts:93,96`). It must be **named and not offered** until a per-tenant column exists. |
+| **market drop threshold** | **none.** It is read from the `MARKET_SIGNAL_DROP_PCT` environment variable, per deployment, not per house (`notifications/producers/market-price.producer.ts:95-97`; `market-signal.ts:93,96`). It must be **named and not offered** until a per-tenant column exists. [2026-09-16: Q4 answered per house, so that column is now decided and is to be built; until it exists this row stays named and not offered.] |
 
 **Skip semantics.** An explicit skip writes a `system_audit_log` row —
 `action: 'configuration_step_skipped'`, `changes: {register, offered: [...], answered: []}`,
@@ -460,8 +461,15 @@ scope (<https://owasp.org/www-project-top-10-for-large-language-model-applicatio
    it — but it may **never propose flipping it, sealed or not**. Blast radius draws the line,
    not the word "settings". Rule 2 already reads this way and is now the founder's call
    rather than a session's reading of it.
-4. **The market drop threshold** is per-deployment today. Is per-house worth a column and a
-   migration, or is one number for every house correct for now?
+4. ~~**The market drop threshold** is per-deployment today. Is per-house worth a column and a
+   migration, or is one number for every house correct for now?~~ **ANSWERED 2026-09-16 —
+   PER HOUSE.** The founder, in the ADR 0149 session: *"per house, everything will must
+   deployed finished"*. Carried as: an **additive** per-house column, defaulting to the value
+   the deployment resolves today (`DEFAULT_DROP_THRESHOLD = 0.1` at `market-signal.ts:92`,
+   unless `MARKET_SIGNAL_DROP_PCT` is set; the production environment was not read for this
+   record), so no house's behaviour changes on the migration; **settable in `/settings`**; and
+   **proposable by the arrival assistant** under rules 1-4 like any other threshold. Answered,
+   not built.
 6. **The speech provider — what leaves the device?** *(opened by Q1's answer.)* Two shapes,
    and they are not interchangeable. **On-device dictation** (the platform's own recogniser —
    `SFSpeechRecognizer` on iOS, the Web Speech API in the browser) means the audio may never
@@ -491,6 +499,8 @@ scope (<https://owasp.org/www-project-top-10-for-large-language-model-applicatio
    everything the house exposes, with every source named; a person's mailbox only through
    that person's own consent row.** See rule 6.
 
+**[2026-09-16: none of the three is open any more — 6 and 7 closed on 2026-09-12, 4 on
+2026-09-16. The paragraph below is kept as written.]**
 **Still open after the 2026-09-04 calls: 4, and the two that Q1's answer opened — 6 and 7.**
 4 is a product question with a migration behind it and nothing in this ADR is blocked on it;
 until it is answered the market threshold is **named and not offered**. **6 and 7 are
@@ -535,3 +545,9 @@ of them is kept.
   `SpotCountPanel.tsx:84-86` already uses. No audio and no transcript leave the device.
   **Q7:** a spoken configuration is recorded as its rows, each marked `spoken`, and the
   transcript is not kept. **Open: Q4.**
+- 2026-09-16 — **LOCKED, and Q4 closed.** The founder locked this record in session with
+  0124 and 0126 ([[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]]
+  row 13), asking Q4 separately; his answer the same evening: *"per house, everything will
+  must deployed finished"* — an additive per-house column, today's value the default,
+  settable in `/settings`, proposable by the arrival assistant. **Open: none.** Nothing
+  built by this entry; the column is build work.
