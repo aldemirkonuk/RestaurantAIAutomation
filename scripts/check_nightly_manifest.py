@@ -36,9 +36,10 @@ WHAT IT CHECKS
      into pages), and a declared route and existing file unless file is null.
   6. design-verdicts.json names only manifest pages; sim-houses.json lists
      UUIDs with sim- slugs.
-  7. No e2e/nightly file calls `request.get(`/`post(`/… except lib.ts's
-     `gateway()` wrapper, whose errors are redacted (a Playwright call log
-     carries the bearer token).
+  7. No file under e2e/nightly (subdirectories included) makes a
+     `request.<method>(` or `request[` call except lib.ts's `gateway()`
+     wrapper, whose errors are redacted (a Playwright call log carries the
+     bearer token). A text match: a renamed variable escapes it.
 
 WHAT IT DOES NOT CHECK (said, not implied)
 ------------------------------------------
@@ -317,8 +318,8 @@ def check(root: Path) -> list[str]:
 
     # 7. No raw gateway call outside lib.ts `gateway()` (audit 2026-09-17, B1):
     #    a Playwright request error's call log carries the bearer token.
-    raw_call = re.compile(r"\brequest\.(get|post|put|patch|delete|fetch|head)\(")
-    for f in sorted((root / NIGHTLY).glob("*.ts")):
+    raw_call = re.compile(r"\brequest(?:\.(get|post|put|patch|delete|fetch|head)\(|\[)")
+    for f in sorted((root / NIGHTLY).rglob("*.ts")):
         text = f.read_text(encoding="utf-8")
         if f.name == "lib.ts":
             start = text.find("export async function gateway(")
@@ -332,7 +333,7 @@ def check(root: Path) -> list[str]:
         for m in raw_call.finditer(text):
             line = text.count("\n", 0, m.start()) + 1
             problems.append(
-                f"[7] {NIGHTLY}/{f.name}:{line}: raw `{m.group(0)}` — call the gateway through lib.ts gateway(), which redacts the error"
+                f"[7] {f.relative_to(root).as_posix()}:{line}: raw `{m.group(0)}` — call the gateway through lib.ts gateway(), which redacts the error"
             )
 
     # 6. verdicts and houses

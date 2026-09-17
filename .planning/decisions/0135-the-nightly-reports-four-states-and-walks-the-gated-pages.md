@@ -4,7 +4,7 @@
 - **Date:** 2026-09-11
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** e2e-prod, nightly, playwright, wave-h, backtest, canned-day, forecast-fixture, four-state, absent, cannot_check, mudavym_design flags, teardown_sim, rate-limit
-- **Links:** [[0089-a-page-can-start-the-engine-it-reports-on]], [[0093-a-scenario-is-replayed-and-verified-against-its-own-expectation]], [[0097-the-gateway-says-which-build-it-is]], [[0106-every-dependabot-pr-resolved-by-measurement]], [[0131-the-new-house-goes-live-dark-then-one-house-at-a-time]] (unmerged when this ADR was written 2026-09-11; on `main` since #289, 2026-09-12), `.planning/v3.0-TECH-DEBT.md` "CI — the nightly production E2E…", `.planning/testing/README.md`, PR #349 for `test/nightly-e2e-modernised`
+- **Links:** [[0089-a-page-can-start-the-engine-it-reports-on]], [[0093-a-scenario-is-replayed-and-verified-against-its-own-expectation]], [[0097-the-gateway-says-which-build-it-is]], [[0106-every-dependabot-pr-resolved-by-measurement]], [[0131-the-new-house-goes-live-dark-then-one-house-at-a-time]] (unmerged when this ADR was written 2026-09-11; on `main` since #372, merge train 2, 2026-09-13), `.planning/v3.0-TECH-DEBT.md` "CI — the nightly production E2E…", `.planning/testing/README.md`, PR #349 for `test/nightly-e2e-modernised`
 
 ## Context
 
@@ -89,7 +89,8 @@ corpus.** Concretely:
   and navigates by `pushState` so no page costs a second `/auth/me`. A per-route
   `AuthBudget` waits when eight calls sit in any rolling minute and records the peak. With
   the override on, a page with no `.mudavym` root — or one the router's catch-all sent to
-  `/` — is **`absent`**, not a pass. A page that renders its failed-read sentence is
+  `/` — is **`absent`**, not a pass. **[Superseded 2026-09-17 by founder call 10: a page
+  enrolled in `MUDAVYM_PAGES` with no root, or landing elsewhere, is a `fail`.]** A page that renders its failed-read sentence is
   recorded twice: honesty `pass`, reads **`fail`**. Empty and denied states in words are
   `pass`. A house with no order or document to open the door/document routes on is
   `absent` for those routes. A screenshot of every page in both passes goes into the
@@ -167,7 +168,9 @@ corpus.** Concretely:
 | F5 | The 2026-09-06 memory reads "sims kept AND flipped"; production shows no flag row at all. Flip them? | reported as OFF | `scripts/flip_mudavym_design_flags.py`, his keystrokes |
 
 **F2, F3 and F4 are answered — see "Founder's answers (relayed), 2026-09-11" below.
-F1 and F5 remain open**, unaddressed by anything relayed to this session.
+F1 and F5 remain open**, unaddressed by anything relayed to this session. **[2026-09-17:
+F3 reopened by founder call 9 — the gateway scopes by the sign-in token, so a second house
+needs a second account.]**
 
 ## Founder's answers (relayed, 2026-09-11)
 
@@ -185,12 +188,14 @@ founder if anything here is acted on further.
   `servicesagent-orchestrator-production.up.railway.app` (the corrected host, above).
   Waves C, D, E, G stay **unarmed** — `RABBITMQ_URL`, `TOAST_WEBHOOK_SECRET`,
   `GMAIL_USER` stay unset, so those four waves keep reporting `cannot_check` rather than
-  attempting a write. The schema disagreements underneath D, E and G (Wave E's Gmail
+  attempting a write. **[2026-09-17: D, E, G deleted by ADR 0137; Wave C unarmed now reads
+  `absent` by decision, founder call 8.]** The schema disagreements underneath D, E and G (Wave E's Gmail
   pipeline in particular — `wave_e_gmail_pipeline.py:33,65,137-138` upserts to a trigger
   that sends a real low-stock email) are **not repaired in #349**; they are filed as
   their own tech-debt unit in `v3.0-TECH-DEBT.md`, separate from this ADR.
 - **F3 — legacy pass house.** A second sim house via `E2E_LEGACY_RESTAURANT_ID`, not the
-  same-house-override default this ADR shipped with.
+  same-house-override default this ADR shipped with. **[Replaced 2026-09-17 by founder
+  call 9: a different house is refused; the legacy pass uses the account's own house.]**
 - **F4 — door/document routes.** Leave `/receiving/:id/door` and `/documents/:id`
   `absent`; seed nothing into the e2e house. It is production data, even in a sim house,
   and seeding it is not this PR's call.
@@ -212,8 +217,10 @@ Three parallel angles + a possible adversarial pass, per the skill (ADR 0090):
 
 **Overall verdict: BLOCK.** Per the skill's step 6, any angle returning BLOCK skips the
 adversarial pass — this PR did not reach one. Full report, all three angles' findings in
-full, and what could not be checked: `.planning/07-reference/pr-audits/349-dd51f235.md`,
-also posted to the PR as the durable, SHA-stamped record the skill requires.
+full, and what could not be checked: the PR comment https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/349#issuecomment-5643186310, the durable, SHA-stamped record
+the skill requires. **[2026-09-17: the committed copy `.planning/07-reference/pr-audits/349-dd51f235.md`
+was deleted before merge on the founder's call — it named no retirement (§4), and the comment
+holds the same text; recoverable at `881fec82`.]**
 
 **Why BLOCK, in one sentence:** `playwright.nightly.config.ts:49` sets
 `trace: 'retain-on-failure'`, and a Playwright trace captures the full network log — this
@@ -267,7 +274,7 @@ The fixes above reached the PR with the rebuild below.]**
 
 The founder's instruction: *"Rebuild E2E test with new pages artifacts and updated
 parts, there should be docs to understand it."* Six calls were put to him in session on
-2026-09-16, and three more on 2026-09-17 after the audit (below). Each is recorded with
+2026-09-16, three more on 2026-09-17 after the audit, and two after the re-audit (below). Each is recorded with
 what it rejected. The first question allowed several answers; he chose two of its three.
 
 | # | Fork | Chosen | Rejected, and why |
@@ -281,6 +288,8 @@ what it rejected. The first question allowed several answers; he chose two of it
 | 7 | (2026-09-17) A run with both a fail and an unrun check | **Fail wins, exit 1**; the unrun checks are listed under it | Could-not-check wins, exit 2 (as first written): a live production failure could never be the headline while any wave is unconfigured |
 | 8 | (2026-09-17) Wave C, kept unarmed by F2 | **Absent, by decision**, while `RABBITMQ_URL` is unset | `cannot_check`: every nightly would be red for that reason alone |
 | 9 | (2026-09-17) F3's second house, now that the gateway is known to scope by the token | **Refuse a second house** (`cannot_check` with the reason); the legacy walk uses the account's own house with the design forced off. **F3 is reopened**: a second house needs a second account | Allowing `POST /auth/switch-restaurant` in the walk: works with one account, but mints a 7-day session on every run |
+| 10 | (2026-09-17, re-audit) A page enrolled in `MUDAVYM_PAGES` with no Mudavym root | **Fail**: it broke, or production is behind main | Absent (as first written): a broken page or missing route would never be red |
+| 11 | (2026-09-17, re-audit) The committed 2026-09-11 audit report, which named no retirement (§4) | **Delete it and cite the PR comment** (recoverable at `881fec82`) | Keep it under a founder waiver, like #353 |
 
 **Measured before building** (2026-09-16, clean worktree at `origin/main` `60ed83a7` merged in):
 - **The manifest had rotted in five days.** Of its page sentences, 9 no longer rendered from
@@ -456,6 +465,63 @@ into the summary, the job summary, `wave_f.xml` and `error-context.md`.
   `.planning/decisions/README.md`. Under the gate skill's step 4, a merge needs the
   founder's explicit word whatever the angles conclude.
 
+## Re-audit on 881fec82 (2026-09-17) and what it changed
+
+The three angles ran again on the fixed head.
+- **Correctness:** APPROVE WITH NOTES. All six earlier findings are closed, each re-proven.
+- **Compliance:** APPROVE WITH NOTES.
+- **Security:** **BLOCK (B2).** B1 is closed, but the plaintext test password could still
+  reach the artifact.
+
+The findings were posted to the PR, not committed.
+
+**B2, blocking: the password could reach the public artifact.**
+- **Cause:** the login page keeps the typed password on an error. When a test fails,
+  Playwright snapshots every input's value into `error-context.md`, and a failed `fill()`
+  prints the value in its call log. Both land under `apps/web/test-results/` and in
+  `wave_f.xml` and the tee'd log, which were uploaded.
+- **Reproduced by the auditor** on loopback (a fake login page answering 503, hanging,
+  or read-only). The sentinel reached `error-context.md`, `wave_f.xml` and stdout.
+- **Fixed in four layers:**
+  - On failure, the sign-in test empties the password field and throws only a scrubbed
+    first line.
+  - `redact()` also removes the configured password value, and redaction now walks
+    parsed values instead of rewriting serialized JSON, which could corrupt a record
+    (correctness N1).
+  - Playwright's own output is no longer uploaded: no `apps/web/test-results/`, and no
+    tee'd log (the job log is masked by GitHub).
+  - A fail-closed step, `scripts/e2e/scrub_artifacts.py`, scrubs the password, JWTs and
+    bearer tokens from every file in the upload set. If anything survives, the upload and
+    the deploy-gate PR comment do not run.
+- **Credentials are step-scoped:** `E2E_TEST_EMAIL` and `E2E_TEST_PASSWORD` are mapped only
+  into the steps that sign in, summarise or scrub.
+- **Re-proven** with the auditor's three reproductions on the fixed code: **0 files** carry
+  the password. Each failure path really ran: `signin.ui` failed, `error-context.md`
+  exists, and its password field is empty.
+
+**Also fixed:**
+- **Records:**
+  - Wave H records carry their test id, so an errored test is matched to its own records,
+    not a total (N2).
+  - `walk.legacy.house` is recorded only after the house check (N3).
+  - The comments no longer say `E2E_LEGACY_RESTAURANT_ID` is supported (N5).
+  - Redaction also covers `refresh-token`, `x-api-key`, `token=`, `secret` and `cookie`.
+- **Summary:** it redacts every reason, not just the browser wave's.
+- **Tests:** committed self-tests for the verdict logic (`nightly_summary.py --self-test`,
+  8 cases) and the scrub (`scrub_artifacts.py --self-test`, 7 cases) now run in CI (N6).
+- **Skips:** a skipped case is now `cannot_check`, not `absent`. This restores this ADR's
+  "never green by skipping" (compliance). Wave C unarmed stays the one decided absence.
+- **Guard:** rule 7 also matches `request[` and scans subdirectories. It is still a text
+  match, and says so.
+- **Documents:** the prose contradictions above are bracketed, the calls table has rows 10
+  and 11, and the ADR 0131 link now names #372.
+
+**Not fixed:** the guard's comment detection still misses `"x"// phrase` and
+`return/* phrase */`, and a WebSocket frame bypasses the read-only guard. The only
+client emits are subscribe and ping, so no write goes that way. Both are recorded as known
+limits. There is no host allowlist for dispatch inputs: anyone who can dispatch can
+already read the secrets.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -464,3 +530,5 @@ into the summary, the job summary, `wave_f.xml` and `error-context.md`.
 | 2026-09-11 | pr-audit-gate (3 Opus auditor angles) | **BLOCK** — security angle (trace-file credential leak on a public repo); correctness and compliance both APPROVE WITH NOTES; adversarial pass skipped per step 6. See "Audit result" above and the full report. |
 | 2026-09-16 | Founder (six calls in session) + this session | Rebuilt on the PR: new pages, public doors, pending routes, design calls, the manifest guard, fix-list items 3, 5, 6 and 7. The 2026-09-12 "merged" line was corrected. Audit gate not re-run. |
 | 2026-09-17 | This session, on the founder's "complete e2e and review" | First full pipeline run against production (from a laptop). It found 2 live product defects and a suite defect (the summary expected the retired waves D/E/G), and CodeQL's high alert on the extractor. The suite defect and the alert are fixed; the product defects are filed. |
+| 2026-09-17 | In-session audit gate on `e18b1d48` (3 Opus angles) | **BLOCK**: security B1 (bearer token through the Playwright call log); correctness and compliance APPROVE WITH NOTES. Fixed on `881fec82`. |
+| 2026-09-17 | In-session re-audit on `881fec82` | **BLOCK**: security B2 (password through `error-context.md`); correctness and compliance APPROVE WITH NOTES. Fixed on the next head; founder calls 10–11. |

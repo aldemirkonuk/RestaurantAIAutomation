@@ -598,6 +598,15 @@ jobs:
       - name: The nightly manifest guard fires on a stale sentence, and a missing manifest exits 2
         run: ./scripts/check_nightly_manifest.py --self-test
 
+      # ADR 0135, re-audit 2026-09-17: the nightly's verdict logic and its
+      # fail-closed artifact scrub are proven here on every push, because the
+      # nightly itself runs only against production with secrets.
+      - name: The nightly summary puts a failure first and never passes an unrun check
+        run: python3 scripts/e2e/nightly_summary.py --self-test
+
+      - name: The nightly artifact scrub removes a password and a JWT, and refuses what it cannot clean
+        run: python3 scripts/e2e/scrub_artifacts.py --self-test
+
       - name: Explain a failure
         if: failure()
         run: |

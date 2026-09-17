@@ -176,9 +176,19 @@ test('sign-in: the two-step login form signs the account in', async ({ page, req
     recordAndAssert({ id: 'signin.ui', state: 'cannot_check', reason: 'the login page says this account has no sign-in method (no password, no provider)' })
     return
   }
-  await pw.fill(env.password)
-  await page.getByRole('button', { name: 'Sign In' }).click()
-  await expect(page).not.toHaveURL(/\/login/, { timeout: 20_000 })
+  try {
+    await pw.fill(env.password)
+    await page.getByRole('button', { name: 'Sign In' }).click()
+    await expect(page).not.toHaveURL(/\/login/, { timeout: 20_000 })
+  } catch (e) {
+    // The login page keeps the typed password on an error, and Playwright
+    // snapshots every input's value into error-context.md when a test fails;
+    // a failed fill() also prints the value in its call log. Empty the field
+    // and throw only a scrubbed first line (re-audit 2026-09-17, B2).
+    await page.locator('#password').fill('').catch(() => undefined)
+    recordAndAssert({ id: 'signin.ui', state: 'fail', reason: `the form did not sign the account in: ${safeMessage(e)}`, evidence: budget.summary() })
+    throw new Error(`signin.ui: ${safeMessage(e)}`)
+  }
   const wall = await settleWalls(page, manifest.shared_phrases.walls, 3, 2_000)
   recordAndAssert({
     id: 'signin.ui',
@@ -239,6 +249,9 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, override
   // The house is the TOKEN's (see ensureSimSession), never a configured id.
   if (!(await ensureSimSession(request, `walk.${mode}`))) return
   const restaurantId = houseId!
+  if (mode === 'legacy') {
+    record({ id: 'walk.legacy.house', state: 'pass', reason: "legacy pass uses the account's own simulator house with the per-browser override forcing legacy (a second house is refused: the gateway scopes by the sign-in token)" })
+  }
   const designCalls = loadDesignCalls()
   budget.attach(page)
   const guard = new ReadOnlyGuard()
@@ -401,11 +414,6 @@ test('walk: every rebuilt page with the Mudavym override on', async ({ page, req
 test('walk: every page with the flag off (legacy)', async ({ page, request }) => {
   const overrides: Record<string, '1' | '0'> = {}
   for (const p of manifest.pages) overrides[p.slug] = '0'
-  record({
-    id: 'walk.legacy.house',
-    state: 'pass',
-    reason: "legacy pass uses the account's own house with the per-browser override forcing legacy (a second house is refused: the gateway scopes by the sign-in token)",
-  })
   await walk(page, request, 'legacy', overrides)
 })
 

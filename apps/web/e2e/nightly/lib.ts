@@ -244,7 +244,7 @@ export interface NightlyEnv {
   password: string
   /** report | on | off — what the run expects the house's flags to be. */
   expectFlags: 'report' | 'on' | 'off'
-  /** Optional second house whose flags are OFF, for the legacy pass. */
+  /** Read only to REFUSE a house other than the token's own (founder, 2026-09-17; F3 reopened). */
   legacyRestaurantId: string | null
   target: 'production' | 'local'
 }
@@ -301,7 +301,11 @@ export interface CheckRecord {
 
 const JWT = /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g
 const BEARER = /(bearer\s+)[^\s"',;]+/gi
-const SECRET_FIELD = /("?(?:access_?token|refresh_?token|password|authorization)"?\s*[:=]\s*)("[^"]*"|[^\s,}]+)/gi
+// Plain-text `name: value` / `name=value` pairs (a call log, a header dump).
+// Applied to STRINGS only, never to serialized JSON — it would eat a closing
+// quote and corrupt the record (re-audit 2026-09-17, correctness N1).
+const SECRET_PAIR = /\b((?:access|refresh|id)?[_-]?token|password|passwd|authorization|x-api-key|api[_-]?key|secret|cookie|set-cookie)(\s*[:=]\s*)(?!\[redacted\])[^\s,;]+/gi
+const SECRET_KEY = /^(?:(?:access|refresh|id)?[_-]?token|password|passwd|authorization|x-api-key|api[_-]?key|secret|cookie|set-cookie)$/i
 
 /**
  * Scrub a string that may have passed near a credential. Playwright's API
@@ -312,12 +316,30 @@ const SECRET_FIELD = /("?(?:access_?token|refresh_?token|password|authorization)
  * check records goes through here; so does every error a gateway call throws.
  */
 export function redact(text: string): string {
-  return text.replace(JWT, '[redacted-jwt]').replace(BEARER, '$1[redacted]').replace(SECRET_FIELD, '$1[redacted]')
+  let out = text.replace(JWT, '[redacted-jwt]').replace(BEARER, '$1[redacted]').replace(SECRET_PAIR, '$1$2[redacted]')
+  // The configured password itself, wherever it appears — e.g. a failed
+  // `fill()` call log (re-audit 2026-09-17, B2).
+  const pw = process.env.E2E_TEST_PASSWORD
+  if (pw && pw.length >= 4) out = out.split(pw).join('[redacted]')
+  return out
+}
+
+/** Redact every string in a JSON-shaped value, and the value of any secret-named key. */
+export function redactDeep<T>(value: T): T {
+  if (typeof value === 'string') return redact(value) as unknown as T
+  if (Array.isArray(value)) return value.map((v) => redactDeep(v)) as unknown as T
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = SECRET_KEY.test(k) ? '[redacted]' : redactDeep(v)
+    return out as T
+  }
+  return value
 }
 
 /** The first line of an error, redacted — never the call log beneath it. */
 export function safeMessage(e: unknown): string {
-  const raw = e instanceof Error ? e.message : String(e)
+  // eslint-disable-next-line no-control-regex
+  const raw = (e instanceof Error ? e.message : String(e)).replace(/\u001b\[[0-9;]*m/g, '')
   const head = raw.split(/\n|Call log:/)[0] ?? ''
   return redact(head).slice(0, 300)
 }
@@ -328,8 +350,8 @@ type GatewayMethod = 'get' | 'post'
  * The only way this suite calls the gateway. A thrown Playwright error is
  * replaced by one carrying just its redacted first line, so neither a
  * recorded reason nor the list/JUnit reporters ever see the call log.
- * scripts/check_nightly_manifest.py fails the build on any other direct
- * APIRequestContext call anywhere in e2e/nightly.
+ * scripts/check_nightly_manifest.py (rule 7) flags any other direct call on
+ * the request fixture in e2e/nightly — a text match, so a renamed variable escapes it.
  */
 export async function gateway(
   request: APIRequestContext,
@@ -347,7 +369,7 @@ export async function gateway(
 /** Attach one record to the running test; the honest reporter collects them. */
 export function record(rec: CheckRecord): void {
   const safe: CheckRecord = { ...rec, reason: redact(rec.reason) }
-  if (rec.evidence) safe.evidence = JSON.parse(redact(JSON.stringify(rec.evidence))) as Record<string, unknown>
+  if (rec.evidence) safe.evidence = redactDeep(rec.evidence)
   test.info().annotations.push({ type: 'nightly-check', description: JSON.stringify(safe) })
 }
 

@@ -36,6 +36,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scrub_artifacts import redact_text  # noqa: E402  (same directory)
+
 STATES = ("pass", "fail", "absent", "cannot_check")
 BADGE = {
     "pass": "✅ pass",
@@ -154,6 +157,7 @@ def collect(results: Path) -> list[dict[str, Any]]:
                     ),
                     "reason": str(c.get("reason", "")),
                     "source": "wave_h",
+                    "test": str(c.get("test") or ""),
                 }
             )
         if n == 0:
@@ -302,9 +306,9 @@ def unrecorded_junit(
     letter: str, xml_path: Path, checks: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
     """A test that raised before, or after, recording its check leaves only the
-    runner's XML behind. More failed/errored cases than recorded non-pass
-    checks means some were never recorded: that is cannot_check, not silence
-    (correctness 1, 2026-09-17: an errored Wave H merged to PASS)."""
+    runner's XML behind. Each failed or errored case must have a non-pass record
+    written BY THAT TEST (records carry PYTEST_CURRENT_TEST); one that does not
+    is cannot_check, not silence (correctness 1 and re-audit N2, 2026-09-17)."""
     if not xml_path.exists():
         return []
     try:
@@ -318,33 +322,33 @@ def unrecorded_junit(
                 "source": f"wave_{letter}",
             }
         ]
-    bad = [
-        tc
-        for tc in cases
-        if tc.find("failure") is not None or tc.find("error") is not None
-    ]
-    recorded = sum(
-        1
+    nonpass_tests = [
+        c.get("test", "")
         for c in checks
         if c.get("source") == f"wave_{letter}"
         and c["state"] in ("fail", "cannot_check")
-    )
-    if len(bad) <= recorded:
-        return []
-    node = (
-        bad[0].find("error")
-        if bad[0].find("error") is not None
-        else bad[0].find("failure")
-    )
-    first = (node.get("message") or "").split("\n")[0][:160] if node is not None else ""
-    return [
-        {
-            "id": f"wave.{letter}.unrecorded",
-            "state": "cannot_check",
-            "reason": f"{len(bad)} Wave {letter.upper()} test(s) failed or errored but only {recorded} recorded a non-pass check — first: {bad[0].get('name')}: {first}",
-            "source": f"wave_{letter}",
-        }
     ]
+    out: list[dict[str, Any]] = []
+    for tc in cases:
+        node = tc.find("error") if tc.find("error") is not None else tc.find("failure")
+        if node is None:
+            continue
+        name = tc.get("name") or ""
+        if any(
+            t and t.split("::")[-1].split("[")[0] == name.split("[")[0]
+            for t in nonpass_tests
+        ):
+            continue
+        first = (node.get("message") or "").split("\n")[0][:160]
+        out.append(
+            {
+                "id": f"wave.{letter}.unrecorded.{name}",
+                "state": "cannot_check",
+                "reason": f"{name} failed or errored without recording a non-pass check: {first}",
+                "source": f"wave_{letter}",
+            }
+        )
+    return out
 
 
 def junit_checks(letter: str, xml_path: Path) -> list[dict[str, Any]]:
@@ -413,12 +417,14 @@ def junit_checks(letter: str, xml_path: Path) -> list[dict[str, Any]]:
         {"id": f"wave.{letter}", "state": state, "reason": reason, "source": "junit"}
     )
     if state == "pass" and tally["skipped"]:
-        # A case skipped for an unset optional secret asserted nothing; it is
-        # an absence, never folded into the wave's pass (correctness 4).
+        # A skipped case asserted nothing. ADR 0135: the job is "never green by
+        # skipping", so it is cannot_check, not folded into the pass and not an
+        # absence (re-audit 2026-09-17, compliance). Wave C unarmed by the
+        # founder's F2 answer is the one decided absence, handled above.
         out.append(
             {
                 "id": f"wave.{letter}.skipped",
-                "state": "absent",
+                "state": "cannot_check",
                 "reason": f"{tally['skipped']} case(s) skipped — first: {first_skip}",
                 "source": "junit",
             }
@@ -510,6 +516,11 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--results-dir", default="test-results")
+    ap.add_argument(
+        "--self-test",
+        action="store_true",
+        help="prove precedence, Wave C, unrecorded errors, skips, crashes, truncation and redaction",
+    )
     ap.add_argument("--base-url", default=os.environ.get("E2E_BASE_URL", ""))
     ap.add_argument("--api-url", default=os.environ.get("API_GATEWAY_URL", ""))
     ap.add_argument(
@@ -519,8 +530,15 @@ def main(argv: list[str] | None = None) -> int:
         help="fewer recorded checks than this = empty corpus = exit 2",
     )
     args = ap.parse_args(argv)
+    if args.self_test:
+        return self_test()
     results = Path(args.results_dir)
+    password = os.environ.get("E2E_TEST_PASSWORD") or None
+    if password and len(password) < 4:
+        password = None
     checks = collect(results)
+    for c in checks:
+        c["reason"] = redact_text(str(c.get("reason", "")), password)
     counts = {s: 0 for s in STATES}
     for c in checks:
         counts[c["state"]] += 1
@@ -569,6 +587,169 @@ def main(argv: list[str] | None = None) -> int:
             fh.write(md)
     print(md)
     return {"pass": 0, "fail": 1, "cannot_check": 2}[verdict]
+
+
+def self_test() -> int:
+    """Synthetic results directories, one behaviour each (re-audit N6, 2026-09-17)."""
+    import contextlib
+    import io
+    import tempfile
+
+    jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZWxmLXRlc3QifQ.c2lnbmF0dXJlLXNlbGY"
+
+    def base(root: Path, **over: Any) -> None:
+        (root / "nightly").mkdir(parents=True, exist_ok=True)
+        pw_checks = over.get(
+            "pw",
+            [
+                {"id": f"page.p{i}.next", "state": "pass", "reason": "ok"}
+                for i in range(25)
+            ],
+        )
+        (root / "nightly" / "nightly-summary.json").write_text(
+            json.dumps({"checks": pw_checks}), encoding="utf-8"
+        )
+        (root / "wave_h_checks.jsonl").write_bytes(
+            over.get(
+                "h",
+                b'{"id": "h.x", "state": "pass", "reason": "ok", "test": "t.py::test_x (call)"}\n',
+            )
+        )
+        (root / "orchestrator-preflight.json").write_text(
+            json.dumps({"reachable": True, "reason": "200"}), encoding="utf-8"
+        )
+        for letter in "abc":
+            (root / f"wave_{letter}.xml").write_text(
+                over.get(
+                    f"x{letter}", '<testsuite><testcase name="t_ok"/></testsuite>'
+                ),
+                encoding="utf-8",
+            )
+        (root / "backtests.json").write_text(
+            json.dumps(
+                {"steps": over.get("bt", [{"name": "scenario_canned_day", "exit": 0}])}
+            ),
+            encoding="utf-8",
+        )
+        if "xh" in over:
+            (root / "wave_h.xml").write_text(over["xh"], encoding="utf-8")
+        if over.get("unarmed"):
+            (root / "wave_c_unarmed.json").write_text(
+                '{"unarmed": true, "reason": "F2"}', encoding="utf-8"
+            )
+        for name, text in over.get("files", {}).items():
+            (root / name).write_text(text, encoding="utf-8")
+
+    cases: list[tuple[str, dict[str, Any], int, str | None, str | None]] = [
+        ("clean run passes", {}, 0, None, None),
+        (
+            "a fail outranks an unrun check",
+            {
+                "pw": [{"id": "page.x.next", "state": "fail", "reason": "broke"}]
+                + [{"id": f"p{i}", "state": "pass", "reason": "ok"} for i in range(24)],
+                "xa": "<testsuite></testsuite>",
+            },
+            1,
+            "wave.a",
+            "cannot_check",
+        ),
+        (
+            "wave C unarmed is absent",
+            {
+                "unarmed": True,
+                "xc": '<testsuite><testcase name="t"><skipped/></testcase></testsuite>',
+            },
+            0,
+            "wave.c",
+            "absent",
+        ),
+        (
+            "an errored Wave H test without its own record is cannot_check",
+            {
+                "xh": '<testsuite><testcase name="test_y"><error message="ReadTimeout"/></testcase></testsuite>'
+            },
+            2,
+            "wave.h.unrecorded.test_y",
+            "cannot_check",
+        ),
+        (
+            "a partly skipped wave is cannot_check",
+            {
+                "xb": '<testsuite><testcase name="ok"/><testcase name="s"><skipped message="ADMIN_API_KEY unset"/></testcase></testsuite>'
+            },
+            2,
+            "wave.b.skipped",
+            "cannot_check",
+        ),
+        (
+            "a Jest crash without a failed count is cannot_check",
+            {
+                "bt": [{"name": "forecast_pinned", "exit": 1}],
+                "files": {"backtest_forecast.log": "Error: Cannot find module"},
+            },
+            2,
+            "backtest.forecast_pinned",
+            "cannot_check",
+        ),
+        (
+            "a truncated wave_h_checks.jsonl is cannot_check",
+            {"h": b'{"id": "h.x", "state": "pass", "reason": "\xe2\x82'},
+            2,
+            "wave.h",
+            "cannot_check",
+        ),
+    ]
+    failures = 0
+    for label, over, want_exit, check_id, want_state in cases:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base(root, **over)
+            with contextlib.redirect_stdout(io.StringIO()):
+                got = main(["--results-dir", str(root)])
+            data = json.loads(
+                (root / "nightly-summary.json").read_text(encoding="utf-8")
+            )
+            state = (
+                next((c["state"] for c in data["checks"] if c["id"] == check_id), None)
+                if check_id
+                else None
+            )
+            ok = got == want_exit and (check_id is None or state == want_state)
+            failures += 0 if ok else 1
+            print(
+                f"self-test {'ok  ' if ok else 'FAIL'} {label}: exit {got} (want {want_exit}), {check_id}={state}"
+            )
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        base(
+            root,
+            pw=[
+                {
+                    "id": "leak",
+                    "state": "fail",
+                    "reason": f"authorization: Bearer {jwt} PW_SELFTEST_x",
+                }
+            ]
+            + [{"id": f"p{i}", "state": "pass", "reason": "ok"} for i in range(24)],
+        )
+        os.environ["E2E_TEST_PASSWORD"] = "PW_SELFTEST_x"
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                main(["--results-dir", str(root)])
+        finally:
+            os.environ.pop("E2E_TEST_PASSWORD", None)
+        md = (root / "nightly-summary.md").read_text(encoding="utf-8")
+        ok = jwt not in md and "PW_SELFTEST_x" not in md
+        failures += 0 if ok else 1
+        print(
+            f"self-test {'ok  ' if ok else 'FAIL'} a JWT and the password never reach the summary"
+        )
+    print(
+        "self-test: every case behaved"
+        if not failures
+        else f"self-test: {failures} case(s) failed"
+    )
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

@@ -23,11 +23,12 @@ flowchart TD
   H --> F[Wave F — browser walk<br/>nightly/nightly.spec.ts]
   F --> L{Orchestrator answered?}
   L -- yes --> ABC[Legacy waves A, B, C]
-  L -- no --> CC[A, B, C recorded cannot_check]
+  L -- no --> CC[A, B recorded cannot_check<br/>C absent while unarmed]
   ABC --> B[Backtests — pinned canned day + forecast]
   CC --> B
   B --> SUM[scripts/e2e/nightly_summary.py<br/>one table, four states]
-  SUM --> ART[Job summary + 30-day artifact]
+  SUM --> SCR[scripts/e2e/scrub_artifacts.py<br/>fail-closed scrub]
+  SCR --> ART[Job summary + 30-day artifact]
 ```
 
 Waves D, E and G no longer exist. They were retired on 2026-09-12 because they
@@ -43,7 +44,7 @@ Every check ends in exactly one of these. The summary counts each one separately
 | `pass` | The assertion held | green |
 | `fail` | The assertion ran and did not hold: a production signal | red (exit 1) |
 | `absent` | Something not built yet (a pending route, an unrebuilt public door), a house with nothing to open a route on, or a wave unarmed by decision (Wave C while `RABBITMQ_URL` is unset) | Reported. Never counted as a pass. |
-| `cannot_check` | The check did not run: missing secret, refused house, unreachable service, a failed list read, a test that threw or timed out after recording, empty corpus | red on purpose (exit 2) |
+| `cannot_check` | The check did not run: missing secret, refused house, unreachable service, a failed list read, a skipped case, a test that threw or timed out after recording, empty corpus | red on purpose (exit 2) |
 
 **The run's verdict:** any `fail` makes it FAIL (exit 1), even when other
 checks could not run; they are listed under it. With no fail, any
@@ -146,15 +147,28 @@ the pages reported in words:
   `:id`. In the first production run it aborted Sentry envelopes and one real
   write: the legacy app's `PATCH /users/:id/preferences`, sent just from
   viewing pages.
-- **No traces.** A Playwright trace is a full network capture. A failed run's
-  trace once carried the test password and live JWTs (audit finding 1.1).
-  Traces stay `off`. Screenshots carry no headers or bodies.
+- **No traces, and none of Playwright's own output leaves the runner.**
+  - A Playwright trace is a full network capture. A failed run's trace once
+    carried the test password and live JWTs (audit finding 1.1), so traces
+    stay `off`.
+  - When a test fails, Playwright also writes `error-context.md`, which holds
+    every input's value. The login page keeps a typed password on an error
+    (re-audit B2, reproduced with sentinels).
+  - So `apps/web/test-results/` is never uploaded, and Playwright's stdout
+    goes to the job log only, where GitHub masks secrets.
+  - On failure, the sign-in test empties the password field and throws only a
+    scrubbed line.
+  - Before any upload, `scripts/e2e/scrub_artifacts.py` removes the password,
+    JWTs and bearer tokens from every file. If anything survives, neither the
+    upload nor the deploy-gate PR comment runs.
+  - Screenshots carry no headers or bodies.
 - **Target URLs are guarded.** The workflow refuses a local or non-https
   `E2E_BASE_URL`, where the sign-in test types the password. It refuses the
   same for `API_GATEWAY_URL`, which receives the password.
-- **Legacy-wave secrets are scoped.** `SUPABASE_*`, `ADMIN_API_KEY` and
-  `RABBITMQ_URL` are mapped only into the steps that read them, not into the
-  whole job.
+- **Secrets are step-scoped.** `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD` are
+  mapped only into the steps that sign in, summarise or scrub. `SUPABASE_*`,
+  `ADMIN_API_KEY` and `RABBITMQ_URL` go only into the legacy-wave steps. No
+  secret is mapped into the whole job, so no install step can read one.
 - **Legacy teardown is opt-in.** `tests/e2e/conftest_prod.py` deletes `sim-*`
   houses only when `E2E_SIM_TEARDOWN=1`. The workflow never sets it.
 - **Auth pacing.** `/api/v1/auth/*` allows 10 requests per 60 s per IP and route.
@@ -187,11 +201,22 @@ The guard runs in CI (job `decision-claims`) and fails, naming the entry, when:
   counts as missing);
 - a testid is gone;
 - a public page's `switch` does not match whether its file reads the switch;
-- a pending page has enrolled.
+- a pending page has enrolled;
+- a file under `nightly/` calls the request fixture directly instead of
+  through `gateway()` (rule 7).
 
-**What the guard cannot see:** a generic sentence that a shared component also
-renders (for example "nothing here"), and a sentence split by JSX. Prefer
-sentences that belong to one state of one page.
+**What the guard cannot see:**
+- a generic sentence that a shared component also renders (for example
+  "nothing here");
+- a sentence split by JSX;
+- a phrase inside a comment written as `"x"// phrase` or `return/* phrase */`;
+- a request call made through a renamed variable (rule 7 is a text match).
+
+Prefer sentences that belong to one state of one page.
+
+Two more self-tests run in the same CI job: `nightly_summary.py --self-test`
+(verdict precedence, Wave C, unrecorded errors, skips, crashes, truncation,
+redaction) and `scrub_artifacts.py --self-test`.
 
 ## 7. The founder's recorded design calls
 
@@ -253,8 +278,8 @@ Results land in `apps/web/test-results/nightly/`: `nightly-summary.md`,
 
 ## 9. Open, and not yet proven
 
-- **CI has never run the signed-in walk.** It has run once from a laptop
-  (§3). The workflow's `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD` secrets are not
+- **CI has never run the signed-in walk.** It has run twice from a laptop,
+  on 2026-09-17 (§3). The workflow's `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD` secrets are not
   set. On 2026-09-11 `aldemirkonuk@mudavym.com` was not in `public.users` (not
   re-measured since). Setting the secrets to an account that belongs to a house
   on `sim-houses.json` is the founder's step.

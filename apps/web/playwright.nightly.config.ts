@@ -8,7 +8,8 @@
  *   E2E_API_URL         the gateway (production: API_GATEWAY_URL secret)
  *   E2E_TEST_EMAIL / E2E_TEST_PASSWORD   the e2e account
  *   E2E_EXPECT_FLAGS    report | on | off   (default report)
- *   E2E_LEGACY_RESTAURANT_ID   optional second house for the legacy pass
+ *   E2E_LEGACY_RESTAURANT_ID   refused if it differs from the account's own house
+ *                              (the gateway scopes by the token; F3 reopened 2026-09-17)
  *   E2E_ALLOW_LOCAL=1   lets a CI run target localhost (never set in the nightly)
  *
  * No `webServer` block: the nightly targets a deployed app. Locally, start the

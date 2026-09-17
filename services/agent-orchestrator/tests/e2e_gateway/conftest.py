@@ -57,6 +57,8 @@ def record_check(check_id: str, state: str, reason: str, **evidence: Any) -> Non
                     "state": state,
                     "reason": reason,
                     "evidence": evidence or None,
+                    # Lets the summary match an errored test to its own records.
+                    "test": os.environ.get("PYTEST_CURRENT_TEST", "").split(" ")[0],
                 },
                 ensure_ascii=False,
             )

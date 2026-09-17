@@ -70,7 +70,9 @@ export default class HonestReporter implements Reporter {
       if (seen.has(a.description)) continue
       seen.add(a.description)
       try {
-        const rec = JSON.parse(redact(a.description)) as CheckRecord
+        // Parse first, redact the parsed strings: redacting serialized JSON can
+        // corrupt it and turn a real fail into reporter.parse (correctness N1).
+        const rec = redactDeep(JSON.parse(a.description) as CheckRecord)
         rec.test = test.title
         this.records.push(rec)
         recorded += 1
@@ -199,10 +201,24 @@ function firstLine(s: string | undefined): string {
   return (s ?? '').replace(/\u001b\[[0-9;]*m/g, '').split(/\n|Call log:/)[0].slice(0, 300)
 }
 
-/** Same scrub as lib.ts `redact` — duplicated so the reporter never imports the test runtime. */
+/** Same scrub as lib.ts `redact` / `redactDeep` — duplicated so the reporter never imports the test runtime. */
+const SECRET_NAMES = '(?:access|refresh|id)?[_-]?token|password|passwd|authorization|x-api-key|api[_-]?key|secret|cookie|set-cookie'
 function redact(text: string): string {
-  return text
+  let out = text
     .replace(/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted-jwt]')
     .replace(/(bearer\s+)[^\s"',;]+/gi, '$1[redacted]')
-    .replace(/("?(?:access_?token|refresh_?token|password|authorization)"?\s*[:=]\s*)("[^"]*"|[^\s,}]+)/gi, '$1[redacted]')
+    .replace(new RegExp(`\\b(${SECRET_NAMES})(\\s*[:=]\\s*)(?!\\[redacted\\])[^\\s,;]+`, 'gi'), '$1$2[redacted]')
+  const pw = process.env.E2E_TEST_PASSWORD
+  if (pw && pw.length >= 4) out = out.split(pw).join('[redacted]')
+  return out
+}
+function redactDeep<T>(value: T): T {
+  if (typeof value === 'string') return redact(value) as unknown as T
+  if (Array.isArray(value)) return value.map((v) => redactDeep(v)) as unknown as T
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = new RegExp(`^(?:${SECRET_NAMES})$`, 'i').test(k) ? '[redacted]' : redactDeep(v)
+    return out as T
+  }
+  return value
 }
