@@ -60,7 +60,7 @@ Scale, as of 2026-09-16 — all re-countable, none to be taken on faith:
 | | Count | How to re-check |
 |---|---|---|
 | ADRs | 137 | `ls .planning/decisions/0*.md \| wc -l` |
-| Executable claims | 321 resolved, 15 open | `scripts/check_decision_claims.sh` |
+| Executable claims | 321 resolved, 16 open | `scripts/check_decision_claims.sh` |
 | Agent modules | 25 | `/fleet-census` — the honest answer has four different counts |
 | Repo skills | 5 | `ls .claude/skills/` |
 | Commits, last 30d | 51 | `git log --since=30.days --oneline \| wc -l` |
@@ -130,6 +130,19 @@ claude --resume                                 # your sessions, by name
 If `verify` comes back empty, the history did not survive — import the bundle:
 `scripts/claude_state_migrate.sh import ~/Desktop/claude-state_*.tar.gz`.
 
+**Measured on this Mac, 2026-09-16** (branch `claude/artifact-pull`): `list` found 71
+sessions, 582.7 MB. `verify` **exited 1, and that was a false alarm** — read it before
+importing anything. It compares each session's recorded cwd to the repo root by exact
+string (`scripts/_claude_state.py:247`), so six sessions opened in `apps/web`,
+`apps/api-gateway`, `.planning` or a worktree were called stale, with a message saying
+their paths do not exist; all six exist. It also names only the first five. Import only
+if the cwds it lists are outside the repo or missing. Nor does that run test the
+same-Mac reasoning above: no bundle existed at `~/Desktop/claude-state_*.tar.gz`, and
+nothing that session could see showed an account switch on this machine — the CLI
+profile in `~/.claude.json` names org `1138b209-aed5-4cfe-9199-186b04b76545` (the org §7
+attributes the artifacts to) and was last fetched at 05:07 UTC that day, some 18 hours
+before this brief was first committed.
+
 **Different machine instead?** The trap is that Claude Code keys its session store on the
 repo's absolute path with every non-alphanumeric dashed, so a clone at a new path makes
 `--resume` show an empty list beside an intact history. `import` detects that and
@@ -140,61 +153,88 @@ authenticate the new machine as the old account. `inspect` separately scans tran
 for secret-shaped strings and reports counts only, never values; it cannot tell a real key
 from an example one, so treat a hit as "go look", not "you leaked something".
 
-## 7. Artifacts — index only, content still outside the repo
+## 7. Artifacts — index only; the pull failed twice
 
-Twelve Mudavym artifacts live on claude.ai under org `1138b209-aed5-4cfe-9199-186b04b76545`.
-ADR 0148 chose to **pull their content into the repo as files**. That has not happened —
-the URLs below are an index, not a copy.
+ADR 0148 chose to **pull the twelve Mudavym artifacts on claude.ai into the repo as
+files**. **None of the twelve is in the repo.** Two attempts on 2026-09-16 — a cloud
+session, then a local desktop session on branch `claude/artifact-pull` — could not read
+any of them, so `.planning/07-reference/artifacts/` does not exist and the table below
+is an index, not a copy. Nothing was reconstructed from memory or from the repo.
 
-★ = founder-flagged as current and highest-reference (2026-09-16).
+★ = founder-flagged as current and highest-reference (2026-09-16). Full ids are as the
+Artifact tool resolved each public link on the second attempt.
 
-| Artifact | Public link | Internal id |
+| Artifact | Public link | Internal id | In repo |
+|---|---|---|---|
+| **Mudavym Wave Four** ★ | [Y21sZP2xKshpbGBsnqQ8M3](https://claude.ai/artifact/Y21sZP2xKshpbGBsnqQ8M3) | `fb2f9455-8d35-411c-85c9-cfb0dbbf7abe` | no |
+| **The Arrival, Five Ways** ★ | [4cWg73gb6zidey1sVKcao6](https://claude.ai/artifact/4cWg73gb6zidey1sVKcao6) | `1d40bc3d-6ddd-49c6-b894-e626fc7f72ad` | no |
+| **Sim Meyhouse, One Friday** ★ | [TNjGu67KRetqdmanZhnatd](https://claude.ai/artifact/TNjGu67KRetqdmanZhnatd) | `d59646d4-0021-43dd-87e9-9fc70135849e` | no |
+| **Mudavym Motion Canvas** ★ | [UyFDGQPXVheake4EVkEG8H](https://claude.ai/artifact/UyFDGQPXVheake4EVkEG8H) | `e281272f-c403-4780-a675-0e9a0a4289ba` | no |
+| Mudavym Go-Live Board | [5hZELUz2SuswDPGm3boWkD](https://claude.ai/artifact/5hZELUz2SuswDPGm3boWkD) | `260e2af7-8a3c-4bd0-8ff8-4fd1618007ee` | no |
+| Mudavym Overlay Census | [5Sbd8DEPctRGpNztw5rez3](https://claude.ai/artifact/5Sbd8DEPctRGpNztw5rez3) | `23f77c68-7766-40c8-934a-cfa7148c7508` | no |
+| Mudavym Build Board | [9nuqKGDTVxK7LWqfr912Vk](https://claude.ai/artifact/9nuqKGDTVxK7LWqfr912Vk) | `47322370-4b81-445d-ab74-09624d65c847` | no |
+| Mudavym Atlas | [Lv6S1GgMycyLEZYrFRdPWe](https://claude.ai/artifact/Lv6S1GgMycyLEZYrFRdPWe) | `a14766c1-b4e3-4578-8338-8b68375f636f` | no |
+| Mudavym Cluster Map | [S4yACzsFqvBLJVQsv8rE9g](https://claude.ai/artifact/S4yACzsFqvBLJVQsv8rE9g) | `cb024e8e-8687-4043-9742-beba93727003` | no |
+| Mudavym Shortlist | [JvVbe21swPgQE2iKeKhSL7](https://claude.ai/artifact/JvVbe21swPgQE2iKeKhSL7) | `91236693-6fe1-40c8-bb0d-91f428ef9458` | no |
+| Mudavym Identity | [KWf4ZygrDXjQQ9NDq2g5KD](https://claude.ai/artifact/KWf4ZygrDXjQQ9NDq2g5KD) | `95e8857e-5bc9-4719-acc4-57a94e4e4158` | no |
+| Documents and Reports Redesign | [D7EJZaPTV2cvSXX9obixAe](https://claude.ai/artifact/D7EJZaPTV2cvSXX9obixAe) | `620c531d-d060-449b-a5e1-cd2b35f9f533` | no |
+
+**Attempt 1 — cloud session, an account outside the org.** 16 requests.
+`claude.ai/code/artifact/<uuid>` through `WebFetch` and the Artifact read tool →
+*"artifact not found — it may have been deleted, or it has not been shared with you"*.
+All twelve public links → *"this artifact is served to you as a public (non-member)
+reader, and reading public artifacts that way is not enabled yet"* — but each resolved
+to its internal id, so none is deleted and every link is live. Diagnosis then: the
+reader must be a member of org `1138b209-aed5-4cfe-9199-186b04b76545`, so run the pull
+locally under the owning account (§8).
+
+**Attempt 2 — local Claude desktop session, CLI login admin of that same org.** Exact
+errors:
+
+| Path tried | Artifacts | Result |
 |---|---|---|
-| **Mudavym Wave Four** ★ | [Y21sZP2xKshpbGBsnqQ8M3](https://claude.ai/artifact/Y21sZP2xKshpbGBsnqQ8M3) | `fb2f9455` |
-| **The Arrival, Five Ways** ★ | [4cWg73gb6zidey1sVKcao6](https://claude.ai/artifact/4cWg73gb6zidey1sVKcao6) | `1d40bc3d` |
-| **Sim Meyhouse, One Friday** ★ | [TNjGu67KRetqdmanZhnatd](https://claude.ai/artifact/TNjGu67KRetqdmanZhnatd) | `d59646d4` |
-| **Mudavym Motion Canvas** ★ | [UyFDGQPXVheake4EVkEG8H](https://claude.ai/artifact/UyFDGQPXVheake4EVkEG8H) | `e281272f` |
-| Mudavym Go-Live Board | [5hZELUz2SuswDPGm3boWkD](https://claude.ai/artifact/5hZELUz2SuswDPGm3boWkD) | `260e2af7` |
-| Mudavym Overlay Census | [5Sbd8DEPctRGpNztw5rez3](https://claude.ai/artifact/5Sbd8DEPctRGpNztw5rez3) | `23f77c68` |
-| Mudavym Build Board | [9nuqKGDTVxK7LWqfr912Vk](https://claude.ai/artifact/9nuqKGDTVxK7LWqfr912Vk) | `47322370` |
-| Mudavym Atlas | [Lv6S1GgMycyLEZYrFRdPWe](https://claude.ai/artifact/Lv6S1GgMycyLEZYrFRdPWe) | `a14766c1` |
-| Mudavym Cluster Map | [S4yACzsFqvBLJVQsv8rE9g](https://claude.ai/artifact/S4yACzsFqvBLJVQsv8rE9g) | `cb024e8e` |
-| Mudavym Shortlist | [JvVbe21swPgQE2iKeKhSL7](https://claude.ai/artifact/JvVbe21swPgQE2iKeKhSL7) | `91236693` |
-| Mudavym Identity | [KWf4ZygrDXjQQ9NDq2g5KD](https://claude.ai/artifact/KWf4ZygrDXjQQ9NDq2g5KD) | `95e8857e` |
-| Documents and Reports Redesign | [D7EJZaPTV2cvSXX9obixAe](https://claude.ai/artifact/D7EJZaPTV2cvSXX9obixAe) | `620c531d` |
+| Artifact `read`, public link | all 12 | *"artifact read failed: this artifact is served to you as a public (non-member) reader, and reading public artifacts that way is not enabled yet"* |
+| Artifact `read`, `claude.ai/code/artifact/<uuid>` | `fb2f9455` | the same |
+| `WebFetch`, public link | the other 10 | the same |
+| `WebFetch`, public link and `code/artifact/<uuid>` link | `d59646d4` (both), `620c531d` (public) | *"Permission for this action was denied by the Claude Code auto mode classifier. Reason: Blocked by classifier."* — refused locally, never reached claude.ai |
+| Artifact `list_files` | `fb2f9455` | *"file list failed: this artifact is served to you as a public (non-member) reader, and its files are not readable that way"* |
+| Artifact `read_db`, collection `verdicts` | `fb2f9455` | *"db read failed (invalid-argument): no such artifact, collection, or document (or no access — the two are deliberately indistinguishable)"* |
+| Artifact `list`, scope `all` | — | *"No published or shared artifacts yet."* |
 
-**Why the content is not here yet, measured 2026-09-16.** Two access paths were tried
-against both link formats, 16 requests in total:
-
-- `claude.ai/code/artifact/<uuid>` (org-scoped), via `WebFetch` and the Artifact read
-  tool → *"artifact not found — it may have been deleted, or it has not been shared
-  with you"*.
-- `claude.ai/artifact/<short>` (public share links, all twelve) → *"this artifact is
-  served to you as a public (non-member) reader, and reading public artifacts that way
-  is not enabled yet"*.
-
-The second error is the informative one. **All twelve resolved to their internal ids**,
-so none is deleted and every link is live — the block is that a non-member reader cannot
-read artifact content through this path yet. Sharing them more widely will not help; the
-reader has to be a **member** of org `1138b209-aed5-4cfe-9199-186b04b76545`.
+**What attempt 2 changes.** Attempt 1's fix did not work. The second session's CLI
+login (`~/.claude.json`, `oauthAccount`) is org `1138b209-aed5-4cfe-9199-186b04b76545`
+with role **admin**, yet it got the identical non-member error, and `list` saw no
+artifacts at all. Two explanations fit, and that session could not tell them apart:
+(a) the artifact tools do not read with the CLI login's org membership, or (b) the
+twelve do not belong to that org — nothing records how that attribution was made.
 
 **What unblocks it,** in order of cost:
 
-1. **Run the pull from a local Claude Code session** signed into the owning account — it
-   reads as a member, not a public reader. The prompt for that is §8.
-2. Add the session's account to that org as a member, then re-run the read from anywhere.
-3. Export each artifact by hand and drop the files in.
+1. Open Wave Four's public link in a browser signed into claude.ai. If it opens there as
+   its owner, a session with the Claude in Chrome extension can read the rendered pages
+   from that browser — it acts in the founder's real signed-in browser, so only on the
+   founder's explicit go-ahead.
+2. If that browser is also served a public reader's view, the owner is a different
+   account: find the account that published them and pull or export from there.
+3. Export each artifact by hand into `.planning/07-reference/artifacts/<kebab-slug>.md`.
 
-Until one happens the artifacts remain account-bound — the exposure ADR 0148 set out to
-remove, still open for the artifacts specifically. The table above at least makes the set
-durable: twelve titles, twelve public links and twelve ids that survive in git whatever
-happens to any one account.
+"Not delivered" is an executable claim: CLAIMS row `ADR-0148-ARTIFACTS-PULLED` is `open`
+and fails the build once all twelve ids appear under `07-reference/artifacts/`, so this
+section and ADR 0148 cannot go on saying "not delivered" after the pull lands. Until then
+the artifacts stay account-bound — the exposure ADR 0148 set out to remove, still open
+for the artifacts specifically. The table at least keeps the set durable in git: twelve
+titles, twelve public links, twelve full ids.
 
 ## 8. The local-session prompt
 
 Paste this into a Claude Code session **running on the Mac, signed into the account that
 owns the artifacts**, with the repo as the working directory. It is written to stand
 alone — a fresh session has none of this conversation.
+
+**Run once, 2026-09-16, on branch `claude/artifact-pull`.** Job 1 ran — §6 records what
+`verify` really reports. Job 2 failed for all twelve even though that session's CLI login
+was admin of the org named in §7. Do not re-run Job 2 unchanged; clear §7's first
+unblock step before trying again.
 
 ```text
 You are picking up the Mudavym repo (RestaurantAIAutomation) after an account move.

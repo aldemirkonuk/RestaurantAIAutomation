@@ -79,6 +79,12 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
   **This is reasoned, not verified**: it was not possible to test a real logout/login
   cycle from the container. The brief therefore tells the founder to take a bundle
   *before* logging out, as insurance against the reasoning being wrong.
+  [2026-09-16, local run on branch `claude/artifact-pull`: **still not verified.** `list`
+  found 71 sessions on this Mac, but no bundle existed at `~/Desktop/claude-state_*.tar.gz`
+  and nothing that session could see showed an account switch there — its CLI profile
+  names org `1138b209-…` and was last fetched ~18 hours before this ADR was committed.
+  `verify` exited 1 on a false alarm, sessions whose cwd is a subdirectory or worktree of
+  the repo; `ONBOARDING.md` §6 has the detail.]
 - **Artifacts: decided but not delivered.** The founder chose to pull the twelve Mudavym
   artifacts into the repo as files. Measured 2026-09-16 across 16 requests and both link
   formats, that is not possible from a cloud session. The org-scoped
@@ -91,9 +97,20 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
   not enabled yet"*. The distinction matters for the fix: **wider sharing does not help,
   because the blocker is non-membership, not permission.** The reader must be a member of
   org `1138b209-aed5-4cfe-9199-186b04b76545`, or the pull must run from a local session
-  signed into the owning account. Only the index landed (`ONBOARDING.md` §7), plus a
-  standalone prompt for the local run (§8). **The exposure this ADR set out to remove is
-  therefore still open for the artifacts specifically.**
+  signed into the owning account. [Corrected 2026-09-16 by a second attempt, from a local
+  Claude desktop session on branch `claude/artifact-pull` whose CLI login is **admin of
+  that same org**: for all twelve, the Artifact read tool returned the identical
+  non-member error, and so did `WebFetch` for ten — the auto-mode classifier refused the
+  other two locally, before any request left the machine. `list_files` and `read_db` on
+  Wave Four failed too, and the Artifact tool's `list` saw no artifacts at all. So
+  membership as the CLI login holds it is **not** enough, and the org attribution itself
+  is unproven. `ONBOARDING.md` §7 has the exact errors and a revised unblock order.]
+  Only the index landed (`ONBOARDING.md` §7), plus a standalone prompt for the local run
+  (§8). **Still not delivered after the second attempt** — no file exists under
+  `.planning/07-reference/artifacts/`, and CLAIMS row `ADR-0148-ARTIFACTS-PULLED`
+  (`open`) fails the build once all twelve ids land there, forcing this consequence to be
+  rewritten when they do. **The exposure this ADR set out to remove is therefore still
+  open for the artifacts specifically.**
 - **Revisit when:** the brief's "in flight" section disagrees with `gh pr list` twice
   running, or `PROGRESS.md` is retired — either signals the brief has become a second
   source of truth rather than an index into the first.
@@ -102,6 +119,7 @@ in tree (§4: archive means delete + tombstone). Recoverable at commit
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-16 | — | Local run of ONBOARDING §8 on `claude/artifact-pull`: artifact pull failed for all twelve; the artifacts and same-Mac consequences amended in brackets, decision unchanged |
 | 2026-09-16 | Aldemir | Reframed the request from account-clone to onboarding; chose the brief, chose to pull artifacts into the repo as files, confirmed same-Mac destination |
 | 2026-09-16 | — | Created |
 
