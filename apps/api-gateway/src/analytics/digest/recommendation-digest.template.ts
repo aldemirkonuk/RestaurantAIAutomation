@@ -88,13 +88,15 @@ export interface DigestLetter {
   text: string;
 }
 
+// The quotes are written \x22 and \x27: check_analytics_cost_honesty's scrubber
+// does not know regex literals and would read a bare quote as an open string.
 export function escapeHtml(value: unknown): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/\x22/g, "&quot;")
+    .replace(/\x27/g, "&#39;");
 }
 
 /** No header can be split by a value we did not write. */
