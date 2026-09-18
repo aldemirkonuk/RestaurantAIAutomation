@@ -47,9 +47,9 @@ export interface EmailOptions {
   references?: string;
   messageIdHeader?: string;
   /**
-   * Display name on the From line. Absent means "WineOps AI", byte-for-byte
-   * what every existing caller already sends. Only the recommendations digest
-   * passes one today ("Mudavym"). CR, LF, quotes and angle brackets are
+   * Display name on the From line. Absent means "Mudavym", the name every
+   * existing caller sends since the one-pass rename (ADR 0149, round 11). Only
+   * the recommendations digest passes one today ("Mudavym"). CR, LF, quotes and angle brackets are
    * stripped, so a name cannot open a second header.
    */
   fromName?: string;
@@ -64,15 +64,15 @@ export interface EmailOptions {
 /** The display name, made safe to sit inside a quoted From header. */
 export function safeFromName(name: string | undefined): string {
   const cleaned = (name ?? "").replace(/[\r\n"<>\\]+/g, " ").trim();
-  return cleaned || "WineOps AI";
+  return cleaned || "Mudavym";
 }
 
 /**
  * The display name as it may be written RAW into a MIME From header (the Gmail
  * API path builds its own header block; nodemailer does this for the SMTP path).
  *
- *  - Plain atext and spaces ("WineOps AI", "Mudavym") are written bare, so every
- *    existing caller's From line stays byte-for-byte what it was.
+ *  - Plain atext and spaces ("Mudavym", "Meyhouse Palo Alto") are written bare,
+ *    so every existing caller's From line stays a plain name.
  *  - Any other ASCII (an RFC 5322 special such as `,` `:` `;` `@` `.` `(`) is
  *    quoted: bare, "Meyhouse, Palo Alto" would parse as two mailboxes.
  *    `safeFromName` has already removed `"` and `\`, so the quoted form needs no
@@ -130,7 +130,7 @@ export class GmailService implements OnModuleInit {
     const refreshToken = this.configService.get<string>("GMAIL_REFRESH_TOKEN");
     this.senderEmail =
       this.configService.get<string>("GMAIL_SENDER_EMAIL") ||
-      "notifications@wineops.ai";
+      "notifications@mudavym.com";
 
     if (!clientId || !clientSecret || !refreshToken) {
       this.logger.warn(
@@ -173,7 +173,7 @@ export class GmailService implements OnModuleInit {
 
       // Resolve the actual sender address from the Gmail profile so the From
       // header matches the OAuth2-authorized account. Using a mismatched From
-      // (e.g. notifications@wineops.ai when the account is a @gmail.com address)
+      // (e.g. notifications@mudavym.com when the account is a @gmail.com address)
       // fails SPF/DKIM alignment and lands in spam.
       try {
         const profile = await this.gmail.users.getProfile({ userId: "me" });
@@ -301,7 +301,7 @@ ${daysUntilStockout ? `Days Until Stockout: ~${daysUntilStockout} days` : ""}
 ${data.recommendedQty ? `Recommended Action: Order ${data.recommendedQty} bottles from ${data.preferredSupplier || "preferred supplier"}` : ""}
 ${data.estimatedDelivery ? `Estimated Delivery: ${data.estimatedDelivery}` : ""}
 
-This is an automated alert from WineOps AI.
+This is an automated alert from Mudavym.
     `.trim();
 
     return this.sendEmail({
@@ -340,7 +340,7 @@ This is an automated alert from WineOps AI.
           }`,
       ),
       "",
-      "This is an automated digest from WineOps AI.",
+      "This is an automated digest from Mudavym.",
     ].join("\n");
 
     return this.sendEmail({
@@ -785,7 +785,7 @@ This is an automated alert from WineOps AI.
 
     return this.sendEmail({
       to: [data.to],
-      subject: `Welcome to WineOps AI — ${data.restaurantName} is ready 🍷`,
+      subject: `Welcome to Mudavym — ${data.restaurantName} is ready 🍷`,
       html,
     });
   }
@@ -811,7 +811,7 @@ This is an automated alert from WineOps AI.
 
     return this.sendEmail({
       to: [data.to],
-      subject: `You've been invited to WineOps Studio as ${data.roleLabel}`,
+      subject: `You've been invited to Mudavym Studio as ${data.roleLabel}`,
       html,
     });
   }

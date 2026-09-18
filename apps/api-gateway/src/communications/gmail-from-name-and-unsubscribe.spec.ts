@@ -7,7 +7,8 @@
  * fallback — because a header written on one path and not the other is a mail
  * that is unsubscribable only when OAuth happens to be healthy. And pinned
  * against every EXISTING caller: with neither option passed, the From line is
- * byte-for-byte what it was ("WineOps AI") and no List-Unsubscribe appears.
+ * the name "Mudavym" (the one-pass rename, ADR 0149 round 11) and no
+ * List-Unsubscribe appears.
  */
 
 jest.mock("googleapis", () => ({ google: {} }));
@@ -42,8 +43,8 @@ function headersOf(mime: string): string[] {
 
 describe("safeFromName", () => {
   it("absent or blank is the name every existing caller already sends", () => {
-    expect(safeFromName(undefined)).toBe("WineOps AI");
-    expect(safeFromName("   ")).toBe("WineOps AI");
+    expect(safeFromName(undefined)).toBe("Mudavym");
+    expect(safeFromName("   ")).toBe("Mudavym");
   });
 
   it("cannot open a second header or break out of the quoted name", () => {
@@ -56,7 +57,7 @@ describe("safeFromName", () => {
 
 describe("fromDisplayName (the Gmail API path writes the From header itself)", () => {
   it("writes plain names bare, so the existing From line keeps its bytes", () => {
-    expect(fromDisplayName(undefined)).toBe("WineOps AI");
+    expect(fromDisplayName(undefined)).toBe("Mudavym");
     expect(fromDisplayName("Mudavym")).toBe("Mudavym");
   });
 
@@ -109,14 +110,14 @@ describe("listUnsubscribeHeaders", () => {
 });
 
 describe("the Gmail API path's MIME headers", () => {
-  it("an existing caller's mail is unchanged: WineOps AI, no List-Unsubscribe", () => {
+  it("an existing caller's mail says Mudavym, with no List-Unsubscribe", () => {
     const mime: string = (service() as any).createMimeMessage({
       to: ["a@b.test"],
       subject: "Low stock",
       html: "<p>x</p>",
     });
     const h = headersOf(mime);
-    expect(h).toContain("From: WineOps AI <notifications@mudavym.test>");
+    expect(h).toContain("From: Mudavym <notifications@mudavym.test>");
     expect(h.some((l) => l.startsWith("List-Unsubscribe"))).toBe(false);
   });
 
@@ -179,7 +180,7 @@ describe("the SMTP fallback path", () => {
     });
     await svc.sendEmail({ to: ["a@b.test"], subject: "s", html: "<p>x</p>" });
     const opts = sendMail.mock.calls[0][0];
-    expect(opts.from).toBe('"WineOps AI" <notifications@mudavym.test>');
+    expect(opts.from).toBe('"Mudavym" <notifications@mudavym.test>');
     expect(opts.headers).toEqual({});
   });
 

@@ -175,7 +175,7 @@ describe("the house's sending identity", () => {
     expect(identity.ceremony).toBe("none");
     expect(identity.words).toContain("has not connected a mailbox of its own");
     // The deployment mailbox is NAMED as refused, not merely absent.
-    expect(identity.deployment.address).toBe("notifications@wineops.ai");
+    expect(identity.deployment.address).toBe("notifications@mudavym.com");
     expect(identity.deployment.refusedBecause).toContain(
       "belongs to the deployment",
     );
@@ -677,7 +677,7 @@ describe("the gmail_send grant, end to end", () => {
     expect(decoded).toContain("Merhaba, teslimatı konuşabilir miyiz?");
     // Headers end, body begins: a bare CRLFCRLF, once.
     expect(decoded.split("\r\n\r\n").length).toBe(2);
-    expect(decoded).not.toContain("notifications@wineops.ai");
+    expect(decoded).not.toContain("notifications@mudavym.com");
 
     // The id Google returned is written onto the letter's own row, so the book
     // can be reconciled against the mailbox rather than trusted.

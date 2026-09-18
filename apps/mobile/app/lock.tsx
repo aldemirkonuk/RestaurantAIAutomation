@@ -28,7 +28,7 @@ export default function LockScreen() {
         return;
       }
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Unlock WineOps",
+        promptMessage: "Unlock Mudavym",
         cancelLabel: "Not now",
       });
       if (result.success) {
@@ -51,7 +51,7 @@ export default function LockScreen() {
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", gap: space.md, paddingHorizontal: space.xxl }}>
         <Animated.View entering={FadeIn.duration(300)} style={{ alignItems: "center", gap: space.sm }}>
           <AppText variant="signature" tone="wine">
-            WineOps
+            Mudavym
           </AppText>
           <AppText variant="body" tone="secondary" align="center">
             {failed ? "Unlock to continue." : "Unlocking…"}

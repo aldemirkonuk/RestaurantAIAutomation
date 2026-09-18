@@ -9,7 +9,7 @@ async function exportOpenApi() {
   app.setGlobalPrefix("api/v1");
 
   const config = new DocumentBuilder()
-    .setTitle("WineOps AI API")
+    .setTitle("Mudavym API")
     .setDescription(
       "Real-time API for Restaurant Wine Inventory & Procurement Management.",
     )
