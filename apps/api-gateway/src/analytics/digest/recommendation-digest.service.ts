@@ -1036,11 +1036,15 @@ export class RecommendationDigestService {
           )
           .eq("restaurant_id", restaurantId)
           .eq("user_id", userId)
-      : client.from("recommendation_digest_subscriptions").insert({
+      : // Written out, not spread from `base`: check_order_capture_contract
+        // can only verify columns it can read in the file.
+        client.from("recommendation_digest_subscriptions").insert({
           restaurant_id: restaurantId,
           user_id: userId,
           subscribed_at: stamp,
-          ...base,
+          frequency,
+          weekday: nextWeekday,
+          updated_at: stamp,
         });
     const { error: writeError } = await write;
     if (writeError) {
@@ -1220,8 +1224,10 @@ export function isSingleMailbox(value: unknown): value is string {
     return false;
   }
   // Whitespace (CR/LF included), list separators and the characters of a
-  // display-name form. Checked by class, not by a backtracking pattern.
-  if (/[\s,;<>"()\\]/.test(value)) return false;
+  // display-name form. Checked by class, not by a backtracking pattern. The
+  // double quote is written \x22 so check_analytics_cost_honesty's scrubber,
+  // which does not know regex literals, does not read it as an open string.
+  if (/[\s,;<>\x22()\\]/.test(value)) return false;
   const at = value.indexOf("@");
   if (at <= 0 || at !== value.lastIndexOf("@")) return false;
   const domain = value.slice(at + 1);
