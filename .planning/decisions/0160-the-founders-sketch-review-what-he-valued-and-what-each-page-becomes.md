@@ -291,6 +291,34 @@ not the page for now — kept in mind, not built.
     "What the library knows" and "The wine's own detail" (*"these are really, really
     important aspects"*). How they fit into B is being researched and drawn as sketch
     121 before the cellar is rebuilt.]**
+11. **[added 2026-09-18, founder via `AskUserQuestion` on sketch 121 (session scratchpad
+    `cellar-121/`; research `cellar-121/research-summary.md`, workflow wf_753c9988):**
+    - *Buttons:* "Yes, as drawn" — each register the house carries is a button in the
+      page head; pressing one opens that register's full-page list; a bottle chosen
+      there opens beside the narrowed list, never over it (B's rule, the record is the
+      page).
+    - *Taste profile:* "Show, labelled honestly" — body, acidity, tannin, sweetness and
+      aromas are shown with one line saying where they came from. Production, read-only
+      2026-09-18: profiles on about 3,350 library wines; `data_enrichment->>'knowledge'`
+      is inferred on 2,773 (a model's typical profile for the grape and region), known
+      on 432 (a model's recollection, not checked), and review_status approved on 3.
+    - *Machine-learning features:* his words — *"the master wine library data set has
+      already a lot of value and features we could use ... taste notes, vintage,
+      country, etc. And if the value is not shown there ... let's just say analytics
+      coming soon ... or don't even include them. Create the right structure plan with
+      foundations no details (further sessions will handle that). Do not embed the whole
+      machine learning system ... However, create another document for this in order to
+      build on this later with every endpoint thought ... on how to use that ML data ...
+      the analytics part we have with ... 300 plus [insight types] ... must already be
+      integrated with the ML data since most of it will come from there and also from
+      ... other analytics like sales."* So: the cellar ships the fields the library holds,
+      an ML section appears only when it has values (else a plain "coming" line or
+      nothing), and a separate foundations document maps the library's features to
+      every endpoint and to the insight types, for later sessions to build.
+    - *The wine sentence:* *"either compose it from the profile or look at the master
+      one library data set and extract the info from there. And if it's not there and
+      we have that vine available, that means our pipeline is broken somewhere."* A
+      pipeline check (source data set against production) is owed before the build.]**
 
 ### 111 — help · delegated to the builder, held to the industry's best; two must-haves
 
