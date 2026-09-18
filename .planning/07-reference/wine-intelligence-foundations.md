@@ -3,7 +3,7 @@ type: reference
 title: Wine intelligence foundations — what the library holds, where it enters, and the schedule it needs
 status: proposed
 updated: 2026-09-18
-links: ["[[0048-domain-quant-under-research-math]]", "[[0020-no-fabricated-answers]]", "[[0124-a-bottle-has-one-identity-and-every-price-names-it]]", "[[0130-a-generic-name-stays-the-venues-own-wine]]", "[[0117-a-price-sighting-names-its-source-its-date-and-its-unit]]", "[[0145-mudavym-answers-out-of-a-reading]]", "[[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]]", "[[BEVERAGE_CATALOGUE_ARCHITECTURE]]", "[[wines]]", "[[corpora-enrichment-schedule]]"]
+links: ["[[0163-the-wine-library-is-a-ledger-of-cited-or-labelled-statements]]", "[[0048-domain-quant-under-research-math]]", "[[0020-no-fabricated-answers]]", "[[0124-a-bottle-has-one-identity-and-every-price-names-it]]", "[[0130-a-generic-name-stays-the-venues-own-wine]]", "[[0117-a-price-sighting-names-its-source-its-date-and-its-unit]]", "[[0145-mudavym-answers-out-of-a-reading]]", "[[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]]", "[[BEVERAGE_CATALOGUE_ARCHITECTURE]]", "[[wines]]", "[[corpora-enrichment-schedule]]"]
 ---
 
 # Wine intelligence foundations
@@ -13,6 +13,13 @@ It records what the wine library holds, whether the pipeline that fills it works
 what runs on a schedule, where library data should enter the product, and the
 order of the owed work. It does **not** design the ML system: the founder asked
 for foundations only, with detail left to later sessions.
+
+[2026-09-18, after this document was written: the founder answered forks F1–F5 the
+same day, and the pipeline design those answers call for is proposed in
+[ADR 0163](../decisions/0163-the-wine-library-is-a-ledger-of-cited-or-labelled-statements.md)
+(Proposed; the founder locks it). This document stays the measured foundations plan;
+the design, its stages (P1–P13) and its build order live in the ADR. Each fork below
+is marked where it is listed.]
 
 What the founder asked for on 2026-09-18, as relayed to this session: the library
 "has already a lot of value" (taste notes, vintage, country), and where a value is
@@ -197,9 +204,17 @@ Where it breaks (each point cited, none fixed here):
 - a single read contract that carries the profile to the page (§4);
 - every enrichment output committed, or its provenance written back to the row;
 - the 44 copied structures withdrawn or re-derived before any page shows a structure
-  (the source for the repair is fork F3).
+  (the source for the repair is fork F3). [F3 ANSWERED 2026-09-18: *"Repair, then
+  load"*. ADR 0163 §10 goes further: all 3,346 legacy profiles retire from display and
+  are re-derived, because the 2026-08-16 load alone carries 1,443 live templated
+  profiles (157 distinct across 1,717 rows per the ADR's lane; the critic measured 104
+  distinct `wine_structure` and 175 distinct structure-plus-sensory pairs on the same
+  rows, so the count depends on the definition).]
 
-The host for the enrichment half is a founder fork (F1, §7). **The profile gap on
+The host for the enrichment half is a founder fork (F1, §7). [F1 ANSWERED 2026-09-18:
+*"most advanced pipeline to output highest results with high quality"*. ADR 0163 §11
+proposes gateway `@Cron` plus the Anthropic Message Batches API, with a Railway
+`wine-worker` cron from its Stage 2.] **The profile gap on
 stocked wines cannot close until one of the hosts runs**, because today no path reaches
 them. The read-side fixes (§4, and owed items 3–5) do not depend on F1.
 
@@ -229,12 +244,20 @@ the infrastructure does not exist.
 | `populate_embeddings.py` | `scripts/` | by hand | `embedding` | manual | the 3,430 pre-September rows; none since |
 | Seeds: `services/database/import_master_wine_library.py` (source literal at `:93`) ← `library/wineops_basic_v1.jsonl`; `scripts/synth/seed.py` | — | by hand | the importer wrote identity **plus `wine_structure` and `sensory_profile`** (200 of 200 carry a body; 44 carry the copied template, §1). The sim seed wrote identity only | manual | 200 rows on 2026-02-01; 81 sim rows on 2026-09-03. `services/agent-orchestrator/scripts/seed_master_wine_library.py` did **not** write them: it inserts seven columns production lacks (`grape_varieties`, `wine_type`, `tasting_notes` and others) |
 | Library repair passes (`repair_seed.py`, `producer-canonicalization*`, `country-region-consistency`, `region-implies-country-repair`, `vintage-prefix-strip` and others) | hand-run SQL and scripts, recorded in `PRODUCER_REPUTATION_PLAN.md:488-491, :1060-1062` | by hand | identity fields only (producer, country, region, vintage, `beverage_kind`), each logged to `wine_repair_log` | manual | 1,086 logged repairs, 2026-08-13..08-23 (F-E). None touched `wine_structure` |
-| Out-of-repo research runs | no code in any git ref. The in-repo writer (`research_tasks.py:1502`) records one record per run, but these rows record up to 9,592 eligible and 9,346 processed | irregular: about 23:06 UTC on six of the seven nights 08-26..09-01; then about 06:06, 07:06 and 08:11 on 09-03 and 09-05, 08:11 on 09-12, and 06:06 on 09-16 | `research_runs`, `evidence_citations` | **unattributed**. Checked and ruled out: this account's Claude routines (one, not wine), desktop scheduled tasks (none), and the local crontab and launch agents (none) | last run started 2026-09-16 (still `running`); last citation 2026-09-12 08:28Z |
+| Out-of-repo research runs | no code in any git ref. The in-repo writer (`research_tasks.py:1502`) records one record per run, but these rows record up to 9,592 eligible and 9,346 processed | irregular: about 23:06 UTC on six of the seven nights 08-26..09-01; then about 06:06, 07:06 and 08:11 on 09-03 and 09-05, 08:11 on 09-12, and 06:06 on 09-16 | `research_runs`, `evidence_citations` | **unattributed**. Checked and ruled out: this account's Claude routines (one, not wine), desktop scheduled tasks (none), and the local crontab and launch agents (none). [CORRECTED 2026-09-18: attributed, and **running**. Four Claude Desktop scheduled tasks in a second org's store are enabled and ran today: `wine-menu-discovery-enrichment` `0 2 * * *` (last run 2026-09-18T06:06Z), `wine-extract-nightly` `0 3 * * *` (07:05Z), `wine-verify-nightly` `0 4 * * *` (08:10Z), `wine-audit-weekly` `0 5 * * 0` (2026-09-13) (`~/Library/Application Support/Claude/local-agent-mode-sessions/0ca3256d-…/1138b209-…/scheduled-tasks.json`). The "none" above most likely read a different org's list: this app's scheduled-tasks tool lists none, and the four sit under org `1138b209` (inference, not measured). Their prompts are `~/Documents/Claude/Scheduled/wine-*/SKILL.md` and the code they drive is in the gitignored `datasets/annotation_inbox/` (`.gitignore:92` on `origin/main`); `~/Documents/Claude/Scheduled/wine-audit-weekly/SKILL.md:26` sets `review_status='approved'` on library rows. Enabled and running is measured; today's runs left no production row, and the newest rows they could have written are `research_runs` 2026-09-16 06:06Z and a library `updated_at` of 2026-09-12 14:50Z (critic SELECT, 2026-09-18). ADR 0163 build step 0.1 disarms them before any new writer starts.] | last run started 2026-09-16 (still `running`); last citation 2026-09-12 08:28Z |
 | Database-side scheduling | — | — | — | **missing**: `pg_cron`, `pg_net` and `pgmq` are not installed (F-D; the installed extensions are ltree, pg_stat_statements, pg_trgm, pgcrypto, plpgsql, postgis, supabase_vault, uuid-ossp and vector). The project has no edge functions | — |
 | GitHub Actions, Vercel cron, Claude routines | `.github/workflows/*` | — | — | none touches wine. The five scheduled workflows are codeql, agent-cards-weekly, e2e-prod, loop-watcher and schema-parity | — |
 
 **The schedule the library needs.** This is owed work. Its host is fork F1, and every
 cadence below is a proposal, not a decision.
+
+[2026-09-18: F1, F2 and F4 are answered (§7 item 1), and this schedule is superseded by
+ADR 0163 §4, which names the host, cadence and gate of each stage. Mapping: S1 → P4
+(enqueue trigger) + P8 (infer); S2 → P4 (reconciling sweep) + P8; S3 → P12 (deferred
+until a reader exists, new table keyed by model); S4 → P5–P7 (discover, cited
+extraction, verify); S5 → P11; S6 → P10 (market price at read time, never a library
+column); S7 → G1 plus a canonical-type choice (ADR 0163 Q10); S8 → P13. The rows below
+are kept as the foundations reading and are not the plan.]
 
 | # | What runs | How often | Reads | Writes | Gate |
 |---|---|---|---|---|---|
@@ -258,7 +281,10 @@ Today library data reaches the product through two unrelated projections:
   `dashboard.service.ts:918`.
 
 The foundation is **one contract, defined once and read by both**. Its physical home,
-a gateway type or a database view, is fork F6.
+a gateway type or a database view, is fork F6. [F6 was not put to the founder. ADR 0163
+§7 recommends a database view, `wine_profile_v1`, returning value, provenance, source,
+issuer, date, cell id and licence per field, with a hand-written `WineProfile` type
+pinned to it by a static CI test.]
 
 **Contract: `WineProfile`, one per library row.** Each field travels with a provenance
 flag. Field groups:
@@ -293,7 +319,10 @@ the drawing.
    placeholder that looks like data. House analytics with no sales yet follow the same
    rule.
 3. **An inferred value is never presented as fact.** Whether inferred values may be
-   shown at all, and how they are marked, is fork F5.
+   shown at all, and how they are marked, is fork F5. [F5 ANSWERED 2026-09-18 (relayed
+   as a paraphrase): inferred values are shown, labelled honestly with their
+   provenance. ADR 0163 §1 limits inference to descriptive traits and labels them
+   inline.]
 4. **The one-sentence description is composed only from fields the contract carries.**
    It carries the lowest provenance among its inputs, and it is never generated from a
    field the row lacks (ADR 0145: a sentence is bound to the reading that produced it).
@@ -318,7 +347,7 @@ the drawing.
 | Recommendations | `GET /analytics/recommendations/:rid` (`:915`) | no library field | pairing and attribute reasons, once the insight families run | later |
 | Ask / sommelier | ask-ai (`ask-ai/`), with no library reference found by grep; sommelier routed to the assistant (ADR 0143 §3) | none | answers read from the contract, under ADR 0145 | later |
 | Menu import | `POST /menus/import` (`menus.controller.ts:36`) | creates stubs | the S1 hand-off | owed (§2.1) |
-| Vendor prices | MCP `prices.compare` (`tool-catalog.ts:165`); `VendorPriceCompare.tsx` via `/wines` | `masterWineId` only; `retail_price_avg` is 0 | a market reference beside the vendor price | fork F4 (ADR 0117/0126) |
+| Vendor prices | MCP `prices.compare` (`tool-catalog.ts:165`); `VendorPriceCompare.tsx` via `/wines` | `masterWineId` only; `retail_price_avg` is 0 | a market reference beside the vendor price | fork F4 (ADR 0117/0126) [ANSWERED 2026-09-18, *"Both, labelled"*; ADR 0163 §9] |
 | Orchestrator analytics (admin key) | `/api/v1/analytics/wine/{id}/scores`, `/trends`, `/wine/{id}/timeline` (`analytics_routes.py:77, 218, 389`) | tables that are empty in production | — | dead. Retire or rebuild, later |
 
 ## 6. How the insight types connect
@@ -348,12 +377,30 @@ moving the four sibling `primary_type` selects with it.
 
 Each item is small and has a check.
 
+[2026-09-18: this list is now sequenced by the build order in ADR 0163 (Stages 0–3,
+each step with its check). Item 1 is answered below. Item 2 → ADR 0163 steps 0.1 and
+0.15 (the Desktop tasks that write `research_runs` are disarmed first, or a reaper would
+close a live run). Items 3–5 → steps 0.6–0.7. Item 7 → partly retired: `wine_research_service.py` and the Celery tasks
+(`haiku_tasks.py`, `ontology_tasks.py`) belong to lanes ADR 0163 §12 retires;
+`override_service.py`, `quality_routes.py`, `studio_routes.py` and
+`dataset_ingestion_service.py` are not addressed by ADR 0163 and keep this item's check. Item 8 → Stage 1. Item 9 → step 0.11. Item 10 → Stage 2 (P5–P7, keyed on
+library rows). Item 11 → per-cell `model_id`, `prompt_hash`, `run_id` and `batch_id`
+(ADR 0163 §3). Item 12 → G1 and ADR 0163 Q10. Items 13–15 are unchanged and outside
+ADR 0163.]
+
 1. **Put the forks to the founder.** None of these is decided here:
    - **F1**: which host runs enrichment. The options are a Railway Celery worker and
      beat; gateway `@Cron`, which is live, calling the orchestrator; or sessions run by
-     hand.
+     hand. [ANSWERED 2026-09-18: *"most advanced pipeline to output highest results
+     with high quality"*. ADR 0163 §11: gateway `@Cron` plus Message Batches; Celery
+     rejected.]
    - **F2**: whether generic provisional rows (ADR 0130) are ever enriched. 49 of the
-     78 stocked `menu_import` stubs are provisional to a house.
+     78 stocked `menu_import` stubs are provisional to a house. [ANSWERED 2026-09-18:
+     *"everything beyond stocked and more, every day more extractions, more wines, just
+     like the beginning of this project"*. ADR 0163 §2 reads it with ADR 0130:
+     everything with a specific identity is enriched and the library grows nightly;
+     generic and provisional rows show only what the house states; a proposed ADR 0130
+     amendment requires a producer stated on the source.]
    - **F3**: whether to load the producer research and the rich
      `library/restaurant_wine_dataset.jsonl` blocks after repair. 39 of its 200 rows
      still name the Facchin producer and carry the Facchin story; 187 of the 200
@@ -361,12 +408,22 @@ Each item is small and has a check.
      **already in production**: the 44 copied structures came in through the thinner
      seed file (§1). Neither seed file can repair them, because both carry the same 44
      template rows (F-E). A repair needs a fresh model run or a sourced value.
+     [ANSWERED 2026-09-18: *"Repair, then load"*: skip the 39 wrong producer stories,
+     drop the 'estimated' ratings, re-profile the 44 copied rows, stories only when
+     sourced. ADR 0163 §10.]
    - **F4**: which source supplies the market price (Serper snippets, or the ADR
-     0117/0126 index).
+     0117/0126 index). [ANSWERED 2026-09-18: *"Both, labelled"*: the house index
+     first, a public retail figure beside it marked as a public listing. ADR 0163 §9
+     computes both per house at read time, rejects Serper as an issuer, and limits the
+     public line to shops whose terms permit it (Hi-Time only today).]
    - **F5**: whether inferred values may be shown on a page, and how they are marked.
-   - **F6**: whether the contract lives in a gateway type or a database view.
+     [ANSWERED 2026-09-18 (relayed as a paraphrase): shown, labelled honestly with
+     their provenance. ADR 0163 §1.]
+   - **F6**: whether the contract lives in a gateway type or a database view. [Not
+     asked; ADR 0163 §7 recommends a database view with a hand-written type.]
 
-   *Check:* each fork has a register row or an answer.
+   *Check:* each fork has a register row or an answer. [Met for F1–F5; F6 and the
+   questions ADR 0163 raises are listed in that ADR for the founder.]
 2. **Clear the four stale `running` rows in `research_runs`, and add a reaper.** This is
    a production write and needs the founder's word. *Check:* F-A `runs_running = 0`.
 3. **Stop `mapWine` reading the column that does not exist.** *Check:* the claim
@@ -382,7 +439,8 @@ Each item is small and has a check.
    run each insert once against a local database built from migrations.
 8. **Stand up S1 to S3 on the F1 host.** *Check:* F-A `after_0817_profiled_or_embedded`
    equals `live_after_0817`, and `stocked_body` equals `stocked_distinct` minus the
-   F2-excluded rows.
+   F2-excluded rows. [2026-09-18: host is ADR 0163 §11; the F2-excluded rows are
+   ADR 0163 §2's buckets, reported by P13 and never counted as covered or missing.]
 9. **Stand up S8 (pipeline health).** *Check:* it fails on today's data (160 stocked
    wines without a profile) and passes only after item 8.
 10. **Key research eligibility on library rows** (or mint submissions for stubs), then
@@ -424,7 +482,9 @@ found one no-op mutation: a Celery worker added to `docker-compose.override.yml`
 declared in a new file would still be missed, and the row says so.
 
 Kept as prose because no static check can hold them: every production count in this
-document (re-run the appendix); that the out-of-repo research runs have stopped; that no
+document (re-run the appendix); that the out-of-repo research runs have stopped [CORRECTED 2026-09-18: they have not;
+the four Desktop tasks are enabled and three ran today, §3, although the newest
+production row they could have written is from 2026-09-16]; that no
 Railway service was configured by hand outside the IaC; that research eligibility is 0;
 and the 573/24 insight count, which needs the TypeScript compiled and so cannot run in
 the claims job.
