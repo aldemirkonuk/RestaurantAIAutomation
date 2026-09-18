@@ -117,6 +117,18 @@ By module (details and failing output in the named report):
 - `markAsRead`, `markAsUnread` and `archiveNotification` on an id that is not the
   caller's return 404, where they used to return 500 from `.single()` finding no row.
 
+## Addendum 2026-09-18: a sign-up body never names a house
+
+The same fault as the first of this record's three, in the one place a caller has no
+token yet: `POST /auth/register` took `restaurantId` and `role` from its body and
+wrote both onto the new user, and the token that came back was scoped to that house
+in that role. It is closed rather than fixed, because nothing calls it: a person
+opens a house through `POST /auth/register/restaurant` and joins one only through an
+invitation, and both of those take the house from a record the server made, never
+from the body. The route answers 410 with those two doors named, and
+`AuthService.register` is deleted so no writer is left. Detail and the production
+read are in `v3.0-TECH-DEBT.md` 44.1g; the claim is `ADR-0147-REGISTER-NAMES-NO-HOUSE`.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
