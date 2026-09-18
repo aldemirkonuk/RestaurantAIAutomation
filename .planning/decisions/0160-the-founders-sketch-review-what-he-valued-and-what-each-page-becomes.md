@@ -497,6 +497,20 @@ words: *"are we sure baout [about] this approach? research [and] analyze [it] in
 scalability and quality, but it s [it's] the best in terms UI looks(and possible that we
 might get ads there in future)"* — **direction B stays the pick for looks** while a
 research pass on the sizing mechanism's scalability and quality runs.
+**[answered 2026-09-18, founder via `AskUserQuestion` after the research (session
+scratchpad `113-box-sizing-research.md`): a bigger box means **money worth to this
+house** — the discount times what the house actually buys, shown as an estimate, and
+only when the house qualifies (the grader today never reads an offer's minimum quantity,
+`offer-grade.ts`, and sizes by dollar worth while printing the percentage) — with his
+condition *"structural system, priorities must come first"*: the ranking rules (the
+offer qualifies, its worth is real, its comparison price is recent) are settled before
+any box is sized. Sizes come in **tiers** — at most one hero, up to three larger cards,
+then compact tiles so ten or more offers stay visible — not continuous scaling. Whether
+box size and order may ever be sold as advertising is **left open until ads are
+scoped** (his pick "Decide when ads come"; the research flags Turkey's Law 4250 and US
+tied-house rules for a lawyer, from memory, moderate confidence). The estimate needs a
+written rule under ADR 0020 before it ships. Open item 8 is closed; ads become open item
+9.]**
 
 ## Consequences
 
@@ -544,7 +558,9 @@ research pass on the sizing mechanism's scalability and quality runs.
      loaded fresh, never cached. See 112 fork 6.]**
   3. 113 — whether A's Trusted senders / Strangers sections (with 4c's hold-to-trust and
      add-vendor ask) stay on `/promotions` under B, or move to `/communications` as B's
-     own draw sends them.
+     own draw sends them. **[answered 2026-09-18, founder via `AskUserQuestion`, the
+     offered recommendation: they move to `/communications`, and the hold-to-trust and
+     add-vendor acts go with them; `/promotions` holds offers only.]**
   4. 107 — "too many operations for the record, what could happen": his risk, not yet
      his fix; paging or grouping is proposed, not decided.
   5. 111 — the web half of the mail-access-revoked alert ("maybe not" ×3, "I'm not
@@ -558,7 +574,11 @@ research pass on the sizing mechanism's scalability and quality runs.
      unblocked for later?
   8. 113 — the projected-worth box-size mechanism: not decided; a research pass on its
      scalability and quality is owed and running (2026-09-18) — direction B stays the
-     pick for looks in the meantime.
+     pick for looks in the meantime. **[answered 2026-09-18: money worth to the house,
+     as an estimate, ranking rules first, in tiers. See 113.]**
+  9. **[added 2026-09-18]** 113 — whether box size and order on `/promotions` may ever be
+     sold as advertising: his pick is to decide when ads are scoped; a lawyer reviews
+     Turkey's Law 4250 and US tied-house rules before any ad product.
 - The cellar, help, vendor-price and promotions builds each carry items that came from
   this review and from nowhere else; a build that ships without them has not met the
   review.
