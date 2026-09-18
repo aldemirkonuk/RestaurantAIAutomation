@@ -353,7 +353,7 @@ describe("the POST route answers 401 on a wrong signature", () => {
 
 // ───────────────────────────────────────────────────────────────────────────
 describe("the GET handshake", () => {
-  it("sends even an HTML-looking challenge as plain text", () => {
+  it("refuses an HTML-looking challenge and echoes none of it", () => {
     const c = new WhatsAppWebhookController(
       stubConfig({ WHATSAPP_WEBHOOK_VERIFY_TOKEN: VERIFY }),
       inbound(seed()),
@@ -371,9 +371,11 @@ describe("the GET handshake", () => {
       },
       response as never,
     );
-    expect(response.status).toHaveBeenCalledWith(200);
+    expect(response.status).toHaveBeenCalledWith(403);
     expect(response.type).toHaveBeenCalledWith("text/plain");
-    expect(response.send).toHaveBeenCalledWith("<img src=x onerror=alert(1)>");
+    const sent = String(response.send.mock.calls[0]?.[0] ?? "");
+    expect(sent).not.toContain("<img");
+    expect(sent).not.toContain("onerror");
   });
 
   it("sends handshake refusals as plain text", () => {
@@ -408,6 +410,27 @@ describe("the GET handshake", () => {
         verifyToken: VERIFY,
       }),
     ).toEqual({ ok: true, challenge: "1158201444" });
+  });
+
+  it("echoes only a canonical whole number, never a string that merely starts with one", () => {
+    for (const challenge of ["12<b>", "1 2", "0x1F", "-1", "1.5", "007", "1".repeat(65)]) {
+      expect(
+        verifyMetaHandshake({
+          mode: "subscribe",
+          token: VERIFY,
+          challenge,
+          verifyToken: VERIFY,
+        }),
+      ).toMatchObject({ ok: false, reason: "not-an-int" });
+    }
+    expect(
+      verifyMetaHandshake({
+        mode: "subscribe",
+        token: VERIFY,
+        challenge: "0",
+        verifyToken: VERIFY,
+      }),
+    ).toEqual({ ok: true, challenge: "0" });
   });
 
   it("refuses a wrong token, a wrong mode, and an unset verify token", () => {

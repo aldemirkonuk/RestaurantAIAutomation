@@ -17,8 +17,10 @@
  *
  *   Verification (GET). Meta calls the endpoint with `hub.mode`, which "must
  *   equal `subscribe`", `hub.verify_token`, which must match "the string you
- *   set in the Verify Token field" in the App Dashboard, and `hub.challenge`.
- *   On a match the endpoint responds **200** with `hub.challenge` as the body.
+ *   set in the Verify Token field" in the App Dashboard, and `hub.challenge`,
+ *   "An `int` you must pass back to us" (example `1158201444`; re-read
+ *   2026-09-18). On a match the endpoint responds **200** with `hub.challenge`
+ *   as the body.
  *
  *   Payloads (POST). The header is `X-Hub-Signature-256`, its value is
  *   `sha256=<signature>`, and the signature is "a SHA256 signature using the
@@ -131,7 +133,12 @@ export type MetaHandshakeResult =
   | { ok: true; challenge: string }
   | {
       ok: false;
-      reason: "no-verify-token" | "wrong-mode" | "wrong-token" | "no-challenge";
+      reason:
+        | "no-verify-token"
+        | "wrong-mode"
+        | "wrong-token"
+        | "no-challenge"
+        | "not-an-int";
       says: string;
     };
 
@@ -199,5 +206,21 @@ export function verifyMetaHandshake(params: {
     };
   }
 
-  return { ok: true, challenge: params.challenge };
+  // Meta documents the challenge as an int, so only a canonical decimal int is
+  // ever echoed. What goes back is the int re-printed, not the caller's string:
+  // this endpoint is public, and a string that is only digits and survives the
+  // round trip cannot carry markup, whatever content type a client assumes.
+  // The CodeQL alert on #391 (js/reflected-xss) was this reflection.
+  const echoed = /^[0-9]{1,64}$/.test(params.challenge)
+    ? BigInt(params.challenge).toString()
+    : null;
+  if (echoed === null || echoed !== params.challenge) {
+    return {
+      ok: false,
+      reason: "not-an-int",
+      says: "The token matched but hub.challenge was not a whole number, which is what Meta sends. Nothing was echoed.",
+    };
+  }
+
+  return { ok: true, challenge: echoed };
 }
