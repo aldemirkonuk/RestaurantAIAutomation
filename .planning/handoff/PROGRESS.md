@@ -20,11 +20,22 @@ p4 after #289, #369 MCP port, and this handoff doc. Those PRs and train 1 (#371)
 as landed or superseded. The endpoint faults (ADR 0147) follow in their own PR.
 
 **Still open, in priority order:**
-1. **#368 text-sender port.** Its five ADR-0121 CLAIMS rows (P0-PUSH, P0-PHONE,
-   P1-WEBHOOK, P1-WINDOW, P1-HTTP-CENSUS) hold locally but REGRESSED in CI's "Decision
-   register matches reality" job. The likely cause is a verify command that depends on
-   the local environment (node_modules or jest). Read those rows' `verify` fields
-   against what that CI job installs.
+1. **#368 text-sender port — RESOLVED on `wt-fin-F`, 2026-09-17, superseding #368.**
+   The cause of the CI regression was confirmed: all five original rows' `verify`
+   fields ran `npx jest`, and CI's `decision-claims` job only checks out the repo —
+   it installs nothing, so `npx` itself was the failure (`.github/workflows/ci.yml:540-548`).
+   Rewritten as ten grep/python-only rows (`ADR-0121-P0-PUSH` through
+   `ADR-0121-P1-STATUS-CALLBACK` in `CLAIMS.jsonl`), none using `npx jest` or `vitest`;
+   `check_decision_claims.sh` 345 checked / 345 holding on this tree. Ten defects a
+   two-pass adversarial judge found were also fixed (ADR 0121's 2026-09-17 review-trail
+   row has the list). **The "Stop it" ceremony question is answered and built** (F3
+   lane, same worktree, same day): the founder said hold-to-approve plus a typed
+   reason, matching this page's other revokes; the one-click fixed-reason control is
+   replaced, with the typed reason kept on the record and both the success and
+   refusal paths under test (see ADR 0121's 2026-09-17 (F3) review-trail row). Three
+   remain, each needing a founder answer: whether an inbound WhatsApp message proves
+   phone reachability, whether "Main line" can be a stated answer, and a
+   founder-authorized production duplicate count before merge.
 2. **#362 security gate.** Rewrite the guard on PyYAML (brief in section 3).
 3. **#349 nightly E2E.** Its merge of main is in progress in wt-e2e, with 6 conflicts.
 4. **Ports:** calpush, ov0, ov1, ov2, motions (section 4). The founder chose to land all
@@ -33,7 +44,9 @@ as landed or superseded. The endpoint faults (ADR 0147) follow in their own PR.
 
 **Two findings that are fixed nowhere:**
 - `GET /logs` correlationId reads across houses.
-- No unique index on Meta phone number id.
+- ~~No unique index on Meta phone number id.~~ **Fixed on `wt-fin-F`, 2026-09-17**:
+  migration `20260913190100_whatsapp_sender_and_inbound_identity.sql` (two partial
+  unique indexes, additive). Not yet on `main` — lands when this lane's PR merges.
 
 ## 0. Latest state (supersedes section 3 wherever they differ)
 
@@ -94,9 +107,9 @@ out), re-verify, commit, and land it alone.
 - Main's `GET /logs` accepts a `correlationId` that reads `event_store` rows across houses
   for any signed-in user. The MCP port removed the same argument from its own tool; see
   p4-scratch/ports/mcp.md.
-- The database allows two houses to hold the same Meta phone number id. The text-sender
-  port refuses that case in code, but the unique index needs its own migration; see
-  p4-scratch/ports/text.md.
+- ~~The database allows two houses to hold the same Meta phone number id.~~ **Fixed on
+  `wt-fin-F`, 2026-09-17**: migration `20260913190100` adds the unique index; see
+  ADR 0121's 2026-09-17 review-trail row. p4-scratch/ports/text.md is superseded here.
 
 ## 1. Rules a continuing session must keep
 
@@ -136,7 +149,7 @@ out), re-verify, commit, and land it alone.
 | Audit depth for the merge queue | "Your word as PASS, no agents" | this file; each PR marker comment |
 | Seven 2026-09-06 branches that never landed | "Triage each, then decide" | this file, section 4 |
 | MCP server (ADR 0132, was Proposed) | "Lock 0132 and land it" | to record in ADR 0132 when ported |
-| Text sender + calendar push | "Land both now" | ADR 0121 / 0111 review rows when ported |
+| Text sender + calendar push | "Land both now" | ADR 0121's review row done (`wt-fin-F`, 2026-09-17, quoted verbatim in the status line) / ADR 0111's still pending |
 | Overlay packets 0, 1, 2 (ADR 0112) | "Port all three now" | when ported |
 | Motions doc (ADR 0134) | "Land it as Proposed" | when ported |
 | #349 nightly E2E trace leak | "Fix trace, then land it" | ADR 0135 "Audit fixes" |
@@ -190,7 +203,7 @@ unresolved**. The agents that were resolving them died on the weekly limit.
 | Port worktree | Branch | Base | Conflicts at apply | Must also do |
 |---|---|---|---|---|
 | `wt-port-mcp` | feat/connect-mudavym-mcp-server | 161d92cc | 2 unmerged, 3 files with markers | Lock ADR 0132 (founder, today). Rename migration `20260906170000_a_house_gives_its_assistant_a_key.sql` to `20260912200000`. Confirm keys are hashed, reads are house-scoped, and a revoked key is refused. check_route_exposure |
-| `wt-port-text` | feat/connect-text-sender | 161d92cc | 3 / 4 | The Meta webhook must verify X-Hub-Signature-256 on the raw body with a timing-safe compare. Main's text module has moved on, so reconcile. Add an ADR 0121 review row |
+| `wt-port-text` | feat/connect-text-sender | 161d92cc | 3 / 4 | **Done on `wt-fin-F`, 2026-09-17** — the Meta webhook verifies X-Hub-Signature-256 on the raw body with `crypto.timingSafeEqual`; reconciled with main's moved text module; ADR 0121 carries a 2026-09-17 review row |
 | `wt-port-calpush` | feat/connect-calendar-push | 161d92cc | 1 / 2 | Rename migration `20260906190000_...` to `20260912200100`. ADR 0111 stays Proposed |
 | `wt-port-ov0` | feat/overlays-packet-0-primitive | 161d92cc | 3 / 4 | ONE Sheet: keep #359's Escape and focus-trap fixes. Add SheetStack, Denied and Stub on main's Sheet API. the OD number it files must not collide. Do not resurrect .planning/01-org files main deleted |
 | `wt-port-ov1` | feat/overlays-packet-1 | 161d92cc | clean (1 file with marker-like text) | A clean apply is not proof: compare every touched file with what #289 rebuilt |
