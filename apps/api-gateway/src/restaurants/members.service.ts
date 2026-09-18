@@ -160,6 +160,12 @@ export class MembersService {
    * and unrecoverably. It now files itself through the same
    * `recordAccessChange` the removal uses, and returns a receipt saying whether
    * the record was actually written.
+   *
+   * It changes the role in THIS house only (ADR 0162, the founder's answer of
+   * 2026-09-18, "Only that house"). The target must be a member here, and the
+   * global `users.role` is written only when their `users` row names this
+   * house. Until then only the ACTOR was checked, so an owner of any house
+   * could set anyone's global `users.role` (v3.0-TECH-DEBT 44.1p).
    */
   async updateMemberRole(
     actorUserId: string,
@@ -168,6 +174,48 @@ export class MembersService {
     newRole: "owner" | "manager" | "staff",
   ): Promise<AccessChangeReceipt> {
     await this.assertMembership(actorUserId, restaurantId, "owner");
+
+    // The target must be a member of THIS house, read the way
+    // `assertMembership` reads one: an active access row here decides; with
+    // none, a `users` row whose `restaurant_id` names this house, at
+    // `users.role || "staff"`. Anyone else is not a member here: 404, before
+    // any write. The role read is also the before-state the audit row records.
+    // Both reads bind their errors, because `maybeSingle()` answers
+    // `data: null` for BOTH "no row" and "the query failed". Discarding the
+    // error made a failed read produce `previousRole = null`, and the audit
+    // row this method exists to write would then record the change as coming
+    // FROM no role at all — a false record, which is worse than no record and
+    // is precisely what ADR 0088 forbids.
+    const { data: targetAccess, error: targetAccessErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", targetUserId)
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .maybeSingle();
+    if (targetAccessErr) {
+      this.cannotReadCurrentRole(targetUserId, restaurantId, targetAccessErr);
+    }
+
+    let previousRole: string | null;
+    if (targetAccess) {
+      previousRole = targetAccess.role ?? null;
+    } else {
+      const { data: targetUser, error: targetUserErr } =
+        await this.databaseService.supabase
+          .from("users")
+          .select("restaurant_id, role")
+          .eq("user_id", targetUserId)
+          .maybeSingle();
+      if (targetUserErr) {
+        this.cannotReadCurrentRole(targetUserId, restaurantId, targetUserErr);
+      }
+      if (!targetUser || targetUser.restaurant_id !== restaurantId) {
+        throw new NotFoundException("Member not found in this restaurant");
+      }
+      previousRole = targetUser.role || "staff";
+    }
 
     if (actorUserId === targetUserId && newRole !== "owner") {
       const { count } = await this.databaseService.supabase
@@ -184,32 +232,6 @@ export class MembersService {
       }
     }
 
-    // Capture the before-state while it still exists. After the UPDATE below
-    // nothing can reconstruct what the role used to be.
-    // Bound, because `maybeSingle()` answers `data: null` for BOTH "no row" and
-    // "the query failed". Discarding the error made a failed read produce
-    // `previousRole = null`, and the audit row this method exists to write would
-    // then record the change as coming FROM no role at all — a false record,
-    // which is worse than no record and is precisely what ADR 0088 forbids.
-    const { data: before, error: beforeErr } =
-      await this.databaseService.supabase
-        .from("user_restaurant_access")
-        .select("role")
-        .eq("user_id", targetUserId)
-        .eq("restaurant_id", restaurantId)
-        .maybeSingle();
-    if (beforeErr) {
-      this.logger.error(
-        `changeRole: could not read the current role of ${targetUserId} in ` +
-          `${restaurantId}: ${beforeErr.message}`,
-      );
-      throw new InternalServerErrorException(
-        "Could not read the member's current role, so the change was not made " +
-          "— recording it would have meant inventing what it changed from.",
-      );
-    }
-    const previousRole: string | null = before?.role ?? null;
-
     const { error: uraErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .update({ role: newRole })
@@ -223,10 +245,27 @@ export class MembersService {
       throw new InternalServerErrorException("Failed to update member role");
     }
 
-    await this.databaseService.supabase
+    // `users.role` is ONE value for every house the person belongs to, and
+    // `RolesGuard` gates every `@Roles` route on it. A change in this house
+    // writes it only when their `users` row names this house; a member here
+    // whose `users` row names another house keeps the role that house gave
+    // them. For a member known only by that row, it IS their role here, so a
+    // failed write is a failed change. For a member with an access row the
+    // change above has happened and is recorded below; the failure is logged.
+    const { error: usersErr } = await this.databaseService.supabase
       .from("users")
       .update({ role: newRole })
-      .eq("user_id", targetUserId);
+      .eq("user_id", targetUserId)
+      .eq("restaurant_id", restaurantId);
+    if (usersErr) {
+      this.logger.error(
+        `updateMemberRole users update failed for ${targetUserId} in ` +
+          `${restaurantId}: ${usersErr.message}`,
+      );
+      if (!targetAccess) {
+        throw new InternalServerErrorException("Failed to update member role");
+      }
+    }
 
     return recordAccessChange(this.databaseService.supabase, this.logger, {
       restaurantId,
@@ -243,6 +282,22 @@ export class MembersService {
     });
   }
 
+  /** A target whose role here cannot be read is not changed. */
+  private cannotReadCurrentRole(
+    targetUserId: string,
+    restaurantId: string,
+    err: { message: string },
+  ): never {
+    this.logger.error(
+      `changeRole: could not read the current role of ${targetUserId} in ` +
+        `${restaurantId}: ${err.message}`,
+    );
+    throw new InternalServerErrorException(
+      "Could not read the member's current role, so the change was not made " +
+        "— recording it would have meant inventing what it changed from.",
+    );
+  }
+
   async removeMember(
     actorUserId: string,
     restaurantId: string,
@@ -250,11 +305,9 @@ export class MembersService {
   ): Promise<void> {
     const selfLeave = actorUserId === targetUserId;
 
-    if (selfLeave) {
-      await this.assertMembership(actorUserId, restaurantId);
-    } else {
-      await this.assertMembership(actorUserId, restaurantId, "owner|manager");
-    }
+    const actor = selfLeave
+      ? await this.assertMembership(actorUserId, restaurantId)
+      : await this.assertMembership(actorUserId, restaurantId, "owner|manager");
 
     const { data: targetAccess } = await this.databaseService.supabase
       .from("user_restaurant_access")
@@ -264,6 +317,9 @@ export class MembersService {
       .eq("is_active", true)
       .maybeSingle();
 
+    // The target's role here, read the way `assertMembership` reads a member:
+    // their access row, or with none, a `users` row naming this house.
+    let targetRole: string | null = targetAccess?.role ?? null;
     if (!targetAccess) {
       // Fallback: check if target user has restaurant_id set in users table
       const { data: targetUser } = await this.databaseService.supabase
@@ -275,8 +331,21 @@ export class MembersService {
       if (!targetUser || targetUser.restaurant_id !== restaurantId) {
         throw new NotFoundException("Member not found in this restaurant");
       }
+      targetRole = targetUser.role;
+    }
 
-      if (targetUser.role === "owner") {
+    // Owners manage owners (ADR 0162, the founder's addendum 2026-09-18): a
+    // manager removes a manager or staff, never an owner. Before any write, on
+    // both paths. An owner leaving is the actor removing themself as owner, so
+    // it passes here and meets the last-owner guard below.
+    if (targetRole === "owner" && actor.role !== "owner") {
+      throw new ForbiddenException(
+        "Only an owner of this house can remove an owner.",
+      );
+    }
+
+    if (!targetAccess) {
+      if (targetRole === "owner") {
         const { count } = await this.databaseService.supabase
           .from("users")
           .select("*", { count: "exact", head: true })

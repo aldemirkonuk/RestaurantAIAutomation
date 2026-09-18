@@ -3,6 +3,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { AuthService } from "./auth.service";
+import { asDatabaseService, makeStubDb } from "../team/testing/supabase-stub";
 
 /**
  * `POST /auth/invite` — an owner invites any role, a manager a manager or
@@ -17,72 +18,52 @@ import { AuthService } from "./auth.service";
  * invite for the second. Whoever redeemed it became that role (`/auth/join`
  * takes the role from the invite).
  *
- * The role is read ONLY from the inviter's active access row in the house
- * being invited to: no `users`-row fallback, a NULL or unknown role grants
- * nothing, and a failed read is a 503, not a guess in either direction.
+ * The role is read the way `MembersService.assertMembership` reads it: the
+ * inviter's active access row in the house being invited to decides when it
+ * exists (a NULL role grants nothing); with no row, a `users` row whose
+ * `restaurant_id` names this house is read at `users.role || "staff"`; any
+ * other `users` row grants nothing. The ceiling applies to both. A failed
+ * read of either is a 503, not a guess in either direction.
  */
 
-type Access = { data: any; error: any };
+type Row = Record<string, any>;
 
-function makeService(opts: { access?: Access; legacyUser?: Access }) {
-  const inserted: Array<{ table: string; payload: any }> = [];
+const ME = "user-1";
+const HOUSE = "house-1";
+const OTHER_HOUSE = "house-2";
+const SOMEONE_ELSE = "user-2";
 
-  // `single` answers the insert; `maybeSingle` answers reads (the code
-  // collision check reads organization_invites too, and must find nothing).
-  const chain = (table: string, result: any, readResult = result): any => {
-    const c: any = {
-      select: () => c,
-      update: () => c,
-      insert: (payload: any) => {
-        inserted.push({ table, payload });
-        return c;
-      },
-      upsert: () => c,
-      delete: () => c,
-      order: () => c,
-      limit: () => c,
-      eq: () => c,
-      is: () => c,
-      gt: () => c,
-      maybeSingle: jest.fn().mockResolvedValue(readResult),
-      single: jest.fn().mockResolvedValue(result),
-      // The onboarding flag is updated fire-and-forget with .then().
-      then: (resolve: (v: unknown) => unknown) =>
-        Promise.resolve({ error: null }).then(resolve),
-    };
-    return c;
-  };
-
-  const supabase = {
-    from: (table: string) => {
-      if (table === "user_restaurant_access")
-        return chain(table, opts.access ?? { data: null, error: null });
-      if (table === "users")
-        return chain(table, opts.legacyUser ?? { data: null, error: null });
-      if (table === "restaurants")
-        return chain(table, {
-          data: { organization_id: "org-1" },
-          error: null,
-        });
-      if (table === "organization_invites")
-        return chain(
-          table,
-          {
-            data: { id: "inv-1", code: "ABCD2345", expires_at: null },
-            error: null,
-          },
-          { data: null, error: null },
-        );
-      return chain(table, { data: null, error: null });
+/**
+ * Over the filter-honouring stub (`team/testing/supabase-stub.ts`), not a
+ * chain that answers every read with one canned row. A stub that ignores
+ * `.eq(...)` cannot fail a test about which row is read: with it, dropping
+ * `.eq("restaurant_id", restaurantId)` or `.eq("is_active", true)` from the
+ * inviter's access read passed every test here (PR #393's round-3 verifier).
+ */
+function makeService(
+  seed: {
+    access?: Row[];
+    users?: Row[];
+    errors?: Record<string, { message: string }>;
+  } = {},
+) {
+  const db = makeStubDb(
+    {
+      user_restaurant_access: seed.access ?? [],
+      users: seed.users ?? [],
+      restaurants: [{ id: HOUSE, organization_id: "org-1" }],
+      organization_invites: [],
+      user_onboarding_progress: [],
     },
-  };
+    seed.errors ?? {},
+  );
 
   // Order matters: (jwtService, configService, databaseService,
   // tokenBlacklistService, gmailService).
   const svc = new AuthService(
     { sign: () => "tok", signAsync: async () => "tok" } as any,
     { get: () => undefined } as any,
-    { supabase } as any,
+    asDatabaseService(db),
     {
       isBlacklisted: async () => false,
       blacklist: async () => undefined,
@@ -95,19 +76,27 @@ function makeService(opts: { access?: Access; legacyUser?: Access }) {
     .mockResolvedValue(undefined);
 
   const invite = (role?: string) =>
-    svc.generateInvite("user-1", "house-1", {
-      restaurantId: "house-1",
+    svc.generateInvite(ME, HOUSE, {
+      restaurantId: HOUSE,
       role,
     } as any);
 
-  const invitesWritten = () =>
-    inserted.filter((i) => i.table === "organization_invites");
+  const invitesWritten = () => db.tables.organization_invites;
+  const invitedRoles = () => invitesWritten().map((i) => i.role);
 
-  return { invite, invitesWritten };
+  return { invite, invitesWritten, invitedRoles };
 }
 
-const asRole = (role: string) => ({
-  access: { data: { role }, error: null },
+/** An active access row for the inviter in the house being invited to. */
+const asRole = (role: string | null) => ({
+  access: [
+    { user_id: ME, restaurant_id: HOUSE, role, is_active: true },
+  ] as Row[],
+});
+
+/** No access row anywhere; a `users` row naming `house` at `role`. */
+const legacy = (house: string, role: string | null) => ({
+  users: [{ user_id: ME, restaurant_id: house, role }] as Row[],
 });
 
 describe("POST /auth/invite grants no role above the inviter's own", () => {
@@ -118,19 +107,16 @@ describe("POST /auth/invite grants no role above the inviter's own", () => {
   });
 
   it("lets a manager invite a manager or staff", async () => {
-    const { invite, invitesWritten } = makeService(asRole("manager"));
+    const { invite, invitedRoles } = makeService(asRole("manager"));
     await invite("manager");
     await invite("staff");
-    expect(invitesWritten().map((i) => i.payload.role)).toEqual([
-      "manager",
-      "staff",
-    ]);
+    expect(invitedRoles()).toEqual(["manager", "staff"]);
   });
 
   it("lets an owner invite an owner", async () => {
-    const { invite, invitesWritten } = makeService(asRole("owner"));
+    const { invite, invitedRoles } = makeService(asRole("owner"));
     await invite("owner");
-    expect(invitesWritten().map((i) => i.payload.role)).toEqual(["owner"]);
+    expect(invitedRoles()).toEqual(["owner"]);
   });
 
   it("refuses staff in THIS house, whatever role the token carries elsewhere", async () => {
@@ -140,9 +126,9 @@ describe("POST /auth/invite grants no role above the inviter's own", () => {
   });
 
   it("writes the default role only when the inviter may grant it", async () => {
-    const { invite, invitesWritten } = makeService(asRole("manager"));
+    const { invite, invitedRoles } = makeService(asRole("manager"));
     await invite(undefined);
-    expect(invitesWritten().map((i) => i.payload.role)).toEqual(["manager"]);
+    expect(invitedRoles()).toEqual(["manager"]);
   });
 
   it("refuses a role the rank table does not know", async () => {
@@ -153,28 +139,67 @@ describe("POST /auth/invite grants no role above the inviter's own", () => {
     expect(invitesWritten()).toEqual([]);
   });
 
-  it("refuses a member whose only claim is a stale users row", async () => {
-    // Removed from this house (no access row) while `users.restaurant_id`
-    // still names it and `users.role` says manager: the stale chain.
-    const { invite, invitesWritten } = makeService({
-      access: { data: null, error: null },
-      legacyUser: {
-        data: { restaurant_id: "house-1", role: "manager" },
-        error: null,
-      },
-    });
+  it("reads a legacy member from a users row naming this house, capped by the ceiling", async () => {
+    // Production 2026-09-18: a manager created 2026-05-09 whose
+    // `users.restaurant_id` is a house they have never had an access row for.
+    // `assertMembership` admits them there; so does this door, at their
+    // `users.role`, and no higher.
+    const { invite, invitedRoles } = makeService(legacy(HOUSE, "manager"));
+    await invite("manager");
+    await invite("staff");
     await expect(invite("owner")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitedRoles()).toEqual(["manager", "staff"]);
+  });
+
+  it("refuses when there is no access row and the users row names another house", async () => {
+    const { invite, invitesWritten } = makeService(
+      legacy(OTHER_HOUSE, "owner"),
+    );
     await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitesWritten()).toEqual([]);
+  });
+
+  it("reads a legacy users row with no role as staff, which grants nothing", async () => {
+    const { invite, invitesWritten } = makeService(legacy(HOUSE, null));
+    await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitesWritten()).toEqual([]);
+  });
+
+  it('refuses a legacy users row whose role is an inherited key, such as "constructor"', async () => {
+    const { invite, invitesWritten } = makeService(
+      legacy(HOUSE, "constructor"),
+    );
+    await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitesWritten()).toEqual([]);
+  });
+
+  it("lets an access row decide even when the users row names this house higher", async () => {
+    // Staff here by their access row; `users.role` says owner. The row wins,
+    // as it does in `assertMembership`: the users row is read only when there
+    // is no access row at all.
+    const { invite, invitesWritten } = makeService({
+      ...asRole("staff"),
+      ...legacy(HOUSE, "owner"),
+    });
+    await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitesWritten()).toEqual([]);
+  });
+
+  it("answers 503, not a refusal, when the users row cannot be read", async () => {
+    const { invite, invitesWritten } = makeService({
+      ...legacy(HOUSE, "manager"),
+      errors: { "users:select": { message: "connection reset" } },
+    });
+    await expect(invite("staff")).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
     expect(invitesWritten()).toEqual([]);
   });
 
   it("refuses an access row whose role is NULL, whatever the users row says", async () => {
     const { invite, invitesWritten } = makeService({
-      access: { data: { role: null }, error: null },
-      legacyUser: {
-        data: { restaurant_id: "house-1", role: "manager" },
-        error: null,
-      },
+      ...asRole(null),
+      ...legacy(HOUSE, "manager"),
     });
     await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
     expect(invitesWritten()).toEqual([]);
@@ -189,11 +214,74 @@ describe("POST /auth/invite grants no role above the inviter's own", () => {
 
   it("answers 503, not a guess, when the role cannot be read", async () => {
     const { invite, invitesWritten } = makeService({
-      access: { data: null, error: { message: "connection reset" } },
+      ...asRole("owner"),
+      errors: {
+        "user_restaurant_access:select": { message: "connection reset" },
+      },
     });
     await expect(invite("staff")).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
+    expect(invitesWritten()).toEqual([]);
+  });
+});
+
+/**
+ * Which row is read. Each test holds a row that WOULD grant the invite if the
+ * read dropped one of its filters, and no row that grants it with every filter
+ * in place. Added 2026-09-18 (PR #393's fourth round): over the old canned
+ * stub, a read with `.eq("restaurant_id", …)` or `.eq("is_active", true)`
+ * deleted passed this whole file.
+ */
+describe("POST /auth/invite reads the inviter's own row in this house, and no other", () => {
+  it("gives an owner's access row in another house nothing to grant here", async () => {
+    const { invite, invitesWritten } = makeService({
+      access: [
+        {
+          user_id: ME,
+          restaurant_id: OTHER_HOUSE,
+          role: "owner",
+          is_active: true,
+        },
+      ],
+    });
+    await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitesWritten()).toEqual([]);
+  });
+
+  it("gives an inactive owner's access row here nothing to grant", async () => {
+    const { invite, invitesWritten } = makeService({
+      access: [
+        { user_id: ME, restaurant_id: HOUSE, role: "owner", is_active: false },
+      ],
+    });
+    await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitesWritten()).toEqual([]);
+  });
+
+  it("gives another person's owner row here nothing to grant the inviter", async () => {
+    const { invite, invitesWritten } = makeService({
+      access: [
+        {
+          user_id: SOMEONE_ELSE,
+          restaurant_id: HOUSE,
+          role: "owner",
+          is_active: true,
+        },
+      ],
+    });
+    await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitesWritten()).toEqual([]);
+  });
+
+  it("gives another person's users row naming this house nothing to grant the inviter", async () => {
+    const { invite, invitesWritten } = makeService({
+      users: [
+        { user_id: SOMEONE_ELSE, restaurant_id: HOUSE, role: "owner" },
+        { user_id: ME, restaurant_id: OTHER_HOUSE, role: "owner" },
+      ],
+    });
+    await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
     expect(invitesWritten()).toEqual([]);
   });
 });

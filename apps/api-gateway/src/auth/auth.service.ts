@@ -1042,14 +1042,33 @@ export class AuthService {
     restaurantId: string,
     dto: InviteDto,
   ): Promise<object> {
-    // The inviter's role IN THIS HOUSE, from their active access row there and
-    // from nowhere else. `RolesGuard` let the caller through on `users.role`:
-    // `JwtStrategy.validate` sets `role: user.role ?? payload.role` from an
-    // unscoped `users` read (`validateJwtPayload`), and that column is GLOBAL,
-    // one value for every house the person belongs to. The body names the
-    // house. So the guard proves nothing about this house, and nothing here
-    // compared the role granted with the inviter's own: a manager could mint an
-    // owner's invite (v3.0-TECH-DEBT 44.1h, closed 2026-09-18).
+    // The inviter's role IN THIS HOUSE, read exactly as
+    // `MembersService.assertMembership` reads it (`members.service.ts`): an
+    // active access row here decides, and its role is the answer (a NULL role
+    // grants nothing); with no row, a `users` row whose `restaurant_id` names
+    // this house is read at `users.role || "staff"`; anything else grants
+    // nothing. One named difference: `assertMembership` discards both reads'
+    // errors, so a failed read looks like "no row"; here either answers 503.
+    //
+    // `RolesGuard` let the caller through on `users.role`: `JwtStrategy.validate`
+    // sets `role: user.role ?? payload.role` from an unscoped `users` read
+    // (`validateJwtPayload`), and that column is GLOBAL, one value for every
+    // house the person belongs to. The body names the house. So the guard
+    // proves nothing about this house, and nothing here compared the role
+    // granted with the inviter's own: a manager could mint an owner's invite
+    // (v3.0-TECH-DEBT 44.1h, closed 2026-09-18).
+    //
+    // The `users`-row read stays. Production, read-only 2026-09-18: one manager,
+    // created 2026-05-09 with `users.restaurant_id` naming a house created the
+    // same day, has never had an access row for it; they are a setup-era member
+    // of that house, not someone who left it. Dropping the read would lock them
+    // out of inviting there while `assertMembership` still admits them. Who may
+    // grant what is ADR 0162 (`role-grant.ts`), and it caps both reads.
+    // Migration 20260918153000 writes that manager's access row (the founder's
+    // answer B, 2026-09-18). Once it is applied in production this read can
+    // retire in a follow-up, with the same fallback in `assertMembership`,
+    // `resolveRestaurantRole` and `assertAccess` (v3.0-TECH-DEBT 44.1i); not
+    // before, or that manager loses the house.
     const { data: inviterAccess, error: accessError } =
       await this.databaseService.supabase
         .from("user_restaurant_access")
@@ -1064,20 +1083,29 @@ export class AuthService {
       );
     }
 
-    // No fallback to the `users` row. Production, read-only counts 2026-09-18:
-    // 8 users carry `users.restaurant_id`; 1 of them has no active access row
-    // for that house, is an active member of another house, and holds owner or
-    // manager in `users.role`; 0 users have no active access row anywhere. So
-    // no member relies on the fallback, and its only live effect was the stale
-    // chain: removed from house A, a member of B, still able to mint into A.
-    // No row, a NULL role, or a role the rule does not know grants nothing;
-    // who may grant what is ADR 0162 (`role-grant.ts`).
+    let inviterRole: string | null;
+    if (inviterAccess) {
+      inviterRole = inviterAccess.role ?? null;
+    } else {
+      const { data: inviter, error: inviterError } =
+        await this.databaseService.supabase
+          .from("users")
+          .select("restaurant_id, role")
+          .eq("user_id", userId)
+          .maybeSingle();
+      if (inviterError) {
+        throw new ServiceUnavailableException(
+          "Could not read your role in this house, so no invite was made.",
+        );
+      }
+      inviterRole =
+        inviter && inviter.restaurant_id === restaurantId
+          ? inviter.role || "staff"
+          : null;
+    }
+
     const grantedRole = dto.role || "manager";
-    const refusal = grantRefusal(
-      inviterAccess?.role ?? null,
-      grantedRole,
-      "invite",
-    );
+    const refusal = grantRefusal(inviterRole, grantedRole, "invite");
     if (refusal) {
       throw new ForbiddenException(refusal);
     }

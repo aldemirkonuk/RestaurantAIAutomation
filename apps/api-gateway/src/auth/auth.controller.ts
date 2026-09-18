@@ -96,14 +96,20 @@ export class AuthController {
    * scoped to that house in that role. `generateTokens` keeps `users.role` when
    * no `user_restaurant_access` row exists, and nothing downstream re-checks
    * membership, so anyone holding a house's id could mint an owner's token for
-   * it. [Corrected 2026-09-18, PR #393's audit, by grep: four helpers do
-   * re-check membership. They are `MembersService.assertMembership` (members,
-   * logs, operating hours), `OrganizationsService.assertCanManageRestaurant` and
-   * `resolveRestaurantRole` (15 files), and `TeamService.assertAccess` (5 team
-   * files). Each one accepts the `users` row when there is no access row. The
-   * first two accept it at the `users.role` it names, and `assertAccess` only
-   * as staff. The row this route wrote passed them all. `RolesGuard` gates on
-   * `users.role` too: `JwtStrategy.validate` sets `role: user.role ?? payload.role`.]
+   * it. [Corrected 2026-09-18, PR #393's audit, by grep: membership IS
+   * re-checked. `MembersService.assertMembership` (members, logs, operating
+   * hours), `OrganizationsService.assertCanManageRestaurant` and
+   * `resolveRestaurantRole` (15 files) and `TeamService.assertAccess` (5 team
+   * files) accept the `users` row when there is no access row, the first two at
+   * the `users.role` it names and `assertAccess` only as staff.
+   * `AuthService.switchRestaurant` admits any house of the person's
+   * organisation. `getUserRoleAtRestaurant` and two inline reads use access rows
+   * only. `ProspectsService.accessibleRestaurantIds` adds the token's house to
+   * the person's access rows without checking it is among them. The row this
+   * route wrote passed those four helpers and
+   * `switchRestaurant`. `RolesGuard` gates on
+   * `users.role` too: `JwtStrategy.validate` sets `role: user.role ?? payload.role`.
+   * The full sweep is v3.0-TECH-DEBT 44.1g.]
    * No web or mobile surface called it: a person opens a house through
    * `POST /auth/register/restaurant` and joins one only through an invitation.
    * It answers 410 rather than 404 so a stale client is told where to go.
@@ -422,9 +428,11 @@ export class AuthController {
 
   /**
    * Generate an invite code for a restaurant. `RolesGuard` only pre-filters on
-   * `users.role`, which is global; the service reads the inviter's role in the
-   * house the body names and applies ADR 0162: an owner invites any role, a
-   * manager a manager or staff, staff nobody.
+   * `users.role`, which is global. The service reads the inviter's role in the
+   * house the body names, the way `MembersService.assertMembership` does (the
+   * access row there, or with none a `users` row naming that house), and applies
+   * ADR 0162: an owner invites any role, a manager a manager or staff, staff
+   * nobody.
    */
   @Post("invite")
   @UseGuards(JwtAuthGuard, RolesGuard)

@@ -136,8 +136,10 @@ on `users.role`. That is a GLOBAL column, one value per person:
 `users` read. The body names the house being invited to. Nothing compared the role
 granted with the inviter's role in that house, so a manager could mint an owner's
 invite. It is closed the way this record closes the others, by reading from the house
-the request is about. The inviter's role is read only from their active access row in
-the invited house, with no `users`-row fallback. The grant then follows
+the request is about. The inviter's role in the invited house is read exactly as
+`MembersService.assertMembership` reads it: the active access row there, or, with none,
+a `users` row that names that house. A failed read answers 503. The `users`-row read
+stays because a setup-era manager depends on it (44.1h). The grant then follows
 [[0162-managers-grant-manager-or-staff-on-both-doors]]: owners any role, managers
 manager or staff, staff nothing. Detail is in 44.1h; the claim is
 `ADR-0147-INVITE-ROLE-CEILING`.
@@ -145,14 +147,26 @@ manager or staff, staff nothing. Detail is in 44.1h; the claim is
 The records of the register fix counted which endpoints re-check membership. The
 count said "only the logs and members endpoints" (44.1g and the claim
 `ADR-0147-REGISTER-NAMES-NO-HOUSE`), and both now carry a dated correction. A grep
-counts four helpers:
+finds these re-checks:
 
-- `assertMembership`: 3 files.
-- `assertCanManageRestaurant` and `resolveRestaurantRole`: 15 files.
-- `TeamService.assertAccess`: 5 files.
+- `assertMembership`: 10 calls in 3 files.
+- `assertCanManageRestaurant` and `resolveRestaurantRole`: 40 calls in 15 files.
+- `TeamService.assertAccess`: 35 calls in 5 files.
+- `AuthService.getUserRoleAtRestaurant`: 1 call.
+- `AuthService.switchRestaurant`: 1 call.
+- Two inline reads, in `integrations-oauth.service.ts` and `price-index-review.service.ts`.
+- `ProspectsService.accessibleRestaurantIds`: 1 call (`GET /prospects?scope=all`).
+  Found by PR #393's round-3 verifier; that round's build had listed it only in its
+  evidence.
 
-All four still accept a `users` row that names the house. That remainder is open as
-44.1i–44.1l.
+The first three accept a `users` row that names the house, and `generateInvite` now
+reads it the same way. `switchRestaurant` falls back to any house of an organisation
+the person belongs to. `accessibleRestaurantIds` reads the person's active access rows,
+then adds the token's house without checking it is among them. The rest read access
+rows only. The detail is in 44.1g's bracket. What stays open is 44.1i–44.1o and
+44.1q; 44.1p (a role change reaching non-members) was closed in PR #393's fourth
+round (ADR 0162, second addendum), and 44.1q (a role changed in a house the `users`
+row does not name never reaches `RolesGuard`) was filed in its fifth.
 
 ## Review trail
 
