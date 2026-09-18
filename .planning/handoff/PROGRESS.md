@@ -35,6 +35,69 @@ as landed or superseded. The endpoint faults (ADR 0147) follow in their own PR.
 - `GET /logs` correlationId reads across houses.
 - No unique index on Meta phone number id.
 
+## 0c. The finish goal, 2026-09-16/17 (supersedes 0a and 0b wherever they differ)
+
+The founder set one goal on 2026-09-16: *"complete every page there is ... and remove legacy
+pages and actually full delete them. Commit push deploy everything ... So finish the
+mudavym.com and deploy it."* The decisions that goal produced are [ADR 0149](../decisions/0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once.md)
+(38 answers, the cutover, the deletion manifest as a gated stop) and [ADR 0160](../decisions/0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes.md)
+(his dictated sketch review, page by page, with the pick and what it owes). Read both before
+touching anything below. The audit pipeline every PR now runs through changed the same week:
+[ADR 0090's 2026-09-17 amendment](../decisions/0090-pr-audit-gate-autonomous-merge.md) — one Opus
+planner, two Sonnet reviewers on its plan, the planner resumed for the final say.
+
+**On main (2026-09-17):** #384 (ADR 0149 and the record amendments), #386 (the new audit
+pipeline), #387 (train 1: the overlay foundation adopted from Codex's #374, and a shared
+vendor-intel decision naming its deciding house). The SEO/GEO session landed #385 and #388
+(ADR 0158: robots, sitemaps, llms.txt, per-route heads, a real 404, a served `/v/:slug`).
+Production was verified after #387: the gateway answers `commit 3a752010`, and the live web
+bundle contains `mdv-denied`, a string only that branch added.
+
+**Codex's uncommitted work was rescued and audited.** Everything Codex left in
+`~/Documents/ChatGPT/Mudavym/worktrees` is copied byte-for-byte to
+`/Users/aldemirkonuk/Projects/codex-rescue-2026-09-16/` (690 files; that directory is the
+only backup). Each lane was judged, fixed and independently confirmed before adoption, per
+ADR 0149 row 1. Verdicts: ADOPT after fixes — A overlay foundation (merged), C public doors,
+F text sender, G security gate, IJ admin desk, KL authorize consent; REJECT — B page-action
+integrity (it silently decided the `quantity_received` fork and widened the ADR 0088 staff
+floor app-wide), D overlay packet 1 (money input regression, Escape discarding a receipt,
+absence reported as health), H calendar push, C2 arrival (unreachable page, apply refuses
+valid proposals). The rejected lanes' good parts are being rebuilt, not adopted.
+
+**Branches ready or in flight** (all off `origin/main`, each verified on an archived index):
+
+| Branch / worktree | What it carries | State |
+|---|---|---|
+| `feat/finish-leaks` / `wt-fin-leaks` | logs correlation leak, provider-intelligence tenant leaks, `increment_trust_counter` + `seed_sim_restaurant` revoke (migration 20260917010400, ADR 0159), production source maps off | confirmed, pushed |
+| `feat/finish-reports` / `wt-fin-reports` | report exports (CSV + print-ready page), 90-day retention, 50 per house, paging; the MCP-offload direction documented | confirmed, pushed |
+| `feat/finish-rename` / `wt-fin-rename` | one pass, user-visible WineOps to Mudavym | confirmed, pushed |
+| `feat/finish-digest` / `wt-fin-digest` | recommendations digest sender, per-person subscription, off behind `DIGEST_SEND_ENABLED` | confirmed, pushed |
+| `feat/finish-security-gate` / `wt-fin-G` | ADR 0142 security gate that can fail and says when it cannot check | confirmed, pushed; gate-owned paths, needs the founder's word |
+| `feat/finish-text-sender` / `wt-fin-F` | WhatsApp leg, Meta webhook, unique-index migration 20260913190100 | fix round; two production duplicate counts owed before merge |
+| `feat/finish-authorize-consent` / `wt-fin-KL` | `/authorize` consent receipts, Ask readings backend behind `ASK_LAUNCHED` | fix round (a state-replay blocker was found and fixed; the `/ask` page is still owed) |
+| `feat/finish-live` / `wt-fin-live` | sixteen locked pages resolve to Mudavym for every house in code, plus `.planning/06-pages/LIVE-CHECKLIST.md` | fix round; the sweep must actually exercise the six pages no house has ever had on |
+| `feat/finish-links` / `wt-fin-links` | `/orders/:id`, `/deliveries/:id`, the dead `app.wineops.ai` links, service-worker actions, template CTAs | fix round |
+| `feat/finish-relay` / `wt-fin-relay` | the `/communications/email` relay behind two locked doors; the person door now queues with ADR 0118's two-minute undo | fix round |
+| `feat/finish-notify` / `wt-fin-notify` | five uncalled senders closed, `send-email` restricted, eleven resolver sites mapped to categories | fix round |
+| `wt-fin-IJ` | the `/admin` operator desk (SQL-only platform grant AND Studio developer) | fix round |
+| `feat/page-{settings,cellar,help,vprices,promos,receiving,recs}` / `wt-pg-*` | the seven pages whose direction ADR 0160 locked | building |
+
+**Sketches.** Thirteen sets are in `.planning/sketches/106`–`118` and published for review at
+`https://claude.ai/artifact/4aFbY744aZv1GR2YmytzdQ`. Picked: 107 B+, 108 A with C's quiet tier,
+109 A with two grafts, 110 A with B's detail (C rejected), 111 A, 112 A with C's chart and paper
+trail, 113 B with C's density and bundles. 106 went back for two SOTA directions (sketch 119);
+120 is a fourth recommendations round; 117 is the vendor scorecard; 118 is the flyleaf login.
+
+**Owed by the founder, blocking a merge or a build:** the two production duplicate counts for
+migration 20260913190100 and the published-vendor-page count (the SQL is in the session
+transcript; the CLI here cannot read that project); his word on `feat/finish-security-gate`
+because it touches gate-owned paths; the pick between sketch 119's shell directions; the wine
+detail surface (ADR 0160 §110 item 4) and the bundle shape (§113) still need drawing.
+
+**What has not started:** `/get-started` (the arrival), `/ask` and the `/sommelier` redirect,
+`/authorize`'s page, the app-shell build, the deletion manifest itself, and the security-headers
+block in `apps/web/vercel.json` (the SEO session owns that file until its PR lands; it has).
+
 ## 0. Latest state (supersedes section 3 wherever they differ)
 
 Written while API credit was down to its last $15. Subagents failed on the weekly limit on
