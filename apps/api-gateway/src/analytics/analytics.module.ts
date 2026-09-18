@@ -58,8 +58,14 @@ import { AuthModule } from "../auth/auth.module";
   // verifier asks table performance whether it can see the day's tables, and
   // an unexported provider would have forced a second, drifting copy of that
   // aggregation inside SimposModule.
+  //
+  // AdvancedAnalyticsService joined them for OD-81: a report export reads the
+  // cashflow, seasonality, menu-engineering and overview cuttings through the
+  // same service the /reports page's endpoints call
+  // (reports/exports/report-cutting-reader.service.ts), rather than a copy.
   exports: [
     AnalyticsService,
+    AdvancedAnalyticsService,
     InsightGeneratorService,
     GoalsService,
     TableAnalyticsService,

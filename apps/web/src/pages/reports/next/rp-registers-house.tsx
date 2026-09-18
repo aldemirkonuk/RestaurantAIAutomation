@@ -1,6 +1,6 @@
 /**
- * The house registers — the cellar, the room, the people, and the desk that is
- * honest about writing nothing.
+ * The house registers — the cellar, the room, the people, and the desk that
+ * points at where a cutting is written up (OD-81, `ExportsShelf.tsx`).
  *
  * Six of the eleven catalogue entries (`rp-catalogue.tsx` assembles them all).
  * Same contract as the trade registers: a path, a window, the drawings that are
@@ -609,44 +609,41 @@ const restock = analysis<RestockRegister>({
 /* ───────────────────────────────────────────────── 11. the writing desk ── */
 
 /**
- * The report generator, told the truth about.
+ * The writing desk — where a report used to be promised, and now points at the
+ * place one is actually written.
  *
- * `POST /reports/generate` inserts a `generated_reports` row with
- * `status: "pending"` and a NULL `pdf_url`, and NOTHING in the repo — gateway,
- * orchestrator, worker — ever fills it in (OD-81; `/communications` deleted its
- * own copy of this button for the same reason, and the shipping Reports page
- * mounts `<ReportGenerator>` with no `onGenerate` at all, `Reports.tsx:911-917`).
- * So the control is rendered disabled with one line saying why, and the archive
- * that DOES hold real documents is one link away. A button that lies is worse
- * than no button.
+ * Until 2026-09-17 this cutting rendered a disabled "Write this sheet up": the
+ * only endpoint behind it, `POST /reports/generate`, filed a `generated_reports`
+ * row marked `pending` that nothing ever wrote (OD-81). The founder's answer
+ * (ADR 0149 row 20) was a real export, and it lives under the sheet
+ * (`ExportsShelf.tsx`): a cutting is written by the gateway to a CSV and a page
+ * laid out for print, with the status the server holds. `/reports/generate`
+ * now answers 410. So the desk no longer carries a dead button; it says where
+ * the writing happens, and keeps the archive one link away.
  */
 const writing = analysis<null>({
   title: 'The writing desk',
   register: 'report archive',
-  answers: 'Nothing yet — no report writer exists behind this button (OD-81)',
+  answers: 'Where a cutting is written up — the shelf under the sheet (OD-81)',
   window: () => 'no register: this cutting reads nothing',
   path: null,
   graphs: [],
   graphNote:
-    'No drawing at all: there is no register behind this cutting to draw. It is here to say so.',
+    'No drawing at all: there is no register behind this cutting to draw. It is here to say where reports are written.',
   select: () => null,
   view: () => ({
     node: (
       <div style={{ display: 'grid', gap: 8 }}>
         <p className="rp-note">
-          Nothing writes a report yet. The endpoint behind “generate” files a row marked{' '}
-          <span style={{ fontFamily: MONO }}>pending</span> with no document attached, and no worker
-          in this product ever fills it in — so the button is off rather than pretending (OD-81).
+          A cutting is written up under the sheet, in “Written up”: the gateway writes it to a CSV
+          and a page laid out for print, from the same register the cutting reads, and shows whether
+          it is being written, ready, or not written and why. A figure the engine could not compute
+          is written <span style={{ fontFamily: MONO }}>withheld</span>, never 0.
         </p>
         <div className="rp-row" style={{ gap: 10 }}>
-          <button
-            type="button"
-            className="rp-btn"
-            disabled
-            title="No report writer exists yet — OD-81"
-          >
-            Write this sheet up
-          </button>
+          <a href="#rp-exports" className="rp-link rp-ink rp-focus rp-no-drag">
+            Go to what is written up
+          </a>
           <Link to="/documents-reports" className="rp-link rp-ink rp-focus rp-no-drag">
             Open the document archive
           </Link>

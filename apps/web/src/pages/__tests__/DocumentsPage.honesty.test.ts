@@ -32,10 +32,15 @@ describe('reportFileUnavailableReason — ADR 0020', () => {
     )
   })
 
-  it('names report generation as the missing thing, not the file', () => {
-    // The user is not being told "this one file is missing" — they are being
-    // told the feature does not exist. That distinction is the honesty.
-    expect(NO_REPORT_FILE_REASON).toMatch(/not built yet/i)
+  it('no longer claims the writer is unbuilt, and names no place that may not have one (OD-81)', () => {
+    // Until 2026-09-17 the honest sentence was "not built yet". A report export
+    // now exists, so that sentence would be the lie. But the export shelf is
+    // on the REDESIGNED /reports only; a house still on the legacy page before
+    // cutover (ADR 0149) has none, so the sentence must not send the reader
+    // there. It says what is true on every page: this entry has no file.
+    expect(NO_REPORT_FILE_REASON).not.toMatch(/not built yet/i)
+    expect(NO_REPORT_FILE_REASON).toMatch(/no file attached/i)
+    expect(NO_REPORT_FILE_REASON).not.toMatch(/\/reports|under the sheet|shelf/i)
   })
 
   it('treats an empty-string url as no file rather than a usable one', () => {
