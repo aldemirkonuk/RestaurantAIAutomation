@@ -57,6 +57,23 @@ vi.mock('../../../components/mudavym/stripe-js', () => ({
   stripePublishableKey: () => 'pk_test_stub',
 }));
 
+/**
+ * `revokeTextSender` — the one write the "Hold to stop …" control makes (ADR
+ * 0114; ceremony rebuilt to `HoldToApprove` + a typed reason, founder answer
+ * 2026-09-17).
+ *
+ * `ConnectionsNext.tsx` imports only this one function from the module, so the
+ * mock need not re-export `getTextSenders`/`giveTextConsent`/etc: the page's
+ * own read comes through the wholesale `useConnectionsNextData` mock above.
+ */
+const textSendersApi = vi.hoisted(() => ({
+  revokeTextSender: vi.fn(async () => ({ revoked: true, words: 'Stopped.' }) as unknown),
+}));
+
+vi.mock('../../../services/api/textSenders', () => ({
+  revokeTextSender: textSendersApi.revokeTextSender,
+}));
+
 import ConnectionsNext from './ConnectionsNext';
 
 /**
@@ -105,6 +122,8 @@ interface Fixture {
   sender: Reg;
   /** The house's WhatsApp and SMS senders (ADR 0121). */
   textSenders: Reg;
+  /** Re-read the text-sender register after a manager stops a sender. */
+  reloadTextSenders: unknown;
   ical: Reg;
   mcp: Reg;
   mcpRuntime: Reg;
@@ -137,6 +156,7 @@ const setHouseGrantAccess = { mutate: vi.fn(), isPending: false };
 const setConsent = { mutate: vi.fn(), isPending: false };
 const probeServer = { mutate: vi.fn(), isPending: false };
 const regenerateFeed = { mutate: vi.fn(), isPending: false };
+const reloadTextSenders = vi.fn();
 
 function base(): Fixture {
   return {
@@ -226,12 +246,16 @@ function base(): Fixture {
       },
       surveyedMarkets: { whatsapp: ['TR', 'US'], sms: ['US', 'TR'] },
       transport: {
-        built: false,
+        // The dispatch exists in the build; THIS house is not wired to it.
+        // Two facts, because they became two the day the dispatch landed.
+        built: true,
+        wired: false,
         words:
           'No provider credential for a per-house sender exists on this deployment, so nothing can leave through one yet.',
       },
       myConsent: { consent: null, readable: true, reason: null },
     }),
+    reloadTextSenders,
     ical: reg({ token: 'abc123' }),
     mcp: reg([]),
     mcpRuntime: reg({
@@ -1510,6 +1534,139 @@ describe('ConnectionsNext — the house sends in its own name', () => {
     // And it must NOT have fallen through to the "none" row, which would tell a
     // manager an outage is a fact about their restaurant.
     expect(screen.queryByText('WhatsApp Business')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The stop control (ADR 0114): a manager may end the house's own
+   * attachment. Since the founder's 2026-09-17 answer it is `HoldToApprove`
+   * gated on a typed reason, not the original one-click, fixed-reason
+   * button — see ADR 0121's 2026-09-17 (F3) review-trail row. Four paths,
+   * all below — the hold refusing to arm on a blank reason, a held approval
+   * re-reading the register from the SERVER rather than painting the row
+   * itself (ADR 0083), and both refusal shapes landing in `stopNote` rather
+   * than vanishing.
+   */
+  const connectedWhatsapp = {
+    id: 'ws-1',
+    channel: 'whatsapp' as const,
+    path: 'bring_your_own' as const,
+    state: 'connected' as const,
+    identity: '+90 555 000 0000',
+    market: 'TR',
+    lastProbeAt: null,
+  };
+
+  function withConnectedWhatsapp() {
+    const d = base();
+    const data = d.textSenders.data as Record<string, unknown>;
+    const senders = data.senders as Record<string, unknown>;
+    d.textSenders = reg({
+      ...data,
+      senders: { ...senders, whatsapp: connectedWhatsapp },
+    });
+    return d;
+  }
+
+  /**
+   * FOUNDER, 2026-09-17 (ADR 0121 review trail): stopping a sender now takes
+   * the same ceremony this page's other revokes use — `HoldToApprove` plus a
+   * TYPED reason, kept on the record — replacing the old one-click, fixed
+   * reason-string control. `Hold to stop <label>` cannot even arm on a blank
+   * reason (the four tests below cover the gate, the two-step confirm's
+   * success path, and both refusal shapes).
+   */
+  const typeStopReason = (text: string) =>
+    fireEvent.change(screen.getByTestId('text-sender-stop-reason-whatsapp'), {
+      target: { value: text },
+    });
+
+  it('the hold cannot arm on a blank reason, and the note says one is needed', () => {
+    mockData.current = withConnectedWhatsapp();
+    render(<ConnectionsNext />);
+
+    const hold = screen.getByRole('button', { name: 'Hold to stop WhatsApp Business' });
+    expect(hold).toBeDisabled();
+    expect(
+      screen.getByText(/Stopping it needs a reason typed below, then the hold to confirm\./),
+    ).toBeInTheDocument();
+
+    // Enter does nothing while disabled — no challenge, no arm.
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    expect(textSendersApi.revokeTextSender).not.toHaveBeenCalled();
+
+    typeStopReason('House asked to switch providers.');
+    expect(hold).not.toBeDisabled();
+  });
+
+  it('holding to approve sends the TYPED reason (not a fixed string), then re-reads the register rather than painting the row itself (ADR 0083)', async () => {
+    mockData.current = withConnectedWhatsapp();
+    render(<ConnectionsNext />);
+
+    typeStopReason('House asked to switch providers.');
+    const hold = screen.getByRole('button', { name: 'Hold to stop WhatsApp Business' });
+    fireEvent.keyDown(hold, { key: 'Enter' }); // arm — mints the reason as the "challenge"
+    fireEvent.keyDown(hold, { key: 'Enter' }); // approve
+
+    await waitFor(() =>
+      expect(textSendersApi.revokeTextSender).toHaveBeenCalledWith({
+        senderId: 'ws-1',
+        reason: 'House asked to switch providers.',
+      }),
+    );
+    // The row never paints "Stopped" itself — only a re-read can, and that
+    // re-read is `reloadTextSenders`.
+    await waitFor(() => expect(reloadTextSenders).toHaveBeenCalledTimes(1));
+  });
+
+  it('a refused stop feeds stopNote with the gateway’s own words, keeps the typed reason on screen, and never re-reads', async () => {
+    mockData.current = withConnectedWhatsapp();
+    textSendersApi.revokeTextSender.mockRejectedValueOnce(
+      new Error('sender is already mid-revoke'),
+    );
+    render(<ConnectionsNext />);
+
+    typeStopReason('House asked to switch providers.');
+    const hold = screen.getByRole('button', { name: 'Hold to stop WhatsApp Business' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'This sender was NOT stopped, so the house can still send through it: sender is already mid-revoke',
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(reloadTextSenders).not.toHaveBeenCalled();
+    // A refusal must not silently discard what was typed — a manager
+    // shouldn't have to reconstruct the reason to try again.
+    expect(screen.getByTestId('text-sender-stop-reason-whatsapp')).toHaveValue(
+      'House asked to switch providers.',
+    );
+  });
+
+  it('a 200 refusal (revoked: false — stale senderId or an already-revoked race) also feeds stopNote and never re-reads', async () => {
+    mockData.current = withConnectedWhatsapp();
+    textSendersApi.revokeTextSender.mockResolvedValueOnce({
+      revoked: false,
+      words:
+        'Nothing was revoked: either this sender does not belong to this restaurant, or it had already been stopped.',
+    });
+    render(<ConnectionsNext />);
+
+    typeStopReason('House asked to switch providers.');
+    const hold = screen.getByRole('button', { name: 'Hold to stop WhatsApp Business' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'This sender was NOT stopped, so the house can still send through it: Nothing was revoked: either this sender does not belong to this restaurant, or it had already been stopped.',
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(reloadTextSenders).not.toHaveBeenCalled();
   });
 });
 
