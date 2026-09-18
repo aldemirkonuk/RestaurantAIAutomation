@@ -94,9 +94,9 @@ export class AuthController {
    * Closed 2026-09-18. It used to take `restaurantId` and `role` from the
    * request body and write both onto a new user, and the token it returned was
    * scoped to that house in that role. `generateTokens` keeps `users.role` when
-   * no `user_restaurant_access` row exists, and nothing downstream re-checks
-   * membership, so anyone holding a house's id could mint an owner's token for
-   * it. No web or mobile surface called it: a person opens a house through
+   * no `user_restaurant_access` row exists, and only the logs, members and
+   * operating-hours endpoints re-check membership, so anyone holding a house's
+   * id could mint an owner's token that the rest of the API accepted. No web or mobile surface called it: a person opens a house through
    * `POST /auth/register/restaurant` and joins one only through an invitation.
    * It answers 410 rather than 404 so a stale client is told where to go.
    */

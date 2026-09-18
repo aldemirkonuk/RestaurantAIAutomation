@@ -97,6 +97,16 @@ export interface TokenPair {
   refreshToken: string;
 }
 
+/**
+ * An inviter may grant their own role in the house or a lower one, never a
+ * higher one. An unknown role ranks above everything, so it is refused.
+ */
+const INVITE_ROLE_RANK: Record<string, number> = {
+  staff: 1,
+  manager: 2,
+  owner: 3,
+};
+
 export interface LoginCredentials {
   email: string;
   password: string;
@@ -1040,24 +1050,62 @@ export class AuthService {
     restaurantId: string,
     dto: InviteDto,
   ): Promise<object> {
-    const { data: userAccess } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (!userAccess) {
-      // Fallback: check users table if user_restaurant_access row isn't present
-      const { data: user } = await this.databaseService.supabase
-        .from("users")
-        .select("restaurant_id, role")
+    // The inviter's role IN THIS HOUSE, read the way
+    // MembersService.assertMembership reads it. RolesGuard only saw the role
+    // the token carries for the token's house, and the body names the house,
+    // so a manager elsewhere who is staff here passed it; and nothing compared
+    // the role being granted with the inviter's own, so a manager could mint
+    // an owner's invite (closed 2026-09-18, v3.0-TECH-DEBT 44.1h).
+    const { data: inviterAccess, error: accessError } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
         .eq("user_id", userId)
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
         .maybeSingle();
-      if (!user || user.restaurant_id !== restaurantId) {
-        throw new ForbiddenException("Access denied to this restaurant");
+    if (accessError) {
+      throw new ServiceUnavailableException(
+        "Could not read your role in this house, so no invite was made.",
+      );
+    }
+
+    let inviterRole: string | null = inviterAccess?.role ?? null;
+    if (!inviterRole) {
+      // Legacy fallback: a member with no access row whose users row names
+      // this house, read as MembersService.assertMembership reads it.
+      const { data: inviter, error: inviterError } =
+        await this.databaseService.supabase
+          .from("users")
+          .select("restaurant_id, role")
+          .eq("user_id", userId)
+          .maybeSingle();
+      if (inviterError) {
+        throw new ServiceUnavailableException(
+          "Could not read your role in this house, so no invite was made.",
+        );
       }
+      if (inviter && inviter.restaurant_id === restaurantId) {
+        inviterRole = inviter.role || "staff";
+      }
+    }
+    if (!inviterRole) {
+      throw new ForbiddenException("Access denied to this restaurant");
+    }
+
+    const grantedRole = dto.role || "manager";
+    const inviterRank = INVITE_ROLE_RANK[inviterRole] ?? 0;
+    if (inviterRank < INVITE_ROLE_RANK.manager) {
+      throw new ForbiddenException(
+        "Only an owner or a manager of this house can invite someone to it.",
+      );
+    }
+    if (
+      (INVITE_ROLE_RANK[grantedRole] ?? Number.POSITIVE_INFINITY) > inviterRank
+    ) {
+      throw new ForbiddenException(
+        `A ${inviterRole} of this house cannot invite someone as ${grantedRole}.`,
+      );
     }
 
     const { data: restaurant } = await this.databaseService.supabase
@@ -1105,7 +1153,7 @@ export class AuthService {
         restaurant_id: restaurantId,
         code,
         invited_by: userId,
-        role: dto.role || "manager",
+        role: grantedRole,
       })
       .select("id, code, expires_at")
       .single();
@@ -1119,7 +1167,7 @@ export class AuthService {
       restaurantId,
       inviteId: invite.id,
       email: dto.targetEmail ?? null,
-      role: dto.role || "manager",
+      role: grantedRole,
     });
 
     // Mark team_member_invited=true in onboarding progress (fire-and-forget)

@@ -129,6 +129,16 @@ from the body. The route answers 410 with those two doors named, and
 `AuthService.register` is deleted so no writer is left. Detail and the production
 read are in `v3.0-TECH-DEBT.md` 44.1g; the claim is `ADR-0147-REGISTER-NAMES-NO-HOUSE`.
 
+The same day, PR #392's adversarial review found the invitation door's own form of
+the fault: `POST /auth/invite` gated on the role the TOKEN carries for the TOKEN's
+house, while the body names the house being invited to, and nothing compared the
+role granted with the inviter's. So a manager could mint an owner's invite. Closed
+the same way this record closes the others, by reading from the house the request is
+about: the inviter's role is read in the invited house, and the granted role may not
+rank above it (44.1h; claim `ADR-0147-INVITE-ROLE-CEILING`). The count "only the logs
+and members endpoints re-check membership" above undercounted by one module:
+operating hours re-checks too.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
