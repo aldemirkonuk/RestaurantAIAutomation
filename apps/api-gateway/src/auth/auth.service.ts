@@ -102,15 +102,6 @@ export interface LoginCredentials {
   password: string;
 }
 
-export interface RegisterData {
-  email: string;
-  password: string;
-  name: string;
-  restaurantId: string;
-  role: "owner" | "manager" | "staff";
-  phone?: string;
-}
-
 /** "Google", "Google and Microsoft", "Google, Microsoft and Apple". */
 function formatList(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
@@ -338,48 +329,6 @@ export class AuthService {
     // /verify-email on that. Changing the row instead would edit real data to
     // work around a dev tool, and would follow the account into production.
     return this.generateTokens(user, true);
-  }
-
-  /**
-   * Register new user
-   */
-  async register(data: RegisterData): Promise<TokenPair> {
-    // Check if user already exists
-    const { data: existingUser } = await this.databaseService.supabase
-      .from("users")
-      .select("email")
-      .eq("email", data.email)
-      .single();
-
-    if (existingUser) {
-      throw new UnauthorizedException("Email already registered");
-    }
-
-    // Hash password
-    const passwordHash = await bcrypt.hash(data.password, this.SALT_ROUNDS);
-
-    // Create user
-    const { data: newUser, error } = await this.databaseService.supabase
-      .from("users")
-      .insert({
-        email: data.email,
-        password_hash: passwordHash,
-        name: data.name,
-        restaurant_id: data.restaurantId,
-        role: data.role,
-        phone: data.phone,
-      })
-      .select()
-      .single();
-
-    if (error || !newUser) {
-      this.logger.error(`Registration failed: ${error?.message}`);
-      throw new UnauthorizedException("Registration failed");
-    }
-
-    this.logger.log(`New user registered: ${newUser.email}`);
-
-    return this.generateTokens(newUser);
   }
 
   /**
@@ -2253,8 +2202,8 @@ export class AuthService {
    *
    * On enumeration: revealing is a deliberate choice, not an accident (ADR
    * 0024). The leak already exists — `GET /auth/check-email` is `@Public()` and
-   * answers `available: true/false` to anyone, and `POST /auth/register`
-   * replies "Email already registered". This makes it intentional, narrower in
+   * answers `available: true/false` to anyone (`POST /auth/register` also
+   * replied "Email already registered" until it was closed, 2026-09-18). This makes it intentional, narrower in
    * shape, and rate-limited. `requestPasswordReset` stays enumeration-safe and
    * is untouched.
    */

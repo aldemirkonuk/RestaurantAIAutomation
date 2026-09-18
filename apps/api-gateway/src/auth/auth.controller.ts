@@ -14,8 +14,9 @@ import {
   Patch,
   Delete,
   BadRequestException,
+  GoneException,
 } from "@nestjs/common";
-import { AuthService, LoginCredentials, RegisterData } from "./auth.service";
+import { AuthService, LoginCredentials } from "./auth.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RolesGuard } from "./guards/roles.guard";
 import { Roles } from "./decorators/roles.decorator";
@@ -90,20 +91,22 @@ export class AuthController {
   }
 
   /**
-   * Register new user
+   * Closed 2026-09-18. It used to take `restaurantId` and `role` from the
+   * request body and write both onto a new user, and the token it returned was
+   * scoped to that house in that role. `generateTokens` keeps `users.role` when
+   * no `user_restaurant_access` row exists, and nothing downstream re-checks
+   * membership, so anyone holding a house's id could mint an owner's token for
+   * it. No web or mobile surface called it: a person opens a house through
+   * `POST /auth/register/restaurant` and joins one only through an invitation.
+   * It answers 410 rather than 404 so a stale client is told where to go.
    */
-  // Public by DECISION, not by omission (ADR 0096): the caller has no account yet, so there is nobody to authenticate.
+  // Public by DECISION, not by omission (ADR 0096): it must refuse a caller who has no account yet.
   @Public()
   @Post("register")
-  async register(@Body() data: RegisterData) {
-    this.logger.log(`Registration attempt: ${data.email}`);
-    const tokens = await this.authService.register(data);
-
-    return {
-      success: true,
-      ...tokens,
-      message: "Registration successful",
-    };
+  register(): never {
+    throw new GoneException(
+      "This sign-up route is closed. Open a house at /auth/register/restaurant, or join one through its invitation.",
+    );
   }
 
   /**

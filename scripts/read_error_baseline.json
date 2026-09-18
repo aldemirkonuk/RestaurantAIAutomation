@@ -27,7 +27,7 @@
     "apps/api-gateway/src/auth/auth.service.ts::user_roles::data": 1,
     "apps/api-gateway/src/auth/auth.service.ts::users::actor": 1,
     "apps/api-gateway/src/auth/auth.service.ts::users::existing": 2,
-    "apps/api-gateway/src/auth/auth.service.ts::users::existingUser": 2,
+    "apps/api-gateway/src/auth/auth.service.ts::users::existingUser": 1,
     "apps/api-gateway/src/auth/auth.service.ts::users::me": 1,
     "apps/api-gateway/src/auth/auth.service.ts::users::user": 5,
     "apps/api-gateway/src/calendar/calendar.service.ts::calendar_recurrence_rules::ruleData": 1,
