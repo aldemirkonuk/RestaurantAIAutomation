@@ -68,12 +68,12 @@ valid proposals). The rejected lanes' good parts are being rebuilt, not adopted.
 
 | Branch / worktree | What it carries | State |
 |---|---|---|
-| `feat/finish-leaks` / `wt-fin-leaks` | logs correlation leak, provider-intelligence tenant leaks, `increment_trust_counter` + `seed_sim_restaurant` revoke (migration 20260917010400, ADR 0159), production source maps off | confirmed, pushed |
-| `feat/finish-reports` / `wt-fin-reports` | report exports (CSV + print-ready page), 90-day retention, 50 per house, paging; the MCP-offload direction documented | confirmed, pushed |
-| `feat/finish-rename` / `wt-fin-rename` | one pass, user-visible WineOps to Mudavym | confirmed, pushed |
-| `feat/finish-digest` / `wt-fin-digest` | recommendations digest sender, per-person subscription, off behind `DIGEST_SEND_ENABLED` | confirmed, pushed |
+| `feat/finish-leaks` / `wt-fin-leaks` | logs correlation leak, provider-intelligence tenant leaks, `increment_trust_counter` + `seed_sim_restaurant` revoke (migration 20260917010400, ADR 0159), production source maps off | confirmed, pushed; **in `train/finish-2` (2026-09-18)** |
+| `feat/finish-reports` / `wt-fin-reports` | report exports (CSV + print-ready page), 90-day retention, 50 per house, paging; the MCP-offload direction documented | confirmed, pushed; **in `train/finish-2`** |
+| `feat/finish-rename` / `wt-fin-rename` | one pass, user-visible WineOps to Mudavym | confirmed, pushed; **in `train/finish-2`**; the From-name default the digest added now says Mudavym too |
+| `feat/finish-digest` / `wt-fin-digest` | recommendations digest sender, per-person subscription, off behind `DIGEST_SEND_ENABLED` | ~~confirmed~~ **[2026-09-18: the confirmation missed two red guards, `check_analytics_cost_honesty` exit 2 and `check_order_capture_contract` 13 > 12; fixed in 13b30a59]**, pushed; **in `train/finish-2`** |
 | `feat/finish-security-gate` / `wt-fin-G` | ADR 0142 security gate that can fail and says when it cannot check | confirmed, pushed; gate-owned paths, needs the founder's word |
-| `feat/finish-text-sender` / `wt-fin-F` | WhatsApp leg, Meta webhook, unique-index migration 20260913190100 | fix round; two production duplicate counts owed before merge |
+| `feat/finish-text-sender` / `wt-fin-F` | WhatsApp leg, Meta webhook, unique-index migration 20260913190100 | fix round; ~~two production duplicate counts owed before merge~~ **[2026-09-18: measured, 0 and 0 — see below]** |
 | `feat/finish-authorize-consent` / `wt-fin-KL` | `/authorize` consent receipts, Ask readings backend behind `ASK_LAUNCHED` | fix round (a state-replay blocker was found and fixed; the `/ask` page is still owed) |
 | `feat/finish-live` / `wt-fin-live` | sixteen locked pages resolve to Mudavym for every house in code, plus `.planning/06-pages/LIVE-CHECKLIST.md` | fix round; the sweep must actually exercise the six pages no house has ever had on |
 | `feat/finish-links` / `wt-fin-links` | `/orders/:id`, `/deliveries/:id`, the dead `app.wineops.ai` links, service-worker actions, template CTAs | fix round |
@@ -88,9 +88,15 @@ valid proposals). The rejected lanes' good parts are being rebuilt, not adopted.
 trail, 113 B with C's density and bundles. 106 went back for two SOTA directions (sketch 119);
 120 is a fourth recommendations round; 117 is the vendor scorecard; 118 is the flyleaf login.
 
-**Owed by the founder, blocking a merge or a build:** the two production duplicate counts for
+**Owed by the founder, blocking a merge or a build:** ~~the two production duplicate counts for
 migration 20260913190100 and the published-vendor-page count (the SQL is in the session
-transcript; the CLI here cannot read that project); his word on `feat/finish-security-gate`
+transcript; the CLI here cannot read that project)~~ **[2026-09-18: measured read-only through
+the Supabase connector, which can read project `exzueerziesmczwlhomd`: 0 duplicate groups on
+`house_text_sender_credentials (sender_ref)` live meta rows and 0 on `procurement_conversations
+(restaurant_id, message_id)` whatsapp inbound rows, both because both sets are empty (0 rows,
+0 whatsapp conversations), so the two unique indexes build; `vendor_portal_pages` holds 0 rows,
+0 published, so the `VendorPortal.tsx` client JSON-LD removal is not urgent and stays with the
+cutover]**; his word on `feat/finish-security-gate`
 because it touches gate-owned paths; the pick between sketch 119's shell directions; the wine
 detail surface (ADR 0160 §110 item 4) and the bundle shape (§113) still need drawing.
 
