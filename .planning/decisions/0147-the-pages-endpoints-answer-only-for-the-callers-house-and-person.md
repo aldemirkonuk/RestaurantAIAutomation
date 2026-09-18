@@ -130,14 +130,29 @@ from the body. The route answers 410 with those two doors named, and
 read are in `v3.0-TECH-DEBT.md` 44.1g; the claim is `ADR-0147-REGISTER-NAMES-NO-HOUSE`.
 
 The same day, PR #392's adversarial review found the invitation door's own form of
-the fault: `POST /auth/invite` gated on the role the TOKEN carries for the TOKEN's
-house, while the body names the house being invited to, and nothing compared the
-role granted with the inviter's. So a manager could mint an owner's invite. Closed
-the same way this record closes the others, by reading from the house the request is
-about: the inviter's role is read in the invited house, and the granted role may not
-rank above it (44.1h; claim `ADR-0147-INVITE-ROLE-CEILING`). The count "only the logs
-and members endpoints re-check membership" above undercounted by one module:
-operating hours re-checks too.
+the fault. `POST /auth/invite` is `@Roles("owner","manager")`, and `RolesGuard` gates
+on `users.role`. That is a GLOBAL column, one value per person:
+`JwtStrategy.validate` sets `role: user.role ?? payload.role` from an unscoped
+`users` read. The body names the house being invited to. Nothing compared the role
+granted with the inviter's role in that house, so a manager could mint an owner's
+invite. It is closed the way this record closes the others, by reading from the house
+the request is about. The inviter's role is read only from their active access row in
+the invited house, with no `users`-row fallback. The grant then follows
+[[0162-managers-grant-manager-or-staff-on-both-doors]]: owners any role, managers
+manager or staff, staff nothing. Detail is in 44.1h; the claim is
+`ADR-0147-INVITE-ROLE-CEILING`.
+
+The records of the register fix counted which endpoints re-check membership. The
+count said "only the logs and members endpoints" (44.1g and the claim
+`ADR-0147-REGISTER-NAMES-NO-HOUSE`), and both now carry a dated correction. A grep
+counts four helpers:
+
+- `assertMembership`: 3 files.
+- `assertCanManageRestaurant` and `resolveRestaurantRole`: 15 files.
+- `TeamService.assertAccess`: 5 files.
+
+All four still accept a `users` row that names the house. That remainder is open as
+44.1i–44.1l.
 
 ## Review trail
 

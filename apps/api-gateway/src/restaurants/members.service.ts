@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { AccessChangeReceipt, recordAccessChange } from "../team/access-audit";
+import { grantRefusal } from "../auth/role-grant";
 
 @Injectable()
 export class MembersService {
@@ -342,8 +343,13 @@ export class MembersService {
       "owner|manager",
     );
 
-    if (actorAccess.role === "manager" && role !== "staff") {
-      throw new ForbiddenException("Managers can only add staff members");
+    // Who may add whom is ADR 0162, the same rule an invitation follows: an
+    // owner adds any role, a manager a manager or staff, never an owner. This
+    // used to refuse a manager who added a manager while the invitation let a
+    // manager mint an owner's invite; one rule now serves both doors.
+    const refusal = grantRefusal(actorAccess.role, role, "add");
+    if (refusal) {
+      throw new ForbiddenException(refusal);
     }
 
     const { data: targetUser } = await this.databaseService.supabase

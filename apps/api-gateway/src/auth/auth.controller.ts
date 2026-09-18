@@ -94,9 +94,17 @@ export class AuthController {
    * Closed 2026-09-18. It used to take `restaurantId` and `role` from the
    * request body and write both onto a new user, and the token it returned was
    * scoped to that house in that role. `generateTokens` keeps `users.role` when
-   * no `user_restaurant_access` row exists, and only the logs, members and
-   * operating-hours endpoints re-check membership, so anyone holding a house's
-   * id could mint an owner's token that the rest of the API accepted. No web or mobile surface called it: a person opens a house through
+   * no `user_restaurant_access` row exists, and nothing downstream re-checks
+   * membership, so anyone holding a house's id could mint an owner's token for
+   * it. [Corrected 2026-09-18, PR #393's audit, by grep: four helpers do
+   * re-check membership. They are `MembersService.assertMembership` (members,
+   * logs, operating hours), `OrganizationsService.assertCanManageRestaurant` and
+   * `resolveRestaurantRole` (15 files), and `TeamService.assertAccess` (5 team
+   * files). Each one accepts the `users` row when there is no access row. The
+   * first two accept it at the `users.role` it names, and `assertAccess` only
+   * as staff. The row this route wrote passed them all. `RolesGuard` gates on
+   * `users.role` too: `JwtStrategy.validate` sets `role: user.role ?? payload.role`.]
+   * No web or mobile surface called it: a person opens a house through
    * `POST /auth/register/restaurant` and joins one only through an invitation.
    * It answers 410 rather than 404 so a stale client is told where to go.
    */
@@ -413,7 +421,10 @@ export class AuthController {
   }
 
   /**
-   * Generate an invite code for a restaurant (owner/manager only).
+   * Generate an invite code for a restaurant. `RolesGuard` only pre-filters on
+   * `users.role`, which is global; the service reads the inviter's role in the
+   * house the body names and applies ADR 0162: an owner invites any role, a
+   * manager a manager or staff, staff nobody.
    */
   @Post("invite")
   @UseGuards(JwtAuthGuard, RolesGuard)

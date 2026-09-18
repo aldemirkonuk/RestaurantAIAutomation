@@ -5,18 +5,21 @@ import {
 import { AuthService } from "./auth.service";
 
 /**
- * `POST /auth/invite` — an inviter may grant their own role or a lower one.
+ * `POST /auth/invite` — an owner invites any role, a manager a manager or
+ * staff, staff nobody (ADR 0162).
  *
  * Until 2026-09-18 `generateInvite` checked only that the caller had SOME
  * active access row for the house the body named, and wrote `dto.role`
- * unchanged. `RolesGuard` checked the role the token carries for the TOKEN's
- * house. So a manager could mint an owner's invite, and a manager of one house
- * who is staff in another could mint any invite for the second. Whoever
- * redeemed it became that role (`/auth/join` takes the role from the invite).
+ * unchanged. `RolesGuard` gates on `users.role`, a GLOBAL column
+ * (`JwtStrategy.validate`: `role: user.role ?? payload.role`), so it said
+ * nothing about the house being invited to. A manager could mint an owner's
+ * invite, and a manager in one house who is staff in another could mint any
+ * invite for the second. Whoever redeemed it became that role (`/auth/join`
+ * takes the role from the invite).
  *
- * The role is read in the house being invited to, the way
- * `MembersService.assertMembership` reads it, and a failed read is a 503, not
- * a guess in either direction.
+ * The role is read ONLY from the inviter's active access row in the house
+ * being invited to: no `users`-row fallback, a NULL or unknown role grants
+ * nothing, and a failed read is a 503, not a guess in either direction.
  */
 
 type Access = { data: any; error: any };
@@ -150,7 +153,9 @@ describe("POST /auth/invite grants no role above the inviter's own", () => {
     expect(invitesWritten()).toEqual([]);
   });
 
-  it("reads a legacy member's role from the users row when there is no access row", async () => {
+  it("refuses a member whose only claim is a stale users row", async () => {
+    // Removed from this house (no access row) while `users.restaurant_id`
+    // still names it and `users.role` says manager: the stale chain.
     const { invite, invitesWritten } = makeService({
       access: { data: null, error: null },
       legacyUser: {
@@ -159,8 +164,27 @@ describe("POST /auth/invite grants no role above the inviter's own", () => {
       },
     });
     await expect(invite("owner")).rejects.toBeInstanceOf(ForbiddenException);
-    await invite("staff");
-    expect(invitesWritten().map((i) => i.payload.role)).toEqual(["staff"]);
+    await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitesWritten()).toEqual([]);
+  });
+
+  it("refuses an access row whose role is NULL, whatever the users row says", async () => {
+    const { invite, invitesWritten } = makeService({
+      access: { data: { role: null }, error: null },
+      legacyUser: {
+        data: { restaurant_id: "house-1", role: "manager" },
+        error: null,
+      },
+    });
+    await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitesWritten()).toEqual([]);
+  });
+
+  it('refuses an access role that is an inherited key, such as "constructor"', async () => {
+    const { invite, invitesWritten } = makeService(asRole("constructor"));
+    await expect(invite("staff")).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(invite("owner")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(invitesWritten()).toEqual([]);
   });
 
   it("answers 503, not a guess, when the role cannot be read", async () => {

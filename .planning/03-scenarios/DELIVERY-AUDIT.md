@@ -132,7 +132,7 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
-> **182 as of 2026-09-18, on `fix/invite-role-ceiling`** (`check_read_errors_not_swallowed.py`: 1487 files scanned, 182 sites, 182 baselined, 0 allowlisted). `generateInvite` now answers 503 on a failed role read instead of reading it as "no row", retiring `auth.service.ts` user_restaurant_access/userAccess and one users/user. Re-measure before citing.
+> **182 as of 2026-09-18, on `fix/invite-role-ceiling`** (`check_read_errors_not_swallowed.py`: 1488 files scanned, 182 sites, 182 baselined, 0 allowlisted). `generateInvite` now answers 503 on a failed role read instead of reading it as "no row", which retires `auth.service.ts` user_restaurant_access/userAccess. Its `users`-row fallback read is deleted outright, which retires one users/user (ADR 0162). Re-measure before citing.
 
 > **184 as of 2026-09-18, on `fix/register-names-no-house`** (`check_read_errors_not_swallowed.py` on that tree: 1487 files scanned, 184 sites, 184 baselined, 0 allowlisted). Closing `POST /auth/register` deleted `AuthService.register`, and with it one of the two `auth.service.ts` users/existingUser sites. Branches merge in any order, so re-measure before citing.
 

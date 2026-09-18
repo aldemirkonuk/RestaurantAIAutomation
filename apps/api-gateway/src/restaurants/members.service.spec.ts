@@ -1,3 +1,4 @@
+import { ForbiddenException } from "@nestjs/common";
 import { MembersService } from "./members.service";
 import {
   asDatabaseService,
@@ -150,5 +151,104 @@ describe("MembersService.getMembers — a failed read is not an empty roster", (
     db.errors["organization_invites:select"] = { message: "read failed" };
 
     await expect(service(db).getInvites(OWNER, RID)).rejects.toThrow();
+  });
+});
+
+/**
+ * ADR 0162 (founder, 2026-09-18): "Managers grant manager or staff", on both
+ * doors. An owner adds any role, a manager a manager or staff and never an
+ * owner, staff nobody. Until then this door refused a manager who added a
+ * manager ("Managers can only add staff members") while the invitation door
+ * let a manager mint an owner's invite; both now call one rule, `grantRefusal`.
+ */
+describe("MembersService.addMember — a manager adds a manager or staff, never an owner", () => {
+  const ACTOR = "user-actor";
+  const NEWCOMER = "user-newcomer";
+  const NEW_EMAIL = "newcomer@example.test";
+
+  function seedAdd(
+    actorRole: string,
+    via: "access" | "users" = "access",
+  ): StubDb {
+    return makeStubDb({
+      user_restaurant_access:
+        via === "access"
+          ? [
+              {
+                id: "a1",
+                user_id: ACTOR,
+                restaurant_id: RID,
+                role: actorRole,
+                is_active: true,
+              },
+            ]
+          : [],
+      users: [
+        {
+          user_id: ACTOR,
+          restaurant_id: RID,
+          role: actorRole,
+          email: "actor@example.test",
+        },
+        {
+          user_id: NEWCOMER,
+          restaurant_id: null,
+          role: "manager",
+          email: NEW_EMAIL,
+        },
+      ],
+      restaurants: [{ id: RID, organization_id: "org-1" }],
+      organization_members: [],
+    });
+  }
+
+  const addedRows = (db: StubDb) =>
+    db.tables.user_restaurant_access.filter((r) => r.user_id === NEWCOMER);
+
+  it("lets a manager add a manager", async () => {
+    const db = seedAdd("manager");
+    await service(db).addMember(ACTOR, RID, NEW_EMAIL, "manager");
+
+    expect(addedRows(db).map((r) => r.role)).toEqual(["manager"]);
+  });
+
+  it("refuses a manager who adds an owner, says what they may add, and writes nothing", async () => {
+    const db = seedAdd("manager");
+    const attempt = service(db).addMember(ACTOR, RID, NEW_EMAIL, "owner");
+
+    await expect(attempt).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(attempt).rejects.toThrow(/manager or staff/);
+    expect(addedRows(db)).toEqual([]);
+    expect(db.opsOn("organization_members", "upsert")).toEqual([]);
+  });
+
+  it("refuses staff, whatever role they ask to add", async () => {
+    for (const role of ["owner", "manager", "staff"] as const) {
+      const db = seedAdd("staff");
+      await expect(
+        service(db).addMember(ACTOR, RID, NEW_EMAIL, role),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(addedRows(db)).toEqual([]);
+    }
+  });
+
+  it("lets an owner add an owner", async () => {
+    const db = seedAdd("owner");
+    await service(db).addMember(ACTOR, RID, NEW_EMAIL, "owner");
+
+    expect(addedRows(db).map((r) => r.role)).toEqual(["owner"]);
+  });
+
+  it("gives a role the rule does not know nothing to grant", async () => {
+    // `users.role` has no CHECK constraint, and `assertMembership` still reads
+    // it when there is no access row. "admin" and "constructor" both got past
+    // `role === "manager"`, so either could add an owner.
+    for (const actorRole of ["admin", "constructor"]) {
+      const db = seedAdd(actorRole, "users");
+      await expect(
+        service(db).addMember(ACTOR, RID, NEW_EMAIL, "owner"),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(addedRows(db)).toEqual([]);
+    }
   });
 });

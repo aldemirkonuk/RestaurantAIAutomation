@@ -20,6 +20,7 @@ import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 import { devBypassEnvEnabled } from "./dev-bypass.util";
+import { grantRefusal } from "./role-grant";
 import {
   IDENTITY_PROVIDERS,
   IdentityProviderDescriptor,
@@ -96,16 +97,6 @@ export interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
-
-/**
- * An inviter may grant their own role in the house or a lower one, never a
- * higher one. An unknown role ranks above everything, so it is refused.
- */
-const INVITE_ROLE_RANK: Record<string, number> = {
-  staff: 1,
-  manager: 2,
-  owner: 3,
-};
 
 export interface LoginCredentials {
   email: string;
@@ -1042,7 +1033,8 @@ export class AuthService {
   }
 
   /**
-   * Generate an invite code for a restaurant (owner/manager only).
+   * Generate an invite code for a restaurant. An owner of the house may invite
+   * any role, a manager a manager or staff, staff nobody (ADR 0162).
    * Produces 8-char code from unambiguous charset (no 0/O/1/I).
    */
   async generateInvite(
@@ -1050,12 +1042,14 @@ export class AuthService {
     restaurantId: string,
     dto: InviteDto,
   ): Promise<object> {
-    // The inviter's role IN THIS HOUSE, read the way
-    // MembersService.assertMembership reads it. RolesGuard only saw the role
-    // the token carries for the token's house, and the body names the house,
-    // so a manager elsewhere who is staff here passed it; and nothing compared
-    // the role being granted with the inviter's own, so a manager could mint
-    // an owner's invite (closed 2026-09-18, v3.0-TECH-DEBT 44.1h).
+    // The inviter's role IN THIS HOUSE, from their active access row there and
+    // from nowhere else. `RolesGuard` let the caller through on `users.role`:
+    // `JwtStrategy.validate` sets `role: user.role ?? payload.role` from an
+    // unscoped `users` read (`validateJwtPayload`), and that column is GLOBAL,
+    // one value for every house the person belongs to. The body names the
+    // house. So the guard proves nothing about this house, and nothing here
+    // compared the role granted with the inviter's own: a manager could mint an
+    // owner's invite (v3.0-TECH-DEBT 44.1h, closed 2026-09-18).
     const { data: inviterAccess, error: accessError } =
       await this.databaseService.supabase
         .from("user_restaurant_access")
@@ -1070,42 +1064,22 @@ export class AuthService {
       );
     }
 
-    let inviterRole: string | null = inviterAccess?.role ?? null;
-    if (!inviterRole) {
-      // Legacy fallback: a member with no access row whose users row names
-      // this house, read as MembersService.assertMembership reads it.
-      const { data: inviter, error: inviterError } =
-        await this.databaseService.supabase
-          .from("users")
-          .select("restaurant_id, role")
-          .eq("user_id", userId)
-          .maybeSingle();
-      if (inviterError) {
-        throw new ServiceUnavailableException(
-          "Could not read your role in this house, so no invite was made.",
-        );
-      }
-      if (inviter && inviter.restaurant_id === restaurantId) {
-        inviterRole = inviter.role || "staff";
-      }
-    }
-    if (!inviterRole) {
-      throw new ForbiddenException("Access denied to this restaurant");
-    }
-
+    // No fallback to the `users` row. Production, read-only counts 2026-09-18:
+    // 8 users carry `users.restaurant_id`; 1 of them has no active access row
+    // for that house, is an active member of another house, and holds owner or
+    // manager in `users.role`; 0 users have no active access row anywhere. So
+    // no member relies on the fallback, and its only live effect was the stale
+    // chain: removed from house A, a member of B, still able to mint into A.
+    // No row, a NULL role, or a role the rule does not know grants nothing;
+    // who may grant what is ADR 0162 (`role-grant.ts`).
     const grantedRole = dto.role || "manager";
-    const inviterRank = INVITE_ROLE_RANK[inviterRole] ?? 0;
-    if (inviterRank < INVITE_ROLE_RANK.manager) {
-      throw new ForbiddenException(
-        "Only an owner or a manager of this house can invite someone to it.",
-      );
-    }
-    if (
-      (INVITE_ROLE_RANK[grantedRole] ?? Number.POSITIVE_INFINITY) > inviterRank
-    ) {
-      throw new ForbiddenException(
-        `A ${inviterRole} of this house cannot invite someone as ${grantedRole}.`,
-      );
+    const refusal = grantRefusal(
+      inviterAccess?.role ?? null,
+      grantedRole,
+      "invite",
+    );
+    if (refusal) {
+      throw new ForbiddenException(refusal);
     }
 
     const { data: restaurant } = await this.databaseService.supabase
