@@ -63,12 +63,17 @@ import { AuthModule } from "../auth/auth.module";
   // cashflow, seasonality, menu-engineering and overview cuttings through the
   // same service the /reports page's endpoints call
   // (reports/exports/report-cutting-reader.service.ts), rather than a copy.
+  //
+  // RecommendationsService joined for ADR 0149 row 26: the digest sender quotes
+  // the SAME feed the page reads, and a second copy of the rule engine inside
+  // the digest module would be two engines that can disagree.
   exports: [
     AnalyticsService,
     AdvancedAnalyticsService,
     InsightGeneratorService,
     GoalsService,
     TableAnalyticsService,
+    RecommendationsService,
   ],
 })
 export class AnalyticsModule {}
