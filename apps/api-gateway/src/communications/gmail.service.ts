@@ -9,10 +9,10 @@ import {
   base64Body,
   mailboxHeader,
   messageIdHeader,
-  MimeHeaderError,
   threadingHeader,
   unstructuredHeader,
 } from "./mime-headers";
+import { classifySendFailure, type SendRefusal } from "./send-failure";
 import {
   lowStockAlertTemplate,
   lowStockDigestTemplate,
@@ -64,11 +64,13 @@ export interface EmailResult {
   rfc822MessageId?: string;
   error?: string;
   /**
-   * true when mime-headers.ts refused to build the message (ADR 0172): Gmail
-   * was never called, so the recipient provably did not get it, and the cause
-   * is the data (an address or message id), never the Gmail credentials.
+   * Set only when the failure PROVES the recipient did not get the message
+   * (send-failure.ts): kind "header" is mime-headers.ts refusing to build it
+   * (ADR 0172 — Gmail never called; the cause is the data, never the Gmail
+   * credentials). Absent means AMBIGUOUS: the message may have been accepted.
+   * Read from typed error fields, never from `error` text.
    */
-  refusedBeforeSend?: boolean;
+  refusal?: SendRefusal;
 }
 
 @Injectable()
@@ -182,7 +184,12 @@ export class GmailService implements OnModuleInit {
             "Fix GMAIL_REFRESH_TOKEN (run scripts/gmail-reauth.js) " +
             "or set a valid GMAIL_APP_PASSWORD (Google App Password).",
         );
-        return { success: false, error: `Email delivery failed: ${smtpMsg}` };
+        const refusal = classifySendFailure(smtpError);
+        return {
+          success: false,
+          error: `Email delivery failed: ${smtpMsg}`,
+          ...(refusal && { refusal }),
+        };
       }
     }
 
@@ -224,10 +231,11 @@ export class GmailService implements OnModuleInit {
           (responseData ? ` | Response: ${JSON.stringify(responseData)}` : ""),
       );
 
+      const refusal = classifySendFailure(error);
       return {
         success: false,
         error: errorMessage,
-        ...(error instanceof MimeHeaderError && { refusedBeforeSend: true }),
+        ...(refusal && { refusal }),
       };
     }
   }
@@ -693,6 +701,7 @@ This is an automated alert from WineOps AI.
         success: false,
         error:
           "No email delivery method available — OAuth failed and SMTP not configured",
+        refusal: { kind: "no-transport" },
       };
     }
 

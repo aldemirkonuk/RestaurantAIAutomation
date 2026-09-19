@@ -277,17 +277,24 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
 
   it("releases the draft for retry only on a DEFINITE refusal", async () => {
     const store = makeStore();
-    // GmailService says in as many words that no transport was attempted.
-    const sendEmail = jest.fn(async () => ({
-      success: false,
-      error:
-        "No email delivery method available — OAuth failed and SMTP not configured",
-    }));
-    const service = await buildService(store, sendEmail);
-
-    await expect(
-      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
-    ).rejects.toThrow(/could not be delivered/i);
+    // The real GmailService with neither OAuth nor SMTP configured: no
+    // transport was attempted, and it says so with a typed refusal.
+    const gmail = new GmailService({
+      get: () => undefined,
+    } as unknown as ConfigService);
+    jest.spyOn((gmail as any).logger, "error").mockImplementation(() => {});
+    jest.spyOn((gmail as any).logger, "log").mockImplementation(() => {});
+    const saved = [process.env.GMAIL_USER, process.env.GMAIL_APP_PASSWORD];
+    delete process.env.GMAIL_USER;
+    delete process.env.GMAIL_APP_PASSWORD;
+    try {
+      const service = await buildService(store, (o: any) => gmail.sendEmail(o));
+      await expect(
+        service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+      ).rejects.toThrow(/could not be delivered/i);
+    } finally {
+      [process.env.GMAIL_USER, process.env.GMAIL_APP_PASSWORD] = saved;
+    }
 
     // Nothing reached the vendor, so re-approval is safe and expected.
     expect(conversationRow(store).status).toBe("PENDING_APPROVAL");
@@ -298,13 +305,16 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
   // gmail.users.messages.send, so the vendor provably has nothing. That is a
   // definite refusal: release the draft, and name the header, not Gmail auth.
   // These run the REAL GmailService.sendEmail with a fake Gmail client.
-  function realGmail() {
+  function realGmail(sendImpl?: () => Promise<unknown>) {
     const gmail = new GmailService({
       get: () => undefined,
     } as unknown as ConfigService);
-    const send = jest.fn(async () => ({
-      data: { id: "gmail-1", threadId: "thread-1" },
-    }));
+    const send = jest.fn(
+      sendImpl ??
+        (async () => ({
+          data: { id: "gmail-1", threadId: "thread-1" },
+        })),
+    );
     Object.assign(gmail as any, {
       isConfigured: true,
       senderEmail: "siparis@lokantamudavim.com",
@@ -370,6 +380,149 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     expect(conversationRow(store).status).toBe("SENT");
   });
 
+  // ── Vendor-controlled text never decides (ADR 0172 addendum) ──────────────
+  // The failure message is wrapped with the vendor's contact_email, free text.
+  // A contact_email holding any phrase the OLD text classifier matched, plus an
+  // AMBIGUOUS Gmail failure, must park — else a re-approve sends a second PO.
+  const HOSTILE_CONTACTS = [
+    '"Suite 500 - Orders" <v@x.example>',
+    '"550 5.1.1 user unknown" <v@x.example>',
+    '"invalid_grant" <v@x.example>',
+    '"invalid_client" <v@x.example>',
+    '"unauthorized_client" <v@x.example>',
+    '"authentication failed" <v@x.example>',
+    '"invalid credentials" <v@x.example>',
+    '"Username and Password not accepted" <v@x.example>',
+    '"No email delivery method available" <v@x.example>',
+    '"Dock 5.7.1" <v@x.example>',
+    '"no such user" <v@x.example>',
+    '"recipient address rejected" <v@x.example>',
+    '"mailbox unavailable" <v@x.example>',
+    '"address rejected" <v@x.example>',
+    '"does not exist" <v@x.example>',
+    '"invalid recipient" <v@x.example>',
+    '"no recipients defined" <v@x.example>',
+    '"invalid to header" <v@x.example>',
+  ];
+  // Failures where Gmail may well have accepted the message.
+  const AMBIGUOUS_GMAIL_FAILURES: Array<[string, () => Error]> = [
+    [
+      "a socket hang-up",
+      () => Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }),
+    ],
+    [
+      "a Gmail API 503",
+      () =>
+        Object.assign(new Error("Backend Error"), {
+          code: "503",
+          response: { status: 503, data: {} },
+        }),
+    ],
+  ];
+
+  describe.each(AMBIGUOUS_GMAIL_FAILURES)(
+    "hostile contact_email + %s",
+    (_label, makeError) => {
+      it.each(HOSTILE_CONTACTS)(
+        "%s parks as SEND_UNCONFIRMED",
+        async (contact) => {
+          const store = makeStore();
+          conversationRow(store).providers.contact_email = contact;
+          const { send, sendEmail } = realGmail(async () => {
+            throw makeError();
+          });
+          const service = await buildService(store, sendEmail);
+
+          await expect(
+            service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+          ).rejects.toThrow(/may or may not have reached the vendor/i);
+
+          expect(send).toHaveBeenCalledTimes(1);
+          expect(conversationRow(store).status).toBe("SEND_UNCONFIRMED");
+        },
+      );
+    },
+  );
+
+  // The same hostile address must not block a GENUINE refusal either: the
+  // typed field decides, so these still release.
+  describe.each([
+    [
+      "an OAuth invalid_grant",
+      () =>
+        Object.assign(new Error("invalid_grant"), {
+          response: { status: 400, data: { error: "invalid_grant" } },
+        }),
+    ],
+    [
+      "a Gmail API 401",
+      () =>
+        Object.assign(new Error("Invalid Credentials"), {
+          code: "401",
+          response: { status: 401, data: {} },
+        }),
+    ],
+    [
+      "a Gmail API 400 (invalid To header)",
+      () =>
+        Object.assign(new Error("Invalid To header"), {
+          code: "400",
+          response: { status: 400, data: {} },
+        }),
+    ],
+  ])("genuine refusal — %s", (_label, makeError) => {
+    it.each(["supplier@bordeaux.com", HOSTILE_CONTACTS[0]])(
+      "releases the draft, contact %s",
+      async (contact) => {
+        const store = makeStore();
+        conversationRow(store).providers.contact_email = contact;
+        const { sendEmail } = realGmail(async () => {
+          throw makeError();
+        });
+        const service = await buildService(store, sendEmail);
+
+        const err = await service
+          .approveDraft(RESTAURANT_ID, ORDER_ID, {} as any)
+          .catch((e: Error) => e);
+
+        expect(err).toBeInstanceOf(SendRefusedBeforeSendError);
+        expect(conversationRow(store).status).toBe("PENDING_APPROVAL");
+      },
+    );
+  });
+
+  it("releases on an SMTP 5xx refusal from the fallback transport, parks on a 4xx", async () => {
+    for (const [fields, expected] of [
+      [
+        { code: "EENVELOPE", responseCode: 550, command: "RCPT TO" },
+        "PENDING_APPROVAL",
+      ],
+      [{ code: "EAUTH", responseCode: 535 }, "PENDING_APPROVAL"],
+      [{ code: "EMESSAGE", responseCode: 451 }, "SEND_UNCONFIRMED"],
+      [{ code: "ETIMEDOUT" }, "SEND_UNCONFIRMED"],
+    ] as const) {
+      const store = makeStore();
+      // A hostile address again, so text cannot be what decides.
+      conversationRow(store).providers.contact_email = HOSTILE_CONTACTS[0];
+      const gmail = new GmailService({
+        get: () => undefined,
+      } as unknown as ConfigService);
+      jest.spyOn((gmail as any).logger, "error").mockImplementation(() => {});
+      jest.spyOn((gmail as any).logger, "log").mockImplementation(() => {});
+      // Gmail API never initialises, so sendEmail takes the SMTP fallback.
+      jest
+        .spyOn(gmail as any, "smtpSendEmail")
+        .mockRejectedValue(Object.assign(new Error("smtp failed"), fields));
+      const service = await buildService(store, (o: any) => gmail.sendEmail(o));
+
+      await service
+        .approveDraft(RESTAURANT_ID, ORDER_ID, {} as any)
+        .catch(() => undefined);
+
+      expect(conversationRow(store).status).toBe(expected);
+    }
+  });
+
   // ── Ambiguous send failures ───────────────────────────────────────────────
   // A timeout / reset / hang-up can land AFTER the remote server accepted the
   // message. Treating those as "not sent" and releasing the draft re-opens the
@@ -433,6 +586,7 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
           success: false,
           error:
             "No email delivery method available — OAuth failed and SMTP not configured",
+          refusal: { kind: "no-transport" },
         };
       }
       return {
