@@ -288,7 +288,10 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     delete process.env.GMAIL_USER;
     delete process.env.GMAIL_APP_PASSWORD;
     try {
-      const service = await buildService(store, (o: any) => gmail.sendEmail(o));
+      const service = await buildService(
+        store,
+        jest.fn((o: any) => gmail.sendEmail(o)),
+      );
       await expect(
         service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
       ).rejects.toThrow(/could not be delivered/i);
@@ -513,7 +516,10 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
       jest
         .spyOn(gmail as any, "smtpSendEmail")
         .mockRejectedValue(Object.assign(new Error("smtp failed"), fields));
-      const service = await buildService(store, (o: any) => gmail.sendEmail(o));
+      const service = await buildService(
+        store,
+        jest.fn((o: any) => gmail.sendEmail(o)),
+      );
 
       await service
         .approveDraft(RESTAURANT_ID, ORDER_ID, {} as any)
