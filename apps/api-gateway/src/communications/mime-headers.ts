@@ -339,7 +339,7 @@ export function threadingHeader(
   // A token too long for `Name: <id>` to fit RFC 5322's 998-character line
   // is dropped like any other unusable id: it cannot be folded.
   const ids = (
-    String(value ?? "").match(/<[\x21-\x3b\x3d\x3f-\x7e]+>/g) ?? []
+    String(value ?? "").match(/<[\x21-\x3b\x3d\x3f-\x7e]+>/g) ?? ([] as string[])
   ).filter((id) => headerName.length + 2 + id.length <= HARD_LINE_LIMIT);
   if (!ids.length) return null;
   return renderHeader(
