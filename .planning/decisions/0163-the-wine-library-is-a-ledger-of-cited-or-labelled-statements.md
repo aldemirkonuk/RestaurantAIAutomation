@@ -4,17 +4,22 @@
   `README.md` follows separately (that file is gate-owned and was not edited here).
   **Amended the same day (round 2)** with his answers to this ADR's own questions
   (Context, "Round 2"). It is still Proposed: the answers shape the text, and he
-  locks the whole.
+  locks the whole. **Amended again the same evening (round 3)** with four more answers:
+  model work runs as Claude Cowork scheduled tasks on his plan credits, every publish
+  is sampled, estimates show after the automatic checks, and sommeliers are paid or
+  rewarded (Context, "Round 3"; §11 rewritten). Still Proposed.
 - **Date:** 2026-09-18
 - **Decider:** Aldemir (founder). The design was drafted by a research workflow
   (six evidence lanes, three candidate designs, one judge, two adversarial passes;
-  round 2 added two research lanes, on /studio and on menu prices and the notice);
-  none of it binds until he locks it.
+  round 2 added two research lanes, on /studio and on menu prices and the notice;
+  round 3 added one, on Cowork, routines, usage limits and the laptop tasks' run
+  history); none of it binds until he locks it.
 - **Keywords:** wine library, master_wine_library, enrichment, provenance, cell,
   evidence, citation, inference, growth, crawl, robots.txt, terms, market price,
   batch, spend cap, lease, health, wine_profile_v1, WineProfile, LWIN, ADR 0130,
   studio, sommelier, reviewer, gold set, menu price, restaurant list price, class M,
-  data notice, opt-out, two writers, cutover
+  data notice, opt-out, two writers, cutover, Cowork, scheduled task, plan credits,
+  usage limit, pipeline connector, claim, lease, pause order
 - **Links:** [[wine-intelligence-foundations]] (the measured plan this answers),
   [[0020-no-fabricated-answers]], [[0026]] (gen types rejected; views carry no RLS),
   [[0117-a-price-sighting-names-its-source-its-date-and-its-unit]],
@@ -73,7 +78,9 @@ or re-read by this writer on 2026-09-18 unless marked):
    writes those tasks could have made are `research_runs` started 2026-09-16 06:06Z,
    `evidence_citations` and `source_registry` 2026-09-12 08:28Z and 08:23Z, and a
    library `updated_at` of 2026-09-12 14:50Z. So "enabled and running" is measured;
-   "writing every night" is not.] The foundations doc called these runs "unattributed"
+   "writing every night" is not.] [Round 3, 2026-09-18: all three of today's runs were
+   refused by the plan's weekly usage limit, which is why they left no row (fact 10).]
+   The foundations doc called these runs "unattributed"
    and said desktop scheduled tasks were ruled out (`wine-intelligence-foundations.md:247`);
    that was wrong, and the doc now says so.
 2. **The copied-profile problem is far larger than 44 rows.** The 2026-08-16 18:00Z
@@ -245,6 +252,118 @@ where marked "this writer"; the rest come from the lanes):
      YARDOM, Chez Community and The Old House Pub stock nothing and have no menu line.
      Nobody has said whether they are real (Q11).
 
+### Round 3: the host, the money, review and estimates (2026-09-18, evening)
+
+He answered four more questions by AskUserQuestion the same day, and the orchestrating
+workflow relayed them. His words are copied exactly as relayed. The glosses in
+parentheses are the relay's own. **Every reading is marked**: "relay" for the relay's,
+"ours" for this writer's.
+
+| Question | His answer (verbatim as relayed) | Reading | Lands in |
+|---|---|---|---|
+| Q14: which way sommelier pay goes | *"we pay them, or rewards both, (we decide they don't see)"* | Relay: Mudavym pays sommeliers or rewards them, and which one is an internal decision the sommelier does not see. Ours: "or rewards both" means "or rewards, or both"; money never goes from a sommelier to Mudavym; /studio does not show a reviewer which form applies or how it is chosen [verifier, 2026-09-18: the draft read "no pay or reward terms" at all, which is wider than either reading; whether a sommelier sees what they themselves receive is Q14 (rest)] | §13; Q14 |
+| Q15: instant publishing from /studio | *"No: every publish is sampled"* (relay gloss: 1 in 10 approvals re-checked by a second reviewer; a reviewer below the floor loses instant publish) | Ours: no approval publishes outside the sample. An approval still publishes at once, and 1 in 10 is re-checked afterwards by a second reviewer. A failed re-check withdraws the cell. A reviewer whose measured agreement is below the field's floor loses instant publish, and their approvals wait in the queue | §5 G6; §13; Q15 |
+| Q2: when estimated values show | *"After automatic checks"* (relay gloss: labelled 'estimated' once they pass the automatic checks; a sample reviewed within 7 days; a field below its floor withdraws itself) | Ours: Q2 path (b). The automatic checks are G0–G6 and G8. G6 is one of them and fails when a field has too little gold, so a field's **first** publication still waits for its pilot audit. Real-house wines keep their review before publication (G7), which his answer does not mention and which only adds a check | §5; Q2 |
+| Q1 (rest): the monthly spend limit | *"since we re going to use claude cowork, as long as credits allow."* | Relay: the pipeline's model work runs as Claude Cowork (Claude desktop agent) scheduled tasks on the founder's plan credits, not billed API calls; the limit is whatever the credits allow. Ours: there is no dollar cap, and usage credits stay off, so a run the plan refuses just stops (Q21). Credits set the pace, never the bar (§11) | §4; §11; Cost; Q19–Q21 |
+
+Already decided the same evening and carried unchanged: the four laptop wine tasks keep
+running until the repo pipeline runs (§15), and every wine is sourced from day one
+(§4). Before this round, §11 recommended the gateway scheduler plus the Anthropic API
+and Message Batches as the host. The Cowork answer replaces that for model work only.
+
+**Four facts from the round-3 research** (a host research lane on 2026-09-18; this
+writer re-counted the evidence table and re-read `harness.py:6-20` and the tasks'
+permission modes; the rest is the lane's):
+
+10. **The laptop tasks have barely run since 2026-09-04, because the plan refused
+    them.**
+    - **Runs.** 81 runs from 2026-08-16 to 09-18
+      (`scratchpad/adr0163-r3/cowork-wine-runs.tsv`, read from the local session files
+      under the `scheduled-tasks.json` folder). 36 ended on the weekly usage limit, 3 on
+      the 5-hour session limit, and 1 on "Connection closed mid-response".
+    - **Since 09-04, 37 of 41 runs failed.** The clean ones were three on 09-05 and
+      `wine-verify-nightly` on 09-12.
+    - **Missed and late nights.** No run at the scheduled hour on 09-06, 09-07 and
+      09-17. Catch-ups ran on 09-08 at 16:37Z and 09-17 at 22:33Z. On 09-11 the runs
+      were 15 minutes to 2.3 hours late [verifier, 2026-09-18: the draft said "1 to 2.5
+      hours"; `wine-extract-nightly` started 07:20Z against its 07:0xZ slot, TSV]. On
+      09-17 two ran at once and the third was skipped twice as `global_limit`, so there
+      appears to be a cap of about 2 concurrent scheduled runs (the lane's inference;
+      the number is not documented). [Verifier: the same store's non-wine task
+      `overnight-job-search` also records `lastRunAt` 2026-09-17T22:33:16.664Z
+      (`scheduled-tasks.json`), so the cap may be higher or counted differently.]
+    - **The model changed with no repo change.** Haiku 4.5 (9 runs, to 08-23), Opus 5
+      (24 runs, 08-24..09-02), Haiku 4.5 again (13 runs, 09-02 22:48Z..09-05), then
+      Sonnet 5 (35 runs, 09-08 on): 22 Haiku runs in all, three changes [verifier,
+      2026-09-18: the draft omitted the return to Haiku; TSV]. Only
+      `wine-verify-nightly` has a model configured (`scheduled-tasks.json`, this writer).
+    - **The stuck rows come from the host.** Of the 4 `research_runs` rows stuck at
+      `running`, `323ff2a0` (started 09-16 06:06:17Z) matches a session the weekly limit
+      ended after 1.5 minutes. The other three (`0330ca9c`, `d245485c`, `1b49f2c7`) come
+      from runs that ended without the model closing them (lane, production SELECT).
+    - **One pool, probably.** The limit message's reset time uses the same weekly anchor
+      as this account's reset (2026-09-25T15:00Z), which fits one pool shared with the
+      founder's Claude Code work. Not proven.
+11. **How the laptop tasks write.**
+    - **No database credential.** The laptop has none: `harness.py:6-20` (gitignored,
+      `datasets/annotation_inbox/pdfs/wine-pipeline/tools/`) says the database is
+      "reachable only through the Supabase MCP tool".
+    - **The model carries the values.** The Python builds each INSERT's values, and the
+      model re-sends them through the claude.ai Supabase connector's `execute_sql`
+      (approved on the extract and verify tasks, lane). So "verbatim" rests on the model
+      copying correctly, not on the code.
+    - **Permissions.** All four tasks run with `permissionMode: bypassPermissions`
+      (`scheduled-tasks.json`, this writer), and their sessions record
+      `egressAllowedDomains: ["*"]` (lane).
+    - **A missing tool is silent.** The 08-31 extract run aborted because the connector
+      and bash tools did not appear. The only trace is a local file,
+      `RUN_2026-08-31_extract-nightly_ABORTED.md`.
+12. **What the hosts are** (official pages the lane fetched on 2026-09-18):
+    - **Local scheduled tasks** fire only while the app is open and the computer awake.
+      On wake, one catch-up runs for the latest missed time within 7 days, and older
+      ones are dropped (code.claude.com/docs/en/desktop-scheduled-tasks). [Verifier,
+      2026-09-18, re-fetched: that page documents Claude Code Desktop's local tasks
+      (`~/.claude/scheduled-tasks/`). The laptop's wine tasks are Cowork tasks
+      (`local-agent-mode-sessions/`, prompts under `~/Documents/Claude/Scheduled/`). Their
+      measured catch-ups on 09-08 and 09-17 (fact 10) fit the same rule; no Cowork page
+      read here states it.]
+    - **Cowork scheduled tasks** now run remotely, even while the computer sleeps,
+      unless they need local files or apps. Cloud Cowork cannot reach a home or company
+      network (support.claude.com/en/articles/13854387, /13345190, /13364135).
+      [Verifier, re-fetched 2026-09-18: running in the cloud is "in beta" (/13345190).
+      Egress settings do not bind the web tools: *"Network egress permissions don't
+      apply to the web fetch or web search tools or MCPs"* (/13364135). A scheduled task
+      has *"the same capabilities as regular Cowork tasks, including connected tools,
+      skills, and installed plugins"*, and its model is an optional setting
+      (/13854387).]
+    - **Claude Code cloud routines** clone the default branch on every run. Their
+      minimum interval is 1 hour, they draw down subscription usage, and each account
+      has a daily run cap (code.claude.com/docs/en/routines). [Verifier, re-fetched:
+      a routine has *"no permission-mode picker"* and uses every tool of an included
+      connector without asking; all connectors are included by default and can be
+      removed per routine; network access comes from its cloud environment (default
+      "Trusted", an allowlist); the model is set per routine. Routines are a research
+      preview.]
+    - **One limit.** Chat, Claude Code and Desktop count toward the same usage limit
+      (support.claude.com/en/articles/11647753). Usage credits bill at standard API
+      rates and can carry a monthly cap (/12429409).
+    - **Connectors.** Custom remote MCP connectors are available to Cowork on Max
+      (/11175166).
+    - **This account** (lane, measured): Max plan; a 5-hour window; the weekly
+      all-models window 36% used about 10 hours after its reset; extra usage disabled.
+13. **The consumer terms** (anthropic.com/legal/consumer-terms, effective 2025-10-08,
+    lane):
+    - **Automated access** is barred except through an API key "or where we otherwise
+      explicitly permit it". Scheduled tasks and routines are features Anthropic
+      offers, so we read them as permitted. That is our reading, not settled.
+    - **Training.** Inputs may be used for training unless the account opts out. Even
+      after opting out, materials given as feedback or flagged for safety review may
+      still be used (verifier, re-fetched 2026-09-18).
+    - **Competing use.** The terms bar using the Services "to develop or train any
+      artificial intelligence or machine learning algorithms or models" (in a clause on
+      competing products). How that applies to Mudavym's own wine models is for the
+      lawyer (Q17 (i)).
+
 ## Options considered
 
 The research ran six evidence lanes (repo assets, state-of-the-art methods, sources
@@ -299,6 +418,19 @@ session scratchpad `wine-pipeline/`.
 | Claude Desktop scheduled tasks | Laptop-bound; their tools went silently absent on 2026-08-31 (`wine-pipeline/RUN_2026-08-31_extract-nightly_ABORTED.md`); cost is modelled, not metered; four runs left `running` |
 | Managed Agents scheduled deployments | Beta, no batch discount; a candidate only for open-ended discovery later |
 
+[Round 3, 2026-09-18: the founder chose Cowork for model work (*"since we re going to
+use claude cowork, as long as credits allow."*). The Desktop row's reasons stop being
+a rejection and become requirements in §11:
+
+- the tasks stay thin, and the gateway opens and closes every run, so a killed session
+  cannot leave a run `running`;
+- health notices an absent host;
+- a missing tool shows up as an expired lease;
+- the model a task used is recorded and checked.
+
+Whether the tasks run on the laptop is Q19. Message Batches is no longer the host for
+pipeline model work (§11).]
+
 **Rejected sources:** Vivino, Wine-Searcher scraping, CellarTracker and OpenTable
 (their terms forbid automated collection; sources lane); Serper as a price issuer
 (it resells scraped Google results, and `price-sources.md:207-208` already rejects a
@@ -333,7 +465,10 @@ through one database view; and every house is told how its menu is used and can 
 out.** [Round 2, 2026-09-18: the draft said "values are sourced before they are
 inferred where a real house depends on them" and "from lawful sources". The founder's
 answers in Context, round 2, widened sourcing to every wine, named menus as the main
-source, and added the reviewers and the notice.]
+source, and added the reviewers and the notice.] [Round 3, 2026-09-18: model work runs
+as Claude Cowork scheduled tasks on the founder's plan credits, and the gateway stays
+the only writer (§11). Credits set how fast wines are reached, never how they are
+checked.]
 
 ### 1. The cell, and what may be inferred
 
@@ -452,7 +587,8 @@ arrives, "stocked first" means only two things:
 
 Health never reads the empty tier as covered: it reports "real houses: 0" as its own
 line (§6). Every wine is sourced (Q1), so this order matters only when the spend cap
-binds, and for how soon a wine is reached.
+binds, and for how soon a wine is reached. [Round 3: read "when credits bind". The
+gateway serves claims in this order (§11).]
 
 ### 3. Data model (reuse first)
 
@@ -502,7 +638,12 @@ batch_id, last_attempt_model, last_attempt_prompt_hash, next_attempt_at, reason`
 `research_runs` becomes the single run ledger, **one row per submitted batch or tick**,
 gaining `stage, runner, deployment_id, git_sha, considered, emitted, withheld_reason,
 anthropic_batch_id, manifest_sha256, reserved_usd, cost_usd, cost_basis (metered |
-modelled)`. `restaurant_wine_roster` (sightings, 0 rows) gains `master_wine_id`,
+modelled)`. [Round 3: `research_runs` also gains `host` (`gateway`, `cowork-local`,
+`cowork-cloud` or `routine`), `task_id`, `session_id`, `lease_id` and `model_basis`
+(`host_config` for a Cowork task, whose model only the task reports). `cost_basis`
+gains `plan`. For a Cowork run the lease plays the batch's part: ingest is unique on
+`(lease_id, unit_id, field, sample_idx)`, `manifest_sha256` hashes the claim's unit
+list, and `anthropic_batch_id` and `reserved_usd` stay null.] `restaurant_wine_roster` (sightings, 0 rows) gains `master_wine_id`,
 because `signature_hash` moves. `beverage_identity_keys` / `_candidates` hold LWIN,
 Wikidata and TTB COLA keys and fuzzy candidates. `field_evidence_policy` covers every
 displayed field with a class (attributive or descriptive). `field_calibration` is keyed
@@ -540,6 +681,13 @@ never reaches a shared row other houses read without a person promoting it.
 Stage names are P1–P13; the foundations schedule S1–S8 maps onto them
 (`wine-intelligence-foundations.md` §3 now points here).
 
+[Round 3, 2026-09-18: where a stage below says "batch", read "a Cowork task run"
+(§11). Only the model work moves: reading a menu (P1/P2), URL discovery (P5), cited
+extraction (P6), the judge (P7(c)) and inference samples (P8). Intake, P3, P4, every
+fetch, the deterministic checks, P9–P11 and P13 stay on the gateway, and P7(b) and
+P12 on `wine-worker`. Each task claims its units from the gateway and submits through
+the pipeline connector, which only stages.]
+
 - **P1 Intake, as sightings** [gateway `@Cron`; house paper the same day]. Each line
   becomes a roster sighting naming its list and read date; a menu price is a
   sighting, never a library cell (a class-M row, §3, §9). **Houses' menus are the
@@ -566,7 +714,8 @@ Stage names are P1–P13; the foundations schedule S1–S8 maps onto them
   (`scripts/extract_menu_corpus.py:48`); a cheaper model replaces Opus 5 only if the
   Stage 1 pilot measures it as non-inferior on page-level gold. Cost cannot decide it:
   Opus 5 costs about $0.22 a list against Haiku 4.5's $0.04, $1.75 a day at 10 lists
-  (Cost).
+  (Cost). [Round 3: the read runs in a Cowork task (§11), and credits cannot decide
+  the model either.]
 - **P2 Classify and parse** [gateway; synchronous when a house is waiting, else batch].
   Carry the menu section into `data_enrichment.menu_category` (`LibraryResolutionInput`
   has no category today, `wine-submissions.service.ts:38-45`). Parse the line into
@@ -605,7 +754,16 @@ Stage names are P1–P13; the foundations schedule S1–S8 maps onto them
   writes are discarded. Serper is never used, not even to find URLs (founder,
   2026-09-18: *"No"*). The gateway fetches each page itself through the fetch module.
   The wine-worker renders JavaScript pages only for URLs holding a fresh "allowed"
-  verdict; it never decides robots itself.
+  verdict; it never decides robots itself. [Round 3: P5 is a Cowork task using the
+  built-in web search, which takes no `blocked_domains` (lane; not in the docs this
+  writer read). The never-list is therefore enforced by the gateway on every URL the
+  task returns, and again at fetch time (§8 rule 1). Search snippets are never
+  values.] [Verifier, 2026-09-18: Cowork's egress settings *"don't apply to the web
+  fetch or web search tools or MCPs"* (support.claude.com/en/articles/13364135), so
+  nothing on the host stops a task fetching a never-list page itself. The launcher
+  forbids web fetch; whether it can be switched off for a task is unverified. A value
+  from a page the gateway did not fetch still cannot pass P6's check, but the fetch
+  itself would be the automated collection §8 exists to prevent.]
 - **P6 Cited extraction** [batch]. Opus 5 reads the fetched pages as document blocks
   with citations. Fable 5.1 is A/B-tested in the pilot, and under F1 the more accurate
   model on gold wins, although Fable 5.1 costs twice as much ($5/$25 batch per MTok
@@ -614,7 +772,12 @@ Stage names are P1–P13; the foundations schedule S1–S8 maps onto them
   cannot share a request (citations doc, via the SOTA lane). Deterministic checks: the
   cited text is an exact substring of the page whose hash was recorded, and
   `value_norm` equals the normalised claim. `fn_uncited_fields` is rewritten to bind
-  citations to values.
+  citations to values. [Round 3: a Cowork task has no API citations feature. The
+  gateway serves the fetched page text in the claim, and the task submits each value
+  with its quote string through the connector, whose tool schema is the structured
+  output. The gateway then runs the same deterministic checks, so the gateway, not the
+  model, decides whether a quote is on the page. Whether normalisation stays a separate
+  pass is measured in the pilot. The Fable 5.1 A/B needs a task configured with it.]
 - **P7 Verify.** A value is auto-accepted as `sourced` only when (a) the deterministic
   check passes; (b) a self-hosted checker from a different model family agrees:
   `MiniCheck-Flan-T5-Large` for English (MIT; fine-tuned on 21K ANLI plus 14K synthetic
@@ -637,7 +800,10 @@ Stage names are P1–P13; the foundations schedule S1–S8 maps onto them
   re-inference is enqueued. `rule_inferred` inputs are not used until P8's loader for
   them exists (Stage 2). `recalled` displays as "estimated" until audits separate it
   from `inferred` (today their Wilson intervals overlap: known 23/24, inferred 54/65,
-  quality lane).
+  quality lane). [Round 3: a Cowork task has one configured model, so the samples come
+  from one Opus 5 task and one Sonnet 5 task, joined by the gateway. A cell is emitted
+  only when all its samples are in. Samples from a run the plan cut short stay staged
+  under their `(model_id, prompt_hash)` until a later run completes the set.]
 - **P9 Gates and publish** (§5). The publish RPC flips `is_current` and records the
   `batch_id` in one transaction under a per-batch lease, so a batch can be rolled back.
   [Round 2] It also compares the row's `signature_hash` with the hash recorded when
@@ -674,6 +840,13 @@ Stage names are P1–P13; the foundations schedule S1–S8 maps onto them
 - **The cost of this answer.** A new wine waits for its sourcing batch to be ingested
   before any cell exists. That is usually the same night and at most two 24-hour batch
   windows. Meanwhile the page says "coming soon".
+- [Round 3, 2026-09-18, on *"as long as credits allow"*. **"Day one"** is now the first
+  night the pipeline's Cowork tasks run, since no night is paid. **Every eligible wine
+  is queued and attempted from that night, in §2's order, and none is left out for
+  cost.** How many nights that takes is set by credits. The batch windows above no
+  longer apply: a new wine waits for the next task run that claims it, and the page
+  says "coming soon" until then. The 500 a night below becomes "as credits allow" (step
+  1.8). Credits slow this; they never remove a step (§11).]
 - **No source found.** The wine is inferred and labelled "estimated".
 - **Real-house stocked wines** are still reviewed before publication.
 - **What still limits sourced coverage** is how many wines have a findable producer or
@@ -728,6 +901,10 @@ is empty or does not cover the batch.** A bad value rejects the cell, not the ro
     `review_status`, because *"a pre-label a human never looked at is not gold"*
     (`01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-charter.md:49`).
   - 1 verdict in 10 goes to a second reviewer, so agreement is measured per field.
+  - [Round 3, answered *"No: every publish is sampled"*: an instant publish is inside
+    this sample too. A failed re-check withdraws the cell and counts against the first
+    reviewer. A reviewer below the field's floor loses instant publish (§13; how that is
+    measured is Q15).]
 - **G7 audit:** before publication for wines a real house stocks; for every other
   inferred cell, a 60-cell stratified audit within 7 days of publication. **If the
   audit is not done in 7 days, the batch's inferred cells withdraw and health turns
@@ -752,6 +929,15 @@ its floor.**
   coverage: the range it shows must contain the held-out wine's own restaurant list
   price. That needs at least 16 wines with a list price, and none has one at k = 5
   today (§9) [verifier].
+- [Round 3, answered 2026-09-18: *"After automatic checks"*. That is Q2's path (b).
+  An inferred cell shows, labelled "estimated", once it passes G0–G6 and G8. A
+  stratified sample is reviewed within 7 days (G7), and a field below its floor
+  withdraws itself. **Our reading:** G6 is an automatic check that fails on too little
+  gold, so the pilot audit above still comes before a field's first publication, and
+  real-house wines keep their review before publication. Both only add checks; if he
+  meant otherwise, it is asked, not assumed (Still open).]
+- [Round 3] **Credits never move a floor.** When credits run short, cells wait. No
+  floor, gate, sample count or judge is relaxed to save them (§11).
 
 ### 6. Health that proves presence (P13)
 
@@ -800,6 +986,35 @@ its floor.**
   count. That state is neither healthy nor an unexplained red. After cutover, the
   foreign-writer rule above applies unchanged. The spend rules count only
   pipeline-runner rows, and the laptop's modelled cost is reported apart.
+- [Round 3, 2026-09-18: rules for a plan-credit host (§11).]
+  - **Where the rules above change.** The batch rules (in progress over 24 h; ended
+    and not ingested) apply only if billed batches return (Q21). The spend rules (over
+    the cap; any `cost_basis='modelled'`) apply only to billed API calls, which today
+    means only the synchronous house path (Q22). [Verifier, 2026-09-18: the draft put
+    the batch rules on the synchronous path, which sends no batch.]
+    Cowork runs carry `cost_basis='plan'` and are exempt from the "tokens > 0 and
+    `cost_usd` NULL" rule. "The backlog the cap allows" reads "the backlog credits
+    allow", reported below.
+  - **`model_host_absent`, red:** a declared task has made no claim or heartbeat for
+    more than twice its cadence.
+  - **`lease_expired_unsubmitted`, a named state with its count:** a lease ended with
+    nothing submitted. The gateway cannot tell a refused run from a crash or a missing
+    tool (fact 10, fact 11). The reason is only in the Cowork run history, which the
+    gateway cannot read. [Verifier, 2026-09-18: so this state is never green. The
+    rule above that reads "a lease expired" as red is not among the rules relaxed
+    here and still applies: a missing tool (fact 11) must not read as a quiet night.]
+  - **Self-reported identity.** The task id, session id and model reach the gateway
+    only as what the caller says through the connector. The gateway cannot verify
+    them, so the model-mismatch rule below catches drift, not a false report, and a
+    "declared task" means a caller naming a registered task id (verifier).
+  - **`paced_by_credits`, a named state, never green,** while eligible units wait. It
+    reports the queue depth, the oldest unattempted unit's age, units completed per
+    night, and the nights needed to drain the backlog at that rate. It is red when no
+    unit completes for 48 hours.
+  - **Model mismatch, red:** a task reports a model other than the one registered for
+    it (fact 10: the laptop tasks' model changed three times).
+  - **Writers.** Only the gateway writes pipeline rows. A Cowork task writes nothing;
+    it appears only as the `host`, task id and session id the gateway records.
 
 An empty price register reads "no index", never as absent. **An outside dead-man alarm
 is a Stage 0 exit criterion**, because a check inside a process cannot report its own
@@ -836,7 +1051,10 @@ One shared gateway module replaces the three fail-open readers and enforces:
 
 1. the never-list (Vivino, Wine-Searcher, CellarTracker, OpenTable, Google `/search`,
    Serper) **at fetch time and after every redirect**, not only as web-search
-   `blocked_domains`;
+   `blocked_domains`; [round 3: a Cowork task's search takes no `blocked_domains`
+   (lane), so this rule and the gateway's filter on P5's URLs are the only
+   enforcement, §4 P5; they cover only the gateway's own fetches, not a task's web
+   fetch, which Cowork's egress settings do not bind (verifier, /13364135)];
 2. robots.txt parsed only from a 200 with a `text/plain` body; any other 2xx, an empty
    or HTML body, or a WAF-challenge header (CellarTracker answers 202, empty,
    `x-amzn-waf-action: challenge`) is undefined, meaning disallow;
@@ -1045,38 +1263,138 @@ blocks.] The 44 copied rows and the 1,443 templated 08-16 profiles are
 re-derived through P8; nothing is deleted, and nothing a page shows today is lost,
 because `mapWine` sends no profile (`wine-intelligence-foundations.md:187-193`).
 
-### 11. Hosts and money
+### 11. Hosts and credits
 
-- **Postgres** holds state, gates, the view and health.
-- **Gateway `@Cron` plus `ModelClientService`**, with three changes: a batch
-  transport (it posts only to `/v1/messages`, `model-client.service.ts:7`); a
-  `claude-opus-5` price, the batch discount and the $10 per 1,000 search fee (its table
-  has only haiku-4-5, sonnet-5 and opus-4-8, `:25-37`); and a month-to-date pre-flight
-  for background submissions that **fails closed** (the current per-restaurant ceiling
-  fails open on a ledger error by design, `:600-606`; the synchronous house-waiting P2
-  path keeps that behaviour but is counted).
-- **Crons are gated by role.** `ScheduleModule.forRoot()` is unconditional
-  (`app.module.ts:84`), so every gateway process with production credentials would run
-  paid crons. Wine crons register only when `WINE_PIPELINE_ROLE=primary` and
-  `RAILWAY_DEPLOYMENT_ID` is present; the holder is recorded on each ledger row; health
-  is red when a non-Railway holder claims a job. Locks are real leases with fencing
-  tokens; `house-letters.service.ts:742-752` is a status flip with no expiry and is
-  not the pattern.
-- **Anthropic Message Batches** in a dedicated workspace with its own spend limit:
-  100,000 requests or 256 MB per batch, 24 h expiry, results for 29 days; server tools
-  work in batches; canceled requests are not billed; and **"batches may go slightly
-  over your Workspace's configured spend limit"** (batch-processing doc :43-48, :60,
-  :713, fetched 2026-09-18). **Two-phase submission:** write the `research_runs` row
-  as `submitting` with its manifest and run-prefixed `custom_id`s; submit; record the
-  batch id; on boot, list recent batches and ingest or cancel orphans by prefix. The
-  pre-flight **reserves** a worst case for every batch in flight (requests ×
-  `max_tokens` × output price + input + `max_uses` × $0.01 + a search-result token
-  bound), released at ingest. A 429 `enforced_spend_limit_reached` or a 400 workspace
-  limit is a HALT that cancels in-flight batches, never a per-row failure.
-- **One Railway cron service, `wine-worker` (Python), from Stage 1:** rendering, the
-  MIT checkers, embeddings. Its deployment is proven by the Railway `cronSchedule`
-  and its ledger rows, never by code. [Round 2: moved from Stage 2. Every wine is
-  sourced from the first paid night (Q1), and P7 needs the self-hosted checker.]
+[Round 3, 2026-09-18: rewritten on the founder's answer *"since we re going to use
+claude cowork, as long as credits allow."* (Context, round 3). The earlier text put
+model work on the gateway's `ModelClientService`, using Anthropic Message Batches in a
+dedicated workspace under a monthly spend limit, with two-phase submission, spend
+reservations and a 429 HALT. It is kept in git: `git show 056de928e:` this file,
+lines 1048–1080. It stays the design if billed API use is ever turned on (Q21).]
+
+**The rule: the agent reasons, the gateway writes.** Model work runs as Claude Cowork
+scheduled tasks on the founder's plan credits. Everything that must always be on, and
+everything that writes, stays on the gateway, which spends no model credits.
+
+| Where | What runs there |
+|---|---|
+| Postgres | state; the gates as SQL; the view; what health reads |
+| Gateway (Railway, always on) | P1 receiving menus; the P4 enqueue triggers and sweep; every fetch, through the fetch module (§8); P3 identity SQL; the deterministic P6 and P7(a) checks (exact substring on the hashed page, `value_norm`); P9 gates and the publish RPC; P10; P11 re-fetch and hash compare; P13 health (the outside dead-man alarm that watches it is Sentry Crons or a `pg_cron` witness, never the gateway itself, §6; verifier, 2026-09-18: the draft listed the alarm in this row); leases, fencing tokens, and opening and closing every run; the pipeline connector (below) |
+| `wine-worker` (Railway cron, Python, from Stage 1) | JavaScript rendering for allowed URLs; the P7(b) self-hosted MIT checkers; P12 embeddings. Its deployment is proven by the Railway `cronSchedule` and its ledger rows, never by code. [Round 2: moved from Stage 2, because P7 needs the checker from the first night.] |
+| Cowork scheduled tasks (plan credits) | Model work only: P1/P2 reading a menu into lines; P5 URL discovery (URLs only); P6 cited extraction, as quote strings the gateway checks; P7(c) the judge, as its own task with its own prompt; P8 samples, one task per model, because a task has one configured model |
+
+**Repo code, thin tasks.** A task holds no code and no database access.
+
+- **Prompts live in the repo.** A task's own instruction is a short launcher: claim,
+  do the work, submit. The prompt, the output schema and the units come back from
+  `claim`, read from the repo at the gateway's deployed `git_sha`, so the gateway
+  computes `prompt_hash` itself. Nothing lives in the gitignored
+  `datasets/annotation_inbox/`.
+- **Deterministic code runs on the gateway**, deployed from `main`, never on the
+  laptop. Peer sessions switch branches in the shared checkout, so a local task pointed
+  at it would run whatever branch was checked out. If Q19 picks a routine, which clones
+  `main` on each run, repo code may also run inside the task, and the connector does
+  not change.
+- **The pipeline connector.** A custom remote MCP connector on the gateway, signed in
+  by OAuth, with three tools:
+  - `claim(stage)` returns a leased set of units with its fencing token;
+  - `submit(lease, unit, outputs)` stages observations. It is idempotent on
+    `(lease_id, unit_id)` and refused on a stale fencing token;
+  - `heartbeat(lease)` renews the lease.
+
+  It can only stage. It never publishes, never writes a library column and never runs
+  SQL a caller supplies; its own writes are the staging rows `submit` records. Its
+  reach stops at staging because the server exposes only these three tools, not
+  because of where its OAuth token is held. [Verifier, 2026-09-18: the draft gave the
+  token's location as the reason. A connector added to an account can be turned on in
+  any conversation on that account (support.claude.com/en/articles/11175166), so the
+  tools, not the token, are the boundary; where the token is stored is from memory.]
+- **No database reach from a task.** No pipeline task gets a service-role key, the
+  Supabase connector or `execute_sql`, unlike the laptop tasks (fact 11). Whether
+  Cowork can limit one task's connectors is unverified. A dedicated seat without the
+  Supabase connector settles it by construction (Q20). [Verifier, 2026-09-18: this is
+  what the one-writer rule rests on. P5, P6 and P8 tasks read untrusted page text, and
+  a scheduled task carries the account's *"connected tools, skills, and installed
+  plugins"* (/13854387). On a seat whose account holds the Supabase connector, text
+  planted in a wine page could ask a task to write production directly, around the
+  gateway. So the rule holds on a shared seat only if per-task connector limits exist.]
+- **Permissions.** No pipeline task runs with `bypassPermissions` or open egress
+  (fact 11). Its tools are the pipeline connector, plus web search for P5.
+  [Verifier, 2026-09-18, two limits. Cowork's egress settings do not bind web fetch,
+  web search or MCPs (/13364135), so "no open egress" does not stop a task's own web
+  fetch (§4 P5). And a routine has no permission-mode picker (fact 12), so under
+  Q19 (c) containment rests on its connector list and its environment's network
+  access, not on a permission mode.]
+- **Identity.** Each run row records `host` (`cowork-local`, `cowork-cloud` or
+  `routine`), the task id, the session id and `model_basis='host_config'` (§3). Health
+  is red when a task reports a model other than the one registered for it (§6). These
+  are what the caller reports; the gateway cannot check them (§6, verifier).
+- **The model (F1) does not change with the host.** Opus 5 is the default where §4
+  says so. A cheaper model replaces it only if the pilot measures it as non-inferior on
+  gold, never because credits are short. Opus 5 runs in Cowork: 24 of the laptop runs
+  used it (fact 10). [Verifier, 2026-09-18: nor because of the host. If the model gold
+  picks (P6's Fable 5.1 A/B) cannot be set on a Cowork task, that is taken to the
+  founder with billed API use as the other path (Q21). It never falls back quietly to
+  the runner-up.]
+
+**Credits, not dollars** (our reading of *"as long as credits allow"*).
+
+- **No dollar cap.** Usage credits are off today (lane) and stay off unless Q21 turns
+  them on, so no pipeline run is billed. The
+  budget is counted in units: wines or lists a run completes, times runs a night. The
+  pilot measures how many units one point of the weekly usage window buys (step 1.5).
+- **When the plan refuses a run,** that run stops. Its lease expires, and every unit
+  it had not submitted goes back to the queue for the next run [verifier, 2026-09-18:
+  the draft said "with nothing submitted"; a run cut off mid-way has submitted some].
+  Nothing is
+  half-published: a cell is emitted only when all its samples and checks are in (§4
+  P8).
+- **The order claims are served in.** The gateway serves claims in this order, so when
+  credits run short the end of the list waits first:
+  1. reading real houses' menus, and sourcing the wines on menus a developer has
+     approved;
+  2. sourcing new wines (P5–P7);
+  3. inferring new wines (P8);
+  4. sourcing the backlog, in §2's priority;
+  5. re-inferring the backlog, in §2's priority;
+  6. the model parts of the weekly re-verify (P11).
+
+  [Verifier, 2026-09-18: P11 marks a cell stale when its page changes, and its
+  re-extraction waits at step 6. Neither §4 nor §7 says what a stale cell shows
+  meanwhile. If it keeps showing as sourced, short credits lower freshness, which the
+  rule below forbids. What a stale cell shows is open, for the founder.]
+- **What never pauses,** because it spends no credits: receiving menus, enqueueing,
+  the gateway's checks, publishing, /studio, the 7-day audit and health.
+- **Credits set the pace, never the bar.** Short credits never lower a floor, skip a
+  gate, cut P8's samples (3, or 5 for stocked wines), drop the judge, skip sourcing
+  before inference, swap in a cheaper model or thin the 1-in-10 sample. A wine that
+  cannot get every step waits.
+- **What "every wine from day one" becomes.** Every eligible wine is queued and
+  attempted in order from the first night the tasks run, and none is left out for
+  cost. How many nights that takes is set by credits. On a seat shared with
+  development work, the measured record is 37 refused runs out of 41 (fact 10). That
+  fork is Q20.
+- **A house waiting at upload.** A scheduled task cannot answer a waiting person. The
+  gateway's existing synchronous menu read calls the API through `ModelClientService`
+  under its per-restaurant ceiling, which fails open on a ledger error by design
+  (`model-client.service.ts:600-606`). Whether that path stays on billed API, or the
+  house waits for the next run, is Q22. Either way it is counted apart from the
+  pipeline.
+
+**Gateway crons are gated by role.** `ScheduleModule.forRoot()` is unconditional
+(`app.module.ts:84`), so every gateway process with production credentials would run
+the crons. Wine crons register only when `WINE_PIPELINE_ROLE=primary` and
+`RAILWAY_DEPLOYMENT_ID` is present, and the holder is recorded on each ledger row.
+Locks are real leases with fencing tokens; `house-letters.service.ts:742-752` is a
+status flip with no expiry and is not the pattern. [Round 3] Health is red when a lease
+is held by anything other than the Railway primary or a declared Cowork task claiming
+model work through the connector. A "declared" task is one whose caller names a
+registered task id; any session on the account with the connector turned on could
+name one (verifier, 2026-09-18). What such a caller could do is still only stage.
+
+**Where the tasks run** (on the laptop, in Cowork's cloud, or as a Claude Code routine)
+is Q19. Once the menu PDFs are uploaded (step 0.20), a task needs no local file, so it
+can run in the cloud and keep running while the laptop is off.
 
 ### 12. Retired
 
@@ -1095,7 +1413,10 @@ before** (founder, 2026-09-18). Also retired: Studio's direct library insert
 the override auto-promotion insert (`services/override_service.py`); and the quality
 PATCH insert (`api/quality_routes.py`). The publish RPC replaces all three (§13).
 Serper is retired for every use. The analytics promise in `ServicesPermissions.tsx:88`
-is amended, not retired (§14).
+is amended, not retired (§14). [Round 3] The four old tasks are replaced by thin
+Cowork tasks that hold no code and no database access (§11). Their
+`bypassPermissions` mode and their use of the Supabase connector's `execute_sql`
+retire with them (fact 11).
 
 ### 13. Review happens in /studio (Q4 answered)
 
@@ -1125,6 +1446,14 @@ built. The roles stay as designed and invite-only: `developer`, `review_admin`, 
     in a row (D-12). After that it publishes without the queue, but stays inside
     G7's sample. Whether this auto-promotion, and developers' instant promotion (D-13),
     are kept is still open (Q15) [verifier].
+  - [Round 3, answered 2026-09-18: *"No: every publish is sampled"*.] **No approval
+    publishes outside the sample** (our reading, with the relay's gloss):
+    - D-12 and D-13 survive only as publish-then-sample. An approval publishes at
+      once, and 1 approval in 10 is re-checked by a second reviewer.
+    - A failed re-check withdraws the cell and counts against the first reviewer.
+    - A reviewer whose measured agreement is below the field's floor (§5) loses instant
+      publish, and their approvals wait in the queue until they recover.
+    - How agreement is measured for a reviewer with few re-checks is Q15 (rest).
 - **Review admins** run the queue, the invites and the 1-in-10 double review.
 
 **The queue is the observations.**
@@ -1170,6 +1499,22 @@ built. The roles stay as designed and invite-only: `developer`, `review_admin`, 
 **Payment is not designed.** "Paid sommeliers" is our reading; quote R's "paying" also
 admits the reverse. Nothing pays anyone today, and any cash payout collides with the
 Stripe guard and OD-23 (Context, fact 6). The question is Q14.
+
+[Round 3, answered 2026-09-18: *"we pay them, or rewards both, (we decide they don't
+see)"*.]
+
+- **Direction.** Mudavym pays or rewards the sommelier, never the reverse.
+- **Form.** Pay, rewards or both is decided inside Mudavym, and the sommelier does not
+  see how (the relay's reading). So /studio does not show a reviewer which form
+  applies or how it is chosen (ours). [Verifier, 2026-09-18: the draft said /studio
+  shows "no pay or reward terms", which neither reading supports. Whether a sommelier
+  sees what they themselves receive is part of Q14 (rest).]
+- **A guard we propose.** Pay or reward never depends on which way a verdict goes, so
+  approving is never worth more than rejecting. Without it, the reward would pay for
+  the approvals the 1-in-10 re-check exists to catch.
+- **What cash still needs.** The Stripe `transfers`/`payouts` guard lifted and OD-23
+  decided. Rewards need neither.
+- **Still internal:** which form, and the rate (Q14 rest).
 
 ### 14. Every house is told, and can opt out (answered: *"A notice with an opt-out"*)
 
@@ -1242,6 +1587,12 @@ is the first night on which the repo pipeline meets all three conditions:
   still working down. Coverage stays red for about a week after the first paid night,
   so a plain "health is green" test would put cutover off for no reason.
 
+[Round 3, 2026-09-18: the first condition now reads: the gateway runs as primary on
+Railway, **and** the new Cowork tasks claim and submit through the pipeline connector
+(§11). The second is met through the connector's ledger rows. The third also excludes
+`paced_by_credits` (§6), which stays up while the backlog waits for credits. The old
+four are disabled after that night, as before.]
+
 That day the founder disables the four tasks (his keystroke; step 1.10). Until then
 two writers can reach production. This ADR contains the laptop writer by construction,
 not by trust:
@@ -1274,7 +1625,14 @@ not by trust:
    `grep`). So it never draws on the workspace's spend limit. Health's spend rules
    count only pipeline-runner rows. [Verifier, 2026-09-18: the draft said the laptop
    "runs under another org". Fact 1 does not show that; its path names org
-   `1138b209`, which may be the org the workspace is created in.]
+   `1138b209`, which may be the org the workspace is created in.] [Round 3,
+   2026-09-18: **this rule no longer holds.** Both the old four tasks and the new
+   pipeline tasks draw on plan credits. In one seat they share one pool, and fact 10
+   suggests the old four already share the founder's own. Until cutover, the old four
+   can use up the credits the new tasks need for the first clean night that cutover
+   waits for. His answer stands (keep them until the repo pipeline runs). A dedicated
+   seat for the new tasks removes the competition (Q20). Health's unit rules count only
+   declared pipeline tasks.]
 
 **What this does not contain.** The laptop can still write wrong values into library
 columns that old readers use directly, such as `mapWine` before step 0.7. So step 0.7
@@ -1308,7 +1666,7 @@ kills). "Applied" means the Decision above carries it.
 | B2 | Enqueue trigger on `IS DISTINCT FROM`, never raising, mutation-tested | Applied (§4 P4, Build 0.13). The critic split it into an INSERT trigger and an UPDATE trigger, because the draft's combined `WHEN (OLD…)` cannot be created |
 | B3 | Restate rule 1 as a founder fork; `conditioned_on`; legacy identity as low-trust input; T9 repairs before Stage 1; name the rule_inferred loader or drop it | Applied, except the T9 **column** repair: **rejected** because rewriting `grape_variety` re-keys the signature hash while G-F3 is open; the same effect comes from G1/G3 withholding those legacy cells from display and from P8's input (§4 P8) |
 | B4 | Real leases with fencing; role-gated crons | Applied (§11) |
-| B5 | Two-phase batch submit; spend reservation; fail closed for background; HALT cancels; verify tier and credit before Stage 3 | Applied (§11, Build 1.1) |
+| B5 | Two-phase batch submit; spend reservation; fail closed for background; HALT cancels; verify tier and credit before Stage 3 | Applied (§11, Build 1.1). [Round 3: set aside for pipeline model work, which now runs on plan credits (§11). The design is kept at `056de928e` for billed API use (Q21). Its intent carries over as leases, fenced idempotent submits, and the expired-lease return of units] |
 | B6 | Sweep backoff by `(model_id, prompt_hash)`; rejected rows separate; $53 becomes $53–180 | Applied (§4 P4, Cost); the range is now computed, $47–160 (Cost) |
 | B7 | G4 quarantines rows; batch fingerprint ratio; refit on the enum pilot | Applied (§5) |
 | B8 | No gate passes on empty reference data; G3 sources named; TTB AVA dropped; floors from a pre-publication pilot; NULL-cost rule scoped | Applied (§5, §6). The berry-colour source is Wikidata's CC0 items; VIVC states no reuse licence and is a link only |
@@ -1358,6 +1716,26 @@ kills). "Applied" means the Decision above carries it.
   - the /studio queue stays past its set depth for a week (invite reviewers or lower
     the dial);
   - a house opts out and its own analytics change (the opt-out has leaked).
+- [Round 3, 2026-09-18: model work on plan credits (§11).]
+  - **Easier:** pipeline model work sends no bill, and the workspace, batch and
+    spend-reservation machinery is not built.
+  - **Harder:**
+    - **Pace.** The pace is whatever credits allow, and it is unmeasured until the
+      pilot.
+    - **Sharing.** On a seat shared with development work, the pipeline competes for
+      one pool: 37 of the laptop tasks' 41 runs since 09-04 were refused (fact 10).
+    - **The laptop.** A task on the laptop skips the nights it sleeps and gets one
+      catch-up on wake.
+    - **Blind spots.** The gateway cannot see why a run failed, only that its lease
+      expired.
+  - **Revisit when:**
+    - the nights needed to drain the backlog stay above 30 at the measured rate (the
+      30 is our proposal): take the seat, usage credits or billed API to the founder
+      (Q20, Q21);
+    - the plan's terms or limits for scheduled use change.
+
+  The "measured cost per sourced wine" and "org usage tier" triggers above apply only
+  to billed API use.
 
 ## Build order
 
@@ -1366,7 +1744,8 @@ Each step is small, has a check, and states whether it writes production.
 **Stage 0 — no model spend.** Exit: health is red on today's data for the listed
 reasons, and the outside alarm fires on a missed run. [Round 2] Also: the notice, the
 opt-out and the Terms of Service are live (0.18) before any real house's menu counts
-toward class M or training.
+toward class M or training. [Round 3] Also: the pipeline connector (0.21) and the
+plan-credit health rules (0.22) pass their checks. Stage 0 still spends no credits.
 
 - 0.1 **[Round 2, answered 2026-09-18: *"Keep until the repo pipeline runs"*.]** The
   four Desktop tasks stay enabled until cutover (§15). Stage 0 builds the containment
@@ -1488,18 +1867,48 @@ toward class M or training.
   - a fixture half-bottle line yields `volume_ml = 375`;
   - each uploaded file's sha256 equals its `crawl_log.content_hash`, or the file is
     refused.
+- 0.21 [Round 3] **The pipeline connector (§11).**
+  - A remote MCP server on the gateway with `claim`, `submit` and `heartbeat`, signed
+    in by OAuth.
+  - Prompts and output schemas are served from the repo, and the gateway computes
+    `prompt_hash`.
+  - Submits are fenced and idempotent on `(lease_id, unit_id)`.
+  - The prompts and task launchers live in the repo; nothing is read from
+    `datasets/annotation_inbox/`.
+
+  *Checks:*
+  - a stale fencing token is refused;
+  - a second submit of the same unit changes nothing;
+  - a static guard fails any connector path that publishes, writes a library column or
+    runs SQL a caller supplies (the staging insert is the one write allowed; verifier,
+    2026-09-18: as drafted, "runs SQL" would fail `submit` itself);
+  - an expired lease returns its units to the queue;
+  - each mutation turns a test red.
+- 0.22 [Round 3] **Health for a plan-credit host (§6):** `model_host_absent`,
+  `lease_expired_unsubmitted`, `paced_by_credits` and the model-mismatch rule.
+  *Checks:* a fixture task with no claim for twice its cadence reads red; a fixture
+  task reporting an unregistered model reads red; a fixture queue with no unit completed
+  in 48 hours reads red; each rule's mutation turns a test red.
 
 **Stage 1 — sourcing and inference, gated.** Exit: at least one descriptive field
 published on real data with a measured Wilson bound above its floor. [Round 2] The exit
 also needs two things: every new wine that night has a sourcing attempt, and cutover
 (§15) has happened. The stage was named "inference, gated". Sourcing moved in, because
-every wine is sourced from the first paid night (Q1).
+every wine is sourced from the first paid night (Q1). [Round 3: read "paid night" as
+"the first night the Cowork tasks run" throughout this stage (§4).]
 
 - 1.1 Founder creates the workspace, key and spend limit; the org usage tier and
-  credit balance are verified. *Check:* recorded here.
+  credit balance are verified. *Check:* recorded here. [Round 3: **replaced.** The
+  founder creates the Cowork tasks (his keystrokes) in the seat Q20 picks and where
+  Q19 says. He adds the pipeline connector and records whether usage credits are on
+  (Q21). Pipeline work needs no workspace or API key. *Check:* each task's id and
+  configured model are registered with the gateway, and its first claim appears in the
+  ledger.]
 - 1.2 `ModelClient`: batch transport, Opus 5 price, batch discount, search fee,
   two-phase submit, reservation pre-flight, HALT. *Check:* unit tests; a fixture spend
-  429 halts and cancels; boot reconciliation ingests an orphan by prefix.
+  429 halts and cancels; boot reconciliation ingests an orphan by prefix. [Round 3:
+  **not built for pipeline work.** It is built only if Q21 turns billed API use on.
+  The synchronous house path keeps its current ceiling (Q22).]
 - 1.3 Role-gated crons and fenced leases. *Check:* a local boot without the flag
   registers zero wine crons.
 - 1.4 P2 on the unclassified stubs. *Check:* each is classified from a stated section
@@ -1507,7 +1916,10 @@ every wine is sourced from the first paid night (Q1).
 - 1.5 P8 pilot on 200 stratified eligible wines. *Check:* measured cost per wine and
   fingerprint ratio replace the estimates below, in a dated amendment. [Round 2: the
   pilot runs P5–P7 and then P8 on the same 200 wines. It also measures the share of
-  wines with a findable source.]
+  wines with a findable source.] [Round 3: it also reads the weekly usage window
+  before and after one Stage 1 night's units, and records the units one point of the
+  window buys. No pace is promised before that number exists. *Check:* the number and
+  the seat it was measured on are recorded here.]
 - 1.6 Pre-publication pilot audit by the founder: two-stage cluster sample, about 60
   cells per field (about 70 wines). *Check:* `field_calibration` rows per
   `(field, provenance, model_id, prompt_hash)`. [Round 2: the audit is done in /studio
@@ -1524,13 +1936,19 @@ every wine is sourced from the first paid night (Q1).
   clears each field. If the pilot changes a prompt, the cells that prompt produced are
   re-run, at most $47–160 for P8 and $268–582 for P5–P7 (Cost). That re-run is the
   price of sourcing from day one. It is stated here and is not a reason to wait.]
+  [Round 3: "about 500 a night, under the cap" becomes this. The whole backlog is
+  enqueued on the first night the tasks run, and claims serve it in §11's order as
+  credits allow. The /studio queue's depth paces what reaches reviewers. A prompt
+  change after the pilot re-runs its cells on credits, not dollars. *Check:*
+  `paced_by_credits` reports the backlog and its nights to drain.]
 - 1.9 Growth from house paper the same day. Public-list intake only if Q7 is answered
   yes: 4 backlog lists a night from list URLs whose platform terms were read. *Check:*
   every crawled list yields sightings or a reason code. [Round 2: Q7 is answered yes.
   The 41 uploaded laptop menus go first, and each list opens a /studio session (§13).]
 - 1.10 [Round 2] **Cutover** (§15). The founder disables the four Desktop tasks on the
   first night that meets §15's definition. *Check:* the draft's step 0.1 check,
-  unchanged. Then the reaper (0.15) arms after 7 days with 0 foreign rows.
+  unchanged. Then the reaper (0.15) arms after 7 days with 0 foreign rows. [Round 3:
+  that night also needs the new Cowork tasks claiming through the connector (§15).]
 - 1.11 [Round 2] The `wine-worker` Railway cron (§11), moved from Stage 2. *Check:*
   its `cronSchedule` and its first ledger rows, never its code.
 
@@ -1556,9 +1974,25 @@ throughput covers about 40–55 decisions a day; keys (LWIN file, Wikidata, TTB 
 F4 line 2 weekly; embeddings (P12); conformal thresholds, drift, PPI intervals. The dial
 rises only after Stage 1 and 2 measurements have replaced every estimate. [Round 2:
 "F4 line 2" is now §9's line 3, the Hi-Time listing. "Curation throughput" means
-measured /studio reviewer throughput (§13).]
+measured /studio reviewer throughput (§13).] [Round 3: 10 lists a night is a pace that
+credits must allow. It is measured by step 1.5's number, not promised.]
 
 ## Cost (estimates; no paid call was made)
+
+[Round 3, 2026-09-18: pipeline model work now runs on plan credits (§11), so **no
+figure below is a bill**. The figures stay as the API-equivalent size of the work,
+what it would cost if billed. They have two uses:
+
+- **If usage credits are turned on (Q21).** Usage credits bill at standard API rates
+  (support.claude.com/en/articles/12429409, lane), not batch rates. So the figures
+  below roughly double, except the search fee, which batch never discounted.
+- **The scale credits must cover.** Every wine sourced at Stage 1 is $39–112 a day at
+  batch prices. Whether a Max plan covers any share of that is unmeasured; step 1.5
+  measures it. The Max plan's price was not checked here (the lane's figure is from
+  memory).
+
+The "spend limit" bullet at the end of this section is answered: there is no dollar
+limit, only credits.]
 
 [Recomputed by the critic, 2026-09-18. The draft stated the figures without any
 arithmetic, and no file held one. The model is
@@ -1613,7 +2047,9 @@ and then inferred, costs $0.095–0.223.
 - **No model spend.** Class M, the notice and /studio add none. Reviewers' time and any
   pay for sommeliers are not in these figures.
 - **The spend limit.** The monthly limit is still the founder's keystroke (Q1). Below
-  these figures, the cap decides which wines wait, in §2's priority order.
+  these figures, the cap decides which wines wait, in §2's priority order. [Round 3:
+  answered, *"as long as credits allow"*. Credits decide which wines wait, in §11's
+  order.]
 
 ## Open founder questions
 
@@ -1623,7 +2059,9 @@ Decision. What is still open, including the new Q13–Q18, is listed at the end 
 "Still open after round 2".]
 
 - **Q1 Spend.** **[ANSWERED in part: *"Every wine from day one"*: N equals intake
-  (§4 sourcing order; Cost, round 2). The monthly limit itself is still his keystroke.]** The fork: a monthly limit on a dedicated workspace (his keystroke),
+  (§4 sourcing order; Cost, round 2). The monthly limit itself is still his keystroke.]**
+  **[Round 3: the rest ANSWERED, *"since we re going to use claude cowork, as long as
+  credits allow."*: plan credits, no dollar limit (§11). The host's own forks are Q19–Q21.]** The fork: a monthly limit on a dedicated workspace (his keystroke),
   which sets two dials: lists read a night (4 from the backlog, then 10) and wines
   sourced a day (N). Cost: above. Under F1, spend should not be what caps quality. N =
   100 ($0.73k–2.36k a month) leaves 90% of new wines without a sourced cell for good. N
@@ -1636,7 +2074,8 @@ Decision. What is still open, including the new Q13–Q18, is listed at the end 
 - **Q2 Publication.** **[NOT ANSWERED in the form asked. The answer given against the
   publish rule (quote P) is about sources and market price. It adds a developer's
   approval of each menu before its listing facts count (§13), but it does not choose (a)
-  or (b) for inferred cells. (b) stays the proposal.]** Paths: (a) every inferred cell audited before it shows; (b) a
+  or (b) for inferred cells. (b) stays the proposal.]** **[Round 3: ANSWERED, (b):
+  *"After automatic checks"* (§5).]** Paths: (a) every inferred cell audited before it shows; (b) a
   field publishes only after its pre-publication pilot clears its floor, then
   publish-then-audit with automatic withdrawal at 7 days, real-house wines always
   reviewed first. (a) puts daily growth behind one reviewer. Recommendation: (b).
@@ -1710,6 +2149,12 @@ Decision. What is still open, including the new Q13–Q18, is listed at the end 
 
 Each question gives the fork, the paths, what each costs, and a recommendation.
 
+[Round 3, 2026-09-18. **Answered:** Q1 in full, Q2 as (b), Q14's direction and Q15's
+rule. **Still open:** Q2's reading (to confirm), Q6 (rest), Q10, Q11 (rest), Q13,
+Q14 (rest, internal), Q15 (rest), Q16, Q17 with the new (h) and (i), Q18, and the new
+Q19–Q23. Q19–Q21 decide whether "every wine from day one" is reached in days or in
+months.]
+
 - **Q1 (remainder) (a) The monthly limit, and (b) the backlog pace.** Every wine sourced costs $1.2k–3.4k a month at
   Stage 1 and $2.9k–8.4k at Stage 3 (Cost, round 2). The backlog week costs $86–224 a
   night.
@@ -1729,6 +2174,10 @@ Each question gives the fork, the paths, what each costs, and a recommendation.
     - **Recommendation:** submit the whole backlog on the first paid night, with its
       cells staged, and let the queue's depth, not a nightly count, pace what reaches
       reviewers. That is the reading closest to "from day one".
+  - **[Round 3: ANSWERED, both parts.** (a) *"as long as credits allow"*: no dollar
+    limit (§11). (b) follows from it: the whole backlog is enqueued on the first night
+    the tasks run, and credits and the queue's depth set the pace (step 1.8). What is
+    left of the money question is Q19–Q21.]
 - **Q2 Publication path for inferred cells.** The paths are unchanged:
   - (a) every inferred cell is reviewed before it shows;
   - (b) a field's pilot clears its floor, then cells publish first and are audited
@@ -1738,6 +2187,13 @@ Each question gives the fork, the paths, what each costs, and a recommendation.
   first (§13). [Verifier, 2026-09-18: quote P's *"We're gonna check their values"* is
   read here as the menus' values. If "their values" means the library's values, it
   points to (a). He should be asked which he meant rather than have (b) assumed.]
+
+  **[Round 3: ANSWERED, (b): *"After automatic checks"*.** One reading to confirm. We
+  read "automatic checks" as including G6, which needs pilot gold before a field's
+  first publication. We also read it as keeping real-house wines' review before
+  publication. If he meant estimates show before any gold exists, that lowers the first
+  publication's bar, which F1 and §11's "credits set the pace, never the bar" argue
+  against. **Recommendation:** confirm both readings.]
 - **Q6 (remainder) The checker licence.** MiniCheck's weights are MIT, but its ANLI
   training data is CC BY-NC.
   - **The choice:** use it commercially, or use the multilingual MIT checker for
@@ -1769,6 +2225,11 @@ Each question gives the fork, the paths, what each costs, and a recommendation.
     lifted and OD-23 (pricing) decided.
   - **Recommendation:** confirm the direction first. Then start with non-cash credit
     until OD-23 is decided.
+  - **[Round 3: direction ANSWERED,** *"we pay them, or rewards both, (we decide they
+    don't see)"*: Mudavym pays or rewards, never the reverse (§13).] **Still open, and
+    internal** (decided inside Mudavym, not shown to sommeliers): pay, rewards or both,
+    and the rate. **Recommendation:** rewards until OD-23 is decided, and accept the
+    guard that no reward depends on which way a verdict goes (§13).
 - **Q15 Instant and automatic promotion.** Phase 13 lets developers promote instantly
   (D-13), and contributors auto-promote after 5 approvals (D-12).
   - **Keep them,** and one unchecked reviewer can publish.
@@ -1781,6 +2242,19 @@ Each question gives the fork, the paths, what each costs, and a recommendation.
     recommended keeping both "for speed". Under F1 (*"highest quality"*), speed alone
     cannot justify one unchecked person publishing, so keeping them is now tied to a
     measured bar.]
+  - **[Round 3: the rule is ANSWERED,** *"No: every publish is sampled"* (§5 G6,
+    §13).] **Still open: how "below the floor" is measured for one reviewer.** At 1 in
+    10, re-checks pile up slowly. For a reviewer with no disagreements, the Wilson lower
+    bound is n/(n + 3.84), so clearing 0.95 takes 73 agreeing re-checks (730 approvals
+    at 1 in 10), 0.90 takes 35 and 0.80 takes 16. D-12's "5 in a row" gives 0.57.
+    - (a) **The Wilson bound,** as every other floor here is read. A new reviewer's
+      approvals are all re-checked until their bound clears, then 1 in 10. This is
+      slower to start, and it costs reviewer hours, not credits.
+    - (b) **The plain agreement rate.** Faster, but one lucky run grants instant
+      publish.
+
+    **Recommendation:** (a). It replaces D-12's "5 in a row", which no floor here
+    supports.
 - **Q16 The market price** (§9).
   - (a) **k:** 5 restaurant groups (0 wines qualify today) or 3 (9 wines). Lower k
     shows more numbers and gives weaker protection for each house.
@@ -1816,7 +2290,14 @@ Each question gives the fork, the paths, what each costs, and a recommendation.
   - (g) whether prices already held from public menus of restaurants that are not
     customers (the 26 corpus menus, and the 41 laptop menus once uploaded) may be
     pooled and used for training on the strength of being public (§14) [verifier,
-    2026-09-18].
+    2026-09-18];
+  - (h) [round 3] whether the notice must say that house menus are processed by
+    Claude Cowork tasks under a consumer plan, whose inputs may train Anthropic's
+    models unless the account opts out (fact 13; Q23);
+  - (i) [round 3] how the consumer terms' bar on using the Services "to develop or
+    train any artificial intelligence or machine learning algorithms or models" applies
+    to Mudavym training its own wine models on the tasks' outputs, and whether scheduled
+    pipeline use counts as use Anthropic "explicitly permit[s]" (fact 13).
 
   **Recommendation:** (a) opt-out for US and Turkish houses, opt-in for EU houses until
   cleared; (b), (c) and (d) as written; (e) before any pooling. [Verifier: (a)'s EU
@@ -1830,6 +2311,64 @@ Each question gives the fork, the paths, what each costs, and a recommendation.
 
   Also: may the 26 corpus PDFs be uploaded too? Their prices cannot be re-read for
   format without them. **Recommendation:** (a), and yes to the 26.
+- **Q19 Where the tasks run** [round 3, §11]. The connector design is the same under
+  all three.
+  - (a) **Local Cowork tasks on the laptop.** They need the app open and the computer
+    awake. A missed night gets one catch-up on wake, and the measured record already
+    has missed nights (09-06, 09-07, 09-17; fact 10).
+  - (b) **Cloud Cowork tasks that use only the connector.** They run with the laptop
+    off. They have no repo clone, which the design does not need, because the gateway
+    serves the prompts and runs the code. This needs the PDFs uploaded (step 0.20).
+  - (c) **A Claude Code cloud routine.** It clones `main` on each run, so the commit
+    is recorded. Its minimum interval is 1 hour, and each account has a daily run cap.
+
+  **Recommendation:** (b), with (c) only where repo code must run inside a task.
+  [Verifier, 2026-09-18, pages re-fetched (fact 12). (b)'s "only the connector" is
+  documented nowhere for a Cowork task: a scheduled task carries the account's
+  connectors (/13854387), so on the founder's seat it holds only through Q20's
+  dedicated seat. Cloud Cowork is in beta. (c) is the only option whose per-run
+  connector list is documented (connectors can be removed per routine), but it has no
+  permission-mode picker and is a research preview. None of this changes the
+  recommendation if Q20 picks a dedicated seat.]
+- **Q20 A dedicated seat, or the founder's own pool** [round 3].
+  - **Shared.** The pipeline competes with his development sessions. On that basis the
+    laptop tasks had 37 of 41 runs refused since 09-04 (fact 10). The old four, which
+    run until cutover, draw on the same pool (§15 rule 7).
+  - **Dedicated.** A separate account whose credits serve only the pipeline. Its
+    connectors can be limited to the pipeline connector, so no task can reach the
+    Supabase connector (§11). Its price was not checked; any figure would be from
+    memory.
+  - [Verifier, 2026-09-18] **What the shared seat also costs.** The pipeline's tasks
+    read untrusted page text. On the founder's seat they would carry every connector
+    on that account, including the Supabase connector's `execute_sql`, so the
+    one-writer rule would rest on an unverified per-task limit (§11). Anthropic's own
+    guidance is not to schedule tasks that can send messages, make purchases or take
+    other hard-to-undo actions (/13364135).
+
+  **Recommendation:** a dedicated seat before the first night. "Every wine from day
+  one" cannot hold on a pool that refused 9 runs in 10.
+- **Q21 Usage credits** [round 3].
+  - **Off** (our reading of his words): a refused run stops and waits for the reset.
+  - **On, with a monthly cap:** runs go on past the plan's limit, billed at standard
+    API rates (about double the batch figures in Cost), so the limit is dollars again.
+    Billed API use would also bring back the batch design at `056de928e` (§11).
+
+  **Recommendation:** off until step 1.5 has measured what the plan covers.
+- **Q22 A house waiting at upload** [round 3, §11]. A scheduled task cannot answer a
+  waiting person.
+  - **Keep the existing synchronous read** on the API, billed, under its per-restaurant
+    ceiling. It is the one billed model use left.
+  - **Or the house waits** for the next task run, and the page says so.
+
+  **Recommendation:** keep the synchronous read and count it apart. No real house
+  exists yet, so it costs nothing today.
+- **Q23 The account's training setting** [round 3]. The consumer terms let inputs
+  train Anthropic's models unless the account opts out (fact 13), and house menus
+  would pass through the tasks. Is training switched off on the account the tasks run
+  under? That is his keystroke to check. Whether the notice must say so is Q17 (h).
+  (That API inputs are not used for training by default is from memory and was not
+  re-checked.) **Recommendation:** switch it off before the first real house's menu is
+  read.
 
 ## Not verified (named per CLAUDE.md §0.5)
 
@@ -1882,6 +2421,47 @@ Each question gives the fork, the paths, what each costs, and a recommendation.
     The Studio column mismatch was confirmed from `information_schema`, not by running
     the SELECT. The 16-wine minimum assumes z = 1.96, the z that §5's 38-of-60 example
     uses. Q1 (b)'s recommendation and Q15's measured bar are the verifier's own.
+- [Round 3]
+  - **The answers.** They were relayed. Two readings are the relay's own (Q14's "which
+    one is internal", Q1's "Cowork on plan credits, not billed API"). "Or rewards both"
+    read as "or rewards, or both" is ours.
+  - **Checked by this writer:** the evidence table's counts (81 runs; 37 of 41 failed
+    since 09-04; the models per run), `harness.py:6-20`, and the four tasks'
+    `permissionMode` in `scheduled-tasks.json`. Everything else in facts 10–13 is the
+    lane's. No Anthropic page was re-fetched here.
+  - **From the lane, not re-checked:** that Cowork's search takes no
+    `blocked_domains`; the concurrency cap of about 2; that the laptop tasks share this
+    account's pool (inferred from the reset anchor); the account's usage figures; the
+    stuck rows' mapping to sessions; `egressAllowedDomains: ["*"]`; and which connector
+    tools a run can actually call (one session showed 9 remote servers configured and
+    some with 0 tools enabled).
+  - **Unofficial:** that custom connectors take only OAuth, not a bearer header
+    (github.com/anthropics/claude-ai-mcp/issues/112, a community report).
+  - **Unknown:** whether cloud Cowork tasks can run repo code; whether Cowork can limit
+    one task's connectors and tools; whether a Cowork task can be configured with Fable
+    5.1; the Max plan's price; how many units a point of the weekly window buys.
+    [Verifier, 2026-09-18, added:] whether web fetch can be switched off for a Cowork
+    task; whether a Cowork task can read a menu PDF or page image returned by an MCP
+    tool (P1/P2 in Cowork depend on it); where a custom connector's OAuth token is
+    stored.
+  - **Re-checked by the round-3 verifier (2026-09-18):** the run counts, error classes
+    and models by recount of `cowork-wine-runs.tsv` (two corrections in fact 10); the
+    four tasks' `permissionMode`, `approvedPermissions` and the one configured model in
+    `scheduled-tasks.json`; `harness.py:1-22`; and nine pages re-fetched:
+    code.claude.com/docs/en/desktop-scheduled-tasks and /routines;
+    support.claude.com/en/articles/13854387, 13345190, 13364135, 11647753, 12429409
+    and 11175166; anthropic.com/legal/consumer-terms. Each fact-12 and fact-13 claim
+    holds as written, with the additions marked "verifier" there. Not re-checked:
+    everything under "From the lane" above.
+  - **From memory:** how the Supabase connector's `execute_sql` authenticates (a
+    Management API token, wider than a service-role key); that API inputs are not used
+    for training by default.
+  - **Could not read:** `list_task_runs`, because this session's scheduled-tasks tool
+    sees the other org (`03017808`) and lists 0 tasks. The local session files were
+    read instead.
+  - **Not built, and no CLAIMS row.** Nothing was built or run, and no Cowork task was
+    created or changed. No CLAIMS row was added: the round-3 facts live in laptop
+    session files and Anthropic pages, which the claims job cannot read.
 
 ## Review trail
 
@@ -1891,3 +2471,5 @@ Each question gives the fork, the paths, what each costs, and a recommendation.
 | 2026-09-18 | Completeness critic (workflow agent) | 14 fixes, each marked "critic" in the text. (1) P4's combined INSERT-or-UPDATE trigger could not be created, and is now two triggers. (2) Costs are recomputed with their inputs, the N = intake line is added, and Q1/Q5 no longer cap quality by spend (F1). (3) P1 extraction defaults to Opus 5 (F1). (4) Hi-Time's terms were read: silent, not permissive; step 0.9 now covers it. (5) Health gains all-eligible coverage, a zero-yield run rule and a trigger-miss rule (F2). (6) The view never shows legacy profile fields. (7) The laptop-copy admission rule now checks terms. (8) Step 0.1's check no longer relies on quiet tables. (9) "Writing every night" was corrected against production. (10) Line citations shifted by the foundations edits, `.gitignore:87`→`:92` and `0130:108`→`:109`, were fixed. (11) Q7 was reframed as the legal remainder of F2, and its OSM contradiction removed. (12) Q11 now asks which of the four May houses are real. (13) The P7 same-family judge is no longer counted as independent. (14) A11 is marked partial |
 | 2026-09-18 | Round 2: the founder's answers (three AskUserQuestion batches) plus two research lanes (/studio; menu prices and the notice) | Still Proposed. Answers recorded as relayed, with readings marked. Q1, Q3, Q4, Q5, Q7, Q8, Q9 and Q12 are now decision text; Q6 and Q11 in part; Q2 was not answered in the form asked. §9 rewritten around menu prices (class M); §13 /studio review, §14 notice and opt-out, §15 two writers until cutover added; sourcing and `wine-worker` moved into Stage 1; costs recomputed for every wine sourced; step 0.3's count corrected from 3 to 8 (four "Sim " rows, not three); steps 0.17–0.20, 1.10 and 1.11 added; Q13–Q18 raised |
 | 2026-09-18 | Round-2 verifier (workflow agent): the diff against 795e8073a; quotes compared by script; every /studio, loader, parser, settings, Stripe and registry citation re-read; production SELECTs on `restaurants`, `restaurant_inventory`, `user_roles`, `users`, `invite_tokens`, `override_events`, the submissions table, the price and menu tables, and `data_enrichment->'menus'`; both cost scripts re-run | Answers verbatim (P and R match the relay character for character) and readings marked. Fixed, each marked "verifier" in the text: (1) three role-holding accounts, not two people (fact 6, §13, Consequences, Q4); (2) live-row `review_status` added; (3) the 7-menu rows are not live; (4) "by file name" city claim; (5) fact 8's heading over-read a usage-telemetry line; (6) the notice promised that a house's prices never appear, which a median breaks (§9, §14, Q16 (f)); (7) "nothing already held needs consent" was a legal conclusion (§14, Q17 (g)); (8) "required by Law 4250" was a legal conclusion (§9, Q17 (f)); (9) the estimate cannot pass its held-out test until at least 16 wines have a list price, and today none has at k = 5 (§5, §9, Consequences, Q16 (g)); (10) the estimate's label now says restaurant listings, so it cannot read as a shop price; (11) "re-scope N" on a cost overrun would have let cost undo *"Every wine from day one"* (Consequences); (12) the backlog now starts on the first paid night, staged, instead of after the audit, and its pace is Q1 (b); (13) Q15's "for speed" recommendation is tied to a measured bar under F1; (14) Q2 names the reading of "check their values" that would point to (a); (15) §15 rule 7's "another org" was unbacked; (16) §13's promotion rule marked as open (Q15); (17) the ROADMAP citation for "sommeliers/producers" added. Costs re-derived: every round-2 figure reproduces from `every-wine-cost.py` and `critic-cost-model.py` |
+| 2026-09-18 | Round 3: four founder answers (AskUserQuestion, relayed) plus one host research lane (Cowork, routines, usage limits, the terms, and the laptop tasks' 81 runs) | Still Proposed. The answers are recorded verbatim as relayed, with each reading marked as the relay's or ours. Answered: Q1 in full (plan credits, no dollar limit), Q2 as (b), Q14's direction and Q15's rule. §11 is rewritten as "Hosts and credits". Model work runs as Cowork tasks with repo-served prompts. The gateway stays the only writer and keeps health, enqueue and the publish gates, through a pipeline connector that can only stage. Credits set the pace, never the bar, and claims are served in a stated order. Amended: §3, §4, §5, §6, §8, §12, §13, §15, Consequences, Build order (0.21 and 0.22 added; 1.1 replaced; 1.2 set aside; 1.5, 1.8, 1.10 and Stage 3 amended) and Cost (now the API-equivalent size, not a bill). Facts 10–13 added. Q17 (h) and (i) and Q19–Q23 raised. The earlier §11 is kept at `056de928e` |
+| 2026-09-18 | Round-3 verifier (workflow agent): the diff against 056de928e; the four answers compared with the relay; `cowork-wine-runs.tsv` recounted; `scheduled-tasks.json` and `harness.py` re-read; nine Anthropic pages re-fetched | Answers verbatim and readings marked; every fact-12 and fact-13 claim holds. Fixed, each marked "verifier": (1) fact 10's model history omitted the return to Haiku (9, 24, 13, 35 runs); (2) 09-11 lateness was 15 minutes to 2.3 hours, not 1 to 2.5; (3) the concurrency inference has a counter-sign (a non-wine task started at the same second); (4) the Desktop-tasks page documents Claude Code's local tasks, not Cowork's; (5) Cowork egress settings do not bind web fetch, web search or MCPs, so the never-list cannot be enforced inside a task (fact 12, §4 P5, §8, §11); (6) the connector's reach was attributed to where its token is held; the tools are the boundary; (7) "never runs SQL" would have failed `submit` and step 0.21's guard; (8) on a shared seat a task reading untrusted pages carries the Supabase connector, so the one-writer rule depends on per-task limits (§11, Q20); (9) a routine has no permission-mode picker (§11, Q19); (10) the outside dead-man alarm was listed on the gateway; (11) §6 put batch rules on the synchronous path; (12) `lease_expired_unsubmitted` is never green, and "a lease expired" stays red; (13) task identity and model are self-reported; (14) "with nothing submitted" ignored part-submitted runs; (15) a host that cannot run gold's model goes to the founder, never a quiet fallback; (16) /studio "shows no pay or reward terms" was wider than either reading; (17) usage credits are off today, not off by decision; (18) what a stale cell shows while P11 waits for credits is unspecified, flagged open. The brief's pause order read backwards and was fixed |

@@ -253,7 +253,11 @@ Where it breaks (each point cited, none fixed here):
 The host for the enrichment half is a founder fork (F1, §7). [F1 ANSWERED 2026-09-18:
 *"most advanced pipeline to output highest results with high quality"*. ADR 0163 §11
 proposes gateway `@Cron` plus the Anthropic Message Batches API, with a Railway
-`wine-worker` cron from its Stage 2.] **The profile gap on
+`wine-worker` cron from its Stage 2.] [Round 3, 2026-09-18: the founder chose Claude
+Cowork scheduled tasks on his plan credits for the model work (*"since we re going to
+use claude cowork, as long as credits allow."*). ADR 0163 §11 now runs only model work
+in Cowork. Receiving menus, enqueue, the gates, publishing and health stay on the
+gateway, and Message Batches is no longer the host.] **The profile gap on
 stocked wines cannot close until one of the hosts runs**, because today no path reaches
 them. The read-side fixes (§4, and owed items 3–5) do not depend on F1.
 
@@ -283,7 +287,7 @@ the infrastructure does not exist.
 | `populate_embeddings.py` | `scripts/` | by hand | `embedding` | manual | the 3,430 pre-September rows; none since |
 | Seeds: `services/database/import_master_wine_library.py` (source literal at `:93`) ← `library/wineops_basic_v1.jsonl`; `scripts/synth/seed.py` | — | by hand | the importer wrote identity **plus `wine_structure` and `sensory_profile`** (200 of 200 carry a body; 44 carry the copied template, §1). The sim seed wrote identity only | manual | 200 rows on 2026-02-01; 81 sim rows on 2026-09-03. `services/agent-orchestrator/scripts/seed_master_wine_library.py` did **not** write them: it inserts seven columns production lacks (`grape_varieties`, `wine_type`, `tasting_notes` and others) |
 | Library repair passes (`repair_seed.py`, `producer-canonicalization*`, `country-region-consistency`, `region-implies-country-repair`, `vintage-prefix-strip` and others) | hand-run SQL and scripts, recorded in `PRODUCER_REPUTATION_PLAN.md:488-491, :1060-1062` | by hand | identity fields only (producer, country, region, vintage, `beverage_kind`), each logged to `wine_repair_log` | manual | 1,086 logged repairs, 2026-08-13..08-23 (F-E). None touched `wine_structure` |
-| Out-of-repo research runs | no code in any git ref. The in-repo writer (`research_tasks.py:1502`) records one record per run, but these rows record up to 9,592 eligible and 9,346 processed | irregular: about 23:06 UTC on six of the seven nights 08-26..09-01; then about 06:06, 07:06 and 08:11 on 09-03 and 09-05, 08:11 on 09-12, and 06:06 on 09-16 | `research_runs`, `evidence_citations` | **unattributed**. Checked and ruled out: this account's Claude routines (one, not wine), desktop scheduled tasks (none), and the local crontab and launch agents (none). [CORRECTED 2026-09-18: attributed, and **running**. Four Claude Desktop scheduled tasks in a second org's store are enabled and ran today: `wine-menu-discovery-enrichment` `0 2 * * *` (last run 2026-09-18T06:06Z), `wine-extract-nightly` `0 3 * * *` (07:05Z), `wine-verify-nightly` `0 4 * * *` (08:10Z), `wine-audit-weekly` `0 5 * * 0` (2026-09-13) (`~/Library/Application Support/Claude/local-agent-mode-sessions/0ca3256d-…/1138b209-…/scheduled-tasks.json`). The "none" above most likely read a different org's list: this app's scheduled-tasks tool lists none, and the four sit under org `1138b209` (inference, not measured). Their prompts are `~/Documents/Claude/Scheduled/wine-*/SKILL.md` and the code they drive is in the gitignored `datasets/annotation_inbox/` (`.gitignore:92` on `origin/main`); `~/Documents/Claude/Scheduled/wine-audit-weekly/SKILL.md:26` sets `review_status='approved'` on library rows. Enabled and running is measured; today's runs left no production row, and the newest rows they could have written are `research_runs` 2026-09-16 06:06Z and a library `updated_at` of 2026-09-12 14:50Z (critic SELECT, 2026-09-18). ADR 0163 build step 0.1 disarms them before any new writer starts.] | last run started 2026-09-16 (still `running`); last citation 2026-09-12 08:28Z |
+| Out-of-repo research runs | no code in any git ref. The in-repo writer (`research_tasks.py:1502`) records one record per run, but these rows record up to 9,592 eligible and 9,346 processed | irregular: about 23:06 UTC on six of the seven nights 08-26..09-01; then about 06:06, 07:06 and 08:11 on 09-03 and 09-05, 08:11 on 09-12, and 06:06 on 09-16 | `research_runs`, `evidence_citations` | **unattributed**. Checked and ruled out: this account's Claude routines (one, not wine), desktop scheduled tasks (none), and the local crontab and launch agents (none). [CORRECTED 2026-09-18: attributed, and **running**. Four Claude Desktop scheduled tasks in a second org's store are enabled and ran today: `wine-menu-discovery-enrichment` `0 2 * * *` (last run 2026-09-18T06:06Z), `wine-extract-nightly` `0 3 * * *` (07:05Z), `wine-verify-nightly` `0 4 * * *` (08:10Z), `wine-audit-weekly` `0 5 * * 0` (2026-09-13) (`~/Library/Application Support/Claude/local-agent-mode-sessions/0ca3256d-…/1138b209-…/scheduled-tasks.json`). The "none" above most likely read a different org's list: this app's scheduled-tasks tool lists none, and the four sit under org `1138b209` (inference, not measured). Their prompts are `~/Documents/Claude/Scheduled/wine-*/SKILL.md` and the code they drive is in the gitignored `datasets/annotation_inbox/` (`.gitignore:92` on `origin/main`); `~/Documents/Claude/Scheduled/wine-audit-weekly/SKILL.md:26` sets `review_status='approved'` on library rows. Enabled and running is measured; today's runs left no production row, and the newest rows they could have written are `research_runs` 2026-09-16 06:06Z and a library `updated_at` of 2026-09-12 14:50Z (critic SELECT, 2026-09-18). ADR 0163 build step 0.1 disarms them before any new writer starts.] [Round 3, 2026-09-18: since round 2, step 0.1 no longer disarms them first; they run until cutover (ADR 0163 §15). Their run history shows why production saw so little: since 2026-09-04, 37 of their 41 runs were refused by the plan's usage limit (ADR 0163, Context fact 10).] | last run started 2026-09-16 (still `running`); last citation 2026-09-12 08:28Z |
 | Database-side scheduling | — | — | — | **missing**: `pg_cron`, `pg_net` and `pgmq` are not installed (F-D; the installed extensions are ltree, pg_stat_statements, pg_trgm, pgcrypto, plpgsql, postgis, supabase_vault, uuid-ossp and vector). The project has no edge functions | — |
 | GitHub Actions, Vercel cron, Claude routines | `.github/workflows/*` | — | — | none touches wine. The five scheduled workflows are codeql, agent-cards-weekly, e2e-prod, loop-watcher and schema-parity | — |
 
@@ -310,6 +314,10 @@ are kept as the foundations reading and are not the plan.]
   0163 §4).
 - **The out-of-repo row below.** The founder keeps those four tasks until the repo
   pipeline runs, and ADR 0163 §15 contains them until then.]
+
+[Round 3, 2026-09-18: the host that ADR 0163 §4 and §11 name is now Claude Cowork
+scheduled tasks for model work, with the gateway for everything else. "The first paid
+night" reads "the first night the tasks run", and credits set the pace.]
 
 | # | What runs | How often | Reads | Writes | Gate |
 |---|---|---|---|---|---|
@@ -448,7 +456,9 @@ ADR 0163.]
      beat; gateway `@Cron`, which is live, calling the orchestrator; or sessions run by
      hand. [ANSWERED 2026-09-18: *"most advanced pipeline to output highest results
      with high quality"*. ADR 0163 §11: gateway `@Cron` plus Message Batches; Celery
-     rejected.]
+     rejected.] [Round 3, 2026-09-18: model work moves to Claude Cowork scheduled tasks
+     on plan credits (*"… as long as credits allow."*). The gateway keeps health,
+     enqueue and the publish gates. ADR 0163 §11.]
    - **F2**: whether generic provisional rows (ADR 0130) are ever enriched. 49 of the
      78 stocked `menu_import` stubs are provisional to a house. [ANSWERED 2026-09-18:
      *"everything beyond stocked and more, every day more extractions, more wines, just
@@ -505,6 +515,8 @@ ADR 0163.]
    equals `live_after_0817`, and `stocked_body` equals `stocked_distinct` minus the
    F2-excluded rows. [2026-09-18: host is ADR 0163 §11; the F2-excluded rows are
    ADR 0163 §2's buckets, reported by P13 and never counted as covered or missing.]
+   [Round 3, 2026-09-18: that host is now split: Cowork tasks for model work, the
+   gateway for the rest (ADR 0163 §11).]
 9. **Stand up S8 (pipeline health).** *Check:* it fails on today's data (160 stocked
    wines without a profile) and passes only after item 8.
 10. **Key research eligibility on library rows** (or mint submissions for stubs), then
@@ -551,7 +563,9 @@ declared in a new file would still be missed, and the row says so.
 Kept as prose because no static check can hold them: every production count in this
 document (re-run the appendix); that the out-of-repo research runs have stopped [CORRECTED 2026-09-18: they have not;
 the four Desktop tasks are enabled and three ran today, §3, although the newest
-production row they could have written is from 2026-09-16]; that no
+production row they could have written is from 2026-09-16] [round 3, 2026-09-18:
+each of those three runs was refused by the plan's weekly usage limit, which is why
+they left no row (ADR 0163, Context fact 10)]; that no
 Railway service was configured by hand outside the IaC; that research eligibility is 0;
 and the 573/24 insight count, which needs the TypeScript compiled and so cannot run in
 the claims job.
