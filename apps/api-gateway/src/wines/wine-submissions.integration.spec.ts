@@ -33,6 +33,16 @@ describeIfDb("WineSubmissionsService against the real database", () => {
   let supabase: SupabaseClient;
   const createdWineIds: string[] = [];
 
+  /**
+   * Every wine in this file carries a producer, so it is a SPECIFIC identity
+   * (ADR 0130) and the resolver never reaches the venue-provisional branch —
+   * `provisional_for_restaurant_id` is never written, and this id is never
+   * dereferenced. It is here because the resolver now has to be TOLD whose
+   * menu it is reading, precisely so that a generic name cannot be resolved
+   * without an owner.
+   */
+  const RESTAURANT_ID = "00000000-0000-0000-0000-0000000000aa";
+
   // A wine that cannot collide with anything real. The suffix keeps parallel
   // runs and reruns from matching each other's leftovers.
   const suffix = `ZZTEST${Date.now().toString(36).toUpperCase()}`;
@@ -71,7 +81,10 @@ describeIfDb("WineSubmissionsService against the real database", () => {
   it("creates a library row for a wine that matches nothing", async () => {
     // The regression guard. This returned 42P10 for the entire life of the
     // feature because the unique index on signature_hash was partial.
-    const result = await service.resolveOrCreateLibraryWine(wine);
+    const result = await service.resolveOrCreateLibraryWine(
+      wine,
+      RESTAURANT_ID,
+    );
 
     expect(result.masterWineId).toBeTruthy();
     expect(result.matched).toBe(false);
@@ -79,7 +92,7 @@ describeIfDb("WineSubmissionsService against the real database", () => {
   });
 
   it("links the same wine to the existing row instead of duplicating it", async () => {
-    const again = await service.resolveOrCreateLibraryWine(wine);
+    const again = await service.resolveOrCreateLibraryWine(wine, RESTAURANT_ID);
 
     expect(again.masterWineId).toBe(createdWineIds[0]);
     expect(again.matched).toBe(true);
@@ -89,23 +102,29 @@ describeIfDb("WineSubmissionsService against the real database", () => {
   it("links a differently-phrased version of the same wine", async () => {
     // How a second menu might print it: producer abbreviated to its
     // distinctive word, name carrying the vintage the importer glued on.
-    const rephrased = await service.resolveOrCreateLibraryWine({
-      name: `2019 Cuvee ${suffix}`,
-      producer: `Domaine ${suffix}`,
-      vintage: "2019",
-      region: "Test Valley",
-      grapeVariety: "Test Noir",
-    });
+    const rephrased = await service.resolveOrCreateLibraryWine(
+      {
+        name: `2019 Cuvee ${suffix}`,
+        producer: `Domaine ${suffix}`,
+        vintage: "2019",
+        region: "Test Valley",
+        grapeVariety: "Test Noir",
+      },
+      RESTAURANT_ID,
+    );
 
     expect(rephrased.masterWineId).toBe(createdWineIds[0]);
     expect(rephrased.matched).toBe(true);
   });
 
   it("does not link a different producer's wine of the same name", async () => {
-    const other = await service.resolveOrCreateLibraryWine({
-      ...wine,
-      producer: `Bodega ${suffix}`,
-    });
+    const other = await service.resolveOrCreateLibraryWine(
+      {
+        ...wine,
+        producer: `Bodega ${suffix}`,
+      },
+      RESTAURANT_ID,
+    );
 
     expect(other.masterWineId).not.toBe(createdWineIds[0]);
     createdWineIds.push(other.masterWineId);
@@ -114,7 +133,9 @@ describeIfDb("WineSubmissionsService against the real database", () => {
   it("creates the row as a provisional stub", async () => {
     const { data } = await supabase
       .from("master_wine_library")
-      .select("library_tier, primary_type, source, signature_hash, normalized_name")
+      .select(
+        "library_tier, primary_type, source, signature_hash, normalized_name",
+      )
       .eq("id", createdWineIds[0])
       .single();
 
@@ -132,14 +153,25 @@ describeIfDb("WineSubmissionsService against the real database", () => {
       // already exists from the tests above — must link, not duplicate
       { ...wine },
       // genuinely new
-      { name: `Batch Cuvee ${suffix}`, producer: `Domaine ${suffix}`, vintage: "2021" },
+      {
+        name: `Batch Cuvee ${suffix}`,
+        producer: `Domaine ${suffix}`,
+        vintage: "2021",
+      },
       // the same wine twice, which is what a by-the-glass / by-the-bottle
       // listing looks like. A naive bulk insert touches one conflict target
       // twice and the whole statement fails.
-      { name: `Batch Cuvee ${suffix}`, producer: `Domaine ${suffix}`, vintage: "2021" },
+      {
+        name: `Batch Cuvee ${suffix}`,
+        producer: `Domaine ${suffix}`,
+        vintage: "2021",
+      },
     ];
 
-    const results = await service.resolveLibraryWinesBatch(batch);
+    const results = await service.resolveLibraryWinesBatch(
+      batch,
+      RESTAURANT_ID,
+    );
 
     expect(results).toHaveLength(3);
     expect(results[0]?.masterWineId).toBe(createdWineIds[0]);
@@ -156,10 +188,13 @@ describeIfDb("WineSubmissionsService against the real database", () => {
   it("returns an entry per input even when nothing matches", async () => {
     // Index alignment is what the caller zips menu_items against. A dropped
     // or reordered entry silently attaches wines to the wrong rows.
-    const results = await service.resolveLibraryWinesBatch([
-      { name: `Zeta ${suffix}`, producer: `Bodega Zeta ${suffix}` },
-      { name: `Eta ${suffix}`, producer: `Bodega Eta ${suffix}` },
-    ]);
+    const results = await service.resolveLibraryWinesBatch(
+      [
+        { name: `Zeta ${suffix}`, producer: `Bodega Zeta ${suffix}` },
+        { name: `Eta ${suffix}`, producer: `Bodega Eta ${suffix}` },
+      ],
+      RESTAURANT_ID,
+    );
 
     expect(results).toHaveLength(2);
     expect(results[0]?.masterWineId).toBeTruthy();
@@ -204,8 +239,12 @@ describeIfDb("WineSubmissionsService against the real database", () => {
     // "Dom." is Domaine. Bare "Dom" is Dom Perignon and must survive intact —
     // expanding it would fabricate a producer that does not exist.
     expect(service.normalizeText("Dom. Mandeliere")).toBe("domaine mandeliere");
-    expect(service.normalizeText("Ch. Clerc Milon")).toBe("chateau clerc milon");
-    expect(service.normalizeText("Az. Agr. Gini")).toBe("azienda agricola gini");
+    expect(service.normalizeText("Ch. Clerc Milon")).toBe(
+      "chateau clerc milon",
+    );
+    expect(service.normalizeText("Az. Agr. Gini")).toBe(
+      "azienda agricola gini",
+    );
     expect(service.normalizeText("St. Helena")).toBe("saint helena");
     expect(service.normalizeText("Dom Perignon")).toBe("dom perignon");
   });
@@ -213,10 +252,13 @@ describeIfDb("WineSubmissionsService against the real database", () => {
   it("auto-links a wine whose producer the menu abbreviated", async () => {
     // Measured at 0 of 27 before abbreviation expansion: every abbreviated
     // producer fell below the auto-link floor and created a duplicate.
-    const abbreviated = await service.resolveOrCreateLibraryWine({
-      ...wine,
-      producer: `Dom. ${suffix}`,
-    });
+    const abbreviated = await service.resolveOrCreateLibraryWine(
+      {
+        ...wine,
+        producer: `Dom. ${suffix}`,
+      },
+      RESTAURANT_ID,
+    );
 
     expect(abbreviated.masterWineId).toBe(createdWineIds[0]);
     expect(abbreviated.matched).toBe(true);

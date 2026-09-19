@@ -78,9 +78,9 @@ export class SimposController {
 
   @Post("catalog")
   @ApiOperation({
-    summary: "Edit POS: add or reprice a SKU",
+    summary: "Edit POS: add, reprice or recategorise a SKU",
     description:
-      "Body: { id?, wineName, producer?, vintage?, sizeMl?, price }. Omit id to create.",
+      "Body: { id?, wineName, producer?, vintage?, sizeMl?, price?, category? }. Omit id to create. `price` may be null — a button nobody has priced renders as 'unpriced' rather than at a placeholder figure (ADR 0020). `category` is one of wine/beer/spirit/sake/cider/cocktail/non_alcoholic/food/other; anything else, or absent, stores null and the button is NOT declared wine on the outbound webhook.",
   })
   upsertCatalogItem(
     @Param("restaurantId") restaurantId: string,
@@ -92,7 +92,8 @@ export class SimposController {
       producer: body.producer,
       vintage: body.vintage,
       sizeMl: body.sizeMl,
-      price: body.price,
+      price: body.price ?? null,
+      category: body.category ?? null,
     });
   }
 
@@ -103,6 +104,16 @@ export class SimposController {
     @Param("catalogId") catalogId: string,
   ) {
     return this.simpos.removeCatalogItem(restaurantId, catalogId);
+  }
+
+  @Get("venue")
+  @ApiOperation({
+    summary: "The venue's timezone and published hours",
+    description:
+      "So the terminal and the order log can render times in the RESTAURANT's zone rather than the viewer's, and say when a check rang outside the published hours. Returns `timezone: null` / `operating_hours: null` when the venue has not set them — never a default zone, because rendering a Palo Alto check at 2:20 AM EDT is exactly the defect this answers (ADR 0093 D1).",
+  })
+  getVenue(@Param("restaurantId") restaurantId: string) {
+    return this.simpos.getVenue(restaurantId);
   }
 
   @Get("tables")
@@ -141,6 +152,25 @@ export class SimposController {
     @Param("checkId") checkId: string,
   ) {
     return this.simpos.getCheck(restaurantId, checkId);
+  }
+
+  @Patch("check/:checkId")
+  @ApiOperation({
+    summary: "Record the covers, table and server on the open check",
+    description:
+      "Body: { covers?, tableId?, serverName? }. Every field is optional and every field accepts null — `covers: null` means nobody said how many guests, which is what a check rung without opening a table honestly is, and it reaches pos_checks.covers as NULL rather than 0 (ADR 0105 D5). These three are what made pos_checks.covers/table_id/server_name NULL on 44 of 44 rows on the 2026-09-03 lens run: SimPOS had nowhere to put them.",
+  })
+  updateCheckContext(
+    @Param("restaurantId") restaurantId: string,
+    @Param("checkId") checkId: string,
+    @Body()
+    body: {
+      covers?: number | null;
+      tableId?: string | null;
+      serverName?: string | null;
+    },
+  ) {
+    return this.simpos.updateCheckContext(restaurantId, checkId, body || {});
   }
 
   @Post("check/:checkId/lines")

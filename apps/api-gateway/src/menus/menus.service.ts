@@ -326,6 +326,11 @@ export class MenusService {
           region: item.region,
           grapeVariety: item.grape_variety,
         })),
+        // A menu prints "House White" and "Red — by the glass" as often as it
+        // prints a producer. Those lines are this venue's own wines and never
+        // join the shared library (ADR 0130), so the resolver has to know
+        // whose menu this is.
+        restaurantId,
       );
       resolved = items.map((item, idx) => ({
         item,
@@ -336,7 +341,9 @@ export class MenusService {
       }));
     } catch (err) {
       this.logger.error(`Library resolution failed for menu: ${err.message}`);
-      throw new Error(`Menu import failed during library resolution: ${err.message}`);
+      throw new Error(
+        `Menu import failed during library resolution: ${err.message}`,
+      );
     }
 
     // Unlinked items are the ones a manager has to fix by hand, so say how
