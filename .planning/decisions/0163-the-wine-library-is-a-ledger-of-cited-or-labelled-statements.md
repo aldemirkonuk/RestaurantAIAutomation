@@ -8,12 +8,29 @@
   model work runs as Claude Cowork scheduled tasks on his plan credits, every publish
   is sampled, estimates show after the automatic checks, and sommeliers are paid or
   rewarded (Context, "Round 3"; §11 rewritten). Still Proposed.
+  **Amended 2026-09-19 (round 4)** with a research pass deepening ten still-open
+  questions (Q6, Q10, Q11, Q14, Q15, Q16, Q17, Q18, Q20, and step 0.17's tech-debt
+  wording; Review trail) — no founder answer in this round, options and
+  recommendations only. **Amended again 2026-09-19 (round 5)** with his twelve
+  answers to the remaining open questions (Context, "Round 5"), each question's
+  block marked decided: he reversed the claim-checker pick to TypeSafe AI's Jev, a
+  hosted API, in place of the self-hosted MiniCheck/mDeBERTa design (§4 P7 rewritten,
+  history kept at `a99078485`); he took *"Ship now, fix later"* on the pre-pooling
+  legal review, against this ADR's own recommendation, with the shown-and-accepted
+  consequence that trained models are not retrained (§9, §14); and he confirmed
+  market price k=5, the wine-type axes, the Wilson reviewer floor, menu-PDF
+  retention, sommelier pay and additions, the EU opt-in, the six-house grouping and
+  the Max 20x seat. Still Proposed: Jev's language coverage for Italian and Turkish
+  is unmeasured (new open item, §4 P7; Q6), the sommelier reward rate stays parked
+  on OD-23, and ADR 0165's tech-debt-register retirement is reserved but unwritten.
 - **Date:** 2026-09-18
 - **Decider:** Aldemir (founder). The design was drafted by a research workflow
   (six evidence lanes, three candidate designs, one judge, two adversarial passes;
   round 2 added two research lanes, on /studio and on menu prices and the notice;
   round 3 added one, on Cowork, routines, usage limits and the laptop tasks' run
-  history); none of it binds until he locks it.
+  history; round 4 added a research pass re-testing ten open questions; round 5
+  recorded his answers to all twelve, closing every open founder question in this
+  ADR except Jev's language coverage); none of it binds until he locks it.
 - **Keywords:** wine library, master_wine_library, enrichment, provenance, cell,
   evidence, citation, inference, growth, crawl, robots.txt, terms, market price,
   batch, spend cap, lease, health, wine_profile_v1, WineProfile, LWIN, ADR 0130,
@@ -363,6 +380,50 @@ permission modes; the rest is the lane's):
       artificial intelligence or machine learning algorithms or models" (in a clause on
       competing products). How that applies to Mudavym's own wine models is for the
       lawyer (Q17 (i)).
+
+### Round 5: the founder's twelve answers to the remaining open questions (2026-09-19)
+
+He answered the last twelve open items by `AskUserQuestion` on 2026-09-19 (~05:50Z),
+after round 4's research pass. The record of these lives in session memory
+(`founder-sketch-decisions-106-115.md`, "ADR 0163 wine-library answers", 12 of 12),
+relayed to this writer, not read from the tool call itself. **Only two of the twelve
+are recorded there in his own quoted words** (2 and 4, marked *verbatim* below); the
+other ten are recorded as the option he picked, not a direct quote, and are stated
+here as their substance — this table does not invent quotation marks the source
+does not carry. Numbering follows the memory file's own 1–12, not this ADR's Q
+numbers, so both are given.
+
+| # | This ADR's question | His answer | Lands in |
+|---|---|---|---|
+| 1 | Q2 Publication path: which gates stay before an inferred cell shows | Keep both human gates — the per-field pilot audit (G6) before a field's first cell, and a person's look at a real house's wines (G7); the laxer readings are rejected | §5 G6/G7; Q2 |
+| 2 | Q17 The lawyer gate before pooling | **Verbatim:** *"Ship now, fix later"* — against this ADR's own recommendation that the full (a)–(i) gate hold for Türkiye (the only jurisdiction with a real house) before any pooling | §9; §14; Q17 |
+| 3 | Q16(a) Market price k | k = 5 (not 3), and guards (b)–(g) accepted exactly as drafted | §9; Q16 |
+| 4 | Q6 The claim checker | **Verbatim:** *"we're gonna use JEV and it's already inside the repo"* — read as TypeSafe AI's Jev (`jev-1.13`, hosted API, DPA/MCA, no training on customer data), not the self-hosted MiniCheck/mDeBERTa design this ADR had drafted | §4 P7; Q6 |
+| 5 | Q20's residual: which Max tier funds the dedicated seat | Max 20x, $200/mo | §11; Q20 |
+| 6 | Q10 Canonical `primary_type` | Colour × style {still, sparkling, fortified}, sweetness kept in its own cell — the revised recommendation, confirmed | §2; Q10 |
+| 7 | Q15 (rest) How a reviewer clears the floor for instant/automatic publish | The Wilson bound, option (a) | §5; §13; Q15 |
+| 8 | Q18 Retention of the uploaded/crawled menu PDFs | Keep until superseded (not the fixed 90-day window, not forever) | §8; Q18 |
+| 9 | Q14 (rest) Sommelier pay's structure and rate | Rewards for now (cash stays later, behind OD-23); the rate itself stays parked on OD-23 | §13; Q14 |
+| 10 | Q17(a)'s EU half | Opt-in for EU houses — confirms the verifier's departure from his own round-2 literal words (*"a notice with an opt-out"*, no carve-out) | §14; Q17 |
+| 11 | Q11 (rest) The six unasked houses | Confirms both evidence groups as drafted: Gullit's Tavern, Yaren's Fine Dine, Meyhouse Palo Alto and YARDOM are **not** real; Chez Community and The Old House Pub **are** real | §2; Q11 |
+| 12 | Q13 What a sommelier may add | (a): own-voice notes are `stated` and signed; a third-party fact still needs a citation | §1; Q13 |
+
+**What this settles and what it does not.** Every one of round 4's ten deepened
+questions is now decided except the language-coverage gap Q6's answer itself opens
+(below). Item 2's *"Ship now, fix later"* is the one answer taken against this ADR's
+own recommendation, and the consequence was shown to him before he chose it: §14
+already states that "models already trained are not retrained" — a legal problem
+found after pooling starts cannot be undone by switching a setting, only mitigated
+going forward (§9, §14; Q17, DECIDED bracket below). Item 4 replaces this ADR's
+drafted self-hosted checker (§4 P7) with a paid hosted API from a vendor this repo
+has not previously used in product code — the record researched for that pick
+(`.planning/07-reference/TYPESAFE_AI_OVERVIEW.md`, crawled 2026-09-17, copied into
+this branch with this round; `07-reference/INDEX.md` gains its row) **does not state
+which languages Jev covers**, so Italian and Turkish — the two languages this
+pipeline actually needs (Context, fact 4; Italy is the largest stocked country and
+both real houses are Turkish) — are neither confirmed nor excluded the way mDeBERTa's
+27-language card let this ADR exclude Greek. That gap is carried forward as its own
+open item (§4 P7; Q6, DECIDED bracket) rather than assumed either way.
 
 ## Options considered
 
@@ -779,18 +840,38 @@ the pipeline connector, which only stages.]
   model, decides whether a quote is on the page. Whether normalisation stays a separate
   pass is measured in the pilot. The Fable 5.1 A/B needs a task configured with it.]
 - **P7 Verify.** A value is auto-accepted as `sourced` only when (a) the deterministic
-  check passes; (b) a self-hosted checker from a different model family agrees:
-  `MiniCheck-Flan-T5-Large` for English (MIT; fine-tuned on 21K ANLI plus 14K synthetic
-  examples, English, HF card fetched 2026-09-18) and
-  `MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7` otherwise (MIT, 0.3B, NLI
-  fine-tuned on 27 languages including it, fr, es, de and tr, **not Greek**, HF card
-  fetched 2026-09-18); (c) an Opus 5 judge with an independent prompt agrees; and (d)
-  one tier-A source (producer site or official register) or two independent tier-B
-  domains support it. A menu PDF counts only for listing facts. Anything less goes to
-  `review`; disagreeing sources stay as competing observations. (c) belongs to the same
-  model family as P6, the objection this ADR raises against C2, so (c) is not counted as
-  independent: independence rests on (a), (b) and (d), which C2 lacked. A claim in a
-  language neither checker covers (Greek today) cannot meet (b) and goes to `review`.
+  check passes; **(b) [Q6, DECIDED 2026-09-19: *"we're gonna use JEV and it's already
+  inside the repo"*] TypeSafe AI's Jev (`jev-1.13`), a hosted API, agrees** — the
+  gateway sends the cited span as Jev's `state` and asks one `Noul` question ("does
+  this exact quote support the claimed value?"), reading the returned probability
+  against a threshold this ADR does not yet fix (calibrated on the pilot's gold set,
+  the same way every other floor here is, §5); (c) an Opus 5 judge with an independent
+  prompt agrees; and (d) one tier-A source (producer site or official register) or two
+  independent tier-B domains support it. A menu PDF counts only for listing facts.
+  Anything less goes to `review`; disagreeing sources stay as competing observations.
+  (c) belongs to the same model family as P6, the objection this ADR raises against
+  C2, so (c) is not counted as independent: independence rests on (a), (b) and (d),
+  which C2 lacked — Jev is TypeSafe's own "System One" model family, distinct from
+  Anthropic's, so (b) still satisfies that requirement.
+  **Language coverage is unmeasured, not excluded.** The self-hosted design this
+  replaces stated its own coverage on each model's card (mDeBERTa: 27 languages
+  including Turkish, explicitly not Greek); the Jev research record consulted for
+  this decision (`07-reference/TYPESAFE_AI_OVERVIEW.md`) states none. Until Jev's
+  coverage of Italian and Turkish — the two languages this pipeline actually needs
+  (Context, fact 4; Türkiye holds the only two real houses, Q11) — is measured
+  against gold examples in the pilot, a claim in any language but English is treated
+  as **uncovered by (b)** and routed to `review`, the conservative default the old
+  design used only for Greek, now applied more broadly until proven otherwise (open
+  item, Q6 below). Jev's vendor-stated terms (not independently verified beyond the
+  research record): a Data Processing Agreement and Master Customer Agreement exist,
+  and TypeSafe states it does not train on customer data; its published limits, most
+  relevant to a verification call, are a literal reading of `instructions`/`criteria`
+  with no implied conditions, and no adversarial robustness by default against text
+  written to argue for its own classification (TYPESAFE_AI_OVERVIEW.md §8, points 1
+  and 6) — the same general risk class §8 of this ADR already tracks for fetched
+  pages. [Superseded design, self-hosted MiniCheck for English and mDeBERTa
+  otherwise: kept in git at this line, commit `a99078485`, for history — not
+  restated here per Q6's own shrunk comparison, below.]
 - **P8 Infer, descriptive fields only** [batch]. Enum outputs (WSET SAT levels;
   sweetness bands per Reg. (EU) 2019/33 Annex III Part B). Samples: 1 Opus 5 + 2
   Sonnet 5, emit at ≥2 of 3, else coarsen or omit; stocked wines 5 samples, emit at ≥4
@@ -1224,6 +1305,25 @@ before the first real house's prices pool (Q17). The rules:
   rule "is required by" the law, which states a legal conclusion that no source here
   supports.]
 
+**[Q17, DECIDED 2026-09-19, founder: *"Ship now, fix later"*.** Against this ADR's own
+recommendation (Round 4 research pass, below: the full (a)–(i) gate holds because
+every real house is Turkish) that a lawyer clear Law 4250 and the Data Act question
+before the first real house's prices pool. The founder chose otherwise, having been
+shown the cost §14 already states: **models already trained are
+not retrained** (:1715 below). Concretely, this means pooling and the aggregate guards above (k=5,
+the 25% cap, no cost/invoice/POS data, no sign-in-free price page) still apply as
+engineering guardrails — nothing here removes them — but this ADR no longer treats a
+lawyer's sign-off on Türkiye's Law 4250 art. 6 and the notice's wording (Q17 (e)–(i))
+as a precondition to shipping; the review, if it happens, happens after real houses'
+menus are already pooling. If it later finds a problem, the pooled figures and any
+model trained on them to that point cannot be un-pooled or un-trained — only stopped
+going forward (§14's opt-out and "not retrained" already say this; nothing here is
+new engineering, only a changed order of operations). Separately, **Q17(a)'s EU half
+is also DECIDED 2026-09-19: opt-in for EU houses**, confirming the verifier's
+departure from his literal round-2 words (*"a notice with an opt-out"*, no EU
+carve-out) rather than defaulting to it — costs nothing today, since no EU-country
+restaurant row exists (Round 4 research pass, below).]**
+
 The reason for the guards: the US agencies withdrew the information-exchange "safety
 zone" in 2023, and the Justice Department's proposed RealPage settlement (24 November
 2025) bars live use of competitors' non-public data (lane; not re-fetched here).
@@ -1280,7 +1380,7 @@ everything that writes, stays on the gateway, which spends no model credits.
 |---|---|
 | Postgres | state; the gates as SQL; the view; what health reads |
 | Gateway (Railway, always on) | P1 receiving menus; the P4 enqueue triggers and sweep; every fetch, through the fetch module (§8); P3 identity SQL; the deterministic P6 and P7(a) checks (exact substring on the hashed page, `value_norm`); P9 gates and the publish RPC; P10; P11 re-fetch and hash compare; P13 health (the outside dead-man alarm that watches it is Sentry Crons or a `pg_cron` witness, never the gateway itself, §6; verifier, 2026-09-18: the draft listed the alarm in this row); leases, fencing tokens, and opening and closing every run; the pipeline connector (below) |
-| `wine-worker` (Railway cron, Python, from Stage 1) | JavaScript rendering for allowed URLs; the P7(b) self-hosted MIT checkers; P12 embeddings. Its deployment is proven by the Railway `cronSchedule` and its ledger rows, never by code. [Round 2: moved from Stage 2, because P7 needs the checker from the first night.] |
+| `wine-worker` (Railway cron, Python, from Stage 1) | JavaScript rendering for allowed URLs; P12 embeddings. Its deployment is proven by the Railway `cronSchedule` and its ledger rows, never by code. [Round 2: moved from Stage 2, because P7 needs the checker from the first night.] [Round 5, 2026-09-19: P7(b)'s self-hosted MIT checkers (MiniCheck, mDeBERTa) are struck — Q6's DECIDED answer moves that check to a hosted API call (Jev) the gateway makes directly, so `wine-worker` no longer hosts a checker model at all.] |
 | Cowork scheduled tasks (plan credits) | Model work only: P1/P2 reading a menu into lines; P5 URL discovery (URLs only); P6 cited extraction, as quote strings the gateway checks; P7(c) the judge, as its own task with its own prompt; P8 samples, one task per model, because a task has one configured model |
 
 **Repo code, thin tasks.** A task holds no code and no database access.
@@ -1493,8 +1593,62 @@ built. The roles stay as designed and invite-only: `developer`, `review_admin`, 
 - `/api/v1/quality/*` is reachable through the gateway, or retired (lane: it has no
   gateway proxy and returns 404 on mudavym.com);
 - the two docs that list promotion as working are corrected;
-- the defects are filed in `v3.0-TECH-DEBT.md`. That filing is owed; this edit does not
-  touch the register.
+- the three broken paths named below are corrected, each to its own table's
+  actual columns — fixing one does not fix the other two.
+
+**The three broken promotion paths, filed here as open items** — as three
+`CLAIMS.jsonl` rows (`ADR-0163-STUDIO-PROMOTE-DIRECT-INSERT`,
+`-OVERRIDE-AUTOPROMOTE-SELECT`, `-QUALITY-PATCH-SELECT`, each `status:
+open`), not `v3.0-TECH-DEBT.md` entries. **Corrected, 2026-09-19:** the
+premise for keeping them out of that file is now a real decision, not an
+assumption — the founder ordered the register deleted, 2026-09-19, with
+survivors split by kind (checkable defects to CLAIMS, his decisions to
+OPEN-DECISIONS, paperwork to the owning ADR) — but its retirement, ADR 0165,
+is *reserved*, not written: `docs/retire-tech-debt` carries 0 commits past
+`main` (checked 2026-09-19, `git log main..docs/retire-tech-debt`), so no
+ADR file exists yet at that number. The decision itself is recorded today
+only in session memory
+(`founder-sketch-decisions-106-115.md`, "Tech-debt register" bullet), not
+yet in `OPEN-DECISIONS.md` or an ADR — CLAUDE.md §5's "a decision made and
+not written down did not happen" applies to it until 0165 lands. Found in
+round 2's research and re-verified against this checkout on 2026-09-18):
+
+- **Path 1 — `promote_to_library`'s direct insert.** The insert payload at
+  `services/agent-orchestrator/api/studio_routes.py:1031-1048` (function
+  starts at `:926`) sets `price`, `price_glass`, `color`, `sweetness_level`,
+  `tasting_notes` and `description`. `master_wine_library`'s schema
+  (`supabase/migrations/20260805000000_baseline_from_production.sql`,
+  unchanged by any later migration) has none of these — it has
+  `price_reference`, `sensory_profile` (jsonb), `producer_story` and
+  `historical_notes` instead. The `except` at `:1063-1073` retries by popping
+  only the three audit columns (`promoted_by`, `promoted_at`,
+  `submission_id`); the other six stay in the payload, so the retry fails the
+  same way.
+- **Path 2 — override auto-promotion.** `_maybe_promote_submission`
+  (`services/agent-orchestrator/services/override_service.py:336`, called
+  after 5 approvals under D-12) selects the 7 `JSONB_ENRICHMENT_KEYS`
+  (`services/agent-orchestrator/services/field_confidence.py:62-70`:
+  `grape_family`, `wine_structure`, `sensory_profile`, `practical_attributes`,
+  `region_hierarchy`, `critic_scores`, `winemaking_details`) as top-level
+  columns of `master_wine_library_submissions` at `:356`. That table has
+  never carried these as top-level columns (checked against every migration
+  that touches it): they exist as columns on `master_wine_library` itself, or
+  nested inside the submission's own `payload`/`normalized_fields` jsonb. The
+  SELECT raises `42703` before promotion can run — the lane reproduced this;
+  confirmed here by schema inspection.
+- **Path 3 — the quality PATCH.**
+  `services/agent-orchestrator/api/quality_routes.py:205` builds the
+  identical `jsonb_cols` SELECT against the same table for the same 7
+  columns, in the PATCH handler meant to promote a submission once its review
+  queue clears — the same `42703` failure.
+
+  All three share one root cause: enrichment fields live as columns on
+  `master_wine_library` and as `payload`/jsonb keys on
+  `master_wine_library_submissions`, but two of the three paths query the
+  submissions table as if it had `master_wine_library`'s columns, while the
+  third writes columns to `master_wine_library` that were never added.
+  Fixing one path does not fix the other two; each needs its own column list
+  corrected to what its own table actually has.
 
 **Payment is not designed.** "Paid sommeliers" is our reading; quote R's "paying" also
 admits the reverse. Nothing pays anyone today, and any cash payout collides with the
@@ -1660,7 +1814,7 @@ kills). "Applied" means the Decision above carries it.
 | A13 | Health: buckets, per-field coverage, modelled spend red, disarmed red, dead-man as Stage 0 exit, empty register "no index" | Applied (§6) |
 | A14 | Agreement score never shown as a confidence until calibrated | Applied (§1) |
 | A15 | Record F5 as narrowing ADR 0020 for descriptive traits only | Applied (§1) |
-| A16 | Checker licences and exact checkpoint | Applied (§4 P7). ANLI is CC BY-NC 4.0 (github.com/facebookresearch/anli, fetched); MiniCheck's MIT weights carry that lineage, so commercial use is in Q6 |
+| A16 | Checker licences and exact checkpoint | Applied (§4 P7) at proposal time: ANLI is CC BY-NC 4.0 (github.com/facebookresearch/anli, fetched); MiniCheck's MIT weights carry that lineage, so commercial use went to Q6. [Round 5, 2026-09-19: Q6 DECIDED for Jev instead, a paid hosted API — the open question is no longer an OSS training-data licence, it is whether TypeSafe's DPA/MCA (vendor-stated, not independently reviewed) covers this use, and whether Jev's unstated language coverage reaches Italian and Turkish (§4 P7, new open item)] |
 | A17 | Record what could not be verified | Applied (Not verified, below) |
 | B1 | Disarm the Desktop tasks first; writer identity; foreign writer = red; reaper disarmed until 7 clean days; repair `running`+`completed_at` rows | Applied (§6, Build 0.1–0.3, 0.15). [Round 2: **the founder overrode "disarm first"**: *"Keep until the repo pipeline runs"*. Writer identity, foreign-writer reporting and the disarmed reaper still apply. §15 replaces "disarm first" with containment until cutover, and the disarming moves to step 1.10] |
 | B2 | Enqueue trigger on `IS DISTINCT FROM`, never raising, mutation-tested | Applied (§4 P4, Build 0.13). The critic split it into an INSERT trigger and an UPDATE trigger, because the draft's combined `WHEN (OLD…)` cannot be created |
@@ -1827,7 +1981,11 @@ plan-credit health rules (0.22) pass their checks. Stage 0 still spends no credi
   - `override_events` is re-keyed to observations with a verdict.
   - Invites work for a person with no account.
   - `/api/v1/quality/*` gets a gateway proxy or is retired.
-  - The two docs are corrected, and the defects are filed in `v3.0-TECH-DEBT.md`.
+  - The two docs are corrected; the three broken paths are named in §13 and
+    filed as CLAIMS.jsonl rows, not in `v3.0-TECH-DEBT.md` (the founder
+    ordered that register deleted 2026-09-19, survivors split by kind; its
+    retirement is ADR 0165, reserved on `docs/retire-tech-debt` but not yet
+    written — §13 above).
 
   *Checks:*
   - an approve on a fixture cell makes exactly one current observation, and a
@@ -2024,9 +2182,12 @@ batch per MTok in/out: Opus 5 $2.50/$12.50, Sonnet 5 $1/$5, Haiku 4.5 $0.50/$2.5
   equal to intake (the F1-faithful setting, Q1), costs $97–237 a day, $2.9k–7.1k a
   month.**
 
-Not included: Railway compute for `wine-worker` and the self-hosted checkers
-(unmeasured), the founder's audit hours, and the cost of wines for which no source is
-found (P5 only, about $0.02–0.06 each).
+Not included: Railway compute for `wine-worker` (unmeasured), the founder's audit
+hours, and the cost of wines for which no source is found (P5 only, about $0.02–0.06
+each). [Round 5, 2026-09-19: the self-hosted checkers this line priced as Railway
+compute are gone (Q6) — P7(b) now calls Jev at $0.042 per million input tokens,
+output free (TYPESAFE_AI_OVERVIEW.md §7), which is a small, real per-call cost this
+table does not yet carry, not an unmeasured fixed compute cost.]
 
 **Round 2: "every wine from day one"** (`scratchpad/adr0163-r2/every-wine-cost.py`).
 It uses the critic's unit costs unchanged; only the volumes change. One wine, sourced
@@ -2075,7 +2236,9 @@ Decision. What is still open, including the new Q13–Q18, is listed at the end 
   publish rule (quote P) is about sources and market price. It adds a developer's
   approval of each menu before its listing facts count (§13), but it does not choose (a)
   or (b) for inferred cells. (b) stays the proposal.]** **[Round 3: ANSWERED, (b):
-  *"After automatic checks"* (§5).]** Paths: (a) every inferred cell audited before it shows; (b) a
+  *"After automatic checks"* (§5).]** **[Round 5, DECIDED 2026-09-19: both readings
+  confirmed** — the pilot gate (G6) and real-house pre-review (G7) both stay; see the
+  DECIDED bracket under "Q2 Publication path for inferred cells", below.]** Paths: (a) every inferred cell audited before it shows; (b) a
   field publishes only after its pre-publication pilot clears its floor, then
   publish-then-audit with automatic withdrawal at 7 days, real-house wines always
   reviewed first. (a) puts daily growth behind one reviewer. Recommendation: (b).
@@ -2099,7 +2262,11 @@ Decision. What is still open, including the new Q13–Q18, is listed at the end 
   sourcing pass runs, and with N below intake that is 900 or more wines a day.
 - **Q6 Stored copies and checker licences.** **[ANSWERED in part: *"Crawl; quotes
   only; upload"*. Snippet-only storage (a); the 41 laptop PDFs are uploaded (§4 P1, §8).
-  Still open: the MiniCheck licence, and how long the uploads are kept (Q18).]** (a) Snippet-only storage (the default
+  Still open: the MiniCheck licence, and how long the uploads are kept (Q18).]**
+  **[Round 5, DECIDED 2026-09-19: the checker is no longer MiniCheck/mDeBERTa** —
+  *"we're gonna use JEV"* replaces it with TypeSafe AI's Jev (§4 P7), which retires
+  the licence question and opens a language-coverage one instead; Q18's retention is
+  also DECIDED, keep until superseded. See both DECIDED brackets below.]** (a) Snippet-only storage (the default
   here: less copyright and TDM exposure, but a changed page loses the audit trail) or
   (b) full private copies with a retention limit where a licence allows. May the 41
   laptop-only menu PDFs be uploaded to project storage? May MiniCheck (MIT weights,
@@ -2125,14 +2292,22 @@ Decision. What is still open, including the new Q13–Q18, is listed at the end 
   effect when this ADR locks. Neither ADR's file is edited here.]** (a) ADR 0020 narrowed for descriptive traits
   (§1); (b) ADR 0130's specificity formula gains a stated-producer and generic-name
   test for shared inference (§2; ≤13 rows today). Recommendation: accept both.
-- **Q10 Canonical `primary_type`.** **[Still open.]** One enum (red, white, rosé, orange, sparkling,
+- **Q10 Canonical `primary_type`.** **[Still open.]** **[Round 5, DECIDED
+  2026-09-19: colour × style {still, sparkling, fortified}, sweetness kept
+  separate** — see the DECIDED bracket under "Q10 Canonical `primary_type`" in the
+  deep-dive section, below.]** One enum (red, white, rosé, orange, sparkling,
   fortified, dessert) or three axes (colour × effervescence × sweetness)? G1's CHECK
   and the analytics slice key wait on it. Recommendation: three axes as cells, with the
   one-enum slice derived from them.
 - **Q11 Production changes on his word.** **[ANSWERED in part: none of the four May
   houses is real (step 0.3 flags eight rows). Still open: the six unasked houses; closing
   the 4 stuck rows, which now waits for cutover (§15); the two registry rows; and
-  `pg_cron`.]** Close the 4 stuck `research_runs` rows;
+  `pg_cron`.]** **[Round 5, DECIDED 2026-09-19: the six unasked houses are also
+  resolved** — he confirmed both evidence groups as drafted (Gullit's Tavern,
+  Yaren's Fine Dine, Meyhouse Palo Alto and YARDOM not real; Chez Community and The
+  Old House Pub real). See the DECIDED bracket under "Q11 (remainder)", below.
+  Closing the 4 stuck rows, the two registry rows and `pg_cron` remain open,
+  unchanged by this round.]** Close the 4 stuck `research_runs` rows;
   remove the vivino.com and wine-searcher.com registry rows; flag the three Sim houses;
   optionally install `pg_cron` as the independent witness. **And say which of the four
   May houses are real** [critic, 2026-09-18]: YAREN (created 2026-05-09, 1 stocked
@@ -2178,6 +2353,37 @@ months.]
     limit (§11). (b) follows from it: the whole backlog is enqueued on the first night
     the tasks run, and credits and the queue's depth set the pace (step 1.8). What is
     left of the money question is Q19–Q21.]
+  - **[Research pass, 2026-09-18: Q1's remainder is SETTLED, not a live fork.**
+    The apparent tension against Q21 ("off until the pilot") is already
+    reconciled in §11, not a contradiction: the round-3 answer *"since we're
+    going to use claude cowork, as long as credits allow"* is recorded here
+    (:2352-2355 [recomputed 2026-09-19 for round 5's insertions; was
+    :2235-2238, was :2177-2180, stale by this ADR's own earlier edits]), and
+    the round-3 diff log states *"Answered: Q1 in full
+    (plan credits, no dollar limit)"* (Review trail, :3235 [was :3012, was
+    :2981, was :2489]); Q1
+    does not appear in this section's own intro list (:2327-2331 [recomputed
+    2026-09-19; was :2210-2214, was
+    :2152-2156]). With Q21 off, "credits allow" now means
+    exactly the Max seat's included weekly/session usage — a refused run stops
+    and waits for the reset, which is what §11 (:1446-1449, :1472-1476
+    [recomputed 2026-09-19; was :1346-1349, :1372-1376])
+    already says. Re-measured 2026-09-18 (Supabase, SELECT-only):
+    `master_wine_library` is still 3,589 live / 3,314 eligible, unchanged from
+    the ADR's own count; `research_runs` still has 4 rows stuck `running`
+    (latest 2026-09-16 06:06:17Z, matching fact 10) and still lacks the
+    `host`/`task_id`/`model_basis` columns §11 calls for — the pipeline has
+    not started running under this design, so nothing has overtaken the
+    settled reading.
+    **Residual, not a re-fork of Q1:** which Max tier funds Q20's dedicated
+    seat. Max 5x is $100/mo, Max 20x is $200/mo for 4x the weekly window
+    (support.claude.com/en/articles/11049741, fetched 2026-09-18). Since Q21
+    is off, that tier choice is now the practical monthly ceiling. A one-time
+    discounted usage bundle (support.claude.com/en/articles/14246112, 10–30%
+    off, up to $2,000/mo on Max) is a lower-risk top-up than revisiting Q21 if
+    the pilot shows the weekly window binds first — but a bundle itself needs
+    usage credits switched on, so it stays unavailable unless Q21 is
+    revisited.]**
 - **Q2 Publication path for inferred cells.** The paths are unchanged:
   - (a) every inferred cell is reviewed before it shows;
   - (b) a field's pilot clears its floor, then cells publish first and are audited
@@ -2194,13 +2400,195 @@ months.]
   publication. If he meant estimates show before any gold exists, that lowers the first
   publication's bar, which F1 and §11's "credits set the pace, never the bar" argue
   against. **Recommendation:** confirm both readings.]
+  - **[Research pass, 2026-09-18: Q2's reading is still open — the top-level
+    answer does not settle it.** The founder's *"After automatic checks"*
+    (:1013, :2238-2239 [recomputed 2026-09-19; was :932, :2191]) picks
+    publish-then-audit over audit-before-publish, but says
+    nothing about whether "automatic checks" still includes (i) a field's
+    pre-publication gold pilot (G6) before its first cell ever shows, and (ii)
+    real-house pre-review (G7). The register itself still lists "Q2's reading
+    (to confirm)" as open (:2327-2331 [recomputed 2026-09-19; was :2148-2156,
+    was :2191-2196]), and it has never been put
+    back to him. **Since answered below (DECIDED 2026-09-19): both gates
+    stay.**
+    - *Confirm both gates* (recommended) — keep G6 and G7 as designed.
+      Slowest first-publish per field; every real-house wine's inferred cells
+      wait on a human indefinitely.
+    - *Drop real-house review* — G7 folds into the same 7-day post-hoc audit
+      as everyone else. A real restaurant's live menu can then show an
+      unaudited fact for up to 7 days, against §13/§14's own more careful
+      treatment of house relationships.
+    - *Drop the pilot gate* — a field publishes once basic checks pass; gold
+      accumulates from post-hoc audits instead. The 0.80 floor is then
+      asserted, not demonstrated, for a field's first days live, against F1
+      ("spend never lowers the bar").
+    **Recommendation: confirm both gates, don't assume a laxer reading.**
+    Nothing is built yet — `field_calibration` has 0 rows and no
+    `wine_profile_v1` or publication-gate table exists (Supabase, checked
+    2026-09-18) — so asking now is free and rebuilding withdrawal/audit logic
+    after cells are live is not; the ADR's own design text already states the
+    stricter reading (G7 at :989, G6 at :977 [recomputed 2026-09-19; was
+    :918, :897]); and 2026 guidance on AI-assisted publishing
+    (Logora's AI-moderation guide; Glean's AI review-workflow guide, both
+    fetched 2026-09-18) treats staged human review before publish as the norm
+    for exactly the segment this touches most — paying, real restaurant
+    customers.]**
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, item 1 of 12): keep both
+    human gates** — the per-field pilot audit (G6) before a field's first cell ever
+    shows, and a human's look at a real house's wines before publication (G7). This
+    is the research pass's own recommendation immediately above, confirmed rather
+    than relaxed: neither "drop real-house review" nor "drop the pilot gate" is
+    adopted. Nothing changes in the built design because nothing is built yet
+    (`field_calibration`, `wine_profile_v1` and the publication-gate table remain
+    unbuilt, per the research pass above); this closes the fork for whenever they
+    are.]**
 - **Q6 (remainder) The checker licence.** MiniCheck's weights are MIT, but its ANLI
   training data is CC BY-NC.
   - **The choice:** use it commercially, or use the multilingual MIT checker for
     English too.
   - **Recommendation:** mDeBERTa for every language until the lineage is cleared.
+  - **[Research pass, 2026-09-18/19, superseded 2026-09-19 by the founder's own pick
+    below — shrunk to a pointer.** The pass had compared four self-hosted options in
+    detail (use MiniCheck anyway; fall back to mDeBERTa; switch to an Apache/MIT
+    checker such as `vectara/hallucination_evaluation_model`; buy Bespoke's
+    commercial licence) and cleared none of the three CC BY-NC/ANLI-lineage
+    candidates cleanly, with HHEM ruled out as English-only. That analysis is no
+    longer this pipeline's design — the founder picked a different checker family
+    entirely (below), which this licence question does not reach the same way — and
+    is kept for history in this file's git log (`git show a99078485:` this file,
+    this section) rather than restated here. **This shrink is the retire-to-write
+    for adding `07-reference/TYPESAFE_AI_OVERVIEW.md` to the reference corpus**
+    (CLAUDE.md §4).]**
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, item 4 of 12), his own words:
+    *"we're gonna use JEV and it's already inside the repo"*.** Read as TypeSafe
+    AI's Jev (`jev-1.13`), researched in the untracked
+    `.planning/07-reference/TYPESAFE_AI_OVERVIEW.md` (crawled 2026-09-17, copied
+    into this branch with this ADR; `07-reference/INDEX.md` gains its row, same text
+    as the main checkout's uncommitted row). **What changes:** §4 P7(b) drops the
+    self-hosted MiniCheck/mDeBERTa design (kept at commit `a99078485` for history)
+    and calls Jev's hosted API instead — a `Noul` question against the cited span,
+    returning a probability rather than a class label, thresholded once the pilot's
+    gold set exists (§5, same as every other floor here). This also retires the
+    licence question the research pass above was chasing: Jev is not a self-hosted
+    model fine-tuned on CC BY-NC data, it is a paid per-token API (**$0.042 per
+    million input tokens, output free**, TYPESAFE_AI_OVERVIEW.md §7), so the open
+    question shifts from "can we use this model's weights commercially" to a
+    vendor-risk one: TypeSafe states a **Data Processing Agreement and a Master
+    Customer Agreement exist, and that it does not train on customer data**
+    (TYPESAFE_AI_OVERVIEW.md §7) — **vendor-stated, not independently verified**
+    beyond that crawled record, the same evidentiary bar this ADR holds every other
+    vendor's terms to (§9's shop terms, §11's consumer terms). Its published
+    "jaggedness" limits (TYPESAFE_AI_OVERVIEW.md §8) most relevant to a
+    verification call: (1) a literal reading with no implied conditions, so P7(b)'s
+    `instructions` need every edge case spelled out explicitly; (6) it is not
+    adversarially robust by default — text written to argue for its own
+    classification can move the answer, the same general risk class §8 of this ADR
+    already tracks for fetched pages; and a 64k-token combined context ceiling (32k
+    for `state` plus the longest question) that a long producer page or menu PDF
+    could exceed, with no such vendor-stated ceiling under MiniCheck/mDeBERTa.
+    **Open item, not decided here: language coverage.** The record researched for
+    this pick does not state which languages Jev covers — not "not including
+    Italian" the way HHEM's card did, not a language list the way mDeBERTa's did:
+    silence, not exclusion. This pipeline needs **Italian** (Context, fact 4: Italy
+    is the largest stocked country) and **Turkish** (both real houses, Q11, are
+    Turkish) specifically. Until measured against gold examples in the pilot (§5),
+    §4 P7 treats every non-English claim as uncovered by (b) and routes it to
+    `review` — the conservative default the retired design used only for Greek, now
+    applied to every language pending proof otherwise. Left open deliberately, per
+    CLAUDE.md §0.1: measured, not guessed.
+    **Noted but not asked, for a later fork:** whether Jev's hosted processing of
+    claim text needs its own line in §14's notice, alongside the Claude Cowork
+    mention Q17(h) already covers. Not decided here — flagged only so it is not
+    silently assumed either way.]**
 - **Q10 Canonical `primary_type`.** The choice is one enum, or three axes.
   **Recommendation:** three axes as cells, with the one-enum slice derived from them.
+  - **[Research pass, 2026-09-18: the three-axis recommendation above does
+    not collide with the ADR's own sweetness rule. Corrected, 2026-09-19:
+    the rule at :784 [recomputed 2026-09-19; was :723] forbids a model-parsed
+    `primary_type` only because that
+    field feeds the `beverage_kind` classifier; it does not bind a separate
+    sweetness cell, so there was no rule to revise away from.**
+    - *One enum, canonicalized* — clean the 12 spellings in production to ~7
+      canonical values, no new columns. Cheapest, zero reader changes across
+      the ~15 call sites that read `primary_type` as flat text, but a wine
+      still can't be both sparkling and rosé.
+    - *Three axes (the ADR's current text, above)* — colour × effervescence ×
+      sweetness as separate cells. This does not conflict with the ADR's own
+      boundary rule (:547-552 [recomputed 2026-09-19; was :486-491]) that
+      sweetness is descriptive and inferable,
+      shown "estimated" (P8, :875 [was :794]): the never-inferred rule at
+      :784 [was :723] binds
+      `primary_type` itself, because that is the field `beverage_kind` reads
+      — a sweetness cell that is not `primary_type` is not bound by it, so
+      the two rules do not force a choice. Backfill is still lossy:
+      "fortified"/"dessert" conflate production method with sweetness (a
+      fortified wine can be bone-dry).
+    - *Two axes, sweetness separate* — split only colour and effervescence,
+      leave sweetness where P8 already puts it. **Revised, 2026-09-19: this
+      leaves `fortified` (25 rows) and `dessert` (18 rows) with no home, and
+      the conflation this option rests on was asserted, not measured.**
+      - **Measured, 2026-09-19** (Supabase, SELECT-only; name-matched on a
+        word-boundary regex so "Prosecco"/"Rosso" cannot false-positive):
+        **53 of the 369 `sparkling` rows are named "Rosé"/"Rose"**
+        (Billecart-Salmon Brut Rose Champagne, Crémant d'Alsace Rosé,
+        Prosecco Rosé ×2, Impérial Rosé, ... — full list pulled, not
+        sampled) — real sparkling rosés holding only "sparkling," their
+        colour lost to the field. **1 of the 115 `rose`/`rosé` rows**
+        ("Brut Rosé," Tenuta Col Sandago) is a sparkling wine holding only
+        "rose," its effervescence lost the other way. The conflation is
+        real, not hypothetical, and larger (53 rows) than either category
+        alone suggests.
+      - **`fortified` and `dessert` re-confirmed at 25 and 18** (Supabase,
+        2026-09-19, unchanged). A fortified wine has its own colour (Port
+        red, Sherry white) and is not reliably still-vs-sparkling either —
+        colour × effervescence has no cell for "fortified" without
+        inventing one. "Dessert" is not a colour or an effervescence at
+        all: only 4 of its 18 rows name an actual dessert style (ice wine,
+        Sauternes, Tokaji, ...); the rest do not. It is a sweetness fact
+        wearing a type label.
+    - *Colour × style {still, sparkling, fortified}, sweetness separate
+      (revised recommendation)* — the same split already drafted for the
+      founder's confirmation (`Q10-wine-type` in this ADR's ask list, below):
+      colour (red, white, rosé, orange) stays one cell; the second cell
+      gains a third value instead of two. Fortified gets an explicit slot —
+      fortified wines have a colour and are practically never also
+      sparkling, so the three values do not collide with each other or with
+      sweetness. "Dessert" retires as a type value entirely: its 18 rows get
+      a real colour on backfill (a build task, not a design gap — most are
+      white by name, a few are not) and their sweetness moves to the
+      already-planned P8 cell, exactly where "estimated" sweetness was
+      always going to live. This still derives one flat display enum for
+      the 30 analytics insight types, and still touches only the ~15
+      `primary_type` call sites `wine-signature.ts:172-187` already excludes
+      from the identity key.
+    **Recommendation: colour × style (still/sparkling/fortified), sweetness
+    separate, `dessert` retired as a type value** — Q10 as already drafted
+    for the founder, now with the conflation measured instead of asserted,
+    and a named home for every one of the 12 production spellings.
+    Production (Supabase, 2026-09-19, re-measured not copied forward):
+    exactly 12 distinct `primary_type` spellings (red 1809, white 1089,
+    unknown 749, sparkling 369, rose 82, orange 38, rosé 33, "red (still)"
+    28, fortified 25, dessert 18, "red (still, dry)" 12, "red " 1) —
+    matches the ADR's own count; no `sweetness`/`style`/`colour` column
+    exists yet, so every option is pre-build. `primary_type` is excluded
+    from the identity key (`wine-signature.ts:172-187`), so this carries no
+    identity-key risk either way, and `wine-intelligence-foundations.md:422`
+    wants one flat dimension for consumption, which the derived-enum
+    approach still delivers. **Reconciled, 2026-09-19: this is the ADR's
+    original "three axes as cells," not a departure from it.** Colour is one
+    axis; style (still/sparkling/fortified) is the second, standing in for
+    effervescence and now also covering fortification; sweetness is the
+    third, kept in its own cell per P8 rather than folded into either. The
+    axis count never changed — only the second axis's cell boundaries did,
+    to give fortified wines a home colour × effervescence had no slot for.]**
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, item 6 of 12): colour ×
+    style {still, sparkling, fortified}, sweetness separate.** This adopts the
+    revised recommendation directly above, unchanged: two cells (colour; style)
+    plus sweetness kept in its own P8 cell, `dessert` retired as a type value with
+    its 18 rows getting a real colour on backfill. **What changes:** none of this
+    is built yet (no `sweetness`/`style`/`colour` column exists in production, per
+    the research pass above), so the decision fixes the target schema before any
+    migration is written, rather than settling a fork after the fact.]**
 - **Q11 (remainder) The rest of the houses.**
   - **The six unasked houses.** Are any of Gullit's Tavern, Yaren's Fine Dine,
     Meyhouse Palo Alto, YARDOM, Chez Community or The Old House Pub real? Unflagged,
@@ -2209,6 +2597,51 @@ months.]
   - **Recommendation:** answer house by house, and flag none that he does not name.
   - **Also still his:** closing the 4 stuck rows (after cutover), the vivino.com and
     wine-searcher.com registry rows, and `pg_cron`.
+  - **[Research pass, 2026-09-18: a clean evidence split among the six, but
+    nothing is flagged without his word.**
+    - *Presumed test-pattern (ask him to confirm, don't pre-flag):* Gullit's
+      Tavern, Yaren's Fine Dine, Meyhouse Palo Alto, YARDOM. Each matches the
+      pattern that already ruled out YAREN/ALDEMIR/ADMIN 1/ADMIN ROOM: created
+      2026-05-08..11 in the same cluster (or, for Meyhouse Palo Alto, built by
+      the founder's own research process — memory `lens-phase-state.md`
+      confirms he modeled the Sim house "on a REAL venue researched from
+      public sources"), no claimed `public.users` login for **any of the
+      four** [corrected 2026-09-19: re-checked by direct SELECT joining
+      `restaurants` to `users` on `restaurant_id` — all four show 0 rows,
+      not three; not carried forward from the prior count], and an
+      address/email lifted from an already-confirmed-fake or Sim
+      row: Gullit's Tavern shares ALDEMIR/ADMIN ROOM's exact address (126
+      East Pointe Lane); Yaren's Fine Dine shares YAREN's owner email;
+      Meyhouse Palo Alto uses the founder's own email and the later "Sim
+      Meyhouse" row's exact address/phone; YARDOM shares the same cluster,
+      with no user and no public listing found.
+    - *Presumed real (independent evidence):* Chez Community and The Old
+      House Pub each have an independent owner signup (`public.users`,
+      created 2026-07-18 and 2026-09-02) and a confirmed, currently-operating
+      business at their exact address (Tripadvisor/Instagram for Chez
+      Community in Fethiye; multiple booking sites for Old House Pub Hotels in
+      Antalya Kaleiçi — one door from where the founder placed "Sim Vanilla
+      Kaleiçi", worth naming to him as a coincidence even though this house
+      has its own login).
+    - All six still have 0 rows in `restaurant_wine_roster` (matches the
+      ADR's "stock nothing" claim, :268-270 [recomputed 2026-09-19; was
+      :251-253]).
+    **Recommendation: put the two evidence groups to him as one grouped
+    confirmation**, not six separate asks — faster, and every claim is
+    sourced so a wrong flag is easy to catch before cutover; still flags
+    nothing he does not confirm, per CLAUDE.md §0.1 and the ADR's own rule
+    (above).]**
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, item 11 of 12): confirms
+    both evidence groups exactly as put to him.** Gullit's Tavern, Yaren's Fine
+    Dine, Meyhouse Palo Alto and YARDOM are **not** real; Chez Community and The
+    Old House Pub **are** real. **What changes:** all six leave "unflagged"
+    status. The four non-real houses join the earlier four (YAREN, ALDEMIR, ADMIN
+    1, ADMIN ROOM) as `is_simulation` (step 0.3, now eight rows flagged in total,
+    not four); Chez Community and The Old House Pub instead count as real houses
+    from this ADR's first night — their wines are sourced first and reviewed
+    before publication (§2, G7), same as any other real house. Still open,
+    unchanged by this answer: closing the 4 stuck `research_runs` rows, the two
+    registry rows, and `pg_cron` (recap bracket, above).]**
 - **Q13 What a sommelier may add** (§1).
   - (a) Own-voice notes are `stated` and signed, and third-party facts need a citation
     and P6–P7.
@@ -2217,6 +2650,34 @@ months.]
 
   (b) lets one person's memory publish an attributive fact, which the confirmed
   boundary forbids. **Recommendation:** (a).
+  - **[Research pass, 2026-09-18: confirms (a), and shows why a corroboration
+    path isn't buildable yet.** A third option is worth naming: *two experts
+    must agree* — an uncited score/ABV sits in `review` until a second
+    independent `certified_contributor` submits the same value, then
+    publishes as corroborated, not `sourced`. Not deliverable today:
+    production has exactly 1 active `certified_contributor` and 0 invited
+    sommeliers (`SELECT role, count(*) FROM user_roles WHERE revoked_at IS
+    NULL GROUP BY role`, 2026-09-18), and `wine_field_observations` — the
+    table this flow would read — does not exist (`42P01`, relation does not
+    exist).
+    **Recommendation stands at (a), cite or don't publish.** It is already
+    what §1 (:577-586 [recomputed 2026-09-19; was :516-525]) and §13
+    (:1540-1544 [was :1440-1444]) implement, so it needs no new
+    schema; option (b) would let one uncorroborated claim publish with no way
+    to check it later, exactly what ADR 0020 rejected, and credentialing
+    alone isn't a correctness guarantee (the Court of Master Sommeliers' 2018
+    exam-cheating scandal,
+    en.wikipedia.org/wiki/2018_Master_Sommelier_exam_cheating_scandal). No
+    crowd-sourced wine platform researched (Vivino's Trust & Safety Policy,
+    dated 2026-05-04) publishes an uncited expert claim as fact without
+    corroboration or flagging.]**
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, item 12 of 12): option (a)
+    — own-voice notes only, facts need a citation.** A sommelier's own-voice notes
+    publish as `stated` and signed; any third-party fact they add still needs a
+    citation and P6–P7, same as anything sourced from a page. **What changes:**
+    nothing in the built design — this confirms the recommendation directly above
+    and closes the fork; the "attested by a named expert" provenance class (b) is
+    rejected, not built.]**
 - **Q14 Sommelier pay.** In quote R, "who will be paying" could mean sommeliers are
   paid, or that they pay. We read it as paid.
   - **The fork:** which way the money goes, and in what form: cash, discounts or
@@ -2230,6 +2691,56 @@ months.]
     internal** (decided inside Mudavym, not shown to sommeliers): pay, rewards or both,
     and the rate. **Recommendation:** rewards until OD-23 is decided, and accept the
     guard that no reward depends on which way a verdict goes (§13).
+  - **[Research pass, 2026-09-19: form, structure and rate, split apart —
+    only the rate stays uncovered.**
+    - **Form** (pay vs rewards vs both): three options, none built. *Cash*
+      needs the Stripe `transfers`/`payouts` guard lifted (§13, above) and
+      OD-23 decided first. *Non-cash rewards* needs no payout system and
+      nothing blocked. *Both* is decided per-sommelier inside Mudavym, never
+      shown to them. **Recommendation stands: rewards, cash later** — this
+      part needs nothing new.
+    - **Structure** (how a reward is earned, not its size): three shapes,
+      none built, each with a rough relative cost, not a number — the
+      number itself is the rate, and stays parked below.
+      - *Points per verdict recorded* — cost scales with review volume, the
+        unit already tracked on `override_events.verdict` (§3, above); a
+        point is earned for recording a verdict, not for which way it goes,
+        so this does not conflict with the guard that no reward depends on
+        a verdict's direction (§13, above).
+      - *A flat monthly stipend* — cost is fixed per sommelier per month
+        regardless of volume; cheapest per verdict at high throughput, most
+        expensive per verdict if a sommelier reviews little, and weakens the
+        tie between a sommelier's activity and Mudavym's outlay.
+      - *A per-hour rate* — cost scales with logged time, not verdicts;
+        needs a time-tracking mechanism nothing else in this ADR requires,
+        and rewards time spent over verdicts recorded.
+      **Recommendation: points per verdict recorded** — the only shape that
+      reuses a unit this ADR already tracks, with no new instrumentation and
+      no conflict with the direction-blind guard. The point value is the
+      rate, and stays parked on OD-23 below, same as it would under either
+      other shape.
+    - **Rate: fully open, not merely unrecommended.** There is no candidate
+      number to weigh options against — OD-23 (pricing) is still unstruck
+      (`OPEN-DECISIONS.md`, re-checked 2026-09-19: "THE ROW IS STILL NOT
+      STRUCK, and that is deliberate"), and OD-23 is the revenue-model
+      decision a reward rate would be sized against. Naming a rate before
+      OD-23 resolves would be picking a number with nothing under it — this
+      is not a recommendation deferred, it is one that cannot be formed
+      yet. **Recommendation: park the rate explicitly on OD-23**, and
+      revisit only once OD-23 resolves, rather than leave it reading as an
+      ordinary "still open" that looks answerable today.]**
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, item 9 of 12): rewards now,
+    rate parked on OD-23.** This confirms the **form** question directly: cash is
+    deferred (it needs the Stripe `transfers`/`payouts` guard lifted and OD-23
+    decided first, above), non-cash rewards go ahead now. It also confirms parking
+    the **rate** on OD-23, exactly as recommended. **What his answer does not
+    cover:** the **structure** question (points per verdict recorded, vs. a flat
+    stipend, vs. a per-hour rate) — his recorded answer is "rewards now, rate
+    parked on OD-23," which does not choose among the three shapes above, so that
+    sub-fork stays open at the research pass's own recommendation (points per
+    verdict recorded) rather than being read as decided. **What changes:** nothing
+    built yet needs to change (no reward mechanism exists in production); this
+    fixes the direction (rewards, not cash) for whenever one is built.]**
 - **Q15 Instant and automatic promotion.** Phase 13 lets developers promote instantly
   (D-13), and contributors auto-promote after 5 approvals (D-12).
   - **Keep them,** and one unchecked reviewer can publish.
@@ -2254,7 +2765,21 @@ months.]
       publish.
 
     **Recommendation:** (a). It replaces D-12's "5 in a row", which no floor here
-    supports.
+    supports. [Checked 2026-09-19, named as a coverage gap elsewhere: this
+    question already carries options, the Wilson-bound math and a
+    recommendation — nothing here needed a fresh research pass. Named for
+    completeness as a third baseline option, not previously listed
+    separately: *(c) keep D-12's "5 in a row"* — today's rule, proven to
+    reach only about 0.57 agreement, below every floor in this ADR.]
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, item 7 of 12): the Wilson
+    lower bound, option (a).** A new reviewer's approvals are all re-checked until
+    their Wilson bound clears the field's floor, then 1 in 10 — not the plain
+    agreement rate (b), and not D-12's existing "5 in a row" (c), which the
+    research pass measured at about 0.57 agreement, below every floor this ADR
+    sets. **What changes:** D-12's "5 in a row" auto-promotion rule is replaced by
+    this Wilson-bound gate wherever it is built (§5 G6, §13); nothing runs this
+    check in production today, so the change lands whenever that code is written,
+    not retroactively.]**
 - **Q16 The market price** (§9).
   - (a) **k:** 5 restaurant groups (0 wines qualify today) or 3 (9 wines). Lower k
     shows more numbers and gives weaker protection for each house.
@@ -2276,6 +2801,45 @@ months.]
   wines with a list price, because a single sighting checks the estimate against one
   restaurant's pricing rather than against what restaurants charge; so the estimate
   waits.
+  - **[Research pass, 2026-09-18: confirms the ADR's own k=5 plan.**
+    **Corrected, 2026-09-19: k=3 and k=5 are not identical today — the
+    2026-09-18 pass measured the wrong table.** `restaurant_inventory.
+    menu_price_current` is 0 of 14 restaurants either way (re-confirmed
+    2026-09-19, Supabase, SELECT-only), but that table is the live tenant
+    channel no real house uses yet; it has no bearing on class M. The
+    ADR's own class-M source is Context fact 7 (the 26-corpus-PDF load,
+    cited above and in Q16(a) itself): **0 wines qualify at k=5, 9 at
+    k=3.** Loosening the threshold does surface numbers today, from those
+    same 26 public menus — which is exactly the stricter number's job, not
+    a free loosening.
+    Since the ADR's own citations, the regulatory direction has tightened
+    further: DOJ's proposed RealPage settlement (filed 2025-11-24) bars live
+    non-public competitor data and requires ≥12-month aging; California's AB
+    325 (in force since 2026-01-01) is named by multiple law-firm analyses
+    — not the statute's own text, which names no sector — as reaching
+    hospitality's shared-pricing algorithms specifically. Both are coarser
+    and slower than what k=5, the 18-month window and the rounded-range
+    display already do.
+    **Recommendation: accept the ADR's own (a)-(g) exactly as written** —
+    now for the right reason: not because loosening is free (it is not: 9
+    wines would show at k=3 today, 0 at k=5), but because the regulatory
+    direction has only tightened since the ADR's own analysis, so k=5 is
+    the more defensible number by a widening margin. Deferring the whole
+    line is a real alternative but only delays work §3-4 already route
+    through the same class-M sighting rows, for a saving that is 9 wines'
+    worth of exposure, not zero.
+    Evidence: DOJ OPA release and Wilson Sonsini/Baker McKenzie/Hogan
+    Lovells summaries on the RealPage settlement; Alston & Bird and Jones
+    Walker analyses of AB 325 naming hospitality as high-risk; Connecticut
+    HB8002 and New York's parallel statute scoped to residential rentals
+    only, per Baker McKenzie's Jan 2026 note, so likely inapplicable here
+    (all fetched 2026-09-18).]**
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, item 3 of 12): k = 5, and
+    guards (b)–(g) accepted exactly as drafted.** This confirms the ADR's own plan
+    and the research pass's recommendation, not the looser k=3 (which would show 9
+    wines today against 0 at k=5). **What changes:** nothing in the built design —
+    §9's restaurant-list-price line already specifies k=5; this closes the fork so
+    a future session cannot reopen it as unanswered.]**
 - **Q17 The notice, in law** (§14). A lawyer must answer these before the first real
   house's prices pool:
   - (a) opt-out everywhere, or opt-in for EU houses until the Data Act Art. 13
@@ -2304,6 +2868,86 @@ months.]
   half departs from his answer, *"A notice with an opt-out"*, so it needs his word, not
   only the lawyer's. (g) should be answered before the first public-menu price counts
   toward class M.]
+  - **[Research pass, 2026-09-18: the "ask a lawyer" gate should split by
+    jurisdiction, not block as one item.** **Corrected, 2026-09-19: it does
+    not split into anything to ship today, and two items it silently set
+    aside are not droppable.** The ADR treats Q17(a)-(i) as one monolithic
+    pre-pooling gate. The US and Turkish risk profiles differ in kind: the
+    US risk (RealPage/AB 325/Connecticut HB8002) is well-documented, and the
+    ADR's own aggregation guards (k=5, the 25% cap, no real-time/cost data,
+    §9) already partially anticipate it. The Turkish risk (Law 4250 art. 6's
+    advertising-and-promotion ban, extended to internet and digital
+    platforms by a 2013 amendment, with a 2026 tightening bill pending) is
+    old, broadly worded, and untested against a signed-out aggregate price
+    page — the ADR's own price-sources research already flagged it
+    "unverified at primary source" (`07-reference/price-sources.md:264-274`,
+    mevzuat.gov.tr unreachable).
+    **But no real US house exists to ship for.** Production (Supabase,
+    2026-09-19, re-checked by direct SELECT, not carried forward): every
+    non-Sim restaurant outside Türkiye is either 0 `users` rows or was
+    already ruled not real in round 2 — Gullit's Tavern, Yaren's Fine Dine,
+    Meyhouse Palo Alto and YARDOM (Q11, above, 0 users each, all US); YAREN
+    and ALDEMIR (US, 2 and 0 users — YAREN's 2 do not change round 2's
+    verdict); ADMIN ROOM (US, 1 user); and ADMIN 1, which round 2 grouped
+    with these three test accounts despite its `country` field reading
+    United Kingdom, not the US. Every restaurant row in production has
+    `country` in {Türkiye, United States, United Kingdom} — no EU row exists
+    either (checked for Q17(a), below). The only two houses with an
+    independent signup and a confirmed operating business (Q11, above) —
+    Chez Community and The Old House Pub — are **both in Türkiye.** A split
+    that ships the US side unblocks nothing today, because there is no real
+    US house on the other side of that gate.
+    - *Full review before any pooling* (the ADR's literal reading, (a)-(i)
+      in full) — 2-6 weeks plus fees, but today this is also, in practice, a
+      review of one jurisdiction's law: Türkiye's, because every real house
+      is there.
+    - *Split by country, kept for later* — worth keeping as a design for
+      when a real US house appears (so the US side need not wait on a
+      Turkish lawyer once one does), but not something that unblocks
+      anything now, and not a reason to treat (e) or (g) as optional.
+    - *Ship now, fix later* — highest risk; AB 325 is named by multiple
+      law-firm analyses (Q16, above) as reaching hospitality specifically —
+      the statute's own text names no sector — and "models already trained
+      are not retrained" (§14) makes this hard to undo regardless.
+    - *Delay pooling everywhere, ship notice-only* — lowest engineering
+      cost, and costs nothing extra today, since no real house's prices are
+      pooling either way.
+    **Recommendation: the full gate, (a)-(i), stays in force — for Türkiye,
+    because that is the only jurisdiction with a real house today.** (e) a
+    lawyer-drafted clickwrap Terms of Service at /register and (g) whether
+    the 26 corpus and 41 laptop menus' already-held public prices may be
+    pooled are not extra items a US/Türkiye split lets this ADR set aside —
+    they are squarely in scope, because the houses that would trigger them
+    are Turkish. Neither Turkish house (Chez Community, The Old House Pub)
+    has an uploaded menu yet (`restaurant_inventory` shows 0 rows for both,
+    checked 2026-09-18), so nothing pools before the lawyer answers
+    regardless — gating costs nothing today, and the split-by-country design
+    is worth keeping on paper for whenever a real US house appears, just not
+    as today's unblock.
+    **Q17(a)'s EU half, separately: still his to confirm, not the lawyer's.**
+    His literal answer was *"A notice with an opt-out,"* with no EU
+    carve-out (Q17 intro, above); the opt-in-for-EU half of this ADR's
+    recommendation is the verifier's addition, already flagged there as
+    departing from his words. No EU house exists today — every restaurant
+    row's `country` is Türkiye, United States or United Kingdom (Supabase,
+    2026-09-19) — so neither choice costs anything yet.
+    - *Opt-in for EU (as currently recommended)* — matches the EU Data Act
+      Art. 13 unfair-terms caution; departs from his literal words, for a
+      jurisdiction with no house in it.
+    - *Opt-out everywhere, as he said* — matches his answer exactly; leaves
+      the Art. 13 question open until a lawyer looks, same as today.
+    **Recommendation: ask, don't assume the departure.** The cost of asking
+    is zero (no EU house exists yet), and CLAUDE.md §0.1 already governs
+    this case directly: a drafted departure from his literal words is
+    exactly the fork that gets asked, not defaulted.]**
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, items 2 and 10 of 12).**
+    **Item 2, his own words:** *"Ship now, fix later"* — against this section's own
+    recommendation that the full (a)–(i) gate hold for Türkiye before pooling.
+    **Item 10:** opt-in for EU houses, confirming the departure from his literal
+    round-2 words that this section flagged rather than assumed. **What changes,
+    and the full discussion of the consequence he was shown** (trained models are
+    not retrained): recorded once, at §9's "Guards on pooling menu prices," not
+    repeated here — this bracket is the pointer, not a second copy.]**
 - **Q18 The uploaded menu PDFs.** "Quotes only" and "upload" pull in two directions.
   - (a) Keep the uploaded PDFs with a `retention_until` (for example, 90 days after
     /studio approves the menu), then keep only the quote, the hash and the date.
@@ -2311,6 +2955,57 @@ months.]
 
   Also: may the 26 corpus PDFs be uploaded too? Their prices cannot be re-read for
   format without them. **Recommendation:** (a), and yes to the 26.
+  - **[Research pass, 2026-09-18: the ADR's own "90 days" option contradicts a
+    rule this repo already shipped.** `retention-rules.ts` (ADR 0118,
+    `procurement_conversations`/`conversation_attachments`, deployed
+    2026-09-05) states retention "must be tied to a stated purpose, never to
+    a round number chosen for convenience," and calls a bare `RETENTION_DAYS
+    = 90` constant "this repo's own named cardinal fault." The ADR's option
+    (a) above is exactly that bare constant.
+    - *Fixed 90-day window (the ADR's current (a))* — cheapest to build, but
+      fails this repo's own retention test on its face.
+    - *Keep forever (the ADR's (b))* — storage is trivial (Supabase:
+      $0.0213/GB-month; the whole `vendor-attachments` bucket is 375kB
+      today), but is unbounded retention of full copies with no stated
+      purpose, including the 26 corpus PDFs from non-customer restaurants
+      that §14's notice never reaches.
+    - *Delete once re-extracted* — reuse the machinery already built for
+      ADR 0118 (a derived, stated window; a scheduled sweep; a tombstone row
+      keeping quote/hash/date while zeroing bytes). **Corrected, 2026-09-19:
+      this defeats its own stated purpose, and mislabels who the PDFs
+      belong to.** The purpose given above is "their prices cannot be
+      re-read for format without them" — deleting the bytes right after the
+      first re-extraction means the next prompt improvement cannot re-read
+      the same menu without crawling it again, the exact failure the
+      purpose clause exists to prevent. It also called the 41 laptop PDFs
+      "customer PDFs" and would delete them "on §14 opt-out or churn" — but
+      Q17(g), above, is explicit that the 41 laptop menus and the 26 corpus
+      menus are *all* public menus of restaurants that are not customers,
+      so §14's notice (which only a customer house acknowledges) reaches
+      none of them, and neither trigger can ever fire. [Checked 2026-09-19:
+      this retention recommendation relies on no case law. A prior draft of
+      this note cited *Bartz v. Anthropic*; that citation is not carried
+      forward here, and nothing in the recommendation above depends on it.]
+    - *Keep until superseded (revised recommendation)* — keep each PDF's
+      bytes while it may still need re-reading, and delete only when a
+      newer crawl of that same restaurant replaces it, or — for the small
+      set that ever becomes a customer's own menu — that restaurant objects
+      under §14. This is the same ADR 0118 machinery; only the trigger moves
+      from a one-shot re-extraction to "superseded or objected to," which
+      `crawl_log` already carries the restaurant and fetch date to derive,
+      rather than inventing a new signal.
+    **Recommendation: keep until superseded**, not delete-once-re-extracted.
+    No menu-PDF storage bucket exists yet (only `vendor-attachments`, 13
+    objects/375kB, checked 2026-09-18), so nothing built needs to change to
+    adopt this now.]**
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, item 8 of 12): keep until
+    superseded.** Not the fixed 90-day window (this repo's own named "cardinal
+    fault," per `retention-rules.ts`/ADR 0118) and not forever. **What changes:**
+    when a menu-PDF storage bucket is built, its retention job deletes a PDF's
+    bytes only once a newer crawl of the same restaurant replaces it, or — for a
+    house that becomes a customer — that house objects under §14; `crawl_log`
+    already carries what that job needs. No bucket exists yet, so this fixes the
+    design before the fact rather than changing running code.]**
 - **Q19 Where the tasks run** [round 3, §11]. The connector design is the same under
   all three.
   - (a) **Local Cowork tasks on the laptop.** They need the app open and the computer
@@ -2353,6 +3048,28 @@ months.]
   **[ANSWERED 2026-09-18, founder via `AskUserQuestion`: "Yes, a separate seat
   (Recommended)" - a dedicated account whose credits and connectors serve only the
   pipeline; he creates it (his keystroke).]**
+  - **[Research pass, 2026-09-19: which Max tier funds the seat — raised as
+    a residual under Q1 above, still open, not yet asked.** Max 5x is
+    $100/mo; Max 20x is $200/mo for 4x the weekly usage window
+    (support.claude.com/en/articles/11049741, fetched 2026-09-18). The
+    backlog is 3,314 eligible wines (`master_wine_library`, re-measured
+    2026-09-19, unchanged) sourced in one batch on the first paid night
+    (Q1 (b), above) — the one night most likely to bind a weekly window,
+    because it is the largest.
+    - *Max 5x, $100/mo* — cheaper; if the window binds on the backlog
+      night, the pilot shows that directly and the tier can be raised
+      afterward.
+    - *Max 20x, $200/mo (recommended)* — $100/mo more, sized for the one
+      night that most needs headroom, instead of discovering the window
+      binds by having it bind on the largest batch.
+    **Recommendation: Max 20x**, and treat this as its own confirmation
+    rather than folding it silently into "yes, a separate seat" — the tier
+    is a monthly cost he has not yet been asked to accept.]**
+  - **[DECIDED 2026-09-19, founder (`AskUserQuestion`, item 5 of 12): Max 20x,
+    $200/mo.** Confirms the recommendation directly above, as its own accepted
+    monthly cost, not folded into the earlier "yes, a separate seat" answer.
+    **What changes:** he creates the dedicated seat at this tier (his keystroke,
+    same as the seat decision itself); nothing else in the design changes.]**
 - **Q21 Usage credits** [round 3].
   - **Off** (our reading of his words): a refused run stops and waits for the reset.
   - **On, with a monthly cap:** runs go on past the plan's limit, billed at standard
@@ -2370,6 +3087,27 @@ months.]
 
   **Recommendation:** keep the synchronous read and count it apart. No real house
   exists yet, so it costs nothing today.
+  - **[Research pass, 2026-09-18: confirms keeping the synchronous read, with
+    the spend ceiling and usage measured.** The spend a real house could
+    generate here is capped by the existing per-restaurant ceiling — a $5
+    lifetime credit on the core tier, $5-10/day on paid tiers
+    (`model-client.service.ts:628`, `spend-tiers.ts`), which fails open
+    rather than blocking an upload. Production (Supabase, 2026-09-18): every
+    non-simulated restaurant has 0 rows in `menu_items`; only "Sim Bistro" (a
+    simulation) has any (342) — this path has never billed a cent against a
+    real house. Making a house wait for the nightly batch instead would turn
+    a new restaurant's first product interaction into a multi-hour wait, for
+    a dollar cost currently measured at zero.
+    **Recommendation: keep the existing synchronous billed read, counted
+    apart from the plan-credit pipeline**, exactly as the ADR's own draft has
+    it (above, this Q22's own pre-research recommendation). [Citation
+    corrected 2026-09-19: the prior draft pointed at :1911, which is
+    §11 step 0.21 (the pipeline connector), now at :2028 after this ADR's
+    own later edits (recomputed again 2026-09-19 for round 5's insertions;
+    was :1928, was :1911) — an unrelated section, not this passage.] A cheaper
+    sync model and a faster async queue are both worth
+    revisiting once a real house's cost/latency is measurable — neither is
+    justified pre-emptively against zero volume.]**
 - **Q23 The account's training setting** [round 3]. The consumer terms let inputs
   train Anthropic's models unless the account opts out (fact 13), and house menus
   would pass through the tasks. Is training switched off on the account the tasks run
@@ -2403,9 +3141,17 @@ months.]
   the BEFORE-trigger rule and that an INSERT trigger cannot refer to OLD (§4 P4). The
   split triggers were not executed against a database.]
 - Hi-Time's terms were read by the critic (silent, §9); the other hosts' were not.
-- The accuracy of MiniCheck and mDeBERTa on wine claims, the accuracy of the legacy
-  identity columns, and whether Wikidata grape items carry a usable berry-colour
-  statement are unmeasured.
+- The accuracy of MiniCheck and mDeBERTa on wine claims was never measured before
+  round 5 replaced them with Jev (Q6). **Jev's own accuracy on wine claims is also
+  unmeasured** — TYPESAFE_AI_OVERVIEW.md's benefits (§6) are vendor cookbook results
+  in other domains (legal re-ranking, guardrails, RAG filtering), not a wine-claim
+  or NLI/entailment benchmark, and no independent (non-vendor) benchmark of Jev was
+  found in that crawl. **Jev's language coverage is unmeasured and unstated**, not
+  merely unmeasured like the others in this list — the record consulted for this
+  decision does not say which languages Jev handles at all, so Italian and Turkish
+  coverage (§4 P7; Q6) is a named open item, not an oversight. The accuracy of the
+  legacy identity columns, and whether Wikidata grape items carry a usable
+  berry-colour statement, are also unmeasured.
 - Whether the gateway reports to Sentry, the org usage tier, and the credit balance
   are unknown. No `.env` was read.
 - Every cost is an estimate. The adversarial passes were run by separate agents; the
@@ -2488,3 +3234,5 @@ months.]
 | 2026-09-18 | Round-2 verifier (workflow agent): the diff against 795e8073a; quotes compared by script; every /studio, loader, parser, settings, Stripe and registry citation re-read; production SELECTs on `restaurants`, `restaurant_inventory`, `user_roles`, `users`, `invite_tokens`, `override_events`, the submissions table, the price and menu tables, and `data_enrichment->'menus'`; both cost scripts re-run | Answers verbatim (P and R match the relay character for character) and readings marked. Fixed, each marked "verifier" in the text: (1) three role-holding accounts, not two people (fact 6, §13, Consequences, Q4); (2) live-row `review_status` added; (3) the 7-menu rows are not live; (4) "by file name" city claim; (5) fact 8's heading over-read a usage-telemetry line; (6) the notice promised that a house's prices never appear, which a median breaks (§9, §14, Q16 (f)); (7) "nothing already held needs consent" was a legal conclusion (§14, Q17 (g)); (8) "required by Law 4250" was a legal conclusion (§9, Q17 (f)); (9) the estimate cannot pass its held-out test until at least 16 wines have a list price, and today none has at k = 5 (§5, §9, Consequences, Q16 (g)); (10) the estimate's label now says restaurant listings, so it cannot read as a shop price; (11) "re-scope N" on a cost overrun would have let cost undo *"Every wine from day one"* (Consequences); (12) the backlog now starts on the first paid night, staged, instead of after the audit, and its pace is Q1 (b); (13) Q15's "for speed" recommendation is tied to a measured bar under F1; (14) Q2 names the reading of "check their values" that would point to (a); (15) §15 rule 7's "another org" was unbacked; (16) §13's promotion rule marked as open (Q15); (17) the ROADMAP citation for "sommeliers/producers" added. Costs re-derived: every round-2 figure reproduces from `every-wine-cost.py` and `critic-cost-model.py` |
 | 2026-09-18 | Round 3: four founder answers (AskUserQuestion, relayed) plus one host research lane (Cowork, routines, usage limits, the terms, and the laptop tasks' 81 runs) | Still Proposed. The answers are recorded verbatim as relayed, with each reading marked as the relay's or ours. Answered: Q1 in full (plan credits, no dollar limit), Q2 as (b), Q14's direction and Q15's rule. §11 is rewritten as "Hosts and credits". Model work runs as Cowork tasks with repo-served prompts. The gateway stays the only writer and keeps health, enqueue and the publish gates, through a pipeline connector that can only stage. Credits set the pace, never the bar, and claims are served in a stated order. Amended: §3, §4, §5, §6, §8, §12, §13, §15, Consequences, Build order (0.21 and 0.22 added; 1.1 replaced; 1.2 set aside; 1.5, 1.8, 1.10 and Stage 3 amended) and Cost (now the API-equivalent size, not a bill). Facts 10–13 added. Q17 (h) and (i) and Q19–Q23 raised. The earlier §11 is kept at `056de928e` |
 | 2026-09-18 | Round-3 verifier (workflow agent): the diff against 056de928e; the four answers compared with the relay; `cowork-wine-runs.tsv` recounted; `scheduled-tasks.json` and `harness.py` re-read; nine Anthropic pages re-fetched | Answers verbatim and readings marked; every fact-12 and fact-13 claim holds. Fixed, each marked "verifier": (1) fact 10's model history omitted the return to Haiku (9, 24, 13, 35 runs); (2) 09-11 lateness was 15 minutes to 2.3 hours, not 1 to 2.5; (3) the concurrency inference has a counter-sign (a non-wine task started at the same second); (4) the Desktop-tasks page documents Claude Code's local tasks, not Cowork's; (5) Cowork egress settings do not bind web fetch, web search or MCPs, so the never-list cannot be enforced inside a task (fact 12, §4 P5, §8, §11); (6) the connector's reach was attributed to where its token is held; the tools are the boundary; (7) "never runs SQL" would have failed `submit` and step 0.21's guard; (8) on a shared seat a task reading untrusted pages carries the Supabase connector, so the one-writer rule depends on per-task limits (§11, Q20); (9) a routine has no permission-mode picker (§11, Q19); (10) the outside dead-man alarm was listed on the gateway; (11) §6 put batch rules on the synchronous path; (12) `lease_expired_unsubmitted` is never green, and "a lease expired" stays red; (13) task identity and model are self-reported; (14) "with nothing submitted" ignored part-submitted runs; (15) a host that cannot run gold's model goes to the founder, never a quiet fallback; (16) /studio "shows no pay or reward terms" was wider than either reading; (17) usage credits are off today, not off by decision; (18) what a stale cell shows while P11 waits for credits is unspecified, flagged open. The brief's pause order read backwards and was fixed |
+| 2026-09-19 | Round 4: research pass across Q6, Q10, Q11, Q14, Q15, Q16, Q17 (incl. (a)'s EU half), Q18 and Q20, plus §13/step 0.17's tech-debt wording, three new CLAIMS.jsonl rows and a citation sweep, corrected against an Opus adversarial pass | Still Proposed. Fixes, numbered: (1) Q6 — mDeBERTa's own model card names the same ANLI/CC BY-NC lineage as MiniCheck, so the ADR's fallback did not clear the licence risk; HHEM ruled out as English-only; mDeBERTa stands, with the licence question folded into Q17's lawyer gate. (2) Q10 — the sparkling/rosé conflation measured, not asserted (53 of 369 sparkling rows and 1 of 115 rosé rows cross colour and effervescence); revised to colour × style {still, sparkling, fortified} with sweetness kept separate, then corrected to state this is the ADR's original three axes, not two — the :784 rule (was :723; recomputed by round 5) binds only `primary_type`, because that is what feeds `beverage_kind`, not a separate sweetness cell. (3) Q11 — the four presumed-test houses' zero-user count re-confirmed by direct SELECT (all four, not three, as the prior count had it); the two presumed-real houses' independent signups and operating businesses cited. (4) Q14 — form (rewards, cash later) and structure (points per verdict recorded, against a flat stipend and a per-hour rate) resolved; the rate itself stays parked on OD-23, re-confirmed still unstruck. (5) Q15 — named D-12's current "5 in a row" as a third baseline option, measured at about 0.57 agreement; the existing recommendation needed no fresh pass. (6) Q16 — confirmed k=5 over k=3 (0 vs 9 qualifying wines today) against a regulatory direction that has only tightened since the ADR's own citations (DOJ's RealPage settlement, AB 325, Connecticut HB8002). (7) Q17 — the lawyer gate does not split by jurisdiction today because every real house is Turkish, re-confirmed by a SELECT joining `restaurants` to `users` (corrected: YAREN 2 users and ALDEMIR 0, not the reverse); (a)'s EU opt-in half flagged as the verifier's own departure from his literal words, to be asked, not assumed. (8) Q18 — retention revised to keep-until-superseded, reusing ADR 0118's machinery; corrected to state plainly that this recommendation relies on no case law, and that a prior draft's citation to *Bartz v. Anthropic* is not carried forward. (9) Q20 — Max 20x named as its own confirmation, not folded into the separate-seat answer. (10) §13/step 0.17 — the tech-debt filing corrected: the register's deletion is a real founder decision (2026-09-19), reserved as ADR 0165 but not yet written, so the three broken /studio promotion paths are filed as three open `CLAIMS.jsonl` rows instead of a `v3.0-TECH-DEBT.md` entry (`ADR-0163-STUDIO-PROMOTE-DIRECT-INSERT`, `-OVERRIDE-AUTOPROMOTE-SELECT`, `-QUALITY-PATCH-SELECT`). (11) Citations repaired: :2235-2238 (was :2177-2180), :2210-2214 (was :2152-2156), Q1's cross-reference to the round-3 review-trail row (now :3012, was :2981, was :2489), and Q22's stale :1911 (now read against :1928, where step 0.21 sits today). [Round 5, 2026-09-19: every one of these shifted again by round 5's insertions and was recomputed a further time: :2352-2355 (was :2235-2238, was :2177-2180); :2327-2331 (was :2210-2214, was :2152-2156); the round-3 review-trail row at :3235 (was :3012, was :2981, was :2489); step 0.21 at :2028 (was :1928, was :1911). See each Q-block's own DECIDED bracket for the live number; this row keeps round 4's own account of what it repaired, unedited otherwise.] Re-checked: Supabase SELECTs on `master_wine_library` (`primary_type` spellings, sparkling/rosé name-matches, fortified/dessert counts), `restaurants` LEFT JOIN `users`, `restaurant_inventory`, `user_roles`; `OPEN-DECISIONS.md`'s OD-23 row; `studio_routes.py`, `override_service.py` and `quality_routes.py` against every migration touching `master_wine_library`/`master_wine_library_submissions`; `retention-rules.ts` (ADR 0118); `docs/retire-tech-debt`'s commit log; HuggingFace model cards for mDeBERTa, MiniCheck, Bespoke-MiniCheck and HHEM; support.claude.com's Max-tier pricing pages |
+| 2026-09-19 | Round 5: the founder's twelve answers (`AskUserQuestion`, relayed via session memory `founder-sketch-decisions-106-115.md`) to every question round 4 deepened, a claim-checker reversal to TypeSafe AI's Jev, and a full self-citation re-sweep | Still Proposed. Each of the twelve is recorded as a DECIDED bracket at its own Q-block (Context, "Round 5" carries the summary table with the this-ADR-question ↔ memory-item-number mapping); item 2's *"Ship now, fix later"* is taken against this ADR's own recommendation, with the shown-and-accepted consequence recorded at §9 ("models already trained are not retrained"); item 4's *"we're gonna use JEV and it's already inside the repo"* replaces §4 P7(b)'s self-hosted MiniCheck/mDeBERTa design with TypeSafe AI's Jev, a hosted API (prior design kept at commit `a99078485` for history) — the MiniCheck/mDeBERTa/HHEM comparison in Q6's own research pass is shrunk to a pointer, which is this addition's retire-to-write for `07-reference/TYPESAFE_AI_OVERVIEW.md` (copied into this branch byte-identical to the main checkout's untracked source, `diff` confirmed; its `INDEX.md` row replicated byte-identical to the main checkout's uncommitted diff, `diff` confirmed; neither file in the main checkout was touched). Jev's language coverage for Italian and Turkish is not stated in that record, so it is carried forward as its own open item (§4 P7, "Not verified") rather than assumed either way, backed by a new CLAIMS.jsonl row (`ADR-0163-JEV-LANGUAGE-COVERAGE-UNSTATED`, status open, mutation-tested: flips to matching when the record is edited to state coverage, confirmed by temporarily adding such a line and restoring it byte-identical). Amended: the status block and Decider line; Context (Round 5 section added); §4 P7 (rewritten around Jev); §9 (legal-review/EU DECIDED bracket); the `wine-worker` build-order row; adversarial-table row A16; Cost's "not included" line; the four top-level recap brackets for Q2/Q6/Q10/Q11; all eleven deep-dive Q-blocks carrying an answer (Q2, Q6, Q10, Q11, Q13, Q14, Q15, Q16, Q17 ×2 (legal review and its EU sub-fork), Q18, Q20); "Not verified" (Jev's own accuracy and language coverage named); and this Review trail. Every pre-existing self-citation whose target moved because of this round's insertions was located by content match in the edited file (not carried forward by arithmetic alone) and recomputed, each keeping a "was :N" trail; round 4's own review-trail row above is left as its original text with a dated bracket appended naming the further shift, per the house rule that records are corrected in place with dated brackets, never silently rewritten. Guards re-run and green: `scripts/check_decision_claims.sh` (359 `CLAIMS.jsonl` rows, 358 checkable claims after the one `_comment` line, all 358 holding — this run also covers the bundled OD-id-collision and migration-version-collision checks, both clean) and, run separately for the same corpus, `scripts/check_adr_numbers_unique.py` (930 refs after this round's own edits added a few, no collision) and `scripts/check_od_ids_exist.py` (1,412 documents against 118 register rows, PASS). No OD row, ADR number or migration was added by this round. Not done: propagating the twelve answers into every Build-order step, Cost-table figure or CLAIMS row their design implies beyond the sections named above — each DECIDED bracket states what changes, but turning that into code (a `wine_type`/`sweetness` migration for Q10, a Jev API client for Q6, the six houses' `is_simulation`/real-house flags for Q11, and so on) is separate build work this docs-only round does not do |
