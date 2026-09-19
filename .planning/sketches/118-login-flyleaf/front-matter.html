@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 118 · The front matter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* ── tokens: copied from direction-b.html ─────────────────────────────── */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --rust:#A03A2A; --amber:#8A5A14; --amber-tint:rgba(180,124,20,.10);
+  color-scheme:light;
+}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --rust:#D8735F; --amber:#D4A344; --amber-tint:rgba(212,163,68,.12);
+  color-scheme:dark;
+}
+:root{--serif:"Fraunces",Georgia,serif;--sans:"DM Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace;
+  /* motion tokens */
+  --turn:cubic-bezier(.32,.72,0,1); --settle:cubic-bezier(.16,1,.3,1); --ink:ease-out; --stamp:cubic-bezier(.34,1.56,.64,1)}
+.mudavym{--shade:color-mix(in srgb,var(--ink-1) 22%,transparent);
+  /* the endpaper's pressed seals: the house seal worn thin into the paper (endpaper.css) */
+  --ep-wax:color-mix(in srgb,var(--seal) 15%,var(--paper-1));
+  --turn-shade:#140E08}
+.mudavym[data-ground="charcoal"]{--shade:color-mix(in srgb,var(--paper-0) 90%,transparent);
+  --ep-wax:color-mix(in srgb,var(--seal) 22%,var(--paper-1));
+  --turn-shade:#000}
+*{box-sizing:border-box}
+html{background:var(--paper-1)}
+body{margin:0;background:var(--paper-1);color:var(--ink-1);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--seal-ring);outline-offset:2px}
+.wrap{width:1360px;margin:0 auto;padding:28px 0 96px}
+
+/* top bar */
+.bar{display:flex;align-items:baseline;gap:18px;padding:6px 0 18px;border-bottom:1px solid var(--paper-2);margin-bottom:34px}
+.mark{font:600 22px var(--serif);letter-spacing:-.01em}
+.mark .dot{color:var(--seal)}
+.bar .meta{font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.toggles{margin-left:auto;display:flex;gap:26px;align-items:baseline}
+.ground{display:flex;gap:10px;align-items:baseline;font:500 12px var(--sans);color:var(--ink-3)}
+.ground .lbl{font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.ground button{background:none;border:0;padding:0;font:500 12px var(--sans);color:var(--ink-3);cursor:pointer;text-underline-offset:4px;transition:color 150ms var(--ink)}
+.ground button[aria-pressed="true"]{color:var(--ink-1);text-decoration:underline}
+.ground button:hover{color:var(--ink-1)}
+
+/* header */
+h1{font:600 40px/1.1 var(--serif);letter-spacing:-.015em;margin:0 0 12px}
+h1 .dot{color:var(--seal)}
+.lede{font:italic 400 19px/1.45 var(--serif);color:var(--ink-2);max-width:900px;margin:0 0 48px}
+.eyebrow{font:500 10px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin:0 0 8px}
+
+/* frames */
+.frame{margin:0 0 72px}
+.cap{display:flex;align-items:baseline;gap:14px;margin:0 0 20px;font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.cap .n{color:var(--ink-1);font-weight:600}
+.cap .t{color:var(--ink-2);text-transform:none;letter-spacing:.04em;font-size:12.5px}
+.cap .w{margin-left:auto;text-transform:none;letter-spacing:.04em;font-size:11px}
+.stage{background:var(--paper-2);border-radius:2px;padding:64px 40px;display:flex;justify-content:center}
+.stage.mobile-stage{padding:48px 40px}
+.cite{font:500 11px/19px var(--mono);color:var(--ink-3);max-width:900px;margin:16px auto 0}
+.cite b{font-weight:600;color:var(--ink-4)}
+.narrow-note{display:none}
+
+/* ── the book ─────────────────────────────────────────────────────────── */
+.book{position:relative;display:grid;grid-template-columns:340px 600px;perspective:2400px;perspective-origin:50% 45%}
+.bed{position:absolute;inset:0;background:var(--paper-0);border:1px solid var(--paper-2);box-shadow:0 34px 70px -40px var(--shade);pointer-events:none}
+.gutter{position:absolute;top:0;bottom:0;left:340px;width:36px;transform:translateX(-50%);background:linear-gradient(to right,transparent,var(--paper-2) 50%,transparent);pointer-events:none;z-index:4}
+.slot{position:relative;display:grid;min-width:0}
+.slot>.lyr{grid-area:1/1;min-width:0}
+
+/* paper of the endpaper (verso): paper-1, the seal pressed in as a pattern */
+.paper-ep{position:relative;background:var(--paper-1);overflow:hidden;display:grid}
+.paper-ep>.tile{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.paper-ep>.lyr{grid-area:1/1;position:relative;z-index:1}
+/* paper of the leaf (recto): paper-0, ruled, with a margin line */
+.paper-leaf{position:relative;display:grid;padding:52px 52px 48px;
+  background:repeating-linear-gradient(to bottom,transparent 0 26px,var(--paper-2) 26px 27px) content-box,var(--paper-0)}
+.paper-leaf::after{content:"";position:absolute;top:0;bottom:0;left:36px;border-left:1px solid var(--ink-3);opacity:.3;pointer-events:none}
+.paper-leaf>.lyr{grid-area:1/1;padding-left:6px;position:relative;min-width:0}
+.folio{position:absolute;top:-34px;right:-28px;font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+
+/* the endpaper itself is the Easter egg: a real button, the whole page */
+.ep{appearance:none;-webkit-appearance:none;border:0;margin:0;background:transparent;color:inherit;font:inherit;text-align:left;
+  width:100%;height:100%;padding:40px 34px;display:flex;flex-direction:column;cursor:pointer;position:relative}
+.ep:focus-visible{outline:2px solid var(--seal-ring);outline-offset:-8px}
+.ep-top{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.kicker{font:500 10px/1.4 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);background:var(--paper-1);box-shadow:0 0 0 5px var(--paper-1)}
+.wm{display:inline-flex;flex-direction:column;gap:6px;background:var(--paper-1);padding:4px 8px 6px 0}
+.wm-name{font:600 26px/1 var(--serif);letter-spacing:-.02em;color:var(--ink-1)}
+.wm-name .dot,.dot{color:var(--seal)}
+.wm-rules{display:flex;flex-direction:column;gap:3px}
+.wm-rules i{display:block;width:78px;border-top:1px solid var(--ink-3)}
+.ep-body{margin-top:auto;padding-top:48px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.ep-house,.ep-tag{background:var(--paper-1);box-shadow:0 0 0 6px var(--paper-1);-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.ep-house{font:italic 400 20px/1.3 var(--serif);color:var(--ink-2);max-width:250px}
+.ep-tag{font-size:12.5px;line-height:19px;color:var(--ink-3);max-width:240px}
+
+/* the dog-ear: the only hint. Outer bottom corner, lifts on hover/focus. */
+.dogear{position:absolute;left:0;bottom:0;width:18px;height:18px;pointer-events:none;z-index:2;
+  transition:width 320ms var(--settle),height 320ms var(--settle)}
+.dogear .cut{position:absolute;inset:0;background:var(--paper-2);clip-path:polygon(0 0,0 100%,100% 100%)}
+.dogear .fw{position:absolute;inset:0;filter:drop-shadow(1px -1px 1.5px color-mix(in srgb,var(--turn-shade) 28%,transparent))}
+.dogear .flap{position:absolute;inset:0;clip-path:polygon(0 0,100% 0,100% 100%);
+  background:linear-gradient(to top right,color-mix(in srgb,var(--paper-2) 70%,var(--ink-3)) 50%,var(--paper-0) 92%)}
+.ep:hover .dogear,.ep:focus-visible .dogear,.band:hover .dogear,.band:focus-visible .dogear{width:30px;height:30px}
+
+/* D1 · inside the front cover: the epigraph */
+.cover-in{padding:40px 34px;display:flex;flex-direction:column;justify-content:center}
+.ci-card{background:var(--paper-1);padding:24px 24px 26px;box-shadow:0 0 0 1px color-mix(in srgb,var(--ink-3) 20%,transparent)}
+.ci-word{display:block;font:italic 400 54px/1 var(--serif);letter-spacing:-.02em;color:var(--ink-1)}
+.ci-rule{display:block;width:28px;border-top:2px solid var(--seal);margin:18px 0 14px}
+.ci-def{display:block;font:400 16px/25px var(--serif);color:var(--ink-2)}
+.ci-pos{font-style:italic;color:var(--ink-3);margin-right:2px}
+
+/* the sign-in leaf — direction-b's leaf, fields and button */
+.lf h2{font:600 26px/1.2 var(--serif);letter-spacing:-.01em;margin:0 0 8px;color:var(--ink-1)}
+.lf h2:focus{outline:none}
+.lf h2:focus-visible{outline:2px solid var(--seal-ring);outline-offset:4px}
+.lede2{font:italic 400 14.5px/24px var(--serif);color:var(--ink-2);margin:0 0 28px;max-width:460px}
+.fgroup{margin:0 0 20px}
+.fgroup label{display:block;font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:0 0 8px}
+.field{display:block;width:100%;background:var(--paper-0);border:0;border-bottom:1px solid var(--ink-3);font:500 15px/28px var(--sans);color:var(--ink-1);padding:0 0 2px;border-radius:0}
+.field::placeholder{color:var(--ink-3);font-weight:400}
+.field:focus{outline:none;border-bottom-color:var(--seal)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;font:600 14px var(--sans);padding:13px 18px;border:1px solid var(--seal);background:var(--seal);color:var(--paper-0);border-radius:2px;cursor:pointer;transition:background 150ms var(--ink),border-color 150ms var(--ink);line-height:20px}
+.btn:hover{background:var(--seal-deep);border-color:var(--seal-deep)}
+.word{background:none;border:0;padding:0;font:500 13.5px var(--sans);color:var(--seal);text-decoration:underline;text-underline-offset:4px;cursor:pointer;transition:color 150ms var(--ink)}
+.word:hover{color:var(--seal-deep)}
+.foot-line{margin-top:26px;padding-top:20px;border-top:1px solid var(--paper-2);font-size:13.5px;color:var(--ink-3);text-align:center}
+
+/* D1 · the front-matter page: the poem, each line on its own rule (27px) */
+.poem .pm-title{font:600 25px/27px var(--serif);margin:0 0 27px;position:relative;top:1px}
+.pm{margin:0 0 27px;font:400 15.5px/27px var(--serif);color:var(--ink-1);position:relative;top:2px}
+.pm .l{display:block}
+.pm .l.in{padding-left:1.4em}
+.pm-last{font-style:italic;color:var(--ink-2)}
+.pm-back{margin:0;line-height:27px;text-align:right;position:relative;top:1px}
+.pm-back .word{font-size:13px}
+
+/* ── the page turn (D1) ── */
+.flipper{position:absolute;top:0;left:0;width:340px;height:100%;transform-origin:100% 50%;transform-style:preserve-3d;z-index:6;pointer-events:none}
+.seg{position:absolute;top:0;height:100%;width:170px;transform-style:preserve-3d}
+.seg.in{left:170px}
+.seg.out{left:0;transform-origin:100% 50%}
+.face{position:absolute;inset:0;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.face.b{transform:rotateY(180deg)}
+.face>.sheet{position:absolute;top:0;height:100%}
+.shd{position:absolute;inset:0;background:var(--turn-shade);opacity:0;pointer-events:none;z-index:3}
+.cast{position:absolute;top:0;bottom:0;width:260px;pointer-events:none;opacity:0;z-index:5}
+.cast.r{left:340px;background:linear-gradient(to right,color-mix(in srgb,var(--turn-shade) 34%,transparent),transparent)}
+.cast.l{left:80px;background:linear-gradient(to left,color-mix(in srgb,var(--turn-shade) 34%,transparent),transparent)}
+
+/* D1 resting states */
+.b1[data-state="signin"] .cover-in,.b1[data-state="signin"] .poem{visibility:hidden}
+.b1[data-state="front"] .ep,.b1[data-state="front"] .signin{visibility:hidden}
+
+/* ── D2 · close the book; the back cover ── */
+.b2 .slot-l{transform-origin:100% 50%;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.b2 .slot-r{transform-origin:0 50%;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.fshd{position:absolute;inset:0;background:var(--turn-shade);opacity:0;pointer-events:none;z-index:3}
+.closed{position:absolute;top:-44px;bottom:-44px;left:260px;width:420px;transform-style:preserve-3d;transform-origin:50% 50% -12px;z-index:6}
+.b2[data-state="open"] .closed{visibility:hidden}
+.b2[data-state="closed"] .slot,.b2[data-state="closed"] .bed,.b2[data-state="closed"] .gutter{visibility:hidden}
+.cloth{background-color:var(--seal);
+  background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 1px,transparent 1px 3px),repeating-linear-gradient(90deg,rgba(0,0,0,.05) 0 1px,transparent 1px 4px)}
+.bc-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;color:var(--paper-0);
+  display:flex;flex-direction:column;align-items:center;text-align:center;padding:30px 44px 28px;
+  box-shadow:0 34px 70px -34px var(--shade),inset 0 0 0 1px rgba(0,0,0,.08)}
+.bc-face::before{content:"";position:absolute;inset:14px 26px 14px 14px;border:1px solid color-mix(in srgb,var(--paper-0) 30%,transparent);pointer-events:none}
+.bc-face::after{content:"";position:absolute;top:0;bottom:0;right:12px;width:2px;background:rgba(0,0,0,.16);box-shadow:1px 0 0 rgba(255,255,255,.10);pointer-events:none}
+.emb{width:52px;height:52px;flex:none;display:block;filter:drop-shadow(0 1px 0 rgba(0,0,0,.28)) drop-shadow(0 -1px 0 rgba(255,255,255,.16))}
+.bc-face h2{font:600 24px/1.2 var(--serif);letter-spacing:-.01em;margin:16px 0 0;color:var(--paper-0)}
+.bc-face h2:focus{outline:none}
+.bc-face h2:focus-visible{outline:2px solid color-mix(in srgb,var(--paper-0) 60%,transparent);outline-offset:4px}
+.bc-rule{display:block;width:28px;border-top:1px solid color-mix(in srgb,var(--paper-0) 60%,transparent);margin:16px auto}
+.blurb{font:italic 400 14.5px/22px var(--serif);margin:0;max-width:320px;color:color-mix(in srgb,var(--paper-0) 92%,transparent)}
+.bc-foot{margin-top:auto;padding-top:14px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.bc-foot .wm{background:none;padding:0;align-items:center}
+.bc-foot .wm-name{color:var(--paper-0);font-size:22px}
+.bc-foot .wm-name .dot{color:var(--paper-0)}
+.bc-foot .wm-rules i{width:66px;border-top-color:color-mix(in srgb,var(--paper-0) 70%,transparent)}
+.btn-open{appearance:none;background:transparent;border:1px solid color-mix(in srgb,var(--paper-0) 65%,transparent);color:var(--paper-0);font:600 13px var(--sans);padding:10px 20px;border-radius:2px;cursor:pointer;transition:background 150ms var(--ink),border-color 150ms var(--ink)}
+.btn-open:hover{background:color-mix(in srgb,var(--paper-0) 12%,transparent);border-color:var(--paper-0)}
+.btn-open:focus-visible{outline:2px solid color-mix(in srgb,var(--paper-0) 70%,transparent);outline-offset:3px}
+.bc-spine{position:absolute;top:0;left:100%;width:24px;height:100%;transform-origin:0 50%;transform:rotateY(90deg);
+  backface-visibility:hidden;-webkit-backface-visibility:hidden;display:flex;align-items:center;justify-content:center;background-color:var(--seal-deep)}
+.bc-spine::before,.bc-spine::after{content:"";position:absolute;left:0;right:0;height:3px;border-top:1px solid color-mix(in srgb,var(--paper-0) 45%,transparent);border-bottom:1px solid color-mix(in srgb,var(--paper-0) 45%,transparent)}
+.bc-spine::before{top:28px}.bc-spine::after{bottom:28px}
+.sp-t{writing-mode:vertical-rl;font:600 9.5px var(--mono);letter-spacing:.34em;text-transform:uppercase;color:var(--paper-0)}
+
+/* ── the phone: the endpaper is a band above the leaf ── */
+.phone{width:390px;background:var(--paper-0);border:1px solid var(--paper-2);box-shadow:0 34px 70px -40px var(--shade);position:relative;overflow:hidden}
+.phone::before{content:"";position:absolute;top:12px;left:50%;transform:translateX(-50%);width:64px;height:5px;border-radius:3px;background:var(--paper-2);z-index:8}
+.band{width:100%;text-align:left;min-height:150px;padding:30px 22px 26px;display:flex;flex-direction:column;justify-content:center}
+.band .wm-name{font-size:20px}
+.band .wm-rules i{width:60px}
+.band .ep-house{font-size:15px;margin-top:10px;box-shadow:0 0 0 4px var(--paper-1)}
+.p-body{display:grid;perspective:1100px;perspective-origin:50% 0}
+.p-body>*{grid-area:1/1;min-width:0}
+.p-leaf{padding:26px 22px 30px;position:relative}
+.p-leaf h2{font-size:22px}
+.p-leaf .lede2{margin-bottom:20px}
+.drop{position:relative;transform-origin:50% 0;backface-visibility:hidden;-webkit-backface-visibility:hidden;z-index:3;
+  box-shadow:0 -1px 0 var(--paper-2)}
+.drop.paper{background:var(--paper-0);padding:22px 22px 26px}
+.drop .ci-word{font-size:38px}
+.drop .ci-rule{margin:12px 0 10px}
+.drop .ci-def{font-size:14.5px;line-height:22px}
+.drop .pm-title{font:600 21px/1.2 var(--serif);margin:24px 0 12px;padding-top:20px;border-top:1px solid var(--paper-2);position:static}
+.drop .pm{font-size:14.5px;line-height:23px;margin:0 0 12px;top:0}
+.drop .pm .l{padding-left:1.1em;text-indent:-1.1em}
+.drop .pm .l.in{padding-left:2.2em}
+.drop .pm-back{text-align:left;margin-top:6px}
+.drop.cloth{padding:34px 26px 30px;color:var(--paper-0);display:flex;flex-direction:column;align-items:center;text-align:center}
+.drop.cloth .emb{width:56px;height:56px}
+.drop.cloth h2{font:600 21px/1.2 var(--serif);margin:16px 0 0;color:var(--paper-0)}
+.drop.cloth h2:focus{outline:none}
+.drop.cloth .bc-foot{margin-top:22px}
+.p-cast{position:absolute;inset:0;background:var(--turn-shade);opacity:0;pointer-events:none;z-index:2}
+.phone[data-state="signin"] .drop,.phone[data-state="open"] .drop{visibility:hidden}
+.phone[data-state="front"] .drop,.phone[data-state="closed"] .drop{visibility:visible}
+
+/* narrow viewport: the desktop books need 1000px; the phones carry the idea */
+@media (max-width:1000px){
+  .wrap{width:100%;padding:20px 16px 72px}
+  .bar{flex-wrap:wrap;row-gap:8px}
+  .bar .meta{order:3;width:100%}
+  .toggles{margin-left:0;width:100%;order:4;flex-wrap:wrap;row-gap:6px}
+  h1{font-size:28px}
+  .lede{font-size:15.5px;margin-bottom:32px}
+  .frame{margin-bottom:52px}
+  .cap{flex-wrap:wrap;row-gap:4px}
+  .cap .w{margin-left:0;width:100%}
+  .desk .stage,.desk .cite-desk{display:none}
+  .desk .narrow-note{display:block;font:italic 400 14px/1.5 var(--serif);color:var(--ink-3);margin:0}
+  .stage.mobile-stage{padding:0;background:none}
+  .phone{width:100%}
+  .cite{max-width:100%}
+}
+</style>
+</head>
+<body class="mudavym" data-ground="paper" data-motion="full">
+<div class="wrap">
+
+<div class="bar">
+  <span class="mark">Mudavym<span class="dot">.</span></span>
+  <span class="meta">Sketch 118 · The front matter · an Easter egg for /login · 2026-09-19</span>
+  <div class="toggles">
+    <div class="ground" role="group" aria-label="Ground">
+      <span class="lbl">Ground</span>
+      <button type="button" data-g="paper" aria-pressed="true">Paper</button><span>/</span><button type="button" data-g="charcoal" aria-pressed="false">Charcoal</button>
+    </div>
+    <div class="ground" role="group" aria-label="Motion">
+      <span class="lbl">Motion</span>
+      <button type="button" data-m="full" aria-pressed="true">Full</button><span>/</span><button type="button" data-m="reduced" aria-pressed="false">Reduced</button>
+    </div>
+  </div>
+</div>
+
+<p class="eyebrow">/login · hinted, not advertised</p>
+<h1>The front matter<span class="dot">.</span></h1>
+<p class="lede">Click the left page. The endpaper is a page you can turn, and behind it the book says what it is for. Two ways to show it, both live.</p>
+
+<!-- shared: the seal (Seal.tsx geometry) and the endpaper's pressed pattern -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="seal" viewBox="0 0 100 100">
+      <path style="fill:var(--wax,currentColor)" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/>
+      <g style="opacity:var(--die-o,.62)">
+        <g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)" style="fill:var(--die,#FAF7F1)">
+          <path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/>
+        </g>
+        <g fill="none" style="stroke:var(--die,#FAF7F1)" stroke-width="4.4" stroke-linecap="square">
+          <path d="M30 71h40"/><path d="M30 77h40" stroke-width="2.6"/>
+        </g>
+      </g>
+    </symbol>
+    <pattern id="ep-tile" width="112" height="112" patternUnits="userSpaceOnUse">
+      <g transform="rotate(-7 30 32)"><use href="#seal" x="10" y="12" width="40" height="40" style="--wax:var(--ep-wax);--die:var(--paper-0)"/></g>
+      <g transform="rotate(5 84 84)"><use href="#seal" x="64" y="64" width="40" height="40" style="--wax:var(--ep-wax);--die:var(--paper-0)"/></g>
+    </pattern>
+  </defs>
+</svg>
+
+<!-- ═════════════ DIRECTION 1 · TURN BACK TO THE FRONT MATTER ═════════════ -->
+<section class="frame desk" id="d1">
+  <div class="cap"><span class="n">01</span><span class="t">Direction 1 · Turn back to the front matter</span><span class="w">click the left page · Esc or the link turns back</span></div>
+  <p class="narrow-note">The two-page book needs a wide screen; on a phone it is the band below (02).</p>
+  <div class="stage">
+    <div class="book b1" data-state="signin">
+      <div class="bed"></div>
+      <div class="slot slot-l paper-ep">
+        <svg class="tile" aria-hidden="true" focusable="false"><rect width="100%" height="100%" fill="url(#ep-tile)"/></svg>
+        <button type="button" class="lyr ep" aria-label="Turn back to the front of the book">
+          <span class="ep-top"><span class="kicker">The house</span><span class="wm"><span class="wm-name">Mudavym<span class="dot">.</span></span><span class="wm-rules"><i></i><i></i></span></span></span>
+          <span class="ep-body"><span class="ep-house">Kept, page by page.</span><span class="ep-tag">Every house's book looks the same on the inside. This is where yours opens.</span></span>
+          <span class="dogear" aria-hidden="true"><span class="cut"></span><span class="fw"><span class="flap"></span></span></span>
+        </button>
+        <section class="lyr cover-in" aria-label="Inside the front cover">
+          <span class="ci-card">
+            <span class="ci-word" lang="tr">müdavim</span>
+            <span class="ci-rule"></span>
+            <span class="ci-def"><span class="ci-pos">(n.)</span> the regular. The one the house knows by name, and keeps a place for.</span>
+          </span>
+        </section>
+      </div>
+      <div class="slot slot-r paper-leaf">
+        <form class="lyr lf signin" aria-labelledby="d1-signin-t" onsubmit="return false">
+          <span class="folio">Sign in</span>
+          <h2 id="d1-signin-t">Welcome back.</h2>
+          <p class="lede2">Your house keeps its book here.</p>
+          <div class="fgroup"><label for="d1-email">Email address</label><input class="field" id="d1-email" type="email" autocomplete="email" placeholder="you@yourhouse.com"></div>
+          <button class="btn" type="submit">Continue</button>
+          <p class="foot-line">Don't have an account? <a class="word" href="#" onclick="return false">Create one now</a></p>
+        </form>
+        <section class="lyr lf poem" aria-labelledby="d1-poem-t">
+          <span class="folio">Front matter</span>
+          <h2 class="pm-title" id="d1-poem-t" tabindex="-1">Every house keeps a book.</h2>
+          <p class="pm">
+            <span class="l">Not the one on the shelf —</span>
+            <span class="l">the one kept in the walk-in at six,</span>
+            <span class="l">on the back of a delivery slip,</span>
+            <span class="l">in your head at closing.</span>
+            <span class="l">What came in the door. What is still in the cellar.</span>
+          </p>
+          <p class="pm">
+            <span class="l">Mudavym keeps that book.</span>
+            <span class="l">It reads the invoice, keeps the count,</span>
+            <span class="l">notices the price that crept, the bottle running low.</span>
+            <span class="l">It drafts the reply, and sends nothing</span>
+            <span class="l in">until a hand says yes —</span>
+            <span class="l">and every yes is sealed: who, when, how much.</span>
+          </p>
+          <p class="pm pm-last"><span class="l">You keep the room. We keep the book.</span></p>
+          <p class="pm-back"><button class="word" type="button" data-act="back">Turn back to sign in →</button></p>
+        </section>
+      </div>
+      <div class="gutter"></div>
+      <div class="cast l"></div><div class="cast r"></div>
+    </div>
+  </div>
+  <p class="cite cite-desk">The endpaper lifts at its outer edge, curls, and lands on the right. <b>Width:</b> the leaf's back carries the first 340px of the 600px poem page; the right page crossfades to that same poem while the leaf is edge-on, so the leaf lands on a copy of itself and fades out. Whatever was typed in the email stays.</p>
+</section>
+
+<section class="frame" id="d1p">
+  <div class="cap"><span class="n">02</span><span class="t">Direction 1 · 390 · the band turns the page down</span><span class="w">tap the band</span></div>
+  <div class="stage mobile-stage">
+    <div class="phone" data-kind="front" data-state="signin">
+      <button type="button" class="band paper-ep" aria-label="Turn back to the front of the book">
+        <svg class="tile" aria-hidden="true" focusable="false"><rect width="100%" height="100%" fill="url(#ep-tile)"/></svg>
+        <span class="lyr" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">
+          <span class="kicker">The house</span>
+          <span class="wm"><span class="wm-name">Mudavym<span class="dot">.</span></span><span class="wm-rules"><i></i><i></i></span></span>
+          <span class="ep-house">Kept, page by page.</span>
+        </span>
+        <span class="dogear" aria-hidden="true"><span class="cut"></span><span class="fw"><span class="flap"></span></span></span>
+      </button>
+      <div class="p-body">
+        <form class="p-leaf lf" aria-labelledby="d1p-signin-t" onsubmit="return false">
+          <h2 id="d1p-signin-t">Welcome back.</h2>
+          <p class="lede2">Your house keeps its book here.</p>
+          <div class="fgroup"><label for="d1p-email">Email address</label><input class="field" id="d1p-email" type="email" autocomplete="email" placeholder="you@yourhouse.com"></div>
+          <button class="btn" type="submit">Continue</button>
+          <p class="foot-line">Don't have an account? <a class="word" href="#" onclick="return false">Create one now</a></p>
+          <div class="p-cast"></div>
+        </form>
+        <section class="drop paper lf" aria-labelledby="d1p-poem-t">
+          <span class="ci-word" lang="tr">müdavim</span>
+          <span class="ci-rule"></span>
+          <span class="ci-def"><span class="ci-pos">(n.)</span> the regular. The one the house knows by name, and keeps a place for.</span>
+          <h2 class="pm-title" id="d1p-poem-t" tabindex="-1">Every house keeps a book.</h2>
+          <p class="pm">
+            <span class="l">Not the one on the shelf —</span>
+            <span class="l">the one kept in the walk-in at six,</span>
+            <span class="l">on the back of a delivery slip,</span>
+            <span class="l">in your head at closing.</span>
+            <span class="l">What came in the door. What is still in the cellar.</span>
+          </p>
+          <p class="pm">
+            <span class="l">Mudavym keeps that book.</span>
+            <span class="l">It reads the invoice, keeps the count,</span>
+            <span class="l">notices the price that crept, the bottle running low.</span>
+            <span class="l">It drafts the reply, and sends nothing</span>
+            <span class="l in">until a hand says yes —</span>
+            <span class="l">and every yes is sealed: who, when, how much.</span>
+          </p>
+          <p class="pm pm-last"><span class="l">You keep the room. We keep the book.</span></p>
+          <p class="pm-back"><button class="word" type="button" data-act="back">Turn back to sign in →</button></p>
+          <div class="shd"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <p class="cite">At 390 the endpaper is the band. Tapping it turns one page down from the band's edge over the form; the form is still underneath, untouched.</p>
+</section>
+
+<!-- ═════════════ DIRECTION 2 · CLOSE THE BOOK; READ THE BACK COVER ═════════════ -->
+<section class="frame desk" id="d2">
+  <div class="cap"><span class="n">03</span><span class="t">Direction 2 · Close the book; read the back cover</span><span class="w">click the left page · Esc or "Open the book" reopens</span></div>
+  <p class="narrow-note">The two-page book needs a wide screen; on a phone it is the band below (04).</p>
+  <div class="stage">
+    <div class="book b2" data-state="open">
+      <div class="bed"></div>
+      <div class="slot slot-l paper-ep">
+        <svg class="tile" aria-hidden="true" focusable="false"><rect width="100%" height="100%" fill="url(#ep-tile)"/></svg>
+        <button type="button" class="lyr ep" aria-label="Close the book">
+          <span class="ep-top"><span class="kicker">The house</span><span class="wm"><span class="wm-name">Mudavym<span class="dot">.</span></span><span class="wm-rules"><i></i><i></i></span></span></span>
+          <span class="ep-body"><span class="ep-house">Kept, page by page.</span><span class="ep-tag">Every house's book looks the same on the inside. This is where yours opens.</span></span>
+          <span class="dogear" aria-hidden="true"><span class="cut"></span><span class="fw"><span class="flap"></span></span></span>
+        </button>
+        <div class="fshd"></div>
+      </div>
+      <div class="slot slot-r paper-leaf">
+        <form class="lyr lf signin" aria-labelledby="d2-signin-t" onsubmit="return false">
+          <span class="folio">Sign in</span>
+          <h2 id="d2-signin-t">Welcome back.</h2>
+          <p class="lede2">Your house keeps its book here.</p>
+          <div class="fgroup"><label for="d2-email">Email address</label><input class="field" id="d2-email" type="email" autocomplete="email" placeholder="you@yourhouse.com"></div>
+          <button class="btn" type="submit">Continue</button>
+          <p class="foot-line">Don't have an account? <a class="word" href="#" onclick="return false">Create one now</a></p>
+        </form>
+        <div class="fshd"></div>
+      </div>
+      <div class="gutter"></div>
+      <div class="closed">
+        <section class="bc-face cloth" aria-labelledby="d2-bc-t">
+          <svg class="emb" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><use href="#seal" style="--wax:var(--paper-0);--die:var(--seal);--die-o:1"/></svg>
+          <h2 id="d2-bc-t" tabindex="-1">A book for the house.</h2>
+          <span class="bc-rule"></span>
+          <p class="blurb">For the owner counting bottles after close, the manager signing for the seven o'clock delivery, the sommelier who knows the list by heart. Mudavym reads what arrives, keeps count of what's on hand, and speaks up only when it matters: a price that crept, a bottle running low. It drafts; you decide. Kept, page by page.</p>
+          <span class="bc-foot">
+            <span class="wm" role="img" aria-label="Mudavym"><span class="wm-name" aria-hidden="true">Mudavym<span class="dot">.</span></span><span class="wm-rules" aria-hidden="true"><i></i><i></i></span></span>
+            <button type="button" class="btn-open" data-act="back">Open the book</button>
+          </span>
+          <div class="shd"></div>
+        </section>
+        <div class="bc-spine cloth" aria-hidden="true"><span class="sp-t">Mudavym</span><div class="shd"></div></div>
+      </div>
+    </div>
+  </div>
+  <p class="cite cite-desk">Both pages fold away toward the spine until they are edge-on. The closed book then turns to face you: spine first, then the back cover, with the spine on its right as on a real back cover. The cover is its own 380px board, so no width has to match. "Open the book" plays it backwards.</p>
+</section>
+
+<section class="frame" id="d2p">
+  <div class="cap"><span class="n">04</span><span class="t">Direction 2 · 390 · the band turns the back cover down</span><span class="w">tap the band</span></div>
+  <div class="stage mobile-stage">
+    <div class="phone" data-kind="cover" data-state="open">
+      <button type="button" class="band paper-ep" aria-label="Close the book">
+        <svg class="tile" aria-hidden="true" focusable="false"><rect width="100%" height="100%" fill="url(#ep-tile)"/></svg>
+        <span class="lyr" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">
+          <span class="kicker">The house</span>
+          <span class="wm"><span class="wm-name">Mudavym<span class="dot">.</span></span><span class="wm-rules"><i></i><i></i></span></span>
+          <span class="ep-house">Kept, page by page.</span>
+        </span>
+        <span class="dogear" aria-hidden="true"><span class="cut"></span><span class="fw"><span class="flap"></span></span></span>
+      </button>
+      <div class="p-body">
+        <form class="p-leaf lf" aria-labelledby="d2p-signin-t" onsubmit="return false">
+          <h2 id="d2p-signin-t">Welcome back.</h2>
+          <p class="lede2">Your house keeps its book here.</p>
+          <div class="fgroup"><label for="d2p-email">Email address</label><input class="field" id="d2p-email" type="email" autocomplete="email" placeholder="you@yourhouse.com"></div>
+          <button class="btn" type="submit">Continue</button>
+          <p class="foot-line">Don't have an account? <a class="word" href="#" onclick="return false">Create one now</a></p>
+          <div class="p-cast"></div>
+        </form>
+        <section class="drop cloth" aria-labelledby="d2p-bc-t">
+          <svg class="emb" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><use href="#seal" style="--wax:var(--paper-0);--die:var(--seal);--die-o:1"/></svg>
+          <h2 id="d2p-bc-t" tabindex="-1">A book for the house.</h2>
+          <span class="bc-rule"></span>
+          <p class="blurb">For the owner counting bottles after close, the manager signing for the seven o'clock delivery, the sommelier who knows the list by heart. Mudavym reads what arrives, keeps count of what's on hand, and speaks up only when it matters: a price that crept, a bottle running low. It drafts; you decide. Kept, page by page.</p>
+          <span class="bc-foot">
+            <span class="wm" role="img" aria-label="Mudavym"><span class="wm-name" aria-hidden="true">Mudavym<span class="dot">.</span></span><span class="wm-rules" aria-hidden="true"><i></i><i></i></span></span>
+            <button type="button" class="btn-open" data-act="back">Open the book</button>
+          </span>
+          <div class="shd"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <p class="cite">Same band, same tap: the back cover turns down over the form as one cloth page.</p>
+</section>
+
+</div>
+<script>
+(function(){
+  var body=document.body;
+  var TURN='cubic-bezier(.32,.72,0,1)', SETTLE='cubic-bezier(.16,1,.3,1)', INK='ease-out';
+  var FLIP=760;
+  var lastOpen=null;
+
+  /* ── top-bar toggles ── */
+  var mq=window.matchMedia('(prefers-reduced-motion: reduce)');
+  function setMotion(m){body.dataset.motion=m;document.querySelectorAll('[data-m]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.m===m))});}
+  setMotion(mq.matches?'reduced':'full');
+  if(mq.addEventListener)mq.addEventListener('change',function(e){setMotion(e.matches?'reduced':'full')});
+  function reduced(){return body.dataset.motion==='reduced'}
+  document.querySelectorAll('[data-g]').forEach(function(b){b.addEventListener('click',function(){
+    body.dataset.ground=b.dataset.g;
+    document.querySelectorAll('[data-g]').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});
+  })});
+  document.querySelectorAll('[data-m]').forEach(function(b){b.addEventListener('click',function(){setMotion(b.dataset.m)})});
+
+  /* ── helpers ── */
+  function done(a){return Promise.all(a.map(function(x){return x.finished.catch(function(){})}))}
+  function show(els,op){els.forEach(function(e){e.style.visibility='visible';if(op!=null)e.style.opacity=op})}
+  function clear(els){els.forEach(function(e){e.style.visibility='';e.style.opacity='';e.style.transform=''})}
+  function cancel(a){a.forEach(function(x){x.cancel()})}
+  function inert(els,on){els.forEach(function(e){e.inert=on;if(on)e.setAttribute('aria-hidden','true');else e.removeAttribute('aria-hidden')})}
+  function focus(el){if(el)el.focus({preventScroll:true})}
+  /* reduced motion: every turn is a 150ms crossfade */
+  function crossfade(outs,ins){
+    show(outs,1);show(ins,0);
+    var o={duration:150,easing:INK,fill:'forwards'};
+    return outs.map(function(e){return e.animate([{opacity:1},{opacity:0}],o)})
+      .concat(ins.map(function(e){return e.animate([{opacity:0},{opacity:1}],o)}));
+  }
+  var X_OUT=[{opacity:1},{opacity:1,offset:.42},{opacity:0,offset:.58},{opacity:0}];
+  var X_IN =[{opacity:0},{opacity:0,offset:.42},{opacity:1,offset:.58},{opacity:1}];
+  var LIFT =[{opacity:0},{opacity:.9,offset:.1},{opacity:0,offset:.5},{opacity:0}];   /* shadow under a page just lifted */
+  var LAND =[{opacity:0},{opacity:0,offset:.5},{opacity:.9,offset:.84},{opacity:0}];  /* shadow of a page coming down */
+
+  /* ── Direction 1: the endpaper is a leaf that turns ── */
+  var TILE='<svg class="tile" aria-hidden="true" focusable="false"><rect width="100%" height="100%" fill="url(#ep-tile)"/></svg>';
+  function sheet(src,kind,width,left){
+    var s=document.createElement('div');
+    s.className='sheet '+(kind==='ep'?'paper-ep':'paper-leaf');
+    s.style.width=width+'px';s.style.left=left+'px';
+    if(kind==='ep')s.innerHTML=TILE;
+    var c=src.cloneNode(true);
+    c.removeAttribute('id');c.querySelectorAll('[id]').forEach(function(n){n.removeAttribute('id')});
+    c.style.visibility='visible';c.style.opacity='1';c.removeAttribute('aria-hidden');
+    s.appendChild(c);return s;
+  }
+  function face(side,sh){var f=document.createElement('div');f.className='face '+side;f.appendChild(sh);var d=document.createElement('div');d.className='shd';f.appendChild(d);return f}
+  /* The leaf is two hinged strips so it can curl: the outer strip leads on the lift and trails on the landing. */
+  function buildFlipper(book,ep,poem,deg){
+    var fl=document.createElement('div');fl.className='flipper';fl.setAttribute('aria-hidden','true');fl.inert=true;
+    var sIn=document.createElement('div');sIn.className='seg in';
+    var sOut=document.createElement('div');sOut.className='seg out';
+    /* front = the endpaper; back = the first 340px of the poem page (lands on its own copy) */
+    sIn.append(face('f',sheet(ep,'ep',340,-170)),face('b',sheet(poem,'leaf',600,0)));
+    sOut.append(face('f',sheet(ep,'ep',340,0)),face('b',sheet(poem,'leaf',600,-170)));
+    fl.append(sIn,sOut);fl.style.transform='rotateY('+deg+'deg)';
+    book.appendChild(fl);
+    return {fl:fl,sOut:sOut,shF:[].slice.call(fl.querySelectorAll('.face.f>.shd')),shB:[].slice.call(fl.querySelectorAll('.face.b>.shd'))};
+  }
+  function flipAnims(k,dir){
+    var o={duration:FLIP,easing:TURN,fill:'forwards'};
+    var a=[k.fl.animate(dir>0?[{transform:'rotateY(0deg)'},{transform:'rotateY(180deg)'}]:[{transform:'rotateY(180deg)'},{transform:'rotateY(0deg)'}],o)];
+    var bend=dir>0?[0,26,9,-12,0]:[0,-26,-9,12,0];
+    a.push(k.sOut.animate(bend.map(function(d,i){return {transform:'rotateY('+d+'deg)',offset:i/4}}),o));
+    var dark=[{opacity:0},{opacity:.32,offset:.5},{opacity:.32}], light=[{opacity:.32},{opacity:.32,offset:.5},{opacity:0}];
+    k.shF.forEach(function(s){a.push(s.animate(dir>0?dark:light,o))});
+    k.shB.forEach(function(s){a.push(s.animate(dir>0?light:dark,o))});
+    return a;
+  }
+  function parts1(b){return {ep:b.querySelector('.ep'),cin:b.querySelector('.cover-in'),sig:b.querySelector('.signin'),poem:b.querySelector('.poem'),cl:b.querySelector('.cast.l'),cr:b.querySelector('.cast.r')}}
+  async function d1Front(b){
+    if(b._busy||b.dataset.state==='front')return;b._busy=true;lastOpen=b;
+    var p=parts1(b),a,k=null;
+    if(reduced()){a=crossfade([p.ep,p.sig],[p.cin,p.poem]);await done(a)}
+    else{
+      k=buildFlipper(b,p.ep,p.poem,0);
+      p.ep.style.visibility='hidden';show([p.cin],1);show([p.sig],1);show([p.poem],0);
+      var o={duration:FLIP,easing:TURN,fill:'forwards'};
+      a=flipAnims(k,1).concat([p.sig.animate(X_OUT,o),p.poem.animate(X_IN,o),p.cl.animate(LIFT,o),p.cr.animate(LAND,o)]);
+      await done(a);
+    }
+    b.dataset.state='front';clear([p.ep,p.cin,p.sig,p.poem]);cancel(a);if(k)k.fl.remove();
+    inert([p.ep,p.sig],true);inert([p.cin,p.poem],false);
+    focus(p.poem.querySelector('h2'));b._busy=false;
+  }
+  async function d1Back(b){
+    if(b._busy||b.dataset.state!=='front')return;b._busy=true;
+    var p=parts1(b),a,k=null;
+    inert([p.ep,p.sig],false);
+    if(reduced()){a=crossfade([p.cin,p.poem],[p.ep,p.sig]);await done(a)}
+    else{
+      k=buildFlipper(b,p.ep,p.poem,180);
+      p.ep.style.visibility='hidden';show([p.cin],1);show([p.poem],1);show([p.sig],0);
+      var o={duration:FLIP,easing:TURN,fill:'forwards'};
+      a=flipAnims(k,-1).concat([p.poem.animate(X_OUT,o),p.sig.animate(X_IN,o),p.cr.animate(LIFT,o),p.cl.animate(LAND,o)]);
+      await done(a);
+    }
+    b.dataset.state='signin';clear([p.ep,p.cin,p.sig,p.poem]);cancel(a);if(k)k.fl.remove();
+    inert([p.cin,p.poem],true);
+    focus(p.ep);b._busy=false;
+  }
+
+  /* ── Direction 2: close the book, then it turns to show its back cover ── */
+  var SPINE_ON='translateX(-130px) translateZ(-190px) rotateY(-90deg)'; /* spine faces you, on the gutter line */
+  var FACE_ON='translateX(0px) translateZ(0px) rotateY(0deg)';
+  function parts2(b){var L=b.querySelector('.slot-l'),R=b.querySelector('.slot-r'),box=b.querySelector('.closed');
+    return {L:L,R:R,bed:b.querySelector('.bed'),gut:b.querySelector('.gutter'),box:box,shL:L.querySelector('.fshd'),shR:R.querySelector('.fshd'),
+      shFace:box.querySelector('.bc-face>.shd'),shSp:box.querySelector('.bc-spine>.shd')}}
+  async function d2Close(b){
+    if(b._busy||b.dataset.state==='closed')return;b._busy=true;lastOpen=b;
+    var p=parts2(b),a;
+    if(reduced()){a=crossfade([p.L,p.R,p.bed,p.gut],[p.box]);await done(a)}
+    else{
+      var o1={duration:520,easing:TURN,fill:'forwards'}, o2={duration:680,delay:400,easing:SETTLE,fill:'both'};
+      p.box.style.visibility='hidden';
+      a=[p.L.animate([{transform:'rotateY(0deg)'},{transform:'rotateY(-90deg)'}],o1),
+         p.R.animate([{transform:'rotateY(0deg)'},{transform:'rotateY(90deg)'}],o1),
+         p.shL.animate([{opacity:0},{opacity:.5}],o1),p.shR.animate([{opacity:0},{opacity:.5}],o1),
+         p.bed.animate([{opacity:1},{opacity:0}],{duration:300,easing:INK,fill:'forwards'}),
+         p.gut.animate([{opacity:1},{opacity:0}],{duration:200,easing:INK,fill:'forwards'}),
+         p.box.animate([{visibility:'visible'},{visibility:'visible'}],{duration:680,delay:400,fill:'forwards'}),
+         p.box.animate([{transform:SPINE_ON},{transform:FACE_ON}],o2),
+         p.shFace.animate([{opacity:.55},{opacity:0}],o2),p.shSp.animate([{opacity:0},{opacity:.5}],o2)];
+      await done(a);
+    }
+    b.dataset.state='closed';clear([p.L,p.R,p.bed,p.gut,p.box]);cancel(a);
+    inert([p.L,p.R],true);inert([p.box],false);
+    focus(p.box.querySelector('h2'));b._busy=false;
+  }
+  async function d2Open(b){
+    if(b._busy||b.dataset.state!=='closed')return;b._busy=true;
+    var p=parts2(b),a;
+    inert([p.L,p.R],false);
+    if(reduced()){a=crossfade([p.box],[p.L,p.R,p.bed,p.gut]);await done(a)}
+    else{
+      var o1={duration:480,easing:TURN,fill:'forwards'}, o2={duration:600,delay:420,easing:SETTLE,fill:'both'};
+      p.box.style.visibility='hidden';show([p.L,p.R,p.bed,p.gut]);
+      a=[p.box.animate([{visibility:'visible'},{visibility:'visible'}],{duration:470}),
+         p.box.animate([{transform:FACE_ON},{transform:SPINE_ON}],o1),
+         p.shFace.animate([{opacity:0},{opacity:.55}],o1),p.shSp.animate([{opacity:.5},{opacity:0}],o1),
+         p.L.animate([{transform:'rotateY(-90deg)'},{transform:'rotateY(0deg)'}],o2),
+         p.R.animate([{transform:'rotateY(90deg)'},{transform:'rotateY(0deg)'}],o2),
+         p.shL.animate([{opacity:.5},{opacity:0}],o2),p.shR.animate([{opacity:.5},{opacity:0}],o2),
+         p.bed.animate([{opacity:0},{opacity:1}],{duration:320,delay:640,easing:INK,fill:'both'}),
+         p.gut.animate([{opacity:0},{opacity:1}],{duration:260,delay:760,easing:INK,fill:'both'})];
+      await done(a);
+    }
+    b.dataset.state='open';clear([p.L,p.R,p.bed,p.gut,p.box]);cancel(a);
+    inert([p.box],true);
+    focus(b.querySelector('.ep'));b._busy=false;
+  }
+
+  /* ── the phones: one page turns down from the band over the form ── */
+  function openName(ph){return ph.dataset.kind==='front'?'front':'closed'}
+  function restName(ph){return ph.dataset.kind==='front'?'signin':'open'}
+  async function phoneTurn(ph,open){
+    var isOpen=ph.dataset.state===openName(ph);
+    if(ph._busy||isOpen===open)return;ph._busy=true;if(open)lastOpen=ph;
+    var drop=ph.querySelector('.drop'),leaf=ph.querySelector('.p-leaf'),band=ph.querySelector('.band'),
+        shd=drop.querySelector(':scope>.shd'),pc=leaf.querySelector('.p-cast'),a;
+    inert([drop],false);
+    if(reduced()){a=open?crossfade([],[drop]):crossfade([drop],[]);await done(a)}
+    else{
+      show([drop]);
+      var o={duration:open?620:540,easing:TURN,fill:'forwards'};
+      a=open?[drop.animate([{transform:'rotateX(-86deg)'},{transform:'rotateX(0deg)'}],o),
+              shd.animate([{opacity:.55},{opacity:0}],o),
+              pc.animate([{opacity:0},{opacity:.16,offset:.55},{opacity:0}],o)]
+            :[drop.animate([{transform:'rotateX(0deg)'},{transform:'rotateX(-86deg)'}],o),
+              shd.animate([{opacity:0},{opacity:.55}],o),
+              pc.animate([{opacity:0},{opacity:.16,offset:.45},{opacity:0}],o)];
+      await done(a);
+    }
+    ph.dataset.state=open?openName(ph):restName(ph);clear([drop]);cancel(a);
+    inert([drop],!open);inert([leaf],open);
+    var front=ph.dataset.kind==='front';
+    band.setAttribute('aria-label',open?(front?'Turn back to sign in':'Open the book'):(front?'Turn back to the front of the book':'Close the book'));
+    focus(open?drop.querySelector('h2'):band);ph._busy=false;
+  }
+
+  /* ── wiring ── */
+  document.querySelectorAll('.b1').forEach(function(b){
+    inert([b.querySelector('.cover-in'),b.querySelector('.poem')],true);
+    b.querySelector('.ep').addEventListener('click',function(){d1Front(b)});
+    b.querySelector('.poem [data-act="back"]').addEventListener('click',function(){d1Back(b)});
+  });
+  document.querySelectorAll('.b2').forEach(function(b){
+    inert([b.querySelector('.closed')],true);
+    b.querySelector('.ep').addEventListener('click',function(){d2Close(b)});
+    b.querySelector('.btn-open').addEventListener('click',function(){d2Open(b)});
+  });
+  document.querySelectorAll('.phone').forEach(function(ph){
+    inert([ph.querySelector('.drop')],true);
+    ph.querySelector('.band').addEventListener('click',function(){phoneTurn(ph,ph.dataset.state!==openName(ph))});
+    ph.querySelector('.drop [data-act="back"]').addEventListener('click',function(){phoneTurn(ph,false)});
+  });
+  function reverse(t){
+    if(t.classList.contains('b1'))d1Back(t);
+    else if(t.classList.contains('b2'))d2Open(t);
+    else phoneTurn(t,false);
+  }
+  document.addEventListener('keydown',function(e){
+    if(e.key!=='Escape')return;
+    var open=[].slice.call(document.querySelectorAll('.b1[data-state="front"],.b2[data-state="closed"],.phone[data-state="front"],.phone[data-state="closed"]'));
+    if(!open.length)return;
+    var act=document.activeElement;
+    var t=open.filter(function(c){return c.contains(act)})[0]||(open.indexOf(lastOpen)>-1?lastOpen:open[0]);
+    e.preventDefault();reverse(t);
+  });
+})();
+</script>
+</body>
+</html>
