@@ -6,8 +6,13 @@
  * 1. `localStorage["mudavym.design.<page>"]` — per-browser dev override so a
  *    designer can flip one page on this machine only. `"1" | "true" | "on"`
  *    forces the new design, `"0" | "false" | "off"` forces legacy. Anything
- *    else (or absence) falls through.
- * 2. The per-restaurant feature flag `mudavym_design_<page>` via the existing
+ *    else (or absence) falls through. Wins even over `ALWAYS_ON_PAGES` below
+ *    — a browser override always has the final word.
+ * 2. `ALWAYS_ON_PAGES` (added with `settings`, 2026-09-19 — this list
+ *    predates it and did not name this fork) — a page this set names resolves
+ *    to the new design for every house, in code, with no flag read at all.
+ *    See `ALWAYS_ON_PAGES`'s own doc below for why.
+ * 3. The per-restaurant feature flag `mudavym_design_<page>` via the existing
  *    flag API (`settingsApi.checkFeatureFlag` → POST
  *    `/settings/feature-flags/check`). The gateway's registry
  *    (apps/api-gateway/src/settings/feature-flag-registry.ts) returns
@@ -16,7 +21,7 @@
  *    adding it to ACTIVE_FEATURE_FLAGS with a `readBy` pointing at their
  *    PageGate call site. Registering the switch in Settings is the page
  *    team's job, not this hook's.
- * 3. Default: `false` — legacy renders while the check is in flight or when
+ * 4. Default: `false` — legacy renders while the check is in flight or when
  *    no restaurant is active. The gate must never flash the new design at
  *    someone who is not meant to see it.
  */
@@ -116,11 +121,37 @@ export function clearMudavymDesignCache(): void {
 }
 
 /**
+ * Pages that resolve to the Mudavym redesign for EVERY house, in code — no
+ * `mudavym_design_<page>` flag read, no per-restaurant database row, no
+ * migration (ADR 0149 row 36: "Mudavym resolves for every house in code ...
+ * no database write"; row 36 named sixteen pages outright and held
+ * `settings, cellar, recommendations and the receiving desk` for their sketch
+ * review — settings cleared that review 2026-09-17 [ADR 0160, "109 — settings
+ * · A, the interview, with two grafts"] and joins the set here).
+ *
+ * `legacy` stays mounted in `PageGate`'s tree, byte for byte, until the
+ * founder approves the deletion manifest — this only changes which branch of
+ * `PageGate` renders. The `mudavym_design_<page>` registry entry for a page
+ * in this set is no longer read (see the settings Features register, which
+ * stops rendering it as a live switch for the same reason): a control this
+ * hook ignores must not still look like it governs something (ADR 0020).
+ *
+ * This set is expected to grow from more than one lane at once as each
+ * page's sketch review lands — a merge conflict here is two lanes each
+ * adding their own page, not two lanes disagreeing; resolve by keeping both
+ * entries.
+ */
+export const ALWAYS_ON_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
+  'settings',
+]);
+
+/**
  * `true` → render the Mudavym design for this page; `false` → legacy.
  * See module doc for precedence. Usually consumed via `<PageGate/>`.
  */
 export function useMudavymDesign(page: MudavymPage): boolean {
   const override = typeof window === 'undefined' ? null : readOverride(page);
+  const alwaysOn = ALWAYS_ON_PAGES.has(page);
   // Reactive restaurant identity: a switch happens while gated pages stay
   // mounted, and reading localStorage inside the effect alone would leave the
   // previous restaurant's flag verdict rendering for the new one (Opus
@@ -132,6 +163,7 @@ export function useMudavymDesign(page: MudavymPage): boolean {
 
   useEffect(() => {
     if (override !== null) return; // overridden — don't spend the request
+    if (alwaysOn) return; // resolved in code — nothing to fetch
     let cancelled = false;
     setRemote(false); // never carry one restaurant's verdict into another's
     let restaurantId: string | null = activeRestaurantId ?? null;
@@ -151,7 +183,9 @@ export function useMudavymDesign(page: MudavymPage): boolean {
     return () => {
       cancelled = true;
     };
-  }, [page, override, activeRestaurantId]);
+  }, [page, override, alwaysOn, activeRestaurantId]);
 
-  return override !== null ? override : remote;
+  if (override !== null) return override;
+  if (alwaysOn) return true;
+  return remote;
 }

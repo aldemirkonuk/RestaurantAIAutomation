@@ -165,7 +165,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
   },
   {
     key: "mudavym_design_settings",
-    // OFF by default: the Mudavym redesign of `/settings` (ADR 0044 p4 wave, KEEP Editorial + "there should be more").
+    // SUPERSEDED 2026-09-18: `/settings` cleared its founder sketch review (ADR 0160)
+    // and joined `ALWAYS_ON_PAGES` (useMudavymDesign.ts), which resolves it for every
+    // house in code and never reads this column (ADR 0149 row 36). `defaultValue`
+    // stays `false` and the row is kept only for backward-compatible reads of
+    // GET/PUT /settings/feature-flags — the Settings page itself no longer renders it
+    // as a live switch (FeaturesSection.tsx), because a control this hook ignores must
+    // not still look like it governs something (ADR 0020).
     defaultValue: false,
     readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:105",
   },

@@ -282,6 +282,21 @@ export class RecommendationActionsService {
 
   // ---- Digest preferences (NEW-303) ---------------------------------------
 
+  /**
+   * `digest_hour ?? 7` and `digest_min_urgency ?? "this_week"` are the
+   * COLUMN'S OWN defaults, applied here so a never-written house still gets a
+   * usable value if something schedules off this read. They are not an
+   * answer: a house that has never opened `recommendation_digest_prefs` looks,
+   * from this shape alone, identical to one that explicitly chose 07:00 and
+   * "this week or sooner" — the exact collapse ADR 0020 forbids, one column
+   * default at a time.
+   *
+   * `stated` (added 2026-09-17, settings page sketch 109A honesty pass) is
+   * additive and does not change any existing field: `true` when a row exists
+   * for this restaurant, `false` when `data` is null and every value above is
+   * the service's own default rather than something a person chose. A caller
+   * that ignores the field sees the same response it always has.
+   */
   async getDigestPref(restaurantId: string) {
     const { data } = await this.dbService
       .getClient()
@@ -290,6 +305,7 @@ export class RecommendationActionsService {
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     return {
+      stated: !!data,
       digestEnabled: !!data?.digest_enabled,
       digestHour: data?.digest_hour ?? 7,
       digestMinUrgency: data?.digest_min_urgency ?? "this_week",

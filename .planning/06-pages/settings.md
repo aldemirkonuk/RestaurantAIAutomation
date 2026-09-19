@@ -1937,3 +1937,525 @@ its MINOR-UNIT count, so `formatMoney` prints 1200 JPY as `1,200` and a 1.500 KW
 with three decimals instead of forcing two everywhere. `PUT /settings/currency` still
 validates `^[A-Z]{3}$` (that is `restaurants_currency_check` verbatim) and now checks
 MEMBERSHIP beside it, so `ZZZ` is refused with a sentence naming the code.
+
+### 13.37 — Sketch 109A: the interview (IN PROGRESS, 2026-09-18)
+
+**The founder's locked pick (ADR 0160, 2026-09-17):** *"A with two grafts (Recommended)"*
+— direction A, the interview organised by certainty, with C's *read by* line under every
+answer and B's day sheet as the operating-hours editor.
+
+* **The page is now one continuous scroll, not sixteen tab panels.** `SettingsNext.tsx`
+  renders every register together under seven fixed interview headings (I The house · II
+  What it carries · III How it buys · IV What it may do on its own · V Who is here · VI
+  Yours · VII The record — `INTERVIEW_GROUPS`, `st-format.ts`), replacing the old
+  five-group tab bar that opened one register at a time. `useSettingsNextData` is eager
+  for every key now (it was lazy-by-register); the file's own header states the real cost
+  this trades for it — roughly fourteen requests on open instead of one. A `?tab=`
+  bookmark still lands true: it scrolls to that register's own `id="st-section-<id>"` once
+  on first paint rather than "opening" it, and the collapse redirect (`services`/`pos`/
+  `email`/`calendar` → `/connections#…` when that route is live) is unchanged.
+* **Graft B — the operating-hours day sheet — gets its first Mudavym-era home**
+  (`HoursSection.tsx`, new, mounted in group I). It ports the legacy
+  `OperatingHoursSection.tsx`'s real behaviour against the same
+  `GET/PUT /restaurants/:id/operating-hours` (ADR 0093 D1): `null` is UNKNOWN, never
+  coerced to seven closed days, and the sheet is one `Sheet` overlay (ADR 0112) for the
+  whole week rather than seven. The till-based hours PROPOSAL the sketch drew has no
+  endpoint anywhere in the gateway (grepped 2026-09-17) and is not built — this register
+  shows a real "not stated" with a manual editor only.
+* **Graft C — a "read by" line — is on every row of Notifications, Currency and Carrying
+  cost**, each citing the real file:line that consumes the field (`SectionKit.tsx`'s new
+  `Provenance.readBy` and `Certainty`/`CertaintyTag`). The other twelve registers do not
+  carry it yet — a labour-bounded gap, not a founder decision, tracked for a follow-up
+  pass.
+* **The recommendations digest sender gets its control** (`DigestRow.tsx`, new, mounted
+  in group IV), against the real `GET/PUT /analytics/recommendations/:id/digest`
+  (NEW-303). The gateway's response now also carries `stated: boolean` (additive) so a
+  never-written house shows empty controls rather than the service's own stored defaults
+  (`digestHour ?? 7`, `digestMinUrgency ?? "this_week"`) dressed as an answer. The
+  founder's brief asked for *per-person* frequency/weekday and a house send hour/urgency
+  floor; `recommendation_digest_prefs` is one row per RESTAURANT with one recipient email
+  — neither a per-person schedule nor a weekday exists in this table or route. Open
+  question for the founder, not decided here: does the digest become per-person, or does
+  the per-house shape stand and the brief's language get corrected?
+* **The analytics consent panel is deleted** (ADR 0149 row 14): `ServicesSection.tsx`'s
+  four "Dead" consent rows (email access, web access, product analytics, partner sharing)
+  are replaced with one plain sentence — no analytics consent is collected yet — rather
+  than four honest-but-still-present records of a control that governs nothing.
+  `support@mudavym.com` is now on the page footer, alongside `/help` and `/privacy`. No
+  light/dark toggle was found on this page to retire; ADR 0138's charcoal ground already
+  covers it elsewhere.
+* **A defect found, not fixed here.** `Register` (`SectionKit.tsx`) treats `data === null`
+  as a failed read regardless of `status`, but the sign-off register's own fetcher
+  (`sender`, `useSettingsNextData.ts`) legitimately resolves to `null` on a SUCCESSFUL
+  read when no `sender_identity` template row exists — a state `EmailSection.tsx` was
+  written to handle (`row ? … : 'nothing is on file yet'`) but can never reach, because
+  `Register` intercepts first and prints "could not be read — unknown error" over an
+  ordinary restaurant that has never set a sign-off name. Invisible under the old
+  one-panel-at-a-time page (nothing else ever shared a render with it); surfaced, not
+  caused, by this pass. Flagged for its own fix rather than folded into this one.
+
+**Not closed**: the sketch's certainty TALLY strip and "Waiting on you" rail (computed
+from an ADR 0113 assistant-proposal system with no endpoint for arbitrary settings
+fields); Notifications' sketch-drawn split across IV ("the mapping") and VI ("your
+doors") — the "mapping" half has no real vocabulary in this worktree yet, owned by a
+concurrent lane; and graft C's `readBy` line on the twelve registers not listed above.
+
+### 13.38 — Fix pass on the audit above (2026-09-18)
+
+Fixed every blocker and major from the settings-review audit; the founder-decision
+items are left open below, not decided here (CLAUDE.md §0.1).
+
+* **BLOCKER — the page resolved for no house.** `mudavym_design_settings` still had
+  `defaultValue: false` and was read per-restaurant, so a house with no explicit DB row
+  (every house, as of the review) still got legacy `/settings`, contradicting this
+  wave's own wiring brief ("render for every house, no new per-house flag"). Fixed by
+  adding `ALWAYS_ON_PAGES` to `useMudavymDesign.ts` — `'settings'` now resolves to the
+  redesign for every house in code, matching ADR 0149 row 36's mechanism and mirroring
+  how the `/help` lane independently converged on the same pattern for its own page
+  (this set is expected to grow from more than one lane; a merge conflict on it is two
+  additions, not two disagreements). `PageGate`'s `legacy`/`next` shape at
+  `App.tsx:388` was untouched — nothing needed to change there.
+  **A second defect this fix would otherwise have introduced, caught before landing:**
+  the Settings page's own Features register renders one live `Toggle` per
+  `mudavym_design_*` key the gateway returns — including `mudavym_design_settings`
+  itself. Making the page always-on in code without touching that register would leave
+  a switch on the page that looks live but does nothing (ADR 0020). Fixed:
+  `FeaturesSection.tsx` now checks `ALWAYS_ON_PAGES` and renders a plain
+  "live for everyone" pill for any redesign flag in that set instead of a `Toggle`,
+  and the registry entry's comment (`feature-flag-registry.ts`) says it is superseded
+  and kept only for backward-compatible reads of `GET/PUT /settings/feature-flags`.
+* **MAJOR — `Register` treating a successful empty read as a failure.** Fixed exactly
+  as scoped: `SectionKit.tsx`'s `Register` now branches on `remote.status === 'error'`
+  alone: a `null` value on `status: 'ok'` (the sign-off register's real, common,
+  successful-empty state) now reaches the child renderer, which already knew what to
+  do with it. Added a dedicated test (`SettingsNext.test.tsx`, "a house with no
+  sign-off yet is not a failed read") that mounts exactly the state the bug was in —
+  every other test in the file gives `sender` a real row specifically to dodge it, so
+  this is the one that would fail against the pre-fix `Register`.
+* **MAJOR — no tests for `HoursSection.tsx` / `DigestRow.tsx`, no `readBy` assertions.**
+  Added `HoursSection.test.tsx` (11 cases: the three hours states, the read-only
+  timezone, a stored-invalid week, save/clear through `restaurantsApi.putOperatingHours`,
+  a validation failure listing every server-named fault) and `DigestRow.test.tsx`
+  (8 cases: the unstated state never showing the service's own defaults as an answer,
+  Record's inertness until all three fields are filled, the answered state's plain
+  toggle, denied/error/write-failure states). Added one `readBy`-line assertion each to
+  `CurrencySection.test.tsx` and `CarryingCostSection.test.tsx` — Notifications already
+  has one via `SettingsNext.test.tsx`'s existing quiet-hours test.
+* **minor — graft C's five-of-sixteen coverage.** Left exactly as tracked (§13.37,
+  Not closed) — this is disclosed follow-up labour, not a hidden gap; no code change
+  needed to close this item, per the review's own read of it.
+* **minor — `--ink-3` vs `--ink-4` on caption-weight text — NOT decided here.**
+  The founder's memory rule is "captions on paper use `--ink-4`"; `SectionKit.tsx`
+  applies `--ink-4` to the new `readBy` line but the adjacent primary provenance line
+  and the page's group-hint captions still use `--ink-3`. **Open question for the
+  founder:** should every caption-weight text on paper move to `--ink-4`, or is the
+  current two-tier split (ink-3 primary provenance / ink-4 secondary citation) the
+  intended reading? Left as `--ink-3` pending an answer — flipping it blind risks
+  contradicting a hierarchy that was deliberate.
+
+Verification: `apps/web` `tsc --noEmit` clean; `apps/api-gateway` `tsc -p tsconfig.json`
+and `-p tsconfig.spec.json` clean; `npx vitest run src/pages/settings/next/` — 100
+passed (was 77); `eslint --resolve-plugins-relative-to p4-scratch/web-lint` on every
+web file touched — 0 errors (3 pre-existing warnings, none on lines this pass added);
+`eslint --quiet` on the one gateway file touched — clean; guards run directly in the
+worktree — `check_no_conflict_markers`, `check_web_reads_gateway_dto_keys`,
+`check_route_exposure`, `check_read_errors_not_swallowed`, `check_citation_pairing`,
+`check_flag_readby_anchors`, `check_adr_numbers_unique` all PASS;
+`check_decision_claims.sh` — 343 checked, 343 holding.
+
+### 13.39 — Finish-lane fix pass on the audit above (2026-09-19)
+
+Synced onto `origin/main` (`cb756083e`, #392+#393) first — clean fast-forward,
+`.planning/06-pages/settings.md` auto-merged (upstream's only change here was an
+`OPEN-DECISIONS.md` line-number fix), no conflict markers
+(`check_no_conflict_markers.py` PASS). Re-measured §13.37/§13.38's numbers rather
+than trusting them forward (CLAUDE.md §5b): they said "twelve of sixteen" / "five of
+sixteen" not-yet-covered; a fresh count of every `provenance={{ kept: … }}` site
+across `settings/next/*.tsx` found **eight already carrying `readBy`**, not five —
+those numbers had already drifted since §13.38 was written.
+
+* **R — graft C's `readBy` coverage, ten more sites, each verified against the
+  actual reader before citing it (not copied from a comment):**
+  - `NotifySection.tsx` "Order reminders" and "Weekly report" — cited in this
+    file's own top docblock (`scheduled-tasks.service.ts:1528`) but never wired
+    into the rendered `provenance`; confirmed live at that line
+    (`getEffectiveCategoryMode`'s `orders_mode`/`reports_mode` branch) and added.
+  - `FeaturesSection.tsx` "Send AI replies without my approval" and "Let AI handle
+    vendor email at all" — **the existing "Read at …" sentences in the consequence
+    prose cited the WRONG lines** (`:1011`, `:987` — both inside this function's
+    docblock comment, not the read). The real reads are
+    `inbound-responder.service.ts:1027` (`.select("enable_ai_autonomous_send")`)
+    and `:1003` (`.select("enable_ai_negotiation")`), matching
+    `feature-flag-registry.ts`'s own `readBy` for both keys exactly. Moved both
+    into the structured `readBy` line with the corrected citation and dropped the
+    now-redundant (and wrong) prose sentence.
+  - `FeaturesSection.tsx` "Read this house's mailbox" — `house-inbox.service.ts:339`
+    verified (`isEnabled` gate) and moved into `readBy` the same way.
+  - `FeaturesSection.tsx` redesign-flag loop (all `mudavym_design_*` rows) — added
+    `readBy: lib/mudavym/useMudavymDesign.ts:105` (verified: the literal
+    `.checkFeatureFlag(...)` call site, matching the registry's own citation for
+    every one of these keys), or an honest "nothing — ALWAYS_ON_PAGES
+    short-circuits before the fetch" for a page in that set (verified against the
+    actual early `return` in `useMudavymDesign.ts`'s effect).
+  - `MapSection.tsx` "Default view" — `pages/distributors/command/DistributorMapPage.tsx:36`
+    (`const scope = (preferences?.mapDefaultScope ?? 'continent') …`), matching this
+    file's own docblock, added.
+  - `PosSection.tsx` "Connector" — this file's own docblock already says nothing
+    reads `posConfig.activeProvider`; added the honest `readBy: 'nothing in the
+    ingest path — a documentation bookmark only…'` rather than leaving the
+    dedicated line absent.
+  - `ThresholdsSection.tsx` approval-rule rows — traced `amountLimit`/`percentLimit`/
+    `requiredRole` to their real consumer, `settings/approval-thresholds.ts:135`
+    (`decideApproval`, not `order-approval-gate.ts`, which only carries the
+    downstream role check) — added.
+  - `HoursSection.tsx` "Which clock does it keep?" — `restaurants.timezone` is read
+    by the same `common/operating-hours/operating-hours.ts` (`assertZone`) already
+    cited on the hours row above it; added.
+  Left open, honestly: the redesign-loop's "other active flags" fallback has no
+  `readBy` wiring from `apiClient` (the registry carries it, the `GET
+  /settings/feature-flags` response shape does not) — but every flag in the
+  registry today is one of Autonomy/Negotiation/House-inbox/a redesign flag, so
+  that branch renders nothing and nothing is mis-cited; plumbing it through is
+  real API-shape work for whichever flag first needs it, not urgent today.
+* **R — confirmed still correctly out of this lane's scope:** the legacy
+  `authStore.ts` `loadUser()` redirect risk (`task_17cc83da`) is being fixed by a
+  separate, currently-running peer session ("Fix dead legacy authStore's
+  window.location hijack risk") — verified via `ListAgents`, not just assumed.
+  [Corrected 2026-09-19: re-ran `ListAgents` live — that peer session ("Fix dead
+  legacy authStore's window.location hijack risk") now shows **idle**, not
+  running; it has not been dismissed or reassigned, so the item is still owned
+  elsewhere, just not actively worked at this moment. `authStore.ts` itself is
+  re-confirmed untouched by this lane (`git diff cb756083e -- '**/authStore.ts'`
+  — 0 lines), so out-of-scope still holds; only the "currently-running" wording
+  was stale.]
+* **R — `?tab=hours` / `?tab=digest` did not scroll.** Confirmed the cause exactly
+  as flagged: `'hours'`/`'digest'` were never added to `SECTION_IDS`
+  (`st-format.ts`), so `isSectionId` refused both and the deep-link effect in
+  `SettingsNext.tsx` returned before ever calling `getElementById` — the real
+  `st-section-hours`/`st-section-digest` DOM ids were there the whole time. Added
+  both to `SECTION_IDS` and `TAB_TO_ANCHOR` (`hours → a-house`, `digest → a-own`,
+  matching where `SettingsNext.tsx` actually mounts each special-cased block) —
+  deliberately NOT added to `SECTIONS`, which would make the generic
+  `group.members` loop responsible for a register shape it does not know how to
+  render. Two new tests in `SettingsNext.test.tsx` mirror the existing
+  `?tab=measurement` case and fail against the pre-fix `SECTION_IDS` (verified:
+  reverting the two array entries locally reproduces
+  `scrollIntoView` never being called, the same silent-nothing shape as the
+  900-second token trap).
+* **R — Browser-pane viewport emulation blanking this page's screenshots.** Not a
+  product defect; not touched. Used real Playwright + the installed Chrome for
+  today's visual sweep instead (see below), which does not hit this artifact.
+* **Q — certainty tally strip / "Waiting on you" rail (ADR 0113 endpoint absent)
+  — ANSWERED, 2026-09-19, later pass.** No founder decision settled the
+  ship-partial-vs-hold fork at the time this was written; ADR 0113 is LOCKED
+  but that is the onboarding-assistant proposal *system*, not this gateway
+  endpoint, and "build only on built behaviour" (ADR 0149 row 13) rules out
+  inventing a fake integration but did not by itself pick "ship a
+  data-computed interim now" over "hold the whole feature". The founder then
+  settled it directly ("Lane answers batch 2", ~09:30Z,
+  `founder-sketch-decisions-106-115.md:132-133`): *"settings tally = ship the
+  counted sentence now (from data, labelled 'computed here'), 'Waiting on you'
+  rail later."* Built in this pass — `certaintyTally.ts`, wired into
+  `SettingsNext.tsx`'s header — see §13.40 below for what it counts and why.
+  The "Waiting on you" rail stays held, exactly as answered: it has no sketch
+  of its own yet and would be new, undesigned UI.
+* **Q — `recommendation_digest_prefs` is per-restaurant, the brief describes
+  per-person.** Checked whether the 2026-09-16 "digest = per-person subscriptions
+  table, ship now" founder answer settles this — **it does not**: that answer is
+  about the *notifications* digest sender (`wt-fin-digest`, gated by
+  `DIGEST_SEND_ENABLED`, a flag that greps to zero hits anywhere in this
+  worktree — still unmerged elsewhere), a different table and a different page
+  section. `recommendation_digest_prefs` (`getDigestPref`,
+  `recommendation-actions.service.ts`) is confirmed one row per restaurant, one
+  recipient, exactly as the settings page renders it (`DigestRow.tsx`). **Left
+  open**, recommendation below.
+  **[CORRECTED 2026-09-19 — the paragraph above is wrong, kept in place per the
+  no-silent-rewrite rule, not deleted.]** An independent verifier caught this:
+  the 2026-09-16 answer is NOT about a different subsystem — it is this same
+  feature. Evidence, checked directly (not re-quoted from the verifier):
+  - `wt-fin-digest`'s own migration,
+    `supabase/migrations/20260917010100_a_digest_goes_to_a_member_who_asked_for_it.sql`,
+    says verbatim: *"The founder's answer of 2026-09-16 (ADR 0149, row 26) was
+    'Build the sender'"* — the exact row (`0149-*.md:108`, "Recommendations
+    digest → Build the sender") this lane's own `DigestRow.tsx` docblock cites
+    as its authority. Same row, two lanes, two incompatible tables.
+  - That migration builds `recommendation_digest_subscriptions` (per-person,
+    with an `unsubscribed_via` CHECK that lists `'settings'` as a valid
+    unsubscribe door — i.e. a Settings-page UI was always part of that design)
+    plus a `RecommendationDigestController` (`GET`/`PUT`/`DELETE
+    /recommendations/digest/subscription`). This is already in **open PR #391**
+    (`train/finish-2` → `main`, confirmed live via `gh pr view 391`,
+    2026-09-19), not a stale or abandoned branch.
+  - `apps/api-gateway/src/analytics/digest/recommendation-digest.service.ts:112-113`
+    (`wt-fin-digest`) states the real sender **never mails
+    `recommendation_digest_prefs.recipient_email`** — the exact field this
+    lane's `DigestRow.tsx` presents, tested, as a working control.
+  - Re-confirmed this lane never saw any of it: `DIGEST_SEND_ENABLED` and
+    `recommendation_digest_subscriptions` both still grep to zero hits anywhere
+    in `wt-pg-settings`. The "different subsystem" conclusion in the paragraph
+    above was an inference from that absence, not a checked fact — and the
+    inference was wrong.
+  - Consequence, once PR #391 merges: this page's digest control edits a column
+    the real sender ignores, and the actual per-person opt-in has no UI
+    anywhere. **Not left open as "which table is right" — that's decided
+    (per-person, PR #391). What's open is cross-lane sequencing**, below.
+  **[ANSWERED, 2026-09-19, later pass — supersedes the correction above
+  without deleting it, per the no-silent-rewrite rule:]** the paragraph above
+  is ALSO wrong, on the one point that actually matters — whether shipping
+  this control is safe. The founder settled it directly ("Lane answers batch
+  2", ~09:30Z, `founder-sketch-decisions-106-115.md:132-133`): *"settings
+  digest = correct the dossier to the per-house control that shipped."* The
+  per-house control this page ships (`digest_enabled`/`digest_hour`/
+  `digest_min_urgency` on `recommendation_digest_prefs`) **is the shipped,
+  decided design** — it is not "at risk of being superseded" and this page
+  does not need to hold shipping it. Checked directly against
+  `origin/train/finish-2` (not copied forward from the paragraph above):
+  `readHousePref` (`recommendation-digest.service.ts:607`) selects exactly
+  `restaurant_id, digest_enabled, digest_hour, digest_min_urgency, updated_at`
+  (:612) — the same three settings this page's `DigestRow.tsx` edits. #391's
+  sender does **not** "ignore a column" wholesale; it reads the house half of
+  this exact row to decide whether, when and above what urgency to send. The
+  one real, narrower residual: #391 never mails `recipientEmail` (:112 — "It
+  never mails `recommendation_digest_prefs.recipient_email`. That column is a
+  free address…"), so recording an email there today has no effect once #391
+  ships mail. **Open item, not a blocker:** the per-person opt-in (batch 4,
+  ~10:00Z, `founder-sketch-decisions-106-115.md:161`): *"settings digest email
+  = drop the free field when #391 lands + add a per-person 'send me the
+  digest' opt-in on Settings."* `#391`/`train/finish-2` is confirmed NOT on
+  `main` yet (checked 2026-09-19: `git merge-base --is-ancestor
+  origin/train/finish-2 origin/main` fails), so this pass does not build
+  against its unmerged `recommendation_digest_subscriptions` table — the
+  house rule against wiring code to an unmerged branch. Named follow-up,
+  owned by whichever session carries this page after #391 merges: (1) drop
+  `DigestRow.tsx`'s `recipientEmail` input and the gateway's
+  `SetDigestBody.recipientEmail`/column read for it; (2) add a per-person
+  "send me the digest" control on this page, backed by `PUT
+  /recommendations/digest/subscription` (the route #391 builds), not a new
+  route of this page's own. The "Founder recommendations" list below, which
+  recommended holding shipping or labelling the control provisional, is
+  answered by this same citation and no longer stands — see its own
+  "[ANSWERED …]" bracket rather than restating it here.
+* **Q — `--ink-3` vs `--ink-4` — ANSWERED.** OD-112 (`OPEN-DECISIONS.md:67`,
+  amending ADR 0042, cited in ADR 0149 row 30): captions on the paper ground use
+  `--ink-4`; `--ink-3` is decorative only (a border, an icon tint — anything that
+  only needs WCAG's 3:1 non-text minimum, never a glyph a person reads). Applied:
+  `SectionKit.tsx`'s shared `microStyle`/`Micro`/`ProvenanceLine`/`CertaintyTag`/
+  `Dead` (the fix that reaches every register on the page at once, since they all
+  render through `Row`/`ProvenanceLine`), plus every genuine caption in this
+  lane's own touched files (`CarryingCostSection`, `CellarSection`,
+  `CurrencySection`, `FeaturesSection`, `HoursSection`, `NotifySection`,
+  `ServicesSection`, `SettingsNext`) — 30 occurrences moved [corrected 2026-09-19:
+  reported as 31; a direct count of removed `var(--ink-3)` lines in the diff
+  across exactly these 9 files gives 30 — off-by-one in the original tally, the
+  mechanism/exceptions/OD-112 citation are all unaffected], 4 left on `--ink-3`
+  with a comment explaining why (2 icon tints, 1 disabled-control dim exempted by
+  WCAG 1.4.3, 1 border). **Not extended** to `CalendarSection`, `EmailSection`,
+  `LocationsSection`, `MapSection`, `PosSection`, `TeamSection`,
+  `ThresholdsSection`, `LedgerSection` or `VendorTermsSection` — none of those
+  were touched by this build, several use `--ink-3` in ways that look like
+  deliberate state colour (`VendorTermsSection`'s off-day/inactive indicators)
+  that I did not read closely enough to reclassify safely; OD-112's own text
+  already says the wave-wide sweep is separate, not-yet-done work, and this
+  stays true after today.
+
+**Founder recommendations on the two still-open Qs (not decisions) — BOTH NOW
+ANSWERED, 2026-09-19, later pass; kept below rather than deleted, per the
+no-silent-rewrite rule, with what actually happened recorded beside each:**
+- Tally/rail — ship the honest partial now (count the certainty values already
+  on the page **from data, not the DOM** — see §13.40's `certaintyTally.ts`,
+  which reads the same `SettingsNextData` fields each section already reads
+  for its own `cert=`, never `document.querySelectorAll('[data-cert]')`),
+  label it plainly as computed here rather than proposed by an assistant, hold
+  only the "Waiting on you" rail, which has no sketch of its own yet and would
+  be new undesigned UI, not a fix. **Founder answer matches this
+  recommendation almost exactly** ("Lane answers batch 2", ~09:30Z,
+  `founder-sketch-decisions-106-115.md:132-133`) — the one difference is the
+  source: data, not a DOM read. Built; see §13.40. Does not block ready — the
+  page has never claimed this feature exists.
+- Digest — **[CORRECTED 2026-09-19, this bullet was wrong and is superseded by
+  the correction above, kept here rather than deleted]** ~~correct the brief's
+  language to match the per-house control actually shipped, rather than building
+  a new table/route/migration for a per-person version; the existing control
+  works and is tested, and per-person is a real scope increase with no forcing
+  need behind it today. Does not block ready.~~ Per-person is not a new build to
+  propose — it already exists, tested, in open PR #391. The real fork is
+  sequencing, not scope: this lane cannot safely point `DigestRow.tsx` at
+  `/recommendations/digest/subscription` today (that route lives on an unmerged
+  branch this lane's hard rules forbid touching, and wiring against code that
+  might not be there at merge time is exactly the kind of race
+  `shared-checkout-concurrent-sessions`/`merge-races-need-sequencing` memory
+  warns about). Recommendation: **blocks ready** — either (a) hold this page's
+  digest control from shipping until PR #391 merges, then fast-follow this lane
+  to call the real per-person endpoint and retire `recommendation_digest_prefs`,
+  or (b) merge as-is with the control visibly labelled provisional/at risk of
+  being superseded, founder's call on which. Not something this lane can settle
+  by editing its own copy.
+  **[ANSWERED, 2026-09-19, later pass — this recommendation's "blocks ready" is
+  wrong and does not stand; superseded by the "ANSWERED" bracket further above
+  in this same §13.39, kept here rather than deleted:]** the founder did not
+  pick either option (a)/(b) above, because the premise — that the shipped
+  control is "at risk of being superseded" and needs a provisional label or a
+  hold — is itself false: it is the decided per-house half of #391's own
+  design (see above). Nothing here blocks ready. His actual answer (batch 4,
+  `founder-sketch-decisions-106-115.md:161`) names a real, smaller follow-up
+  instead — drop `recipientEmail`, add a per-person opt-in, once #391 lands —
+  recorded as an open item above and not built now, since #391 is unmerged.
+
+**Visual sweep (2026-09-19), evidence not assumption:** `.mudavym`'s tokens
+resolve to the Warm Charcoal column in every case except the one explicit
+`[data-ground="paper"]` escape (`styles/mudavym.css`, "THE GROUND IS DECIDED, NOT
+PREFERRED — founder, 2026-09-12") — `SettingsNextProps.ground` only ever accepts
+`'charcoal'`, so this page has no light mode to render; screenshotting one would
+show something no real user can see. Rendered the real `SettingsNext` component
+tree standalone (`MemoryRouter` + a mock `AuthContext` value — the seam
+`AuthContext.tsx` itself documents as being exported for tests/Storybook to use
+this way) via a temporary Vite harness, deleted after use, at 1440 and 390 wide;
+no `.env` was read or created (forbidden by this lane's rules), so every
+network-backed register shows its own honest `error` state (`ERR_CONNECTION_REFUSED`,
+no gateway running) rather than filled data — confirmed layout, typography,
+7-group responsive nav (stacks correctly under 900px), and the `--ink-4` caption
+fix rendering legibly against charcoal (verified directly on `Measurement &
+recipes`, the one register that needs no network and so actually reaches
+`status: 'ok'` in this harness). Did not visually verify the newly-added
+`readBy` lines' rendering — none of the registers they are on ever reached `ok`
+without a live gateway.
+
+Verification (2026-09-19): `apps/web` `tsc --noEmit` clean (twice — once before,
+once after deleting the temporary visual-harness files); `npx vitest run
+src/pages/settings/next/` — 102 passed (was 100 in §13.38, +2 for the
+`?tab=hours`/`?tab=digest` regression tests); `apps/api-gateway` `tsc -p
+tsconfig.json` clean; `settings.service.spec.ts` + `settings-audit/*.spec.ts` —
+27 passed; `check_no_conflict_markers.py` PASS post-sync.
+
+### 13.40 — Founder-answer repair pass (2026-09-19, later)
+
+A second round-2 verifier (Opus, `r4-lanes.json` key `settings`) read this
+lane's §13.39 repair pass against the founder's own record and found it had
+gone the wrong way twice, plus left one build undone and one risky change
+untested. This pass answers each finding directly; nothing here re-opens a
+question the founder already settled.
+
+* **The digest correction was backwards — now corrected the other way, in
+  place.** §13.39's own "[CORRECTED 2026-09-19 …]" bracket (the Q above, and
+  the "Founder recommendations" list) concluded the per-house control
+  "will silently stop mattering" once PR #391 merges and recommended holding
+  it or labelling it provisional — **the opposite of the founder's actual
+  answer** ("Lane answers batch 2", ~09:30Z,
+  `founder-sketch-decisions-106-115.md:132-133`: *"settings digest = correct
+  the dossier to the per-house control that shipped"*). Re-verified directly
+  against `origin/train/finish-2` rather than trusting the prior pass's
+  reading of it: `readHousePref`
+  (`recommendation-digest.service.ts:607`, selecting `restaurant_id,
+  digest_enabled, digest_hour, digest_min_urgency, updated_at` at :612) reads
+  exactly the three settings `DigestRow.tsx` edits; only `recipientEmail`
+  goes unmailed (:112). Bracket-corrected in place, not rewritten: the Q above,
+  the "Founder recommendations" list, `DigestRow.tsx`'s docblock (lines
+  20-41), and ADR 0149 row 26 (which also carried a stale cross-lane residual
+  inside the founder-decision table itself — moved here, where a page's open
+  items belong, rather than in a decision row).
+  **Open items, not blockers** (founder, "Lane answers batch 4", ~10:00Z,
+  `founder-sketch-decisions-106-115.md:161`): (1) `recipientEmail` is real
+  today but goes unmailed once #391 ships — no UI change needed, just said
+  plainly; (2) drop that field and add a per-person "send me the digest"
+  opt-in on this page, backed by #391's `PUT
+  /recommendations/digest/subscription` — **not built now**: `#391`/
+  `train/finish-2` is confirmed not an ancestor of `origin/main` (checked
+  2026-09-19 via `git merge-base --is-ancestor`), and this lane's hard rules
+  forbid wiring against an unmerged branch's tables. Whoever carries this page
+  after #391 merges owns both.
+* **The certainty tally — built.** Founder ("Lane answers batch 2", ~09:30Z):
+  *"ship the counted sentence now (from data, labelled 'computed here'),
+  'Waiting on you' rail later."* New `certaintyTally.ts`: nine certainty-tagged
+  rows across five registers (Currency, Carrying cost, Hours ×2, the digest,
+  Notifications' four always-manual doors — the only rows sketch 109A's own
+  interview could carry a `cert=` stamp to), computed from the same
+  `SettingsNextData` fields each section already reads for its own `cert=` —
+  never `document.querySelectorAll('[data-cert]')`. `CarryingCostSection.tsx`,
+  `CurrencySection.tsx`, `HoursSection.tsx` and `DigestRow.tsx` now import the
+  shared function rather than re-deriving the same expression, so the tally
+  and what a reader sees cannot drift apart; `NotifySection.tsx`'s four rows
+  are hardcoded `manual` with no expression to share, so the count "4" is
+  named plainly with file:line citations instead (`certaintyTally.ts`'s own
+  docblock). Wired into `SettingsNext.tsx`'s header as one line,
+  `data-testid="st-certainty-tally"`, labelled "computed here" and worded
+  "certainty-stamped settings" rather than bare "settings" — the exact
+  "undercount dressed as a total" the page's own docblock warns against, still
+  refused. The "Waiting on you" rail stays held, exactly as answered: no
+  sketch of its own, so building one now would be new, undesigned UI. Also
+  bracket-corrected `useSettingsNextData.ts`'s eager-fetch rationale, which
+  had pre-emptively claimed "the tally strip at the top counts across all of
+  them" — true of the sketch's drawing, never of anything built; eager-fetch
+  is justified on its own (no closed register to defer a fetch for) without
+  leaning on that.
+  New tests: `certaintyTally.test.ts`, 15 cases, pure-function only (no
+  render, no DOM) — every per-row function, the tally count across all nine
+  rows, the "absent vs. unstated" distinction for a register still loading vs.
+  one that loaded but was never answered, and the exact sentence text
+  including the "computed here" label. Self mutation-tested: dropping "—
+  computed here" from the sentence fails 2 tests; replacing the
+  count-vs-unstated filter with a bare length fails 3 more (5 of 15 total) —
+  applied, confirmed red, reverted; `git diff` against this file is empty
+  after the revert. Plus 2 integration tests in `SettingsNext.test.tsx`,
+  mounting the real page: the default fixture (carrying cost and currency
+  unstated, hours timezone manual, digest unstated, notifications idle)
+  renders exactly "Stated so far: 1 of 5 certainty-stamped settings — computed
+  here."; stating the currency and loading notifications moves it to "6 of 9"
+  — proving the count tracks the mounted data rather than being a fixed
+  string.
+* **`useMudavymDesign.test.tsx` — the real module now covers `settings`.** The
+  verifier's central finding: this file never once called
+  `useMudavymDesign('settings')`, so `ALWAYS_ON_PAGES`'s two short-circuits —
+  the render-time `if (alwaysOn) return true` and the effect's
+  `if (alwaysOn) return` — and `'settings'`'s own membership in the set were
+  all unexercised; `SettingsNext.test.tsx` mocks this whole module with its
+  own literal `Set(['settings'])`, so it could not have caught a regression
+  here either. Five tests added, against the real, unmocked module (only its
+  network dependency, `settingsApi`, is mocked, exactly as the file already
+  did for `dashboard`): `settings` resolves `true` with no restaurant known
+  and never fetches; `settings` stays `true` and still never fetches once a
+  restaurant **is** known (the case that actually exercises the effect's
+  guard); a page outside the set (`orders`) still reads its own flag,
+  contrasted directly against `settings`; a `localStorage` override still
+  wins over an always-on page (precedence order in the source itself: the
+  override check runs before the `alwaysOn` check); `ALWAYS_ON_PAGES` names
+  `settings`.
+  **Mutation results — each applied alone against a saved-off copy, run, then
+  the file restored and re-verified byte-identical (`diff` empty) before the
+  next:**
+  - deleting `if (alwaysOn) return true;` (useMudavymDesign.ts:184) → 2 of 12
+    tests fail (both "resolves true…" cases: `expected false to be true`).
+  - deleting the effect's `if (alwaysOn) return;` (useMudavymDesign.ts:161) →
+    1 of 12 fails (the "…even once a restaurant is known" case: `checkFlag`
+    gets called once, `expected "spy" to not be called at all`).
+  - removing `'settings'` from `ALWAYS_ON_PAGES` (useMudavymDesign.ts:140) →
+    3 of 12 fail (both "resolves true…" cases, plus the `ALWAYS_ON_PAGES`
+    membership assertion itself).
+  All three land on a genuine assertion failure, not a crash or a silently
+  vacuous test.
+  In passing, also extended `useMudavymDesign.ts`'s own top-of-file precedence
+  list — written before `ALWAYS_ON_PAGES` existed, so it named only the
+  override and the per-restaurant flag — to say where the always-on fork sits
+  (between them; an override still wins over it). Not a correction of
+  anything false, just an omission closed while this exact precedence was
+  under test; renumbered 1-4, nothing else about the function changed.
+
+**Verification, this pass (2026-09-19, later):** `apps/web` `tsc --noEmit`
+clean. `npx vitest run src/pages/settings/next/ src/lib/mudavym/` — 203
+passed across 11 files (119 in `settings/next/` — was 102 in §13.39, +15 for
+the new `certaintyTally.test.ts` and +2 for the new `SettingsNext.test.tsx`
+tally-integration cases; 84 in `lib/mudavym/` — was 79, +5 for the new
+`ALWAYS_ON_PAGES` describe block). `eslint --resolve-plugins-relative-to
+p4-scratch/web-lint` (per `worktree-node-modules-links` memory) on every
+touched file in both directories — exit 0, one pre-existing warning
+(`react-refresh/only-export-components` on `CarryingCostSection.tsx`'s
+already-exported `readTyped`, predating this pass, not touched here). The
+five static guards: `check_no_conflict_markers.py` PASS (5388 tracked files,
+1448 planning documents, none corrupt); `check_adr_numbers_unique.py` — no
+ADR introduced by this lane (next free, swept across 925 refs: 0170; this
+lane creates none, per this wave's ADR allocation); `check_migration_versions_unique.py`
+— no migration introduced by this lane; `check_decision_claims.sh` — 358
+checked, 358 holding; `check_citation_pairing.py` — 179 register citations
+against 119 rows, PASS. Diffstat vs `cb756083e`: 26 tracked files (+2386/−519)
+plus 2 new untracked files not yet staged
+(`certaintyTally.ts`/`certaintyTally.test.ts`, 158+168 lines) — orchestrator
+commits through its own verified index, so nothing here was `git add`-ed.
