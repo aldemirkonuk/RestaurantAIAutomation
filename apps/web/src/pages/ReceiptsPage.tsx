@@ -64,10 +64,15 @@ export function ReceiptsPage() {
   // The credit ledger is owner-or-manager only at the gateway (ADR 0167): a staff
   // caller is refused 403 on the list, the stats and every transition. So the tab
   // is not offered to them, and `?tab=credits` typed by hand lands on Receipts
-  // rather than on a ledger that can only show an error. `useAuth`, as in
-  // ReceivingHome; an unrecognised role is treated as staff, as the server does.
-  const { user } = useAuth()
-  const role = (user?.role ?? '').toLowerCase()
+  // rather than on a ledger that can only show an error. The role is the one IN
+  // THIS HOUSE, `activeRole` (from /auth/me/role), because that is what the
+  // gateway decides on (ADR 0162); `user.role` is the global `users.role`, one
+  // value for every house, and is only the fallback while no house is active.
+  // Reading it alone would show a manager-here-but-staff-elsewhere person the
+  // Credits tab and then a 403. An unrecognised role is treated as staff, as the
+  // server does.
+  const { user, activeRole } = useAuth()
+  const role = (activeRole ?? user?.role ?? '').toLowerCase()
   const canSeeCredits = role === 'owner' || role === 'manager' || role === 'admin'
   const tab: Tab =
     canSeeCredits && searchParams.get('tab') === 'credits' ? 'credits' : 'receipts'
