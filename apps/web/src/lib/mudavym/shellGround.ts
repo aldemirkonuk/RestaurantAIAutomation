@@ -38,6 +38,7 @@
  */
 
 import { createContext, useSyncExternalStore } from 'react';
+import { getGroundChoice } from './groundChoice';
 
 export type MudavymGround = 'paper' | 'charcoal';
 
@@ -112,34 +113,50 @@ export function useMudavymShell(): MudavymShellState {
  * The ground of the `.mudavym` subtree `anchor` sits in, or `null` when it sits
  * in none (a shell trigger in the header is outside every page root).
  *
- * A host with no `data-ground` is paper, exactly as the page itself reads it:
- * an app-level `.dark` then turns BOTH the page and the overlay charcoal
- * through `.dark .mudavym`, so the two still agree without either declaring it.
+ * A host with no `data-ground` stands on whatever a person chose for this
+ * device (`groundChoice.ts`, ADR 0169; paper until they say otherwise) — the
+ * same rule `styles/mudavym.css` paints it with, so this answer and the pixel
+ * always agree without the host declaring anything.
+ * [2026-09-19, ADR 0169: before this, an undeclared host was hardcoded
+ * 'paper' here, described as agreeing with an app-level `.dark` rule that (by
+ * the time of this correction) no longer exists in `mudavym.css` — ADR 0138
+ * had already moved the charcoal column off `.dark .mudavym` on 2026-09-12.
+ * That description was stale; this reader now asks the one place that knows.]
  *
- * Returning `null` rather than a paper default is the point — a default here
- * would answer "paper" for a question that was never asked, which is the
- * absence-reported-as-health shape (ADR 0020).
+ * Returning `null` rather than guessing is still the point for an anchor
+ * outside every `.mudavym` root — a default here would answer for a question
+ * that was never asked, the absence-reported-as-health shape (ADR 0020).
  */
 export function readGroundFromDom(anchor?: Element | null): MudavymGround | null {
   if (typeof document === 'undefined') return null;
   const host = anchor?.closest?.('.mudavym') as HTMLElement | null | undefined;
   if (!host) return null;
-  return host.getAttribute('data-ground') === 'charcoal' ? 'charcoal' : 'paper';
+  const declared = host.getAttribute('data-ground');
+  if (declared === 'charcoal' || declared === 'paper') return declared;
+  return getGroundChoice();
 }
 
 /**
  * The ground of the Mudavym page currently on screen, read off the document.
  * PageGate's measurement (see the header note) and the last-resort answer for
  * an overlay whose trigger lives outside every page root.
+ *
+ * Checked in order: an explicit charcoal declaration, an explicit paper
+ * declaration (a per-surface decision always wins — ADR 0169 changes neither
+ * branch), else the person's own choice for this device.
  */
 export function readShellGroundFromDom(): MudavymGround {
-  if (typeof document === 'undefined') return 'paper';
+  if (typeof document === 'undefined') return getGroundChoice();
   // `:not(.mdv-ovl)` keeps an open overlay out of the answer: the overlay root
   // is itself a `.mudavym[data-ground]` node portalled into <body>, and reading
   // it back would be the system asking itself what it just said.
-  return document.querySelector('.mudavym[data-ground="charcoal"]:not(.mdv-ovl)')
-    ? 'charcoal'
-    : 'paper';
+  if (document.querySelector('.mudavym[data-ground="charcoal"]:not(.mdv-ovl)')) {
+    return 'charcoal';
+  }
+  if (document.querySelector('.mudavym[data-ground="paper"]:not(.mdv-ovl)')) {
+    return 'paper';
+  }
+  return getGroundChoice();
 }
 
 /**

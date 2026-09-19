@@ -4,13 +4,28 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { cn } from '../../lib/utils'
 import { Popover } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import { useGroundChoice } from '../../lib/mudavym/groundChoice'
 
 /**
- * ThemeMenu — 3-way theme picker in the header (NEW-026).
+ * ThemeMenu — the header's one theme control, wearing two different jobs.
  *
- * Light / Dark / System as a dropdown menu (vs. the old binary toggle). The
- * trigger shows the currently-resolved theme's icon; the menu marks the chosen
- * mode (which may be "System"). Click-outside + Escape close it.
+ * OFF a Mudavym page (`shell.on` false): unchanged since NEW-026. Light /
+ * Dark / System as a dropdown menu against the app's own `ThemeContext`. The
+ * trigger shows the currently-resolved theme's icon; the menu marks the
+ * chosen mode (which may be "System"). Click-outside + Escape close it.
+ *
+ * ON a Mudavym page (`shell.on` true): ADR 0169. This is the exact control
+ * `components/mudavym/PageGate.tsx`'s header comment names as missing before
+ * `HouseHeader` was built ("no theme switch") — it has been mounted here
+ * since, wired to `ThemeContext`, and choosing Light/Dark/System here has
+ * NEVER changed a Mudavym page: `.mudavym` ignored the app theme by design
+ * (ADR 0138 D1), so this control quietly did nothing on every rebuilt page —
+ * which is what the founder was seeing when he said "I realized all pages
+ * will be charcoal however I don't want it." Rather than add a second,
+ * competing control, this branch now drives the real thing: a person's own
+ * choice of Paper or Charcoal (`lib/mudavym/groundChoice.ts`), independent of
+ * `ThemeContext` — the Mudavym ground is still not the app's light/dark
+ * theme (ADR 0138's title), it is just no longer fixed either.
  */
 
 const OPTIONS = [
@@ -19,8 +34,14 @@ const OPTIONS = [
   { value: 'system' as const, label: 'System', icon: Monitor },
 ]
 
+const GROUND_OPTIONS = [
+  { value: 'paper' as const, label: 'Paper', icon: Sun },
+  { value: 'charcoal' as const, label: 'Charcoal', icon: Moon },
+]
+
 export function ThemeMenu({ className }: { className?: string }) {
   const { theme, resolvedTheme, setTheme } = useTheme()
+  const [ground, setGround] = useGroundChoice()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -45,7 +66,9 @@ export function ThemeMenu({ className }: { className?: string }) {
     }
   }, [open, shell.on])
 
-  const TriggerIcon = resolvedTheme === 'dark' ? Moon : Sun
+  const TriggerIcon = shell.on
+    ? ground === 'charcoal' ? Moon : Sun
+    : resolvedTheme === 'dark' ? Moon : Sun
 
   return (
     <div ref={ref} className={cn('relative', className)}>
@@ -56,7 +79,11 @@ export function ThemeMenu({ className }: { className?: string }) {
         aria-label="Theme"
         aria-haspopup="menu"
         aria-expanded={open}
-        title={`Theme: ${theme === 'system' ? `System (${resolvedTheme})` : theme}`}
+        title={
+          shell.on
+            ? `Ground: ${ground === 'charcoal' ? 'Charcoal' : 'Paper'}`
+            : `Theme: ${theme === 'system' ? `System (${resolvedTheme})` : theme}`
+        }
       >
         <TriggerIcon className="w-5 h-5" />
       </button>
@@ -66,12 +93,12 @@ export function ThemeMenu({ className }: { className?: string }) {
           open={open}
           onClose={() => setOpen(false)}
           anchorRef={triggerRef}
-          label="Theme"
+          label="Ground"
           width={180}
           showClose={false}
         >
-          {OPTIONS.map(({ value, label, icon: Icon }) => {
-            const active = theme === value
+          {GROUND_OPTIONS.map(({ value, label, icon: Icon }) => {
+            const active = ground === value
             return (
               <button
                 key={value}
@@ -79,7 +106,7 @@ export function ThemeMenu({ className }: { className?: string }) {
                 className="mdv-item"
                 data-active={active}
                 onClick={() => {
-                  setTheme(value)
+                  setGround(value)
                   setOpen(false)
                 }}
               >

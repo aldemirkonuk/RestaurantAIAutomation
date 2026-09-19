@@ -2,6 +2,26 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- ADR 0169 — the person's Mudavym ground choice, applied before first
+         paint. The default is paper (no attribute needed); this only has
+         work to do when a person chose charcoal on this device. It must run
+         synchronously, before any stylesheet, or a charcoal choice would
+         flash paper first. Keep this in sync BY HAND with
+         `src/lib/mudavym/groundChoice.ts` (same storage key, same attribute)
+         — there is no bundler step that shares code into a static HTML file. -->
+    <script>
+      (function () {
+        try {
+          if (window.localStorage.getItem('mudavym.ground') === 'charcoal') {
+            document.documentElement.setAttribute('data-mudavym-ground', 'charcoal');
+          } else {
+            document.documentElement.setAttribute('data-mudavym-ground', 'paper');
+          }
+        } catch (e) {
+          document.documentElement.setAttribute('data-mudavym-ground', 'paper');
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- The served identity of every signed-in route: closed by default. The build
