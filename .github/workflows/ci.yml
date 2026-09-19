@@ -1034,6 +1034,9 @@ jobs:
       - name: Boot the AppModule injector
         run: ./scripts/check_gateway_boots.sh
 
+      - name: Platform routes match the reviewed operator registry
+        run: node scripts/check_platform_operator_routes.cjs
+
       - name: Explain a failure
         if: failure()
         run: |

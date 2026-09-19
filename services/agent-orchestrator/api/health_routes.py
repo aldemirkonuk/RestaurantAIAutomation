@@ -17,12 +17,17 @@ ever returned OBS-03 infrastructure counters. The business metrics below were ad
 2026-08-04; before that the claim was aspirational.
 """
 
+import asyncio
+import hmac
 import logging
 import os
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 
 from config.settings import get_settings
 
@@ -236,9 +241,174 @@ def verify_admin_key(x_admin_key: Optional[str] = Header(None)) -> str:
     expected = os.getenv("ADMIN_API_KEY", "")
     if not x_admin_key:
         raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Key")
-    if not expected or x_admin_key != expected:
+    # Compare bytes, not str: hmac.compare_digest(str, str) raises TypeError for a
+    # non-ASCII header (surfacing as an uncaught 500, where a wrong-but-ASCII key
+    # correctly reads 401) because CPython's constant-time str comparison refuses
+    # any string it cannot treat as pure ASCII.
+    if not expected or not hmac.compare_digest(
+        x_admin_key.encode("utf-8", "surrogateescape"),
+        expected.encode("utf-8", "surrogateescape"),
+    ):
         raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Key")
     return x_admin_key
+
+
+class AgentOperationRequest(BaseModel):
+    request_id: UUID
+
+
+# Only registered agents may create a lock; arbitrary route names cannot grow it.
+_operation_locks: dict[str, asyncio.Lock] = {}
+
+# One operation's record, keyed by request id — read back by the gateway's
+# receipt reconciliation (agent-operations.controller.ts:332-375) both while
+# the operation is still running (a "running" record is written the moment
+# dispatch begins, below) and after its own HTTP response to a POST above was
+# lost (a timeout, a dropped connection) but the operation itself ran to
+# completion here. Held only in this process's memory, matching
+# orchestrator.service.ts's own comment on getAgentOperation: a restart of
+# this service answers 404 for every earlier request id, which the gateway
+# already reads as "no record", not as a failure.
+#
+# Bounded two ways so this cannot grow without limit across a long-lived
+# process: entries older than _OPERATION_RECORD_TTL are swept on every write
+# (dict preserves insertion order, and every write happens at "now", so the
+# oldest entries are always encountered first), and the dict is capped at
+# _OPERATION_RECORD_MAX regardless of age. A "running" record is later
+# updated in place to "succeeded"/"failed" (same request id) rather than left
+# to grow a second entry — see the re-insertion note below.
+_operation_records: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
+_OPERATION_RECORD_TTL = timedelta(hours=24)
+_OPERATION_RECORD_MAX = 500
+
+
+def _record_operation(
+    request_id: str,
+    agent: str,
+    action: str,
+    state: Literal["running", "succeeded", "failed"],
+) -> None:
+    now = datetime.now(timezone.utc)
+    cutoff = now - _OPERATION_RECORD_TTL
+    for key in list(_operation_records.keys()):
+        recorded_at = _operation_records[key].get("_recorded_at")
+        if isinstance(recorded_at, datetime) and recorded_at >= cutoff:
+            break  # everything after this, in insertion order, is younger
+        del _operation_records[key]
+    # A "running" record written at dispatch is updated in place on completion,
+    # reusing the same request id. Pop it first so the re-insert below moves it
+    # to the end of the dict: the sweep above assumes dict order tracks
+    # recency, and an in-place value update on an existing key would leave a
+    # freshly-completed operation sitting in its old (old-looking) position,
+    # making the sweep stop early and never clean up anything that follows it.
+    _operation_records.pop(request_id, None)
+    while len(_operation_records) >= _OPERATION_RECORD_MAX:
+        _operation_records.popitem(last=False)
+    _operation_records[request_id] = {
+        "request_id": request_id,
+        "agent": agent,
+        "action": action,
+        "state": state,
+        "finished_at": now.isoformat() if state != "running" else None,
+        "_recorded_at": now,
+    }
+
+
+@router.post("/api/v1/health/agents/{name}/{action}")
+async def operate_agent(
+    name: str,
+    action: str,
+    body: AgentOperationRequest,
+    _key: str = Depends(verify_admin_key),
+):
+    """Server-only lifecycle endpoint. The gateway verifies current operator grants.
+
+    The gateway records the request before dispatch and never retries automatically.
+    No raw agent exception (which may contain another house's data) crosses this API.
+
+    This route's own POST answer is still synchronous end to end: it does not
+    return until restart_agent/stop_agent finishes, however long that takes,
+    and there is no wait budget or 202 path here. But GET
+    /health/agent-operations/{request_id} (below) no longer 404s for the
+    whole time this runs: a "running" record is written the moment dispatch
+    begins (inside the per-agent lock, before the call below), and updated to
+    "succeeded"/"failed" on completion. Before this, the only record was
+    written at the end, so a gateway timeout followed by a reconciliation
+    read during a slow drain saw a 404 indistinguishable from a genuinely
+    lost request (measured: wave-5 IJ confirm, R1) — the gateway's own
+    reconcile() already had a "running" branch for this (
+    agent-operations.controller.ts:356-357); nothing on this side fed it
+    until now. [CORRECTED 2026-09-19, wave-5 IJ verify pass: that branch
+    (:356-357) is a no-op that only matches a receipt already stored as
+    "running" -- it cannot fire on the transition this fix enables, because
+    the row is still "requested"/"unknown" at that point. What actually
+    persists status="running" (completed_at=null, error_code=null) is the
+    conditional update a few lines below it, inside the same reconcile
+    (agent-operations.controller.ts:360-374), which this docstring did not
+    name.]
+    """
+    if action not in {"restart", "stop"}:
+        raise HTTPException(status_code=400, detail="Unknown agent operation")
+    orchestrator = get_orchestrator()
+    if orchestrator is None:
+        raise HTTPException(status_code=503, detail="Orchestrator not running")
+    if name not in orchestrator.agents:
+        raise HTTPException(status_code=404, detail="Agent not running")
+    lock = _operation_locks.setdefault(name, asyncio.Lock())
+    if lock.locked():
+        raise HTTPException(
+            status_code=409, detail="An operation is already in progress"
+        )
+    async with lock:
+        _record_operation(str(body.request_id), name, action, "running")
+        try:
+            method = (
+                orchestrator.restart_agent
+                if action == "restart"
+                else orchestrator.stop_agent
+            )
+            result = await method(name)
+            success = result.get("success") is True
+        except Exception as exc:
+            # The class only, never the message: a subclass's exception text
+            # can carry another house's data (same rule as the receipt this
+            # answer feeds — agent-operations.controller.ts:296-301).
+            logger.warning(
+                "Agent operation %s on %s (%s) raised %s",
+                action,
+                name,
+                body.request_id,
+                type(exc).__name__,
+            )
+            success = False
+        _record_operation(
+            str(body.request_id), name, action, "succeeded" if success else "failed"
+        )
+        return {
+            "success": success,
+            "agent": name,
+            "action": action,
+            "request_id": str(body.request_id),
+        }
+
+
+@router.get("/api/v1/health/agent-operations/{request_id}")
+async def get_agent_operation(request_id: str, _key: str = Depends(verify_admin_key)):
+    """One operation's record — "running", "succeeded" or "failed" — for
+    gateway receipt reconciliation.
+
+    A record exists from the moment operate_agent's dispatch begins (see its
+    `_record_operation(..., "running")` call above), so 404 no longer covers
+    "still in progress" as its common case. It now means the request never
+    reached this process, this process restarted since (its record lives
+    only in memory — see getAgentOperation's own comment on the gateway
+    side), or the record aged out of the window above. The gateway reads
+    that as "absent", not as a failure of this read.
+    """
+    record = _operation_records.get(request_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="No record for this request id")
+    return {k: v for k, v in record.items() if k != "_recorded_at"}
 
 
 @router.get("/api/v1/health/agents")

@@ -79,7 +79,8 @@ FLAGS_TABLE = "restaurant_feature_flags"
 SETTINGS_ROW_FLAG_NAME = "restaurant_settings"
 AUDIT_TABLE = "system_audit_log"
 
-# The nineteen pages of ADR 0044 + 0114, in MUDAVYM_PAGES order
+# The twenty-one pages of ADR 0044 + 0114 + 0133 (logs) + 0143 (admin),
+# in MUDAVYM_PAGES order
 # (apps/web/src/lib/mudavym/useMudavymDesign.ts). A slug not in this list is a
 # typo, not a page; the script refuses it rather than inventing a column.
 PAGES: tuple[str, ...] = (
@@ -102,6 +103,8 @@ PAGES: tuple[str, ...] = (
     "cellar",
     "connections",
     "document",
+    "logs",
+    "admin",
 )
 
 

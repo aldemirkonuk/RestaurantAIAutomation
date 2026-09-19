@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-17
 links: ["[[PAGE-CONTRACT]]", "[[admin]]"]
 ---
 
@@ -91,7 +91,10 @@ is indistinguishable from an empty orchestrator, and the page has no inbound lin
   `NO_AGENTS_MESSAGE` (`:71`) for the real empty case.
 - **The toast repeats every 30 seconds** while the failure persists (`:57` inside the
   polled `fetchHealth`, `:65`) — an unreachable orchestrator produces a toast every half
-  minute for as long as the tab is open.
+  minute for as long as the tab is open. **[Fixed 2026-09-19, wave-5 IJ confirm R5:**
+  `fetchHealth` now toasts once per distinct failure reason (403 / 401 / other) and stays
+  quiet on repeat polls of the same standing cause; a change in reason, or a recovery
+  followed by a new failure, toasts again. Measured in `AdminHealth.test.tsx`.**]**
 - **Stale-on-error:** a failure leaves the previous `agents` array in place (`:54` is
   never reached), so the header keeps reporting "n/n healthy" (`:109-113`) from data that
   may be minutes old, with only `lastUpdated` (`:138-142`) hinting at it.
@@ -170,11 +173,35 @@ Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the poli
    dishonesty. The drill-down already models the pattern (`:80`).
 2. **Stop the 30-second toast loop** — toast once per transition into failure, not once
    per poll (`:57`).
-3. **Link it from `/admin`'s Agents tab** so it stops being a cold URL, or merge the two
-   (see [[admin]] §13.5). They now use the identical transport, so merging is a
-   consolidation, not a rewrite.
+3. ~~**Link it from `/admin`'s Agents tab**, or merge the two~~ — **done**: [[admin]]'s
+   roadmap item 5 records the merge, behind `mudavym_design_admin`.
 4. **Use the shared API client** instead of raw axios (`:50,73`) so a long-lived tab
-   refreshes its token rather than degrading into a fake empty state.
-5. **Add restart/drain once the orchestrator exposes control** — the sheet already
-   reserves the space and explains its absence (`:251`). *Blocked: same missing
-   orchestrator control endpoint as [[admin]] §13.3.*
+   refreshes its token rather than degrading into a fake empty state. **Still open** on
+   this legacy page.
+5. ~~**Add restart/drain once the orchestrator exposes control**~~ — **the orchestrator
+   control now exists** ([[admin]]'s roadmap item 3), but it did not resolve this item as
+   originally framed: restart/stop is platform-operator-only (ADR 0143 §2, ADR 0149 row
+   10), never exposed to a house owner on any page, this one included. This legacy sheet
+   stays without a control.
+
+
+## Consolidation — 2026-09-13, updated 2026-09-18, corrected 2026-09-19
+
+ADR 0143's `mudavym_design_admin` gate redirects this bookmark to `/admin` when enabled;
+its false branch (the production default) leaves this URL reachable, un-redirected.
+**[CORRECTED 2026-09-19: the clause that stood here, "keeps this page's own code
+unchanged", was already wrong when written 2026-09-18 — the very next sentence in this
+same paragraph names a `fetchHealth` change — and wave-5's IJ confirm pass has since
+changed `fetchHealth` again (§9's "toast repeats every 30 seconds" gap: a 403/401 toast
+no longer re-fires every poll while the cause stays the same, measured in
+`AdminHealth.test.tsx`). This page's code is not, and has not been, inert while the flag
+is off.]** That is not quite the same as "renders unchanged" for every visitor either:
+the same lane that built the flag also added `OwnerOrPlatformOperatorGuard` to the health
+routes this page reads, server-side, regardless of the flag. A manager who could read
+full agent health before this lane now gets a 403 here too — this page's `fetchHealth`
+names that cause ("This page needs a house owner, or a platform operator grant") rather
+than the generic connection toast it showed before. The implementation,
+platform-authority boundary, and what is and is not fixed are recorded in
+[[admin#The next build — /admin (Mudavym desk)]] — this page's own record does not
+duplicate it. There is no separately switchable redesigned health page: enabling the flag
+retires this URL to a redirect, not to a second design.

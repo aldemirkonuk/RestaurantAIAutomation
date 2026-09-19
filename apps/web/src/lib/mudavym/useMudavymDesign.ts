@@ -62,6 +62,8 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // ADR 0143: one desk and one switch, including the old health bookmark.
+  'admin',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];

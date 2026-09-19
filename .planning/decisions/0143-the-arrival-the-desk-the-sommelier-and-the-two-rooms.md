@@ -1,6 +1,6 @@
 # 0143 — The arrival, the desk, the sommelier, and the two rooms nobody visits
 
-- **Status:** Locked on six founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 4, 7, 8, 10 and 11 — Studio and SimPOS, the public doors, the contact address, the desk's defaults, and the arrival's threshold, `/onboarding` redirect and tutorial action boxes. See "Founder answers, 2026-09-16" below. Answered, not built.]**
+- **Status:** Locked on six founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 4, 7, 8, 10 and 11 — Studio and SimPOS, the public doors, the contact address, the desk's defaults, and the arrival's threshold, `/onboarding` redirect and tutorial action boxes. See "Founder answers, 2026-09-16" below. Answered, not built.]** Extended by two more, 2026-09-18 (ADR 0149 rows 41-42 — see the addendum below).
 - **Numbering:** drafted as 0140; 0140 was claimed on a pushed ref by a peer session (`0140-the-door-outbox-keeps-the-receipt-and-claims-nothing-it-cannot-prove.md`) while this sat unfiled, and 0141 and 0142 were taken by this session's own work. Renumbered rather than collided: see CLAUDE.md 5b, "never reuse a number".
 - **Date:** 2026-09-12
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
@@ -323,6 +323,39 @@ line on folio 2; **(b)** `/onboarding` redirects permanently to
 first as sketch 115 for his review, one of 0149's gated stops, before it is built. Carried
 also into ADR 0144.
 
+## Addendum — 2026-09-18: the OD-03 core-line diet does not bind this lane
+
+**ADR 0149 row 41 (founder, 2026-09-18).** The wave-4 close-out pass on this lane's
+Python half (`services/agent-orchestrator/`) asked whether ADR 0039's Track A clause —
+*"Nothing in Track A may extend `core/` while A1 runs"* (`0039-activation-plan-of-record.md`
+line 37, the OD-03 bake-off diet) — binds a product bug-fix lane like this one, which is
+not Track A's OD-03 bake-off work. **Answered: it does not.** The founder accepted the
+growth on this lane as it stands, measured against `origin/main` `60ed83a7`:
+
+- `core/*.py` grew 6817→7048 lines (+231) — mostly the lifecycle bug fixes this lane made
+  (a `_shutdown_event`/`cleanup()` drain fix for `NotificationAgent` and `CalendarAgent`,
+  a forgotten-task-handle fix in `_drain_tasks`, a suspend-monitor `try`/`except` fix);
+- every agent now holds a full local queue's broker deliveries **unacknowledged** rather
+  than dropping the oldest one, so `drop_oldest_on_overflow` (`base_agent.py:221`,
+  default `True`) is now read nowhere in `core/`;
+- `MessageBus` gained a new public method, `stop_consuming()`.
+
+No follow-up ADR is required for this growth. Two smaller items that rode on the same
+question are left as built, not reopened by this ruling: an operator's stop still lasts
+only until the next deploy or process restart, and the gateway's 60s operate-call timeout
+(`AGENT_OPERATION_TIMEOUT_MS`) is not being raised further as part of this answer. Detail
+and the measured line counts live in [[admin#The next build — /admin (Mudavym desk)]];
+this addendum is the decision record CLAUDE.md §5 requires for it.
+
+**ADR 0149 row 42 (founder, 2026-09-18).** A second, narrower question from the same
+pass: keep the gateway's receipt read-repair (reconciling a pending
+`platform_agent_operations` row against the orchestrator's own in-memory record), or drop
+it. **Answered: keep it**, on the condition that a receipt says so plainly when that
+record is gone — most often because the orchestrator restarted since the request was
+made. Built as a caption on the affected receipt in `AdminDesk.tsx`, driven by
+`agent-operations.controller.ts`'s existing `remote: "absent"` reconciliation outcome,
+which was already computed but never surfaced to the reader before this pass.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -333,3 +366,4 @@ also into ADR 0144.
 | 2026-09-12 | Aldemir | Three more: on-device speech keeping only the rows (closes 0113 Q6/Q7); only what Mudavym proposed waits for the seal; the auth emails renamed, OD-27 partly lifted |
 | 2026-09-17 | Aldemir | Via ADR 0149 rows 32 and 35: Studio kept as an internal tool; `/login` and `/register` take the flyleaf look (sketch 118 first) |
 | 2026-09-16 | Aldemir | Five more, via ADR 0149 (rows 4, 7, 8, 10, 11): SimPOS kept as-is and Studio waiting on the Codex-conversation check; the public doors' treatment ratified; `support@mudavym.com` everywhere; the desk's defaults kept; the threshold on folio 2, `/onboarding` redirecting permanently to `/get-started`, and the tutorial action boxes redrawn for review |
+| 2026-09-18 | Aldemir | ADR 0149 rows 41-42: the OD-03 core-line diet does not bind this product lane, growth accepted as-is; read-repair kept, on condition a gone record reads plainly |

@@ -1710,14 +1710,47 @@ Please try again or add items to inventory manually.""",
         return hashlib.sha256(data.encode()).hexdigest()[:16]
 
     async def _batch_processor(self) -> None:
-        """Background task to process batched notifications"""
-        while True:
+        """Background task to process batched notifications.
+
+        Waits on `_shutdown_event` rather than a bare sleep so `stop()` wakes it
+        immediately instead of leaving it to drain out its own timeout: `stop()`
+        does not cancel this task, it only waits for the loop to notice.
+        """
+        while not self._shutdown_event.is_set():
             try:
-                await asyncio.sleep(self.batch_interval_seconds)
+                await asyncio.wait_for(
+                    self._shutdown_event.wait(), timeout=self.batch_interval_seconds
+                )
+            except asyncio.TimeoutError:
+                pass
+            if self._shutdown_event.is_set():
+                return
+            try:
                 # Process batched notifications (email digests)
                 # Implementation placeholder
+                pass
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 self.logger.error(f"Batch processor error: {e}")
+
+    async def cleanup(self) -> None:
+        """Drain the batch loop and close the Redis client this agent opened.
+
+        Without this, `stop()` left `_batch_processor` running forever (BaseAgent
+        never cancels background tasks, it only waits for them to exit on their
+        own) and `restart()`'s `initialize()` opened a second Redis client on top
+        of the first, since neither was ever released.
+        """
+        if self._batch_task:
+            await self._drain_tasks(
+                {self._batch_task},
+                asyncio.get_running_loop().time() + self.config.task_timeout_seconds,
+            )
+            self._batch_task = None
+        if self._redis is not None:
+            await self._redis.close()
+            self._redis = None
 
     async def health_check(self) -> Dict[str, Any]:
         """
