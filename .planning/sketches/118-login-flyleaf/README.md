@@ -164,6 +164,57 @@ component, a second responsive behaviour, a house-name binding on the endpaper t
 no failure-state drawn here). Recommend building A first; hold B in reserve if the founder
 sees these side by side and wants the bigger object.
 
+## The founder's build directions, 2026-09-19
+
+The verdict itself (B, the endpaper) is the bracket under Recommendation, recorded in
+ADR 0149 row 35.
+
+**Build directions.** At about 04:45Z he reviewed the first build (a render of the
+in-progress lane) and said *"do all of your recommendations"*. The resulting rules, as built:
+
+1. **No rule crosses a word.** Each line of the leaf's title and lede sits on its own
+   rule, and every field is a rule. The page-wide ruled background is gone, because it
+   cannot stay on the baseline once an invite card, the Google button or an address
+   picker sits between the lines.
+2. **The door is two plain acts**, as frame 02 draws it: *I'm opening a new house*,
+   then *I have an invite code*. The four sales cards stay on today's page only.
+3. **On a phone the endpaper is a stacked band**: the kicker, then the wordmark, then
+   the house line. Nothing overlaps.
+4. **Each thing is said once.** The folio is the only place a step is counted, and the
+   leaf title is the only heading. The inner headings, step bars and join banner stay on
+   today's page. The endpaper holds still, except for the house's name once the form knows
+   it, and "*X* is expecting you, as a *Y*" when joining.
+5. **A refusal speaks in the book's voice** (frames 06-07), as a note in the margin.
+   The status hue marks only the note's rule and title. "Checked and good" is shown in the
+   seal colour, not green. The book hangs from the top of the screen, so a message
+   lengthens it downward and nothing moves.
+6. **Ledger fields and square plates**: a mono label, an underline-only field whose rule
+   turns seal and doubles in weight on focus, and square buttons. The invite code is
+   written into eight ruled cells. All of this is in `endpaper.css`, scoped to the shell,
+   so no caller's fields, names or order change.
+7. **The endpaper is pressed with the real seal**: `Seal.tsx`'s die, the A+M interlock
+   over the double rule. The pressing is heaviest toward the gutter and fades where the
+   page is written on.
+8. **The leaf turns** when the screen changes (`turn`, 420ms). The endpaper never moves.
+9. **The logo's signature motion, "The mark draws"**, from his own curation of the motion
+   canvas (sketch 087 `founder-curation.dc.html`, *Entrances & reveals*). The name is
+   written left to right, the full stop is struck, and the double rule is drawn. It
+   plays on first render, once per page load (`MarkDraws.tsx`). Reduced motion shows
+   the finished mark.
+
+**Google also sits on the first page**, under the address (his answer at about 05:00Z,
+recorded with the verdict in ADR 0149 row 35 and ADR 0143's bracket). This deliberately
+changes "same fields and flow". An unknown Google account is still refused by the gateway.
+
+**Not built:**
+- The front-matter Easter egg: clicking the endpaper turns back to a poem about the
+  house, or closes the book onto its back cover. He asked for a sketch first; it is
+  being drawn for his review and nothing of it is built.
+- Four more signature moments from the motion canvas were offered: the seal on success,
+  the invite code becoming a person, the wrong password wiped gently, and "the house
+  knows you". His answer was *"not sure, if we don't need it then don't"*, so none is
+  built, and none should be added without a new ask.
+
 ## Shortcuts taken, said plainly
 
 - **Register's three-screen restaurant step is drawn as one flowing leaf.** The real page
