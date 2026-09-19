@@ -136,6 +136,8 @@ reads as *"nothing to report"* forever.
 
 > **184 as of 2026-09-18, on `fix/register-names-no-house`** (`check_read_errors_not_swallowed.py` on that tree: 1487 files scanned, 184 sites, 184 baselined, 0 allowlisted). Closing `POST /auth/register` deleted `AuthService.register`, and with it one of the two `auth.service.ts` users/existingUser sites. Branches merge in any order, so re-measure before citing.
 
+> **184 as of 2026-09-16, on the public-pages adoption tree (Codex lane C, base `60ed83a7`)** (`check_read_errors_not_swallowed.py` on that tree: 1465 files scanned, 184 sites, 184 baselined, 0 allowlisted). One row retired: `vendor-portal.service.ts` vendor_portal_listings/listings (a failed listings read now raises 503 instead of publishing an empty catalogue). The baseline file's `total_sites`/`total_files` header fields were already stale on `60ed83a7` (189/42 against 185 rows) and were not rewritten here. Re-measure before citing.
+>
 > **186 as of 2026-09-12, on `fix/page-endpoints-tenant-faults`** (`check_read_errors_not_swallowed.py` on that tree: 1449 files scanned, 186 sites, 186 baselined, 0 allowlisted). ADR 0147 retired four rows: `organizations.service.ts` restaurants/r and one of users/user (the branches read now throws), and `prospects.service.ts` providers/existing and providers/raced (promote no longer treats a failed read as empty). The figure below was measured on another tree and branches merge in any order, so re-measure before citing either.
 >
 > **192 as of 2026-09-12** (`check_read_errors_not_swallowed.py` on this tree:

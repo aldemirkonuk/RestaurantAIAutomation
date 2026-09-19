@@ -75,7 +75,6 @@ import {
   MONO,
   SANS,
   SERIF,
-  ensureFraunces,
   iconForKind,
   isHouseActed,
   kindOf,
@@ -179,10 +178,6 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
   const headRef = useRef<HTMLElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement | null>());
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   // One quiet entrance for the opening line — settle, 6px, once.
   useEffect(() => {

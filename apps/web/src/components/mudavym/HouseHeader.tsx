@@ -83,23 +83,8 @@ import './house-header.css';
 
 const EM = '—';
 
-/* ── Fraunces ─────────────────────────────────────────────────────────────
-   index.html loads DM Sans / Plus Jakarta Sans / JetBrains Mono but not the
-   house serif, and the page's name is set in it. The id is the one
-   `Sheet.tsx:71` and `pages/dashboard/next/fonts.ts:10` use, so all three
-   injectors add at most one link between them. */
-const FRAUNCES_LINK_ID = 'mudavym-fraunces';
-
-function ensureFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FRAUNCES_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FRAUNCES_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}
+/* Fraunces is self-hosted — `@font-face` in `styles/mudavym.css` (decision
+   0149 row 9). No runtime Google Fonts link. */
 
 /**
  * The palette is opened by the same window event the legacy header dispatches
@@ -170,10 +155,6 @@ export function HouseHeader({ page, ground }: HouseHeaderProps) {
 
   /* The hairline hardens once the page has scrolled under the header — the
      only state this bar has, and it is a fact about the page, not a flourish. */
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
-
   useEffect(() => {
     const onScroll = () => setStuck(window.scrollY > 4);
     onScroll();

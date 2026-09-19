@@ -37,8 +37,10 @@ const h = vi.hoisted(() => {
   // Module-level env reads happen at import time, so they are pinned here,
   // before any import below evaluates them. Empty means: no Google client id
   // (the Google button renders its "not configured" line and loads no
-  // script), no Maps key, and no deployment switch — the localStorage
-  // override is the only thing that turns the house on in this file.
+  // script), no Maps key, and `VITE_MUDAVYM_PUBLIC` unset — which no longer
+  // matters (decision 0149 row 37): the house design is on unconditionally,
+  // and the only thing this file's localStorage override can do is turn it
+  // back OFF for a QA comparison.
   vi.stubEnv('VITE_GOOGLE_CLIENT_ID', '')
   vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '')
   vi.stubEnv('VITE_MUDAVYM_PUBLIC', '')
@@ -437,13 +439,6 @@ describe('public switch OFF — today’s page', () => {
     // Today's ground literal, on the page root, exactly as it ships.
     expect(container.firstElementChild).toHaveClass('bg-[#FAF7F5]')
   })
-
-  it('absence is off: with no override and no env, the page is today’s', async () => {
-    // No setSwitch() call at all — publicDesign.ts precedence step 3.
-    const r = renderAt(createElement(Register), '/register')
-    await screen.findByText('Join Your Team', undefined, WAIT)
-    expect(r.container.querySelector('.mudavym')).toBeNull()
-  })
 })
 
 /* ── 2. ON wears the house ──────────────────────────────────────────────── */
@@ -460,6 +455,17 @@ describe('public switch ON — the house, from tokens', () => {
     expect(scopes[0]).toHaveClass('mdv-auth')
     expect(scopes[0].hasAttribute('data-ground')).toBe(false)
     expect(scopes[0]).not.toHaveClass('bg-[#FAF7F5]')
+  })
+
+  it('absence is on: with no override and no env, the page wears the house', async () => {
+    // No setSwitch() call at all — publicDesign.ts now resolves true unless
+    // an explicit "off" override says otherwise (decision 0149 row 37).
+    const r = renderAt(createElement(Register), '/register')
+    await screen.findByText('Join Your Team', undefined, WAIT)
+    const scopes = r.container.querySelectorAll('.mudavym')
+    expect(scopes).toHaveLength(1)
+    expect(scopes[0]).toBe(r.container.firstElementChild)
+    expect(scopes[0]).toHaveClass('mdv-auth')
   })
 
   it.each(STATES)('$name leaves no literal colour in any class or inline style', async ({ reach }) => {

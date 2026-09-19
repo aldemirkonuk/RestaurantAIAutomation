@@ -42,7 +42,6 @@ import {
   addMonths,
   countPhrase,
   dayKey,
-  ensureFraunces,
   parseDayKey,
   periodLabel,
   sinceOrUntil,
@@ -195,10 +194,6 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     }
     return null;
   })();
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   /* One quiet entrance for the opening line — settle, 6px, once. */
   useEffect(() => {

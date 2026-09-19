@@ -33,7 +33,11 @@ export const EMAIL_CONFIG = {
     name: "WineOps AI",
     logo: "", // Add logo URL when available
     website: "https://wineops.ai",
-    supportEmail: "support@wineops.ai",
+    // Decision 0149 row 8: support@mudavym.com everywhere a support address
+    // appears, auth-email footers included. `brand.name`/`website` stay
+    // WineOps for now — OD-27 defers that full rename to its own migration;
+    // only the address moves ahead of it.
+    supportEmail: "support@mudavym.com",
   },
 
   // Footer Text

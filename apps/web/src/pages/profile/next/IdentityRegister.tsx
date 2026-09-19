@@ -13,9 +13,10 @@
  * not render as an empty box that a Save would then write as "no phone".
  *
  * The support address is the other one. `VITE_SUPPORT_EMAIL` falls back to
- * `support@wineops.ai` on the shipping page (Profile.tsx:445) — a domain with
- * no mailbox behind it (profile.md §7). An unconfigured deployment gets a
- * sentence here, not a mailto that goes nowhere.
+ * `support@mudavym.com` on the shipping page (Profile.tsx:445 — decision 0149
+ * row 8) when the env var is unset. This register does not repeat that
+ * fallback on purpose (profile.md §7): an unconfigured deployment gets a
+ * sentence here, not a mailto that may go nowhere before the mailbox exists.
  */
 
 import { useState } from 'react';
