@@ -29,13 +29,21 @@ import {
 import { EM, houseNamingFor, money, volume, year } from './cellar-format';
 
 /**
- * The menu scanner ships today and its detection half is real (`scanMenuImage`
- * → the orchestrator's 4-layer pipeline). Its *add* half is not: both the
- * scanner tab's approve handler and the legacy page's `onWinesDetected` only
- * move rows around in component state — nothing is written to the library
- * (MenuScannerTab.tsx:160-172, WineLibrary.tsx:1813-1822). So the control here
- * is called "Read a menu", not "add wines", and says exactly what did not
- * happen when it finishes.
+ * The menu scanner's detection half was always real (`scanMenuImage` → the
+ * orchestrator's 4-layer pipeline). Its *add* half was not: both the scanner
+ * tab's approve handler and the legacy page's `onWinesDetected` only moved rows
+ * around in component state (MenuScannerTab.tsx:160-172,
+ * WineLibrary.tsx:1813-1822), so this control was called "Read a menu" rather
+ * than "add wines" and said exactly what had not happened when it finished.
+ *
+ * BUILT 2026-09-06 (packet 1, census 102 /cellar row). `MenuScannerModal`'s
+ * house branch now carries what it read, through the same bulk door
+ * /inventory's scan and manual receipt already use
+ * (`persistBatchToInventory` → `POST /inventory/:restaurantId/items/bulk`).
+ * The control keeps its honest name — reading is still reading — but the
+ * sentence it prints afterwards is now the outcome of a real write, not a
+ * report that no path exists. With the cellar flag OFF this page does not
+ * render at all, so the legacy `/wines` opener is untouched.
  *
  * DISCLOSED EXCEPTION — framer-motion. This is the ONE import on the page that
  * reaches a motion library, and it is deliberate and bounded:
@@ -384,9 +392,27 @@ export default function WineRegister({ data }: { data: CellarData }) {
             onWinesDetected={(detected: unknown[]) => {
               const n = Array.isArray(detected) ? detected.length : 0;
               setScanSaid(
-                `The scanner read ${n} ${n === 1 ? 'title' : 'titles'} off that menu. Nothing was written: ` +
-                  'the scanner detects, and no path from a detected title into the library or the cellar ' +
-                  'exists on this page yet. The book has been re-read in case something landed elsewhere.',
+                `The scanner read ${n} ${n === 1 ? 'title' : 'titles'} off that menu. ` +
+                  'Nothing is written by reading — tick the lines you want and carry them.',
+              );
+            }}
+            onCarried={(result: {
+              added: unknown[];
+              stockAdded: unknown[];
+              reactivated: unknown[];
+              provisional: unknown[];
+              failed: unknown[];
+            }) => {
+              const landed =
+                result.added.length + result.stockAdded.length + result.reactivated.length;
+              setScanSaid(
+                `${landed} ${landed === 1 ? 'bottle' : 'bottles'} carried onto the register` +
+                  (result.provisional.length > 0
+                    ? `, ${result.provisional.length} of them against a provisional library entry`
+                    : '') +
+                  (result.failed.length > 0
+                    ? `. ${result.failed.length} ${result.failed.length === 1 ? 'line was' : 'lines were'} refused and wrote nothing.`
+                    : '.'),
               );
               void queryClient.invalidateQueries({ queryKey: queryKeys.wines.all });
             }}

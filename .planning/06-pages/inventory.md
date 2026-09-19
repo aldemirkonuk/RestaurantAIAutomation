@@ -532,3 +532,36 @@ non-null either way), and `useInventoryPage`'s filter matches both.
 it:** `house-item-alias.spec.ts` pulls the real `updateInventoryItem` body out
 of the file and fails if it ever contains `from("master_wine_library")`.
 
+
+## Execution reconciliation — 2026-09-13
+
+The resolved `wt-port-ov1` source was recovered onto `60ed83a7` in the isolated
+`codex/page-wave-ports` tree. Every existing selected file matched current main
+before copying; original dirty worktrees and indexes were preserved. This
+recovers the house overlays for adding/removing bottles, auto-location, manual
+receipts, POS mappings, zone management and spot counts, with the corresponding
+provider-transfer, consent and menu-scan surfaces. Existing legacy branches and
+the accepted paper/charcoal design remain present.
+
+Review found and corrected four misleading write paths in that port:
+
+- Batch auto-location called the fire-and-forget single-assignment helper and
+  then sent the same mapping again. It now sends each pick once, waits for the
+  server and changes the cache only for accepted picks. A partial refusal names
+  the failed pick and leaves its cache entry unchanged.
+- The removal seal and spot-count seal discarded their asynchronous promises.
+  They now keep the primitive pending until their operation reports its result.
+- Removal is currently two server operations (stock reconciliation, then row
+  retirement). A failed retirement may follow a recorded adjustment; the error
+  state no longer claims every row is unchanged. A successful toast counts only
+  removed rows, excluding rows without inventory records. This UI correction
+  does not make the two backend operations atomic.
+- Offline spot counts no longer claim “Sent” before the outbox returns. A queued
+  result reaches “Written here”; the house/book rungs require their respective
+  gateway receipt. Fractional or blank counts cannot silently become integers.
+
+Behavior regressions cover pending writes, partial batch refusal, exact request
+count, keyboard sheet heights and offline reach. Verification results and local
+dependency recovery are recorded in the execution evidence; release and visual
+checks remain separate. No live stock, receipt, provider or message was written
+while validating this port.

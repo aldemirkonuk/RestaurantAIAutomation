@@ -18,7 +18,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import React from 'react'
-import { renderHook, render, screen, waitFor } from '@testing-library/react'
+import { renderHook, render, screen, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const mockGet = vi.hoisted(() => vi.fn())
@@ -263,5 +263,59 @@ describe('the zone surfaces do not report a dead fetch as an empty cellar', () =
       await screen.findByText(/no storage locations defined/i, undefined, SETTLE),
     ).toBeInTheDocument()
     expect(screen.queryByText(/zones could not be loaded/i)).not.toBeInTheDocument()
+  })
+})
+
+
+describe('batch assignments are confirmed once per mapping', () => {
+  const ZONE = '22222222-2222-4222-8222-222222222222'
+
+  function seed(client: QueryClient) {
+    client.setQueryData(['storageLocations', RESTAURANT], [{
+      id: ZONE, name: 'Recorded zone', capacity: 20, currentCount: 0, color: '#6b7280',
+    }])
+    client.setQueryData(['storageLocationMappings', RESTAURANT], [])
+  }
+
+  it('does not make a hidden second request or move a bottle before acceptance', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+    seed(client)
+    let accept!: (answer: { data: unknown }) => void
+    mockPost.mockReturnValue(new Promise((resolve) => { accept = resolve }))
+    const { result } = renderHook(() => useStorageLocations(), {
+      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    })
+    let completion!: ReturnType<typeof result.current.assignWinesToLocations>
+    act(() => { completion = result.current.assignWinesToLocations([{ wineId: 'wine-a', locationId: ZONE, quantity: 3 }]) })
+    expect(mockPost).toHaveBeenCalledTimes(1)
+    expect(mockRequest).not.toHaveBeenCalled()
+    expect(client.getQueryData(['storageLocationMappings', RESTAURANT])).toEqual([])
+    await act(async () => { accept({ data: {} }); await completion })
+    expect(await completion).toEqual({ written: ['wine-a'], failed: [], denied: false })
+    await waitFor(() => expect(result.current.getWineLocation('wine-a')?.id).toBe(ZONE))
+    await waitFor(() => expect(result.current.locations[0].currentCount).toBe(3))
+  })
+
+  it('keeps refused assignments out of the cache and reports the individual failure', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+    seed(client)
+    mockPost.mockResolvedValueOnce({ data: {} }).mockRejectedValueOnce({
+      response: { status: 403, data: { message: 'Manager approval required' } },
+    })
+    const { result } = renderHook(() => useStorageLocations(), {
+      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    })
+    let answer!: Awaited<ReturnType<typeof result.current.assignWinesToLocations>>
+    await act(async () => { answer = await result.current.assignWinesToLocations([
+      { wineId: 'wine-a', locationId: ZONE, quantity: 3 },
+      { wineId: 'wine-b', locationId: ZONE, quantity: 2, label: 'Refused bottle' },
+    ]) })
+    expect(mockPost).toHaveBeenCalledTimes(2)
+    expect(mockRequest).not.toHaveBeenCalled()
+    expect(answer).toEqual({ written: ['wine-a'], failed: [
+      { wineId: 'wine-b', label: 'Refused bottle', message: 'Manager approval required' },
+    ], denied: true })
+    expect(result.current.getWineLocation('wine-b')).toBeNull()
+    await waitFor(() => expect(result.current.locations[0].currentCount).toBe(3))
   })
 })
