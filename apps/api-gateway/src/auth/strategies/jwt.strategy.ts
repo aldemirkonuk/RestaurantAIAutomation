@@ -4,6 +4,7 @@ import { ExtractJwt, Strategy } from "passport-jwt";
 import { AuthService, JwtPayload } from "../auth.service";
 import { resolveJwtSecret } from "../jwt-secret";
 import { devBypassEnvEnabled } from "../dev-bypass.util";
+import { tokenHouse } from "../house-role";
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -26,10 +27,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // re-issues tokens with a new `restaurantId` but does not update
     // `users.restaurant_id` in the database — using the DB column here overwrote
     // the active restaurant and broke tenant-scoped reads (e.g. getPendingDraft).
-    const restaurantId =
-      payload.restaurantId && String(payload.restaurantId).trim().length > 0
-        ? payload.restaurantId
-        : user.restaurant_id;
+    const house = tokenHouse(payload);
+    const restaurantId = house ?? user.restaurant_id;
 
     // OD-79: sourced from the database row, not `payload.emailVerified`.
     // Tokens are signed with the flag as it was at issue time, so a user who
@@ -52,11 +51,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // read differently and is not written.
     const devBypass = payload.devBypass === true && devBypassEnvEnabled();
 
+    // The role IN THE HOUSE THIS TOKEN NAMES (ADR 0162, answer A: "Only that
+    // house"), read by `validateJwtPayload` the way `assertMembership` reads a
+    // member. `RolesGuard` gates every `@Roles` route on this field, and it
+    // used to be the global `users.role`, so a role changed in one house
+    // decided what the person could do in another (v3.0-TECH-DEBT 44.1q). Null
+    // is no role, and `@Roles` refuses it; it never falls back to `users.role`
+    // or to the token's own snapshot. A token that names no house keeps
+    // today's behaviour: `users.role`, then the token's claim.
+    const role = house
+      ? (user.house_role ?? null)
+      : (user.role ?? payload.role);
+
     return {
       userId: user.user_id,
       email: user.email,
       name: user.name,
-      role: user.role ?? payload.role,
+      role,
       restaurantId,
       emailVerified: devBypass ? true : (user.email_verified ?? false),
       // The marker itself stays a straight report of what the token claims,
