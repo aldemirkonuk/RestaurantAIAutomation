@@ -238,6 +238,67 @@ describe("providerId must name a vendor of this house", () => {
   });
 });
 
+/**
+ * The Supabase client reports a failed write as a returned `{ error }`, it does not throw. The
+ * controller above sees a mocked service, so this block puts the REAL SenderReputationService
+ * behind the same HTTP app, over a store whose upsert answers what the test scripts.
+ */
+describe("a trust that was not saved is a failed request", () => {
+  let upsertResult: { error: unknown } | "throw";
+  const upserts: unknown[] = [];
+  const realService = new SenderReputationService({
+    supabase: {
+      from: (table: string) => ({
+        upsert: async (row: unknown) => {
+          upserts.push([table, row]);
+          if (upsertResult === "throw") throw new Error("socket hang up");
+          return upsertResult;
+        },
+      }),
+    },
+  } as unknown as DatabaseService);
+
+  beforeEach(() => {
+    upserts.length = 0;
+    upsertResult = { error: null };
+    reputation.setTrust.mockImplementation((...args: unknown[]) =>
+      (realService.setTrust as (...a: unknown[]) => Promise<string>)(...args),
+    );
+  });
+
+  it("still answers success, with the domain, when the write lands", async () => {
+    const res = await call("POST", "/senders/trust", "manager", {
+      domain: "vendor.example",
+      trusted: true,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ domain: "vendor.example", trusted: true });
+    expect(upserts).toHaveLength(1);
+  });
+
+  it("answers 503, not success, when the upsert returns an { error }", async () => {
+    upsertResult = { error: { message: "permission denied for table" } };
+    const res = await call("POST", "/senders/trust", "manager", {
+      domain: "vendor.example",
+      trusted: true,
+    });
+    expect(upserts).toHaveLength(1);
+    expect(res.status).toBe(503);
+    expect(res.body).not.toHaveProperty("trusted");
+    // The store's own message stays in the log; the caller is not handed it.
+    expect(JSON.stringify(res.body)).not.toContain("permission denied");
+  });
+
+  it("answers 503 when the upsert throws, too", async () => {
+    upsertResult = "throw";
+    const res = await call("POST", "/senders/trust", "owner", {
+      domain: "vendor.example",
+      trusted: false,
+    });
+    expect(res.status).toBe(503);
+  });
+});
+
 describe("trusted must be a boolean", () => {
   it('refuses trusted: "false" rather than reading the string as trust', async () => {
     const res = await call("POST", "/senders/trust", "manager", {
