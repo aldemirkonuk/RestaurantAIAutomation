@@ -155,6 +155,14 @@ No database write. Client-side only: `accessToken`/`refreshToken` (`AuthContext.
 
 **Should be:** the one door, showing every sign-in method that identity actually has, and never naming one it does not.
 
+**2026-09-19 — sketch 118 Direction B built.** The founder chose B, the endpaper, over the
+sketch README's recommended A (ADR 0149 row 35; ADR 0143 bracket). When `on === true`
+(`usePublicDesign()`), the page renders `EndpaperShell` (`components/brand/EndpaperShell.tsx`)
+instead of `AuthShell`/`AuthCard`. The fields are the same (`Login.tsx:206-404`, unchanged) inside
+a new two-column book frame, and the OFF branch is unchanged. His later call the same day puts
+"Sign in with Google" on the first page as well; it lands in the follow-up commits on this branch.
+The password step needs the api-gateway, so it is covered by vitest only.
+
 Note: an earlier revision of this section cited a normalising regex at `Login.tsx:25-28` that collapsed auth errors into "Invalid email or password". **No such code exists in `Login.tsx`** — it was already stale when written; the page renders `err.message` verbatim. The correction is recorded rather than silently deleted, per CLAUDE.md §5b.
 
 | State | Handled? | Evidence |
