@@ -25,6 +25,338 @@
 
 ## Context
 
+### Amendment — 2026-09-18: ownership follows what a PR does to the gate's rules, not which file it touches
+
+Founder, 2026-09-18: *"do the better approach for longevity, change the ADR if needed."*
+
+**The problem.** `.planning/decisions/README.md` was owned outright, standing in
+for "a PR that changes what future audits treat as the rules." That stand-in was
+too broad and too narrow at once:
+- **Too broad.** Every PR that added an ADR also appended its row, so every such
+  PR escalated. Measured on the final code (see *Measured* below): 53 of the 125
+  old-rule escalations among 317 first-parent `main` commits were owned by the
+  index alone.
+- **Too narrow, three ways:**
+  - A new ADR file claiming to amend this one was not owned at all if it skipped
+    its row. PR #391 adds ADR 0160 with no row.
+  - A rename away from an owned path escaped, because `gh pr diff --name-only`
+    lists only the destination.
+  - Case-variant paths matched nothing, although a macOS checkout writes them
+    over the owned files.
+
+**The rule.** One function, `gate_ownership()` in `scripts/pr_audit_gate.py`, decides.
+- CI runs it (`pr_ownership()`) before any model call and before the API-key check,
+  so an owned PR escalates even with no key or no credit.
+- Skill step 4 runs `origin/main`'s copy through `python3 -I … --ownership`.
+- `scripts/hooks/require_pr_audit.py` runs `origin/main`'s copy again before it
+  allows `gh pr merge`, blocks an owned PR even when it carries a PASS marker, and
+  requires `--match-head-commit <full 40-hex sha>` equal to the PR's head, given
+  once as its own argument. It finds every `pr merge` in a command and refuses a
+  command that holds more than one (one check can take 380 s by its own timeouts;
+  the hook is given 600 s); it needs a literal PR number or URL (no `$n`, `$(...)`
+  or bare `gh pr merge`); it refuses `--admin` and `--auto`, which the skill
+  forbids; and it blocks a `pr merge` it cannot read as a command of its own
+  (`bash -c "…"`, `eval`, a comment). It also refuses a `pr` subcommand written
+  with quoting or expansion (`$'merge'`, `mer$()ge` and `{merge,}`, which bash runs
+  as `merge`, and `mer[g]e`, which it runs as `merge` beside a file of that name),
+  a word after a literal `gh` written that way (`gh p$()r merge`), a `pr` after a
+  word the shell expands (`$G pr merge`), and `gh alias set` or `gh alias import`.
+  MCP tools that merge a PR or arm auto-merge are blocked outright;
+  `.claude/settings.json` routes them to the hook.
+- The skill keeps no path list that anything reads; the two lists had drifted
+  twice. Step 4 states the rule in words, and `scripts/test_pr_audit_gate.py`
+  fails when those words stop naming every owned prefix and name.
+
+The check reads `git diff --raw -z --no-renames` between the PR's merge-base with
+`main` and its exact head SHA, plus blobs; there is no text diff to parse. A PR is
+owned (founder's word required; no model review can clear it) when any of these holds:
+
+1. **Owned paths.** Paths are compared after NFC and case folding, and both sides
+   of every change are checked:
+   - `scripts/pr_audit_gate.py` and all of `scripts/hooks/`;
+   - the gate's tests, `scripts/test_pr_audit_gate.py` and
+     `scripts/test_require_pr_audit.py`, and `scripts/check_test_scripts_are_real.py`;
+   - what `deploy.yml`'s verification delegates to: `scripts/check_deployed_sha.py`,
+     `scripts/resolve_watched_commit.py` and `scripts/check_deploy_audit_ran.sh`;
+   - all of `.github/workflows/` (so `pr-audit-gate.yml`, `ci.yml`, `deploy.yml`
+     and any new workflow) and `.github/actions/`;
+   - anything inside a `.claude` directory, and any `.mcp.json`, at any depth (a
+     nested `.claude/skills/` loads when Claude works in that directory, so
+     `apps/web/.claude/skills/pr-audit-gate/SKILL.md` could stand in for the audit);
+   - `.planning/decisions/0050-*` and `0090-*`;
+   - any `CLAUDE.md`, `CLAUDE.local.md` or `AGENTS.md`, at any depth;
+   - a path with a control character, and any path that collides with another
+     under case folding.
+2. **The index.** It is owned unless every change is an appended ADR row
+   `| [NNNN](NNNN-slug.md) | … |` that meets all of these:
+   - it sits inside the Locked or Proposed table;
+   - it links the one ADR file this PR adds under that number;
+   - its number has never been used on `main` (file or row);
+   - it appears once, and its text passes the decision-text scan.
+
+   Editing, moving or deleting a row, or changing any other line, stays owned.
+3. **Decision text.** Every file under `.planning/decisions/` is read whole, before
+   and after the change. It is owned if it names the gate: ADR 0050 or 0090, the
+   gate's script, hook, skill or agents, gate-owned paths, hardness scores, or
+   self-merging (15 identity tokens). For the index, `OPEN-DECISIONS.md`,
+   `CLAIMS.jsonl`, `PROJECT.md` and `FUTURES.md`, only changed lines are judged;
+   `CLAIMS.jsonl` lines must parse as JSON and are judged with escapes decoded.
+   - Text is normalized before matching: entities, URL escapes, NFKC, invisible
+     characters, inline tags and markdown inside words; Greek and Latin-extension
+     lookalikes are mapped.
+   - Owned outright: tag or bidi-control characters, line separators other than
+     `\n`, NUL, invalid UTF-8, letters or digits outside Latin and Greek, and a
+     symlink, submodule or executable on this surface.
+4. **Anything the check cannot read** is owned (`CANNOT CHECK`, exit 4): the head
+   moved, the base is not `main`, a fetch or git call failed, the change list is
+   empty, a change type other than A, D, M or T appeared, a register's changed
+   region (after its common head and tail) is over 1,000 lines, or the CI check
+   ran past 600 seconds. When every reason is of this kind, CI posts COULD NOT RUN
+   (`ownership-incomplete`), not a claim that the PR is gate-owned.
+
+**Where the gate's rules live.** They are this ADR, ADR 0050 and the owned files,
+whatever their index rows or tables say.
+- Text anywhere else that claims to supersede, amend, narrow or reinterpret them
+  has no effect until this ADR or 0050 is edited to point at it. That edit is
+  itself owned.
+- Reviewers read decisions with `git show origin/main:<path>`, and treat such a
+  claim in a PR as a BLOCK finding. The three agent definitions and the CI
+  compliance angle now say so.
+
+**What this gives up, deliberately (founder answer 1).** Until now the index row
+was the only mechanical route by which an ordinary ADR reached the founder at merge.
+- From now on, a new ADR that does not name the gate merges on the ordinary audit
+  when it arrives as a new file plus an appended row. That includes one born
+  Locked, and one that supersedes a non-gate ADR.
+- Marking an existing ADR superseded still means editing its row, and that still
+  escalates.
+- Locking stays the founder's act, taken in chat and recorded in the ADR's own
+  review trail. The gate escalates because of its own conflict of interest, not
+  as the lock.
+
+**Witness-citation convention (founder answer 4, no carve-out).** A new decision
+file that names the gate escalates, including one that only cites an audit as a
+witness. Cite audits as `audit of PR #M, round N`, with the report path under
+`.planning/07-reference/pr-audits/` (now in `TEMPLATE.md`). Never reword a line
+that states a rule about the gate, or says what it does, to get past the check.
+
+**Widened after the adversarial round (same day); accepted by the founder, 2026-09-18.**
+The judged spec owned three named workflows and `deploy.yml`, and the audit of the
+built change showed each was defeated one file sideways. Each of these was RELEASED,
+measured through `ownership_between()`:
+- a new `.github/workflows/zzz-automerge.yml` (`pull_request_target`,
+  `contents: write`, `gh pr merge` on a label): a merge path the audit never sees;
+- `scripts/check_deployed_sha.py` rewritten to `return 0`: the check `deploy.yml`
+  was owned for, loosened in the script it calls;
+- `scripts/test_pr_audit_gate.py` gutted to `assert True`: the gate's regression net.
+
+So the owned set now names the callees and the whole workflow directory. Cost over
+the replay below: 9 commits owned only by a workflow outside the three the spec
+named; the added scripts added 0 (each commit touching one also touched an owned
+path).
+
+Founder, 2026-09-18, in chat, after the confirm round: he **accepted** the widened
+owned set — the whole `.github/workflows/` folder, `.github/actions/`, the
+deploy-check scripts, the gate's own tests, and `.claude/` at any depth. That is
+his word on the widening, recorded here; it was not one of answers 1–7. Two
+owned entries beyond answers 1–7 were not named in his acceptance as it was relayed:
+`scripts/check_test_scripts_are_real.py` (the test-integrity guard) and `.mcp.json`
+at any depth. They ride on this PR, which escalates to him regardless, and his
+word on its merge covers them or strikes them.
+
+**Founder answers, 2026-09-18** (all were the recommended option):
+
+| # | Question | Answer (verbatim option label) |
+|---|---|---|
+| 1 | Scope: a new ADR that does not name the gate, arriving as a new file plus an appended index row, merges on the ordinary audit; the lock is his act in chat, recorded in the ADR's review trail | "Accept" |
+| 2 | Make the index append-only (rows carry number, link, title, date; status lives in each ADR) | "Open it as its own decision" |
+| 3 | Hook: `gh pr merge` must carry `--match-head-commit <full sha>`; an owned PR is blocked even with a PASS marker; the founder's route is his word in chat, then a SHA-pinned merge call | "Yes, hard block" |
+| 4 | Gate names in new ADRs: the witness-citation convention with no carve-out, plus one PR re-citing the nine ADRs that name the gate | "Convention + one cleanup PR" |
+| 5 | Own all of `.claude/` | "Own all of .claude/" |
+| 6 | Narrow `ci.yml` ownership | "Yes, as a follow-up" |
+| 7 | Install the hook in the founder's user-level `~/.claude/settings.json` | "Yes, install it" |
+
+**Follow-ups, each its own change (not this one):**
+- The index append-only decision (answer 2): its own ADR, numbered by
+  `next_free()` in `scripts/check_adr_numbers_unique.py` when it is written, never
+  copied from here (its answer moved from 0161 to 0164 during 2026-09-18 alone).
+- One cleanup PR re-citing the nine ADRs that name the gate as a witness — 0097,
+  0106, 0131, 0136, 0137, 0139, 0140, 0146 and 0158 (answer 4). Until it merges,
+  any edit to one of them escalates under the whole-file rule.
+- Narrowing `ci.yml` ownership to the `on:` triggers and the `workflow_dispatch`
+  path the CI merge step depends on (answer 6). `ci.yml` stays fully owned here;
+  it is the largest escalation source (58 of the 104 owned commits below). The
+  directory is now owned whole, so that decision covers the other workflows too.
+- Installing `require_pr_audit.py` in the founder's user-level
+  `~/.claude/settings.json`, pointing at `origin/main`'s copy (answer 7), done by
+  the orchestrating session after this merges. No repo file changes for it.
+
+**Accepted costs.**
+- A new ADR that cites the gate by name escalates (convention above).
+- Edits to existing index rows escalate: 12 of the 87 first-parent `main` commits
+  since 2026-09-03 (measured 2026-09-18). PR #391 at `6a270a0d` is owned for one
+  reason only: it rewrites ADR 0121's existing row. Its appended 0159 row and its
+  row-less ADR 0160 are released.
+- A legitimate case-only rename, or a case-colliding product path, escalates.
+- The hook refuses some commands that merge nothing, by design of the confirm
+  round's rules (each measured: exit 2): a `pr` after a word the shell expands
+  (`$GH pr view 1`, and `A=1 pr x`, since `=` is zsh's `=cmd`), a quoted or
+  expanded word after a bare `gh` argument (`grep gh "$f"`), and, in a string or a
+  heredoc body, `gh pr` or `pr` after a `$` variable followed by an expansion-led
+  word (`echo "$N pr ${X}"`, a heredoc that mentions `gh pr {a,b}`). `gh pr view 1`,
+  `gh pr checks 1`, `gh pr view "$N"` and a `gh pr create --body "$(cat <<'EOF' …)"`
+  still pass (tests H15c).
+
+**Residual risks, stated plainly.**
+- **Paraphrase is not caught.** A new ADR plus its appended row that steers the
+  gate without any of the 15 identity tokens is released, for example
+  "Documentation-only pull requests need no founder sign-off before merging", and
+  so is a rule written inside a token-free row. The fixer round's audit added a
+  second: "PRs that change only configuration files may be merged automatically by
+  the bot with no reviewer approval required" (a new ADR file plus its row) is released. The only
+  defence is the reader rule above; policy-verb tokens were not added because they
+  would over-block. (Before this change, skipping the row already bypassed the old
+  rule.)
+- **Text outside the decision surface is not scanned:** `STATE.md`, `ROADMAP.md`,
+  `07-reference/`, code comments, PR bodies, memory outside the repo. A `ROADMAP.md`
+  line naming the gate is released. Only the reader rule and CLAUDE.md §0.1 cover it.
+- The convention can breed token-free aliases for the gate; approve a PR that
+  coins one only after adding it to `GATE_TEXT_ALTERNATIVES`.
+- Unicode: a Greek letter outside the lookalike map, or a same-script lookalike
+  NFKC misses, could still evade a token.
+- Instruction files other agents load by name are not owned: `GEMINI.md`,
+  `.cursorrules`, `.cursor/rules/`, `.github/copilot-instructions.md` (each
+  measured RELEASED). `AGENTS.md`, `CLAUDE.md` and `CLAUDE.local.md` are.
+- The hook recognises an MCP merge tool by the words of its name, split at a
+  lower-to-upper change, so `mcp__x__MergePR`, which `.claude/settings.json`
+  routes to the hook, is not refused (`merge_pr` and `mergePullRequest` are), and
+  a name spelling `MERGE` in capitals is not routed to the hook at all.
+- Trust still rests on the session's checkout: `.claude/settings.json` is read
+  from it, so a branch that edits it can switch the hook off (answer 7 closes
+  this outside the repo). `gh api …/pulls/N/merge` stays ungated on purpose; it is
+  the founder's route. The CI job is still not a required context and has had no
+  credit since 2026-09-12, so its escalation posts but cannot block a merge.
+- **The hook is a lexical check, not a shell.** "Hard block" means a merge a
+  session writes as a command in one of the *checked* or *refused* forms below.
+  It does not mean every merge a session writes, nor every merge it could cause:
+  the *not seen* forms are written as commands too.
+  - **Checked** (the pin, the PASS marker and `origin/main`'s classifier all run):
+    a `gh pr merge` written plainly as a command of its own, one per command. `gh`
+    may be quoted, escaped or a path ending in `/gh`, behind a wrapper (`sudo`,
+    `env`, `time`), and the command may sit inside `$(...)`, backticks, `<(...)`,
+    a subshell, a `{ …; }` group, an `if`, a function body, or a heredoc fed to a
+    shell.
+  - **Refused** (exit 2, nothing runs): the same merge inside a double-quoted
+    substitution, `bash -c "…"`, `eval '…'` or after a comment; a second merge in
+    the command; `--admin`, `--auto`, an unknown flag, `-R`/`--repo` naming another
+    repository (or any before `pr`), `GH_REPO`/`GH_HOST` in the command, or a PR
+    that is not a literal number or URL; `gh alias set`
+    and `gh alias import`. In the command's words, including inside substitutions:
+    a `pr` subcommand word holding quoting or expansion (the six spellings the
+    confirm round found, `$'merge'`, `$"merge"`, `mer$()ge`, `mer${ZZ}ge`,
+    `{merge,}`, `mer[g]e`, among them); a word after a literal `gh` holding quoting
+    or an expansion character (`gh p$()r merge`); a `pr` after a word holding `$`,
+    a backtick, `*`, `?`, `[`, `{`, `~`, `=` or `!` (`$G pr merge`). In the text
+    with quotes and backslashes removed, which reaches strings another shell runs
+    and heredoc bodies: `gh pr`, or `pr` after a `$` variable or a closing
+    substitution, followed by a word in which `$`, a brace, a bracket, `*`, `?` or
+    `!` leads into more of the word (`bash -c "gh pr \$'merge'"`).
+  - **Not seen** (each example measured: exit 0 through the real hook against an
+    owned PR, 2026-09-18, and pinned at exit 0 by
+    `scripts/test_require_pr_audit.py`): words the shell splits apart
+    (`gh${IFS}pr${IFS}merge${IFS}2`, `{gh,pr,merge} 2`); arguments `xargs` appends
+    (`echo merge 2 | xargs gh pr`); a shell alias for `gh`
+    (`alias g=gh; g pr merge 2`); a `gh` and a `pr` both built by expansion
+    (`G=gh; $G p$()r merge 2`); inside a string another shell runs, a `gh` or `pr`
+    built by expansion (`bash -c 'gh p$()r merge 2'`), or a subcommand ending in a
+    glob character or built by backticks (`bash -c 'gh pr merg? 2'`,
+    ``bash -c 'gh pr `echo merge` 2'``).
+    Nor is a merge built or named at run time: a `gh` alias or shell function
+    defined in an earlier command, `eval` of a constructed string, a script file
+    that runs `gh pr merge`, `GH_REPO` exported in an earlier command. Quoting this
+    reader parses differently from the shell (a `case` pattern inside `$(...)`,
+    quotes nested in `${...}` inside double quotes) may be misread either way.
+    Merge routes outside Bash and the matched MCP tools (the GitHub web UI,
+    another client) never reach the hook.
+
+  Until the confirm round this bullet said "every merge a session writes as a
+  command" and that `gh alias set` in the same command was caught; neither was
+  true (the six spellings above and `gh alias set m 'pr merge' && gh m 2` each
+  exited 0). The six spellings and the alias are now refused; the *not seen* list
+  is what remains.
+- Not verified: that `refs/pull/N/head` never lags `headRefOid` just after a push
+  (if it does, the check says CANNOT CHECK and a rerun clears it); the hook
+  `timeout` unit (seconds is assumed); that Claude Code applies the matcher
+  `Bash|mcp__.*[Mm]erge.*` as a regex to MCP tool names (documented behaviour; the
+  test checks the pattern with Python's `re`, not the harness).
+
+**Measured on the final code, 2026-09-18** (`scripts/pr_audit_gate.py` on
+`feat/gate-owned-by-diff`; replay window: the 317 first-parent `main` commits
+from `09190ee5` back to 2026-08-24T00:00 local, each commit against its first
+parent; the old rule is the pre-amendment `_GATE_OWNED_PATHS` prefix match):
+- Owned commits: 125 under the old rule, 104 under this one. 31 released, 10 newly
+  owned: `008fbf0f` (`.claude/launch.json`, and ADR 0136 names the gate),
+  `0f1c4f0d` (an edit to ADR 0097, which names the gate on both sides),
+  `b1532c50` (an empty commit: CANNOT CHECK), and 7 that change a workflow outside
+  the three the spec named (`schema-parity.yml` 5, `e2e-prod.yml` 1,
+  `agent-cards-weekly.yml` 1). 9 commits in all are owned only by such a workflow.
+- Index-only escalations: 53 under the old rule; 22 of those 53 are still owned,
+  13 of them by an index reason alone (row edits, or rows naming the gate).
+- No commit in the window hit the 1,000-line register-diff bound (1 CANNOT CHECK,
+  the empty commit). The largest register today is `CLAIMS.jsonl`, 351 lines.
+- The judged spec's figures (294 commits, 120 → 90) came from a `--since` without
+  a time of day and were not reproducible; the numbers above are the re-measurement.
+- Owning `.claude` and `.mcp.json` at any depth (confirm round) changed no
+  commit's outcome over the window: re-run on the final code, every figure above
+  is the same, and no commit in the window touched a nested one.
+- `scripts/test_pr_audit_gate.py`: 91 PR shapes built through real git (72 ported
+  from the judged harness, 3 added by the implementation, 9 by the fixer round:
+  a new workflow, a local action, the three deploy scripts, the two gate tests, the
+  test-integrity guard, and a register change past the diff bound; 7 by the
+  confirm round: a nested `.claude` skill, settings file and agent, a nested
+  `.mcp.json`, a register whose first changed run is clean and a later one names
+  the gate, and a row reusing a number `main` has only as a file, or only as a
+  row) classify as expected, plus an append to and an edit of this checkout's real
+  index. The 9 fixer cases were each RELEASED by the code before the fixer round,
+  and the 4 nested-path cases by the code before the confirm round.
+- 80 mutations (53 rule switches, each of the 12 owned prefixes, each of the 15
+  tokens) each turn at least one case, self-test invariant or call-site probe red:
+  0 survivors. The implementation's own mutation run found 3 switches the judged
+  harness could not kill (control characters in paths, a case-variant register
+  with no canonical file, an inline tag splitting a token); each now has a case.
+  The fixer round added 6 switches that had no test: `pr_ownership`'s head-moved,
+  base-is-`main` and refs/pull-lag guards, the diff bound, the CI deadline, and the
+  COULD NOT RUN wording (each was deleted in a scratch copy with every suite green).
+  The confirm round added 8: `.claude` at any depth, `.claude` only at the root,
+  `.mcp.json` as a name at any depth, a register scan that stops at its first
+  changed run, and each half of the number-reuse rule, removed from the check and
+  from what is read of `main`. Five of those survived every case before the
+  confirm round's cases existed (the scan and the four number-reuse switches).
+- `--self-test`: 98 invariants. `scripts/test_require_pr_audit.py`: the hook run
+  for real against a local bare origin and a `gh` shim, 105 tests: H1–H4, a
+  mismatched pin and a checkout copy that releases everything; H5–H10 for the
+  chained, non-literal, respelled, double-pinned, hidden and MCP merges (19 of
+  those tests failed on the hook before the fixer round); H11–H12 for refs/pull lag
+  and a head that moves between the hook's read and the gate's (exit 4, blocked as
+  CANNOT CHECK); H13–H19 from the confirm round: no PASS marker at the head (none,
+  stale, BLOCK, an untrusted author, not at the comment's start), a direct push to
+  `main` through the entry point, the quoting and expansion spellings with
+  ordinary `gh pr` commands as controls, a crash inside the word reader (injected;
+  it exited 1, which Claude Code treats as a non-blocking error, and now blocks as
+  CANNOT CHECK), `--admin` and `--auto`, two merges in one command,
+  `gh alias set`/`import` and a line continuation inside a word, plus H6b (a `$n`
+  or branch-name PR refused by its own reason, since the lookup after it fails
+  either way); the eight *not seen* examples above, pinned at exit 0 so this ADR
+  cannot keep naming a gap that has closed; and 23 hook mutations, each killed,
+  against a control test that every mutation scenario gives its expected exit on
+  the real hook. Run on the hook before the confirm round, every H15–H19 command
+  exited 0 except two in H15b that were blocked for other reasons (`gh $'pr' merge`
+  as CANNOT CHECK, `$(which gh) pr merge 2` for its missing pin). H13 and H14 pass
+  on that hook and fail with the marker check or the push block deleted, which the
+  older tests did not notice.
+- PR #393 at `d9fd8f1c`: released (it touches ADR 0147's body and `CLAIMS.jsonl`,
+  neither naming the gate, and no owned path).
+
 ### Amendment — 2026-09-17, founder pipeline redesign
 
 **Founder decision, verbatim, in the main session:** *"change ADR 90 to be a
@@ -72,7 +404,8 @@ before any model call runs (`SKILL.md` step 2 — this audit is a semantic
 layer on top of green CI, never a replacement for it). A diff touching the
 gate's own owned paths (`_GATE_OWNED_PATHS`, mirrored in
 `.claude/skills/pr-audit-gate/SKILL.md` step 4, now also naming
-`.planning/decisions/0050-*.md`) still force-escalates to BLOCK and the
+`.planning/decisions/0050-*.md`) [2026-09-18: replaced by `gate_ownership()` —
+see the amendment above] still force-escalates to BLOCK and the
 founder regardless of what any reviewer or the planner concludes — the gate
 still cannot self-clear a PR that modifies itself. The marker contract is
 unchanged: a PR comment carrying the exact
@@ -890,3 +1223,5 @@ un-anchored and 0 when restored.
 | 2026-09-12 | Live symptom across every open PR, not an audit round | `PR Audit Gate` red on every PR from a `NEUTRAL` `CodeQL` — a check that has never been required and cannot block a merge, reached only because branch protection is unreadable and the fallback waits for everything. Fixed by narrowing the FALLBACK wait list, never the state allow-list; `_fallback_names()` extracted so the self-test exercises the real selection; `--self-test` grown 35 → 39 and proven to fail on the pre-fix tuple. Touches `scripts/pr_audit_gate.py` and this ADR, so it escalates to the founder — same shape as PRs #297 and #299. |
 | 2026-09-12 | pr-merge-adversary (Opus subagent), second pass on `e59bf901` | **HOLDS** -- nothing changes a merge decision. Notes acted on the same day: "and never raises" was false (struck, bracketed); a timed-out `gh pr comment` classified by the report text in its argv (the reason now names the command, never its arguments); "Nothing was audited" was false when a merge or dispatch call timed out after a PASS (reworded); stderr noise from the stubbed invariant (silenced); `empty-diff` and the no-bare-word rule unpinned (pinned). `--self-test` 47 -> 50 |
 | 2026-09-17 | Aldemir (chat, main session, direct authorization) | Pipeline redesign, verbatim: *"change ADR 90 to be a better pipeline, 1 opus starts -> stops -> 2 sonnet handles opus's plan-> opus takes final say."* Replaces the 3-Opus-angle-plus-adversary fan-out with one Opus planner (stops after planning) -> two independent parallel Sonnet reviewers (correctness/regression/decision-compliance; security/adversarial) -> the same Opus planner resumed for final HOLDS/OVERTURNED judgment. `.claude/agents/pr-merge-auditor.md` and `pr-merge-adversary.md` re-scoped to `model: sonnet`; new `.claude/agents/pr-merge-planner.md` added (`model: opus`); `.claude/skills/pr-audit-gate/SKILL.md` steps 4-7 and 10 updated to match, `.planning/decisions/0050-*.md` added to the owned-paths list. Scope held to those files only — `CLAUDE.md`, `.github/workflows/`, and `scripts/pr_audit_gate.py` were explicitly left unchanged; the CI-side path still runs the old composition and has had no `ANTHROPIC_API_KEY` credit since 2026-09-12, unchanged by this amendment. See the "Amendment — 2026-09-17" subsection under Context above and ADR 0050's matching dated bracket |
+| 2026-09-18 | Aldemir (chat) | "do the better approach for longevity, change the ADR if needed." Seven questions answered, all with the recommended option (table in the 2026-09-18 amendment). Ownership decided by `gate_ownership()` on git-native input at a pinned head: index owned unless a pure append for ADRs the PR adds; decision text naming the gate owned; owned paths case-folded and widened to `scripts/hooks/`, `.claude` and `.mcp.json` at any depth, nested `CLAUDE.md`/`AGENTS.md`; renames seen from both sides; escalation before any model call; the hook re-checks with origin/main's copy and requires `--match-head-commit`. Fixer round after the adversarial audit: `.github/workflows/` and `.github/actions/` owned whole, plus the deploy scripts `deploy.yml` calls and the gate's own tests; the hook checks every merge in a command, needs a literal PR number and one pin, and blocks MCP merge tools; a 1,000-line register-diff bound and a 600s CI deadline. Confirm round after a NOT READY: `.claude` and `.mcp.json` owned at any depth; the hook refuses a `pr` subcommand or `gh` word written with quoting or expansion, `gh alias set`/`import`, `--admin`, `--auto` and a second merge in one command, blocks rather than fails open if its word reader raises, and its marker and direct-push checks are pinned by tests; the "hard block" residual narrowed to what is checked, refused and not seen, each not-seen example pinned. Replay 125 → 104 owned of 317 (re-measured after the confirm round, unchanged commit by commit); 80 mutations, 0 survivors (`scripts/test_pr_audit_gate.py`), 23 hook mutations killed. This change edits owned paths, so it escalates by design and merges only on the founder's word through the SHA-pinned route. |
+| 2026-09-18 | Aldemir (chat, relayed by the orchestrating session) | Accepted the widened owned set: the whole `.github/workflows/` folder, `.github/actions/`, the deploy-check scripts, the gate's own tests, and `.claude/` at any depth. Recorded in the amendment's widening paragraph, which no longer asks for his word on it. `scripts/check_test_scripts_are_real.py` and `.mcp.json` at any depth were not named in the acceptance as relayed; they ride on this PR's own escalation. |

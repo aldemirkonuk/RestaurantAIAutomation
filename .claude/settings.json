@@ -5,11 +5,12 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|mcp__.*[Mm]erge.*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 $CLAUDE_PROJECT_DIR/scripts/hooks/require_pr_audit.py"
+            "command": "python3 -I $CLAUDE_PROJECT_DIR/scripts/hooks/require_pr_audit.py",
+            "timeout": 600
           }
         ]
       }
