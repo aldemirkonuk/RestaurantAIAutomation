@@ -106,6 +106,17 @@ export class CreateInventoryItemDto {
   @Min(0)
   menuPriceGlass?: number;
 
+  // This house's own price for a whole bottle (migration 20260919160000),
+  // never the wine library's reference price. Manager-typed, same shape as
+  // its sibling `menuPriceGlass` above: optional, nullable-by-omission, no
+  // floor beyond zero. Founder, 2026-09-19: "we're going to add a per house
+  // bottle price."
+  @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  menuPriceBottle?: number;
+
   @ApiPropertyOptional({ description: "Bottle size in ml (override)" })
   @IsOptional()
   @IsInt()
@@ -209,6 +220,17 @@ export class UpdateInventoryItemDto {
   @IsNumber()
   @Min(0)
   menuPriceGlass?: number;
+
+  // This house's own price for a whole bottle (migration 20260919160000),
+  // never the wine library's reference price. Manager-typed, same shape as
+  // its sibling `menuPriceGlass` above: optional, nullable-by-omission, no
+  // floor beyond zero. Founder, 2026-09-19: "we're going to add a per house
+  // bottle price."
+  @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  menuPriceBottle?: number;
 
   @ApiPropertyOptional({ description: "Bottle size in ml (override)" })
   @IsOptional()
@@ -368,6 +390,17 @@ export class BulkInventoryLineDto {
   @IsNumber()
   @Min(0)
   menuPriceGlass?: number;
+
+  // This house's own price for a whole bottle (migration 20260919160000),
+  // never the wine library's reference price. Manager-typed, same shape as
+  // its sibling `menuPriceGlass` above: optional, nullable-by-omission, no
+  // floor beyond zero. Founder, 2026-09-19: "we're going to add a per house
+  // bottle price."
+  @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  menuPriceBottle?: number;
 }
 
 /**
@@ -536,6 +569,9 @@ export class InventoryItemResponseDto {
 
   @ApiPropertyOptional({ description: "Menu price per glass" })
   menuPriceGlass?: number;
+
+  @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
+  menuPriceBottle?: number;
 
   @ApiPropertyOptional({
     description: "Glasses per bottle (computed or override)",

@@ -66,9 +66,44 @@ const cellar = vi.hoisted(() => ({
     save: { mutateAsync: vi.fn(), isPending: false, error: null },
     refetch: vi.fn(),
   },
+  // The ceremony + gazetteer-measures settings CellarSettingsControls reads
+  // via useCellarSettings, mounted alongside the registers control on this
+  // same tab. Unread-default shape, matching useCellarSettings's own
+  // fallback and CellarNext.test.tsx's mock of the same hook, so a test that
+  // never touches settings sees exactly what an unconfigured house would.
+  settings: {
+    data: {
+      restaurantId: 'r1',
+      holdCeremony: 'hold' as const,
+      holdCeremonyConfigured: false,
+      gazetteerMeasures: ['bottles', 'titles', 'par', 'offbook'] as string[],
+      gazetteerMeasuresConfigured: false,
+      setBy: null as string | null,
+      setAt: null as string | null,
+      readable: true,
+      readError: null as string | null,
+    },
+    loading: false,
+    save: { mutateAsync: vi.fn(), isPending: false, isError: false, error: null },
+  },
 }));
-vi.mock('@/pages/cellar/next/useCellarNextData', () => ({ useCellarRegisters: () => cellar.current }));
+vi.mock('@/pages/cellar/next/useCellarNextData', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  useCellarRegisters: () => cellar.current,
+  useCellarSettings: () => cellar.settings,
+}));
 vi.mock('@/pages/cellar/next/cellar-next.css', () => ({}));
+
+// The order-hold ceremony is owner/manager only (ADR 0160 sec110 item 6,
+// answered 2026-09-18) — `CellarSettingsControls` now calls `useAuth()` to
+// gate it, which nothing in this file called before and which throws
+// ("useAuth must be used within an AuthProvider") without a mock. Defaults
+// to "owner" so every test written before this fix keeps seeing the control
+// it always saw; `role.current` lets a test narrow to staff to check the gate.
+const role = vi.hoisted(() => ({ current: 'owner' as string | null }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRole: role.current, user: role.current ? { role: role.current } : null }),
+}));
 
 /**
  * The collapse gate (2026-09-04). OFF by default, so every test written before
@@ -318,6 +353,26 @@ beforeEach(() => {
     save: { mutateAsync: vi.fn(), isPending: false, error: null },
     refetch: vi.fn(),
   };
+  // Reset alongside `cellar.current` for the same reason: a prior test's
+  // `readable: false` fixture (the "ceremony/measures settings could not be
+  // read" test below) otherwise survives into whichever test runs next in
+  // file order and silently forces every ceremony control disabled there too.
+  cellar.settings = {
+    data: {
+      restaurantId: 'r1',
+      holdCeremony: 'hold',
+      holdCeremonyConfigured: false,
+      gazetteerMeasures: ['bottles', 'titles', 'par', 'offbook'],
+      gazetteerMeasuresConfigured: false,
+      setBy: null,
+      setAt: null,
+      readable: true,
+      readError: null,
+    },
+    loading: false,
+    save: { mutateAsync: vi.fn(), isPending: false, isError: false, error: null },
+  };
+  role.current = 'owner';
 });
 
 describe('SettingsNext — the editorial spine', () => {
@@ -622,7 +677,108 @@ describe('SettingsNext — provenance and unknowns', () => {
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(/could not be read/i);
     expect(alert).toHaveTextContent(/it is\s*unread/i);
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    // The REGISTER control itself renders no switches on a failed read — its
+    // own error shape (`registers-control-error`) replaces the seven-switch
+    // one entirely. Scoped to that control rather than the whole page: the
+    // "In the building tonight" measures below it are a separate readout
+    // (`useCellarSettings`, its own base fixture here is a SUCCESSFUL read)
+    // and correctly keep their own switches regardless of this one failing.
+    expect(screen.queryByTestId('registers-control')).not.toBeInTheDocument();
+    expect(screen.getByTestId('registers-control-error')).toBeInTheDocument();
+  });
+
+  it('says the ceremony/measures settings could not be read, never "Never configured" — and disables the controls', () => {
+    // A failed read and "nobody has configured this yet" are different
+    // facts. Before this fix, a failed read (readable: false) rendered the
+    // exact same "Never configured — the cellar page is showing its own
+    // default four" sentence a real unconfigured house gets, and the
+    // controls stayed interactive over a value nothing actually confirmed.
+    cellar.current = { ...cellar.current, data: null, error: null };
+    cellar.settings = {
+      data: {
+        restaurantId: 'r1',
+        holdCeremony: 'hold',
+        holdCeremonyConfigured: false,
+        gazetteerMeasures: ['bottles', 'titles', 'par', 'offbook'],
+        gazetteerMeasuresConfigured: false,
+        setBy: null,
+        setAt: null,
+        readable: false,
+        readError: 'ECONNREFUSED',
+      },
+      loading: false,
+      save: { mutateAsync: vi.fn(), isPending: false, isError: false, error: null },
+    };
+    mount('/settings?tab=cellar');
+    const alerts = screen.getAllByRole('alert');
+    const settingsAlert = alerts.find((a) => /cellar settings could not be read/i.test(a.textContent ?? ''));
+    expect(settingsAlert).toBeTruthy();
+    expect(settingsAlert).toHaveTextContent('ECONNREFUSED');
+    expect(screen.queryByText(/Never configured/i)).not.toBeInTheDocument();
+    for (const sw of screen.getAllByRole('switch')) {
+      // Only the gazetteer-measure switches belong to this readout (the
+      // register switches, if any, are a different control) — every one of
+      // them must be disabled while the read has failed.
+      if (sw.closest('label')) expect(sw).toBeDisabled();
+    }
+  });
+
+  // ADR 0160 sec110 item 6, answered 2026-09-18: "owners and managers" may
+  // change the order-hold ceremony; staff see it but cannot. The gateway
+  // enforces this independently (`cellar-settings.service.spec.ts`); these
+  // pin the UI half — the honest reflection of that rule, not a substitute.
+  // `Choice` (SectionKit.tsx) renders a `role="group"` div carrying the
+  // `aria-label`, with each option as its own `<button disabled>` inside —
+  // the group itself is never a form control a browser can disable.
+  function ceremonyButtons() {
+    return within(screen.getByRole('group', { name: /Order-hold ceremony/i })).getAllByRole('button');
+  }
+
+  it('lets an owner change the order-hold ceremony', () => {
+    role.current = 'owner';
+    mount('/settings?tab=cellar');
+    for (const btn of ceremonyButtons()) expect(btn).not.toBeDisabled();
+    expect(screen.queryByTestId('cellar-ceremony-readonly')).not.toBeInTheDocument();
+  });
+
+  it('lets a manager change it too', () => {
+    role.current = 'manager';
+    mount('/settings?tab=cellar');
+    for (const btn of ceremonyButtons()) expect(btn).not.toBeDisabled();
+  });
+
+  // FIXED 2026-09-19 (cellar re-verification, minor): the server
+  // (`cellar-settings.service.ts`) has always also accepted `admin` — this
+  // client gate omitted it until now, so an admin saw every option disabled
+  // here but could still change the ceremony through a direct API call.
+  it('lets an admin change it too', () => {
+    role.current = 'admin';
+    mount('/settings?tab=cellar');
+    for (const btn of ceremonyButtons()) expect(btn).not.toBeDisabled();
+    expect(screen.queryByTestId('cellar-ceremony-readonly')).not.toBeInTheDocument();
+    // FIXED 2026-09-19 (cellar re-verification round 3): the explanatory note
+    // shown to people who CAN change the ceremony named only "an owner or a
+    // manager" — wrong for the admin case this very test sets up, since the
+    // gateway (and `canChangeCeremony` above) has always accepted admin too.
+    expect(
+      screen.getByText(/owner, a manager, or an admin of this house can change this/i),
+    ).toBeInTheDocument();
+  });
+
+  it('disables it for staff, and names the role and the rule rather than hiding the control', () => {
+    role.current = 'staff';
+    mount('/settings?tab=cellar');
+    for (const btn of ceremonyButtons()) expect(btn).toBeDisabled();
+    const note = screen.getByTestId('cellar-ceremony-readonly');
+    expect(note).toHaveTextContent(/staff/i);
+    expect(note).toHaveTextContent(/owner, a manager, or an admin/i);
+  });
+
+  it('disables it when this session holds no role at this house — fails closed, not open', () => {
+    role.current = null;
+    mount('/settings?tab=cellar');
+    for (const btn of ceremonyButtons()) expect(btn).toBeDisabled();
+    expect(screen.getByTestId('cellar-ceremony-readonly')).toHaveTextContent(/holds no role/i);
   });
 
   it('stamps no client-side date on the POS connector', () => {

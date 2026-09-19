@@ -62,6 +62,11 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // ADR 0160 sec110 item 7 (2026-09-17). A NEW route with no legacy
+  // counterpart, same posture as `connections` above: `legacy` is a redirect,
+  // never a real fallback page. On for every house via `ALWAYS_ON_PAGES`
+  // below — no `mudavym_design_menu` column exists or is needed.
+  'menu',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
@@ -116,8 +121,35 @@ export function clearMudavymDesignCache(): void {
 }
 
 /**
+ * Pages the founder decided ship for EVERY house, with no per-house dial —
+ * ADR 0149 (finish every page, then delete legacy once) and the 2026-09-17
+ * wiring instruction for this build: "render the new page for every house,
+ * no new per-house flag; make the page resolve on."
+ *
+ * This has to be a bypass checked BEFORE the remote flag is fetched, not a
+ * `defaultValue: true` in the gateway's registry, because a `defaultValue`
+ * only fills in when the STORED COLUMN is missing
+ * (`settings.service.ts#normalize`) — and `restaurant_cellar_registers`'s
+ * migration gives `mudavym_design_cellar` `boolean NOT NULL DEFAULT false`.
+ * Every house that already has a `restaurant_feature_flags` row (nearly all
+ * of them, since the table is one row of many flags per restaurant) reads
+ * that real, stored `false` and never reaches the registry default at all —
+ * measured 2026-09-18, the flip only ever affected houses with no row yet.
+ * Checking this set first means neither that column value nor a flag-read
+ * network failure (`fetchFlag`'s `.catch(() => false)` above) can ever knock
+ * one of these pages back to legacy for anyone.
+ *
+ * `menu` is here for the same reason `cellar` is (ADR 0160 sec110 item 7): a
+ * brand-new route with no legacy page to fall back to, so there is nothing a
+ * per-house flag would usefully gate — it also means `/menu`'s `PageGate`
+ * never has to issue a `checkFeatureFlag` request at all.
+ */
+const ALWAYS_ON_PAGES: ReadonlySet<MudavymPage> = new Set(['cellar', 'menu']);
+
+/**
  * `true` → render the Mudavym design for this page; `false` → legacy.
- * See module doc for precedence. Usually consumed via `<PageGate/>`.
+ * See module doc for precedence, and `ALWAYS_ON_PAGES` above for the pages
+ * that skip it entirely. Usually consumed via `<PageGate/>`.
  */
 export function useMudavymDesign(page: MudavymPage): boolean {
   const override = typeof window === 'undefined' ? null : readOverride(page);
@@ -132,6 +164,7 @@ export function useMudavymDesign(page: MudavymPage): boolean {
 
   useEffect(() => {
     if (override !== null) return; // overridden — don't spend the request
+    if (ALWAYS_ON_PAGES.has(page)) return; // on for every house — no request needed
     let cancelled = false;
     setRemote(false); // never carry one restaurant's verdict into another's
     let restaurantId: string | null = activeRestaurantId ?? null;
@@ -153,5 +186,7 @@ export function useMudavymDesign(page: MudavymPage): boolean {
     };
   }, [page, override, activeRestaurantId]);
 
-  return override !== null ? override : remote;
+  if (override !== null) return override;
+  if (ALWAYS_ON_PAGES.has(page)) return true;
+  return remote;
 }

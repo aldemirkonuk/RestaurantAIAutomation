@@ -125,6 +125,10 @@ export class InventoryService {
       // "any edit at all" (which is what row.updated_at would give it).
       lastCountedAt: row.last_counted_at ?? null,
       menuPriceGlass: row.menu_price_glass ?? undefined,
+      // This house's own bottle price (migration 20260919160000) — never the
+      // wine library's reference price. Same undefined-not-null idiom as
+      // menuPriceGlass above.
+      menuPriceBottle: row.menu_price_bottle ?? undefined,
       glassesPerBottleOverride: row.glasses_per_bottle_override ?? undefined,
       retailPriceAvg: retailPriceAvg ?? undefined,
       markupRatio: markupRatio ?? undefined,
@@ -195,24 +199,38 @@ export class InventoryService {
     return map;
   }
 
-  /** Phase 2 (2d/2e): per-inventory velocity, days-of-cover, reorder, ABC, dead-stock. */
+  /**
+   * Phase 2 (2d/2e): per-inventory velocity, days-of-cover, reorder, ABC,
+   * dead-stock.
+   *
+   * `ok: false` is a FAILED read, told apart from a real, empty result. This
+   * method still swallows the underlying error rather than throwing — the
+   * rest of the inventory list (stock, lots, locations) is real and useful
+   * even when this one join is down, and the other `fetch*` helpers beside it
+   * follow the same resilience pattern — but the caller needs to know WHICH
+   * case it is in, because "the join has nothing for this row" and "the join
+   * could not be read" are different sentences downstream (`BottleLeaf`'s
+   * sold line used to print the former for both, ADR 0160 sec110 item 3(c)).
+   */
   private async fetchAnalytics(
     restaurantId: string,
-  ): Promise<Map<string, any>> {
+  ): Promise<{ map: Map<string, any>; ok: boolean }> {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data } = await client
+      const { data, error } = await client
         .from("inventory_analytics")
         .select(
           "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
         )
         .eq("restaurant_id", restaurantId);
+      if (error) throw error;
       for (const r of data || []) map.set(r.inventory_id, r);
+      return { map, ok: true };
     } catch (err: any) {
       this.logger.warn(`fetchAnalytics failed: ${err?.message}`);
+      return { map, ok: false };
     }
-    return map;
   }
 
   async getRestaurantInventory(restaurantId: string) {
@@ -223,14 +241,18 @@ export class InventoryService {
       this.fetchLocationBreakdown(restaurantId),
       this.fetchAnalytics(restaurantId),
     ]);
-    return (data || []).map((row) =>
-      this.mapInventoryItem(
+    return (data || []).map((row) => ({
+      ...this.mapInventoryItem(
         row,
         rollup.get(row.id),
         locations.get(row.id),
-        analytics.get(row.id),
+        analytics.map.get(row.id),
       ),
-    );
+      // Additive: every existing reader that does not know this field simply
+      // ignores it. `false` means the analytics join itself could not be
+      // read for this batch — not that this row has no analytics row.
+      analyticsReadable: analytics.ok,
+    }));
   }
 
   /**
@@ -948,6 +970,8 @@ export class InventoryService {
     if (dto.pourSizeMl !== undefined) insertData.pour_size_ml = dto.pourSizeMl;
     if (dto.menuPriceGlass !== undefined)
       insertData.menu_price_glass = dto.menuPriceGlass;
+    if (dto.menuPriceBottle !== undefined)
+      insertData.menu_price_bottle = dto.menuPriceBottle;
     if (dto.bottleSizeMl !== undefined)
       insertData.bottle_size_ml = dto.bottleSizeMl;
     if (dto.glassesPerBottleOverride !== undefined)
@@ -1239,6 +1263,8 @@ export class InventoryService {
         insertData.pour_size_ml = line.pourSizeMl;
       if (line.menuPriceGlass !== undefined)
         insertData.menu_price_glass = line.menuPriceGlass;
+      if (line.menuPriceBottle !== undefined)
+        insertData.menu_price_bottle = line.menuPriceBottle;
       if (line.storageLocationId !== undefined)
         insertData.storage_location_id = line.storageLocationId;
 
@@ -1438,6 +1464,8 @@ export class InventoryService {
     if (dto.pourSizeMl !== undefined) updateData.pour_size_ml = dto.pourSizeMl;
     if (dto.menuPriceGlass !== undefined)
       updateData.menu_price_glass = dto.menuPriceGlass;
+    if (dto.menuPriceBottle !== undefined)
+      updateData.menu_price_bottle = dto.menuPriceBottle;
     if (dto.bottleSizeMl !== undefined)
       updateData.bottle_size_ml = dto.bottleSizeMl;
     if (dto.glassesPerBottleOverride !== undefined)

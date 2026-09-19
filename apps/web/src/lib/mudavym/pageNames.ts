@@ -75,6 +75,9 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // The canonical document at /documents/:id (ADR 0104 slice 2, merged from main 2026-09-05).
   document: 'Document',
   logs: 'Logs',
+  // ADR 0160 sec110 item 7 — a new route with no sidebar entry yet; named
+  // directly, same footing as `recommendations` and `cellar` above.
+  menu: 'Menu',
 };
 
 /**

@@ -18,7 +18,7 @@ type TableResult = { data?: unknown[]; error?: unknown; count?: number };
 
 function chain(result: TableResult) {
   const self: Record<string, unknown> = {};
-  for (const m of ["select", "eq", "is", "in", "or", "ilike", "order", "limit"]) {
+  for (const m of ["select", "eq", "neq", "is", "in", "or", "ilike", "order", "limit"]) {
     self[m] = jest.fn(() => self);
   }
   self.then = (resolve: (v: unknown) => unknown) =>
@@ -141,7 +141,7 @@ type Term = { data?: unknown; error?: unknown };
 function writeChain(result: Term) {
   const self: Record<string, unknown> = {};
   for (const m of [
-    "select", "eq", "is", "in", "or", "ilike", "order", "limit",
+    "select", "eq", "neq", "is", "in", "or", "ilike", "order", "limit",
     "insert", "update", "delete",
   ]) {
     self[m] = jest.fn(() => self);

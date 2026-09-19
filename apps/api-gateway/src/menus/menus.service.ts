@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
@@ -107,10 +108,22 @@ export class MenusService {
     };
   }
 
-  /** Adds one manager-entered wine to an existing menu during the review step. */
+  /**
+   * Adds one manager-entered wine to an existing menu during the review step.
+   *
+   * TENANT CHECK, added 2026-09-17 alongside `/menu`'s add/discard build
+   * (ADR 0160 sec110 item 7). Before this, the lookup ran on `dto.menuId`
+   * alone — a caller authenticated for ANY restaurant could add a line to a
+   * DIFFERENT restaurant's menu by supplying its (non-secret, guessable by
+   * enumeration) menu id, because nothing compared `menu.restaurant_id`
+   * against the caller's own. `callerRestaurantId` is optional only so a
+   * legacy call site missing it is refused loudly (`ForbiddenException`)
+   * rather than silently — never so the check can be skipped.
+   */
   async addMenuItem(
     dto: AddMenuItemDto,
     userId: string,
+    callerRestaurantId?: string | null,
   ): Promise<MenuImportReviewItem> {
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
@@ -120,6 +133,12 @@ export class MenusService {
 
     if (menuErr || !menu) {
       throw new NotFoundException("Menu not found");
+    }
+
+    if (!callerRestaurantId || menu.restaurant_id !== callerRestaurantId) {
+      throw new ForbiddenException(
+        "This menu does not belong to the caller's restaurant",
+      );
     }
 
     const item: WineExtractItem = {
@@ -163,6 +182,46 @@ export class MenusService {
     }
 
     return { ...reviewItem, needsReview: true };
+  }
+
+  /**
+   * Discards one line from the active menu (ADR 0160 sec110 item 7). A soft
+   * remove — `status = 'discarded'` (migration 20260917153000) — never a
+   * DELETE: what it cost and who added it stays in the record, `getMenu`
+   * just stops serving it as live. Tenant-scoped by `restaurantId`, taken
+   * from the URL path (the controller's `:restaurantId`, matched against the
+   * JWT by `JwtAuthGuard` before this ever runs) — never from the body, and
+   * the row's own `restaurant_id` is checked again here so a menu item id
+   * from a different restaurant 404s rather than silently discarding
+   * someone else's line.
+   */
+  async discardMenuItem(
+    restaurantId: string,
+    menuItemId: string,
+  ): Promise<{ menuItemId: string; status: "discarded" }> {
+    const { data: row, error: readErr } = await this.dbService.supabase
+      .from("menu_items")
+      .select("id, restaurant_id, status")
+      .eq("id", menuItemId)
+      .maybeSingle();
+
+    if (readErr) {
+      throw new Error(`Could not read the menu item: ${readErr.message}`);
+    }
+    if (!row || row.restaurant_id !== restaurantId) {
+      throw new NotFoundException("No menu item of this restaurant");
+    }
+
+    const { error: writeErr } = await this.dbService.supabase
+      .from("menu_items")
+      .update({ status: "discarded" })
+      .eq("id", menuItemId);
+
+    if (writeErr) {
+      throw new Error(`The item was not discarded: ${writeErr.message}`);
+    }
+
+    return { menuItemId, status: "discarded" };
   }
 
   /**
@@ -275,6 +334,11 @@ export class MenusService {
         "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, created_at",
       )
       .eq("menu_id", menu.id)
+      // A discarded line (migration 20260917153000, ADR 0160 sec110 item 7)
+      // is a soft remove: the row stays for the record, but this read path —
+      // "the interactive menu's read path", per this route's own summary —
+      // must not keep serving it as live.
+      .neq("status", "discarded")
       .order("category", { ascending: true })
       .order("name", { ascending: true });
 

@@ -761,6 +761,10 @@ export class BeveragesService {
       .from("menu_items")
       .select(MENU_LINE_COLUMNS)
       .eq("restaurant_id", restaurantId)
+      // A discarded line was removed from what guests see; it should not
+      // still surface in this row's own "on the menu" record (migration
+      // 20260918010000, ADR 0160 sec110 item 7).
+      .neq("status", "discarded")
       .limit(ROW_RECORD_LINE_LIMIT);
     if (error) return this.failed("menu", source, error);
 

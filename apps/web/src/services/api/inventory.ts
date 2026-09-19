@@ -51,6 +51,8 @@ interface RawInventoryRow {
   bottle_size_ml?: number | null;
   retail_price_avg?: number | null;
   markup_ratio?: number | null;
+  menu_price_glass?: number | null;
+  menu_price_bottle?: number | null;
 }
 
 /**
@@ -85,6 +87,8 @@ export function normalizeInventoryItem(
     createdAt: item.createdAt ?? item.created_at,
     updatedAt: item.updatedAt ?? item.updated_at,
     bottleSizeMl: item.bottleSizeMl ?? item.bottle_size_ml ?? undefined,
+    menuPriceGlass: item.menuPriceGlass ?? item.menu_price_glass ?? undefined,
+    menuPriceBottle: item.menuPriceBottle ?? item.menu_price_bottle ?? undefined,
     retailPriceAvg: item.retailPriceAvg ?? item.retail_price_avg ?? undefined,
     markupRatio: item.markupRatio ?? item.markup_ratio ?? undefined,
     lastCountedAt: item.lastCountedAt ?? item.last_counted_at ?? null,
@@ -99,6 +103,7 @@ export function normalizeInventoryItem(
     abcClass: item.abcClass ?? undefined,
     deadStock: item.deadStock ?? false,
     daysSinceSale: item.daysSinceSale ?? undefined,
+    analyticsReadable: item.analyticsReadable ?? true,
     locations: item.locations ?? [],
   } as InventoryItem;
 }

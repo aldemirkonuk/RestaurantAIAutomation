@@ -229,6 +229,14 @@ row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: 
 > totals are now RECOMPUTED from the rows rather than decremented, which is why
 > 192 − 1 reads as 191.
 
+> **188 as of 2026-09-18, cellar fix pass** (`check_read_errors_not_swallowed.py`
+> on `wt-pg-cellar`: 1488 files scanned, 184 sites, 184 baselined, 0
+> allowlisted). ADR 0160 sec110 item 3(c): `inventory.service.ts`'s
+> `fetchAnalytics` now checks `error` on the `inventory_analytics` read and
+> reports `analyticsReadable: false` to callers instead of silently returning
+> an empty map, so `inventory.service.ts::inventory_analytics::data` drops
+> 189 → 188. Measured on this branch, not `main` — re-measure before citing.
+
 The 189 are recorded in `scripts/read_error_baseline.json` and held by
 `scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the
 baseline fails the build, and a baseline row the tree no longer contains **also** fails it

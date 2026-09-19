@@ -41,6 +41,8 @@ interface VolumeFields {
   saleType: SaleType;
   pourSizeMl?: number;
   menuPriceGlass?: number;
+  /** This house's own whole-bottle price (migration 20260919160000) — never the wine library's reference price. Same shape as menuPriceGlass; collected whenever saleType includes "bottle". */
+  menuPriceBottle?: number;
   costPerBottle?: number;
   /**
    * Free/comp bottle (distributor tasting sample, staff gift, etc.). The caller maps
@@ -101,6 +103,7 @@ export function AddWineToInventoryModal({
   const [customPourSizeInput, setCustomPourSizeInput] = useState("");
   const [isCustomPourSize, setIsCustomPourSize] = useState(false);
   const [menuPriceGlass, setMenuPriceGlass] = useState<number>(0);
+  const [menuPriceBottle, setMenuPriceBottle] = useState<number>(0);
 
   const customBottleParsed = customBottleSizeInput
     ? parseVolumeInput(customBottleSizeInput)
@@ -109,6 +112,10 @@ export function AddWineToInventoryModal({
     ? parseVolumeInput(customPourSizeInput)
     : null;
   const showGlassFields = saleType === "glass" || saleType === "both";
+  // Mirrors showGlassFields exactly: a menu bottle price is only collected
+  // when this wine is actually sold by the bottle (migration 20260919160000,
+  // founder: "we're going to add a per house bottle price").
+  const showBottleFields = saleType === "bottle" || saleType === "both";
   const glassesPerBottle = showGlassFields
     ? getGlassesPerBottle(bottleSizeMl, pourSizeMl)
     : 0;
@@ -153,6 +160,7 @@ export function AddWineToInventoryModal({
     setCustomPourSizeInput("");
     setIsCustomPourSize(false);
     setMenuPriceGlass(0);
+    setMenuPriceBottle(0);
     setCostPerBottle(null);
     setIsSample(false);
     setShowPhotoModal(false);
@@ -177,6 +185,7 @@ export function AddWineToInventoryModal({
         bottleSizeMl,
         saleType,
         ...(showGlassFields && { pourSizeMl, menuPriceGlass }),
+        ...(showBottleFields && { menuPriceBottle }),
         // A sample carries a real $0, not an absent cost. The caller turns this flag
         // into costProvenance 'sample', which the WAC rollup excludes by name — so a
         // free bottle stays distinguishable from one whose price was never entered.
@@ -889,6 +898,34 @@ export function AddWineToInventoryModal({
                         <p className="text-xs text-indigo-600 font-medium mt-2">
                           Glasses per bottle: {glassesPerBottle}
                         </p>
+                      </div>
+                    )}
+
+                    {/* Bottle Menu Price (conditional) — this house's own
+                        price, migration 20260919160000. Mirrors Glass Menu
+                        Price below exactly, gated on showBottleFields instead
+                        of showGlassFields. */}
+                    {showBottleFields && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Bottle Menu Price
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
+                            $
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={menuPriceBottle || ""}
+                            onChange={(e) =>
+                              setMenuPriceBottle(parseFloat(e.target.value) || 0)
+                            }
+                            placeholder="0.00"
+                            className="w-full pl-7 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-wine-500"
+                          />
+                        </div>
                       </div>
                     )}
 

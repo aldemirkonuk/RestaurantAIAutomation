@@ -1454,6 +1454,7 @@ export function InventoryCommandPage() {
             saleType: volumeFields?.saleType,
             pourSizeMl: volumeFields?.pourSizeMl,
             menuPriceGlass: volumeFields?.menuPriceGlass,
+            menuPriceBottle: volumeFields?.menuPriceBottle,
             // A sample is a deliberate $0, so it is sent as $0 with an explicit
             // 'sample' provenance rather than omitted. Omitting the cost would land
             // as provenance 'estimated' — indistinguishable from "nobody typed the

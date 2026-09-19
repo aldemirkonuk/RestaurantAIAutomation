@@ -46,9 +46,17 @@ export class MenusController {
   @ApiOperation({ summary: "Add one wine to a menu during the review step" })
   async addMenuItem(
     @Body() dto: AddMenuItemDto,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: { userId: string; restaurantId?: string },
   ) {
-    return this.menusService.addMenuItem(dto, user.userId);
+    // restaurantId comes from the JWT, never the body — dto.menuId names
+    // WHICH menu, the caller's own restaurantId is what proves they may
+    // write to it (menus.service.ts#addMenuItem, fixed 2026-09-17 alongside
+    // this build; see that method's docstring for the gap this closes).
+    return this.menusService.addMenuItem(
+      dto,
+      user.userId,
+      user.restaurantId ?? null,
+    );
   }
 
   @Patch("items/:id")
@@ -61,6 +69,18 @@ export class MenusController {
     @CurrentUser() user: { userId: string },
   ) {
     return this.menusService.reviewMenuItem(id, user.userId, dto);
+  }
+
+  @Patch(":restaurantId/items/:id/discard")
+  @ApiOperation({
+    summary:
+      "Discard one line from the active menu (ADR 0160 sec110 item 7). Soft remove — status becomes 'discarded', the row is kept",
+  })
+  async discardMenuItem(
+    @Param("restaurantId") restaurantId: string,
+    @Param("id") id: string,
+  ) {
+    return this.menusService.discardMenuItem(restaurantId, id);
   }
 }
 

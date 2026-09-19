@@ -196,6 +196,131 @@ describe("InventoryService", () => {
     });
   });
 
+  // Cellar lane, 2026-09-19 — migration 20260919160000. The founder: "we're
+  // going to add a per house bottle price." menu_price_bottle mirrors its
+  // sibling menu_price_glass exactly: read via mapInventoryItem, written on
+  // create (both the single and bulk paths) and on update.
+  describe("menu_price_bottle — this house's own bottle price (mirrors menu_price_glass)", () => {
+    it("maps row.menu_price_bottle to menuPriceBottle via mapInventoryItem", () => {
+      const row = {
+        id: "inv-5",
+        wine_name: "Boğazkere 2021",
+        master_wine_library: null,
+        restaurants: null,
+        bottle_size_ml: null,
+        pour_size_ml: null,
+        glasses_per_bottle_override: null,
+        menu_price_glass: 15,
+        menu_price_bottle: 62,
+      };
+      const result = (service as any).mapInventoryItem(row);
+      expect(result.menuPriceGlass).toBe(15);
+      expect(result.menuPriceBottle).toBe(62);
+    });
+
+    it("never returns menuPriceBottle as null-coerced-to-a-number — undefined when the column is null, same as menuPriceGlass", () => {
+      const row = {
+        id: "inv-6",
+        wine_name: "Boğazkere 2021",
+        master_wine_library: null,
+        restaurants: null,
+        bottle_size_ml: null,
+        pour_size_ml: null,
+        glasses_per_bottle_override: null,
+        menu_price_glass: null,
+        menu_price_bottle: null,
+      };
+      const result = (service as any).mapInventoryItem(row);
+      expect(result.menuPriceGlass).toBeUndefined();
+      expect(result.menuPriceBottle).toBeUndefined();
+      // `hasOwnProperty`, not just `toBeUndefined()`: a key that was never SET
+      // and a key explicitly mapped to `undefined` both read as `undefined` on
+      // access, so the assertion above alone would pass even with the mapping
+      // line deleted outright. This is the one that actually distinguishes
+      // "mapped, and happened to be null" from "never mapped at all".
+      expect(Object.prototype.hasOwnProperty.call(result, "menuPriceBottle")).toBe(true);
+    });
+
+    it("includes menu_price_bottle in the INSERT payload sent to Supabase", async () => {
+      mockSingle
+        .mockResolvedValueOnce({
+          data: { name: "Barolo Riserva" },
+          error: null,
+        })
+        .mockResolvedValueOnce({
+          data: null,
+          error: { code: "PGRST116", message: "not found" },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            id: "inv-7",
+            wine_name: "Barolo Riserva",
+            menu_price_bottle: 62,
+            master_wine_library: { name: "Barolo Riserva", bottle_size_ml: 750 },
+            restaurants: { default_pour_ml: 150, measurement_unit: "oz" },
+          },
+          error: null,
+        });
+
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-3",
+        stockLive: 3,
+        providerId: null,
+        thresholdMin: 6,
+        thresholdMax: 24,
+        menuPriceBottle: 62,
+      } as any);
+
+      const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall).toMatchObject({ menu_price_bottle: 62 });
+    });
+
+    it("omits menu_price_bottle from the INSERT payload when the caller never sent it — never a silent 0", async () => {
+      mockSingle
+        .mockResolvedValueOnce({ data: { name: "Barolo Riserva" }, error: null })
+        .mockResolvedValueOnce({ data: null, error: { code: "PGRST116", message: "not found" } })
+        .mockResolvedValueOnce({
+          data: { id: "inv-8", wine_name: "Barolo Riserva" },
+          error: null,
+        });
+
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-4",
+        stockLive: 3,
+        providerId: null,
+        thresholdMin: 6,
+        thresholdMax: 24,
+      } as any);
+
+      const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall).not.toHaveProperty("menu_price_bottle");
+    });
+
+    it("includes menu_price_bottle in the UPDATE payload sent to Supabase", async () => {
+      // updateInventoryItem checks ownership (maybeSingle) before any write
+      // (ADR 0141, second correction), then reads old values (single, for the
+      // event payload only), then updates, then re-fetches (single) for the
+      // response — four Supabase round trips in that exact order.
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
+      mockSingle
+        .mockResolvedValueOnce({
+          data: { stock_live: 3, shadow_stock: 0, threshold_min: 6, master_wine_id: "mw-5" },
+          error: null,
+        })
+        .mockResolvedValueOnce({
+          data: { id: "inv-9", menu_price_bottle: 70 },
+          error: null,
+        });
+
+      await service.updateInventoryItem("rest-1", "inv-9", {
+        menuPriceBottle: 70,
+      } as any);
+
+      const updateCall = mockSupabaseChain.update.mock.calls[0][0];
+      expect(updateCall).toMatchObject({ menu_price_bottle: 70 });
+    });
+  });
+
   describe("recordSpotCount (decisions E40-E43)", () => {
     it("rejects a negative countedQty before calling the RPC", async () => {
       await expect(

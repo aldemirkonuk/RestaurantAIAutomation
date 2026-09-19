@@ -108,6 +108,58 @@ export async function addMenuItem(
   return response.data
 }
 
+/** One line of the active menu, as `GET /menus/:restaurantId` returns it. */
+export interface MenuLine {
+  id: string
+  name: string
+  producer: string | null
+  category: string | null
+  vintage: string | null
+  region: string | null
+  country: string | null
+  grape_variety: string | null
+  by_glass_price: number | null
+  bottle_price: number | null
+  wine_library_id: string | null
+  inventory_item_id: string | null
+  source: 'scan' | 'csv' | 'manual'
+  status: 'approved' | 'flagged' | 'in_review'
+  created_at: string
+}
+
+export interface ActiveMenu {
+  menuId: string | null
+  name: string | null
+  status: string | null
+  items: MenuLine[]
+}
+
+/**
+ * The active menu and its items — `/menu`'s read path (ADR 0160 sec110 item
+ * 7). `menuId: null` means this restaurant has no active menu row yet
+ * (nothing has been imported or created) — a different fact from "an empty
+ * menu", and the page distinguishes them.
+ */
+export async function getMenu(restaurantId: string): Promise<ActiveMenu> {
+  const response = await apiClient.get<ActiveMenu>(`/menus/${restaurantId}`)
+  return response.data
+}
+
+/**
+ * Soft-removes one line (status -> 'discarded'; migration 20260917153000).
+ * Never a DELETE — the row and what it cost stays in the record.
+ */
+export async function discardMenuItem(
+  restaurantId: string,
+  menuItemId: string
+): Promise<{ menuItemId: string; status: 'discarded' }> {
+  const response = await apiClient.patch<{ menuItemId: string; status: 'discarded' }>(
+    `/menus/${restaurantId}/items/${menuItemId}/discard`,
+    {}
+  )
+  return response.data
+}
+
 export async function getOnboardingProgress(): Promise<OnboardingProgress | null> {
   try {
     const response = await apiClient.get<OnboardingProgress>('/onboarding/progress')

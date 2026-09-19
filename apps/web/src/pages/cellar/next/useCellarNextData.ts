@@ -33,9 +33,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useWines } from '../../../hooks/queries/useWineQueries';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useWineSubscription } from '../../../contexts/RealtimeContext';
@@ -51,12 +50,49 @@ import {
   text,
   type Confidence,
   type DecidedBy,
+  type HandlingFacts,
   type Knowledge,
   type RegisterId,
 } from './cellar-format';
 
 /** The read limit the catalogue query asks for; shown to the reader when hit. */
 export const BOOK_READ_LIMIT = 500;
+
+/**
+ * Mirrors `apps/api-gateway/src/cellar/dto/hold-ceremony.ts` HOLD_CEREMONIES,
+ * by hand: a web page does not import gateway code, so this vocabulary is
+ * typed here too — outside `check_web_reads_gateway_dto_keys.py`'s MIRRORS
+ * list on purpose, same as `provenance` and `structure` below.
+ *
+ * FIXED 2026-09-19 (cellar re-verification, blocking), alongside the
+ * gateway's own copy: two ceremonies, not three — `hold` (the default: the
+ * press-and-hold gesture, then one "are you sure?" question) and `auto` (the
+ * same gesture, but the write fires the instant it completes, no follow-up
+ * question). The hold is the one deliberate act in both; see
+ * `hold-ceremony.ts`'s own header for the full correction and `OrderCeremony.tsx`
+ * for the two shapes this renders as.
+ */
+export const HOLD_CEREMONIES = ['hold', 'auto'] as const;
+export type HoldCeremony = (typeof HOLD_CEREMONIES)[number];
+
+/** Mirrors the same file's `GAZETTEER_MEASURE_IDS` — the tile ids "In the building tonight" can draw. */
+export const GAZETTEER_MEASURE_IDS = [
+  'bottles',
+  'titles',
+  'par',
+  'offbook',
+  'parUnset',
+  'registers',
+] as const;
+export type GazetteerMeasureId = (typeof GAZETTEER_MEASURE_IDS)[number];
+
+/** Mirrors the gateway's own `DEFAULT_GAZETTEER_MEASURES`. */
+export const DEFAULT_GAZETTEER_MEASURES: GazetteerMeasureId[] = [
+  'bottles',
+  'titles',
+  'par',
+  'offbook',
+];
 
 /**
  * The gateway returns provenance on every `select("*")` read (wines.service.ts
@@ -86,6 +122,25 @@ type WireWine = Wine & {
    */
   beverageKind?: string;
   classificationStatus?: string;
+  /**
+   * ADR 0160 sec110 Owed #4/#11 — "the wine's own detail". Mirrors the
+   * gateway's `mapWine` `structure` block (`wines.service.ts`), flat exactly
+   * as the wire sends it; `toWineStructure` below reshapes the four handling
+   * fields into `WineStructureVM.handling` for the page's own use. Present
+   * only when the row carried at least one of the six source columns — same
+   * undefined-vs-null discipline as `provenance`.
+   */
+  structure?: {
+    body?: string | null;
+    acidity?: string | null;
+    tannins?: string | null;
+    sweetness?: string | null;
+    primaryAromas?: string[] | null;
+    servingTempCelsius?: number | null;
+    glassType?: string | null;
+    decantingRecommended?: boolean | null;
+    agingPotentialYears?: number | null;
+  };
 };
 
 /** What the cellar actually holds for one bottle. Null when it holds none. */
@@ -96,6 +151,58 @@ export interface CellarRow {
   providerId: string | null;
   providerName: string | null;
   lastCountedAt: string | null;
+  /** Pours per bottle — the gateway's own computed default, or this row's override. Null only if the gateway omitted it. */
+  glassesPerBottle: number | null;
+  /** This house's own by-the-glass price — a real column a manager sets, never the library's reference price. */
+  menuPriceGlass: number | null;
+  /** This house's own whole-bottle price (migration 20260919160000) — a real column a manager sets, never the library's reference price. Same shape as `menuPriceGlass`. */
+  menuPriceBottle: number | null;
+  /** Null = unmeasured (the analytics join has nothing for this row yet), told apart from a failed read via `analyticsReadable`. */
+  velocityPerDay: number | null;
+  daysSinceSale: number | null;
+  /**
+   * False means the `inventory_analytics` join itself could not be read for
+   * this batch — a failed read, distinct from a row with genuinely nothing
+   * sold. Defaults `true` (matching `services/api/inventory.ts`'s own
+   * default), which is the read-before-this-field behaviour, never worse.
+   */
+  analyticsReadable: boolean;
+}
+
+/**
+ * "The wine's own detail" — ADR 0160 sec110 Owed #4/#11, sketch 121's
+ * `.band`. Body/acidity/tannin/sweetness plus typical aromas, and the four
+ * serving-handling facts nested under `handling` (`HandlingFacts`,
+ * `cellar-format.ts`) because sketch 121 draws them as one whole-or-nothing
+ * sentence, never as four independent facts.
+ */
+export interface WineStructureVM {
+  body: string | null;
+  acidity: string | null;
+  tannins: string | null;
+  sweetness: string | null;
+  primaryAromas: string[];
+  handling: HandlingFacts;
+}
+
+/** `w.structure` reshaped for the page: `null` only when the wire carried none of the six columns. */
+function toWineStructure(s: WireWine['structure']): WineStructureVM | null {
+  if (!s) return null;
+  return {
+    body: text(s.body),
+    acidity: text(s.acidity),
+    tannins: text(s.tannins),
+    sweetness: text(s.sweetness),
+    primaryAromas: Array.isArray(s.primaryAromas)
+      ? s.primaryAromas.filter((a): a is string => typeof a === 'string' && a.trim() !== '')
+      : [],
+    handling: {
+      servingTempCelsius: num(s.servingTempCelsius),
+      glassType: text(s.glassType),
+      decantingRecommended: typeof s.decantingRecommended === 'boolean' ? s.decantingRecommended : null,
+      agingPotentialYears: num(s.agingPotentialYears),
+    },
+  };
 }
 
 export interface BottleVM {
@@ -126,6 +233,8 @@ export interface BottleVM {
    * and a mapper that forgot to say so must not read the same.
    */
   beverageKind: string | null;
+  /** ADR 0160 sec110 Owed #4/#11 — "the wine's own detail". Null when the wire carried none of it. */
+  structure: WineStructureVM | null;
 }
 
 function toBottle(w: WireWine, inv: Map<string, CellarRow>): BottleVM {
@@ -150,6 +259,7 @@ function toBottle(w: WireWine, inv: Map<string, CellarRow>): BottleVM {
     observedAt: text(w.provenance?.observedAt),
     cellar: inv.get(w.id) ?? null,
     beverageKind: text(w.beverageKind),
+    structure: toWineStructure(w.structure),
   };
 }
 
@@ -161,6 +271,13 @@ export interface BuildingVM {
   bottles: number | null;
   /** Rows at or under their own recorded minimum. Null while unknown. */
   belowPar: number | null;
+  /**
+   * Rows with no `thresholdMin` recorded at all — coverage, not stock
+   * health, and a different fact from `belowPar` (at-or-under a minimum the
+   * row DOES record). ADR 0160 sec110 item 2's "one or two more" gazetteer
+   * measures. Null while unknown.
+   */
+  parUnset: number | null;
   /** Rows whose wine is not in the 500 titles this read returned. */
   offBook: number | null;
 }
@@ -963,6 +1080,85 @@ export function useCellarRegisters() {
   };
 }
 
+/**
+ * The two per-house choices `GET/PUT /cellar/:restaurantId/settings` reads
+ * and writes — the order-hold ceremony (ADR 0160 sec110 item 6) and which
+ * "in the building tonight" tiles show (item 2). Both live on
+ * `restaurant_cellar_settings` (migration 20260917150000). Mirrors
+ * `CellarSettingsService`'s own `CellarSettingsReadout` shape and its
+ * unread-default fallback on the gateway side (`cellar-settings.service.ts`)
+ * exactly, so a read that has not resolved yet and a read that failed both
+ * hand the reader the SAME honest "hold, unconfigured" shape the server
+ * itself falls back to — never a guess dressed up as a saved choice.
+ * `BottleLeaf.tsx` and `CellarSection.tsx` each call this directly; it is
+ * NOT threaded through `useCellarNextData()` itself, so a page that never
+ * opens a bottle or Settings never pays for the read.
+ */
+export interface CellarSettingsVM {
+  restaurantId: string;
+  holdCeremony: HoldCeremony;
+  /** True only once a person has actually saved a ceremony choice. */
+  holdCeremonyConfigured: boolean;
+  gazetteerMeasures: GazetteerMeasureId[];
+  /** True only once a person has actually saved a measure list. */
+  gazetteerMeasuresConfigured: boolean;
+  setBy: string | null;
+  setAt: string | null;
+  /** False while unread or on a failed read — never true on a guess. */
+  readable: boolean;
+  readError: string | null;
+}
+
+export function useCellarSettings() {
+  const { activeRestaurantId } = useAuth();
+  const queryClient = useQueryClient();
+  const key = ['cellar', 'settings', activeRestaurantId] as const;
+
+  const q = useQuery({
+    queryKey: key,
+    enabled: Boolean(activeRestaurantId),
+    queryFn: async (): Promise<CellarSettingsVM> => {
+      const r = await apiClient.get(`/cellar/${activeRestaurantId}/settings`);
+      return r.data as CellarSettingsVM;
+    },
+  });
+
+  // The same unread-default the gateway itself falls back to on a missing
+  // row or a failed read (`CellarSettingsService.read`) — so "never asked
+  // yet" and "asked and failed" both read as the house's honest default
+  // rather than as a value somebody chose.
+  const fallback: CellarSettingsVM = {
+    restaurantId: activeRestaurantId ?? '',
+    holdCeremony: 'hold',
+    holdCeremonyConfigured: false,
+    gazetteerMeasures: DEFAULT_GAZETTEER_MEASURES,
+    gazetteerMeasuresConfigured: false,
+    setBy: null,
+    setAt: null,
+    readable: false,
+    readError: q.isError ? (q.error instanceof Error ? q.error.message : 'no reason given') : null,
+  };
+
+  const save = useMutation({
+    mutationFn: async (
+      input: Partial<{ holdCeremony: HoldCeremony; gazetteerMeasures: GazetteerMeasureId[] }>,
+    ): Promise<CellarSettingsVM> => {
+      const r = await apiClient.put(`/cellar/${activeRestaurantId}/settings`, input);
+      return r.data as CellarSettingsVM;
+    },
+    // The server's own readout after the write is the new truth, same
+    // discipline as `useCellarRegisters`' own save — no optimistic patch of
+    // what was asked for.
+    onSuccess: (data) => queryClient.setQueryData(key, data),
+  });
+
+  return {
+    data: q.data ?? fallback,
+    loading: q.isLoading,
+    save,
+  };
+}
+
 /** One catalogue register's rows, read only when that register is open. */
 export function useBeverageRegister(register: RegisterId | null) {
   const { activeRestaurantId } = useAuth();
@@ -1016,7 +1212,36 @@ export function useCellarNextData() {
   const registers = useCellarRegisters();
   const live = useCellarLive();
 
-  const winesQ = useWines({ limit: BOOK_READ_LIMIT });
+  /**
+   * The book's pagination (cellar confirmer BLOCKER, fixed). "Load 500 more"
+   * used to widen a single request's `limit` by one page each press — 500,
+   * then 1000 — but `GET /wines` validates `limit` against
+   * `WINE_SEARCH_MAX_LIMIT` (500, `wines.dto.ts` `@Max`), so the second press
+   * asked for something the gateway refuses and the book silently stopped
+   * growing past 500 titles. This pages by `offset` at the SAME fixed
+   * `limit` instead, straight against `apiClient` rather than through
+   * `useWines`/`searchWines` — the real client contract a regression must
+   * break, not a mocked hook (`cellar-book.test.tsx`). The read is also now
+   * ordered by `id` as a tie-breaker (`wines.service.ts`), so paging cannot
+   * see a row twice or miss one on a `name` tie.
+   */
+  const winesQ = useInfiniteQuery({
+    queryKey: [...queryKeys.wines.all, 'book', BOOK_READ_LIMIT] as const,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }): Promise<WireWine[]> => {
+      const r = await apiClient.get('/wines', {
+        params: { limit: BOOK_READ_LIMIT, offset: pageParam },
+      });
+      return r.data as WireWine[];
+    },
+    // A page shorter than the fixed limit IS the end of the library — never
+    // requested again. A full page means there may be more; the next offset
+    // is simply how many titles have been read so far.
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length < BOOK_READ_LIMIT
+        ? undefined
+        : allPages.reduce((sum, page) => sum + page.length, 0),
+  });
   const inventoryQ = useInventory();
   const providersQ = useProviders(activeRestaurantId ?? '');
 
@@ -1041,6 +1266,12 @@ export function useCellarNextData() {
         providerId: it.providerId ?? null,
         providerName: text(it.providerName),
         lastCountedAt: it.lastCountedAt ?? null,
+        glassesPerBottle: num(it.glassesPerBottle),
+        menuPriceGlass: num(it.menuPriceGlass),
+        menuPriceBottle: num(it.menuPriceBottle),
+        velocityPerDay: num(it.velocityPerDay),
+        daysSinceSale: num(it.daysSinceSale),
+        analyticsReadable: it.analyticsReadable ?? true,
       });
     }
     return m;
@@ -1049,31 +1280,44 @@ export function useCellarNextData() {
   const bottles: BottleVM[] | null = useMemo(() => {
     if (!winesQ.data) return null;
     const inv = cellarByWine ?? new Map<string, CellarRow>();
-    return (winesQ.data as WireWine[]).map((w) => toBottle(w, inv));
+    const rows = winesQ.data.pages.flat() as WireWine[];
+    return rows.map((w) => toBottle(w, inv));
   }, [winesQ.data, cellarByWine]);
 
   const building: BuildingVM = useMemo(() => {
     const rows = inventoryQ.data;
-    if (!rows) return { titles: null, bottles: null, belowPar: null, offBook: null };
+    if (!rows) return { titles: null, bottles: null, belowPar: null, parUnset: null, offBook: null };
     let bottleCount = 0;
     let below = 0;
+    let unset = 0;
     for (const it of rows) {
       const stock = num(it.stockLive) ?? 0;
       const min = num(it.thresholdMin);
       bottleCount += stock;
       // "Below par" is only claimable where the row states its own minimum.
       if (min !== null && stock <= min) below += 1;
+      // Coverage, not stock health: a row with no par recorded at all is
+      // neither "below" nor "healthy" — it is unmeasured.
+      if (min === null) unset += 1;
     }
     const known = bottles === null ? null : new Set(bottles.map((b) => b.id));
     return {
       titles: rows.length,
       bottles: bottleCount,
       belowPar: below,
+      parUnset: unset,
       offBook: known === null ? null : rows.filter((r) => !known.has(r.wineId)).length,
     };
   }, [inventoryQ.data, bottles]);
 
-  const bookTruncated = (winesQ.data?.length ?? 0) >= BOOK_READ_LIMIT;
+  // True while a full page has been read and there may be more the reader
+  // has not asked for yet; false once a page shorter than the limit came
+  // back, which IS the whole library, not a wall.
+  const bookTruncated = winesQ.hasNextPage;
+  /** How many titles the book has actually read so far, across every page loaded. */
+  const bookLimit = winesQ.data
+    ? winesQ.data.pages.reduce((sum, page) => sum + page.length, 0)
+    : 0;
 
   /**
    * `beverage_kind` → titles, over the catalogue read this page already makes.
@@ -1139,6 +1383,14 @@ export function useCellarNextData() {
 
     booking: winesQ.isLoading,
     bookError: winesQ.isError ? errorOf(winesQ.error) : null,
+    /** Titles read so far — equals `bottles.length`; named separately because the reader cites it beside `bookTruncated` before `bottles` has loaded at all. */
+    bookLimit,
+    /** True only while a SECOND (or later) page is in flight — never during the first page's own load. */
+    loadingMoreBook: winesQ.isFetchingNextPage,
+    /** Pages by offset at the fixed `BOOK_READ_LIMIT` — never widens `limit`. No-ops once `bookTruncated` is false. */
+    loadMoreBook: () => {
+      void winesQ.fetchNextPage();
+    },
     cellarKnown: cellarByWine !== null,
     cellarError: inventoryQ.isError ? errorOf(inventoryQ.error) : null,
     vendorsError: providersQ.isError ? errorOf(providersQ.error) : null,

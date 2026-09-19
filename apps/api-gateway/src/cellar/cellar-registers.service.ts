@@ -403,7 +403,10 @@ export class CellarRegistersService {
       .getClient()
       .from("menu_items")
       .select("category, name")
-      .eq("restaurant_id", restaurantId);
+      .eq("restaurant_id", restaurantId)
+      // A discarded line is off the menu; it should not still infer a
+      // register carried (migration 20260918010000, ADR 0160 sec110 item 7).
+      .neq("status", "discarded");
 
     if (error) {
       return {

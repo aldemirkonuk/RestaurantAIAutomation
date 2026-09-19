@@ -26,7 +26,7 @@ function chain(result: TableResult) {
   const self: Record<string, unknown> = {};
   const passthrough = () => self;
   for (const m of [
-    "select", "eq", "is", "in", "or", "ilike", "gte", "lte", "order", "limit", "range", "not",
+    "select", "eq", "neq", "is", "in", "or", "ilike", "gte", "lte", "order", "limit", "range", "not",
   ]) {
     self[m] = jest.fn(passthrough);
   }
@@ -145,6 +145,37 @@ describe("CellarRegistersService.read", () => {
     });
     const out = await service.read(RID);
     expect(out.carried).toContain("spirits");
+  });
+
+  it("excludes a discarded menu_items row from the register inference read (migration 20260918010000)", async () => {
+    // The `chain()` fake does not itself filter by the predicates the service
+    // applies — it always answers with the table's configured `data`
+    // regardless — so the thing this test can actually prove is that the
+    // service ASKS for `status <> 'discarded'` on `menu_items`, the same
+    // predicate `getMenu` already applies and the ledger/beverages readers
+    // gained alongside this fix.
+    const menuChain = chain({ data: [{ category: null, name: "Draft Cola" }] });
+    const service = await (
+      await Test.createTestingModule({
+        providers: [
+          CellarRegistersService,
+          {
+            provide: DatabaseService,
+            useValue: {
+              getClient: () => ({
+                from: (table: string) =>
+                  table === "menu_items"
+                    ? menuChain
+                    : chain(table === "cocktails" ? { count: 0 } : { data: [] }),
+              }),
+            },
+          },
+        ],
+      }).compile()
+    ).get(CellarRegistersService);
+
+    await service.read(RID);
+    expect(menuChain.neq).toHaveBeenCalledWith("status", "discarded");
   });
 
   it("reports sake and cider rather than folding them into a neighbouring register", async () => {
