@@ -1,11 +1,14 @@
 /**
- * Legacy `/communications` — the page most tenants are actually on.
+ * Legacy `/communications` — this component's own defect coverage, not a
+ * claim about what ships today.
  *
- * `/communications` is one route behind a `PageGate` (`App.tsx:325`), and
- * `mudavym_design_communications` is `defaultValue: false`
- * (`apps/api-gateway/src/settings/feature-flag-registry.ts:104-107`). So this
- * component ships until a restaurant is individually flipped, and its labels —
- * not `CommunicationsNext`'s — are what a manager sees today.
+ * `/communications` is one route behind a `PageGate` (`App.tsx:368`).
+ * `communications` has been live in code for every house since ADR 0149 row
+ * 36 (2026-09-17): `mudavym_design_communications` is no longer read, and
+ * `CommunicationsNext`'s labels are what a manager sees now. Legacy code is
+ * untouched pending the founder's deletion manifest, so this file's own bugs
+ * still matter — the class of defect below is real regardless of which build
+ * is live.
  *
  * ADR 0084 widened `getConversationHistory` to admit inbound vendor replies.
  * Every one of them carries `status: 'DRAFT'` — the column DEFAULT the inbound
