@@ -2,7 +2,7 @@
  * Delivery ETA Notification Email Template
  */
 
-import { EMAIL_CONFIG, formatDate } from "./template-config";
+import { EMAIL_CONFIG, formatDate, frontendUrl } from "./template-config";
 import { baseTemplate, metricBox, tableRow, alertBox } from "./base-template";
 
 export interface DeliveryETAData {
@@ -117,7 +117,7 @@ export function deliveryETATemplate(data: DeliveryETAData): string {
     content,
     ctaButton: {
       text: "View Order Details",
-      url: "#",
+      url: `${frontendUrl()}/orders/${data.orderId}`,
       color: colors.info,
     },
   });

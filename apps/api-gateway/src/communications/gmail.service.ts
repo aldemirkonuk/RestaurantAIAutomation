@@ -713,13 +713,17 @@ This is an automated alert from WineOps AI.
     restaurantCity?: string;
     frontendBaseUrl?: string;
   }): Promise<EmailResult> {
-    const base =
-      data.frontendBaseUrl || "https://restaurant-ai-automation-web.vercel.app";
+    // Fallback only -- the caller (auth.service.ts) already passes
+    // `FRONTEND_URL`; this covers a call site that omits it. The pre-rebrand
+    // Vercel URL this replaced is still LIVE (curl -> 200), so it never
+    // errored, it just silently mailed out the wrong domain (ADR 0149 row 28).
+    const base = data.frontendBaseUrl || "https://mudavym.com";
     const html = onboardingEmailTemplate({
       ownerName: data.ownerName,
       restaurantName: data.restaurantName,
       restaurantCity: data.restaurantCity || "",
-      dashboardUrl: `${base}/dashboard`,
+      // `/dashboard` is not a route (App.tsx) -- the dashboard IS `/`.
+      dashboardUrl: `${base}/`,
       settingsUrl: `${base}/settings`,
       inviteUrl: `${base}/settings?tab=team`,
     });
