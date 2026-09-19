@@ -6,6 +6,7 @@ import { CalendarRemindersService } from "./calendar-reminders.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { WeatherService } from "../weather/weather.service";
 import { DayRecordService } from "./day-record.service";
+import { CalendarPushService } from "./push/calendar-push.service";
 import {
   CalendarEventType,
   CalendarEventStatus,
@@ -63,6 +64,12 @@ describe("CalendarController", () => {
           // calendar/day-record.spec.ts; here it only has to resolve.
           provide: DayRecordService,
           useValue: { windowFor: jest.fn() },
+        },
+        {
+          // ADR 0111 direction 1 (GET /calendar/push). Its behaviour is
+          // specified in calendar/push/*.spec.ts; here it only has to resolve.
+          provide: CalendarPushService,
+          useValue: { status: jest.fn(), push: jest.fn() },
         },
       ],
     })
