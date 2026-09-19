@@ -14,7 +14,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { creditsApi, type ProcurementCredit, type CreditStats } from '@/services/api/credits';
-import type { UnverifiedDelivery } from '@/services/api/receiving';
+import {
+  receivingApi,
+  type AppendLineVerdictRequest,
+  type LineVerdictLedger,
+  type UnverifiedDelivery,
+} from '@/services/api/receiving';
 import {
   dismissDroppedDoorReceipt,
   flushDoorOutbox,
@@ -39,11 +44,30 @@ export interface FailureVM {
   forbidden: boolean;
 }
 
+/**
+ * What the SERVER said, when it said anything. Axios's own `message` is the
+ * generic "Request failed with status code 500" for every non-2xx; the
+ * gateway's sentence (a Nest `HttpException` body: `{ statusCode, message }`,
+ * where `message` is a string, or a list for a validation failure) is on
+ * `response.data`. Null when the response carried no usable text.
+ */
+export function serverMessageOf(error: unknown): string | null {
+  const m = (error as { response?: { data?: { message?: unknown } } } | null)?.response?.data
+    ?.message;
+  if (typeof m === 'string' && m.trim() !== '') return m.trim();
+  if (Array.isArray(m)) {
+    const parts = m.filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+    if (parts.length > 0) return parts.join('; ');
+  }
+  return null;
+}
+
 export function failureOf(isError: boolean, error: unknown): FailureVM | null {
   if (!isError) return null;
   const status =
     num((error as { response?: { status?: unknown } } | null)?.response?.status) ?? null;
-  const message = (error as { message?: string } | null)?.message ?? 'request failed';
+  const message =
+    serverMessageOf(error) ?? (error as { message?: string } | null)?.message ?? 'request failed';
   return { status, message, forbidden: status === 403 || status === 401 };
 }
 
@@ -268,6 +292,10 @@ export interface QueueItemDto {
   dollarsAtRisk: number;
   selfEvidenced: boolean;
   openClaims: number;
+  providerId: string | null;
+  providerName: string | null;
+  /** The order's own currency (procurement_orders.currency), or null when unset. A priced receipt needs its currency. */
+  currency: string | null;
 }
 
 /** The same row after `num()` has separated a measured 0 from an absent field. */
@@ -350,7 +378,13 @@ export interface ManagerQueueData {
   /** Worst money first — the server's own order, kept. */
   items: QueueItemVM[];
   laneCounts: Record<OutcomeLane, number | null>;
-  totalAtRisk: number | null;
+  /**
+   * Never a single number across currencies (confirmer review, 2026-09-18) —
+   * each currency the queue carries gets its own entry, the same rule the
+   * vendor boxes already apply to their own subtotals. Empty when nothing in
+   * the queue is priced yet.
+   */
+  totalAtRiskByCurrency: Array<{ currency: string | null; amount: number }>;
   /**
    * True when the queue came back holding exactly its cap, so every count and
    * every sum derived from it is a lower bound (SERVER_WINDOWS.QUEUE_ITEMS).
@@ -364,6 +398,13 @@ export interface ManagerQueueData {
   unverified: UnverifiedDelivery[] | null;
   /** The uncounted list is built behind `.limit(500)` on receipt events. */
   unverifiedAtFloor: boolean;
+  /**
+   * True when the vendor-name lookup itself failed (receiving.service.ts
+   * `managerQueue`). A failed read is named — the vendor boxes below group
+   * under "vendor names could not be loaded", never under "unknown vendor" as
+   * if that were measured.
+   */
+  providerNamesUnavailable: boolean;
   hasData: boolean;
   isLoading: boolean;
   isError: boolean;
@@ -381,7 +422,8 @@ export function useManagerQueue(): ManagerQueueData {
       return data as {
         items: QueueItemDto[];
         unverified: UnverifiedDelivery[];
-        totalAtRisk: number;
+        totalAtRiskByCurrency?: Array<{ currency: string | null; amount: number }>;
+        providerNamesUnavailable?: boolean;
       };
     },
   });
@@ -411,13 +453,14 @@ export function useManagerQueue(): ManagerQueueData {
     return {
       items,
       laneCounts,
-      totalAtRisk: known ? num(q.data!.totalAtRisk) : null,
+      totalAtRiskByCurrency: known ? (q.data!.totalAtRiskByCurrency ?? []) : [],
       itemsAtFloor,
       unverified,
       // Built from the newest 500 receipt events; the list itself is shorter
       // than that window, so fullness is not observable and this is a floor
       // whenever the list is non-empty.
       unverifiedAtFloor: (unverified?.length ?? 0) > 0,
+      providerNamesUnavailable: known ? !!q.data!.providerNamesUnavailable : false,
       hasData: known,
       isLoading: q.isLoading,
       isError: q.isError,
@@ -426,6 +469,51 @@ export function useManagerQueue(): ManagerQueueData {
       refetch: () => void q.refetch(),
     };
   }, [q.data, q.isLoading, q.isError, q.error, q.refetch]);
+}
+
+/* ──────────────────────── manager: the append-only verdict ledger (line sheet) ── */
+
+/**
+ * One line's append-only verdict ledger (ADR 0149 row 23; sketch 107 — "The
+ * derivation rule"). `before` pages further back; the queue's own row is
+ * unaffected by this — appending here does not change `dollarsAtRisk` or the
+ * lane a delivery sits in today, which is this ledger's own open question:
+ * OD-126 (whether it supersedes, derives from, or reconciles alongside
+ * `procurement_receipt_events.outcome`).
+ */
+export function useLineVerdicts(
+  orderId: string | null,
+  opts: { before?: string | null } = {},
+) {
+  const q = useQuery({
+    queryKey: ['receiving-next-verdicts', orderId, opts.before ?? null],
+    queryFn: () => receivingApi.listLineVerdicts(orderId as string, { before: opts.before }),
+    enabled: !!orderId,
+  });
+  return {
+    ledger: (q.data ?? null) as LineVerdictLedger | null,
+    hasData: !!q.data,
+    isLoading: q.isLoading,
+    isError: q.isError,
+    failure: failureOf(q.isError, q.error),
+    refetch: () => void q.refetch(),
+  };
+}
+
+/**
+ * Append one verdict. Never edits or replaces — the database itself refuses
+ * UPDATE/DELETE on this table, from any role (the migration's trigger).
+ * Idempotent on the caller's key so a retried hold cannot write twice.
+ */
+export function useAppendLineVerdict(orderId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AppendLineVerdictRequest) =>
+      receivingApi.appendLineVerdict(orderId as string, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['receiving-next-verdicts', orderId] });
+    },
+  });
 }
 
 /* ─────────────────────────── manager: drafted-unsent credit requests (calm) ── */

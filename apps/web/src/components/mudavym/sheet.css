@@ -731,6 +731,33 @@
   outline: 2px solid var(--seal);
   outline-offset: 1px;
 }
+/* The overlay's own controls, on the overlay's own ground. globals.css forces
+   every `input`, `textarea` and `select` to a white fill, near-black text and
+   `color-scheme: light`, all `!important` ("Global input text color fix"), so
+   the `.mdv-input`/`.mdv-select` colours above lose to it: on charcoal a field
+   was a white slab with gray-800 text (measured 2026-09-19 in /receiving's
+   verdict ledger, rgb(255,255,255) on rgb(21,19,15)). Only `!important` answers
+   `!important`, then specificity decides — `html .mdv-ovl .mdv-input` is
+   (0,3,1) against `.dark input[type="number"]` at (0,2,1). Same fight, won the
+   same way, as `styles/mudavym.css` (date/time) and `components/brand/
+   auth-house.css` (auth fields). `color-scheme: inherit` takes light|dark from
+   the overlay's ground so the caret and a select's native list turn with it. */
+html .mdv-ovl .mdv-input,
+html .mdv-ovl .mdv-select {
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+  background-color: var(--paper-0) !important;
+  color-scheme: inherit !important;
+}
+html .mdv-ovl .mdv-select option {
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+  background: var(--paper-0) !important;
+}
+html .mdv-ovl .mdv-input::placeholder {
+  color: var(--ink-3) !important;
+  -webkit-text-fill-color: var(--ink-3) !important;
+}
 .mdv-hintline {
   margin: 4px 0 0;
   font-size: 11px;

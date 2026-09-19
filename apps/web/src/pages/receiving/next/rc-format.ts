@@ -65,11 +65,50 @@ export function fmtIntFloor(v: number | null | undefined, atFloor: boolean): str
   return atFloor ? `${GE}${Math.round(n)}` : String(Math.round(n));
 }
 
-/** Whole-dollar form of the same. A summed window is a lower bound on the sum. */
-export function fmtMoneyWholeFloor(v: number | null | undefined, atFloor: boolean): string {
+/**
+ * Whole-money form of the same, with the floor marker. A summed window is a
+ * lower bound on the sum. `currency` is optional and defaults to the page's
+ * legacy hardcoded USD formatting (RcOwnerLedger's stats, not yet audited for
+ * currency — fixer review, 2026-09-18); a caller that knows the row's own
+ * currency (RcManagerQueue's per-currency "At risk" total) passes it so the
+ * floor marker never sits in front of the wrong symbol.
+ */
+export function fmtMoneyWholeFloor(
+  v: number | null | undefined,
+  atFloor: boolean,
+  currency?: string | null,
+): string {
   const n = num(v);
   if (n === null) return EM;
-  return atFloor ? `${GE}${moneyWhole.format(n)}` : moneyWhole.format(n);
+  const body = currency === undefined ? moneyWhole.format(n) : fmtMoneyWholeCcy(n, currency);
+  return atFloor ? `${GE}${body}` : body;
+}
+
+const moneyWholeByCurrency = new Map<string, Intl.NumberFormat>();
+/**
+ * Whole-money form in a STATED currency, not the page's hardcoded USD
+ * formatters above (fixer review, 2026-09-18: "a priced receipt needs its
+ * currency" — a vendor-box subtotal must never sum, or print, across
+ * currencies as if they were one). Falls back to USD only when the order
+ * itself carries no currency, which is the pre-existing convention this
+ * page's other figures already assume.
+ */
+export function fmtMoneyWholeCcy(v: number | null | undefined, currency: string | null): string {
+  const n = num(v);
+  if (n === null) return EM;
+  const code = (currency ?? 'USD').toUpperCase();
+  let fmt = moneyWholeByCurrency.get(code);
+  if (!fmt) {
+    try {
+      fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: code, maximumFractionDigits: 0 });
+    } catch {
+      // An unrecognised ISO-4217 code (a typo the order-entry side let through) —
+      // print the code itself rather than pretending it was USD.
+      fmt = null as any;
+    }
+    if (fmt) moneyWholeByCurrency.set(code, fmt);
+  }
+  return fmt ? fmt.format(n) : `${Math.round(n)} ${code}`;
 }
 
 /**
