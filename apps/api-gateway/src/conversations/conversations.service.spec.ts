@@ -24,6 +24,9 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 type Row = Record<string, any>;
 
+const HOUSE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const CONV = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
+
 function makeService(opts: { updateError?: { message: string } } = {}) {
   const updates: Row[] = [];
 
@@ -34,13 +37,22 @@ function makeService(opts: { updateError?: { message: string } } = {}) {
         eq: () => q,
         update(row: Row) {
           updates.push({ table, row });
-          return { eq: async () => ({ error: opts.updateError ?? null }) };
+          // update().eq("id").eq("restaurant_id").select("id") — the row comes back
+          // so the service can tell "updated" from "matched nothing".
+          const chain: any = {
+            eq: () => chain,
+            select: async () =>
+              opts.updateError
+                ? { data: null, error: opts.updateError }
+                : { data: [{ id: CONV }], error: null },
+          };
+          return chain;
         },
-        single: async () => {
+        maybeSingle: async () => {
           if (table === "procurement_conversations") {
             return {
               data: {
-                id: "conv-1",
+                id: CONV,
                 order_id: "order-1",
                 paused_at: new Date(Date.now() - 60_000).toISOString(),
               },
@@ -76,7 +88,7 @@ describe("Defect B — a failed publish can never be reported as a send", () => 
     mockedAxios.post.mockRejectedValue(axios404());
     const { service } = makeService();
 
-    const result = await service.approveConversation("conv-1", {
+    const result = await service.approveConversation(CONV, HOUSE, {
       approvalChannel: "web",
     });
 
@@ -92,7 +104,7 @@ describe("Defect B — a failed publish can never be reported as a send", () => 
     mockedAxios.post.mockResolvedValue({ status: 200, data: {} } as any);
     const { service } = makeService();
 
-    const result = await service.approveConversation("conv-1", {
+    const result = await service.approveConversation(CONV, HOUSE, {
       approvalChannel: "web",
     });
 
@@ -104,7 +116,7 @@ describe("Defect B — a failed publish can never be reported as a send", () => 
     mockedAxios.post.mockRejectedValue(axios404());
     const { service, updates } = makeService();
 
-    await service.approveConversation("conv-1", { approvalChannel: "web" });
+    await service.approveConversation(CONV, HOUSE, { approvalChannel: "web" });
 
     expect(updates).toHaveLength(1);
     expect(updates[0].table).toBe("procurement_conversations");
@@ -115,7 +127,11 @@ describe("Defect B — a failed publish can never be reported as a send", () => 
     mockedAxios.post.mockRejectedValue(axios404());
     const { service } = makeService();
 
-    const result = await service.rejectConversation("conv-1", "too expensive");
+    const result = await service.rejectConversation(
+      CONV,
+      HOUSE,
+      "too expensive",
+    );
 
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/could not be dispatched/i);
@@ -125,7 +141,7 @@ describe("Defect B — a failed publish can never be reported as a send", () => 
     mockedAxios.post.mockRejectedValue(axios404());
     const { service } = makeService();
 
-    const result: any = await service.regenerateSummary("conv-1");
+    const result: any = await service.regenerateSummary(CONV, HOUSE);
 
     expect(result.success).toBe(false);
     expect(result.message).toBeUndefined();
@@ -150,7 +166,7 @@ describe("Defect B — the failure is logged loudly, not as a warning", () => {
       error: (m: string) => errors.push(m),
     };
 
-    await service.approveConversation("conv-1", { approvalChannel: "web" });
+    await service.approveConversation(CONV, HOUSE, { approvalChannel: "web" });
 
     const line = errors.find((e) => e.includes("Event publish FAILED"));
     expect(line).toBeDefined();
