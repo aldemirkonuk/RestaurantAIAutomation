@@ -17,6 +17,20 @@ export class ProviderIntelligenceService {
 
   constructor(private readonly databaseService: DatabaseService) {}
 
+  /**
+   * The promotion reads below run under the service-role key, which bypasses
+   * RLS, so the house is the ONLY thing standing between a caller and every
+   * other house's vendor offers (ADR 0177). It is a required first argument,
+   * and a missing one throws before any query is built: an absent house must
+   * never turn into an unfiltered read.
+   */
+  private requireHouse(restaurantId: string | undefined | null): string {
+    if (!restaurantId) {
+      throw new Error("restaurantId is required to read vendor promotions");
+    }
+    return restaurantId;
+  }
+
   // =========================================================================
   // DIGITAL TWIN (Knowledge Graph)
   // =========================================================================
@@ -138,10 +152,16 @@ export class ProviderIntelligenceService {
   // PROMOTIONS
   // =========================================================================
 
-  async getPromotions(providerId: string, status?: string) {
+  async getPromotions(
+    restaurantId: string,
+    providerId: string,
+    status?: string,
+  ) {
+    this.requireHouse(restaurantId);
     let query = this.databaseService.supabase
       .from("provider_promotions")
       .select("*")
+      .eq("restaurant_id", restaurantId)
       .eq("provider_id", providerId)
       .order("created_at", { ascending: false });
 
@@ -162,10 +182,12 @@ export class ProviderIntelligenceService {
     return data || [];
   }
 
-  async getAllActivePromotions() {
+  async getAllActivePromotions(restaurantId: string) {
+    this.requireHouse(restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_promotions")
       .select("*, providers(id, name)")
+      .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .order("end_date", { ascending: true });
 
@@ -179,13 +201,15 @@ export class ProviderIntelligenceService {
     return data || [];
   }
 
-  async getExpiringPromotions(days: number = 7) {
+  async getExpiringPromotions(restaurantId: string, days: number = 7) {
+    this.requireHouse(restaurantId);
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + days);
 
     const { data, error } = await this.databaseService.supabase
       .from("provider_promotions")
       .select("*, providers(id, name)")
+      .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .lte("end_date", cutoff.toISOString().split("T")[0])
       .order("end_date", { ascending: true });
@@ -200,10 +224,12 @@ export class ProviderIntelligenceService {
     return data || [];
   }
 
-  async getPromoSavings() {
+  async getPromoSavings(restaurantId: string) {
+    this.requireHouse(restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_promotions")
       .select("provider_id, savings_realized, times_used, providers(name)")
+      .eq("restaurant_id", restaurantId)
       .gt("savings_realized", 0)
       .order("savings_realized", { ascending: false });
 
@@ -225,10 +251,12 @@ export class ProviderIntelligenceService {
     };
   }
 
-  async comparePromotions() {
+  async comparePromotions(restaurantId: string) {
+    this.requireHouse(restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_promotions")
       .select("*, providers(id, name)")
+      .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .order("promo_type")
       .order("provider_id");
@@ -412,12 +440,14 @@ export class ProviderIntelligenceService {
   // CROSS-VENDOR INTELLIGENCE
   // =========================================================================
 
-  async compareProviders(providerIds?: string[]) {
+  async compareProviders(restaurantId: string, providerIds?: string[]) {
+    this.requireHouse(restaurantId);
     let query = this.databaseService.supabase
       .from("providers")
       .select(
         "id, name, reliability_score, tier, minimum_order, lead_time_days",
       )
+      .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .is("deleted_at", null);
 
@@ -437,6 +467,7 @@ export class ProviderIntelligenceService {
         this.databaseService.supabase
           .from("provider_promotions")
           .select("id")
+          .eq("restaurant_id", restaurantId)
           .eq("provider_id", provider.id)
           .eq("is_active", true),
         this.databaseService.supabase

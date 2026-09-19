@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
@@ -15,6 +16,24 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
 import { DatabaseService } from "../database/database.service";
+
+interface AuthUser {
+  restaurantId?: string | null;
+}
+
+/**
+ * The house the token names. The promotion reads run under the service-role
+ * key, so this is the only tenant boundary they have (ADR 0177). A session
+ * that names no house (a member removed from theirs) has no vendor offers of
+ * its own to read, so it is refused rather than handed an unfiltered query.
+ * Same rule and same sentence as `ConversationsController` (ADR 0171).
+ */
+function houseOf(user: AuthUser): string {
+  if (!user?.restaurantId) {
+    throw new ForbiddenException("This session names no restaurant.");
+  }
+  return user.restaurantId;
+}
 
 @ApiTags("provider-intelligence")
 @Controller("providers")
@@ -89,10 +108,16 @@ export class ProviderIntelligenceController {
   @ApiQuery({ name: "status", required: false })
   async getPromotions(
     @Param("id") providerId: string,
+    @CurrentUser() user: AuthUser,
     @Query("status") status?: string,
   ) {
+    const restaurantId = houseOf(user);
     try {
-      return await this.intelligenceService.getPromotions(providerId, status);
+      return await this.intelligenceService.getPromotions(
+        restaurantId,
+        providerId,
+        status,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch promotions",
@@ -103,9 +128,12 @@ export class ProviderIntelligenceController {
 
   @Get("promotions/active")
   @ApiOperation({ summary: "Get all active promotions across all providers" })
-  async getAllActivePromotions() {
+  async getAllActivePromotions(@CurrentUser() user: AuthUser) {
+    const restaurantId = houseOf(user);
     try {
-      return await this.intelligenceService.getAllActivePromotions();
+      return await this.intelligenceService.getAllActivePromotions(
+        restaurantId,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch active promotions",
@@ -117,9 +145,14 @@ export class ProviderIntelligenceController {
   @Get("promotions/expiring")
   @ApiOperation({ summary: "Get promotions expiring soon" })
   @ApiQuery({ name: "days", required: false })
-  async getExpiringPromotions(@Query("days") days?: string) {
+  async getExpiringPromotions(
+    @CurrentUser() user: AuthUser,
+    @Query("days") days?: string,
+  ) {
+    const restaurantId = houseOf(user);
     try {
       return await this.intelligenceService.getExpiringPromotions(
+        restaurantId,
         days ? parseInt(days, 10) : 7,
       );
     } catch (error) {
@@ -132,9 +165,10 @@ export class ProviderIntelligenceController {
 
   @Get("promotions/compare")
   @ApiOperation({ summary: "Cross-vendor promotion comparison matrix" })
-  async comparePromotions() {
+  async comparePromotions(@CurrentUser() user: AuthUser) {
+    const restaurantId = houseOf(user);
     try {
-      return await this.intelligenceService.comparePromotions();
+      return await this.intelligenceService.comparePromotions(restaurantId);
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compare promotions",
@@ -145,9 +179,10 @@ export class ProviderIntelligenceController {
 
   @Get("promotions/savings")
   @ApiOperation({ summary: "Total savings from promotions" })
-  async getPromoSavings() {
+  async getPromoSavings(@CurrentUser() user: AuthUser) {
+    const restaurantId = houseOf(user);
     try {
-      return await this.intelligenceService.getPromoSavings();
+      return await this.intelligenceService.getPromoSavings(restaurantId);
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch promo savings",
@@ -337,12 +372,19 @@ export class ProviderIntelligenceController {
   @Get("intelligence/compare")
   @ApiOperation({ summary: "Cross-vendor intelligence comparison" })
   @ApiQuery({ name: "providerIds", required: false, type: String })
-  async compareProviders(@Query("providerIds") providerIdsStr?: string) {
+  async compareProviders(
+    @CurrentUser() user: AuthUser,
+    @Query("providerIds") providerIdsStr?: string,
+  ) {
+    const restaurantId = houseOf(user);
     try {
       const providerIds = providerIdsStr
         ? providerIdsStr.split(",").map((id) => id.trim())
         : undefined;
-      return await this.intelligenceService.compareProviders(providerIds);
+      return await this.intelligenceService.compareProviders(
+        restaurantId,
+        providerIds,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compare providers",
