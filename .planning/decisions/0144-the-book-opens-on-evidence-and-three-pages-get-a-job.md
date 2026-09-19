@@ -121,6 +121,19 @@ the page would stay the least finished surface in the product indefinitely.
   folio 0 as the last invoice, spoken input landing as rows with a provenance,
   one held seal on the batch. Nothing about `/get-started` or `/onboarding` is
   waiting on a founder call any more.
+  [BUILD STATUS 2026-09-19: adopted from Codex lane C2 (full audit at
+  codex-audit/C2-adopt.md, HOLD verdict — "a good base... not adoptable as a
+  page"). Landed at `/get-started` behind `mudavym_design_arrival`
+  (OFF by default; `/onboarding` now redirects here permanently, ADR 0149
+  row 11); the batch's apply is sealed per this record's "one held seal"
+  (`common/seal/seal-subject.ts`'s `configuration_batch` kind); a crashed
+  apply/undo can now be resumed by the same actor instead of staying stuck;
+  the batch header (`applied`/`undone` vs `..._with_issues`) now agrees with
+  its own rows; the notifications-undo cross-house delete the audit measured
+  is fixed at the row's own id. Not done: the folio-0 gaps §1 already named
+  (payment-terms extraction, vendor name matching, item-only register
+  inference) and isolated in-browser visual QA (the page had no route to
+  render at when the audit ran).]
   [ADDED 2026-09-16, ADR 0149 row 11: the house-wide low-stock threshold is one line on
   folio 2; `/onboarding` redirects permanently to `/get-started`; and, in the founder's
   words, *"+ improve the UI for tutorial action boxes"* — drawn as sketch 115 for his
@@ -134,6 +147,11 @@ the page would stay the least finished surface in the product indefinitely.
   a recorded fact by this decision and an unwritten row in the code, and until
   that writer lands, "offered and skipped" cannot be told from "never opened".
   That is the first build task under item 1, not a detail.
+  [CORRECTED 2026-09-19: this was never true of the code that shipped —
+  `arrival_record_folio` (`supabase/migrations/20260913190500_arrival_configuration_book.sql:49`)
+  already writes `configuration_step_skipped` vs `configuration_folio_recorded`
+  by `p_state`, present since the lane's first commit-tree on 2026-09-13. Not
+  a build task; a stale sentence.]
 
 ## What this decision does NOT settle
 

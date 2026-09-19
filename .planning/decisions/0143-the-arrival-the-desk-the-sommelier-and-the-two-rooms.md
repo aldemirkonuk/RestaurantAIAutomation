@@ -323,6 +323,33 @@ line on folio 2; **(b)** `/onboarding` redirects permanently to
 first as sketch 115 for his review, one of 0149's gated stops, before it is built. Carried
 also into ADR 0144.
 
+## Founder answer, 2026-09-19 — a stuck batch is resumed only by the manager who sealed it
+
+A crash mid-`apply()` or mid-`undo()` strands a batch at `'applying'` or `'undoing'`
+(section 4's held seal; the resume mechanics are this lane's own C2 build,
+`arrival.service.ts:697-853,882-961`). Resuming is a same-actor operation everywhere in
+this service, not a special case of resume alone: `batch()` (`:446-463`) scopes every
+read of a batch — behind `propose`, `discard`, `apply`, `undo` and `issueApplySeal`
+alike — by `user_id = actor.userId` (`:457`), so a different manager of the same house
+cannot read, let alone act on, a colleague's batch at all. `manage()` (`:69-75`) only
+confirms the caller may administer the house in general; it does not widen who may
+touch one specific batch row. The question this lane's adoption surfaced: if the
+manager who sealed a batch is away when it crashes, should an owner, or any other
+manager, be able to force it forward? **Answered: no. A batch stuck at `'applying'` or
+`'undoing'` is resumed only by the manager who sealed it, as built.** No code follows
+from this answer — it ratifies the existing per-user scoping rather than widening it.
+
+Rejected:
+- an owner override, so an absent manager's crash cannot block the house's own
+  configuration indefinitely — rejected because a second person resuming a batch they
+  did not seal would replay a write that neither the seal challenge nor that person's
+  own hold ever covered for them;
+- any manager of the house resuming any other manager's batch, for the same reason.
+
+Founder's answer, verbatim as recorded: *"stuck Arrival batch = only the sealing
+manager resumes"* (`founder-sketch-decisions-106-115.md`, "Lane answers batch 4,"
+2026-09-19 ~10:00Z).
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -333,3 +360,4 @@ also into ADR 0144.
 | 2026-09-12 | Aldemir | Three more: on-device speech keeping only the rows (closes 0113 Q6/Q7); only what Mudavym proposed waits for the seal; the auth emails renamed, OD-27 partly lifted |
 | 2026-09-17 | Aldemir | Via ADR 0149 rows 32 and 35: Studio kept as an internal tool; `/login` and `/register` take the flyleaf look (sketch 118 first) |
 | 2026-09-16 | Aldemir | Five more, via ADR 0149 (rows 4, 7, 8, 10, 11): SimPOS kept as-is and Studio waiting on the Codex-conversation check; the public doors' treatment ratified; `support@mudavym.com` everywhere; the desk's defaults kept; the threshold on folio 2, `/onboarding` redirecting permanently to `/get-started`, and the tutorial action boxes redrawn for review |
+| 2026-09-19 | Aldemir | A batch a crash stranded at `'applying'` or `'undoing'` is resumed only by the manager who sealed it — ratifies the C2 lane's existing per-user batch scoping, no code change |

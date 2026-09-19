@@ -1,3 +1,4 @@
+import { restoreArrivalEntry } from "../arrival/restore-entry";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
@@ -264,6 +265,11 @@ function num(v: string | number | null | undefined): number | null {
 
 @Injectable()
 export class VendorTermsService {
+  /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
+  restoreArrival(restaurantId: string, actorId: string, batchId: string, rowId: string) {
+    return restoreArrivalEntry(this.databaseService, "vendor_terms", restaurantId, actorId, batchId, rowId);
+  }
+
   private readonly logger = new Logger(VendorTermsService.name);
 
   constructor(

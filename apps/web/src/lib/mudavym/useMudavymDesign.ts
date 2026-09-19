@@ -62,6 +62,11 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // ADR 0113/0143/0144, Codex lane C2 adopted 2026-09-19. `/get-started`'s
+  // flyleaf-and-contents book (direction C). Flag off, `legacy` is today's
+  // GetStarted — unchanged, not a redirect, because it is still the real
+  // onboarding path for every house until this one is turned on.
+  'arrival',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
