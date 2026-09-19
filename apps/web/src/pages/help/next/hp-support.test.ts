@@ -4,6 +4,7 @@ import {
   diagnosticsBlock,
   readEmailChannel,
   readSupportChannel,
+  supportSubject,
 } from './hp-support';
 
 describe('readEmailChannel — no fallback, ever', () => {
@@ -68,5 +69,21 @@ describe('buildSupportMailto', () => {
   });
   it('without a house name the subject says so rather than inventing one', () => {
     expect(decodeURIComponent(buildSupportMailto('help@example.com', {}))).toContain('subject=Mudavym support — a house');
+  });
+});
+
+describe('supportSubject — the same line the mailto and the write-to-support panel both show', () => {
+  it('names the house', () => {
+    expect(supportSubject('Sim Meyhouse')).toBe('Mudavym support — Sim Meyhouse');
+  });
+  it('says "a house" for a missing or blank name, never an empty subject', () => {
+    expect(supportSubject(undefined)).toBe('Mudavym support — a house');
+    expect(supportSubject(null)).toBe('Mudavym support — a house');
+    expect(supportSubject('   ')).toBe('Mudavym support — a house');
+  });
+  it('is the exact prefix buildSupportMailto encodes into the mailto — one subject, not two', () => {
+    const subject = supportSubject('Sim Meyhouse');
+    const m = buildSupportMailto('help@example.com', { houseName: 'Sim Meyhouse' });
+    expect(decodeURIComponent(m)).toContain(`subject=${subject}`);
   });
 });

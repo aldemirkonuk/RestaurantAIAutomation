@@ -42,8 +42,22 @@ links: ["[[PAGE-CONTRACT]]", "[[privacy]]", "[[sommelier]]", "[[services]]", "[[
 > - §5/§10's dead-ended `trackGuidance` telemetry: not carried into the rebuild — the new
 >   page does not import `guidance/analytics.ts` (grepped, zero hits). A fresh telemetry
 >   read for the new page has not been done and is not claimed here.
+> **[added 2026-09-19 — pg-help lane, closing ADR 0160 §111's two must-haves]** ADR 0160
+> §111's Decision, verbatim: *"B's What-to-do-next rail and write-to-support modal are
+> grafted in regardless of which base is picked."* Both landed this pass, so "six pure
+> modules" above is now seven, plus one component file:
+> - **What to do next** — `hp-nextup.ts` (`nextUpEntries`), rendered by `HelpNext.tsx`'s
+>   `NextUpRail` as its own section between the masthead and Section I — not folded into
+>   "Waiting on you", which was the round-2 review's own must-fix. Always visible; an
+>   empty list reads "Everything reads clear right now." rather than disappearing.
+> - **The write-to-support panel** — `SupportPanel.tsx`, ADR 0112's `Panel` shape
+>   (centred, closes on the word "Not now"). Both "Write to support" triggers on the page
+>   (the rail's and "Reach a person"'s, `HelpNext.tsx:558-566`) open it; neither is a bare
+>   `mailto:` link any more. It covers all three `EmailChannel` states, including
+>   unconfigured — the trigger no longer disappears when no address is configured, which
+>   had no coverage at all before this pass (`SupportPanel.test.tsx`).
 > A full rewrite of this dossier against the new component (files, endpoints, data flow,
-> maturity table) has not been done in this pass.
+> maturity table) has still not been done in this pass.
 
 ## Surface — buttons → where they go
 

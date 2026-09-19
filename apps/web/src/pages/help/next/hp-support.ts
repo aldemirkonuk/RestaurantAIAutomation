@@ -97,10 +97,20 @@ export function diagnosticsBlock(ctx: DiagnosticsContext): string {
   ].join('\n');
 }
 
+/**
+ * The subject line every message to support carries. Its own function, not
+ * inlined into `buildSupportMailto`, so the write-to-support panel (ADR 0112
+ * Panel shape, `SupportPanel.tsx`) can show the same subject before the mail
+ * app opens without decoding it back out of a `mailto:` URL.
+ */
+export function supportSubject(houseName: string | null | undefined): string {
+  const house = houseName && houseName.trim() ? houseName.trim() : 'a house';
+  return `Mudavym support — ${house}`;
+}
+
 /** `mailto:` with the subject and the diagnostics block prefilled. */
 export function buildSupportMailto(address: string, ctx: DiagnosticsContext): string {
-  const house = ctx.houseName && ctx.houseName.trim() ? ctx.houseName.trim() : 'a house';
-  const subject = `Mudavym support — ${house}`;
+  const subject = supportSubject(ctx.houseName);
   const body = `\n\n---\n${diagnosticsBlock(ctx)}\n`;
   return `mailto:${address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }

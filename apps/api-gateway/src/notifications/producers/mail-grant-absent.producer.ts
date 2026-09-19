@@ -54,14 +54,46 @@
  * `integrations-oauth.controller.ts:120`). A staff member cannot act on this,
  * so is not woken by it.
  *
- * WEB PRESENTATION IS DEFERRED (founder, quoted above: "for web, maybe not")
- * -----------------------------------------------------------------------
- * This producer writes the same `notifications` row every channel reads;
- * whether the web notification bell surfaces `mail_grant_absent` distinctly
- * is left to the existing bell, unchanged by this file. `/help` reads the
- * house's own state directly from `GET /communications/letters/sender`
- * (Register I), not from this producer's output — the alert and the page's
- * own reading are two views of the same fact, not two facts.
+ * WEB BEHAVIOUR TODAY, AND WHY IT IS NOT A DECISION (ADR 0160 §111 OPEN ITEM 5)
+ * -------------------------------------------------------------------------
+ * **[corrected 2026-09-19 — pg-help lane; the previous heading here was
+ * "WEB PRESENTATION IS DEFERRED" and read as though whether this reaches
+ * the web bell were still unsettled. Mechanically it is not: this producer
+ * has no code path that treats web differently from mobile, so it already
+ * answers the founder's open question by omission. That is what this
+ * section now says, plainly, instead of implying a deferral that the code
+ * does not actually make.]**
+ *
+ * The founder, quoted above: *"pop up a notification for mobile. For web ...
+ * maybe not, maybe not. Maybe not. I'm not sure."* ADR 0160 §111 records this
+ * as its own OPEN ITEM 5, the founder's call, not decided there or here.
+ *
+ * What this producer actually does, verified against `persistForRestaurant`
+ * (`notifications.service.ts:614-747`): it calls that one funnel with
+ * `priority: "high"`, and the funnel is not platform-aware — it (1) inserts
+ * one `notifications` row per addressed member, `channels: ["in_app"]`, with
+ * no field that gates it to mobile (:667-692); (2) emits it live over the
+ * restaurant's websocket room, which any open web tab is already joined to
+ * (:711-731); and (3) additionally pushes to Expo/mobile because priority is
+ * not `"low"` (:736-747). Steps (1) and (2) are exactly what backs the web
+ * bell — `useNotifications(userId, { status: 'unread' })`
+ * (`Header.tsx:42`) reads the same `notifications` table with no type
+ * filter, and the live emit updates it before the next page load even asks.
+ * So THIS ALERT ALREADY REACHES THE WEB BELL TODAY, unconditionally, the
+ * same moment mobile gets its push — there is no code path anywhere in this
+ * funnel that could deliver one without the other.
+ *
+ * That is a fact about what ships, not an answer to open item 5. Nobody
+ * decided "web: yes" — the shared funnel simply has no "web: no" to opt
+ * into, so the open question reads answered by default unless this header
+ * says otherwise. `/help` reads the house's own state directly from
+ * `GET /communications/letters/sender` (Register I) as well, not from this
+ * producer's output, so the alert and the page's own reading stay two views
+ * of the same fact, not two facts — but that does not change what the bell
+ * itself already shows. Fixing this — giving `persistForRestaurant` a way to
+ * write mobile-only, or deciding that today's web behaviour is in fact fine
+ * — is the founder's call (ADR 0160 §111 open item 5), not something this
+ * file resolves by picking one silently.
  */
 
 import { Injectable, Logger } from "@nestjs/common";

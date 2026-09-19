@@ -1,5 +1,8 @@
 /**
- * HelpNext — the Mudavym redesign of `/help`, direction A (ADR 0160 §111):
+ * HelpNext — the Mudavym redesign of `/help`, built to the bar ADR 0160
+ * §111 delegates to the builder (the founder picked no base direction for
+ * this page — "direction A" in an earlier draft of that record was the
+ * sketch README's own recommendation, corrected away in §111 correction 2):
  * "the house's own state above the answers," drawn the way the industry's
  * best do it. Founder, quoted in full in that record: *"just mimic how the
  * big companies are doing. Such as Anthropic, and other fintech startup
@@ -34,16 +37,43 @@
  * -------------------------------------------------------------------
  * The founder asked for a standing alert when the house's mail grant is
  * absent or revoked, "pop up a notification for mobile. For web ... maybe
- * not" — ADR 0160 §111 carries that forward as "pushed on mobile, decided
- * later for web." The mobile half is built: `MailGrantAbsentProducer`
+ * not" — ADR 0160 §111 lists the web half as OPEN ITEM 5, still undecided
+ * ("maybe not" ×3, "I'm not sure"). The mobile half is built:
+ * `MailGrantAbsentProducer`
  * (`apps/api-gateway/src/notifications/producers/mail-grant-absent.producer.ts`)
- * writes the same `notifications` row every push channel reads, gated on the
- * same `HouseInboxService.statusFor` this page reads below. What this page
- * does NOT do is invent a web banner for the same fact — that visual call is
- * explicitly undecided. Section I's "Mail reading" connection item already
- * states the identical fact in words (tone `attention`, a Reconnect action)
- * because it reads the SAME `statusFor`, so the house's own state is visible
- * on web today without pre-empting a decision nobody has made yet.
+ * writes an ordinary `notifications` row, gated on the same
+ * `HouseInboxService.statusFor` this page reads below — see that file's own
+ * header for what the row actually does on web today (it reaches the bell
+ * unconditionally; that producer's header records this truthfully as open
+ * item 5, not as a decision). What THIS page does NOT do is invent a second,
+ * page-level web banner for the same fact — that would be deciding open item
+ * 5 from a page header, which is not this page's call. Section I's "Mail
+ * reading" connection item already states the identical fact in words (tone
+ * `attention`, a Reconnect action) because it reads the SAME `statusFor`, so
+ * the house's own state is visible on web today without this page adding a
+ * second, competing answer to the open question.
+ *
+ * B'S TWO GRAFTS: WHAT TO DO NEXT, AND THE WRITE-TO-SUPPORT PANEL
+ * ------------------------------------------------------------------
+ * ADR 0160 §111's Decision, verbatim: *"B's What-to-do-next rail and
+ * write-to-support modal are grafted in regardless of which base is
+ * picked."* (Direction B is `.planning/sketches/111-help-directions/direction-b.html`;
+ * the rail is its `rail()`, :782; the panel is its `panelSupport`, :270,
+ * frame 03, :860-862.) Neither is a fourth base direction — both are grafted
+ * onto whatever base is built, which here is the ADR 0144 §2 shape above.
+ *
+ *   - **What to do next** (`hp-nextup.ts`'s `nextUpEntries`, rendered just
+ *     below): a separate, always-visible section — never folded into
+ *     Section I's "Waiting on you" — listing every reading across the
+ *     deployment, connections, last failed and waiting that the page's own
+ *     ATTENTION tone already marks as needing a person, in that order. Empty
+ *     is drawn as the sentence it is, never a blank section (ADR 0020).
+ *   - **The write-to-support panel** (`SupportPanel.tsx`): ADR 0112's
+ *     `Panel` shape — centred, the exact message and diagnostics shown
+ *     before any mail app opens, closes with the word "Not now", never an X.
+ *     Both "Write to support" triggers on this page — the rail's own
+ *     shortcut and "Reach a person"'s — open this one panel; there is no
+ *     bare `mailto:` link left on the page for either to fall back to.
  *
  * ONE-TAP ACTS, PROMOTED WITHOUT A SECOND EXECUTE PATH
  * ------------------------------------------------------
@@ -74,6 +104,8 @@ import {
   waitingItems,
   type ReadinessItem,
 } from './hp-readiness';
+import { nextUpEntries, type NextUpEntry } from './hp-nextup';
+import { SupportPanel } from './SupportPanel';
 import { useHelpNextData } from './useHelpNextData';
 
 export interface HelpNextProps {
@@ -164,6 +196,67 @@ function StateGroup({ title, items }: { title: string; items: ReadinessItem[] })
   );
 }
 
+/**
+ * "What to do next" — direction B's rail, grafted in per ADR 0160 §111's
+ * Decision (see the header comment above). A SEPARATE section from Section
+ * I, on purpose: the round-2 review's own must-fix was that a rail folded
+ * inside "Waiting on you" does not meet the Decision. Always rendered, never
+ * conditionally hidden — an empty list is drawn as the honest sentence it
+ * is, per ADR 0020, not as a section that quietly disappears.
+ */
+function NextUpRail({
+  entries,
+  supportLabel,
+  onWriteToSupport,
+}: {
+  entries: NextUpEntry[];
+  supportLabel: string;
+  onWriteToSupport: () => void;
+}) {
+  return (
+    <section aria-labelledby="hp-nextup-h" style={{ marginTop: 22 }}>
+      <p style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--seal-deep)', margin: 0 }}>
+        What to do next
+      </p>
+      <h2 id="hp-nextup-h" style={{ fontFamily: SERIF, fontSize: 20, fontWeight: 600, letterSpacing: '-0.01em', lineHeight: 1.2, margin: '4px 0 10px', color: 'var(--ink-1)' }}>
+        {entries.length === 0
+          ? 'Everything reads clear right now.'
+          : `${entries.length} thing${entries.length === 1 ? '' : 's'} worth a look.`}
+      </h2>
+      <div className="hp-card">
+        {entries.length === 0 ? (
+          <Prose muted>
+            Every read this page can make came back clear. If a page still misbehaves, the fault is in that page —
+            say which one below.
+          </Prose>
+        ) : (
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {entries.map((e) => (
+              <li key={e.id} className="hp-row">
+                <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>{e.title}</p>
+                <Prose>{e.body}</Prose>
+                {e.actionUrl && (
+                  <p style={{ margin: '6px 0 0' }}>
+                    <a className="hp-link" href={e.actionUrl}>
+                      {e.actionLabel ?? 'Open'} <ArrowUpRight size={11} style={{ display: 'inline', verticalAlign: -1 }} />
+                    </a>
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--paper-2)' }}>
+          <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 8px' }}>{supportLabel}</p>
+          <button type="button" className="hp-btn hp-btn--seal hp-ink hp-focus" onClick={onWriteToSupport}>
+            Write to support
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ── the page ──────────────────────────────────────────────────────────── */
 
 export default function HelpNext({ ground }: HelpNextProps) {
@@ -196,6 +289,11 @@ export default function HelpNext({ ground }: HelpNextProps) {
     return () => window.clearTimeout(t);
   }, [copied]);
 
+  // The write-to-support panel (ADR 0112 Panel shape) — one piece of state,
+  // opened from either "Write to support" trigger on the page (the rail's
+  // and "Reach a person"'s); see the header comment's "B'S TWO GRAFTS".
+  const [supportPanelOpen, setSupportPanelOpen] = useState(false);
+
   const connections = useMemo(
     () => connectionItems({ mcp: data.mcp, oauth: data.oauth, pos: data.pos, mail: data.mail }, now),
     [data.mcp, data.oauth, data.pos, data.mail, now],
@@ -210,6 +308,14 @@ export default function HelpNext({ ground }: HelpNextProps) {
   );
 
   const pendingActs = data.oneTap.status === 'ok' ? data.oneTap.data : [];
+
+  // "What to do next" (hp-nextup.ts) — composed from the SAME reads Section I
+  // already turned into ReadinessItems above; no second network read, no
+  // second notion of "not clear".
+  const nextUp = useMemo(
+    () => nextUpEntries({ service: data.service, connections, failed, waiting }),
+    [data.service, connections, failed, waiting],
+  );
 
   const support = readSupportChannel({ VITE_SUPPORT_EMAIL: import.meta.env.VITE_SUPPORT_EMAIL as string | undefined });
   const cameFrom = useMemo(() => {
@@ -244,6 +350,8 @@ export default function HelpNext({ ground }: HelpNextProps) {
   };
   const block = diagnosticsBlock(diagCtx);
   const mailto = support.state === 'configured' ? buildSupportMailto(support.address, diagCtx) : null;
+  const nextUpSupportLabel =
+    support.state === 'configured' ? `Or write to ${support.address} with these readings.` : 'Or write to support with these readings.';
 
   const copyDiagnostics = async () => {
     try {
@@ -305,6 +413,13 @@ export default function HelpNext({ ground }: HelpNextProps) {
         </header>
 
         <div aria-hidden style={{ borderTop: '1px solid var(--ink-1)', borderBottom: '1px solid var(--ink-1)', height: 3, opacity: 0.5, margin: '18px 0 4px' }} />
+
+        {/* ── What to do next (direction B's rail, grafted per ADR 0160 §111) ── */}
+        <NextUpRail
+          entries={nextUp}
+          supportLabel={nextUpSupportLabel}
+          onWriteToSupport={() => setSupportPanelOpen(true)}
+        />
 
         {/* ── I. This house, right now ───────────────────────────────── */}
         <Section n="I · This house" id="hp-state" title="This house, right now">
@@ -441,11 +556,15 @@ export default function HelpNext({ ground }: HelpNextProps) {
             {support.state === 'unusable' && <Prose muted>The configured address is not usable ({support.why}): {support.raw}</Prose>}
 
             <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              {mailto && (
-                <a className="hp-btn hp-btn--seal hp-ink hp-focus" href={mailto}>
-                  Write to support
-                </a>
-              )}
+              {/* Opens the centred write-to-support panel (ADR 0112 Panel
+                  shape) instead of navigating a bare mailto: link directly —
+                  see the header comment's "B'S TWO GRAFTS". The button
+                  renders in all three support.state cases: the panel itself
+                  is what says which one applies, rather than this trigger
+                  quietly disappearing when there is nothing configured. */}
+              <button type="button" className="hp-btn hp-btn--seal hp-ink hp-focus" onClick={() => setSupportPanelOpen(true)}>
+                Write to support
+              </button>
               <button type="button" className="hp-btn hp-ink hp-focus" onClick={copyDiagnostics}>
                 {copied ? <>Copied <Check size={13} /></> : 'Copy the diagnostics block'}
               </button>
@@ -482,6 +601,17 @@ export default function HelpNext({ ground }: HelpNextProps) {
           <Mono dim>Read at {new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })} by this page</Mono>
         </p>
       </div>
+
+      <SupportPanel
+        open={supportPanelOpen}
+        onClose={() => setSupportPanelOpen(false)}
+        support={support}
+        houseName={data.houseName}
+        block={block}
+        mailto={mailto}
+        copied={copied}
+        onCopy={copyDiagnostics}
+      />
     </div>
   );
 }
