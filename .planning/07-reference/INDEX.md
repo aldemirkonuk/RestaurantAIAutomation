@@ -45,3 +45,4 @@ plan of record — that is `PROJECT.md` → `STATE.md` → `ROADMAP.md`.
 | [GOOGLE_AND_API_CREDENTIALS_SETUP.md](GOOGLE_AND_API_CREDENTIALS_SETUP.md) | Google + API credentials from scratch (was `md/05-guides-setup/`) | Guide |
 | [TOAST_API_DEVELOPER_GUIDE.md](TOAST_API_DEVELOPER_GUIDE.md) | Toast developer-guide research report (was `md/Toast_API/ToastAPI`) | External-API reference |
 | [TOAST_API_CONFIGURATION.md](TOAST_API_CONFIGURATION.md) | Tombstone stub — the title promised configuration and the file held only vendor-API prose already covered by the developer guide | Retired 2026-09-02; superseded by [`04-specs/TOAST-ACTIVATION-READINESS.md`](../04-specs/TOAST-ACTIVATION-READINESS.md) |
+| [TYPESAFE_AI_OVERVIEW.md](TYPESAFE_AI_OVERVIEW.md) | TypeSafe/Jev "System One" API — primitives, patterns, use cases, vendor-published benefits and jev-1.13 limitations; not yet used in this codebase | External-tool research record |
