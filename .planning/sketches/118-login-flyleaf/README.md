@@ -208,8 +208,11 @@ changes "same fields and flow". An unknown Google account is still refused by th
 
 **Not built:**
 - The front-matter Easter egg: clicking the endpaper turns back to a poem about the
-  house, or closes the book onto its back cover. He asked for a sketch first; it is
-  being drawn for his review and nothing of it is built.
+  house, or closes the book onto its back cover. He asked for a sketch first. It is
+  `front-matter.html`, two live directions at desktop and phone width, and waits for his
+  verdict. Nothing of it is built. Its copy claims only what the product does: it reads
+  invoices, keeps the count, notices price creep and low stock, drafts but never sends
+  without a person, and seals every approval.
 - Four more signature moments from the motion canvas were offered: the seal on success,
   the invite code becoming a person, the wrong password wiped gently, and "the house
   knows you". His answer was *"not sure, if we don't need it then don't"*, so none is
