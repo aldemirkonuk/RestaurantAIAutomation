@@ -532,6 +532,31 @@ describe('the switch changes the chrome, never the fields', () => {
   })
 })
 
+/* ── 3b. Google on the first page — the house path only ─────────────────── */
+
+/*
+ * The founder, 2026-09-19 (ADR 0149 row 35): on the endpaper, "Sign in with
+ * Google" also sits under the address on the first page. Today’s page keeps
+ * today’s flow — Google only once the address resolves to it. The host is
+ * the same mounted element either way (One Tap needs it mounted); only
+ * whether it is shown differs, so the control lists above stay equal.
+ */
+describe('Google on the first page — the house path only', () => {
+  const googleHost = () => screen.getByText(/Google sign-in isn.t configured/).closest('[aria-hidden]')
+
+  it('ON shows it under the address, before any method is resolved', async () => {
+    setSwitch(true)
+    await STATES.find((st) => st.name === 'login-email')!.reach()
+    expect(googleHost()).toHaveAttribute('aria-hidden', 'false')
+  })
+
+  it('OFF keeps it hidden until the address resolves to Google', async () => {
+    setSwitch(false)
+    await STATES.find((st) => st.name === 'login-email')!.reach()
+    expect(googleHost()).toHaveAttribute('aria-hidden', 'true')
+  })
+})
+
 /* ── 4. The house-side strings, read from source ────────────────────────── */
 
 /**

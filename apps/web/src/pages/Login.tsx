@@ -459,13 +459,23 @@ export function Login() {
           account after a failed password attempt. Off-screen rather than
           `display: none` so the GSI host stays clickable programmatically.
         */}
+        {/* House path: "Continue with Google" also sits on the first page,
+            under the address (founder, 2026-09-19). A Google account with no
+            Mudavym account is refused by the gateway exactly as before. */}
+        {on && !atMethodStep && (
+          <div className="mt-5 flex items-center gap-3" aria-hidden>
+            <span className="h-px flex-1 bg-paper-2" />
+            <span className="text-xs font-medium uppercase tracking-wide text-inkm-3">or</span>
+            <span className="h-px flex-1 bg-paper-2" />
+          </div>
+        )}
         <div
           className={
-            atMethodStep && showGoogle
+            (atMethodStep ? showGoogle : on)
               ? 'mt-5'
               : 'pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0'
           }
-          aria-hidden={!(atMethodStep && showGoogle)}
+          aria-hidden={!(atMethodStep ? showGoogle : on)}
         >
           <GoogleSignInButton
             ref={googleRef}
