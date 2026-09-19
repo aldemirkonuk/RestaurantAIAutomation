@@ -233,6 +233,8 @@ export function expandAllRecurringEvents<T extends RecurringEvent>(
   const result: (T | ExpandedOccurrence)[] = []
 
   for (const event of events) {
+    // Window rows were already expanded with server-owned exceptions.
+    if (event.occurrenceResolved === true) { result.push(event); continue; }
     const isRecurring =
       event.isRecurring ||
       event.recurring?.enabled ||

@@ -471,6 +471,48 @@ export interface CatalogEntryVM {
   notRequested?: string[] | null;
 }
 
+/**
+ * The day-book pushed to Google (ADR 0111 §5, direction 1).
+ *
+ * EVERY COUNT IS NULLABLE, and that is the whole shape of this type. A push
+ * that never happened leaves no trace anywhere — the house's Google calendar
+ * simply lacks an event — so "0 of 40 pushed" and "the register could not be
+ * counted" have to be different values here, or the register will draw the
+ * second as the first. `sentence` is composed by the GATEWAY for the same
+ * reason `mailArchive.owner.keptIn` is: only the server can tell those apart.
+ */
+export interface PushStatusVM {
+  available: boolean;
+  unavailableReason: string | null;
+  armed: boolean;
+  connected: boolean;
+  ownerUserId: string | null;
+  ownerName: string | null;
+  /** Null on this grant by design: the scope never reads the Google address. */
+  accountEmail: string | null;
+  houseStopped: boolean;
+  reconnectRequired: boolean;
+  reconnectReason: string | null;
+  calendar: {
+    providerCalendarId: string;
+    summary: string;
+    timeZone: string | null;
+    createdAt: string | null;
+  } | null;
+  entries: number | null;
+  pushed: number | null;
+  unpushed: number | null;
+  pendingDeletes: number | null;
+  sentence: string;
+  lastOutcome: {
+    verb: string;
+    outcome: string;
+    detail: string;
+    attemptedAt: string;
+  } | null;
+  error: string | null;
+}
+
 /** A query as this page consumes it: never "empty" when it means "unread". */
 export interface Register<T> {
   data: T | null;
@@ -594,6 +636,21 @@ export function useConnectionsNextData() {
     },
     enabled: on,
     staleTime: 300_000,
+  });
+
+  /* read 4b — the day-book pushed OUT to Google (ADR 0111 direction 1).
+     Its own read rather than a field on the feed: the iCal feed is the house
+     PUBLISHING to anyone with the link, and this is the house WRITING into one
+     person's account. They are two different attachments with two different
+     owners, and folding them would make one row's chip describe the other. */
+  const pushQ = useQuery({
+    queryKey: ['connections-next-calendar-push', rid],
+    queryFn: async (): Promise<PushStatusVM> => {
+      const { data } = await apiClient.get<PushStatusVM>('/calendar/push');
+      return data;
+    },
+    enabled: on,
+    staleTime: 60_000,
   });
 
   /* read 5 — model-context servers, and what this deployment can do with one. */
@@ -799,6 +856,31 @@ export function useConnectionsNextData() {
       await apiClient.post('/calendar/ical-token/regenerate');
     },
     onSuccess: () => invalidate('connections-next-ical'),
+  });
+
+  /**
+   * End the day-book's Google connection (ADR 0111 direction 1).
+   *
+   * The SAME door every other grant uses — `DELETE
+   * /integrations/oauth/:integrationId` — rather than a calendar-specific one.
+   * A second way to disconnect is a second thing to keep in step with the
+   * consent screen's promises, and there is nothing about this grant that a
+   * general disconnect handles wrongly: it drops the tokens, marks the row
+   * revoked, and leaves the events already written in the person's own
+   * calendar, which is exactly what the screen says will happen.
+   *
+   * Both registers are invalidated: the grant is gone from the house's list of
+   * personal grants (Register III) AND from the day-book row (Register I).
+   */
+  const disconnectCalendarPush = useMutation({
+    mutationFn: async () => {
+      await apiClient.delete('/integrations/oauth/google_calendar');
+    },
+    onSuccess: () => {
+      invalidate('connections-next-calendar-push');
+      invalidate('connections-next-house-grants');
+      invalidate('connections-next-catalog');
+    },
   });
 
   /**
@@ -1239,6 +1321,7 @@ export function useConnectionsNextData() {
     sender: toRegister(senderQ),
     textSenders: toRegister(textQ),
     ical: toRegister(icalQ),
+    calendarPush: toRegister(pushQ),
     mcp: toRegister(mcpQ),
     mcpRuntime: toRegister(mcpRuntimeQ),
     houseGrants: toRegister(houseGrantsQ),
@@ -1260,6 +1343,7 @@ export function useConnectionsNextData() {
       null,
     tally,
     regenerateFeed,
+    disconnectCalendarPush,
     uploadDistributorFile,
     declarePriceCode,
     withdrawPriceCode,
