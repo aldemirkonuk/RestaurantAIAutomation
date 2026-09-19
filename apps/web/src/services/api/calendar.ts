@@ -37,6 +37,8 @@ interface ApiCalendarEvent {
   isRecurring: boolean
   parentEventId?: string
   occurrenceDate?: string
+  occurrenceResolved?: boolean
+  isVirtualOccurrence?: boolean
   recurrenceRule?: {
     id: string
     frequency: string
@@ -78,6 +80,9 @@ const mapApiEvent = (event: ApiCalendarEvent): CalendarEvent => ({
   // Pass through recurrence fields for frontend expansion
   isRecurring: event.isRecurring,
   parentEventId: event.parentEventId,
+  occurrenceDate: event.occurrenceDate,
+  occurrenceResolved: event.occurrenceResolved,
+  isVirtualOccurrence: event.isVirtualOccurrence,
   recurrenceRule: event.recurrenceRule,
 })
 
@@ -162,6 +167,8 @@ export interface CalendarEvent {
   // Virtual occurrence markers (set by frontend expansion)
   isVirtualOccurrence?: boolean
   occurrenceDate?: string
+  occurrenceResolved?: boolean
+  isVirtualOccurrence?: boolean
 }
 
 export interface EventTypeRecord {

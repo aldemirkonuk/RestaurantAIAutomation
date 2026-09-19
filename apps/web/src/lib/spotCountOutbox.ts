@@ -14,7 +14,7 @@
  */
 
 import { offlineStorage } from './offline-storage'
-import { recordSpotCount } from '../services/api/inventory'
+import { recordSpotCount, type SpotCountRecord } from '../services/api/inventory'
 
 const MUTATION_TYPE = 'inventory.spotCount'
 
@@ -47,18 +47,25 @@ export function newClientCountId(): string {
  * Returns `synced: false` when it went to the queue — the caller should tell
  * the counter it is saved, not that it failed, since from their side the tap
  * is done and their next action is moving to the next shelf.
+ *
+ * `record` is the house's own receipt for the count (ADR 0078: the count id,
+ * the book's expected figure, the variance and the moment it was stamped). It
+ * is present only when the write actually reached the house and it answered —
+ * which is the whole point: a queued count has no receipt, and a surface that
+ * invents one for it would be claiming the ledger holds something it does not.
+ * "Queued is never confirmed."
  */
 export async function submitSpotCount(
   entry: QueuedSpotCount,
-): Promise<{ synced: boolean }> {
+): Promise<{ synced: boolean; record?: SpotCountRecord | null }> {
   if (!navigator.onLine) {
     await queue(entry)
     return { synced: false }
   }
 
   try {
-    await recordSpotCount(entry.itemId, entry.body, entry.restaurantId)
-    return { synced: true }
+    const res = await recordSpotCount(entry.itemId, entry.body, entry.restaurantId)
+    return { synced: true, record: res.count ?? null }
   } catch (err) {
     const status = (err as { response?: { status?: number } })?.response?.status
     if (status && status >= 400 && status < 500 && status !== 408 && status !== 429)

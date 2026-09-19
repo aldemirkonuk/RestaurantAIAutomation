@@ -1128,3 +1128,8 @@ for any confirmed order at all**. With the column, a line whose desk stated a
 currency writes one again — proved in `price-currency.spec.ts`, which asserts the
 sighting appears with `TRY` on it and still does not appear when the desk stated
 nothing.
+
+
+### Codex execution — overlay packet, 2026-09-13
+
+The recovered orders overlays and their interaction regressions were reconciled with current main. The cross-page seal, partial-result and validation account is appended to ADR 0118 under “overlay commitments”; the workspace immutable manifest records exactly what was integrated. This is implementation evidence, not a new design decision.

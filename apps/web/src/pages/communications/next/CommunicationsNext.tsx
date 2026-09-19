@@ -46,6 +46,7 @@ import {
 } from './cm-format';
 import { TemplateSheet } from './TemplateSheet';
 import { ComposeSheet } from './Compose/ComposeSheet';
+import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -312,6 +313,10 @@ export default function CommunicationsNext() {
   const data = useCommsNextData();
   const [compose, setCompose] = useState(false);
   const [library, setLibrary] = useState(false);
+  /* Which drafted reply is open. One panel for the page, keyed off the row the
+     page still holds, so a draft that vanishes under a refetch closes the panel
+     rather than leaving it describing a letter that has gone. */
+  const [draftOpen, setDraftOpen] = useState<string | null>(null);
 
   return (
     <div
@@ -421,6 +426,74 @@ export default function CommunicationsNext() {
               Try again
             </button>
           </div>
+        )}
+
+        {/* ── the drafts waiting, which the strip could only count ────
+            The act the census calls owed: a letter the house drafted, read and
+            sent by a person's hold (ADR 0118). The list and the strip's figure
+            come from the SAME read, so they cannot disagree. */}
+        {data.draftsKnown && data.drafts.length > 0 && (
+          <section
+            aria-label="Drafts waiting"
+            className="mb-6 rounded-xl p-4"
+            style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+          >
+            <h2
+              style={{
+                fontFamily: MONO,
+                fontSize: 9.5,
+                fontWeight: 600,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--ink-3, #7C7365)',
+                margin: '0 0 8px',
+              }}
+            >
+              The house has written · {data.drafts.length} waiting
+            </h2>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {data.drafts.map((d) => (
+                <li key={d.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1">
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+                    {d.wineName ?? 'An order'}
+                    {d.providerName ? ` · ${d.providerName}` : ''}
+                    {d.orderNumber ? ` · ${d.orderNumber}` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="open-drafted-reply"
+                    onClick={() => setDraftOpen(d.orderId)}
+                    style={{
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      padding: '4px 10px',
+                      borderRadius: 3,
+                      border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                      background: 'transparent',
+                      color: 'var(--seal-deep, #14515C)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Read it
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '8px 0 0' }}>
+              Nothing here has been sent. A letter reaches a vendor only when a person holds the
+              seal on it.
+            </p>
+          </section>
+        )}
+        {data.failed.drafts && (
+          <p
+            role="status"
+            className="mb-6"
+            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}
+          >
+            The drafts register could not be read, so no letter can be opened from here. That is a
+            failed read, not an empty desk.
+          </p>
         )}
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -561,6 +634,16 @@ export default function CommunicationsNext() {
 
       <ComposeSheet open={compose} onClose={() => setCompose(false)} />
       {library && <TemplateSheet onClose={() => setLibrary(false)} />}
+
+      <DraftedReplyPanel
+        open={draftOpen !== null}
+        reply={
+          (data.drafts.find((d) => d.orderId === draftOpen) as DraftedReply | undefined) ?? null
+        }
+        onClose={() => setDraftOpen(null)}
+        onSent={() => data.refetch()}
+        onDiscarded={() => data.refetch()}
+      />
     </div>
   );
 }

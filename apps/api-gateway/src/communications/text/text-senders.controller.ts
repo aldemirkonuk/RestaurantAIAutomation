@@ -31,6 +31,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   UseGuards,
 } from "@nestjs/common";
@@ -49,12 +50,11 @@ import {
   RequestRegistrationDto,
   RevokeSenderDto,
   TextConsentDto,
+  WhatsAppReplyDto,
 } from "./text-senders.dto";
-
-interface Actor {
-  id: string;
-  restaurantId: string;
-}
+import { houseActor, type TokenUser } from "../letters/house-letters.actor";
+import { WhatsAppSendService } from "./whatsapp-send.service";
+import { WhatsAppBookService } from "./inbound/whatsapp-book.service";
 
 @ApiTags("Communications")
 @UseGuards(JwtAuthGuard)
@@ -63,6 +63,8 @@ export class TextSendersController {
   constructor(
     private readonly senders: TextSenderService,
     private readonly organizations: OrganizationsService,
+    private readonly whatsapp: WhatsAppSendService,
+    private readonly book: WhatsAppBookService,
   ) {}
 
   /**
@@ -81,9 +83,10 @@ export class TextSendersController {
     description:
       "`readable: false` means the read FAILED and is not the same answer as a house with no sender. Every fee and timeline is a sentence carrying its source and fetch date, never a bare number.",
   })
-  async readout(@CurrentUser() user: Actor) {
+  async readout(@CurrentUser() token: TokenUser) {
+    const user = houseActor(token);
     const readout = await this.senders.readout(user.restaurantId);
-    const mine = await this.senders.myConsent(user.restaurantId, user.id);
+    const mine = await this.senders.myConsent(user.restaurantId, user.userId);
 
     /**
      * The crew-wide count is a MANAGER's fact and a staff member's business is
@@ -94,7 +97,7 @@ export class TextSendersController {
     let crewConsents: number | null = null;
     try {
       await this.organizations.assertCanManageRestaurant(
-        user.id,
+        user.userId,
         user.restaurantId,
         "read how many people in this restaurant have consented to be texted",
       );
@@ -116,15 +119,12 @@ export class TextSendersController {
         sms: surveyedMarkets("sms"),
       },
       /**
-       * Stated by the server rather than assumed by the page. Nothing on this
-       * deployment can hand a message to a transport, and a surface that drew
-       * an enabled control would be claiming otherwise.
+       * MEASURED for this house, not asserted for the deployment. This used to
+       * be `{ built: false }` written out by hand; a constant cannot notice the
+       * day a dispatch lands, and a page repeating it would have told a wired
+       * house that nothing could be sent while its messages went.
        */
-      transport: {
-        built: false,
-        words:
-          "No provider credential for a per-house sender exists on this deployment, so nothing can leave through one yet. The shared Plivo number is deliberately not a fallback: on a shared number a STOP reply opts a person out of every restaurant here, for five years.",
-      },
+      transport: await this.senders.transportReadout(user.restaurantId),
       myConsent: mine,
       /**
        * Live consents in this house. `null` means either the caller may not see
@@ -141,7 +141,7 @@ export class TextSendersController {
     summary:
       "What a house must provide to register, per channel per market — the checklist a registrar actually applies",
   })
-  requirements(@CurrentUser() _user: Actor) {
+  requirements(@CurrentUser() _user: TokenUser) {
     return {
       whatsapp: TEXT_SENDER_DEFINITIONS.whatsapp_business.markets,
       sms: TEXT_SENDER_DEFINITIONS.sms_sender.markets,
@@ -163,17 +163,18 @@ export class TextSendersController {
       "Connect a sender this house already owns. Lands in `requested`, never `connected`: a declared sender is not a proven one.",
   })
   async declareOwn(
-    @CurrentUser() user: Actor,
+    @CurrentUser() token: TokenUser,
     @Body() dto: DeclareOwnSenderDto,
   ) {
+    const user = houseActor(token);
     await this.organizations.assertCanManageRestaurant(
-      user.id,
+      user.userId,
       user.restaurantId,
       "connect a text sender for this restaurant",
     );
     const row = await this.senders.declareOwn({
       restaurantId: user.restaurantId,
-      declaredBy: user.id,
+      declaredBy: user.userId,
       channel: dto.channel,
       market: dto.market,
       identity: dto.identity,
@@ -197,17 +198,18 @@ export class TextSendersController {
       "Ask Mudavym to register a sender in THIS HOUSE's name. Records the request with the fee and the timeline it was shown; submits nothing.",
   })
   async requestRegistration(
-    @CurrentUser() user: Actor,
+    @CurrentUser() token: TokenUser,
     @Body() dto: RequestRegistrationDto,
   ) {
+    const user = houseActor(token);
     await this.organizations.assertCanManageRestaurant(
-      user.id,
+      user.userId,
       user.restaurantId,
       "request a text sender registration for this restaurant",
     );
     const row = await this.senders.requestRegistration({
       restaurantId: user.restaurantId,
-      declaredBy: user.id,
+      declaredBy: user.userId,
       channel: dto.channel,
       market: dto.market,
       legalName: dto.legalName,
@@ -236,26 +238,99 @@ export class TextSendersController {
     summary:
       "Stop this house using a sender. A soft revoke: the row stays so the record that it existed survives.",
   })
-  async revoke(@CurrentUser() user: Actor, @Body() dto: RevokeSenderDto) {
+  async revoke(@CurrentUser() token: TokenUser, @Body() dto: RevokeSenderDto) {
+    const user = houseActor(token);
     await this.organizations.assertCanManageRestaurant(
-      user.id,
+      user.userId,
       user.restaurantId,
       "revoke a text sender for this restaurant",
     );
     return this.senders.revoke({
       restaurantId: user.restaurantId,
       senderId: dto.senderId,
-      revokedBy: user.id,
+      revokedBy: user.userId,
       reason: dto.reason,
     });
   }
 
   // ── The person's half. Any member; never a manager on their behalf. ──────
 
+  /**
+   * The house answers a vendor on WhatsApp, inside the open 24-hour window.
+   *
+   * FREE-FORM AND REPLY-SHAPED ONLY (ADR 0121 P1). There is no template
+   * argument and no way to start a conversation: the service refuses when the
+   * vendor has not written inside 24 hours, and says that nothing was queued.
+   * The recipient is not a field — it is the number the vendor wrote from, off
+   * the mirrored inbound row — so ADR 0118 D3's book-only rule holds by
+   * construction rather than by validation.
+   */
+  @Post("whatsapp/reply")
+  @ApiOperation({
+    summary:
+      "Reply to a vendor on WhatsApp, inside the open 24-hour customer service window. Refuses outside it with the reason; nothing is ever queued.",
+  })
+  async whatsappReply(
+    @CurrentUser() token: TokenUser,
+    @Body() dto: WhatsAppReplyDto,
+  ) {
+    const user = houseActor(token);
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "send a WhatsApp message for this restaurant",
+    );
+    return this.whatsapp.reply({
+      restaurantId: user.restaurantId,
+      userId: user.userId,
+      providerId: dto.providerId,
+      body: dto.body,
+    });
+  }
+
+  /**
+   * Whether the house may write to this vendor right now, and why.
+   *
+   * Read separately from the send so a composer can show the state BEFORE a
+   * manager types — ADR 0121: *"The 24-hour window becomes a state the surface
+   * must show, because whether the next message is free-form or must be a
+   * template … changes what the manager may write."*
+   */
+  @Get("whatsapp/window/:providerId")
+  @ApiOperation({
+    summary:
+      "Is the 24-hour WhatsApp window with this vendor open, closed, or unreadable? Three answers, never two.",
+  })
+  window(
+    @CurrentUser() token: TokenUser,
+    @Param("providerId") providerId: string,
+  ) {
+    const user = houseActor(token);
+    return this.book.windowFor(user.restaurantId, providerId);
+  }
+
+  /**
+   * Every number this house holds, with the verdict on each.
+   *
+   * This is P0 item 2 made visible: `mobile`, `landline` and — the one that
+   * matters — `unstated`, which is what a row carrying the column's own
+   * `main_line` default reports.
+   */
+  @Get("phone-book")
+  @ApiOperation({
+    summary:
+      "The house's phone book with each number's reach. A failed read reports `readable: false`, never an empty book.",
+  })
+  phoneBook(@CurrentUser() token: TokenUser) {
+    const user = houseActor(token);
+    return this.book.phoneBook(user.restaurantId);
+  }
+
   @Get("consent")
   @ApiOperation({ summary: "Your own consent to be texted by this house." })
-  myConsent(@CurrentUser() user: Actor) {
-    return this.senders.myConsent(user.restaurantId, user.id);
+  myConsent(@CurrentUser() token: TokenUser) {
+    const user = houseActor(token);
+    return this.senders.myConsent(user.restaurantId, user.userId);
   }
 
   @Post("consent")
@@ -263,10 +338,11 @@ export class TextSendersController {
     summary:
       "Agree that this house may text you at a number you state. Yours alone: no route lets a manager record, approve or restore it for you.",
   })
-  async consent(@CurrentUser() user: Actor, @Body() dto: TextConsentDto) {
+  async consent(@CurrentUser() token: TokenUser, @Body() dto: TextConsentDto) {
+    const user = houseActor(token);
     const consent = await this.senders.consent({
       restaurantId: user.restaurantId,
-      userId: user.id,
+      userId: user.userId,
       phone: dto.phone,
       channel: dto.channel,
     });
@@ -282,10 +358,11 @@ export class TextSendersController {
     summary:
       "Withdraw it. The row is kept with the time and the reason, never deleted — a revocation has to be recorded and honoured, and a deleted row records nothing.",
   })
-  async withdraw(@CurrentUser() user: Actor) {
+  async withdraw(@CurrentUser() token: TokenUser) {
+    const user = houseActor(token);
     const result = await this.senders.withdraw({
       restaurantId: user.restaurantId,
-      userId: user.id,
+      userId: user.userId,
       via: "person",
     });
     return {

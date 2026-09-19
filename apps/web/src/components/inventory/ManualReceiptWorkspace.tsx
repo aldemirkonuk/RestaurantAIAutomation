@@ -10,6 +10,32 @@
  *
  * Provider / reference / default location are receipt-level on purpose: the
  * manager sets them once and every row inherits them.
+ *
+ * ── THE HOUSE SHAPE (ADR 0112, census 102 row "A delivery without an order") ─
+ * SHAPE: `Sheet · wide` (640). The founder answered fork F3 on 2026-09-05: a
+ * sheet here, not a route. A delivery is one object being written, opened from
+ * the register the lines are landing on — and it is the second surface in the
+ * house that holds PROSE-shaped rows rather than an object's fields, so it
+ * takes the 640 the email composer takes (sketch 100). 440 minus padding
+ * cannot hold a wine name, a count, a cost and a zone on one line, and this is
+ * precisely the case ADR 0112 anticipated when it made `wide` a boolean rather
+ * than a number.
+ *
+ * No seal. The line-by-line write goes through the bulk endpoint, which reports
+ * per-line outcomes and leaves failures on screen to fix and resubmit — a
+ * resumable batch, not a single irreversible commitment. ADR 0112 rations the
+ * wax; and the receipt is corrected by receiving again, not by an undo.
+ *
+ * The lines do NOT use `BatchReceiveGrid` on this branch. That grid is a wide
+ * table built for a 6xl modal; at 640 its columns collapse into each other. The
+ * house branch renders each line as a row with its fields stacked under it,
+ * which is what 640 can actually hold — same rows, same validation, same
+ * `batchRowsToBulkLines`, so both branches write exactly the same payload.
+ *
+ * Endpoint: `persistBatchToInventory` → `POST /inventory/:restaurantId/items/bulk`
+ * (apps/api-gateway/src/inventory/inventory.controller.ts:77).
+ *
+ * The legacy branch below is frozen and renders byte-for-byte as it shipped.
  */
 import { useCallback, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -41,6 +67,9 @@ import {
   validateBatchRows,
   type BatchReceiveRow,
 } from './BatchReceiveGrid'
+import { Sheet } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import './inventory-mudavym.css'
 
 interface ManualReceiptWorkspaceProps {
   isOpen: boolean
@@ -67,6 +96,10 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
   const [draft, setDraft] = useState(EMPTY_DRAFT)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const shell = useMudavymShell()
+  /* A refusal is not a fault. House branch only; the legacy render never reads
+     it, so the flag-off tree is byte-identical. */
+  const [denied, setDenied] = useState(false)
 
   const { data: searchResults = [], isFetching: isSearching } = useWines({
     search: search.trim().length >= 2 ? search.trim() : undefined,
@@ -164,6 +197,7 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     if (isSaving || rows.length === 0 || issues.length > 0) return
     setIsSaving(true)
     setError(null)
+    setDenied(false)
     try {
       const persisted = await persistBatchToInventory(
         batchRowsToBulkLines(rows, { providerId: providerId || undefined }),
@@ -210,6 +244,7 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
         `${persisted.failed.length} of ${rows.length} line${rows.length !== 1 ? 's' : ''} could not be saved. Everything else was recorded — fix these and save again.`,
       )
     } catch (err: any) {
+      setDenied(err?.response?.status === 403 || err?.response?.status === 401)
       setError(
         err?.response?.data?.message ||
           err?.message ||
@@ -224,6 +259,385 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
 
   const draftInput =
     'w-full h-8 px-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-wine-500 focus:ring-2 focus:ring-wine-100'
+
+  /* ── the house shape ───────────────────────────────────────────────────── */
+  if (shell.on) {
+    const providerName = providerId
+      ? (providers.find((p) => p.id === providerId)?.name ?? 'a provider that is no longer listed')
+      : 'No provider recorded'
+    const setRow = (key: string, patch: Partial<BatchReceiveRow>) =>
+      setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)))
+
+    return (
+      <Sheet
+        open={isOpen}
+        onClose={close}
+        label="A delivery without an order. Recording it writes an inventory line for each row below. Leaving writes nothing."
+        eyebrow="The door"
+        title="A delivery without an order"
+        wide
+        zIndex={110}
+        footer={
+          <span>
+            {providerName}
+            {reference.trim() ? ` · ${reference.trim()}` : ''} · {totals.bottles} bottle
+            {totals.bottles !== 1 ? 's' : ''} on {totals.rows} line{totals.rows !== 1 ? 's' : ''}
+          </span>
+        }
+      >
+        <div className="mdv-form">
+          <p className="mdv-contract">
+            Stock that arrived without a purchase order — a truck with forty lines, a cellar
+            load-in, a rep leaving samples. Recording it writes one inventory line per row. Leaving
+            writes nothing.
+          </p>
+
+          {error && (
+            <div className="mdv-alert" role="alert">
+              <p className="mdv-alert__head">{denied ? 'Not permitted' : 'Not recorded'}</p>
+              <p>
+                {denied
+                  ? 'This account is not permitted to write inventory lines. Nothing was recorded; every line below is unchanged.'
+                  : error}
+              </p>
+            </div>
+          )}
+
+          {/* Receipt-level: set once, inherited by every new row. */}
+          <div className="mdv-pair">
+            <div>
+              <label className="mdv-label" htmlFor="mdv-receipt-provider">
+                Provider
+              </label>
+              <ThemedSelect
+                value={providerId}
+                options={providerOptions}
+                onChange={setProviderId}
+                align="left"
+                className="w-full"
+                aria-label="Provider for this receipt"
+              />
+            </div>
+            <div>
+              <label className="mdv-label" htmlFor="mdv-receipt-ref">
+                Invoice or reference
+              </label>
+              <input
+                id="mdv-receipt-ref"
+                className="mdv-input"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="e.g. INV-4471, or “walk-in samples”"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="mdv-label" htmlFor="mdv-receipt-loc">
+              Default zone for new rows
+            </label>
+            <ThemedSelect
+              value={defaultLocationId}
+              options={locationOptions}
+              onChange={setDefaultLocationId}
+              align="left"
+              className="w-full"
+              aria-label="Default storage location for new rows"
+            />
+          </div>
+
+          {/* Add a line. */}
+          <div className="mdv-search">
+            <label className="mdv-label" htmlFor="mdv-receipt-search">
+              Add a line from the Master Wine Library
+            </label>
+            <input
+              id="mdv-receipt-search"
+              className="mdv-input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setSearch('')
+              }}
+              placeholder="Search the library…"
+            />
+            {search.trim().length >= 2 && (
+              <div className="mdv-search__list">
+                {isSearching && searchResults.length === 0 && (
+                  <p className="mdv-note">Searching the library…</p>
+                )}
+                {!isSearching && searchResults.length === 0 && (
+                  <p className="mdv-note">
+                    Nothing in the library matches “{search.trim()}”. Add it as a wine the library
+                    does not have yet.
+                  </p>
+                )}
+                {searchResults.map((wine) => {
+                  const onReceipt = alreadyOnReceipt.has(wine.id)
+                  return (
+                    <button
+                      key={wine.id}
+                      type="button"
+                      className="mdv-item"
+                      disabled={onReceipt}
+                      onClick={() => addLibraryWine(wine)}
+                    >
+                      <span className="mdv-item__text">
+                        <span className="mdv-item__label">{wine.name}</span>
+                        <span className="mdv-item__sub">
+                          {[wine.producer, wine.vintage ?? 'NV', wine.region]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      </span>
+                      {onReceipt && <span className="mdv-kbd">on this receipt</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <div className="mdv-actions" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="mdv-btn"
+                onClick={() => setShowDraftForm((v) => !v)}
+              >
+                {showDraftForm ? 'Cancel the new wine' : 'A wine the library does not have'}
+              </button>
+            </div>
+          </div>
+
+          {showDraftForm && (
+            <div className="mdv-panelbox">
+              <p className="mdv-hintline" style={{ marginTop: 0 }}>
+                This creates a provisional Master Library entry so the stock can be tracked now. The
+                name is all that is required; the rest only makes it easier to match up later, and a
+                provisional entry stays marked as one.
+              </p>
+              <div className="mdv-pair" style={{ marginTop: 8 }}>
+                <div>
+                  <label className="mdv-label" htmlFor="mdv-draft-name">
+                    Wine name
+                  </label>
+                  <input
+                    id="mdv-draft-name"
+                    className="mdv-input"
+                    autoFocus
+                    value={draft.name}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addDraftWine()
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="mdv-label" htmlFor="mdv-draft-producer">
+                    Producer
+                  </label>
+                  <input
+                    id="mdv-draft-producer"
+                    className="mdv-input"
+                    value={draft.producer}
+                    onChange={(e) => setDraft({ ...draft, producer: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="mdv-label" htmlFor="mdv-draft-vintage">
+                    Vintage
+                  </label>
+                  <input
+                    id="mdv-draft-vintage"
+                    className="mdv-input"
+                    value={draft.vintage}
+                    onChange={(e) =>
+                      setDraft({ ...draft, vintage: e.target.value.replace(/[^\d]/g, '') })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mdv-label" htmlFor="mdv-draft-region">
+                    Region
+                  </label>
+                  <input
+                    id="mdv-draft-region"
+                    className="mdv-input"
+                    value={draft.region}
+                    onChange={(e) => setDraft({ ...draft, region: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="mdv-label" htmlFor="mdv-draft-grape">
+                    Grape
+                  </label>
+                  <input
+                    id="mdv-draft-grape"
+                    className="mdv-input"
+                    value={draft.grapeVariety}
+                    onChange={(e) => setDraft({ ...draft, grapeVariety: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="mdv-label" htmlFor="mdv-draft-country">
+                    Country
+                  </label>
+                  <input
+                    id="mdv-draft-country"
+                    className="mdv-input"
+                    value={draft.country}
+                    onChange={(e) => setDraft({ ...draft, country: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="mdv-actions" style={{ marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="mdv-btn mdv-btn--seal"
+                  disabled={!draft.name.trim()}
+                  onClick={addDraftWine}
+                >
+                  Add the line
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* The lines. */}
+          <div>
+            <span className="mdv-head">
+              <span>On this receipt — {rows.length}</span>
+              {totals.provisional > 0 && (
+                <span>{totals.provisional} new to the library</span>
+              )}
+            </span>
+
+            {rows.length === 0 ? (
+              <p className="mdv-quiet">
+                Nothing is on this receipt yet. Search the library above to add a line, or add a
+                wine the library does not have. Nothing is written until you record it.
+              </p>
+            ) : (
+              <div className="mdv-picks mdv-scroll">
+                {rows.map((row) => (
+                  <div key={row.key} className="mdv-pick" role="group" style={{ alignItems: 'flex-start' }}>
+                    <span style={{ minWidth: 0, flex: '1 1 auto' }}>
+                      <span className="mdv-pick__label" style={{ whiteSpace: 'normal' }}>
+                        {row.name}
+                        {row.vintage ? ` ${row.vintage}` : ''}
+                      </span>
+                      <span className="mdv-pick__sub">
+                        {row.producer ?? 'no producer recorded'}
+                        {row.draft ? ' · new to the library, carried as provisional' : ''}
+                      </span>
+                      {row.hint && <span className="mdv-grey">{row.hint}</span>}
+                      {row.error && (
+                        <span className="mdv-grey" role="alert">
+                          Not saved — {row.error}
+                        </span>
+                      )}
+                      <span className="mdv-pair" style={{ marginTop: 6 }}>
+                        <span>
+                          <label className="mdv-label" htmlFor={`qty-${row.key}`}>
+                            Bottles
+                          </label>
+                          <input
+                            id={`qty-${row.key}`}
+                            className="mdv-input"
+                            type="number"
+                            min={0}
+                            value={row.quantity}
+                            disabled={isSaving}
+                            onChange={(e) =>
+                              setRow(row.key, { quantity: Math.max(0, Number(e.target.value) || 0) })
+                            }
+                          />
+                        </span>
+                        <span>
+                          <label className="mdv-label" htmlFor={`cost-${row.key}`}>
+                            Cost a bottle
+                          </label>
+                          <input
+                            id={`cost-${row.key}`}
+                            className="mdv-input"
+                            inputMode="decimal"
+                            value={row.isSample ? '' : row.cost}
+                            disabled={isSaving || row.isSample}
+                            placeholder={row.isSample ? 'free sample' : 'leave blank if unknown'}
+                            onChange={(e) => setRow(row.key, { cost: e.target.value })}
+                          />
+                        </span>
+                      </span>
+                      <span className="mdv-hintline">
+                        A blank cost is written as unknown, never as zero. A free sample is written
+                        as an explicit zero and excluded from average cost.
+                      </span>
+                      <span className="mdv-seg" style={{ marginTop: 6 }}>
+                        <button
+                          type="button"
+                          className="mdv-seg__opt"
+                          aria-pressed={row.isSample}
+                          disabled={isSaving}
+                          onClick={() => setRow(row.key, { isSample: !row.isSample })}
+                        >
+                          Free sample
+                        </button>
+                        <button
+                          type="button"
+                          className="mdv-seg__opt"
+                          disabled={isSaving}
+                          onClick={() => setRows((prev) => prev.filter((r) => r.key !== row.key))}
+                        >
+                          Take this line off
+                        </button>
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {rows.length > 0 && (
+              <span className="mdv-prov">
+                {totals.rows} line{totals.rows !== 1 ? 's' : ''} · {totals.bottles} bottle
+                {totals.bottles !== 1 ? 's' : ''} · {totals.samples} free sample
+                {totals.samples !== 1 ? 's' : ''} · costed lines total{' '}
+                {totals.cost.toLocaleString(undefined, { maximumFractionDigits: 2 })} — lines with a
+                blank cost add nothing to that figure
+              </span>
+            )}
+          </div>
+
+          {issues.length > 0 && (
+            <div className="mdv-alert" role="status">
+              <p className="mdv-alert__head">Not ready to record</p>
+              {issues.map((issue, i) => (
+                <p key={`${issue.key}-${i}`} className="mdv-hintline">
+                  {issue.name} — {issue.reason}
+                </p>
+              ))}
+            </div>
+          )}
+
+          <div className="mdv-actions">
+            <span className="mdv-tally">
+              {totals.bottles} bottle{totals.bottles !== 1 ? 's' : ''} to record
+            </span>
+            <button type="button" className="mdv-btn" onClick={close} disabled={isSaving}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="mdv-btn mdv-btn--seal"
+              onClick={() => void save()}
+              disabled={isSaving || rows.length === 0 || issues.length > 0}
+            >
+              {isSaving
+                ? 'Recording…'
+                : `Record ${totals.bottles} bottle${totals.bottles !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </div>
+      </Sheet>
+    )
+  }
 
   return createPortal(
     <AnimatePresence>

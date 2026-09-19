@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Wine as WineIcon, Camera, ScanText, ArrowRight, Truck, Lightbulb } from 'lucide-react'
+import { X, Wine as WineIcon, Camera, ScanText, ArrowRight, Truck, Lightbulb, Gavel } from 'lucide-react'
 
 interface AddWineSelectionModalProps {
   isOpen: boolean
@@ -8,6 +8,12 @@ interface AddWineSelectionModalProps {
   onSelectMenu: () => void
   /** Bulk manual receipt. Omitted on surfaces where stock isn't the point (e.g. the Wine Library). */
   onSelectReceipt?: () => void
+  /**
+   * The FOURTH start (census 102; the founder, 2026-09-05): a bottle bought at
+   * auction. Optional for the same reason the receipt is — it only makes sense
+   * where stock is the point. Omitted on the Wine Library.
+   */
+  onSelectAuction?: () => void
   title?: string
   subtitle?: string
 }
@@ -18,6 +24,7 @@ export function AddWineSelectionModal({
   onSelectSingle,
   onSelectMenu,
   onSelectReceipt,
+  onSelectAuction,
   title = 'Add Wine to Library',
   subtitle = 'Choose how to add wines',
 }: AddWineSelectionModalProps) {
@@ -124,6 +131,38 @@ export function AddWineSelectionModal({
               </button>
 
               {/* Manual bulk receipt */}
+              {onSelectAuction && (
+                <button
+                  onClick={() => {
+                    onSelectAuction()
+                    onClose()
+                  }}
+                  className="group relative p-6 rounded-2xl border-2 border-amber-200 hover:border-amber-500 bg-gradient-to-br from-amber-50 to-white hover:shadow-xl transition-all text-left"
+                >
+                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="p-1.5 bg-amber-600 rounded-full">
+                      <ArrowRight className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+
+                  <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <Gavel className="w-7 h-7 text-amber-600" />
+                  </div>
+
+                  <h3 className="text-lg font-bold text-gray-900 mb-2">An auction lot</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Bottles bought at auction — the cost per bottle is worked out from the
+                    hammer price and the premium, and the working is shown
+                  </p>
+
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
+                      Hammer + premium
+                    </span>
+                  </div>
+                </button>
+              )}
+
               {onSelectReceipt && (
                 <button
                   onClick={() => {

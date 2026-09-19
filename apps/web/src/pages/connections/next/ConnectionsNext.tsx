@@ -1,3 +1,4 @@
+import { IntegrationReturnNotice } from '../../authorize-integration/IntegrationReturnNotice';
 /**
  * `/connections` — what acts for this house.
  *
@@ -83,6 +84,11 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+// The one write this page makes to a text sender: a manager ending the house's
+// use of it (ADR 0114 — the attachment is the house's, and a manager may stop
+// it). Declaring one is still disabled and still carries the server's reason.
+import { revokeTextSender } from '../../../services/api/textSenders';
+import { getErrorMessage } from '../../../services/api/client';
 import {
   CalendarDays,
   CreditCard,
@@ -105,6 +111,7 @@ import {
   type McpServerVM,
   type McpToolGrantVM,
   type ProviderStateVM,
+  type PushStatusVM,
 } from './useConnectionsNextData';
 import {
   AttachmentRow,
@@ -274,6 +281,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   if (!d.isManager) {
     return (
       <div className="mudavym cx" data-ground={ground}>
+      <IntegrationReturnNotice />
         <div className="cx-refused" role="status">
           <h1>This page is for managers and owners.</h1>
           <p>
@@ -564,8 +572,16 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             />
           ) : (
             <>
-              <TextSenderRow channel="whatsapp" vm={d.textSenders.data} />
-              <TextSenderRow channel="sms" vm={d.textSenders.data} />
+              <TextSenderRow
+                channel="whatsapp"
+                vm={d.textSenders.data}
+                onStopped={d.reloadTextSenders}
+              />
+              <TextSenderRow
+                channel="sms"
+                vm={d.textSenders.data}
+                onStopped={d.reloadTextSenders}
+              />
             </>
           )}
 
@@ -625,6 +641,141 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 },
               ]}
               stopNote="Regenerating revokes every subscription at once, and nothing here can tell you how many that is."
+            />
+          )}
+
+          {/*
+            — the day-book, pushed OUT to Google — (ADR 0111 §5, direction 1)
+
+            Beside the feed and not folded into it, because the two are
+            different attachments with different owners: the iCal feed is this
+            house PUBLISHING to anyone holding a link, and this is the house
+            WRITING into one named person's Google account. One chip cannot
+            describe both.
+
+            Every sentence with a number in it comes from the gateway
+            (`d.calendarPush.data.sentence`). The page does not compose the
+            count, for the reason the mail archive's `keptIn` is not composed
+            either: only the server can tell "0 of 40 pushed" from "the register
+            could not be counted", and a page that guessed would draw the second
+            as the first — which is this repo's named cardinal fault aimed
+            straight at a connection register.
+          */}
+          {d.calendarPush.loading ? (
+            <LoadingRegister name="the day-book's Google connection" />
+          ) : d.calendarPush.error ? (
+            <UnreadRegister
+              name="The day-book's Google connection"
+              detail={d.calendarPush.error}
+              refused={d.calendarPush.refused}
+            />
+          ) : (
+            <AttachmentRow
+              icon={<CalendarDays {...ICON} />}
+              title="Push the day-book to Google"
+              owner={
+                d.calendarPush.data?.connected
+                  ? `${personName(d.calendarPush.data.ownerName)}'s Google account`
+                  : "nobody's yet"
+              }
+              chips={pushChips(d.calendarPush.data)}
+              subtitle={
+                d.calendarPush.data?.calendar
+                  ? `${d.calendarPush.data.calendar.summary} · ${d.calendarPush.data.calendar.providerCalendarId}`
+                  : d.calendarPush.data?.connected
+                    ? 'no calendar has been made in the account yet'
+                    : DASH
+              }
+              why={
+                <>
+                  Mudavym makes <em>one calendar of its own</em> inside the
+                  connected account and writes this house&rsquo;s entries there.
+                  It never touches a personal calendar, a shared one, or a feed
+                  anybody subscribes to &mdash; the scope it asks for cannot
+                  reach them.{' '}
+                  <strong>
+                    Nothing is read back. A copy deleted inside Google returns when
+                    Mudavym next attempts to update that entry; unchanged copies are not checked
+                  </strong>
+                  , because the day-book here is the original and that copy is a
+                  copy. Delete the entry in Mudavym to remove it from Google.
+                  {d.calendarPush.data?.reconnectRequired ? (
+                    <>
+                      {' '}
+                      The grant needs reconnecting
+                      {d.calendarPush.data.reconnectReason
+                        ? `: ${d.calendarPush.data.reconnectReason}`
+                        : '.'}
+                    </>
+                  ) : null}
+                </>
+              }
+              permissionsLabel="Holds"
+              permissions={pushHolds(d.calendarPush.data)}
+              lastLabel="Copied across"
+              last={
+                d.calendarPush.data?.pushed === null ||
+                d.calendarPush.data?.pushed === undefined
+                  ? null
+                  : `${d.calendarPush.data.pushed} of ${d.calendarPush.data.entries ?? DASH}`
+              }
+              lastDetail={
+                <>
+                  {d.calendarPush.data?.sentence ?? DASH}
+                  {d.calendarPush.data?.lastOutcome ? (
+                    <>
+                      {' '}
+                      Last attempt {when(d.calendarPush.data.lastOutcome.attemptedAt)}{' '}
+                      &mdash; {d.calendarPush.data.lastOutcome.outcome}:{' '}
+                      {d.calendarPush.data.lastOutcome.detail}
+                    </>
+                  ) : (
+                    ' No push has ever been attempted for this house.'
+                  )}
+                </>
+              }
+              controls={
+                d.calendarPush.data?.connected
+                  ? [
+                      {
+                        // Named, not just "Disconnect": this register draws a
+                        // dozen attachments and more than one of them can be
+                        // disconnected, so a bare verb is ambiguous on the
+                        // page as well as in a test.
+                        label: 'Disconnect Google Calendar',
+                        wrap: true,
+                        busy: d.disconnectCalendarPush.isPending,
+                        onClick: () => d.disconnectCalendarPush.mutate(),
+                      },
+                    ]
+                  : [
+                      {
+                        label: d.calendarPush.data?.available
+                          ? 'Connect a Google account'
+                          : 'Cannot connect here',
+                        disabled: !d.calendarPush.data?.available,
+                        onClick: () => {
+                          // The EXISTING authorize flow, not a second one: the
+                          // consent screen at /authorize/:integrationId reads
+                          // its scope list and its five data-handling answers
+                          // from the gateway, so what a person agrees to cannot
+                          // drift from what is requested.
+                          window.location.assign(
+                            '/authorize/google_calendar?returnPath=/connections',
+                          );
+                        },
+                      },
+                    ]
+              }
+              alert={d.calendarPush.data?.error ?? null}
+              stopNote={
+                d.calendarPush.data?.connected
+                  ? `Disconnecting stops future writes on the spot. The entries already written stay in ${personName(d.calendarPush.data.ownerName)}'s calendar — disconnecting does not unsend them, and neither does anything else here. A manager can also stop the house using the grant from Register III without touching it.`
+                  : d.calendarPush.data?.available
+                    ? 'Nothing to stop: no account is connected, so no entry of this house is in anybody’s Google calendar.'
+                    : (d.calendarPush.data?.unavailableReason ??
+                      'This deployment cannot offer a Google connection.')
+              }
             />
           )}
 
@@ -1408,10 +1559,19 @@ const STATE_WORDS: Record<
 function TextSenderRow({
   channel,
   vm,
+  onStopped,
 }: {
   channel: 'whatsapp' | 'sms';
   vm: import('./useConnectionsNextData').TextSendersVM | null;
+  /**
+   * Re-read the register after a stop. Optional because the row renders inside
+   * a page whose data hook is stubbed in tests; a stop with no re-read leaves
+   * the old state on screen, which is worse than a no-op but is not a lie.
+   */
+  onStopped?: () => void;
 }) {
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const definition =
     channel === 'whatsapp'
       ? vm?.catalogue?.whatsapp_business ?? null
@@ -1489,10 +1649,42 @@ function TextSenderRow({
       controls={[
         { label: 'Bring our own', disabled: true },
         { label: 'Ask Mudavym to register one', disabled: true },
+        // ADR 0114: the attachment is the HOUSE's, and a manager may end it.
+        // Enabled only when there is a live sender to stop — a control that is
+        // always clickable would suggest an act that has nothing to act on.
+        // The reason is fixed and truthful rather than blank: the gateway
+        // requires one and keeps it on the row, and a placeholder would satisfy
+        // the validator while destroying what the field is for.
+        ...(sender && sender.state !== 'revoked'
+          ? [
+              {
+                label: stopping ? 'Stopping…' : 'Stop it',
+                busy: stopping,
+                onClick: () => {
+                  if (stopping) return;
+                  setStopping(true);
+                  setStopError(null);
+                  void revokeTextSender({
+                    senderId: sender.id,
+                    reason: 'Stopped by a manager from the Connections page.',
+                  })
+                    // Re-read rather than patch the row locally: the row's
+                    // state is the SERVER's, and a client that painted
+                    // 'Stopped' itself would be claiming a write it only asked
+                    // for (ADR 0083).
+                    .then(() => onStopped?.())
+                    .catch((e) => setStopError(getErrorMessage(e)))
+                    .finally(() => setStopping(false));
+                },
+              } as const,
+            ]
+          : []),
       ]}
       stopNote={
-        vm?.transport.words ??
-        'The deployment did not say whether anything could be sent.'
+        stopError
+          ? `This sender was NOT stopped, so the house can still send through it: ${stopError}`
+          : (vm?.transport.words ??
+            'The deployment did not say whether anything could be sent.')
       }
     />
   );
@@ -1561,6 +1753,59 @@ function mcpChips(
   if (!servers?.length) return [{ label: 'None declared', tone: 'off' }];
   const answering = servers.filter((s) => s.probe?.status === 'ok').length;
   return [{ label: `${answering} answering`, tone: answering ? 'on' : 'warn' }];
+}
+
+/**
+ * The day-book's chips (ADR 0111 direction 1).
+ *
+ * SIX states, and the order they are tested in is the order they matter in. A
+ * two-state chip — connected / not — would show "Connected" over a grant a
+ * manager has stopped, over one whose token has expired, and over a deployment
+ * that has switched pushing off, all of which mean the house's entries are NOT
+ * reaching Google. The chip is what a reader takes in first, so it must not be
+ * the most reassuring true thing that can be said.
+ */
+function pushChips(p: PushStatusVM | null): RowChip[] {
+  if (!p) return [{ label: 'Unread', tone: 'warn' }];
+  if (!p.available) return [{ label: 'Not offered here', tone: 'off' }];
+  if (!p.connected) return [{ label: 'Not connected', tone: 'off' }];
+  if (p.houseStopped) return [{ label: 'House let go', tone: 'off' }];
+  if (p.reconnectRequired) return [{ label: 'Needs reconnecting', tone: 'warn' }];
+  if (!p.armed) return [{ label: 'Switched off', tone: 'warn' }];
+  // Connected and working. Even here the chip carries the COUNT rather than a
+  // word: "Connected" over nought-of-forty is the sentence this page exists to
+  // refuse. A null count says so instead of showing a zero.
+  if (p.entries === null || p.pushed === null) {
+    return [{ label: 'Count unread', tone: 'warn' }];
+  }
+  return [
+    {
+      label: `${p.pushed} of ${p.entries} pushed`,
+      tone: p.entries > 0 && p.pushed === 0 ? 'warn' : 'on',
+    },
+  ];
+}
+
+/** What the grant holds, and — half the value — what it cannot do. */
+function pushHolds(p: PushStatusVM | null): RowPermission[] {
+  const holds: RowPermission[] = [
+    { text: 'Make one calendar of its own in the account', can: true },
+    { text: 'Write, change and remove the entries it put there', can: true },
+    { text: 'Cannot see your personal or shared calendars', can: false },
+    { text: 'Cannot read anything back, not even what it wrote', can: false },
+    { text: 'Cannot invite anyone or make a Meet link', can: false },
+  ];
+  if (p?.accountEmail) {
+    holds.unshift({ text: `Connected as ${p.accountEmail}`, can: true });
+  } else if (p?.connected) {
+    // The scope never asks for the address, so the row names the person who
+    // consented instead of asserting an address nothing here has ever read.
+    holds.unshift({
+      text: 'The Google address is never read, so it is not shown',
+      can: false,
+    });
+  }
+  return holds;
 }
 
 /**

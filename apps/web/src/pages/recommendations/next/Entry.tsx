@@ -69,6 +69,7 @@ import {
   type GoalSlip,
 } from './rec-daybook';
 import { ACT_LABEL, actOf } from './rec-docket';
+import { WhoTakesThisPopover } from './WhoTakesThisPopover';
 import type {
   DismissChoice,
   EntryVM,
@@ -595,6 +596,8 @@ function GoalSheet({
 
 export default function Entry(props: EntryProps) {
   const { entry: e, leaf, focused, selected, expanded, team } = props;
+  /** The control the assignment popover hangs off. */
+  const assignRef = useRef<HTMLButtonElement | null>(null);
   const [menu, setMenu] = useState<
     'dismiss' | 'snooze' | 'assign' | 'goal' | 'daybook' | null
   >(null);
@@ -1134,43 +1137,36 @@ export default function Entry(props: EntryProps) {
                   <span className="rc-plain">
                     {e.assignedName ?? `nobody ${EM} this entry has no owner`}
                   </span>
-                  <Quiet
+                  <button
+                    ref={assignRef}
+                    type="button"
+                    className="rc-quiet"
+                    data-testid="who-takes-open"
+                    aria-haspopup="dialog"
+                    aria-expanded={menu === 'assign'}
                     onClick={() => {
                       props.onWantTeam();
                       setMenu(menu === 'assign' ? null : 'assign');
                     }}
                   >
                     {e.assignedName ? 'Reassign' : 'Assign'}
-                  </Quiet>
+                  </button>
                   {e.assignedName && <Quiet onClick={() => props.onAssign(null)}>Clear</Quiet>}
                 </div>
-                {menu === 'assign' && (
-                  <div className="rc-row">
-                    {team === undefined && <span className="rc-said">Reading the roster…</span>}
-                    {team === null && (
-                      <span className="rc-said">
-                        The roster could not be read — nobody can be picked here right now.
-                      </span>
-                    )}
-                    {Array.isArray(team) && team.length === 0 && (
-                      <span className="rc-said">
-                        The roster is empty — add a teammate on /team first.
-                      </span>
-                    )}
-                    {Array.isArray(team) &&
-                      team.map((m) => (
-                        <Quiet
-                          key={m.id}
-                          onClick={() => {
-                            setMenu(null);
-                            props.onAssign(m);
-                          }}
-                        >
-                          {m.name}
-                        </Quiet>
-                      ))}
-                  </div>
-                )}
+                {/* THE PICKER IS A POPOVER (census 102; the founder, 2026-09-06).
+                    It was an inline list, and the inline list pushed the rest of
+                    this work block down at the moment a person was choosing —
+                    the fact they were comparing moved under their eyes. Anchored
+                    to the control it belongs to, nothing on the docket moves. */}
+                <WhoTakesThisPopover
+                  open={menu === 'assign'}
+                  onClose={() => setMenu(null)}
+                  anchorRef={assignRef}
+                  team={team}
+                  assignedTo={e.assignedTo ?? null}
+                  assignedName={e.assignedName ?? null}
+                  onPick={(m) => props.onAssign(m)}
+                />
               </div>
 
               {/* feedback — real */}
