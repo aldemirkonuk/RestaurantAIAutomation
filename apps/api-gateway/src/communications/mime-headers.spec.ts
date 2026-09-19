@@ -594,13 +594,43 @@ describe("mime-headers encoders", () => {
     );
   });
 
-  it("refuses an entry with two named addresses but keeps a quoted name with <>", () => {
-    expect(() =>
-      addressListHeader("To", ["A <a@x.example>, B <b@x.example>"]),
-    ).toThrow(/one entry holds more than one address/);
+  it.each([
+    ["two unquoted named mailboxes", "A <a@x.example>, B <b@x.example>"],
+    ["two quoted named mailboxes", '"A" <a@x.example>, "B" <b@x.example>'],
+    ["a bare address then a named one", "a@x.example, B <b@x.example>"],
+  ])("refuses %s in one entry — never drops a recipient", (_label, entry) => {
+    expect(() => addressListHeader("To", [entry])).toThrow(
+      /one entry holds more than one address/,
+    );
+  });
+
+  it("keeps one quoted name (even with <>, commas and escaped quotes) and a bare list", () => {
     expect(
       addressListHeader("To", ['"A <a@x.example>, B" <b@x.example>']),
     ).toBe('To: "A <a@x.example>, B" <b@x.example>');
+    expect(
+      addressListHeader("To", ['"Ops \\"Night\\", Desk" <b@x.example>']),
+    ).toBe('To: "Ops \\"Night\\", Desk" <b@x.example>');
+    // A bare list with no names is written as it is, as before ADR 0172.
+    expect(addressListHeader("To", ["a@x.example, b@y.example"])).toBe(
+      "To: a@x.example, b@y.example",
+    );
+  });
+
+  it("threadingHeader drops an id too long for a 998-character line", () => {
+    const id = (len: number) => `<${"a".repeat(len - 4)}@x>`;
+    // "References: " is 12 characters: 986 fits exactly, 987 does not.
+    expect(threadingHeader("References", id(986))).toBe(
+      `References: ${id(986)}`,
+    );
+    expect(threadingHeader("References", id(987))).toBeNull();
+    // "In-Reply-To: " is 13: the bound follows the header name.
+    expect(threadingHeader("In-Reply-To", id(985))).toBe(
+      `In-Reply-To: ${id(985)}`,
+    );
+    expect(threadingHeader("In-Reply-To", id(986))).toBeNull();
+    const h = threadingHeader("References", `${id(987)} <a@x.example>`)!;
+    expect(h).toBe("References: <a@x.example>");
   });
 
   it("throws MimeHeaderError on a control character in an address", () => {

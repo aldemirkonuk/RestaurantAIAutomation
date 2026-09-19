@@ -400,6 +400,14 @@ function embeddedProviderName(embed: unknown): string | null {
   return typeof name === "string" && name.trim() !== "" ? name : null;
 }
 
+/**
+ * GmailService refused to build the message (ADR 0172: `refusedBeforeSend`),
+ * so Gmail was never called and the vendor provably has nothing. A distinct
+ * type so `isDefiniteSendRefusal` can recognise it by `instanceof` — never by
+ * its text, which embeds the vendor's own contact address.
+ */
+export class SendRefusedBeforeSendError extends BadRequestException {}
+
 @Injectable()
 export class ProcurementService {
   private readonly logger = new Logger(ProcurementService.name);
@@ -5991,21 +5999,15 @@ export class ProcurementService {
    * that direction sends a real vendor a second purchase order.
    */
   private isDefiniteSendRefusal(error: any): boolean {
+    // A header refusal (ADR 0172) is identified by TYPE, not by text: the
+    // message embeds the vendor's contact address, which a vendor controls.
+    if (error instanceof SendRefusedBeforeSendError) return true;
+
     const text = `${error?.message ?? ""} ${error?.response?.data ? JSON.stringify(error.response.data) : ""}`;
     if (!text.trim()) return false;
 
     // No transport was ever attempted — GmailService says so in as many words.
     if (/No email delivery method available/i.test(text)) return true;
-
-    // mime-headers.ts refused to build the message (ADR 0172) — thrown before
-    // gmail.users.messages.send, so nothing left the process. Matches the two
-    // MimeHeaderError message shapes exactly, not a loose "refus" substring.
-    if (
-      /Refusing to write (?:the [A-Za-z-]+ header:|an empty [A-Za-z-]+ header\.)/.test(
-        text,
-      )
-    )
-      return true;
 
     // Credentials refused: the request never became a message.
     if (
@@ -6240,7 +6242,7 @@ export class ProcurementService {
       // A header refusal (ADR 0172) happens before Gmail is called: the data is
       // wrong, not the credentials, so do not send anyone to re-auth Gmail.
       if (result.refusedBeforeSend) {
-        throw new BadRequestException(
+        throw new SendRefusedBeforeSendError(
           `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
             "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address) and approve again.",
         );

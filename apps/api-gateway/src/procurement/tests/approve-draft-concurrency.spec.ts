@@ -20,7 +20,10 @@
  */
 
 import { Test, TestingModule } from "@nestjs/testing";
-import { ProcurementService } from "../procurement.service";
+import {
+  ProcurementService,
+  SendRefusedBeforeSendError,
+} from "../procurement.service";
 import { DatabaseService } from "../../database/database.service";
 import { EventsService } from "../../events/events.service";
 import { InventoryLedgerService } from "../../inventory-ledger/inventory-ledger.service";
@@ -324,7 +327,7 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
       .approveDraft(RESTAURANT_ID, ORDER_ID, {} as any)
       .catch((e: Error) => e);
 
-    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(SendRefusedBeforeSendError);
     expect((err as Error).message).toMatch(
       /Refusing to write the To header: its value contains a line break/,
     );
@@ -334,6 +337,25 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     expect(send).not.toHaveBeenCalled();
     // Definite refusal: re-approvable once the address is fixed, not parked.
     expect(conversationRow(store).status).toBe("PENDING_APPROVAL");
+  });
+
+  it("classifies a header refusal by type, never by text a vendor controls", async () => {
+    // The refusal phrase inside the vendor's own contact address, then an
+    // AMBIGUOUS Gmail failure: that must still park, or a re-approve could
+    // send the vendor a second purchase order.
+    const store = makeStore();
+    conversationRow(store).providers.contact_email =
+      '"Refusing to write the To header:" <v@x.example>';
+    const sendEmail = jest.fn(async () => ({
+      success: false,
+      error: "socket hang up",
+    }));
+    const service = await buildService(store, sendEmail);
+
+    await expect(
+      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+    ).rejects.toThrow(/may or may not have reached the vendor/i);
+    expect(conversationRow(store).status).toBe("SEND_UNCONFIRMED");
   });
 
   it("sends when the stored vendor address only has a trailing newline", async () => {

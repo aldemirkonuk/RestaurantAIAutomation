@@ -52,11 +52,11 @@ Take option 1. Every header in both hand-built messages goes through `mime-heade
   - Anything else is written as `=?UTF-8?B?…?=` encoded-words. So is ASCII that contains `=?`, which a reader would otherwise decode.
   - The encoded-words are sized to the space left on each line and split only between whole code points (surrogate pairs stay together).
   - Every line holding an encoded-word is at most 76 characters (RFC 2047 §2). That one limit also caps each word at 75, because a folded line is one space followed by the word.
-- **Addresses** (To, Cc, Bcc, Reply-To, both Froms): surrounding whitespace is trimmed first — a contact saved as `"a@b\n"` or `"a@b\t"` is not corrupt — and then an interior control character is **refused**. An address with a line break inside it is corrupt data, and "repairing" it sends mail to an address nobody chose. An address-list entry holding two named mailboxes (`"A <a@x>, B <b@x>"`) is also refused: splitting it at the last `<` would silently drop `a@x` as a recipient.
+- **Addresses** (To, Cc, Bcc, Reply-To, both Froms): surrounding whitespace is trimmed first — a contact saved as `"a@b\n"` or `"a@b\t"` is not corrupt — and then an interior control character is **refused**. An address with a line break inside it is corrupt data, and "repairing" it sends mail to an address nobody chose. A **named** entry (one ending in `<addr>`) must hold exactly one mailbox, because splitting it at the last `<` would demote every earlier mailbox to display text and silently drop it as a recipient. So these are **refused, never collapsed**: a quoted name that is not exactly one quoted-string (`"A" <a@x>, "B" <b@x>`), and an unquoted name containing `<`, `>`, `@` or `,` (`A <a@x>, B <b@x>`, `a@x, B <b@x>`). One quoted name may hold any of those (`"Doe, Jane" <j@x>`). A **bare** entry with no `<…>` (`a@x, b@y`) is written as it is, as on `origin/main`: both recipients get it.
 - **Our own Message-ID**: refused on a control character. We mint it, so a control character in it is a bug, not input.
-- **The vendor's threading values** (In-Reply-To, References) are **rebuilt, not refused** — the same reasoning as the Subject. They are copied from the vendor's own mail (`communications.controller.ts`, `inbound-email.controller.ts`, `rabbitmq-bridge.service.ts`, `inbound-responder.service.ts` `buildReferences`), where RFC 5322 folding (CRLF + TAB) is legal. The first version of this ADR refused them, so a folded References stored from a vendor made every approve or auto-send on that thread fail, forever, with an error blaming `GMAIL_REFRESH_TOKEN`. `threadingHeader` keeps only `<msg-id>` tokens of printable ASCII without `<` or `>`, one space apart; folding, stray text and non-ASCII are dropped, so CR/LF cannot reach the header block. No id left means no header: the reply loses threading but is still sent.
+- **The vendor's threading values** (In-Reply-To, References) are **rebuilt, not refused** — the same reasoning as the Subject. They are copied from the vendor's own mail (`communications.controller.ts`, `inbound-email.controller.ts`, `rabbitmq-bridge.service.ts`, `inbound-responder.service.ts` `buildReferences`), where RFC 5322 folding (CRLF + TAB) is legal. The first version of this ADR refused them, so a folded References stored from a vendor made every approve or auto-send on that thread fail, forever, with an error blaming `GMAIL_REFRESH_TOKEN`. `threadingHeader` keeps only `<msg-id>` tokens of printable ASCII without `<` or `>`, one space apart; folding, stray text and non-ASCII are dropped, so CR/LF cannot reach the header block. An id too long for `Name: <id>` to fit RFC 5322's 998-character line is dropped too (it cannot be folded). No id left means no header: the reply loses threading but is still sent.
 - **What a refusal does.** It throws inside `sendEmail`'s `try`, so the caller gets `{ success: false, refusedBeforeSend: true }` and Gmail is never called.
-  - `procurement.service.ts` `isDefiniteSendRefusal` matches the two `MimeHeaderError` message shapes (`Refusing to write the X header:` / `Refusing to write an empty X header.`), so `approveDraft` releases the draft instead of parking it as `SEND_UNCONFIRMED` ("may or may not have reached the vendor", which would be false). `sendProviderEmail` names the header problem and no longer tells anyone to re-auth Gmail for it.
+  - `procurement.service.ts` `sendProviderEmail` turns `refusedBeforeSend` into a `SendRefusedBeforeSendError`, and `isDefiniteSendRefusal` recognises it by `instanceof` — **never by text**, because the error text embeds the vendor's contact address, and an address containing "Refusing to write the To header:" plus an ambiguous Gmail failure would otherwise be classed definite, re-approved, and sent twice. So `approveDraft` releases a refused draft instead of parking it as `SEND_UNCONFIRMED` ("may or may not have reached the vendor", which would be false). The error names the header problem and no longer tells anyone to re-auth Gmail for it.
   - In the letters cron it lands in the existing catch, which marks the letter `FAILED` with the reason.
 - **Display names in address lists.** `Name <addr>` entries are split without a regex and the name is encoded as needed. The address itself is never put inside an encoded-word.
 - **The From brand.** "WineOps AI" is left as it is, because it is renamed in a separate lane. It now goes through `mailboxHeader`, so any non-ASCII rename will be encoded.
@@ -65,7 +65,7 @@ Take option 1. Every header in both hand-built messages goes through `mime-heade
 
 ## Evidence
 
-- **`mime-headers.spec.ts` (46 tests)** and two `approveDraft` cases in `procurement/tests/approve-draft-concurrency.spec.ts` that drive the real `GmailService.sendEmail`: a To with an interior CRLF is released as `PENDING_APPROVAL` with Gmail never called and an error naming the header, not `GMAIL_REFRESH_TOKEN`; a To with only a trailing newline is sent.** It reads messages with its own decoder, not the encoder under test:
+- **`mime-headers.spec.ts` (50 tests).** It reads messages with its own decoder, not the encoder under test:
   - It unfolds the header block and splits it on *any* line break (a lenient receiver's view).
   - It decodes each encoded-word on its own with a fatal UTF-8 decoder, so a split character throws.
   - It base64-decodes each part.
@@ -78,7 +78,10 @@ Take option 1. Every header in both hand-built messages goes through `mime-heade
   - In-Reply-To and References rebuilt, for each of: `<a@x>\r\n\t<b@y>`, `<a@x>\t<b@y>`, `<a@x>\r\n <b@y>`, a non-ASCII id (dropped) and `<a@x>\r\nBcc: evil@x` (only `<a@x>` survives, no `Bcc`); whitespace-only, id-less and only-non-ASCII values omit the header and the reply still goes out;
   - `sendThroughGrant`'s From: a non-ASCII display name round-trips with the address outside the encoded-word, and an empty grant address writes no From;
   - body parts decoding to the exact UTF-8 text;
+  - the three two-mailbox entry shapes refused, one quoted name with `<>`, commas and escaped quotes kept, and a bare `a@x, b@y` list written as before;
+  - a threading id at exactly the 998-character bound kept and one character over dropped, per header name;
   - long, emoji and `=?` subjects.
+- **Three `approveDraft` cases** in `procurement/tests/approve-draft-concurrency.spec.ts`. Two drive the real `GmailService.sendEmail`: a To with an interior CRLF is released as `PENDING_APPROVAL` as a `SendRefusedBeforeSendError`, with Gmail never called and an error naming the header, not `GMAIL_REFRESH_TOKEN`; a To with only a trailing newline is sent. The third puts `"Refusing to write the To header:" <v@x.example>` in the contact address and returns an ambiguous Gmail failure: the draft is parked `SEND_UNCONFIRMED`, not released.
 - **An independent parser.** Python's `email` with `policy.default` parsed six produced messages (five from `createMimeMessage` and one from `sendThroughGrant`). Every subject was exact, there was no `Bcc`, there were no parse defects, display names and addresses were exact, and the bodies were byte-exact.
 - **Mutation.** Each mutant was run by copying the file to a scratch snapshot, mutating it, running the spec, copying the snapshot back and checking with `cmp`. All 13 went red and every restore was identical:
 
@@ -108,6 +111,17 @@ Take option 1. Every header in both hand-built messages goes through `mime-heade
 | J9: header refusal not classified definite in `isDefiniteSendRefusal` | 1 red |
 | J10: header refusal message falls back to the GMAIL_REFRESH_TOKEN text | 1 red |
 
+  Third round, after the round-2 audit notes (same procedure, same two specs, 69 tests); all 6 red, and each also turned the CLAIMS row red; every restore identical:
+
+| Mutant | Result |
+|---|---|
+| K1: quoted name accepted without the single-quoted-string check | 1 red |
+| K2: unquoted name refused only on `<`/`>` (not `@`/`,`) | 1 red |
+| K3: threading id length bound removed | 1 red |
+| K4: `instanceof` classification removed | 1 red |
+| K5: header refusal classified by the old text regex instead | 1 red |
+| K6: `sendProviderEmail` throws a plain `BadRequestException` | 1 red |
+
   A first version kept a separate 75-character word cap. Mutating it to 200 stayed green, because the 76-character line limit already implies it. The cap was deleted rather than left as a guard nothing tests.
 - **CLAIMS row `ADR-0172-MIME-HEADERS-ENCODED`.** Its static verify holds on this branch. It fails (exit 1) on the `origin/main` `apps/api-gateway/src` tree, and fails in this worktree when only `gmail.service.ts` is swapped for `origin/main`'s. The file was then restored and checked identical with `cmp`.
   - **What the verify catches, exactly.** (1) A sweep for a *line-leading* header template literal (`` `Subject: ${ `` at the start of a line) in any non-spec `.ts` under `apps/api-gateway/src`. It does not see one mid-line, e.g. inside a ternary, and it cannot be widened to any position because `sendEmail` logs `` `Subject: ${options.subject}` ``. (2) A `grep -Fq` pin on each of the 12 header calls — createMimeMessage's From, To, Cc, Bcc, Reply-To, Message-ID, In-Reply-To, References, Subject and sendThroughGrant's From, To, Subject — which is what catches a mid-line raw header. Each pin was mutated to `origin/main`'s raw form (the mid-line ternaries included): the full row and the pins alone both went red (exit 1) for all 12, every restore `cmp`-identical.
@@ -134,3 +148,5 @@ Take option 1. Every header in both hand-built messages goes through `mime-heade
 | 2026-09-19 | Claude (agent) | Created, Proposed; built on `fix/mime-header-encoding` |
 | 2026-09-19 | pre-merge audit gate (PR #402) | BLOCK on three angles: folded vendor References/In-Reply-To refused forever; CLAIMS row pinned 4 of 12 header calls and overstated its sweep; addresses refused on surrounding whitespace, header refusal parked as SEND_UNCONFIRMED, letters From untested, two-mailbox entry silently dropped a recipient |
 | 2026-09-19 | Claude (agent) | Fixed all of the above in place (threading rebuilt, trim-then-refuse, two-mailbox refusal, definite-refusal classification, 12 pins mutation-proven); still Proposed |
+| 2026-09-19 | pre-merge audit gate, round 2 | APPROVE WITH NOTES: quoted/bare-then-named entries still dropped a recipient; refusal classified on vendor-controlled text; a single long threading id exceeded 998; two wording defects |
+| 2026-09-19 | Claude (agent) | Fixed the notes: every named multi-mailbox shape refused, `SendRefusedBeforeSendError` + `instanceof`, 998-bound id filter; still Proposed |

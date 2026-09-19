@@ -183,11 +183,26 @@ export function unstructuredHeader(name: string, value: string): string {
   return renderHeader(name, [{ kind: "encoded", text }]);
 }
 
+/** Index of the closing quote of the quoted-string opening at 0, or -1. */
+function quotedStringEnd(text: string): number {
+  for (let i = 1; i < text.length; i++) {
+    if (text[i] === "\\") i++;
+    else if (text[i] === '"') return i;
+  }
+  return -1;
+}
+
 /**
  * Split `Name <addr>` or a bare `addr` into its parts. No regex: linear by
- * construction. An unquoted name part that itself holds `<` or `>` means the
- * entry carried more than one mailbox ("A <a@x>, B <b@x>"); that is refused,
- * because splitting at the last `<` would silently drop a@x as a recipient.
+ * construction.
+ *
+ * A NAMED entry (`... <addr>`) must hold exactly one mailbox. Splitting at the
+ * last `<` would otherwise demote every earlier mailbox to display text and
+ * silently drop it as a recipient, so these are REFUSED, never collapsed:
+ *  - a quoted name that is not one quoted-string (`"A" <a@x>, "B" <b@x>`);
+ *  - an unquoted name holding `<`, `>`, `@` or `,` (`A <a@x>, B <b@x>`,
+ *    `a@x, B <b@x>`).
+ * A bare entry with no `<...>` (`a@x, b@y`) is written as it is, as before.
  */
 export function parseMailbox(
   entry: string,
@@ -198,12 +213,17 @@ export function parseMailbox(
     const open = raw.lastIndexOf("<");
     if (open >= 0) {
       let name = raw.slice(0, open).trim();
-      if (name.length >= 2 && name.startsWith('"') && name.endsWith('"')) {
-        name = name.slice(1, -1).replace(/\\(.)/g, "$1");
-      } else if (name.includes("<") || name.includes(">")) {
-        throw new MimeHeaderError(
+      const refuse = () =>
+        new MimeHeaderError(
           `Refusing to write the ${headerName} header: one entry holds more than one address.`,
         );
+      if (name.startsWith('"')) {
+        if (quotedStringEnd(name) !== name.length - 1) {
+          throw refuse();
+        }
+        name = name.slice(1, -1).replace(/\\(.)/g, "$1");
+      } else if (/[<>@,]/.test(name)) {
+        throw refuse();
       }
       return { name, address: raw.slice(open + 1, -1).trim() };
     }
@@ -316,8 +336,12 @@ export function threadingHeader(
   headerName: string,
   value: string | null | undefined,
 ): string | null {
-  const ids = String(value ?? "").match(/<[\x21-\x3b\x3d\x3f-\x7e]+>/g);
-  if (!ids) return null;
+  // A token too long for `Name: <id>` to fit RFC 5322's 998-character line
+  // is dropped like any other unusable id: it cannot be folded.
+  const ids = (
+    String(value ?? "").match(/<[\x21-\x3b\x3d\x3f-\x7e]+>/g) ?? []
+  ).filter((id) => headerName.length + 2 + id.length <= HARD_LINE_LIMIT);
+  if (!ids.length) return null;
   return renderHeader(
     headerName,
     ids.map((text) => ({ kind: "atom", text }) as Piece),
