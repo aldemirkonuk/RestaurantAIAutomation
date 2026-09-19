@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>122a — Goals Rail · /recommendations, round 5</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── sketch chrome (outside the product frames) ─────────────────────────── */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#F3EFE6;color:#4F473C;font-family:"Plus Jakarta Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.sk-banner{background:#1A5E6B;color:#FAF7F1;font:600 10.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;padding:9px 20px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.sk-sec{padding:26px 20px 6px;max-width:1480px;margin:0 auto}
+.sk-label{font:600 10.5px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:#8A7F6C;margin:26px 0 8px}
+.sk-label:first-of-type{margin-top:0}
+.sk-note{font-size:12.5px;color:#6B6254;max-width:980px;line-height:1.55;margin:0 0 12px}
+.sk-note b{color:#332C22;font-weight:600}
+.frame{border:1px solid #D9D0BE;border-radius:10px;overflow:hidden;background:#FFFDF8;width:100%}
+@media (max-width:600px){.sk-sec{padding:18px 10px 4px}}
+
+/* ── Mudavym tokens — Paper is the ground by default (founder, 2026-09-19, batch 3: */
+/* "I prefer the white look ... people should have the option to choose" — supersedes  */
+/* ADR 0149 row 6's charcoal default pending ADR 0169; charcoal stays one tap away) ── */
+.mudavym{
+  --seal:#1A5E6B;--seal-deep:#14515C;--seal-tint:rgba(26,94,107,.10);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FFFDF8;--paper-1:#F3EFE6;--paper-2:#EAE4D8;
+  --ink-1:#211C16;--ink-2:#4F473C;--ink-3:#7C7365;--ink-4:#665D50;
+  color-scheme:light;background:var(--paper-0);color:var(--ink-1);
+  font-family:"Plus Jakarta Sans","DM Sans",system-ui,sans-serif;font-size:13px;line-height:1.5}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC;--seal-deep:#7DC3CD;--seal-tint:rgba(95,176,188,.14);--seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F;--paper-1:#1D1813;--paper-2:#262019;
+  --ink-1:#EFE7D9;--ink-2:#C0B6A5;--ink-3:#8E8576;--ink-4:#ABA294;color-scheme:dark}
+/* the declared exception (ADR 0104 D9): the mail is paper even inside a charcoal house */
+.mudavym[data-ground="charcoal"] .mail{--paper-0:#FFFDF8;--paper-1:#F3EFE6;--paper-2:#EAE4D8;--ink-1:#211C16;--ink-2:#4F473C;--ink-3:#7C7365;--ink-4:#665D50}
+.serif{font-family:"Fraunces",Georgia,"Times New Roman",serif}
+.num{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.micro{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4)}
+.micro.seal{color:var(--seal-deep)}
+.ink{transition:border-color 160ms cubic-bezier(.16,1,.3,1),background-color 160ms cubic-bezier(.16,1,.3,1),color 160ms cubic-bezier(.16,1,.3,1)}
+@media (prefers-reduced-motion:reduce){.ink{transition:none}}
+
+/* ── header (HouseHeader stand-in, ADR 0047) ─────────────────────────────── */
+.hdr{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 24px;border-bottom:1px solid var(--paper-2);background:var(--paper-0)}
+.hdr .word{font:700 15px "Fraunces",serif}
+.hdr .word i{font-style:italic;color:var(--seal-deep)}
+.hdr .search{margin:0 auto;display:inline-flex;align-items:center;gap:8px;padding:6px 11px;border:1px solid var(--paper-2);border-radius:9px;background:var(--paper-1);color:var(--ink-4);font-size:12.5px;min-width:240px}
+.hdr .search kbd{margin-left:auto;font:500 10px "JetBrains Mono",monospace;color:var(--ink-4);border:1px solid var(--paper-2);border-radius:4px;padding:1px 4px}
+.theme-tog{display:inline-flex;border:1px solid var(--paper-2);border-radius:8px;overflow:hidden}
+.theme-tog button{font:600 10px "JetBrains Mono",monospace;letter-spacing:.06em;text-transform:uppercase;border:0;background:var(--paper-1);color:var(--ink-3);padding:5px 9px;cursor:pointer}
+.theme-tog button[aria-pressed="true"]{background:var(--seal);color:var(--paper-0)}
+.hdr-ic{width:30px;height:30px;border-radius:8px;border:1px solid var(--paper-2);display:grid;place-items:center;color:var(--ink-3)}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--seal-tint);border:1px solid var(--seal-ring);display:grid;place-items:center;color:var(--seal-deep);font:600 11px "JetBrains Mono",monospace}
+
+.shell{max-width:1080px;margin:0 auto;padding:22px 24px 40px}
+
+/* ── masthead-lite: one line, not a letter ──────────────────────────────── */
+.mast{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.mast h1{font:600 20px "Fraunces",serif;margin:0}
+.mast .denom{font-size:12px;color:var(--ink-3)}
+.mast .denom b{color:var(--ink-1);font-weight:600}
+
+/* ── day strip (components/mudavym/DayStrip.tsx, shared with /notifications) ── */
+.ds-strip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(30px,1fr);gap:2px;border:1px solid var(--paper-2);border-radius:10px;padding:5px;background:var(--paper-1);overflow-x:auto}
+.ds-day{font:inherit;display:grid;justify-items:center;align-content:start;gap:1px;min-width:30px;padding:5px 2px 4px;border:1px solid transparent;border-radius:7px;background:var(--paper-0);color:var(--ink-2);cursor:pointer;position:relative}
+.ds-day .ds-wd{font:600 8px "JetBrains Mono",monospace;color:var(--ink-4);letter-spacing:.04em}
+.ds-day .ds-dn{font:600 12px "JetBrains Mono",monospace}
+.ds-day .bar-fired{width:14px;height:2px;border-radius:1px;background:var(--seal-deep);margin-top:1px}
+.ds-day[data-records="none"]{background:repeating-linear-gradient(135deg,var(--paper-1),var(--paper-1) 3px,var(--paper-2) 3px,var(--paper-2) 6px)}
+.ds-day[aria-pressed="true"]{background:var(--seal);border-color:var(--seal);color:var(--paper-0)}
+.ds-day[aria-pressed="true"] .ds-wd,.ds-day[aria-pressed="true"] .ds-dn{color:var(--paper-0)}
+.ds-day[aria-pressed="true"] .bar-fired{background:var(--paper-0)}
+.ds-future{opacity:.45}
+.rail-label{display:flex;align-items:center;justify-content:space-between;margin:18px 0 6px}
+.rail-label .micro{margin:0}
+.rail-label .lnk{font-size:11px;color:var(--seal-deep);text-decoration:none;font-weight:600}
+
+/* ── goals rail — NEW: "on top", matched height and rhythm to the day strip ── */
+.goals-rail{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.goal-chip{border:1px solid var(--paper-2);border-radius:10px;background:var(--paper-1);padding:9px 11px}
+.goal-chip .gname{font-size:12.5px;font-weight:600;color:var(--ink-1)}
+.goal-chip .gwhen{font-size:10.5px;color:var(--ink-4);margin-top:1px}
+.gbar{height:5px;border-radius:3px;background:var(--paper-2);margin:8px 0 6px;overflow:hidden}
+.gbar i{display:block;height:100%;background:var(--seal);border-radius:3px}
+.goal-chip.behind .gbar{background:repeating-linear-gradient(90deg,var(--paper-2),var(--paper-2) 3px,var(--paper-0) 3px,var(--paper-0) 6px)}
+.goal-chip.behind .gbar i{background:transparent;border:1px dashed var(--ink-3);border-radius:3px}
+.gfoot{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--ink-3)}
+.gpace{font:600 9px "JetBrains Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+.gpace.on{color:var(--seal-deep)}
+.gpace.behind{color:var(--ink-3)}
+.goal-chip.suggest{border:1.5px dashed var(--seal-ring);background:var(--seal-tint)}
+.goal-chip.suggest .gname{font-weight:500;line-height:1.35}
+.goal-chip.suggest .spark{display:flex;align-items:flex-end;gap:2px;height:20px;margin:8px 0}
+.goal-chip.suggest .spark i{width:5px;background:var(--seal-ring);border-radius:1px}
+.goal-chip.suggest .spark i:nth-last-child(1){background:var(--seal-deep)}
+.mini{font:inherit;font-size:11px;font-weight:600;padding:4px 9px;border-radius:7px;border:1px solid var(--seal-ring);background:transparent;color:var(--seal-deep);cursor:pointer;white-space:nowrap}
+
+/* ── docket sections ─────────────────────────────────────────────────────── */
+.section{margin-top:22px}
+.section-head{display:flex;align-items:baseline;gap:10px}
+.section-head h2{font:600 14px "Fraunces",serif;margin:0}
+.section-head .cnt{font-size:11px;color:var(--ink-4)}
+.section-say{font-size:11.5px;color:var(--ink-3);margin:2px 0 10px;max-width:640px}
+.entry{display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;padding:13px 12px 13px 4px;border-top:1px solid var(--paper-2)}
+.entry .gutter{font:600 12px "JetBrains Mono",monospace;color:var(--ink-4);padding-top:2px}
+.entry .do{font:500 14px "Fraunces",serif;margin:0 0 2px;color:var(--ink-1)}
+.entry .why{font-size:12px;color:var(--ink-3);margin:0}
+.facts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:9px 0;padding:8px 0 0;border-top:1px dotted var(--paper-2)}
+.fact .micro{margin-bottom:2px}
+.fact div:last-child{font-size:12px;color:var(--ink-2)}
+.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tap{font:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;border:1px solid var(--seal);background:var(--seal);color:var(--paper-0);cursor:pointer}
+.tap.done{background:transparent;color:var(--seal-deep);border-style:dashed}
+.quiet{font:inherit;font-size:11.5px;padding:5px 10px;border-radius:20px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-3);cursor:pointer}
+.receipt{font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:6px}
+.receipt .undo{color:var(--seal-deep);font-weight:600;text-decoration:underline;cursor:pointer}
+.tap-states{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+.today-proposed{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:600px){.facts{grid-template-columns:1fr 1fr}.goals-rail{grid-template-columns:1fr}.hdr .search{display:none}.tap-states{grid-template-columns:1fr 1fr;row-gap:20px}.today-proposed{grid-template-columns:1fr}}
+
+/* ── the die: a sealed one-tap, for stock and money (F10) ────────────────── */
+.die-row{display:flex;align-items:center;gap:10px}
+.die{width:38px;height:38px;border-radius:50%;border:2px solid var(--seal);display:grid;place-items:center;position:relative;flex:0 0 auto}
+.die svg{width:16px;height:16px;color:var(--seal-deep)}
+.die.mid{border-color:var(--paper-2)}
+.die.mid::before{content:"";position:absolute;inset:-2px;border-radius:50%;border:2px solid transparent;border-top-color:var(--seal);transform:rotate(35deg)}
+.die.done{border-color:var(--seal);background:var(--seal)}
+.die.done svg{color:var(--paper-0)}
+.die-label{font-size:11.5px;color:var(--ink-2)}
+.die-label b{display:block;font-size:12.5px;color:var(--ink-1);font-weight:600}
+
+/* ── side sheets, shown open as their own frame (ADR 0112: Sheet, 440) ───── */
+.sheet-wrap{position:relative;background:var(--paper-1);min-height:460px;max-width:620px;margin:0 auto;border-left:1px dashed var(--paper-2);border-right:1px dashed var(--paper-2)}
+.sheet-wrap::before{content:"the rest of the page sits here, dimmed, as in the live build";position:absolute;top:14px;left:14px;right:196px;font:600 9px "JetBrains Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-4);opacity:.6}
+.sheet{position:relative;margin-left:auto;width:440px;max-width:100%;border-left:1px solid var(--paper-2);background:var(--paper-0);box-shadow:-18px 0 40px rgba(23,19,15,.14);display:flex;flex-direction:column}
+.mudavym[data-ground="charcoal"] .sheet{box-shadow:-18px 0 48px rgba(0,0,0,.5)}
+.sh-head{padding:14px 16px 11px;border-bottom:1px solid var(--paper-2)}
+.sh-head .micro{margin-bottom:3px}
+.sh-head h3{font:600 15px "Fraunces",serif;margin:0}
+.sh-close{position:absolute;top:14px;right:16px;font:inherit;font-size:11.5px;padding:5px 10px;border:1px solid var(--paper-2);border-radius:8px;background:transparent;color:var(--ink-3)}
+.sh-body{padding:14px 16px;overflow:auto}
+.sh-foot{padding:10px 16px;border-top:1px solid var(--paper-2);font-size:10.5px;color:var(--ink-4);line-height:1.5}
+
+/* mail preview, always paper */
+.mail{border:1px solid var(--paper-2);border-radius:10px;overflow:hidden}
+.mail .env{padding:9px 12px;border-bottom:1px solid var(--paper-2);font-size:11px;color:var(--ink-2);display:grid;grid-template-columns:auto 1fr;gap:2px 10px;background:var(--paper-1)}
+.mail .mbody{padding:16px;background:var(--paper-1)}
+.mail .card{background:var(--paper-0);border:1px solid var(--paper-2);padding:16px 16px 12px;font-family:Georgia,"Times New Roman",serif}
+.mail .card h4{font:600 15px "Fraunces",serif;margin:0 0 2px}
+.mail .card .sub{font-size:10.5px;color:#7C7365;font-family:"Plus Jakarta Sans",sans-serif}
+.mail .mentry{padding:9px 0;border-top:1px solid #EAE4D8;margin-top:9px;font-size:12px;color:#332C22}
+.mail .mentry b{display:block;font-size:12.5px}
+.mail .mentry .why{font-size:10.5px;color:#7C7365;margin-top:2px;font-family:"Plus Jakarta Sans",sans-serif}
+.mail .fine{font-size:9.5px;line-height:1.6;color:#7C7365;border-top:1px solid #EAE4D8;padding-top:8px;margin-top:10px;font-family:"Plus Jakarta Sans",sans-serif}
+
+/* account sheet — "more than a table": a narrative line + a spark bar + a short list */
+.acct-say{font-size:12px;color:var(--ink-2);line-height:1.5;margin:0 0 12px}
+.acct-spark{display:flex;align-items:flex-end;gap:5px;height:54px;padding:8px 4px;border:1px solid var(--paper-2);border-radius:8px;background:var(--paper-1)}
+.acct-spark i{flex:1;background:var(--ink-4);border-radius:2px 2px 0 0;position:relative}
+.acct-spark i.base{background:var(--seal-ring)}
+.acct-spark .axis{border-top:1px dashed var(--ink-3);position:absolute;left:0;right:0}
+.acct-cap{font-size:10px;color:var(--ink-4);display:flex;justify-content:space-between;margin-top:4px}
+.acct-list{margin:14px 0 0;padding:0;list-style:none}
+.acct-list li{padding:7px 0;border-top:1px dotted var(--paper-2);font-size:12px;color:var(--ink-2);display:flex;justify-content:space-between;gap:10px}
+.acct-list li span:last-child{color:var(--ink-4);font-size:11px;white-space:nowrap}
+
+/* dark, disabled affordance — an honest "not built" mark, distinct from "suggested" */
+.notbuilt{margin-top:6px;font-size:11px;color:var(--ink-4);border:1px dashed var(--paper-2);border-radius:8px;padding:7px 10px;display:inline-block}
+
+.foot{margin-top:30px;padding-top:12px;border-top:1px solid var(--paper-2);font-size:11px;color:var(--ink-4);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.foot .wordmark{font:700 13px "Fraunces",serif;color:var(--ink-2)}
+.parked{background:var(--paper-1);border:1px dashed var(--paper-2);border-radius:8px;padding:8px 11px;font-size:11px;color:var(--ink-3);margin-top:10px}
+</style>
+</head>
+<body>
+
+<div class="sk-banner"><span>SKETCH 122a · /recommendations round 5 — Goals Rail</span><span>1440 desktop capture below; re-rendered at 390 for mobile</span></div>
+
+<div class="sk-sec">
+<p class="sk-label">Direction A · the day rail and the goals rail, stacked as a matched pair</p>
+<p class="sk-note">Both things the founder said must be "on top" get equal footing, in the day strip's own visual grammar (a
+row of compact chips, same corner radius, same padding rhythm) rather than folded into the letter's masthead — see
+direction B for that alternative. Cards below are cut to one bold line of <b>what to do</b> and one short line of
+<b>why</b>; the three-fact strip, the file controls and the day strip are otherwise round 4's, unchanged. Ground
+defaults to <b>paper</b> (founder, 2026-09-19) with charcoal one tap away in the header.</p>
+
+<div class="frame">
+<div class="mudavym" data-ground="paper">
+  <header class="hdr">
+    <span class="word">Mudavym<i>.</i></span>
+    <span class="search">Search or jump to… <kbd>⌘K</kbd></span>
+    <div class="theme-tog" role="group" aria-label="Ground"><button aria-pressed="true">Paper</button><button aria-pressed="false">Charcoal</button></div>
+    <span class="hdr-ic">🔔</span>
+    <span class="avatar">AK</span>
+  </header>
+  <div class="shell">
+
+    <div class="mast">
+      <h1>Recommendations</h1>
+      <span class="denom">Wed 16 Sep, 06:58 read · <b>14 rules evaluated</b> (12 + 2 goals) · <b>5 stand</b> · 1 withheld</span>
+    </div>
+
+    <div class="rail-label"><span class="micro">This month, by day</span><span class="micro">14 rules read this morning</span></div>
+    <div class="ds-strip" role="group" aria-label="Day strip">
+      <button class="ds-day" data-records="none"><span class="ds-wd">S</span><span class="ds-dn">1</span></button>
+      <button class="ds-day"><span class="ds-wd">M</span><span class="ds-dn">2</span><span class="bar-fired"></span></button>
+      <button class="ds-day" data-records="none"><span class="ds-wd">T</span><span class="ds-dn">3</span></button>
+      <button class="ds-day"><span class="ds-wd">W</span><span class="ds-dn">4</span><span class="bar-fired"></span></button>
+      <button class="ds-day"><span class="ds-wd">T</span><span class="ds-dn">5</span><span class="bar-fired"></span></button>
+      <button class="ds-day" data-records="none"><span class="ds-wd">F</span><span class="ds-dn">6</span></button>
+      <button class="ds-day" data-records="none"><span class="ds-wd">S</span><span class="ds-dn">7</span></button>
+      <button class="ds-day"><span class="ds-wd">M</span><span class="ds-dn">8</span><span class="bar-fired"></span></button>
+      <button class="ds-day"><span class="ds-wd">T</span><span class="ds-dn">9</span><span class="bar-fired"></span></button>
+      <button class="ds-day"><span class="ds-wd">W</span><span class="ds-dn">10</span><span class="bar-fired"></span></button>
+      <button class="ds-day"><span class="ds-wd">T</span><span class="ds-dn">11</span><span class="bar-fired"></span></button>
+      <button class="ds-day" data-records="none"><span class="ds-wd">F</span><span class="ds-dn">12</span></button>
+      <button class="ds-day" data-records="none"><span class="ds-wd">S</span><span class="ds-dn">13</span></button>
+      <button class="ds-day"><span class="ds-wd">M</span><span class="ds-dn">14</span><span class="bar-fired"></span></button>
+      <button class="ds-day"><span class="ds-wd">T</span><span class="ds-dn">15</span><span class="bar-fired"></span></button>
+      <button class="ds-day" aria-pressed="true"><span class="ds-wd">W</span><span class="ds-dn">16</span><span class="bar-fired"></span></button>
+      <button class="ds-day ds-future"><span class="ds-wd">T</span><span class="ds-dn">17</span></button>
+      <button class="ds-day ds-future"><span class="ds-wd">F</span><span class="ds-dn">18</span></button>
+    </div>
+
+    <div class="rail-label"><span class="micro">What the house has decided</span><a class="lnk" href="#">See all goals →</a></div>
+    <div class="goals-rail">
+      <div class="goal-chip">
+        <div class="gname">Purchase spend — at most $9,500</div>
+        <div class="gwhen">this month · 22 days left</div>
+        <div class="gbar"><i style="width:65%"></i></div>
+        <div class="gfoot"><span class="num">$6,180 of $9,500</span><span class="gpace on">On pace</span></div>
+      </div>
+      <div class="goal-chip behind">
+        <div class="gname">Bottles sold — at least 340</div>
+        <div class="gwhen">this month · 9 days left</div>
+        <div class="gbar"><i style="width:62%"></i></div>
+        <div class="gfoot"><span class="num">210 of 340</span><span class="gpace behind">Behind</span></div>
+      </div>
+      <div class="goal-chip suggest">
+        <div class="micro seal">Mudavym suggests</div>
+        <div class="gname">Tuesdays keep missing baseline — set a floor on wine revenue?</div>
+        <div class="spark"><i style="height:70%"></i><i style="height:55%"></i><i style="height:60%"></i><i style="height:40%"></i><i style="height:58%"></i><i style="height:35%"></i></div>
+        <button class="mini">Set a goal →</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Order it</h2><span class="cnt">1 entry</span></div>
+      <p class="section-say">These move stock and money. The tap is a die, not a pill — see "One-tap, honestly" below for why.</p>
+      <article class="entry">
+        <div class="gutter">01</div>
+        <div>
+          <p class="do">Reorder before Sunday.</p>
+          <p class="why">At the current pace this line runs out in 3 days.</p>
+          <div class="facts">
+            <div class="fact"><div class="micro">Would change</div><div>Stock</div></div>
+            <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Orders</div></div>
+            <div class="fact"><div class="micro">Standing</div><div class="num">3 days</div></div>
+          </div>
+          <div class="die-row">
+            <div class="die"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></div>
+            <span class="die-label"><b>Hold to approve the reorder</b>booked to Orders the moment it seals — see the Today/Proposed pair below</span>
+          </div>
+          <div class="controls"><span class="micro">File it</span><button class="quiet">Snooze</button><button class="quiet">Dismiss</button><button class="quiet">Pin</button></div>
+        </div>
+      </article>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Price it</h2><span class="cnt">1 entry</span></div>
+      <article class="entry">
+        <div class="gutter">02</div>
+        <div>
+          <p class="do">Raise this bottle's price.</p>
+          <p class="why">Steady volume at a thin margin — the shelf can take more.</p>
+          <div class="facts">
+            <div class="fact"><div class="micro">Would change</div><div>Money</div></div>
+            <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Vendor Prices</div></div>
+            <div class="fact"><div class="micro">Standing</div><div class="num">11 days</div></div>
+          </div>
+          <div class="controls">
+            <button class="tap">Reprice it →</button>
+            <span class="receipt">taps records "acted" now, opens Vendor Prices to set the number — <span class="undo">Undo</span></span>
+          </div>
+          <div class="controls"><span class="micro">File it</span><button class="quiet">Make this a goal</button><button class="quiet">Snooze</button><button class="quiet">Dismiss</button><button class="quiet">Pin</button></div>
+        </div>
+      </article>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Call a vendor</h2><span class="cnt">1 entry</span></div>
+      <article class="entry">
+        <div class="gutter">03</div>
+        <div>
+          <p class="do">Get a second quote.</p>
+          <p class="why">One vendor is carrying too much of this category.</p>
+          <div class="facts">
+            <div class="fact"><div class="micro">Would change</div><div>Vendors</div></div>
+            <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Providers</div></div>
+            <div class="fact"><div class="micro">Standing</div><div class="num">17 days</div></div>
+          </div>
+          <div class="controls"><button class="tap">Open Providers →</button></div>
+          <div class="controls"><span class="micro">File it</span><button class="quiet">Snooze</button><button class="quiet">Dismiss</button><button class="quiet">Pin</button></div>
+        </div>
+      </article>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Brief the floor</h2><span class="cnt">1 entry</span></div>
+      <article class="entry" data-focused="true">
+        <div class="gutter">04</div>
+        <div>
+          <p class="do">Brief the floor tonight.</p>
+          <p class="why">Tuesday sales are 38% under your average Tuesday ($1,940 vs $3,120).</p>
+          <div class="facts">
+            <div class="fact"><div class="micro">Would change</div><div>Money</div></div>
+            <div class="fact"><div class="micro">Whose hand</div><div>Yours, tonight</div></div>
+            <div class="fact"><div class="micro">Standing</div><div class="num">today</div></div>
+          </div>
+          <div class="controls">
+            <button class="tap">Mark as briefed</button>
+            <span class="receipt">records "acted", stays standing — <span class="undo">Undo</span></span>
+          </div>
+          <div class="controls"><span class="micro">File it</span><button class="quiet">Make this a goal</button><button class="quiet">See it in Reports</button><button class="quiet">Tuesday's account →</button><button class="quiet">Snooze</button><button class="quiet">Dismiss</button><button class="quiet">Pin</button></div>
+        </div>
+      </article>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Schedule it</h2><span class="cnt">1 entry</span></div>
+      <article class="entry">
+        <div class="gutter">05</div>
+        <div>
+          <p class="do">Put Tuesday training on the day-book.</p>
+          <p class="why">Friday is your strongest day; Tuesday your weakest — move the slow work there.</p>
+          <div class="facts">
+            <div class="fact"><div class="micro">Would change</div><div>Money</div></div>
+            <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Calendar</div></div>
+            <div class="fact"><div class="micro">Standing</div><div class="num">24 days</div></div>
+          </div>
+          <div class="controls">
+            <button class="tap">Put it on the day-book →</button>
+            <span class="receipt">opens a filled-in draft on Calendar — you still press Save there, honestly</span>
+          </div>
+          <div class="controls"><span class="micro">File it</span><button class="quiet">Make this a goal</button><button class="quiet">Snooze</button><button class="quiet">Dismiss</button><button class="quiet">Pin</button></div>
+        </div>
+      </article>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Goals slipping</h2><span class="cnt">1 entry</span></div>
+      <article class="entry">
+        <div class="gutter">06</div>
+        <div>
+          <p class="do">Bottles goal is behind pace.</p>
+          <p class="why">210 of 340 sold, 9 days left — needs 15 a day from here, not the current 8.</p>
+          <div class="controls"><button class="quiet">See where it stands →</button><button class="quiet">Snooze</button><button class="quiet">Dismiss</button></div>
+        </div>
+      </article>
+    </div>
+
+    <footer class="foot">
+      <span class="wordmark">Mudavym<i>.</i></span>
+      <span>Every entry is a deterministic rule against your own numbers. No model decides. <a href="#" style="color:inherit">Browse every insight type →</a></span>
+    </footer>
+    <div class="parked">Parked, not drawn here: a newspaper-front-page digest layout — the founder's own brainstorm, flagged as possibly its own software rather than a shape for this page.</div>
+  </div>
+</div>
+</div>
+</div>
+
+<div class="sk-sec">
+<p class="sk-label">One-tap, honestly — what a tap does, and what needs the die</p>
+<p class="sk-note">Two controls, never confused for each other. A <b>tap</b> (solid pill) is for what F10 already allows client-side:
+dismiss, snooze, pin, mark-as-briefed, opening a page with the act already recorded — reversible, with Undo, no seal. A
+<b>die</b> (the ring) is for what moves stock or money — the same mechanism the one-tap desk already seals for a
+delivery (ADR 0107/0125): mint, hold, redeem, then the write. Nothing here claims an autonomous execution that does not
+exist — "Let Mudavym do it" stays off (dossier §1a); a tap always fires a write this product already makes, per ADR 0083.</p>
+<div class="frame">
+<div class="mudavym" data-ground="paper" style="padding:20px 24px">
+  <div class="tap-states">
+    <div>
+      <p class="micro">Plain tap · at rest</p>
+      <button class="tap">Mark as briefed</button>
+    </div>
+    <div>
+      <p class="micro">Plain tap · after</p>
+      <button class="tap done">Briefed ✓</button>
+      <p class="receipt" style="margin-top:6px">recorded now — <span class="undo">Undo</span></p>
+    </div>
+    <div>
+      <p class="micro">Die · at rest</p>
+      <div class="die-row"><div class="die"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></div><span class="die-label">Hold to approve</span></div>
+    </div>
+    <div>
+      <p class="micro">Die · mid-hold</p>
+      <div class="die-row"><div class="die mid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></div><span class="die-label">Keep holding…</span></div>
+    </div>
+    <div>
+      <p class="micro">Die · sealed</p>
+      <div class="die-row"><div class="die done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></div><span class="die-label">Sealed — booked</span></div>
+    </div>
+  </div>
+  <div class="today-proposed" style="margin-top:20px;padding-top:16px;border-top:1px dotted var(--paper-2)">
+    <div>
+      <p class="micro">"Order it" — today</p>
+      <button class="tap">Draft a PO →</button>
+      <p class="receipt" style="margin-top:6px">navigates to Orders; nothing is recorded until you draft it there by hand</p>
+    </div>
+    <div>
+      <p class="micro">"Order it" — proposed this round</p>
+      <div class="die-row"><div class="die"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></div><span class="die-label"><b>Hold to approve the reorder</b>the rule already names the product, quantity and vendor — this asks the gateway to draft the PO from those and let the hold seal it, one motion</span></div>
+    </div>
+  </div>
+  <p class="sk-note" style="margin-top:14px"><b>Not yet built:</b> drafting a PO from a fired rule's own numbers is a gateway change, not a copy change — flagged as a question below, not claimed as shipped.</p>
+</div>
+</div>
+</div>
+
+<div class="sk-sec">
+<p class="sk-label">Setting a goal — one tap opens it, the target still asks for you</p>
+<p class="sk-note"><b>Why the target isn't one-tap too:</b> the dossier is explicit that a goal's target is typed, never
+scraped off a rule's sentence — "a rule states a gap, not a number a house should be held to" (06-pages/recommendations.md:453-455).
+The metric, direction and a suggested period ARE the rule's own, so the sheet opens pre-filled on those; the number stays
+a blank the person fills, honestly, rather than a figure Mudavym invents. If that's wrong and a suggested number is
+wanted, that is a separate call — see the questions below.</p>
+<div class="frame">
+<div class="mudavym" data-ground="paper">
+  <div class="sheet-wrap">
+    <aside class="sheet">
+      <button class="sh-close">Close</button>
+      <div class="sh-head"><p class="micro seal">Suggested from "Brief the floor"</p><h3>Set a goal</h3></div>
+      <div class="sh-body">
+        <div style="display:grid;gap:10px">
+          <label><span class="micro">Metric</span><div style="padding:8px 10px;border:1px solid var(--paper-2);border-radius:8px;background:var(--paper-1);font-size:12.5px">Wine revenue · at least</div></label>
+          <label><span class="micro">Name</span><div style="padding:8px 10px;border:1px solid var(--paper-2);border-radius:8px;background:var(--paper-1);font-size:12.5px">Hold Tuesday wine revenue to baseline</div></label>
+          <label><span class="micro">Target — required, yours to set</span><div style="padding:8px 10px;border:2px solid var(--seal);border-radius:8px;background:var(--paper-0);font-size:12.5px;color:var(--ink-4)">$ — type a number</div></label>
+          <label><span class="micro">Period</span><div style="padding:8px 10px;border:1px solid var(--paper-2);border-radius:8px;background:var(--paper-1);font-size:12.5px">Weekly · suggested from the rule's own window</div></label>
+        </div>
+      </div>
+      <div class="sh-foot">This entry will say "being watched — goal X, due …" once the target is set. Source rule kept (<span class="num">source_rule_key</span>), so this is the one goal 04 will ever create — a second attempt will warn rather than double the target.</div>
+    </aside>
+  </div>
+</div>
+</div>
+</div>
+
+<div class="sk-sec">
+<p class="sk-label">Your copy — the mail, shown as it would arrive (his pick, 2B)</p>
+<p class="sk-note">Rendered as <span class="num">buildDigestLetter</span> lays it out, tightened to match this round's brief entries. No
+<span class="num">recipient_email</span> field — the batch-3 answer drops it; the digest goes to the signed-in person's own account
+address, with a per-person opt-in on Settings.</p>
+<div class="frame">
+<div class="mudavym" data-ground="paper">
+  <div class="sheet-wrap">
+    <aside class="sheet">
+      <button class="sh-close">Close</button>
+      <div class="sh-head"><p class="micro">Your copy</p><h3>Daily, 07:00 Pacific</h3></div>
+      <div class="sh-body">
+        <div class="mail">
+          <div class="env"><span>From</span><span>Mudavym · Meyhouse Palo Alto</span><span>Sent</span><span>Tue 15 Sep, 07:00:41 · 4 entries</span></div>
+          <div class="mbody">
+            <div class="card">
+              <h4>Since yesterday's letter</h4>
+              <p class="sub">Wed 16 Sep · 8 of 8 sources answered</p>
+              <div class="mentry"><b>Reorder before Sunday.</b><span class="why">Why: 3 days of stock left at the current pace.</span></div>
+              <div class="mentry"><b>Brief the floor tonight.</b><span class="why">Why: Tuesday sales are 38% under your average Tuesday.</span></div>
+              <div class="mentry"><b>Bottles goal is behind pace.</b><span class="why">Why: 210 of 340, 9 days left.</span></div>
+              <p class="fine">This is one house's read at 07:00. Nothing here executed anything — every line is a link back to this page.</p>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:6px"><button class="quiet" aria-pressed="true">Daily</button><button class="quiet">Weekly</button></div>
+      </div>
+      <div class="sh-foot">Last send: Tue 15, 07:00:41, 4 entries. Next due: today, 07:00.</div>
+    </aside>
+  </div>
+</div>
+</div>
+</div>
+
+<div class="sk-sec">
+<p class="sk-label">Tuesday's account — the subject sheet, richer than a table (his condition on pick 3)</p>
+<p class="sk-note">A line, a shape, a short history — not the docket's own numbers re-typed into rows.</p>
+<div class="frame">
+<div class="mudavym" data-ground="paper">
+  <div class="sheet-wrap">
+    <aside class="sheet">
+      <button class="sh-close">Close</button>
+      <div class="sh-head"><p class="micro">Subject account</p><h3>Tuesdays</h3></div>
+      <div class="sh-body">
+        <p class="acct-say">Six Tuesdays back, this is the fourth to land under baseline — not yet a pattern the goal
+        engine will name on its own, which is why it is offered above as a suggestion rather than filed as a goal already.</p>
+        <div class="acct-spark">
+          <i class="base" style="height:60%"></i><i style="height:38%"></i><i class="base" style="height:55%"></i><i style="height:30%"></i><i style="height:42%"></i><i style="height:22%"></i>
+        </div>
+        <div class="acct-cap"><span>6 Tuesdays ago</span><span>last Tuesday</span></div>
+        <ul class="acct-list">
+          <li><span>Standing against it</span><span>1 entry, today</span></li>
+          <li><span>Silenced for it</span><span>never</span></li>
+          <li><span>Told, recently</span><span>4 Tuesdays running</span></li>
+          <li><span>Can be told</span><span>18 of 62 insight types fit this dimension</span></li>
+        </ul>
+      </div>
+      <div class="sh-foot">Not on the account: which server read this, or whether a manager was on the floor — this page holds no schedule data.</div>
+    </aside>
+  </div>
+</div>
+</div>
+</div>
+
+<div class="sk-sec">
+<p class="sk-label">Inline dismissal against a real day — his "maybe" on pick 3B</p>
+<p class="sk-note">Selecting a past day in the strip opens a thin inline row under it — no sheet, no scrim, dismissed by
+moving away (ADR 0112 F8's non-modal class) — rather than a dedicated dismissal overlay.</p>
+<div class="frame">
+<div class="mudavym" data-ground="paper" style="padding:20px 24px">
+  <div class="ds-strip" style="grid-auto-columns:minmax(30px,52px);max-width:420px">
+    <button class="ds-day"><span class="ds-wd">M</span><span class="ds-dn">14</span><span class="bar-fired"></span></button>
+    <button class="ds-day" aria-pressed="true"><span class="ds-wd">T</span><span class="ds-dn">15</span><span class="bar-fired"></span></button>
+    <button class="ds-day"><span class="ds-wd">W</span><span class="ds-dn">16</span><span class="bar-fired"></span></button>
+  </div>
+  <div style="margin-top:6px;padding:9px 12px;border:1px dashed var(--paper-2);border-radius:8px;font-size:12px;color:var(--ink-2);display:flex;justify-content:space-between;align-items:center;max-width:420px">
+    <span>1 entry fired on Tue 15 — <span class="num">pairing_promotion</span></span>
+    <button class="quiet">Dismiss for this day</button>
+  </div>
+</div>
+</div>
+</div>
+
+<div class="sk-sec" style="padding-bottom:36px">
+<p class="sk-note">Fonts load from Google Fonts in this sketch; the product self-hosts Fraunces and JetBrains Mono. No
+<span class="num">&lt;script&gt;</span> — states are drawn side by side rather than live, matching round 4's convention.
+The app sidebar is not drawn, as in 090/094/108/120.</p>
+</div>
+
+</body></html>
