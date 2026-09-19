@@ -320,9 +320,15 @@ async def test_a_gateway_refusal_names_the_door_s_sentence(
     """A Nest refusal body carries `error` (the bare phrase) AND `message` (the
     sentence). The sentence is the diagnosis, so it is what gets reported.
 
-    Whether a relay 4xx should also count as a DEFINITE refusal is not asserted:
-    ADR 0099 (Proposed) rejected widening the classifier for it, and that is an
-    open fork, not something a test should decide."""
+    [CORRECTED 2026-09-19: whether a relay 4xx counts as a DEFINITE refusal is
+    no longer an open fork for 400/401/403/422 — ADR 0099's founder decision
+    (lane answers batch 4) split them by code. See
+    `test_a_relay_400_403_or_422_is_a_definite_refusal` and
+    `test_a_relay_401_stays_ambiguous_and_parks_for_a_person` below for that;
+    404 and 429 are untouched and remain genuinely open (see
+    `test_a_relay_404_or_429_is_unchanged_and_still_ambiguous`).] This test
+    asserts only the sentence, not the classification, across every status the
+    relay can answer with."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
     import services.email_composer_service as mod
@@ -377,6 +383,158 @@ async def test_a_5xx_stays_ambiguous(
 
     assert result["success"] is False
     assert not ProviderConversationAgent._is_definite_send_refusal(result["error"])
+
+
+# ---------------------------------------------------------------------------
+# ADR 0099 (locked 2026-09-19, founder decision, lane answers batch 4):
+# "relay 4xx = split by code (400/403/422 final, 401 parks)".
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", [400, 403, 422])
+@pytest.mark.asyncio
+async def test_a_relay_400_403_or_422_is_a_definite_refusal(
+    composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch, status: int
+):
+    """The relay's own structural refusals — a malformed request (400), a
+    door refusing what the request names (403), or a guardrail (422) — are
+    all decided before any transport exists, so they prove non-delivery, the
+    same footing as the SMTP 5xx case above."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+
+    import services.email_composer_service as mod
+
+    class _Refusing(_FakeSession):
+        def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
+            _FakeSession.calls.append({"url": url, **kw})
+            return _FakeResponse(
+                status, {"statusCode": status, "message": "refused", "error": "x"}
+            )
+
+    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+
+    result = await composer.send_via_gateway(_payload())
+
+    assert result["success"] is False
+    assert ProviderConversationAgent._is_definite_send_refusal(result["error"])
+
+
+@pytest.mark.asyncio
+async def test_a_relay_401_stays_ambiguous_and_parks_for_a_person(
+    composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch
+):
+    """Unlike 400/403/422, a 401 means the ORCHESTRATOR's own service key is
+    wrong, empty or missing at the gateway — a fixable config problem, not
+    proof about whether the vendor got the message — so it is left ambiguous
+    on purpose and parks the conversation for a person."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+
+    import services.email_composer_service as mod
+
+    class _Refusing(_FakeSession):
+        def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
+            _FakeSession.calls.append({"url": url, **kw})
+            return _FakeResponse(
+                401,
+                {
+                    "statusCode": 401,
+                    "message": "Unauthorized",
+                    "error": "Unauthorized",
+                },
+            )
+
+    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+
+    result = await composer.send_via_gateway(_payload())
+
+    assert result["success"] is False
+    assert not ProviderConversationAgent._is_definite_send_refusal(result["error"])
+
+
+@pytest.mark.parametrize("status", [404, 429])
+@pytest.mark.asyncio
+async def test_a_relay_404_or_429_is_unchanged_and_still_ambiguous(
+    composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch, status: int
+):
+    """404 and 429 are not part of the founder's 2026-09-19 answer, which named
+    only 400/403/422/401 — a regression guard against accidentally widening
+    the classifier past what was actually decided, not a new decision of its
+    own. Still genuinely open."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+
+    import services.email_composer_service as mod
+
+    class _Refusing(_FakeSession):
+        def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
+            _FakeSession.calls.append({"url": url, **kw})
+            return _FakeResponse(
+                status, {"statusCode": status, "message": "refused", "error": "x"}
+            )
+
+    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+
+    result = await composer.send_via_gateway(_payload())
+
+    assert result["success"] is False
+    assert not ProviderConversationAgent._is_definite_send_refusal(result["error"])
+
+
+@pytest.mark.parametrize("status", [400, 403, 422])
+@pytest.mark.asyncio
+async def test_a_relay_400_403_or_422_end_to_end_is_released_for_retry(
+    monkeypatch: pytest.MonkeyPatch, status: int
+):
+    """End to end through `_handle_conversation_approved`: the claim is handed
+    back for retry, not parked, for each of the three definite codes."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+
+    import services.email_composer_service as mod
+
+    class _Refusing(_FakeSession):
+        def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
+            _FakeSession.calls.append({"url": url, **kw})
+            return _FakeResponse(
+                status, {"statusCode": status, "message": "refused", "error": "x"}
+            )
+
+    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+    agent = _approved_agent(_approved_conversation())
+
+    with pytest.raises(RuntimeError, match="released for retry"):
+        await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    assert agent.database.supabase.conversation["status"] == "PENDING_APPROVAL"
+
+
+@pytest.mark.asyncio
+async def test_a_relay_401_end_to_end_parks_for_a_person(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """End to end: a 401 does NOT raise — it parks the conversation as
+    SEND_UNCONFIRMED for a person to reconcile, same as any other ambiguous
+    failure, and never a duplicate purchase order."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+
+    import services.email_composer_service as mod
+
+    class _Refusing(_FakeSession):
+        def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
+            _FakeSession.calls.append({"url": url, **kw})
+            return _FakeResponse(
+                401,
+                {
+                    "statusCode": 401,
+                    "message": "Unauthorized",
+                    "error": "Unauthorized",
+                },
+            )
+
+    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+    agent = _approved_agent(_approved_conversation())
+
+    await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    assert agent.database.supabase.conversation["status"] == "SEND_UNCONFIRMED"
 
 
 @pytest.mark.asyncio
@@ -574,6 +732,10 @@ async def test_an_approved_vendor_mail_posts_exactly_the_body_the_gateway_admits
 async def test_a_door_refusal_is_never_recorded_as_sent_and_its_sentence_is_logged(
     monkeypatch: pytest.MonkeyPatch,
 ):
+    """[CORRECTED 2026-09-19: a 403 is now a DEFINITE refusal (ADR 0099,
+    founder decision, lane answers batch 4) — it releases the claim and
+    raises, rather than parking ambiguously as this test used to leave
+    unasserted.]"""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
     import services.email_composer_service as mod
@@ -593,15 +755,15 @@ async def test_a_door_refusal_is_never_recorded_as_sent_and_its_sentence_is_logg
     monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
     agent = _approved_agent(_approved_conversation())
 
-    await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+    with pytest.raises(RuntimeError, match="released for retry") as excinfo:
+        await agent._handle_conversation_approved({"conversation_id": CONVO_A})
 
     assert len(_FakeSession.calls) == 1
     assert agent.database.supabase.conversation["status"] != "SENT"
-    logged = " ".join(str(c.args[0]) for c in agent.logger.error.call_args_list)
-    assert "HTTP 403" in logged
-    assert "not one of this house's conversations" in logged
-    # Where the row goes next (released for retry, or parked for a person) is
-    # the open classifier fork above; it is deliberately not asserted.
+    # Definite refusal: the claim is handed back for retry, not parked.
+    assert agent.database.supabase.conversation["status"] == "PENDING_APPROVAL"
+    assert "HTTP 403" in str(excinfo.value)
+    assert "not one of this house's conversations" in str(excinfo.value)
 
 
 @pytest.mark.asyncio

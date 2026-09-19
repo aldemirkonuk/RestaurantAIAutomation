@@ -2677,14 +2677,44 @@ class ProviderConversationAgent(BaseAgent):
         ):
             return True
 
-        # NOT HERE, deliberately (ADR 0149 #19, 2026-09-17): a gateway 4xx from
-        # the relay's doors (400/401/403/404/422/429) is decided before any
-        # transport exists, so it too proves non-delivery. But teaching this
-        # allow-list to say so was REJECTED in ADR 0099 (Proposed) for parity
-        # with `ProcurementService.isDefiniteSendRefusal`, and that rejection
-        # has been neither locked nor overturned — so a relay refusal still
-        # parks the conversation as SEND_UNCONFIRMED, with the gateway's
-        # sentence in the log. An open fork for the founder, not defaulted here.
+        # ADR 0099 (locked 2026-09-19, founder decision, lane answers batch 4):
+        # "relay 4xx = split by code (400/403/422 final, 401 parks)". A gateway
+        # 4xx from the relay's doors is decided before any transport exists,
+        # but not every code means the same thing:
+        #
+        #   400 / 403 / 422 — the relay's OWN structural refusal: a malformed
+        #   request (no bodyHtml), a door refusing what the request names (no
+        #   house/vendor/conversation, an address outside the house's book, a
+        #   conversation or order that belongs to someone else), or a guardrail
+        #   refusing the content. All three are decided by the gateway before
+        #   any transport is attempted, so — like the 5xx-exclusion above, just
+        #   pointed the other way — they PROVE non-delivery. Definite.
+        #
+        #   401 — the ORCHESTRATOR's own service key is missing, empty, or
+        #   wrong at the gateway. That is a fixable service-key/config problem,
+        #   not a fact about whether the vendor got the message, so it is left
+        #   ambiguous on purpose: the conversation is PARKED (SEND_UNCONFIRMED)
+        #   for a person to look at, never silently retried and never silently
+        #   dropped.
+        #
+        # This is intentionally narrower than the REJECTED alternative recorded
+        # above (teaching the allow-list that "HTTP 4xx means refused" in
+        # general) — that would have conflated 401 with 400/403/422, which is
+        # exactly the distinction the founder drew. It does not need to be
+        # ported to `ProcurementService.isDefiniteSendRefusal`: that classifier
+        # reads errors from the in-process Gmail path, which never produces the
+        # "gateway refused the send: HTTP ..." string this matches — that
+        # string is minted only by `email_composer_service.py`'s own gateway
+        # call, so there is no second runtime to keep in parity with here.
+        gateway_4xx = re.search(r"gateway refused the send: HTTP (\d{3})\b", text, re.I)
+        if gateway_4xx:
+            code = gateway_4xx.group(1)
+            if code in ("400", "403", "422"):
+                return True
+            if code == "401":
+                return False
+            # Any other code (404, 429, ...) is not part of the founder's
+            # answer above and is left exactly as before: ambiguous, parked.
 
         return False
 

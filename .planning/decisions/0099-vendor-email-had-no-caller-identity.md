@@ -1,6 +1,8 @@
 # 0099 — The vendor-email route had no caller identity, and no caller either
 
-- **Status:** Proposed
+- **Status:** Locked — the last open fork (4xx classification, below) was
+  answered by the founder, lane answers batch 4, 2026-09-19: "relay 4xx =
+  split by code (400/403/422 final, 401 parks)".
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** communications, vendor email, service-to-service auth, ADMIN_API_KEY, X-Admin-Key, JwtAuthGuard, forbidNonWhitelisted, SendEmailDto, threading, In-Reply-To, fail-closed, absence-as-health, blast radius
@@ -161,6 +163,12 @@ deliberately an allow-list ported line-for-line from
 `ProcurementService.isDefiniteSendRefusal`, and widening it on one side only
 would make the two runtimes classify the same failure differently — the exact
 drift its docstring exists to prevent. Left alone; recorded below as not fixed.
+[NARROWED, not reversed, 2026-09-19: what the founder decided (bracket below)
+is not "HTTP 4xx means refused" — it is 400/403/422 refused, 401 still
+ambiguous. Porting that split to `ProcurementService.isDefiniteSendRefusal`
+would still be pointless drift-bait, because that classifier never sees an
+HTTP status at all (its errors come from an in-process Gmail call, never this
+route) — so there is no second runtime for this one to disagree with.]
 
 ## What this does NOT fix
 
@@ -182,6 +190,39 @@ drift its docstring exists to prevent. Left alone; recorded below as not fixed.
   rejection is neither locked nor overturned. Separately fixed that day: a
   gateway HTTP 5xx was classified DEFINITE, because the composer's
   `"HTTP 503 — …"` matched the SMTP 5xx pattern; it is now ambiguous.]
+  [DECIDED 2026-09-19, founder, lane answers batch 4 (feat/finish-relay) —
+  his words: "relay 4xx = split by code (400/403/422 final, 401 parks)".
+  `_is_definite_send_refusal` (provider_conversation_agent.py) now matches the
+  composer's `"gateway refused the send: HTTP {code} — …"` string and returns
+  **TRUE** for 400, 403 and 422 — the relay's own structural refusals (a
+  malformed request, a door refusing what the request names, a guardrail),
+  all decided before any transport is attempted, so they prove non-delivery
+  and the claim is released for retry — and **FALSE** for 401, which is left
+  ambiguous on purpose: it means the orchestrator's own service key is wrong,
+  empty or missing at the gateway, a fixable config problem rather than a fact
+  about the vendor, so it still parks the conversation as SEND_UNCONFIRMED for
+  a person. 404 and 429 were not part of the founder's answer and are
+  unchanged (still ambiguous) — a regression test pins that. Not ported to
+  `ProcurementService.isDefiniteSendRefusal`: that classifier reads errors
+  from the in-process Gmail path, which never produces this string, so there
+  is no second runtime to keep in parity with here. Tests:
+  `test_vendor_email_gateway_auth.py`
+  (`test_a_relay_400_403_or_422_is_a_definite_refusal`,
+  `test_a_relay_401_stays_ambiguous_and_parks_for_a_person`,
+  `test_a_relay_404_or_429_is_unchanged_and_still_ambiguous`, and their
+  `_end_to_end_` counterparts, plus the corrected
+  `test_a_door_refusal_is_never_recorded_as_sent_and_its_sentence_is_logged`)
+  and `test_cross_runtime_envelope_and_send_claim.py` (`TestDefiniteRefusalIsReleased`'s
+  parametrize list and `AMBIGUOUS_FAILURES` extended with the gateway-shaped
+  strings). Failing-before/passing-after measured directly: with the
+  classification branch reverted to its pre-fix form, 10 of these tests
+  failed (3 unit + 3 end-to-end for the 400/403/422 codes, 3 in the
+  cross-runtime file, 1 for the corrected 403 end-to-end test); with it
+  restored, the full `test_vendor_email_gateway_auth.py` +
+  `test_cross_runtime_envelope_and_send_claim.py` pair is 70/70, and the
+  orchestrator's full suite is 1388 passed / 54 skipped, unchanged from
+  before this fix in everything but these two files. This closes the ADR's
+  last open fork.]
 - **Nothing here makes the orchestrator run in production.** The measured blast
   radius of zero is because it does not. Whether it should is a separate
   decision.
@@ -205,6 +246,7 @@ drift its docstring exists to prevent. Left alone; recorded below as not fixed.
 | Typecheck and boot | `npx tsc --noEmit -p tsconfig.spec.json` exit 0; `scripts/check_gateway_boots.sh` PASS |
 | Python style | `ruff check` clean; `black --check` clean |
 | The ADR number | `check_adr_numbers_unique.py` reports next free **0099** across 603 refs. **A peer worktree (`agent-a772a8b225d1cc36a`, `fix/security-alerts-triaged-and-closed`) holds an UNCOMMITTED `0099-security-alerts-triaged-and-closed.md`** — invisible to the guard, which sees refs only. Flagged for the founder; whoever commits second renumbers |
+| 2026-09-19: the 4xx split classifies 400/403/422 definite, 401 ambiguous | With the classifier's gateway-4xx branch reverted to its pre-2026-09-19 form in place (Edit tool, never `git stash`): **10 of the pair's 70 tests failed** (`test_vendor_email_gateway_auth.py` + `test_cross_runtime_envelope_and_send_claim.py`). Restored: **70/70**. Orchestrator full suite: **1388 passed / 54 skipped**, unchanged elsewhere. `ruff check` and `black --check` clean on all three touched files |
 
 ## Operator note
 
@@ -220,3 +262,4 @@ and it says so in the log rather than failing silently.
 |---|---|---|
 | 2026-09-02 | — | Created |
 | 2026-09-17 | ADR 0149 #19 relay lane | Tenant hole closed (see bracket above); the 4xx classification fork left open; the 5xx misclassification fixed |
+| 2026-09-19 | feat/finish-relay lane | 4xx classification fork answered by the founder (lane answers batch 4) and implemented (see bracket above). Status moved Proposed → Locked — no fork in this record is still open. |

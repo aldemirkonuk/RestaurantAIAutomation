@@ -304,6 +304,17 @@ AMBIGUOUS_FAILURES = [
         id="smtp-4xx-is-transient-not-a-refusal",
     ),
     pytest.param({"success": False, "error": ""}, id="unnameable-failure"),
+    # ADR 0099 (2026-09-19, founder decision, lane answers batch 4): unlike
+    # 400/403/422 above, a relay 401 means the ORCHESTRATOR's own service key
+    # is wrong or missing at the gateway — a fixable config problem, not proof
+    # about the vendor — so it stays ambiguous and parks for a person.
+    pytest.param(
+        {
+            "success": False,
+            "error": "gateway refused the send: HTTP 401 — Unauthorized",
+        },
+        id="relay-401-service-key-problem-is-ambiguous",
+    ),
 ]
 
 
@@ -362,6 +373,23 @@ class TestDefiniteRefusalIsReleased:
             "Recipient address rejected: does not exist",
             "No email delivery method available",
             "invalid_grant: token expired",
+            # ADR 0099 (2026-09-19, founder decision, lane answers batch 4):
+            # "relay 4xx = split by code (400/403/422 final, 401 parks)". These
+            # three are the relay's own structural refusals — decided before
+            # any transport exists, so they prove non-delivery same as the
+            # SMTP cases above.
+            pytest.param(
+                "gateway refused the send: HTTP 400 — This mail has no words: bodyText is empty. Nothing was sent.",
+                id="relay-400-malformed-request",
+            ),
+            pytest.param(
+                "gateway refused the send: HTTP 403 — Conversation is not one of this house's conversations. Nothing was sent.",
+                id="relay-403-doors-own-refusal",
+            ),
+            pytest.param(
+                "gateway refused the send: HTTP 422 — A guardrail refused this content. Nothing was sent.",
+                id="relay-422-guardrail-refusal",
+            ),
         ],
     )
     async def test_definite_refusal_releases_the_claim_and_raises(self, error):
