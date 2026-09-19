@@ -1,7 +1,7 @@
 name: Deploy to Production
 
 on:
-  # Safety gate: only run after CI succeeds on main (Railway/Vercel still auto-deploy on push;
+  # Safety gate: only run after CI succeeds on main (hosting providers still auto-deploy on push;
   # this workflow validates health in dependency order and records an audit artifact).
   workflow_run:
     workflows: ["CI"]
@@ -34,7 +34,7 @@ env:
   ORCHESTRATOR_URL: ${{ secrets.RAILWAY_ORCHESTRATOR_URL }}
   API_GATEWAY_URL: ${{ secrets.API_GATEWAY_URL }}
   ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
-  VERCEL_PRODUCTION_URL: ${{ secrets.VERCEL_PRODUCTION_URL }}
+  APP_PRODUCTION_URL: ${{ vars.APP_PRODUCTION_URL || 'https://mudavym.com' }}
 
 jobs:
   # A GATE THAT DID NOT RUN MUST NOT LOOK LIKE A GATE THAT PASSED.
@@ -343,7 +343,7 @@ jobs:
           echo "::error::A 404 means the route is missing; 000 means nothing answered."
           exit 1
 
-  # ── Stage 3: Frontend build smoke (Vercel deploys separately) ──────────────
+  # ── Stage 3: Frontend build smoke (hosting deploys separately) ────────────
   verify-frontend:
     name: "Stage 3 — Frontend Build"
     runs-on: ubuntu-latest
@@ -370,10 +370,9 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder' }}
 
-      - name: Production URL smoke (optional)
-        if: env.VERCEL_PRODUCTION_URL != ''
+      - name: Production URL smoke
         run: |
-          curl -fsS -o /dev/null -w "HTTP %{http_code}\n" "${VERCEL_PRODUCTION_URL%/}/"
+          curl -fsS --max-time 30 -o /dev/null -w "HTTP %{http_code}\n" "${APP_PRODUCTION_URL%/}/"
 
   # ── Post-deploy audit artifact ─────────────────────────────────────────────
   deploy-audit:
@@ -450,7 +449,7 @@ jobs:
         run: |
           gh workflow run e2e-prod.yml \
             -f triggered_by_deploy=true \
-            -f deploy_url="${VERCEL_PRODUCTION_URL:-}" \
+            -f deploy_url="${APP_PRODUCTION_URL}" \
             || echo "E2E workflow dispatch skipped (missing permissions or workflow name)"
 
   # ── Rollback guide (manual revert playbook) ────────────────────────────────
@@ -485,7 +484,7 @@ jobs:
           2. Railway — api-gateway
              Same: Redeploy the deployment for commit $TARGET.
 
-          3. Vercel — frontend
+          3. Frontend hosting provider
              Dashboard → Deployments → find deployment for $TARGET → Promote to Production.
 
           4. Verify (ordered). \$API_GATEWAY_URL/health has never existed — the
@@ -494,7 +493,7 @@ jobs:
              curl \$RAILWAY_ORCHESTRATOR_URL/api/v1/health/agents  # 9/9 Active
              curl \$API_GATEWAY_URL/api/v1/health/live    # names the build
              curl \$API_GATEWAY_URL/api/v1/health/ready   # 200 only if it can serve
-             curl \$VERCEL_PRODUCTION_URL/
+             curl \$APP_PRODUCTION_URL/
 
              The rollback is not done until \`live\` reports $TARGET. A 200 alone
              proves nothing: the instance you are trying to replace answers it too.

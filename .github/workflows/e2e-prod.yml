@@ -19,7 +19,7 @@
 # signal until the secrets-precondition step below passes.
 #
 # D-12: Nightly 02:00 UTC — observability only
-# D-13: workflow_dispatch from Vercel deploy hook — blocking gate
+# D-13: workflow_dispatch after production deployment — blocking gate
 # D-15: Continue-all-waves — the 4 surviving waves (A, B, C, F) run regardless
 #        of failures. D, E, G retired 2026-09-12 (ADR 0137).
 # D-19: Full suite in < 10 minutes — timeout-minutes: 15 hard cap
@@ -33,14 +33,14 @@ name: Production E2E Tests
 on:
   schedule:
     - cron: '0 2 * * *'    # D-12: nightly 02:00 UTC
-  workflow_dispatch:         # D-13: triggered by Vercel deploy hook
+  workflow_dispatch:         # D-13: triggered after production deployment
     inputs:
       triggered_by_deploy:
         description: 'Set to true when triggered by a production deploy'
         type: boolean
         default: false
       deploy_url:
-        description: 'Production deploy URL (Vercel deployment URL)'
+        description: 'Production deployment URL (audit metadata)'
         type: string
         default: ''
       pr_number:
@@ -73,7 +73,7 @@ jobs:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       GITHUB_SHA: ${{ github.sha }}
       # Playwright (Wave F)
-      E2E_BASE_URL: ${{ secrets.VERCEL_PRODUCTION_URL }}
+      E2E_BASE_URL: ${{ vars.APP_PRODUCTION_URL || 'https://mudavym.com' }}
       # Deploy gate signal (D-14) — NOT PYTEST_RUNNING
       TRIGGERED_BY_DEPLOY: ${{ inputs.triggered_by_deploy || 'false' }}
       # CRITICAL: PYTEST_RUNNING is intentionally NOT set here.
@@ -147,7 +147,7 @@ jobs:
             echo "workflow is not configured, not because production is broken."
             echo "Set the names listed above as repository secrets"
             echo "(Settings > Secrets and variables > Actions), then re-run."
-            echo "E2E_BASE_URL is mapped from the secret VERCEL_PRODUCTION_URL."
+            echo "E2E_BASE_URL uses APP_PRODUCTION_URL, defaulting to https://mudavym.com."
             # exit 2 = "the check itself could not run", the repo-wide guard convention
             # (scripts/check_*.py); exit 1 is reserved for "the check ran and failed".
             exit 2

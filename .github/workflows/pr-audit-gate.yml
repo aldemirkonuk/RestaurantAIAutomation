@@ -99,7 +99,8 @@ jobs:
     # a stricter reading might assume, and MEMBER is org-scoped and becomes
     # a much wider door if this repo is ever transferred to an org. Widen
     # deliberately if real collaborators are ever added, not by default.
-    if: github.event.pull_request.author_association == 'OWNER'
+    if: github.event.pull_request.author_association == 'OWNER' && !github.event.pull_request.draft
+    timeout-minutes: 35
     steps:
       - name: Checkout the TRUSTED base commit (never the PR's own tree)
         uses: actions/checkout@v4
@@ -117,6 +118,9 @@ jobs:
 
       - name: Self-test the verdict/push-pattern/state-classifier logic
         run: python3 scripts/pr_audit_gate.py --self-test
+
+      - name: Test review routing without paid API calls
+        run: python3 -m unittest discover -s tests -p 'test_pr_audit_review.py'
 
       - name: Wait for the existing required checks
         id: upstream
@@ -137,6 +141,15 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: python3 scripts/pr_audit_gate.py --audit
+
+      - name: Preserve review usage metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-audit-usage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/pr-audit/*.json
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Explain a failure
         if: failure()

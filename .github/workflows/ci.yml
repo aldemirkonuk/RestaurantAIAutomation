@@ -313,6 +313,12 @@ jobs:
       - name: This branch's ADR numbers are not claimed elsewhere
         run: ./scripts/check_adr_numbers_unique.py
 
+      - name: Decision routing index matches the source records
+        run: |
+          python3 -m pip install --quiet 'PyYAML==6.0.2'
+          python3 -m unittest discover -s tests -p 'test_build_decision_index.py'
+          python3 scripts/build_decision_index.py --check
+
       - name: Explain a failure
         if: failure()
         run: |
@@ -1607,4 +1613,3 @@ jobs:
                 f"of them actually ran. (Checks from other workflows are not in scope "
                 f"here.)")
           PY
-

@@ -50,8 +50,11 @@ These were set on 2026-08-24 and override convenience every time.
 | `datasets/`, `scripts/` | Data corpora and one-off tooling |
 
 **Doc entry points, in reading order:** `.planning/PROJECT.md` (identity + current
-milestone) → `.planning/decisions/README.md` (what is locked, what is open) →
+milestone) → `.planning/00-index/DECISION-INDEX.md` (search for relevant ADRs) →
 `.planning/STATE.md` (where the build actually is) → `.planning/ROADMAP.md`.
+Read only relevant sections. The decisions README and tech-debt register are
+search-and-excerpt references, not startup reads. For shared-topic sessions and
+model routing, use ADR 0050's 2026-09-16 amendment.
 
 ---
 

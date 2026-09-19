@@ -1,6 +1,6 @@
 ---
 name: pr-audit-gate
-description: Use before merging ANY PR to main — invoke it directly, or it runs because the require_pr_audit PreToolUse hook blocks `gh pr merge`/a direct push to main until it has. Fans out 3 Opus auditor angles + a mandatory adversarial pass over the PR's diff and CI reports (ADR 0090 — model corrected from the original "Sonnet max" ask to Opus per ADR 0050's production/ADR/outward-send override); on approval it merges immediately via `gh pr merge --squash` (no `--auto` — that races an unaudited later push), on block it posts findings and stops. Never call gh pr merge directly — call this skill, it calls gh pr merge for you once it approves.
+description: Pre-merge audit using one Opus planner, two parallel Sonnet reviewers, and the resumed Opus planner for final adjudication. CI must be green; uncertainty or reviewer BLOCK prevents merging (ADR 0090, 2026-09-16 amendment).
 ---
 
 # pr-audit-gate
@@ -61,10 +61,10 @@ individually while what they don't cover reaches production — this gate exists
      head SHA's workflow runs, if you can fetch them cheaply. Don't block on a slow
      artifact fetch — note what you couldn't get and let the auditors know.
 4. **Check whether this diff touches the gate's own files** — anything under
-   `scripts/pr_audit_gate.py`, `scripts/hooks/require_pr_audit.py`,
+   `scripts/pr_audit_gate.py`, `scripts/pr_audit_review.py`, `scripts/hooks/require_pr_audit.py`,
    `.github/workflows/pr-audit-gate.yml`, `.claude/agents/pr-merge-*.md`,
    `.claude/skills/pr-audit-gate/`, `.claude/settings.json`, `CLAUDE.md`,
-   `.planning/decisions/0090-*.md`/`.planning/decisions/README.md`,
+   `.planning/decisions/0050-*.md`/`.planning/decisions/0090-*.md`/`.planning/decisions/README.md`,
    `.github/workflows/ci.yml` (carries the `workflow_dispatch:` trigger the
    CI-side merge step depends on — added fifth audit, correctness angle), or
    `.github/workflows/deploy.yml` (the post-merge production-deploy-
@@ -81,23 +81,20 @@ individually while what they don't cover reaches production — this gate exists
    session auditing its OWN checkout has no `pull_request_target`-style
    isolation from a modified script — say so plainly rather than treating a
    self-audited PASS on these files as equivalent to an ordinary one.
-5. **Fan out the 3 auditor angles in parallel** — three `Agent` calls,
-   `subagent_type: pr-merge-auditor`, each prompt carrying: the FOCUS ANGLE
-   (correctness & regression risk / CLAUDE.md-and-ADR compliance /
-   security & production blast-radius), the PR number + head SHA, the diff, and the
-   report bundle from step 3. Run them in the same response (independent, no
-   ordering dependency) — this is the "real parallel fan-out" CLAUDE.md §3 requires,
-   not one thread narrating three angles serially.
-6. **If any angle returns BLOCK:** skip the adversarial pass — verdict is BLOCK.
-   Go to step 8.
-7. **If all three lean APPROVE / APPROVE WITH NOTES:** spawn one
-   `pr-merge-adversary` agent with all three reports + the diff. Its OVERTURNED
-   verdict wins over the three APPROVEs; its HOLDS verdict makes the overall verdict
-   PASS — **unless step 4 found this diff touches the gate's own files, in which
-   case the overall verdict is BLOCK regardless**, with an explicit escalation
-   note (not an ordinary block reason) saying the angles approved but a
-   self-modifying change to the gate needs the founder, not this gate, per
-   [[merge-races-need-sequencing]]'s escalate-never-force precedent.
+   **Stop before model calls** if any owned path changed, the file inventory cannot
+   be verified, or the diff cannot be reviewed completely. Record BLOCK and request
+   human review. Do not pay for an approval that cannot authorize a merge.
+5. **Plan once with Opus.** Spawn `pr-merge-planner` with the original SHA-pinned
+   bundle. A missing, incomplete or non-READY plan blocks. Keep the agent ID.
+6. **Run two Sonnet reviews in parallel.** Spawn `pr-merge-auditor` for correctness,
+   regression and decision compliance, and `pr-merge-adversary` for security and
+   adversarial counterexamples. Both receive the original bundle and plan, not each
+   other's report. The plan never caps research or suppresses contradictory evidence.
+   Any BLOCK, incomplete output or unparseable verdict blocks; skip the final call.
+7. **Resume the same Opus planner** with both complete approve-leaning reports.
+   It must challenge approval against the original evidence. Only a complete final
+   `VERDICT: HOLDS` permits PASS. Anything else blocks. This is three roles and up
+   to four calls (two Opus, two Sonnet), not three calls or four Opus sessions.
 8. **Write the report** locally to `.planning/07-reference/pr-audits/<pr>-<short-sha>.md`
    (useful as this session's own record) — this file is NOT what satisfies the
    hook; see step 9's marker. Include the verdict, each angle's findings, the
@@ -115,15 +112,15 @@ individually while what they don't cover reaches production — this gate exists
    constructed the real hook"). The comment is the durable, SHA-stamped
    record; the local file is a convenience copy, not a prerequisite.
 10. **Act on the verdict:**
-    - **PASS:** `gh pr merge <n> --squash` — **no `--auto`.** `--auto` arms
+    - **PASS:** `gh pr merge <n> --squash --match-head-commit <audited-full-sha>` — **no `--auto`.** `--auto` arms
       GitHub's auto-merge against the PR, not the audited commit; a push
       landing after you PASS but before GitHub actually merges would go
       through unaudited once the (unrelated) required checks are green
       (confirmed live, correctness angle, third audit — the CI-side script
       hit this exact race and now uses a SHA-pinned `gh api` merge instead;
       the Claude-Code path stays on `gh pr merge` for hook-pattern
-      compatibility, but drops `--auto` so the merge is immediate and bound
-      to what you just audited, not queued against whatever's head later).
+      compatibility, but drops `--auto` so the merge is immediate; `--match-head-commit` binds it to
+      the exact audited SHA, not whatever head appears before the command).
       Always the explicit `<n>`, never a bare `gh pr merge` (the hook
       resolves that against your current branch, not necessarily the PR you
       just audited). Never `--admin` — if the merge doesn't go through
@@ -148,12 +145,13 @@ individually while what they don't cover reaches production — this gate exists
   happen outside one — see ADR 0090 for what that job still needs (a
   founder-approved branch-protection PATCH to make it a hard required check
   rather than advisory; the `ANTHROPIC_API_KEY` secret has been added).
-- Model choice corrected 2026-09-02: the original ask was "Sonnet max"; ADR 0090
-  now runs `model: opus` / `reasoning_effort: high` per ADR 0050's own override
-  rule (production/ADR/outward-send → Opus, and "never score effort" as a
-  substitute for the tier the consequence calls for). `reasoning_effort: high` in
-  the two agent definitions is a best-effort frontmatter signal, not a verified
-  reasoning-budget guarantee — see ADR 0090's decision section.
+- Current model routing is the founder-authorized 2026-09-16 amendment to ADRs
+  0050/0090. The prior all-Opus routing is historical. Agent definitions explicitly
+  select `model` and `effort`; do not let reviewers inherit an Opus parent.
+- CI stores response token/cache usage and estimated API cost in a 30-day Actions
+  artifact. Local agent usage may not expose equivalent fields: record unknown
+  rather than inventing zeros. Record model, role, SHA, task type, retries and
+  elapsed time. Reports should be evidence and deltas, not duplicated transcripts.
 - **v1 → v2, same day (2026-09-03):** this gate's own first real audit (PR
   #261, run 33695630472) found and this session fixed: the livelock in step 9
   above; the hook resolving the wrong PR's report when the current branch

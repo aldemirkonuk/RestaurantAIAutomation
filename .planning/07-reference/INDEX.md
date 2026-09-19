@@ -17,6 +17,7 @@ plan of record — that is `PROJECT.md` → `STATE.md` → `ROADMAP.md`.
 
 | Doc | What it is | Status |
 |---|---|---|
+| [Usage optimization implementation](usage-audit-2026-09-16/IMPLEMENTATION.md) | Three-role audit routing, session coordination, generated ADR index, measured CI timing and provider-neutral frontend checks | Local implementation, not deployed (2026-09-16) |
 | [REQUIREMENTS.md](REQUIREMENTS.md) | Requirements ledger, grouped by version — the durable record that made deleting `phases/` safe | Historical (its own banner, ADR 0018) |
 | [v1.0-MILESTONE-AUDIT.md](v1.0-MILESTONE-AUDIT.md) | What v1.0 shipped and concluded | Historical record |
 | [v2.0-MILESTONE-AUDIT.md](v2.0-MILESTONE-AUDIT.md) | What v2.0 shipped, `gaps_found` — feeds `v3.0-TECH-DEBT.md` | Historical record |

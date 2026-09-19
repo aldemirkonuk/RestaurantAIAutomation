@@ -25,6 +25,65 @@
 
 ## Context
 
+### Current routing amendment (founder request, 2026-09-16)
+
+This amendment supersedes the original all-Opus routing, not the safety rules.
+Current pipeline: **one Opus planner -> two independent Sonnet reviewers in parallel
+-> resume the Opus planner for final challenge and judgment**. Three roles, up to
+four calls: two Opus and two Sonnet. Correctness/regression/decision compliance is
+one Sonnet focus; security/production risk/adversarial counterexamples is the other.
+Both see original evidence and may challenge the plan. No approve-by-summary.
+
+Opus-first gives both reviewers a shared risk map; Sonnet-first is cheaper for
+simple discovery but can duplicate context collection and miss the consequential
+question. The planner must remain short and non-binding. To counter anchoring,
+the adversary reviews the original diff independently and the final Opus call must
+challenge its own plan. This is not proof of equivalent defect detection; track
+missed defects, false blocks and rework after rollout.
+
+Any reviewer BLOCK or invalid verdict prevents the final call and the merge. Only
+a complete final HOLDS permits PASS. Non-end_turn or empty model responses fail
+closed, even if truncated text contains an approving verdict. Self-gate edits,
+unavailable file inventories and oversized diffs stop before any paid call. Draft
+PRs skip the paid gate. Trusted base checkout, owner restriction, required-check
+wait, exact-SHA CI merge and successful comment posting remain required.
+
+Each SDK call has a 180-second timeout and no automatic retries; the whole job has
+a 35-minute limit including the existing 20-minute upstream wait. Timeout is failure,
+not approval. A timeout may leave billing unknown. The CLI path also requires
+--match-head-commit when merging. This optimization branch itself must receive
+human review because it changes the gate; it cannot self-approve.
+
+The review helper records actual model/role/effort, tokens including cache reads and
+writes, response completion, latency, and a dated standard API cost estimate.
+Artifacts persist for 30 days, without prompts or secrets. Fingerprints identify
+the exact bundle/policy; they are not a license to reuse approval after changes.
+Cache breakpoints target identical original bundles; concurrent cold Sonnet calls
+may both write cache, so savings are measured, not assumed. Explicit code model IDs
+are Opus 5 and Sonnet 5; local Claude Code agents use opus/sonnet aliases.
+
+Research remains uncapped. Prose targets (250-word plan, 700-word reviews) suppress
+repetition, not findings. The 16k API output cap still includes adaptive thinking;
+it is a safety limit, not an instruction to generate 16k tokens.
+
+CI investigation at main 60ed83a7, 2026-09-16: recent CI runs took about 7-10 minutes,
+not an infinite model loop. Run 34835900517 took 9m37s: TypeScript lint gated the
+5m26s TypeScript test job; build gated the 3m38s E2E job. Python tests independently
+took 4m18s after Python lint. The audit waits for required checks before reviewing.
+Several PRs also failed schema-parity checks; those are blockers, not slow checks.
+Nightly E2E run 35066774844 failed during required-secret setup, before browser tests.
+Underlying schema errors and missing secret identities were not repaired in this
+change. Next latency work: inspect redundant needs edges, dependency installation
+and slow test suites without removing verification or hiding failed checks.
+
+Vercel-specific frontend URL configuration is replaced by APP_PRODUCTION_URL
+(repository variable, canonical fallback https://mudavym.com). Frontend build,
+health and E2E remain. No Vercel required status context was present in inspected
+live branch protection; none was remotely deleted. vercel.json is untouched.
+This amendment records a local implementation, not deployment or live savings.
+
+Historical context follows.
+
 The founder asked for a standing gate: before any PR merges to `main`, an
 Opus-based audit (originally asked as "Sonnet max"; corrected same day — see
 Decision) reviews the CI reports and diff, and on approval the PR merges and ships to

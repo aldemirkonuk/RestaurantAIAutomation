@@ -8,6 +8,114 @@
 
 ## Boundary — what this ADR is *not*
 
+**Current routing amendment: 2026-09-16.** Aldemir requested cheaper discovery,
+shared-topic session coordination, and one Opus planner with two Sonnet PR reviewers.
+The amendment below supersedes conflicting tier defaults in the original record;
+the original reasoning and examples remain historical evidence. AGENTS.md is unchanged.
+
+### Current tiers
+
+| Work | First choice | Escalation |
+|---|---|---|
+| Indexes, hashes, counts, exact checks | Script, no model | Fail loudly on ambiguous input |
+| Read-only classification or file/symbol discovery with checkable citations | Haiku | Sonnet if categories or evidence are ambiguous |
+| Bounded investigation, implementation with tests, independent review | Sonnet | Opus for consequential unresolved judgment or failed reasoning |
+| Architecture/product forks, irreversible decisions, high-risk final judgment | Opus | Founder where intent or authority is unresolved |
+
+Haiku is not a universal substitute for Sonnet. It is useful when a wrong answer
+is cheap to detect, the rubric is explicit, and no approval or safety decision is
+delegated. Prefer deterministic parsing to either model. Keep the original five-axis
+score for judgment tasks; high-consequence overrides still apply to decision authority.
+The explicit PR-audit exception delegates evidence investigation to two Sonnet
+reviewers while Opus retains planning and final judgment (ADR 0090 amendment).
+
+A discovery handoff contains: question, source revision, file/symbol citations,
+finding, verification command/result, uncertainty, and changed dependencies. Opus
+checks decisive claims in the original source; it need not reread every discovered
+file. A missing link, stale hash, contradiction, or consequential uncertainty triggers
+targeted rereading or escalation. Summaries alone never authorize a risky change.
+
+### Bound the work, not the research
+
+At the start record the intended outcome, owned files/interfaces, relevant risks,
+acceptance checks and stop/escalation conditions. A routine copy/layout change does
+not automatically require tracing unrelated database, worker and deployment layers.
+An auth, money, cross-runtime or migration change does require the relevant end-to-end
+trace. Research depth stays uncapped, including parallel Workflow research. Expand
+scope when evidence shows a dependency; record why, rather than silently expanding
+the whole assignment. Finish when the agreed checks pass and material gaps are named.
+
+### Multiple sessions on the same topic
+
+Use one existing canonical task note as a versioned brief, not one new plan per chat.
+Planning and execution are separate roles and document sections, not separate repos
+by default. The integrator owns the shared brief and merges; workers own separate
+worktrees and explicit file ranges or interfaces. Readers may overlap deliberately
+for independent review. Two sessions must not independently edit the same owned files.
+
+Minimum brief (aim for one page, not a hard research limit):
+
+```text
+Task ID / brief revision / base commit:
+Outcome and acceptance checks:
+Relevant ADRs and evidence pointers:
+Owner -> subquestion -> edit ownership -> worktree -> status:
+Dependencies and changes since previous revision:
+Risks, unresolved questions and escalation conditions:
+Results / tests / integration status:
+```
+
+Each worker returns only changed findings, evidence links, exact commit/file hashes,
+test results and blockers. Send updates on a milestone, changed assumption, conflict
+or blocker; avoid repeatedly asking every session for status. Before integration,
+compare the worker's dependency hashes with the integration tree. Revalidate changed
+dependencies, not all earlier research. One integrator allocates ADR numbers and
+updates shared indexes; this avoids the collision recorded in DECISION-INDEX.md.
+
+### Small output and current measurements
+
+Keep an unchanged evidence block out of repeated messages. Write one durable finding,
+link it elsewhere, append meaningful deltas, and report passing tests by command and
+summary. Preserve the relevant error excerpt when a test fails. Do not ask workers
+for long reports only to have Opus rewrite them. Target 250 words for a review plan
+and 700 per review; important findings and research are never cut to meet a target.
+Short visible prose does not guarantee low thinking-token usage; measure both.
+
+The website need not freeze to measure efficiency. Record task ID, category, risk,
+source/brief revision, model/effort, request count, input/cache-write/cache-read/output
+tokens, elapsed time, retries, completion and rework. Compare distributions within
+task/risk groups and track overhead per completed outcome, not raw daily spend or
+lines changed. Include failed and abandoned work. An exact evidence fingerprint can
+identify a duplicate review; changed evidence must be revalidated, never treated as
+an old approval. Do not make extra paid calls solely to benchmark this policy.
+
+CI telemetry is implemented in scripts/pr_audit_review.py. Cost uses a dated standard
+API rate card, not the subscription's undisclosed allowance formula. Unknown usage
+or model pricing remains unknown. Measure claimed savings after real completed work;
+no percentage is promised in advance.
+
+### Repository separation and archival
+
+Start with the existing generated decision index and targeted excerpts. Keep active
+briefs separate from research evidence and completed reports within the vault. Move
+files physically only when lifecycle or access boundaries justify it. Archival first
+needs an inbound-link check, no unresolved dependency, and a manifest preserving
+original path, date, revision and replacement link. Do not archive active ADRs or
+delete rationale merely to save tokens: unread files cost no model tokens. No bulk
+archive or project-wide source decomposition is authorized by this amendment.
+
+Tradeoffs: small briefs reduce repeated orientation but can go stale; hashes and
+revision checks address that. Tiered models reduce unit cost but can create rework;
+escalate on evidence, not repeated cheap retries. Separate repos reduce accidental
+search scope but add synchronization and permissions overhead, so they are not the
+default. Large modules merit symbol-focused reads now and gradual decomposition
+when maintenance or tests justify it, not a token-driven rewrite.
+
+Sources checked 2026-09-16: [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing),
+[Claude Code subagents](https://code.claude.com/docs/en/subagents). Implementation
+base: 60ed83a7e6d5eb8b8e0e631783a598cd0f562bff. This is session/CI policy only,
+not a change to product model routing or a claim that the branch is deployed.
+
 ADR 0036 governs **the product's** model calls: the production routing policy behind
 `common/model-client`, and the RM-1/`aio-model-routing` methodology-vs-operation line.
 Its metric is NF-A cost per task — *the platform's* spend on *its users'* work.
