@@ -80,6 +80,21 @@ still holds the same files. Full data is in `results/r4-result.json` on
 | relay | `wt-fin-relay` | `feat/finish-relay` | NOT READY | `wip/2026-09-19/relay` cb0e241d4 | 2 | 1 |
 | KL | `wt-fin-KL` | `feat/finish-authorize-consent` | NOT READY | `wip/2026-09-19/KL` 1e083800c | 6 | 1 |
 
+**Other sessions' uncommitted work (snapshotted 2026-09-19 ~17:40Z, worktrees untouched).**
+Of 124 worktrees, 58 held uncommitted files or commits that had never been pushed.
+- 18 are this session's lanes, snapshotted above.
+- 35 more are pushed as `wip/2026-09-19/others/<worktree-name>`. These are peer Claude
+  sessions, Codex and Cursor worktrees, the `wt-port-*` and `wt-p4*` lanes, and the main
+  checkout. Two of them held a commit that was never pushed: jolly-hofstadter (aec15b075,
+  the eight-file probe sweep) and objective-cohen (1592b6a5a).
+- 5 are kept as LOCAL refs only (`refs/snapshots/others/<name>/20260919T1700`). A
+  secret-pattern scan matched their diffs, so they are not pushed: page-finalization,
+  public-pages and token-efficiency-ci (Codex), wt-e2e (Playwright artifacts; see the
+  credential-leak note in memory), and wt-finish. Read these before pushing any of them.
+- Every snapshot excludes node_modules, dist, coverage, test results, build output and
+  .env files. None is for merge; the session that owns each worktree decides what to do
+  with it.
+
 **Ordering constraints recorded today:**
 - The promos cut merges only after the comms branch `claude/wizardly-knuth-31d531`
   (a peer's senders desk) lands and the founder flips `mudavym_design_communications`
