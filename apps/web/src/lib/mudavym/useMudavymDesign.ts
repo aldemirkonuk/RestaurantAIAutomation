@@ -7,7 +7,12 @@
  *    designer can flip one page on this machine only. `"1" | "true" | "on"`
  *    forces the new design, `"0" | "false" | "off"` forces legacy. Anything
  *    else (or absence) falls through.
- * 2. The per-restaurant feature flag `mudavym_design_<page>` via the existing
+ * 2. `ALWAYS_ON_PAGES` — a page that resolves on for every house in code, with
+ *    no flag, no registry entry and no migration (ADR 0149 row 36's mechanism;
+ *    `/help` is the first to use it, per ADR 0160 §111's build instructions).
+ *    Checked before any network read, so an always-on page never spends a
+ *    `checkFeatureFlag` request finding out what it already knows.
+ * 3. The per-restaurant feature flag `mudavym_design_<page>` via the existing
  *    flag API (`settingsApi.checkFeatureFlag` → POST
  *    `/settings/feature-flags/check`). The gateway's registry
  *    (apps/api-gateway/src/settings/feature-flag-registry.ts) returns
@@ -16,7 +21,7 @@
  *    adding it to ACTIVE_FEATURE_FLAGS with a `readBy` pointing at their
  *    PageGate call site. Registering the switch in Settings is the page
  *    team's job, not this hook's.
- * 3. Default: `false` — legacy renders while the check is in flight or when
+ * 4. Default: `false` — legacy renders while the check is in flight or when
  *    no restaurant is active. The gate must never flash the new design at
  *    someone who is not meant to see it.
  */
@@ -62,9 +67,25 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // ADR 0160 §111 (founder sketch review, 2026-09-17). `/help` resolves on
+  // for every house in code — see ALWAYS_ON_PAGES below — so it carries no
+  // `mudavym_design_help` column or registry entry; enrolling it here is
+  // still required, since MUDAVYM_PAGES is the source of the `MudavymPage`
+  // type PageGate, HouseHeader and PAGE_NAMES all key off.
+  'help',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
+
+/**
+ * Pages that resolve to the Mudavym redesign for every house, in code, with
+ * no per-restaurant flag, no registry entry and no migration (ADR 0149 row 36's
+ * mechanism — "resolves for every house in code ... no database write" —
+ * applied here per this page's own build instructions rather than waiting on
+ * a shared cutover). The per-browser localStorage override (both directions)
+ * still wins over this, so a designer can force legacy back on one machine.
+ */
+const ALWAYS_ON_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>(['help']);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */
 const ACTIVE_RESTAURANT_KEY = 'activeRestaurantId';
@@ -121,6 +142,7 @@ export function clearMudavymDesignCache(): void {
  */
 export function useMudavymDesign(page: MudavymPage): boolean {
   const override = typeof window === 'undefined' ? null : readOverride(page);
+  const alwaysOn = ALWAYS_ON_PAGES.has(page);
   // Reactive restaurant identity: a switch happens while gated pages stay
   // mounted, and reading localStorage inside the effect alone would leave the
   // previous restaurant's flag verdict rendering for the new one (Opus
@@ -131,7 +153,8 @@ export function useMudavymDesign(page: MudavymPage): boolean {
   const [remote, setRemote] = useState(false);
 
   useEffect(() => {
-    if (override !== null) return; // overridden — don't spend the request
+    // Overridden, or resolved without a flag at all — don't spend the request.
+    if (override !== null || alwaysOn) return;
     let cancelled = false;
     setRemote(false); // never carry one restaurant's verdict into another's
     let restaurantId: string | null = activeRestaurantId ?? null;
@@ -151,7 +174,7 @@ export function useMudavymDesign(page: MudavymPage): boolean {
     return () => {
       cancelled = true;
     };
-  }, [page, override, activeRestaurantId]);
+  }, [page, override, alwaysOn, activeRestaurantId]);
 
-  return override !== null ? override : remote;
+  return override !== null ? override : alwaysOn ? true : remote;
 }

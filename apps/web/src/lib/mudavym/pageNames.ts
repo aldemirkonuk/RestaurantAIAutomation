@@ -22,6 +22,7 @@
  *   Profile                Sidebar.tsx:196
  *   Settings               Sidebar.tsx:202
  *   Connections            Sidebar.tsx:208
+ *   Help & Support         Sidebar.tsx:216
  *
  * Two slugs have no sidebar entry, so their name is taken from the page's own
  * head instead and cited there: `recommendations`
@@ -75,6 +76,8 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // The canonical document at /documents/:id (ADR 0104 slice 2, merged from main 2026-09-05).
   document: 'Document',
   logs: 'Logs',
+  // Sidebar.tsx:216 — the entry that links here.
+  help: 'Help & Support',
 };
 
 /**

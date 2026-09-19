@@ -122,6 +122,7 @@ const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
 const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
 const Settings = lazyWithRefresh(() => import('./pages/Settings'))
 const Help = lazyWithRefresh(() => import('./pages/Help'))
+const HelpNext = lazyWithRefresh(() => import('./pages/help/next/HelpNext'))
 const Profile = lazyWithRefresh(() => import('./pages/Profile'))
 const AuthorizeIntegration = lazyWithRefresh(() => import('./pages/AuthorizeIntegration'))
 const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
@@ -394,7 +395,11 @@ function App() {
                       for a non-manager, and the two registers that would leak are
                       role-gated at the gateway as well (G19). */}
                   <Route path="/connections" element={<PageGate page="connections" legacy={<Navigate to="/profile" replace />} next={<ConnectionsNext />} />} />
-                  <Route path="/help" element={<Help />} />
+                  {/* ADR 0160 §111: resolves to the Mudavym redesign for every
+                      house in code (useMudavymDesign's ALWAYS_ON_PAGES) — no
+                      `mudavym_design_help` flag exists. `legacy` stays mounted,
+                      untouched, until the founder approves its deletion. */}
+                  <Route path="/help" element={<PageGate page="help" legacy={<Help />} next={<HelpNext />} />} />
                   {/* Gated: the sidebar link is owner-only, but the URL was not —
                       any authenticated staff member could open the admin UI. */}
                   <Route path="/admin" element={<ProtectedRoute requiredRole="owner"><AdminPanel /></ProtectedRoute>} />
