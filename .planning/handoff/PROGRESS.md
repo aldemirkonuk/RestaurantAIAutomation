@@ -104,6 +104,22 @@ Of 124 worktrees, 58 held uncommitted files or commits that had never been pushe
   stash entries, as `wip/2026-09-19/stash/0..4`. The only thing kept local on purpose is
   `reserve/adr-0164-0167`: a set of ADR-number placeholders that must never reach a remote.
   If CI's number guard saw them, it would report a collision.
+- **[Cleaned 2026-09-19 ~18:30Z, on the founder's word "whichever are not valuable anymore delete them ... be careful"]**
+  Deleted only what was proven redundant:
+  - **Four lane-sync stashes** (C, notify, relay, receiving). Over 99% of their added lines
+    are in the lanes today. The rest are later renumberings; receiving's migration moved to
+    20260919170000.
+  - **`fix/e2e-legacy-waves-schema-rot-gated`**. PR #354 is merged. Its only other commit
+    was a local copy of the audit report, whose PASS marker is on the PR.
+  - **`reserve/adr-0164-0167`**. Every real ADR 0164-0169 is now on a pushed ref.
+  - **Remote copies of the above**, and one stale worktree registration.
+  Each deleted object keeps a local backup ref under `refs/snapshots/deleted-2026-09-19/`.
+  Kept:
+  - three unlanded fix branches: frontend-url-comma-list, current-user-has-no-id-field and
+    apps-web-e2e-tsconfig; their new files are not on main;
+  - the May 2026 `gsd/v1.0-archive` stash, whose value is unclear;
+  - the five flagged worktrees, all holding work not landed anywhere. Measured: 358 to
+    38,820 of their added lines are in no landed or lane ref.
 
 **Ordering constraints recorded today:**
 - The promos cut merges only after the comms branch `claude/wizardly-knuth-31d531`
