@@ -5,28 +5,60 @@
    Tokens only, same discipline as auth-house.css: every colour is a
    `.mudavym` custom property, no hex, no rgb()/hsl(), no `prefers-color-
    scheme`. EVERY SELECTOR STARTS AT `.mdv-endpaper`, which sits on the same
-   element as `.mudavym.mdv-auth` (auth-house.css's field/focus rules keep
-   applying to every control inside unchanged — this file adds only what
-   auth-house.css does not: the book frame and the leaf's own typography).
+   element as `.mudavym.mdv-auth`, so auth-house.css's token fields and seal
+   focus ring still apply underneath and this file only adds the book:
+   the frame, the endpaper, and the leaf's ledger dress.
 
-   Scope: only `/login`, `/register`, and (per ADR 0164) the sign-in house
-   chooser mount here — the three screens ADR 0143 row 35 named. It replaces
-   the old house-colour-only card for exactly these callers; nothing else
-   references this file.
+   Scope: `/login`, `/register` and (ADR 0164) the sign-in house chooser.
 
-   Ground: this shell states `data-ground="paper"` on its own root by
-   default (matching every other rebuilt page's convention of owning its own
-   ground, `lib/mudavym/shellGround.ts`) — mudavym.css's bare `.mudavym`
-   selector resolves to Warm Charcoal now ("the ground is decided, not
-   preferred", 2026-08-24), so a page that wants paper must say so. A
-   `[data-ground="charcoal"]` instance is supported for parity (both grounds
-   ship, ADR 0042) and is how the visual sweep captures the dark rendering. */
+   Ground: the shell states `data-ground="paper"` on its own root (the
+   convention every rebuilt page follows, `lib/mudavym/shellGround.ts`);
+   `[data-ground="charcoal"]` is supported for parity (ADR 0042). */
 
 .mdv-endpaper {
   --mdv-ep-shade: color-mix(in srgb, var(--ink-1) 22%, transparent);
+  /* The wax of the endpaper's pressed seals: the house seal worn thin into
+     the paper, so the pattern reads as a pressing, not as ink. */
+  --mdv-ep-wax: color-mix(in srgb, var(--seal) 15%, var(--paper-1));
+  /* A written line's rule, and a field's rule (a field is a line to write on). */
+  --mdv-ep-rule: var(--paper-2);
+  --mdv-ep-line: color-mix(in srgb, var(--ink-3) 60%, transparent);
 }
 .mdv-endpaper[data-ground='charcoal'] {
   --mdv-ep-shade: color-mix(in srgb, var(--paper-0) 90%, transparent);
+  --mdv-ep-wax: color-mix(in srgb, var(--seal) 22%, var(--paper-1));
+}
+
+/* The page. The book hangs from a fixed height rather than centring, so a
+   message arriving on the leaf lengthens the book downward and nothing the
+   eye is on moves. (0,3,0) to take the ground from auth-house.css's
+   `.mudavym.mdv-auth` paper-0. */
+.mudavym.mdv-auth.mdv-endpaper {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: clamp(20px, 9vh, 104px) 16px 40px;
+  background-color: var(--paper-1);
+}
+.mdv-ep-stage {
+  width: 100%;
+  max-width: 960px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.mdv-ep-stage--wide {
+  max-width: 1140px;
+}
+.mdv-ep-colophon {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-3);
 }
 
 /* ── the book: a 340px endpaper (verso) + a leaf (recto) ─────────────────── */
@@ -55,16 +87,11 @@
   pointer-events: none;
   z-index: 2;
 }
-/* wide variant — the restaurant-details leaf (register step 2), a rail +
-   panel layout that needs more room than the 600px default recto. */
 .mdv-ep-book--wide {
   grid-template-columns: 340px minmax(480px, 800px);
 }
-.mdv-ep-book--wide::before {
-  left: 340px;
-}
 
-/* ── the endpaper — decorative, permanent, the house mark tiled ─────────── */
+/* ── the endpaper — decorative, permanent, pressed with the house seal ──── */
 
 .mdv-ep-endpaper {
   position: relative;
@@ -80,28 +107,32 @@
   inset: 0;
   width: 100%;
   height: 100%;
+  /* The pressing is heaviest toward the gutter and wears away toward the
+     outer edge, where the page is written on (the wordmark at the head, the
+     house voice at the foot), so a seal never runs through a word. */
+  -webkit-mask-image: radial-gradient(ellipse 70% 56% at 90% 50%, var(--ink-1) 36%, transparent 100%);
+  mask-image: radial-gradient(ellipse 70% 56% at 90% 50%, var(--ink-1) 36%, transparent 100%);
 }
 .mdv-ep-top {
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: 8px;
 }
 .mdv-ep-kicker {
-  font-family: var(--sans, inherit);
   font: 500 10px/1.4 'JetBrains Mono', ui-monospace, monospace;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--ink-3);
-}
-.mdv-ep-wordmark {
-  display: inline-flex;
 }
 .mdv-ep-body {
   position: relative;
   z-index: 1;
   margin: auto 0 0;
+  padding-top: 48px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -123,16 +154,15 @@
 }
 
 /* ── the recto leaf ───────────────────────────────────────────────────────
-   Ruled-paper lines are decorative background only (background-clip:
-   content-box means the padding box, not the content, carries them, so a
-   focus ring inside a field is never crossed by a rule). */
+   Ruled, but only where something is written: each line of the title and the
+   lede rests on its own rule, and every field IS a rule. A page-wide ruled
+   background cannot stay on the baseline once an invite card, a Google button
+   or an address picker sits between the lines, and a rule through a word
+   reads as a strike-through. The margin line stays, down the whole leaf. */
 
 .mdv-ep-leaf {
-  padding: 52px 52px 48px;
+  padding: 52px 52px 44px;
   position: relative;
-  background-image: repeating-linear-gradient(to bottom, transparent 0 26px, var(--paper-2) 26px 27px);
-  background-origin: content-box;
-  background-clip: content-box;
   min-width: 0;
   min-height: 0;
 }
@@ -149,6 +179,7 @@
 .mdv-ep-leaf-inner {
   position: relative;
   padding-left: 6px;
+  transform-origin: left center;
 }
 .mdv-ep-folio {
   position: absolute;
@@ -159,13 +190,18 @@
   text-transform: uppercase;
   color: var(--ink-3);
 }
+.mdv-ep-leaf-title,
+.mdv-ep-leaf-lede {
+  background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--mdv-ep-rule) calc(100% - 1px));
+}
 .mdv-ep-leaf-title {
   font-family: 'Fraunces', Georgia, serif;
   font-weight: 600;
   font-size: 26px;
-  line-height: 1.2;
+  line-height: 40px;
+  background-size: 100% 40px;
   letter-spacing: -0.01em;
-  margin: 0 0 8px;
+  margin: 0;
   color: var(--ink-1);
 }
 .mdv-ep-leaf-lede {
@@ -173,20 +209,158 @@
   font-style: italic;
   font-weight: 400;
   font-size: 14.5px;
-  line-height: 24px;
+  line-height: 28px;
+  background-size: 100% 28px;
   color: var(--ink-2);
   margin: 0 0 28px;
-  max-width: 460px;
 }
 
-/* ── narrow viewport: the endpaper stacks as a band above the leaf ───────
-   Matches sketch 118's own phone treatment, not a naive full-height stack:
-   under 700px there is no room for two pages side by side, so the endpaper
-   collapses to a fixed ~150px band (kicker + wordmark + house line only —
-   the tag caption is dropped, it does not fit) and the leaf drops its ruled
-   lines and outer padding to read like a plain mobile form. */
+/* ── the ledger dress: labels, fields, buttons ───────────────────────────
+   The callers' own fields, dressed from here (so no field, name or order
+   changes): a label is a clerk's column head, a field is the line you write
+   on, a button is a stamped plate. Selectors reach through `html .mudavym`
+   because auth-house.css paints fields with `!important` against globals.css,
+   and only a heavier `!important` answers it. */
+
+.mdv-endpaper .mdv-ep-leaf label:not(:has(input, select, textarea)) {
+  font: 500 10.5px/1.5 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mdv-endpaper .mdv-ep-leaf .mdv-ep-caps {
+  font: 500 10.5px/1.5 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mdv-endpaper .mdv-ep-leaf .mdv-ep-caps > * {
+  font: 400 12px/1.5 'DM Sans', system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+html .mudavym.mdv-endpaper .mdv-ep-leaf :is(input:not([type]), input[type='text'], input[type='email'], input[type='password'], input[type='tel'], input[type='search'], input[type='url'], input[type='number'], textarea, select) {
+  background-color: transparent !important;
+  border-style: solid !important;
+  border-width: 0 0 1px 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding-left: 0 !important;
+}
+/* The neutral rule. A field a caller has marked (red: refused; seal: checked
+   and good) keeps its own colour on the one border left. */
+html .mudavym.mdv-endpaper .mdv-ep-leaf :is(input, textarea, select):not([class*='border-red']):not([class*='border-seal']) {
+  border-color: var(--mdv-ep-line) !important;
+}
+/* Focus: the rule itself turns seal and doubles in weight. An outline box
+   around a line would redraw the field it replaced. */
+html .mudavym.mdv-endpaper .mdv-ep-leaf :is(input, textarea, select):focus-visible {
+  outline: none !important;
+  border-bottom-color: var(--seal) !important;
+  box-shadow: 0 1px 0 0 var(--seal) !important;
+}
+/* A leading icon belonged to the boxed field; a written line has none. */
+.mdv-endpaper .mdv-ep-leaf .relative > svg.absolute:first-child,
+.mdv-endpaper .mdv-ep-leaf .relative > div.absolute.pointer-events-none:first-child {
+  display: none;
+}
+
+/* Buttons: square plates. The shared Button's radius comes from its own
+   variant string, so the leaf squares every button that is a plate
+   (anything with a fill or a border), and leaves text links alone. */
+.mdv-endpaper .mdv-ep-leaf button:is([class*='bg-seal'], [class*='border']) {
+  border-radius: 3px;
+}
+
+/* The door's two acts (register): the sketch's two plain plates. */
+.mdv-ep-acts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mdv-ep-act-quiet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 1px solid var(--ink-3);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-1);
+  font-weight: 600;
+  font-size: 15px;
+  transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1), border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mdv-ep-act-quiet:hover {
+  background: var(--seal-tint);
+  border-color: var(--seal);
+}
+
+/* A message on the leaf (a refusal, a pause): a note written in the margin
+   of the page, not a coloured card (sketch 118 frames 06-07). The status hue
+   has no token (mudavym.css carries none), so the caller sets it with a
+   status class — the left rule's colour and the title's — and nothing else
+   on the note is coloured. */
+.mdv-ep-note {
+  margin: 0 0 22px;
+  padding: 2px 0 2px 14px;
+  border-left-width: 2px;
+  border-left-style: solid;
+}
+.mdv-ep-note-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 22px;
+}
+.mdv-ep-note-detail {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+/* The invite code, written into eight boxes on a line: one rule per
+   character, the characters set in them. Mono, so each glyph is one cell. */
+html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code {
+  --cell: 40px;
+  --slot: 30px;
+  width: calc(var(--cell) * 8 + var(--slot)) !important;
+  max-width: 100%;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  padding: 6px 0 8px calc((var(--slot) - 0.6em) / 2) !important;
+  font: 500 22px/1.2 'JetBrains Mono', ui-monospace, monospace !important;
+  letter-spacing: calc(var(--cell) - 0.6em) !important;
+  text-align: left !important;
+  text-transform: uppercase;
+  background-image: repeating-linear-gradient(to right, var(--mdv-ep-code-rule, var(--ink-3)) 0 var(--slot), transparent var(--slot) var(--cell)) !important;
+  background-size: calc(var(--cell) * 8) 1.5px !important;
+  background-position: left bottom !important;
+  background-repeat: no-repeat !important;
+}
+html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code:focus-visible {
+  --mdv-ep-code-rule: var(--seal);
+  box-shadow: none !important;
+  background-size: calc(var(--cell) * 8) 2px !important;
+}
+html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
+  --mdv-ep-code-rule: var(--seal-deep);
+}
+
+/* ── narrow viewport: the endpaper becomes a band above the leaf ─────────
+   Under 700px there is no room for two pages side by side, so the endpaper
+   collapses to a band: kicker, then the wordmark, then the house line, each
+   on its own row (the tag caption is dropped). */
 
 @media (max-width: 700px) {
+  .mudavym.mdv-auth.mdv-endpaper {
+    padding: 12px 12px 28px;
+  }
   .mdv-ep-book,
   .mdv-ep-book--wide {
     grid-template-columns: 1fr;
@@ -196,21 +370,25 @@
     display: none;
   }
   .mdv-ep-endpaper {
-    padding: 18px 20px;
-    min-height: 0;
-    height: 150px;
-    flex-direction: row;
-    align-items: center;
+    padding: 18px 20px 20px;
   }
-  .mdv-ep-endpaper .mdv-ep-top {
-    gap: 4px;
+  .mdv-ep-tile {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, transparent 52%, var(--ink-1) 78%);
+    mask-image: linear-gradient(to right, transparent 0, transparent 52%, var(--ink-1) 78%);
+  }
+  .mdv-ep-body {
+    margin: 14px 0 0;
+    padding-top: 0;
+  }
+  .mdv-ep-house {
+    font-size: 17px;
+    max-width: none;
   }
   .mdv-ep-tagline {
     display: none;
   }
   .mdv-ep-leaf {
-    padding: 28px 20px 26px;
-    background-image: none;
+    padding: 30px 20px 26px;
   }
   .mdv-ep-leaf::after {
     display: none;
@@ -220,11 +398,11 @@
   }
   .mdv-ep-leaf-title {
     font-size: 22px;
+    line-height: 34px;
+    background-size: 100% 34px;
   }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mdv-endpaper * {
-    animation: none !important;
+  .mdv-ep-folio {
+    top: 12px;
+    right: 16px;
   }
 }

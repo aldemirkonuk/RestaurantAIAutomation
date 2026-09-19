@@ -29,7 +29,7 @@ interface AuthShellProps {
  * `--ink-1` token instead. The mark and the full stop keep BrandMark's own
  * seal colouring.
  */
-export const HOUSE_WORDMARK = 'text-inkm-1 dark:text-inkm-1'
+const HOUSE_WORDMARK = 'text-inkm-1 dark:text-inkm-1'
 
 /**
  * Shared auth chrome — warm paper atmosphere with an İznik wash + the Mudavym

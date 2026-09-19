@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { EndpaperShell } from './EndpaperShell'
 
@@ -126,5 +126,72 @@ describe('EndpaperShell', () => {
       </EndpaperShell>,
     )
     expect(screen.getByRole('img', { name: 'Mudavym' })).toBeInTheDocument()
+  })
+
+  /*
+   * Motion. jsdom has no Web Animations, so `Element.prototype.animate` is
+   * stubbed per test; `lib/mudavym/motion.animate()` calls it with the house
+   * token's duration and easing, which is what these assert.
+   */
+  describe('motion', () => {
+    let calls: { el: Element; keyframes: unknown; options: KeyframeAnimationOptions }[]
+    beforeEach(() => {
+      calls = []
+      Element.prototype.animate = vi.fn(function (this: Element, keyframes: unknown, options: KeyframeAnimationOptions) {
+        calls.push({ el: this, keyframes, options })
+        return {} as Animation
+      }) as unknown as Element['animate']
+    })
+    afterEach(() => {
+      // @ts-expect-error — jsdom has no animate(); put it back the way it was
+      delete Element.prototype.animate
+      vi.resetModules()
+    })
+
+    it('draws the mark once per page load: the first shell plays it, a later one opens still', async () => {
+      vi.resetModules()
+      const { EndpaperShell: Fresh } = await import('./EndpaperShell')
+      const first = render(
+        <Fresh kicker="k" houseLine="h">
+          <p>x</p>
+        </Fresh>,
+      )
+      // name (turn), full stop (stamp), two rules (settle), kicker + voice (ink)
+      expect(calls).toHaveLength(6)
+      expect(calls.map((c) => c.options.duration)).toEqual([420, 360, 320, 320, 160, 160])
+      expect(calls.map((c) => c.options.delay)).toEqual([0, 300, 340, 400, 560, 560])
+      first.unmount()
+      calls = []
+      render(
+        <Fresh kicker="k" houseLine="h">
+          <p>x</p>
+        </Fresh>,
+      )
+      expect(calls).toHaveLength(0)
+    })
+
+    it('turns the leaf when the page changes, never on first render, and holds the endpaper still', () => {
+      const { rerender, container } = render(
+        <EndpaperShell kicker="k" houseLine="h" pageKey="address">
+          <p>x</p>
+        </EndpaperShell>,
+      )
+      calls = []
+      rerender(
+        <EndpaperShell kicker="k" houseLine="h" pageKey="address">
+          <p>x</p>
+        </EndpaperShell>,
+      )
+      expect(calls).toHaveLength(0)
+      rerender(
+        <EndpaperShell kicker="k" houseLine="h" pageKey="methods">
+          <p>y</p>
+        </EndpaperShell>,
+      )
+      expect(calls).toHaveLength(1)
+      expect(calls[0].el).toBe(container.querySelector('.mdv-ep-leaf-inner'))
+      expect(calls[0].options.duration).toBe(420)
+      expect(container.querySelector('.mdv-ep-endpaper')?.contains(calls[0].el)).toBe(false)
+    })
   })
 })
