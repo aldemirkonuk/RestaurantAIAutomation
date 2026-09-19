@@ -27,7 +27,8 @@
 import "reflect-metadata";
 import { ValidationPipe, UnauthorizedException } from "@nestjs/common";
 import { PATH_METADATA, GUARDS_METADATA } from "@nestjs/common/constants";
-import { CommunicationsController } from "./communications.controller";
+import { RelayEmailController } from "./relay/relay-email.controller";
+import { RelayDoorGuard } from "./relay/relay-door.guard";
 import { SendEmailDto } from "./dto/communication.dto";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 
@@ -57,32 +58,52 @@ describe("F1 — the vendor-email route authenticates its service caller", () =>
     else process.env.ADMIN_API_KEY = ORIGINAL;
   });
 
-  it("POST /communications/email carries ServiceKeyGuard", () => {
-    const ServiceKeyGuard = loadServiceKeyGuard();
+  // ADR 0149 #19 (2026-09-17). The route moved to RelayEmailController and its
+  // method guard is now RelayDoorGuard, which admits the service key through
+  // ServiceKeyGuard (below, unchanged) OR a person's JWT through the real
+  // JwtAuthGuard it extends. The doors themselves are proved over HTTP in
+  // relay/relay-email.doors.spec.ts; these two pin that the key still reaches
+  // ServiceKeyGuard and that the route is still where the caller points.
+  it("POST /communications/email carries RelayDoorGuard, which consults ServiceKeyGuard for a key", async () => {
     const guards =
       Reflect.getMetadata(
         GUARDS_METADATA,
-        (CommunicationsController.prototype as any).sendEmail,
+        (RelayEmailController.prototype as any).sendEmail,
       ) ?? [];
-    expect(guards).toContain(ServiceKeyGuard);
+    expect(guards).toContain(RelayDoorGuard);
+
+    process.env.ADMIN_API_KEY = "s3cret-value";
+    const door = new RelayDoorGuard(
+      { getAllAndOverride: () => undefined } as any,
+      { isBlacklisted: async () => false } as any,
+      config({ ADMIN_API_KEY: "s3cret-value" }),
+    );
+    const request: any = { headers: { "x-admin-key": "s3cret-value" } };
+    const ctx: any = { switchToHttp: () => ({ getRequest: () => request }) };
+    await expect(door.canActivate(ctx)).resolves.toBe(true);
+    expect(request.relayDoor).toBe("orchestrator");
+
+    const wrong: any = { headers: { "x-admin-key": "wrong" } };
+    await expect(
+      door.canActivate({ switchToHttp: () => ({ getRequest: () => wrong }) } as any),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  it("is @Public() so the class-level JwtAuthGuard short-circuits to the service guard", () => {
+  it("is @Public() so the class-level JwtAuthGuard stands aside for RelayDoorGuard", () => {
     // Nest runs class guards before method guards and requires ALL to pass, so a
-    // method-level service guard cannot override JwtAuthGuard — it can only add
-    // to it. @Public() is how this controller already expresses "authenticated,
-    // but not by a user JWT" (see /webhooks/gmail, ADR 0019 D3).
+    // method-level guard cannot override JwtAuthGuard — it can only add to it.
+    // RelayDoorGuard runs the JWT check itself when no key is presented.
     expect(
       Reflect.getMetadata(
         IS_PUBLIC_KEY,
-        (CommunicationsController.prototype as any).sendEmail,
+        (RelayEmailController.prototype as any).sendEmail,
       ),
     ).toBe(true);
     // and the route is still where the caller points
     expect(
       Reflect.getMetadata(
         PATH_METADATA,
-        (CommunicationsController.prototype as any).sendEmail,
+        (RelayEmailController.prototype as any).sendEmail,
       ),
     ).toBe("email");
   });
@@ -202,63 +223,8 @@ describe("F2 — a threaded reply survives forbidNonWhitelisted", () => {
   });
 });
 
-describe("F3 — threading reaches Gmail and thread state comes back", () => {
-  function controllerWithSpy() {
-    const sendEmail = jest.fn().mockResolvedValue({
-      success: true,
-      messageId: "gmail-msg-1",
-      threadId: "gmail-thread-1",
-    });
-    const c = new CommunicationsController(
-      {} as any,
-      { sendEmail } as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      { get: () => undefined } as any,
-      {} as any,
-      {} as any,
-    );
-    return { c, sendEmail };
-  }
-
-  it("forwards replyTo/threadId/inReplyTo/references to GmailService", async () => {
-    const { c, sendEmail } = controllerWithSpy();
-    await c.sendEmail({
-      to: ["vendor@example.com"],
-      subject: "Re: your wines",
-      bodyHtml: "<p>hello</p>",
-      replyTo: "orders@mudavym.com",
-      threadId: "19f365aac4e6",
-      inReplyTo: "<wineops-123@wineops.ai>",
-      references: "<a@x> <b@y>",
-    } as any);
-
-    expect(sendEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        replyTo: "orders@mudavym.com",
-        threadId: "19f365aac4e6",
-        inReplyTo: "<wineops-123@wineops.ai>",
-        references: "<a@x> <b@y>",
-      }),
-    );
-  });
-
-  it("returns threadId, which the caller persists as gmail_thread_id", async () => {
-    // provider_conversation_agent.py:3090 stores `send_result["thread_id"]`,
-    // which email_composer_service.py:370 reads from `result["threadId"]`.
-    // Without it every reply starts a new Gmail thread.
-    const { c } = controllerWithSpy();
-    const result = await c.sendEmail({
-      to: ["vendor@example.com"],
-      subject: "s",
-      bodyHtml: "<p>h</p>",
-    } as any);
-    expect(result).toMatchObject({
-      success: true,
-      messageId: "gmail-msg-1",
-      threadId: "gmail-thread-1",
-      channel: "email",
-    });
-  });
-});
+// F3 — threading reaches Gmail and thread state comes back — MOVED 2026-09-17
+// (ADR 0149 #19) with the route. `CommunicationsController.sendEmail` no longer
+// exists; relay/relay-email.doors.spec.ts "sends the orchestrator's vendor mail
+// end to end" posts the orchestrator's own body and asserts that threadId,
+// inReplyTo and references reach GmailService and that threadId comes back.

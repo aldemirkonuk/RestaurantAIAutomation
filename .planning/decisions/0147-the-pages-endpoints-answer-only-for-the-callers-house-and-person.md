@@ -96,6 +96,68 @@ By module (details and failing output in the named report):
   key; users by JWT, owner/manager, their own house only, recipients limited to its vendor
   contacts and members, and an audit row per send.]
 
+[AMENDED 2026-09-17 — ADR 0149 answer #19 carried in and built. `POST
+/communications/email` (the relay ADR 0084 wrote down) now has two locked doors
+(`apps/api-gateway/src/communications/relay/`). The orchestrator uses the existing
+`X-Admin-Key` and must name the house, the vendor and the conversation or order;
+the gateway checks all three against the rows and every recipient against that
+vendor's addresses in the house's book. A person needs a JWT, owner or manager of
+the session's house, recipients among its members and vendor contacts, and sends
+text, never raw HTML. [CORRECTED 2026-09-17, same day, adversarial review: a
+person sends nothing. After those checks the person door refuses 409, because the
+only mailbox the route can send from is the deployment's shared one and ADR 0118
+D1/D2 rule that out; which mailbox a person's mail leaves from was not decided by
+#19 and is left to the founder. "Never raw HTML" was also false while it stood —
+a guessable MIME boundary and unencoded bodies let `bodyText` inject an HTML part
+— and is fixed for every sender in `GmailService.createMimeMessage` (random
+boundary, base64 parts, bounded bodies).] [SUPERSEDED 2026-09-17, later the same
+day — the founder answered the fork the paragraph above left open: a person's
+mail DOES leave this route, through the house's OWN connected mailbox
+(`HouseSenderService.resolve`'s `gmail_send` grant — the same one the letters
+composer already uses, never the deployment's shared one), naming the acting
+person as author. A house with none gets a refusal in the resolver's own words
+plus a machine-readable `code: "house_mailbox_not_connected"`, not a bare 409.
+`relay-email.service.ts`'s `sendAsPerson`.] [SUPERSEDED AGAIN 2026-09-17, later
+the same day: an immediate send from this mailbox contradicted ADR 0118 D2,
+which the founder himself decided in session and which
+`GET /communications/letters/sender` already publishes for it (`ceremony:
+"undo"`, `undoMs`, the 2-minute recall sentence) — a promise this door's own
+callers were not getting. Founder: the person door **queues** like every
+other send from this mailbox, so D2's rule attaches to the mailbox, not to
+the route. Built the same day: `sendAsPerson` inserts a `relay_email_queue`
+row (`status: HOUSE_QUEUED`, `scheduled_send_at = now + undoMs`, the
+already-signed body) and returns 202, not 200; `RelayEmailCron` ->
+`dispatchQueued` sends it once the window closes, re-resolving the sending
+identity from the row rather than trusting what was true at queue time;
+`POST /communications/email/:id/cancel` (`cancelQueued`) pulls a still-queued
+row back before then. Migration
+`20260917210000_a_persons_mail_queues_like_the_houses_own.sql`; ADR 0118 D2
+carries the same bracket. See `.planning/decisions/CLAIMS.jsonl`
+(`ADR-0149-MAILBOX-QUEUE`).] Every send writes `system_audit_log` rows (attempt before the
+provider call, then sent or failed; refusals too), actor `public.users.user_id` or
+`orchestrator`. Refusals are 401/403 with the reason. [CORRECTED 2026-09-17:
+also 409 (the person door, above), 422 (commitment language) and 503 (a read
+failed, filed as `relay_email_unavailable`, not as a refusal).] [CORRECTED
+2026-09-17, the queuing answer above: a person-door send now writes a fourth
+row first, `relay_email_queued`, at queue time — before any attempt row
+exists, since nothing is attempted with a provider until the window closes.
+`attemptRecorded` is `false` on a queued response for exactly that reason.] Not decided here: whether the
+orchestrator should release or park a conversation the relay refused with a 4xx
+(ADR 0099, Proposed, rejected widening its classifier).] [CORRECTED 2026-09-18:
+the queued shape above did not work against the real schema —
+`scheduled_send_at NOT NULL` rejected `cancelQueued`'s and `dispatchQueued`'s
+own terminal writes with 23502, so the undo never cancelled anything and a
+sent or failed row stayed `HOUSE_SENDING` forever; fixed by making the column
+nullable (see ADR 0118 D2 and `CLAIMS.jsonl`'s `ADR-0149-MAILBOX-QUEUE` for
+the measurement and the fix). Also fixed: `dispatchQueued`'s own status-write
+failures are no longer discarded, and `cancelQueued`'s update now confirms it
+matched a row before answering "pulled back". **Founder, 2026-09-18, ADR 0149
+row 43:** pulling a queued send back is the author's alone, on both this
+route and `POST /communications/letters/:id/cancel` — a non-author gets 403.
+A pooled inbox — several owners sharing a view of what left or is queued,
+with no shared cancel right and each still sending as themself — is recorded
+as a direction in `.planning/06-pages/communications.md`, not built.]
+
 ## Alternatives rejected
 
 - **Replace a mismatched client id with the token's, silently.** Rejected: a request

@@ -476,14 +476,23 @@ export class HouseLettersService {
    * cancelled; a row past its window is refused rather than marked cancelled,
    * because the dispatcher may already hold it and "cancelled" would then be a
    * claim about a letter that went.
+   *
+   * Author-only (founder, 2026-09-18, ADR 0149 row 43 — "only author is the
+   * best option"; answers this ADR's own open question 4, "should a queued
+   * letter be visible to the whole house, or only its author?"): the row's
+   * own `email_headers.written_by` is who queued it, and only that person may
+   * pull it back. A pooled inbox other owners could also cancel from was
+   * raised in the same answer and recorded as a direction, not built — see
+   * `.planning/06-pages/communications.md`'s relay section.
    */
   async cancel(params: {
     restaurantId: string;
+    userId: string;
     id: string;
   }): Promise<{ id: string; status: string; says: string }> {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
-      .select("id, status, scheduled_send_at, restaurant_id")
+      .select("id, status, scheduled_send_at, restaurant_id, email_headers")
       .eq("id", params.id)
       .eq("restaurant_id", params.restaurantId)
       .maybeSingle();
@@ -496,6 +505,13 @@ export class HouseLettersService {
     if (!data) throw new NotFoundException("No such letter in this house.");
 
     const row = data as unknown as Record<string, unknown>;
+    const headers = (row.email_headers ?? {}) as Record<string, unknown>;
+    const writtenBy = (headers.written_by as string | null) ?? null;
+    if (writtenBy !== params.userId) {
+      throw new ForbiddenException(
+        "Only the person who wrote this letter can pull it back. Ask them to cancel it, or let it go and follow up once it has left.",
+      );
+    }
     if (String(row.status) !== LETTER_STATUS.QUEUED) {
       throw new ConflictException(
         `That letter is "${String(row.status)}", not queued, so it was not cancelled. Only a letter still inside its window can be pulled back.`,
@@ -510,15 +526,28 @@ export class HouseLettersService {
       );
     }
 
-    const { error: updateError } = await this.db.client
+    // `.select("id")` so a letter `dispatchDue` claimed between the read
+    // above and this update — QUEUED -> SENDING, the same race
+    // `RelayEmailService.cancelQueued` guards against on its own queue — is
+    // not silently reported as pulled back. Zero rows means the guard
+    // (`status = QUEUED`) matched nothing, which the read above cannot rule
+    // out: it is a snapshot, not a lock. (Wave5 confirmer residual: this
+    // mirrors relay's own B1 fix one-for-one.)
+    const { data: cancelled, error: updateError } = await this.db.client
       .from("procurement_conversations")
       .update({ status: LETTER_STATUS.CANCELLED, scheduled_send_at: null })
       .eq("id", params.id)
-      .eq("status", LETTER_STATUS.QUEUED);
+      .eq("status", LETTER_STATUS.QUEUED)
+      .select("id");
 
     if (updateError) {
       throw new BadRequestException(
         `The letter was NOT cancelled (${updateError.message}). It is still queued.`,
+      );
+    }
+    if (!cancelled || (cancelled as unknown[]).length === 0) {
+      throw new ConflictException(
+        "That letter was claimed by the dispatcher the instant before this reached it, so it was NOT cancelled. The conversation book will say what happened to it.",
       );
     }
 
@@ -904,6 +933,26 @@ export function mergeFieldsIn(
 }
 
 /**
+ * Strip CR/LF from a value bound for one MIME header line.
+ *
+ * `GmailService.createMimeMessage` has a DTO in front of it
+ * (`SINGLE_HEADER_LINE`, communication.dto.ts) that refuses a multi-line value
+ * before it is ever built into a header. This function has no DTO in front of
+ * it — `sendThroughGrant`'s `subject` came from `email_headers.subject` on a
+ * queued row (`house-letters.dto.ts`'s subject has no such guard) with no
+ * single-line check anywhere on the way — so a subject of
+ * `"hi\r\nBcc: someone@elsewhere"` was written straight into the header block
+ * and added a header nothing here ever checked (found 2026-09-17, adversarial
+ * review of the relay lane, out of that lane's own diff). Applied to every
+ * value this function writes into a header line, not only `subject`, because
+ * `to`/`cc`/`bcc`/`replyTo`/`inReplyTo`/`references` reach here from callers
+ * this function does not control either.
+ */
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\r\n]+/g, " ");
+}
+
+/**
  * Send one letter through the granting account's own Gmail mailbox.
  *
  * Deliberately NOT `GmailService`: that service is built on the deployment's
@@ -912,16 +961,30 @@ export function mergeFieldsIn(
  * shared with every other house. A bearer token from the house's own grant is
  * the whole point.
  *
+ * `to` stays a single string for the composer's own caller (`dispatchDue`,
+ * above); `cc`/`bcc`/`replyTo`/`threadId`/`inReplyTo`/`references` are new
+ * (ADR 0149 #19's person door, relay-email.service.ts) and all optional, so
+ * the composer's call is unchanged.
+ *
  * Exported so the spec can prove the request shape without a network.
  */
 export async function sendThroughGrant(params: {
   token: string;
   from: string;
-  to: string;
+  to: string | string[];
+  cc?: string[];
+  bcc?: string[];
   subject: string;
   text: string;
+  replyTo?: string;
+  threadId?: string;
+  inReplyTo?: string;
+  references?: string;
   fetchImpl?: typeof fetch;
 }): Promise<string | null> {
+  const addressLine = (v: string | string[]) =>
+    sanitizeHeaderValue(Array.isArray(v) ? v.join(", ") : v);
+
   // `From` is emitted only when we actually know the address. The `gmail_send`
   // grant asks for the send scope and nothing else, so it carries no
   // `openid`/`email` and no address was ever read for it — and `From: ` with
@@ -929,9 +992,14 @@ export async function sendThroughGrant(params: {
   // silently repairs. Omitting it lets Gmail stamp the authenticated mailbox,
   // which is the true answer and the one we could not have written ourselves.
   const mime = [
-    ...(params.from.trim() ? [`From: ${params.from.trim()}`] : []),
-    `To: ${params.to}`,
-    `Subject: ${params.subject}`,
+    ...(params.from.trim() ? [`From: ${sanitizeHeaderValue(params.from.trim())}`] : []),
+    `To: ${addressLine(params.to)}`,
+    ...(params.cc?.length ? [`Cc: ${addressLine(params.cc)}`] : []),
+    ...(params.bcc?.length ? [`Bcc: ${addressLine(params.bcc)}`] : []),
+    `Subject: ${sanitizeHeaderValue(params.subject)}`,
+    ...(params.replyTo ? [`Reply-To: ${sanitizeHeaderValue(params.replyTo)}`] : []),
+    ...(params.inReplyTo ? [`In-Reply-To: ${sanitizeHeaderValue(params.inReplyTo)}`] : []),
+    ...(params.references ? [`References: ${sanitizeHeaderValue(params.references)}`] : []),
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
     "",
@@ -947,7 +1015,10 @@ export async function sendThroughGrant(params: {
         Authorization: `Bearer ${params.token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ raw: Buffer.from(mime).toString("base64url") }),
+      body: JSON.stringify({
+        raw: Buffer.from(mime).toString("base64url"),
+        ...(params.threadId ? { threadId: params.threadId } : {}),
+      }),
     },
   );
 

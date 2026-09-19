@@ -2631,6 +2631,17 @@ class ProviderConversationAgent(BaseAgent):
             # failure is the most ambiguous kind there is, not the safest.
             return False
 
+        # ADR 0149 #19 (2026-09-17). A gateway 5xx proves nothing: it can follow
+        # an accepted send, or come from a proxy in front of the gateway. It is
+        # checked FIRST because `send_via_gateway` words it
+        # "gateway refused the send: HTTP 503 — ...", and "503 " satisfied the
+        # SMTP permanent-failure pattern below — so a 502 after an accepted send
+        # was released for retry, which is the duplicate vendor mail this
+        # classifier exists to prevent. Measured: the pre-fix classifier
+        # returned True for every "HTTP 5xx —" string.
+        if re.search(r"gateway refused the send: HTTP 5\d\d\b", text, re.I):
+            return False
+
         # No transport was ever attempted.
         if re.search(
             r"no email delivery method available|no recipients|no_email", text, re.I
@@ -2665,6 +2676,15 @@ class ProviderConversationAgent(BaseAgent):
             r"invalid recipient|no recipients defined|invalid to header", text, re.I
         ):
             return True
+
+        # NOT HERE, deliberately (ADR 0149 #19, 2026-09-17): a gateway 4xx from
+        # the relay's doors (400/401/403/404/422/429) is decided before any
+        # transport exists, so it too proves non-delivery. But teaching this
+        # allow-list to say so was REJECTED in ADR 0099 (Proposed) for parity
+        # with `ProcurementService.isDefiniteSendRefusal`, and that rejection
+        # has been neither locked nor overturned — so a relay refusal still
+        # parks the conversation as SEND_UNCONFIRMED, with the gateway's
+        # sentence in the log. An open fork for the founder, not defaulted here.
 
         return False
 
@@ -2813,6 +2833,7 @@ class ProviderConversationAgent(BaseAgent):
                 convo_data.get("manager_approved_message") or convo_data["message_text"]
             )
             provider_id = convo_data["provider_id"]
+            restaurant_id = convo_data.get("restaurant_id")
             prior_status = convo_data.get("status")
 
             provider = (
@@ -2872,6 +2893,7 @@ class ProviderConversationAgent(BaseAgent):
                     provider_data=provider.data if provider.data else {},
                     conversation_id=conversation_id,
                     order_data=order_data,
+                    restaurant_id=restaurant_id,
                 )
                 or {}
             )
@@ -2999,11 +3021,17 @@ class ProviderConversationAgent(BaseAgent):
         provider_data: Dict[str, Any],
         conversation_id: Optional[str] = None,
         order_data: Optional[Dict[str, Any]] = None,
+        restaurant_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Send a message to a provider via the specified channel.
 
         For email: uses EmailComposerService to wrap in HTML and send
         through the NestJS API Gateway (Gmail API) for threading support.
+
+        ADR 0149 #19: the gateway's service door sends only for a named house,
+        vendor, and conversation or order, and only to that vendor's addresses
+        in the house's book. `restaurant_id` is therefore required for an email
+        to leave; without it the composer refuses before sending.
         """
         contact = provider_data.get("primary_contact", {}) or {}
         if isinstance(contact, str):
@@ -3049,9 +3077,19 @@ class ProviderConversationAgent(BaseAgent):
         if not order_data:
             order_data = {}
 
+        # ADR 0149 #19: the gateway refuses (400) a subject with a line break,
+        # because `GmailService` writes it into the MIME header block unescaped
+        # and a line break there adds a header — a `Bcc:` nobody checked. The
+        # wine and vendor names are database text, so collapse any whitespace
+        # run to one space here rather than have a vendor's approved mail
+        # refused for a stray newline in a wine name.
+        subject = " ".join(
+            f"Regarding {order_data.get('wine_name', 'your wines')} — {provider_name}".split()
+        )
+
         payload = EmailPayload(
             to=[vendor_email],
-            subject=f"Regarding {order_data.get('wine_name', 'your wines')} — {provider_name}",
+            subject=subject,
             body_html=self.email_composer._wrap_html(
                 message,
                 {
@@ -3060,6 +3098,10 @@ class ProviderConversationAgent(BaseAgent):
                 },
             ),
             body_text=message,
+            restaurant_id=restaurant_id,
+            provider_id=provider_id,
+            conversation_id=conversation_id,
+            order_id=order_data.get("id") or None,
         )
 
         # Resolve threading from history
@@ -3182,9 +3224,15 @@ class ProviderConversationAgent(BaseAgent):
             channel="email",
             provider_data=provider_data,
             order_data={"wine_name": wine_name, "id": order_id or ""},
+            restaurant_id=restaurant_id,
         )
+        hold_sent = bool((send_result or {}).get("success"))
 
-        # Notify manager about the scarcity and the auto-hold
+        # Notify manager about the scarcity and the auto-hold.
+        #
+        # ADR 0149 #19: this said "An automatic hold request was sent" whatever
+        # the send returned. The relay now refuses a hold that names no house or
+        # no matched order, so the notice states what actually happened.
         await self.publish(
             exchange_name="notification.events",
             routing_key="notification.scarcity_auto_hold",
@@ -3197,21 +3245,34 @@ class ProviderConversationAgent(BaseAgent):
                     "wine_name": wine_name,
                     "order_id": order_id,
                     "type": "scarcity_auto_hold",
-                    "title": f"Auto-hold sent: {wine_name}",
+                    "title": (
+                        f"Auto-hold sent: {wine_name}"
+                        if hold_sent
+                        else f"Auto-hold NOT sent: {wine_name}"
+                    ),
                     "message": (
                         f"Vendor indicated limited stock of {wine_name}. "
                         f"An automatic hold request was sent. Please confirm the order soon."
+                        if hold_sent
+                        else (
+                            f"Vendor indicated limited stock of {wine_name}. "
+                            "No hold request was sent "
+                            f"({(send_result or {}).get('error') or 'no reason returned'}). "
+                            "Reply to the vendor yourself if you want them to hold it."
+                        )
                     ),
                     "urgency": "critical",
                     "original_vendor_message": original_body[:500],
-                    "auto_reply_sent": hold_message,
+                    "auto_reply_sent": hold_message if hold_sent else None,
+                    "auto_reply_sent_ok": hold_sent,
                 },
             },
             priority=8,
         )
 
         self.logger.info(
-            f"Scarcity auto-hold sent to {provider_data.get('name', provider_id)}: {send_result}"
+            f"Scarcity auto-hold {'sent' if hold_sent else 'NOT sent'} to "
+            f"{provider_data.get('name', provider_id)}: {send_result}"
         )
 
     # =========================================================================

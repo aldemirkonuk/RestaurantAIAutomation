@@ -169,9 +169,19 @@ drift its docstring exists to prevent. Left alone; recorded below as not fixed.
 - **The route still carries no tenant.** `ServiceKeyGuard` authenticates a
   machine, not a principal — the key holder may still send to any address. The
   guard's own docstring says so, and forbids class-level or `APP_GUARD` use.
+  [FIXED 2026-09-17, ADR 0149 #19: the route moved to
+  `communications/relay/`; the key holder must now name the house, vendor and
+  conversation or order, and may send only to that vendor's addresses in the
+  house's book. Every send writes `system_audit_log` rows. The route still
+  writes no `procurement_conversations` row — the caller still does.]
 - **A gateway 401/400 is still classified `ambiguous` and parks the
   conversation.** Conservative direction (never a duplicate purchase order), but
   it is not correct. See the rejected alternative above.
+  [STILL OPEN 2026-09-17: the relay now also answers 403 and 422 before any
+  transport. Left unwidened on purpose — this record is Proposed, so its
+  rejection is neither locked nor overturned. Separately fixed that day: a
+  gateway HTTP 5xx was classified DEFINITE, because the composer's
+  `"HTTP 503 — …"` matched the SMTP 5xx pattern; it is now ambiguous.]
 - **Nothing here makes the orchestrator run in production.** The measured blast
   radius of zero is because it does not. Whether it should is a separate
   decision.
@@ -209,3 +219,4 @@ and it says so in the log rather than failing silently.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | — | Created |
+| 2026-09-17 | ADR 0149 #19 relay lane | Tenant hole closed (see bracket above); the 4xx classification fork left open; the 5xx misclassification fixed |

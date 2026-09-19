@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+from html import escape as _escape_html
 import re
 import statistics
 import time
@@ -66,6 +67,14 @@ class EmailPayload:
     in_reply_to: Optional[str] = None
     references: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # ADR 0149 #19 (2026-09-16, "Two doors, both locked"). What the send is FOR.
+    # The gateway's service door refuses a send that does not name the house,
+    # the vendor, and the conversation or order, and checks every recipient
+    # against that vendor's addresses in the house's book.
+    restaurant_id: Optional[str] = None
+    provider_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    order_id: Optional[str] = None
 
 
 @dataclass
@@ -378,12 +387,52 @@ class EmailComposerService:
                 ),
             }
 
+        # ADR 0149 #19. The gateway refuses (403) a service send that does not
+        # say which house, vendor and conversation or order it is for. Refused
+        # HERE first, with no transport attempted. Worded, like the unset-key
+        # branch above, to land in `_is_definite_send_refusal`'s EXISTING
+        # allow-list ("no email delivery method available") rather than adding
+        # a pattern to it: nothing left the process, so this proves
+        # non-delivery.
+        missing = [
+            name
+            for name, value in (
+                ("restaurant_id", payload.restaurant_id),
+                ("provider_id", payload.provider_id),
+            )
+            if not value
+        ]
+        if not payload.conversation_id and not payload.order_id:
+            missing.append("conversation_id or order_id")
+        if missing:
+            logger.error(
+                "Vendor email names no %s — refusing to send; the gateway would "
+                "refuse it too.",
+                ", ".join(missing),
+            )
+            return {
+                "success": False,
+                "error": (
+                    "no email delivery method available for a vendor email that "
+                    "does not name "
+                    + ", ".join(missing)
+                    + ": the gateway sends only for a named house, vendor, and "
+                    "conversation or order"
+                ),
+            }
+
         request_body = {
             "to": payload.to,
             "subject": payload.subject,
             "bodyHtml": payload.body_html,
             "bodyText": payload.body_text,
+            "restaurantId": payload.restaurant_id,
+            "providerId": payload.provider_id,
         }
+        if payload.conversation_id:
+            request_body["conversationId"] = payload.conversation_id
+        if payload.order_id:
+            request_body["orderId"] = payload.order_id
 
         if payload.reply_to:
             request_body["replyTo"] = payload.reply_to
@@ -421,9 +470,20 @@ class EmailComposerService:
                         # `message`, never `error`, so the old
                         # `result.get("error", "Unknown error")` erased the
                         # status on every refusal. Name it.
+                        #
+                        # ADR 0149 #19 correction: a Nest HttpException body
+                        # carries BOTH — `error` is the bare status phrase
+                        # ("Forbidden") and `message` is the gateway's sentence
+                        # (which house, which address). So a refusal reads
+                        # `message` first; a 200 provider failure has only
+                        # `error`, and still reads it.
+                        message = result.get("message")
+                        if isinstance(message, list):
+                            message = "; ".join(str(m) for m in message)
                         detail = (
-                            result.get("error")
-                            or result.get("message")
+                            (message if resp.status != 200 else None)
+                            or result.get("error")
+                            or message
                             or "no detail returned"
                         )
                         return {
@@ -708,17 +768,24 @@ class EmailComposerService:
     # =========================================================================
 
     def _wrap_html(self, body_text: str, tags: Dict[str, Any]) -> str:
-        """Wrap plain-text body into minimal, professional HTML."""
+        """Wrap plain-text body into minimal, professional HTML.
+
+        The body is TEXT — an AI draft a manager approved, or edited — and the
+        order reference is database text, so every paragraph and the reference
+        are HTML-escaped before any markup is added (2026-09-17, ADR 0149 #19
+        review). Unescaped, a ``<`` in an approved message became markup in the
+        vendor's mail client.
+        """
         paragraphs = body_text.split("\n\n")
         html_paras = "".join(
-            f'<p style="margin: 0 0 12px; line-height: 1.6;">{p.replace(chr(10), "<br/>")}</p>'
+            f'<p style="margin: 0 0 12px; line-height: 1.6;">{_escape_html(p, quote=False).replace(chr(10), "<br/>")}</p>'
             for p in paragraphs
             if p.strip()
         )
 
         order_ref = tags.get("order_number") or tags.get("order_id", "")
         ref_line = (
-            f'<p style="margin: 20px 0 0; color: #9ca3af; font-size: 11px;">Ref: {order_ref}</p>'
+            f'<p style="margin: 20px 0 0; color: #9ca3af; font-size: 11px;">Ref: {_escape_html(str(order_ref), quote=False)}</p>'
             if order_ref
             else ""
         )
