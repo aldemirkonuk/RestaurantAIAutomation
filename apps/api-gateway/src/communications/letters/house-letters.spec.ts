@@ -45,6 +45,7 @@ import {
   sameAddress,
   sendThroughGrant,
 } from "./house-letters.service";
+import { HouseLettersCron } from "./house-letters.cron";
 
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const PROVIDER = "cccccccc-0000-4000-8000-cccccccccccc";
@@ -810,5 +811,55 @@ describe("the gmail_send grant, end to end", () => {
     );
     expect(identity.missing.join(" ")).toContain(GMAIL_SEND_DEFINITION.label);
     expect(identity.words).toContain(GMAIL_SEND_DEFINITION.label);
+  });
+});
+
+/**
+ * ADR 0161. `dispatchDue` used to answer an unreadable queue with
+ * `{ considered: 0, sent: 0, failed: 0, skipped: 0 }` — byte for byte what it
+ * answers when nothing is due — so the cron recorded `error: null` and
+ * `GET /communications/letters/sender` said "the dispatcher ran, nothing to send" through a
+ * database outage. The two cases below are the same call with one difference:
+ * whether the read failed.
+ */
+describe("a queue that cannot be read is not a quiet minute", () => {
+  const NOW = Date.parse("2026-09-04T10:00:00Z");
+
+  function cronOver(rows: Parameters<typeof build>[0]) {
+    const { db } = build(rows);
+    const sender = new HouseSenderService(db, configWith({}));
+    const svc = new HouseLettersService(db, sender, OAUTH_OK);
+    return { svc, cron: new HouseLettersCron(svc) };
+  }
+
+  it("throws, naming the read, when the queue read fails", async () => {
+    const { svc } = cronOver({
+      procurement_conversations: { error: { message: "connection refused" } },
+    });
+    await expect(svc.dispatchDue(NOW)).rejects.toThrow(
+      /could not read the queue: connection refused/,
+    );
+  });
+
+  it("records the failure on the cron's lastRun, never as error: null", async () => {
+    const { cron } = cronOver({
+      procurement_conversations: { error: { message: "connection refused" } },
+    });
+    await cron.run();
+    const last = cron.lastRun();
+    expect(last).not.toBeNull();
+    expect(last?.error).toMatch(/could not read the queue: connection refused/);
+  });
+
+  it("still records a genuinely empty queue as a completed run with error: null", async () => {
+    const { svc, cron } = cronOver({ procurement_conversations: [] });
+    await expect(svc.dispatchDue(NOW)).resolves.toEqual({
+      considered: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+    });
+    await cron.run();
+    expect(cron.lastRun()).toMatchObject({ considered: 0, error: null });
   });
 });
