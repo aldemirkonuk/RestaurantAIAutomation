@@ -40,6 +40,7 @@
  * own ground the same way, `lib/mudavym/shellGround.ts`).
  */
 
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createElement, type ReactElement } from 'react'
@@ -420,8 +421,12 @@ export function isColourClass(token: string): boolean {
  * blind to class/style — that is claim 2's job, above.
  */
 function fieldSignature(root: Element): string[] {
-  return Array.from(root.querySelectorAll('input, select, textarea, button')).map((el) => {
+  return Array.from(root.querySelectorAll('input, select, textarea, button, label, a[href]')).map((el) => {
     const tag = el.tagName.toLowerCase()
+    // A field's label and a link's destination are part of "same fields and
+    // flow" too (PR #397's audit plan): the label's words, and where a link goes.
+    if (tag === 'label') return `<label for=${el.getAttribute('for') ?? ''}> "${(el.textContent ?? '').replace(/\s+/g, ' ').trim()}"`
+    if (tag === 'a') return `<a href=${el.getAttribute('href')}>`
     const id = el.getAttribute('id') ?? ''
     const type = el.getAttribute('type') ?? ''
     const label = el.getAttribute('aria-label') ?? el.getAttribute('name') ?? ''
@@ -443,6 +448,25 @@ describe('public switch OFF — today’s page', () => {
     expect(container.querySelector('.mdv-auth')).toBeNull()
     // Today's ground literal, on the page root, exactly as it ships.
     expect(container.firstElementChild).toHaveClass('bg-[#FAF7F5]')
+  })
+
+  /*
+   * The byte-level proof. Claim 3 compares controls, which says nothing about
+   * a class string or a node that moved on today's page; this does. Each
+   * fingerprint is the sha256 of the OFF render as origin/main 22695d129
+   * ships it (see the fixture's `_what` for how to re-take one on purpose).
+   * Added after PR #397's audit plan found the old whole-tree fingerprint
+   * gone and a stray space in one OFF class string that nothing caught.
+   */
+  const OFF_FINGERPRINTS = (
+    JSON.parse(readFileSync(resolve(process.cwd(), 'src/pages/__tests__/authPages.off-fingerprints.json'), 'utf8')) as {
+      states: Record<string, string>
+    }
+  ).states
+  it.each(STATES)('$name renders today’s page byte for byte', async ({ name, reach }) => {
+    setSwitch(false)
+    const container = await reach()
+    expect([name, createHash('sha256').update(container.innerHTML).digest('hex')]).toEqual([name, OFF_FINGERPRINTS[name]])
   })
 
   it('absence is off: with no override and no env, the page is today’s', async () => {

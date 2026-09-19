@@ -457,7 +457,7 @@ export function Register() {
               // House path: the status border stays (no status token), and
               // the three hand-drawn focus halos go — the seal outline comes
               // from auth-house.css.
-              on ? 'mdv-ep-code' : '',
+              ...(on ? ['mdv-ep-code'] : []),
               invitePreview?.valid === true
                 ? on
                   ? 'border-seal'

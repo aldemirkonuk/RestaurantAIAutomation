@@ -65,7 +65,7 @@ function signInNote(refusal: Refusal, message: string): { pause: boolean; title:
     return {
       pause: true,
       title: 'Too many tries — wait a moment.',
-      detail: 'This address has been checked too many times from this connection. Try again in a few minutes.',
+      detail: 'This connection has made too many sign-in attempts. Try again in a few minutes.',
     }
   }
   return { pause: false, title: 'Sign-in didn’t go through.', detail: message }
@@ -126,6 +126,7 @@ export function Login() {
   const resolve = useCallback(
     async (address: string) => {
       setError(null)
+      setRefusal(null)
       clearError()
       setResolving(true)
       try {
@@ -482,7 +483,12 @@ export function Login() {
             enableOneTap
             disabled={loading}
             onSuccess={() => navigate(from, { replace: true })}
-            onError={setError}
+            onError={(message) => {
+              // A Google refusal is its own message: never let a password
+              // mismatch from earlier on this step dress it as one.
+              setRefusal(null)
+              setError(message)
+            }}
           />
         </div>
 
