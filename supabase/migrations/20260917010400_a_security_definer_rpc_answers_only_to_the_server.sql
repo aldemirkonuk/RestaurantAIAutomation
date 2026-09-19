@@ -23,6 +23,13 @@
 -- guidance's caution about revoking from a role that also inherits from a
 -- group it was not un-membered from — the group's grant survives.
 --
+-- [Measured in production 2026-09-18, PR #391 audit: `increment_trust_counter`
+-- is still `{=X/postgres,postgres=X/postgres,service_role=X/postgres}`, so it is
+-- open to anon and authenticated today. `seed_sim_restaurant` is already
+-- `{postgres=X/postgres,service_role=X/postgres}`. Nothing in this migration
+-- corpus closed it, so the change happened outside it. Both revokes stay: a
+-- database built from this corpus has both functions open.]
+--
 -- OD-72's own verification (section 5) only re-checked tables and views; it
 -- never re-asserted the function revoke, so the gap shipped as reported
 -- success. Section 5 of this migration closes that specific absence for
@@ -72,19 +79,42 @@ begin
 end
 $$;
 
--- Close the CLASS, not just these two names. OD-72's own ratchet
--- (20260825210000_od72_revoke_client_grants.sql:186-187) already runs
--- `alter default privileges in schema public revoke all on functions from
--- anon, authenticated` — but PostgreSQL's built-in default is to grant
--- EXECUTE on a new function to PUBLIC, not to name anon/authenticated
--- individually, and no default privilege was ever set for either of those
--- two roles for OD-72's statement to revoke. That line closes nothing for a
--- function created after it runs, which is exactly how these two survived
--- 22 days past it. This is the statement that actually changes the
--- default — mirroring the table-side idiom that line 183-184 of that same
--- migration already uses for `on tables`:
-alter default privileges in schema public
-  revoke execute on functions from public;
+-- The CLASS -- every SECURITY DEFINER function a later migration writes -- is
+-- closed at review time, not here.
+--
+-- [CORRECTED 2026-09-18, source: PR #391 audit.] This spot used to hold
+-- `alter default privileges in schema public` + `revoke execute on functions
+-- from public`, captioned "close the CLASS". That statement is a NO-OP and has
+-- been removed. PostgreSQL applies a per-schema default ACL on top of the
+-- global one, so an IN SCHEMA revoke can only take back what an IN SCHEMA
+-- grant gave; EXECUTE-to-PUBLIC is the built-in global default and it cannot
+-- touch it. Measured with a PGlite probe: a function created after the
+-- statement carried `{=X/postgres,postgres=X/postgres,service_role=X/postgres}`,
+-- identical to a control run without it.
+--
+-- The caption's other claim was wrong too. It said OD-72's own
+-- `... revoke all on functions from anon, authenticated`
+-- (20260825210000_od72_revoke_client_grants.sql:186-187) had no default to
+-- revoke. Production's pg_default_acl (read 2026-09-18) shows postgres's
+-- per-schema function default in `public` as
+-- `{postgres=X/postgres,service_role=X/postgres}`, with no anon or
+-- authenticated. supabase_admin's row in `public` still names both, and
+-- OD-72's statement is the only one in this corpus that removes them. So it
+-- did change the default. It just never mattered, because PUBLIC's grant
+-- already covers both roles.
+--
+-- What replaced it: arm (c) of scripts/check_new_tables_are_locked_down.py
+-- (already a CI step) fails the build when a migration creates, replaces or
+-- alters-to a SECURITY DEFINER function without revoking EXECUTE from PUBLIC,
+-- anon and authenticated in that same file, and refuses the no-op statement
+-- if it is ever written again. ADR 0159 records why a database-wide default
+-- (`alter default privileges for role postgres revoke execute on functions
+-- from public`, the global form, which does work) was not chosen here.
+--
+-- [2026-09-18, round 5, source: PR #391 verifier round 4: arm (c) reads
+-- migration text and is only a fast pre-check for common spellings. The class
+-- is decided by scripts/check_definer_functions_closed.py, an end-state check
+-- on the database schema-parity.yml builds from every migration (ADR 0159).]
 
 -- ---------------------------------------------------------------------------
 -- Assert the outcome. A revoke that reports success without measuring is
@@ -130,6 +160,6 @@ begin
     end if;
   end if;
 
-  raise notice 'increment_trust_counter/seed_sim_restaurant: anon and authenticated can no longer EXECUTE where the function exists; service_role still can; future SECURITY DEFINER functions no longer inherit PUBLIC EXECUTE by default.';
+  raise notice 'increment_trust_counter/seed_sim_restaurant: anon and authenticated can no longer EXECUTE where the function exists; service_role still can.';
 end
 $$;
