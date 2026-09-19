@@ -1,7 +1,7 @@
 # CommunicationsNext — motions, canonical
 
-Four motions from `src/lib/mudavym/motion.ts`, three of them the page's own and
-one inherited from the overlay primitive. The verdict's "too much text" critique
+Six motions from `src/lib/mudavym/motion.ts`, three of them the page's own and
+three inherited from the overlay and hold primitives. The verdict's "too much text" critique
 applies to movement too: a page about correspondence should read like a
 well-kept book, not perform.
 
@@ -11,6 +11,8 @@ well-kept book, not perform.
 | `cm-ink` | `ink` | HOUSE · 160ms | row + rail-button hover/focus — one paper step, nothing translates |
 | `cmp-pick` | `ink` | HOUSE · 160ms | a recipient, a template or an engine sentence taking hover/focus inside the composer — the same one paper step, so a picker in a sheet moves like a row on the page |
 | `mdv-sheet-tuck` | `tuck` | spring · 300ms | the composer and the letter library arriving from the right; owned by `components/mudavym/Sheet.tsx` (ADR 0112), listed here because this page is where it fires |
+| `mdv-panel-settle` | `settle` | HOUSE · 320ms | the trust ask and the add-vendor ask arriving as centred panels (ADR 0160 §113, sketch 113 frame 4c); owned by `components/mudavym/Sheet.tsx` (ADR 0112) |
+| `mdv-hold-pour` | `pour` | linear · 620ms | the "Hold to trust" press filling while held, then the seal; owned by `components/mudavym/HoldToApprove.tsx`. Trust is a security act, so it takes the hold; *adding a vendor* and *untrusting* are plain buttons and do not move |
 
 Deliberate non-motions, and why each one stays still:
 
