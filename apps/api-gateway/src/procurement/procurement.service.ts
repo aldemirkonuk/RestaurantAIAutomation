@@ -1862,11 +1862,12 @@ export class ProcurementService {
         return;
       }
 
+      const priorUnitPrices = await this.priorSightingUnitPrices(
+        args.restaurantId,
+        args.masterWineId,
+      );
       const isOutlier = isOutlierAgainstPriors(
-        await this.priorSightingUnitPrices(
-          args.restaurantId,
-          args.masterWineId,
-        ),
+        priorUnitPrices,
         provisional.normalizedUnitPrice,
       );
 
@@ -1887,7 +1888,12 @@ export class ProcurementService {
           currency: s.currency ?? null,
           notes: args.notes ?? null,
         },
-        { isOutlier },
+        // `priorUnitPrices.length` — not just the boolean — so the row can
+        // say WHY it was or was not flagged (ADR 0160 §112 fork 6a; review
+        // finding: the own-paper writer judged but never recorded a reason,
+        // so a judged-clean row and a never-judged one both read "No judge
+        // has looked at this row").
+        { isOutlier, priorCount: priorUnitPrices.length },
       );
       if (!decision.write) {
         this.logger.warn(decision.reason);
@@ -1919,6 +1925,9 @@ export class ProcurementService {
           normalization_note: row.normalization_note,
           content_hash: row.content_hash,
           is_outlier: row.is_outlier,
+          outlier_reason: row.outlier_reason,
+          outlier_basis: row.outlier_basis,
+          outlier_judged_at: row.outlier_judged_at,
           raw: row.raw,
         });
 

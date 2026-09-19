@@ -128,7 +128,11 @@ const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
 // Public vendor catalogue — resolved by slug, also served on a vendors.* subdomain.
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 // Owner/manager only — vendor pricing is the restaurant's negotiating position.
+// [Corrected 2026-09-19, repair pass, wt-pg-vprices] `VendorPriceCompare.tsx`
+// is routed again, as PageGate's `legacy` branch — see the route comment
+// below for why the 2026-09-18 "unrouted" plan was superseded.
 const VendorPriceCompare = lazyWithRefresh(() => import('./pages/VendorPriceCompare'))
+const VendorPricesNext = lazyWithRefresh(() => import('./pages/vendor-prices/next/VendorPricesNext'))
 const DevTruth = lazyWithRefresh(() => import('./pages/DevTruth'))
 
 // Dev/Test pages
@@ -335,10 +339,27 @@ function App() {
                   <Route path="/recommendations" element={<PageGate page="recommendations" legacy={<Recommendations />} next={<RecommendationsNext />} />} />
                   <Route path="/recommendations/catalog" element={<InsightCatalog />} />
                   <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
-                  {/* Vendor price comparison. Role gate is enforced server-side
-                      too (owner/manager on /vendor-intel/*) — a hidden route is
-                      not access control. */}
-                  <Route path="/vendor-prices" element={<VendorPriceCompare />} />
+                  {/* Vendor price comparison — ADR 0160 §112, direction A,
+                      behind a per-house flag like every other Mudavym page.
+                      [Corrected 2026-09-19, repair pass, wt-pg-vprices]: an
+                      earlier same-day brief (2026-09-18) said this route
+                      should cut straight to Mudavym for every house with no
+                      PageGate — the founder's LATER, more specific decision
+                      overrides that: memory founder-sketch-decisions-106-115.md,
+                      "19-lane blocking answers (AskUserQuestion, 2026-09-19
+                      ~09:20Z)": "vendor-prices = behind a flag (vendor_prices
+                      mudavym_design_* column migration, he flips it; NOT
+                      live on merge)". Gated on mudavym_design_vendor_prices
+                      (migration 20260919110000), OFF by default.
+                      [2026-09-19, must-fix closure pass, wt-pg-vprices: the
+                      2026-09-18 brief this superseded is not itself a
+                      locatable source — no session, doc or memory entry by
+                      that name exists to check it against (CLAUDE.md §5b) —
+                      so it is named here rather than quoted verbatim.] Role
+                      gate is enforced server-side too (owner/manager on
+                      /vendor-intel/*, staff on the identity routes) — a
+                      hidden route is not access control. */}
+                  <Route path="/vendor-prices" element={<PageGate page="vendor_prices" legacy={<VendorPriceCompare />} next={<VendorPricesNext />} />} />
                   {/* dev/truth — three instruments that make the product's own
                       numbers checkable (reach · as-of · swallow). The gateway
                       routes behind them 404 in production, so this renders its

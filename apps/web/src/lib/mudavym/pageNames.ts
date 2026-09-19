@@ -23,10 +23,14 @@
  *   Settings               Sidebar.tsx:202
  *   Connections            Sidebar.tsx:208
  *
- * Two slugs have no sidebar entry, so their name is taken from the page's own
+ * Three slugs have no sidebar entry, so their name is taken from the page's own
  * head instead and cited there: `recommendations`
- * (`pages/recommendations/next/RecommendationsNext.tsx:453`) and `cellar`
- * (`pages/cellar/next/cellar-format.ts:157-165`).
+ * (`pages/recommendations/next/RecommendationsNext.tsx:453`), `cellar`
+ * (`pages/cellar/next/cellar-format.ts:157-165`) and, added 2026-09-19 (repair
+ * pass, wt-pg-vprices) when `vendor_prices` joined `MUDAVYM_PAGES`,
+ * `vendor_prices` (`pages/vendor-prices/next/VendorPricesNext.tsx:807`, its
+ * own `<h1>`) — this page is cold-URL only (§2 of its dossier), no sidebar
+ * entry exists to name it instead.
  *
  * The map is an exhaustive `Record<MudavymPage, …>`: adding a slug to
  * `MUDAVYM_PAGES` without naming it here fails `tsc`, so a new rebuilt page
@@ -75,6 +79,10 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // The canonical document at /documents/:id (ADR 0104 slice 2, merged from main 2026-09-05).
   document: 'Document',
   logs: 'Logs',
+  // Added 2026-09-19 (repair pass, wt-pg-vprices): matches the page's own
+  // <h1> (VendorPricesNext.tsx:807) — no sidebar entry exists for this
+  // cold-URL-only page (see the file header note above).
+  vendor_prices: 'Vendor prices',
 };
 
 /**

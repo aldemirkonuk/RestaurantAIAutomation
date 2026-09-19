@@ -62,6 +62,13 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // ADR 0160 §112, direction A. [Added 2026-09-19, repair pass,
+  // wt-pg-vprices]: the founder's 2026-09-19 ~09:20Z lane-blocking answer
+  // (memory founder-sketch-decisions-106-115.md) overrides an earlier
+  // same-day brief that had routed `/vendor-prices` straight to Mudavym for
+  // every house with no gate — see App.tsx's route comment. Column added by
+  // migration 20260919110000, OFF by default like every other page here.
+  'vendor_prices',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
