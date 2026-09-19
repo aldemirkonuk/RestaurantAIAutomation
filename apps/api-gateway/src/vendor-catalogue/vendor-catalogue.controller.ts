@@ -88,9 +88,7 @@ export class VendorCatalogueController {
     description: "Curated vendors that plausibly match, ranked by similarity",
   })
   @ApiResponse({ status: 401, description: "Unauthorized" })
-  async match(
-    @Query() dto: MatchVendorsDto,
-  ): Promise<VendorMatchCandidate[]> {
+  async match(@Query() dto: MatchVendorsDto): Promise<VendorMatchCandidate[]> {
     try {
       return await this.vendorCatalogueService.match(dto);
     } catch (error) {

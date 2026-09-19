@@ -162,7 +162,9 @@ def collect(results: Path) -> list[dict[str, Any]]:
             }
         )
 
-    # 3. Orchestrator preflight + legacy waves A–E, G
+    # 3. Orchestrator preflight + legacy waves A–C. Waves D, E and G were retired
+    #    2026-09-12 (ADR 0137): their files are deleted, so no wave_d/e/g.xml can
+    #    ever exist, and expecting one would report a permanent cannot_check.
     pre = _load_json(results / "orchestrator-preflight.json")
     if pre is None or "__parse_error__" in pre:
         checks.append(
@@ -184,7 +186,7 @@ def collect(results: Path) -> list[dict[str, Any]]:
                 "source": "preflight",
             }
         )
-    for letter in "abcdeg":
+    for letter in "abc":
         xml_path = results / f"wave_{letter}.xml"
         if not xml_path.exists():
             if reachable is False:

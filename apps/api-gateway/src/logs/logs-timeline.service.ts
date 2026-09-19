@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 
 /**
@@ -67,6 +67,13 @@ export interface TimelineResponse {
   sourcesQueried: TimelineSource[];
   /** Sources that errored. Non-empty means the counts below are a FLOOR. */
   failedSources: TimelineSource[];
+  /** The clamp applied (`events` fills it); whether a row exists beyond this
+   *  page (EXACT — each source is read to `window + 1`); and the `before`
+   *  cursor for the next page (null: no next page, or no dated event to
+   *  advance from). See "The window, and walking it" at the foot of the file. */
+  window: number;
+  hasMore: boolean;
+  nextCursor: string | null;
 }
 
 /**
@@ -94,37 +101,46 @@ export class LogsTimelineService {
 
   async getTimeline(
     restaurantId: string,
-    opts: { correlationId?: string; limit?: number } = {},
+    opts: { correlationId?: string; limit?: number; before?: string } = {},
   ): Promise<TimelineResponse> {
     const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
     const correlationId = opts.correlationId?.trim() || null;
+    const before = parseCursor(opts.before);
     const db = this.dbService.getClient();
 
+    // One past the window, per source. That single extra row is what makes
+    // `hasMore` a measurement instead of an inference from a full page.
+    const fetch = limit + 1;
+    const cursor: Cursor = { before, fetch };
+
     const results = await Promise.all([
-      this.fetchPosChecks(db, restaurantId, correlationId, limit),
-      this.fetchDecisions(db, restaurantId, correlationId, limit),
-      this.fetchInventoryTxns(db, restaurantId, correlationId, limit),
-      this.fetchDocuments(db, restaurantId, correlationId, limit),
-      this.fetchAuditLog(db, restaurantId, correlationId, limit),
+      this.fetchPosChecks(db, restaurantId, correlationId, cursor),
+      this.fetchDecisions(db, restaurantId, correlationId, cursor),
+      this.fetchInventoryTxns(db, restaurantId, correlationId, cursor),
+      this.fetchDocuments(db, restaurantId, correlationId, cursor),
+      this.fetchAuditLog(db, restaurantId, correlationId, cursor),
       // event_store is not restaurant-scoped, so it is read only when a
       // correlation_id names the rows to read. `null` — not an empty result —
       // is what says "not queried", so the skip is reported as a skip.
       correlationId
-        ? this.fetchEventStore(db, correlationId, limit)
+        ? this.fetchEventStore(db, correlationId, cursor)
         : Promise.resolve(null),
     ]);
 
     const queried = results.filter((r): r is SourceResult => r !== null);
-    const events = queried
-      .flatMap((r) => r.events)
-      .sort(newestFirst)
-      .slice(0, limit);
+    const merged = queried.flatMap((r) => r.events).sort(newestFirst);
+    const hasMore = merged.length > limit;
+    const events = merged.slice(0, limit);
+    const lastDated = [...events].reverse().find((e) => e.occurredAt !== null);
 
     return {
       events,
       correlationId,
       sourcesQueried: queried.map((r) => r.source),
       failedSources: queried.filter((r) => r.error).map((r) => r.source),
+      window: limit,
+      hasMore,
+      nextCursor: hasMore ? (lastDated?.occurredAt ?? null) : null,
     };
   }
 
@@ -148,7 +164,7 @@ export class LogsTimelineService {
     db: any,
     restaurantId: string,
     correlationId: string | null,
-    limit: number,
+    cursor: Cursor,
   ): Promise<SourceResult> {
     return this.guard("pos_checks", async () => {
       let q = db
@@ -156,9 +172,8 @@ export class LogsTimelineService {
         .select(
           "id, external_check_id, source, closed_at, opened_at, correlation_id, items",
         )
-        .eq("restaurant_id", restaurantId)
-        .order("opened_at", { ascending: false })
-        .limit(limit);
+        .eq("restaurant_id", restaurantId);
+      q = windowed(q, "opened_at", cursor);
       if (correlationId) q = q.eq("correlation_id", correlationId);
       const { data, error } = await q;
       if (error) throw error;
@@ -181,7 +196,7 @@ export class LogsTimelineService {
     db: any,
     restaurantId: string,
     correlationId: string | null,
-    limit: number,
+    cursor: Cursor,
   ): Promise<SourceResult> {
     return this.guard("decision_log", async () => {
       let q = db
@@ -189,9 +204,8 @@ export class LogsTimelineService {
         .select(
           "id, agent_name, decision_type, confidence, correlation_id, created_at, output",
         )
-        .eq("restaurant_id", restaurantId)
-        .order("created_at", { ascending: false })
-        .limit(limit);
+        .eq("restaurant_id", restaurantId);
+      q = windowed(q, "created_at", cursor);
       if (correlationId) q = q.eq("correlation_id", correlationId);
       const { data, error } = await q;
       if (error) throw error;
@@ -215,7 +229,7 @@ export class LogsTimelineService {
     db: any,
     restaurantId: string,
     correlationId: string | null,
-    limit: number,
+    cursor: Cursor,
   ): Promise<SourceResult> {
     return this.guard("inventory_transactions", async () => {
       // correlation lives in metadata->>'correlation_id' for this table.
@@ -224,9 +238,8 @@ export class LogsTimelineService {
         .select(
           "id, inventory_id, transaction_type, source, quantity_change, reason, metadata, transaction_date",
         )
-        .eq("restaurant_id", restaurantId)
-        .order("transaction_date", { ascending: false })
-        .limit(limit);
+        .eq("restaurant_id", restaurantId);
+      q = windowed(q, "transaction_date", cursor);
       if (correlationId) {
         q = q.contains("metadata", { correlation_id: correlationId });
       }
@@ -253,7 +266,7 @@ export class LogsTimelineService {
     db: any,
     restaurantId: string,
     correlationId: string | null,
-    limit: number,
+    cursor: Cursor,
   ): Promise<SourceResult> {
     return this.guard("procurement_documents", async () => {
       let q = db
@@ -261,9 +274,8 @@ export class LogsTimelineService {
         .select(
           "id, doc_type, doc_number, status, total, correlation_id, created_at",
         )
-        .eq("restaurant_id", restaurantId)
-        .order("created_at", { ascending: false })
-        .limit(limit);
+        .eq("restaurant_id", restaurantId);
+      q = windowed(q, "created_at", cursor);
       if (correlationId) q = q.eq("correlation_id", correlationId);
       const { data, error } = await q;
       if (error) throw error;
@@ -288,7 +300,7 @@ export class LogsTimelineService {
     db: any,
     restaurantId: string,
     correlationId: string | null,
-    limit: number,
+    cursor: Cursor,
   ): Promise<SourceResult> {
     return this.guard("system_audit_log", async () => {
       let q = db
@@ -296,9 +308,8 @@ export class LogsTimelineService {
         .select(
           "id, actor_type, action, entity_type, entity_id, reason, correlation_id, created_at",
         )
-        .eq("restaurant_id", restaurantId)
-        .order("created_at", { ascending: false })
-        .limit(limit);
+        .eq("restaurant_id", restaurantId);
+      q = windowed(q, "created_at", cursor);
       if (correlationId) q = q.eq("correlation_id", correlationId);
       const { data, error } = await q;
       if (error) throw error;
@@ -329,17 +340,16 @@ export class LogsTimelineService {
   private fetchEventStore(
     db: any,
     correlationId: string,
-    limit: number,
+    cursor: Cursor,
   ): Promise<SourceResult> {
     return this.guard("event_store", async () => {
-      const { data, error } = await db
+      const q = db
         .from("event_store")
         .select(
           "event_id, aggregate_type, aggregate_id, event_type, correlation_id, created_at, payload",
         )
-        .eq("correlation_id", correlationId)
-        .order("created_at", { ascending: false })
-        .limit(limit);
+        .eq("correlation_id", correlationId);
+      const { data, error } = await windowed(q, "created_at", cursor);
       if (error) throw error;
       return (data || []).map((r: any) => ({
         id: r.event_id,
@@ -355,4 +365,71 @@ export class LogsTimelineService {
       }));
     });
   }
+}
+
+/* ── The window, and walking it ──────────────────────────────────────────
+THE WINDOW IS MARKED, AND IT CAN BE WALKED (2026-09-11, /logs rebuild)
+
+`limit` was a silent cap: the page asked for 100, the merge sliced to 100,
+and nothing in the response said whether a 101st row existed. Now:
+
+  - every source is read to `limit + 1`, so `hasMore` is EXACT: the merged
+    list exceeds `limit` if and only if some register holds a row past it;
+  - `window` echoes the clamp that was applied, so a caller prints the cap
+    the server used and not the one it asked for;
+  - `nextCursor` is the `occurredAt` of the last DATED event on the page.
+    Passing it back as `before` reads the next page. The filter is `<=`,
+    not `<`: a strict cursor silently drops every row that shares the
+    boundary timestamp, and a batch insert stamps dozens of rows with one.
+    The caller de-duplicates on `source:id` instead — a re-read row costs a
+    byte, a dropped row costs the truth;
+  - undated rows (`occurredAt: null`) are re-read on every cursor page
+    (`col.is.null` is OR-ed into the filter) and sort LAST in every
+    register (`nullsFirst: false`), so they surface once the dated rows are
+    exhausted rather than never. Before this they sorted FIRST inside each
+    source query — Postgres puts NULLs first under DESC — so a register with
+    more undated rows than the window could crowd its own dated rows out of
+    the fetch entirely, and the merge then sliced the undated ones off: a
+    register full of rows that returned nothing;
+  - a page holding no dated event at all cannot advance: `nextCursor` is
+    null while `hasMore` may still be true, and the caller says so in words.
+*/
+
+/** Where a source read starts (`before`, inclusive) and how many rows it takes. */
+interface Cursor {
+  before: string | null;
+  fetch: number;
+}
+
+/**
+ * A cursor is an ISO-8601 instant or nothing. It is normalised to UTC `Z`
+ * form because it is spliced into a PostgREST `or=` filter, where a `+`
+ * offset would be read as a space; and a cursor that does not parse is a
+ * client error said as one, never a silent "start from the top" — that
+ * would hand a caller page one again while telling it this was page two.
+ */
+function parseCursor(raw: string | undefined): string | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const t = Date.parse(raw);
+  if (Number.isNaN(t)) {
+    throw new BadRequestException(
+      `before must be an ISO-8601 timestamp; got ${JSON.stringify(raw)}`,
+    );
+  }
+  return new Date(t).toISOString();
+}
+
+/**
+ * Apply the window to one source's query: newest first with undated rows
+ * LAST (see the header — Postgres puts NULLs first under DESC, which let an
+ * undated register crowd out its own dated rows), the cursor as an inclusive
+ * `<=` OR-ed with `is.null` so undated rows stay reachable on every page, and
+ * the fetch size of one past the window.
+ */
+function windowed(q: any, col: string, cursor: Cursor): any {
+  let out = q.order(col, { ascending: false, nullsFirst: false });
+  if (cursor.before) {
+    out = out.or(`${col}.lte.${cursor.before},${col}.is.null`);
+  }
+  return out.limit(cursor.fetch);
 }

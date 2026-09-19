@@ -64,13 +64,22 @@ export interface DoorOrderVM {
 
 /**
  * The gateway's GET /procurement/orders/:id returns OrderResponseDto
- * (quantity, unitType, bottlesTotal, wineName, orderNumber…); the web `Order`
- * type predates unitType/bottlesTotal, so those ride in untyped. Read them
- * defensively — a missing field is a null, not a guess.
+ * (quantity, unitType, bottlesTotal, wineName, orderNumber…). The web `Order`
+ * type used to predate `unitType` / `bottlesTotal`, so both rode in through a
+ * widening cast; since 2026-09-05 the shared type IS the DTO's key set and the
+ * cast is gone. Read defensively still — an absent field is a null, not a guess.
+ *
+ * `providerName` is REAL as of 2026-09-05: `getOrder` joins `providers` on
+ * `provider_id` in the same statement, so the credit-note letter can address a
+ * name instead of the words "the vendor". It is still `string | null` here —
+ * the wire distinguishes "joined and found no name" (`null`) from "this route
+ * does not join" (key absent), and the door can do nothing different about the
+ * two, so both fold to `null` and the letter says the vendor is unnamed rather
+ * than pretending one was found.
  */
 export function normalizeDoorOrder(raw: Order | null | undefined): DoorOrderVM | null {
   if (!raw || typeof raw !== 'object') return null;
-  const loose = raw as Order & { unitType?: unknown; bottlesTotal?: unknown };
+  const loose = raw;
   const quantity = num(loose.quantity);
   const unitType =
     typeof loose.unitType === 'string' && loose.unitType.trim() !== ''
@@ -82,7 +91,10 @@ export function normalizeDoorOrder(raw: Order | null | undefined): DoorOrderVM |
   return {
     orderNumber: loose.orderNumber ?? null,
     wineName: loose.wineName ?? null,
-    providerName: loose.providerName ?? null,
+    providerName:
+      typeof loose.providerName === 'string' && loose.providerName.trim() !== ''
+        ? loose.providerName.trim()
+        : null,
     quantity,
     unitType,
     expectedBottles: bottlesTotal ?? (isBottles ? quantity : null),
@@ -279,14 +291,29 @@ export interface CreditDraftInput {
 }
 
 /**
+ * The words the letter is addressed with when the order cannot name a vendor.
+ *
+ * Exported so the test asserts the sentence rather than a paraphrase of it, and
+ * so nothing here can drift into a bare "the vendor" that reads as though a
+ * name had been looked up and found. THIS LETTER LEAVES THE BUILDING: a manager
+ * approves and sends it to a distributor, so an unaddressed one has to say it is
+ * unaddressed.
+ */
+export const VENDOR_NOT_NAMED = 'the vendor (not named on this order)';
+
+/**
  * Spec point 4: the credit request already drafted when the short/refusal is
  * saved. Drafted here in --calm — plain sentences, no heat — and explicitly
  * UNSENT: the receiver never writes an email, a manager approves this later.
+ *
+ * The vendor is named from the wire's `providerName` (2026-09-05). Before that
+ * key existed this line read "To the vendor" on every order the door had ever
+ * opened — a letter about money, addressed to nobody.
  */
 export function creditDraft(input: CreditDraftInput): string | null {
   const { outcome, reason, counted, order, hasPhoto, driverName, initials } = input;
   if (outcome === 'accepted') return null;
-  const vendor = order?.providerName ?? 'the vendor';
+  const vendor = order?.providerName ?? VENDOR_NOT_NAMED;
   const orderRef = order?.orderNumber ? `order ${order.orderNumber}` : 'this order';
   const wine = order?.wineName ? ` (${order.wineName})` : '';
   const expected = order?.expectedBoxes;

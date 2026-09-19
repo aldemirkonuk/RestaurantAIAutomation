@@ -9,10 +9,22 @@
  *    count out of 8 and the last error verbatim.
  * 2. DROPPED — the defect fix (v3.0-TECH-DEBT / motion canvas inv-09):
  *    `flushDoorOutbox` permanently discards a receipt on a 4xx or after 8
- *    attempts and the legacy page throws that `failed` count away, so a
- *    dropped receipt looks identical to a delivered one. Here every drop is
- *    pinned by name and stays until a person dismisses it. Nothing vanishes;
- *    the drop becomes a pin (turn, then the stamp landing).
+ *    attempts (the `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)` branch
+ *    in `flushDoorOutbox`, lib/doorOutbox.ts), deleting it from the queue, so
+ *    the pending count falls exactly as it does on a delivery and a dropped
+ *    receipt looks identical to a delivered one. Here every drop is pinned by
+ *    name and stays until a person dismisses it. Nothing vanishes; the drop
+ *    becomes a pin (turn, then the stamp landing).
+ *
+ *    (This sentence has now rotted twice in four days — first claiming the
+ *    legacy page "throws that `failed` count away", then claiming it
+ *    "accumulates `dropped`" from the flush result. Neither describes the
+ *    tree. State the mechanism instead: grep `watchDoorOutbox(` in
+ *    DoorReceipt.tsx — that page consults NO field of the result; it re-reads
+ *    `readDroppedDoorReceipts` on every pass,
+ *    and it names the orders, as this rail does. What is left to this rail
+ *    alone is the QUEUE: the entries still waiting, with their attempt count
+ *    and last error, which neither door screen shows.)
  *
  * Honesty: a storage read that throws renders as "unknown", never as an
  * empty queue — and the empty state says what emptiness means.
@@ -28,15 +40,13 @@ const timeShort = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2
 function PinnedDrop({
   label,
   droppedAt,
-  exact,
   tenantUnknown,
   isNew,
   onDismiss,
 }: {
   label: string;
   droppedAt: string;
-  exact: boolean;
-  /** Inherited from the pre-scoping global key — restaurant never recorded. */
+  /** Inherited from a pre-scoping key — restaurant never recorded. */
   tenantUnknown?: boolean;
   isNew: boolean;
   onDismiss: () => void;
@@ -126,13 +136,10 @@ function PinnedDrop({
         The server refused it or eight attempts failed, and the outbox gave up on{' '}
         {fmtDate(droppedAt)}. The count exists only on the phone that took it — re-enter it from
         the paper record, or the stock it booked never happened.
-        {!exact && (
-          <em>
-            {' '}
-            (A sync that same moment also delivered receipts, so the name above is the queue's best
-            candidate, not a certainty.)
-          </em>
-        )}
+        {/* No "best candidate" hedge any more: the outbox writes the record
+            from the flush that caused the drop, keyed on the queue id, so the
+            name above is the order that was lost — not the closest match a
+            before/after diff could find. */}
         {tenantUnknown && (
           <em>
             {' '}
@@ -178,7 +185,6 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
               key={d.id}
               label={d.label}
               droppedAt={d.droppedAt}
-              exact={d.exact}
               tenantUnknown={d.tenantUnknown}
               isNew={newIds.has(d.id)}
               onDismiss={() => dismissDrop(d.id)}
@@ -235,7 +241,13 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                 >
                   {r.label}
                 </span>
-                <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: 10.5,
+                    color: 'var(--ink-3, #7C7365)',
+                  }}
+                >
                   saved {r.queuedAt ? timeShort.format(new Date(r.queuedAt)) : EM}
                   {r.lastError ? ` · last error: ${r.lastError}` : ''}
                 </span>

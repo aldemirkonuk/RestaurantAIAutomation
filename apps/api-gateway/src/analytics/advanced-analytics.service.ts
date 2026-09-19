@@ -388,6 +388,10 @@ export class AdvancedAnalyticsService {
     }
 
     const weekday = E.dayOfWeekProfile(dates, values);
+    // `weekday.best`/`.worst` break an exact tie by weekday order, so a week
+    // with no movement reported Sunday as both the busiest and the quietest
+    // night. An extreme that is shared is not an extreme (ADR 0020).
+    const extremes = E.separableExtremes(weekday.profiles);
     const decomposition = E.seasonalDecompose(values, 7);
     const trend28 = E.trendPerPeriodPct(values.slice(-28));
 
@@ -418,10 +422,12 @@ export class AdvancedAnalyticsService {
         const dts = r.map((x) => x.date);
         const vls = r.map((x) => x.value);
         const p = E.dayOfWeekProfile(dts, vls);
+        const ex = E.separableExtremes(p.profiles);
         return {
           type,
-          bestDay: p.best ? E.WEEKDAY_NAMES[p.best.weekday] : null,
-          worstDay: p.worst ? E.WEEKDAY_NAMES[p.worst.weekday] : null,
+          bestDay: ex.best ? E.WEEKDAY_NAMES[ex.best.weekday] : null,
+          worstDay: ex.worst ? E.WEEKDAY_NAMES[ex.worst.weekday] : null,
+          tie: ex.tie,
         };
       });
 
@@ -432,8 +438,16 @@ export class AdvancedAnalyticsService {
         stdev: p.stdev,
         n: p.n,
       })),
-      bestDay: weekday.best ? E.WEEKDAY_NAMES[weekday.best.weekday] : null,
-      worstDay: weekday.worst ? E.WEEKDAY_NAMES[weekday.worst.weekday] : null,
+      bestDay: extremes.best ? E.WEEKDAY_NAMES[extremes.best.weekday] : null,
+      worstDay: extremes.worst ? E.WEEKDAY_NAMES[extremes.worst.weekday] : null,
+      /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
+      tie: extremes.tie,
+      basis: {
+        weekday: `mean units per weekday over the last ${sinceDays} days of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        extremes: extremes.tie
+          ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
+          : "bestDay/worstDay are the single weekdays holding the highest and lowest mean",
+      },
       weeklySeasonalFactors: decomposition
         ? decomposition.seasonal.slice(0, 7)
         : null,

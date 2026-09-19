@@ -338,16 +338,51 @@ describe("InboundResponderService (deterministic core)", () => {
   });
 
   describe("syncOrderState — lifecycle (confirmed→APPROVED, matching receipt→ORDERED)", () => {
-    // Capture the payload passed to supabase.update() so we can assert on the
-    // status transition without a real DB.
-    const withCapturingDb = () => {
+    /**
+     * Capture what `syncOrderState` writes, PER TABLE, without a real database.
+     *
+     * WHY PER TABLE (fixed 2026-09-05, ADR 0119 Q2 fallout)
+     * ----------------------------------------------------
+     * This mock used to implement `from().update().eq()` and nothing else, and
+     * kept ONE `captured.update`. That was enough while the method wrote one
+     * row. It is not any more: the header's `final_price` became a
+     * trigger-maintained echo of `procurement_order_items.final_unit_price`, so
+     * an accepted price is now written to the LINE, and the method first READS
+     * the order's first line to find it.
+     *
+     * The mock had no `select`, so that read threw, the catch swallowed it, and
+     * NOTHING was captured — the acceptance case asserted `status` on an
+     * `undefined` payload and failed. The fix is here rather than in the
+     * service: the service's behaviour is correct and deliberate, and a mock
+     * that cannot answer a read the code makes is a broken mock, not a broken
+     * write path.
+     *
+     * `lineRead` lets a case make that read FAIL, which is its own asserted
+     * behaviour: the status still advances and no price is written anywhere.
+     */
+    const withCapturingDb = (
+      lineRead: { data: any; error: any } = { data: { id: "line1" }, error: null },
+    ) => {
+      const updates: Record<string, Record<string, any>> = {};
       const captured: { update?: Record<string, any> } = {};
       const supabase = {
-        from: () => ({
+        from: (table: string) => ({
           update: (payload: Record<string, any>) => {
-            captured.update = payload;
+            updates[table] = payload;
+            // Kept so the cases that only care about the order keep reading the
+            // way they always did.
+            if (table === "procurement_orders") captured.update = payload;
             return { eq: () => Promise.resolve({ error: null }) };
           },
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({
+                  maybeSingle: () => Promise.resolve(lineRead),
+                }),
+              }),
+            }),
+          }),
         }),
       };
       const s = new InboundResponderService(
@@ -357,7 +392,16 @@ describe("InboundResponderService (deterministic core)", () => {
         {} as any,
         {} as any, // nfVerdicts — the graded path is not the core under test
       );
-      return { s: s as any, captured };
+      // The decline path tells a manager. Captured rather than stubbed away:
+      // "the order moved and nobody was told" is the failure this replaces.
+      const notes: Array<{ restaurantId: string; n: Record<string, any> }> = [];
+      (s as any).persistManagerNotification = async (
+        restaurantId: string,
+        n: Record<string, any>,
+      ) => {
+        notes.push({ restaurantId, n });
+      };
+      return { s: s as any, captured, updates, notes };
     };
 
     const acceptanceAnalysis = (overrides: Record<string, any> = {}) =>
@@ -377,7 +421,7 @@ describe("InboundResponderService (deterministic core)", () => {
       });
 
     it("vendor accepts under full autonomy → APPROVED, never straight to ORDERED (CONFIRMED)", async () => {
-      const { s, captured } = withCapturingDb();
+      const { s, updates } = withCapturingDb();
       const order = {
         id: "o1",
         status: "NEGOTIATING",
@@ -392,8 +436,34 @@ describe("InboundResponderService (deterministic core)", () => {
         6,
         /* autonomyFull */ true,
       );
-      expect(captured.update?.status).toBe("APPROVED");
-      expect(captured.update?.final_price).toBe(1050);
+      expect(updates.procurement_orders?.status).toBe("APPROVED");
+      // The accepted price goes on the LINE, and the header is left alone: it is
+      // a trigger-maintained echo, and a direct write here that disagreed with
+      // the line comes back as a 23514 that would take the status update down
+      // with it (ADR 0119 Q2).
+      expect(updates.procurement_order_items?.final_unit_price).toBe(1050);
+      expect(updates.procurement_orders).not.toHaveProperty("final_price");
+    });
+
+    it("a line that cannot be READ advances the status and writes no price at all", async () => {
+      // A failed read is not an empty one. Without knowing whether a line
+      // exists, writing the header could hit the echo trigger and take the whole
+      // status update down, so the price is left unwritten and said out loud.
+      const { s, updates } = withCapturingDb({
+        data: null,
+        error: { message: "relation unavailable" },
+      });
+      const order = {
+        id: "o5",
+        status: "NEGOTIATING",
+        quantity: 6,
+        final_price: null,
+        negotiated_price: null,
+      };
+      await s.syncOrderState(order, acceptanceAnalysis(), 1090, 6, true);
+      expect(updates.procurement_orders?.status).toBe("APPROVED");
+      expect(updates.procurement_orders).not.toHaveProperty("final_price");
+      expect(updates.procurement_order_items).toBeUndefined();
     });
 
     it("APPROVED order + matching verification receipt → ORDERED (CONFIRMED)", async () => {
@@ -460,5 +530,132 @@ describe("InboundResponderService (deterministic core)", () => {
       await s.syncOrderState(order, acceptanceAnalysis(), 1090, 6, true);
       expect(captured.update).toBeUndefined();
     });
+
+  /**
+   * ADR 0125 Q3 — a vendor's no is not the order's death.
+   *
+   * ADDED AFTER AN AUDIT. The Q3 change shipped with no regression test at all in
+   * either language: the auditor swapped the PRE-FIX service back in and the whole
+   * file still passed 25/25, because none of the existing cases sends a decline.
+   *
+   * Writing these found a real defect in the shipped change, not just a gap: the
+   * `CONFIRMED -> NEGOTIATING` edge was added to the transition table and was
+   * UNREACHABLE from here, because `syncOrderState` returned early on any terminal
+   * status — CONFIRMED among them — before the decline branch was ever consulted.
+   * The first version of the CONFIRMED case below failed against the code that had
+   * already been committed.
+   */
+  describe("syncOrderState — a vendor's decline (ADR 0125 Q3)", () => {
+    const declineAnalysis = (intent: string) =>
+      baseAnalysis({
+        intent,
+        deal_kind: "none",
+        vendor_offers: [],
+        summary: "We cannot supply this vintage.",
+      });
+
+    it("leaves an order already NEGOTIATING where it is, and tells a manager", async () => {
+      const { s, updates, notes } = withCapturingDb();
+      const order = {
+        id: "d1",
+        restaurant_id: "rest-A",
+        status: "NEGOTIATING",
+        quantity: 6,
+        final_price: null,
+        negotiated_price: null,
+      };
+      await s.syncOrderState(order, declineAnalysis("rejection"), 1090, 6, false);
+
+      // No status write: it is already in the state a decline lands in, and a
+      // rewrite would be a change nobody made.
+      expect(updates.procurement_orders).not.toHaveProperty("status");
+      // And NOT closed. This is the whole decision: REJECTED would drop the order
+      // out of every open-order list before a person decided anything.
+      expect(updates.procurement_orders?.status).not.toBe("REJECTED");
+
+      // The decline is NOT copied onto the order. Who declined, when and in what
+      // words is the inbound `procurement_conversations` row; two accounts of one
+      // event can disagree.
+      const payload = JSON.stringify(updates.procurement_orders ?? {});
+      expect(payload).not.toMatch(/decline/i);
+      expect(payload).not.toMatch(/cannot supply/i);
+      expect(updates.procurement_orders).not.toHaveProperty("rejection_reason");
+
+      expect(notes).toHaveLength(1);
+      expect(notes[0].restaurantId).toBe("rest-A");
+      expect(notes[0].n.message).toMatch(/not cancelled/i);
+      expect(notes[0].n.metadata.from_status).toBe("NEGOTIATING");
+    });
+
+    it("returns a CONFIRMED order to NEGOTIATING rather than treating it as terminal", async () => {
+      // The case that caught the defect. CONFIRMED is in `terminal`, so before the
+      // fix `syncOrderState` returned before the decline branch and the order
+      // stayed placed with the vendor that had just refused it.
+      const { s, updates, notes } = withCapturingDb();
+      const order = {
+        id: "d2",
+        restaurant_id: "rest-A",
+        status: "CONFIRMED",
+        quantity: 6,
+        final_price: 1050,
+        negotiated_price: 1050,
+      };
+      await s.syncOrderState(order, declineAnalysis("out_of_stock"), 1090, 6, false);
+      expect(updates.procurement_orders?.status).toBe("NEGOTIATING");
+      expect(notes[0]?.n.metadata.from_status).toBe("CONFIRMED");
+    });
+
+    it.each(["rejection", "declined", "out_of_stock", "OUT_OF_STOCK"])(
+      "reads %s as a decline",
+      async (intent) => {
+        const { s, updates } = withCapturingDb();
+        const order = { id: "d3", restaurant_id: "rest-A", status: "CONFIRMED", quantity: 6 };
+        await s.syncOrderState(order, declineAnalysis(intent), 1090, 6, false);
+        expect(updates.procurement_orders?.status).toBe("NEGOTIATING");
+      },
+    );
+
+    it("does NOT treat a counter-offer as a decline", async () => {
+      // Haggling is not refusing. If `counter_offer` joined DECLINE_INTENTS every
+      // ordinary negotiation would rewind a placed order and notify a manager.
+      const { s, updates, notes } = withCapturingDb();
+      const order = {
+        id: "d4",
+        restaurant_id: "rest-A",
+        status: "CONFIRMED",
+        quantity: 6,
+        final_price: 1050,
+      };
+      await s.syncOrderState(
+        order,
+        baseAnalysis({ intent: "counter_offer", deal_kind: "offer", vendor_offers: [] }),
+        1090,
+        6,
+        false,
+      );
+      // CONFIRMED is terminal for everything that is not a decline, so nothing at
+      // all happened.
+      expect(updates.procurement_orders).toBeUndefined();
+      expect(notes).toHaveLength(0);
+    });
+
+    it("still refuses to rewind an order whose wine is moving or arrived", async () => {
+      // The decline rewind is allowed out of CONFIRMED and nothing else, because
+      // the transition table has no IN_TRANSIT/DELIVERED -> NEGOTIATING edge. A
+      // "decline" at that point is a delivery problem, and it belongs at the door.
+      for (const status of ["IN_TRANSIT", "DELIVERED", "COMPLETED", "CANCELLED"]) {
+        const { s, updates, notes } = withCapturingDb();
+        await s.syncOrderState(
+          { id: "d5", restaurant_id: "rest-A", status, quantity: 6 },
+          declineAnalysis("rejection"),
+          1090,
+          6,
+          false,
+        );
+        expect(updates.procurement_orders).toBeUndefined();
+        expect(notes).toHaveLength(0);
+      }
+    });
+  });
   });
 });

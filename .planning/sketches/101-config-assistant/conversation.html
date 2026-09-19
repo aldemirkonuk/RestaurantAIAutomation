@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>101 &middot; The talk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:33px;font-weight:600;letter-spacing:-.018em;line-height:1.08;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+a{color:var(--seal-deep)}
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:32px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:23px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+.ico{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px}
+.ico.lg{width:15px;height:15px}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-2);font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:2px}
+.chip.seal{border-color:var(--seal-ring);color:var(--seal-deep);background:var(--seal-tint)}
+.chip.warn{border-color:var(--ink-3);color:var(--ink-1)}
+
+/* ══ the stage: the assistant surface, and the ledger beside it ══ */
+.stage{display:grid;grid-template-columns:1fr 372px;gap:0;border:1px solid var(--paper-2);background:var(--paper-0);margin:14px 0 0}
+.talk{padding:20px 24px 22px;border-right:1px solid var(--paper-2);min-width:0}
+.talk-h{display:flex;align-items:center;justify-content:space-between;padding-bottom:13px;border-bottom:1px solid var(--paper-2)}
+.talk-h .t{font-family:var(--serif);font-size:18px;font-weight:600;color:var(--ink-1)}
+.talk-h .k{font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
+.turn{display:grid;grid-template-columns:70px 1fr;gap:14px;padding:15px 0;border-bottom:1px solid var(--paper-2)}
+.turn:last-child{border-bottom:0}
+.who{font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
+.who.you{color:var(--seal-deep)}
+.said{font-size:13.5px;line-height:1.62;color:var(--ink-1);margin:0}
+.said.you{font-family:var(--serif);font-size:15px;color:var(--ink-1)}
+.said em{color:var(--ink-2)}
+.note{font-size:11.5px;line-height:1.6;color:var(--ink-3);margin:7px 0 0;padding-left:11px;border-left:2px solid var(--paper-2)}
+.note b{color:var(--ink-2)}
+.turn.flag{background:var(--seal-tint);margin:0 -24px;padding-left:24px;padding-right:24px}
+.turn.flag .note{border-left-color:var(--seal-ring)}
+.moved{margin:9px 0 0;display:flex;flex-wrap:wrap;gap:6px}
+.moved .m{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--seal-deep);border:1px solid var(--seal-ring);background:var(--paper-0);padding:3px 7px;border-radius:2px}
+
+/* the ledger */
+.ledger{padding:20px 20px 22px;background:var(--paper-1);min-width:0}
+.ledger-h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-bottom:11px;border-bottom:1px solid var(--paper-2)}
+.lrow{padding:10px 0;border-bottom:1px solid var(--paper-2)}
+.lrow .r{font-family:var(--mono);font-size:8.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
+.lrow .f{font-size:12.5px;color:var(--ink-1);margin-top:2px;font-weight:500}
+.lrow .v{font-family:var(--mono);font-size:12px;color:var(--seal-deep);font-variant-numeric:tabular-nums;margin-top:2px}
+.lrow .v.off{color:var(--ink-3)}
+.lrow .src{font-size:10.5px;color:var(--ink-3);margin-top:3px;line-height:1.5}
+.tally{margin-top:14px;padding-top:12px;border-top:1px solid var(--ink-1)}
+.tally .n{font-family:var(--serif);font-size:26px;font-weight:600;color:var(--ink-1);line-height:1}
+.tally .k{font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-top:4px}
+.cta{margin-top:14px;display:block;width:100%;text-align:center;background:var(--seal);color:#FAF7F1;border:0;font-family:var(--sans);font-size:12.5px;font-weight:600;padding:11px 14px;letter-spacing:.01em;text-decoration:none}
+.cta.dry{background:transparent;color:var(--seal-deep);border:1px solid var(--seal-ring);margin-top:8px;font-weight:500}
+.cta-note{font-size:10.5px;color:var(--ink-3);margin-top:8px;line-height:1.55;text-align:center}
+
+table{border-collapse:collapse;width:100%;margin:14px 0 0;font-size:12px}
+th{text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-weight:400;padding:0 12px 7px 0;border-bottom:1px solid var(--ink-1);vertical-align:bottom}
+td{padding:9px 12px 9px 0;border-bottom:1px solid var(--paper-2);color:var(--ink-2);vertical-align:top;line-height:1.55}
+td b{color:var(--ink-1)}
+.callout{border-left:2px solid var(--seal);background:var(--seal-tint);padding:14px 18px;margin-top:14px}
+.cite{font-family:var(--mono);font-size:10px;line-height:1.85;color:var(--ink-3);margin-top:12px;word-break:break-word}
+.cite b{color:var(--ink-2);font-weight:600}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 101 &middot; the talk &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<a class="back" href="index.html">&larr; 101 index</a>
+<div class="wordmark">Mudavym</div>
+<h1>The talk<span class="dot">.</span></h1>
+<p class="lede">Six sentences from an owner, and eight values on the table. The conversation is not the product &mdash; the document at the end of it is.</p>
+<div class="dbl"></div>
+
+<div class="sec-h"><span class="sec-n">01</span><h2>Lokanta M&uuml;davim, first Tuesday</h2></div>
+<div class="sec-k">the assistant reads first, asks second, and writes nothing at all</div>
+
+<div class="stage">
+  <div class="talk">
+    <div class="talk-h">
+      <div class="t">Set this up with me</div>
+      <div class="k"><svg class="ico" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> nothing is written yet</div>
+    </div>
+
+    <div class="turn">
+      <div class="who">Mudavym</div>
+      <div>
+        <p class="said">I have read your fourteen registers. Eleven of them are still holding column defaults, which means nobody has answered them &mdash; not that anyone chose them. Three you have already answered, and I will leave those alone unless you tell me otherwise.</p>
+        <p class="note"><b>Why it opens this way.</b> A default is an answer nobody gave. The house already refuses to read <code>lead_time_days&nbsp;=&nbsp;7</code> as a stated term (<code>vendor-terms.service.ts:47&ndash;52</code>), so the assistant opens with the same distinction rather than presenting eleven blanks as eleven settings.</p>
+      </div>
+    </div>
+
+    <div class="turn">
+      <div class="who you">Aldemir</div>
+      <div>
+        <p class="said you">We&rsquo;re a small meyhane. Forty covers. Closed Mondays, and we run late &mdash; last order goes in about half one.</p>
+      </div>
+    </div>
+
+    <div class="turn">
+      <div class="who">Mudavym</div>
+      <div>
+        <p class="said">Then your service day should not settle at midnight. I would close the books six hours after the last order rather than on the calendar date, and hold Monday out of the baselines so a closed day does not read as a bad day.</p>
+        <div class="moved">
+          <span class="m">Notifications &rarr; settle window</span>
+          <span class="m">Calendar &rarr; Mondays excluded</span>
+        </div>
+        <p class="note">Two registers moved from one sentence. This is the thing an interview cannot do.</p>
+      </div>
+    </div>
+
+    <div class="turn">
+      <div class="who you">Aldemir</div>
+      <div>
+        <p class="said you">I buy from Anadolu, Ege &Scaron;arap and Kad&#305;k&ouml;y Bira. Anadolu wants the order in by eleven or it goes to the next van. I sign anything over five thousand lira myself; Deniz can do the rest.</p>
+      </div>
+    </div>
+
+    <div class="turn">
+      <div class="who">Mudavym</div>
+      <div>
+        <p class="said">Recorded as four things. Anadolu&rsquo;s cutoff at 11:00 &mdash; stated by you, not inferred, so it will read as a stated term. Ege and Kad&#305;k&ouml;y I have no cutoff for, and I am not going to guess one; they will stay unanswered until somebody says. The ceiling is &#8378;5,000 with the owner signing above it, and Deniz stays a manager.</p>
+        <div class="moved">
+          <span class="m">Vendor terms &rarr; Anadolu cutoff</span>
+          <span class="m">Approval thresholds &rarr; ceiling</span>
+          <span class="m">Approval thresholds &rarr; role</span>
+        </div>
+        <p class="note"><b>The refusal is the point.</b> Two of three vendors have no cutoff. Filling them with Anadolu&rsquo;s would be the exact fault the vendor-terms register was built to stop.</p>
+      </div>
+    </div>
+
+    <div class="turn">
+      <div class="who you">Aldemir</div>
+      <div>
+        <p class="said you">Don&rsquo;t ring my phone during service. And tell me when a wine gets cheap.</p>
+      </div>
+    </div>
+
+    <div class="turn flag">
+      <div class="who">Mudavym</div>
+      <div>
+        <p class="said">The first I can do: quiet hours 18:00&ndash;01:30, everything held and delivered in one digest at 10:00. <b>The second I cannot set for you</b>, and I would rather say so than draw you a control that goes nowhere. The price-drop threshold is one number for every house on this deployment &mdash; it is read from <code>MARKET_SIGNAL_DROP_PCT</code>, not from your registers, and it is at 10% today. Your alerts will fire at 10% below the thirty-day average whether you want that or not.</p>
+        <div class="moved">
+          <span class="m">Notifications &rarr; quiet hours</span>
+        </div>
+        <p class="note"><b>Measured, not hedged.</b> <code>market-price.producer.ts:95&ndash;97</code> reads the value from configuration; the default is <code>0.1</code> at <code>market-signal.ts:93</code>. There is no per-restaurant column to write, so there is no control &mdash; and the assistant names the number rather than leaving a silence the owner would read as agreement.</p>
+      </div>
+    </div>
+
+    <div class="turn">
+      <div class="who you">Aldemir</div>
+      <div>
+        <p class="said you">We do wine, beer and rak&#305;. No cocktails, no whiskey list.</p>
+      </div>
+    </div>
+
+    <div class="turn flag">
+      <div class="who">Mudavym</div>
+      <div>
+        <p class="said">That contradicts something a person already answered. On 21 August somebody on this account turned the whiskey register on. I am not going to quietly switch it off inside a batch &mdash; I have put it in a separate section for you to decide on its own.</p>
+        <div class="moved">
+          <span class="m">Cellar &rarr; wine, beer, rak&#305;</span>
+          <span class="m" style="border-style:dashed">Cellar &rarr; whiskey: contested, not batched</span>
+        </div>
+        <p class="note"><b>The batch only ever fills silence.</b> A register already holding a <em>stated</em> value never enters it. Contesting one is its own single decision with its own seal &mdash; which is what keeps the seal at the bottom of the batch meaningful.</p>
+      </div>
+    </div>
+
+    <div class="turn">
+      <div class="who">Mudavym</div>
+      <div>
+        <p class="said">That is eight values. Six I can write for this restaurant, one is kept in your browser and I will apply it here rather than on the server, and one I have already told you I cannot set. Nothing has been written. Read the list before you seal it &mdash; every row says where the current value came from, and you can drop any of them.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="ledger">
+    <div class="ledger-h">What I have, and where it goes</div>
+
+    <div class="lrow">
+      <div class="r">Notifications &middot; restaurant</div>
+      <div class="f">Service day settles</div>
+      <div class="v">06:00 after last order</div>
+      <div class="src">From &ldquo;we run late, last order about half one&rdquo;. Currently the code constant <code>SETTLE_HOURS_AFTER_MIDNIGHT&nbsp;=&nbsp;6</code> &mdash; nobody chose it.</div>
+    </div>
+    <div class="lrow">
+      <div class="r">Notifications &middot; account</div>
+      <div class="f">Quiet hours</div>
+      <div class="v">18:00 &ndash; 01:30, digest 10:00</div>
+      <div class="src">From &ldquo;don&rsquo;t ring my phone during service&rdquo;.</div>
+    </div>
+    <div class="lrow">
+      <div class="r">Vendor terms &middot; restaurant</div>
+      <div class="f">Anadolu &mdash; order cutoff</div>
+      <div class="v">11:00</div>
+      <div class="src">Stated by you. Ege &Scaron;arap and Kad&#305;k&ouml;y Bira stay unanswered &mdash; no cutoff was given and none is inferred.</div>
+    </div>
+    <div class="lrow">
+      <div class="r">Approval thresholds &middot; restaurant</div>
+      <div class="f">Manager ceiling</div>
+      <div class="v">&#8378;5,000 &middot; owner signs above</div>
+      <div class="src">From &ldquo;I sign anything over five thousand&rdquo;. No policy is recorded today.</div>
+    </div>
+    <div class="lrow">
+      <div class="r">Cellar &middot; restaurant</div>
+      <div class="f">Registers carried</div>
+      <div class="v">Wine &middot; Beer &middot; Rak&#305;</div>
+      <div class="src">Whiskey is <b>contested, not batched</b> &mdash; a person turned it on 21 Aug.</div>
+    </div>
+    <div class="lrow">
+      <div class="r">Calendar &middot; restaurant</div>
+      <div class="f">Days held out of baselines</div>
+      <div class="v">Mondays</div>
+      <div class="src">From &ldquo;closed Mondays&rdquo;.</div>
+    </div>
+    <div class="lrow">
+      <div class="r">Measurement &middot; <b>this browser</b></div>
+      <div class="f">Default glass pour</div>
+      <div class="v">150 ml</div>
+      <div class="src">Kept in localStorage. Applied in this browser, <b>not on the server</b> &mdash; nobody else here will see it.</div>
+    </div>
+    <div class="lrow">
+      <div class="r">Notifications &middot; <b>deployment</b></div>
+      <div class="f">Market price drop</div>
+      <div class="v off">10% &mdash; not yours to set</div>
+      <div class="src">One number for every house. Named, not offered.</div>
+    </div>
+
+    <div class="tally">
+      <div class="n">8</div>
+      <div class="k">values on the table &middot; 0 written</div>
+    </div>
+    <a class="cta" href="proposal.html">Read the proposal</a>
+    <a class="cta dry" href="#">Keep talking</a>
+    <p class="cta-note">Reading the proposal writes nothing either. The seal is at the bottom of that page, and it is the only thing on either page that changes a register.</p>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">02</span><h2>The four things the conversation is doing that a chat window does not</h2></div>
+<div class="sec-k">each one is a rule, not a nicety</div>
+
+<table>
+  <thead><tr><th style="width:24%">The behaviour</th><th style="width:34%">Where you see it above</th><th>The rule behind it</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>It reads before it asks</b></td>
+      <td>The opening turn: eleven unanswered, three answered.</td>
+      <td>Without a provenance state on every register the assistant cannot tell a default from an answer, and would batch over a person. That is why <code>settings.registers</code> returns <b>value + provenance</b>, not just value.</td>
+    </tr>
+    <tr>
+      <td><b>One sentence moves several registers</b></td>
+      <td>&ldquo;Closed Mondays, we run late&rdquo; &rarr; two registers.</td>
+      <td>This is the entire argument against a guided interview. Fourteen questions cannot compress; one sentence can.</td>
+    </tr>
+    <tr>
+      <td><b>It refuses out loud</b></td>
+      <td>The market-price turn, and the two vendors with no cutoff.</td>
+      <td>A control whose backend does not exist is never drawn as a working control. Naming the number and its source is more useful than a slider that writes nowhere.</td>
+    </tr>
+    <tr>
+      <td><b>It contests rather than overwrites</b></td>
+      <td>The whiskey register, moved out of the batch.</td>
+      <td>The batch is only ever a batch of <b>answers nobody gave</b>. A stated value gets its own section and its own seal, which is what stops one gesture covering forty fields.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <p style="font-family:var(--serif);font-size:17px;line-height:1.44;color:var(--ink-1);margin:0">What the owner said, in full: six sentences. What the assistant produced: eight values, two refusals and one contest. <b>Not one register was written.</b></p>
+</div>
+
+<div class="sec-h"><span class="sec-n">03</span><h2>The same conversation, charcoal</h2></div>
+<div class="sec-k">the ground is a DOM fact, not a prop &mdash; the surface carries it</div>
+
+<div class="stage mudavym" data-ground="charcoal" style="grid-template-columns:1fr 340px">
+  <div class="talk">
+    <div class="talk-h">
+      <div class="t">Set this up with me</div>
+      <div class="k"><svg class="ico" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> nothing is written yet</div>
+    </div>
+    <div class="turn">
+      <div class="who you">Aldemir</div>
+      <div><p class="said you">Don&rsquo;t ring my phone during service. And tell me when a wine gets cheap.</p></div>
+    </div>
+    <div class="turn flag">
+      <div class="who">Mudavym</div>
+      <div>
+        <p class="said">The first I can do: quiet hours 18:00&ndash;01:30, one digest at 10:00. <b>The second I cannot set for you.</b> The price-drop threshold is one number for every house on this deployment, and it is at 10% today.</p>
+        <div class="moved"><span class="m">Notifications &rarr; quiet hours</span></div>
+        <p class="note">The seal chip and the İznik tint are the only chromatic marks on either ground.</p>
+      </div>
+    </div>
+    <div class="turn">
+      <div class="who">Mudavym</div>
+      <div><p class="said">That is eight values. Six for this restaurant, one kept in your browser, one I cannot set. Nothing has been written.</p></div>
+    </div>
+  </div>
+  <div class="ledger">
+    <div class="ledger-h">What I have, and where it goes</div>
+    <div class="lrow">
+      <div class="r">Notifications &middot; account</div>
+      <div class="f">Quiet hours</div>
+      <div class="v">18:00 &ndash; 01:30, digest 10:00</div>
+      <div class="src">From &ldquo;don&rsquo;t ring my phone during service&rdquo;.</div>
+    </div>
+    <div class="lrow">
+      <div class="r">Notifications &middot; <b>deployment</b></div>
+      <div class="f">Market price drop</div>
+      <div class="v off">10% &mdash; not yours to set</div>
+      <div class="src">Named, not offered.</div>
+    </div>
+    <div class="tally">
+      <div class="n">8</div>
+      <div class="k">values on the table &middot; 0 written</div>
+    </div>
+    <a class="cta" href="proposal.html">Read the proposal</a>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">04</span><h2>What this reuses, and what is new</h2></div>
+<div class="sec-k">the surface is not invented here</div>
+
+<table>
+  <thead><tr><th style="width:30%">Piece</th><th style="width:34%">Where</th><th>State</th></tr></thead>
+  <tbody>
+    <tr><td>the assistant surface</td><td><code>components/askai/AskAiSurface.tsx</code>, <code>AskAiBar.tsx</code></td><td><b>Exists.</b> Scoped here to configuration rather than procurement.</td></tr>
+    <tr><td>propose, and never execute</td><td><code>ask-ai/ask-ai.controller.ts:34</code></td><td><b>Exists.</b> &ldquo;Never executes. Returns a proposal for a human to confirm, or a reason it could not.&rdquo;</td></tr>
+    <tr><td>the two-family allowlist</td><td><code>ask-ai/ask-ai-actions.ts:32</code></td><td><b>Exists</b> &mdash; <code>procurement</code>, <code>communications</code>. A third family is a <b>founder decision, not a UI change</b>, and this sketch does not assume it.</td></tr>
+    <tr><td>a per-register provenance state</td><td>&mdash;</td><td><b>New.</b> The one read the conversation cannot work without.</td></tr>
+    <tr><td>the contest section</td><td>&mdash;</td><td><b>New.</b> The amendment that keeps the seal worth something.</td></tr>
+  </tbody>
+</table>
+
+<div class="dbl" style="margin-top:32px"></div>
+<div class="cite">
+<b>Every claim above.</b> Repo, re-verified on <code>feat/mudavym-design-p4</code> 2026-09-04 &mdash;
+<code>apps/api-gateway/src/vendor-terms/vendor-terms.service.ts:44-59</code> (a defaulted value reads as unknown) &middot;
+<code>apps/api-gateway/src/notifications/producers/market-price.producer.ts:95-97</code> and
+<code>market-signal.ts:93,96</code> (the threshold is a deployment env var, default 0.1) &middot;
+<code>apps/api-gateway/src/notifications/producers/service-day.ts:42,51</code> (the settle window constants) &middot;
+<code>apps/web/src/pages/settings/next/st-format.ts:31-44,112-146</code> (fourteen registers; <code>browser</code> means localStorage) &middot;
+<code>apps/api-gateway/src/ask-ai/ask-ai.controller.ts:34</code> &middot;
+<code>apps/api-gateway/src/ask-ai/ask-ai-actions.ts:32</code> &middot;
+<code>apps/web/src/components/askai/AskAiSurface.tsx</code> &middot;
+<code>apps/api-gateway/src/settings/approval-thresholds.ts:1-30</code> (no approval policy of any kind exists today).
+<br><br>
+<b>Lokanta M&uuml;davim, its vendors, figures, names and dates are invented for the drawing. The repo facts are not.</b>
+</div>
+
+</div>
+</body>
+</html>

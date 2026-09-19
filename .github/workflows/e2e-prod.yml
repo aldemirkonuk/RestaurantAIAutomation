@@ -27,6 +27,16 @@
 #   found" on 2026-09-11; the preflight below turns that into cannot_check with
 #   the reason in the name instead of six waves of red.
 #
+# DECISION IDS CARRIED FROM THE ORIGINAL SUITE
+# D-12: Nightly 02:00 UTC — observability only
+# D-13: workflow_dispatch from the deploy — deploy.yml fires it from its step
+#        "Trigger production E2E gate (non-blocking)"
+# D-15: Continue-all-waves — every wave step ends `|| true`; the verdict is the
+#        summary step's exit, not any one wave's. Waves D, E and G were RETIRED
+#        2026-09-12 (ADR 0137) — deleted, not skipped; A, B, C, F and H remain.
+# D-19: The original budget was < 10 minutes under a 15-minute cap; this job's
+#        cap is timeout-minutes: 25, raised on the ADR 0135 rebuild.
+#
 # SECRETS (names only; values are never printed)
 #   REQUIRED — without any one of these the run proves NOTHING and the first
 #   step exits 2 with the missing names in its log:
@@ -39,20 +49,30 @@
 #     E2E_TEST_PASSWORD          its password — same readers
 #   OPTIONAL — each changes what is covered, and its absence is reported:
 #     VERCEL_PRODUCTION_URL      the web app; defaults to https://mudavym.com
-#     RAILWAY_ORCHESTRATOR_URL   the FastAPI orchestrator (Waves A–E, G).
+#     RAILWAY_ORCHESTRATOR_URL   the FastAPI orchestrator (Waves A–C).
 #                                Probed first; unreachable = cannot_check
 #     ADMIN_API_KEY              Wave B (orchestrator agent health)
 #     SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY
 #                                the legacy waves' prod_jwt / prod_supabase
 #                                fixtures (conftest_prod.py). NOT needed by the
-#                                browser walk or Wave H. The service-role key
+#                                browser walk or Wave H. Without the service-role
+#                                key EVERY legacy-wave test skips, not only the
+#                                cleanup: teardown_e2e_records is session-scoped
+#                                autouse and takes prod_supabase. The same key
 #                                arms the legacy session teardown — see above
-#     RABBITMQ_URL / TOAST_WEBHOOK_SECRET / GMAIL_USER   Waves C / D / E
+#     RABBITMQ_URL               Wave C
 #     SENTRY_DSN                 failure alerting only
 #     E2E_LEGACY_RESTAURANT_ID   a second house whose flags are OFF, for the
 #                                legacy pass; without it the same house is
 #                                walked with the per-browser override forcing
 #                                legacy (useMudavymDesign.ts precedence 1)
+#   RETIRED (ADR 0137): Waves D, E and G are deleted, and the secrets that only
+#   D and E read are no longer mapped — least privilege: an unused secret in a
+#   job env is readable by every step and action in it.
+#   NAMES ONLY here, never line numbers. The "which fixture reads which secret,
+#   at which line" table lives in ONE place — .planning/v3.0-TECH-DEBT.md,
+#   "What the founder must set" — because copies with line numbers drifted
+#   apart every time either file changed (ADR 0137's review trail).
 #
 # PACING
 #   Every /api/v1/auth/* route is limited to 10 requests per 60 s per IP+route
@@ -128,8 +148,11 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
       RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
-      TOAST_WEBHOOK_SECRET: ${{ secrets.TOAST_WEBHOOK_SECRET }}
-      GMAIL_USER: ${{ secrets.GMAIL_USER }}
+      # The Toast webhook secret and the two mail credentials were removed
+      # 2026-09-12 (ADR 0137) -- their only readers (waves D, E) are retired;
+      # least-privilege: an unused secret mapped into a job env is readable by
+      # every step and action in it.
+      # Sentry (TEST-PROD-09)
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       GITHUB_SHA: ${{ github.sha }}
       TRIGGERED_BY_DEPLOY: ${{ inputs.triggered_by_deploy || 'false' }}
@@ -137,13 +160,25 @@ jobs:
 
     steps:
       # -----------------------------------------------------------------------
-      # 0. SECRETS PRECONDITION — first, before any install. exit 2 = the check
-      #    itself could not run (repo-wide guard convention); values never printed.
+      # 0. SECRETS PRECONDITION — deliberately the FIRST step, before any install.
+      #    exit 2 = the check itself could not run (repo-wide guard convention);
+      #    values are never printed, only names.
+      #
+      #    Why: 118 of this workflow's 120 runs (to 2026-09-02) reported `failure`
+      #    while none of its secrets were set, so the red carried no reason and read
+      #    as a production signal. Same shape as OD-120 in
+      #    .planning/decisions/OPEN-DECISIONS.md — a check that did not happen must
+      #    never render as a neutral or a substantive result.
+      #
+      #    What each secret gates is in the header above, by name; the line-numbered
+      #    table is .planning/v3.0-TECH-DEBT.md, "What the founder must set".
       # -----------------------------------------------------------------------
       - name: Required secrets are present
         run: |
           REQUIRED="API_GATEWAY_URL E2E_TEST_EMAIL E2E_TEST_PASSWORD E2E_BASE_URL"
-          OPTIONAL="RAILWAY_ORCHESTRATOR_URL ADMIN_API_KEY SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY RABBITMQ_URL TOAST_WEBHOOK_SECRET GMAIL_USER SENTRY_DSN E2E_LEGACY_RESTAURANT_ID"
+          # The secrets only waves D and E read were dropped with those waves (ADR 0137).
+          OPTIONAL="RAILWAY_ORCHESTRATOR_URL ADMIN_API_KEY SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY RABBITMQ_URL SENTRY_DSN E2E_LEGACY_RESTAURANT_ID"
+
           MISSING=""
           for name in $REQUIRED; do
             if [ -z "${!name:-}" ]; then MISSING="$MISSING $name"; fi
@@ -219,7 +254,7 @@ jobs:
         run: |
           OUT=test-results/orchestrator-preflight.json
           if [ -z "${RAILWAY_ORCHESTRATOR_URL:-}" ]; then
-            printf '{"reachable": false, "status": null, "reason": "RAILWAY_ORCHESTRATOR_URL is unset -- Waves A-E, G cannot run"}\n' > "$OUT"
+            printf '{"reachable": false, "status": null, "reason": "RAILWAY_ORCHESTRATOR_URL is unset -- Waves A-C cannot run"}\n' > "$OUT"
             echo "reachable=false" >> "$GITHUB_OUTPUT"; cat "$OUT"; exit 0
           fi
           CODE=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "${RAILWAY_ORCHESTRATOR_URL%/}/health" || echo "000")
@@ -227,9 +262,9 @@ jobs:
             printf '{"reachable": true, "status": 200, "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered 200"}\n' > "$OUT"
             echo "reachable=true" >> "$GITHUB_OUTPUT"
           else
-            printf '{"reachable": false, "status": %s, "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered HTTP %s -- the orchestrator is not deployed at that URL; Waves A-E, G are cannot_check, not failed"}\n' "${CODE:-null}" "$CODE" > "$OUT"
+            printf '{"reachable": false, "status": %s, "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered HTTP %s -- the orchestrator is not deployed at that URL; Waves A-C are cannot_check, not failed"}\n' "${CODE:-null}" "$CODE" > "$OUT"
             echo "reachable=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Orchestrator unreachable::HTTP $CODE from RAILWAY_ORCHESTRATOR_URL/health -- Waves A-E, G recorded as cannot_check"
+            echo "::warning title=Orchestrator unreachable::HTTP $CODE from RAILWAY_ORCHESTRATOR_URL/health -- Waves A-C recorded as cannot_check"
           fi
           cat "$OUT"
 
@@ -259,7 +294,7 @@ jobs:
           cp -R test-results/nightly/. ../../test-results/nightly/ 2>/dev/null || true
 
       # -----------------------------------------------------------------------
-      # 4. LEGACY WAVES A–E, G — only when the orchestrator answered.
+      # 4. LEGACY WAVES A–C — only when the orchestrator answered.
       #    Their session teardown is dry-run unless E2E_SIM_TEARDOWN=1 (never set here).
       # -----------------------------------------------------------------------
       - name: Wave A — API Contract Tests (orchestrator)
@@ -278,23 +313,20 @@ jobs:
           C=$!
           wait $B || true; wait $C || true
 
-      - name: Wave D — Toast Pipeline (orchestrator)
-        if: steps.preflight.outputs.reachable == 'true'
-        working-directory: services/agent-orchestrator
+      # -----------------------------------------------------------------------
+      # WAVES D, E, G — RETIRED 2026-09-12 (ADR 0137)
+      # -----------------------------------------------------------------------
+      # Their test files are deleted, not skipped: each tested a table or endpoint
+      # with zero production consumer (measured 2026-09-11 via
+      # information_schema.columns on the live Supabase project). Repointing any of
+      # them would mean BUILDING new production wiring to make an E2E test pass, not
+      # repairing drift — see ADR 0137 for the per-wave evidence. This step is a
+      # no-op so the job's log states the reason; the summary expects no JUnit file
+      # from them (scripts/e2e/nightly_summary.py reads waves a, b and c only).
+      - name: Waves D, E, G — retired (ADR 0137)
         run: |
-          pytest tests/e2e/wave_d_toast_pipeline.py --junitxml=../../test-results/wave_d.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_d.log || true
-
-      - name: Wave E — Gmail Pipeline (orchestrator)
-        if: steps.preflight.outputs.reachable == 'true'
-        working-directory: services/agent-orchestrator
-        run: |
-          pytest tests/e2e/wave_e_gmail_pipeline.py --junitxml=../../test-results/wave_e.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_e.log || true
-
-      - name: Wave G — Calendar (orchestrator)
-        if: steps.preflight.outputs.reachable == 'true'
-        working-directory: services/agent-orchestrator
-        run: |
-          pytest tests/e2e/wave_g_calendar.py --junitxml=../../test-results/wave_g.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_g.log || true
+          echo "::notice::Waves D, E, G retired 2026-09-12 (ADR 0137) -- see .planning/decisions/0137-legacy-e2e-waves-d-e-g-are-retired-not-repointed.md"
+          echo "retired: no production consumer for the schema each tested (pos_webhook_logs, inventory_stock, Google Calendar sync)"
 
       # -----------------------------------------------------------------------
       # 5. BACKTESTS — offline, this checkout. The canned day (ADR 0093, bistro /

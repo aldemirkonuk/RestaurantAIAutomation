@@ -16,6 +16,7 @@ import {
   LineMappingService,
   mappingKeyFor,
 } from "./line-mapping.service";
+import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
 import {
   CORRECTABLE_PATHS,
   replayOnParsed,
@@ -237,6 +238,7 @@ export class CanonicalDocumentService {
   constructor(
     private readonly db: DatabaseService,
     private readonly mapping: LineMappingService,
+    private readonly vendorResolution: VendorResolutionService,
   ) {}
 
   /**
@@ -361,6 +363,39 @@ export class CanonicalDocumentService {
     const parties = await this.resolveParties(restaurantId, row.provider_id);
     if (!parties.ok) return parties;
 
+    /**
+     * ADR 0104 D15 — how this document's vendor came to be, or why it did not.
+     *
+     * A FAILED READ OF THE LOG IS NOT "never resolved". It becomes
+     * `unavailable` with the reason, because a blank here and a document that
+     * genuinely predates D15 render identically and only one of them is a
+     * defect. It does not fail the build: the sheet is still worth showing
+     * without its provenance line.
+     */
+    const latest = await this.vendorResolution.latestFor(
+      restaurantId,
+      documentId,
+    );
+    const vendorResolution = latest.ok
+      ? latest.value
+        ? {
+            state: latest.value.state,
+            reason: latest.value.reason,
+            providerName: parties.value.sellerName,
+            matchedOn: latest.value.matched_tax_id_printed,
+            scheme: latest.value.tax_id_scheme,
+            provisional: parties.value.sellerProvisional,
+          }
+        : null
+      : {
+          state: "unavailable" as const,
+          reason: `How this document's vendor was resolved could not be read, so this line says nothing about the vendor itself: ${latest.error}`,
+          providerName: parties.value.sellerName,
+          matchedOn: null,
+          scheme: null,
+          provisional: false,
+        };
+
     const mapped = canonicalFromParsedDocument(parsed, {
       documentId: row.id,
       restaurantId: row.restaurant_id,
@@ -375,6 +410,7 @@ export class CanonicalDocumentService {
           ? row.jurisdiction
           : null,
       providerId: row.provider_id,
+      vendorResolution,
       // BG-4 / BG-7. The provider row wins over the transcription when one
       // resolved; `parsed.vendorName` (from the `extracted` snapshot) is the
       // fallback and is genuinely `extracted`, so the mapper keeps its glyphs.
@@ -383,6 +419,7 @@ export class CanonicalDocumentService {
             seller: {
               name: parties.value.sellerName,
               source: "human_entered" as const,
+              vatIdentifier: parties.value.sellerVatId,
             },
           }
         : {}),
@@ -537,14 +574,24 @@ export class CanonicalDocumentService {
     restaurantId: string,
     providerId: string | null,
   ): Promise<
-    ReadResult<{ sellerName: string | null; buyerName: string | null }>
+    ReadResult<{
+      sellerName: string | null;
+      sellerVatId: string | null;
+      sellerProvisional: boolean;
+      buyerName: string | null;
+    }>
   > {
     let sellerName: string | null = null;
+    let sellerVatId: string | null = null;
+    let sellerProvisional = false;
     if (providerId) {
       const provider = await this.db
         .getClient()
         .from("providers")
-        .select("id, name, company_name")
+        .select(
+          "id, name, company_name, tax_id, tax_id_normalized, " +
+            "provisional_until_first_order",
+        )
         .eq("id", providerId)
         .maybeSingle();
       if (provider.error)
@@ -555,7 +602,11 @@ export class CanonicalDocumentService {
       const p = provider.data as {
         name: string | null;
         company_name: string | null;
+        tax_id: string | null;
+        provisional_until_first_order: boolean | null;
       } | null;
+      sellerVatId = p?.tax_id ?? null;
+      sellerProvisional = p?.provisional_until_first_order === true;
       // The trading name a document prints is the company name where one
       // exists; `name` is our shorthand for the same vendor.
       sellerName = p?.company_name || p?.name || null;
@@ -577,6 +628,8 @@ export class CanonicalDocumentService {
       ok: true,
       value: {
         sellerName,
+        sellerVatId,
+        sellerProvisional,
         buyerName:
           (restaurant.data as { name: string | null } | null)?.name ?? null,
       },

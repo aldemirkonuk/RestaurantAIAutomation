@@ -1,6 +1,6 @@
 /**
  * RcTally — a figure that arrives on the overdamped tally spring and never
- * bounces past a number someone will act on (motion 059, token `tally`).
+ * bounces past a number someone will act on (motion 083, token `tally`).
  * Same contract as OrdersNext's Tally (`pages/orders/next/Tally.tsx`), copied
  * per the page-owns-its-parts precedent:
  *

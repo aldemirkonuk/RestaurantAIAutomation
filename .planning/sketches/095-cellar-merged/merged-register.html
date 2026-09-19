@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 095 — A register, its columns and its series</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Mudavym tokens, copied inline from apps/web/src/styles/mudavym.css (ADR 0042).
+   Sketches render from file:// with no build, so the tokens are duplicated here
+   rather than imported. Do not re-derive values; copy them. */
+:root {
+  --seal: #1A5E6B;
+  --seal-deep: #14515C;
+  --seal-tint: rgba(26, 94, 107, 0.10);
+  --seal-ring: rgba(26, 94, 107, 0.32);
+  --paper-0: #FAF7F1;
+  --paper-1: #F3EFE6;
+  --paper-2: #EAE4D8;
+  --ink-1: #211C16;
+  --ink-2: #4F473C;
+  --ink-3: #7C7365;
+  --ink-4: #665D50;
+  color-scheme: light;
+  --sans: "DM Sans", "Plus Jakarta Sans", system-ui, sans-serif;
+  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+.sk-banner {
+  background: var(--ink-1);
+  color: var(--paper-0);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 7px 20px;
+}
+.wrap { max-width: 1400px; margin: 0 auto; padding: 22px 24px 56px; }
+.serif { font-family: var(--serif); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.dim { color: var(--ink-3); }
+h1.sk-h1 {
+  font-family: var(--serif);
+  font-size: 40px; line-height: 1.04; letter-spacing: -0.022em;
+  font-weight: 600; margin: 12px 0 0;
+}
+h2.sk-sec {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; margin: 30px 0 10px;
+}
+.sk-crumb { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.sk-standing { font-family: var(--serif); font-size: 16px; line-height: 1.5; color: var(--ink-2); margin: 10px 0 0; max-width: 74ch; }
+.sk-note { font-size: 11.5px; line-height: 1.5; color: var(--ink-3); margin: 9px 0 0; }
+.sk-said { font-size: 12.5px; line-height: 1.55; color: var(--ink-2); margin: 0; }
+.rule { border: 0; border-top: 1px solid var(--ink-1); border-bottom: 1px solid var(--paper-2); height: 3px; margin: 16px 0 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--paper-2); border-radius: 999px;
+  padding: 2px 9px; font-size: 11px; color: var(--ink-2); background: var(--paper-1);
+}
+.chip[data-seal="true"] { border-color: var(--seal-ring); background: var(--seal-tint); }
+.panel { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 14px 16px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1);
+  color: var(--ink-1); font: inherit; font-size: 12px; padding: 6px 11px; cursor: pointer;
+}
+.btn[data-on="true"] { border-color: var(--seal-ring); background: var(--seal-tint); }
+table.reg { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.reg th {
+  text-align: left; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; padding: 8px 10px;
+  border-bottom: 1px solid var(--ink-1);
+}
+table.reg td { padding: 8px 10px; border-bottom: 1px solid var(--paper-2); vertical-align: top; }
+table.reg tbody tr:nth-child(even) td { background: var(--paper-1); }
+</style>
+<style>
+/* additions for the merge */
+.grid { display: grid; gap: 14px; }
+.tiles { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); }
+.tile { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 12px 14px; }
+.tile-label { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.tile-fig { font-family: var(--mono); font-size: 27px; font-variant-numeric: tabular-nums; margin: 4px 0 0; letter-spacing: -0.02em; }
+.cards { grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); }
+.card { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-0); padding: 13px 14px; }
+.card h3 { font-family: var(--serif); font-size: 18px; font-weight: 600; margin: 0; }
+.card dl { display: flex; gap: 16px; margin: 9px 0 0; }
+.card dt { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.card dd { font-family: var(--mono); font-size: 16px; margin: 2px 0 0; }
+.floorstrip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+.zone { border: 1px solid var(--paper-2); border-radius: 10px; background: var(--paper-1); padding: 9px 10px; }
+.zone b { display: block; font-family: var(--mono); font-size: 11px; color: var(--seal-deep); }
+.zone span { display: block; font-size: 11px; color: var(--ink-2); margin-top: 3px; line-height: 1.35; }
+.zone .n { font-family: var(--mono); font-size: 17px; margin-top: 6px; display: block; }
+.mark { display: inline-block; width: 15px; height: 15px; line-height: 15px; text-align: center;
+        font-family: var(--mono); font-size: 9.5px; border: 1px solid var(--paper-2);
+        border-radius: 4px; color: var(--ink-3); background: var(--paper-0); }
+.mark[data-on="true"] { border-color: var(--seal-ring); background: var(--seal-tint); color: var(--seal-deep); font-weight: 600; }
+.menu { position: absolute; width: 330px; background: var(--paper-0); border: 1px solid var(--paper-2);
+        border-radius: 10px; box-shadow: 0 14px 34px rgba(0,0,0,.13); padding: 10px; z-index: 5; }
+.menuitem { display: flex; gap: 7px; align-items: center; padding: 6px 8px; border-radius: 6px; font-size: 12.5px; }
+.menuitem[data-on="true"] { background: var(--paper-1); border: 1px solid var(--seal-ring); }
+.menunote { font-size: 11.5px; line-height: 1.5; color: var(--ink-3); margin: 6px 0 0; }
+.account { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--paper-2); }
+.series { border: 1px solid var(--paper-2); border-bottom: 3px double var(--ink-4); border-radius: 10px;
+          background: var(--paper-1); padding: 14px 16px 16px; }
+.two { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; align-items: start; }
+.contrib { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.contrib h4 { margin: 0 0 5px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--seal-deep); }
+.contrib p { margin: 0; font-size: 12px; line-height: 1.55; color: var(--ink-2); }
+a.nav { text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="sk-banner">SKETCH &middot; 095 &middot; a register: what the columns represent, and what a cell opens &middot; example data, not a tenant</div>
+<div class="wrap">
+
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <div>
+      <p class="sk-crumb"><a class="nav dim" href="merged-parent.html">The Cellar</a> &middot; Kadıköy Meyhane</p>
+      <h1 class="sk-h1" style="font-size:34px">Beer.</h1>
+    </div>
+    <nav style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap">
+      <a class="btn nav" href="merged-parent.html">Wines</a>
+      <span class="btn" data-on="true">Beer</span>
+      <span class="btn">Spirits</span><span class="btn">Cocktails</span><span class="btn">Non-alcoholic</span>
+    </nav>
+  </div>
+  <p class="sk-standing">
+    Every beer this house has bought, listed, quoted or poured. Its own record comes first;
+    the shared catalogue is laid over it.
+  </p>
+  <hr class="rule">
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0 10px">
+    <span class="btn">Search bottle, producer, type, origin&hellip;</span>
+    <span class="btn" data-on="true">Whose: ours</span>
+    <span class="btn">In: any book</span><span class="btn">Type: any</span><span class="btn">Match: any</span>
+    <span class="dim num" style="margin-left:auto;font-size:12px">18 of 75 &middot; 18 ours</span>
+  </div>
+
+  <div style="position:relative">
+  <div style="border:1px solid var(--paper-2);border-radius:10px;overflow:visible">
+  <table class="reg">
+    <thead><tr>
+      <th>Bottle &#9662;</th><th>Our record &#9662;</th>
+      <th style="text-align:right">&#9662; First bought</th>
+      <th style="text-align:right;color:var(--seal-deep)">&#9662; Paid &#9660;</th>
+      <th style="text-align:right">&#9662; Sold</th>
+      <th style="text-align:right">&#9662; Taken</th>
+      <th style="text-align:right">&#9662; Last quote</th>
+      <th>&#9662; Type</th><th>&#9662; Origin</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="serif" style="font-weight:600">Efes Pilsen</span><br><span class="dim" style="font-size:11px">Anadolu Efes</span></td>
+        <td><span class="mark" data-on="true">m</span> <span class="mark" data-on="true">i</span> <span class="mark" data-on="true">o</span> <span class="mark" data-on="true">q</span> <span class="mark" data-on="true">p</span></td>
+        <td class="num" style="text-align:right">2 Mar 2026</td>
+        <td class="num" style="text-align:right;text-decoration:underline dotted var(--ink-4);text-underline-offset:3px">₺6,184.00</td>
+        <td class="num" style="text-align:right">581</td>
+        <td class="num" style="text-align:right">₺55,195</td>
+        <td class="num" style="text-align:right">₺8.60</td>
+        <td>beer</td><td>Türkiye</td>
+      </tr>
+      <tr>
+        <td><span class="serif" style="font-weight:600">Bomonti Filtresiz</span><br><span class="dim" style="font-size:11px">this house&rsquo;s own line</span></td>
+        <td><span class="mark" data-on="true">m</span> <span class="mark" data-on="true">i</span> <span class="mark">o</span> <span class="mark">q</span> <span class="mark" data-on="true">p</span></td>
+        <td class="num" style="text-align:right">18 Apr 2026</td>
+        <td class="num" style="text-align:right">₺3,072.00</td>
+        <td class="num" style="text-align:right">204</td>
+        <td class="num" style="text-align:right">₺22,440</td>
+        <td class="num" style="text-align:right">&mdash;</td>
+        <td>&mdash;</td><td>&mdash;</td>
+      </tr>
+      <tr>
+        <td><span class="serif" style="font-weight:600">Gara Guzu Amber</span><br><span class="dim" style="font-size:11px">Gara Guzu &middot; matched loosely</span></td>
+        <td><span class="mark" data-on="true">m</span> <span class="mark" data-on="true">i</span> <span class="mark" data-on="true">o</span> <span class="mark">q</span> <span class="mark" data-on="true">p</span></td>
+        <td class="num" style="text-align:right">9 Jan 2026</td>
+        <td class="num" style="text-align:right">₺11,908.00</td>
+        <td class="num" style="text-align:right">338</td>
+        <td class="num" style="text-align:right">₺40,560</td>
+        <td class="num" style="text-align:right">&mdash;</td>
+        <td>beer</td><td>Muğla, Türkiye</td>
+      </tr>
+      <tr>
+        <td><span class="serif" style="font-weight:600">Guinness Draught 44cl</span><br><span class="dim" style="font-size:11px">Diageo</span></td>
+        <td><span class="mark">m</span> <span class="mark" data-on="true">i</span> <span class="mark" data-on="true">o</span> <span class="mark" data-on="true">q</span> <span class="mark">p</span></td>
+        <td class="num" style="text-align:right">27 Feb 2026</td>
+        <td class="num" style="text-align:right">₺9,240.00</td>
+        <td class="num" style="text-align:right">&mdash;</td>
+        <td class="num" style="text-align:right">&mdash;</td>
+        <td class="num" style="text-align:right">₺77.00</td>
+        <td>beer</td><td>Ireland</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <!-- the column's own menu, opened by right-click on the header or by its caret -->
+  <div class="menu" style="left:390px;top:34px">
+    <p class="sk-crumb" style="margin:0 0 6px">Paid <span class="dim">&middot; our own record</span></p>
+    <div class="menuitem">&#8593;&nbsp; Sort up</div>
+    <div class="menuitem" data-on="true">&#8595;&nbsp; Sort down</div>
+    <div class="menuitem">&#9683;&nbsp; Open the series for the chosen row</div>
+    <div class="menuitem">&#9678;&nbsp; Hide this column</div>
+    <div class="account">
+      <p class="sk-crumb" style="margin:0 0 4px">What this column is</p>
+      <p class="menunote">Everything this house has been charged for it, across every invoice.
+        Open the cell for the ledger those lines make &mdash; what was bought, when, from
+        whom, at what.</p>
+      <p class="menunote">Read from <span class="num">procurement_document_lines.line_total</span>,
+        summed over invoice lines.</p>
+    </div>
+  </div>
+  </div>
+
+  <p class="sk-note">
+    <b>The gesture set, stated once.</b> The <b>header owns the column</b>: right-click it, or
+    press its caret, for this menu &mdash; sort, hide, and the column&rsquo;s own account of
+    itself (what it means, which table it is read from, how much of it is filled). Clicking
+    the label sorts. The <b>cell owns the row&rsquo;s record</b>: double-click or right-click
+    any cell with a dotted underline and the series behind it opens below. It is the split
+    every table tool in the study makes &mdash; Airtable&rsquo;s field menu is schema, and
+    TradingView is explicit that <i>&ldquo;you can click any row to open the chart&rdquo;</i>
+    while a right-click on a column header customises the column.
+  </p>
+
+  <h2 class="sk-sec">What a cell opens &middot; Paid, on Efes Pilsen</h2>
+  <div class="series">
+    <div style="display:flex;gap:12px;align-items:baseline">
+      <div>
+        <p class="sk-crumb">Paid &middot; the whole record</p>
+        <h3 class="serif" style="margin:2px 0 0;font-size:19px;font-weight:600">Efes Pilsen</h3>
+      </div>
+      <span class="btn" style="margin-left:auto">Close</span>
+    </div>
+
+    <div class="two" style="margin-top:14px">
+      <div>
+        <h4 class="sk-sec" style="margin-top:0">Invoiced</h4>
+        <svg viewBox="0 0 560 96" width="100%" height="96" style="display:block;overflow:visible">
+          <line x1="0" y1="95.5" x2="560" y2="95.5" stroke="var(--paper-2)" stroke-width="1"></line>
+          <polyline points="8,72 105,70 214,63 318,48 430,31 552,12" fill="none" stroke="var(--seal)" stroke-width="1.6" stroke-linejoin="round"></polyline>
+          <circle cx="8" cy="72" r="2.1" fill="var(--seal-deep)"></circle>
+          <circle cx="105" cy="70" r="2.1" fill="var(--seal-deep)"></circle>
+          <circle cx="214" cy="63" r="2.1" fill="var(--seal-deep)"></circle>
+          <circle cx="318" cy="48" r="2.1" fill="var(--seal-deep)"></circle>
+          <circle cx="430" cy="31" r="2.1" fill="var(--seal-deep)"></circle>
+          <circle cx="552" cy="12" r="2.1" fill="var(--seal-deep)"></circle>
+        </svg>
+        <p class="sk-note" style="display:flex;justify-content:space-between">
+          <span>2 Mar 2026</span><span class="num">₺7.40 &mdash; ₺8.60</span><span>19 Aug 2026</span>
+        </p>
+        <table class="reg" style="margin-top:8px">
+          <thead><tr><th>When</th><th>Line</th><th>Who</th><th style="text-align:right">Qty</th><th style="text-align:right">Each</th><th style="text-align:right">Total</th></tr></thead>
+          <tbody>
+            <tr><td class="num">19 Aug 2026</td><td>EFES PILSEN 24/50CL <span class="dim" style="font-size:11px">&middot; matched loosely &middot; INV-4471</span></td><td>Anadolu İçecek</td><td class="num" style="text-align:right">24</td><td class="num" style="text-align:right">₺8.60</td><td class="num" style="text-align:right">₺206.40</td></tr>
+            <tr><td class="num">28 Jun 2026</td><td>EFES PILSEN 24/50CL <span class="dim" style="font-size:11px">&middot; INV-4180</span></td><td>Anadolu İçecek</td><td class="num" style="text-align:right">48</td><td class="num" style="text-align:right">₺8.20</td><td class="num" style="text-align:right">₺393.60</td></tr>
+            <tr><td class="num">14 May 2026</td><td>Efes Pilsen <span class="dim" style="font-size:11px">&middot; INV-3902</span></td><td>Anadolu İçecek</td><td class="num" style="text-align:right">96</td><td class="num" style="text-align:right">₺7.90</td><td class="num" style="text-align:right">₺758.40</td></tr>
+            <tr><td class="num">2 Mar 2026</td><td>Efes Pilsen <span class="dim" style="font-size:11px">&middot; INV-3511</span></td><td>Anadolu İçecek</td><td class="num" style="text-align:right">48</td><td class="num" style="text-align:right">₺7.40</td><td class="num" style="text-align:right">₺355.20</td></tr>
+          </tbody>
+        </table>
+        <p class="sk-note">Read from procurement_document_lines.</p>
+      </div>
+
+      <div>
+        <h4 class="sk-sec" style="margin-top:0">At the till</h4>
+        <svg viewBox="0 0 380 76" width="100%" height="76" style="display:block;overflow:visible">
+          <line x1="0" y1="75.5" x2="380" y2="75.5" stroke="var(--paper-2)" stroke-width="1"></line>
+          <polyline points="6,58 60,40 118,52 176,22 234,34 292,18 372,26" fill="none" stroke="var(--seal)" stroke-width="1.6" stroke-linejoin="round"></polyline>
+        </svg>
+        <p class="sk-note" style="display:flex;justify-content:space-between"><span>21 Jul</span><span class="num">14 &mdash; 38 a night</span><span>2 Sep</span></p>
+
+        <h4 class="sk-sec">Quoted</h4>
+        <p class="sk-said dim">No vendor has quoted this to this house. vendor_price_observations
+          is scoped to the tenant on purpose &mdash; a scraped public list price belongs to
+          everyone and is not this house&rsquo;s quote.</p>
+
+        <h4 class="sk-sec">On our list</h4>
+        <p class="sk-said">₺95 the bottle, on <i>Bira</i>, since 2 March.</p>
+      </div>
+    </div>
+
+    <p class="sk-note" style="margin-top:14px">
+      A line belongs to this row when its label is the same words (exact), or contains this
+      row&rsquo;s label inside a longer till or invoice line (loose). Weaker than the
+      register&rsquo;s own rule, and every line above says which of the two found it.
+    </p>
+  </div>
+
+  <h2 class="sk-sec">Columns not drawn (4)</h2>
+  <ul style="margin:0;padding-left:17px;font-size:12px;line-height:1.7;color:var(--ink-2)">
+    <li><b>Style</b> &mdash; pilsner, IPA, Gose. The founder&rsquo;s first beer column, and the
+      field agrees: Untappd makes Style one of only three required fields on a menu beer.
+      <span class="dim">type_attributes is {} on all 609 catalogue rows, so 0 of 57 beers
+      carry one. The column needs no migration &mdash; it needs a writer.</span></li>
+    <li><b>IBU</b> &mdash; bitterness, one of BJCP&rsquo;s five Vital Statistics.
+      <span class="dim">0 of 57. Carbonation (&ldquo;gaz oranı&rdquo;) and yeast
+      (&ldquo;maya&rdquo;) are not offered at all: BJCP keeps both in prose &mdash; Mouthfeel
+      and Characteristic Ingredients &mdash; and prose does not sort. They belong on the
+      reading stand.</span></li>
+    <li><b>ABV</b> &mdash; <span class="dim">0 of 609. A real column
+      (20260817070000_beverages_table.sql:228) with no writer.</span></li>
+    <li><b>Format</b> &mdash; 330ml can, 50l keg. The one field a beer register needs that a
+      wine register does not. <span class="dim">0 of 609 on both volume_ml and
+      package_format.</span></li>
+  </ul>
+  <p class="sk-note">
+    Every one of these is offered rather than deleted: an operator can turn one on and get the
+    em dash <i>with</i> the measurement beside it, which is a decision, not a blank cell.
+  </p>
+
+  <p class="sk-note" style="margin-top:20px">
+    Sketch only. <a href="merged-parent.html">Back to the parent</a>.
+  </p>
+</div>
+</body>
+</html>

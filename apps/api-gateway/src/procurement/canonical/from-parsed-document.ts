@@ -91,7 +91,19 @@ export interface MapOptions {
    * that came from a provider row: that name is our record of this vendor, not
    * glyphs on this page, and ADR 0104 D1 exists to keep those apart.
    */
-  seller?: { name: string | null; source: Source } | null;
+  /** ADR 0104 D15 — the latest resolution row for this document, if any. */
+  vendorResolution?: import("./canonical-types").VendorResolutionView | null;
+  seller?: {
+    name: string | null;
+    source: Source;
+    /**
+     * BT-31 — the provider's recorded tax identity (ADR 0104 D15). It comes
+     * from OUR RECORDS, so it is `human_entered`/`resolved` like the name and
+     * carries no `as_printed`; the value the DOCUMENT printed travels in
+     * `parsed.vendorTaxId` and fills `as_printed` when the two agree.
+     */
+    vatIdentifier?: string | null;
+  } | null;
   /** BG-7 — the buyer (this restaurant), from the restaurant row. Same rule. */
   buyer?: { name: string | null; source: Source } | null;
   /** Per-line resolution from the match tables, when the caller has read them. */
@@ -131,10 +143,14 @@ const env = <T>(
  * no `as_printed` at all — it was never printed on this document. Collapsing
  * them is precisely the `learned_from_vendor` masquerade ADR 0104 D1 names.
  *
- * BT-31/BT-48 (the VAT identifier — the Turkish VKN) stays NULL throughout, and
- * that is measured rather than assumed: `providers` and `restaurants` were both
- * read on 2026-09-05 and NEITHER has a tax-id column. Until one exists there is
- * nothing to fill it from, and a blank is the honest answer.
+ * BT-31/BT-48 (the VAT identifier — the Turkish VKN) was NULL throughout until
+ * ADR 0104 D15 gave `providers` and `restaurants` a tax-id column and gave the
+ * extraction contract `vendorTaxId`. It now carries, in order: the identity the
+ * RESOLVED PROVIDER holds (our record, no `as_printed`), else the identity the
+ * document printed (`extracted`, keeping its glyphs). NULL still means the page
+ * printed none and none is on file — which is the state D15 answers
+ * `unresolved` for, and it is why it must stay a blank rather than a borrowed
+ * value.
  */
 function party(
   name: string | null | undefined,
@@ -143,11 +159,23 @@ function party(
   revision: number,
   confidence: number | null,
   nameSource: Source = source,
+  recordVatId: string | null = null,
+  printedVatId: string | null = null,
 ): ExtractedParty {
   const printedName = nameSource === "extracted" ? (name ?? null) : null;
+  const vatValue = recordVatId ?? printedVatId ?? null;
+  // The `as_printed` glyphs belong to the page, so they travel only when the
+  // value we are showing IS the one the page printed.
+  const vatSource: Source = recordVatId ? nameSource : source;
   return {
     name: env(name ?? null, nameSource, revision, confidence, printedName),
-    vatIdentifier: env<string>(null, source, revision, confidence),
+    vatIdentifier: env<string>(
+      vatValue,
+      vatSource,
+      revision,
+      confidence,
+      recordVatId ? null : printedVatId,
+    ),
     identifier: env(
       identifier ?? null,
       source,
@@ -625,6 +653,8 @@ export function canonicalFromParsedDocument(
       revision,
       confidence,
       opts.seller?.name ? opts.seller.source : source,
+      opts.seller?.vatIdentifier ?? null,
+      parsed.vendorTaxId ?? null,
     ),
     // BG-7. The buyer is this restaurant. It is never printed by us and never
     // read off the page, so the caller states where it came from.
@@ -635,6 +665,8 @@ export function canonicalFromParsedDocument(
       revision,
       confidence,
       opts.buyer?.name ? opts.buyer.source : source,
+      null,
+      parsed.buyerTaxId ?? null,
     ),
     purchaseOrderReference: env(
       parsed.poNumber ?? null,
@@ -730,6 +762,7 @@ export function canonicalFromParsedDocument(
 
   const layer2: Resolved = {
     providerId: opts.providerId ?? null,
+      vendorResolution: opts.vendorResolution ?? null,
     lines:
       opts.resolvedLines ??
       parsed.lines.map((l, i): ResolvedLine => {
