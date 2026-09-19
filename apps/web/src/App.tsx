@@ -68,6 +68,7 @@ import { ResetPassword } from './pages/ResetPassword'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
+import { ChooseHouse } from './pages/ChooseHouse'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { Orders } from './pages/Orders'
 import { PageGate } from './components/mudavym'
@@ -175,6 +176,7 @@ function App() {
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/invite/:code" element={<InviteLanding />} />
                 <Route path="/no-access" element={<NoAccess />} />
+                <Route path="/choose-house" element={<ChooseHouse />} />
                 {/* Public: linked from the auth screens and the consent page, so
                     it must be readable before you have an account. */}
                 <Route path="/privacy" element={<Privacy />} />
@@ -397,8 +399,8 @@ function App() {
                   <Route path="/help" element={<Help />} />
                   {/* Gated: the sidebar link is owner-only, but the URL was not —
                       any authenticated staff member could open the admin UI. */}
-                  <Route path="/admin" element={<ProtectedRoute requiredRole="owner"><AdminPanel /></ProtectedRoute>} />
-                  <Route path="/admin/health" element={<ProtectedRoute requiredRole="owner"><AdminHealth /></ProtectedRoute>} />
+                  <Route path="/admin" element={<ProtectedRoute requiredRole={['owner', 'manager']}><AdminPanel /></ProtectedRoute>} />
+                  <Route path="/admin/health" element={<ProtectedRoute requiredRole={['owner', 'manager']}><AdminHealth /></ProtectedRoute>} />
                   
                   {/* AI Assistants.
                       `/wine-agent` and `/wineagent` are retired (ADR 0019 §B): both
@@ -410,7 +412,7 @@ function App() {
                   <Route path="/services" element={<Navigate to="/settings?tab=services" replace />} />
                   
                   {/* Dev/Test Pages */}
-                  <Route path="/dev-sandbox" element={<ProtectedRoute requiredRole="owner"><DevSandbox /></ProtectedRoute>} />
+                  <Route path="/dev-sandbox" element={<ProtectedRoute requiredRole={['owner', 'manager']}><DevSandbox /></ProtectedRoute>} />
                 </Route>
 
                 {/* Catch all */}

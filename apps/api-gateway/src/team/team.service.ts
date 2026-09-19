@@ -1,11 +1,16 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { recordAccessChange } from "./access-audit";
 import {
   ChannelPreferences,
@@ -34,7 +39,12 @@ type Role = "owner" | "manager" | "staff";
 export class TeamService {
   private readonly logger = new Logger(TeamService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    @Optional()
+    @Inject(forwardRef(() => WebsocketGateway))
+    private readonly websocketGateway?: WebsocketGateway,
+  ) {}
 
   private get sb() {
     return this.db.supabase;
@@ -575,6 +585,13 @@ export class TeamService {
         throw new InternalServerErrorException("Failed to remove member");
       }
       accessRevoked = true;
+      this.websocketGateway?.evictFromHouse(member.user_id, restaurantId);
+      await cancelPendingInvitesFrom(
+        this.sb,
+        member.user_id,
+        restaurantId,
+        this.logger,
+      );
     }
 
     // Remove from team_members roster.

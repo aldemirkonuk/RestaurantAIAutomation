@@ -188,6 +188,7 @@ export default function RootLayout() {
               <Stack.Screen name="verify-email" />
               <Stack.Screen name="invite" />
               <Stack.Screen name="no-access" />
+              <Stack.Screen name="choose-house" />
               <Stack.Screen
                 name="privacy"
                 options={{ presentation: "modal", animation: "slide_from_bottom" }}

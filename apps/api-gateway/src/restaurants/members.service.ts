@@ -2,20 +2,34 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { AccessChangeReceipt, recordAccessChange } from "../team/access-audit";
 import { grantRefusal } from "../auth/role-grant";
+import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
+import {
+  ORG_ROW_INSERT_ONLY,
+  orgRoleForHouseGrant,
+} from "../organizations/org-role";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
 
 @Injectable()
 export class MembersService {
   private readonly logger = new Logger(MembersService.name);
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    @Optional()
+    @Inject(forwardRef(() => WebsocketGateway))
+    private readonly websocketGateway?: WebsocketGateway,
+  ) {}
 
   /**
    * PUBLIC because it is the ONE membership check in this module (ADR 0093 A3
@@ -380,6 +394,13 @@ export class MembersService {
       }
 
       await this.clearUsersRowHouse(targetUserId, restaurantId);
+      this.websocketGateway?.evictFromHouse(targetUserId, restaurantId);
+      await cancelPendingInvitesFrom(
+        this.databaseService.supabase,
+        targetUserId,
+        restaurantId,
+        this.logger,
+      );
       return;
     }
 
@@ -414,6 +435,14 @@ export class MembersService {
       this.logger.error(`removeMember delete failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to remove member");
     }
+
+    this.websocketGateway?.evictFromHouse(targetUserId, restaurantId);
+    await cancelPendingInvitesFrom(
+      this.databaseService.supabase,
+      targetUserId,
+      restaurantId,
+      this.logger,
+    );
   }
 
   /**
@@ -528,14 +557,25 @@ export class MembersService {
     }
 
     if (restaurant?.organization_id) {
-      await this.databaseService.supabase.from("organization_members").upsert(
-        {
-          organization_id: restaurant.organization_id,
-          user_id: targetUser.user_id,
-          role,
-        },
-        { onConflict: "organization_id,user_id" },
-      );
+      // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164):
+      // adding someone to a house must not make them an owner of the
+      // organisation, nor stop an existing owner being one.
+      const { error: orgRowError } = await this.databaseService.supabase
+        .from("organization_members")
+        .upsert(
+          {
+            organization_id: restaurant.organization_id,
+            user_id: targetUser.user_id,
+            role: orgRoleForHouseGrant(role),
+          },
+          ORG_ROW_INSERT_ONLY,
+        );
+      if (orgRowError) {
+        this.logger.error(
+          `addMember could not add ${targetUser.user_id} to organisation ` +
+            `${restaurant.organization_id}: ${orgRowError.message}`,
+        );
+      }
     }
   }
 
