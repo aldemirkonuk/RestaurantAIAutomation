@@ -118,6 +118,7 @@ export function EndpaperShell({
   //   - the right page changes at the instant the leaf is edge-on (47%–53%),
   //     a cut, not a dissolve (sketch 118 front-matter.html crossfades there).
   const poemId = useId()
+  const voiceId = useId()
   const [phase, setPhase] = useState<'closed' | 'opening' | 'open' | 'closing'>('closed')
   const front = phase === 'open'
   const shown = phase !== 'closed'
@@ -128,6 +129,9 @@ export function EndpaperShell({
   const poemTitleRef = useRef<HTMLHeadingElement>(null)
   const poemRef = useRef<HTMLDivElement>(null)
   const settledOnce = useRef(false)
+  const turnRuns = useRef<(Animation | null)[]>([])
+  const phaseNow = useRef(phase)
+  phaseNow.current = phase
 
   const turnTo = useCallback((toFront: boolean) => {
     setPhase((now) => {
@@ -163,10 +167,12 @@ export function EndpaperShell({
       [coverRef.current, UNDER],
     ]
     const runs = pairs.flatMap(([el, frames]) => (el ? [animate(el, frames, LEAF_TURN)] : []))
-    const settle = () => {
-      setPhase(opening ? 'open' : 'closed')
-      for (const run of runs) run?.cancel()
-    }
+    turnRuns.current = runs
+    // The runs hold their last frame (fill both) until the settled page has
+    // committed; they are cancelled in the layout effect below, after React
+    // has written the settled state and before the browser paints it, so no
+    // frame ever shows the half-turned book or the uncovered form.
+    const settle = () => setPhase(opening ? 'open' : 'closed')
     if (runs.length === 0 || runs.some((run) => !run)) {
       settle()
       return
@@ -174,6 +180,18 @@ export function EndpaperShell({
     const done = window.setTimeout(settle, LEAF_TURN.ms)
     return () => window.clearTimeout(done)
   }, [phase])
+
+  useLayoutEffect(() => {
+    if (phase !== 'open' && phase !== 'closed') return
+    for (const run of turnRuns.current) run?.cancel()
+    turnRuns.current = []
+  }, [phase])
+  useEffect(
+    () => () => {
+      for (const run of turnRuns.current) run?.cancel()
+    },
+    [],
+  )
 
   // The leaf under the poem is inert while it is covered, so nothing hidden
   // can take focus; focus follows the page — the poem's title when the front
@@ -233,6 +251,9 @@ export function EndpaperShell({
   useLayoutEffect(() => {
     if (lastPage.current === pageKey) return
     lastPage.current = pageKey
+    // A sign-in step that lands while the front matter is open (or turning)
+    // changes under the poem, unseen; it must not animate over it.
+    if (phaseNow.current !== 'closed') return
     const leaf = leafRef.current
     if (!leaf) return
     animate(
@@ -254,8 +275,11 @@ export function EndpaperShell({
         </span>
         <MarkDraws size={26} play={play} className="mdv-ep-wordmark" />
       </span>
-      <span className="mdv-ep-body" ref={voiceRef}>
+      <span className="mdv-ep-body" ref={voiceRef} id={voiceId}>
         <span className="mdv-ep-house">{houseLine}</span>
+        {/* a real space, so the two lines read as two sentences when this
+            span describes the turn; a flex column never renders it */}
+        {tag && ' '}
         {tag && <span className="mdv-ep-tagline">{tag}</span>}
       </span>
     </>
@@ -290,6 +314,7 @@ export function EndpaperShell({
                 aria-label={front ? 'Turn back to sign in' : 'Turn back to the front of the book'}
                 aria-expanded={front}
                 aria-controls={poemId}
+                aria-describedby={voiceId}
                 data-endpaper-chrome=""
                 onClick={() => turnTo(!front)}
               >
@@ -304,7 +329,7 @@ export function EndpaperShell({
               </span>
             )}
           </div>
-          <div className="mdv-ep-leaf" data-front={front ? '' : undefined}>
+          <div className={cn('mdv-ep-leaf', frontMatter && 'mdv-ep-leaf--front-matter')} data-front={front ? '' : undefined}>
             {(phase === 'opening' || front ? 'Front matter' : folio) && (
               <span className="mdv-ep-folio">{phase === 'opening' || front ? 'Front matter' : folio}</span>
             )}

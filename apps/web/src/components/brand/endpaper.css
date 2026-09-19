@@ -427,12 +427,14 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
 }
 
 /* the front-matter page shares the leaf's cell with the sign-in content,
-   which stays mounted (and inert) underneath so nothing typed is lost */
-.mdv-endpaper .mdv-ep-leaf {
+   which stays mounted (and inert) underneath so nothing typed is lost. Only
+   the leaf that carries the front matter (/login) becomes a grid; /register's
+   leaf keeps its block layout exactly. */
+.mdv-endpaper .mdv-ep-leaf--front-matter {
   display: grid;
 }
-.mdv-ep-leaf-inner,
-.mdv-ep-poem-page {
+.mdv-ep-leaf--front-matter > .mdv-ep-leaf-inner,
+.mdv-ep-leaf--front-matter > .mdv-ep-poem-page {
   grid-area: 1 / 1;
 }
 .mdv-ep-leaf[data-front] > .mdv-ep-leaf-inner {
