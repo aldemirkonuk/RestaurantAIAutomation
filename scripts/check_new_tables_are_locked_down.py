@@ -305,9 +305,26 @@ exits 1 on each; the sixth and seventh groups are outside that check too.
     trigger on a table a client may write, or used as the state function of an
     aggregate a client may EXECUTE, runs as its owner with no EXECUTE check
     against the caller (PR #391 verifier round 5, A3 and A9, measured on
-    PGlite). This arm never reads what a trigger or an aggregate calls, and the
+    PGlite). This arm never reads what a trigger or an aggregate calls~~, and the
     end-state check judges EXECUTE only, so both pass both. Filed OPEN in
-    v3.0-TECH-DEBT.md.
+    v3.0-TECH-DEBT.md~~. [CORRECTED 2026-09-19, ADR 0159 round 7: the end-state
+    check now judges these and every other path PostgreSQL runs a function by
+    with no EXECUTE check against the caller (its REACH THROUGH ANOTHER OBJECT);
+    A3 and A9 exit 1 there. This arm still passes both: it reads text.]
+    [CORRECTED 2026-09-19, ADR 0159 round-7 repair, source: the round-7 verifier:
+    "every other path" was the round-7 builder's word. Its query followed an
+    owner-context object's direct links to functions only, and 23 adversarial
+    plants reached a closed definer through an operator, a domain cast, a
+    SQL-standard body, a policy's subquery, row movement between partitions and
+    the like while it exited 0. The end-state check now walks what such an object
+    names, and exits 2 where the catalog cannot say what runs.]
+    [CORRECTED 2026-09-19, ADR 0159 round-7 repair 2, source: the round-7
+    verifier's re-run: the repaired walk still passed six paths on which a closed
+    definer ran for anon -- a column's statistics code under ANALYZE, a foreign
+    key's check (not only its actions), an operator's negator, builtins handed a
+    type or table by OID, a partition's parent key, and, in plain client context,
+    an operator's function that a selectivity estimator runs while planning. The
+    end-state check judges them now. This arm still reads text only.]
 
 NEVER VACUOUS
 -------------

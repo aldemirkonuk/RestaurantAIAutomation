@@ -147,7 +147,22 @@ jobs:
       # it is the one the allowlist pins -- owner, language, return type, kind,
       # settings and md5(prosrc) -- so a migration that redefines it under the
       # same signature fails here (PR #391 verifier round 5, A1c). The canary's
-      # three lines are pinned verbatim by the OD-72 CLAIMS row.
+      # three lines are pinned verbatim by the OD-72 CLAIMS row. Since round 7
+      # (2026-09-19) it also fails on a definer PostgreSQL runs for a client with
+      # no EXECUTE check -- through a trigger on a table the client can write
+      # (directly, via a view, rule, partition or foreign-key cascade), an
+      # aggregate's support function, autoanalyze/MAINTAIN, a type, cast,
+      # operator family, estimator, event trigger and the rest ADR 0159 lists.
+      # Since the round-7 repair it follows what an object run as its owner
+      # names however it names it (an operator, a domain cast, a SQL-standard
+      # body, a policy's subquery) and exits 2 on code there the catalog does
+      # not describe (a PL/pgSQL body, a builtin that runs SQL text, anything a
+      # client role owns): exit 2 fails this step as surely as exit 1. Since the
+      # round-7 repair 2 it also seeds every analysed column's statistics code
+      # and a foreign key's check (both run as an owner), follows an operator's
+      # negator and commutator, and judges as PUBLIC the function of any
+      # operator with a selectivity estimator (the planner runs it on column
+      # statistics with no EXECUTE check).
       - name: No SECURITY DEFINER function answers to anon or authenticated (end state)
         run: |
           set -euo pipefail
@@ -164,15 +179,20 @@ jobs:
 
       # The classifier on synthetic rows, no database: every leak path, the
       # judged roles, the allowlist's identity pin, the floor, the local-host
-      # rule. Its report is asserted (at least 105 cases executed), not only its
-      # exit code. Its `if:` is pinned by the OD-72 CLAIMS row.
+      # rule, and every reach-through path the round-7 PGlite replay measured
+      # (leak and closed control) -- the round-7 repair's adversarial rows and
+      # its BLIND rows included, and the second repair's C rows -- with each arm
+      # of its query pinned, and every query pinned by the md5 of its exact
+      # text. Its report is asserted (at least 576 cases executed), not only its
+      # exit code. Its
+      # `if:` is pinned by the OD-72 CLAIMS row.
       - name: The end-state check classifier holds (self-test)
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           out="$(./scripts/check_definer_functions_closed.py --self-test)" || { rc=$?; printf '%s\n' "$out"; exit "$rc"; }
           printf '%s\n' "$out"
-          printf '%s\n' "$out" | awk '$1 == "SELF-TEST" && $2 == "OK" && $3 == "--" && $5 == "cases" && $6 == "run," && $4 + 0 >= 105 { ok = 1 } END { exit !ok }'
+          printf '%s\n' "$out" | awk '$1 == "SELF-TEST" && $2 == "OK" && $3 == "--" && $5 == "cases" && $6 == "run," && $4 + 0 >= 576 { ok = 1 } END { exit !ok }'
 
       # The behavioural half of ci.yml's `fk repoint` guard. That one reads
       # text: it can say the fix is PRESENT, never that it WORKS. This builds a
