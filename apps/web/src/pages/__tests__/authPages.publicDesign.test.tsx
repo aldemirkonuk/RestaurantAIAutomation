@@ -179,6 +179,16 @@ function renderAt(ui: ReactElement, url: string) {
 
 const WAIT = { timeout: 3000 }
 
+/*
+ * Where the endpaper (sketch 118 B, founder's build directions 2026-09-19)
+ * words a state differently from today's page, a reach waits for either
+ * wording: the state reached is the same one. Today's step bar says "Step 1
+ * of 2"; the endpaper's folio says "Register · 1 of 2". Today's door shows
+ * its cards; the endpaper's door is the sketch's two plain acts.
+ */
+const STEP_ONE = /^(Step 1 of 2|Register · 1 of 2)$/
+const DOOR = /^(Join Your Team|I have an invite code)$/
+
 async function loginResolved(result: {
   methods: ReturnType<typeof method>[]
   unavailable?: ReturnType<typeof method>[]
@@ -221,7 +231,7 @@ async function joinAccount(emailAvailable: boolean) {
   const r = renderAt(createElement(Register), '/register?invite=abcdefgh')
   await screen.findByText('Invited by', undefined, WAIT)
   fireEvent.click(screen.getByRole('button', { name: /continue/i }))
-  await screen.findByText('Your Account', undefined, WAIT)
+  await screen.findByText(/^(Your Account|Who is joining\?)$/, undefined, WAIT)
   type('Full Name *', 'Deniz Kaya')
   type('Email *', 'deniz@house.test')
   type('Password *', 'long-enough-1')
@@ -233,7 +243,7 @@ async function joinAccount(emailAvailable: boolean) {
 async function createToSection(section: 1 | 2 | 3) {
   gateway({ emailAvailable: true })
   const r = renderAt(createElement(Register), '/register?type=new')
-  await screen.findByText('Step 1 of 2', undefined, WAIT)
+  await screen.findByText(STEP_ONE, undefined, WAIT)
   type('Full Name *', 'Deniz Kaya')
   type('Email *', 'deniz@house.test')
   type('Password *', 'long-enough-1')
@@ -268,7 +278,7 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
     reach: async () => {
       h.auth.error = 'The gateway refused the sign-in.'
       const r = renderAt(createElement(Login), '/login')
-      await screen.findByText('Login Failed', undefined, WAIT)
+      await screen.findByText(/^(Login Failed|Sign-in didn’t go through\.)$/, undefined, WAIT)
       return r.container
     },
   },
@@ -297,7 +307,7 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
     page: 'register',
     reach: async () => {
       const r = renderAt(createElement(Register), '/register')
-      await screen.findByText('Join Your Team', undefined, WAIT)
+      await screen.findByText(DOOR, undefined, WAIT)
       return r.container
     },
   },
@@ -340,7 +350,7 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
     reach: async () => {
       gateway({ emailAvailable: false })
       const r = renderAt(createElement(Register), '/register?type=new')
-      await screen.findByText('Step 1 of 2', undefined, WAIT)
+      await screen.findByText(STEP_ONE, undefined, WAIT)
       type('Email *', 'taken@house.test')
       await screen.findByText(/already registered/, undefined, WAIT)
       return r.container
@@ -475,13 +485,41 @@ describe('public switch ON — the house, from tokens', () => {
 /* ── 3. Nothing moves ───────────────────────────────────────────────────── */
 
 describe('the switch changes the chrome, never the fields', () => {
-  it.each(STATES)('$name: the same controls, in the same order, both switch positions', async ({ reach }) => {
+  it.each(STATES.filter((st) => st.name !== 'register-selector'))('$name: the same controls, in the same order, both switch positions', async ({ reach }) => {
     setSwitch(false)
     const off = fieldSignature(await reach())
     cleanup()
     setSwitch(true)
     const on = fieldSignature(await reach())
     expect(on).toEqual(off)
+  })
+
+  /*
+   * The door is the one screen whose controls the founder redrew (sketch 118:
+   * two plain acts in place of the four responsive cards — two per layout,
+   * both always in the DOM). Its buttons differ by design, so what must hold
+   * is the flow: every button on it leads to one of the same two paths, and
+   * both paths are offered, in both switch positions.
+   */
+  it('register-selector: the door leads to the same two paths, both switch positions', async () => {
+    const destinations = async (on: boolean) => {
+      setSwitch(on)
+      const count = (await STATES.find((st) => st.name === 'register-selector')!.reach()).querySelectorAll('button').length
+      cleanup()
+      const reached = new Set<string>()
+      for (let i = 0; i < count; i++) {
+        setSwitch(on)
+        const door = await STATES.find((st) => st.name === 'register-selector')!.reach()
+        fireEvent.click(door.querySelectorAll('button')[i])
+        if (await screen.findByLabelText('Invite Code', undefined, { timeout: 500 }).catch(() => null)) reached.add('join')
+        else if (screen.queryByLabelText('Full Name *')) reached.add('create')
+        else reached.add(`button ${i}: nowhere`)
+        cleanup()
+      }
+      return [...reached].sort()
+    }
+    expect(await destinations(false)).toEqual(['create', 'join'])
+    expect(await destinations(true)).toEqual(['create', 'join'])
   })
 
   it('the classifier keeps layout classes out of the paint set', () => {

@@ -36,13 +36,11 @@ import '../components/brand/auth-house.css'
  *   - literal İznik shadows keep their geometry and take `--seal-ring` (0.32,
  *     today 0.30/0.35) or `--seal-tint` (0.10, today 0.18/0.08) as colour.
  */
-const HOUSE_SHADOW = 'shadow-[0_24px_64px_-24px_var(--seal-tint),0_8px_24px_-12px_var(--seal-tint)]'
 /** The shared Button merges `className` last (tailwind-merge), so this replaces
  *  its wine fill and its literal-rgba shadow rather than stacking on them. */
 const HOUSE_BUTTON = 'bg-seal text-paper-0 hover:bg-seal-deep shadow-none hover:shadow-none'
-// `HOUSE_WORDMARK` (BrandMark's ink-token override) moved to the endpaper's
-// own wordmark (`EndpaperShell.tsx`) — the wordmark this file rendered above
-// the old single card no longer exists on the `on` path (sketch 118).
+// The wordmark this file drew above the old single card is the endpaper's
+// now (`MarkDraws.tsx`, drawn once per page load; sketch 118).
 
 // Email availability check result
 type EmailAvailability = {
@@ -252,6 +250,20 @@ export function Register() {
       exit={{ opacity: 0, x: -20 }}
       transition={{ duration: 0.25 }}
     >
+      {on ? (
+        /* The door, as sketch 118 draws it: two plain acts, the new house
+           first. Same two paths as the cards below (create, join), one
+           layout at every width. */
+        <div className="mdv-ep-acts">
+          <Button type="button" variant="default" size="lg" onClick={() => setPath('create')} className={`w-full ${HOUSE_BUTTON}`}>
+            I&apos;m opening a new house
+          </Button>
+          <button type="button" onClick={() => setPath('join')} className="mdv-ep-act-quiet">
+            I have an invite code
+          </button>
+        </div>
+      ) : (
+      <>
       {/* ── DESKTOP: Feature Cards (≥641px) ── */}
       <div className="hidden sm:grid grid-cols-2 gap-4">
         {/* Join card */}
@@ -362,6 +374,8 @@ export function Register() {
           </span>
         ))}
       </div>
+      </>
+      )}
 
       <p className={on ? 'text-center text-sm !text-inkm-3 mt-6' : 'text-center text-sm text-gray-500 mt-6'}>
         Already have an account?{' '}
@@ -390,7 +404,9 @@ export function Register() {
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
 
-      {/* Step indicator: two dots connected by a line */}
+      {/* Step indicator: two dots connected by a line. The endpaper's folio
+          carries the step on the house path ("Join · 1 of 2"). */}
+      {!on && (
       <div className="flex items-start mb-7">
         {/* Step 1 — active */}
         <div className="flex flex-col items-center gap-1">
@@ -409,18 +425,21 @@ export function Register() {
           <span className={on ? 'text-[0.68rem] font-semibold text-inkm-3' : 'text-[0.68rem] font-semibold text-gray-400'}>Account</span>
         </div>
       </div>
+      )}
 
-      {/* Heading */}
+      {/* Heading — on the house path the leaf's own title says this. */}
+      {!on && (
       <div className="mb-[22px]">
-        <h2 className={on ? 'font-display text-[1.4rem] font-extrabold !text-inkm-1 tracking-tight mb-[5px]' : 'font-display text-[1.4rem] font-extrabold text-gray-900 tracking-tight mb-[5px]'}>
+        <h2 className="font-display text-[1.4rem] font-extrabold text-gray-900 tracking-tight mb-[5px]">
           Enter your invite code
         </h2>
-        <p className={on ? 'text-[0.875rem] !text-inkm-3' : 'text-[0.875rem] text-gray-500'}>8-character code — check your email or Slack</p>
+        <p className="text-[0.875rem] text-gray-500">8-character code — check your email or Slack</p>
       </div>
+      )}
 
       {/* Code input */}
       <div className="mb-[14px]">
-        <div className={on ? 'flex justify-between items-center text-[0.8rem] font-semibold text-inkm-1 mb-[7px]' : 'flex justify-between items-center text-[0.8rem] font-semibold text-gray-900 mb-[7px]'}>
+        <div className={on ? 'mdv-ep-caps flex justify-between items-center mb-[7px]' : 'flex justify-between items-center text-[0.8rem] font-semibold text-gray-900 mb-[7px]'}>
           Invite Code
           <span className={on ? 'font-normal text-inkm-3 text-[0.74rem]' : 'font-normal text-gray-400 text-[0.74rem]'}>Auto-validates when complete</span>
         </div>
@@ -438,9 +457,10 @@ export function Register() {
               // House path: the status border stays (no status token), and
               // the three hand-drawn focus halos go — the seal outline comes
               // from auth-house.css.
+              on ? 'mdv-ep-code' : '',
               invitePreview?.valid === true
                 ? on
-                  ? 'border-green-500'
+                  ? 'border-seal'
                   : 'border-green-500 focus:border-green-500 shadow-[0_0_0_3px_rgba(5,150,105,0.08)]'
                 : invitePreview?.valid === false
                   ? on
@@ -463,7 +483,7 @@ export function Register() {
             </div>
           )}
           {!validating && invitePreview?.valid === true && (
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
+            <div className={on ? 'absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-seal flex items-center justify-center' : 'absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-green-500 flex items-center justify-center'}>
               <Check className="w-[10px] h-[10px] text-white stroke-[3]" />
             </div>
           )}
@@ -484,21 +504,21 @@ export function Register() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-            className="mb-4 border border-green-200 rounded-xl overflow-hidden"
+            className={on ? 'mb-4 border border-paper-2 rounded-[3px] overflow-hidden' : 'mb-4 border border-green-200 rounded-xl overflow-hidden'}
           >
-            {/* Green top */}
-            <div className="bg-green-50 px-4 py-[14px] flex items-center gap-[10px]">
-              <div className="w-[38px] h-[38px] rounded-[10px] bg-white border border-green-200 flex items-center justify-center flex-shrink-0">
-                <Wine className="w-[18px] h-[18px] text-green-600" />
+            {/* Green top — on the house path, a paper plate: the seal marks it good */}
+            <div className={on ? 'bg-paper-1 px-4 py-[14px] flex items-center gap-[10px]' : 'bg-green-50 px-4 py-[14px] flex items-center gap-[10px]'}>
+              <div className={on ? 'w-[38px] h-[38px] rounded-[3px] bg-paper-0 border border-paper-2 flex items-center justify-center flex-shrink-0' : 'w-[38px] h-[38px] rounded-[10px] bg-white border border-green-200 flex items-center justify-center flex-shrink-0'}>
+                <Wine className={on ? 'w-[18px] h-[18px] text-seal' : 'w-[18px] h-[18px] text-green-600'} />
               </div>
               <div>
-                <p className={on ? 'font-display font-bold !text-green-900 text-[0.9375rem]' : 'font-display font-bold text-green-900 text-[0.9375rem]'}>
+                <p className={on ? 'font-display font-bold !text-inkm-1 text-[0.9375rem]' : 'font-display font-bold text-green-900 text-[0.9375rem]'}>
                   {invitePreview.restaurant}
                   {invitePreview.city && ` — ${invitePreview.city}`}
                 </p>
               </div>
-              <div className="ml-auto w-[22px] h-[22px] rounded-full bg-green-500 flex items-center justify-center">
-                <Check className="w-[11px] h-[11px] text-white stroke-[3]" />
+              <div className={on ? 'ml-auto w-[22px] h-[22px] rounded-full bg-seal flex items-center justify-center' : 'ml-auto w-[22px] h-[22px] rounded-full bg-green-500 flex items-center justify-center'}>
+                <Check className={on ? 'w-[11px] h-[11px] text-paper-0 stroke-[3]' : 'w-[11px] h-[11px] text-white stroke-[3]'} />
               </div>
             </div>
             {/* White bottom */}
@@ -530,10 +550,10 @@ export function Register() {
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            className="mb-4 flex items-center gap-[9px] bg-red-50 border border-red-200 rounded-lg px-[14px] py-[11px]"
+            className={on ? 'mdv-ep-note border-red-700' : 'mb-4 flex items-center gap-[9px] bg-red-50 border border-red-200 rounded-lg px-[14px] py-[11px]'}
           >
-            <X className="w-[15px] h-[15px] text-red-600 flex-shrink-0" />
-            <span className="text-[0.8125rem] text-red-600 font-medium">
+            {!on && <X className="w-[15px] h-[15px] text-red-600 flex-shrink-0" />}
+            <span className={on ? 'mdv-ep-note-title !text-red-800' : 'text-[0.8125rem] text-red-600 font-medium'}>
               {invitePreview.reason === 'expired'
                 ? 'This invite code has expired. Contact the restaurant owner for a new one.'
                 : invitePreview.reason === 'used'
@@ -592,18 +612,21 @@ export function Register() {
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
-      {invitePreview?.valid && (
+      {/* On the house path the endpaper carries the house's name and who is
+          expecting you, and the leaf's title says what this page is — so the
+          banner and the "Your Account" heading are today's page only. */}
+      {!on && invitePreview?.valid && (
         <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
-          <p className={on ? 'text-sm !text-green-700 font-medium' : 'text-sm text-green-700 font-medium'}>
+          <p className="text-sm text-green-700 font-medium">
             Joining <strong>{invitePreview.restaurant}</strong>
             {invitePreview.city && ` · ${invitePreview.city}`}
           </p>
-          <p className={on ? 'text-xs !text-green-600 mt-0.5' : 'text-xs text-green-600 mt-0.5'}>
+          <p className="text-xs text-green-600 mt-0.5">
             Invited by {invitePreview.inviter} · Role: {invitePreview.role}
           </p>
         </div>
       )}
-      <h2 className={on ? 'text-xl font-bold !text-inkm-1 mb-5' : 'text-xl font-bold text-gray-900 mb-5'}>Your Account</h2>
+      {!on && <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>}
       <div className="space-y-4">
         {/* Full Name */}
         <div>
@@ -642,7 +665,7 @@ export function Register() {
                 joinEmailCheck.available === false
                   ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
                   : joinEmailCheck.available === true
-                    ? (on ? 'border-green-400' : 'border-green-400 focus:border-green-500 focus:ring-green-500/20')
+                    ? (on ? 'border-seal' : 'border-green-400 focus:border-green-500 focus:ring-green-500/20')
                     : (on ? 'border-paper-2' : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20')
               ].join(' ')}
             />
@@ -653,8 +676,8 @@ export function Register() {
               </div>
             )}
             {!joinEmailCheck.checking && joinEmailCheck.available === true && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
-                <Check className="w-3 h-3 text-white stroke-[3]" />
+              <div className={on ? 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-seal flex items-center justify-center' : 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center'}>
+                <Check className={on ? 'w-3 h-3 text-paper-0 stroke-[3]' : 'w-3 h-3 text-white stroke-[3]'} />
               </div>
             )}
             {!joinEmailCheck.checking && joinEmailCheck.available === false && (
@@ -684,7 +707,7 @@ export function Register() {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className={on ? 'mt-1 text-xs !text-green-600' : 'mt-1 text-xs text-green-600'}
+                className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
               >
                 Email is available
               </motion.p>
@@ -726,9 +749,9 @@ export function Register() {
         </div>
       </div>
       {(error || authError) && (
-        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-          <p className={on ? 'text-sm !text-red-700' : 'text-sm text-red-700'}>{error || authError}</p>
+        <div role={on ? 'alert' : undefined} className={on ? 'mdv-ep-note mt-4 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2'}>
+          {!on && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
+          <p className={on ? 'mdv-ep-note-title !text-red-800' : 'text-sm text-red-700'}>{error || authError}</p>
         </div>
       )}
       <Button
@@ -780,13 +803,18 @@ export function Register() {
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
-      {/* Step indicator (simple bar for Path B step 1) */}
-      <div className="flex items-center gap-2 mb-6">
-        <div className={on ? 'h-1.5 flex-1 rounded-full bg-seal' : 'h-1.5 flex-1 rounded-full bg-wine-600'} />
-        <div className={on ? 'h-1.5 flex-1 rounded-full bg-paper-2' : 'h-1.5 flex-1 rounded-full bg-gray-200'} />
-        <span className={on ? 'text-xs text-inkm-3 ml-1' : 'text-xs text-gray-400 ml-1'}>Step 1 of 2</span>
-      </div>
-      <h2 className={on ? 'text-xl font-bold !text-inkm-1 mb-5' : 'text-xl font-bold text-gray-900 mb-5'}>Your Account</h2>
+      {/* Step indicator (simple bar for Path B step 1). On the house path the
+          leaf's folio carries the step and its title names the page. */}
+      {!on && (
+        <>
+          <div className="flex items-center gap-2 mb-6">
+            <div className="h-1.5 flex-1 rounded-full bg-wine-600" />
+            <div className="h-1.5 flex-1 rounded-full bg-gray-200" />
+            <span className="text-xs text-gray-400 ml-1">Step 1 of 2</span>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>
+        </>
+      )}
       <div className="space-y-4">
         {/* Full Name */}
         <div>
@@ -825,7 +853,7 @@ export function Register() {
                 createEmailCheck.available === false
                   ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
                   : createEmailCheck.available === true
-                    ? (on ? 'border-green-400' : 'border-green-400 focus:border-green-500 focus:ring-green-500/20')
+                    ? (on ? 'border-seal' : 'border-green-400 focus:border-green-500 focus:ring-green-500/20')
                     : (on ? 'border-paper-2' : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20')
               ].join(' ')}
             />
@@ -836,8 +864,8 @@ export function Register() {
               </div>
             )}
             {!createEmailCheck.checking && createEmailCheck.available === true && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
-                <Check className="w-3 h-3 text-white stroke-[3]" />
+              <div className={on ? 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-seal flex items-center justify-center' : 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center'}>
+                <Check className={on ? 'w-3 h-3 text-paper-0 stroke-[3]' : 'w-3 h-3 text-white stroke-[3]'} />
               </div>
             )}
             {!createEmailCheck.checking && createEmailCheck.available === false && (
@@ -867,7 +895,7 @@ export function Register() {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className={on ? 'mt-1 text-xs !text-green-600' : 'mt-1 text-xs text-green-600'}
+                className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
               >
                 Email is available
               </motion.p>
@@ -1075,8 +1103,9 @@ export function Register() {
       <div className="sm:grid sm:grid-cols-[200px_1fr] sm:gap-6">
 
         {/* Left Rail — hidden on mobile */}
-        <div className={on ? 'hidden sm:block bg-paper-1 backdrop-blur border border-paper-2 rounded-2xl p-5 h-fit sticky top-6' : 'hidden sm:block bg-white/50 backdrop-blur border border-white/40 rounded-2xl p-5 h-fit sticky top-6'}>
-          <p className={on ? 'text-xs uppercase tracking-wider !text-inkm-3 font-bold mb-4' : 'text-xs uppercase tracking-wider text-gray-400 font-bold mb-4'}>Step 2 of 2</p>
+        <div className={on ? 'hidden sm:block border-r border-paper-2 pr-5 h-fit sticky top-6' : 'hidden sm:block bg-white/50 backdrop-blur border border-white/40 rounded-2xl p-5 h-fit sticky top-6'}>
+          {/* The folio carries the step on the house path. */}
+          {!on && <p className="text-xs uppercase tracking-wider text-gray-400 font-bold mb-4">Step 2 of 2</p>}
           <div className="space-y-0">
             {railSections.map(({ num, label, sub }) => {
               const isDone = num < restaurantSection
@@ -1091,7 +1120,7 @@ export function Register() {
                     <div
                       className={[
                         'w-5 h-5 rounded-full flex items-center justify-center text-[0.62rem] font-bold flex-shrink-0 transition-all',
-                        isDone ? 'bg-green-500 text-white' : '',
+                        isDone ? (on ? 'bg-seal text-paper-0' : 'bg-green-500 text-white') : '',
                         isActive
                           ? on
                             ? 'bg-seal text-paper-0 shadow-[0_2px_6px_var(--seal-ring)]'
@@ -1124,7 +1153,9 @@ export function Register() {
               )
             })}
           </div>
-          {/* Progress bar */}
+          {/* Progress bar — on the house path each panel's own "Section n of 3"
+              already says this, once. */}
+          {!on && (
           <div className={on ? 'mt-[18px] pt-[14px] border-t border-paper-2' : 'mt-[18px] pt-[14px] border-t border-gray-200'}>
             <div className={on ? 'h-[5px] bg-paper-2 rounded-full overflow-hidden' : 'h-[5px] bg-gray-100 rounded-full overflow-hidden'}>
               <div
@@ -1134,13 +1165,14 @@ export function Register() {
             </div>
             <p className={on ? 'text-[0.75rem] !text-inkm-3 mt-1' : 'text-[0.75rem] text-gray-500 mt-1'}>Section {restaurantSection} of 3</p>
           </div>
+          )}
         </div>
 
         {/* Main panel */}
         <div>
           {/* Panel 1: Identity */}
           {restaurantSection === 1 && (
-            <div className={on ? `bg-paper-1 backdrop-blur-md border border-paper-2 rounded-2xl ${HOUSE_SHADOW} p-7` : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
+            <div className={on ? 'pt-1' : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
               <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
                 Section 1 of 3
               </span>
@@ -1205,7 +1237,7 @@ export function Register() {
 
           {/* Panel 2: Location */}
           {restaurantSection === 2 && (
-            <div className={on ? `bg-paper-1 backdrop-blur-md border border-paper-2 rounded-2xl ${HOUSE_SHADOW} p-7` : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
+            <div className={on ? 'pt-1' : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
               <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
                 Section 2 of 3
               </span>
@@ -1354,7 +1386,7 @@ export function Register() {
 
           {/* Panel 3: Contact */}
           {restaurantSection === 3 && (
-            <div className={on ? `bg-paper-1 backdrop-blur-md border border-paper-2 rounded-2xl ${HOUSE_SHADOW} p-7` : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
+            <div className={on ? 'pt-1' : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
               <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
                 Section 3 of 3
               </span>
@@ -1391,10 +1423,11 @@ export function Register() {
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
-                    className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2"
+                    role={on ? 'alert' : undefined}
+                    className={on ? 'mdv-ep-note mt-4 flex items-start gap-2 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2'}
                   >
-                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                    <p className={on ? 'text-sm !text-red-700 flex-1' : 'text-sm text-red-700 flex-1'}>{error || authError}</p>
+                    {!on && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />}
+                    <p className={on ? 'mdv-ep-note-title flex-1 !text-red-800' : 'text-sm text-red-700 flex-1'}>{error || authError}</p>
                     <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-600 ml-1">
                       <X className="w-4 h-4" />
                     </button>
@@ -1446,16 +1479,19 @@ export function Register() {
   // For the restaurant form (path B step 2), render outside the card to support the wider rail layout
   const isRestaurantForm = path === 'create' && pathBStep === 2
 
-  // sketch 118 · Direction B endpaper copy, one case per screen the user can
-  // reach — unioned with the existing path/pathAStep/pathBStep state so no
-  // new state is introduced and the real flow (above) is untouched. The
-  // founder's 2026-09-19 pick — ADR 0149 row 35.
-  const endpaperFor = (): { kicker: string; houseLine: string; tag: string; folio: string; title: string; lede: string } => {
+  // sketch 118 · Direction B, the founder's pick (2026-09-19; ADR 0149 row 35,
+  // his build directions in the sketch README). The endpaper holds still
+  // across every register screen: its kicker is the page's, its line is house
+  // voice until the form knows the house's name, and then it is that name —
+  // the one place the endpaper changes. The leaf carries everything that
+  // changes per screen, and the folio is the only place a step is counted.
+  // Derived from the existing path/pathAStep/pathBStep state; the flow above
+  // is untouched.
+  const endpaperFor = (): { houseLine: string; tag: string; folio: string; title: string; lede: string } => {
+    const voice = { houseLine: 'Every house keeps its own.', tag: 'Open one, or be entered in one that already exists.' }
     if (path === 'selector') {
       return {
-        kicker: 'A new set of books',
-        houseLine: 'Every house keeps its own.',
-        tag: 'Open one, or be entered in one that already exists.',
+        ...voice,
         folio: 'Register',
         title: 'Whose book is this?',
         lede: 'A new house is a new set of books, or a line in one that exists.',
@@ -1463,51 +1499,47 @@ export function Register() {
     }
     if (path === 'join') {
       const named = invitePreview?.valid ? invitePreview.restaurant : undefined
+      const expecting =
+        pathAStep === 2 && invitePreview?.valid && invitePreview.inviter && invitePreview.role
+          ? `${invitePreview.inviter} is expecting you, as a ${invitePreview.role}.`
+          : undefined
       return {
-        kicker: 'Join',
-        houseLine: named ?? 'Every house keeps its own.',
-        tag:
-          pathAStep === 2 && invitePreview?.valid && invitePreview.inviter && invitePreview.role
-            ? `${invitePreview.inviter} is expecting you, as a ${invitePreview.role}.`
-            : 'The code names the house before you have an account.',
+        houseLine: named ?? voice.houseLine,
+        tag: expecting ?? voice.tag,
         folio: pathAStep === 1 ? 'Join · 1 of 2' : 'Join · 2 of 2',
-        title: 'Be entered in a book that exists.',
+        title: pathAStep === 1 ? 'Be entered in a book that exists.' : 'Who is joining?',
         lede:
           pathAStep === 1
             ? 'The code names the house before you have an account.'
-            : `Joining ${named ?? 'a house'}.`,
+            : `Your own line in ${named ?? 'the house'}'s book.`,
       }
     }
-    // path === 'create'
     if (pathBStep === 1) {
-      return {
-        kicker: 'Register · 1 of 2',
-        houseLine: 'Who keeps this book?',
-        tag: 'Your restaurant comes next, on its own leaf.',
-        folio: 'Register · 1 of 2',
-        title: 'Who keeps this book?',
-        lede: 'Your restaurant comes next.',
-      }
+      return { ...voice, folio: 'Register · 1 of 2', title: 'Who keeps this book?', lede: 'Your restaurant comes next.' }
     }
     return {
-      kicker: 'Register · 2 of 2',
-      houseLine: restaurantName.trim() || 'Register · 2 of 2',
-      tag: 'Read once; nothing here is converted later.',
+      houseLine: restaurantName.trim() || voice.houseLine,
+      tag: voice.tag,
       folio: 'Register · 2 of 2',
       title: 'What house is this?',
-      lede: 'Read once; nothing here is converted later.',
+      lede: 'Its name, where it is, and how to reach it.',
     }
   }
 
   if (on) {
     const ep = endpaperFor()
     return (
-      <EndpaperShell kicker={ep.kicker} houseLine={ep.houseLine} tag={ep.tag} folio={ep.folio} wide={isRestaurantForm}>
+      <EndpaperShell
+        kicker="A new set of books"
+        houseLine={ep.houseLine}
+        tag={ep.tag}
+        folio={ep.folio}
+        pageKey={stepKey}
+        wide={isRestaurantForm}
+      >
         <h2 className="mdv-ep-leaf-title">{ep.title}</h2>
         <p className="mdv-ep-leaf-lede">{ep.lede}</p>
-        <AnimatePresence mode="wait" initial={false}>
-          <div key={stepKey}>{content}</div>
-        </AnimatePresence>
+        {content}
       </EndpaperShell>
     )
   }

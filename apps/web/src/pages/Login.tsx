@@ -49,6 +49,29 @@ const houseFieldClass =
 const HOUSE_BUTTON = 'bg-seal text-paper-0 hover:bg-seal-deep shadow-none hover:shadow-none'
 
 /**
+ * What a refused sign-in says on the house path, in the book's voice (sketch
+ * 118 frames 06-07). Keyed on the gateway's status, never on its message
+ * text, and only for a plain refusal: a structured `code` (OAUTH_ONLY,
+ * NO_SIGNIN_METHOD) keeps the gateway's own words. The gateway answers 401
+ * for a wrong password and an unknown address alike (an enumeration guard),
+ * so "did not match" is the honest reading of either.
+ */
+type Refusal = 'mismatch' | 'throttled' | null
+function signInNote(refusal: Refusal, message: string): { pause: boolean; title: string; detail: string } {
+  if (refusal === 'mismatch') {
+    return { pause: false, title: 'That password did not match.', detail: 'Check it and try again, or reset it below.' }
+  }
+  if (refusal === 'throttled') {
+    return {
+      pause: true,
+      title: 'Too many tries — wait a moment.',
+      detail: 'This address has been checked too many times from this connection. Try again in a few minutes.',
+    }
+  }
+  return { pause: false, title: 'Sign-in didn’t go through.', detail: message }
+}
+
+/**
  * Show every provider the registry declares but has not enabled (today:
  * Microsoft and Apple) as a greyed-out "coming soon" row on every sign-in.
  *
@@ -98,6 +121,7 @@ export function Login() {
   const [resolving, setResolving] = useState(false)
   const [identity, setIdentity] = useState<SignInMethodsResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [refusal, setRefusal] = useState<Refusal>(null)
 
   const resolve = useCallback(
     async (address: string) => {
@@ -131,6 +155,7 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setRefusal(null)
     clearError()
     setLoading(true)
 
@@ -157,6 +182,15 @@ export function Login() {
       if (err instanceof LoginError && (err.code === 'OAUTH_ONLY' || err.code === 'NO_SIGNIN_METHOD')) {
         void resolve(email)
       }
+      setRefusal(
+        err instanceof LoginError && !err.code
+          ? err.status === 401
+            ? 'mismatch'
+            : err.status === 429
+              ? 'throttled'
+              : null
+          : null,
+      )
       setError(err.message || 'Login failed')
     } finally {
       setLoading(false)
@@ -192,7 +226,16 @@ export function Login() {
   // shell and today's card, and only the chrome around it branches below.
   const content = (
     <>
-      {(error || authError) && (
+      {(error || authError) && on && (() => {
+        const note = signInNote(refusal, (error || authError) as string)
+        return (
+          <div role="alert" className={note.pause ? 'mdv-ep-note border-amber-600' : 'mdv-ep-note border-red-700'}>
+            <p className={note.pause ? 'mdv-ep-note-title !text-amber-800' : 'mdv-ep-note-title !text-red-800'}>{note.title}</p>
+            <p className="mdv-ep-note-detail">{note.detail}</p>
+          </div>
+        )
+      })()}
+      {(error || authError) && !on && (
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -251,7 +294,7 @@ export function Login() {
         {/* ── Step 2: the methods this identity actually has ───────── */}
         {atMethodStep && (
           <div className="space-y-5">
-            <div className={on ? 'flex items-center justify-between gap-3 rounded-xl border border-paper-2 bg-paper-0 px-4 py-3' : 'flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3'}>
+            <div className={on ? 'flex items-center justify-between gap-3 rounded-[3px] bg-paper-1 px-4 py-3' : 'flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3'}>
               <span className={on ? 'truncate text-sm font-medium text-inkm-1' : 'truncate text-sm font-medium text-gray-800'}>{identity?.email}</span>
               <button
                 type="button"
@@ -259,6 +302,7 @@ export function Login() {
                   setIdentity(null)
                   setPassword('')
                   setError(null)
+                  setRefusal(null)
                   clearError()
                 }}
                 className={on ? 'shrink-0 text-sm font-medium text-seal hover:text-seal-deep' : 'shrink-0 text-sm font-medium text-wine-600 hover:text-wine-700'}
@@ -319,7 +363,7 @@ export function Login() {
                       autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className={on ? houseFieldClass : fieldClass}
+                      className={on ? (refusal === 'mismatch' ? houseFieldClass.replace('border-paper-2', 'border-red-700') : houseFieldClass) : fieldClass}
                       placeholder="••••••••"
                       disabled={loading}
                     />
@@ -458,6 +502,7 @@ export function Login() {
       houseLine="Kept, page by page."
       tag="Every house's book looks the same on the inside — this is where yours opens."
       folio="Sign in"
+      pageKey={atMethodStep ? 'methods' : 'address'}
     >
       <h2 className="mdv-ep-leaf-title">Welcome back.</h2>
       <p className="mdv-ep-leaf-lede">Your house keeps its book here.</p>
