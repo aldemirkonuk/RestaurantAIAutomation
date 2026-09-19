@@ -144,3 +144,16 @@ Seams:
 - The god-file split and the phantom `add-from-order` call are **unscheduled** — neither has
   an OD row nor an agenda item; they are recorded in [[orders]] §9 only.
 
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** 8 loop+`await` files in the shared procurement module are flagged as N+1 candidates — not line-by-line confirmed.
+
+**Coverage.** 79.0%/66.2% at the (shared) procurement-module level (heavy.sh jest, 2026-09-18).
+
+**Runs in production.** Yes, flag ON; only 2 `procurement_orders` rows have ever existed.
+
+**Promised vs. built.** `partial` holds; real order volume is very light.
+
+**Gaps.** N+1 candidates are unverified line-by-line — a lead, not a confirmed defect.
+
+*Evidence:* Supabase `procurement_orders`=2; `coverage-summary.json` (procurement module aggregate, shared across 4 softwares — see [[receipts-invoice-match]], [[receiving]], [[recurring-orders]]).

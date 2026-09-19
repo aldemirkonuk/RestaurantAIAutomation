@@ -157,3 +157,17 @@ What is genuinely still open:
   this to `live`: every card either has a server row or is not offered.
 - The ownership gap in §6 is the first thing to resolve — it is what makes items 1–3
   nobody's queue.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** 36.9% branch coverage — the lowest of the tested gateway modules measured this pass.
+
+**Coverage.** 71.0%/36.9% stmt/branch (heavy.sh jest, 2026-09-18).
+
+**Runs in production.** Yes — the redesign (`DashboardNext`), flag ON.
+
+**Promised vs. built.** `partial` holds.
+
+**Gaps.** Weak branch coverage on a live, flag-ON surface; ownership remains an open gap (see [[SOFTWARE-MAP]] Gaps).
+
+*Evidence:* `coverage-summary.json` (heavy.sh jest run); this note's Gaps-table entry in [[SOFTWARE-MAP]].

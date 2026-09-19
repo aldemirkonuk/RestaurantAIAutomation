@@ -187,3 +187,17 @@ Seams:
 - The stale-dormant claims in `guest-value-monetization-charter.md:119-123`,
   `supplier-distributor-network-charter.md:130-133` and the
   `inbound-email-intelligence-plan` memory need the correction in §4 applied.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Served by the `providers` module plus the unowned `common/orchestrator` (7,256 LOC); a daily cron writes to a table measured empty.
+
+**Coverage.** `providers` 47.3%/36.6% (shared with [[vendor-directory]]).
+
+**Runs in production.** Route is ungated; `provider_promotions`=0, `vendor_promotions`=0.
+
+**Promised vs. built.** `partial` per this note, but the evidence leans `hollow` — see finding F5, which directly conflicts with the catalog's own finding #4 (which called `provider_promotions` live). This session's SELECT found 0 rows; the discrepancy is unresolved, not adjudicated here.
+
+**Gaps.** Same discrepancy as above — needs a founder or maintainer call on which measurement is current.
+
+*Evidence:* `promotion-extractor.service.ts` cron registration; Supabase row counts above.

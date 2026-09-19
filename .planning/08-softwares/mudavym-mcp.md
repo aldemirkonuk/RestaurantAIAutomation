@@ -480,3 +480,17 @@ In order:
    — blast radius 2 (auth, tenancy, an outward-facing surface), ambiguity 2 (every fork in
    step 1 is open) — so any agent that builds it runs on Opus, not Sonnet.
    **FOLLOWED:** built by an Opus agent on 2026-09-06.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Fully built and protocol-correct per ADR 0132, with zero production activation.
+
+**Coverage.** `mcp-server` 70.0%/50.2%; `mcp-runtime` 83.6%/70.3%; `mcp-connections` 79.0%/65.8%.
+
+**Runs in production.** Code is deployed; 0 rows across all 6 backing tables.
+
+**Promised vs. built.** **Roster/note desync found (finding F1):** the [[SOFTWARE-MAP]] roster says `planned`, this note says `partial`, and the measured code is fully built-and-unused. All three describe a different state; only the code measurement is verified this pass.
+
+**Gaps.** No production adoption; the roster/note/code three-way disagreement in F1 should be resolved by whoever owns this note next, not silently picked here.
+
+*Evidence:* `.planning/decisions/CLAIMS.jsonl` ADR-0132 rows; Supabase row counts (0 across 6 tables).

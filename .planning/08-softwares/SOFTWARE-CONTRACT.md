@@ -52,6 +52,7 @@ are one structure, never two competing taxonomies (CLAUDE.md §4).
 | 6 | **Owner** | Wikilink to the owning `01-org` team charter + its department. If no team owns it, write `unowned — gap` and add the row to [[SOFTWARE-MAP]]'s gap table |
 | 7 | **Maturity & seams** | The honest verdict, inherited from the page notes' §10 (`complete`/`partial`/`hollow`/`broken`) rolled up to the software, plus the known structural dirt (god-files, split modules, duplicated logic) |
 | 8 | **Where it's going** | 3–5 lines, pointing at agendas, ADRs, ODs, ecosystem phases. Never restate a roadmap that lives elsewhere |
+| 9 | **Capacity and coverage — measured `<date>`** | Added 2026-09-19. Test coverage (stmt/branch %), whether it runs in production (row counts / cron firing, not "should"), and the promised-vs-built gap — each line dated to the measurement pass that produced it, not restated on the next pass. A model or service with no owning software goes in [[SOFTWARE-MAP]]'s "Models & shared services" section instead of a note here |
 
 ## Frontmatter
 

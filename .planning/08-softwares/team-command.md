@@ -150,3 +150,17 @@ Seams:
   parity gap is the gate.
 - The unowned-domain finding in §6 is the durable one: a scheduling product with a
   platform owner and no product owner will keep getting request-path fixes and no roadmap.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** The thinnest spec-to-endpoint ratio of any `live`-status software in the catalog.
+
+**Coverage.** `team` 67.4%/51.1%; `organizations` 58.9%/52.1%.
+
+**Runs in production.** Flag ON; the roster half is live, the scheduling subsystem is entirely unused.
+
+**Promised vs. built.** **Finding F3:** this note claims the software is live; the measured evidence supports only the roster half of that claim. 7 scheduling-related tables sit at 0 rows.
+
+**Gaps.** Scheduling subsystem (7 tables) has never been used in production.
+
+*Evidence:* Supabase row counts (7 scheduling tables at 0); this note's own frontmatter.

@@ -195,3 +195,17 @@ Structural seams:
   tells a client to download a file rather than subscribe to a feed. First thing to try.
 - Connection health has no owner in code and a clear owner in the org
   ([[connector-platform-trust-charter]]); §4 is the gap between those two facts.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Carries the longest `api_modules` list of any software in the catalog; the billing/payment sub-surface is fully unused.
+
+**Coverage.** `settings` 94.0%/75.0% (best in this group); `user-preferences` 50.7%/39.6%.
+
+**Runs in production.** `/settings` and `/connections` are both flag OFF; `integration_oauth_connections`=0, `payment_methods`=0, `billing_customers`=0.
+
+**Promised vs. built.** `partial` holds; the payment/billing sub-surface sits closer to `hollow` than the note-level status suggests.
+
+**Gaps.** The distributor-feed module is missing from this note's `api_modules` list — see finding F5.
+
+*Evidence:* Supabase row counts above; `apps/web/src/App.tsx:388,396`.

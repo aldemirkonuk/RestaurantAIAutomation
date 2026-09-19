@@ -219,3 +219,45 @@ Seams:
   38/573 on consumption-only data (`analytics-engine-charter.md`, measured 2026-08-24).
   Coverage, not code, is the ceiling here.
 - The ownership gap in §6 belongs in [[SOFTWARE-MAP]]'s gap table.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** `logs` module has only 1 HTTP endpoint.
+
+**Coverage.** `reports` 85.5%/68.3%; `logs` 94.8%/68.6%.
+
+**Runs in production.** Both routes are flag OFF; `generated_reports`=0, `manager_report_profiles`=0.
+
+**Promised vs. built.** `partial` holds; see the `insight-generator` and `forecasting-engine` model entries below for the analytics engine this software's `analytics` module shares with [[recommendations]].
+
+**Gaps.** Report generation and scheduling are entirely unused in production.
+
+*Evidence:* Supabase row counts above.
+
+### insight-generator (model)
+
+**Capacity.** 573 catalogued dimension x measure x comparator insight types in the roadmap catalogue; 24 have a live generator (a 1,567-line generator service).
+
+**Coverage.** `insight-catalog.spec.ts`, `insight-catalog.reach.spec.ts` (a CI gate on reach counts), `insight-implementations.spec.ts` (re-derives the implemented set from generator source and fails on drift).
+
+**Runs in production.** Yes: `analytics_insights` has 11 rows in the last 30 days across 4 restaurants, last run 2026-09-18 — but only 5 of the 24 implemented types fired.
+
+**Promised vs. built.** The catalogue over-promises the generator by roughly 24x (573 vs 24), and the generator over-promises what fires live by roughly 5x (24 vs 5 distinct types observed).
+
+**Gaps.** 549 catalogued types have no generator at all; most implemented types are not observed firing for any real restaurant in a 30-day window.
+
+*Evidence:* `INSIGHT_CANDIDATES.length`=573 (`reach.spec.ts` baseline); `IMPLEMENTED_INSIGHT_TYPES` counted=24; SQL against `analytics_insights` (30-day window) → 5 distinct `candidate_key`. Code: `apps/api-gateway/src/analytics/insights/insight-generator.service.ts`, `insight-catalog.ts`, `insight-implementations.ts`.
+
+### forecasting-engine (model)
+
+**Capacity.** SES/Holt/Holt-Winters/decomposition forecasts, robust-z anomaly scoring, ridge/OLS regression for driver weights and fixed-effects peer ranking, and reorder-point/safety-stock via `serviceLevelZ`.
+
+**Coverage.** 10 spec files across 13 engine source files (`forecasting.spec.ts`, `statistics.spec.ts`, `regression.spec.ts`, `inventory-science.spec.ts`, and others).
+
+**Runs in production.** Backs live insight types confirmed firing in the 30-day query above: `overall.bottles.forecast_gap`, `table.avg_check.driver_weights`, `waiter.avg_check.peer_rank`.
+
+**Promised vs. built.** The module's own docstring says heavier models (ARIMA/Prophet/LightGBM) bridge to the Python orchestrator; no such bridge or model was found in `services/agent-orchestrator`.
+
+**Gaps.** The Python-side heavy-forecast bridge the docstring itself describes does not appear to exist.
+
+*Evidence:* `apps/api-gateway/src/analytics/engine/forecasting.ts:1-20` (docstring), `regression.ts:42-56,155-200`; grep for arima/prophet/lightgbm in `services/agent-orchestrator` → none.
