@@ -258,7 +258,7 @@ describe("a member who did not opt in gets nothing", () => {
     expect(everyRecipient).not.toContain("not-a-member@elsewhere.test");
   });
 
-  it("sends nothing to a subscriber whose email channel is off, or whose ai category is off", async () => {
+  it("sends nothing to a subscriber whose email channel is off; the ai category preference no longer gates the digest (founder, PR #391 audit B2(b), 2026-09-19: the subscription alone is the gate)", async () => {
     const db = seed();
     db.tables.recommendation_digest_subscriptions.push({
       id: "sub-bora",
@@ -289,10 +289,16 @@ describe("a member who did not opt in gets nothing", () => {
 
     const tally = await service.sweepTenant(TENANT, DUE_PLUS_5);
 
-    expect(gmail.sendEmail).not.toHaveBeenCalled();
+    // Ana: email channel off -> still excluded.
     expect(tally.emailOff).toBe(1);
-    expect(tally.categoryOff).toBe(1);
-    expect(sends(db)).toHaveLength(0);
+    // Bora: `categories.ai` is off, but that no longer gates anything -- their
+    // subscription and email channel are both on, so they DO get the digest.
+    // Against the pre-fix code (the `categoryOn`/`categoryOff` gate restored)
+    // this assertion fails: Bora was skipped and nothing was sent. `DigestTally`
+    // no longer declares `categoryOff` at all, so a reintroduced gate that wrote
+    // it would also fail to TYPECHECK, not only to run.
+    expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
+    expect(sends(db)).toHaveLength(1);
   });
 
   it("sends nothing to an ex-member who kept their subscription row", async () => {

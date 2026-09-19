@@ -20,7 +20,6 @@ import {
 } from "../../calendar/reminder-window";
 import { RecommendationsService } from "../recommendations.service";
 import {
-  DIGEST_CATEGORY,
   DIGEST_LATE_LIMIT_MS,
   DIGEST_SEND_FLAG,
   URGENCY_WORDS,
@@ -47,8 +46,8 @@ import {
  * waited for since the production baseline (founder, 2026-09-16, ADR 0149 row
  * 26: "Build the sender").
  *
- * WHO GETS A DIGEST — FIVE FACTS, ALL REQUIRED
- * -------------------------------------------
+ * WHO GETS A DIGEST — FOUR FACTS, ALL REQUIRED
+ * ---------------------------------------------
  *  1. The house runs one: `recommendation_digest_prefs.digest_enabled`, with its
  *     `digest_hour` (house wall clock) and `digest_min_urgency` floor.
  *  2. The PERSON asked for it: an active row in
@@ -59,9 +58,18 @@ import {
  *     `users.restaurant_id`). An ex-member keeps their subscription row and is
  *     sent nothing, including in a house whose every access row is revoked.
  *  4. Their email channel is on (`notification_preferences.email_enabled`).
- *  5. Their `ai` category is on (`categories.ai`; see `DIGEST_CATEGORY`).
  * A member with no preferences row gets the defaults `NotificationsService
  * .getPreferences` returns for one — email on, every category on, quiet hours off.
+ *
+ * [REMOVED 2026-09-19, founder (memory `founder-sketch-decisions-106-115.md`,
+ * "Digest builder's choices", PR #391 audit B2(b)): a fifth fact used to gate here
+ * too, `notification_preferences.categories.ai` (`DIGEST_CATEGORY`). Delegated
+ * ("do the most sota, quality, scalability with right architecture structure"):
+ * the SUBSCRIPTION (fact 2) is the consent and the gate on its own; the legacy
+ * category preference is a second, redundant gate this row's own founder answer
+ * (ADR 0149 row 15 / OD-121) reserves for the SIX `*_channels` categories, which
+ * this digest is not one of. If the digest ever gets a second channel, it joins
+ * that vocabulary as its own category — this is not it.]
  *
  * THE SIX PROPERTIES THIS JOB IS BUILT AROUND
  * ------------------------------------------
@@ -130,7 +138,6 @@ export const DIGEST_UNSUBSCRIBE_PATH =
 
 const MEMBER_DEFAULTS: MemberPrefs = {
   emailEnabled: true,
-  categoryOn: true,
   quiet: { enabled: false, start: "22:00", end: "08:00" },
   usingDefaults: true,
 };
@@ -237,10 +244,6 @@ export class RecommendationDigestService {
       const p = prefs.get(sub.userId) ?? MEMBER_DEFAULTS;
       if (!p.emailEnabled) {
         tally.emailOff++;
-        continue;
-      }
-      if (!p.categoryOn) {
-        tally.categoryOff++;
         continue;
       }
       const person = people.get(sub.userId);
@@ -868,10 +871,6 @@ export class RecommendationDigestService {
         blockers.push("You are not an active member of this house.");
       if (!active) blockers.push("You have not asked for this digest.");
       if (!p.emailEnabled) blockers.push("Your email notifications are off.");
-      if (!p.categoryOn)
-        blockers.push(
-          `Your "${DIGEST_CATEGORY}" notification category is off.`,
-        );
 
       const last = ((lastRes.data ?? []) as Record<string, any>[])[0] ?? null;
       let next: DigestDue | null = null;
@@ -911,7 +910,6 @@ export class RecommendationDigestService {
           : null,
         preferences: {
           email: p.emailEnabled,
-          category: { key: DIGEST_CATEGORY, on: p.categoryOn },
           quietHours: p.quiet,
           usingDefaults: p.usingDefaults,
         },
@@ -1247,12 +1245,8 @@ function toSubscription(r: Record<string, any>): Subscription {
 }
 
 function toMemberPrefs(raw: Record<string, any>): MemberPrefs {
-  const categories =
-    raw.categories && typeof raw.categories === "object" ? raw.categories : {};
   return {
     emailEnabled: raw.email_enabled !== false,
-    categoryOn:
-      (categories as Record<string, unknown>)[DIGEST_CATEGORY] !== false,
     quiet: {
       enabled: raw.quiet_hours_enabled === true,
       start: raw.quiet_hours_start || "22:00",
@@ -1268,7 +1262,6 @@ function emptyTally(): DigestTally {
     subscribed: 0,
     notMembers: 0,
     emailOff: 0,
-    categoryOff: 0,
     noAddress: 0,
     lateBeforeChange: 0,
     alreadyHandled: 0,
@@ -1303,7 +1296,6 @@ interface Person {
 
 interface MemberPrefs {
   emailEnabled: boolean;
-  categoryOn: boolean;
   quiet: QuietHours;
   usingDefaults: boolean;
 }
@@ -1320,7 +1312,6 @@ export interface DigestTally {
   subscribed: number;
   notMembers: number;
   emailOff: number;
-  categoryOff: number;
   noAddress: number;
   /** Past the late limit, but due before the latest save of the house row or the subscription: no `expired` row. */
   lateBeforeChange: number;
@@ -1362,7 +1353,6 @@ export interface DigestSubscriptionStatus {
   } | null;
   preferences: {
     email: boolean;
-    category: { key: string; on: boolean };
     quietHours: QuietHours;
     usingDefaults: boolean;
   };

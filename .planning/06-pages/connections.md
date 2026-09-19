@@ -1257,3 +1257,6 @@ to decide:** the production duplicate-count precondition for migration
 `20260913190100` — the founder is running the counts — and this ADR's other open
 forks (inbound-message phone-reachability override; "Main line" as a stated
 answer).
+**[CORRECTED 2026-09-19, PR #391 audit M1: the production duplicate-count precondition
+is satisfied — measured 2026-09-18, founder-authorized, read-only (Supabase MCP SELECT
+only): both predicates are 0. The two remaining ADR 0121 forks stay open.]**

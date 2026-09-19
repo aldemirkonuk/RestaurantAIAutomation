@@ -35,19 +35,15 @@ export function digestSendArmed(raw?: string | null): boolean {
   return v === "true" || v === "1";
 }
 
-/* ── the category ─────────────────────────────────────────────────────────── */
+/* ── the category (removed) ──────────────────────────────────────────────── */
 
-/**
- * Which `notification_preferences.categories` key a digest belongs to.
- *
- * The jsonb carries five keys — inventory, orders, calendar, system, ai
- * (baseline_from_production.sql:3931). A recommendation is the engine's advice
- * rather than a stock, order, calendar or system event, and `ai` is the key the
- * product files the engine's output under, so the digest is `ai`. A member who
- * switched `ai` off is sent nothing. A key that is ABSENT reads as on, which is
- * the default `NotificationsService.getPreferences` already returns for it.
- */
-export const DIGEST_CATEGORY = "ai";
+// `DIGEST_CATEGORY = "ai"` used to gate the digest a second time on
+// `notification_preferences.categories.ai`, on top of the person's own
+// `recommendation_digest_subscriptions` row. Removed 2026-09-19 (founder, memory
+// `founder-sketch-decisions-106-115.md`, "Digest builder's choices", PR #391
+// audit B2(b)): the subscription is the consent and the gate on its own; the
+// `categories.ai` key stays reserved for ADR 0149 row 15 / OD-121's six
+// `*_channels` categories, which this digest is not one of.
 
 /* ── urgency ──────────────────────────────────────────────────────────────── */
 

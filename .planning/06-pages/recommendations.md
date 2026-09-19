@@ -1005,7 +1005,8 @@ Outside the page's own paths, and therefore filed rather than built (2026-09-02)
   row in the new `recommendation_digest_subscriptions` (their frequency, daily or weekly
   + ISO weekday — no default, nobody subscribes anybody else); an active, in-window
   `user_restaurant_access` row; `notification_preferences.email_enabled`; and
-  `categories.ai`. Due times are the house's `digest_hour` on `restaurants.timezone`
+  `categories.ai`. **[2026-09-19: four conditions now. The `categories.ai` gate was removed (PR #391 audit
+  B2(b), the founder's answer: the subscription alone is the gate); see the ANSWERED bracket below.]** Due times are the house's `digest_hour` on `restaurants.timezone`
   (UTC, said in the letter, when unset); a member inside their quiet hours
   (`reminder-window.ts` `isWithinQuietHours`, the gateway reading of the columns
   `notification_agent.py:1487` reads) is deferred, and past 12 h late the due is recorded
@@ -1065,6 +1066,51 @@ Outside the page's own paths, and therefore filed rather than built (2026-09-02)
   which ADR 0149 deletes, so after cutover the digest needs raw API calls until both
   exist; and the /settings Notify copy (`settings/next/NotifySection.tsx:261`, "no sender
   branches on categories"), owed to the settings lane.]**
+  **[ANSWERED 2026-09-19, founder (memory `founder-sketch-decisions-106-115.md`, "Digest
+  builder's choices"), PR #391 audit B2 — all five confirmed before this migration merges:**
+  **(a)** the per-person `recommendation_digest_subscriptions` table is his round-11 answer,
+  "ship now"; **(b)** the category gate was delegated ("do the most sota, quality,
+  scalability with right architecture structure") — **the subscription alone is the
+  consent/gate; the legacy `notification_preferences.categories.ai` check is removed from
+  the digest sender** (built this pass — see the code and test named below; if the digest
+  ever gets a second channel, it joins OD-121's per-category channel vocabulary as its own
+  category, not this one); **(c)** `recipient_email` is confirmed never mailed, and — his
+  batch-4 answer — **the free field is dropped from Settings once this lands, with a
+  per-person "send me the digest" opt-in added; that UI is a named follow-up owned by the
+  settings lane, not built here**; **(d)** the 12-hour late limit stands, as built; **(e)** a
+  late subscription or house-enable within 12 h of a due time is served at the next sweep,
+  as built. **Built this pass:** `RecommendationDigestService`'s sweep gate, its
+  `statusFor` diagnostic and `MemberPrefs`/`DigestTally` no longer read or report
+  `categories.ai` at all (`recommendation-digest.service.ts`); `recommendation-digest
+  .service.spec.ts`'s category-gate case now asserts the opposite of what it asserted
+  before — a member with `categories.ai: false` DOES get the digest as long as their
+  subscription and email channel are on — so the test fails against the pre-fix code and
+  passes against this one.]**
+  **[OPEN, recorded 2026-09-19, PR #391 audit security note 6: `getDigestPref`
+  (`recommendation-actions.service.ts:285-307`) and `setDigestPref` (`:309-340`) throw
+  `new Error(...)` with the live Postgres/PostgREST error message interpolated in
+  (`` `recommendation_digest_prefs could not be read: ${error.message}` ``), and the
+  route (`analytics.controller.ts` `GET/PUT recommendations/:restaurantId/digest`) has no
+  try/catch of its own and no global exception filter exists in this gateway
+  (`grep -rn "ExceptionFilter" apps/api-gateway/src`, `main.ts`: none) — so whatever
+  Postgres/PostgREST says reaches a signed-in caller's response body verbatim on a failed
+  read or write. Returning 500 on a failed read is intended (ADR 0020: not the silent
+  empty-defaults this route used before 2026-09-16); the residual is the raw error TEXT,
+  not the status code. Left open rather than fixed in this pass — scoped to keeping this
+  round's one required code change (B2(b) above) to the digest sender itself; the fix is
+  the same shape wherever this pattern recurs (wrap in a generic message before throwing,
+  or catch at the controller and rethrow a sanitized `HttpException`), which is a
+  gateway-wide pattern, not a digest-only one.]**
+  **[CORRECTED 2026-09-19, PR #391 audit fix, Opus last call: the mechanism above is wrong.
+  GET `recommendations/:restaurantId/digest` (`analytics.controller.ts:1143-1149`) lets the
+  plain `Error` through, and Nest's default exception handler answers it with a generic 500
+  "Internal server error". The only global interceptor, `SentryInterceptor`, rethrows it
+  unchanged, and there is no `APP_FILTER`, so GET does not leak. The leak is PUT: its
+  controller catch (`analytics.controller.ts:1167-1177`) rethrows `error.message` as an
+  `HttpException` 400. That message is `setDigestPref`'s raw `new Error(error.message)`
+  (`recommendation-actions.service.ts:338`) or `getDigestPref`'s interpolated text
+  (`:297-299`). So PUT sends database error text to the caller, and 400 is also the wrong
+  status for a database failure. Still OPEN.]**
 - ~~**Nothing records when a rule first fired**~~ **Closed 2026-09-03.** The feed now
   attaches `firstSeenAt` per rule from `recommendation_impressions`
   (`recommendations.service.ts` `attachFirstSeen`), and the page renders it with the clock
@@ -1321,6 +1367,9 @@ execution, no first-fired timestamp — in the same way.
    **[2026-09-17, review: also owed — the house digest editor (the legacy toggle is
    the only UI that sets `digest_enabled`), and founder confirmation of the builder's
    choices (a)–(e) listed in §9 before the migration merges.]**
+   **[CORRECTED 2026-09-19, PR #391 audit B2: that confirmation is no longer owed — the
+   founder answered all five (a)–(e) 2026-09-19; see the bracket under §9 above for the
+   words and what each one changed in code.]**
 8. ~~**Expose first-fired time so "standing" stops being an em dash.**~~ **Done
    2026-09-03** — `attachFirstSeen` in `recommendations.service.ts`, rendered by
    `standingOf()` with the clock it read named on the row (§1b second pass).

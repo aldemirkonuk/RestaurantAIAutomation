@@ -157,6 +157,23 @@ bar; the letter as the page's identity; the quiet tier as proof of what is withh
 **Decision:** direction A with C's quiet tier, and a fourth round (sketch 120) that adds
 function without disturbing the experience Wave Four already earns.
 
+**[ADDED 2026-09-19, PR #391 audit M2 — his 2026-09-19 sketch-120 feedback (memory
+`founder-sketch-decisions-106-115.md`, lane-answers batch 3, "RECOMMENDATIONS"), the
+brief for the next round (sketch 122). He said only the first part below is a
+requirement; the rest is brainstorming, not decided:**
+**Requirement:** keep the days rail on top; show the house's decided goals on top
+("whatever the restaurant has decided ... on top as the goal"); recommendations must
+read brief and punchy, each with how to act; add a goals chart proposing where to set a
+goal; apply one-tap actions that approve automatically ("get back to work"). Purpose,
+his words: where an owner or manager looks when stuck, to see what they could have
+done, or to predict the future and prepare early.
+**Brainstorm, not decided:** 1A over 1B; the side sheet liked, unsure; 2B — he wants to
+see how the mail looks; a newspaper-style digest, "maybe another software"; the
+subject-account side sheet good if it shows more than the table; 3B's inline dismissal
+with a real day and no overlay, "maybe"; "definitely not the fifth one"; "sixth one is
+all right". Recommendations stays dark pending sketch 122, which folds in the 5
+remaining recs-lane questions along with goals and one-tap actions.
+
 ### 109 — settings · A, the interview, with two grafts
 
 Question round: *"A with two grafts (Recommended)"* — C's *read by* line under every
@@ -471,6 +488,12 @@ is only decided for the first build by his 2026-09-18 ruling above.]**
 
 ### 113 — promotions · B, with C's density and bundles; A's 4c acts kept, their address open
 
+**[CORRECTED 2026-09-19, PR #391 audit M2: "their address open" no longer describes the
+current state — Open item 3, below, was answered 2026-09-18 (`AskUserQuestion`: the
+sections move to `/communications`) and built 2026-09-19, uncommitted on other branches when written (see Open item 3). This heading is kept as
+written for history; see the Decision paragraph, the Consequences bullets and Open
+item 3 below for what changed and when.]**
+
 > *"113B just looks like great promotions page. I would like to see that if I were the
 > user and I like the, like as, as long as the bigger, bigger the sale, the bigger the box.
 > I like this kind of approach and I would definitely pick this one. However, ... I'm only
@@ -510,6 +533,10 @@ sections to `/communications`, is not decided here — his "4C in 113A is great"
 the acts, not the sections' address. **[verification 2026-09-18: the correction pass
 wrote "is grafted into B," which presupposed the open answer (the acts can only sit in B
 if the sections stay on `/promotions`).]**
+**[ANSWERED 2026-09-19, PR #391 audit M2: this is no longer open. Open item 3 below
+records his 2026-09-18 `AskUserQuestion` answer (move to `/communications`) and its
+2026-09-19 build (`WhoIsWriting.tsx` + `SenderActs.tsx`, gated on
+`mudavym_design_communications`).]**
 
 **Owed:** decide and draw how a bundle is graded and shown (his open question, *"If
 bundles, well, how would you react? How should we react? Maybe add another part for
@@ -548,7 +575,8 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
   **111 help is delegated to the builder, with two must-haves**; **112 is A's spine plus
   C's chart/trail, README forks 1a·2c·3a·4a·5a (N = 5) accepted, fork 6 moved to (a) for
   the first build**; 113 direction (B with C's density and bundles; A's §4c acts kept,
-  their address open). **[corrected 2026-09-18, correction 20: the original line here
+  their address open **[corrected 2026-09-19, PR #391 audit M2: address decided
+  2026-09-18, built 2026-09-19 but uncommitted on other branches when written — see Open item 3]**). **[corrected 2026-09-18, correction 20: the original line here
   read "Eight pages now have a locked direction, which unblocks their builds" — several
   of those "locked directions" were the sketch README's own recommendation or a builder
   synthesis, not his picks (see each section's correction above); replaced with what is
@@ -570,6 +598,11 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
   (`README:336-377`): only question 7, the coupling to 112's forks, is answered, through
   112's accepted forks 1(a) and 2(c) (`README:367-377`); open include question 2, the
   projected worth (Open item 8), and question 3, senders and strangers (Open item 3).
+  **[CORRECTED 2026-09-19, PR #391 audit M2: "6 of 7 open" is stale — questions 2 and 3
+  are both answered now (Open items 8 and 3 below, both closed 2026-09-18), so 113 is
+  4 of 7 open: question 7 (answered, above), question 2/Open item 8 (answered) and
+  question 3/Open item 3 (answered) are settled; the fork-6-coupling and the three
+  drawing-owed items stay open.]**
 - **Drawings owed before their builds can start:** the wine detail surface (110, Owed
   #4), the bundle shape (113), the guide collection for `/help` (111, must-have), B's
   sized boxes at C's 10+ density (113), and — if it wins — sketch 119's shell.
@@ -589,6 +622,28 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
      own draw sends them. **[answered 2026-09-18, founder via `AskUserQuestion`, the
      offered recommendation: they move to `/communications`, and the hold-to-trust and
      add-vendor acts go with them; `/promotions` holds offers only.]**
+     **[built 2026-09-19, uncommitted at the time of writing: the new home is
+     `apps/web/src/pages/communications/next/WhoIsWriting.tsx` (+ `SenderActs.tsx`,
+     `useSendersDeskData.ts`), a "Who is writing" section under the conversation book, with
+     the two 4c acts as centred panels — trust takes the `HoldToApprove`, add-vendor is a
+     plain create. The interim tabs are cut from `/promotions` (`PromotionsNext.tsx`) and
+     `SendersProspectsPanel.tsx` is deleted (no other importer, grep 2026-09-19). No gateway
+     route moves: `/senders/*` and `/prospects/*` live in `common/orchestrator/` and were
+     never promotions-scoped. Build calls the founder did not make, open to his correction:
+     the section's place and two-column shape; **"Strangers"** (sketch A's word) for what
+     the interim called Prospects; untrust as a plain button (only raising trust takes the
+     hold); a one-line "Open in Communications →" hand-off kept on `/promotions`
+     (`direction-b.html:316`); the trust write is read back before it is called saved,
+     because `sender-reputation.service.ts:56-83` ignores the upsert's error and answers
+     200. Claims: `ADR-0160-SENDERS-HOME-COMMUNICATIONS`, `ADR-0160-PROMOTIONS-OFFERS-ONLY`
+     (the second fails CI on any branch where the panels are cut before the home has
+     landed — the merge-order guard). **Raised 2026-09-19, [answered 2026-09-19, founder via `AskUserQuestion`, the offered recommendation: flip the flag first — the `/promotions` cut does not merge until `mudavym_design_communications` is on for every house that has `/promotions`; the flip is his keystroke, not an agent's; the two alternatives declined were keeping the interim panels for flag-off houses and mounting the home on the legacy page, which ADR 0042 forbids]:** the home
+     renders only where `mudavym_design_communications` is on (default false,
+     `feature-flag-registry.ts:104`; the 2026-09-06 go-live flipped five houses, later flips not re-measured), while the rebuilt
+     `/promotions` ships to every house with no flag — so a flag-off house would lose
+     trust-a-sender and add-a-vendor the moment the cut merges (hence the answer above). Not filed in
+     `OPEN-DECISIONS.md` because a new row shifts ~173 citations; filing it is the
+     founder's or lane's call.]**
   4. 107 — "too many operations for the record, what could happen": his risk, not yet
      his fix; paging or grouping is proposed, not decided.
   5. 111 — the web half of the mail-access-revoked alert ("maybe not" ×3, "I'm not
@@ -616,5 +671,8 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-17 | Aldemir (founder), in session | Locked — the gallery review, dictated page by page |
-| 2026-09-18 | Opus critic (re-read every cited sketch file and this ADR, line by line) + Aldemir (founder, `AskUserQuestion`) | Corrected — 21 corrections applied; two sections (110, 111) had recorded a sketch README's own recommendation as his pick and are rewritten; 110, 111 and 112 resolved by his 2026-09-18 answers; 113's box-size question answered "not decided — research owed" **[verification 2026-09-18: this row first said the box-size question was "resolved"]**; 8 items left open, not decided, per CLAUDE.md §0.1 |
+| 2026-09-18 | Opus critic (re-read every cited sketch file and this ADR, line by line) + Aldemir (founder, `AskUserQuestion`) | Corrected — 21 corrections applied; two sections (110, 111) had recorded a sketch README's own recommendation as his pick and are rewritten; 110, 111 and 112 resolved by his 2026-09-18 answers; 113's box-size question answered "not decided — research owed" **[verification 2026-09-18: this row first said the box-size question was "resolved"]**; 8 items left open, not decided, per CLAUDE.md §0.1 **[CORRECTED 2026-09-19, PR #391 audit M2: this count was never updated as items closed the same session — items 1, 2, 3 and 8 were all answered 2026-09-18 (see the rows below and Open item 3's build), leaving 5 open (4, 5, 6, 7, 9), not 8]** |
+| 2026-09-18 | Aldemir (founder, `AskUserQuestion`, session `113-box-sizing-research.md`) + Claude (`82aab7d31`) | Answered — 113's box size is money worth to the house, as an estimate, only when the offer qualifies, ranking rules first, sized in tiers (one hero, up to three larger, then compact tiles); Trusted senders/Strangers with their §4c acts move to `/communications`; ads stay open until scoped (new Open item 9). Open items 3 and 8 closed |
+| 2026-09-18 | Aldemir (founder, sketch-095 book review) + Claude (`9c6387edd`) | Answered — the cellar keeps direction B as its base and carries three things from the old build: the one-place overview, the bottle list as a full-page view opened by a button, and the bottle leaf's "What the library knows" / "The wine's own detail" sections; his sketch-121 answers recorded under 110 item 11 |
 | 2026-09-18 | Verification pass (Opus; every quote re-measured word by word against the dictation and the question-round transcript, every cited sketch line re-read) | Corrected — quotes restored to his words (smoothing undone, typos kept raw with readings bracketed); a deleted 106 quote restored; the 113 §4c "grafted into B" and the 110 "binary" setting un-decided (both open); 107's graft marked proposed; correction numbers aligned to the critic's list; citations fixed (111 README:301, 112 README:410-416/:432-434, 106 README:216 wording) |
+| 2026-09-19 | Session (Sonnet 5; build and cut, tests and mutation runs cited in the two CLAIMS rows) | Built — Open item 3 delivered on two uncommitted branches; the flag-gating fork it exposed is answered there: flip the flag first |

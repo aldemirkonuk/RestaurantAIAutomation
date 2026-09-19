@@ -1540,7 +1540,9 @@ def evaluate(present: dict[str, bool], judged: dict[str, bool], rows: list[dict]
         lines.append("   Remove the entry (the list only shrinks), or find why the function changed.")
     if public_n < floor:
         lines.append(f"CANNOT CHECK -- {public_n} in-scope SECURITY DEFINER function(s) in schema public, "
-                     f"fewer than the floor of {floor}. This is not the database migrations build.")
+                     f"fewer than the floor of {floor}. Either this is not the database migrations "
+                     f"build, or a hardening PR legitimately lowered the live count -- if so, lower "
+                     f"MIN_PUBLIC_SECDEF in this script to match, with a comment naming the PR and why.")
     if blind_by:
         lines.append("CANNOT CHECK -- code PostgreSQL runs as an object's owner for PUBLIC or a role the API can "
                      "switch into, which the catalog does not describe (BLIND):")
@@ -2127,6 +2129,8 @@ def run_self_test() -> int:
              allowlist={"http_request": good})
         # -- never vacuous ------------------------------------------------------------
         case("six in public, floor seven -> 2", 2, _SEVEN[:6] + [_HTTP], ("fewer than the floor of 7",))
+        case("the low-floor message also tells a hardening PR what to do", 2, _SEVEN[:6] + [_HTTP],
+             ("fewer than the floor of 7", "lower MIN_PUBLIC_SECDEF in this script to match"))
         case("an empty database -> 2", 2, [], ("fewer than the floor",))
         case("a leak still wins over a low floor (exit 1, never masked)", 1,
              [_row(name="open", acl_null=True, grantees=("PUBLIC", "postgres"))], ("public.open(uuid)",))

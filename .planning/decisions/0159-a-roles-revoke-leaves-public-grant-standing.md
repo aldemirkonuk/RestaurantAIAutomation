@@ -22,6 +22,20 @@ and `authenticated`. `seed_sim_restaurant(jsonb)` is already
 `{postgres=X/postgres,service_role=X/postgres}`. No migration in the corpus closed it,
 so that happened outside the migrations, on a date nothing records. The "22 more days"
 is measured only for `increment_trust_counter`.]**
+**[2026-09-19, PR #391 audit Notes to close, source: PR #396 (`22695d129`) and a
+read-only production SELECT made the same day (Supabase MCP, SELECT only): production
+is now closed too. `20260919120000_trust_counter_is_server_only.sql` revoked PUBLIC's
+execute on `increment_trust_counter`; both functions now read
+`proacl = {postgres=X/postgres,service_role=X/postgres}`, with `has_function_privilege`
+false for `anon` and `authenticated`. **Measured, production, 2026-09-19: 0 SECURITY
+DEFINER functions outside extensions are executable by `anon` or `authenticated`.**
+This is a fact about production, not a property of this ADR's check —
+`scripts/check_definer_functions_closed.py` never reads production's ACLs at all; it
+judges only the database `schema-parity.yml` builds from the migration corpus (see
+"What it does not see" below: "Anything outside the build (dashboard, `psql`,
+production)"). The production fact above came from a separate, manual, read-only
+SELECT, and stays a residual this check cannot itself confirm — a future production
+drift from what the migrations describe would not be caught by CI.]**
 
 **The mechanism.** PostgreSQL grants `EXECUTE` on a newly created function to `PUBLIC`
 by default — this is a hardcoded creation-time default, not something any migration

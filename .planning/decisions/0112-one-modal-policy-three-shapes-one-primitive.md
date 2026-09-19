@@ -164,6 +164,7 @@ spectrum, not a shape (see Consequences).
 | 2026-09-04 | — | **Migration complete for the two held pages.** `pages/calendar/next/EventSheet.tsx` → `Sheet`, `pages/reports/next/AskTheBook.tsx` → `Panel`; the per-page scrim/panel/keyframe CSS named above is deleted. Status unchanged (**Proposed**) — the founder has still not ratified the three-shape policy itself. Tests: `Sheet.test.tsx` 15, `shellOverlays.test.tsx` 25, `InviteTeamDialog.test.tsx` 5, calendar 44, reports 77, all green. |
 | 2026-09-05 | — | **Census (sketch 102).** Every overlay in the web app read and given a shape or a reason: 141 sites folded into 117 overlays — 31 built, 10 migrate, 12 owed, 7 target, 42 retire, 15 delete, 3 not a shape (after the 2026-09-05 rulings). Seven forks for the founder (F1–F7). |
 | 2026-09-05 | founder | **Ratified (F1) — status → Locked.** F2: the studio invite reuses `InviteTeamDialog` with a second opener. F5: the manual order starts in the owed 'A new order' sheet. F7: a dashboard figure expands in place, no overlay. F3: a 640 sheet. F4: every legacy act is rebuilt to its full purpose (the founder's bar recorded below). F6: HouseHeader's bell and menu survive. All seven answered. |
+| 2026-09-19 | Aldemir (founder, chat, ~11:35Z) + Sonnet 5 (PR #391 audit M4) | **Amended F10** — a WhatsApp message a person sends by clicking Send does not need `HoldToApprove` first; the click is the consent. Scoped to person-sent WhatsApp sends only; every other item on F10's closed list (money, other sends, ledger rows) is unchanged. Named, not built here: people can delete their own sent messages, and the surface reads like WhatsApp Web inside the house frame — both filed as follow-ups on ADR 0121. Meta's WhatsApp Cloud API was checked against its public docs and does not support a business deleting/recalling a message it sent for the recipient (see ADR 0121 item 9). |
 
 ## Founder answers (2026-09-04)
 
@@ -270,6 +271,15 @@ agent resolving its own threads — that claim did not survive re-fetch; the rul
 - **F10 — undo after, with that exact line.** Dismiss an entry, archive a thread, remove a shift,
   a note: the act fires and Undo is offered for a few seconds. Money, sends and ledger rows keep
   the seal before. The list is closed; adding to it is an amendment here, not a builder's call.
+  **[AMENDED 2026-09-19, founder (memory `founder-sketch-decisions-106-115.md`, "WhatsApp reply
+  seal", answered ~11:35Z as PR #391 audit M4), his words: *"as long as they click on the send
+  button nothing to worry, they should be able to delete their messages as well, think about it
+  as -> house built framed but all whatsapp features just like how you open on web"*. This carves
+  a WhatsApp message a PERSON sends by clicking Send OUT of F10's "sends... keep the seal before"
+  — clicking Send is itself the consent, so a person-sent WhatsApp reply/message does NOT need
+  `HoldToApprove` first. Everything else F10 covers (money, other sends, ledger rows) is
+  unchanged; this is a named, scoped carve-out for one channel, not a repeal of the rule. This
+  answers ADR 0121 item 9's "the reply seal" fork — see its bracket there.]**
 - **F11 — all three, as the house's own rules.** A manager's passcode at the point of action for
   staff → manager acts (the manager's name goes on the line); presence on shared records; and a
   two-person rule for money — the initiator is mechanically excluded from approving their own

@@ -36,6 +36,13 @@ as landed or superseded. The endpoint faults (ADR 0147) follow in their own PR.
    remain, each needing a founder answer: whether an inbound WhatsApp message proves
    phone reachability, whether "Main line" can be a stated answer, and a
    founder-authorized production duplicate count before merge.
+   **[CORRECTED 2026-09-19, PR #391 audit M1: the production duplicate count is no longer
+   owed — measured 2026-09-18, founder-authorized, read-only (Supabase MCP SELECT only):
+   both predicates are 0. 0 restaurants hold two live `meta_cloud` credentials sharing a
+   `sender_ref`, and 0 hold two inbound WhatsApp receipts sharing `(restaurant_id,
+   message_id)`. Migration `20260913190100`'s merge precondition is satisfied. The other
+   two forks (phone-reachability override, "Main line" as a stated answer) stay open — see
+   ADR 0121 item 9.]**
 2. **#362 security gate.** Rewrite the guard on PyYAML (brief in section 3).
 3. **#349 nightly E2E.** Its merge of main is in progress in wt-e2e, with 6 conflicts.
 4. **Ports:** calpush, ov0, ov1, ov2, motions (section 4). The founder chose to land all
@@ -100,6 +107,11 @@ valid proposals). The rejected lanes' good parts are being rebuilt, not adopted.
 109 A with two grafts, 110 A with B's detail (C rejected), 111 A, 112 A with C's chart and paper
 trail, 113 B with C's density and bundles. 106 went back for two SOTA directions (sketch 119);
 120 is a fourth recommendations round; 117 is the vendor scorecard; 118 is the flyleaf login.
+**[CORRECTED 2026-09-19, PR #391 audit B1: the "110 A with B's detail (C rejected)" and "111 A"
+picks above are what ADR 0160 later found were the sketch README's own recommendations, not his
+picks, and rewrote. His actual picks: 110 cellar is **direction B**, the gazetteer, with C **kept
+in mind, not built now** (not rejected, and not "A with B's detail"); 111 help is **delegated to
+the builder**, not "direction A". See ADR 0160 §110/§111 and its 2026-09-18 review-trail row.]**
 
 **Owed by the founder, blocking a merge or a build:** ~~the two production duplicate counts for
 migration 20260913190100 and the published-vendor-page count (the SQL is in the session
