@@ -21,9 +21,13 @@
  *    day), so `daily.length === 0` is decodable as "unknown".
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { dashboardApi, inventoryApi, ordersApi } from '@/services/api';
-import type { DashboardStats, InventoryItem, Order } from '@/services/api/types';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { dashboardApi, inventoryApi, ordersApi } from "@/services/api";
+import type {
+  DashboardStats,
+  InventoryItem,
+  Order,
+} from "@/services/api/types";
 
 /* ── Gateway DTO shapes (dashboard.service.ts) ──────────────────────────── */
 
@@ -40,7 +44,7 @@ export interface ActivityItem {
 export interface AlertItem {
   id: string;
   type: string;
-  severity: 'critical' | 'warning' | 'info' | string;
+  severity: "critical" | "warning" | "info" | string;
   title: string;
   message: string;
   actionUrl?: string;
@@ -94,10 +98,16 @@ async function settle<T>(p: Promise<T>): Promise<T | null> {
 }
 
 export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
-  const [stats, setStats] = useState<DashboardStats | null | undefined>(undefined);
+  const [stats, setStats] = useState<DashboardStats | null | undefined>(
+    undefined,
+  );
   const [pending, setPending] = useState<Order[] | null | undefined>(undefined);
-  const [lowStock, setLowStock] = useState<InventoryItem[] | null | undefined>(undefined);
-  const [activity, setActivity] = useState<ActivityItem[] | undefined>(undefined);
+  const [lowStock, setLowStock] = useState<InventoryItem[] | null | undefined>(
+    undefined,
+  );
+  const [activity, setActivity] = useState<ActivityItem[] | undefined>(
+    undefined,
+  );
   const [alerts, setAlerts] = useState<AlertItem[] | undefined>(undefined);
   const alive = useRef(true);
 
@@ -135,10 +145,10 @@ export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
   useEffect(() => {
     const interval = setInterval(refetch, 5 * 60 * 1000);
     const onWs = () => refetch();
-    window.addEventListener('ws:dashboard-invalidate', onWs);
+    window.addEventListener("ws:dashboard-invalidate", onWs);
     return () => {
       clearInterval(interval);
-      window.removeEventListener('ws:dashboard-invalidate', onWs);
+      window.removeEventListener("ws:dashboard-invalidate", onWs);
     };
   }, [refetch]);
 
@@ -148,43 +158,43 @@ export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
 /* ── The month ledger (GET /dashboard/calendar-revenue/:id) ─────────────── */
 
 export type MonthLedgerState =
-  | { state: 'loading' }
-  | { state: 'unknown' }
-  | { state: 'ready'; ledger: MonthLedger };
+  | { state: "loading" }
+  | { state: "unknown" }
+  | { state: "ready"; ledger: MonthLedger };
 
 export function useMonthLedger(
   restaurantId: string | null,
   year: number,
   month: number,
 ): { month: MonthLedgerState; refetch: () => void } {
-  const [state, setState] = useState<MonthLedgerState>({ state: 'loading' });
+  const [state, setState] = useState<MonthLedgerState>({ state: "loading" });
   const cache = useRef(new Map<string, MonthLedger>());
   const seq = useRef(0);
 
   const load = useCallback(
     (force = false) => {
-      const key = `${year}-${month}`;
+      const mySeq = ++seq.current;
+      const key = `${restaurantId}:${year}-${month}`;
       if (!force) {
         const hit = cache.current.get(key);
         if (hit) {
-          setState({ state: 'ready', ledger: hit });
+          setState({ state: "ready", ledger: hit });
           return;
         }
       }
       if (!restaurantId) {
         // Restaurant context still resolving — stay in loading rather than
         // flashing "couldn't be reached" during the first authenticated paint.
-        setState({ state: 'loading' });
+        setState({ state: "loading" });
         return;
       }
-      const mySeq = ++seq.current;
-      setState({ state: 'loading' });
+      setState({ state: "loading" });
       dashboardApi.getCalendarRevenue(year, month, restaurantId).then((res) => {
         if (mySeq !== seq.current) return; // a later month superseded this one
         // The service swallows failures into { daily: [] }; a real month is
         // never shorter than 28 days, so an empty array means "unreachable".
         if (!res.daily || res.daily.length === 0) {
-          setState({ state: 'unknown' });
+          setState({ state: "unknown" });
           return;
         }
         // Deployed gateways predating the honest rename still send
@@ -213,7 +223,7 @@ export function useMonthLedger(
           monthlyBottles: res.monthly_bottles ?? 0,
         };
         cache.current.set(key, ledger);
-        setState({ state: 'ready', ledger });
+        setState({ state: "ready", ledger });
       });
     },
     [restaurantId, year, month],
@@ -221,6 +231,9 @@ export function useMonthLedger(
 
   useEffect(() => {
     load();
+    return () => {
+      seq.current += 1;
+    };
   }, [load]);
 
   // A WS nudge means the ledger may have moved — drop the cache, reload.
@@ -229,8 +242,8 @@ export function useMonthLedger(
       cache.current.clear();
       load(true);
     };
-    window.addEventListener('ws:dashboard-invalidate', onWs);
-    return () => window.removeEventListener('ws:dashboard-invalidate', onWs);
+    window.addEventListener("ws:dashboard-invalidate", onWs);
+    return () => window.removeEventListener("ws:dashboard-invalidate", onWs);
   }, [load]);
 
   return { month: state, refetch: () => load(true) };
@@ -239,22 +252,25 @@ export function useMonthLedger(
 /* ── One day's delivered orders (GET /procurement/orders/history) ───────── */
 
 export type DayOrdersState =
-  | { state: 'idle' }
-  | { state: 'loading' }
-  | { state: 'unknown' }
-  | { state: 'ready'; orders: Order[] };
+  | { state: "idle" }
+  | { state: "loading" }
+  | { state: "unknown" }
+  | { state: "ready"; orders: Order[] };
 
-export function useDayOrders(restaurantId: string | null, date: string | null): DayOrdersState {
-  const [state, setState] = useState<DayOrdersState>({ state: 'idle' });
+export function useDayOrders(
+  restaurantId: string | null,
+  date: string | null,
+): DayOrdersState {
+  const [state, setState] = useState<DayOrdersState>({ state: "idle" });
   const seq = useRef(0);
 
   useEffect(() => {
     if (!date || !restaurantId) {
-      setState({ state: 'idle' });
+      setState({ state: "idle" });
       return;
     }
     const mySeq = ++seq.current;
-    setState({ state: 'loading' });
+    setState({ state: "loading" });
     // Ask for a generous window (an order delivered on `date` may have been
     // CREATED weeks earlier, and the server may window on either field) and
     // filter client-side to the exact day on deliveredAt — server range
@@ -264,20 +280,26 @@ export function useDayOrders(restaurantId: string | null, date: string | null): 
     const to = new Date(date);
     to.setDate(to.getDate() + 2);
     const fmt = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     ordersApi
       // limit is capped at 100 by the gateway's validation (verified: 200 → 400).
-      .getOrderHistory({ startDate: fmt(from), endDate: fmt(to), dateFrom: fmt(from), dateTo: fmt(to), limit: 100 })
+      .getOrderHistory({
+        startDate: fmt(from),
+        endDate: fmt(to),
+        dateFrom: fmt(from),
+        dateTo: fmt(to),
+        limit: 100,
+      })
       .then((res) => {
         if (mySeq !== seq.current) return;
         const orders = (res.data ?? []).filter(
           (o) => o.deliveredAt && o.deliveredAt.startsWith(date),
         );
-        setState({ state: 'ready', orders });
+        setState({ state: "ready", orders });
       })
       .catch(() => {
         if (mySeq !== seq.current) return;
-        setState({ state: 'unknown' });
+        setState({ state: "unknown" });
       });
   }, [restaurantId, date]);
 

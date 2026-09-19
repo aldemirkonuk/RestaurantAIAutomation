@@ -39,7 +39,26 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
 :8-14).
 
 ## 1a. Features
-- Recommendation cards, one per fired deterministic rule: the observed number, the concrete action, and why (no LLM — auditable)
+
+- **Who takes this? — a POPOVER anchored to the entry's own control** (built
+  2026-09-06, packet 2 of the overlay layer; census 102 · fork F4, confirmed by the
+  founder 2026-09-06). `pages/recommendations/next/WhoTakesThisPopover.tsx`.
+  - **It replaces an inline list.** The docket's assignment was a row of names inside
+    the opened work block, so opening it pushed everything under it down at the moment
+    somebody was choosing — the fact they were comparing moved under their eyes.
+    Anchored, nothing on the docket moves.
+  - **Non-modal, and it must be**: no scrim, no trap, tab off it and it goes. ADR
+    0112's one anchored exception is a form that commits; this is a picker.
+  - **The roster's four states stay four** — reading · the read FAILED · a real empty
+    roster · rows. "We could not read the roster" drawn as "there is nobody to assign
+    to" sends somebody to `/team` to add a teammate they already have.
+  - **"Nobody — clear it" is offered LAST and only when there is something to clear.**
+    A list whose first row clears the assignment is a list you clear by mistake.
+  - **It writes nothing of its own**: the choice goes back to the docket's existing
+    `POST /analytics/recommendations/:restaurantId/action`, so the popover and the row
+    cannot disagree about who owns an entry. No seal — assignment commits no money and
+    sends no letter.
+  - Proved by `WhoTakesThis.test.tsx` (11 assertions).- Recommendation cards, one per fired deterministic rule: the observed number, the concrete action, and why (no LLM — auditable)
 - Per-card: act / dismiss with reason / snooze / done / pin; bulk actions; keyboard flows
 - Assign a recommendation to a team member
 - Tabs: active / history / dismissed / snoozed / done
@@ -781,8 +800,9 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 | Page | Overlay | Shape | Status | Where the act lives or went | Source |
 |---|---|---|---|---|---|
-| `/recommendations` | Who takes this? | popover | Owed · fork F4 | A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's. | `pages/Recommendations.tsx:980 — not on the rebuilt docket` |
+| `/recommendations` | Who takes this? | popover | Built · fork F4 | A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's. BUILT 2026-09-06 (packet 2): the docket's inline list moved onto the anchored Popover, so nothing under it shifts while somebody is choosing; the roster's four states stay four, and 'nobody' is offered LAST. | `BUILT 2026-09-06 as pages/recommendations/next/WhoTakesThisPopover.tsx (was pages/Recommendations.tsx:980; the docket's inline list is replaced)` |
 
+| `rc-assign-ink` | The assignee picker opens | *Assign* / *Reassign* on an entry — the house `Popover` on `ink`, 160ms, anchored under the control. Nothing on the docket moves; `prefers-reduced-motion` renders none |
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
 ## 2. Entry

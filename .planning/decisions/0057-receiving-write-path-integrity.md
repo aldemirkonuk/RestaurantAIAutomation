@@ -143,8 +143,25 @@ shrink; a second table needs the same protection (that is the signal to
 reconsider option 2 rather than to copy this script); or the insert-path count
 the guard prints stops going down.
 
+**Open items (added 2026-09-19, lane E — moved here from `v3.0-TECH-DEBT.md`'s
+"Action-integrity tranche" per the founder's 2026-09-19 order to delete that
+register and split its survivors by kind; CLAUDE.md §4):**
+- Receipt corrections key on one idempotency key per order/item. A second
+  verification that changes an already-corrected quantity needs its own atomic
+  revision writer; today's write path was not built to re-key a second
+  correction on the same line.
+- Display-cache rows written before the receiving-unit repair are not
+  retrospectively assigned a unit. Historical cache-unit ambiguity therefore
+  remains a display limit, not a stock-correctness one (stock reads the
+  immutable order ledger instead).
+- `markDelivered`'s status write and its stock write are not one database
+  transaction, so the two can diverge on a partial failure. Its legacy
+  best-effort stock error handling is unchanged and sits outside this ADR's
+  fix.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-01 | — | Created. Status **Proposed** — an agent cannot lock a decision. |
+| 2026-09-19 | Lane E (fix pass) | Added the three open items above; no code or Decision change. |

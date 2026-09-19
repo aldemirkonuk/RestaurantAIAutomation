@@ -1061,6 +1061,26 @@ export class OrderResponseDto {
   })
   freight?: number | null;
 
+  /**
+   * The currency this order was PLACED in — `procurement_orders.currency`,
+   * recorded once when the order was composed (migration
+   * `20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql`).
+   *
+   * Three states, as for `providerName`: a code; `null` when the row was read
+   * and names none (an order composed before the column existed, or one whose
+   * desk chose none — never defaulted to the house's); the key ABSENT when the
+   * route did not read the column. Added 2026-09-17 because the bell's approval
+   * panel put a total on a hold with no currency beside it (lane E audit D4).
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "TRY",
+    description:
+      "ISO 4217 code the order was placed in. null = the row names no currency (never defaulted). Key ABSENT = this route does not read the column.",
+  })
+  currency?: string | null;
+
   /*
    * ===========================================================================
    * THE RECURRENCE (ADR 0125's addendum, founder 2026-09-05)

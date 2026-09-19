@@ -15,7 +15,7 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
@@ -26,7 +26,7 @@ import {
   UpdateOrderDto,
   VerifyReceiptDto,
 } from "./dto/procurement.dto";
-import { ApproveDraftDto } from "./dto/approve-draft.dto";
+import { ApproveDraftDto, DraftSealChallengeDto } from "./dto/approve-draft.dto";
 import { ProcurementService } from "./procurement.service";
 
 /**
@@ -400,6 +400,52 @@ export class ProcurementController {
   }
 
   /**
+   * What this house last agreed with one vendor for one shelf item.
+   *
+   * NEW ROUTE (packet 2 of the overlay layer, 2026-09-06). The new-order sheet
+   * is drawn with "price and unit come from the agreement on the vendor's row"
+   * and nothing could answer that: `agreement-currency` answers which money,
+   * `vendor-terms` carries no prices, and the price register has no controller.
+   *
+   * Declared as a literal tail rather than under `orders/` for the same reason
+   * `order-approval-gate` and `agreement-currency` are — it can never be
+   * shadowed by, or shadow, `orders/:id`.
+   *
+   * The restaurant is the token's. Both ids are REQUIRED and refused when
+   * absent: an "agreement" resolved without naming the vendor would be the last
+   * price from anybody, which is a different and much more dangerous number.
+   * A read that fails answers `state: "unreadable"` with its own sentence — it
+   * is never flattened into "no agreement on file".
+   */
+  @Get("last-agreement")
+  @ApiOperation({
+    summary: "The last agreed price and unit for one vendor and one shelf item",
+    description:
+      'Three states, kept apart: "found" (with the price, its unit pair, the currency, the date and the order it was struck on), "none" (this house has never agreed a price with this vendor for this item) and "unreadable" (the read failed). Every state carries a sentence, because an answer with no sentence is what lets a failure render as an empty field. Nothing is converted — a price whose unit was never stated is reported as unstated, never as per bottle.',
+  })
+  @ApiQuery({ name: "providerId", required: true })
+  @ApiQuery({ name: "inventoryId", required: true })
+  @ApiResponse({ status: 200, description: "The last agreement, or why there is none" })
+  @ApiResponse({ status: 400, description: "providerId and inventoryId are both required" })
+  async lastAgreement(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Query("providerId") providerId?: string,
+    @Query("inventoryId") inventoryId?: string,
+  ) {
+    if (!providerId?.trim() || !inventoryId?.trim()) {
+      throw new HttpException(
+        "Name both the vendor and the shelf item. An agreement resolved without a vendor is the last price from anybody, which is a different number.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.procurementService.lastAgreementFor(
+      user.restaurantId,
+      providerId.trim(),
+      inventoryId.trim(),
+    );
+  }
+
+  /**
    * Begin the hold. Returns a one-time seal, once.
    *
    * The token is returned HERE and nowhere else, and it is minted at the moment
@@ -571,18 +617,112 @@ export class ProcurementController {
     @Param("id") orderId: string,
     @Body() dto: ApproveDraftDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<{ conversationId: string; sentAt: string }> {
     try {
-      return await this.procurementService.approveDraft(
+      return await this.procurementService.sendDraftedReply(
         user.restaurantId,
         orderId,
+        user.userId,
         dto,
+        challenge,
       );
     } catch (error: any) {
-      if (error instanceof ForbiddenException) throw error;
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to approve draft",
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Begin the hold on a drafted reply. Returns a one-time seal, once.
+   *
+   * NEW ROUTE (packet 2 of the overlay layer, 2026-09-06; ADR 0118). The only
+   * approval of a drafted reply was `POST orders/:id/approve-draft`, which
+   * sends a letter to a vendor on an unsealed request. Nothing reaches a vendor
+   * without a person's hold, so the hold now mints a seal over THE LETTER — the
+   * words, the recipient and the copies as the person read them — and
+   * `send-drafted-reply` below spends it.
+   *
+   * The letter travels in the BODY because it is what the seal is over, and the
+   * body is what the person edited in the panel; the seal itself comes back in
+   * a header on the send, the way every other seal in this house travels.
+   *
+   * The body is a class (`DraftSealChallengeDto`) so the global ValidationPipe
+   * checks it — an inline type is recorded as `Object` and skipped
+   * (`draft-routes-validate-bodies.spec.ts`).
+   */
+  @Post("orders/:id/draft-seal-challenge")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: "Mint the one-time seal a drafted reply's send has to carry back",
+    description:
+      "Bound to this actor, this order, the act `send_draft`, and the LETTER as it stands — its words normalised, its recipient and its copies. A seal minted to approve an order's money cannot be spent to send its mail, and a seal minted over one paragraph cannot be spent after the paragraph changes. 404 when no draft is waiting; 500 (never a seal) when whether one is waiting could not be read.",
+  })
+  @ApiResponse({ status: 201, description: "`challenge`, `expiresAt` and `act`" })
+  @ApiResponse({ status: 404, description: "No draft is waiting on this order" })
+  async issueDraftSendSeal(
+    @Param("id") orderId: string,
+    @Body() body: DraftSealChallengeDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issueDraftSendSeal(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      { body: body.content, to: body.to ?? null, cc: body.ccEmails ?? [] },
+    );
+  }
+
+  /**
+   * Send the drafted reply, behind a redeemed seal.
+   *
+   * NEW ROUTE (packet 2, 2026-09-06). It wraps `approveDraft` rather than
+   * replacing its atomic sending claim. Both this route and the legacy
+   * approve-draft route require the same held seal and manager boundary.
+   *
+   * The body is `ApproveDraftDto` itself, never an intersection with it: an
+   * intersection type is recorded as `Object`, which the ValidationPipe skips.
+   * It carries no recipient — the letter goes to the vendor's address on file,
+   * and the seal is redeemed over that address, not over anything the caller
+   * names.
+   */
+  @Post("orders/:id/send-drafted-reply")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: "Send the house's drafted reply behind a redeemed seal (ADR 0118)",
+  })
+  @ApiResponse({ status: 200, description: "The letter was sent" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The seal was absent, already spent, issued to somebody else, issued for a different order or act, or issued before the letter changed. The body's `message` is the whole sentence and the panel renders it verbatim.",
+  })
+  async sendDraftedReply(
+    @Param("id") orderId: string,
+    @Body() dto: ApproveDraftDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Headers("x-seal-challenge") challenge?: string,
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    try {
+      return await this.procurementService.sendDraftedReply(
+        user.restaurantId,
+        orderId,
+        user.userId,
+        dto,
+        challenge,
+      );
+    } catch (error: any) {
+      // Every deliberate refusal keeps its status and its sentence. Flattening
+      // a 403 from the seal into a 500 would tell a manager the gateway broke
+      // when in fact it refused, which are different things to do next about.
+      if (error instanceof HttpException) throw error;
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(
+        error.message || "Failed to send the drafted reply",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

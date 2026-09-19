@@ -44,6 +44,7 @@ import {
   toBottleOperands,
 } from "./invoice-match";
 import { readAliasedQuantity } from "./quantity-aliases";
+import { readBookedOrderBottles } from "./booked-order-quantity";
 import { readQuantityReceived } from "./quantity-received-unit";
 import { draftClaimFromMatch } from "./documents/credit-ledger";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
@@ -84,14 +85,12 @@ import {
   receivingPriceNeedsACurrency,
   type PriceCurrencyClaim,
 } from "./price-currency";
-import {
-  orderCurrencyOffer,
-  orderCurrencySource,
-} from "./agreement-currency";
+import { orderCurrencyOffer, orderCurrencySource } from "./agreement-currency";
 import {
   documentMoneyState,
   receivingPriceRefusal,
 } from "./documents/invoice-currency";
+import { lastAgreementAnswer, type LastAgreement } from "./last-agreement";
 import { normalizeUnitPrice } from "../analytics/engine/vendor-price-consensus";
 // The calendar owns the vocabulary of calendar_events. Importing the enums
 // rather than restating the strings makes a divergence a compile error instead
@@ -118,6 +117,8 @@ import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import {
   ORDER_CANCEL_ACT,
   ORDER_SEAL_ACT,
+  ORDER_SEND_DRAFT_ACT,
+  draftSealArgs,
   orderCancelSealArgs,
   orderSealArgs,
 } from "./order-seal";
@@ -141,10 +142,7 @@ import {
 // is the pure half of ADR 0124's identity register — no Nest DI, no database,
 // no module wiring — so the one rule that decides whether a key names a bottle
 // lives in exactly one place and this file cannot drift from it.
-import {
-  IdentityKeyRow,
-  joinByExactKey,
-} from "../vendor-intel/identity-join";
+import { IdentityKeyRow, joinByExactKey } from "../vendor-intel/identity-join";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -200,7 +198,9 @@ const APPROVAL_GATE_WINDOW_DAYS = 365;
  * number becomes `null` — never `0`, which `decideApproval` would read as a
  * genuine total below every ceiling.
  */
-function toFiniteNumber(value: string | number | null | undefined): number | null {
+function toFiniteNumber(
+  value: string | number | null | undefined,
+): number | null {
   if (value === null || value === undefined) return null;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
@@ -376,6 +376,12 @@ interface ProcurementOrderRow {
   recurrence_status?: string | null;
   recurrence_parent_order_id?: string | null;
   recurrence_occurrence_on?: string | null;
+  /**
+   * `procurement_orders.currency`, present on every route that selects `*`.
+   * Read through the key test, like `provider_name`: a route that selects a
+   * column list has not learned the order names no currency.
+   */
+  currency?: string | null;
 }
 
 /**
@@ -397,6 +403,62 @@ function embeddedProviderName(embed: unknown): string | null {
   if (!one || typeof one !== "object") return null;
   const name = (one as { name?: unknown }).name;
   return typeof name === "string" && name.trim() !== "" ? name : null;
+}
+
+/**
+ * The subject line a drafted reply sends under.
+ *
+ * Both approveDraft (the live send) and getActiveConversations (the panel
+ * that shows what a send WOULD use, D-08) call this one function so the two
+ * cannot drift into two different opinions by hand-editing each copy — which
+ * is what a lane-E repair (2026-09-19) found had already happened: a comment
+ * claimed the two inline formulas were "identical" when they were not
+ * byte-for-byte the same expression (getActiveConversations was missing the
+ * `storedSubject` fallback and defaulted `wineName` at a different point in
+ * the chain). They produced the same string only because neither caller's
+ * `select()` actually fetches a `subject` column, so `storedSubject` was
+ * always undefined either way — a coincidence of the query shape, not a
+ * guarantee. Pulled out as a plain function (module-level, not a class
+ * method) so it is exercised directly, the same way as
+ * `describeOrderedQuantity` above.
+ */
+export function draftSubjectLine(
+  emailHeaders: Record<string, any>,
+  storedSubject: string | null | undefined,
+  wineName: string | null | undefined,
+): string {
+  return (
+    emailHeaders.subject ||
+    storedSubject ||
+    `Order Request: ${wineName ?? "Wine Order"}`
+  );
+}
+
+/**
+ * FOUNDER QUESTION, OPEN (lane E, 2026-09-19 round-4 audit; not yet asked).
+ * `POST orders/:id/approve-draft` is the pre-existing route: every native app
+ * build issued before `DraftSendSeal` (this lane) calls it with no
+ * `x-seal-challenge` header at all, because it does not know one exists. With
+ * the seal unconditionally required, `sealChallenges.redeem` refuses an
+ * absent challenge (`seal-challenge.service.ts`, `refuse("absent")`), so
+ * every such install would start getting a 403 on every draft approval the
+ * moment this ships, with nothing in that old build able to explain why.
+ * This gate defers that: it does not decide whether that break is
+ * acceptable, it only keeps this lane from forcing the answer by shipping.
+ *
+ * Module-level (not a class method) for the same reason as `draftSubjectLine`
+ * above: directly unit-testable without a private-method workaround.
+ */
+export function legacyDraftSendMayGoUnsealed(): boolean {
+  // Default (unset) = TRUE: an old native install with no seal at all still
+  // sends, exactly as it did before this lane. A caller that DOES present a
+  // challenge is unaffected either way (see sendDraftedReply below — it is
+  // always carried through and always redeemed). Setting
+  // REQUIRE_DRAFT_SEND_SEAL=true removes the grace period and makes the
+  // legacy route refuse like every other sealed act; do that only once
+  // native installs predating the seal are confirmed gone (that
+  // confirmation is the open question above, not this code).
+  return process.env.REQUIRE_DRAFT_SEND_SEAL !== "true";
 }
 
 @Injectable()
@@ -1970,7 +2032,9 @@ export class ProcurementService {
     try {
       const { data, error } = await this.databaseService.supabase
         .from("vendor_price_observations")
-        .select("raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor")
+        .select(
+          "raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor",
+        )
         .eq("master_wine_id", masterWineId)
         .or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
         .order("observed_at", { ascending: false })
@@ -2175,6 +2239,110 @@ export class ProcurementService {
   }
 
   /**
+   * What this house last agreed with this vendor for this shelf item.
+   *
+   * The read behind `GET /procurement/last-agreement`, built for packet 2's
+   * new-order sheet: the census draws that sheet with "price and unit come from
+   * the agreement on the vendor's row", and no route could answer it.
+   *
+   * SCOPED THREE WAYS, ALWAYS. `restaurant_id` on the LINE, `provider_id` on the
+   * order, and `inventory_id` on the line. The restaurant comes from the token
+   * at the controller; nothing here trusts a body.
+   *
+   * ORDERED BY `requested_at`, never by insertion, for the same reason
+   * `agreementCurrencyForVendor` orders documents by their own date: "what we
+   * last agreed" must not change because somebody back-filled an old order this
+   * morning.
+   *
+   * A FAILED READ IS REPORTED AS ONE. The catch does not return "none"; it
+   * returns `unreadable`, and `lastAgreementAnswer` gives that its own sentence.
+   * The whole point of the route is that a sheet can tell a vendor who has
+   * never quoted this wine from a database that would not answer.
+   */
+  async lastAgreementFor(
+    restaurantId: string,
+    providerId: string,
+    inventoryId: string,
+  ): Promise<LastAgreement> {
+    let vendorName: string | null = null;
+    try {
+      const { data: vendor, error: vendorError } = await this.databaseService.supabase
+        .from("providers")
+        .select("name")
+        .eq("id", providerId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      // supabase-js resolves a failed read rather than throwing, so the failure
+      // is read here explicitly: it costs the noun, never the answer.
+      vendorName = vendorError ? null : (vendor as { name?: string } | null)?.name ?? null;
+    } catch {
+      // A missing vendor name costs the sentence a noun and nothing else. It is
+      // NOT allowed to turn the answer into a failure, because the price is the
+      // thing the caller asked for.
+      vendorName = null;
+    }
+
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select(
+          "order_number, requested_at, procurement_order_items!inner(" +
+            "final_unit_price, price_uom, price_pack_size, currency, unit_type, bottles_per_unit)",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("provider_id", providerId)
+        .eq("procurement_order_items.restaurant_id", restaurantId)
+        .eq("procurement_order_items.inventory_id", inventoryId)
+        .in("status", [ProcurementOrderStatus.CONFIRMED, ProcurementOrderStatus.IN_TRANSIT,
+          ProcurementOrderStatus.PARTIALLY_RECEIVED, ProcurementOrderStatus.DELIVERED, ProcurementOrderStatus.COMPLETED])
+        // Order the parent rows themselves. Ordering an embedded relation from
+        // the line table did not select the latest agreement.
+        .order("requested_at", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: false })
+        .limit(1);
+
+      if (error) throw new Error(error.message);
+
+      const parent = Array.isArray(data) ? (data[0] as any) : null;
+      if (!parent) return lastAgreementAnswer(null, false, vendorName);
+      const lines = Array.isArray(parent.procurement_order_items) ? parent.procurement_order_items : [parent.procurement_order_items].filter(Boolean);
+      // Zero lines under an `!inner` join on this exact item is a shape the
+      // query should not be able to produce — treat it as a failed read, not
+      // an empty book. More than one is a real ambiguity, not a failure (lane
+      // E audit D9): the order named this item twice, and retrying will not
+      // change that.
+      if (lines.length === 0) return lastAgreementAnswer(null, true, vendorName);
+      if (lines.length > 1) return lastAgreementAnswer(null, false, vendorName, true);
+      const row = lines[0];
+
+      return lastAgreementAnswer(
+        {
+          price:
+            typeof row.final_unit_price === "number" ? row.final_unit_price : null,
+          priceUom: row.price_uom ?? null,
+          pricePackSize:
+            typeof row.price_pack_size === "number" ? row.price_pack_size : null,
+          currency: row.currency ?? null,
+          unitType: row.unit_type ?? null,
+          bottlesPerUnit:
+            typeof row.bottles_per_unit === "number" ? row.bottles_per_unit : null,
+          agreedOn: parent?.requested_at ?? null,
+          orderNumber: parent?.order_number ?? null,
+        },
+        false,
+        vendorName,
+      );
+    } catch (e: any) {
+      this.logger.warn(
+        `Could not read the last agreement for provider ${providerId} and ` +
+          `inventory ${inventoryId}: ${e?.message}. Answering 'unreadable' — ` +
+          `NOT 'none', which would tell the sheet there is no agreed price.`,
+      );
+      return lastAgreementAnswer(null, true, vendorName);
+    }
+  }
+
+  /**
    * The currency the agreement sheet should OFFER for a new line with this
    * vendor, and the reason a person can check.
    *
@@ -2260,11 +2428,12 @@ export class ProcurementService {
     }
 
     let houseCurrency: string | null = null;
-    const { data: house, error: houseError } = await this.databaseService.supabase
-      .from("restaurants")
-      .select("currency")
-      .eq("id", restaurantId)
-      .maybeSingle();
+    const { data: house, error: houseError } =
+      await this.databaseService.supabase
+        .from("restaurants")
+        .select("currency")
+        .eq("id", restaurantId)
+        .maybeSingle();
     if (houseError) {
       this.logger.warn(
         `Could not read the house's currency for the agreement sheet: ` +
@@ -2333,11 +2502,12 @@ export class ProcurementService {
     docNumber: string | null;
     reason: string;
   } | null> {
-    const { data: links, error: linkError } = await this.databaseService.supabase
-      .from("procurement_document_links")
-      .select("document_id")
-      .eq("restaurant_id", restaurantId)
-      .eq("order_id", orderId);
+    const { data: links, error: linkError } =
+      await this.databaseService.supabase
+        .from("procurement_document_links")
+        .select("document_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId);
     if (linkError) {
       this.logger.warn(
         `The documents attached to order ${orderId} could not be read ` +
@@ -2346,7 +2516,9 @@ export class ProcurementService {
       );
       return null;
     }
-    const ids = (links ?? []).map((l) => (l as any).document_id).filter(Boolean);
+    const ids = (links ?? [])
+      .map((l) => (l as any).document_id)
+      .filter(Boolean);
     if (!ids.length) return null;
 
     const { data: docs, error: docError } = await this.databaseService.supabase
@@ -2588,7 +2760,9 @@ export class ProcurementService {
     // line all read, and all three wanted the name.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("*, inventory:inventory_id(wine_name), provider:provider_id(name)")
+      .select(
+        "*, inventory:inventory_id(wine_name), provider:provider_id(name)",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .single();
@@ -3705,12 +3879,15 @@ export class ProcurementService {
       );
     }
 
-    const { data: orderRow, error: orderError } = await this.databaseService.supabase
-      .from("procurement_orders")
-      .select("id, total_cost, provider_id, inventory_id, final_price, status")
-      .eq("restaurant_id", restaurantId)
-      .eq("id", orderId)
-      .maybeSingle();
+    const { data: orderRow, error: orderError } =
+      await this.databaseService.supabase
+        .from("procurement_orders")
+        .select(
+          "id, total_cost, provider_id, inventory_id, final_price, status",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
 
     if (orderError) {
       throw new InternalServerErrorException(
@@ -3875,9 +4052,14 @@ export class ProcurementService {
     }
 
     const orders = walk.rows
-      .filter((r) => PENDING_APPROVAL_STATUSES.has((r.status ?? "").toUpperCase()))
+      .filter((r) =>
+        PENDING_APPROVAL_STATUSES.has((r.status ?? "").toUpperCase()),
+      )
       .map((r) => {
-        const decision: ApprovalDecision = decideApproval(readout.thresholds, r.test);
+        const decision: ApprovalDecision = decideApproval(
+          readout.thresholds,
+          r.test,
+        );
         const mayApprove =
           decision.requiredRole === null ||
           roleSatisfies(callerRole, decision.requiredRole);
@@ -3923,7 +4105,9 @@ export class ProcurementService {
     orderId: string,
     currentStatus: string | null,
   ): Promise<void> {
-    if ((currentStatus ?? "").toUpperCase() !== ProcurementOrderStatus.PENDING) {
+    if (
+      (currentStatus ?? "").toUpperCase() !== ProcurementOrderStatus.PENDING
+    ) {
       return;
     }
     try {
@@ -4025,7 +4209,9 @@ export class ProcurementService {
     try {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_orders")
-        .select("id, status, provider_id, inventory_id, requested_at, total_cost, final_price")
+        .select(
+          "id, status, provider_id, inventory_id, requested_at, total_cost, final_price",
+        )
         .eq("restaurant_id", restaurantId)
         .gte("requested_at", since)
         .order("requested_at", { ascending: true })
@@ -4035,7 +4221,11 @@ export class ProcurementService {
       }
       const seenVendors = new Set<string>();
       const lastPriceByItem = new Map<string, number>();
-      const rows: Array<{ id: string; status: string | null; test: OrderUnderTest }> = [];
+      const rows: Array<{
+        id: string;
+        status: string | null;
+        test: OrderUnderTest;
+      }> = [];
       for (const raw of (data ?? []) as Array<{
         id: string;
         status: string | null;
@@ -4219,6 +4409,44 @@ export class ProcurementService {
 
     const resolvedQuantity =
       quantityReceived ?? (existingOrder as any).quantity ?? 0;
+    const deliveryUnits = await this.resolveOrderMatchUnits(
+      restaurantId,
+      orderId,
+      existingOrder as any,
+    );
+    const deliveryAgreement = await this.readAgreedLine(restaurantId, orderId);
+    const deliveryPrice = agreedPricePerBottleForDoor({
+      price: deliveryAgreement.read
+        ? (deliveryAgreement.stated ? deliveryAgreement.finalUnitPrice ?? (existingOrder as any).final_price : (existingOrder as any).final_price) ?? null
+        : null,
+      stated: deliveryAgreement.stated,
+    });
+    let receivedBottles: number;
+    try {
+      const operands = toBottleOperands({
+        orderedQtyInOrderedUom: resolvedQuantity,
+        orderedUom: deliveryUnits.unitType,
+        orderedBottlesPerUnit: deliveryUnits.bottlesPerUnit,
+      });
+      if (["keg", "liter"].includes(operands.units.ordered.uom)) {
+        throw new MatchUnitError(
+          "not_comparable",
+          "The order does not state a convertible bottle quantity.",
+        );
+      }
+      receivedBottles = operands.orderedQty;
+      if (!Number.isSafeInteger(receivedBottles))
+        throw new MatchUnitError(
+          "not_comparable",
+          "The delivery must resolve to a whole number of bottles.",
+        );
+    } catch (error) {
+      if (error instanceof MatchUnitError)
+        throw new BadRequestException(
+          `Cannot book this delivery: ${error.message}`,
+        );
+      throw error;
+    }
 
     // THE SECOND DELIVERY LOSES AT THE DATABASE, NOT ONLY AT THE READ.
     //
@@ -4401,7 +4629,7 @@ export class ProcurementService {
 
             const currentShadow = currentStock?.shadow_stock ?? 0;
             const currentInTransit = currentStock?.in_transit_quantity ?? 0;
-            const shadowRelease = Math.min(resolvedQuantity, currentShadow);
+            const shadowRelease = Math.min(receivedBottles, currentShadow);
 
             // WHAT KIND OF PRICE THIS IS.
             //
@@ -4427,7 +4655,7 @@ export class ProcurementService {
             // prefilled_invoice_unit_price) — so it was always `undefined` and
             // the `??` chain fell through it silently. Reading a column that
             // does not exist is not a fallback, it is a no-op wearing one.
-            const unitCost = row.final_price ?? null;
+            const unitCost = deliveryPrice.ok ? deliveryPrice.perBottle : null;
             const costProvenance = unitCost == null ? null : "estimated";
 
             if (shadowRelease > 0) {
@@ -4450,7 +4678,7 @@ export class ProcurementService {
             await this.databaseService.supabase.rpc("apply_stock_movement", {
               p_inventory_id: order.inventoryId,
               p_stock_state: "live",
-              p_delta: resolvedQuantity,
+              p_delta: receivedBottles,
               p_transaction_type: "purchase",
               p_source: "order",
               p_reason: "order delivered — physical receipt",
@@ -4468,7 +4696,7 @@ export class ProcurementService {
               .update({
                 in_transit_quantity: Math.max(
                   0,
-                  currentInTransit - resolvedQuantity,
+                  currentInTransit - receivedBottles,
                 ),
               })
               .eq("restaurant_id", restaurantId)
@@ -4480,7 +4708,7 @@ export class ProcurementService {
             inventory_id: order.inventoryId,
             master_wine_id: masterWineId ?? null,
             event_type: "order_delivered",
-            quantity_change: resolvedQuantity,
+            quantity_change: receivedBottles,
             source: "procurement",
             idempotency_key: idempotencyKey,
             metadata: {
@@ -4909,56 +5137,18 @@ export class ProcurementService {
         );
     }
 
-    // What was already pushed into the ledger; corrections are relative to it.
-    //
-    // ⚠️ ITS UNIT IS NOT AGREED, AND THIS LINE ASSUMES ONE. Read this before
-    // trusting any verdict this method produces on a door-counted order.
-    //
-    // Three of the four parties say `procurement_orders.quantity_received` is
-    // stated in the ORDER's own unit, beside `quantity`:
-    //
-    //   * `markDelivered` writes `quantityReceived ?? existingOrder.quantity`
-    //     (:1602)
-    //   * `updateOrder` writes it from `quantityReceivedInOrderUom` (:1128) —
-    //     the DTO field name is itself the claim
-    //   * this method writes back `acceptedQty + rejectedQty` in the COUNTED
-    //     unit as submitted, and says so (:2353)
-    //
-    // The fourth writes BOTTLES. `ReceivingService.recordDoorReceipt` sets
-    // `quantity_received = totals.receivedBottles` (receiving.service.ts:504),
-    // a sum of `counted_qty_bottles - rejected_qty_bottles` (ADR 0062, #228).
-    //
-    // So on a door-counted order this number is already in bottles, and the
-    // line below hands it to `computeMatch` as `stockedQtyInCountedUom`, where
-    // `conv(rawStocked, counted)` (invoice-match.ts:558) multiplies it by the
-    // pack size a SECOND time. MEASURED by calling `toBottleOperands` /
-    // `computeMatch` directly on a 5-case order of a twelve-pack, door-counted
-    // at 5 cases, desk-verified at 5, with no `countedUom` sent (neither desk
-    // client sends one, so it falls back to the order's `case`):
-    //
-    //   no invoice on file    accepted 60  stocked 720  ledgerDelta -660  "unmatched"
-    //   matching invoice      accepted 60  stocked 720  ledgerDelta -660  "matched"
-    //
-    // THE INVOICE CHANGES ONLY WHAT THE MANAGER IS TOLD, NOT WHETHER STOCK
-    // MOVES. `-660` is identical either way, and the gate at :2267 fires on
-    // `match.ledgerDelta !== 0`, so `applyReceiptAdjustment` removes 660
-    // bottles from live stock on BOTH paths. (`invoice-match.ts:706` is where
-    // an absent invoice becomes "unmatched"; it touches no operand.) With no invoice the screen at
-    // least says "unmatched", which a manager might question; with a matching
-    // invoice it says "matched", which they would not. The precondition is
-    // about detection, not about reachability.
-    //
-    // The `?? quantity` fallback carries the same assumption for an order
-    // nothing has booked at all.
-    //
-    // NOT REPAIRED HERE, because the repair is a choice between the two
-    // writers and it has consequences either way: bottles is the more precise
-    // unit and the one the ledger speaks, while the order's unit is what the
-    // column name, three writers and every client that renders it assume, and
-    // `quantity_received` is an `integer`, so converting bottles→cases rounds
-    // a part-case delivery away. Filed for the founder rather than guessed at.
-    const stockedQty =
-      (orderRow as any).quantity_received ?? (orderRow as any).quantity ?? 0;
+    // The immutable ledger states bottles and retains receipts after stock is
+    // consumed. quantity_received is only a historical display cache: its four
+    // writers used different units, so it cannot authorize a stock correction.
+    const stockedQtyInBottles =
+      hasMatchFields && orderRow.inventory_id
+        ? await readBookedOrderBottles(
+            this.databaseService.supabase,
+            restaurantId,
+            orderId,
+            orderRow.inventory_id,
+          )
+        : 0;
     const orderedQty = (orderRow as any).quantity ?? 0;
 
     // The order's own unit, which every comparison below is anchored to. It was
@@ -5048,10 +5238,10 @@ export class ProcurementService {
       invoiceUom: body.invoiceUom ?? null,
       invoiceBottlesPerUnit: body.invoiceBottlesPerUnit ?? null,
       invoiceUnitPrice: body.invoiceUnitPrice ?? null,
-      acceptedQtyInCountedUom: acceptedQuantity ?? stockedQty,
+      acceptedQtyInCountedUom: acceptedQuantity ?? null,
       rejectedQtyInCountedUom: rejectedQuantity ?? 0,
       freeGoodsQtyInCountedUom: freeGoodsQuantity ?? 0,
-      stockedQtyInCountedUom: stockedQty,
+      stockedQtyInBottles,
       countedUom: body.countedUom ?? null,
       countedBottlesPerUnit: body.countedBottlesPerUnit ?? null,
       allocatedCharges: body.allocatedCharges ?? 0,
@@ -5062,6 +5252,17 @@ export class ProcurementService {
     let bottles: ReturnType<typeof toBottleOperands> | null = null;
     if (hasMatchFields) {
       try {
+        if (acceptedQuantity == null) {
+          const unitReading = toBottleOperands(matchInput);
+          if (["keg", "liter"].includes(unitReading.units.counted.uom)) {
+            throw new MatchUnitError(
+              "not_comparable",
+              "The ledger counts bottles; this receipt must state a physical count in bottles or a known bottle pack.",
+            );
+          }
+          matchInput.acceptedQtyInCountedUom =
+            stockedQtyInBottles / unitReading.units.counted.bottlesPerUnit;
+        }
         match = computeMatch(matchInput);
         bottles = toBottleOperands(matchInput);
       } catch (e) {
@@ -5178,7 +5379,7 @@ export class ProcurementService {
       // display the order's own unit, so they stay in the COUNTED unit as
       // submitted — not in the bottle-equivalents the verdict was computed from.
       // Converting them here would silently restate a manager's count.
-      const acceptedQty = acceptedQuantity ?? stockedQty;
+      const acceptedQty = matchInput.acceptedQtyInCountedUom ?? 0;
       const rejectedQty = rejectedQuantity ?? 0;
 
       // WHAT THE PRICE CHECK DID AND DID NOT COMPARE — ADR 0119 phase 2.
@@ -5193,7 +5394,9 @@ export class ProcurementService {
       //     agreement named has not varied the price, and without this sentence
       //     a `price_variance` reads as an overcharge.
       const comparisonNotes = [
-        doorPrice.ok ? doorPrice.note : `Price not compared: ${doorPrice.reason}.`,
+        doorPrice.ok
+          ? doorPrice.note
+          : `Price not compared: ${doorPrice.reason}.`,
         hasStatedFees(agreedFees)
           ? "The agreement also names money outside the price of the wine: " +
             [
@@ -5573,7 +5776,9 @@ export class ProcurementService {
   async listPendingOrders(restaurantId: string): Promise<OrderResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("*, inventory:inventory_id(wine_name), provider:provider_id(name)")
+      .select(
+        "*, inventory:inventory_id(wine_name), provider:provider_id(name)",
+      )
       .eq("restaurant_id", restaurantId)
       .in("status", [
         ProcurementOrderStatus.PENDING,
@@ -5660,6 +5865,10 @@ export class ProcurementService {
       approvedAt: row.approved_at ?? undefined,
       deliveredAt: row.delivered_at ?? undefined,
       completedAt: row.completed_at ?? undefined,
+      // The key test again: `null` is "the row names no currency", absence is
+      // "this route did not read the column". `currencyCode` reads membership,
+      // so a stored value that names no currency reads as none, not as money.
+      currency: "currency" in row ? currencyCode(row.currency) : undefined,
       isEmergency: row.is_emergency ?? undefined,
       priorityLevel: row.priority_level ?? undefined,
       wineName: row.wine_name ?? undefined,
@@ -5712,7 +5921,9 @@ export class ProcurementService {
       // Both keys, always written, and both `undefined` when the line was not
       // read — absence on the wire, never a null that would read as "the line
       // states no unit". See `AgreedPriceUnitReading`.
-      priceUom: priceUnit.read ? (priceUnit.stated?.priceUom ?? null) : undefined,
+      priceUom: priceUnit.read
+        ? (priceUnit.stated?.priceUom ?? null)
+        : undefined,
       pricePackSize: priceUnit.read
         ? (priceUnit.stated?.pricePackSize ?? null)
         : undefined,
@@ -5742,17 +5953,125 @@ export class ProcurementService {
   // PHASE 32: DRAFT MANAGEMENT
   // =========================================================================
 
+  /**
+   * Mint the seal a drafted reply's SEND has to carry back.
+   *
+   * ADR 0118 and packet 2 (2026-09-06). Minted when the hold BEGINS, over the
+   * LETTER — the words, the recipient and the copies — because that is what the
+   * person read before they pressed. See `draftSealArgs` for why the order's
+   * total is deliberately not in it.
+   *
+   * A pending draft is confirmed to EXIST first, so a manager is never handed a
+   * seal for a letter that has already gone or was discarded — the same rule
+   * `issueOrderSealChallenge` follows.
+   */
+  async issueDraftSendSeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    letter: { body: string; to?: string | null; cc?: string[] | null },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    if (!userId?.trim() || !this.organizations) {
+      throw new ForbiddenException("A named manager is required to send this draft. Nothing was sent.");
+    }
+    await this.organizations.assertCanManageRestaurant(userId, restaurantId, "send a drafted reply");
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued (the seal service is not wired into procurement), " +
+          "so nothing can be sent. This is a gateway fault, not a decision about this letter.",
+      );
+    }
+
+    const { data: pending, error } = await this.databaseService.supabase
+      .from("procurement_conversations")
+      .select("id, content, providers!inner(contact_email, restaurant_id)")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("status", "PENDING_APPROVAL")
+      .maybeSingle();
+
+    if (error) {
+      // The draft could not be CHECKED, which is not the same as there being
+      // none. Refusing with the reason beats issuing a seal over nothing.
+      throw new InternalServerErrorException(
+        `Whether a draft is waiting on this order could not be read (${error.message}), so no seal was issued and nothing was sent.`,
+      );
+    }
+    if (!pending) {
+      throw new NotFoundException(
+        "There is no draft waiting on this order, so there is nothing to seal. It may already have been sent or discarded.",
+      );
+    }
+
+    const provider = Array.isArray((pending as any).providers) ? (pending as any).providers[0] : (pending as any).providers;
+    const recipient = provider?.contact_email;
+    if (provider?.restaurant_id !== restaurantId || !recipient ||
+        recipient.trim().toLowerCase() !== letter.to?.trim().toLowerCase()) {
+      throw new BadRequestException("The vendor address changed or could not be confirmed. Review the draft before holding again.");
+    }
+    if (!letter.body?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    const issued = await this.sealChallenges.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_SEND_DRAFT_ACT,
+      args: { ...draftSealArgs({ body: letter.body, to: recipient, cc: letter.cc }), draftId: pending.id },
+    });
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
+  }
+
+  /**
+   * Send the drafted reply behind a REDEEMED seal.
+   *
+   * Both HTTP routes use this manager boundary and carry their held proof
+   * into approveDraft, where redemption uses the exact pending row and actual
+   * recipient immediately before the atomic sending claim.
+   *
+   * The seal is spent BEFORE the send, so a refused seal means nothing left the
+   * building; and it is spent over the letter as EDITED, so a paragraph changed
+   * between the hold and the release is refused by the args hash rather than
+   * quietly posted.
+   */
+  async sendDraftedReply(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    dto: ApproveDraftDto,
+    challenge: string | null | undefined,
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    if (!userId?.trim() || !this.organizations) {
+      throw new ForbiddenException("A named manager is required to send this draft. Nothing was sent.");
+    }
+    await this.organizations.assertCanManageRestaurant(userId, restaurantId, "send a drafted reply");
+    // A PRESENT challenge is always carried through and always redeemed,
+    // on every build, regardless of the gate below — this only ever widens
+    // what an ABSENT challenge does. See legacyDraftSendMayGoUnsealed above.
+    const goUnsealed = !challenge?.trim() && legacyDraftSendMayGoUnsealed();
+    return this.approveDraft(
+      restaurantId,
+      orderId,
+      dto,
+      goUnsealed ? undefined : { userId, challenge },
+    );
+  }
+
   async approveDraft(
     restaurantId: string,
     orderId: string,
     dto: ApproveDraftDto,
+    seal?: { userId: string; challenge: string | null | undefined },
   ): Promise<{ conversationId: string; sentAt: string }> {
     // Fetch conversation + provider email before updating
     const { data: conv, error: fetchError } =
       await this.databaseService.supabase
         .from("procurement_conversations")
         .select(
-          "id, content, created_at, gmail_thread_id, message_id, email_headers, providers!left(name, contact_email, contact_first_name, primary_contact), procurement_orders!inner(inventory:inventory_id(wine_name))",
+          "id, content, created_at, gmail_thread_id, message_id, email_headers, providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id), procurement_orders!inner(inventory:inventory_id(wine_name))",
         )
         .eq("restaurant_id", restaurantId)
         .eq("order_id", orderId)
@@ -5793,10 +6112,11 @@ export class ProcurementService {
       string,
       any
     >;
-    const subject =
-      emailHeaders.subject ||
-      (conv as any).subject ||
-      `Order Request: ${wineName}`;
+    const subject = draftSubjectLine(
+      emailHeaders,
+      (conv as any).subject,
+      wineName,
+    );
     const replyThreadId = (conv as any).gmail_thread_id || undefined;
     const replyInReplyTo = emailHeaders.in_reply_to || undefined;
     const replyReferences = emailHeaders.references || undefined;
@@ -5808,6 +6128,19 @@ export class ProcurementService {
     }
 
     const conversationId = (conv as any).id as string;
+    if (seal) {
+      if (!this.sealChallenges) throw new InternalServerErrorException("The draft seal cannot be checked. Nothing was sent.");
+      if ((conv as any).providers?.restaurant_id !== restaurantId) throw new ForbiddenException("The vendor does not belong to this house. Nothing was sent.");
+      // Bind the actual row and actual recipient used below, immediately before
+      // the atomic claim. A stale UI address or replacement draft cannot spend
+      // a seal over the earlier letter.
+      await this.sealChallenges.redeem({
+        restaurantId, actorUserId: seal.userId, subjectKind: "procurement_order", subjectId: orderId,
+        action: ORDER_SEND_DRAFT_ACT,
+        args: { ...draftSealArgs({ body: rawEmailBody, to: providerEmail, cc: dto.ccEmails }), draftId: conversationId },
+        challenge: seal.challenge,
+      });
+    }
 
     // ── Atomic claim, BEFORE the send ────────────────────────────────────────
     // Two managers tapping "approve" at the same moment both used to pass the
@@ -6320,7 +6653,10 @@ export class ProcurementService {
         // on the wire. DISCARDED, not reverted: reverting would leave a manager
         // a one-tap approval for a letter about a dead order.
         const orderState = readOrderStatus((order as any)?.status);
-        if (orderState !== null && ORDER_TERMINAL_STATUSES.includes(orderState)) {
+        if (
+          orderState !== null &&
+          ORDER_TERMINAL_STATUSES.includes(orderState)
+        ) {
           await this.databaseService.supabase
             .from("procurement_conversations")
             .update({ status: "DISCARDED", scheduled_send_at: null })
@@ -7079,7 +7415,8 @@ export class ProcurementService {
         vendorName: (order as any)?.providers?.name ?? null,
         productName: shelfItem.wineName ?? wineName ?? null,
         unitPrice: agreedPrice ?? null,
-        unitLabel: statedPriceUnit?.priceUom ?? confirmUnits.unitType ?? "bottle",
+        unitLabel:
+          statedPriceUnit?.priceUom ?? confirmUnits.unitType ?? "bottle",
         packSize:
           statedPriceUnit?.pricePackSize ??
           (bottlesPerConfirmedUnit === 1 ? 1 : null),
@@ -7315,6 +7652,9 @@ export class ProcurementService {
       .limit(1)
       .single();
 
+    if (error && error.code !== "PGRST116") {
+      throw new InternalServerErrorException("The pending draft could not be read. Nothing was sent.");
+    }
     if (error) return null;
     if (!data) return null;
     const row = data as any;
@@ -7351,6 +7691,7 @@ export class ProcurementService {
         constraint_flags,
         content,
         message_text,
+        email_headers,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price,
           inventory:inventory_id(wine_name)
@@ -7370,22 +7711,36 @@ export class ProcurementService {
       throw error;
     }
 
-    return (data || []).map((row: any) => ({
-      id: row.id,
-      orderId: row.order_id,
-      providerId: row.provider_id,
-      emailType: row.outbound_email_type,
-      roundCount: row.round_count,
-      createdAt: row.created_at,
-      constraintFlags: row.constraint_flags,
-      draftContent: row.content ?? row.message_text ?? null,
-      orderNumber: row.procurement_orders?.order_number ?? null,
-      quantity: row.procurement_orders?.quantity ?? null,
-      quotedPrice: row.procurement_orders?.quoted_price ?? null,
-      wineName: row.procurement_orders?.inventory?.wine_name ?? null,
-      providerName: row.providers?.name ?? null,
-      providerEmail: row.providers?.contact_email ?? null,
-    }));
+    return (data || []).map((row: any) => {
+      const wineName = row.procurement_orders?.inventory?.wine_name ?? null;
+      // This is a READ of what a send WOULD use, not a second opinion: it
+      // calls approveDraft's own draftSubjectLine() (this file) rather than
+      // repeating the formula, so the two cannot read differently from what
+      // is actually sent (lane E audit D5: the panel used to guess
+      // "<wine> — <kind>", which the gateway never sends). A drafted reply
+      // already inside a thread carries the vendor's own subject in
+      // email_headers; a fresh outbound draft has none yet, so it falls back
+      // to the same composed sentence approveDraft sends with.
+      const emailHeaders = (row.email_headers ?? {}) as Record<string, any>;
+      const subject = draftSubjectLine(emailHeaders, row.subject, wineName);
+      return {
+        id: row.id,
+        orderId: row.order_id,
+        providerId: row.provider_id,
+        emailType: row.outbound_email_type,
+        roundCount: row.round_count,
+        createdAt: row.created_at,
+        constraintFlags: row.constraint_flags,
+        draftContent: row.content ?? row.message_text ?? null,
+        orderNumber: row.procurement_orders?.order_number ?? null,
+        quantity: row.procurement_orders?.quantity ?? null,
+        quotedPrice: row.procurement_orders?.quoted_price ?? null,
+        wineName,
+        providerName: row.providers?.name ?? null,
+        providerEmail: row.providers?.contact_email ?? null,
+        subject,
+      };
+    });
   }
 
   /**

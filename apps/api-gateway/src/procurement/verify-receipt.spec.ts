@@ -157,6 +157,8 @@ function makeDb(opts: {
    * bottles_total/quantity fallback instead.
    */
   orderLineRow?: Row | null;
+  bookedBottles?: number;
+  ledgerReadError?: boolean;
   ownedInventoryIds?: string[];
   updatedRow?: Row;
   updateError?: { code: string; message: string } | null;
@@ -194,6 +196,19 @@ function makeDb(opts: {
           }
           return { data: opts.orderRow ?? null, error: null };
         }
+
+        if (table === "inventory_transactions")
+          return opts.ledgerReadError
+            ? { data: null, error: { message: "offline" } }
+            : {
+                data: [
+                  {
+                    id: "movement-1",
+                    quantity_change: opts.bookedBottles ?? 10,
+                  },
+                ],
+                error: null,
+              };
 
         if (table === "procurement_order_items")
           return { data: opts.orderLineRow ?? null, error: null };
@@ -242,7 +257,8 @@ function makeDb(opts: {
           if (table === "procurement_credits")
             calls.creditInserts.push(payload);
           if (table === "inventory_events") calls.eventInserts.push(payload);
-          if (table === "price_history") calls.priceHistoryInserts.push(payload);
+          if (table === "price_history")
+            calls.priceHistoryInserts.push(payload);
           return q;
         },
         update(payload: Row) {
@@ -505,6 +521,17 @@ describe("markDelivered — the column records what was booked", () => {
     );
     expect(live!.args.p_delta).toBe(9);
     expect(calls.orderUpdates[0].quantity_received).toBe(9);
+  });
+
+  it("books five cases as sixty bottles and converts an explicitly case-priced agreement once", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...pendingOrder, quantity: 5, bottles_total: 60, unit_type: "case", final_price: 360 },
+      orderLineRow: { id: "line", unit_type: "case", bottles_per_unit: 12, price_uom: "case", price_pack_size: 12, final_unit_price: 360 },
+    });
+    await service(db).markDelivered(REST, ORDER, USER);
+    const live = calls.rpc.find(c => c.name === "apply_stock_movement" && c.args.p_stock_state === "live");
+    expect(live?.args).toMatchObject({ p_delta: 60, p_unit_cost: 30, p_cost_provenance: "estimated" });
+    expect(calls.orderUpdates[0].quantity_received).toBe(5); // documented order-unit display cache
   });
 
   it("never leaves quantity_received NULL after booking stock", async () => {
@@ -889,5 +916,66 @@ describe("markDelivered — ?quantityReceived is a deprecated alias, not a secon
 
   it("keeps absence absent", () => {
     expect(readDeliveredQuantity(undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe("receipt quantity follows the booked ledger", () => {
+  it.each([false, true])(
+    "does not multiply a door-counted case order twice (invoice=%s)",
+    async (withInvoice) => {
+      const { db, calls } = makeDb({
+        orderRow: {
+          ...deliveredOrder,
+          quantity: 5,
+          unit_type: "case",
+          bottles_total: 60,
+          quantity_received: 60,
+        },
+        bookedBottles: 60,
+      });
+      await service(db).verifyReceipt(REST, ORDER, USER, {
+        acceptedQuantity: 5,
+        ...(withInvoice
+          ? { invoiceQuantity: 5, invoiceUnitPrice: 40, invoiceCurrency: "USD" }
+          : {}),
+      } as any);
+      expect(
+        calls.rpc.filter((x) => x.name === "apply_stock_movement"),
+      ).toEqual([]);
+    },
+  );
+
+  it("corrects a short case against booked bottles, independently of the ambiguous display cache", async () => {
+    const { db, calls } = makeDb({
+      orderRow: {
+        ...deliveredOrder,
+        quantity: 5,
+        unit_type: "case",
+        bottles_total: 60,
+        quantity_received: 5,
+      },
+      bookedBottles: 60,
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      acceptedQuantity: 58,
+      countedUom: "bottle",
+    } as any);
+    expect(
+      calls.rpc.find((x) => x.name === "apply_stock_movement")?.args.p_delta,
+    ).toBe(-2);
+  });
+
+  it("makes no receipt write when the existing ledger cannot be read", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      ledgerReadError: true,
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        acceptedQuantity: 10,
+      } as any),
+    ).rejects.toThrow(/could not be read/);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.rpc).toEqual([]);
   });
 });
