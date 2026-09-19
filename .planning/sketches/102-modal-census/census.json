@@ -1003,7 +1003,7 @@
    "overlays": [
     {
      "name": "Carry this bottle",
-     "status": "migrate",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -1169,7 +1169,7 @@
     },
     {
      "name": "Place 14 bottles by their zones?",
-     "status": "migrate",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -1240,7 +1240,7 @@
     },
     {
      "name": "A delivery without an order",
-     "status": "migrate",
+     "status": "built",
      "shape": "sheet",
      "wide": true,
      "modal": false,
@@ -1311,7 +1311,7 @@
     },
     {
      "name": "POS buttons and stock",
-     "status": "migrate",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -1366,7 +1366,7 @@
     },
     {
      "name": "Write off 6 bottles?",
-     "status": "migrate",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -1404,7 +1404,7 @@
     },
     {
      "name": "The zones",
-     "status": "migrate",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -1454,7 +1454,7 @@
     },
     {
      "name": "Spot count",
-     "status": "migrate",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -1529,7 +1529,7 @@
    "overlays": [
     {
      "name": "Carry these bottles (from a menu scan)",
-     "status": "migrate",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -3356,7 +3356,7 @@
     },
     {
      "name": "Share this with the engine?",
-     "status": "migrate",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -3403,14 +3403,14 @@
      ],
      "footer": null,
      "why": "A question. Settings stay asserted, not sealed (2026-09-04).",
-     "source": "components/settings/ConsentDialog.tsx:71 (opened from components/settings/ServicesPermissions.tsx:300)",
+     "source": "components/settings/ConsentDialog.tsx:71 (opened from components/settings/ServicesPermissions.tsx:300 — LEGACY /settings only; the rebuilt page renders these four consents as records with no switches, so the house branch built on 2026-09-06 is correct and unreachable. Fork F13.)",
      "acts": null,
      "went": null,
-     "fork": null
+     "fork": "F13"
     },
     {
      "name": "Carry your vendors to the new location?",
-     "status": "migrate",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -5516,6 +5516,11 @@
    "id": "F11",
    "title": "A second authority.",
    "text": "Two ceremonies the research surfaced that the house has not chosen between: a manager's passcode at the point of action (Toast) for staff → manager acts, and presence on shared records (Figma) so a split count is safe. Which acts get which."
+  },
+  {
+   "id": "F13",
+   "title": "The consent step has no home.",
+   "text": "Built 2026-09-06 as a Panel, asserted not sealed — and unreachable. Its only opener is ServicesPermissions.tsx:300, mounted solely by the LEGACY settings page (pages/Settings.tsx:1262); the rebuilt page's ServicesSection renders the same four consents as records with NO switches, because nothing in any of the four runtimes branches on them and ADR 0020 forbids a control whose effect does not exist. Either something reads a consent and the rebuilt page gets a real control back, or this act is a deletion. Not a builder's call."
   },
   {
    "id": "F12",

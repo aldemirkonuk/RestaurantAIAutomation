@@ -163,6 +163,7 @@ spectrum, not a shape (see Consequences).
 | 2026-09-03 | — | Created (Proposed). Built, gated, 19 tests green. Founder ratification open. |
 | 2026-09-04 | — | **Migration complete for the two held pages.** `pages/calendar/next/EventSheet.tsx` → `Sheet`, `pages/reports/next/AskTheBook.tsx` → `Panel`; the per-page scrim/panel/keyframe CSS named above is deleted. Status unchanged (**Proposed**) — the founder has still not ratified the three-shape policy itself. Tests: `Sheet.test.tsx` 15, `shellOverlays.test.tsx` 25, `InviteTeamDialog.test.tsx` 5, calendar 44, reports 77, all green. |
 | 2026-09-05 | — | **Census (sketch 102).** Every overlay in the web app read and given a shape or a reason: 141 sites folded into 117 overlays — 31 built, 10 migrate, 12 owed, 7 target, 42 retire, 15 delete, 3 not a shape (after the 2026-09-05 rulings). Seven forks for the founder (F1–F7). |
+| 2026-09-06 | — | **Packet 1 built — the ten migrations are on the primitive.** `census.py`'s ten `migrate` rows are now `built`; the counts in the table below move 31→41 built, 10→0 migrate. Every one is gated on `useMudavymShell().on`, so a flag-off page renders its legacy markup byte for byte and each spec pins the literal legacy class string against `git show origin/main:<path>`. Measured on `feat/overlays-packet-1`: 2427 web tests green (173 files), tsc clean, eslint exit 0 over all 25 touched files. **One new fork, F13** — `ConsentDialog`'s only opener is on the LEGACY settings page, so its house branch is correct and unreachable; recorded in `census.py` and `06-pages/settings.md` §9 rather than defaulted. The migration also found and closed six write-path defects of the absence-reported-as-health kind, each listed in the page notes it belongs to. |
 | 2026-09-05 | founder | **Ratified (F1) — status → Locked.** F2: the studio invite reuses `InviteTeamDialog` with a second opener. F5: the manual order starts in the owed 'A new order' sheet. F7: a dashboard figure expands in place, no overlay. F3: a 640 sheet. F4: every legacy act is rebuilt to its full purpose (the founder's bar recorded below). F6: HouseHeader's bell and menu survive. All seven answered. |
 
 ## Founder answers (2026-09-04)
@@ -179,8 +180,8 @@ and gives each one this ADR's shape or a reason it has none. 141 sites fold into
 
 | Status | Count | Meaning |
 |---|---|---|
-| Built | 31 | on the primitive today (the shell's eight, team's eleven, orders' three, settings' four, …) |
-| Migrate | 10 | legacy overlays that render **inside a house-flagged page today** — eight of them on `/inventory`, whose flag turns on the same component (`App.tsx:311`), plus `ConsentDialog` and `BranchProviderTransferModal` under `/settings` |
+| Built | 41 | on the primitive today (the shell's eight, team's eleven, orders' three, settings' four, and the ten packet 1 migrations of 2026-09-06 …) |
+| Migrate | 0 | *(was 10 when this table was written)* — the legacy overlays that rendered **inside a house-flagged page**: seven on `/inventory`, whose flag turns on the same component (`App.tsx:311`), the cellar's menu scan, and `ConsentDialog` + `BranchProviderTransferModal` under `/settings`. All ten built on 2026-09-06; see the review trail |
 | Owed | 9 | acts the legacy page had that the rebuilt page does not offer yet (a manual new order, a new vendor, the drafted reply's approval, the meeting-note prompt, the bell's approval panel, …) |
 | Target | 7 | pages not yet rebuilt whose overlays take their shape now (promotions, distributors, studio, admin health, the camera) |
 | Retires | 41 | acts that already live in something built, or — the dashboard figure — in an in-place expansion the founder chose over an overlay (F7) |

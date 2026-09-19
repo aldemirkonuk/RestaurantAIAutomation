@@ -140,6 +140,7 @@ export function InventoryCommandPage() {
     setLocations,
     mappings,
     assignWineToLocation,
+    assignWinesToLocations,
     locationsLoading,
     locationsUnavailable,
     mappingsUnavailable,
@@ -231,6 +232,28 @@ export function InventoryCommandPage() {
       );
     },
     [assignWineToLocation],
+  );
+
+  /**
+   * The awaited apply the house branch of the auto-locate panel uses.
+   *
+   * `handleConfirmAutoLocate` above is left exactly as it was: it is the legacy
+   * branch's path, and changing it would change what a flag-off page does. This
+   * one awaits every write and hands back what the server accepted, so the
+   * panel can name the rows that did not land instead of toasting a count it
+   * never checked.
+   */
+  const handleApplyAutoLocate = useCallback(
+    (selected: WineLocationScore[]) =>
+      assignWinesToLocations(
+        selected.map((a) => ({
+          wineId: a.wineId,
+          locationId: a.locationId,
+          quantity: a.quantity,
+          label: a.wineName,
+        })),
+      ),
+    [assignWinesToLocations],
   );
 
   // Active/inactive: a delisted wine stays in inventory but drops out of the
@@ -1515,6 +1538,7 @@ export function InventoryCommandPage() {
             );
           }}
           onConfirm={handleConfirmAutoLocate}
+          onApply={handleApplyAutoLocate}
         />
       )}
 

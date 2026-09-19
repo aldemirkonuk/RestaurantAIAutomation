@@ -230,6 +230,13 @@ cheap direction); nothing animates on a successful save (a motion fired on click
 is a confirmation the server has not given); no tally; no stagger in the
 contents list; no scroll motion, because one register is open at a time.
 
+**Packet 1 (2026-09-06) added TWO overlays and NO new tokens.** The two panels
+this page opens — *Carry your vendors to the new location?* and *Share this with
+the engine?* — take `settle` (320ms) from the primitive, which is already the
+`st-disclosure-settle` row above; nothing else about them moves, and neither
+carries the seal (the vendor carry is additive and reversible; a consent is
+asserted, per the 2026-09-04 ruling). `prefers-reduced-motion` renders neither.
+
 **The fourth pass added THREE registers and ZERO motions** — the table above is
 unchanged. Nothing marks a recorded term (a stated term and an inferred one are
 different *kinds* of thing, not one of them arriving); the threshold banner does
@@ -818,8 +825,8 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | `/settings` | New chain | sheet | Built | One chain being written. | `components/locations/CreateChainDialog.tsx:121` |
 | `/settings` | Edit location | sheet | Built | One location's record. | `components/locations/EditLocationChainDialog.tsx:134` |
 | `/settings` | Add to Meyhane Sim | panel | Built | A question about which. | `components/locations/AssignToChainDialog.tsx:106` |
-| `/settings` | Share this with the engine? | panel | Migrate | A question. Settings stay asserted, not sealed (2026-09-04). | `components/settings/ConsentDialog.tsx:71 (opened from components/settings/ServicesPermissions.tsx:300)` |
-| `/settings` | Carry your vendors to the new location? | panel | Migrate | A question about a batch, asked once after a write. | `components/providers/BranchProviderTransferModal.tsx:109` |
+| `/settings` | Share this with the engine? | panel | Built · fork F13 | A question. Settings stay asserted, not sealed (2026-09-04). | `components/settings/ConsentDialog.tsx:71 (opened from components/settings/ServicesPermissions.tsx:300 — LEGACY /settings only; the rebuilt page renders these four consents as records with no switches, so the house branch built on 2026-09-06 is correct and unreachable. Fork F13.)` |
+| `/settings` | Carry your vendors to the new location? | panel | Built | A question about a batch, asked once after a write. | `components/providers/BranchProviderTransferModal.tsx:109` |
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
@@ -972,6 +979,28 @@ Layout chrome per dashboard.md §7.
   line cannot drift apart, and a new register is placed by editing one row.
 
 ## 9. Gaps
+
+- **🔴 OPEN, fork F13 (raised 2026-09-06, packet 1) — the consent step has no home
+  on the rebuilt page.** `ConsentDialog` was migrated to a **Panel**, asserted and
+  not sealed, and it is *correct and unreachable*: its only opener is
+  `ServicesPermissions.tsx:300`, mounted solely by the LEGACY page
+  (`pages/Settings.tsx:1262`). The rebuilt page's `ServicesSection` deliberately
+  renders the same four consents as **records with no switches**, because nothing
+  in any of the four runtimes branches on them and ADR 0020 forbids a control
+  whose effect does not exist. So the census's reason for classifying this row
+  "renders legacy inside a house-flagged page today" does not hold for it. Either
+  something reads a consent and the rebuilt page gets a real control back, or this
+  act is a deletion. **Not a builder's call** — recorded in `census.py` as fork F13.
+- **Closed 2026-09-06 (packet 1) — a vendor the new location refused was reported
+  as "skipped".** `BranchProviderTransferModal`'s per-vendor loop had a bare
+  `catch {}` and then said "N added (M skipped)": unnamed, unreasoned, and a word
+  that reads like a choice. `POST /providers` deliberately preserves its own HTTP
+  semantics (409 for a catalogue vendor the location already has, 404, 400 —
+  `providers.controller.ts:188`, with a comment saying flattening them made an
+  expected outcome indistinguishable from a fault), and the client flattened them
+  one level up. The house branch keeps every rejection, tells a 409 apart from a
+  fault, and separates a 401/403 refusal from both. The legacy branch is frozen and
+  still reports the old way.
 
 - **Closed 2026-09-05 — a house could not state its own currency.** After the
   Q30 clearing pass, eleven of the fourteen production houses hold
