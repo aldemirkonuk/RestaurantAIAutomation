@@ -810,6 +810,20 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_new_tables_are_locked_down.py
 
+      # ADR 0159 (corrected 2026-09-18). The step above also runs arm (c):
+      # a SECURITY DEFINER function must revoke EXECUTE from PUBLIC, anon and
+      # authenticated in the migration that creates it. This proves arm (c)
+      # still fires, on a synthetic corpus. It asserts the self-test's own
+      # report -- at least 95 cases run, every one held -- not only its exit
+      # code, so a guard or self-test gutted to exit 0 fails here. A self-test
+      # rewritten to print a false report would not; review is that backstop.
+      - name: The lockdown guard fires on an open SECURITY DEFINER function (self-test)
+        if: ${{ !cancelled() }}
+        run: |
+          out="$(./scripts/check_new_tables_are_locked_down.py --self-test)" || { rc=$?; printf '%s\n' "$out"; exit "$rc"; }
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | awk '$1 == "SELF-TEST" && $2 == "OK" && $3 == "--" && $5 == "cases" && $6 == "run," && $4 + 0 >= 95 { ok = 1 } END { exit !ok }'
+
       # ADR 0096. On a controller with no class-level guard, a route carrying
       # `@Public()` and a route carrying nothing are runtime-identical, so a
       # reader cannot tell a decision from an omission — which is how OD-20's

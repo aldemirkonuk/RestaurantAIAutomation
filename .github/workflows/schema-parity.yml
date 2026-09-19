@@ -121,6 +121,59 @@ jobs:
         # condition that made local development impossible before the baseline.
         run: supabase db reset --no-seed
 
+      # ADR 0159. The AUTHORITY for "no SECURITY DEFINER function answers to
+      # PUBLIC or to a role the API can switch into" (anon, authenticated,
+      # authenticator and every role authenticator is a member of, service_role
+      # excepted). It reads pg_proc on the database the step
+      # above just built from EVERY migration (this PR's included), so it judges
+      # what the SQL did, not how it was spelled. ci.yml's lockdown guard arm (c)
+      # reads migration text and is only a fast pre-check for common spellings:
+      # four review rounds each found spellings that re-open a definer while it
+      # exits 0 (PR #391, 2026-09-18). Placed before anything below can move a
+      # migration out of supabase/migrations/.
+      #
+      # Read-only and local only: the URL comes from `supabase status`, and the
+      # script refuses any host but localhost/127.0.0.1/::1 or a unix socket; it
+      # never reads a secret or .env, and nothing here writes to the database.
+      #
+      # First a canary, on THIS database: with the allowlist emptied, the stack's
+      # one known open definer -- supabase_functions.http_request(), made
+      # SECURITY DEFINER and granted to anon/authenticated by the pinned CLI's
+      # webhook.sql:227-230 -- must be reported (exit 1) on the exact line that
+      # names its owner, supabase_functions_admin. That proves the check can
+      # fail here, not only on synthetic rows. Then the real run, whose printed
+      # report is asserted (at least 7 definers in public), so a script gutted
+      # to exit 0 fails this step. The real run excuses that function only while
+      # it is the one the allowlist pins -- owner, language, return type, kind,
+      # settings and md5(prosrc) -- so a migration that redefines it under the
+      # same signature fails here (PR #391 verifier round 5, A1c). The canary's
+      # three lines are pinned verbatim by the OD-72 CLAIMS row.
+      - name: No SECURITY DEFINER function answers to anon or authenticated (end state)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet "psycopg2-binary==2.9.10"
+          db_url="$(supabase status -o env | sed -n 's/^DB_URL=//p' | tr -d '"')"
+          [ -n "$db_url" ] || { echo "::error::supabase status printed no DB_URL -- cannot check (exit 2)"; exit 2; }
+          export DEFINER_CHECK_DB_URL="$db_url"
+          rc=0; canary="$(./scripts/check_definer_functions_closed.py --without-allowlist)" || rc=$?
+          printf '%s\n' "$canary"
+          [ "$rc" -eq 1 ] && printf '%s\n' "$canary" | grep -qxF '  supabase_functions.http_request()  (owner supabase_functions_admin)' || { echo "::error::canary: with the allowlist emptied the check did not report supabase_functions.http_request() owned by supabase_functions_admin (exit $rc)"; exit 1; }
+          out="$(./scripts/check_definer_functions_closed.py)" || { rc=$?; printf '%s\n' "$out"; exit "$rc"; }
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | awk '$1 == "DEFINER-CHECK" && $2 == "OK" && $3 == "--" && $5 == "in" && $6 == "public" && $4 + 0 >= 7 { ok = 1 } END { exit !ok }'
+
+      # The classifier on synthetic rows, no database: every leak path, the
+      # judged roles, the allowlist's identity pin, the floor, the local-host
+      # rule. Its report is asserted (at least 105 cases executed), not only its
+      # exit code. Its `if:` is pinned by the OD-72 CLAIMS row.
+      - name: The end-state check classifier holds (self-test)
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          out="$(./scripts/check_definer_functions_closed.py --self-test)" || { rc=$?; printf '%s\n' "$out"; exit "$rc"; }
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | awk '$1 == "SELF-TEST" && $2 == "OK" && $3 == "--" && $5 == "cases" && $6 == "run," && $4 + 0 >= 105 { ok = 1 } END { exit !ok }'
+
       # The behavioural half of ci.yml's `fk repoint` guard. That one reads
       # text: it can say the fix is PRESENT, never that it WORKS. This builds a
       # real composite foreign key -- (inventory_id, uom) -> (id, uom), the shape
