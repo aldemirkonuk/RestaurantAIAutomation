@@ -9,6 +9,8 @@ import {
   base64Body,
   mailboxHeader,
   messageIdHeader,
+  MimeHeaderError,
+  threadingHeader,
   unstructuredHeader,
 } from "./mime-headers";
 import {
@@ -61,6 +63,12 @@ export interface EmailResult {
   threadId?: string;
   rfc822MessageId?: string;
   error?: string;
+  /**
+   * true when mime-headers.ts refused to build the message (ADR 0172): Gmail
+   * was never called, so the recipient provably did not get it, and the cause
+   * is the data (an address or message id), never the Gmail credentials.
+   */
+  refusedBeforeSend?: boolean;
 }
 
 @Injectable()
@@ -219,6 +227,7 @@ export class GmailService implements OnModuleInit {
       return {
         success: false,
         error: errorMessage,
+        ...(error instanceof MimeHeaderError && { refusedBeforeSend: true }),
       };
     }
   }
@@ -607,8 +616,9 @@ This is an automated alert from WineOps AI.
       `<wineops-${Date.now()}-${Math.random().toString(36).slice(2)}@wineops.ai>`;
 
     // Every value goes through mime-headers.ts (ADR 0172): free text is RFC 2047
-    // encoded with CR/LF collapsed, addresses and message ids are refused on a
-    // control character. A refusal throws inside sendEmail's try and comes back
+    // encoded with CR/LF collapsed, addresses and our own Message-ID are refused on a
+    // control character; the vendor's In-Reply-To/References are rebuilt from
+    // their <msg-id> tokens, never refused. A refusal throws inside sendEmail's try and comes back
     // as { success: false } — nothing is sent with a half-built header block.
     const headers = [
       mailboxHeader("From", "WineOps AI", this.senderEmail),
@@ -617,12 +627,8 @@ This is an automated alert from WineOps AI.
       options.bcc?.length ? addressListHeader("Bcc", options.bcc) : "",
       options.replyTo ? addressListHeader("Reply-To", [options.replyTo]) : "",
       messageIdHeader("Message-ID", generatedMessageId),
-      options.inReplyTo
-        ? messageIdHeader("In-Reply-To", options.inReplyTo)
-        : "",
-      options.references
-        ? messageIdHeader("References", options.references)
-        : "",
+      threadingHeader("In-Reply-To", options.inReplyTo),
+      threadingHeader("References", options.references),
       unstructuredHeader("Subject", options.subject),
       "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`,

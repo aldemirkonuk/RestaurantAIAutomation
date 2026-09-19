@@ -23,9 +23,18 @@
  *    DEL collapse to one space. A subject cannot carry a line break, and
  *    refusing would let a vendor block replies to their own thread by putting
  *    one in theirs. This matches what nodemailer does on the SMTP fallback.
- *  - Addresses and message ids: a control character is REFUSED (throws). An
- *    address with a line break in it is corrupt, and silently repairing it
- *    sends mail somewhere nobody chose.
+ *  - Addresses and our own Message-ID: a control character is REFUSED
+ *    (throws). An address with a line break inside it is corrupt, and silently
+ *    repairing it sends mail somewhere nobody chose. Whitespace AROUND an
+ *    address (a contact saved with a trailing "\n" or "\t") is trimmed first,
+ *    so only an interior control character refuses the send. An address-list
+ *    entry holding two named mailboxes ("A <a@x>, B <b@x>") is refused rather
+ *    than written with the first address demoted to display text.
+ *  - The vendor's threading values (In-Reply-To, References) are REBUILT, not
+ *    refused: only their `<msg-id>` tokens survive (see `threadingHeader`).
+ *    Like the Subject, they come from the vendor's own mail, and RFC 5322
+ *    folding (CRLF + TAB) is legal there — refusing would stop the house
+ *    replying on that thread forever.
  *  - Free text that is not plain printable ASCII — or that contains "=?", which
  *    a reader would otherwise decode as an encoded-word — is written as RFC 2047
  *    `=?UTF-8?B?…?=` encoded-words, each at most 75 characters, each holding
@@ -174,8 +183,16 @@ export function unstructuredHeader(name: string, value: string): string {
   return renderHeader(name, [{ kind: "encoded", text }]);
 }
 
-/** Split `Name <addr>` or a bare `addr` into its parts. No regex: linear by construction. */
-export function parseMailbox(entry: string): { name: string; address: string } {
+/**
+ * Split `Name <addr>` or a bare `addr` into its parts. No regex: linear by
+ * construction. An unquoted name part that itself holds `<` or `>` means the
+ * entry carried more than one mailbox ("A <a@x>, B <b@x>"); that is refused,
+ * because splitting at the last `<` would silently drop a@x as a recipient.
+ */
+export function parseMailbox(
+  entry: string,
+  headerName = "address",
+): { name: string; address: string } {
   const raw = String(entry ?? "").trim();
   if (raw.endsWith(">")) {
     const open = raw.lastIndexOf("<");
@@ -183,6 +200,10 @@ export function parseMailbox(entry: string): { name: string; address: string } {
       let name = raw.slice(0, open).trim();
       if (name.length >= 2 && name.startsWith('"') && name.endsWith('"')) {
         name = name.slice(1, -1).replace(/\\(.)/g, "$1");
+      } else if (name.includes("<") || name.includes(">")) {
+        throw new MimeHeaderError(
+          `Refusing to write the ${headerName} header: one entry holds more than one address.`,
+        );
       }
       return { name, address: raw.slice(open + 1, -1).trim() };
     }
@@ -195,7 +216,8 @@ function mailboxPieces(
   name: string,
   address: string,
 ): Piece[] {
-  const addr = assertNoControlChars(headerName, address).trim();
+  // Trim FIRST: surrounding whitespace (a stored "a@b\n") is not corruption.
+  const addr = assertNoControlChars(headerName, String(address ?? "").trim());
   if (!addr) {
     throw new MimeHeaderError(
       `Refusing to write the ${headerName} header: an address is empty.`,
@@ -243,7 +265,8 @@ export function addressListHeader(
   const pieces: Piece[] = [];
   entries.forEach((entry, idx) => {
     const { name, address } = parseMailbox(
-      assertNoControlChars(headerName, entry),
+      assertNoControlChars(headerName, String(entry ?? "").trim()),
+      headerName,
     );
     const mp = mailboxPieces(headerName, name, address);
     if (idx < entries.length - 1) {
@@ -255,7 +278,11 @@ export function addressListHeader(
   return renderHeader(headerName, pieces);
 }
 
-/** A message-id header (Message-ID, In-Reply-To, References): refused on control chars, folded between ids. */
+/**
+ * Our own Message-ID: refused on a control character, folded between ids.
+ * We mint it, so a control character in it is a bug, not vendor input — the
+ * vendor's threading values go through `threadingHeader` instead.
+ */
 export function messageIdHeader(headerName: string, value: string): string {
   const v = assertNoControlChars(headerName, value).trim();
   if (!v)
@@ -273,6 +300,27 @@ export function messageIdHeader(headerName: string, value: string): string {
       .split(" ")
       .filter(Boolean)
       .map((text) => ({ kind: "atom", text }) as Piece),
+  );
+}
+
+/**
+ * A threading header (In-Reply-To, References) rebuilt from the msg-id tokens
+ * in a vendor-supplied value. Only `<...>` tokens of printable ASCII survive,
+ * so CR/LF can never reach the header block; folding whitespace (CRLF + tab,
+ * RFC 5322 §3.2.2), stray text and non-ASCII are dropped rather than refused,
+ * because the value comes from the vendor's own mail and refusing it would
+ * stop the house replying on that thread. No usable id means no header
+ * (the reply loses threading, it is still sent) — returns null.
+ */
+export function threadingHeader(
+  headerName: string,
+  value: string | null | undefined,
+): string | null {
+  const ids = String(value ?? "").match(/<[\x21-\x3b\x3d\x3f-\x7e]+>/g);
+  if (!ids) return null;
+  return renderHeader(
+    headerName,
+    ids.map((text) => ({ kind: "atom", text }) as Piece),
   );
 }
 

@@ -5997,6 +5997,16 @@ export class ProcurementService {
     // No transport was ever attempted — GmailService says so in as many words.
     if (/No email delivery method available/i.test(text)) return true;
 
+    // mime-headers.ts refused to build the message (ADR 0172) — thrown before
+    // gmail.users.messages.send, so nothing left the process. Matches the two
+    // MimeHeaderError message shapes exactly, not a loose "refus" substring.
+    if (
+      /Refusing to write (?:the [A-Za-z-]+ header:|an empty [A-Za-z-]+ header\.)/.test(
+        text,
+      )
+    )
+      return true;
+
     // Credentials refused: the request never became a message.
     if (
       /invalid_grant|invalid_client|unauthorized_client|authentication failed|invalid credentials|Username and Password not accepted/i.test(
@@ -6227,6 +6237,14 @@ export class ProcurementService {
       replyTo,
     });
     if (!result.success) {
+      // A header refusal (ADR 0172) happens before Gmail is called: the data is
+      // wrong, not the credentials, so do not send anyone to re-auth Gmail.
+      if (result.refusedBeforeSend) {
+        throw new BadRequestException(
+          `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
+            "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address) and approve again.",
+        );
+      }
       throw new BadRequestException(
         `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
           "Check Gmail credentials (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).",

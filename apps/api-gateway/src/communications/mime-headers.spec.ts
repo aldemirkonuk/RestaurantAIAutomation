@@ -17,6 +17,7 @@ import {
   addressListHeader,
   mailboxHeader,
   MimeHeaderError,
+  threadingHeader,
   unstructuredHeader,
 } from "./mime-headers";
 
@@ -253,10 +254,9 @@ describe("GmailService.createMimeMessage — headers (ADR 0172)", () => {
   });
 
   it.each([
-    ["inReplyTo", "<a@b.example>\r\nBcc: attacker@evil.example"],
-    ["references", "<a@b.example>\nBcc: attacker@evil.example"],
     ["replyTo", "a@b.example\r\nBcc: attacker@evil.example"],
     ["messageIdHeader", "<a@b.example>\rBcc: attacker@evil.example"],
+    ["bcc", ["a@b.example\r\nTo: attacker@evil.example"]],
   ])("refuses a line break in %s — nothing is sent", async (field, value) => {
     const { svc, send } = makeService();
     const result = await svc.sendEmail({
@@ -287,6 +287,44 @@ describe("GmailService.createMimeMessage — headers (ADR 0172)", () => {
     }
   });
 
+  it("trims whitespace around an address but refuses one inside it", async () => {
+    // A contact saved with a trailing newline or tab is not corrupt data.
+    for (const to of [
+      "fikri@fikritarim.com\n",
+      "fikri@fikritarim.com\t",
+      " fikri@fikritarim.com\r\n",
+    ]) {
+      const { raw } = await sendAndCapture({ to: [to] });
+      const { headerBlock } = splitMessage(raw);
+      expectWellFormed(headerBlock);
+      expect(header(parseHeaders(headerBlock), "To")).toEqual([
+        "fikri@fikritarim.com",
+      ]);
+    }
+    // An interior line break still refuses the whole send.
+    const { svc, send } = makeService();
+    const result = await svc.sendEmail({
+      to: ["fikri@\r\nfikritarim.com"],
+      subject: "Order",
+      html: "<p>x</p>",
+    });
+    expect(result.success).toBe(false);
+    expect(result.refusedBeforeSend).toBe(true);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("refuses one To entry that holds two named addresses — never drops one", async () => {
+    const { svc, send } = makeService();
+    const result = await svc.sendEmail({
+      to: ["Fikri <fikri@fikritarim.com>, Trakya <orders@trakya.example>"],
+      subject: "Order",
+      html: "<p>x</p>",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/one entry holds more than one address/);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("keeps the From brand text and encodes non-ASCII recipient names", async () => {
     const { raw } = await sendAndCapture({
       to: ["Fikri Tarım <fikri@fikritarim.com>", "orders@trakya.example"],
@@ -312,6 +350,78 @@ describe("GmailService.createMimeMessage — headers (ADR 0172)", () => {
     );
     expect(header(hs, "In-Reply-To")).toEqual(["<in@x.example>"]);
     expect(header(hs, "References")).toEqual(["<r1@x.example> <in@x.example>"]);
+  });
+});
+
+describe("GmailService.createMimeMessage — threading headers are rebuilt, never refused (ADR 0172)", () => {
+  // In-Reply-To / References are copied from the vendor's own mail, where
+  // RFC 5322 folding (CRLF + WSP) is legal. Refusing them stopped every reply
+  // on that thread; they are rebuilt from their <msg-id> tokens instead.
+  const HEADER = {
+    inReplyTo: "In-Reply-To",
+    references: "References",
+  } as const;
+  const FIELDS = Object.keys(HEADER) as Array<keyof typeof HEADER>;
+
+  const REBUILT: Array<[string, string, string]> = [
+    [
+      "folded CRLF + TAB",
+      "<a@x.example>\r\n\t<b@y.example>",
+      "<a@x.example> <b@y.example>",
+    ],
+    [
+      "a bare TAB",
+      "<a@x.example>\t<b@y.example>",
+      "<a@x.example> <b@y.example>",
+    ],
+    [
+      "folded CRLF + space",
+      "<a@x.example>\r\n <b@y.example>",
+      "<a@x.example> <b@y.example>",
+    ],
+    [
+      "a non-ASCII id, dropped",
+      "<şarap@x.example> <a@x.example>",
+      "<a@x.example>",
+    ],
+    [
+      "an injection attempt",
+      "<a@x.example>\r\nBcc: evil@x.example",
+      "<a@x.example>",
+    ],
+  ];
+
+  describe.each(FIELDS)("%s", (field) => {
+    it.each(REBUILT)("rebuilds %s", async (_label, value, expected) => {
+      const { raw } = await sendAndCapture({ [field]: value });
+      const { headerBlock } = splitMessage(raw);
+      expectWellFormed(headerBlock);
+      const hs = parseHeaders(headerBlock);
+      expect(header(hs, HEADER[field])).toEqual([expected]);
+      expect(hs.map((h) => h.name.toLowerCase())).not.toContain("bcc");
+    });
+
+    it.each([
+      ["whitespace only", " \r\n\t "],
+      ["text with no id", "not a message id"],
+      ["only a non-ASCII id", "<şarap@x.example>"],
+    ])(
+      "omits the header for %s — the reply still goes out",
+      async (_label, value) => {
+        const { raw } = await sendAndCapture({ [field]: value });
+        const names = parseHeaders(splitMessage(raw).headerBlock).map((h) =>
+          h.name.toLowerCase(),
+        );
+        expect(names).toEqual([
+          "from",
+          "to",
+          "message-id",
+          "subject",
+          "mime-version",
+          "content-type",
+        ]);
+      },
+    );
   });
 });
 
@@ -386,6 +496,31 @@ describe("sendThroughGrant — headers and body (ADR 0172)", () => {
     },
   );
 
+  it("writes the From header through the encoder, address never encoded", async () => {
+    const raw = await grantRaw(
+      "x",
+      "x",
+      "Lokanta Müdavim · Şarap <siparis@lokantamudavim.com>\n",
+    );
+    const { headerBlock } = splitMessage(raw);
+    expectWellFormed(headerBlock);
+    const from = header(parseHeaders(headerBlock), "From");
+    expect(from).toHaveLength(1);
+    expect(from[0]).toContain("<siparis@lokantamudavim.com>");
+    expect(decodeHeaderValue(from[0])).toBe(
+      "Lokanta Müdavim · Şarap <siparis@lokantamudavim.com>",
+    );
+  });
+
+  it("omits From when the grant has no address", async () => {
+    const raw = await grantRaw("x", "x", "  ");
+    const names = parseHeaders(splitMessage(raw).headerBlock).map((h) =>
+      h.name.toLowerCase(),
+    );
+    expect(names).not.toContain("from");
+    expect(names[0]).toBe("to");
+  });
+
   it("a CR/LF in the letter subject creates no header", async () => {
     const raw = await grantRaw(
       "Standing order\r\nBcc: attacker@evil.example",
@@ -436,8 +571,40 @@ describe("mime-headers encoders", () => {
     ).toBe('From: "Ops \\"Night\\" Desk, Kadikoy" <a@b.example>');
   });
 
+  it("threadingHeader returns null when no <msg-id> survives", () => {
+    for (const v of [
+      undefined,
+      null,
+      "",
+      "  \r\n\t",
+      "no id here",
+      "<a b@x>",
+      "<şarap@x.example>",
+    ]) {
+      expect(threadingHeader("References", v)).toBeNull();
+    }
+    expect(threadingHeader("References", "<a@x>\r\nBcc: <evil@x>")).toBe(
+      "References: <a@x> <evil@x>",
+    );
+  });
+
+  it("mailboxHeader trims a trailing newline from the address", () => {
+    expect(mailboxHeader("From", "Ops", "a@b.example\n")).toBe(
+      "From: Ops <a@b.example>",
+    );
+  });
+
+  it("refuses an entry with two named addresses but keeps a quoted name with <>", () => {
+    expect(() =>
+      addressListHeader("To", ["A <a@x.example>, B <b@x.example>"]),
+    ).toThrow(/one entry holds more than one address/);
+    expect(
+      addressListHeader("To", ['"A <a@x.example>, B" <b@x.example>']),
+    ).toBe('To: "A <a@x.example>, B" <b@x.example>');
+  });
+
   it("throws MimeHeaderError on a control character in an address", () => {
-    expect(() => addressListHeader("To", ["a@b.example "])).toThrow(
+    expect(() => addressListHeader("To", ["a@b.example\x00"])).toThrow(
       MimeHeaderError,
     );
   });
