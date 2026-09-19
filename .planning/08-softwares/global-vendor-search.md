@@ -106,3 +106,17 @@ Seams:
   discovery → directory → order.
 - Coverage instrumentation (how many distributors serve a given tenant, how stale) is
   unbuilt and is the metric the owning charter implies.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Small backend surface (685 LOC / 3 endpoints) for the product's name.
+
+**Coverage.** 89.6%/69.3% (heavy.sh jest, 2026-09-18).
+
+**Runs in production.** `/distributors` is now a redirect, not a standalone page.
+
+**Promised vs. built.** `partial` holds; this note's page list is stale — see finding F9.
+
+**Gaps.** `distributor_directory`=0, `distributor_crawl_log`=0 rows — the discovery pipeline has never produced a row.
+
+*Evidence:* `apps/web/src/App.tsx:350-353`; Supabase row counts above.

@@ -179,3 +179,16 @@ Seams:
 - **Giving this software a screen is unscheduled.** No OD row and no agenda item covers
   routing `RecurringOrders.tsx` or replacing the `Orders.tsx` alert.
 
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** `order-recurrence.service.ts` + `recurring-orders.service.ts` run 3 daily cron entries against a table that has never held a row.
+
+**Coverage.** Module-level 79.0%/66.2% (same procurement module as [[orders]]).
+
+**Runs in production.** Crons are scheduled and firing; the feature has never been triggered — `recurring_orders`=0 rows.
+
+**Promised vs. built.** Backend-only status holds structurally, but the feature is functionally dormant.
+
+**Gaps.** Automation runs against an empty table — see finding F10 in the module-analysis pass.
+
+*Evidence:* Supabase `recurring_orders`=0.

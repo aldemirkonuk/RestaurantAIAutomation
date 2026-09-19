@@ -201,3 +201,17 @@ Seams:
   staged-open branch in Gmail push verification.
 - `scheduled_reports` needs a migration or a deletion — a scheduler tab over a table that
   does not exist should not survive either way.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** `conversations` module measured at 8.7% branch coverage; this software carries 13 crons, the densest automation surface measured in this pass.
+
+**Coverage.** `communications` 61.9%/48.0%; `conversations` 23.5%/8.7% (heavy.sh jest, 2026-09-18).
+
+**Runs in production.** Flag ON; templating is hollow and the credit-metering tables are all 0 rows.
+
+**Promised vs. built.** `hollow` holds and is worse than this note's own framing implies on the metering layer specifically — see finding F4.
+
+**Gaps.** Credit-metering layer (`message_templates`, `house_message_meter`) is unpopulated in production.
+
+*Evidence:* Supabase `message_templates`=0, `house_message_meter`=0.

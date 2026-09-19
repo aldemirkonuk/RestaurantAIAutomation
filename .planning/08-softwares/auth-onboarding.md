@@ -225,3 +225,17 @@ does not become an account-existence oracle (`:1296-1300`). The page note needs 
 - [[no-access]] is one `if` away from real, and the synthetic-branch fallback is the thing
   that has to go first.
 - Correct `register.md` §10 — the takeover it reports as open is closed.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** The most evenly production-used software measured this pass.
+
+**Coverage.** `auth` 71.9%/63.1%; `restaurants` 76.4%/66.3%.
+
+**Runs in production.** Yes; every backing table has real rows.
+
+**Promised vs. built.** `partial` holds.
+
+**Gaps.** None major found this pass.
+
+*Evidence:* Supabase `users`=8, `onboarding_sessions`=21, `email_verifications`=4.

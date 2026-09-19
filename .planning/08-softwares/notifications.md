@@ -161,3 +161,17 @@ Seams:
   kind to notice.
 - Memory `notifications-batching-sync` and `inbound-email-intelligence-plan` carry the
   batching engine's design and the inbound producers' Phase 0 state.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Backbone for cross-product alerts; `low-stock-edge-sweep` cron runs every 2 minutes.
+
+**Coverage.** 76.6%/61.3% — the best-covered large module measured this pass (heavy.sh jest, 2026-09-18).
+
+**Runs in production.** Yes — backend fully live; the frontend redesign is flag OFF.
+
+**Promised vs. built.** `partial` holds.
+
+**Gaps.** None major found this pass.
+
+*Evidence:* Supabase `notifications`=566 rows; `low-stock-alerts.service.ts` cron registration.

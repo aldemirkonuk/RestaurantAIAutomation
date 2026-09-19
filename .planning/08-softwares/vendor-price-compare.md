@@ -149,3 +149,17 @@ Seams:
   closest, and wine-only as the reason it is not there.
 - Freshness policy is unwritten. [[supply-discovery-charter]] owns it and no ADR records it —
   until it exists, "as of when" is unanswerable on every row this page renders.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** A well-tested ingestion pipeline (`vendor-intel` + an undocumented `price-index` module + `price-register`) that never produces a production row.
+
+**Coverage.** `vendor-intel` 79.9%/68.5%; `price-index` 82.1%/68.6%; `price-register` 94.9%/92.9% — the best-covered module measured this pass.
+
+**Runs in production.** Route is ungated; `price_index_postings`=0 rows.
+
+**Promised vs. built.** `hollow` holds; this note's `api_modules` list is incomplete — `price-index` and `price-register` are missing from it.
+
+**Gaps.** Frontmatter `api_modules` needs `price-index` and `price-register` added (see the frontmatter diff this pass surfaced).
+
+*Evidence:* Supabase row counts above; module list vs. this note's frontmatter.
