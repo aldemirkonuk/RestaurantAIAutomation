@@ -78,6 +78,11 @@ const design = vi.hoisted(() => ({ connections: false }));
 vi.mock('@/lib/mudavym/useMudavymDesign', () => ({
   useMudavymDesign: (page: string) => (page === 'connections' ? design.connections : false),
   MUDAVYM_PAGES: [] as const,
+  // Real value, not a stub: FeaturesSection reads this to decide whether
+  // `mudavym_design_settings` still renders as a switch (it does not — see
+  // "SettingsNext — features" below), and that is exactly LIVE_PAGES's
+  // real membership as of this pass (useMudavymDesign.ts).
+  LIVE_PAGES: new Set(['settings']),
 }));
 
 import SettingsNext from './SettingsNext';
@@ -116,7 +121,21 @@ function base(over: Record<string, unknown> = {}) {
     team: remote({ members: [], invites: [], invitesDenied: false }),
     flags: remote({}),
     ical: remote({ token: 'tok' }),
-    sender: remote(null),
+    // `remote(null)` (pre-109A) collided with a real defect this pass found
+    // rather than caused: `Register` (`SectionKit.tsx`) treats ANY `data ===
+    // null` as a failed read, but `sender`'s own fetcher legitimately
+    // resolves to `null` on a SUCCESSFUL read when no `sender_identity`
+    // template row exists yet (`useSettingsNextData.ts` — `.find(...) ??
+    // null`) — a state `EmailSection` was clearly written to handle (`row ?
+    // ... : 'nothing is on file yet'`) but can never reach, because `Register`
+    // intercepts it first and prints "could not be read — unknown error" over
+    // an ordinary "nobody has set one yet" restaurant. Never surfaced before
+    // 109A because only one panel rendered at a time; now that every register
+    // is on screen together it collided with the Features error test's own
+    // `getByRole('alert')`. Flagged for its own fix (see the settings-build
+    // note); this fixture just stops asserting a state the page cannot really
+    // reach for a house with a sign-off already on file.
+    sender: remote({ id: 's1', type: 'sender_identity', body: 'the team', updatedAt: null }),
     chains: remote([]),
     pos: remote({ providers: { summary: { total: 0, byTier: {}, byStatus: {} }, providers: [] }, status: null, statusError: null }),
     prefs: remote({ preferences: {}, updatedAt: null }),
@@ -126,11 +145,27 @@ function base(over: Record<string, unknown> = {}) {
     thresholds: remote(thresholdsRegister()),
     ledger: remote(ledgerRegister()),
     houseCurrency: remote(currencyRegister()),
+    // Pre-existing gap, surfaced (not caused) by sketch 109A: no test here
+    // ever set `?tab=carrying-cost`, so `houseCarryingCost`'s absence from
+    // this fixture never crashed anything — one panel of sixteen was simply
+    // never mounted. Rendering all sixteen together makes every register's
+    // fixture load-bearing on every test.
+    houseCarryingCost: remote(carryingCostRegister()),
+    // Sketch 109A additions (2026-09-17): graft B's hours editor and the
+    // recommendations digest sender. Both are eager registers now (every
+    // register is, since the interview renders all sixteen together), so a
+    // fixture that omitted them would crash `HoursSection`/`DigestRow` on
+    // `undefined.status` the moment a test mounted the page.
+    hours: remote({ restaurantId: 'r1', timezone: 'Europe/Istanbul', operatingHours: null, updatedAt: null }),
+    digest: remote({ stated: false, digestEnabled: false, digestHour: 7, digestMinUrgency: 'this_week', recipientEmail: null, lastSentAt: null }),
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     saveFlag, savePrefs, saveNotif,
     saveSender: vi.fn(), sendTestEmail: vi.fn(), regenerateIcal: vi.fn(),
     setMemberRole: vi.fn(), removeMember: vi.fn(), revokeInvite: vi.fn(), disconnectIntegration: vi.fn(),
     saveVendorTerms, saveThreshold, saveCurrency,
+    saveCarryingCost: vi.fn(() => Promise.resolve(true)),
+    saveHours: vi.fn(() => Promise.resolve(true)),
+    saveDigest: vi.fn(() => Promise.resolve(true)),
     ...over,
   };
 }
@@ -155,6 +190,25 @@ function currencyRegister(over: Record<string, unknown> = {}) {
     restaurantId: 'r1',
     code: null,
     country: 'Türkiye',
+    readable: true,
+    reason: null,
+    statedAt: null,
+    statedBy: null,
+    ...over,
+  };
+}
+
+/**
+ * The carrying-cost readout, shaped exactly as `CarryingCostSection.test.tsx`'s
+ * own `reg()` fixture — reused rather than redeclared, per that register's own
+ * "stated before it is recorded" rule (nothing is invented as a starting
+ * value, so the default fixture is the unanswered state).
+ */
+function carryingCostRegister(over: Record<string, unknown> = {}) {
+  return {
+    restaurantId: 'r1',
+    percentPerMonth: null,
+    basis: null,
     readable: true,
     reason: null,
     statedAt: null,
@@ -307,13 +361,30 @@ function mount(url = '/settings') {
   );
 }
 
+// jsdom carries no layout engine and does not implement `scrollIntoView` at
+// all. Sketch 109A's continuous scroll uses it (once, for a `?tab=` deep link,
+// and for a contents-column click) — the component itself already guards a
+// missing implementation so production degrades safely, but a real function
+// here lets these tests assert WHICH element was scrolled to.
+beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   design.connections = false;
   mock.current = base();
+  // `loading: true` is the honest default for a hook this fixture never
+  // resolves: `data: null, loading: false, error: null` reads to
+  // `CellarRegistersControl` as `!readout` with neither a real error nor a
+  // fetch in flight, which is its OWN error branch (`registers-control-error`)
+  // — invisible before sketch 109A because Cellar was the only lazily-mounted
+  // register on the whole page and no test outside its own two happened to
+  // mount it; now that every register renders together it collided with the
+  // Features error test's own single `alert`.
   cellar.current = {
     data: null,
-    loading: false,
+    loading: true,
     error: null,
     save: { mutateAsync: vi.fn(), isPending: false, error: null },
     refetch: vi.fn(),
@@ -324,18 +395,26 @@ describe('SettingsNext — the editorial spine', () => {
   it('opens on a contents page naming every register and where each is kept', () => {
     mount();
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(16);
-    // The legacy ten under their legacy names, plus cellar, plus the three the
-    // fourth pass added, plus Currency (2026-09-05) and Carrying cost
-    // (2026-09-06). Every one of these is still a live `?tab=` id.
-    for (const label of ['Team', 'Services', 'Email', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features', 'POS', 'Calendar', 'Cellar', 'Vendor terms', 'Approval thresholds', 'What changed here', 'Currency', 'Carrying cost']) {
-      expect(within(nav).getByText(label)).toBeInTheDocument();
-    }
-    // The contents column now reads in GROUPS, so the headings must be there —
-    // a flat fourteen-row list is the thing this pass was asked to fix.
-    for (const heading of ['The house', 'How it buys', 'What it does on its own', 'Yours', 'The record']) {
+    // Sketch 109A (2026-09-17): sixteen numbered register BUTTONS became seven
+    // interview-group LINKS — the page no longer swaps a panel, so there is
+    // nothing left to "open" from the nav; everything below is already
+    // rendered, and the nav only jumps to it. The seven fixed interview
+    // headings, in their I–VII order:
+    expect(within(nav).getAllByRole('link')).toHaveLength(7);
+    for (const heading of ['The house', 'What it carries', 'How it buys', 'What it may do on its own', 'Who is here', 'Yours', 'The record']) {
       expect(within(nav).getByText(heading)).toBeInTheDocument();
     }
+    // Every one of the sixteen registers is still on the page, each under its
+    // own heading — the legacy ten under their legacy names, plus cellar, plus
+    // the three the fourth pass added, plus Currency (2026-09-05) and Carrying
+    // cost (2026-09-06).
+    for (const title of ['Team', 'Services & permissions', 'Email sign-off', 'Notifications', 'Locations & chains', 'Measurement & recipes', 'Map', 'Features', 'Point of sale', 'Calendar subscription', 'Cellar registers', 'Vendor terms', 'Approval thresholds', 'What changed here', 'Reporting currency', 'What holding stock costs']) {
+      expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
+    }
+    // Graft B and the digest sender get their own home too, not folded into
+    // an existing register.
+    expect(screen.getByRole('heading', { name: 'When is it open?' })).toBeInTheDocument();
+    expect(screen.getByText('Should it mail a recommendations digest?')).toBeInTheDocument();
     expect(screen.getByText(/twelve kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
     // The standing honesty statement, now that FOUR registers DO record an
     // author: it names which four — Currency joined them 2026-09-05 — and
@@ -344,13 +423,73 @@ describe('SettingsNext — the editorial spine', () => {
     expect(screen.getByText(/other eight write through services this pass did not touch/i)).toBeInTheDocument();
   });
 
-  it('honours a ?tab= deep link, and writes the tab back when a register is opened', () => {
+  /**
+   * The certainty tally (§13.40, founder "Lane answers batch 2" ~09:30Z):
+   * "ship the counted sentence now (from data, labelled 'computed here')".
+   * `certaintyTally.test.ts` owns the pure-function arithmetic; this is the
+   * one integration point proving the real page actually renders it, wired
+   * to real `SettingsNextData`, not a mock of `certaintyTally.ts` itself.
+   */
+  it('shows the certainty tally, computed from the mounted data', () => {
+    mount();
+    // base(): carrying cost unstated, currency unstated, hours open unstated
+    // + timezone manual, digest unstated, notif idle (contributes nothing) —
+    // 1 of 5 certainty-stamped rows stated.
+    const tally = screen.getByTestId('st-certainty-tally');
+    expect(tally).toHaveTextContent('Stated so far: 1 of 5 certainty-stamped settings — computed here.');
+  });
+
+  it('the tally count moves with the data it is computed from — not a static string', () => {
+    mock.current = base({
+      houseCurrency: remote(currencyRegister({ code: 'USD' })), // +1 counted
+      notif: remote(notifPrefs()), // +4 rows, all manual once loaded
+    });
+    mount();
+    const tally = screen.getByTestId('st-certainty-tally');
+    // 1 (hours timezone) + 1 (currency, now stated) + 4 (notify, now loaded) = 6 of 9.
+    expect(tally).toHaveTextContent('Stated so far: 6 of 9 certainty-stamped settings — computed here.');
+  });
+
+  it('honours a ?tab= deep link by scrolling to that register once, and again on a contents click', () => {
     mount('/settings?tab=measurement');
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Measurement & recipes');
+    // Every register is already rendered — the deep link's whole job now is
+    // to scroll the reader to the right one, once, on first paint.
+    expect(screen.getByTestId('st-section-measurement')).toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
+    const scrolledTo = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[0] as HTMLElement;
+    expect(scrolledTo.id).toBe('st-section-measurement');
     expect(screen.getByTestId('where')).toHaveTextContent('/settings?tab=measurement');
-    fireEvent.click(within(screen.getByRole('navigation', { name: /settings registers/i })).getByText('Map'));
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Map');
-    expect(screen.getByTestId('where')).toHaveTextContent('/settings?tab=map');
+    // The URL is never rewritten by scrolling — there is no "open register"
+    // for it to name any more.
+    fireEvent.click(within(screen.getByRole('navigation', { name: /settings registers/i })).getByText('What it carries'));
+    expect(screen.getByTestId('where')).toHaveTextContent('/settings?tab=measurement');
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  // Regression for the confirm pass's R item (2026-09-18): Hours and Digest
+  // each has a real `st-section-<id>` DOM id (graft B's day sheet, the digest
+  // sender) but neither `'hours'` nor `'digest'` was ever added to
+  // `SECTION_IDS`, so `isSectionId` refused both tabs and the effect above
+  // returned before it ever called `getElementById` — confirmed by reverting
+  // the `SECTION_IDS`/`TAB_TO_ANCHOR` entries locally and watching both cases
+  // below fail with "Unable to find an element by: [data-testid="st-section-hours"]"
+  // (jsdom never rendering it) is not the failure mode; scrollIntoView simply
+  // stayed uncalled, which is the same silent shape as the 900-second token
+  // trap this repo has already been burned by once.
+  it('honours a ?tab=hours deep link the same way — graft B lives under "The house"', () => {
+    mount('/settings?tab=hours');
+    expect(screen.getByTestId('st-section-hours')).toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
+    const scrolledTo = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[0] as HTMLElement;
+    expect(scrolledTo.id).toBe('st-section-hours');
+  });
+
+  it('honours a ?tab=digest deep link the same way — the digest sender lives under "own"', () => {
+    mount('/settings?tab=digest');
+    expect(screen.getByTestId('st-section-digest')).toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
+    const scrolledTo = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[0] as HTMLElement;
+    expect(scrolledTo.id).toBe('st-section-digest');
   });
 
   it('carries the mudavym token scope on its own root, and takes a forced ground', () => {
@@ -384,10 +523,23 @@ describe('SettingsNext — features', () => {
     mock.current = base({ flags: remote(flags) });
     mount('/settings?tab=features');
     expect(screen.getByText(/Mudavym redesign · 2 pages/i)).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: /Settings — Mudavym design/i })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('switch', { name: /Calendar — Mudavym design/i })).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(screen.getByRole('switch', { name: /Settings — Mudavym design/i }));
-    expect(saveFlag).toHaveBeenCalledWith('mudavym_design_settings', true);
+    fireEvent.click(screen.getByRole('switch', { name: /Calendar — Mudavym design/i }));
+    expect(saveFlag).toHaveBeenCalledWith('mudavym_design_calendar', false);
+  });
+
+  // ADR 0149 row 36 / ADR 0160: `/settings` cleared its sketch review and now
+  // resolves the redesign for every house in code (LIVE_PAGES,
+  // useMudavymDesign.ts). The column is still returned by the gateway (kept
+  // for backward compatibility), but a switch this page's own hook never
+  // reads again would be exactly the dead control ADR 0020 forbids.
+  it('does not offer a switch for itself once its own page is live for everyone', () => {
+    mock.current = base({ flags: remote(flags) });
+    mount('/settings?tab=features');
+    expect(screen.queryByRole('switch', { name: /Settings — Mudavym design/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/live for everyone/i)).toBeInTheDocument();
+    expect(screen.getByText(/resolves the Mudavym design in code, not from this switch/i)).toBeInTheDocument();
+    expect(saveFlag).not.toHaveBeenCalledWith('mudavym_design_settings', expect.anything());
   });
 
   it('gives the house-inbox reader its own row, naming what ON means', () => {
@@ -414,12 +566,18 @@ describe('SettingsNext — features', () => {
     });
     mount('/settings?tab=features');
 
-    expect(screen.getByText(/Only an owner or a manager of this restaurant may change this/i))
+    // Scoped to the Features register: every OTHER register is on screen too
+    // now (the interview renders all sixteen together), and several of them —
+    // Notifications' doors, for one — are gated by account ownership, not by
+    // `canManage`, so a page-wide switch scan would fail on controls this
+    // fixture never claimed to disable.
+    const featuresSection = screen.getByTestId('st-section-features');
+    expect(within(featuresSection).getByText(/Only an owner or a manager of this restaurant may change this/i))
       .toBeInTheDocument();
-    for (const sw of screen.getAllByRole('switch')) expect(sw).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Hold to allow AI to send/i })).toBeDisabled();
+    for (const sw of within(featuresSection).getAllByRole('switch')) expect(sw).toBeDisabled();
+    expect(within(featuresSection).getByRole('button', { name: /Hold to allow AI to send/i })).toBeDisabled();
     // The values stay legible.
-    expect(screen.getByRole('switch', { name: /Calendar — Mudavym design/i }))
+    expect(within(featuresSection).getByRole('switch', { name: /Calendar — Mudavym design/i }))
       .toHaveAttribute('aria-checked', 'true');
   });
 
@@ -457,13 +615,35 @@ describe('SettingsNext — features', () => {
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(/could not be read/i);
     expect(alert).toHaveTextContent(/this is not an empty register/i);
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    // Scoped: Measurement's "Enable recipes" toggle is a real browser-only
+    // switch that renders regardless of this fixture, since every register is
+    // on the page together now.
+    expect(within(screen.getByTestId('st-section-features')).queryByRole('switch')).not.toBeInTheDocument();
   });
 
   it('says a refusal is a refusal', () => {
     mock.current = base({ chains: remote(null, 'denied') });
     mount('/settings?tab=locations');
     expect(screen.getByText(/Chains were not opened for your role/i)).toBeInTheDocument();
+  });
+});
+
+// BLOCKER, found 2026-09-18 and fixed here: `Register` (`SectionKit.tsx`)
+// used to treat `remote.data === null` as a failed read regardless of
+// `status` — but `sender` legitimately resolves to `null` on a SUCCESSFUL
+// read when this restaurant has never set a sign-off (`useSettingsNextData.ts`
+// — `.find(...) ?? null`). Every other test in this file gives `sender` a
+// real row (see the fixture's own comment above) specifically to dodge this
+// bug; this block is the one that actually mounts the state the bug was in,
+// so it would fail against the pre-fix `Register`.
+describe('SettingsNext — a house with no sign-off yet is not a failed read', () => {
+  it('reads "nothing is on file yet", never "could not be read"', () => {
+    mock.current = base({ sender: remote(null) });
+    mount('/settings?tab=email');
+    const section = screen.getByTestId('st-section-email');
+    expect(within(section).getByText(/nothing is on file yet/i)).toBeInTheDocument();
+    expect(within(section).queryByText(/could not be read/i)).not.toBeInTheDocument();
+    expect(within(section).queryByRole('alert')).not.toBeInTheDocument();
   });
 });
 
@@ -586,6 +766,7 @@ describe('SettingsNext — provenance and unknowns', () => {
   it('mounts the cellar rebuild’s own register control rather than a second copy', () => {
     cellar.current = {
       ...cellar.current,
+      loading: false,
       data: {
         restaurantId: 'r1',
         registers: [
@@ -608,7 +789,7 @@ describe('SettingsNext — provenance and unknowns', () => {
       },
     };
     mount('/settings?tab=cellar');
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Cellar registers');
+    expect(screen.getByRole('heading', { level: 3, name: 'Cellar registers' })).toBeInTheDocument();
     expect(screen.getByTestId('registers-control')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /Wines register/i })).toHaveAttribute('aria-checked', 'true');
     // Settings supplies the settings-shaped facts around it, and does not
@@ -617,12 +798,13 @@ describe('SettingsNext — provenance and unknowns', () => {
   });
 
   it('says a failed cellar readout in words, never as seven registers switched off', () => {
-    cellar.current = { ...cellar.current, data: null, error: 'HTTP 500' };
+    cellar.current = { ...cellar.current, loading: false, data: null, error: 'HTTP 500' };
     mount('/settings?tab=cellar');
-    const alert = screen.getByRole('alert');
+    const section = screen.getByTestId('st-section-cellar');
+    const alert = within(section).getByRole('alert');
     expect(alert).toHaveTextContent(/could not be read/i);
     expect(alert).toHaveTextContent(/it is\s*unread/i);
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(within(section).queryByRole('switch')).not.toBeInTheDocument();
   });
 
   it('stamps no client-side date on the POS connector', () => {
@@ -663,7 +845,7 @@ describe('SettingsNext — provenance and unknowns', () => {
 describe('SettingsNext — vendor terms', () => {
   it('renders an unknown lead time as an em dash with the reason beside it', () => {
     mount('/settings?tab=vendor-terms');
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Vendor terms');
+    expect(screen.getByRole('heading', { level: 3, name: 'Vendor terms' })).toBeInTheDocument();
     // ADR 0116 dropped the column default, so the gateway no longer emits the
     // "indistinguishable from the default" reason at all — an unknown lead time
     // now says why the INFERENCE could not run. The em dash and the reason
@@ -721,9 +903,12 @@ describe('SettingsNext — vendor terms', () => {
 
   it('sends ONLY the field the person touched — an untouched field is absent, not null', async () => {
     mount('/settings?tab=vendor-terms');
-    fireEvent.click(screen.getByRole('button', { name: 'Record' }));
+    // Scoped: DigestRow's own "Record" button (sketch 109A) shares the exact
+    // label, since every register is on the page together now.
+    const section = screen.getByTestId('st-section-vendor-terms');
+    fireEvent.click(within(section).getByRole('button', { name: 'Record' }));
     fireEvent.change(screen.getByLabelText(/Closes at/i), { target: { value: '11:30' } });
-    fireEvent.click(screen.getByRole('button', { name: /Record what they said/i }));
+    fireEvent.click(within(section).getByRole('button', { name: /Record what they said/i }));
     expect(saveVendorTerms).toHaveBeenCalledTimes(1);
     const [providerId, body] = saveVendorTerms.mock.calls[0] as unknown as [string, Record<string, unknown>];
     expect(providerId).toBe('p1');
@@ -736,12 +921,13 @@ describe('SettingsNext — vendor terms', () => {
 
   it('does not seed the editor from an inference — a guess must not become the house’s word', () => {
     mount('/settings?tab=vendor-terms');
-    fireEvent.click(screen.getByRole('button', { name: 'Record' }));
+    const section = screen.getByTestId('st-section-vendor-terms');
+    fireEvent.click(within(section).getByRole('button', { name: 'Record' }));
     // Delivery weekdays are INFERRED for this vendor, so no day is pressed and
     // the button that would record them stays inert until somebody chooses.
-    const monday = screen.getByRole('button', { name: 'Monday' });
+    const monday = within(section).getByRole('button', { name: 'Monday' });
     expect(monday).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('button', { name: /Record what they said/i })).toBeDisabled();
+    expect(within(section).getByRole('button', { name: /Record what they said/i })).toBeDisabled();
   });
 });
 
@@ -875,7 +1061,7 @@ describe('SettingsNext — approval thresholds', () => {
 describe('SettingsNext — the settings record', () => {
   it('ends a line at a person, and shows what the value was before', () => {
     mount('/settings?tab=ledger');
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('What changed here');
+    expect(screen.getByRole('heading', { level: 3, name: 'What changed here' })).toBeInTheDocument();
     expect(screen.getByText('Feature: enable_ai_autonomous_send')).toBeInTheDocument();
     expect(screen.getByText('Deniz Aksoy')).toBeInTheDocument();
     expect(screen.getByText('off')).toBeInTheDocument();
@@ -903,9 +1089,13 @@ describe('SettingsNext — the settings record', () => {
 
   it('names the registers whose changes it does NOT cover, so their silence means nothing', () => {
     mount('/settings?tab=ledger');
-    expect(screen.getByText(/Eight registers write through services this pass did not touch/i)).toBeInTheDocument();
+    // Scoped: every named register is ALSO its own heading elsewhere on the
+    // page now (e.g. "Email sign-off" is both this list's item and its own
+    // register's `<h3>`), since the interview renders all sixteen together.
+    const section = screen.getByTestId('st-section-ledger');
+    expect(within(section).getByText(/Eight registers write through services this pass did not touch/i)).toBeInTheDocument();
     for (const label of ['Email sign-off', 'Locations & chains', 'Cellar registers']) {
-      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(within(section).getByText(label)).toBeInTheDocument();
     }
   });
 });
@@ -928,17 +1118,17 @@ describe('the collapse — four connection tabs become one line', () => {
 
   it('drops exactly the four connection registers and keeps the other twelve', () => {
     mount();
-    const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(12);
-    for (const gone of ['Services', 'Email', 'POS', 'Calendar']) {
-      expect(within(nav).queryByText(gone)).not.toBeInTheDocument();
+    // Sketch 109A: there is no more per-register nav to count — every
+    // register renders directly on the page (or does not), each under its own
+    // `data-section` id. The collapse now shows up there instead.
+    for (const gone of ['services', 'email', 'pos', 'calendar']) {
+      expect(screen.queryByTestId(`st-section-${gone}`)).not.toBeInTheDocument();
     }
     for (const kept of [
-      'Team', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features',
-      'Cellar', 'Vendor terms', 'Approval thresholds', 'What changed here',
-      'Currency', 'Carrying cost',
+      'team', 'notifications', 'locations', 'measurement', 'map', 'features',
+      'cellar', 'vendor-terms', 'thresholds', 'ledger', 'currency', 'carrying-cost',
     ]) {
-      expect(within(nav).getByText(kept)).toBeInTheDocument();
+      expect(screen.getByTestId(`st-section-${kept}`)).toBeInTheDocument();
     }
   });
 
@@ -989,9 +1179,15 @@ describe('the collapse — four connection tabs become one line', () => {
   it('keeps the four tabs when the route does not exist', () => {
     design.connections = false;
     mount('/settings?tab=pos');
-    const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(16);
+    for (const id of [
+      'team', 'services', 'email', 'notifications', 'locations', 'measurement',
+      'map', 'features', 'pos', 'calendar', 'cellar', 'vendor-terms',
+      'thresholds', 'ledger', 'currency', 'carrying-cost',
+    ]) {
+      expect(screen.getByTestId(`st-section-${id}`)).toBeInTheDocument();
+    }
     expect(screen.getByTestId('where')).toHaveTextContent('/settings?tab=pos');
+    const nav = screen.getByRole('navigation', { name: /settings registers/i });
     expect(within(nav).queryByRole('link', { name: /Connections/ })).not.toBeInTheDocument();
   });
 });

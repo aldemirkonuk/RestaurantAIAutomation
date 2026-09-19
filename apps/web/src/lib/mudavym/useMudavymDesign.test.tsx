@@ -95,26 +95,32 @@ describe('useMudavymDesign precedence', () => {
 
 /**
  * ADR 0149 row 36 (2026-09-17): 16 pages go live for every house in code.
- * `settings`, `cellar`, `recommendations` and `receiving` (the desk, not the
- * door) stay flag-gated. `shell` (the house shell, sketch 119 D, ADR 0149
- * row 5) is held back too: it stays behind its own flag, default off
- * (migration 20260921114300), and is never a LIVE_PAGES entry.
+ * `settings` joined 2026-09-19 (PR #419) after its sketch review — still
+ * code-side always-on, no flag read. `cellar`, `recommendations` and
+ * `receiving` (the desk, not the door) stay flag-gated. `shell` (the house
+ * shell, sketch 119 D, ADR 0149 row 5) is held back too: it stays behind its
+ * own flag in this set (production may have flipped the column independently)
+ * and is never a LIVE_PAGES entry.
  */
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
-  const HELD_BACK = ['settings', 'cellar', 'recommendations', 'receiving', 'shell'] as const;
+  const HELD_BACK = ['cellar', 'recommendations', 'receiving', 'shell'] as const;
 
-  it('is exactly MUDAVYM_PAGES minus the five held-back pages', () => {
+  it('is exactly MUDAVYM_PAGES minus the four held-back pages', () => {
     const held = new Set(HELD_BACK);
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p as (typeof HELD_BACK)[number]));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
-    expect(LIVE_PAGES.size).toBe(16);
+    expect(LIVE_PAGES.size).toBe(17);
   });
 
-  it('holds back exactly settings, cellar, recommendations, receiving, shell', () => {
+  it('holds back exactly cellar, recommendations, receiving, shell', () => {
     for (const page of HELD_BACK) {
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated
     }
+  });
+
+  it('settings is live (always-on in code, no flag read)', () => {
+    expect(LIVE_PAGES.has('settings')).toBe(true);
   });
 
   it.each([...LIVE_PAGES])(
@@ -163,10 +169,28 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
 
   it('the QA override can force a held-back page on without a flag row', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
-    window.localStorage.setItem('mudavym.design.settings', 'on');
+    window.localStorage.setItem('mudavym.design.cellar', 'on');
+    const { result } = renderHook(() => useMudavymDesign('cellar'));
+    expect(result.current).toBe(true);
+    await act(async () => {});
+    expect(checkFlag).not.toHaveBeenCalled();
+  });
+
+  it('settings resolves true with no restaurant known, and never fetches', async () => {
     const { result } = renderHook(() => useMudavymDesign('settings'));
     expect(result.current).toBe(true);
     await act(async () => {});
+    expect(result.current).toBe(true);
+    expect(checkFlag).not.toHaveBeenCalled();
+  });
+
+  it('the QA override can still force legacy on settings', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r1');
+    window.localStorage.setItem('mudavym.design.settings', 'off');
+    const { result } = renderHook(() => useMudavymDesign('settings'));
+    expect(result.current).toBe(false);
+    await act(async () => {});
+    expect(result.current).toBe(false);
     expect(checkFlag).not.toHaveBeenCalled();
   });
 

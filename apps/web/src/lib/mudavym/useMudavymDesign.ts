@@ -87,8 +87,11 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * Mudavym design for every house, in code, with no `restaurant_feature_flags`
  * read and no database write. `receiving` is the receiving DESK (the flagged
  * list/history page, route `/receiving`) — distinct from `receiving_door`,
- * which IS live. Held back, still flag-gated: `settings`, `cellar`,
- * `recommendations`, `receiving`, and `shell` (the house shell, default off).
+ * which IS live. `settings` joined 2026-09-19 after its sketch review cleared
+ * (ADR 0160 "109 — settings · A, the interview"; PR #419) — same code-side
+ * always-on as the original sixteen, still no database write. Held back,
+ * still flag-gated: `cellar`, `recommendations`, `receiving`, and `shell`
+ * (the house shell; production may have flipped its column independently).
  *
  * `MUDAVYM_PAGES.length` is 21; this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
@@ -112,6 +115,7 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'connections',
   'notifications',
   'logs',
+  'settings',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */

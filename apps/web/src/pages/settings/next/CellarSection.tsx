@@ -17,8 +17,11 @@
  *
  * The same reasoning governs the data: `useCellarRegisters` is the cellar's own
  * hook, tenant-keyed by `activeRestaurantId`, and it is called HERE rather than
- * in `useSettingsNextData` so it fetches only when this register is open —
- * matching the lazy-by-register rule the rest of the page follows.
+ * in `useSettingsNextData` — this register's fetch is owned by the cellar
+ * rebuild, not duplicated into this page's own data layer. (Before sketch
+ * 109A, 2026-09-17, this was ALSO the one register that fetched lazily,
+ * matching the rest of the page; the interview now renders every register
+ * together, so this hook fires on mount exactly like the others do.)
  */
 
 import CellarRegistersControl from '@/pages/cellar/next/CellarRegistersControl';
@@ -38,7 +41,7 @@ export function CellarSection() {
         answer and draws only those.
       </Note>
 
-      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-3)', margin: '0 0 4px' }}>
+      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '0 0 4px' }}>
         <span style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
           kept · this restaurant — changed · — the readout carries no date for each answer
         </span>
@@ -53,7 +56,7 @@ export function CellarSection() {
         onChange={(rows, source) => registers.save.mutateAsync({ registers: rows, source })}
       />
 
-      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-3)', margin: '14px 0 0' }}>
+      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '14px 0 0' }}>
         Whiskey is kept separate from spirits, and soft drinks from non-alcoholic, because a whiskey bar is a different
         house from a cocktail bar that stocks bourbon. An <em>inferred</em> register is never written down: a guess that
         is stored is indistinguishable from an answer a week later, so only a person’s own statement becomes a row —
