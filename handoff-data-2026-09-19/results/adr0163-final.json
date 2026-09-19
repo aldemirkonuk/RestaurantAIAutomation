@@ -1,0 +1,240 @@
+{
+ "ready": false,
+ "verdict": "Nearly ready. I re-ran the three guards: 357/357 claims PASS, citation pairing PASS, and ADR numbers OK against 908 refs. The citations that were repaired (:2235-2238, :2210-2214, :2981) land correctly, and the rescoped CLAIMS row is right: its sed range covers only the insert_payload dict. The Q6, Q11, Q16, Q17-gate, Q18-retention and Q20 fixes hold against their sources. Four defects remain, all in the ADR text, and one brief item is only half done. (1) The Q18 note (~:2753-2757) says `grep -in bartz` gives 0 hits, but the note contains 'Bartz' itself, so the check it describes now fails. It also says the issue described text that isn't there, which no one can re-check, because the prior staged draft was overwritten. (2) Q10 still says three axes 'collide'/'conflict' with the sweetness rule (heading ~:2366 and the three-axes option ~:2375-2382). The last call rejected that claim and it was never repaired. The new colour \u00d7 style recommendation keeps sweetness as its own P8 cell, so it is effectively the ADR's original 'three axes as cells', and the text never reconciles the two. (3) The Q17 block swaps the user counts for YAREN and ALDEMIR: it reads '0 and 2 users \u2014 YAREN's 2'. Production (my SELECT today) has YAREN = 2 and ALDEMIR = 0. (4) The review trail has no 2026-09-19 row for this ~500-line repair round, which breaks the ADR's own per-round convention and CLAUDE.md \u00a70.4. (5) For Q14 the brief asked for options with costs. The block only parks the rate on OD-23 and gives no options for how a reward is structured or what it would cost.",
+ "must_fix": [
+  "Q18 block (~:2753-2757): replace the parenthetical that says 'grep -in bartz ... 0 hits'. The note contains 'Bartz', so that grep now fails. State plainly that the retention recommendation relies on no case law and that the Bartz v. Anthropic reference from the prior draft is not carried forward. Do not say the issue described text that was never there.",
+  "Q10 block: correct the heading 'collides with the ADR's own sweetness rule \u2014 revised to two axes' and the three-axes option text 'forces a choice between those two rules'. :723 forbids a model-parsed primary_type only because it feeds the beverage_kind classifier; it does not bind a separate sweetness cell. Then say plainly that the revised colour \u00d7 style {still, sparkling, fortified} + separate sweetness cell is the ADR's original 'three axes as cells' with fortified added and dessert retired. It does not overturn the original.",
+  "Q17 block: fix 'YAREN and ALDEMIR (US, 0 and 2 users \u2014 YAREN's 2 ...)' to 'YAREN and ALDEMIR (US, 2 and 0 users ...)'. Source: restaurants LEFT JOIN users ON users.restaurant_id = restaurants.id, 2026-09-19. YAREN has 2, ALDEMIR 0, ADMIN ROOM 1, ADMIN 1 (United Kingdom) 0.",
+  "Add a 2026-09-19 row to the ADR's review trail for this repair round. List each fix (Q6, Q10, Q11, Q14, Q15, Q16, Q17 incl. (a) EU, Q18, Q20, the \u00a713/0.17 tech-debt wording, the 3 CLAIMS rows, the citation repairs) and the SELECTs and pages it re-checked.",
+  "Q14 (rest): add options for how a reward is structured, each with a rough cost (for example, points per accepted verdict, a flat monthly stipend, a per-hour rate), and keep the recommendation to park the actual number on OD-23. The brief asked for options with costs, not only a parking note.",
+  "After the edits, recompute every :line self-citation inside the round-4 blocks (at least :2235-2238, :2210-2214, :2981, and the Q22 correction). Re-run check_decision_claims.sh, check_citation_pairing.py and check_adr_numbers_unique.py."
+ ],
+ "founder_questions": [
+  {
+   "header": "Publish gate",
+   "question": "You said estimates show 'after automatic checks'. Does that still include a human pilot per field, and a human look at real houses' wines before they show?",
+   "options": [
+    {
+     "label": "Keep both human gates (Recommended)",
+     "description": "Each field's first estimate waits for about 60 human-checked cells, and real houses' wines get a human look first. This is the slowest start, since you are the only reviewer today."
+    },
+    {
+     "label": "Pilot only",
+     "description": "The per-field pilot stays, but real houses' wines publish on automatic checks and are audited within 7 days. A paying house could show an unchecked estimate for up to a week."
+    },
+    {
+     "label": "House review only",
+     "description": "There is no up-front pilot, so the accuracy floor is assumed rather than shown for a field's first days."
+    },
+    {
+     "label": "Automatic checks only",
+     "description": "This is the fastest option. Unchecked estimates reach everyone until the 7-day audit."
+    }
+   ]
+  },
+  {
+   "header": "Legal review",
+   "question": "A lawyer must clear the notice, the Terms of Service and the public-menu prices before any real house's prices are pooled. Your only real houses are in T\u00fcrkiye. How should the review be sequenced?",
+   "options": [
+    {
+     "label": "Full gate, Turkish lawyer first (Recommended)",
+     "description": "Items (a)-(i) stay in force, starting with T\u00fcrkiye, where both real houses are. It takes 2-6 weeks plus fees and costs nothing today, because neither house has uploaded a menu."
+    },
+    {
+     "label": "Notice now, pool later",
+     "description": "Show the notice and opt-out now, with no pooling until a lawyer clears it. It is cheap, but the notice wording goes out unreviewed."
+    },
+    {
+     "label": "Split by country",
+     "description": "US houses pool once the guards ship and T\u00fcrkiye waits for its lawyer. It unblocks nothing today, because no real US house exists."
+    },
+    {
+     "label": "Ship now, fix later",
+     "description": "This is the cheapest option, but trained models are not retrained, so a mistake cannot be undone."
+    }
+   ]
+  },
+  {
+   "header": "Market price k",
+   "question": "The market price shows only when enough restaurant groups list a wine. Should the threshold be 5 groups or 3?",
+   "options": [
+    {
+     "label": "k=5, accept (a)-(g) as drafted (Recommended)",
+     "description": "0 wines qualify today. It is the stronger protection while price-sharing rules are tightening (RealPage settlement, AB 325 commentary)."
+    },
+    {
+     "label": "k=3",
+     "description": "9 wines show a price today from the 26 public menus. Each house's price gets weaker protection."
+    },
+    {
+     "label": "Defer the market-price line",
+     "description": "No market price is built yet. It saves 9 wines' worth of exposure but delays work that other steps route through."
+    }
+   ]
+  },
+  {
+   "header": "Checker licence",
+   "question": "Every claim-checker candidate (MiniCheck, mDeBERTa, HHEM) may trace to non-commercial training data, and the free HHEM is English-only. How do we clear commercial use?",
+   "options": [
+    {
+     "label": "Add to the lawyer's list, build on mDeBERTa (Recommended)",
+     "description": "mDeBERTa covers Italian. It costs a few more lawyer hours, and a 'no' means buying a checker later."
+    },
+    {
+     "label": "Use MiniCheck as-is",
+     "description": "Fastest, but English-only and carries the CC BY-NC ANLI risk unreviewed."
+    },
+    {
+     "label": "Buy Bespoke-MiniCheck commercial licence",
+     "description": "This buys certainty, but the price is undisclosed and the 7B model is heavier."
+    },
+    {
+     "label": "Switch to HHEM",
+     "description": "It is English-only, so every Italian claim would go to manual review, a regression in reviewer capacity."
+    }
+   ]
+  },
+  {
+   "header": "Seat tier",
+   "question": "Which Max tier should the dedicated pipeline seat use, given usage credits are off?",
+   "options": [
+    {
+     "label": "Max 20x, $200/mo (Recommended)",
+     "description": "4x the weekly window of 5x. It is sized for the first night, which sources the 3,314-wine backlog and is the batch most likely to hit the weekly limit."
+    },
+    {
+     "label": "Max 5x, $100/mo",
+     "description": "It is $100/mo cheaper. If the window binds on the backlog night, the pilot shows it and the tier can be raised."
+    }
+   ]
+  },
+  {
+   "header": "Wine type",
+   "question": "How should wine type be stored? 53 of 369 'sparkling' rows are really sparkling ros\u00e9s, and 'fortified' (25) and 'dessert' (18) do not fit colour \u00d7 fizz.",
+   "options": [
+    {
+     "label": "Colour \u00d7 style {still, sparkling, fortified}, sweetness separate (Recommended)",
+     "description": "Every one of the 12 production spellings gets a home, and 'dessert' becomes a sweetness value. About 15 call sites read a derived flat label."
+    },
+    {
+     "label": "One cleaned-up list",
+     "description": "It is the cheapest, with no reader changes, but a wine still cannot be both sparkling and ros\u00e9."
+    },
+    {
+     "label": "Colour \u00d7 fizz only",
+     "description": "Fortified and dessert are left without a home."
+    }
+   ]
+  },
+  {
+   "header": "Reviewer floor",
+   "question": "Every publish is sampled 1 in 10. How do we measure whether one reviewer has fallen below the field's floor?",
+   "options": [
+    {
+     "label": "Wilson lower bound (Recommended)",
+     "description": "A new reviewer's approvals are all re-checked until their bound clears, then 1 in 10: 73 agreeing re-checks for 0.95, 35 for 0.90. It costs reviewer hours, not credits."
+    },
+    {
+     "label": "Plain agreement rate",
+     "description": "Faster, but one lucky run grants instant publish."
+    },
+    {
+     "label": "Keep '5 in a row'",
+     "description": "Today's rule. It reaches only about 0.57 agreement, below every floor in the ADR."
+    }
+   ]
+  },
+  {
+   "header": "Menu PDFs",
+   "question": "How long do we keep the uploaded menu PDFs (41 laptop and 26 corpus menus, all public menus of non-customers)?",
+   "options": [
+    {
+     "label": "Keep until superseded (Recommended)",
+     "description": "A PDF is deleted when a newer crawl replaces it or the restaurant objects. It reuses ADR 0118's sweep, and storage cost is trivial."
+    },
+    {
+     "label": "Fixed 90 days",
+     "description": "It is cheapest to build but fails the repo's own rule against round-number retention, and loses re-reads once the prompt changes."
+    },
+    {
+     "label": "Keep forever",
+     "description": "Retention is unbounded, with no stated purpose, for menus the notice never reaches."
+    },
+    {
+     "label": "Delete after first re-extraction",
+     "description": "It defeats the purpose of the uploads, since a better prompt could not re-read the menu."
+    }
+   ]
+  },
+  {
+   "header": "Sommelier pay",
+   "question": "Sommeliers get paid or rewarded, never the reverse. What form, and when is the rate set?",
+   "options": [
+    {
+     "label": "Rewards now, rate parked on OD-23 (Recommended)",
+     "description": "This needs no payout system and does not lift the Stripe guard. The rate waits for pricing (OD-23)."
+    },
+    {
+     "label": "Cash from the start",
+     "description": "This needs the Stripe transfers/payouts guard lifted and OD-23 decided first."
+    },
+    {
+     "label": "Both, decided per sommelier",
+     "description": "It is the most flexible and is decided internally, never shown to them. It still needs OD-23 for the cash side."
+    }
+   ]
+  },
+  {
+   "header": "EU opt-in",
+   "question": "You said 'a notice with an opt-out'. The draft adds opt-in for EU houses (Data Act Art. 13 caution). No EU house exists yet. Which do you want?",
+   "options": [
+    {
+     "label": "Opt-in for EU houses (Recommended)",
+     "description": "It matches the Art. 13 caution, costs nothing today and departs from your literal words."
+    },
+    {
+     "label": "Opt-out everywhere, as you said",
+     "description": "It matches your answer exactly and leaves the Art. 13 question for the lawyer."
+    }
+   ]
+  },
+  {
+   "header": "Six houses",
+   "question": "Which of the six unasked houses are real? The evidence splits them into 4 that look like test accounts (Gullit's Tavern, Yaren's Fine Dine, Meyhouse Palo Alto, YARDOM; 0 users each) and 2 that look real (Chez Community, The Old House Pub; both in T\u00fcrkiye).",
+   "options": [
+    {
+     "label": "Confirm both groups (Recommended)",
+     "description": "The 4 are flagged as not real and the 2 stay real. One answer settles it, and a flag can be reversed before cutover."
+    },
+    {
+     "label": "All six are real",
+     "description": "Nothing is flagged. The 4 would get real-house review priority if data ever lands on them."
+    },
+    {
+     "label": "Go house by house",
+     "description": "It takes more of your time and carries no risk of a grouped mistake."
+    }
+   ]
+  },
+  {
+   "header": "Sommelier adds",
+   "question": "What may a sommelier add without a citation?",
+   "options": [
+    {
+     "label": "Own-voice notes only; facts need a citation (Recommended)",
+     "description": "This is what \u00a71 and \u00a713 already implement, with no new schema."
+    },
+    {
+     "label": "'Attested by a named expert' class",
+     "description": "One person's memory could publish an uncited score or ABV, which the confirmed boundary forbids."
+    }
+   ]
+  }
+ ],
+ "commit_subject": "docs(0163): repair round-4 research on the checker, k, retention, the legal gate, wine type and seat tier",
+ "commit_body": "Why: the Opus last call on the previous research round returned ok=false. It found a false 'all languages' checker swap, a k=3/k=5 claim measured against the wrong table, retention text that mislabelled public non-customer menus as customer PDFs, a US/T\u00fcrkiye split that shipped nothing and dropped (e) and (g), an unmeasured wine-type conflation, a wrong 0-users count, a tech-debt premise stated as decided before any record existed, a CLAIMS verify that could not see its own fix, and stale self-citations. Four open questions had no research at all.\n\nWhat: each issue is repaired in ADR 0163 against the source it names.\n- Q6: HHEM-2.1-Open is English-only on flan-t5-base (card re-fetched), so the recommendation stays on mDeBERTa, which covers Italian. The licence question for all three checkers goes to Q17's lawyer gate.\n- Q16: counts class-M public-menu sightings: 0 wines at k=5, 9 at k=3.\n- Q18: the recommendation is now keep until superseded, reusing ADR 0118's machinery.\n- Q17: the full (a)-(i) gate is kept. No real US house exists, AB 325's hospitality reading is attributed to law-firm commentary, and the EU opt-in half is raised as the founder's call.\n- Q10: measured 53 of 369 sparkling rows named ros\u00e9 and 1 of 115 ros\u00e9 rows sparkling. The recommendation is now colour \u00d7 style {still, sparkling, fortified}, with dessert moved into sweetness.\n- Q11: all four test-looking houses have 0 users.\n- Q14, Q15 and Q20: filled in.\n- \u00a713 and step 0.17: cite the founder's 2026-09-19 order to delete v3.0-TECH-DEBT.md, with survivors split by kind; ADR 0165 is reserved on docs/retire-tech-debt, not yet written.\n- CLAIMS: three open rows for the broken /studio promotion paths. ADR-0163-STUDIO-PROMOTE-DIRECT-INSERT's verify is scoped to the insert_payload literal.\n\nHow verified: Supabase SELECT-only re-measurements (primary_type distribution, sparkling/ros\u00e9 name matches, users per restaurant, restaurant countries, library counts, research_runs, user_roles). Model cards and Claude pricing were re-fetched. The PROMOTE-DIRECT-INSERT verify was mutation-tested on scratch copies: unfixed = open, payload-only fix = resolved, decoy fix elsewhere = open. check_decision_claims.sh (357/357), check_citation_pairing.py and check_adr_numbers_unique.py all pass.",
+ "files_to_commit": [
+  ".planning/decisions/0163-the-wine-library-is-a-ledger-of-cited-or-labelled-statements.md",
+  ".planning/decisions/CLAIMS.jsonl"
+ ]
+}

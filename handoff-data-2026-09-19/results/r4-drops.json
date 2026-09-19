@@ -1,0 +1,159 @@
+{
+ "B": {
+  "verdict": "[fin-B] DROP, and nothing to commit. I checked the worktree myself. /Users/aldemirkonuk/Projects/wt-fin-B is clean at cb756083e, which is an ancestor of origin/main 22695d129. The only commit ahead of it is #396, the trust-counter fix that was split out of this lane and has now landed on its own. Lane B's work is saved byte for byte at refs/lane-sync/wt-fin-B/20260919T041244Z (43 files, +2089/-561 against 60ed83a7e, which I re-measured) and at refs/snapshots/wt-fin-B/20260919T0325. The drop is right for four reasons. (1) D4: in code, the lane quietly picked one side of the quantity_received two-units fork. That fork is reserved for the founder: .planning/v3.0-TECH-DEBT.md:2161 reads \"LIVE DEFECT. Not repaired \u2014 the repair is a founder decision\", and the lane's diff never touches that entry. (2) D1, D5 and D6 are real money, integer-column and message-text defects in procurement.service.ts at that ref. The verifier confirmed each one by reading the code directly. (3) D2/D3 rewrote auth.service.ts, which now conflicts with #392 and #393 on main. (4) An earlier independent audit already gave lane B REJECT at 6 for the same two root causes (memory mudavym-finish-goal-2026-09-16.md:130-131). One correction to the lane report: its auth founder question is mostly answered already. The ADR 0162 fourth addendum (2026-09-18) records the founder's \"Membership only\" answer, and says it will be built in the follow-up PR to #393, not by this lane. What I did not do: I ran no tsc, jest or vitest, because no code is being adopted. I did not re-run production queries; the verifier's SELECT results stand. I did not confirm D1/D5/D6 line by line; that rests on the verifier's direct reads, and my grep only confirmed the shape of the file.",
+  "must_fix": [
+   "Nothing enters the train from lane B. The worktree equals main minus #396, so there are no files to commit.",
+   "If lane B's receiving/procurement work is ever revived, fix these first. D1: markDelivered's pre-read select omits final_price, so a legacy order books a lot with a null unit cost. D5: when no accepted count is given, a non-integer (bottles / bottlesPerUnit) is written into the integer accepted_quantity/quantity_received columns. D6: the delivery notification says '<order-UOM count> bottles stocked in' when it should give receivedBottles. D4: the quantity_received unit fork must be decided by the founder and recorded before any receiving code picks a side.",
+   "If the auth.service.ts rewrite is revived, rebase it onto #392 and #393. Build it only as the ADR 0162 'Membership only' follow-up. Fix the 503-vs-401 on a deleted user (PGRST116 on .single()). Make /organizations/branches stop listing houses the user cannot open.",
+   "Orchestrator note: refs/lane-sync/wt-fin-E/20260919T041635Z carries byte-identical copies of lane B's new files, so lane E's audit covers the same content. It must reach the same D1/D4/D5/D6 conclusions before E adopts any of it."
+  ],
+  "founder_questions": [
+   {
+    "q": "Which unit should procurement_orders.quantity_received hold? This is the live fork in .planning/v3.0-TECH-DEBT.md:2161, tied to ADR 0070. Options: the door writes the order's own unit, or verifyReceipt/computeMatch learns that the ledger value is always bottles, or the column is widened.",
+    "options": [
+     "The door writes the order's own unit. This matches 3 of 4 current writers and the column's name, but the column is an integer, so a part-case delivery gets rounded away.",
+     "verifyReceipt treats the value as bottles. This matches the ledger, but computeMatch needs a bottles-native operand, and the hash-checked backtest fixture changes with it.",
+     "Widen the column to numeric so no writer loses precision. This is a schema migration plus changes to the read paths."
+    ],
+    "recommendation": "No lean. The entry deliberately left this unguessed. The failure in lane B was guessing it without asking, not which side it picked. It needs your answer before anyone rebuilds receiving.",
+    "why": "By the entry's own words, it blocks closing the ADR 0070 ledger-unit work. Production has 0 affected rows today, but the first real door-to-desk delivery will hit it. It was open before lane B and stays open after the drop.",
+    "answered_by": "",
+    "blocks_ready": false
+   },
+   {
+    "q": "Should any low-risk pieces of lane B be rescued as small separate PRs, for example the logs cross-house filter or the web dashboard month-cache fix?",
+    "options": [
+     "Rescue only those low-risk pieces as their own PRs, each with a fresh audit and targeted tests, taken from refs/lane-sync/wt-fin-B/20260919T041244Z",
+     "Leave the whole lane dropped. Lane E carries near-identical content, so rely on lane E's audit instead",
+     "Rebuild receiving/procurement later from current main, after the quantity_received fork is decided"
+    ],
+    "recommendation": "Leave lane B dropped and let lane E's audit decide the overlapping pieces, so the same content is not audited twice. Rescue the two small pieces from B only if E does not carry them.",
+    "why": "Lanes B and E hold byte-identical new files. Rescuing from both would double the audit and merge work for the same code.",
+    "answered_by": "",
+    "blocks_ready": false
+   }
+  ]
+ },
+ "D": {
+  "verdict": "Adopt: DROP stands. I re-derived it myself: the judge (D-judge.md) scored the lane 5 with REJECT and 12 major defects, and the independent confirmer (D-confirm.md) reproduced 3 of them with real-keystroke probes. The drop record, ADR 0168, is not committable as written, for six reasons. (1) It says \"7 of the 17 defects are rated major\", but D-judge.md:11 says 12. (2) It calls all 47 staged paths \"the lane's\". D-confirm.md:6 shows 19 of them are lane A and 28 are lane D, and lane A's fate (PR #374) is not this ADR's to decide. (3) Its \"0168 is provisional\" paragraph is stale. 0168 is now reserved for this very record on refs/heads/reserve/adr-0164-0167 at 22956f1a3 (\"reserve ADR 0168 (lane D drop)\"). That is also why the verifier's guard run reported next free 0169, so there is no collision. (4) Its file:line citations point at uncommitted, staged code, and its evidence points at ephemeral /private/tmp and ~/.claude paths. The only durable recovery point is refs/snapshots/wt-fin-D/20260919T0325 (commit 10094f59, 47 files, +9129/-126, the same size as the staged set). That ref is local-only and the ADR never names it. (5) Its Consequences say dropping removes the risk of shipping these defects. But the hard-coded '$' in fmtMoney (bits.tsx:9-10, imported by main's RemoveFromInventoryModal.tsx:21) and the non-UUID WINE_${Date.now()} fire-and-forget add (main AddWineToInventoryModal.tsx:210) are already on origin/main (D-confirm.md:34 says so). They are residuals and must be listed as such. (6) It lists two forks as open that are already settled. F13 (consent) was answered by the founder: \"consent panel = delete and say so on /settings\" (mudavym-finish-goal-2026-09-16.md:61). Receipt scope is settled by ADR 0149's full-purpose bar, which allows no partial ports. The drop decision itself is sound and contradicts no founder decision. It follows the founder's rule that Codex work lands only after audit, plus the adopt-only-if-great bar. The one file to commit is the ADR, committed from a branch off current origin/main, never from wt-fin-D. That worktree has a detached, stale HEAD (60ed83a7e) and 47 rejected paths staged. Scope note: I did not re-run vitest or tsc. I relied on the verifier's tsc run and the audit's logs, and on my own reads of D-judge.md, D-confirm.md, origin/main and the reserve ref.",
+  "must_fix": [
+   "ADR 0168 Options \u00a72: correct '7 of the 17 defects are rated major' to 12 (D-judge.md:11 '17 defects ... 12 of them are major'), as a bracketed in-place correction.",
+   "ADR 0168 Context and Decision: state that the 47 staged paths are lane A's 19 plus lane D's 28 (D-confirm.md:6), that the +9,129/-126 covers both, and that this ADR drops only lane D's 28 and does not decide lane A (PR #374).",
+   "ADR 0168 Evidence trail: bracket-correct the '0168 is provisional / renumber on collision' paragraph. The number is reserved for this record on refs/heads/reserve/adr-0164-0167 at 22956f1a3, and the guard's 'next free 0169' reflects that reservation, not a collision.",
+   "ADR 0168 Evidence trail: name refs/snapshots/wt-fin-D/20260919T0325 (commit 10094f59, 47 files, +9129/-126, local-only, not pushed) as the recovery point for every wt-fin-D file:line citation. Mark the /private/tmp scratchpad and ~/.claude journal paths as ephemeral, session-local evidence.",
+   "ADR 0168 Consequences: replace 'no risk of shipping...' with the truth that two defects already live on origin/main and survive the drop. The hard-coded '$' is in pages/inventory/command/bits.tsx:9-10, which main's RemoveFromInventoryModal.tsx:21 imports (ADR 0117 Q25/Q30). The non-UUID `WINE_${Date.now()}` fire-and-forget add is at main AddWineToInventoryModal.tsx:210, and D-confirm.md:34 notes both are inherited. List them as open items under their owning ADRs, not in v3.0-TECH-DEBT.md.",
+   "ADR 0168 Consequences, open forks: mark fork 1 (F13 consent) as answered: 'consent panel = delete and say so on /settings' (founder round 3, 2026-09-16). Mark fork 7 (receipt scope) as settled by ADR 0149's full-purpose bar, which allows no partial ports. Mark fork 2 (seal) as governed by locked ADR 0112 F12, so no 'seal' ships without the server challenge.",
+   "ADR 0168 Review trail: add the Opus last-call row (2026-09-19, drop confirmed, corrections above).",
+   "Commit mechanics: commit only the ADR, from a fresh branch off current origin/main (or train/finish-2), never from wt-fin-D. Its detached HEAD 60ed83a7e is behind main and has the 47 rejected paths staged."
+  ],
+  "founder_questions": [
+   {
+    "q": "May a menu scan write stock quantities, and if so, with what default quantity, and must the result be an editable proposal a person confirms rather than a direct write?",
+    "options": [
+     "A menu scan never writes stock; it only identifies wines",
+     "A menu scan proposes a quantity as an editable, unconfirmed suggestion, and a person confirms it",
+     "A menu scan writes a default quantity immediately (lane D assumed 6)"
+    ],
+    "recommendation": "Proposal, not write. Show an editable suggestion that a person confirms, because no one has ever signed off on a default of 6.",
+    "why": "Lane D silently wrote 6 bottles per menu-scan match. No founder decision covers whether menu-scan-to-stock is in scope.",
+    "answered_by": "",
+    "blocks_ready": false
+   },
+   {
+    "q": "Should /inventory's Carry sheet and /cellar's menu-scan carry be one shared sheet or two separate implementations?",
+    "options": [
+     "One carry sheet reused by both pages",
+     "Two sheets, with the reason recorded and kept in sync deliberately"
+    ],
+    "recommendation": "One sheet. Two carry sheets evolving independently is the drift that ADR 0112's one-primitive policy exists to prevent.",
+    "why": "The modal census maps /cellar's menu scan onto /inventory's carry sheet, but lane D built two.",
+    "answered_by": "",
+    "blocks_ready": false
+   },
+   {
+    "q": "What decides whether a storage zone is occupied: wine_location_mappings, lot locations, or both? And should the server refuse to delete an occupied zone?",
+    "options": [
+     "wine_location_mappings only, with a server-side delete refusal",
+     "Lot locations only, with a server-side delete refusal",
+     "Both, checked server-side before any delete"
+    ],
+    "recommendation": "Both, checked server-side. Today storage-locations.service.ts:208-224 soft-deletes unconditionally, and the lane's client check ran even when its own read had failed.",
+    "why": "This source-of-truth question was never settled, and the next zones rebuild needs the answer.",
+    "answered_by": "",
+    "blocks_ready": false
+   },
+   {
+    "q": "Should a write-off (reconcile to zero, retire the row, record the reason) be one atomic server transaction instead of separate client calls?",
+    "options": [
+     "One atomic server endpoint",
+     "Separate idempotent calls, retried on partial failure",
+     "Two client calls, accepting the partial-failure window"
+    ],
+    "recommendation": "One atomic server transaction. It removes the partial-write window behind lane D's false 'gone from the book' readback.",
+    "why": "D9 and D10 came from two client calls whose outcome the readback misreported.",
+    "answered_by": "",
+    "blocks_ready": false
+   },
+   {
+    "q": "Does ADR 0143's rule that voice recognition must run locally (set for Arrival) also cover spot-count's floor-count voice input, which uses the browser's Web Speech API?",
+    "options": [
+     "Yes: require an on-device recognizer for spot-count",
+     "No: staff-only use of the browser API is acceptable",
+     "Only for houses with a stricter data-locality requirement"
+    ],
+    "recommendation": "Extend it. ADR 0143's reason is data locality, and that still applies when the speaker is staff rather than a guest.",
+    "why": "Spot-count voice shipped on the Web Speech API without anyone checking it against ADR 0143.",
+    "answered_by": "",
+    "blocks_ready": false
+   }
+  ]
+ },
+ "H": {
+  "verdict": "DROP lane H (Codex calendar-push port). I checked the lane myself, read-only. The worktree is at cb756083e with 30 staged files and nothing unstaged. Blocker B1 is real. recurring-orders.service.ts:1018 and :1168 write calendar_events rows with is_recurring:true and no recurrence rule. calendar-occurrences.ts:97 turns any such row into a missing_rule failure. calendar.service.ts:344 then throws a 503, and :359 sends every dual-date /calendar query down that path. So one normal recurring-order delivery row takes down a house's whole /calendar, whether CALENDAR_PUSH_ENABLED is on or off. The founder counts /calendar as a quality-bar page (ADR 0160). Two policy findings are also real. calendar-push-reconcile.service.ts:20 and :106 run their own @Cron outside ScheduledTenantsService.runPerTenant, but ADR 0022:205 says \"Nothing else is exempt\". calendar-push.service.ts:792 picks the earliest connected Google grant of any house member, which quietly decides ADR 0111 Fork D, and that fork is still open. The build also has no record: no ADR 0111 update and no CLAIMS rows for about 4,800 lines. The tests are green (jest 124/124, vitest 72/72, both tscs clean), but that proves little, because no test covers the recurring-order row shape that main already writes. Nothing from this lane should be committed. A re-land should start from origin/feat/connect-calendar-push after the founder answers the questions below and the read path is fixed.",
+  "must_fix": [
+   "B1: calendar-occurrences.ts:93-97 must treat a row with is_recurring:true and no recurrence rule (the rows recurring-orders.service.ts:1018/1168 write today) as a single occurrence, not a missing_rule failure. calendar.service.ts:344 must not 503 the whole window over one bad series. Add a spec using that exact row shape.",
+   "B2: Record the build. Add an ADR 0111 slice update (status of slices 4-9), the calendar/connections dossier hunks, and static, mutation-tested CLAIMS rows. Check the migration version 20260913190200 against all refs before it lands.",
+   "M1: Route the calendar-push reconcile job through ScheduledTenantsService.runPerTenant, or get an explicit founder amendment to ADR 0022 that names it. The code comment at calendar-push-reconcile.service.ts:20 is not authorization.",
+   "M2: Do not ship connectionFor (calendar-push.service.ts:780-799, earliest grant of any member) until the founder decides ADR 0111 Fork D.",
+   "M3-M8 from H-judge.md: dismissed entries are pushed to Google as confirmed; a transient network error marks Google grants as needing reconnection; failure states wedge a house's push with no recovery; the reconcile sweep can starve healthy entries and its append-only log keeps growing; Google calls run synchronously inside the request; the migration blocks tenant deletion, has a dead trigger and contains no-op ALTERs.",
+   "Copy: in 3 places the text says the event 'comes back on the next push'. Make it accurate, e.g. 'next attempted update'."
+  ],
+  "founder_questions": [
+   {
+    "q": "ADR 0022's amendment exempts only the two NWS weather reads from ScheduledTenantsService.runPerTenant. Should the Google Calendar push reconcile job get an exemption too?",
+    "options": [
+     "No exemption: route the reconcile job through runPerTenant like every other job",
+     "Amend ADR 0022 again to name this job explicitly as exempt"
+    ],
+    "recommendation": "No exemption. The job reaches outside the house (to Google), which is the case ADR 0022 says must go through runPerTenant. A re-land should use runPerTenant.",
+    "why": "The lane's reconcile service argues its own exemption in a code comment (calendar-push-reconcile.service.ts:20). ADR 0022:205 says 'Nothing else is exempt.'",
+    "answered_by": "Not answered. ADR 0022's 2026-09-04 amendment names only the two NWS reads.",
+    "blocks_ready": true
+   },
+   {
+    "q": "ADR 0111 Fork D: when several members of a house have connected Google, whose account receives the house's calendar push?",
+    "options": [
+     "Only the owner's (or the active-role member's) grant, and the UI says whose it is",
+     "The earliest non-revoked grant of any member (what the lane's code does)",
+     "The most recently connected grant of any member"
+    ],
+    "recommendation": "The owner's or active-role member's grant, named in the UI. A second member's consent is then never silently unused, and it is clear whose Google calendar holds the copies if that person leaves.",
+    "why": "The lane's code decides this silently at calendar-push.service.ts:792. ADR 0111:11 lists Fork D as the one fork left open.",
+    "answered_by": "Not answered. ADR 0111's Status still lists Fork D as open.",
+    "blocks_ready": true
+   },
+   {
+    "q": "While CALENDAR_PUSH_ENABLED is off, should /connections still offer 'Connect a Google account' for calendar push?",
+    "options": [
+     "Hide the calendar-push connect option while the flag is off",
+     "Show it, labelled clearly as not active yet",
+     "Show it as it is now"
+    ],
+    "recommendation": "Hide it while the flag is off. Asking someone to consent to a feature that does nothing costs trust and gains nothing.",
+    "why": "H-judge.md m2 raises this as a copy/UX call for the founder. It only matters when calendar push is built again.",
+    "answered_by": "Not answered.",
+    "blocks_ready": false
+   }
+  ]
+ }
+}
