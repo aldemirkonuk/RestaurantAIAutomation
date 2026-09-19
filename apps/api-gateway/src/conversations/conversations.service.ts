@@ -190,7 +190,7 @@ export class ConversationsService {
       .eq("id", conversationId)
       .eq("restaurant_id", restaurantId)
       .select("id");
-    if (error) return { error: error.message };
+    if (error) return { error: error.message || "update failed" };
     if (!data || data.length === 0) throw this.notFound();
     return {};
   }

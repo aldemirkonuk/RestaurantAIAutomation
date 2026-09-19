@@ -457,7 +457,11 @@ describe("approve, edit and reject take an owner or a manager (ADR 0116, ADR 016
   });
 });
 
-describe("a failed read is a failure, and its text does not leave", () => {
+// Only GET :id is asserted to keep the database text out of the response. The write
+// routes still return the service's error string as a 400 (ADR 0171, "Named and not
+// decided"); what is asserted for them is that a failing database is never a 404 or a
+// success.
+describe("a failed by-id read is a failure, and its text does not leave", () => {
   it("answers 500 with a fixed sentence when the database fails", async () => {
     failWith =
       'permission denied for table "procurement_conversations" (secret detail)';
