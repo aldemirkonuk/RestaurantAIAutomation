@@ -12,6 +12,174 @@ disagrees with the tree, the tree wins. Re-measure before acting on any line her
 marked "agent died" has partial or no edits in its worktree. Inspect `git status` there
 before continuing.
 
+## 0-2026-09-19. Lane handoff after the finish-goal day (supersedes every older section where they differ)
+
+Written by the orchestrating session (7d72f5cf) on 2026-09-19, before a session
+limit, so any session can pick up. Re-measure before acting (CLAUDE.md §5b).
+
+**Safety rules for whoever continues:** never use `git stash` (one stack for every
+worktree; sync with `p4-scratch/lane_sync.sh`); commit only through
+`p4-scratch/verify_index.sh` via `p4-scratch/heavy.sh`, with explicit paths; never
+`--admin`; gate-owned files (ci.yml, decisions/README.md, CLAUDE.md, `.claude/`, gate
+scripts) merge only on the founder's word; production is read with SELECT only.
+
+**Main** is `15e7ac3a0` (it includes #396 trust-counter, #397 login endpaper, #398 login
+Easter egg, and #399-#401 from other sessions). ADR numbers taken today: 0164 sessions,
+0165 promotions sizing, 0166 register retirement, 0167 receiving RBAC (peer), 0168 three
+Codex lanes dropped, 0169 white theme; others reached 0176, so the guard's next free is
+0177. OD numbers: lane C = OD-124 (pushed); receiving OD-125..127; gate OD-128; sessions
+OD-129..131; OD-132 is in #391's fix. The register retirement's decide rows come after
+all of these.
+
+**PR #391 (train/finish-2, worktree `wt-finish-train2`).** The audit at 22ad1b3a1 said
+BLOCK on records (report in the PR comment, and `audits/391-22ad1b3.md` on
+`wip/2026-09-19/handoff-data`). The fix is committed and pushed as `311968205`. Next:
+1. Merge origin/main into the train. The last try conflicted on CLAIMS.jsonl and
+   v3.0-TECH-DEBT.md and was aborted. Resolve CLAIMS by (id, verify) union, keep both
+   register texts, and validate on the merged tree.
+2. Put the M5 sentence from `results/fix391-final.json` (`pr_body_m5_sentence`) into the
+   PR body.
+3. Once CI is green, run `/pr-audit-gate 391` again. It is gate-owned, so it merges only
+   on the founder's word.
+
+**Branches pushed and ready for a PR** (each committed through verify_index):
+`feat/page-help` adb7773cb, `feat/finish-relay` bf99fd87d (round-4 follow-up is on wip),
+`feat/finish-public-doors` 0b9b719cb (lane C), `feat/finish-authorize-consent` c2ebb9a6b
+(KL; round-4 follow-up is on wip), `feat/finish-admin-desk` 7537e6685 (IJ),
+`feat/finish-arrival` 06eadb328 (C2), `docs/retire-tech-debt` 9c6bdc0be (ADR 0166 and its
+dry-run tool; EXECUTE it only after the trains land, using the placement plan).
+
+**Every lane after round 4.** A `wip/2026-09-19/<lane>` branch is a snapshot of that
+worktree's uncommitted state. It is NOT for merge. Its commit message carries the Opus
+last-call verdict, the must-fix list and the open founder questions. The live worktree
+still holds the same files. Full data is in `results/r4-result.json` on
+`wip/2026-09-19/handoff-data`.
+
+| Lane | Worktree | Intended branch | State | WIP snapshot | Must fix | Founder Qs |
+|---|---|---|---|---|---|---|
+| settings | `wt-pg-settings` | `feat/page-settings` | NOT READY | `wip/2026-09-19/settings` 376071448 | 7 | 0 |
+| help | `wt-pg-help` | `feat/page-help` | READY, committed + pushed adb7773cb | - | 0 | 1 |
+| vprices | `wt-pg-vprices` | `feat/page-vprices` | NOT READY | `wip/2026-09-19/vprices` e2031a3eb | 3 | 1 |
+| promos | `wt-pg-promos` | `feat/page-promos` | NOT READY | `wip/2026-09-19/promos` 923483407 | 5 | 1 |
+| receiving | `wt-pg-receiving` | `feat/page-receiving` | NOT READY | `wip/2026-09-19/receiving` 8baa58110 | 7 | 2 |
+| recs | `wt-pg-recs` | `feat/page-recs` | NOT READY | `wip/2026-09-19/recs` 18e53d4ff | 9 | 0 |
+| cellar | `wt-pg-cellar` | `feat/page-cellar` | NOT READY | `wip/2026-09-19/cellar` e7afb2ce7 | 3 | 1 |
+| live | `wt-fin-live` | `feat/finish-live` | NOT READY | `wip/2026-09-19/live` fe696d6d7 | 3 | 0 |
+| links | `wt-fin-links` | `feat/finish-links` | NOT READY | `wip/2026-09-19/links` 27b6629c7 | 2 | 0 |
+| notify | `wt-fin-notify` | `feat/finish-notify` | NOT READY | `wip/2026-09-19/notify` 7c26a3843 | 4 | 0 |
+| IJ | `wt-fin-IJ` | `feat/finish-admin-desk` | READY, committed + pushed 7537e6685 | - | 0 | 0 |
+| C2 | `wt-fin-C2` | `feat/finish-arrival` | READY, committed + pushed 06eadb328 | - | 0 | 0 |
+| E | `wt-fin-E` | `feat/finish-action-integrity` | NOT READY | `wip/2026-09-19/E` 7205330cb | 6 | 4 |
+| sessions | `wt-sessions` | `fix/sessions-follow-membership` | NOT READY | `wip/2026-09-19/sessions` b0b73913b | 6 | 0 |
+| gate | `wt-gate-rule` | `feat/gate-owned-by-diff` | NOT READY | `wip/2026-09-19/gate` 6cf192b3d | 6 | 0 |
+| adr0163 | `wt-wine-ml` | `docs/wine-ml-foundations` | NOT READY | `wip/2026-09-19/adr0163` b77b18779 | 4 | 4 |
+| drops | `wt-drops` | `docs/codex-lanes-dropped` | NOT READY | `wip/2026-09-19/drops` ab0f94030 | 5 | 0 |
+| placement | `/private/tmp/claude-501/-Users-aldemirkonuk-Projects-restaurant-ai-automation/7d72f5cf-5e60-4e61-8521-469276f54e7f/scratchpad/review-0919/placement` | `docs/retire-tech-debt` | scratch only; data in wip/2026-09-19/handoff-data placement/ | - | 5 | 1 |
+| theme | `wt-theme` | `feat/theme-white-default` | NOT READY | `wip/2026-09-19/theme` f50e08535 | 2 | 2 |
+| recs-sketch | `wt-recs-sketch` | `docs/sketch-recommendations-goals` | NOT READY | `wip/2026-09-19/recs-sketch` 2a1d36a23 | 8 | 4 |
+| relay | `wt-fin-relay` | `feat/finish-relay` | NOT READY | `wip/2026-09-19/relay` cb0e241d4 | 2 | 1 |
+| KL | `wt-fin-KL` | `feat/finish-authorize-consent` | NOT READY | `wip/2026-09-19/KL` 1e083800c | 6 | 1 |
+
+**Ordering constraints recorded today:**
+- The promos cut merges only after the comms branch `claude/wizardly-knuth-31d531`
+  (a peer's senders desk) lands and the founder flips `mudavym_design_communications`
+  on. Its red CLAIMS row `ADR-0160-PROMOTIONS-OFFERS-ONLY` is deliberate.
+- The cellar goes live only after the sketch-121 beside-the-list layout is built.
+- /vendor-prices goes behind a flag.
+- /recommendations stays dark until sketch 122 is reviewed.
+- The register (v3.0-TECH-DEBT.md) is deleted last, by ADR 0166, after the trains.
+
+**Founder answers taken 2026-09-19 (verbatim where quoted; these are the source until
+each lands in its ADR):**
+
+- **2026-09-19 ~04:00Z answers:** sketch 118 (login/register flyleaf) = **B, the endpaper** (NOT the README's
+  recommended A): permanent wax-seal pattern panel left with the mark (house name once known), working page right;
+  same fields and flow. Tech-debt register: he wants v3.0-TECH-DEBT.md DELETED ("delete all that tech debt.md that
+  messes with our head"); survivors live **split by kind** (checkable defects -> CLAIMS rows, his decisions ->
+  OPEN-DECISIONS, paperwork -> owning ADR). His per-item TECH-DEBT marks are in artifact TvfJKKnkhe5pVZnqLDunPX (db: marks/*)
+  - that artifact holds NO sketch-118 mark (checked 2026-09-19 04:30Z); the 118 = B source is his AskUserQuestion answer
+  "B, the endpaper" in orchestrator session local_0b0fd291 ("Session continuation"); build = its workflow wf_9301ea03-3e6 in wt-login.
+- **118 build (2026-09-19 ~05:00Z, session 366a7a, PR #397):** Google also on /login's FIRST page (ADR 0149 row 35 / 0143
+  bracket); his 9 build directions + "The mark draws" logo motion live in sketch 118 README; 4 more signature moments
+  offered -> "if we don't need it then don't" (none). **Easter egg** (click endpaper -> front matter poem; sketch
+  118/front-matter.html): "Book is great", REMOVE the dog-ear hint ("not intrigued by that" - nothing should invite the
+  click), "you decide rest" -> builder chose Direction 1 (turn back to the front matter), own PR AFTER #397; record the
+  pick in sketch 118 README in that PR. **#397 MERGED 2026-09-19 14:32Z as 1fba79f57**, deploy verified (bundle has the
+  endpaper; gateway MATCH cb756083e); shipped DARK - prod visitors still get today's page (VITE_MUDAVYM_PUBLIC off), the
+  flip is his keystroke. **Easter egg (Direction 1, no dog-ear) MERGED as PR #398 = 08c04100e (2026-09-19 16:03Z)**,
+  /login house path only, verified live with the override (dark for visitors); pick bracketed in ADR 0149 row 35.
+  Open follow-up chip "Endpaper follow-ups" (underline 2.3:1 -> 3:1, CSS-scope static guard, StrictMode draw test,
+  phaseNow ref, optional One Tap cancel while the front matter is open).
+  Earlier the same night: "do what the optimal scenario would do, no we can do this later or second plan" and "all
+  actions full power ... sonnet 5 high-max, opus last call".
+- **Sessions (ADR 0164) answers 2026-09-19:** F1 last house remembered "Per device (Recommended)"; F2 return window "7 days
+  (Recommended)"; F3 one house left after removal -> "Show the chooser (Recommended)"; F5 a house grant never makes an
+  organisation owner -> "Never via a house (Recommended)"; F4 the chooser sits in the sketch-118 B endpaper shell.
+
+**ADR 0163 wine-library answers (AskUserQuestion, 2026-09-19 ~05:50Z), 12 of 12:**
+1 publish gate = keep both human gates (per-field pilot of ~60 cells + a human look at real houses' wines);
+2 legal review = "Ship now, fix later" (AGAINST the recommended Turkish-lawyer-first gate; he saw the cost: trained
+models are not retrained, so a mistake cannot be undone); 3 market price k = 5, guards (a)-(g) as drafted;
+4 claim checker = his own words "we're gonna use JEV and it's already inside the repo" = TypeSafe AI's Jev
+(jev-1.13, hosted API, DPA/MCA, no training on customer data), researched in the UNTRACKED
+.planning/07-reference/TYPESAFE_AI_OVERVIEW.md + its INDEX.md row in the main checkout (commit them with 0163;
+language coverage beyond English is not stated in that record - check); 5 seat = Max 20x $200/mo; 6 wine type =
+colour x style {still, sparkling, fortified}, sweetness separate; 7 reviewer floor = Wilson lower bound;
+8 menu PDFs = keep until superseded; 9 sommelier pay = rewards now, rate parked on OD-23; 10 EU = opt-in for EU
+houses; 11 six houses = confirm both groups (Gullit's Tavern, Yaren's Fine Dine, Meyhouse Palo Alto, YARDOM are
+not real; Chez Community + The Old House Pub are real); 12 sommelier adds = own-voice notes only, facts need a citation.
+
+**19-lane blocking answers (AskUserQuestion, 2026-09-19 ~09:20Z):** vendor-prices = behind a flag (vendor_prices
+mudavym_design_* column migration, he flips it; NOT live on merge); ADR 0165 promotions = LOCK AS WRITTEN (fixed 180-day
+comparison age, largest-single-order volume); cellar = build the sketch-121 beside-the-list layout FIRST, then go live for
+every house; low-stock = add 'email' to low_stock_channels column DEFAULT (small additive migration in the notify PR).
+**Lane answers batch 2 (~09:30Z):** settings tally = ship the counted sentence now (from data, labelled 'computed
+here'), 'Waiting on you' rail later; settings digest = correct the dossier to the per-house control that shipped;
+vendor-prices conditional quote = never seal now + follow-up lane for structured terms (min qty/unit/valid-until; seal =
+lowest price the house gets at its usual order size, ADR 0165 basis; unparsed terms never seal); badge words = keep
+landed/agreed; promos bundle line with no comparison = keep excluding; promos draft-order panel = /orders, own lane.
+**Lane answers batch 3 (~09:45Z):** promos source-email link = "build it later, document it" (record as a named
+follow-up); promos grade window = keep trailing 540 days; THEME (cross-cutting, his words): "I realized all pages will
+be charcoal however I don't want it, I prefer the white look to be honest. People should have the option to choose" ->
+default ground = white/paper, with a per-person choice of charcoal; this revises ADR 0149 row 6 (charcoal default) and
+needs its own ADR (next free 0169) + a lane. RECOMMENDATIONS (sketch 120 feedback, long spoken answer; he said only the
+first part is a requirement, the rest is brainstorming): KEEP the days rail on top; SHOW THE HOUSE'S DECIDED GOALS ON
+TOP ("whatever the restaurant has decided ... on top as the goal"); recommendations must be brief/punchy with how to act,
+plus a goals chart where we recommend setting a goal; apply ONE-TAP ACTIONS that approve automatically ("get back to
+work"). Purpose: where an owner/manager looks when stuck, to see what they could have done, or to predict the future and
+prepare early. Picks: 1A over 1B; side sheet liked (unsure); 2B: wants to see how the mail looks; a newspaper-style
+digest "maybe another software" (brainstorm); 3 subject-account side sheet good if it shows more than the table; 3B
+inline dismissal with a real day, no overlay = maybe; "definitely not the fifth one"; "sixth one is all right".
+Recs stays dark; next = a new recs sketch round with goals + one-tap actions (the 5 remaining recs lane Qs fold into it).
+**Lane answers batch 4 (~10:00Z):** cellar bottle price (his words): "Our library price will be just the average price
+that will be updating daily ... However, we're going to add a per house bottle price. That's a huge thing ... gotta be
+dynamic" -> add a dynamic per-house menu_price_bottle; the library price = a market average refreshed daily; relay 4xx =
+split by code (400/403/422 final, 401 parks); channel-default standing rule = untouched rows follow a widened default,
+customised rows never touched; stuck Arrival batch = only the sealing manager resumes; /ask roles (his words): "do not
+give money or sensitive incentives like sales etc to the staff, maybe we should exclude staff from this equation" ->
+money/sales readings owner+manager only (firm), leaning to no /ask for staff at all (confirm with the /ask sketch);
+provider grant = tab scope OK; /ask = cell picker confirmed; /ask dates = decide with the /ask sketch; /authorize
+frames: "do what's needed, not short term" -> give /authorize + /authorize/complete a proper signed-in frame that honours
+the design flag and public-door switch; consent receipts = delete with the account; ADR 0164 org owner with no house =
+keeps the org role but opening a location needs an active house membership; chain create/rename/delete = measure the 3
+routes, decide in its own ADR, no change now; settings digest email = drop the free field when #391 lands + add a
+per-person "send me the digest" opt-in on Settings; gate pytest-config ownership: DELEGATED ("do what the best approach
+for long term, quality, sota, scalability") -> own exactly what can influence the gate's test run (conftest under
+scripts/, the confcutdir, and the ci.yml flags `-c /dev/null --confcutdir=scripts`, pinned by a test), not every depth.
+**Digest builder's choices in #391 (asked ~11:20Z, owed before migration 20260917010100 merges):** (a) per-person
+subscriptions table = already his round-11 answer ("ship now"); (c) recipient_email never mailed = answered batch 4 (drop
+field + per-person opt-in); (b) category gate: DELEGATED ("do the most sota, quality, scalability with right architecture
+structure") -> the subscription alone is the consent/gate; remove the legacy categories.ai check; if the digest ever gets
+a second channel it joins OD-121's per-category channel vocabulary as its own category; (d) late limit = up to 12 hours
+(as built; past it the period is expired, never sent stale); (e) a new subscription or a house switching on within 12 h
+after a due time is served at the next sweep (as built).
+**WhatsApp reply seal (asked ~11:35Z, #391 audit M4), his words:** "as long as they click on the send button nothing to
+worry, they should be able to delete their messages as well, think about it as -> house built framed but all whatsapp
+features just like how you open on web" -> AMENDS locked ADR 0112 F10 for WhatsApp messages a person sends by clicking
+Send (the click is the consent; no hold-to-approve seal). New requirements: people can delete their messages; the
+product is WhatsApp-Web-like messaging inside the house frame. Feasibility of delete-for-everyone on Meta's Cloud API must
+be checked before promising it (record honestly).
+
 ## 0a. Final state, 2026-09-13 (supersedes sections 0 and 3 wherever they differ)
 
 **On main:** #363, #366, #361, and merge train 2 (#372). The train carried #367 parity,
