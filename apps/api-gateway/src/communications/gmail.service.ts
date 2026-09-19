@@ -5,6 +5,13 @@ import { OAuth2Client } from "google-auth-library";
 import * as nodemailer from "nodemailer";
 import { htmlToText } from "../common/html/html-to-text";
 import {
+  addressListHeader,
+  base64Body,
+  mailboxHeader,
+  messageIdHeader,
+  unstructuredHeader,
+} from "./mime-headers";
+import {
   lowStockAlertTemplate,
   lowStockDigestTemplate,
   type LowStockDigestData,
@@ -599,16 +606,24 @@ This is an automated alert from WineOps AI.
       options.messageIdHeader ||
       `<wineops-${Date.now()}-${Math.random().toString(36).slice(2)}@wineops.ai>`;
 
+    // Every value goes through mime-headers.ts (ADR 0172): free text is RFC 2047
+    // encoded with CR/LF collapsed, addresses and message ids are refused on a
+    // control character. A refusal throws inside sendEmail's try and comes back
+    // as { success: false } — nothing is sent with a half-built header block.
     const headers = [
-      `From: WineOps AI <${this.senderEmail}>`,
-      `To: ${options.to.join(", ")}`,
-      options.cc?.length ? `Cc: ${options.cc.join(", ")}` : "",
-      options.bcc?.length ? `Bcc: ${options.bcc.join(", ")}` : "",
-      options.replyTo ? `Reply-To: ${options.replyTo}` : "",
-      `Message-ID: ${generatedMessageId}`,
-      options.inReplyTo ? `In-Reply-To: ${options.inReplyTo}` : "",
-      options.references ? `References: ${options.references}` : "",
-      `Subject: ${options.subject}`,
+      mailboxHeader("From", "WineOps AI", this.senderEmail),
+      addressListHeader("To", options.to),
+      options.cc?.length ? addressListHeader("Cc", options.cc) : "",
+      options.bcc?.length ? addressListHeader("Bcc", options.bcc) : "",
+      options.replyTo ? addressListHeader("Reply-To", [options.replyTo]) : "",
+      messageIdHeader("Message-ID", generatedMessageId),
+      options.inReplyTo
+        ? messageIdHeader("In-Reply-To", options.inReplyTo)
+        : "",
+      options.references
+        ? messageIdHeader("References", options.references)
+        : "",
+      unstructuredHeader("Subject", options.subject),
       "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
     ]
@@ -617,15 +632,20 @@ This is an automated alert from WineOps AI.
 
     const textPart = options.text || this.htmlToPlainText(options.html);
 
+    // base64, not 8bit: the parts carry ₺, —, and Turkish letters, and 7bit is
+    // the default when no Content-Transfer-Encoding is declared. The base64
+    // alphabet has no "_", so no part can contain the `boundary_…` delimiter.
     const body = [
       `--${boundary}`,
       'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
       "",
-      textPart,
+      base64Body(textPart),
       `--${boundary}`,
       'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
       "",
-      options.html,
+      base64Body(options.html),
       `--${boundary}--`,
     ].join("\r\n");
 
