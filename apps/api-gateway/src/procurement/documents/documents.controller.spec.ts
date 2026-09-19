@@ -59,6 +59,7 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
       {} as any,
       {} as any, // DeliveryService (ADR 0103 — the door-count route's other half)
       {} as any, // DeliveryStockService (ADR 0103 A1 — the door's booking half)
+      {} as any, // LineMappingService (ADR 0104 D12 slice 4 — the mapping memory)
       // SealChallengeService — the seal on verify / line_edit /
       // currency_restate (founder, 2026-09-06, batch 64). Stubbed here; the
       // redemption itself is proven in `documents.seal.spec.ts` against a
@@ -306,6 +307,9 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
        */
       // DeliveryStockService (main's ADR 0103 A1, the door's booking half; merged
       // 2026-09-11) -- stubbed, this file never books stock. tsc counts the arguments.
+      {} as any,
+      // LineMappingService (main's ADR 0104 D12 slice 4, the mapping memory; merged
+      // 2026-09-11) -- stubbed, this file never maps a line. tsc counts the arguments.
       {} as any,
       { redeem: async () => ({ sealId: "seal-1" }) } as any,
     );

@@ -27,6 +27,9 @@ import { DocumentIntakeService } from "./document-intake.service";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
+// Main's slice 4 (a1e69559) gave CanonicalDocumentService the mapping memory as its second
+// dependency; this module builds the real service, so it needs the real provider too (merged 2026-09-11).
+import { LineMappingService } from "../canonical/line-mapping.service";
 import { looksLikeX12, parseInterchange, parseX12 } from "./x12";
 import { DocumentsController } from "./documents.controller";
 import { createHash } from "node:crypto";
@@ -119,6 +122,7 @@ describe("DocumentIntakeService — an 832 price catalogue", () => {
         { provide: DatabaseService, useValue: { getClient: () => chain } },
         { provide: DocumentExtractorService, useValue: mockExtractor },
         CanonicalDocumentService,
+        LineMappingService,
       ],
     }).compile();
     service = module.get(DocumentIntakeService);
@@ -243,6 +247,9 @@ describe("DocumentsController.upload — an 832 arrives", () => {
     // DeliveryStockService (main's ADR 0103 A1, the door's booking half; merged
     // 2026-09-11) -- stubbed, this file never books stock. tsc counts the arguments.
     {} as any,
+    // LineMappingService (main's ADR 0104 D12 slice 4, the mapping memory; merged
+    // 2026-09-11) -- stubbed, this file never maps a line. tsc counts the arguments.
+    {} as any,
     {} as any,
   );
   const body = (over: Record<string, unknown> = {}) =>
@@ -351,6 +358,9 @@ describe("DocumentsController.upload — who handed the catalogue over", () => {
     // real double. `tsc -p tsconfig.spec.json` counts the arguments.
     // DeliveryStockService (main's ADR 0103 A1, the door's booking half; merged
     // 2026-09-11) -- stubbed, this file never books stock. tsc counts the arguments.
+    {} as any,
+    // LineMappingService (main's ADR 0104 D12 slice 4, the mapping memory; merged
+    // 2026-09-11) -- stubbed, this file never maps a line. tsc counts the arguments.
     {} as any,
     {} as any,
   );

@@ -384,6 +384,10 @@ export class ProvidersController {
         user.restaurantId,
       );
     } catch (error) {
+      // A status the service chose deliberately survives. Flattening everything
+      // to 500 made "this id is not a provider" indistinguishable from "the
+      // read broke", and the caller was told the louder of the two.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to fetch provider",
         HttpStatus.INTERNAL_SERVER_ERROR,
