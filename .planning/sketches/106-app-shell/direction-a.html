@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 106 · A — The rooms</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── the sketch's own page: light paper, so the charcoal frames read as the product ── */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#f3efe6;color:#211c16;font-family:'DM Sans','Plus Jakarta Sans',system-ui,sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.sk-band{padding:34px 40px 8px;max-width:1360px}
+.sk-band h1{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:26px;letter-spacing:-.01em;margin:0 0 6px;color:#211c16}
+.sk-band h2{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:19px;letter-spacing:-.01em;margin:0}
+.sk-sub{font-size:13.5px;color:#4f473c;max-width:880px;margin:6px 0 0}
+.sk-label{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#665d50;padding:26px 40px 8px}
+.sk-label small{display:block;text-transform:none;letter-spacing:0;font-family:'DM Sans',system-ui,sans-serif;font-size:12.5px;color:#4f473c;margin-top:3px}
+.sk-note{margin:10px 40px 0;font-size:12.5px;color:#4f473c;max-width:900px}
+.sk-row{display:flex;flex-wrap:wrap;gap:24px;padding:0 40px;align-items:flex-start}
+.fit{margin:0 auto}
+.fitwrap{padding:0 12px}
+@media (max-width:560px){.sk-band,.sk-label,.sk-note{padding-left:14px;padding-right:14px}.sk-row{padding:0 12px;gap:14px}}
+.sk-legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 28px;margin:14px 40px 0;max-width:1160px;font-size:12.5px;color:#4f473c}
+.sk-legend b{color:#211c16;font-weight:600}
+.sk-foot{padding:40px;font-size:12px;color:#665d50;max-width:900px}
+
+/* ── the product's tokens (styles/mudavym.css, ADR 0042 · ADR 0138: charcoal is the ground) ── */
+.mudavym,.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC;--seal-deep:#7DC3CD;--seal-tint:rgba(95,176,188,.14);--seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F;--paper-1:#1D1813;--paper-2:#262019;
+  --ink-1:#EFE7D9;--ink-2:#C0B6A5;--ink-3:#8E8576;--ink-4:#ABA294;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:'Fraunces',Georgia,serif;--sans:'DM Sans','Plus Jakarta Sans',system-ui,sans-serif;
+  --house:cubic-bezier(.16,1,.3,1);
+  color-scheme:dark;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans)}
+.mudavym[data-ground="paper"]{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;--ink-4:#665d50;color-scheme:light}
+/* ADR 0149 row 30 (OD-112): --ink-3 is decorative only — captions on paper use --ink-4 (5.64:1, AA) */
+.mudavym[data-ground="paper"] .toast__eyebrow,.mudavym[data-ground="paper"] .toast__sub,
+.mudavym[data-ground="paper"] .kbd,.mudavym[data-ground="paper"] .entry .eyebrow{color:var(--ink-4)}
+
+/* ── frames ── */
+.frame{position:relative;width:1440px;min-height:880px;overflow:hidden;border:1px solid #b6ad9e;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+.frame--short{min-height:560px}
+.phone{position:relative;width:390px;height:844px;overflow:hidden;border:1px solid #b6ad9e;flex:none}
+.wm{font-family:var(--serif);font-weight:600;letter-spacing:-.02em;line-height:1;color:var(--ink-1)}
+.wm-stop{color:var(--seal)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.kbd{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink-3);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.eyebrow{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.sect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.link{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--seal-deep);background:none;border:0;padding:0;cursor:pointer;text-decoration:none}
+.link:hover{text-decoration:underline;text-underline-offset:2px}
+.btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--sans);font-size:12.5px;font-weight:500;padding:8px 14px;border-radius:9px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-1);cursor:pointer;transition:border-color 160ms var(--house),background-color 160ms var(--house)}
+.btn:hover{border-color:var(--seal-ring)}
+.btn--seal{background:var(--seal);border-color:var(--seal);color:var(--paper-0)}
+.btn--seal:hover{background:var(--seal-deep);border-color:var(--seal-deep)}
+.rule{height:1px;background:var(--paper-2)}
+.quiet{color:var(--ink-3);font-size:12.5px;line-height:1.55}
+.em{color:var(--ink-4)}
+
+/* ── the house header, as built (components/mudavym/house-header.css) — ThemeMenu removed, ADR 0149 row 6 ── */
+.hdr{position:relative;z-index:30;background:color-mix(in srgb,var(--paper-0) 88%,transparent);border-bottom:1px solid var(--paper-2)}
+.hdr__in{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 24px}
+.hdr__left{display:flex;align-items:center;gap:10px;min-width:0}
+.hdr__mark{display:inline-flex;align-items:center;color:var(--seal);border-radius:6px;padding:2px}
+.hdr__rule{width:1px;height:18px;background:var(--paper-2);flex:none}
+.hdr__page{font-family:var(--serif);font-weight:600;font-size:15px;letter-spacing:-.01em;color:var(--ink-1);white-space:nowrap}
+.hdr__search{display:inline-flex;align-items:center;gap:8px;margin:0 auto;padding:6px 10px 6px 11px;border:1px solid var(--paper-2);border-radius:9px;background:var(--paper-1);color:var(--ink-3);font-size:12.5px;cursor:pointer}
+.hdr__search svg{flex:none}
+.hdr__right{display:flex;align-items:center;gap:6px;margin-left:auto}
+.hdr__house{font-size:12.5px;font-weight:500;color:var(--ink-2);padding:0 8px 0 2px;white-space:nowrap}
+.hdr__btn{display:inline-flex;align-items:center;gap:7px;position:relative;padding:7px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--ink-2);cursor:pointer}
+.hdr__btn--user{padding:5px 8px 5px 5px}
+.hdr__avatar{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:var(--seal-tint);color:var(--seal);font-size:11.5px;font-weight:700;flex:none}
+.hdr__who{font-size:12.5px;font-weight:500;color:var(--ink-1);white-space:nowrap}
+.hdr__chev{color:var(--ink-4);flex:none}
+.hdr__badge{position:absolute;top:1px;right:0;min-width:15px;height:15px;padding:0 3px;border-radius:999px;background:var(--seal);color:var(--paper-0);font-size:9.5px;font-weight:700;line-height:15px;text-align:center;font-variant-numeric:tabular-nums}
+.hdr__badge--unknown{min-width:9px;width:9px;height:9px;padding:0;top:4px;right:4px;background:transparent;border:1.5px dashed var(--ink-4)}
+.hdr__dot{position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:999px;background:var(--seal)}
+.hdr__menu{display:none;width:36px;height:36px;align-items:center;justify-content:center;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--ink-2);flex:none;position:relative}
+/* the header on a phone: the rooms toggle joins the bar (the legacy 'mobile top chrome' is deleted) */
+.narrow .hdr__in{padding:0 10px;gap:8px;min-height:50px}
+.narrow .hdr__menu{display:inline-flex}
+.narrow .hdr__searchtext,.narrow .hdr__chord,.narrow .hdr__house,.narrow .hdr__who,.narrow .hdr__chev{display:none}
+.narrow .hdr__search{margin:0 0 0 auto;padding:7px}
+.narrow .hdr__rule{display:none}
+
+/* ── page stand-in (looks like /orders · /receiving next; not part of this sketch) ── */
+.pg{padding:26px 32px 40px;max-width:1080px}
+.pg__eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:8px 0 0;display:flex;gap:14px;flex-wrap:wrap}
+.pg h1{font-family:var(--serif);font-weight:500;font-size:27px;line-height:1.18;letter-spacing:-.012em;margin:10px 0 0;max-width:720px;color:var(--ink-1);text-wrap:balance}
+.spine{display:flex;gap:0;margin:26px 0 0;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.spine div{flex:1;padding:12px 14px 12px 0;border-right:1px solid var(--paper-2);margin-right:14px}
+.spine div:last-child{border-right:0;margin-right:0}
+.spine .n{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--ink-1);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.spine .l{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.spine .n.em{color:var(--ink-4);font-weight:400}
+.ledger{margin:22px 0 0}
+.lrow{display:grid;grid-template-columns:1.6fr .7fr 1fr 1.1fr 1.6fr;gap:16px;align-items:center;padding:11px 0;border-bottom:1px solid var(--paper-2);font-size:13px;color:var(--ink-2)}
+.lrow b{color:var(--ink-1);font-weight:500}
+.lrow .money{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-1);text-align:right}
+.lrow .state{font-size:12px;color:var(--ink-2)}
+.lrow .prov{font-size:11.5px;color:var(--ink-3)}
+.lrow.h{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding:6px 0}
+.lrow[data-active="true"]{background:var(--seal-tint);margin:0 -10px;padding:11px 10px;border-radius:6px;border-bottom-color:transparent}
+.chip{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);border:1px solid var(--paper-2);border-radius:4px;padding:1px 5px;margin-right:6px}
+.chip--seal{color:var(--seal-deep);border-color:var(--seal-ring)}
+.pg__foot{margin-top:36px;display:flex;align-items:center;gap:10px;color:var(--ink-4);font-size:11px}
+.narrow .pg{padding:18px 16px 120px}
+.narrow .pg h1{font-size:21px}
+.narrow .spine{flex-wrap:wrap;border-bottom:0}
+.narrow .spine div{flex:1 1 42%;min-width:0;border-right:0;margin-right:0;border-bottom:1px solid var(--paper-2);padding:10px 8px 10px 0}
+.narrow .spine div:nth-child(odd){border-right:1px solid var(--paper-2);margin-right:12px}
+.narrow .lrow{grid-template-columns:1fr auto;gap:4px 12px}
+.narrow .lrow .prov{grid-column:1/-1}
+.narrow .lrow.h{display:none}
+.narrow .lrow .state{grid-column:1}
+.narrow .lrow .money{grid-column:2;grid-row:1}
+.narrow .lrow .lines{display:none}
+
+/* ── skeleton: the dashboard's own (dashboard-next.css .dn-skel), quiet paper-2 bars with a slow sheen ── */
+.skel{position:relative;overflow:hidden;background:var(--paper-2);border-radius:3px;height:12px}
+.skel::after{content:'';position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,var(--paper-1),transparent);animation:sheen 1.9s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes sheen{to{transform:translateX(100%)}}
+.load-note{position:absolute;left:32px;bottom:24px;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);display:flex;gap:12px;align-items:center}
+.load-bar{position:absolute;left:0;right:0;top:0;height:2px;background:var(--paper-2);overflow:hidden}
+.load-bar i{position:absolute;left:0;top:0;bottom:0;width:38%;background:var(--seal);animation:loadbar 1.4s var(--house) infinite}
+@keyframes loadbar{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+
+/* ── the toast, shared anatomy (each direction docks it differently) ── */
+.toast{width:372px;max-width:100%;background:var(--paper-1);border:1px solid var(--paper-2);border-left:2px solid var(--ink-2);border-radius:10px;padding:10px 12px 10px 14px;color:var(--ink-1);box-shadow:0 18px 44px -22px rgba(0,0,0,.6);position:relative;overflow:hidden}
+.toast__eyebrow{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);display:flex;justify-content:space-between;gap:10px}
+.toast__eyebrow .t{font-weight:500;letter-spacing:.04em;text-transform:none}
+.toast__line{display:flex;gap:12px;align-items:flex-start;margin-top:5px}
+.toast__text{flex:1;font-size:13px;line-height:1.4}
+.toast__sub{display:block;font-size:11.5px;color:var(--ink-3);margin-top:3px}
+.toast__act{flex:none;display:flex;gap:8px;align-items:center;padding-top:1px}
+.toast__act .link{font-size:12.5px}
+.toast__act .kbd{font-size:9.5px}
+.toast__drain{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--paper-2)}
+.toast__drain i{position:absolute;left:0;top:0;bottom:0;background:var(--seal);width:100%;transform-origin:left;animation:drain 8s linear forwards}
+.toast:hover .toast__drain i,.toast:focus-within .toast__drain i{animation-play-state:paused}
+@keyframes drain{to{transform:scaleX(0)}}
+.toast--sealed{border-left-color:var(--seal)}
+.toast--held{border-left-color:var(--ink-4);border-left-style:dashed}
+.toast--refused{border-left-color:var(--ink-1)}
+.toast__wax{width:14px;height:14px;border-radius:999px;background:var(--seal);flex:none;margin-top:2px;box-shadow:0 0 0 3px var(--seal-tint)}
+.toast-stack{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+
+/* ── the offline strip ── */
+.off{display:flex;align-items:center;gap:14px;padding:8px 24px;background:var(--paper-1);border-bottom:1px solid var(--paper-2);font-size:12.5px;color:var(--ink-1)}
+.off .eyebrow{color:var(--ink-3);margin-right:4px}
+.off .link{margin-left:auto}
+.off__dot{width:8px;height:8px;border-radius:999px;border:1.5px dashed var(--ink-4);flex:none}
+
+/* ── the ladder popover (the ADR 0112 popover shape; content per ADR 0140 · sketch 103 2e) ── */
+.pop{position:absolute;z-index:60;background:var(--paper-0);color:var(--ink-1);border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42);overflow:hidden;width:320px}
+.pop__head{padding:12px 16px 10px;border-bottom:1px solid var(--paper-2)}
+.pop__title{margin:2px 0 0;font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.16;letter-spacing:-.01em}
+.pop__body{padding:4px 0 6px}
+.pop__foot{padding:9px 16px 12px;border-top:1px solid var(--paper-2);font-size:11px;line-height:1.5;color:var(--ink-3)}
+.item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border:0;border-left:2px solid transparent;background:transparent;color:var(--ink-1);font-family:var(--sans);font-size:13px;text-align:left;cursor:pointer}
+.item:hover{background:var(--paper-1)}
+.item,.item:visited{text-decoration:none}
+.item[data-active="true"]{background:var(--seal-tint);border-left-color:var(--seal)}
+.item__text{flex:1;min-width:0}
+.item__label{display:block;font-weight:500;color:var(--ink-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item__sub{display:block;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ladder{display:flex;gap:0;align-items:center;padding:8px 16px 4px}
+.ladder span{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+.ladder i{flex:1;height:1px;background:var(--paper-2);margin:0 6px;min-width:10px}
+.ladder span[data-on="true"]{color:var(--ink-1)}
+.rung{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);flex:none;text-align:right}
+.rung b{display:block;color:var(--ink-1);font-weight:500}
+
+/* ── the failure sheet (the boundary sits UNDER the shell, so the chrome survives) ── */
+.fail{padding:60px 32px;max-width:640px}
+.fail h1{font-family:var(--serif);font-weight:500;font-size:28px;letter-spacing:-.012em;margin:10px 0 0;line-height:1.16}
+.fail p{font-size:13.5px;line-height:1.55;color:var(--ink-2);margin:12px 0 0;max-width:560px}
+.fail .known{margin:22px 0 0;border-top:1px solid var(--paper-2)}
+.fail .known div{display:grid;grid-template-columns:150px 1fr;gap:12px;padding:8px 0;border-bottom:1px solid var(--paper-2);font-size:12.5px}
+.fail .known div span:first-child{color:var(--ink-3)}
+.fail .known div span:last-child{font-family:var(--mono);font-size:11.5px;color:var(--ink-1);word-break:break-all}
+.fail .acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:22px}
+.narrow .fail{padding:34px 16px}
+.narrow .fail h1{font-size:23px}
+.narrow .fail .known div{grid-template-columns:1fr}
+
+/* ── 404 ── */
+.nf{padding:60px 32px;max-width:760px}
+.nf h1{font-family:var(--serif);font-weight:500;font-size:30px;letter-spacing:-.012em;margin:10px 0 0;line-height:1.14}
+.nf p{font-size:13.5px;color:var(--ink-2);margin:12px 0 0;max-width:560px;line-height:1.55}
+.nf .url{font-family:var(--mono);font-size:12px;color:var(--ink-1);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:6px;padding:2px 7px}
+.nf .rooms{display:grid;grid-template-columns:repeat(3,1fr);gap:0 28px;margin-top:22px;border-top:1px solid var(--paper-2);padding-top:6px}
+.nf .rooms a{display:block;padding:7px 0;border-bottom:1px solid var(--paper-2);font-size:13px;color:var(--ink-2);text-decoration:none}
+.nf .rooms a b{color:var(--ink-1);font-weight:500}
+.nf .rooms a small{display:block;font-size:11px;color:var(--ink-3)}
+.narrow .nf{padding:30px 16px}
+.narrow .nf h1{font-size:24px}
+.narrow .nf .rooms{grid-template-columns:1fr}
+
+/* ── phone chrome pieces ── */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:40}
+/* .sheetL replaces the rail itself (a left, non-modal drawer), not an ADR 0112 right sheet — its width matches the rail it stands in for, not 440/640 */
+.sheetL{position:absolute;top:0;bottom:0;left:0;width:304px;background:var(--paper-0);border-right:1px solid var(--paper-2);box-shadow:18px 0 48px rgba(0,0,0,.4);z-index:50;display:flex;flex-direction:column}
+.sheetB{position:absolute;left:0;right:0;bottom:0;background:var(--paper-0);border-top:1px solid var(--paper-2);border-radius:14px 14px 0 0;box-shadow:0 -18px 48px rgba(0,0,0,.45);z-index:50}
+.sheetB__grip{width:36px;height:4px;border-radius:2px;background:var(--paper-2);margin:8px auto 0}
+
+@media (prefers-reduced-motion:reduce){.skel::after,.load-bar i,.toast__drain i,.fold{animation:none!important;transition:none!important}}
+
+.shellA{display:grid;grid-template-columns:240px 1fr;min-height:880px}
+.shellA[data-rail="tucked"]{grid-template-columns:28px 1fr}
+.rail{background:var(--paper-0);border-right:1px solid var(--paper-2);display:flex;flex-direction:column;padding:10px 0 8px;min-width:0}
+.rail__top{padding:4px 12px 8px}
+.rail .sect,.pass .sect,.sheetL .sect{padding:12px 20px 4px}
+.room{display:flex;align-items:center;gap:8px;padding:6px 18px 6px 18px;border-left:2px solid transparent;font-size:13px;color:var(--ink-2);text-decoration:none;line-height:1.3;transition:background-color 160ms var(--house),color 160ms var(--house)}
+.room:hover{background:var(--paper-1);color:var(--ink-1)}
+.room[aria-current="page"]{background:var(--seal-tint);border-left-color:var(--seal);color:var(--ink-1);font-weight:500}
+.room .kbd{margin-left:auto}
+.room--child{padding-left:34px;font-size:12.5px;color:var(--ink-3)}
+.room--child[aria-current="page"]{color:var(--ink-1)}
+.room__chev{margin-left:auto;color:var(--ink-4);transition:transform 320ms var(--house)}
+.fold{display:grid;grid-template-rows:0fr;transition:grid-template-rows 320ms var(--house)}
+.fold[data-open="true"]{grid-template-rows:1fr}
+.fold>div{min-height:0;overflow:hidden}
+.room--ask{margin:0 10px 4px;padding:7px 10px;border:1px solid var(--paper-2);border-radius:9px;background:var(--paper-1);color:var(--ink-1)}
+.room--ask:hover{border-color:var(--seal-ring)}
+.room--ask .wm{font-size:13px}
+.rail__foot{margin-top:auto;padding-top:8px;border-top:1px solid var(--paper-2)}
+.arrival{margin:6px 12px 8px;padding:8px 10px;border:1px dashed var(--paper-2);border-radius:9px;font-size:12px;color:var(--ink-2)}
+.arrival .bar{height:2px;background:var(--paper-2);margin-top:7px;border-radius:1px;overflow:hidden}
+.arrival .bar i{display:block;height:100%;width:57%;background:var(--seal)}
+.arrival small{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:2px}
+.tuck{display:flex;align-items:center;gap:8px;margin:8px 12px 0;padding:6px 8px;border:0;background:transparent;color:var(--ink-3);font-family:var(--sans);font-size:11.5px;cursor:pointer;border-radius:7px}
+.tuck:hover{background:var(--paper-1);color:var(--ink-2)}
+.tuck .kbd{margin-left:auto}
+.strip{background:var(--paper-0);border-right:1px solid var(--paper-2);display:flex;flex-direction:column;align-items:center;padding:14px 0}
+.strip button{writing-mode:vertical-rl;transform:rotate(180deg);border:0;background:transparent;color:var(--ink-3);font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;padding:10px 4px;cursor:pointer;border-radius:6px}
+.strip button:hover{color:var(--ink-1);background:var(--paper-1)}
+.pass{position:absolute;top:0;bottom:0;left:0;width:264px;background:var(--paper-0);border-right:1px solid var(--paper-2);box-shadow:18px 0 48px rgba(0,0,0,.42);z-index:40;display:flex;flex-direction:column;padding:10px 0 8px}
+.hint{position:absolute;z-index:70;background:var(--paper-0);color:var(--ink-1);border:1px solid var(--paper-2);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.4);padding:8px 11px;width:240px;font-size:12px}
+.hint b{display:block;font-weight:500;margin-bottom:2px}
+.hint span{color:var(--ink-3);font-size:11.5px;line-height:1.4;display:block}
+.mainA{position:relative;min-width:0}
+.toastA{position:absolute;left:16px;bottom:16px;z-index:50}
+.narrow .rail{padding:0}
+</style>
+</head>
+<body>
+<div class="sk-band"><h1>Sketch 106 · Direction A — The rooms</h1>
+<p class="sk-sub">A quiet left rail of words, grouped by where the work happens in the house — the floor, the door, the cellar, the books, the people — in the house&#8217;s own voice. &#8220;The desk&#8221; now names only /admin, in the foot, so one word does not sit twice on the same rail. Rooms keep the names the built header already prints (<span class="mono">lib/mudavym/pageNames.ts</span>), so nav and chrome agree word for word. No icons, no counts: the bell is the one count in the chrome. The rail is expanded or tucked, never iconified. The built house header is reused as it is, minus the theme menu (ADR 0149 row 6); the floating Wine Agent button is removed (ADR 0149 row 33) — <em>Ask Mudavym.</em> and the palette are the two doors that replace it. Warm charcoal is the ground (ADR 0138).</p></div><div class="sk-label">01 · Owner · Larkspur &amp; Vine, Oakland, CA · en-US · USD · 1440 · rail expanded, the cellar fold open, the undo toast docked at the page&#8217;s left edge<small>Profile lives in the account menu (built, HouseUserMenu); The desk (/admin) is an owner-only room; Studio, SimPOS, /dev/truth and /dev-sandbox never appear.</small></div><div class="fitwrap"><div class="fit" data-fit="1440"><div class="mudavym frame" style="min-height:880px"><div class="shellA" data-rail="expanded">
+  <nav class="rail" aria-label="Rooms"><div class="rail__top"><a class="room room--ask" href="#"><span style="font-size:13px;color:var(--ink-2)">Ask</span><span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span><kbd class="kbd">⌘⇧K</kbd></a></div><span class="sect">The floor</span><a class="room" href="#">Dashboard</a><a class="room" href="#">Notifications</a><a class="room" href="#">Calendar</a><a class="room" href="#">Recommendations</a><span class="sect">The door</span><a class="room" href="#" aria-current="page">Orders</a><a class="room" href="#">Receiving</a><a class="room" href="#">Providers</a><a class="room" href="#">Promotions</a><a class="room" href="#">Vendor prices</a><span class="sect">The cellar</span><a class="room" href="#">Inventory</a><button class="room" style="width:100%;border-top:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;font-family:var(--sans)" data-fold-toggle="cellarfold-4377335424-orders" aria-expanded="true">Cellar<svg class="room__chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(0deg)"><path d="m6 9 6 6 6-6"/></svg></button><div class="fold" id="cellarfold-4377335424-orders" data-open="true"><div><a class="room room--child" href="#">Wines</a><a class="room room--child" href="#">Beer</a><a class="room room--child" href="#">Whiskey</a><a class="room room--child" href="#">Cocktails</a><a class="room room--child" href="#">Spirits</a><a class="room room--child" href="#">Non-alcoholic</a></div></div><span class="sect">The books</span><a class="room" href="#">Receipts &amp; Credits</a><a class="room" href="#">Documents &amp; Reports</a><a class="room" href="#">Reports</a><a class="room" href="#">Logs</a><span class="sect">The people</span><a class="room" href="#">Team</a><a class="room" href="#">Communications</a><div class="rail__foot"><div class="arrival"><small>The arrival · folio 4 of 7</small>Three folios are still blank — the till, the senders, the first invoice.<div class="bar"><i></i></div></div><a class="room" href="#">Settings</a><a class="room" href="#">Connections</a><a class="room" href="#">The desk<span class="kbd" style="margin-left:auto;font-size:9px">owner</span></a><a class="room" href="#">Help</a><button class="tuck">Tuck the rooms<kbd class="kbd">⌘\</kbd></button></div></nav>
+  <div class="mainA">
+    <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+    
+    <div class="pg">
+  <span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span>
+  <h1>Three orders wait on your seal; Kermit Lynch&#8217;s is due at the door by four.</h1>
+  <div class="pg__eyebrow"><span>Thu 17 Sep 2026</span><span>Orders</span><span>Read 14:02:11</span><span class="em">Prices in USD</span></div>
+  <div class="spine">
+    <div><div class="n">4</div><div class="l">Drafted — not sent</div></div>
+    <div><div class="n">3</div><div class="l">Awaiting your seal</div></div>
+    <div><div class="n">2</div><div class="l">Sent — no reply yet</div></div>
+    <div><div class="n">1</div><div class="l">At the door today</div></div>
+    <div><div class="n em">—</div><div class="l">Received this week — no register read</div></div>
+  </div>
+  <div class="ledger">
+    <div class="lrow h"><span>Vendor</span><span class="lines">Lines</span><span style="text-align:right">Total</span><span>State</span><span>What the price rests on</span></div>
+    <div class="lrow" data-active="true"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,910.00</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip chip--seal">agreed</span>9 of 12 lines at the agreed price; 3 at last invoice</span></div>
+    <div class="lrow"><b>Southern Glazer&#8217;s</b><span class="lines">6 lines</span><span class="money">$1,284.50</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">invoice</span>all 6 at last invoice price, 2026-09-03</span></div>
+    <div class="lrow"><b>Chambers &amp; Chambers</b><span class="lines">4 lines</span><span class="money">$642.18</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">no price</span>1 line has no price on file — the total omits it</span></div>
+    <div class="lrow"><b>Revel Wine</b><span class="lines">8 lines</span><span class="money">$2,105.00</span><span class="state">Sent 09:14 — not received by the vendor</span><span class="prov"><span class="chip">quote</span>the rep&#8217;s message of 2026-09-11</span></div>
+    <div class="lrow"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,880.00</span><span class="state">At the door — expected before 16:00</span><span class="prov"><span class="chip chip--seal">sealed</span>seal 7f3a, 2026-09-15</span></div>
+  </div>
+  <div class="pg__foot"><span class="wm" style="font-size:12px" translate="no">Mudavym<span class="wm-stop">.</span></span><span>·</span><span>page body is a stand-in — not part of this sketch</span></div>
+</div>
+    <div class="toastA"><div class="toast-stack"><div class="toast" role="status">
+  <div class="toast__eyebrow"><span>Dismissed · the house confirmed</span><span class="t">14:02:11</span></div>
+  <div class="toast__line"><div class="toast__text">Reorder Chablis left the docket, house-wide.</div><div class="toast__act"><button class='link'>Undo</button><kbd class='kbd'>⌘Z</kbd></div></div><div class="toast__drain"><i></i></div>
+</div></div></div>
+  </div>
+</div></div></div></div><div class="sk-label">02 · Staff · Sim Meyhouse, Kadıköy, İstanbul · tr-TR · TRY · 1440 · the role-gated rooms are absent<small>Connections (manager, ADR 0114 G19), The desk (owner) and the arrival are not drawn for staff. Hiding a row is not the boundary — the gateway refuses the URL regardless (Sidebar.tsx:58-64). Settings stays: its refused registers are named in words inside the page (sketch 111, fork 2b).</small></div><div class="fitwrap"><div class="fit" data-fit="1440"><div class="mudavym frame" style="min-height:880px"><div class="shellA" data-rail="expanded">
+  <nav class="rail" aria-label="Rooms"><div class="rail__top"><a class="room room--ask" href="#"><span style="font-size:13px;color:var(--ink-2)">Ask</span><span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span><kbd class="kbd">⌘⇧K</kbd></a></div><span class="sect">The floor</span><a class="room" href="#">Dashboard</a><a class="room" href="#">Notifications</a><a class="room" href="#">Calendar</a><a class="room" href="#">Recommendations</a><span class="sect">The door</span><a class="room" href="#">Orders</a><a class="room" href="#" aria-current="page">Receiving</a><a class="room" href="#">Providers</a><a class="room" href="#">Promotions</a><a class="room" href="#">Vendor prices</a><span class="sect">The cellar</span><a class="room" href="#">Inventory</a><button class="room" style="width:100%;border-top:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;font-family:var(--sans)" data-fold-toggle="cellarfold-4377333632-receiving" aria-expanded="false">Cellar<svg class="room__chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><path d="m6 9 6 6 6-6"/></svg></button><div class="fold" id="cellarfold-4377333632-receiving" data-open="false"><div><a class="room room--child" href="#">Wines</a><a class="room room--child" href="#">Beer</a><a class="room room--child" href="#">Whiskey</a><a class="room room--child" href="#">Cocktails</a><a class="room room--child" href="#">Spirits</a><a class="room room--child" href="#">Non-alcoholic</a></div></div><span class="sect">The books</span><a class="room" href="#">Receipts &amp; Credits</a><a class="room" href="#">Documents &amp; Reports</a><a class="room" href="#">Reports</a><a class="room" href="#">Logs</a><span class="sect">The people</span><a class="room" href="#">Team</a><a class="room" href="#">Communications</a><div class="rail__foot"><a class="room" href="#">Settings</a><a class="room" href="#">Help</a><button class="tuck">Tuck the rooms<kbd class="kbd">⌘\</kbd></button></div></nav>
+  <div class="mainA">
+    <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Receiving</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Kadıköy, İstanbul">Sim Meyhouse</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">3</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">A</span><span class="hdr__who">Ayşe Demir</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+    
+    <div class="pg">
+  <span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span>
+  <h1>One delivery is expected before four; nothing else is at the door.</h1>
+  <div class="pg__eyebrow"><span>17.09.2026</span><span>Receiving</span><span>Read 14:02:11</span><span class="em">TRY · tr-TR</span></div>
+  <div class="spine">
+    <div><div class="n">1</div><div class="l">Expected today</div></div>
+    <div><div class="n">1</div><div class="l">Received — short</div></div>
+    <div><div class="n">0</div><div class="l">Claims promised</div></div>
+    <div><div class="n em">—</div><div class="l">Credits recovered — no register read</div></div>
+  </div>
+  <div class="ledger">
+    <div class="lrow h"><span>Vendor</span><span class="lines">Lines</span><span style="text-align:right">Order total</span><span>State</span><span>What is known</span></div>
+    <div class="lrow" data-active="true"><b>Kavaklıdere</b><span class="lines">18 lines</span><span class="money">₺12.480,00</span><span class="state">Expected 15:30</span><span class="prov"><span class="chip chip--seal">sealed</span>order sealed by Kerem, 2026-09-15</span></div>
+    <div class="lrow"><b>Doluca</b><span class="lines">16 lines</span><span class="money">₺3.150,00</span><span class="state">Received 11:02 — 14 of 16</span><span class="prov"><span class="chip">short</span>two short; the credit is not yet promised, and a promise is not money</span></div>
+    <div class="lrow"><b>Suvla</b><span class="lines">5 lines</span><span class="money">₺1.920,00</span><span class="state">Received yesterday</span><span class="prov"><span class="chip">stock</span>on the shelf — the invoice cost is not verified</span></div>
+  </div>
+  <div class="pg__foot"><span class="wm" style="font-size:12px" translate="no">Mudavym<span class="wm-stop">.</span></span><span>·</span><span>page body is a stand-in — not part of this sketch</span></div>
+</div>
+    
+  </div>
+</div></div></div></div><div class="sk-label">03 · Tucked (28 px) — the page takes the width; and the rail as a pass, hovered open over the page with no scrim<small>⌘\ tucks; the strip&#8217;s one word opens the rooms as a non-modal pass (sketch 103, 1a) that closes when you leave it or choose a room. The persisted key is today&#8217;s <span class="mono">ui-storage.sidebarCollapsed</span>, read as &#8220;tucked&#8221;.</small></div><div class="fitwrap"><div class="fit" data-fit="1440"><div class="mudavym frame" style="min-height:880px"><div class="shellA" data-rail="tucked">
+  <div class="strip"><button aria-expanded="false">Rooms</button></div>
+  <div class="mainA">
+    <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+    
+    <div class="pg">
+  <span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span>
+  <h1>Three orders wait on your seal; Kermit Lynch&#8217;s is due at the door by four.</h1>
+  <div class="pg__eyebrow"><span>Thu 17 Sep 2026</span><span>Orders</span><span>Read 14:02:11</span><span class="em">Prices in USD</span></div>
+  <div class="spine">
+    <div><div class="n">4</div><div class="l">Drafted — not sent</div></div>
+    <div><div class="n">3</div><div class="l">Awaiting your seal</div></div>
+    <div><div class="n">2</div><div class="l">Sent — no reply yet</div></div>
+    <div><div class="n">1</div><div class="l">At the door today</div></div>
+    <div><div class="n em">—</div><div class="l">Received this week — no register read</div></div>
+  </div>
+  <div class="ledger">
+    <div class="lrow h"><span>Vendor</span><span class="lines">Lines</span><span style="text-align:right">Total</span><span>State</span><span>What the price rests on</span></div>
+    <div class="lrow" data-active="true"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,910.00</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip chip--seal">agreed</span>9 of 12 lines at the agreed price; 3 at last invoice</span></div>
+    <div class="lrow"><b>Southern Glazer&#8217;s</b><span class="lines">6 lines</span><span class="money">$1,284.50</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">invoice</span>all 6 at last invoice price, 2026-09-03</span></div>
+    <div class="lrow"><b>Chambers &amp; Chambers</b><span class="lines">4 lines</span><span class="money">$642.18</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">no price</span>1 line has no price on file — the total omits it</span></div>
+    <div class="lrow"><b>Revel Wine</b><span class="lines">8 lines</span><span class="money">$2,105.00</span><span class="state">Sent 09:14 — not received by the vendor</span><span class="prov"><span class="chip">quote</span>the rep&#8217;s message of 2026-09-11</span></div>
+    <div class="lrow"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,880.00</span><span class="state">At the door — expected before 16:00</span><span class="prov"><span class="chip chip--seal">sealed</span>seal 7f3a, 2026-09-15</span></div>
+  </div>
+  <div class="pg__foot"><span class="wm" style="font-size:12px" translate="no">Mudavym<span class="wm-stop">.</span></span><span>·</span><span>page body is a stand-in — not part of this sketch</span></div>
+</div>
+    
+  </div>
+</div></div></div></div><div style="height:24px"></div><div class="fitwrap"><div class="fit" data-fit="1440"><div class="mudavym frame" style="min-height:1120px"><div class="shellA" data-rail="tucked">
+  <div class="strip"><button aria-expanded="false">Rooms</button></div>
+  <div class="mainA">
+    <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+    
+    <div class="pg">
+  <span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span>
+  <h1>Three orders wait on your seal; Kermit Lynch&#8217;s is due at the door by four.</h1>
+  <div class="pg__eyebrow"><span>Thu 17 Sep 2026</span><span>Orders</span><span>Read 14:02:11</span><span class="em">Prices in USD</span></div>
+  <div class="spine">
+    <div><div class="n">4</div><div class="l">Drafted — not sent</div></div>
+    <div><div class="n">3</div><div class="l">Awaiting your seal</div></div>
+    <div><div class="n">2</div><div class="l">Sent — no reply yet</div></div>
+    <div><div class="n">1</div><div class="l">At the door today</div></div>
+    <div><div class="n em">—</div><div class="l">Received this week — no register read</div></div>
+  </div>
+  <div class="ledger">
+    <div class="lrow h"><span>Vendor</span><span class="lines">Lines</span><span style="text-align:right">Total</span><span>State</span><span>What the price rests on</span></div>
+    <div class="lrow" data-active="true"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,910.00</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip chip--seal">agreed</span>9 of 12 lines at the agreed price; 3 at last invoice</span></div>
+    <div class="lrow"><b>Southern Glazer&#8217;s</b><span class="lines">6 lines</span><span class="money">$1,284.50</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">invoice</span>all 6 at last invoice price, 2026-09-03</span></div>
+    <div class="lrow"><b>Chambers &amp; Chambers</b><span class="lines">4 lines</span><span class="money">$642.18</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">no price</span>1 line has no price on file — the total omits it</span></div>
+    <div class="lrow"><b>Revel Wine</b><span class="lines">8 lines</span><span class="money">$2,105.00</span><span class="state">Sent 09:14 — not received by the vendor</span><span class="prov"><span class="chip">quote</span>the rep&#8217;s message of 2026-09-11</span></div>
+    <div class="lrow"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,880.00</span><span class="state">At the door — expected before 16:00</span><span class="prov"><span class="chip chip--seal">sealed</span>seal 7f3a, 2026-09-15</span></div>
+  </div>
+  <div class="pg__foot"><span class="wm" style="font-size:12px" translate="no">Mudavym<span class="wm-stop">.</span></span><span>·</span><span>page body is a stand-in — not part of this sketch</span></div>
+</div>
+    <div class="pass" style="left:-28px"><div class="rail__top"><a class="room room--ask" href="#"><span style="font-size:13px;color:var(--ink-2)">Ask</span><span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span><kbd class="kbd">⌘⇧K</kbd></a></div><span class="sect">The floor</span><a class="room" href="#">Dashboard</a><a class="room" href="#">Notifications</a><a class="room" href="#">Calendar</a><a class="room" href="#">Recommendations</a><span class="sect">The door</span><a class="room" href="#" aria-current="page">Orders</a><a class="room" href="#">Receiving</a><a class="room" href="#">Providers</a><a class="room" href="#">Promotions</a><a class="room" href="#">Vendor prices</a><span class="sect">The cellar</span><a class="room" href="#">Inventory</a><button class="room" style="width:100%;border-top:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;font-family:var(--sans)" data-fold-toggle="cellarfold-4377335424-orders" aria-expanded="true">Cellar<svg class="room__chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(0deg)"><path d="m6 9 6 6 6-6"/></svg></button><div class="fold" id="cellarfold-4377335424-orders" data-open="true"><div><a class="room room--child" href="#">Wines</a><a class="room room--child" href="#">Beer</a><a class="room room--child" href="#">Whiskey</a><a class="room room--child" href="#">Cocktails</a><a class="room room--child" href="#">Spirits</a><a class="room room--child" href="#">Non-alcoholic</a></div></div><span class="sect">The books</span><a class="room" href="#">Receipts &amp; Credits</a><a class="room" href="#">Documents &amp; Reports</a><a class="room" href="#">Reports</a><a class="room" href="#">Logs</a><span class="sect">The people</span><a class="room" href="#">Team</a><a class="room" href="#">Communications</a><div class="rail__foot"><a class="room" href="#">Settings</a><a class="room" href="#">Connections</a><a class="room" href="#">The desk<span class="kbd" style="margin-left:auto;font-size:9px">owner</span></a><a class="room" href="#">Help</a></div></div>
+  </div>
+</div></div></div></div><div class="sk-label">04 · The rail&#8217;s hover hint (the one Mudavym-aware fragment that already ships, Sidebar.tsx:244-263) — geometry unchanged, tokens only</div><div class="fitwrap"><div class="fit" data-fit="1440"><div class="mudavym frame" style="min-height:880px"><div class="shellA" data-rail="expanded">
+  <nav class="rail" aria-label="Rooms"><div class="rail__top"><a class="room room--ask" href="#"><span style="font-size:13px;color:var(--ink-2)">Ask</span><span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span><kbd class="kbd">⌘⇧K</kbd></a></div><span class="sect">The floor</span><a class="room" href="#">Dashboard</a><a class="room" href="#">Notifications</a><a class="room" href="#">Calendar</a><a class="room" href="#">Recommendations</a><span class="sect">The door</span><a class="room" href="#" aria-current="page">Orders</a><a class="room" href="#">Receiving</a><a class="room" href="#">Providers</a><a class="room" href="#">Promotions</a><a class="room" href="#">Vendor prices</a><span class="sect">The cellar</span><a class="room" href="#">Inventory</a><button class="room" style="width:100%;border-top:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;font-family:var(--sans)" data-fold-toggle="cellarfold-4377335424-orders" aria-expanded="true">Cellar<svg class="room__chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(0deg)"><path d="m6 9 6 6 6-6"/></svg></button><div class="fold" id="cellarfold-4377335424-orders" data-open="true"><div><a class="room room--child" href="#">Wines</a><a class="room room--child" href="#">Beer</a><a class="room room--child" href="#">Whiskey</a><a class="room room--child" href="#">Cocktails</a><a class="room room--child" href="#">Spirits</a><a class="room room--child" href="#">Non-alcoholic</a></div></div><span class="sect">The books</span><a class="room" href="#">Receipts &amp; Credits</a><a class="room" href="#">Documents &amp; Reports</a><a class="room" href="#">Reports</a><a class="room" href="#">Logs</a><span class="sect">The people</span><a class="room" href="#">Team</a><a class="room" href="#">Communications</a><div class="rail__foot"><div class="arrival"><small>The arrival · folio 4 of 7</small>Three folios are still blank — the till, the senders, the first invoice.<div class="bar"><i></i></div></div><a class="room" href="#">Settings</a><a class="room" href="#">Connections</a><a class="room" href="#">The desk<span class="kbd" style="margin-left:auto;font-size:9px">owner</span></a><a class="room" href="#">Help</a><button class="tuck">Tuck the rooms<kbd class="kbd">⌘\</kbd></button></div></nav>
+  <div class="mainA">
+    <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+    
+    <div class="pg">
+  <span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span>
+  <h1>Three orders wait on your seal; Kermit Lynch&#8217;s is due at the door by four.</h1>
+  <div class="pg__eyebrow"><span>Thu 17 Sep 2026</span><span>Orders</span><span>Read 14:02:11</span><span class="em">Prices in USD</span></div>
+  <div class="spine">
+    <div><div class="n">4</div><div class="l">Drafted — not sent</div></div>
+    <div><div class="n">3</div><div class="l">Awaiting your seal</div></div>
+    <div><div class="n">2</div><div class="l">Sent — no reply yet</div></div>
+    <div><div class="n">1</div><div class="l">At the door today</div></div>
+    <div><div class="n em">—</div><div class="l">Received this week — no register read</div></div>
+  </div>
+  <div class="ledger">
+    <div class="lrow h"><span>Vendor</span><span class="lines">Lines</span><span style="text-align:right">Total</span><span>State</span><span>What the price rests on</span></div>
+    <div class="lrow" data-active="true"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,910.00</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip chip--seal">agreed</span>9 of 12 lines at the agreed price; 3 at last invoice</span></div>
+    <div class="lrow"><b>Southern Glazer&#8217;s</b><span class="lines">6 lines</span><span class="money">$1,284.50</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">invoice</span>all 6 at last invoice price, 2026-09-03</span></div>
+    <div class="lrow"><b>Chambers &amp; Chambers</b><span class="lines">4 lines</span><span class="money">$642.18</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">no price</span>1 line has no price on file — the total omits it</span></div>
+    <div class="lrow"><b>Revel Wine</b><span class="lines">8 lines</span><span class="money">$2,105.00</span><span class="state">Sent 09:14 — not received by the vendor</span><span class="prov"><span class="chip">quote</span>the rep&#8217;s message of 2026-09-11</span></div>
+    <div class="lrow"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,880.00</span><span class="state">At the door — expected before 16:00</span><span class="prov"><span class="chip chip--seal">sealed</span>seal 7f3a, 2026-09-15</span></div>
+  </div>
+  <div class="pg__foot"><span class="wm" style="font-size:12px" translate="no">Mudavym<span class="wm-stop">.</span></span><span>·</span><span>page body is a stand-in — not part of this sketch</span></div>
+</div>
+    <div class="hint" style="left:6px;top:256px"><b>Receiving</b><span>Check a delivery in at the door and catch short cases. One room, one job.</span></div>
+  </div>
+</div></div></div></div><div class="sk-label">05 · Toasts — the margin note, docked at the page&#8217;s left edge, five states<small>One system replaces sonner (App.tsx:424-441) and the Radix ToastContext. Anatomy: an eyebrow that says what the house did and when; one sentence; a second line that says what is NOT claimed. Undo drains an 8 s hairline (linear, the pour token&#8217;s reason: you are timing it). Undo only where F10 allows.</small></div><div class="sk-row"><div class="mudavym" style="padding:24px;border:1px solid #b6ad9e;width:100%;max-width:1360px"><div class="toast-stack" style="flex-direction:row;flex-wrap:wrap;gap:14px"><div class="toast" role="status" style="width:400px">
+  <div class="toast__eyebrow"><span>Dismissed · the house confirmed</span><span class="t">14:02:11</span></div>
+  <div class="toast__line"><div class="toast__text">Reorder Chablis left the docket, house-wide.<span class="toast__sub">Undo brings it back for everyone in the house.</span></div><div class="toast__act"><button class="link">Undo</button><kbd class="kbd">⌘Z</kbd></div></div><div class="toast__drain"><i></i></div>
+</div>
+<div class="toast toast--held" role="status" style="width:400px">
+  <div class="toast__eyebrow"><span>Written here · not on the house</span><span class="t">14:02:11</span></div>
+  <div class="toast__line"><div class="toast__text">Your note on the Doluca delivery is kept on this device.<span class="toast__sub">Not sent, not received, not sealed yet.</span></div></div>
+</div>
+<div class="toast toast--sealed" role="status" style="width:400px">
+  <div class="toast__eyebrow"><span>Sealed · receipt</span><span class="t">14:02:11</span></div>
+  <div class="toast__line"><span class="toast__wax" aria-hidden="true"></span><div class="toast__text">Order to Kermit Lynch, $3,910.00 — seal 7f3a.<span class="toast__sub">The seal already happened; this line is the receipt.</span></div><div class="toast__act"><button class="link">Open</button></div></div>
+</div>
+<div class="toast toast--refused" role="status" style="width:400px">
+  <div class="toast__eyebrow"><span>Refused by the house</span><span class="t">14:02:11</span></div>
+  <div class="toast__line"><div class="toast__text">A staff member may not remove a shift; it needs a manager.<span class="toast__sub">Nothing changed — the shift stays as it was.</span></div></div>
+</div>
+<div class="toast" role="status" style="width:400px">
+  <div class="toast__eyebrow"><span>Draft kept · not sent</span><span class="t">14:02:11</span></div>
+  <div class="toast__line"><div class="toast__text">Reply to Southern Glazer&#8217;s is a draft.<span class="toast__sub">It stays a draft until you seal and send it.</span></div><div class="toast__act"><button class="link">Open draft</button></div></div>
+</div></div><p class="quiet" style="margin:16px 0 0;max-width:820px">Stacking: at most three; the oldest tucks behind the newest (tuck, 300 ms) and is reachable from the bell&#8217;s book. A toast never carries a form and never the seal (F8). On a phone it docks bottom-centre above the safe area, full width less 12 px.</p></div></div><div class="sk-label">06 · The page loader — three moments of one load (Suspense fallback + the page&#8217;s own skeleton)<small>Under 400 ms nothing is drawn, so a flash never reads as information. At 12 s the state is never faked — it says the house has not answered.</small></div><div class="sk-row" style="align-items:stretch;gap:20px">
+  <div class="fit" data-fit="420"><div class="mudavym frame frame--short " style="width:420px;min-height:420px">
+    <div class="load-bar"><i></i></div>
+    <div style="padding:40px 24px"><span class="sect">0 – 400 ms</span><p class="quiet" style="margin:8px 0 0">Nothing drawn yet — only the hairline under the header moves.</p></div>
+  </div></div>
+  <div class="fit" data-fit="420"><div class="mudavym frame frame--short" style="width:420px;min-height:420px">
+    <div class="load-bar"><i></i></div>
+    <div style="zoom:.62"><div class="pg" aria-busy="true" aria-label="Loading">
+  <span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span>
+  <div class="skel" style="width:62%;height:26px;margin-top:14px"></div>
+  <div class="skel" style="width:34%;margin-top:12px;height:10px"></div>
+  <div class="spine" style="border-color:transparent">
+    <div><div class="skel" style="width:28px;height:22px"></div><div class="skel" style="width:80%;margin-top:8px;height:9px"></div></div>
+    <div><div class="skel" style="width:28px;height:22px"></div><div class="skel" style="width:80%;margin-top:8px;height:9px"></div></div>
+    <div><div class="skel" style="width:28px;height:22px"></div><div class="skel" style="width:80%;margin-top:8px;height:9px"></div></div>
+    <div><div class="skel" style="width:28px;height:22px"></div><div class="skel" style="width:80%;margin-top:8px;height:9px"></div></div>
+  </div>
+  <div class="ledger">
+    <div class="lrow"><div class="skel" style="width:70%"></div><div class="skel" style="width:50%"></div><div class="skel" style="width:60%;margin-left:auto"></div><div class="skel" style="width:70%"></div><div class="skel" style="width:90%"></div></div>
+    <div class="lrow"><div class="skel" style="width:55%"></div><div class="skel" style="width:50%"></div><div class="skel" style="width:60%;margin-left:auto"></div><div class="skel" style="width:70%"></div><div class="skel" style="width:80%"></div></div>
+    <div class="lrow"><div class="skel" style="width:80%"></div><div class="skel" style="width:50%"></div><div class="skel" style="width:60%;margin-left:auto"></div><div class="skel" style="width:70%"></div><div class="skel" style="width:60%"></div></div>
+  </div>
+</div></div>
+    <div class="load-note"><span>400 ms – 3 s · still reading the house&#8217;s books · 3.2 s</span></div>
+  </div></div>
+  <div class="fit" data-fit="420"><div class="mudavym frame frame--short" style="width:420px;min-height:420px">
+    <div style="padding:40px 24px"><span class="eyebrow">The page did not arrive · 12 s</span>
+      <h1 style="font-family:var(--serif);font-weight:500;font-size:22px;margin:10px 0 0;letter-spacing:-.01em">Orders is still on its way.</h1>
+      <p class="quiet" style="margin:10px 0 0">The house has not answered. Nothing is shown in its place.</p>
+      <div style="display:flex;gap:10px;margin-top:18px"><button class="btn btn--seal">Try again</button><button class="btn">Go to Dashboard</button></div></div>
+  </div></div>
+</div><div class="sk-label">07 · Offline — the strip under the header, and the ladder it opens · queued is never confirmed (ADR 0140, sketch 103 2e)<small>Replaces the amber OfflineBanner (SyncStatus.tsx:247-267), which says &#8220;will sync&#8221; — a promise the device cannot keep. The strip says what is written here and what the house last answered; the popover names each record&#8217;s rung.</small></div><div class="fitwrap"><div class="fit" data-fit="1440"><div class="mudavym frame" style="min-height:880px"><div class="shellA" data-rail="expanded">
+  <nav class="rail" aria-label="Rooms"><div class="rail__top"><a class="room room--ask" href="#"><span style="font-size:13px;color:var(--ink-2)">Ask</span><span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span><kbd class="kbd">⌘⇧K</kbd></a></div><span class="sect">The floor</span><a class="room" href="#">Dashboard</a><a class="room" href="#">Notifications</a><a class="room" href="#">Calendar</a><a class="room" href="#">Recommendations</a><span class="sect">The door</span><a class="room" href="#" aria-current="page">Orders</a><a class="room" href="#">Receiving</a><a class="room" href="#">Providers</a><a class="room" href="#">Promotions</a><a class="room" href="#">Vendor prices</a><span class="sect">The cellar</span><a class="room" href="#">Inventory</a><button class="room" style="width:100%;border-top:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;font-family:var(--sans)" data-fold-toggle="cellarfold-4377335424-orders" aria-expanded="false">Cellar<svg class="room__chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><path d="m6 9 6 6 6-6"/></svg></button><div class="fold" id="cellarfold-4377335424-orders" data-open="false"><div><a class="room room--child" href="#">Wines</a><a class="room room--child" href="#">Beer</a><a class="room room--child" href="#">Whiskey</a><a class="room room--child" href="#">Cocktails</a><a class="room room--child" href="#">Spirits</a><a class="room room--child" href="#">Non-alcoholic</a></div></div><span class="sect">The books</span><a class="room" href="#">Receipts &amp; Credits</a><a class="room" href="#">Documents &amp; Reports</a><a class="room" href="#">Reports</a><a class="room" href="#">Logs</a><span class="sect">The people</span><a class="room" href="#">Team</a><a class="room" href="#">Communications</a><div class="rail__foot"><div class="arrival"><small>The arrival · folio 4 of 7</small>Three folios are still blank — the till, the senders, the first invoice.<div class="bar"><i></i></div></div><a class="room" href="#">Settings</a><a class="room" href="#">Connections</a><a class="room" href="#">The desk<span class="kbd" style="margin-left:auto;font-size:9px">owner</span></a><a class="room" href="#">Help</a><button class="tuck">Tuck the rooms<kbd class="kbd">⌘\</kbd></button></div></nav>
+  <div class="mainA">
+    <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge hdr__badge--unknown" aria-label="The bell could not read the register"></span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+    <div class="off" role="status"><span class="off__dot"></span><span class="eyebrow">Offline since 14:02</span><span>3 records written here, none sent. The bell and the counts are from 14:01:48, the house&#8217;s last answer.</span><button class="link">What is where</button></div>
+    <div class="pg">
+  <span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span>
+  <h1>Three orders wait on your seal; Kermit Lynch&#8217;s is due at the door by four.</h1>
+  <div class="pg__eyebrow"><span>Thu 17 Sep 2026</span><span>Orders</span><span>Read 14:01:48</span><span class="em">Prices in USD</span></div>
+  <div class="spine">
+    <div><div class="n">4</div><div class="l">Drafted — not sent</div></div>
+    <div><div class="n">3</div><div class="l">Awaiting your seal</div></div>
+    <div><div class="n">2</div><div class="l">Sent — no reply yet</div></div>
+    <div><div class="n">1</div><div class="l">At the door today</div></div>
+    <div><div class="n em">—</div><div class="l">Received this week — no register read</div></div>
+  </div>
+  <div class="ledger">
+    <div class="lrow h"><span>Vendor</span><span class="lines">Lines</span><span style="text-align:right">Total</span><span>State</span><span>What the price rests on</span></div>
+    <div class="lrow" data-active="true"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,910.00</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip chip--seal">agreed</span>9 of 12 lines at the agreed price; 3 at last invoice</span></div>
+    <div class="lrow"><b>Southern Glazer&#8217;s</b><span class="lines">6 lines</span><span class="money">$1,284.50</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">invoice</span>all 6 at last invoice price, 2026-09-03</span></div>
+    <div class="lrow"><b>Chambers &amp; Chambers</b><span class="lines">4 lines</span><span class="money">$642.18</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">no price</span>1 line has no price on file — the total omits it</span></div>
+    <div class="lrow"><b>Revel Wine</b><span class="lines">8 lines</span><span class="money">$2,105.00</span><span class="state">Sent 09:14 — not received by the vendor</span><span class="prov"><span class="chip">quote</span>the rep&#8217;s message of 2026-09-11</span></div>
+    <div class="lrow"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,880.00</span><span class="state">At the door — expected before 16:00</span><span class="prov"><span class="chip chip--seal">sealed</span>seal 7f3a, 2026-09-15</span></div>
+  </div>
+  <div class="pg__foot"><span class="wm" style="font-size:12px" translate="no">Mudavym<span class="wm-stop">.</span></span><span>·</span><span>page body is a stand-in — not part of this sketch</span></div>
+</div>
+    <div class="pop" style="right:24px;top:96px">
+  <div class="pop__head"><span class="eyebrow">3 records · the house last answered 14:01:48</span><h2 class="pop__title">Written here, not on the house</h2></div>
+  <div class="ladder"><span data-on="true">written here</span><i></i><span>sent</span><i></i><span>received</span><i></i><span>sealed by the house</span></div>
+  <div class="pop__body">
+    <div class="item"><span class="item__text"><span class="item__label">Door count — Kermit Lynch, 12 of 12</span><span class="item__sub">14:03 · the count sits on this phone</span></span><span class="rung"><b>written here</b>rung 1 of 4</span></div>
+    <div class="item"><span class="item__text"><span class="item__label">Note on the Chablis line</span><span class="item__sub">14:05 · undo still works on it</span></span><span class="rung"><b>written here</b>rung 1 of 4</span></div>
+    <div class="item"><span class="item__text"><span class="item__label">Dismiss: Reorder Chablis</span><span class="item__sub">14:06 · on this device only</span></span><span class="rung"><b>written here</b>rung 1 of 4</span></div>
+  </div>
+  <div class="pop__foot">Nothing here is confirmed. When the house answers, each line moves one rung and the toast says which. A seal is never queued: money and sends wait for the house to be reachable (ADR 0140).</div>
+</div><div class="toastA"><div class="toast-stack"><div class="toast toast--held" role="status">
+  <div class="toast__eyebrow"><span>Written here · not on the house</span><span class="t">14:05:40</span></div>
+  <div class="toast__line"><div class="toast__text">Your note on the Chablis line is kept on this device.<span class="toast__sub">Not sent, not received, not sealed.</span></div></div>
+</div></div></div>
+  </div>
+</div></div></div></div><div class="sk-label">08 · The failure sheet — the boundary sits under the shell, so the rooms, the bell and the search survive a page crash<small>Today ErrorBoundary wraps the whole app above the router (App.tsx:160), so a crash takes the chrome with it. Two states: an unknown error, and the stale-chunk case that reloads once and says so.</small></div><div class="fitwrap"><div class="fit" data-fit="1440"><div class="mudavym frame" style="min-height:880px"><div class="shellA" data-rail="expanded">
+  <nav class="rail" aria-label="Rooms"><div class="rail__top"><a class="room room--ask" href="#"><span style="font-size:13px;color:var(--ink-2)">Ask</span><span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span><kbd class="kbd">⌘⇧K</kbd></a></div><span class="sect">The floor</span><a class="room" href="#">Dashboard</a><a class="room" href="#">Notifications</a><a class="room" href="#">Calendar</a><a class="room" href="#">Recommendations</a><span class="sect">The door</span><a class="room" href="#" aria-current="page">Orders</a><a class="room" href="#">Receiving</a><a class="room" href="#">Providers</a><a class="room" href="#">Promotions</a><a class="room" href="#">Vendor prices</a><span class="sect">The cellar</span><a class="room" href="#">Inventory</a><button class="room" style="width:100%;border-top:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;font-family:var(--sans)" data-fold-toggle="cellarfold-4377335424-orders" aria-expanded="false">Cellar<svg class="room__chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><path d="m6 9 6 6 6-6"/></svg></button><div class="fold" id="cellarfold-4377335424-orders" data-open="false"><div><a class="room room--child" href="#">Wines</a><a class="room room--child" href="#">Beer</a><a class="room room--child" href="#">Whiskey</a><a class="room room--child" href="#">Cocktails</a><a class="room room--child" href="#">Spirits</a><a class="room room--child" href="#">Non-alcoholic</a></div></div><span class="sect">The books</span><a class="room" href="#">Receipts &amp; Credits</a><a class="room" href="#">Documents &amp; Reports</a><a class="room" href="#">Reports</a><a class="room" href="#">Logs</a><span class="sect">The people</span><a class="room" href="#">Team</a><a class="room" href="#">Communications</a><div class="rail__foot"><div class="arrival"><small>The arrival · folio 4 of 7</small>Three folios are still blank — the till, the senders, the first invoice.<div class="bar"><i></i></div></div><a class="room" href="#">Settings</a><a class="room" href="#">Connections</a><a class="room" href="#">The desk<span class="kbd" style="margin-left:auto;font-size:9px">owner</span></a><a class="room" href="#">Help</a><button class="tuck">Tuck the rooms<kbd class="kbd">⌘\</kbd></button></div></nav>
+  <div class="mainA">
+    <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+    
+    <div class="fail" role="alert">
+  <span class="eyebrow">The page could not be drawn · /orders · 14:07:12</span>
+  <h1>Orders failed to draw.</h1>
+  <p>Anything the house had already confirmed is kept on the house. Anything you were typing on this page is not — it was never sent. The rooms, the bell and the search still work; only this page is down.</p>
+  <div class="known">
+    <div><span>Error id</span><span>evt_9f3a2c1b<button class="link" style="margin-left:8px;font-size:11px">Copy</button></span></div>
+    <div><span>Build</span><span>2026-09-17 · 60ed83a7</span></div>
+    <div><span>Route · house</span><span>/orders · Larkspur &amp; Vine (en-US)</span></div>
+    <div><span>What happened</span><span>TypeError: cannot read &#8216;lines&#8217; of undefined — LedgerRow.tsx:88</span></div>
+  </div>
+  <div class="acts">
+    <button class="btn btn--seal">Try again</button>
+    <button class="btn">Go to Dashboard</button>
+    <a class="link" href="mailto:support@mudavym.com">Write to support@mudavym.com with these readings</a>
+  </div>
+</div>
+    
+  </div>
+</div></div></div></div><div style="height:24px"></div><div class="fitwrap"><div class="fit" data-fit="1440"><div class="mudavym frame" style="min-height:880px"><div class="shellA" data-rail="expanded">
+  <nav class="rail" aria-label="Rooms"><div class="rail__top"><a class="room room--ask" href="#"><span style="font-size:13px;color:var(--ink-2)">Ask</span><span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span><kbd class="kbd">⌘⇧K</kbd></a></div><span class="sect">The floor</span><a class="room" href="#">Dashboard</a><a class="room" href="#">Notifications</a><a class="room" href="#">Calendar</a><a class="room" href="#">Recommendations</a><span class="sect">The door</span><a class="room" href="#" aria-current="page">Orders</a><a class="room" href="#">Receiving</a><a class="room" href="#">Providers</a><a class="room" href="#">Promotions</a><a class="room" href="#">Vendor prices</a><span class="sect">The cellar</span><a class="room" href="#">Inventory</a><button class="room" style="width:100%;border-top:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;font-family:var(--sans)" data-fold-toggle="cellarfold-4377335424-orders" aria-expanded="false">Cellar<svg class="room__chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><path d="m6 9 6 6 6-6"/></svg></button><div class="fold" id="cellarfold-4377335424-orders" data-open="false"><div><a class="room room--child" href="#">Wines</a><a class="room room--child" href="#">Beer</a><a class="room room--child" href="#">Whiskey</a><a class="room room--child" href="#">Cocktails</a><a class="room room--child" href="#">Spirits</a><a class="room room--child" href="#">Non-alcoholic</a></div></div><span class="sect">The books</span><a class="room" href="#">Receipts &amp; Credits</a><a class="room" href="#">Documents &amp; Reports</a><a class="room" href="#">Reports</a><a class="room" href="#">Logs</a><span class="sect">The people</span><a class="room" href="#">Team</a><a class="room" href="#">Communications</a><div class="rail__foot"><div class="arrival"><small>The arrival · folio 4 of 7</small>Three folios are still blank — the till, the senders, the first invoice.<div class="bar"><i></i></div></div><a class="room" href="#">Settings</a><a class="room" href="#">Connections</a><a class="room" href="#">The desk<span class="kbd" style="margin-left:auto;font-size:9px">owner</span></a><a class="room" href="#">Help</a><button class="tuck">Tuck the rooms<kbd class="kbd">⌘\</kbd></button></div></nav>
+  <div class="mainA">
+    <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+    
+    <div class="fail">
+  <span class="eyebrow">A newer Mudavym was published · /orders · 14:07:12</span>
+  <h1>This page is from before the last publish.</h1>
+  <p>It is being reloaded once, keeping your place at <span class="url mono">/orders</span>. If it does not draw after that, the failure sheet says what is known — it never reloads twice.</p>
+  <div class="acts"><span class="quiet mono">reloading · 1 of 1</span></div>
+</div>
+    
+  </div>
+</div></div></div></div><div class="sk-label">09 · A real 404 — no room at that address; the address is kept, the nearest room is offered, the rooms are listed<small>Today the catch-all silently redirects to / (App.tsx:416-417).</small></div><div class="fitwrap"><div class="fit" data-fit="1440"><div class="mudavym frame" style="min-height:880px"><div class="shellA" data-rail="expanded">
+  <nav class="rail" aria-label="Rooms"><div class="rail__top"><a class="room room--ask" href="#"><span style="font-size:13px;color:var(--ink-2)">Ask</span><span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span><kbd class="kbd">⌘⇧K</kbd></a></div><span class="sect">The floor</span><a class="room" href="#">Dashboard</a><a class="room" href="#">Notifications</a><a class="room" href="#">Calendar</a><a class="room" href="#">Recommendations</a><span class="sect">The door</span><a class="room" href="#">Orders</a><a class="room" href="#">Receiving</a><a class="room" href="#">Providers</a><a class="room" href="#">Promotions</a><a class="room" href="#">Vendor prices</a><span class="sect">The cellar</span><a class="room" href="#">Inventory</a><button class="room" style="width:100%;border-top:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;font-family:var(--sans)" data-fold-toggle="cellarfold-4377335424-nowhere" aria-expanded="false">Cellar<svg class="room__chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><path d="m6 9 6 6 6-6"/></svg></button><div class="fold" id="cellarfold-4377335424-nowhere" data-open="false"><div><a class="room room--child" href="#">Wines</a><a class="room room--child" href="#">Beer</a><a class="room room--child" href="#">Whiskey</a><a class="room room--child" href="#">Cocktails</a><a class="room room--child" href="#">Spirits</a><a class="room room--child" href="#">Non-alcoholic</a></div></div><span class="sect">The books</span><a class="room" href="#">Receipts &amp; Credits</a><a class="room" href="#">Documents &amp; Reports</a><a class="room" href="#">Reports</a><a class="room" href="#">Logs</a><span class="sect">The people</span><a class="room" href="#">Team</a><a class="room" href="#">Communications</a><div class="rail__foot"><div class="arrival"><small>The arrival · folio 4 of 7</small>Three folios are still blank — the till, the senders, the first invoice.<div class="bar"><i></i></div></div><a class="room" href="#">Settings</a><a class="room" href="#">Connections</a><a class="room" href="#">The desk<span class="kbd" style="margin-left:auto;font-size:9px">owner</span></a><a class="room" href="#">Help</a><button class="tuck">Tuck the rooms<kbd class="kbd">⌘\</kbd></button></div></nav>
+  <div class="mainA">
+    <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Not found</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+    
+    <div class="nf">
+  <span class="eyebrow">No page at this address</span>
+  <h1>There is no room at this address.</h1>
+  <p style="margin-top:10px"><span class="url" style="font-size:14px;padding:4px 9px">/recieving</span></p>
+  <p>The address was typed or followed, and this house has no page there. Nothing was redirected — the address is left as it is so the link that brought you here can be corrected.</p>
+  <p>Did you mean <a class="link" href="#" style="font-size:13.5px">Receiving</a> <span class="mono" style="font-size:11.5px;color:var(--ink-3)">/receiving</span>?</p>
+  <div class="rooms"><a href="#"><b>Dashboard</b><small>/ · today, in one page</small></a><a href="#"><b>Notifications</b><small>/notifications · what needs a decision</small></a><a href="#"><b>Calendar</b><small>/calendar · the house&#8217;s day-book</small></a><a href="#"><b>Recommendations</b><small>/recommendations · cases, with money at stake</small></a><a href="#"><b>Orders</b><small>/orders · drafted · sealed · sent · received</small></a><a href="#"><b>Receiving</b><small>/receiving · the door</small></a><a href="#"><b>Providers</b><small>/providers · who supplies the house</small></a><a href="#"><b>Promotions</b><small>/promotions · offers pulled from mail</small></a><a href="#"><b>Vendor prices</b><small>/vendor-prices · every sighting, with its source</small></a><a href="#"><b>Inventory</b><small>/inventory · stock, par, counts</small></a><a href="#"><b>Cellar</b><small>/cellar · wines · beer · whiskey · cocktails · spirits</small></a><a href="#"><b>Receipts &amp; Credits</b><small>/receipts · to verify, to chase</small></a><a href="#"><b>Documents &amp; Reports</b><small>/documents-reports · invoices and generated reports</small></a><a href="#"><b>Reports</b><small>/reports · sales, margin, stock over time</small></a><a href="#"><b>Logs</b><small>/logs · one timeline across POS, stock, mail, agents</small></a><a href="#"><b>Team</b><small>/team · people, roles, shifts</small></a><a href="#"><b>Communications</b><small>/communications · vendor threads</small></a><a href="#"><b>Mudavym</b><small>/ask · ask the house a question · /sommelier redirects here</small></a></div>
+  <p class="quiet" style="margin-top:18px">A room you may not enter is a different door: <span class="mono">/connections</span> for a staff member answers <em>refused</em> at <span class="mono">/no-access</span>, never &#8220;not found&#8221;. A stranger who lands here signed out sees the public shell&#8217;s version of this page (ADR 0143 §1), not this one.</p>
+</div>
+    
+  </div>
+</div></div></div></div><div class="sk-label">10 · 390 — the header gains the rooms toggle (the legacy mobile top bar is deleted); the rooms open as a left sheet; the ladder is a bottom sheet with detents (F9)</div><div class="sk-row"><div class="fit" data-fit="390"><div class="mudavym phone narrow">
+  <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    <button class="hdr__menu" aria-label="Rooms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+  
+  <div class="pg">
+  <span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span>
+  <h1>Three orders wait on your seal; Kermit Lynch&#8217;s is due at the door by four.</h1>
+  <div class="pg__eyebrow"><span>Thu 17 Sep 2026</span><span>Orders</span><span>Read 14:02:11</span><span class="em">Prices in USD</span></div>
+  <div class="spine">
+    <div><div class="n">4</div><div class="l">Drafted — not sent</div></div>
+    <div><div class="n">3</div><div class="l">Awaiting your seal</div></div>
+    <div><div class="n">2</div><div class="l">Sent — no reply yet</div></div>
+    <div><div class="n">1</div><div class="l">At the door today</div></div>
+    <div><div class="n em">—</div><div class="l">Received this week — no register read</div></div>
+  </div>
+  <div class="ledger">
+    <div class="lrow h"><span>Vendor</span><span class="lines">Lines</span><span style="text-align:right">Total</span><span>State</span><span>What the price rests on</span></div>
+    <div class="lrow" data-active="true"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,910.00</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip chip--seal">agreed</span>9 of 12 lines at the agreed price; 3 at last invoice</span></div>
+    <div class="lrow"><b>Southern Glazer&#8217;s</b><span class="lines">6 lines</span><span class="money">$1,284.50</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">invoice</span>all 6 at last invoice price, 2026-09-03</span></div>
+    <div class="lrow"><b>Chambers &amp; Chambers</b><span class="lines">4 lines</span><span class="money">$642.18</span><span class="state">Awaiting seal</span><span class="prov"><span class="chip">no price</span>1 line has no price on file — the total omits it</span></div>
+    <div class="lrow"><b>Revel Wine</b><span class="lines">8 lines</span><span class="money">$2,105.00</span><span class="state">Sent 09:14 — not received by the vendor</span><span class="prov"><span class="chip">quote</span>the rep&#8217;s message of 2026-09-11</span></div>
+    <div class="lrow"><b>Kermit Lynch</b><span class="lines">12 lines</span><span class="money">$3,880.00</span><span class="state">At the door — expected before 16:00</span><span class="prov"><span class="chip chip--seal">sealed</span>seal 7f3a, 2026-09-15</span></div>
+  </div>
+  <div class="pg__foot"><span class="wm" style="font-size:12px" translate="no">Mudavym<span class="wm-stop">.</span></span><span>·</span><span>page body is a stand-in — not part of this sketch</span></div>
+</div>
+  <div style="position:absolute;left:12px;right:12px;bottom:14px;z-index:50"><div class="toast" role="status" style="width:366px">
+  <div class="toast__eyebrow"><span>Dismissed · the house confirmed</span><span class="t">14:02:11</span></div>
+  <div class="toast__line"><div class="toast__text">Reorder Chablis left the docket.</div><div class="toast__act"><button class='link'>Undo</button></div></div><div class="toast__drain"><i></i></div>
+</div></div>
+</div></div><div class="fit" data-fit="390"><div class="mudavym phone narrow">
+  <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    <button class="hdr__menu" aria-label="Rooms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Receiving</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Kadıköy, İstanbul">Sim Meyhouse</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">3</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">A</span><span class="hdr__who">Ayşe Demir</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+  
+  <div class="pg">
+  <span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span>
+  <h1>One delivery is expected before four; nothing else is at the door.</h1>
+  <div class="pg__eyebrow"><span>17.09.2026</span><span>Receiving</span><span>Read 14:02:11</span><span class="em">TRY · tr-TR</span></div>
+  <div class="spine">
+    <div><div class="n">1</div><div class="l">Expected today</div></div>
+    <div><div class="n">1</div><div class="l">Received — short</div></div>
+    <div><div class="n">0</div><div class="l">Claims promised</div></div>
+    <div><div class="n em">—</div><div class="l">Credits recovered — no register read</div></div>
+  </div>
+  <div class="ledger">
+    <div class="lrow h"><span>Vendor</span><span class="lines">Lines</span><span style="text-align:right">Order total</span><span>State</span><span>What is known</span></div>
+    <div class="lrow" data-active="true"><b>Kavaklıdere</b><span class="lines">18 lines</span><span class="money">₺12.480,00</span><span class="state">Expected 15:30</span><span class="prov"><span class="chip chip--seal">sealed</span>order sealed by Kerem, 2026-09-15</span></div>
+    <div class="lrow"><b>Doluca</b><span class="lines">16 lines</span><span class="money">₺3.150,00</span><span class="state">Received 11:02 — 14 of 16</span><span class="prov"><span class="chip">short</span>two short; the credit is not yet promised, and a promise is not money</span></div>
+    <div class="lrow"><b>Suvla</b><span class="lines">5 lines</span><span class="money">₺1.920,00</span><span class="state">Received yesterday</span><span class="prov"><span class="chip">stock</span>on the shelf — the invoice cost is not verified</span></div>
+  </div>
+  <div class="pg__foot"><span class="wm" style="font-size:12px" translate="no">Mudavym<span class="wm-stop">.</span></span><span>·</span><span>page body is a stand-in — not part of this sketch</span></div>
+</div>
+  <div class="scrim"></div><div class="sheetL">
+  <div style="display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--paper-2)">
+    <span class="hdr__mark"><svg class="" width="19" height="22" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></span><div><div style="font-size:13px;font-weight:500">Sim Meyhouse</div><div class="quiet" style="font-size:11px">Staff · Kadıköy, İstanbul</div></div>
+    <button class="link" style="margin-left:auto">Close</button></div>
+  <div style="overflow:auto;flex:1"><div class="rail__top"><a class="room room--ask" href="#"><span style="font-size:13px;color:var(--ink-2)">Ask</span><span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span><kbd class="kbd">⌘⇧K</kbd></a></div><span class="sect">The floor</span><a class="room" href="#">Dashboard</a><a class="room" href="#">Notifications</a><a class="room" href="#">Calendar</a><a class="room" href="#">Recommendations</a><span class="sect">The door</span><a class="room" href="#">Orders</a><a class="room" href="#" aria-current="page">Receiving</a><a class="room" href="#">Providers</a><a class="room" href="#">Promotions</a><a class="room" href="#">Vendor prices</a><span class="sect">The cellar</span><a class="room" href="#">Inventory</a><button class="room" style="width:100%;border-top:0;border-right:0;border-bottom:0;background:transparent;cursor:pointer;font-family:var(--sans)" data-fold-toggle="cellarfold-4377333632-receiving" aria-expanded="false">Cellar<svg class="room__chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-90deg)"><path d="m6 9 6 6 6-6"/></svg></button><div class="fold" id="cellarfold-4377333632-receiving" data-open="false"><div><a class="room room--child" href="#">Wines</a><a class="room room--child" href="#">Beer</a><a class="room room--child" href="#">Whiskey</a><a class="room room--child" href="#">Cocktails</a><a class="room room--child" href="#">Spirits</a><a class="room room--child" href="#">Non-alcoholic</a></div></div><span class="sect">The books</span><a class="room" href="#">Receipts &amp; Credits</a><a class="room" href="#">Documents &amp; Reports</a><a class="room" href="#">Reports</a><a class="room" href="#">Logs</a><span class="sect">The people</span><a class="room" href="#">Team</a><a class="room" href="#">Communications</a><div class="rail__foot"><a class="room" href="#">Settings</a><a class="room" href="#">Help</a></div></div>
+</div>
+</div></div><div class="fit" data-fit="390"><div class="mudavym phone narrow">
+  <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    <button class="hdr__menu" aria-label="Rooms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Receiving</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Kadıköy, İstanbul">Sim Meyhouse</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge hdr__badge--unknown" aria-label="The bell could not read the register"></span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">A</span><span class="hdr__who">Ayşe Demir</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+  <div class="off" style="padding:8px 12px;font-size:12px;gap:8px"><span class="off__dot"></span><span class="eyebrow">Offline 14:02</span><span>3 written here</span><button class="link">Where</button></div>
+  <div class="pg">
+  <span class="wm" style="font-size:13px" translate="no">Mudavym<span class="wm-stop">.</span></span>
+  <h1>One delivery is expected before four; nothing else is at the door.</h1>
+  <div class="pg__eyebrow"><span>17.09.2026</span><span>Receiving</span><span>Read 14:02:11</span><span class="em">TRY · tr-TR</span></div>
+  <div class="spine">
+    <div><div class="n">1</div><div class="l">Expected today</div></div>
+    <div><div class="n">1</div><div class="l">Received — short</div></div>
+    <div><div class="n">0</div><div class="l">Claims promised</div></div>
+    <div><div class="n em">—</div><div class="l">Credits recovered — no register read</div></div>
+  </div>
+  <div class="ledger">
+    <div class="lrow h"><span>Vendor</span><span class="lines">Lines</span><span style="text-align:right">Order total</span><span>State</span><span>What is known</span></div>
+    <div class="lrow" data-active="true"><b>Kavaklıdere</b><span class="lines">18 lines</span><span class="money">₺12.480,00</span><span class="state">Expected 15:30</span><span class="prov"><span class="chip chip--seal">sealed</span>order sealed by Kerem, 2026-09-15</span></div>
+    <div class="lrow"><b>Doluca</b><span class="lines">16 lines</span><span class="money">₺3.150,00</span><span class="state">Received 11:02 — 14 of 16</span><span class="prov"><span class="chip">short</span>two short; the credit is not yet promised, and a promise is not money</span></div>
+    <div class="lrow"><b>Suvla</b><span class="lines">5 lines</span><span class="money">₺1.920,00</span><span class="state">Received yesterday</span><span class="prov"><span class="chip">stock</span>on the shelf — the invoice cost is not verified</span></div>
+  </div>
+  <div class="pg__foot"><span class="wm" style="font-size:12px" translate="no">Mudavym<span class="wm-stop">.</span></span><span>·</span><span>page body is a stand-in — not part of this sketch</span></div>
+</div>
+  <div class="scrim"></div><div class="sheetB"><div class="sheetB__grip"></div>
+  <div class="pop__head" style="padding-top:8px"><span class="eyebrow">3 records · the house last answered 14:01:48</span><h2 class="pop__title">Written here, not on the house</h2></div>
+  <div class="ladder" style="flex-wrap:wrap;gap:6px 0"><span data-on="true">written here</span><i></i><span>sent</span><i></i><span>received</span><i></i><span>sealed</span></div>
+  <div class="pop__body">
+    <div class="item"><span class="item__text"><span class="item__label">Door count — Kavaklıdere, 18 of 18</span><span class="item__sub">14:03 · on this phone</span></span><span class="rung"><b>written here</b>1 of 4</span></div>
+    <div class="item"><span class="item__text"><span class="item__label">Note on the Doluca delivery</span><span class="item__sub">14:05</span></span><span class="rung"><b>written here</b>1 of 4</span></div>
+    <div class="item"><span class="item__text"><span class="item__label">Dismiss: Reorder Öküzgözü</span><span class="item__sub">14:06 · on this device only</span></span><span class="rung"><b>written here</b>1 of 4</span></div>
+  </div>
+  <div class="pop__foot">Nothing here is confirmed. A seal is never queued.</div></div>
+</div></div></div><div class="sk-label">11 · 390 — the shared pieces at phone width: the failure sheet, the stale-chunk reload, a real 404, and the 12 s loader state<small>Built once, docked three ways — drawn once at 390 here since the chrome around them is shared.</small></div><div class="sk-row"><div class="fit" data-fit="390"><div class="mudavym phone narrow">
+  <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    <button class="hdr__menu" aria-label="Rooms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+  
+  <div class="fail" role="alert">
+  <span class="eyebrow">The page could not be drawn · /orders · 14:07:12</span>
+  <h1>Orders failed to draw.</h1>
+  <p>Anything the house had already confirmed is kept on the house. Anything you were typing on this page is not — it was never sent. The rooms, the bell and the search still work; only this page is down.</p>
+  <div class="known">
+    <div><span>Error id</span><span>evt_9f3a2c1b<button class="link" style="margin-left:8px;font-size:11px">Copy</button></span></div>
+    <div><span>Build</span><span>2026-09-17 · 60ed83a7</span></div>
+    <div><span>Route · house</span><span>/orders · Larkspur &amp; Vine (en-US)</span></div>
+    <div><span>What happened</span><span>TypeError: cannot read &#8216;lines&#8217; of undefined — LedgerRow.tsx:88</span></div>
+  </div>
+  <div class="acts">
+    <button class="btn btn--seal">Try again</button>
+    <button class="btn">Go to Dashboard</button>
+    <a class="link" href="mailto:support@mudavym.com">Write to support@mudavym.com with these readings</a>
+  </div>
+</div>
+  
+</div></div><div class="fit" data-fit="390"><div class="mudavym phone narrow">
+  <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    <button class="hdr__menu" aria-label="Rooms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+  
+  <div class="fail">
+  <span class="eyebrow">A newer Mudavym was published · /orders · 14:07:12</span>
+  <h1>This page is from before the last publish.</h1>
+  <p>It is being reloaded once, keeping your place at <span class="url mono">/orders</span>. If it does not draw after that, the failure sheet says what is known — it never reloads twice.</p>
+  <div class="acts"><span class="quiet mono">reloading · 1 of 1</span></div>
+</div>
+  
+</div></div><div class="fit" data-fit="390"><div class="mudavym phone narrow">
+  <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    <button class="hdr__menu" aria-label="Rooms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+  
+  <div class="nf">
+  <span class="eyebrow">No page at this address</span>
+  <h1>There is no room at this address.</h1>
+  <p style="margin-top:10px"><span class="url" style="font-size:14px;padding:4px 9px">/recieving</span></p>
+  <p>The address was typed or followed, and this house has no page there. Nothing was redirected — the address is left as it is so the link that brought you here can be corrected.</p>
+  <p>Did you mean <a class="link" href="#" style="font-size:13.5px">Receiving</a> <span class="mono" style="font-size:11.5px;color:var(--ink-3)">/receiving</span>?</p>
+  <div class="rooms"><a href="#"><b>Dashboard</b><small>/ · today, in one page</small></a><a href="#"><b>Notifications</b><small>/notifications · what needs a decision</small></a><a href="#"><b>Calendar</b><small>/calendar · the house&#8217;s day-book</small></a><a href="#"><b>Recommendations</b><small>/recommendations · cases, with money at stake</small></a><a href="#"><b>Orders</b><small>/orders · drafted · sealed · sent · received</small></a><a href="#"><b>Receiving</b><small>/receiving · the door</small></a><a href="#"><b>Providers</b><small>/providers · who supplies the house</small></a><a href="#"><b>Promotions</b><small>/promotions · offers pulled from mail</small></a><a href="#"><b>Vendor prices</b><small>/vendor-prices · every sighting, with its source</small></a><a href="#"><b>Inventory</b><small>/inventory · stock, par, counts</small></a><a href="#"><b>Cellar</b><small>/cellar · wines · beer · whiskey · cocktails · spirits</small></a><a href="#"><b>Receipts &amp; Credits</b><small>/receipts · to verify, to chase</small></a><a href="#"><b>Documents &amp; Reports</b><small>/documents-reports · invoices and generated reports</small></a><a href="#"><b>Reports</b><small>/reports · sales, margin, stock over time</small></a><a href="#"><b>Logs</b><small>/logs · one timeline across POS, stock, mail, agents</small></a><a href="#"><b>Team</b><small>/team · people, roles, shifts</small></a><a href="#"><b>Communications</b><small>/communications · vendor threads</small></a><a href="#"><b>Mudavym</b><small>/ask · ask the house a question · /sommelier redirects here</small></a></div>
+  <p class="quiet" style="margin-top:18px">A room you may not enter is a different door: <span class="mono">/connections</span> for a staff member answers <em>refused</em> at <span class="mono">/no-access</span>, never &#8220;not found&#8221;. A stranger who lands here signed out sees the public shell&#8217;s version of this page (ADR 0143 §1), not this one.</p>
+</div>
+  
+</div></div><div class="fit" data-fit="390"><div class="mudavym phone narrow">
+  <header class="hdr" role="banner" aria-label="House header">
+  <div class="hdr__in">
+    <button class="hdr__menu" aria-label="Rooms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="hdr__left">
+      
+      <a class="hdr__mark" href="#" aria-label="Mudavym — dashboard"><svg class="" width="20" height="24" viewBox="0 0 483 574" aria-hidden="true"><g fill="currentColor"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg></a>
+      <span class="hdr__rule"></span>
+      <span class="hdr__page">Orders</span>
+    </div>
+    <button class="hdr__search" aria-label="Search or act — open the command palette"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span class="hdr__searchtext">Search or act</span><kbd class="kbd hdr__chord">⌘K</kbd></button>
+    <div class="hdr__right">
+      <span class="hdr__house" title="Oakland, CA">Larkspur &amp; Vine</span>
+      <button class="hdr__btn" aria-label="Notifications"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="hdr__badge">12</span></button>
+      <button class="hdr__btn hdr__btn--user" aria-label="Account menu"><span class="hdr__avatar">M</span><span class="hdr__who">Maya Ferrante</span><svg class="hdr__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</header>
+  
+  <div style="padding:32px 18px"><span class="eyebrow">The page did not arrive · 12 s</span>
+      <h1 style="font-family:var(--serif);font-weight:500;font-size:19px;margin:8px 0 0;letter-spacing:-.01em">Orders is still on its way.</h1>
+      <p class="quiet" style="margin:8px 0 0">The house has not answered. Nothing is shown in its place.</p>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn--seal">Try again</button><button class="btn">Go to Dashboard</button></div></div>
+  
+</div></div></div><div class="sk-label">12 · Paper, declared — the one escape (ADR 0104 D9): the toast on a paper surface keeps its anatomy</div>
+<div class="sk-row"><div class="mudavym" data-ground="paper" style="padding:24px;border:1px solid #b6ad9e;width:100%;max-width:800px"><div class="toast" role="status">
+  <div class="toast__eyebrow"><span>Dismissed · the house confirmed</span><span class="t">14:02:11</span></div>
+  <div class="toast__line"><div class="toast__text">Reorder Chablis left the docket, house-wide.<span class="toast__sub">Undo brings it back for everyone in the house.</span></div><div class="toast__act"><button class="link">Undo</button></div></div><div class="toast__drain"><i></i></div>
+</div></div></div>
+<p class="sk-note">This cell is pinned to the paper ground (ADR 0104 D9) to prove the tokens hold on the declared exception.</p>
+<p class="sk-foot">Sketch 106 · A. Fonts load from Google for the drawing; the product self-hosts them (ADR 0149 row 9). Icons: none — this direction has no glyph set to maintain. Motion used: ink 160 (hover), settle 320 (the cellar fold), tuck 300 (the pass, the toast stack), the toast&#8217;s 8 s drain is linear like pour. Reduced motion collapses every transition.</p>
+<script>
+(function(){
+  function fit(){
+    var vw = document.documentElement.clientWidth;
+    document.querySelectorAll('[data-fit]').forEach(function(el){
+      var w = +el.getAttribute('data-fit');
+      var avail = vw >= w + 24 ? w : vw - 24;
+      var s = Math.min(1, avail / w);
+      el.style.zoom = s;
+    });
+  }
+  fit(); window.addEventListener('resize', fit);
+  // folds: settle, 320ms (lib/mudavym/motion.ts) — grid-template-rows 0fr→1fr
+  document.querySelectorAll('[data-fold-toggle]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var t = document.getElementById(b.getAttribute('data-fold-toggle'));
+      if(!t) return; var open = t.getAttribute('data-open') === 'true';
+      t.setAttribute('data-open', open ? 'false' : 'true'); b.setAttribute('aria-expanded', open ? 'false' : 'true');
+    });
+  });
+})();
+</script>
+</body>
+</html>

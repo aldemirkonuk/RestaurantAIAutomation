@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 112 · Direction B — The Desk</title>
+<!-- The product self-hosts its faces; the sketch loads them from Google Fonts only so it renders from file://. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* sketch chrome — not the product */
+html, body { margin: 0; background: #d9d4cb; color: #2a2620; font-family: 'DM Sans', system-ui, sans-serif; }
+.sk-wrap { max-width: 1440px; margin: 0 auto; padding: 24px 20px 80px; }
+.sk-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; margin-bottom: 18px; }
+.sk-head h1 { margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 500; font-size: 22px; letter-spacing: -0.01em; }
+.sk-head p { margin: 0; font-size: 13px; color: #5a5348; max-width: 900px; }
+.sk-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #6b6356; margin: 34px 0 10px; display: flex; gap: 12px; align-items: baseline; }
+.sk-label small { letter-spacing: 0; text-transform: none; font-size: 12px; color: #7a7266; }
+.sk-note { font-size: 12.5px; color: #5a5348; max-width: 900px; margin: 0 0 12px; line-height: 1.5; }
+.sk-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+.sk-frame { border: 1px solid rgba(0,0,0,.18); box-shadow: 0 1px 0 rgba(255,255,255,.5) inset; }
+.sk-phone { width: 390px; box-sizing: border-box; border-radius: 28px; border: 6px solid #2a2620; overflow: hidden; background: #15130F; flex: none; }
+.sk-phone .vp-page { min-height: 760px; }
+
+/* Mudavym tokens — Warm Charcoal column verbatim (ADR 0042, ADR 0138) */
+.mudavym, .mudavym[data-ground="charcoal"] {
+  --seal: #5FB0BC; --seal-deep: #7DC3CD; --seal-tint: rgba(95,176,188,.14); --seal-ring: rgba(95,176,188,.38);
+  --paper-0: #15130F; --paper-1: #1D1813; --paper-2: #262019;
+  --ink-1: #EFE7D9; --ink-2: #C0B6A5; --ink-3: #8E8576; --ink-4: #ABA294;
+  /* no movement hue — the system defines none; movement is a sign and a word */
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif; --sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif; --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --settle: 320ms cubic-bezier(0.16,1,0.3,1); --ink-t: 160ms cubic-bezier(0.16,1,0.3,1); --turn: 420ms cubic-bezier(0.32,0.72,0,1);
+  color-scheme: dark;
+}
+.mudavym[data-ground="paper"] { --seal: #1a5e6b; --seal-deep: #14515c; --seal-tint: rgba(26,94,107,.1); --seal-ring: rgba(26,94,107,.32); --paper-0: #fffdf8; --paper-1: #f3efe6; --paper-2: #eae4d8; --ink-1: #211c16; --ink-2: #4f473c; --ink-3: #7c7365; --ink-4: #665d50; color-scheme: light; }
+@media (prefers-reduced-motion: reduce) { .mudavym * { transition-duration: 0ms !important; animation: none !important; } }
+
+.vp-page { background: var(--paper-0); color: var(--ink-1); font-family: var(--sans); font-size: 13px; line-height: 1.45; container-type: inline-size; container-name: page; min-height: 100%; }
+.vp-in { max-width: 1240px; margin: 0 auto; padding: 22px 16px 48px; }
+.vp-chrome { display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 16px; border-bottom: 1px solid var(--paper-2); font-size: 12px; color: var(--ink-2); }
+.vp-chrome .mark { width: 20px; height: 24px; display: inline-block; }
+.vp-chrome .house { font-weight: 500; color: var(--ink-1); }
+.vp-chrome .sp { flex: 1; }
+.vp-chrome .kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--paper-2); border-radius: 4px; padding: 1px 5px; color: var(--ink-3); }
+.vp-chrome .bell { width: 8px; height: 8px; border-radius: 50%; background: var(--seal); display: inline-block; margin-left: 4px; }
+.vp-wordmark { font-family: var(--serif); font-weight: 600; letter-spacing: -0.02em; font-size: 13px; line-height: 1; color: var(--ink-1); text-decoration: none; }
+.vp-wordmark b { color: var(--seal); font-weight: 600; }
+.vp-spine { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.vp-spine nav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+.vp-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 1px solid var(--paper-2); border-radius: 7px; background: var(--paper-1); color: var(--ink-2); font: inherit; font-size: 12.5px; cursor: pointer; text-decoration: none; transition: border-color var(--ink-t), background-color var(--ink-t), color var(--ink-t); white-space: nowrap; }
+.vp-btn:hover { border-color: var(--seal-ring); color: var(--ink-1); }
+.vp-btn[data-on="true"] { color: var(--ink-1); border-color: var(--ink-3); }
+.vp-btn.primary { background: var(--seal); color: var(--paper-0); border-color: var(--seal); font-weight: 500; }
+.vp-btn .n { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+.vp-crumb { margin: 20px 0 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.vp-h1 { margin: 0; font-family: var(--serif); font-size: 40px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.05; color: var(--ink-1); }
+.vp-h1 b { color: var(--seal); font-weight: 600; }
+.vp-standing { margin: 8px 0 0; font-family: var(--serif); font-style: italic; font-size: 15.5px; color: var(--ink-2); max-width: 820px; line-height: 1.45; }
+.vp-standing .src { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-left: 6px; }
+.vp-rule { border: 0; border-top: 1px solid var(--ink-1); border-bottom: 1px solid var(--ink-1); height: 3px; opacity: .5; margin: 22px 0 0; }
+.vp-rule-thin { border: 0; border-top: 1px solid var(--paper-2); margin: 0; }
+.vp-h2 { margin: 0; font-family: var(--serif); font-size: 20px; font-weight: 500; letter-spacing: -0.01em; color: var(--ink-1); }
+.vp-h2 small { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: 0; margin-left: 10px; font-weight: 400; }
+.vp-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+.vp-quiet { color: var(--ink-3); }
+.vp-num { font-family: var(--mono); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
+.pct { font-family: var(--mono); font-weight: 500; color: var(--ink-1); white-space: nowrap; }
+.pct.down::after { content: ' down'; } .pct.up::after { content: ' up'; }
+.pct.down::after, .pct.up::after { font-family: var(--sans); font-weight: 400; color: var(--ink-2); font-size: .92em; }
+/* the signed figure never wraps; a sentence in its place may */
+.pct.none { color: var(--ink-3); font-weight: 400; font-family: var(--serif); font-style: italic; white-space: normal; }
+
+/* ── the desk: list left, lanes right ─────────────────────────────── */
+.dk { margin-top: 18px; display: grid; grid-template-columns: 380px 1fr; gap: 0; border: 1px solid var(--paper-2); border-radius: 12px; overflow: hidden; background: var(--paper-0); }
+/* the list is bound to the lanes' height and scrolls inside it: height 0 + min-height 100% keeps
+   the aside from setting the row height, so there is no empty block above the footnote */
+.dk-list { border-right: 1px solid var(--paper-2); background: var(--paper-1); display: flex; flex-direction: column; height: 0; min-height: 100%; overflow: hidden; box-sizing: border-box; }
+.dk-list ul { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.dk-list .head { padding: 14px 14px 10px; border-bottom: 1px solid var(--paper-2); }
+.dk-list .head h2 { margin: 0; font-family: var(--serif); font-size: 17px; font-weight: 500; }
+.dk-list .head h2 small { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-left: 8px; font-weight: 400; }
+.dk-list .head .scope { margin: 4px 0 0; font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+.dk-list .head .scope b { color: var(--ink-2); font-weight: 500; }
+.dk-list .filt { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
+.dk-list .filt .vp-btn { height: 26px; font-size: 11.5px; padding: 0 8px; }
+.dk-list .find { margin-top: 10px; height: 34px; border: 1px solid var(--paper-2); border-radius: 7px; background: var(--paper-0); display: flex; align-items: center; padding: 0 10px; color: var(--ink-3); font-family: var(--serif); font-style: italic; font-size: 13px; }
+.dk-list ul { list-style: none; margin: 0; padding: 0; }
+/* name and movement stack in the first column; the two-line price spans both rows beside them */
+.dk-list li { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 2px 12px; padding: 10px 14px; border-bottom: 1px solid var(--paper-2); cursor: pointer; transition: background-color var(--ink-t); align-items: start; }
+.dk-list li:hover { background: var(--paper-0); }
+.dk-list li[data-on="true"] { background: var(--seal-tint); box-shadow: inset 3px 0 0 var(--seal); }
+.dk-list li[data-on="true"] :is(small, .m, .m i, .pct.none) { color: var(--ink-2); }   /* --ink-3 on the tint measures ~4:1 at 10–11px */
+.dk-list li .b { font-family: var(--serif); font-size: 14.5px; line-height: 1.2; grid-column: 1; grid-row: 1; }
+.dk-list li .paid { font-family: var(--mono); font-size: 14px; font-weight: 500; text-align: right; grid-column: 2; grid-row: 1 / 3; }
+.dk-list li .paid small { display: block; font-size: 10px; color: var(--ink-3); font-weight: 400; }
+.dk-list li .m { grid-column: 1; grid-row: 2; font-size: 11px; color: var(--ink-3); display: flex; gap: 8px; flex-wrap: wrap; }
+.dk-list li .m + .m { grid-row: 3; }
+.dk-list li .m .pct { font-size: 11px; }
+.dk-list li .m i { font-style: normal; color: var(--ink-3); }
+.dk-list .foot { padding: 10px 14px 12px; font-size: 11.5px; color: var(--ink-3); line-height: 1.45; border-top: 1px solid var(--paper-2); flex: none; }
+/* phone only: the list collapses to the chosen row and this line */
+.dk-list li.showall { display: none; cursor: pointer; }
+.dk-list li.showall .b { font-family: var(--sans); font-size: 12.5px; color: var(--seal); }
+.dk-list li.showall .m { color: var(--ink-3); }
+
+.dk-main { padding: 16px 18px 20px; min-width: 0; }
+.dk-head { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: flex-end; }
+.dk-head .name { font-family: var(--serif); font-size: 26px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.1; }
+.dk-head .key { margin-top: 5px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.dk-head .key b { color: var(--ink-2); font-weight: 500; }
+.dk-head .id { margin-top: 5px; font-size: 12px; color: var(--ink-3); }
+.dk-head .id a { color: var(--seal); text-decoration: none; border-bottom: 1px solid var(--seal-ring); }
+.dk-head .acts { margin-left: auto; display: flex; gap: 6px; }
+
+.lanes { margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; position: relative; }
+.lane { padding: 0 14px; border-left: 1px dashed var(--ink-3); min-width: 0; }
+.lane:first-child { padding-left: 0; border-left: 0; }
+.lane .lh { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.lane .lh h3 { margin: 0; font-family: var(--serif); font-size: 15px; font-weight: 500; }
+/* the badge says what is in the lane in words; the ADR 0117 class letter lives in its title tooltip */
+.lane .lh .cls { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--paper-2); color: var(--ink-3); cursor: help; }
+.lane .lh .cls.q { color: var(--ink-2); border-color: var(--ink-3); }
+.lane .fig { margin-top: 8px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.lane .fig .v { font-family: var(--mono); font-size: 26px; font-weight: 500; letter-spacing: -0.01em; line-height: 1; }
+.lane .fig .v.seal { color: var(--seal); }
+.lane .fig .u { font-size: 11px; color: var(--ink-3); }
+.lane .fig .refuse { font-family: var(--serif); font-style: italic; font-size: 14px; color: var(--ink-2); }
+.lane .why { margin: 6px 0 0; font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+.lane .why b { color: var(--ink-2); font-weight: 500; }
+.lane .rung { margin-top: 10px; padding: 10px 11px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1); cursor: pointer; transition: border-color var(--ink-t); }
+.lane .rung:hover { border-color: var(--seal-ring); }
+.lane .rung .r1 { display: flex; align-items: baseline; gap: 8px; }
+.lane .rung .r1 .v { font-weight: 500; }
+.lane .rung .r1 .per { margin-left: auto; font-family: var(--mono); font-size: 15px; font-weight: 500; }
+.lane .rung .r1 .per.seal { color: var(--seal); }
+.lane .rung .r2 { margin-top: 3px; font-size: 11px; color: var(--ink-3); display: flex; gap: 6px; flex-wrap: wrap; }
+.lane .rung .r2 .t { font-family: var(--mono); }
+.lane .rung .r3 { margin-top: 5px; font-size: 11.5px; color: var(--ink-2); line-height: 1.4; }
+.lane .rung .r3 i { font-style: normal; color: var(--ink-3); }
+.lane .rung .r4 { margin-top: 5px; font-size: 11px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.lane .rung .r4 .pct { font-size: 11px; }
+.lane .rung .r4 .n { color: var(--ink-3); }
+/* struck by strike and colour, not opacity — the sentence saying why stays at --ink-2 */
+.lane .rung.out .v, .lane .rung.out .per { text-decoration: line-through; color: var(--ink-3); }
+.lane .rung.out .r3 { font-family: var(--serif); font-style: italic; color: var(--ink-2); }
+.lane .rung .lnk { color: var(--seal); font-size: 11px; }
+.lane .rung .landed { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--ink-3); color: var(--ink-2); }
+.lane .rung .landed.agreed { border-style: dashed; color: var(--ink-3); }
+.lane .empty { margin-top: 10px; padding: 12px 11px; border: 1px dashed var(--paper-2); border-radius: 8px; font-family: var(--serif); font-style: italic; font-size: 13px; color: var(--ink-2); line-height: 1.45; }
+.lanes-note { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--paper-2); font-size: 11.5px; color: var(--ink-3); display: flex; gap: 14px; flex-wrap: wrap; }
+.before { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--paper-2); border-radius: 10px; background: var(--paper-1); }
+.before h3 { margin: 0; font-family: var(--serif); font-size: 15px; font-weight: 500; }
+.before p { margin: 5px 0 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+.before p b { color: var(--ink-1); font-weight: 500; }
+.before .rule { margin-top: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+
+.vp-index { margin-top: 18px; border: 1px dashed var(--ink-3); border-radius: 10px; padding: 12px 14px; }
+.vp-index header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.vp-index header h3 { margin: 0; font-family: var(--serif); font-size: 15px; font-weight: 500; }
+.vp-index header .rule { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+.vp-index p { margin: 6px 0 0; font-size: 12px; color: var(--ink-2); }
+.vp-index p .vp-num { color: var(--ink-1); }
+
+/* mobile */
+@container page (max-width: 700px) {
+  .vp-in { padding: 14px 14px 40px; }
+  .vp-chrome { padding: 0 14px; gap: 10px; white-space: nowrap; }
+  .vp-chrome .hide-m { display: none; }
+  .vp-h1 { font-size: 30px; } .vp-standing { font-size: 14px; }
+  .vp-h2 small { display: block; margin: 4px 0 0; line-height: 1.5; }
+  .dk { grid-template-columns: 1fr; border: 0; border-radius: 0; background: transparent; }
+  .dk-list { border-right: 0; border: 1px solid var(--paper-2); border-radius: 10px; height: auto; min-height: 0; overflow: visible; }
+  .dk-list ul { overflow: visible; max-height: none; }
+  /* the chosen bottle is the first screen: every other row folds behind "Show all" so the lanes start at once */
+  .dk-list li:not([data-on="true"]):not(.showall) { display: none; }
+  .dk-list li.showall { display: grid; }
+  .dk-list .foot { display: none; }
+  .dk-main { padding: 16px 0 0; }
+  .dk-head .name { font-size: 22px; }
+  .dk-head .acts { margin-left: 0; }
+  .lanes { grid-template-columns: 1fr; gap: 14px; }
+  .lane { padding: 12px 0 0; border-left: 0; border-top: 1px dashed var(--ink-3); }
+  .lane:first-child { border-top: 0; padding-top: 0; }
+}
+
+/* overlays — ADR 0112 numbers from components/mudavym/sheet.css */
+.ov-stage { position: relative; height: 840px; overflow: hidden; background: var(--paper-0); }
+.ov-stage .under { position: absolute; inset: 0; padding: 22px 16px; opacity: .55; }
+.ov-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.5); }
+/* sheet width 100% max 440 (sheet.css:107-116); panel 10vh / min(620, 100%-32) / radius 14 (sheet.css:141-153); popover width 320 (Sheet.tsx:282), radius 14 */
+.ov-sheet { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; max-width: 440px; box-sizing: border-box; background: var(--paper-0); color: var(--ink-1); border-left: 1px solid var(--paper-2); box-shadow: -18px 0 48px rgba(23,19,15,.14); overflow: auto; font-family: var(--sans); }
+.ov-panel { position: absolute; left: 50%; top: 10vh; transform: translateX(-50%); width: min(620px, 100% - 32px); background: var(--paper-0); color: var(--ink-1); border: 1px solid var(--paper-2); border-radius: 14px; box-shadow: 0 24px 64px rgba(0,0,0,.4); font-family: var(--sans); container-type: inline-size; }
+.ov-pop { position: absolute; background: var(--paper-0); color: var(--ink-1); border: 1px solid var(--paper-2); border-radius: 14px; box-shadow: 0 12px 32px rgba(0,0,0,.35); width: 320px; max-width: calc(100% - 36px); font-family: var(--sans); overflow: hidden; }
+/* phone: full-width sheet; the panel becomes a bottom-anchored sheet with a grabber and detents (sketch 103) */
+.ov-stage.phone { height: 760px; }
+.ov-stage.phone .ov-sheet { max-width: 100%; border-left: 0; }
+.ov-stage.phone .ov-panel { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; max-height: 88%; border-radius: 14px 14px 0 0; border-bottom: 0; display: flex; flex-direction: column; box-sizing: border-box; }
+.ov-stage.phone .ov-panel::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--ink-3); margin: 8px auto 0; flex: none; }
+.ov-stage.phone .ov-panel .ov-head { padding-top: 12px; flex: none; }
+.ov-stage.phone .ov-panel .ov-body { overflow: auto; flex: 1; min-height: 0; }
+.ov-stage.phone .ov-panel .ov-foot { flex: none; }
+.ov-stage.phone .ov-form { grid-template-columns: 1fr; }
+.ov-stage.phone .detent { position: absolute; left: 0; right: 0; top: 12%; border-top: 1px dashed var(--ink-3); opacity: .6; }
+.ov-stage.phone .detent span { position: absolute; right: 12px; top: -16px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.ov-head { padding: 18px 22px 12px; border-bottom: 1px solid var(--paper-2); display: flex; align-items: baseline; gap: 12px; }
+.ov-head .eyebrow { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.ov-head h2 { margin: 3px 0 0; font-family: var(--serif); font-size: 20px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; }
+.ov-head .close { margin-left: auto; color: var(--ink-2); font-size: 12.5px; white-space: nowrap; border-bottom: 1px solid var(--paper-2); }
+.ov-body { padding: 14px 22px 22px; font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+.ov-body h4 { margin: 18px 0 6px; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.ov-body h4:first-child { margin-top: 0; }
+.ov-body .link { color: var(--seal); text-decoration: none; border-bottom: 1px solid var(--seal-ring); }
+.ov-drawer .dec { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 9px 0; border-bottom: 1px solid var(--paper-2); }
+.ov-drawer .dec .a { color: var(--ink-1); }
+.ov-drawer .dec .a b { font-weight: 500; }
+.ov-drawer .dec .m { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+.ov-drawer .dec .undo { color: var(--seal); font-size: 11.5px; align-self: start; }
+.ov-drawer .dec .undo.none { color: var(--ink-3); font-family: var(--serif); font-style: italic; font-size: 12px; }
+.ov-drawer .queue { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1); }
+.ov-drawer .queue .q { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--paper-2); }
+.ov-drawer .queue .q:first-of-type { border-top: 0; }
+.ov-drawer .queue .q .m { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+.ov-drawer .queue .q .act { margin-left: auto; color: var(--seal); white-space: nowrap; font-size: 11.5px; }
+.ov-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.ov-form .f { display: flex; flex-direction: column; gap: 5px; }
+.ov-form .f.wide { grid-column: 1 / -1; }
+.ov-form label { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.ov-form .in { min-height: 38px; box-sizing: border-box; border: 1px solid var(--paper-2); border-radius: 7px; background: var(--paper-1); padding: 7px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--ink-1); font-size: 13px; }
+@container (max-width: 480px) { .ov-form { grid-template-columns: 1fr; } }
+.ov-form .in.mono { font-family: var(--mono); }
+.ov-form .in .ph { color: var(--ink-3); font-style: italic; font-family: var(--serif); }
+.ov-form .in .tail { margin-left: auto; color: var(--ink-3); font-size: 11px; }
+.ov-form .in.confirm { border-color: var(--seal-ring); }
+.ov-form .hint { font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+.ov-form .hint b { color: var(--ink-2); font-weight: 500; }
+.ov-form .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.ov-form .seg span { border: 1px solid var(--paper-2); border-radius: 6px; padding: 5px 9px; font-size: 12px; color: var(--ink-2); }
+.ov-form .seg span[data-on="true"] { border-color: var(--ink-3); color: var(--ink-1); }
+.ov-foot { padding: 12px 22px 18px; border-top: 1px solid var(--paper-2); display: flex; align-items: center; gap: 10px; }
+.ov-foot .note { font-size: 11.5px; color: var(--ink-3); flex: 1; line-height: 1.45; }
+.ov-pop .row { padding: 9px 12px; border-bottom: 1px solid var(--paper-2); font-size: 12.5px; display: flex; justify-content: space-between; gap: 10px; }
+.ov-pop .row:last-child { border-bottom: 0; }
+.ov-pop .row[data-on="true"] { background: var(--seal-tint); }
+.ov-pop .row .n { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-align: right; }
+.ov-pop .row.note { display: block; font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+
+/* states */
+.st-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.st { background: var(--paper-0); color: var(--ink-1); font-family: var(--sans); border: 1px solid rgba(0,0,0,.18); padding: 16px; min-height: 300px; font-size: 12.5px; line-height: 1.5; }
+.st .tag { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.st h3 { margin: 8px 0 6px; font-family: var(--serif); font-size: 17px; font-weight: 500; line-height: 1.2; }
+.st p { margin: 0 0 8px; color: var(--ink-2); }
+.st .verbatim { font-family: var(--mono); font-size: 11px; color: var(--ink-1); border-left: 2px solid var(--ink-3); padding: 4px 8px; margin: 8px 0; overflow-wrap: anywhere; }
+.st .ph { height: 10px; border-radius: 3px; background: var(--paper-2); margin: 8px 0; }
+.st .ph.s { width: 60%; } .st .ph.m { width: 80%; }
+.st .act { color: var(--seal); }
+.st .cap { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+@media (max-width: 1100px) { .st-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .st-grid { grid-template-columns: 1fr; } .sk-row { flex-direction: column; } .sk-row > * { width: 100%; max-width: 100%; box-sizing: border-box; flex-basis: auto; } .sk-phone { width: 100%; max-width: 390px; } }
+</style>
+</head>
+<body>
+<div class="sk-wrap">
+  <div class="sk-head">
+    <h1>Sketch 112 · Direction B — The Desk</h1>
+    <p>Two panes. Left, the house's own bottles that have sightings — the register's real contents, not a library search. Right, the chosen bottle in three lanes by comparison class: own paper, quoted to this house, public pages. Each lane has its own figure and its own rule; there is no figure across lanes. Trend is per vendor. Example data, not a tenant.</p>
+  </div>
+
+  <div class="sk-label">1 · The page at desktop width <small>Harbor &amp; Vine, Brooklyn — USD house, manager signed in (Ayşe Demir)</small></div>
+  <p class="sk-note">Reads: the standing line from <code>identity/status</code> + <code>shop-sweep/status</code>; the left list is the <em>new</em> "bottles with sightings" aggregate (missing read 3 in the README) — its movement is two-way and its own rule, not <code>below-average</code>, which returns drops only; the lanes from <code>GET /vendor-intel/compare</code> filtered by class; "Before you order" is a <em>new</em> client function — not <code>beforeYouOrder()</code> (<code>vp-ladder.ts:120-139</code> on <code>origin/feat/mudavym-new-pages</code>), which compares with the pooled consensus this desk never draws; the posted-list register from <code>price-index/me</code> + <code>commodity-index/me</code> (ADR 0126). Every figure is derived from the drawn rungs — the working is in HTML comments.</p>
+  <div class="sk-frame">
+  <div class="mudavym vp-page" id="stage" data-ground="charcoal">
+    <div class="vp-chrome">
+      <svg class="mark" viewBox="0 0 483 574" aria-hidden="true"><path d="M60 520V60h70l112 250L354 60h69v460h-68V210L263 420h-42L128 210v310z" fill="currentColor"/></svg>
+      <span class="house">Harbor &amp; Vine</span><span class="vp-quiet hide-m">Brooklyn</span>
+      <span class="sp"></span>
+      <span class="kbd">⌘K</span><span class="vp-quiet hide-m">Ask the book</span>
+      <span class="vp-quiet" style="margin-left:14px">Bell<span class="bell"></span></span>
+      <span class="vp-quiet" style="margin-left:14px">Ayşe D.</span>
+    </div>
+    <div class="vp-in">
+      <header class="vp-spine">
+        <a class="vp-wordmark" href="#">Mudavym<b>.</b></a>
+        <nav aria-label="Where this register is reached from">
+          <a class="vp-btn" href="#">Cellar</a><a class="vp-btn" href="#">Providers</a><a class="vp-btn" href="#">Receipts</a><a class="vp-btn" href="#" data-on="true">Vendor prices</a>
+        </nav>
+      </header>
+      <p class="vp-crumb">What the house pays</p>
+      <h1 class="vp-h1">Vendor prices<b>.</b></h1>
+      <p class="vp-standing">41 bottles have been priced to this house — 1,284 sightings, from receipts you verified, orders you confirmed, and prices recorded by hand. 6 of the 41 have never been on your own paper; you have only been quoted. The site sweep last read 6 public pages 8 days ago.</p>
+
+      <div class="dk">
+        <aside class="dk-list" aria-label="Bottles with sightings">
+          <div class="head">
+            <h2>Bottles with sightings<small>41</small></h2>
+            <p class="scope">Only bottles <b>this house has been priced on</b>. A bottle no vendor has ever quoted is not here; it arrives with its first receipt, order or recorded price.</p>
+            <!-- List movement: newest admitted quote vs the mean of the earlier admitted quotes in 30 days, at least 5, two-way.
+                 Tempier: newest 15 Sep feed 31.90; earlier admitted 18 Aug 31.40 · 22 Aug 31.60 · 1 Sep 28.50 · 4 Sep 30.20 · 13 Sep 29.80 (the 2 Sep 19.90 is struck) -> mean 30.30 -> +5.3%; n 6 admitted of 7.
+                 "Moved this week" = newest sighting within 7 days and the rule passed: Tempier, Ridge, La Gitana = 3. Skipped 38 = 24 no sighting within 7 days + 13 fewer than 5 + 1 two currencies (Vietti). 3 + 38 = 41. -->
+            <div class="filt"><span class="vp-btn" data-on="true">All <span class="n">41</span></span><span class="vp-btn">Moved this week <span class="n">3</span></span><span class="vp-btn">Two currencies <span class="n">1</span></span><span class="vp-btn">Never on own paper <span class="n">6</span></span></div>
+            <div class="find">Filter these 41 — not the library</div>
+          </div>
+          <ul>
+            <li><span class="b">Lustau Fino Jarana</span><span class="paid">$16.00<small>last landed · 4 Sep</small></span><span class="m"><span class="pct up">+6.8%</span><i>newest quote vs 30-day mean · n 6</i></span></li>
+            <li data-on="true"><span class="b">Domaine Tempier Bandol Rosé 2024</span><span class="paid">$30.20<small>last landed · 4 Sep</small></span><span class="m"><span class="pct up">+5.3%</span><i>$31.90 vs $30.30 mean · n 6 admitted of 7 · this week</i></span></li>
+            <li><span class="b">Ridge Three Valleys 2022</span><span class="paid">$26.50<small>last landed · 4 Sep</small></span><span class="m"><span class="pct down">−4.1%</span><i>n 6 · this week</i></span></li>
+            <li><span class="b">Château Pradeaux Bandol Rosé 2023</span><span class="paid"><small style="font-size:11px">never on own paper</small></span><span class="m"><span class="pct none">quoted only · lowest $27.90</span></span></li>
+            <li><span class="b">Domaine Ott Château de Selle 2024</span><span class="paid">$34.80<small>last landed · 28 Aug</small></span><span class="m"><span class="pct none">n 2 in 30 days — no trend printed</span></span></li>
+            <li><span class="b">Vietti Barolo Castiglione 2020</span><span class="paid">$48.00<small>last landed · 2 Jul</small></span><span class="m"><span class="pct none">two currencies · $ and €</span></span></li>
+            <li><span class="b">Foradori Teroldego 2022</span><span class="paid">$21.40<small>last landed · 21 Aug</small></span><span class="m"><span class="pct up">+2.2%</span><i>n 5</i></span></li>
+            <li><span class="b">La Gitana Manzanilla</span><span class="paid">$11.90<small>last landed · 4 Sep</small></span><span class="m"><span class="pct down">−2.4%</span><i>n 9 · this week</i></span></li>
+            <li><span class="b">Clos Cibonne Tibouren 2023</span><span class="paid">$27.10<small>last landed · 21 Aug</small></span><span class="m"><span class="pct none">n 4 — no trend printed</span></span></li>
+            <li><span class="b">Château Simone Palette Rosé 2022</span><span class="paid">$52.00<small>last landed · 12 Jun</small></span><span class="m"><span class="pct none">n 1 in 30 days — no trend printed</span></span></li>
+            <li><span class="b">Bodegas Tradición Amontillado</span><span class="paid">$44.30<small>last landed · 30 Jul</small></span><span class="m"><span class="pct up">+0.6%</span><i>n 5</i></span></li>
+            <li><span class="b">Occhipinti SP68 Rosso 2023</span><span class="paid">$19.80<small>last landed · 4 Sep</small></span><span class="m"><span class="pct down">−0.4%</span><i>n 6</i></span></li>
+            <li><span class="b">Envínate Táganan Tinto 2022</span><span class="paid"><small style="font-size:11px">never on own paper</small></span><span class="m"><span class="pct none">quoted only · lowest $24.60</span></span></li>
+            <li><span class="b">Tenuta delle Terre Nere Etna Rosso 2022</span><span class="paid">$23.40<small>last landed · 28 Aug</small></span><span class="m"><span class="pct none">n 3 — no trend printed</span></span></li>
+            <li><span class="b">Pierre Gimonnet Cuis 1er Cru NV</span><span class="paid">$41.60<small>last landed · 12 Aug</small></span><span class="m"><span class="pct up">+1.4%</span><i>n 5</i></span></li>
+            <li><span class="b">Valdespino Inocente Fino</span><span class="paid">$22.70<small>last landed · 4 Sep</small></span><span class="m"><span class="pct none">n 2 in 30 days — no trend printed</span></span></li>
+            <li><span class="b">Domaine de la Pépière Muscadet 2023</span><span class="paid">$12.30<small>last landed · 28 Aug</small></span><span class="m"><span class="pct down">−2.6%</span><i>n 6</i></span></li>
+            <li><span class="b">Château de Pibarnon Bandol Rosé 2024</span><span class="paid"><small style="font-size:11px">never on own paper</small></span><span class="m"><span class="pct none">quoted only · lowest $33.10</span></span></li>
+            <li><span class="b">G.D. Vajra Langhe Nebbiolo 2023</span><span class="paid">$18.90<small>last landed · 21 Aug</small></span><span class="m"><span class="pct none">n 4 — no trend printed</span></span></li>
+            <li><span class="b">Birichino Malvasia Bianca 2024</span><span class="paid">$14.20<small>last landed · 4 Sep</small></span><span class="m"><span class="pct up">+0.3%</span><i>n 7</i></span></li>
+            <li class="showall"><span class="b">Show all 41 ›</span><span class="m"><i>sorted by what moved · the chosen bottle stays on top</i></span></li>
+          </ul>
+          <div class="foot">Sorted by what moved; the list scrolls, all 41 are in it. Movement here is the desk's rule, both ways: the newest admitted quote against the mean of the earlier ones in 30 days, at least <b>5</b> or no trend printed. "Last landed" is the per-750 price on the last receipt this house verified; "agreed" prices from confirmed orders are shown in the lane, never here — an agreed price is not money paid.</div>
+        </aside>
+
+        <section class="dk-main" aria-label="Domaine Tempier Bandol Rosé 2024">
+          <div class="dk-head">
+            <div>
+              <div class="name">Domaine Tempier · Bandol Rosé · 2024</div>
+              <div class="key">identity <b>tempier|bandol-rose|2024|750|12</b> · 750 ml · pack 12 · vintage <b>2024</b> (stated)</div>
+              <div class="id">Named 4 Sep by this house · <a href="#">identity decisions (4) — one waiting</a></div>
+            </div>
+            <div class="acts"><span class="vp-btn">Draft a vendor ask</span><span class="vp-btn primary">Record a price</span></div>
+          </div>
+
+          <div class="lanes">
+            <div class="lane">
+              <div class="lh"><h3>Own paper</h3><span class="cls q" title="ADR 0117 class A — invoices verified and orders confirmed by this house">invoices · orders</span></div>
+              <div class="fig"><span class="v">$30.20</span><span class="u">last landed / 750 ml</span></div>
+              <p class="why">The per-750 on the last receipt this house <b>verified</b>. An order confirmed but not yet received is <b>agreed</b>, drawn dashed, and is not this figure.</p>
+              <div class="rung"><div class="r1"><span class="v">Skurnik</span><span class="landed">landed</span><span class="per">$30.20</span></div><div class="r2"><span>Invoice</span><span class="t">tier 1</span><span>·</span><span>$362.40 / 12 × 750</span></div><div class="r3">Receipt R-1187, line 4 · verified 4 Sep by Ayşe D. <span class="lnk">Open the receipt row ›</span></div><div class="r4"><span class="pct down">−1.3%</span><span class="n">vs Skurnik's previous receipt (36 days earlier)</span></div></div>
+              <div class="rung"><div class="r1"><span class="v">Winebow</span><span class="landed agreed">agreed</span><span class="per">$29.80</span></div><div class="r2"><span>Confirmed order</span><span class="t">tier 2</span><span>·</span><span>$357.60 / 12 × 750</span></div><div class="r3">PO-2291, confirmed 14 Sep · <i>not received — the receipt will say what landed</i></div></div>
+              <div class="rung"><div class="r1"><span class="v">Skurnik</span><span class="landed">landed</span><span class="per">$30.60</span></div><div class="r2"><span>Invoice</span><span class="t">tier 1</span><span>·</span><span>$367.20 / 12 × 750</span></div><div class="r3">Receipt R-1102, line 2 · verified 30 Jul</div></div>
+            </div>
+            <div class="lane">
+              <div class="lh"><h3>Quoted to this house</h3><span class="cls q" title="ADR 0117 classes A and C — written quotes, licensed feeds, rep messages, things told to us">quotes · feeds · messages</span></div>
+              <div class="fig"><span class="v seal">$28.50</span><span class="u">lowest before terms · Empire rep · on 3 cases</span></div>
+              <p class="why">Ranked within this lane only, struck last. The seal marks the lowest admitted number, not the best deal: <b>"on 3 cases"</b> is a condition in the message. The lowest <b>written</b> quote, Winebow $29.80, needs <b>12 bottles by Thursday 14:00</b>.</p>
+              <div class="rung"><div class="r1"><span class="v">Empire Merchants</span><span class="per seal">$28.50</span></div><div class="r2"><span>Rep message</span><span class="t">tier 5</span><span>·</span><span>15 days ago · L. Moreno</span></div><div class="r3">"on 3 cases" <i>· a condition in the message, not a term on record · recorded by M. Ortiz</i></div><div class="r4"><span class="pct none">one message from this rep — no previous to compare</span></div></div>
+              <!-- per-vendor: Winebow quotes 12 Aug $31.07 -> 13 Sep $29.80 = −4.1%; Empire feed 22 Aug $31.60 -> 15 Sep $31.90 = +0.9%; Skurnik receipts 30 Jul $30.60 -> 4 Sep $30.20 = −1.3% -->
+              <div class="rung"><div class="r1"><span class="v">Winebow</span><span class="per">$29.80</span></div><div class="r2"><span>Quote</span><span class="t">tier 2</span><span>·</span><span>3 days ago · to 30 Sep</span></div><div class="r3">min 12 btl · cutoff Thu 14:00 · net 30 <i>· stated by the house · no paper attached</i></div><div class="r4"><span class="pct down">−4.1%</span><span class="n">vs Winebow's previous quote, $31.07 on 12 Aug · 3 quotes in 90 days</span></div></div>
+              <div class="rung"><div class="r1"><span class="v">Empire Merchants</span><span class="per">$31.90</span></div><div class="r2"><span>Vendor feed</span><span class="t">tier 3</span><span>·</span><span>yesterday</span></div><div class="r3"><i>Terms unknown — the vendor record says nothing and no order has taught us.</i></div><div class="r4"><span class="pct up">+0.9%</span><span class="n">vs Empire's previous feed line, $31.60 on 22 Aug · 6 in 90 days</span></div></div>
+              <div class="rung out"><div class="r1"><span class="v">Told to us</span><span class="per">$19.90</span></div><div class="r2"><span>Told to us</span><span class="t">tier 7</span><span>·</span><span>14 days ago</span></div><div class="r3">Flagged 3.4 MAD below the lane median · kept, struck, so it can be fixed at source</div></div>
+            </div>
+            <div class="lane">
+              <div class="lh"><h3>Public pages</h3><span class="cls" title="ADR 0117 class D — retail reference: a shelf, compared only with other shelves">shelves</span></div>
+              <div class="fig"><span class="v">$40.49</span><span class="u">median of 2 · tier 4</span></div>
+              <p class="why">List prices read off vendors' own pages, signed by nobody. What the street pays, not what you will. <b>Never set beside a quote.</b></p>
+              <div class="rung"><div class="r1"><span class="v">Astor Wines</span><span class="per">$38.99</span></div><div class="r2"><span>Public page</span><span class="t">tier 4</span><span>·</span><span>8 days ago · parse 0.91</span></div><div class="r3"><span class="lnk">astorwines.com/… #tempier-rose ›</span></div><div class="r4"><span class="pct none">first capture — no trend</span></div></div>
+              <div class="rung"><div class="r1"><span class="v">Wine.com</span><span class="per">$41.99</span></div><div class="r2"><span>Public page</span><span class="t">tier 4</span><span>·</span><span>8 days ago · parse 0.88</span></div><div class="r3"><span class="lnk">wine.com/… ›</span></div></div>
+              <div class="empty">A posted wholesale list for New York exists for this bottle ($28.10 / 750, September). It is neither a quote nor a shelf, so it is not in any lane — it is in the posted-list register below.</div>
+            </div>
+          </div>
+          <div class="lanes-note"><span>No figure is drawn across lanes. A receipt, a quote and a shelf are three different facts about one bottle.</span><span>Trend on a rung is per vendor: a vendor against its own previous row, so a vendor with one row prints no trend. The list's movement is the register's rule (at least 5 sightings). One minimum each; neither borrows the other's.</span></div>
+
+          <div class="before">
+            <h3>Before you order</h3>
+            <p>The newest quote to this house is <b>$31.90</b> (Empire feed, yesterday) — <b>5.6% above</b> what you last paid ($30.20, Skurnik, 4 Sep). The lowest admitted quote, <b>$28.50 from Empire's rep</b>, is 5.6% under what you paid and holds only on 3 cases; the lowest <b>written</b> quote, $29.80 from Winebow, is 1.3% under and needs 12 bottles by Thursday 14:00.</p>
+            <div class="rule">rule: the newest admitted quote against what last landed · both per 750 ml · nothing converted · no consensus is drawn or compared</div>
+          </div>
+
+          <section class="vp-index" aria-label="Posted lists and public indexes">
+            <header><h3>Posted lists and indexes — not vendor quotes</h3><span class="rule">a separate register by decision · a posting is not a quote</span></header>
+            <p>NY SLA posted wholesale · Bandol rosé, case of 12 · <span class="vp-num">$337.20</span> ($28.10 / 750) · September posting, fetched 2 Sep · <span class="vp-quiet">New York, the house's own state</span></p>
+            <p>BLS PPI, wine · <span class="vp-num">+2.4% y/y</span> · <span class="vp-quiet">a context line for the category, never a price for this bottle</span></p>
+          </section>
+        </section>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="sk-label">2 · Same desk, İstanbul house <small>Meyhane Kalamış, Kadıköy — TRY house; the importer quotes in euro, so the quoted lane splits by currency and the list says so</small></div>
+  <div class="sk-frame">
+  <div class="mudavym vp-page" data-ground="charcoal">
+    <div class="vp-in" style="padding-top:18px">
+      <div class="dk" style="margin-top:0">
+        <aside class="dk-list">
+          <!-- Kavaklıdere: newest lira quote 14 Eyl ₺655 vs earlier admitted mean ₺626,20 (28 Tem 610 · 12 Ağu 605 · 30 Ağu 625 · 3 Eyl 630 · 7 Eyl 640 · 11 Eyl 620 -> 3.756/6) = +4,6%; n 7 -->
+          <div class="head"><h2>Bottles with sightings<small>23</small></h2><div class="filt"><span class="vp-btn" data-on="true">All <span class="n">23</span></span><span class="vp-btn">Moved this week <span class="n">2</span></span><span class="vp-btn">Two currencies <span class="n">1</span></span></div></div>
+          <ul>
+            <li data-on="true"><span class="b">Kavaklıdere Yakut 2022</span><span class="paid">₺640,00<small>last landed · 7 Eyl</small></span><span class="m"><span class="pct up">+4,6%</span><i>₺655 vs ₺626,20 mean · n 7 · ₺ only · this week</i></span><span class="m"><i>also quoted in € — not compared</i></span></li>
+            <li><span class="b">Doluca Kav 2021</span><span class="paid">₺585,00<small>last landed · 7 Eyl</small></span><span class="m"><span class="pct up">+3,1%</span><i>n 5</i></span></li>
+            <li><span class="b">Efes Pilsen 50 cl</span><span class="paid">₺58,50<small>last landed · 12 Eyl</small></span><span class="m"><span class="pct none">n 4 — no trend printed</span></span></li>
+            <li><span class="b">Yeni Rakı 70 cl</span><span class="paid">₺812,00<small>last landed · 12 Eyl</small></span><span class="m"><span class="pct down">−0,8%</span><i>n 9</i></span></li>
+            <li><span class="b">Kayra Buzbağ Rezerv 2021</span><span class="paid">₺710,00<small>last landed · 7 Eyl</small></span><span class="m"><span class="pct up">+2,9%</span><i>n 5</i></span></li>
+            <li><span class="b">Suvla Sur 2022</span><span class="paid">₺1.240,00<small>last landed · 24 Ağu</small></span><span class="m"><span class="pct none">n 3 — no trend printed</span></span></li>
+            <li><span class="b">Tuborg Gold 50 cl</span><span class="paid">₺61,00<small>last landed · 12 Eyl</small></span><span class="m"><span class="pct up">+1,7%</span><i>n 6</i></span></li>
+            <li><span class="b">Tekirdağ Rakısı 70 cl</span><span class="paid">₺845,00<small>last landed · 12 Eyl</small></span><span class="m"><span class="pct none">n 2 in 30 days — no trend printed</span></span></li>
+            <li><span class="b">Urla Nero d'Avola–Urla Karası 2021</span><span class="paid"><small style="font-size:11px">never on own paper</small></span><span class="m"><span class="pct none">quoted only · lowest ₺980,00</span></span></li>
+            <li><span class="b">Sevilen 900 Fümé Blanc 2023</span><span class="paid">₺690,00<small>last landed · 31 Ağu</small></span><span class="m"><span class="pct down">−1,1%</span><i>n 5</i></span></li>
+            <li class="showall"><span class="b">Show all 23 ›</span></li>
+          </ul>
+          <div class="foot">Beer and rakı are here because they arrived on this house's receipts — the list is the register, not the wine library.</div>
+        </aside>
+        <section class="dk-main">
+          <div class="dk-head"><div><div class="name">Kavaklıdere · Yakut · 2022</div><div class="key">identity <b>kavaklidere|yakut|2022|750|12</b> · 750 ml · pack 12</div></div><div class="acts"><span class="vp-btn primary">Record a price</span></div></div>
+          <div class="lanes">
+            <div class="lane"><div class="lh"><h3>Own paper</h3><span class="cls q" title="ADR 0117 class A">e-Fatura · orders</span></div><div class="fig"><span class="v">₺640,00</span><span class="u">last landed / 750 ml</span></div>
+              <div class="rung"><div class="r1"><span class="v">Anadolu İçecek Toptan</span><span class="landed">landed</span><span class="per">₺640,00</span></div><div class="r2"><span>e-Fatura</span><span class="t">tier 1</span><span>·</span><span>₺7.680,00 / 12 × 750</span></div><div class="r3">İrsaliye 2026-0912 · verified 7 Eyl by Deniz A. <span class="lnk">Open the receipt row ›</span></div><div class="r4"><span class="pct up">+2,4%</span><span class="n">vs previous receipt</span></div></div></div>
+            <div class="lane"><div class="lh"><h3>Quoted · in ₺</h3><span class="cls q">TRY</span></div><div class="fig"><span class="v seal">₺620,00</span><span class="u">lowest before terms · Bosphorus</span></div>
+              <div class="rung"><div class="r1"><span class="v">Bosphorus Wine Depot</span><span class="per seal">₺620,00</span></div><div class="r2"><span>Rep message</span><span class="t">tier 5</span><span>·</span><span>5 days ago · WhatsApp</span></div><div class="r3">"6 koli alırsanız" <i>· a condition in the message</i> · min 6 koli · Salı 12:00 · peşin <i>· stated by the house</i></div><div class="r4"><span class="pct none">one message from this depot — no previous to compare</span></div></div>
+              <div class="rung"><div class="r1"><span class="v">Anadolu İçecek Toptan</span><span class="per">₺655,00</span></div><div class="r2"><span>Quote</span><span class="t">tier 2</span><span>·</span><span>2 days ago</span></div><div class="r4"><span class="pct up">+2,3%</span><span class="n">vs its own last quote, ₺640 on 7 Eyl</span></div></div>
+              <div class="lh" style="margin-top:14px"><h3>Quoted · in €</h3><span class="cls q">EUR</span></div><div class="fig"><span class="refuse">one row — the figure is the row</span></div>
+              <div class="rung"><div class="r1"><span class="v">Vinum Import GmbH</span><span class="per">€17,90</span></div><div class="r2"><span>Quote</span><span class="t">tier 2</span><span>·</span><span>6 days ago · €214,80 / 12</span></div><div class="r3">min 1 palet · 14 gün <i>· nothing converts; the house is not told which is cheaper</i></div></div></div>
+            <div class="lane"><div class="lh"><h3>Public pages</h3><span class="cls" title="ADR 0117 class D">shelves</span></div><div class="fig"><span class="refuse">none — no Turkish shop is swept</span></div><div class="empty">The shop sweep is unarmed for this house: no shop has stated the currency it lists in, and a shop that will not quote its own market's currency is not a source (ADR 0117 Q29).</div></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="sk-label">3 · Overlays drawn open <small>ADR 0112 — sheet for the identity drawer (opened from the bottle head, not a row), panel for Record a price, popover for a list filter's rule</small></div>
+  <div class="sk-row">
+    <div class="sk-frame" style="flex: 1 1 560px; min-width: 0">
+      <p class="sk-note" style="padding:8px 12px 0;margin:0">Sheet, 440 · the identity drawer for the bottle. Decisions by this house carry the person and Undo; a decision by another house shows only the outcome. The queue is where staff act.</p>
+      <div class="mudavym ov-stage" data-ground="charcoal">
+        <div class="under vp-page"><p class="vp-crumb">What the house pays</p><h1 class="vp-h1">Vendor prices<b>.</b></h1></div>
+        <div class="ov-scrim"></div>
+        <aside class="ov-sheet" id="sheet" aria-label="Identity decisions">
+          <div class="ov-head"><div><div class="eyebrow">Identity · the provenance behind the price</div><h2>Domaine Tempier · Bandol Rosé · 2024 · 750 · 12</h2></div><span class="close">Close</span></div>
+          <div class="ov-body">
+            <p style="margin:0 0 4px">Every price on the desk names this identity or names it by library id only. These are the acts that said a row <em>is</em> this bottle.</p>
+            <div class="ov-drawer">
+              <h4>Decided</h4>
+              <div class="dec"><div><div class="a">Confirmed Winebow <b>"TEMPIER BANDOL RSE 24 12/750"</b> is this bottle</div><div class="m">13 Sep 2026, 14:04 · Ayşe Demir, manager · this house · evidence: producer, name, vintage matched; pack stated</div></div><span class="undo">Undo</span></div>
+              <div class="dec"><div><div class="a">Confirmed Skurnik receipt line <b>"TEMPIER BANDOL ROSE 24"</b> is this bottle</div><div class="m">4 Sep 2026, 17:20 · Marco Ortiz, staff · this house · evidence: receipt R-1187 line 4</div></div><span class="undo">Undo</span></div>
+              <div class="dec"><div><div class="a">Linked GTIN 3760112034567 to this bottle</div><div class="m">9 Sep 2026, 09:41 · decided by another house · the outcome is shared, the person is not</div></div><span class="undo none">not yours to undo</span></div>
+              <div class="dec"><div><div class="a" style="text-decoration:line-through;color:var(--ink-3)">Confirmed Empire feed "TEMPIER ROSE 2023" is this bottle</div><div class="m">2 Sep 2026 · Ayşe Demir · undone 3 Sep: "wrong vintage" · both rows kept</div></div><span class="undo none">undone</span></div>
+              <div class="queue">
+                <h4 style="margin-top:0">Waiting for a person</h4>
+                <div class="q"><div><div>Empire feed line <b>"TEMPIER ROSE BANDOL 2024"</b> — the same bottle?</div><div class="m">proposed by name match, 0.71 · nobody has decided · staff may</div></div><span class="act">Decide ›</span></div>
+              </div>
+              <p class="vp-quiet" style="margin:12px 0 0;font-size:11.5px">Undo is owner and manager, refused again inside the service. Confirming is a logged, append-only decision; the seal is held for it.</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <div class="sk-frame" style="flex: 1 1 560px; min-width: 0">
+      <p class="sk-note" style="padding:8px 12px 0;margin:0">Panel, 620 · Record a price. Currency is the house's reporting currency as a stated, confirmable default (fork 2, option b) — never silent, changeable, and the row records what was confirmed. The bottle field is the desk's list first and the wine library (<code>GET /wines</code>, built) when the bottle is not on the desk yet — this is how B records a <em>first</em> price on a near-empty register; client work, costed in the README.</p>
+      <div class="mudavym ov-stage" data-ground="charcoal">
+        <div class="under vp-page"><p class="vp-crumb">What the house pays</p><h1 class="vp-h1">Vendor prices<b>.</b></h1></div>
+        <div class="ov-scrim"></div>
+        <div class="ov-panel" id="panel" role="dialog" aria-label="Record a price">
+          <div class="ov-head"><div><div class="eyebrow">Record a price</div><h2>What were you told, by whom, in what unit?</h2></div><span class="close">Cancel</span></div>
+          <div class="ov-body">
+            <div class="ov-form">
+              <div class="f wide"><label>Bottle</label><div class="in">Kavaklıdere Yakut 2022<span class="tail">on the desk</span></div><div class="hint">Not on the desk? Keep typing — the field then searches the <b>wine library</b> by name, so a first price can be recorded; the bottle joins the desk with this row. Beer and rakı arrive by receipt.</div></div>
+              <div class="f"><label>Vendor</label><div class="in">Vinum Import GmbH<span class="tail">provider row</span></div></div>
+              <div class="f"><label>Currency</label><div class="in mono confirm">EUR<span class="tail">changed from ₺</span></div><div class="hint">The house reports in <b>TRY</b>; that was the default, shown, not assumed. You changed it to EUR because the quote says so. The row will say "currency confirmed by Deniz A."</div></div>
+              <div class="f"><label>Price as quoted</label><div class="in mono">214,80</div></div>
+              <div class="f"><label>Pack · unit</label><div class="in mono">12 × 750 ml<span class="tail">required</span></div></div>
+              <div class="f wide"><label>Source</label><div class="seg"><span data-on="true">Written quote</span><span>Message from a rep</span><span>Social post</span><span>Told to me</span></div></div>
+              <div class="f"><label>Seen on</label><div class="in mono">10 Eyl 2026</div></div>
+              <div class="f"><label>Note</label><div class="in"><span class="ph">Palet fiyatı, 14 gün vade.</span></div></div>
+            </div>
+          </div>
+          <div class="ov-foot"><span class="note">One row, this house only, tier 2. It joins the € group of the quoted lane and is never converted into the ₺ figure.</span><span class="vp-btn">Cancel</span><span class="vp-btn primary">Record</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="sk-row" style="margin-top:18px">
+    <div class="sk-frame" style="width: 460px; max-width: 100%">
+      <p class="sk-note" style="padding:8px 12px 0;margin:0">Popover · a list filter's rule, hanging off "Moved this week". The count is a count of bottles that passed the rule; the skipped ones are named.</p>
+      <div class="mudavym" data-ground="charcoal" style="background:var(--paper-0);position:relative;padding:18px 18px 262px">
+        <span class="vp-btn" data-on="true" style="height:26px;font-size:11.5px">Moved this week <span class="n">3</span></span>
+        <div class="ov-pop" style="left:18px;top:52px">
+          <div class="row"><span>Rule</span><span class="n">newest sighting within 7 days · newest admitted quote vs the mean of the earlier ones in 30 days, either way · at least 5</span></div>
+          <div class="row" data-on="true"><span>Passed</span><span class="n">3 · Tempier +5.3% · Ridge −4.1% · La Gitana −2.4%</span></div>
+          <div class="row"><span>Skipped</span><span class="n">38 · 24 no sighting within 7 days · 13 fewer than 5 · 1 two currencies</span></div>
+          <div class="row note">The same minimum as every list row. Bottles skipped were not averaged with a guessed value; a bottle in two currencies has no single mean.</div>
+        </div>
+      </div>
+    </div>
+    <div class="sk-frame" style="flex:1 1 420px; min-width:0">
+      <p class="sk-note" style="padding:8px 12px 0;margin:0">The own-paper rung's link goes to the receipt row (fork 6, option c): the receipts register already carries the line, the count and who verified it.</p>
+      <div class="mudavym" data-ground="charcoal" style="background:var(--paper-0);padding:18px;min-height:250px;box-sizing:border-box;font-family:var(--sans);color:var(--ink-1);font-size:12.5px">
+        <div style="font-family:var(--mono);font-size:10.5px;color:var(--ink-3)">/receipts · R-1187 · Skurnik · 4 Sep 2026 · 6 lines · verified by Ayşe D.</div>
+        <div style="margin-top:10px;display:grid;grid-template-columns:auto 1fr auto auto auto;gap:6px 14px;font-family:var(--mono);font-size:11.5px;overflow-x:auto;white-space:nowrap">
+          <span style="color:var(--ink-3)">3</span><span>RIDGE THREE VALLEYS 22</span><span>12/750</span><span>318.00</span><span style="color:var(--ink-3)">counted 12</span>
+          <span style="color:var(--seal)">4</span><span style="color:var(--seal)">TEMPIER BANDOL ROSE 24</span><span style="color:var(--seal)">12/750</span><span style="color:var(--seal)">362.40</span><span style="color:var(--seal)">counted 12 · landed</span>
+          <span style="color:var(--ink-3)">5</span><span>LUSTAU FINO JARANA</span><span>6/750</span><span>96.00</span><span style="color:var(--ink-3)">counted 6</span>
+        </div>
+        <p style="margin:12px 0 0;color:var(--ink-2)">Received stock is not verified invoice cost until the line is checked; this line was, on 4 Sep. The lane's "landed" badge is that check, not the delivery.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sk-label">4 · States <small>the list and the lanes fail, load and empty on their own; the staff refusal points at the cellar's log (fork 4, option b)</small></div>
+  <div class="mudavym st-grid" data-ground="charcoal">
+    <div class="st"><div class="tag">empty · the desk</div><h3>No bottle has been priced to this house yet.</h3><p>The list is the register's own bottles, so it fills only from three things: a receipt you verify on <span class="act">/receiving</span>, an order you confirm on <span class="act">/orders</span>, or a price you record here — <span class="act">Record a price</span> searches the wine library for the bottle, since none is on the desk yet.</p><p class="cap">0 sightings · no sweep subjects</p></div>
+    <div class="st"><div class="tag">empty · one lane</div><h3>Own paper: nothing.</h3><p>This bottle has been quoted 4 times and never bought. There is no "last landed" — and the desk does not print $0 or the lowest quote in its place.</p><p class="cap">the lane says "never on own paper"; the list badge says the same</p></div>
+    <div class="st"><div class="tag">loading</div><h3>Reading the house's bottles…</h3><div class="ph m"></div><div class="ph s"></div><div class="ph"></div><p class="vp-quiet" style="margin-top:12px">The list arrives first; the lanes say "pick a bottle" until one is chosen. Each lane loads on its own request and fails on its own.</p></div>
+    <div class="st"><div class="tag">refused · staff signed in</div><h3>The desk is owner and manager.</h3><p>It shows what vendors charge this house. Identity decisions — the question "are these the same bottle" — carry no price and are yours: <span class="act">the identity log, in the cellar ›</span></p><div class="verbatim">403 · Forbidden resource</div></div>
+    <div class="st"><div class="tag">error · and partial</div><h3>The lanes could not be read.</h3><div class="verbatim">502 · upstream request timeout</div><p>The list is intact; only this bottle's lanes are unread. <span class="act">Try again</span></p><hr class="vp-rule-thin" style="margin:10px 0"><div class="tag">partial</div><p>List capped: 200 of <b>at least 200</b> bottles, sorted by movement; the rest are reachable by filter. 1 bottle in two currencies: its lane splits, its list row prints no trend.</p></div>
+  </div>
+
+  <div class="sk-label">5 · 390 px <small>the chosen bottle is the first screen — the list folds to that row plus "Show all 41"; the lanes stack under it; the identity sheet full-width and the record panel as a bottom sheet</small></div>
+  <div class="sk-row">
+    <div class="sk-phone"><div class="mudavym vp-page" id="phone" data-ground="charcoal"></div></div>
+    <div class="sk-phone"><div class="mudavym ov-stage phone" id="phone-sheet" data-ground="charcoal"><div class="under vp-page"><p class="vp-crumb" style="margin-top:0">What the house pays</p><h1 class="vp-h1" style="font-size:30px">Vendor prices<b>.</b></h1></div><div class="ov-scrim"></div></div></div>
+    <div class="sk-phone"><div class="mudavym ov-stage phone" id="phone-panel" data-ground="charcoal"><div class="under vp-page"><p class="vp-crumb" style="margin-top:0">What the house pays</p><h1 class="vp-h1" style="font-size:30px">Vendor prices<b>.</b></h1></div><div class="ov-scrim"></div><div class="detent"><span>upper detent · 88%</span></div></div></div>
+    <div class="sk-note" style="max-width:520px">On the phone the desk cannot be two panes, and a 41-row list before the lanes is 1,700 px of scroll before the answer. So the list folds to the chosen row plus "Show all 41 ›" — picking a bottle from the unfolded list folds it again with the new row on top — and the three lanes stack directly under it, own paper first. Rungs keep their per-750 figure on the right. The identity sheet (second phone) takes the full width; the record panel (third phone) is a bottom-anchored sheet with a grabber and two detents (sketch 103), its form one column and its inputs wrapping.</div>
+  </div>
+</div>
+<script>
+  (function () {
+    function clone(fromId, intoId) {
+      var s = document.getElementById(fromId), p = document.getElementById(intoId);
+      if (!s || !p) return null;
+      var c = s.cloneNode(true); c.removeAttribute('id');
+      c.querySelectorAll('[id]').forEach(function (n) { n.removeAttribute('id'); });
+      return { c: c, p: p };
+    }
+    var page = clone('stage', 'phone');
+    if (page) { page.p.appendChild(page.c.querySelector('.vp-chrome')); page.p.appendChild(page.c.querySelector('.vp-in')); }
+    var sh = clone('sheet', 'phone-sheet'); if (sh) sh.p.appendChild(sh.c);
+    var pn = clone('panel', 'phone-panel'); if (pn) pn.p.appendChild(pn.c);
+  })();
+</script>
+</body>
+</html>

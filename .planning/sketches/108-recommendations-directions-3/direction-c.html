@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>108c — The Instruments · /recommendations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#0B0A08;color:#C0B6A5;font-family:"DM Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.sk-banner{background:#1A5E6B;color:#FAF7F1;font:600 10.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;padding:9px 20px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.sk-sec{padding:26px 20px 6px;max-width:1480px;margin:0 auto}
+.sk-label{font:600 10.5px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:#8E8576;margin:0 0 8px}
+.sk-note{font-size:12.5px;color:#8E8576;max-width:960px;line-height:1.55;margin:0 0 12px}
+.sk-note b{color:#C0B6A5;font-weight:600}
+.frame{border:1px solid #2A241C;border-radius:10px;overflow:hidden;background:#15130F;width:100%}
+.w390{width:390px;max-width:100%}
+.states{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.states .frame{min-height:300px}
+@media (max-width:600px){.desk-only{display:none}.states{grid-template-columns:1fr}.sk-sec{padding:18px 10px 4px}}
+
+.mudavym{
+  --seal:#5FB0BC;--seal-deep:#7DC3CD;--seal-tint:rgba(95,176,188,.14);--seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F;--paper-1:#1D1813;--paper-2:#262019;
+  --ink-1:#EFE7D9;--ink-2:#C0B6A5;--ink-3:#8E8576;--ink-4:#ABA294;
+  color-scheme:dark;background:var(--paper-0);color:var(--ink-1);
+  font-family:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;font-size:13px;line-height:1.5}
+.mudavym[data-ground="paper"]{
+  --seal:#1A5E6B;--seal-deep:#14515C;--seal-tint:rgba(26,94,107,.10);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FFFDF8;--paper-1:#F3EFE6;--paper-2:#EAE4D8;
+  --ink-1:#211C16;--ink-2:#4F473C;--ink-3:#7C7365;--ink-4:#665D50;color-scheme:light}
+.serif{font-family:"Fraunces",Georgia,serif;font-weight:420;letter-spacing:-.012em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.micro{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--ink-4)}
+.micro.seal{color:var(--seal-deep)}.micro.dim{color:var(--ink-4)}
+.num{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.ico{display:inline-block;vertical-align:-.15em;flex:0 0 auto}
+.em{color:var(--ink-4)}
+.ink{transition:border-color 160ms cubic-bezier(.16,1,.3,1),background-color 160ms cubic-bezier(.16,1,.3,1),color 160ms cubic-bezier(.16,1,.3,1)}
+.settle{display:grid;grid-template-rows:0fr;transition:grid-template-rows 320ms cubic-bezier(.16,1,.3,1)}
+.settle[data-open="true"]{grid-template-rows:1fr}.settle>*{min-height:0;overflow:hidden}
+.ribbon{margin:12px 0 2px;padding:10px 12px 9px;border:1px solid var(--paper-2);border-radius:10px;background:var(--paper-1)}
+.ribbon-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.ribbon-head .cap{font-size:11px;color:var(--ink-4)}
+.rb-grid{display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:3px}
+.rb-grid.seven{grid-template-columns:repeat(7,minmax(0,1fr))}
+/* C's ribbon: each day is that morning's run — a stack of 14 readings: sounding (seal) · quiet (ink) · could not read (hatched) */
+.rb-day{display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px 0 4px;border-radius:6px;border:1px solid transparent;min-width:0;background:transparent;font:inherit;cursor:pointer;position:relative}
+.rb-day .d{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;letter-spacing:.06em;color:var(--ink-4);text-transform:uppercase;white-space:nowrap}
+.rb-day .d b{font-weight:600;color:var(--ink-2)}
+.run{display:flex;flex-direction:column;align-items:center;gap:3px}
+.run .mk{height:5px;display:flex;gap:2px}
+.run .mk i{display:block;width:5px;height:5px;border-radius:50%;background:var(--seal)}
+.run .mk i.due{background:transparent;border:1.5px solid var(--ink-3)}
+.stk{width:14px;height:24px;display:flex;flex-direction:column-reverse;border-radius:2px;overflow:hidden;background:var(--paper-2)}
+.stk i{display:block;width:100%}
+.stk i.s{background:var(--seal)}
+.stk i.q{background:var(--ink-3);opacity:.55}
+.stk i.c{background:repeating-linear-gradient(135deg,transparent 0 2px,rgba(142,133,118,.7) 2px 3px)}
+.rb-day.none .run{background:repeating-linear-gradient(135deg,transparent 0 3px,rgba(142,133,118,.3) 3px 4px);border-radius:3px;padding:0 5px}
+.rb-day.out .stk{opacity:.5}.rb-day.out .run{border-bottom:2px solid var(--ink-4)}
+.rb-day.today{border-color:var(--seal);background:var(--seal-tint)}
+.rb-day.today .d b{color:var(--seal-deep)}
+.rb-day.future .stk{background:transparent;border:1px dashed rgba(142,133,118,.55)}
+.rb-day.future .mk i.due{border-style:dashed}
+/* a selected past day is ink, never seal — today keeps the seal ring */
+.rb-day.sel{border-color:var(--ink-1);background:var(--paper-2)}
+.rb-day.sel .d,.rb-day.sel .d b{color:var(--ink-1)}
+.rb-day.sel::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-4px;border:4px solid transparent;border-top-color:var(--ink-1)}
+.rb-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:7px;font-size:10px;color:var(--ink-4)}
+.rb-legend i{display:inline-flex;align-items:center;gap:5px;font-style:normal}
+.rb-legend .sw{width:9px;height:9px;border-radius:2px;display:inline-block;background:var(--seal)}
+.rb-legend .sw.q{background:var(--ink-3);opacity:.55}
+.rb-legend .sw.c{background:repeating-linear-gradient(135deg,transparent 0 2px,rgba(142,133,118,.7) 2px 3px)}
+.rb-legend .sw.fired{border-radius:50%;width:7px;height:7px}
+.rb-legend .sw.due{background:transparent;border:1.5px solid var(--ink-3);border-radius:50%;width:7px;height:7px}
+.rb-legend .sw.none{background:repeating-linear-gradient(135deg,transparent 0 2px,rgba(142,133,118,.3) 2px 3px)}
+.rb-legend .sw.out{background:transparent;border-bottom:2px solid var(--ink-4);border-radius:0}
+.rb-legend .sw.today{background:var(--seal-tint);border:1px solid var(--seal)}
+.rb-legend .sw.future{background:transparent;border:1px dashed var(--ink-4)}
+.rb-legend .sw.sel{background:var(--paper-2);border:1px solid var(--ink-1)}
+.more{grid-column:1 / -1;padding:10px 8px;font-size:12px;color:var(--ink-4);border-top:1px solid var(--paper-2)}
+.more b{color:var(--ink-2);font-weight:500}
+@media (prefers-reduced-motion:reduce){.ink,.settle{transition:none}}
+
+.hdr{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 24px;border-bottom:1px solid var(--paper-2);background:var(--paper-0)}
+.hdr .mark{color:var(--seal);display:inline-flex}
+.hdr .rule{width:1px;height:18px;background:var(--paper-2)}
+.hdr .pg{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:15px;letter-spacing:-.01em;white-space:nowrap}
+.hdr .search{margin:0 auto;display:inline-flex;align-items:center;gap:8px;padding:6px 11px;border:1px solid var(--paper-2);border-radius:9px;background:var(--paper-1);color:var(--ink-4);font-size:12.5px;min-width:260px}
+.hdr .search kbd{margin-left:auto;font:500 10px "JetBrains Mono",monospace;color:var(--ink-4);border:1px solid var(--paper-2);border-radius:4px;padding:1px 4px}
+.hdr .right{display:flex;align-items:center;gap:12px;color:var(--ink-2);font-size:12.5px}
+.hdr .av{width:24px;height:24px;border-radius:50%;background:var(--seal-tint);border:1px solid var(--seal-ring);display:inline-flex;align-items:center;justify-content:center;font:600 10px "JetBrains Mono",monospace;color:var(--seal-deep)}
+.hdr .bell{position:relative;display:inline-flex}
+.hdr .bell i{position:absolute;top:-3px;right:-4px;font:600 8.5px/1 "JetBrains Mono",monospace;background:var(--seal);color:#15130F;border-radius:8px;padding:2px 4px;font-style:normal}
+
+.wrap{max-width:1180px;margin:0 auto;padding:22px 24px 44px}
+.wordmark{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:13px;letter-spacing:-.02em}
+.wordmark i{color:var(--seal);font-style:normal}
+.kicker{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);margin-top:8px}
+h1.title{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:32px;line-height:1.1;letter-spacing:-.015em;margin:6px 0 0;max-width:900px}
+.dateline{font-family:"Fraunces",Georgia,serif;font-style:italic;font-size:15px;color:var(--ink-2);margin:6px 0 0}
+.double{margin-top:12px}.double i{display:block;height:1px;background:var(--ink-3);opacity:.5}.double i+i{margin-top:2px}
+.btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--paper-2);border-radius:7px;background:transparent;color:var(--ink-2);font:inherit;font-size:11.5px;padding:4px 9px;cursor:pointer;white-space:nowrap}
+.btn.seal{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep);font-weight:600}
+.btn.on{border-color:var(--seal-ring);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.dark{border-style:dashed;color:var(--ink-4);cursor:not-allowed}
+.btn.quiet{border-color:transparent;color:var(--ink-4)}
+.btn:hover{border-color:var(--seal-ring)}
+.postline{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:12px;padding:9px 12px;border:1px solid var(--paper-2);border-radius:10px;background:var(--paper-1);font-size:12px;color:var(--ink-2);position:relative}
+.postline .k{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4)}
+.postline b{color:var(--ink-1);font-weight:500}
+.postline .ctl{margin-left:auto;display:flex;gap:6px}
+.leaves{display:flex;gap:4px;margin:14px 0 4px;flex-wrap:wrap;align-items:center}
+.leaf{font:inherit;font-size:12px;font-weight:500;padding:5px 11px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.leaf[aria-current="page"]{font-weight:600;border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.leaf .num{font-size:11px;margin-left:6px;color:var(--ink-4)}
+.leaves .note{font-size:11px;color:var(--ink-4);margin-left:8px}
+
+/* tiers */
+.tier{margin-top:22px}
+.tier-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.tier-head h2{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:19px;margin:0}
+.tier-head .blurb{font-size:11.5px;color:var(--ink-4)}
+.tier-head .num{margin-left:auto;font-size:11px;color:var(--ink-4)}
+.tier .double{margin-top:6px}.tier .double i{opacity:.4}
+.cols{display:grid;grid-template-columns:150px minmax(0,1fr) 120px 110px 110px 120px;gap:14px;padding:8px 8px 4px;align-items:baseline}
+.cols span{font-family:"JetBrains Mono",monospace;font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4)}
+
+/* an instrument row */
+.inst{display:grid;grid-template-columns:150px minmax(0,1fr) 120px 110px 110px 120px;gap:14px;padding:12px 8px;border-top:1px solid var(--paper-2);align-items:start;border-left:2px solid transparent;margin-left:-10px;padding-left:10px}
+.inst:hover{border-left-color:var(--seal-ring)}
+.inst[data-open="true"]{border-left-color:var(--seal)}
+.inst .name{font-family:"Fraunces",Georgia,serif;font-size:15.5px;line-height:1.3}
+.inst .what{font-size:11.5px;color:var(--ink-4);margin-top:2px;line-height:1.45}
+.inst .what .mono{font-size:10.5px}
+.inst .rd{font-family:"JetBrains Mono",monospace;font-size:14px;color:var(--ink-1);font-variant-numeric:tabular-nums;line-height:1.2}
+.inst .rd small{display:block;font-family:"DM Sans",system-ui,sans-serif;font-size:10.5px;color:var(--ink-4);margin-top:2px;line-height:1.35}
+.inst .rd.dash{color:var(--ink-4)}
+.inst .rd button{all:unset;cursor:pointer;border-bottom:1px dotted var(--seal-ring)}
+.inst .th{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ink-2)}
+.inst .th small{display:block;font-family:"DM Sans",system-ui,sans-serif;font-size:10.5px;color:var(--ink-4);margin-top:2px}
+.inst .st{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);padding-top:3px}
+.inst .st.sound{color:var(--seal-deep)}
+.inst .st.cant{color:var(--ink-4)}
+.inst .last{font-size:11.5px;color:var(--ink-2);line-height:1.45}
+.inst .last small{display:block;color:var(--ink-4);font-size:10.5px}
+/* the meter */
+.meter{position:relative;height:8px;border-radius:4px;background:var(--paper-2);margin-top:6px}
+.meter .fill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--ink-3)}
+.meter.sound .fill{background:var(--seal)}
+.meter .tick{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink-1);border-radius:1px}
+.meter.cant{background:repeating-linear-gradient(135deg,var(--paper-2) 0 4px,transparent 4px 8px)}
+.meter.none{background:var(--paper-2);opacity:.6}
+/* a rule with no constant gets no scale: the track is drawn empty and the label says why */
+.meter.noscale{background:transparent;border:1px dashed var(--paper-2);border-radius:4px}
+.mlab{display:flex;justify-content:space-between;font-family:"JetBrains Mono",monospace;font-size:8.5px;color:var(--ink-4);margin-top:5px;letter-spacing:.06em}
+
+/* a refused door prints its reason under the controls — never only in a title */
+.refused{font-size:11px;color:var(--ink-4);margin-top:6px;line-height:1.5;max-width:720px}
+.refused b{color:var(--ink-2);font-weight:500}
+.btn.dark[disabled]{pointer-events:none}
+/* a collapsed sounding row says an entry with doors sits under it */
+.openent{display:block;margin-top:5px;font:inherit;font-size:10.5px;letter-spacing:0;text-transform:none;color:var(--seal-deep);background:none;border:0;border-bottom:1px solid var(--seal-ring);padding:0;cursor:pointer}
+.states{grid-template-columns:repeat(5,minmax(0,1fr))}
+/* the standing entry under a sounding instrument */
+.entry{grid-column:1 / -1;margin:6px 0 0 0;padding:12px 14px;border-radius:10px;background:var(--paper-1);border:1px solid var(--paper-2)}
+.entry .runin{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:3px}
+.entry .obs{font-family:"Fraunces",Georgia,serif;font-size:15.5px;line-height:1.4;margin:0}
+.entry .obs sup{font-family:"JetBrains Mono",monospace;font-size:9px;color:var(--seal-deep);margin-left:2px}
+.entry .do{font-size:12.5px;color:var(--ink-2);margin:4px 0 0;line-height:1.5}
+.entry .ctls{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.entry .ctls .lab{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);margin-right:2px}
+.entry .ctls .sep{width:1px;height:14px;background:var(--paper-2);margin:0 4px}
+.floor{display:flex;align-items:center;gap:10px;margin:6px 0 0 -10px;padding:6px 10px;color:var(--ink-4);font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase}
+.floor i{flex:1;height:0;border-top:1px dashed var(--seal-ring)}
+.floor b{color:var(--seal-deep);font-weight:600}
+.door{font-size:11.5px;color:var(--ink-2);margin-top:4px;line-height:1.45}
+.door a{color:var(--seal-deep);text-decoration:none;border-bottom:1px solid var(--seal-ring)}
+.notposted{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);border:1px dashed var(--paper-2);border-radius:4px;padding:2px 6px}
+
+/* the dismissal — inside the entry, no motion */
+.dsheet{margin-top:10px;padding:12px 14px;border-radius:10px;border:1px solid var(--seal-ring);background:var(--paper-0)}
+.dsheet h4{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:14px;margin:0 0 2px}
+.scope{display:flex;gap:7px;align-items:flex-start;font-size:12px;color:var(--ink-2);line-height:1.4;margin-top:4px}
+.scope input{margin-top:2px;accent-color:var(--seal)}
+.scope input[disabled]+span{color:var(--ink-4)}
+.dsheet .promise{margin-top:10px;padding-top:8px;border-top:1px solid var(--paper-2);font-size:11.5px;color:var(--ink-2);line-height:1.5}
+.dsheet .promise b{color:var(--ink-1);font-weight:500}
+.reasons{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+
+/* the catalogue tier */
+.cat{display:grid;grid-template-columns:230px minmax(0,1fr);gap:26px;margin-top:14px}
+.cat .rail .r{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;padding:6px 8px;border-radius:8px;border:1px solid transparent;font-size:12.5px;cursor:pointer}
+.cat .rail .r[aria-pressed="true"]{border-color:var(--seal);background:var(--seal-tint)}
+.cat .rail .r .num{font-size:11px;color:var(--ink-4)}
+.cat .rail .note{font-size:11px;color:var(--ink-4);margin:10px 8px 0;line-height:1.45}
+.cat .rail .h{margin:12px 8px 6px}
+.cat .head{font-family:"Fraunces",Georgia,serif;font-size:17px;line-height:1.45}
+.cat .head b{font-weight:500;color:var(--seal-deep)}
+.cat .relabel{font-size:11.5px;color:var(--ink-4);margin-top:6px;line-height:1.5;max-width:760px}
+.cat table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12.5px}
+.cat th{text-align:left;font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--paper-2)}
+.cat td{padding:7px 8px;border-bottom:1px dotted var(--paper-2);vertical-align:top;color:var(--ink-2)}
+.cat td:first-child{color:var(--ink-1);font-family:"JetBrains Mono",monospace;font-size:11.5px}
+.cst{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase}
+.cst.built{color:var(--seal-deep)}.cst.miss{color:var(--ink-4)}
+
+/* overlays */
+.stage{position:relative;overflow:hidden}
+.popover{position:absolute;z-index:5;width:320px;border:1px solid var(--paper-2);border-radius:12px;background:var(--paper-1);box-shadow:0 12px 32px rgba(0,0,0,.45);padding:12px 14px}
+.popover h4{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:14px;margin:0 0 6px}
+.popover p{font-size:12px;color:var(--ink-2);margin:5px 0;line-height:1.5}
+.popover p b{color:var(--ink-1);font-weight:500}
+.popover .row{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px;align-items:center;font-size:12px;margin-top:8px}
+.popover .row .l{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4)}
+.popover select,.popover input{font:inherit;font-size:12px;color:var(--ink-1);background:var(--paper-0);border:1px solid var(--paper-2);border-radius:7px;padding:5px 8px;width:100%}
+.popover .note{font-size:11px;color:var(--ink-4);margin-top:8px;line-height:1.45}
+.popover .ctl{display:flex;gap:6px;margin-top:10px;justify-content:flex-end}
+.sheet{position:absolute;top:0;right:0;bottom:0;width:440px;max-width:100%;z-index:6;border-left:1px solid var(--paper-2);background:var(--paper-0);box-shadow:-18px 0 40px rgba(0,0,0,.45);display:flex;flex-direction:column}
+.sheet .sh-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--paper-2)}
+.sheet .sh-head .crumb{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4)}
+.sheet .sh-head h3{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:16px;margin:0}
+.sheet .sh-head .esc{margin-left:auto;font:500 10px "JetBrains Mono",monospace;color:var(--ink-4);border:1px solid var(--paper-2);border-radius:4px;padding:1px 5px}
+.sheet .sh-body{padding:14px 16px;overflow:auto;flex:1}
+.sheet .blk{margin-top:14px}
+.sheet .blk h4{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);margin:0 0 6px;font-weight:600}
+.sheet .blk p{font-size:12.5px;color:var(--ink-2);margin:4px 0;line-height:1.5}
+.sheet .blk p b{color:var(--ink-1);font-weight:500}
+.sheet .blk p a{color:var(--seal-deep);text-decoration:none;border-bottom:1px solid var(--seal-ring)}
+.sheet .sh-foot{padding:10px 16px;border-top:1px solid var(--paper-2);font-size:11px;color:var(--ink-4);line-height:1.45}
+.spark{width:100%;height:84px;display:block}
+.hist{list-style:none;margin:0;padding:0}
+.hist li{display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;padding:5px 0;border-bottom:1px dotted var(--paper-2);font-size:12px;color:var(--ink-2)}
+.hist li span:first-child{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--ink-4);padding-top:2px}
+
+/* the mail, on paper */
+.mail{border:1px solid var(--paper-2);border-radius:10px;overflow:hidden;max-width:440px}
+.mail .env{padding:10px 14px;border-bottom:1px solid var(--paper-2);font-size:11.5px;color:var(--ink-2);display:grid;grid-template-columns:auto 1fr;gap:2px 10px}
+.mail .env .l{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);padding-top:2px}
+.mail .body{padding:16px 18px 18px;font-family:"Fraunces",Georgia,serif}
+.mail .body .wm{font-weight:600;font-size:14px;letter-spacing:-.02em}.mail .body .wm i{color:var(--seal);font-style:normal}
+.mail .body h2{font-weight:500;font-size:19px;margin:8px 0 2px}
+.mail .body .dl{font-style:italic;font-size:13px;color:var(--ink-2);margin:0 0 8px}
+.mail .body h3{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);margin:14px 0 4px;font-weight:600}
+.mail .body p{font-size:13.5px;line-height:1.45;margin:6px 0;color:var(--ink-1)}
+.mail .body p small{display:block;font-family:"DM Sans",system-ui,sans-serif;font-size:11.5px;color:var(--ink-2);margin-top:2px}
+.mail .body p a{color:var(--seal-deep)}
+.mail .body .fine{font-family:"DM Sans",system-ui,sans-serif;font-size:10.5px;color:var(--ink-4);border-top:1px solid var(--paper-2);padding-top:8px;margin-top:14px;line-height:1.5}
+
+/* states */
+.ghost{height:44px;border-radius:8px;border:1px solid var(--paper-2);background:var(--paper-1);margin-top:8px}
+.alert{padding:10px 14px;border-radius:10px;border:1px solid var(--paper-2);background:var(--paper-1);font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.small-wrap{padding:16px 16px 20px}
+.mini{display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--paper-2);font-size:12px}
+.mini .meter{margin-top:0}
+.small-wrap .mini{grid-template-columns:48px minmax(0,1fr) auto;gap:6px}
+.small-wrap .mini span:nth-child(2){font-size:11.5px;line-height:1.3}
+.small-wrap .mini .num{white-space:nowrap;font-size:11px}
+
+/* mobile */
+.m .hdr{padding:0 14px;min-height:48px}.m .hdr .search{display:none}
+.m .wrap{padding:14px 14px 28px}
+.m h1.title{font-size:24px}
+.m .postline{padding:8px 10px}.m .postline .ctl{margin-left:0;flex-basis:100%}
+.m .cols{display:none}
+.m .inst{grid-template-columns:96px minmax(0,1fr);gap:8px 12px;margin-left:0;padding-left:8px}
+.m .inst .rd{grid-column:1;font-size:13px}
+.m .inst .th{grid-column:2}
+.m .inst .st{grid-column:1}
+.m .inst .last{grid-column:2}
+.m .inst .name{font-size:14.5px}
+.m .entry{grid-column:1 / -1}
+.m .floor{margin-left:0}
+.m .leaves{overflow-x:auto;flex-wrap:nowrap;padding-right:28px;-webkit-mask-image:linear-gradient(90deg,#000 86%,transparent);mask-image:linear-gradient(90deg,#000 86%,transparent)}
+.m .ribbon-head .cap{flex-basis:100%}
+.m .more{padding-left:8px}
+@media (max-width:600px){.w390{width:100%}.frame.w390{border-radius:0;border-left:0;border-right:0}}
+</style></head>
+<body>
+<div class="sk-banner"><span>Sketch 108 · direction C · The Instruments</span><span>/recommendations · example data, not a tenant · every figure invented to show the full view</span></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">1 · Desktop 1440 — Meyhouse Palo Alto (US · USD · Pacific)</h2>
+  <p class="sk-note"><b>The idea.</b> Every rule that can write to this page is an <b>instrument</b> with a reading, a threshold and a state, and the page shows all of them — not only the ones that fired. Four tiers: <b>sounding</b> (a standing entry under each, filed by its act), <b>read and quiet</b> (it read your records and the reading is under the line — the proof that "clear" is clear), <b>could not read</b> (what is missing, and the door), and <b>not built</b> — which is the catalogue, so the catalogue is the fourth tier of the same list rather than a second page. The post's floor is a dashed line drawn across the sounding tier: what is above it is posted. Every reading opens to its sources.</p>
+  <div class="frame"><div class="mudavym">
+    <div class="hdr">
+      <span class="mark"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-label="Mudavym mark"><path d="M3 20 8.5 4l3.5 9"/><path d="M8 20l4-11 4 11 2.5-8L21 20"/></svg></span>
+      <span class="rule"></span><span class="pg">Recommendations</span>
+      <span class="search"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search the house, or type a command<kbd>⌘K</kbd></span>
+      <span class="right"><span class="bell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><i>3</i></span><span>Meyhouse Palo Alto</span><span class="av">AK</span></span>
+    </div>
+    <div class="wrap">
+      <div class="wordmark">Mudavym<i>.</i></div>
+      <div class="kicker">The instruments · Wednesday 16 September 2026</div>
+      <h1 class="title serif">Fourteen instruments were evaluated at 06:58. Seven are sounding, six are quiet, one could not read.</h1>
+      <p class="dateline">12 rules and 2 goals · 13 read · 5 entries stand — of the seven sounding, one entry was ruled off Tue 15 and one is silenced by your dismissal · every reading below opens to its sources</p>
+      <div class="postline"><span class="k">The post</span><span><b>daily at 07:00</b> Pacific · to <b>aldemir@meyhouse.com</b></span><span><span class="k">carries</span> what sounds at <b>this week</b> and above — the dashed line below</span><span><span class="k">last</span> Tue 15 Sep 07:00 · 4 instruments</span><span><span class="k">next</span> <b>today 07:00</b> — in two minutes</span><span class="ctl"><button class="btn on ink">Change the post</button><button class="btn ink">Preview</button></span></div>
+      <div class="double"><i></i><i></i></div>
+      <div class="leaves"><button class="leaf" aria-current="page">The instruments<span class="num">14</span></button><button class="leaf">Not built<span class="num">546 · 3 unknown</span></button><button class="leaf">Dismissed<span class="num">1</span></button><button class="leaf">Ruled off<span class="num">6</span></button><button class="leaf">History</button><span class="note">"Not built" is the catalogue — the fourth tier, opened as a leaf because it is 549 rows (546 not built, 3 whose state the API did not say)</span></div>
+      <section class="ribbon" aria-label="The runs, day by day"><div class="ribbon-head"><span class="micro">The runs, day by day</span><span class="cap">thirteen days back and two ahead · each day is that morning's run: fourteen readings stacked — sounding, quiet, could not read · a quiet day is a reading too, not a blank · pick a day and the page is that run</span></div><div class="rb-grid"><button type="button" class="rb-day"><span class="d">Thu <b>3</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:5px"></i><i class="q" style="height:17px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Fri <b>4</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:5px"></i><i class="q" style="height:17px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Sat <b>5</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Sun <b>6</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Mon <b>7</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day out"><span class="d">Tue <b>8</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Wed <b>9</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Thu <b>10</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Fri <b>11</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day none"><span class="d">Sat <b>12</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day none"><span class="d">Sun <b>13</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:9px"></i><i class="q" style="height:12px"></i><i class="c" style="height:3px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Mon <b>14</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:10px"></i><i class="q" style="height:10px"></i><i class="c" style="height:4px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Tue <b>15</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:10px"></i><i class="q" style="height:12px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day today"><span class="d">Wed <b>16</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:12px"></i><i class="q" style="height:10px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day future"><span class="d">Thu <b>17</b></span><span class="run"><span class="mk"></span><span class="stk"></span></span></button><button type="button" class="rb-day future"><span class="d">Fri <b>18</b></span><span class="run"><span class="mk"></span><span class="stk"></span></span></button></div><div class="rb-legend"><i><span class="sw"></span>sounding</i><i><span class="sw q"></span>quiet</i><i><span class="sw c"></span>could not read</i><i><span class="sw fired"></span>first fired</i><i><span class="sw due"></span>falls due</i><i><span class="sw none"></span>no till rows — not a zero</i><i><span class="sw out"></span>out of the analysis</i><i><span class="sw today"></span>today</i><i><span class="sw future"></span>not happened yet</i><i><span class="sw sel"></span>a selected day (see 1b)</i></div></section>
+
+      <!-- tier 1: sounding -->
+      <div class="tier">
+        <div class="tier-head"><h2>Sounding</h2><span class="blurb">the reading is past the rule's own condition · a standing entry under each, filed by its act · tonight first · a silenced instrument keeps sounding here; only its entry is withheld</span><span class="num">7 of 14</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="cols"><span>Reading against threshold</span><span>Instrument</span><span>Reading</span><span>Threshold</span><span>State</span><span>Sounding since</span></div>
+
+        <div class="inst" data-open="true">
+          <div><div class="meter sound"><div class="fill" style="width:71%"></div><div class="tick" style="left:40%"></div></div><div class="mlab"><span>0%</span><span>40%</span><span>100%</span></div></div>
+          <div><div class="name">Stockout within the replenishment window</div><div class="what">the highest stockout probability across the cellar, 7-day window · <span class="mono">stockout_imminent</span></div></div>
+          <div class="rd"><button>71%</button><small>Barolo Riserva 2019, 4 on hand</small></div>
+          <div class="th">&gt; 40%<small>the rule's own constant · <span class="mono">:190</span></small></div>
+          <div class="st sound">Sounding · now</div>
+          <div class="last">Sun 13 Sep<small>3 days · no silences</small></div>
+          <div class="entry">
+            <div class="runin"><span class="micro seal">Order it</span><span class="micro">now</span><span class="micro dim">inventory</span></div>
+            <p class="obs">Barolo Riserva 2019 has a 71% chance of stocking out before a 7-day replenishment (on hand: 4).<sup>1</sup></p>
+            <p class="do">Place the order today — reorder point is 12 bottles. If the vendor is slow, split the order across two vendors.</p>
+            <div class="ctls"><span class="lab">Carry it out</span><button class="btn seal ink">Draft the order</button><button class="btn ink">Snooze</button><button class="btn ink">Dismiss</button><span class="sep"></span><span class="lab">File it</span><button class="btn dark" disabled>Make this a goal</button><button class="btn ink">See it in reports</button><button class="btn dark" disabled>Day-book</button></div>
+            <p class="refused"><b>Make this a goal — refused.</b> A stockout is an availability event, not one of the seven figures a goal can be held on (wine revenue · bottles sold · purchasing spend · checks · average check · attach rate · days of stock). Ruling it off when the order is placed is the record this one keeps. <b>See it in reports</b> draws “What to buy back” — the same register this rule read. <b>Day-book — not offered.</b> Only <i>Schedule it</i> is a calendar act; on every other entry the built page does not draw this control at all (<span class="mono">Entry.tsx:146-152</span>) — drawn dark here so the door and its reason are both visible.</p>
+          </div>
+        </div>
+
+        <div class="inst">
+          <div><div class="meter sound"><div class="fill" style="width:76%"></div><div class="tick" style="left:16%"></div></div><div class="mlab"><span>0</span><span>−8%</span><span>−50%</span></div></div>
+          <div><div class="name">Sales against the weekday baseline</div><div class="what">yesterday, Tue 15, against the same weekday's observed history · <span class="mono">sales_below_weekday_baseline</span></div></div>
+          <div class="rd"><button>−38%</button><small>Tue: $1,940 vs $3,120 · 6 observed Tuesdays</small></div>
+          <div class="th">&lt; −8%<small>the rule's own constant · <span class="mono">:148</span></small></div>
+          <div class="st sound">Sounding · now<button class="openent">Open the entry</button></div>
+          <div class="last">Today 06:58<small>Tue 8 Sep out of the analysis, skipped</small></div>
+        </div>
+
+        <div class="inst">
+          <div><div class="meter sound"><div class="fill" style="width:60%"></div><div class="tick" style="left:40%"></div></div><div class="mlab"><span>0</span><span>2 wines</span><span>5</span></div></div>
+          <div><div class="name">Fast sellers below median margin</div><div class="what">plowhorses among the 57 priced wines, 90 days · 61 unpriced are unclassified · <span class="mono">plowhorse_repricing</span></div></div>
+          <div class="rd"><button>3 wines</button><small>top: Sancerre Les Baronnes 2023</small></div>
+          <div class="th">≥ 2<small>the rule's own constant · <span class="mono">:226</span></small></div>
+          <div class="st sound">Sounding · this week<button class="openent">Open the entry</button></div>
+          <div class="last">Sat 5 Sep<small>11 days · no silences</small></div>
+        </div>
+
+        <div class="inst" data-open="true">
+          <div><div class="meter noscale"></div><div class="mlab"><span>no scale — the rule has no constant</span></div></div>
+          <div><div class="name">Strongest-to-weakest weekday spread</div><div class="what">Friday against Tuesday, 8 weeks of till revenue · <span class="mono">weekday_gap</span></div></div>
+          <div class="rd"><button>41%</button><small>Fri strongest · Tue weakest · the spread is the reading, not the test</small></div>
+          <div class="th">best ≠ worst<small>fires whenever the two differ · <span class="mono">:281</span></small></div>
+          <div class="st sound">Sounding · this week</div>
+          <div class="last">Sun 23 Aug<small>24 days · no silences</small></div>
+          <div class="entry">
+            <div class="runin"><span class="micro seal">Schedule it</span><span class="micro">this week</span><span class="micro dim">sales</span></div>
+            <p class="obs">Friday is reliably your strongest day; Tuesday the weakest.<sup>5</sup></p>
+            <p class="do">Move staff training, deliveries, and inventory counts to Tuesday; test a Tuesday-only offer (corkage-free, flight special) rather than discounting strong days.</p>
+            <div class="ctls"><span class="lab">Carry it out</span><button class="btn seal ink">Put it on the day-book</button><button class="btn ink">Snooze</button><button class="btn on ink" aria-expanded="true">Dismiss</button><span class="sep"></span><span class="lab">File it</span><button class="btn ink">Make this a goal</button><button class="btn ink">See it in reports</button></div>
+            <p class="refused"><b>Make this a goal</b> is held on wine revenue, at least — “Lift the quiet day's wine revenue”. <b>See it in reports</b> draws “The week's shape” — the same register this rule read.</p>
+            <div class="dsheet" role="group" aria-label="Dismiss it — and never show it again">
+              <h4>Dismiss it — and never show it again</h4>
+              <div class="micro">Why — pick one; the reason is kept with the record and retunes nothing yet</div>
+              <div class="reasons"><button class="btn ink">Not relevant here</button><button class="btn on ink">Already done</button><button class="btn ink">Wrong figure</button><button class="btn ink">Will not do it</button></div>
+              <div class="micro" style="margin-top:9px">What to silence — only the scopes this instrument can keep</div>
+              <label class="scope"><input type="radio" name="sc"><span>This exact finding — <span class="em">stored as the whole rule: <span class="mono">weekday_gap</span> carries no weekday and no week (<span class="mono">recommendations.service.ts:276-290</span>), so the gateway widens the key and says so</span></span></label>
+              <label class="scope"><input type="radio" name="sc" checked><span>This instrument entirely, for this restaurant — <span class="em">it keeps reading; its entry is withheld and the row says so</span></span></label>
+              <p class="refused" style="margin-top:6px"><b>Every Tuesday, for this rule — not offered.</b> The rule names Tuesday inside its sentence only; a subject scope needs a subject on the rule, which today only the two baseline rules carry.</p>
+              <label class="scope" style="margin-top:8px"><input type="checkbox" disabled><span>Also exclude this day from the analysis — <span class="em">refused: this entry names no single day, so there is nothing to exclude — dismissing it hides the entry only</span></span></label>
+              <p class="promise">You will not see <b>anything the rule weekday_gap finds, on any day and any subject, until you return it</b>. The instrument stays on this page with its reading, marked <i>Sounding · silenced</i>; only the entry is withheld.</p>
+              <div style="display:flex;gap:6px;margin-top:10px;justify-content:flex-end"><button class="btn quiet ink">Keep it</button><button class="btn seal ink">Dismiss it</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="inst">
+          <div><div class="meter noscale"></div><div class="mlab"><span>no scale — the rule has no constant</span></div></div>
+          <div><div class="name">Basket pairs above support</div><div class="what">fires whenever a basket insight exists · <span class="mono">pairing_promotion</span> · <b style="color:var(--ink-2);font-weight:500">silenced — this rule entirely, Tue 15 Sep 17:40</b>; the instrument keeps reading, the entry is withheld from the page and the post</div></div>
+          <div class="rd"><button>1 pair</button><small>Sancerre Les Baronnes 2023 with the oyster plate · lift 2.4</small></div>
+          <div class="th">any insight<small>no constant · <span class="mono">:324-328</span></small></div>
+          <div class="st sound">Sounding · silenced</div>
+          <div class="last">Mon 14 Sep<small>2 days · <a href="#" style="color:var(--seal-deep)">Return the silence</a></small></div>
+        </div>
+
+        <div class="floor"><span>the post's floor · <b>this week and above</b> is posted</span><i></i><span>below this line: on the page, not in the mail</span></div>
+
+        <div class="inst">
+          <div><div class="meter sound"><div class="fill" style="width:67%"></div><div class="tick" style="left:57%"></div></div><div class="mlab"><span>0</span><span>0.40</span><span>0.70</span></div></div>
+          <div><div class="name">Purchasing concentration</div><div class="what">Herfindahl index over 365 days of delivered purchase orders · <span class="mono">vendor_concentration</span></div></div>
+          <div class="rd"><button>0.47</button><small>HHI 4686 · effectively 2.1 vendors</small></div>
+          <div class="th">&gt; 0.40<small>the rule's own constant · <span class="mono">:253</span></small></div>
+          <div class="st sound">Sounding · this month<button class="openent">Open the entry</button></div>
+          <div class="last">Sun 30 Aug<small>17 days · <span class="notposted" style="padding:1px 4px">not posted</span></small></div>
+        </div>
+        <div class="inst">
+          <div><div class="meter sound"><div class="fill" style="width:77%"></div><div class="tick" style="left:1%"></div></div><div class="mlab"><span>$0</span><span>$8k</span></div></div>
+          <div><div class="name">Capital in 90-day-still stock</div><div class="what">the value of wines with no movement in 90 days · <span class="mono">dead_stock_capital</span> · <b style="color:var(--ink-2);font-weight:500">its entry was ruled off Tue 15 Sep 18:12</b>; the instrument keeps reading</div></div>
+          <div class="rd"><button>$6,140</button><small>6 wines · top: Vin Santo 2015</small></div>
+          <div class="th">&gt; $0<small>the rule's own constant — any capital at all sounds · <span class="mono">:204</span></small></div>
+          <div class="st sound">Sounding · this month · entry ruled off</div>
+          <div class="last">Sun 30 Aug<small>outcome window closes 29 Sep · <span class="notposted" style="padding:1px 4px">not posted</span></small></div>
+        </div>
+      </div>
+
+      <!-- tier 2: quiet -->
+      <div class="tier">
+        <div class="tier-head"><h2>Read and quiet</h2><span class="blurb">it read this house's records and the reading is under the line — a proven absence, not a silence (a silenced instrument stays in Sounding)</span><span class="num">6 of 14</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="cols"><span>Reading against threshold</span><span>Instrument</span><span>Reading</span><span>Threshold</span><span>State</span><span>Quiet since</span></div>
+        <div class="inst">
+          <div><div class="meter"><div class="fill" style="width:44%"></div><div class="tick" style="left:60%"></div></div><div class="mlab"><span>0</span><span>0.60</span><span>1</span></div></div>
+          <div><div class="name">Revenue concentration</div><div class="what">Gini over on-hand stock at list price (unit price × quantity) — a till is not needed · <span class="mono">revenue_concentration</span></div></div>
+          <div class="rd"><button>0.44</button></div>
+          <div class="th">&gt; 0.60<small><span class="mono">:265</span></small></div>
+          <div class="st">Quiet</div>
+          <div class="last">Thu 6 Aug<small>41 days</small></div>
+        </div>
+        <div class="inst">
+          <div><div class="meter"><div class="fill" style="width:12%"></div><div class="tick" style="left:60%"></div></div><div class="mlab"><span>0</span><span>+30%</span><span>+50%</span></div></div>
+          <div><div class="name">Purchasing spend against the prior 30 days</div><div class="what"><span class="mono">spend_acceleration</span></div></div>
+          <div class="rd"><button>+6%</button><small>$38,400 vs $36,200, last 30 vs prior 30</small></div>
+          <div class="th">&gt; +30%<small><span class="mono">:296</span></small></div>
+          <div class="st">Quiet</div>
+          <div class="last">Fri 4 Sep<small>12 days</small></div>
+        </div>
+        <div class="inst">
+          <div><div class="meter"><div class="fill" style="width:12%"></div><div class="tick" style="left:40%"></div></div><div class="mlab"><span>0</span><span>−10%</span><span>−25%</span></div></div>
+          <div><div class="name">Week-over-week demand</div><div class="what">bottles this week against last, both windows observed · <span class="mono">weekly_demand_slide</span></div></div>
+          <div class="rd"><button>−3%</button></div>
+          <div class="th">&lt; −10%<small><span class="mono">:171</span></small></div>
+          <div class="st">Quiet</div>
+          <div class="last">Fri 11 Sep<small>5 days</small></div>
+        </div>
+        <div class="inst">
+          <div><div class="meter"><div class="fill" style="width:20%"></div><div class="tick" style="left:40%"></div></div><div class="mlab"><span>0</span><span>2 wines</span><span>5</span></div></div>
+          <div><div class="name">High-margin slow movers</div><div class="what">puzzles among the same 57 priced wines the plowhorse rule read, 90 days · 61 unpriced are unclassified for both · <span class="mono">puzzle_activation</span></div></div>
+          <div class="rd"><button>1 wine</button><small>Meursault 1er Cru 2020</small></div>
+          <div class="th">≥ 2<small><span class="mono">:240</span></small></div>
+          <div class="st">Quiet</div>
+          <div class="last">Sat 8 Aug<small>39 days</small></div>
+        </div>
+        <div class="inst">
+          <div><div class="meter"><div class="fill" style="width:74%"></div><div class="tick" style="left:62%"></div></div><div class="mlab"><span>0</span><span>90% of pace</span><span>120%</span></div></div>
+          <div><div class="name">Goal: checks served</div><div class="what">a goal you set, against its linear pace · <span class="mono">goal_behind</span> · deadline 30 Sep</div></div>
+          <div class="rd"><button>104%</button><small>of pace · 1,882 of 2,100</small></div>
+          <div class="th">&lt; 90%<small>of linear pace · <span class="mono">:362</span></small></div>
+          <div class="st">On pace</div>
+          <div class="last">—<small>has never sounded</small></div>
+        </div>
+        <div class="inst">
+          <div><div class="meter"><div class="fill" style="width:68%"></div><div class="tick" style="left:62%"></div></div><div class="mlab"><span>0</span><span>90% of pace</span><span>120%</span></div></div>
+          <div><div class="name">Goal: average check</div><div class="what"><span class="mono">goal_behind</span> · deadline 30 Sep</div></div>
+          <div class="rd"><button>97%</button><small>of pace · $68.40 of $70</small></div>
+          <div class="th">&lt; 90%</div>
+          <div class="st">On pace</div>
+          <div class="last">Wed 2 Sep<small>sounded once, 14 days ago</small></div>
+        </div>
+      </div>
+
+      <!-- tier 3: could not read -->
+      <div class="tier">
+        <div class="tier-head"><h2>Could not read</h2><span class="blurb">no reading, so no needle — what is missing, and the door to it</span><span class="num">1 of 14</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="inst">
+          <div><div class="meter cant"></div><div class="mlab"><span>no reading</span></div></div>
+          <div><div class="name">Server spread of average check</div><div class="what"><span class="mono">staff_spread</span> · needs a server id on each check</div><p class="door">The till's checks carry no server id — 0 of 1,240 checks in 30 days name one. <a href="#">Map servers in Team</a> or enable the employee field on the till's export; the page cannot tell which, and does not guess.</p></div>
+          <div class="rd dash">—</div>
+          <div class="th">&gt; 15%<small>the constant stands; nothing to test it against · <span class="mono">:312</span></small></div>
+          <div class="st cant">Could not read</div>
+          <div class="last">—<small>never read here</small></div>
+        </div>
+        </div>
+
+      <!-- tier 4: not built, folded -->
+      <div class="tier">
+        <div class="tier-head"><h2>Not built</h2><span class="blurb">the catalogue — 573 insight types, 24 built, 546 not built, 3 whose state the API did not say — opened as a leaf</span><span class="num">546 · 3 unknown</span></div>
+        <div class="double"><i></i><i></i></div>
+        <p style="font-size:12.5px;color:var(--ink-2);margin:10px 0 0;line-height:1.55;max-width:820px">Two lists, not one: the twelve rules and two goals above write to this page; the twenty-four built insight types write to the reports desk's insight panel. Where a built type feeds an instrument, the leaf says so. Whether they should be one list is a decision, not a label. <button class="btn ink" style="margin-left:6px">Open the leaf</button></p>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;border-top:1px solid var(--paper-2);margin-top:22px;padding-top:12px;font-size:11.5px;color:var(--ink-4)"><span>Read at 06:58 · a threshold is the rule's own constant, cited on the row to its line in <span class="mono">recommendations.service.ts</span> · none of these needles is a model's guess</span><span class="wordmark">Mudavym<i>.</i></span></div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">1b · A past day selected — Sun 13 Sep: that morning's run, fourteen readings, with the no-till-rows hatching explained</h2>
+  <p class="sk-note">"Select and see" in C is a run: every reading on the page becomes Sunday's, read at 07:00 that day. The selected day is drawn in <b>ink</b> (solid ring, caret), never seal, so it cannot be mistaken for today. The hatching on Sat 12 and Sun 13 means the till sent no rows for those days — and it changes the run in one specific, honest way: the instrument that reads <b>yesterday</b> against its weekday baseline had no Saturday to read, so on Sunday it is in <b>Could not read</b> (two that morning, not one) — not quiet, not zero. The 30-day instruments still read; an unobserved day inside a window is skipped by them, and the stack says so. Storing a run per day is the new table this direction costs (README).</p>
+  <div class="frame"><div class="mudavym">
+    <div class="wrap">
+      <div class="leaves"><button class="leaf" aria-current="page">The instruments<span class="num">14</span></button><button class="leaf">Not built<span class="num">546 · 3 unknown</span></button><button class="leaf">Dismissed<span class="num">1</span></button><button class="leaf">Ruled off<span class="num">6</span></button><button class="leaf">History</button></div>
+      <section class="ribbon" aria-label="The runs, day by day"><div class="ribbon-head"><span class="micro">The runs, day by day</span><span class="cap"><b style="color:var(--ink-1);font-weight:500">Sun 13 selected</b> — the page is that morning's run · <a href="#" style="color:var(--seal-deep)">Back to today's run</a></span></div><div class="rb-grid"><button type="button" class="rb-day"><span class="d">Thu <b>3</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:5px"></i><i class="q" style="height:17px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Fri <b>4</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:5px"></i><i class="q" style="height:17px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Sat <b>5</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Sun <b>6</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Mon <b>7</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day out"><span class="d">Tue <b>8</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Wed <b>9</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Thu <b>10</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Fri <b>11</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day none"><span class="d">Sat <b>12</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day none sel" aria-pressed="true"><span class="d">Sun <b>13</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:9px"></i><i class="q" style="height:12px"></i><i class="c" style="height:3px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Mon <b>14</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:10px"></i><i class="q" style="height:10px"></i><i class="c" style="height:4px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Tue <b>15</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:10px"></i><i class="q" style="height:12px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day today"><span class="d">Wed <b>16</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:12px"></i><i class="q" style="height:10px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day future"><span class="d">Thu <b>17</b></span><span class="run"><span class="mk"></span><span class="stk"></span></span></button><button type="button" class="rb-day future"><span class="d">Fri <b>18</b></span><span class="run"><span class="mk"></span><span class="stk"></span></span></button></div></section>
+      <div class="kicker" style="margin-top:16px">Sunday's run · read at 07:00 · Sunday 13 September 2026 · a stored run, not a recompute</div>
+      <h1 class="title serif" style="font-size:26px">Fourteen instruments were evaluated on Sunday at 07:00. Five were sounding, seven quiet, two could not read.</h1>
+      <p class="dateline">12 rules and 2 goals · 12 read · the till sent no rows for Sat 12 and Sun 13 · one instrument crossed its line that morning</p>
+      <div class="tier">
+        <div class="tier-head"><h2>Sounding on Sunday</h2><span class="num">5 of 14</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="mini"><div class="meter sound"><div class="fill" style="width:63%"></div><div class="tick" style="left:40%"></div></div><span>Stockout within the replenishment window · <span class="mono">stockout_imminent</span> · <b style="color:var(--seal-deep);font-weight:500">first fired this run, 06:57</b> — Barolo Riserva 2019, 6 on hand then; carried in the 07:00 post</span><span class="num">63% vs &gt; 40%</span></div>
+        <div class="mini"><div class="meter sound"><div class="fill" style="width:60%"></div><div class="tick" style="left:40%"></div></div><span>Fast sellers below median margin · <span class="mono">plowhorse_repricing</span></span><span class="num">3 wines vs ≥ 2</span></div>
+        <div class="mini"><div class="meter noscale"></div><span>Strongest-to-weakest weekday spread · <span class="mono">weekday_gap</span> · Sat 12 unobserved, skipped from the 8 weeks</span><span class="num">39% · best ≠ worst</span></div>
+        <div class="mini"><div class="meter sound"><div class="fill" style="width:67%"></div><div class="tick" style="left:57%"></div></div><span>Purchasing concentration · <span class="mono">vendor_concentration</span></span><span class="num">0.47 vs &gt; 0.40</span></div>
+        <div class="mini"><div class="meter sound"><div class="fill" style="width:77%"></div><div class="tick" style="left:1%"></div></div><span>Capital in 90-day-still stock · <span class="mono">dead_stock_capital</span> · its entry still stood on Sunday; ruled off Tue 15</span><span class="num">$6,140 vs &gt; $0</span></div>
+      </div>
+      <div class="tier">
+        <div class="tier-head"><h2>Could not read on Sunday</h2><span class="blurb">two, not one — and the second is what the hatching means</span><span class="num">2 of 14</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="mini"><div class="meter cant"></div><span>Sales against the weekday baseline · <span class="mono">sales_below_weekday_baseline</span> · <b style="color:var(--ink-1);font-weight:500">yesterday was Sat 12, and the till sent no rows for it</b> — no yesterday to read, so no reading: not quiet, not −0%</span><span class="num em">—</span></div>
+        <div class="mini"><div class="meter cant"></div><span>Server spread of average check · <span class="mono">staff_spread</span> · no server id on checks</span><span class="num em">—</span></div>
+      </div>
+      <div class="tier">
+        <div class="tier-head"><h2>Read and quiet on Sunday</h2><span class="blurb">the 30-day and 90-day instruments still read; an unobserved day inside their window is skipped, never counted as zero</span><span class="num">7 of 14</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:44%"></div><div class="tick" style="left:60%"></div></div><span>Revenue concentration · on-hand stock at list price</span><span class="num">0.43 / 0.60</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:10%"></div><div class="tick" style="left:60%"></div></div><span>Spend vs prior 30 days</span><span class="num">+5% / +30%</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:8%"></div><div class="tick" style="left:40%"></div></div><span>Week-over-week demand · Sat 12 unobserved, both windows still had six observed days</span><span class="num">−2% / −10%</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:20%"></div><div class="tick" style="left:40%"></div></div><span>High-margin slow movers · 57 priced wines read</span><span class="num">1 wine / ≥ 2</span></div>
+        <div class="mini"><div class="meter noscale"></div><span>Basket pairs above support · read; no basket insight that morning · it first sounded Mon 14 and was silenced Tue 15</span><span class="num">0 pairs</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:70%"></div><div class="tick" style="left:62%"></div></div><span>Goal: checks served</span><span class="num">103% of pace</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:66%"></div><div class="tick" style="left:62%"></div></div><span>Goal: average check</span><span class="num">98% of pace</span></div>
+      </div>
+      <p class="em" style="font-size:11.5px;margin-top:14px;line-height:1.5">The controls are not drawn on a past run: the acts belong to today's book. Nothing here is recomputed — it is the run as stored, which is the table this direction adds (README, C · costs). Where no run is stored (a day before runs were kept), the page says so and offers a recompute labelled as one.</p>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">2 · Overlays open — the post's popover (a choice, anchored, 320) · a reading opens to its sources (a choice, anchored, 320) · one instrument in a side sheet (one object, 440) with eight weeks of readings</h2>
+  <p class="sk-note">"A figure opens to its sources" is the whole product's rule; here it is the row's own reading. The sheet is the instrument's record: what it measures, the constant and where it lives in code, the readings over eight weeks with the threshold drawn, when it sounded, what has been silenced with which scope, and why it is below the post's floor. Nothing in the sheet can retune the threshold — that is a founder decision (the refusal is printed). The post's popover changes the four stored fields (<span class="mono">digestEnabled · digestHour · digestMinUrgency · recipientEmail</span>) and nothing else; saving sends nothing.</p>
+  <div class="frame"><div class="mudavym stage" style="min-height:880px">
+    <div class="hdr">
+      <span class="mark"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 8.5 4l3.5 9"/><path d="M8 20l4-11 4 11 2.5-8L21 20"/></svg></span>
+      <span class="rule"></span><span class="pg">Recommendations</span>
+      <span class="search"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search the house, or type a command<kbd>⌘K</kbd></span>
+      <span class="right"><span class="bell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><i>3</i></span><span>Meyhouse Palo Alto</span><span class="av">AK</span></span>
+    </div>
+    <div class="wrap" style="max-width:none;padding-right:470px">
+      <div class="wordmark">Mudavym<i>.</i></div>
+      <div class="kicker">The instruments · Wednesday 16 September 2026</div>
+      <h1 class="title serif" style="font-size:26px">Fourteen instruments were evaluated at 06:58.</h1>
+      <div class="postline"><span class="k">The post</span><span><b>daily at 07:00</b> Pacific · to <b>aldemir@meyhouse.com</b></span><span><span class="k">carries</span> what sounds at <b>this week</b> and above</span><span><span class="k">next</span> today 07:00</span><span class="ctl"><button class="btn seal ink" aria-expanded="true">Change the post</button><button class="btn ink">Preview</button></span>
+        <!-- the post's popover: ink, modal:false, anchored to its trigger -->
+        <div class="popover" style="top:calc(100% + 8px);left:0">
+          <h4>Change the post</h4>
+          <div class="row"><span class="l">Post it</span><select><option>Daily</option><option>Off — keep the page, send nothing</option></select></div>
+          <div class="row"><span class="l">At</span><select><option>07:00 Pacific</option><option>06:00</option><option>08:00</option><option>09:00</option></select></div>
+          <div class="row"><span class="l">Floor</span><select><option>This week and above</option><option>Now only</option><option>Everything sounding</option></select></div>
+          <div class="row"><span class="l">To</span><input value="aldemir@meyhouse.com"></div>
+          <p class="note">The floor moves the dashed line on the page; the quiet tier is always one line in the mail, the could-not-reads always named. Saving changes what the next post carries — it sends nothing now. One address per house today.</p>
+          <p class="note">The hour is stored as a number (<span class="mono">digest_hour</span>). Making it the house's clock (<span class="mono">restaurants.timezone</span>) is <b>OD-92, open</b>: today every cron is pinned to America/New_York, so 07:00 here is a decision the sender still owes, and a house with no timezone on record has no local hour to promise.</p>
+          <div class="ctl"><button class="btn quiet ink">Cancel</button><button class="btn seal ink">Save the post</button></div>
+        </div>
+      </div>
+      <div class="tier" style="margin-top:30px">
+        <div class="tier-head"><h2>Sounding</h2><span class="num">7 of 14</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="cols" style="grid-template-columns:130px minmax(0,1fr) 110px 90px 110px"><span>Reading</span><span>Instrument</span><span>Reading</span><span>Threshold</span><span>State</span></div>
+        <div class="inst" style="grid-template-columns:130px minmax(0,1fr) 110px 90px 110px">
+          <div><div class="meter sound"><div class="fill" style="width:71%"></div><div class="tick" style="left:40%"></div></div></div>
+          <div><div class="name">Stockout within the replenishment window</div><div class="what"><span class="mono">stockout_imminent</span></div></div>
+          <div class="rd"><button>71%</button></div><div class="th">&gt; 40%</div><div class="st sound">Sounding</div>
+        </div>
+        <div class="floor"><span>the post's floor</span><i></i></div>
+        <div class="inst" data-open="true" style="grid-template-columns:130px minmax(0,1fr) 110px 90px 110px;position:relative">
+          <div><div class="meter sound"><div class="fill" style="width:67%"></div><div class="tick" style="left:57%"></div></div></div>
+          <div><div class="name">Purchasing concentration</div><div class="what">Herfindahl index, 365 days of delivered purchase orders · <span class="mono">vendor_concentration</span></div></div>
+          <div class="rd"><button style="border-bottom-color:var(--seal)" aria-expanded="true">0.47</button></div><div class="th">&gt; 0.40</div><div class="st sound">Sounding</div>
+          <!-- the reading's popover: ink, modal:false, anchored to the figure -->
+          <div class="popover" style="top:44px;left:calc(130px + 14px + 40%)">
+            <h4>0.47 — where it comes from</h4>
+            <p><b>Herfindahl index</b> over delivered purchase orders, Wed 17 Sep 2025 – Wed 16 Sep 2026 (365 days — <span class="mono">getRiskProfile</span> reads a year, <span class="mono">analytics.service.ts:708</span>): <b>$438,600</b> across <b>4 vendors</b>. Vinum Imports 64% · Coastal Cellars 22% · two smaller 9% and 5%. Squared and summed: 0.4686 — effectively 2.1 vendors; the rule prints it as 4686.</p>
+            <p>Read at <b>06:58</b> from <span class="mono">procurement_orders</span> · 163 orders · delivered, not drafted, orders only. The 30-day spend instrument reads $38,400 of the same book.</p>
+            <p>Threshold <b>0.40</b> is the rule's own constant — <span class="mono">recommendations.service.ts:253</span> — not a setting. Changing it is a decision, and this page cannot make it.</p>
+            <p class="note" style="margin-top:6px">A figure is a claim; this is its evidence. It is the same arithmetic the reports desk shows.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="sheet" aria-label="Purchasing concentration — the instrument">
+      <div class="sh-head"><div><div class="crumb">Instruments › Sounding</div><h3>Purchasing concentration</h3></div><span class="esc">Esc</span></div>
+      <div class="sh-body">
+        <div class="micro">vendor_concentration · sounding since Sun 30 Aug · this month · not posted</div>
+        <div class="blk"><h4>Eight weeks of readings</h4>
+          <svg class="spark" viewBox="0 0 400 84" aria-label="Readings over eight Sundays against the 0.40 threshold">
+            <line x1="0" y1="52" x2="400" y2="52" stroke="#EFE7D9" stroke-width="1" stroke-dasharray="3 3" opacity=".6"/>
+            <text x="2" y="48" font-family="JetBrains Mono, monospace" font-size="8" fill="#ABA294">0.40 threshold</text>
+            <polyline fill="none" stroke="#8E8576" stroke-width="1.5" points="10,72 66,68 122,64 178,60 234,56 290,48 346,28 392,24"/>
+            <polyline fill="none" stroke="#5FB0BC" stroke-width="2" points="290,48 346,28 392,24"/>
+            <circle cx="392" cy="24" r="3" fill="#5FB0BC"/>
+            <text x="10" y="80" font-family="JetBrains Mono, monospace" font-size="8" fill="#ABA294">Sun 26 Jul</text>
+            <text x="290" y="80" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" fill="#ABA294">30 Aug · crossed</text>
+            <text x="396" y="80" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="8" fill="#ABA294">Sun 13 Sep</text>
+          </svg>
+          <p>0.35 → 0.36 → 0.37 → 0.38 → 0.39 → 0.41 → 0.46 → 0.47. Crossed the threshold on Sun 30 Aug and has not come back; today's run reads 0.47 again. Each point is a 365-day window ending that Sunday, 26 Jul to 13 Sep.</p>
+        </div>
+        <div class="blk"><h4>The standing entry</h4>
+          <p><b>Call a vendor · this month.</b> Request quotes from one alternative vendor for your top category this month and move 10–20% of volume to establish the relationship before you need it.</p>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn seal ink">Open Providers</button><button class="btn ink">Snooze</button><button class="btn ink">Dismiss</button><button class="btn dark" disabled>Make this a goal</button><button class="btn dark" disabled>See it in reports</button></div>
+          <p class="refused"><b>Make this a goal — refused.</b> Vendor concentration is an HHI over your purchase book. The gateway holds goals on seven figures only, and a concentration index is not among them. <b>See it in reports — refused.</b> No cutting answers this one: the concentration register (<span class="mono">/analytics/risk</span>) is not among the eleven analyses the reports sheet can lay down.</p>
+        </div>
+        <div class="blk"><h4>Why it is not in the post</h4><p>The rule's urgency is <b>this month</b>; the post's floor is <b>this week</b>. It is on the page every morning and in the mail only if you lower the floor. <a href="#">Change the post</a></p></div>
+        <div class="blk"><h4>Silences</h4><p>None. This instrument names no single vendor, so the only scope it can offer is <i>this exact finding</i> or <i>this instrument entirely</i> — "every Vinum Imports" is not a scope it can honour, and it is not offered.</p></div>
+        <div class="blk"><h4>Sounded</h4><ul class="hist"><li><span>Sun 30 Aug</span><span>Crossed 0.40 (0.41). First shown Sun 30 Aug 07:02.</span></li><li><span>Mar – Jul</span><span>Quiet — readings 0.31 to 0.38.</span></li></ul></div>
+        <div class="blk"><h4>The threshold</h4><p>0.40 is the rule's own constant (<span class="mono">recommendations.service.ts:253</span>). <span class="em">This sheet cannot change it; a threshold a house can move is a decision, and it is not decided.</span></p></div>
+      </div>
+      <div class="sh-foot">Read at 06:58 · 163 delivered orders over 365 days · 4 vendors · the same arithmetic the risk register computes; the reports sheet has no cutting for it, which is why the door above is refused.</div>
+    </aside>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">3 · The Turkish house — Sim Vanilla Kaleiçi, Antalya (TRY · tr-TR · UTC+3) — five instruments cannot read without a till</h2>
+  <p class="sk-note">Where locale matters: the house clock (TRT — subject to OD-92, frame 2), the readings in ₺ (drawn ₺184.500 · ₺41.200; today <span class="mono">recommendations.service.ts:211,299</span> hard-code <span class="mono">$</span> in the sentences, so currency-aware rule sentences are a costed change, README), the dates printed (16.09.2026), and the postmark when <span class="mono">recipientEmail</span> is null. The could-not-read tier is the honest centre of this house: five instruments, one cause, one door — and the hub is <b>read</b>, not assumed, so a house with a till whose window came back empty would get a different sentence.</p>
+  <div class="frame"><div class="mudavym">
+    <div class="wrap">
+      <div class="wordmark">Mudavym<i>.</i></div>
+      <div class="kicker">The instruments · Çarşamba, 16.09.2026</div>
+      <h1 class="title serif">Fourteen instruments were evaluated at 09:12. Three are sounding, six are quiet, five could not read.</h1>
+      <p class="dateline">12 rules and 2 goals · 9 read · 3 stand · nothing withheld · no till is connected — read from the POS hub</p>
+      <div class="postline"><span class="k">The post</span><span><b>daily at 08:00</b> TRT (UTC+3) · to <span class="em">no address set — not posted, never sent to a fallback address</span></span><span><span class="k">carries</span> what sounds at <b>this week</b> and above — 1 of 3</span><span><span class="k">last</span> <span class="em">never</span></span><span class="ctl"><button class="btn seal ink">Set an address</button><button class="btn ink">Preview</button></span></div>
+      <div class="double"><i></i><i></i></div>
+      <div class="tier">
+        <div class="tier-head"><h2>Sounding</h2><span class="num">3 of 14</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="cols"><span>Reading against threshold</span><span>Instrument</span><span>Reading</span><span>Threshold</span><span>State</span><span>Sounding since</span></div>
+        <div class="inst">
+          <div><div class="meter sound"><div class="fill" style="width:68%"></div><div class="tick" style="left:60%"></div></div><div class="mlab"><span>0</span><span>+30%</span><span>+50%</span></div></div>
+          <div><div class="name">Purchasing spend against the prior 30 days</div><div class="what"><span class="mono">spend_acceleration</span></div></div>
+          <div class="rd"><button>+34%</button><small>₺184.500 vs ₺137.700</small></div>
+          <div class="th">&gt; +30%<small><span class="mono">:296</span></small></div>
+          <div class="st sound">Sounding · this week</div>
+          <div class="last">10.09.2026<small>6 days</small></div>
+        </div>
+        <div class="floor"><span>the post's floor · <b>this week</b> and above would be posted — and nothing is posted without an address</span><i></i></div>
+        <div class="inst">
+          <div><div class="meter sound"><div class="fill" style="width:82%"></div><div class="tick" style="left:1%"></div></div><div class="mlab"><span>₺0</span><span>₺50.000</span></div></div>
+          <div><div class="name">Capital in 90-day-still stock</div><div class="what"><span class="mono">dead_stock_capital</span></div></div>
+          <div class="rd"><button>₺41.200</button><small>9 wines · top: Öküzgözü Rezerv 2021</small></div>
+          <div class="th">&gt; ₺0<small>any capital at all sounds · <span class="mono">:204</span></small></div>
+          <div class="st sound">Sounding · this month</div>
+          <div class="last">28.08.2026<small>19 days · <span class="notposted" style="padding:1px 4px">not posted</span></small></div>
+        </div>
+        <div class="inst">
+          <div><div class="meter sound"><div class="fill" style="width:74%"></div><div class="tick" style="left:57%"></div></div><div class="mlab"><span>0</span><span>0.40</span><span>0.70</span></div></div>
+          <div><div class="name">Purchasing concentration</div><div class="what"><span class="mono">vendor_concentration</span></div></div>
+          <div class="rd"><button>0.52</button><small>HHI 5200 · effectively 1.9 vendors · 365 days</small></div>
+          <div class="th">&gt; 0.40<small><span class="mono">:253</span></small></div>
+          <div class="st sound">Sounding · this month</div>
+          <div class="last">17.08.2026<small>30 days · <span class="notposted" style="padding:1px 4px">not posted</span></small></div>
+        </div>
+      </div>
+      <div class="tier">
+        <div class="tier-head"><h2>Could not read</h2><span class="blurb">one cause, one door</span><span class="num">5 of 14</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="inst" style="grid-template-columns:150px minmax(0,1fr)">
+          <div><div class="meter cant"></div><div class="mlab"><span>no reading</span></div></div>
+          <div><div class="name">Five instruments need till checks, and no till is connected</div><div class="what"><span class="mono">sales_below_weekday_baseline · weekly_demand_slide · weekday_gap · staff_spread · pairing_promotion</span></div><p class="door">Read from the POS hub at 09:12: <b style="color:var(--ink-1);font-weight:500">no adapter connected</b>. <a href="#">Connect a till</a> — the hub lists the adapters it has; this page names none it cannot see. A connected till whose 30-day window came back empty would read "no rows in the window", which is a different sentence.</p></div>
+        </div>
+      </div>
+      <div class="tier">
+        <div class="tier-head"><h2>Read and quiet</h2><span class="num">6 of 14</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:31%"></div><div class="tick" style="left:40%"></div></div><span>Stockout within the replenishment window · <span class="mono">stockout_imminent</span></span><span class="num">31% vs &gt; 40%</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:20%"></div><div class="tick" style="left:40%"></div></div><span>Fast sellers below median margin · <span class="mono">plowhorse_repricing</span></span><span class="num">1 wine vs ≥ 2</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:40%"></div><div class="tick" style="left:60%"></div></div><span>Revenue concentration · <span class="mono">revenue_concentration</span> · Gini over on-hand stock at list price, which is why it reads without a till</span><span class="num">0.41 vs 0.60</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:20%"></div><div class="tick" style="left:48%"></div></div><span>High-margin slow movers · <span class="mono">puzzle_activation</span> · cost priced on 88 of 91 wines</span><span class="num">1 wine vs ≥ 2</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:70%"></div><div class="tick" style="left:62%"></div></div><span>Goal: bottles poured · <span class="mono">goal_behind</span></span><span class="num">102% of pace</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:66%"></div><div class="tick" style="left:62%"></div></div><span>Goal: purchasing spend · <span class="mono">goal_behind</span></span><span class="num">96% of pace</span></div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">4 · The fourth tier opened — the catalogue as "not built", by state and by subject · read-only · "computable now" relabelled as data presence</h2>
+  <p class="sk-note">The rail here is by <b>state</b> first, because on this page the state is what a row is for: built · data present, not built · missing data · unknown. Subject is the second cut. Four words on every row, including <b>unknown</b>. Presence is not sufficiency, and the row says so where it matters. No watch, no mute.</p>
+  <div class="frame"><div class="mudavym">
+    <div class="wrap">
+      <div class="leaves"><button class="leaf">The instruments<span class="num">14</span></button><button class="leaf" aria-current="page">Not built<span class="num">546 · 3 unknown</span></button><button class="leaf">Dismissed<span class="num">1</span></button><button class="leaf">Ruled off<span class="num">6</span></button><button class="leaf">History</button></div>
+      <div class="cat">
+        <div class="rail">
+          <div class="micro h" style="margin-top:0">By state</div>
+          <div class="r" aria-pressed="true"><span>All states</span><span class="num">573</span></div>
+          <div class="r" aria-pressed="false"><span>Built · writing</span><span class="num">24</span></div>
+          <div class="r" aria-pressed="false"><span>Data present · not built</span><span class="num">386</span></div>
+          <div class="r" aria-pressed="false"><span>Missing data</span><span class="num">160</span></div>
+          <div class="r" aria-pressed="false"><span>Unknown</span><span class="num">3</span></div>
+          <div class="micro h">By subject</div>
+          <div class="r" aria-pressed="false"><span>All</span><span class="num">573</span></div>
+          <div class="r" aria-pressed="true"><span>Day of week</span><span class="num">48</span></div>
+          <div class="r" aria-pressed="false"><span>Wine</span><span class="num">96</span></div>
+          <div class="r" aria-pressed="false"><span>Vendor</span><span class="num">58</span></div>
+          <div class="r" aria-pressed="false"><span>Server</span><span class="num">44</span></div>
+          <p class="note">24 + 386 + 160 + 3 = 573, example figures for a house with a till (the reach suite measures only the no-till rung, 132). "Unknown 3" counts the rows on which the API omitted <span class="mono">implemented</span>; 2 of them have their data present and 1 does not, so 412 have the data present here (24 + 386 + 2). They are never guessed into a build state.</p>
+        </div>
+        <div>
+          <p class="head"><b>48</b> day-of-week types · <b>0</b> built · <b>47</b> not built · <b>1</b> unknown · <b>47</b> have the data present in this house (46 not built + the unknown one) · <b>1</b> missing data (covers on checks). Two weekday instruments write today: <span class="mono">sales_below_weekday_baseline</span> and <span class="mono">weekday_gap</span>, both sounding above.</p>
+          <p class="relabel">Data present means the tables a type reads hold rows for this house — here, 1,240 till checks over 30 days. It does not mean enough of them: a same-weekday comparison with two observed Wednesdays would be present and not sufficient. Sufficiency thresholds are a separate decision (fork F10.6) and this page does not pretend to have made it.</p>
+          <table>
+            <thead><tr><th>Type</th><th>Says</th><th>State here</th><th>Needs</th><th>Would feed</th></tr></thead>
+            <tbody>
+              <tr><td>day_of_week.revenue.vs_same_weekday</td><td>a weekday's sales against its own history</td><td><span class="cst miss">not built · data present</span></td><td>checks</td><td>the instrument <span class="mono">sales_below_weekday_baseline</span> already does this arithmetic — no link recorded</td></tr>
+              <tr><td>day_of_week.avg_check.peer_rank</td><td>which weekday runs the highest check</td><td><span class="cst miss">not built · data present</span></td><td>checks</td><td class="em">—</td></tr>
+              <tr><td>day_of_week.bottles.trend_direction</td><td>whether a weekday's pour is rising or falling</td><td><span class="cst miss">not built · data present</span></td><td>checks · consumption</td><td class="em">—</td></tr>
+              <tr><td>day_of_week.covers.forecast_gap</td><td>covers against the forecast for that weekday</td><td><span class="cst miss">not built · missing: covers on checks</span></td><td>checks (covers)</td><td class="em">—</td></tr>
+              <tr><td>day_of_week.revenue.anomaly_day</td><td>a weekday that broke from its pattern</td><td><span class="cst miss">unknown — the API omitted <span class="mono">implemented</span></span></td><td>checks</td><td class="em">the state is not known, and it says so</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">5 · What the post carries — the sounding instruments above the floor, in order; the quiet ones as one line of proof; the could-not-reads named</h2>
+  <div class="frame" style="max-width:560px"><div class="mudavym" style="padding:18px">
+    <div class="mudavym mail" data-ground="paper">
+      <div class="env"><span class="l">from</span><span>Meyhouse Palo Alto, via Mudavym &lt;post@mudavym.com&gt;</span><span class="l">to</span><span>aldemir@meyhouse.com</span><span class="l">when</span><span>Wed 16 Sep, 07:00 Pacific — previewed at 06:58</span><span class="l">subject</span><span>Wednesday's instruments — 4 sounding above the floor, 6 quiet, 1 could not read</span></div>
+      <div class="body">
+        <div class="wm">Mudavym<i>.</i></div>
+        <h2>Wednesday's instruments</h2>
+        <p class="dl">Meyhouse Palo Alto · Wednesday 16 September 2026 · what sounds at 07:00</p>
+        <h3>Sounding · above your floor</h3>
+        <p>Stockout within the replenishment window — <b>71%</b> against 40%. Barolo Riserva 2019, 4 on hand. Place the order today; reorder point is 12.<small>Order it · sounding since Sun 13 Sep. <a href="#">Open</a></small></p>
+        <p>Sales against the weekday baseline — <b>−38%</b> against −8%. Yesterday, Tuesday: $1,940 vs $3,120 over six observed Tuesdays. Tonight: brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section.<small>Brief the floor · sounded Wed 06:58 — new since Tuesday's letter. <a href="#">Open</a></small></p>
+        <p>Fast sellers below median margin — <b>3 wines</b> against 2, among the 57 priced. Raise those prices 5–8% or renegotiate cost on the next PO.<small>Price it · 11 days. <a href="#">Open</a></small></p>
+        <p>Strongest-to-weakest weekday spread — <b>41%</b>, Friday to Tuesday; the rule fires whenever the two differ. Move staff training, deliveries, and inventory counts to Tuesday.<small>Schedule it · 24 days. <a href="#">Put it on the day-book</a></small></p>
+        <h3>Quiet · read and under the line</h3>
+        <p><small style="font-size:12.5px;color:var(--ink-1)">Revenue Gini 0.44 / 0.60 · spend +6% / +30% · demand −3% / −10% · puzzles 1 / 2 · goals 104% and 97% of pace.</small></p>
+        <h3>Could not read</h3>
+        <p><small style="font-size:12.5px;color:var(--ink-1)">Server spread — no server id on checks.</small></p>
+        <p class="fine">Two instruments sound below your floor (purchasing concentration; dead stock, whose entry was ruled off Tue 15) and one sounds silenced (basket pairs — this rule entirely, Tue 15) — on the page, not here. Every reading is the rule's own template over your own records; no model wrote it. <a href="#">Change the post</a> · <a href="#">Stop the post</a></p>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">6 · States — loading · empty · refused · partial</h2>
+  <div class="states">
+    <div class="frame"><div class="mudavym small-wrap">
+      <div class="micro" style="margin-bottom:8px">Loading</div>
+      <div class="kicker">The instruments · —</div>
+      <h1 class="title serif" style="font-size:20px">Reading the instruments…</h1>
+      <p class="dateline" style="font-size:13px">— read · — sounding · the post: —</p>
+      <div class="mini"><div class="meter none"></div><span class="em">—</span><span class="num em">—</span></div>
+      <div class="mini"><div class="meter none"></div><span class="em">—</span><span class="num em">—</span></div>
+      <div class="mini"><div class="meter none"></div><span class="em">—</span><span class="num em">—</span></div>
+      <p class="sk-note" style="margin-top:10px;color:var(--ink-4)">No needle without a reading; the tracks are drawn empty, not half-full, and nothing counts up.</p>
+    </div></div>
+    <div class="frame"><div class="mudavym small-wrap">
+      <div class="micro" style="margin-bottom:8px">Empty — all quiet, proven</div>
+      <div class="kicker">The instruments · Wednesday 16 September 2026</div>
+      <h1 class="title serif" style="font-size:20px">Fourteen evaluated, thirteen read, none sounding. Every reading is under its line.</h1>
+      <div class="mini"><div class="meter"><div class="fill" style="width:31%"></div><div class="tick" style="left:40%"></div></div><span>Stockout window</span><span class="num">31% vs &gt; 40%</span></div>
+      <div class="mini"><div class="meter"><div class="fill" style="width:6%"></div><div class="tick" style="left:16%"></div></div><span>Weekday baseline</span><span class="num">−3% vs &lt; −8%</span></div>
+      <div class="mini"><div class="meter"><div class="fill" style="width:44%"></div><div class="tick" style="left:60%"></div></div><span>Revenue concentration</span><span class="num">0.44 vs &gt; 0.60</span></div>
+      <p class="sk-note" style="margin-top:10px;color:var(--ink-4)">"Clear" is thirteen readings you can see, never a tick. This morning's post says so and names the one that could not read.</p>
+    </div></div>
+    <div class="frame"><div class="mudavym small-wrap">
+      <div class="micro" style="margin-bottom:8px">Refused — 403</div>
+      <div class="kicker">The instruments · Wednesday 16 September 2026</div>
+      <h1 class="title serif" style="font-size:20px">This account is not allowed to read the instruments.</h1>
+      <div class="alert" style="margin-top:12px;display:flex;justify-content:space-between;gap:8px;align-items:center"><span>The gateway answered 403 for this house. Nothing below is a reading.</span><button class="btn ink">Try again</button></div>
+      <p class="sk-note" style="margin-top:10px;color:var(--ink-4)">The post line reads "could not be read" — the preference is not off, it is unknown.</p>
+    </div></div>
+    <div class="frame"><div class="mudavym small-wrap">
+      <div class="micro" style="margin-bottom:8px">Partial — the instruments read, the hub did not</div>
+      <div class="kicker">The instruments · Wednesday 16 September 2026</div>
+      <h1 class="title serif" style="font-size:20px">Fourteen evaluated. Seven sounding, six quiet, one could not read.</h1>
+      <div class="alert" style="margin-top:12px">The POS hub could not be read, so the could-not-read tier cannot say <b>why</b>: "no till connected" and "the till's window is empty" are both possible, and the door names neither. It says so instead of picking one.</div>
+      <div class="alert" style="margin-top:8px">The dismissal store could not be read — "silenced" on <span class="mono">pairing_promotion</span> is shown as <span class="em">silences: unknown</span>, not 0, and its entry is shown rather than withheld on a guess.</div>
+    </div></div>
+    <div class="frame"><div class="mudavym small-wrap">
+      <div class="micro" style="margin-bottom:8px">Post off — no preference row (every house today)</div>
+      <div class="kicker">The instruments · Wednesday 16 September 2026</div>
+      <h1 class="title serif" style="font-size:20px">Seven sounding, six quiet, one could not read. Nothing is posted.</h1>
+      <div class="postline" style="margin-top:12px"><span class="k">The post</span><span><span class="em">off</span> — no post has ever been set up for this house · to <span class="em">no address</span> · last <span class="em">never</span> · the floor line is not drawn: there is no floor without a post</span><span class="ctl" style="margin-left:0;flex-basis:100%"><button class="btn seal ink">Set up the post</button></span></div>
+      <p class="sk-note" style="margin-top:10px;color:var(--ink-4)">What <span class="mono">getDigestPref</span> returns with no row: <span class="mono">digestEnabled false · digestHour 7 · digestMinUrgency this_week · recipientEmail null · lastSentAt null</span>. The 7 and the floor are the gateway's stand-ins and are not printed as settings.</p>
+    </div></div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec">
+  <h2 class="sk-label">7 · Mobile 390 — each instrument is a meter, a name and a reading; a sounding one opens its entry in place (settle)</h2>
+  <div class="frame w390"><div class="mudavym m">
+    <div class="hdr">
+      <span class="mark"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 8.5 4l3.5 9"/><path d="M8 20l4-11 4 11 2.5-8L21 20"/></svg></span>
+      <span class="rule"></span><span class="pg">Recommendations</span>
+      <span class="right" style="margin-left:auto"><span class="bell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><i>3</i></span><span class="av">AK</span></span>
+    </div>
+    <div class="wrap">
+      <div class="wordmark">Mudavym<i>.</i></div>
+      <div class="kicker">The instruments · Wed 16 Sep 2026</div>
+      <h1 class="title serif">Fourteen evaluated. Seven sounding, six quiet, one could not read.</h1>
+      <div class="postline"><span class="k">Post</span><span><b>daily 07:00</b> · aldemir@meyhouse.com · floor <b>this week</b> · last Tue 15 · next <b>today 07:00</b></span><span class="ctl"><button class="btn on ink">Change</button><button class="btn ink">Preview</button></span></div>
+      <div class="leaves"><button class="leaf" aria-current="page">Instruments<span class="num">14</span></button><button class="leaf">Not built<span class="num">546 · 3 unknown</span></button><button class="leaf">Dismissed<span class="num">1</span></button><button class="leaf">Ruled off<span class="num">6</span></button><button class="leaf">History</button></div>
+      <section class="ribbon" aria-label="The runs, day by day"><div class="ribbon-head"><span class="micro">The runs, day by day</span><span class="cap">seven of sixteen days · swipe left for Thu 3 – Thu 10, which hold Sat 5 (a first firing) and Tue 8 (out of the analysis) · pick a day and the readings are that morning's run</span></div><div class="rb-grid seven"><button type="button" class="rb-day"><span class="d">Fri <b>11</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day none"><span class="d">Sat <b>12</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:7px"></i><i class="q" style="height:15px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day none"><span class="d">Sun <b>13</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:9px"></i><i class="q" style="height:12px"></i><i class="c" style="height:3px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Mon <b>14</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:10px"></i><i class="q" style="height:10px"></i><i class="c" style="height:4px"></i></span></span></button><button type="button" class="rb-day"><span class="d">Tue <b>15</b></span><span class="run"><span class="mk"></span><span class="stk"><i class="s" style="height:10px"></i><i class="q" style="height:12px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day today"><span class="d">Wed <b>16</b></span><span class="run"><span class="mk"><i></i></span><span class="stk"><i class="s" style="height:12px"></i><i class="q" style="height:10px"></i><i class="c" style="height:2px"></i></span></span></button><button type="button" class="rb-day future"><span class="d">Thu <b>17</b></span><span class="run"><span class="mk"></span><span class="stk"></span></span></button></div><div class="rb-legend"><i><span class="sw"></span>sounding</i><i><span class="sw q"></span>quiet</i><i><span class="sw c"></span>could not read</i><i><span class="sw fired"></span>fired</i><i><span class="sw none"></span>no till rows</i><i><span class="sw today"></span>today</i><i><span class="sw future"></span>not yet</i></div></section>
+      <div class="tier" style="margin-top:12px">
+        <div class="tier-head"><h2 style="font-size:17px">Sounding</h2><span class="num">7</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="inst" data-open="true">
+          <div><div class="meter sound"><div class="fill" style="width:71%"></div><div class="tick" style="left:40%"></div></div></div>
+          <div><div class="name">Stockout within the replenishment window</div><div class="what"><span class="mono">stockout_imminent</span> · since Sun 13 Sep</div></div>
+          <div class="rd">71%<small>vs &gt; 40%</small></div>
+          <div class="st sound">Sounding · now</div>
+          <div class="entry">
+            <div class="runin"><span class="micro seal">Order it</span><span class="micro">now</span></div>
+            <p class="obs" style="font-size:14.5px">Barolo Riserva 2019 has a 71% chance of stocking out before a 7-day replenishment (on hand: 4).</p>
+            <p class="do">Place the order today — reorder point is 12 bottles.</p>
+            <div class="ctls"><button class="btn seal ink">Draft the order</button><button class="btn ink">Snooze</button><button class="btn ink">Dismiss</button><button class="btn dark" disabled>Goal</button><button class="btn ink">Reports</button></div>
+            <p class="refused"><b>Goal — refused.</b> A stockout is an availability event, not one of the seven figures a goal can be held on (wine revenue · bottles sold · purchasing spend · checks · average check · attach rate · days of stock). Ruling it off when the order is placed is the record this one keeps.</p>
+          </div>
+        </div>
+        <div class="inst">
+          <div><div class="meter sound"><div class="fill" style="width:76%"></div><div class="tick" style="left:16%"></div></div></div>
+          <div><div class="name">Sales against the weekday baseline</div><div class="what"><span class="mono">sales_below_weekday_baseline</span> · yesterday, Tue 15 · new today</div></div>
+          <div class="rd">−38%<small>vs &lt; −8%</small></div>
+          <div class="st sound">Sounding · now<button class="openent">Open the entry</button></div>
+        </div>
+        <div class="inst">
+          <div><div class="meter sound"><div class="fill" style="width:60%"></div><div class="tick" style="left:40%"></div></div></div>
+          <div><div class="name">Fast sellers below median margin</div><div class="what"><span class="mono">plowhorse_repricing</span> · 11 days</div></div>
+          <div class="rd">3 wines<small>vs ≥ 2</small></div>
+          <div class="st sound">Sounding · this week<button class="openent">Open the entry</button></div>
+        </div>
+        <div class="inst">
+          <div><div class="meter noscale"></div></div>
+          <div><div class="name">Strongest-to-weakest weekday spread</div><div class="what"><span class="mono">weekday_gap</span> · 24 days · no scale: fires when best ≠ worst</div></div>
+          <div class="rd">41%<small>Fri to Tue</small></div>
+          <div class="st sound">Sounding · this week<button class="openent">Open the entry</button></div>
+        </div>
+        <div class="floor"><span>post's floor</span><i></i></div>
+        <div class="inst">
+          <div><div class="meter sound"><div class="fill" style="width:67%"></div><div class="tick" style="left:57%"></div></div></div>
+          <div><div class="name">Purchasing concentration</div><div class="what"><span class="mono">vendor_concentration</span> · 17 days · not posted</div></div>
+          <div class="rd">0.47<small>vs &gt; 0.40</small></div>
+          <div class="st sound">Sounding · this month<button class="openent">Open the entry</button></div>
+        </div>
+        <div class="more"><b>2 more</b> — Basket pairs above support · 1 pair · sounding, silenced Tue 15 (this rule entirely) · Capital in 90-day-still stock · $6,140 vs &gt; $0 · below the floor, its entry ruled off Tue 15; both instruments keep reading. <a href="#" style="color:var(--seal-deep)">Show them</a></div>
+      </div>
+      <div class="tier">
+        <div class="tier-head"><h2 style="font-size:17px">Read and quiet</h2><span class="num">6</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:44%"></div><div class="tick" style="left:60%"></div></div><span>Revenue concentration</span><span class="num">0.44 / 0.60</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:12%"></div><div class="tick" style="left:60%"></div></div><span>Spend vs prior 30 days</span><span class="num">+6% / +30%</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:12%"></div><div class="tick" style="left:40%"></div></div><span>Week-over-week demand</span><span class="num">−3% / −10%</span></div>
+        <div class="mini"><div class="meter"><div class="fill" style="width:20%"></div><div class="tick" style="left:40%"></div></div><span>High-margin slow movers · 57 priced</span><span class="num">1 / 2</span></div>
+        <div class="more"><b>2 more, on pace</b> — Goal: checks served 104% · Goal: average check 97% · both against a 90% floor. <a href="#" style="color:var(--seal-deep)">Show them</a></div>
+      </div>
+      <div class="tier">
+        <div class="tier-head"><h2 style="font-size:17px">Could not read</h2><span class="num">1</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="mini"><div class="meter cant"></div><span>Server spread — no server id on checks</span><span class="num em">—</span></div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section class="sk-sec" style="padding-bottom:36px"><p class="sk-note">Fonts load from Google Fonts in this sketch; the product self-hosts Fraunces and JetBrains Mono. Motion: <span class="mono">ink</span> (160ms) on rows and chips, <span class="mono">settle</span> (320ms) for an entry opening under its instrument, <span class="mono">tuck</span> (300ms) for the sheet; the meters do <b>not</b> animate on load — <span class="mono">tally</span> would make a reading perform, and a needle that travels to its value implies a measurement happening now rather than one that was read at 06:58. Guarded by <span class="mono">prefers-reduced-motion</span>. Nothing on this page is sealed except ruling an entry off.</p></section>
+</body></html>

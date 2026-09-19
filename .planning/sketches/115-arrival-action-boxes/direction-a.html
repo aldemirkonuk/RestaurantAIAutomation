@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrival Marginalia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── colour tokens — apps/web/src/styles/mudavym.css. Charcoal is the ground (ADR 0138); paper is the declared exception. */
+.mudavym,.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC;--seal-deep:#7DC3CD;--seal-tint:rgba(95,176,188,.14);--seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F;--paper-1:#1D1813;--paper-2:#262019;
+  --ink-1:#EFE7D9;--ink-2:#C0B6A5;--ink-3:#8E8576;--ink-4:#ABA294;
+  color-scheme:dark;
+}
+.mudavym[data-ground="paper"]{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;--ink-4:#665d50;
+  color-scheme:light;
+}
+:root{
+  --serif:"Fraunces",Georgia,serif;--sans:"DM Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  /* motion — lib/mudavym/motion.ts. settle 320 / ink 160 / turn 420 / pour 620 are the tokens verbatim. tuck, stamp and tally are
+     cubic-bezier APPROXIMATIONS of its sampled linear() springs (springLinear(380,32), (500,26), (120,26)); the build uses the strings. */
+  --settle:cubic-bezier(.16,1,.3,1);--ink:cubic-bezier(.16,1,.3,1);--turn:cubic-bezier(.32,.72,0,1);
+  --tuck:cubic-bezier(.2,.9,.3,1.01);--stamp:cubic-bezier(.34,1.42,.64,1);--tally:cubic-bezier(.2,.8,.2,1);
+}
+.mudavym{--rule:color-mix(in srgb,var(--ink-3) 34%,transparent);--rule-soft:color-mix(in srgb,var(--ink-3) 20%,transparent);--rule-firm:color-mix(in srgb,var(--ink-2) 70%,transparent)}
+*{box-sizing:border-box}
+html,body{margin:0;background:#15130F}
+body{font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+.mudavym{background:var(--paper-0);color:var(--ink-1);min-height:100vh}
+a{color:inherit}
+button{font-family:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--seal-ring);outline-offset:2px}
+.dot{color:var(--seal)}
+.wrap{width:min(1320px,100% - 48px);margin:0 auto}
+@media (max-width:760px){.wrap{width:calc(100% - 24px)}}
+
+/* ── sketch chrome (not the product) ────────────────────────────────── */
+.sk-bar{display:flex;align-items:baseline;gap:18px;padding:16px 0 14px;border-bottom:1px solid var(--rule-soft);flex-wrap:wrap}
+.sk-mark{font:600 20px var(--serif);letter-spacing:-.02em}
+.sk-meta{font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4)}
+.sk-ctl{margin-left:auto;display:flex;gap:22px;font:500 12px var(--sans);color:var(--ink-4);flex-wrap:wrap}
+.sk-ctl span{display:inline-flex;gap:8px}
+.sk-ctl button{background:none;border:0;padding:0;font:500 12px var(--sans);color:var(--ink-4);cursor:pointer;text-underline-offset:4px;transition:color 160ms var(--ink)}
+.sk-ctl button[aria-pressed="true"]{color:var(--ink-1);text-decoration:underline}
+.sk-head{padding:36px 0 26px}
+.sk-head h1{font:600 38px/1.1 var(--serif);letter-spacing:-.015em;margin:0 0 12px}
+.sk-head .lede{font:italic 400 18px/1.5 var(--serif);color:var(--ink-2);max-width:880px;margin:0 0 22px}
+.marks{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;border-top:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft);padding:16px 0;margin:0 0 36px}
+.marks .m{font-size:12px;line-height:17px;color:var(--ink-2)}
+.marks .m b{display:block;font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-1);margin-bottom:6px}
+@media (max-width:900px){.marks{grid-template-columns:repeat(2,1fr)}}
+.frame{margin:0 0 56px}
+.cap{display:flex;align-items:baseline;gap:14px;margin:0 0 12px;font:500 10.5px/1.5 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);flex-wrap:wrap}
+.cap .n{color:var(--ink-1);font-weight:600}
+.cap .t{color:var(--ink-2);text-transform:none;letter-spacing:.03em;font-size:12px;flex:1 1 480px}
+.cap .w{margin-left:auto;text-transform:none;letter-spacing:.03em}
+.colophon{font:400 12px/18px var(--sans);color:var(--ink-4);border-top:1px solid var(--rule-soft);padding:18px 0 60px;margin-top:20px}
+.colophon b{color:var(--ink-2);font-weight:500}
+/* build notes are sketch chrome: hidden unless the toggle in the bar (or ?notes=on) shows them, so density is judged on product copy alone */
+.mudavym[data-notes="off"] .route,.mudavym[data-notes="off"] .note-src{display:none}
+
+/* ── the product: header + book ─────────────────────────────────────── */
+.app{background:var(--paper-0);border:1px solid var(--rule-soft)}
+/* the header is HouseHeader (components/mudavym/HouseHeader.tsx:165-233): mark · rule · page · search · house · HouseBell · HouseUserMenu */
+.hdr{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 24px;border-bottom:1px solid var(--rule-soft)}
+.hdr .wm{font:600 20px var(--serif);letter-spacing:-.02em;line-height:1}
+.hdr .sep{width:1px;height:18px;background:var(--rule)}
+.hdr .pg{font:500 13px var(--sans);color:var(--ink-2)}
+.hdr .hsearch{display:inline-flex;align-items:center;gap:8px;margin-left:18px;padding:6px 10px;border:1px solid var(--rule-soft);border-radius:9px;background:var(--paper-1);color:var(--ink-4);font:500 12.5px var(--sans);cursor:pointer}
+.hdr .hsearch kbd{font:500 10px var(--mono);color:var(--ink-4);border:1px solid var(--rule);border-radius:4px;padding:1px 5px}
+.hdr .hright{margin-left:auto;display:inline-flex;align-items:center;gap:6px}
+.hdr .house{font:500 12.5px var(--sans);color:var(--ink-2);padding:0 8px 0 2px;white-space:nowrap}
+.hdr .hbtn{display:inline-flex;align-items:center;gap:7px;padding:7px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--ink-2);cursor:pointer;transition:background 160ms var(--ink),border-color 160ms var(--ink)}
+.hdr .hbtn:hover{background:var(--paper-1);border-color:var(--paper-2)}
+.hdr .hbtn.user{padding:5px 8px 5px 5px}
+.hdr .hbtn svg{display:block}
+.hdr .avatar{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:var(--seal-tint);color:var(--seal);font:700 11.5px var(--sans)}
+.hdr .hwho{font:500 12.5px var(--sans);color:var(--ink-1);white-space:nowrap}
+.book{display:grid;grid-template-columns:minmax(360px,42%) minmax(0,1fr)}
+.page{background:var(--paper-1);padding:34px 40px 40px;min-width:0;position:relative}
+.page.verso{border-right:1px solid var(--rule-soft)}
+.folio{font:500 10px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);margin:0 0 18px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.page h2{font:600 26px/1.15 var(--serif);letter-spacing:-.012em;margin:0 0 10px;color:var(--ink-1)}
+.page .lede{font:italic 400 15px/1.5 var(--serif);color:var(--ink-2);margin:0 0 22px}
+.page p{margin:0}
+.small{font-size:12.5px;line-height:18px;color:var(--ink-2)}
+.prov{font:400 12px/17px var(--sans);color:var(--ink-4);margin:8px 0 0}
+.route{font:500 10.5px/16px var(--mono);letter-spacing:.02em;color:var(--ink-4);margin:8px 0 0;overflow-wrap:anywhere;border-left:2px solid var(--rule);padding-left:8px}
+.route b{font-weight:600;color:var(--ink-2)}
+.route::before{content:"build note · ";color:var(--ink-3)}
+
+/* ledger lines — each rule is the line's own border, so a rule always underlines text (founder, 12 Sep) */
+.ln{display:grid;grid-template-columns:minmax(120px,150px) minmax(0,1fr) auto;gap:0 14px;align-items:baseline;padding:7px 0 8px;border-bottom:1px solid var(--rule)}
+.ln.head{border-bottom-color:var(--rule-firm)}
+.ln.head .k,.ln.head .v,.ln.head .p{font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4)}
+.ln .k{color:var(--ink-2);font-size:13px}
+.ln .v{font-size:14px;font-weight:500;color:var(--ink-1);min-width:0}
+.ln .v.pencil{color:var(--ink-4);font-weight:400}
+.ln .v.blank{color:var(--ink-4);font-weight:400;font-style:italic}
+.ln .v.dflt{color:var(--ink-4);font-weight:400}
+.ln .v s{color:var(--ink-4);font-weight:400;text-decoration:line-through;margin-right:8px}
+.ln .p{font:500 9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);white-space:nowrap;text-align:right}
+.ln .p.ink{color:var(--ink-2)}
+.ln .p.seal{color:var(--seal)}
+.ln.posted{border-bottom:3px double var(--ink-2)}
+.ln.sub{border-bottom:1px solid var(--ink-2)}
+.ln.mark{border-left:2px solid var(--seal);padding-left:10px;margin-left:-12px}
+.recto .ln .p{white-space:normal;max-width:132px;line-height:13px}
+.sum{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;font-size:13px;color:var(--ink-2)}
+.sum .v{font-weight:600;color:var(--ink-1)}
+.src{font:500 10px var(--mono);letter-spacing:.04em;color:var(--ink-4);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--rule);cursor:pointer;background:none;border:0;padding:0;text-align:left}
+.src:hover{color:var(--ink-2)}
+
+/* controls */
+.btn{display:inline-flex;align-items:center;gap:8px;font:600 13px var(--sans);padding:8px 14px;border:1px solid var(--seal);background:var(--seal);color:var(--paper-0);border-radius:4px;cursor:pointer;line-height:18px;transition:background 160ms var(--ink),border-color 160ms var(--ink),color 160ms var(--ink),transform 160ms var(--ink)}
+.btn:hover{background:var(--seal-deep);border-color:var(--seal-deep)}
+.btn:active{transform:scale(.97)}
+.btn.quiet{background:transparent;color:var(--ink-2);border-color:var(--ink-4)}
+.btn.quiet:hover{color:var(--ink-1);border-color:var(--ink-1);background:transparent}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn[aria-disabled="true"]{opacity:.45;cursor:default;transform:none}
+.word{background:none;border:0;padding:0;font:500 13px var(--sans);color:var(--ink-2);text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1px;cursor:pointer;text-align:left;transition:color 160ms var(--ink),text-underline-offset 160ms var(--ink)}
+.word:hover{color:var(--ink-1);text-underline-offset:5px}
+.word.seal{color:var(--seal);font-weight:600}
+.word.seal:hover{color:var(--seal-deep)}
+.acts{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.fieldrow{display:inline-flex;gap:8px;align-items:center;width:100%;max-width:280px}
+.field{flex:1 1 60px;min-width:56px;background:transparent;border:0;border-bottom:1px solid var(--ink-3);font:500 14px/24px var(--sans);color:var(--ink-1);padding:0;border-radius:0}
+.field::placeholder{color:var(--ink-4);font-weight:400}
+.field:focus{outline:none;border-bottom-color:var(--seal)}
+.field.num{max-width:96px;font-variant-numeric:tabular-nums}
+.chk{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink-1);cursor:pointer;background:none;border:0;padding:0;text-align:left}
+.chk i{width:12px;height:12px;border:1px solid var(--ink-2);display:inline-block;position:relative;flex:none;transition:border-color 160ms var(--ink)}
+.chk.on i::after{content:"";position:absolute;inset:2px;background:var(--ink-1)}
+.chk.off{color:var(--ink-4)}
+.chk.off i{border-color:var(--ink-4)}
+.days{display:inline-flex;gap:5px;flex-wrap:wrap}
+.days button{font:500 10.5px var(--mono);letter-spacing:.06em;padding:3px 7px;border:1px solid var(--ink-3);color:var(--ink-4);border-radius:2px;background:none;cursor:pointer;transition:border-color 160ms var(--ink),color 160ms var(--ink),background 160ms var(--ink)}
+.days button.on{border-color:var(--ink-1);color:var(--ink-1);background:var(--paper-2)}
+/* skeletons are static paper-2 bars, as /logs draws them (LogsNext.tsx:228 .lg-skel) — no token is a loop */
+.skel{display:inline-block;height:11px;border-radius:4px;background:var(--paper-2);vertical-align:middle;max-width:100%}
+
+/* ── THE IDEA: the note in the margin ───────────────────────────────── */
+/* A glossed group: the ledger text in one column, the note in the outer margin. Recto margin is the right; verso margin is the left. */
+.gl{display:grid;grid-template-columns:minmax(0,1fr) 196px;gap:0 26px;align-items:start;margin:0 0 6px}
+.verso .gl{grid-template-columns:150px minmax(0,1fr)}
+.verso .gl .note{order:-1}
+.note{position:relative;padding:8px 0 4px;font:italic 400 13.5px/19px var(--serif);color:var(--ink-2);animation:settle 320ms var(--settle) both}
+.note::before{content:"";position:absolute;left:-16px;top:16px;width:10px;border-top:1px solid var(--ink-3)}
+.verso .note::before{left:auto;right:-16px}
+.note .note-mark{display:block;font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);font-style:normal;margin-bottom:5px}
+.note[data-state="pencil"] .note-mark,.note[data-state="posted"] .note-mark,.note[data-state="reopened"] .note-mark{color:var(--ink-1)}
+.note[data-state="refused"] .note-mark{color:var(--ink-1);border-bottom:1px solid var(--ink-1);display:inline-block}
+.note p{margin:0}
+.note .acts{margin-top:8px;gap:12px}
+.note .acts .word{font-size:12.5px;font-style:normal}
+.note .verbatim{display:block;font:500 10.5px/15px var(--mono);letter-spacing:.02em;color:var(--ink-1);font-style:normal;margin:6px 0 2px;padding:6px 8px;border:1px solid var(--rule);overflow-wrap:anywhere}
+.note .note-src{display:block;font:400 9.5px/13px var(--mono);letter-spacing:.02em;color:var(--ink-4);font-style:normal;margin-top:8px;overflow-wrap:anywhere;border-left:2px solid var(--rule);padding-left:6px}
+.note .note-src::before{content:"build note · ";color:var(--ink-3)}
+.note[data-state="posted"],.note[data-state="cf"]{color:var(--ink-4)}
+.note[data-state="posted"] .note-mark::after{content:"";display:block;width:36px;border-top:3px double var(--ink-2);margin-top:5px}
+.note[data-state="listening"] .note-mark{color:var(--seal)}
+.note[data-state="listening"] .note-mark::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--seal);margin-right:7px;vertical-align:1px}
+.note .skel{background:var(--rule)}
+@keyframes settle{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.settle{animation:settle 320ms var(--settle) both}
+.turn{animation:turn 420ms var(--turn) both}
+@keyframes turn{from{opacity:.3;transform:translateX(8px)}to{opacity:1;transform:none}}
+
+/* contents */
+.toc{list-style:none;margin:0;padding:0}
+.toc li{display:grid;grid-template-columns:44px minmax(0,1fr);gap:0 12px;padding:9px 0 8px;border-bottom:1px solid var(--rule);align-items:baseline}
+.toc li.done{border-bottom:3px double var(--ink-2)}
+.toc li.sub{border-bottom:1px solid var(--ink-2)}
+.toc .fo{font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);padding-top:4px}
+.toc .ti{font:600 16px/22px var(--serif);color:var(--ink-4);margin:0;background:none;border:0;padding:0;text-align:left;cursor:pointer;transition:color 160ms var(--ink);text-decoration:none}
+.toc .ti:hover{color:var(--ink-1)}
+.toc li.done .ti,.toc li.here .ti,.toc li.sub .ti{color:var(--ink-1)}
+.toc .st{font-size:12.5px;line-height:18px;color:var(--ink-4);margin-top:2px}
+.toc li.done .st,.toc li.sub .st{color:var(--ink-2)}
+.toc .here-mark{font:500 9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--seal);margin-left:10px}
+
+/* the seal — HoldToApprove's face (components/mudavym/HoldToApprove.tsx:233-254): track paper-1, ring seal-ring */
+.hold{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;padding:0 16px;border-radius:12px;border:1px solid var(--seal-ring);background:var(--paper-1);color:var(--ink-1);font:600 14px var(--sans);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;transition:border-color 160ms var(--ink),background 160ms var(--ink),transform 160ms var(--ink)}
+.hold:active{transform:scale(.985)}
+.hold .fill{position:absolute;left:0;top:0;bottom:0;width:100%;background:var(--seal-tint);transform-origin:left;transform:scaleX(0)}
+.hold.pouring .fill{transition:transform 620ms linear;transform:scaleX(1)}
+.hold.retreat .fill{transition:transform 300ms var(--tuck);transform:scaleX(0)}
+.hold .lbl{position:relative}
+.hold .wax{position:relative;width:20px;height:20px;color:var(--seal);opacity:0;transform:scale(.8)}
+.hold.sealed{border-color:var(--seal);background:var(--seal-tint);cursor:default}
+.hold.sealed .wax{opacity:1;transform:none;animation:stamp 360ms var(--stamp) both}
+.hold[data-armed="true"]{border-color:var(--seal)}
+@keyframes stamp{0%{transform:scale(.8);opacity:.3}100%{transform:scale(1);opacity:1}}
+.hold-note{font:500 10.5px var(--mono);letter-spacing:.04em;color:var(--ink-4);min-height:16px;margin-top:8px}
+.receipt{margin-top:14px}
+.pill{font:500 9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:2px 7px;border:1px solid var(--ink-3);color:var(--ink-4);border-radius:2px;white-space:nowrap}
+.pill.ink{border-color:var(--ink-1);color:var(--ink-1)}
+.pill.seal{border-color:var(--seal);color:var(--seal)}
+
+/* the state strip */
+.states{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.card{background:var(--paper-1);border:1px solid var(--rule-soft);padding:22px 26px 24px;min-width:0}
+.card .folio{margin-bottom:12px}
+.card .state-tag{font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-1);border-bottom:1px solid var(--rule-firm);display:inline-block;padding-bottom:4px;margin-bottom:14px}
+.card .gl{grid-template-columns:minmax(0,1fr) 190px}
+.card .ln{grid-template-columns:minmax(96px,118px) minmax(0,1fr);gap:3px 12px}
+.card .ln .p{grid-column:2;text-align:left;white-space:normal}
+
+/* the phone */
+.phones{display:grid;grid-template-columns:390px minmax(0,1fr);gap:36px;align-items:start}
+.phone{width:100%;max-width:390px;background:var(--paper-1);border:1px solid var(--rule-soft);padding:14px 18px 22px}
+.phone .status{display:flex;justify-content:space-between;font:500 9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);margin-bottom:14px}
+.phone .hdr{padding:0;min-height:40px;margin-bottom:12px}
+.phone .hdr .wm{font-size:17px}
+.phone .hdr .hsearch,.phone .hdr .house,.phone .hdr .hwho{display:none}
+.phone h2{font:600 21px/1.15 var(--serif);letter-spacing:-.012em;margin:0 0 10px;color:var(--ink-1)}
+.phone .lede{font:italic 400 14.5px/1.5 var(--serif);color:var(--ink-2);margin:0 0 18px}
+.phone .ln{grid-template-columns:96px minmax(0,1fr);gap:4px 10px}
+.phone .ln .p{grid-column:2;text-align:left;white-space:normal}
+.phone .gl{display:block}
+.phone .note{border-left:1px solid var(--rule);padding:6px 0 4px 12px;margin:2px 0 10px}
+.phone .note::before{display:none}
+.phone .btn:not(.sm){width:100%;justify-content:center;padding:11px 16px;font-size:14px}
+.aside p{font-size:13px;line-height:20px;color:var(--ink-2);margin:0 0 12px}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin:0 -18px 14px;padding-left:18px;padding-right:18px;scrollbar-width:none;scroll-snap-type:x proximity;-webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 40px),transparent)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs span{flex:none;scroll-snap-align:start;font:500 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);padding:6px 8px 5px;border:1px solid var(--rule);border-radius:2px;line-height:1}
+.tabs span.done{border-bottom:3px double var(--ink-2);color:var(--ink-2)}
+.tabs span.here{color:var(--seal);border-color:var(--seal)}
+
+/* responsive — the same file renders at 390 */
+@media (max-width:900px){
+  .book{grid-template-columns:1fr}
+  .page.verso{border-right:0;border-bottom:1px solid var(--rule-soft)}
+  .gl,.verso .gl,.card .gl{display:block}
+  .verso .gl .note{order:0}
+  .note{border-left:1px solid var(--rule);padding:6px 0 4px 12px;margin:4px 0 12px}
+  .note::before{display:none}
+  .states{grid-template-columns:1fr}
+  .phones{grid-template-columns:1fr}
+  .page{padding:22px 18px 26px}
+  .hdr{padding:0 16px}
+  .hdr .hsearch,.hdr .house,.hdr .hwho{display:none}
+  .ln{grid-template-columns:96px minmax(0,1fr)}
+  .ln .p{grid-column:2;text-align:left;white-space:normal}
+  .recto .ln .p{max-width:none;line-height:14px}
+  .ln.mark{margin-left:-8px;padding-left:6px}
+  .sk-head h1{font-size:28px}
+  .marks{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  .hold.pouring .fill{transform:scaleX(1)}
+}
+</style>
+</head>
+<body>
+<div class="mudavym" data-ground="charcoal" data-notes="off" id="root">
+<div class="wrap">
+
+<div class="sk-bar">
+  <span class="sk-mark">Mudavym<span class="dot">.</span></span>
+  <span class="sk-meta">Sketch 115 · A · The note in the margin · /get-started · the arrival book</span>
+  <span class="sk-ctl"><span>Ground <button type="button" data-g="charcoal" aria-pressed="true">charcoal</button><button type="button" data-g="paper" aria-pressed="false">paper</button></span><span>Build notes <button type="button" data-n="off" aria-pressed="true">off</button><button type="button" data-n="on" aria-pressed="false">on</button></span></span>
+</div>
+
+<header class="sk-head">
+  <h1>The note in the margin<span class="dot">.</span></h1>
+  <p class="lede">The guidance is a gloss, not a box. Every act a new owner can take sits in the outer margin beside the very line it concerns, in the keeper's voice, with one verb and one alternative. The line is the record; the note tells you what to do to it. As a fact lands, the note beside it changes its mark, never its place.</p>
+  <div class="marks">
+    <div class="m"><b>To answer</b>The line is open and this is the act. One verb in seal, one quiet alternative.</div>
+    <div class="m"><b>In pencil</b>Mudavym heard or read it; the value sits grey on the line and waits on the one seal, on fo. 5.</div>
+    <div class="m"><b>Posted</b>Written through its register; a double rule under the line and the note carries who and when. Reopening strikes the value in place and writes nothing until a new one is posted.</div>
+    <div class="m"><b>C/F</b>Offered, skipped, carried forward with its date. A fact about the house, not an absence.</div>
+    <div class="m"><b>Refused</b>The register's own words, verbatim, in mono. Nothing was written and the note says so; the line does not change, and nothing dates the refusal.</div>
+    <div class="m"><b>Opens when</b>The page cannot be written yet; the note names what unblocks it and offers that act instead.</div>
+  </div>
+</header>
+
+<!-- ═══════════════ 01 · the book at 1440 ═══════════════ -->
+<section class="frame" id="f1">
+  <div class="cap"><span class="n">01</span><span class="t">The book at 1440, 13:58 — reached from /get-started; /onboarding redirects here · Lokanta Meyhane, İstanbul, TRY · fo. 0 was read at 13:50 · fo. 2 What we pour, untouched · the notes are live: confirm the seven, post the low-stock line (or say it aloud), carry the page forward, reopen a posted line</span><span class="w">writes · PUT /cellar/:restaurantId/registers · PATCH /menus/threshold · POST /arrival/skip</span></div>
+  <div class="app">
+    <header class="hdr">
+      <span class="wm">Mudavym<span class="dot">.</span></span><span class="sep"></span><span class="pg">The house's book</span>
+      <button class="hsearch" type="button" aria-label="Search or act — open the command palette"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>Search or act</span><kbd>⌘K</kbd></button>
+      <span class="hright"><span class="house">Lokanta Meyhane</span><button class="hbtn" type="button" aria-label="Notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button><button class="hbtn user" type="button" aria-label="Account menu"><span class="avatar">D</span><span class="hwho">Defne</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></span>
+    </header>
+    <div class="book">
+      <aside class="page verso" aria-label="Contents">
+        <div class="folio"><span>Lokanta Meyhane · opening entries</span><span>kept by Defne · opened 6 Sep 2026</span></div>
+        <div class="gl">
+          <div class="note" data-state="say">
+            <span class="note-mark">Start here</span>
+            <p>The last invoice is read; its two lines wait in pencil. One line on fo. 2 finishes activation: confirm the low-stock line — the menu was uploaded at the door. The seven registers are a separate act; what Mudavym read waits on the seal, fo. 5. The rest can wait with a date.</p>
+          </div>
+          <div>
+            <h2>Contents.</h2>
+            <p class="lede">Six pages, opened in any order. What is ruled off stays ruled off; what is skipped is carried forward with its date.</p>
+            <ol class="toc">
+              <li class="done"><span class="fo">fo. 0</span><div><button class="ti" type="button">The last invoice</button><div class="st">Read · invoice of 4 Sep · Bereket Gıda matched · 2 lines proposed, in pencil · 13:50 · Defne</div></div></li>
+              <li class="done"><span class="fo">fo. 1</span><div><button class="ti" type="button">Currency</button><div class="st">Posted · TRY · stated at sign-up · 6 Sep 13:41 · Defne</div></div></li>
+              <li class="here"><span class="fo">fo. 2</span><div><button class="ti" type="button">What we pour<span class="here-mark">open at right</span></button><div class="st" id="toc2-st">Open · seven registers read off the stock, unconfirmed · low line 3, defaulted, unconfirmed</div></div></li>
+              <li><span class="fo">fo. 3</span><div><button class="ti" type="button">Whom we buy from</button><div class="st">Open · Bereket Gıda · 2 terms in pencil, read off fo. 0 · Tuna İçecek · not yet stated</div></div></li>
+              <li><span class="fo">fo. 4</span><div><button class="ti" type="button">What we hear about</button><div class="st">Open · nine producers kept as they are</div></div></li>
+              <li><span class="fo">fo. 5</span><div><button class="ti" type="button">The assistant</button><div class="st" id="toc5-st">2 lines in pencil · read off the last invoice · waiting on the seal</div></div></li>
+            </ol>
+            <div class="sum"><span>Opening stock</span><span class="v">42 lines · reviewed · Defne · 13:52</span></div>
+          </div>
+        </div>
+      </aside>
+
+      <article class="page recto turn" aria-labelledby="fo2-h">
+        <div class="folio"><span>fo. 2 · What we pour</span><span>read off the opening stock · 42 lines</span></div>
+        <div class="gl">
+          <div>
+            <h2 id="fo2-h">What does this house pour?</h2>
+            <p class="lede">Seven registers, read off the wine list you gave at the door, and one number that finishes activation. Confirm the seven and they wait on the seal; a register the books do not show can still be switched by hand, and that posts at once.</p>
+          </div>
+          <div class="note" data-state="cf-offer" id="pagenote">
+            <span class="note-mark">Nothing here is a gate</span>
+            <p>Carry the page forward and it waits with today's date. Every money figure on every screen still works; the low-stock default stays at three, unconfirmed, until you say a number.</p>
+            <div class="acts"><button class="word" type="button" id="a-cf">Carry the page forward</button></div>
+          </div>
+        </div>
+
+        <div class="gl" id="g-reg">
+          <div>
+            <div class="ln head"><span class="k">Register</span><span class="v">What the books say</span><span class="p">Provenance</span></div>
+            <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Wines</button></span><span class="v"><button class="src" type="button">31 lines on the list · 0 in the cellar</button></span><span class="p">read · yes</span></div>
+            <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Beer</button></span><span class="v"><button class="src" type="button">4 lines on the list</button></span><span class="p">read · yes</span></div>
+            <div class="ln"><span class="k"><button class="chk off" type="button"><i></i>Whiskey</button></span><span class="v pencil"><button class="src" type="button">0 on the list · 92 in the shared catalogue</button></span><span class="p">read · none</span></div>
+            <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Cocktails</button></span><span class="v"><button class="src" type="button">5 lines on the list</button></span><span class="p">read · yes</span></div>
+            <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Spirits</button></span><span class="v"><button class="src" type="button">2 lines on the list</button></span><span class="p">read · yes</span></div>
+            <div class="ln"><span class="k"><button class="chk off" type="button"><i></i>Non-alcoholic</button></span><span class="v pencil"><button class="src" type="button">0 on the list · 57 in the shared catalogue</button></span><span class="p">read · none</span></div>
+            <div class="ln"><span class="k"><button class="chk off" type="button"><i></i>Soft drinks</button></span><span class="v pencil"><button class="src" type="button">0 on the list · 0 in the cellar</button></span><span class="p">read · none</span></div>
+            <p class="prov">A reading, not evidence — each count opens to the lines it was read from.</p>
+            <p class="route"><b>GET /cellar/:restaurantId/registers</b> · cellar-registers.ts:13-21 · a register you switch by hand posts at once as <b>manual</b> (PUT /cellar/:restaurantId/registers); the rest go in pencil as <b>confirmed</b> and wait on the seal, fo. 5</p>
+          </div>
+          <div class="note" data-state="say" id="regnote">
+            <span class="note-mark">To answer</span>
+            <p>The three the books read as <em>none</em> are as firm as the four <em>yes</em> once you confirm them — in pencil: what Mudavym read waits on the one seal, fo. 5. Tap any register to switch it first; a switched one is your word and posts at once.</p>
+            <div class="acts"><button class="word seal" type="button" id="a-confirm">Confirm the seven · in pencil</button></div>
+            <span class="note-src">POST /arrival/config/propose_batch · source confirmed · waits on the seal, fo. 5 · a switched register: PUT /cellar/:restaurantId/registers · cellar.controller.ts:115 · source manual · at once</span>
+          </div>
+        </div>
+
+        <div class="gl" id="g-thr" style="margin-top:18px">
+          <div>
+            <div class="ln head"><span class="k">Activation</span><span class="v">Two facts</span><span class="p">Provenance</span></div>
+            <div class="ln posted"><span class="k">Menu uploaded</span><span class="v"><button class="src" type="button">yes · 42 lines read at the door</button></span><span class="p ink">posted · 13:52 · Defne</span></div>
+            <div class="ln mark" id="thr-ln">
+              <span class="k">Low-stock line</span>
+              <span class="v" id="thr-v"><span class="fieldrow"><input class="field num" id="thr-in" inputmode="numeric" value="3" aria-label="Low-stock line, in bottles"><button class="btn sm" type="button" id="a-record">Post</button></span></span>
+              <span class="p" id="thr-p">3 · defaulted · not yet confirmed</span>
+            </div>
+            <p class="route" id="thr-route">activation = <b>menu uploaded + threshold configured</b> (menus.ts:63-66), the two lines above; the registers do not count · <b>PATCH /menus/threshold</b> · menus.controller.ts:91 · sets the default copied onto newly imported rows; existing item thresholds are not rewritten</p>
+          </div>
+          <div class="note" data-state="say" id="thrnote">
+            <span class="note-mark">To answer</span>
+            <p>Three is the default, copied onto rows as they are imported; nobody has confirmed it. Say the house's own number, or post the three as yours — either finishes activation.</p>
+            <div class="acts"><button class="word seal" type="button" id="a-speak">Say it aloud</button></div>
+            <span class="note-src">on-device recognition · only the number is kept · Chrome and Edge; unavailable in Safari, and the note says so</span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 02 · fo. 0, and the two quiet folios ═══════════════ -->
+<section class="frame" id="f0">
+  <div class="cap"><span class="n">02</span><span class="t">fo. 0 — The last invoice, the page a new owner meets first (ADR 0144 §1: the contents open on it, and it is skippable): untouched · reading the photo · proposals in pencil, confirmed in place · carried forward. Then one note each for fo. 1 (posted at sign-up) and fo. 4 (nine producers)</span><span class="w">writes · POST /procurement/documents · POST /arrival/config/propose_batch · POST /arrival/skip</span></div>
+  <div class="states">
+
+    <div class="card">
+      <div class="folio"><span>fo. 0 · The last invoice</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Untouched · start with the paper</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">The paper</span><span class="v blank">nothing photographed yet</span><span class="p">not read</span></div>
+          <div class="ln"><span class="k">Proposed</span><span class="v blank">—</span><span class="p">nothing until it is read</span></div>
+          <p class="route"><b>POST /procurement/documents</b> · source photo · classifies and extracts lines, writes no stock, cost or orders · Codex Arrival.tsx:433</p>
+        </div>
+        <div class="note" data-state="say"><span class="note-mark">To answer</span><p>Photograph the last invoice through the door, or upload it. Its header names the vendor and its footer prints the terms; what it says is proposed in pencil, confirmed here, and enters the book with the one seal on fo. 5. Nothing is asked twice.</p><div class="acts"><button class="word seal" type="button">Photograph it</button><button class="word" type="button">Upload a PDF or photo</button><button class="word" type="button">Carry it forward</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 0 · The last invoice</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Reading the photo · loading</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">The paper</span><span class="v">invoice · photographed 13:49</span><span class="p">stored · reading</span></div>
+          <div class="ln"><span class="k">Proposed</span><span class="v"><span class="skel" style="width:70%"></span></span><span class="p"><span class="skel" style="width:90px;height:9px"></span></span></div>
+          <p class="route">Codex Arrival.tsx:448 "Reading the papers…" · :358 "The paper is stored. Read its extracted details before adding a configuration proposal."</p>
+        </div>
+        <div class="note" data-state="reading"><span class="note-mark">Reading the paper</span><p>The photo is stored. Nothing is proposed until it is read, and nothing is asked in the meantime.</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 0 · The last invoice</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Proposals in pencil · confirmed in place · 13:50</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">Vendor</span><span class="v"><button class="src" type="button">Bereket Gıda · matched in the vendor book</button></span><span class="p ink">read · 13:50</span></div>
+          <div class="ln"><span class="k">Delivery days</span><span class="v pencil">Tue · Fri</span><span class="p">in pencil · read off the footer · confirmed 13:50</span></div>
+          <div class="ln"><span class="k">Usual currency</span><span class="v pencil">TRY</span><span class="p">in pencil · every line in lira · confirmed 13:50</span></div>
+          <div class="ln"><span class="k">Payment terms</span><span class="v blank">not on the paper</span><span class="p">ask on fo. 3</span></div>
+          <div class="ln"><span class="k">Total</span><span class="v">₺4,812.50 · 6 lines</span><span class="p">read · not a setting</span></div>
+          <p class="route">ADR 0144:31 · a proposal confirmed in place still enters the book with the one held seal · Codex Arrival.tsx:318 payment terms are not extracted · <b>POST /arrival/config/propose_batch</b></p>
+        </div>
+        <div class="note" data-state="pencil"><span class="note-mark">In pencil · 13:50</span><p>Two lines read off the paper and confirmed here. Bereket Gıda is matched in the vendor book; Tuesday and Friday, and the lira, sit in pencil on fo. 3 and enter the book with the one seal on fo. 5. Payment terms were not on the footer; fo. 3 asks.</p><div class="acts"><button class="word seal" type="button">Read them on fo. 5</button><button class="word" type="button">Leave them out</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 0 · The last invoice</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Carried forward · a recorded skip</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">The paper</span><span class="v blank">nothing photographed</span><span class="p">offered 13:44 · c/f</span></div>
+          <p class="route"><b>POST /arrival/skip</b> · arrival_folios: state skipped, actor, updated_at · told apart from a page nobody opened</p>
+        </div>
+        <div class="note" data-state="cf"><span class="note-mark">C/F · 6 Sep 13:44</span><p>Offered and carried forward. Nothing was photographed; fo. 3 asks its terms one by one, and the book opens on fo. 2.</p><div class="acts"><button class="word seal" type="button">Answer it now</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 1 · Currency</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Posted at sign-up · one line</span>
+      <div class="gl">
+        <div>
+          <div class="ln posted"><span class="k">Currency</span><span class="v">TRY · Turkish lira</span><span class="p ink">posted · stated · 13:41 · Defne</span></div>
+          <p class="route">ADR 0143:78 · fo. 1 shows the currency given at sign-up as already posted · <b>PUT /settings/currency</b> · settings.controller.ts:227</p>
+        </div>
+        <div class="note" data-state="posted"><span class="note-mark">Posted 13:41</span><p>Stated at the door; not asked twice. Reopening strikes it in place, and nothing is written until a new one is posted.</p><div class="acts"><button class="word" type="button">Reopen this line</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 4 · What we hear about</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Untouched · one act</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">Producers</span><span class="v dflt">nine · kept as they are</span><span class="p">open · nothing switched</span></div>
+          <p class="route"><b>PATCH /notifications/preferences</b> · notifications.controller.ts:351 · per person, not per house · five families per user, not one producer at a time</p>
+        </div>
+        <div class="note" data-state="say"><span class="note-mark">To answer</span><p>Nine producers write to this house. Keep them all, or switch one off; a switch is your word and posts at once, for your own ears. Nothing here is a gate.</p><div class="acts"><button class="word seal" type="button">Keep the nine</button><button class="word" type="button">Carry the page forward</button></div></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════ 03 · every state ═══════════════ -->
+<section class="frame" id="f2">
+  <div class="cap"><span class="n">03</span><span class="t">Every state of the note — the low-stock line on fo. 2 (Lokanta Meyhane, TRY) and fo. 3 (The Old Mill, Michigan, USD). Each card is one branch the same line can take, stamped with the example clock — not a sequence; the live frames follow one timeline (fo. 0 read 13:50 · frame 01 at 13:58 · the seal 14:12 · the phone 14:19)</span><span class="w">the line never moves; the note changes its mark</span></div>
+  <div class="states">
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Untouched</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">Low-stock line</span><span class="v"><span class="fieldrow"><input class="field num" value="3" aria-label="Low-stock line"><button class="btn sm" type="button">Post</button></span></span><span class="p">3 · defaulted · not yet confirmed</span></div>
+          <p class="route">a default is not an answer: <b>restaurants.default_threshold_min</b> reads 3 (baseline :3580, menus.service.ts:18) and <b>threshold_configured</b> is false — the value is in use, and nobody has confirmed it</p>
+        </div>
+        <div class="note" data-state="say"><span class="note-mark">To answer</span><p>Three is the default, copied onto newly imported rows. Nobody has confirmed it. Say the house's number, or post three as yours.</p><div class="acts"><button class="word seal" type="button">Say it aloud</button><button class="word" type="button">Carry it forward</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">In pencil · waiting on the seal</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">Low-stock line</span><span class="v pencil">6 bottles</span><span class="p">spoken · 14:04 · in pencil</span></div>
+          <p class="route">a draft is not a setting: the default stays 3 and <b>threshold_configured</b> stays false until the seal lands on fo. 5</p>
+        </div>
+        <div class="note" data-state="pencil"><span class="note-mark">In pencil</span><p>You said six. Mudavym heard it on this device and kept only the number. It enters the book when you hold the seal on fo. 5 — with everything else it proposed, in one hold.</p><div class="acts"><button class="word seal" type="button">Read it on fo. 5</button><button class="word" type="button">Leave it out</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Posted · typed, the branch where nobody spoke</span>
+      <div class="gl">
+        <div>
+          <div class="ln posted"><span class="k">Low-stock line</span><span class="v">6 bottles</span><span class="p ink">posted · typed · 14:06 · Defne</span></div>
+          <p class="route">journal: <b>threshold_configured</b> true · activation complete — the menu was uploaded at the door and the low line is confirmed</p>
+        </div>
+        <div class="note" data-state="posted"><span class="note-mark">Posted 14:06</span><p>Recorded as yours, the moment you posted it. Reopening is a correcting entry: the six stays on the line, struck through, and nothing is written until a new number is posted.</p><div class="acts"><button class="word" type="button">Reopen this line</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Reopened · a correcting entry, nothing written yet</span>
+      <div class="gl">
+        <div>
+          <div class="ln mark"><span class="k">Low-stock line</span><span class="v"><s>6 bottles</s><span class="fieldrow" style="display:inline-flex;width:auto"><input class="field num" placeholder="bottles" aria-label="New low-stock line"><button class="btn sm" type="button">Post</button></span></span><span class="p">reopened · nothing written until you post</span></div>
+          <p class="route">no overlay: ADR 0112 keeps the anchored Popover for a menu or a switcher and the Panel for a question; a reopening that commits nothing until a value is posted has no question to ask. The correcting row is written by the post, through the line's own register</p>
+        </div>
+        <div class="note" data-state="reopened"><span class="note-mark">Reopened</span><p>The six stays on the line, struck through. Post a new number and the journal names this row; leave it and nothing is written.</p><div class="acts"><button class="word" type="button">Leave it as it was</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Carried forward · a recorded skip</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">Low-stock line</span><span class="v dflt">3 bottles</span><span class="p">defaulted · not yet confirmed · offered 6 Sep 14:02 · c/f</span></div>
+          <p class="route">the skip is a row: <b>arrival_folios</b> state skipped, actor, updated_at (Codex build, 20260913190500) — told apart from a page nobody opened; the default of 3 stays in use</p>
+        </div>
+        <div class="note" data-state="cf"><span class="note-mark">C/F · 6 Sep 14:02</span><p>Offered and carried forward. Three stays the default copied onto newly imported rows; nothing is confirmed. The next sitting opens with this line as it stands.</p><div class="acts"><button class="word seal" type="button">Answer it now</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Refused · nothing written</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">Low-stock line</span><span class="v"><span class="fieldrow"><input class="field num" value="1000" aria-label="Low-stock line"><button class="btn sm" type="button">Try again</button></span></span><span class="p">3 · defaulted · not yet confirmed</span></div>
+          <p class="route">the line keeps <b>3 · defaulted</b>: a refusal is not a value, the field keeps what you typed, and nothing dates the refusal because nothing journals it (README Q6) · the words are the register's through arrivalError() (arrival-api.ts:186-195; arrival-contract.ts:94-96, thresholdMin 0–999) — the status code is not part of them; straight through PATCH /menus/threshold they would be class-validator's "thresholdMin must not be greater than 999" (set-threshold.dto.ts:11)</p>
+        </div>
+        <div class="note" data-state="refused"><span class="note-mark">Refused</span><p>The register would not take a thousand. Its words:</p><span class="verbatim">This is not a supported configuration value. Nothing was recorded.</span><p>Nothing was written. The register takes 0 to 999; say a number in range, or carry the line forward.</p><div class="acts"><button class="word seal" type="button">Try again</button><button class="word" type="button">Carry it forward</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 3 · Whom we buy from</span><span>The Old Mill · Michigan · USD</span></div>
+      <span class="state-tag">Opens when · blocked with the reason</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">Vendor</span><span class="v blank">no vendor is written in this book</span><span class="p">0 providers</span></div>
+          <div class="ln"><span class="k">Delivery days</span><span class="v blank">—</span><span class="p">—</span></div>
+          <div class="ln"><span class="k">Minimum order</span><span class="v blank">—</span><span class="p">USD · house currency</span></div>
+          <p class="route">terms belong to a vendor · <b>PUT /vendor-terms/:providerId</b> needs one · none is guessed from other houses · POST /providers · providers.controller.ts:245</p>
+        </div>
+        <div class="note" data-state="say"><span class="note-mark">Opens when</span><p>A vendor is written. Terms belong to somebody; write Great Lakes Provisions in the vendor book, or read them off the last invoice on fo. 0, and this page opens.</p><div class="acts"><button class="word seal" type="button">Write a vendor</button><button class="word" type="button">Read the last invoice</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Reading · loading</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">Low-stock line</span><span class="v"><span class="skel" style="width:88px"></span></span><span class="p"><span class="skel" style="width:110px;height:9px"></span></span></div>
+          <div class="ln"><span class="k"><span class="skel" style="width:70px"></span></span><span class="v"><span class="skel" style="width:140px"></span></span><span class="p"><span class="skel" style="width:60px;height:9px"></span></span></div>
+          <p class="route">an unread register is not an empty one — no field is offered until the read returns · the bars are static paper-2, as /logs draws them</p>
+        </div>
+        <div class="note" data-state="reading"><span class="note-mark">Reading</span><p>Reading this page's register. If it cannot be read, the note says so in the source's words and offers to read again — never an empty line.</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Could not be read · the source's words</span>
+      <div class="gl">
+        <div>
+          <div class="ln"><span class="k">Low-stock line</span><span class="v blank">unread</span><span class="p">not empty · not 3 · unread</span></div>
+          <div class="ln"><span class="k">Registers</span><span class="v blank">unread</span><span class="p">no count shown</span></div>
+          <p class="route">no field and no default are offered: an unread register is not an empty one, and a value it might hold is not drawn in its place · Codex Arrival.tsx:108 · SourceFailure · the reason is the source's, verbatim; the fallback is "This part of the book could not be read."</p>
+        </div>
+        <div class="note" data-state="refused"><span class="note-mark">Could not be read</span><p>This page's register did not answer. The source's words:</p><span class="verbatim">The recorded registers could not be read.</span><p>Nothing is shown in its place.</p><div class="acts"><button class="word seal" type="button">Read again</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 3 · Whom we buy from</span><span>The Old Mill · Michigan · USD</span></div>
+      <span class="state-tag">A subtotal · partial</span>
+      <div class="gl">
+        <div>
+          <div class="ln sub"><span class="k">Great Lakes Provisions</span><span class="v">Tue · Fri · cutoff 2:00 PM the day before · min $250.00 · net 30</span><span class="p ink">stated · Marcus · Sep 6</span></div>
+          <div class="ln"><span class="k">Marquette Dairy</span><span class="v blank">not yet stated</span><span class="p">5 columns blank</span></div>
+          <div class="sum"><span>Vendors stated</span><span class="v">1 of 2</span></div>
+          <p class="route">a single rule, not a double: the page stays open at a subtotal · every blank column is <b>NULL</b>, never a default (ADR 0116)</p>
+        </div>
+        <div class="note" data-state="say"><span class="note-mark">To answer</span><p>Marquette Dairy has no terms yet. Write only what they told you; a blank stays blank and the page stays open until both are stated or carried.</p><div class="acts"><button class="word seal" type="button">Write Marquette's terms</button><button class="word" type="button">Carry them forward</button></div></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════ 04 · fo. 5 · the seal ═══════════════ -->
+<section class="frame" id="f3">
+  <div class="cap"><span class="n">04</span><span class="t">fo. 5 — The assistant, 14:12: four lines in pencil, and the one seal. Hold the wax (620 ms, pour) and it lands (stamp); the receipt names every line on its own — written, refused, unconfirmed — and the note beside the seal reads the receipt back</span><span class="w">writes · POST /arrival/batches/:id/apply · then each line through its own register</span></div>
+  <div class="app">
+    <header class="hdr">
+      <span class="wm">Mudavym<span class="dot">.</span></span><span class="sep"></span><span class="pg">The house's book</span>
+      <button class="hsearch" type="button" aria-label="Search or act — open the command palette"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>Search or act</span><kbd>⌘K</kbd></button>
+      <span class="hright"><span class="house">Lokanta Meyhane</span><button class="hbtn" type="button" aria-label="Notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button><button class="hbtn user" type="button" aria-label="Account menu"><span class="avatar">D</span><span class="hwho">Defne</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></span>
+    </header>
+    <div class="book" style="grid-template-columns:1fr">
+      <article class="page recto">
+        <div class="folio"><span>fo. 5 · The assistant</span><span id="fo5-cap">4 lines in pencil · nothing posted yet</span></div>
+        <div class="gl">
+          <div>
+            <h2>Read what Mudavym put in pencil.</h2>
+            <p class="lede">Spoken, read off the last invoice, and confirmed on fo. 2, these lines wait here. What you typed is already posted and is not on this page. One held seal enters the four, each through its own register.</p>
+            <div class="ln head"><span class="k">On the page</span><span class="v">Proposed · read from</span><span class="p">Keep / leave out</span></div>
+            <div class="ln" id="b1"><span class="k">fo. 2 · Low-stock line</span><span class="v pencil">6 bottles — before: 3 · defaulted · spoken 14:04, on this device</span><span class="p"><button class="word" type="button">Leave out</button></span></div>
+            <div class="ln" id="b2"><span class="k">fo. 3 · Bereket Gıda · delivery days</span><span class="v pencil">Tue · Fri — before: not yet stated · <button class="src" type="button">read off invoice 4 Sep (fo. 0) · confirmed in place 13:50</button></span><span class="p"><button class="word" type="button">Leave out</button></span></div>
+            <div class="ln" id="b3"><span class="k">fo. 3 · Bereket Gıda · usual currency</span><span class="v pencil">TRY — before: not yet stated · <button class="src" type="button">every line on that invoice was in lira · confirmed 13:50</button></span><span class="p"><button class="word" type="button">Leave out</button></span></div>
+            <div class="ln" id="b4"><span class="k">fo. 2 · Seven registers</span><span class="v pencil">4 yes · 3 none — before: inferred, unconfirmed · confirmed on fo. 2 at 14:09 · <button class="src" type="button">read off 42 lines</button></span><span class="p"><button class="word" type="button">Leave out</button></span></div>
+            <p class="route">a line already <b>stated</b> by a person never enters the batch (ADR 0113 rule 3) · fo. 1 is Defne's own and is not here · the apply loop reports written · refused · unconfirmed per row (arrival.service.ts:708-710, :755-761), never one "Done" (ADR 0113 rule 4)</p>
+            <div style="margin-top:22px;max-width:520px">
+              <button class="hold" type="button" id="hold" aria-label="Hold to enter these four lines"><span class="fill"></span><svg class="wax" viewBox="0 0 100 100" aria-hidden="true"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/></svg><span class="lbl" id="hold-lbl">Hold to enter these four lines</span></button>
+              <div class="hold-note" id="hold-note">Hold 620 ms · Enter arms it, Enter again seals · an early release says how far it got</div>
+            </div>
+            <div class="receipt" id="receipt" hidden>
+              <div class="ln head"><span class="k">Receipt · 14:12</span><span class="v">Through</span><span class="p">Outcome</span></div>
+              <div class="ln posted"><span class="k">fo. 2 · Low-stock line · 6</span><span class="v">the low-stock register</span><span class="p"><span class="pill ink">written</span></span></div>
+              <div class="ln"><span class="k">fo. 3 · Bereket Gıda · delivery days</span><span class="v">the vendor's terms · <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink-1)">The writer did not return a confirmed receipt. Read the setting before another attempt.</span></span><span class="p"><span class="pill">unconfirmed</span></span></div>
+              <div class="ln"><span class="k">fo. 3 · Bereket Gıda · usual currency</span><span class="v">the vendor's profile · <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink-1)">This field changed after the proposal. It was left as it stands.</span> · Hasan stated TRY by hand at 14:10</span><span class="p"><span class="pill">refused</span></span></div>
+              <div class="ln posted"><span class="k">fo. 2 · Seven registers</span><span class="v">the cellar's registers · source: confirmed</span><span class="p"><span class="pill ink">written</span></span></div>
+              <p class="prov">Undo this batch until 13 Sep 14:12 — the two written lines reverse as a unit; lines changed since the seal are left as they stand.</p>
+              <p class="route">PATCH /menus/threshold · PUT /vendor-terms/:providerId · PATCH /providers/:id/usual-currency · PUT /cellar/:restaurantId/registers · POST /arrival/batches/:id/undo (migration 20260913190600)</p>
+            </div>
+          </div>
+          <div class="note" data-state="say" id="sealnote">
+            <span class="note-mark">The one seal</span>
+            <p>Four lines: one you spoke, two read off the last invoice, one confirmed on fo. 2. Hold the seal to enter them. It lands once, here — never on a page you typed.</p>
+            <p style="margin-top:8px">A line a person states after the proposal is left as it stands, and a writer that returns no receipt is reported as unconfirmed — line by line, never as one failure of the four.</p>
+            <div class="acts"><button class="word" type="button">Leave all four out</button></div>
+            <span class="note-src">apply crosses four services with no shared transaction · undo for seven days by batch id</span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 05 · the phone ═══════════════ -->
+<section class="frame" id="f4">
+  <div class="cap"><span class="n">05</span><span class="t">390, 14:19 — Hasan at the phone, fo. 3 for one vendor · fo. 2 was ruled off at 14:12 · the margin folds under the line and the note becomes a footnote · typed terms post at once; a spoken one goes in pencil · the cutoff field is empty until somebody types</span><span class="w">writes · PUT /vendor-terms/:providerId · PATCH /providers/:id/usual-currency</span></div>
+  <div class="phones">
+    <div class="phone">
+      <div class="status"><span>14:19</span><span>Lokanta Meyhane</span></div>
+      <header class="hdr" style="border:0"><span class="wm">Mudavym<span class="dot">.</span></span><span class="sep"></span><span class="pg">The house's book</span><span class="hright"><button class="hbtn" type="button" aria-label="Notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button><button class="hbtn user" type="button" aria-label="Account menu"><span class="avatar">H</span></button></span></header>
+      <div class="tabs"><span class="done">fo. 0 · read</span><span class="done">fo. 1</span><span class="done">fo. 2 · 14:12</span><span class="here">fo. 3 · here</span><span>fo. 4</span><span>fo. 5 · 1 in pencil</span></div>
+      <div class="folio"><span>fo. 3 · Whom we buy from</span><span>Tuna İçecek</span></div>
+      <h2>What did Tuna tell you?</h2>
+      <p class="lede">Write only the terms somebody said. A blank stays blank.</p>
+      <div class="gl">
+        <div class="ln posted"><span class="k">Delivery days</span><span class="v"><span class="days"><button type="button">Mon</button><button type="button" class="on">Tue</button><button type="button">Wed</button><button type="button">Thu</button><button type="button" class="on">Fri</button><button type="button">Sat</button><button type="button">Sun</button></span></span><span class="p ink">posted · typed · 14:18 · Hasan</span></div>
+      </div>
+      <div class="gl">
+        <div class="ln mark"><span class="k">Order cutoff</span><span class="v"><span class="fieldrow"><input class="field" placeholder="hh:mm" aria-label="Order cutoff time" style="max-width:70px"><span class="small">the day before</span><button class="btn sm" type="button">Post</button></span></span><span class="p">not yet answered</span></div>
+        <div class="note" data-state="say"><span class="note-mark">To answer</span><p>The hour Tuna stops taking tomorrow's order. Nothing is filled in for you; what you type posts as your word the moment you post it.</p><div class="acts"><button class="word seal" type="button">Say it aloud</button></div></div>
+      </div>
+      <div class="gl">
+        <div class="ln"><span class="k">Minimum order</span><span class="v"><span class="fieldrow"><span class="small">₺</span><input class="field" placeholder="amount in ₺" aria-label="Minimum order" style="max-width:120px"><button class="btn sm" type="button">Post</button></span></span><span class="p">TRY · not yet answered</span></div>
+      </div>
+      <div class="gl">
+        <div class="ln"><span class="k">Payment terms</span><span class="v pencil">net 30</span><span class="p">spoken · 14:19 · in pencil · waits on fo. 5</span></div>
+        <div class="note" data-state="pencil"><span class="note-mark">In pencil</span><p>Heard on this phone; only "net 30" was kept. It waits on the seal on fo. 5.</p></div>
+      </div>
+      <div class="gl">
+        <div class="ln"><span class="k">Usual currency</span><span class="v">TRY</span><span class="p ink">stated · vendor profile</span></div>
+      </div>
+      <div class="note" data-state="cf-offer" style="margin-top:14px"><span class="note-mark">Nothing here is a gate</span><p>Carry the vendor forward and the blanks wait with the date.</p><div class="acts"><button class="word" type="button">Carry Tuna forward</button></div></div>
+    </div>
+    <div class="aside">
+      <p><b style="color:var(--ink-1);font-weight:500">What the phone changes.</b> The two-column gloss has no margin at 390, so each note folds under its line as a footnote with a left rule. The order of reading stays the same: line, then what to do to it.</p>
+      <p>Speech at the phone is the point: Hasan says "net thirty" while the vendor is still on the line, and the words land in pencil on this page and on fo. 5 — a new batch; the first was sealed at 14:12. Nothing leaves the phone; the transcript is not kept.</p>
+      <p>The delivery days posted at once because Hasan tapped them; only the spoken line waits. That difference is the founder's ruling of 12 Sep and the footnote's mark shows it without a sentence. The cutoff field is empty: nobody has said an hour, so none is drawn, and nothing could post as Hasan's word on one tap.</p>
+    </div>
+  </div>
+</section>
+
+<p class="colophon"><b>Example houses only</b> — Lokanta Meyhane (İstanbul, TRY; Defne, Hasan; Tuna İçecek, Bereket Gıda) and The Old Mill (Michigan, USD; Marcus; Great Lakes Provisions, Marquette Dairy). One timeline for Lokanta Meyhane: sign-up 13:41 · fo. 0 read 13:50 · opening stock 13:52 · frame 01 at 13:58 (its clock ticks from 13:59) · six spoken 14:04 · seven confirmed 14:09 · Hasan states Bereket's currency 14:10 · the seal 14:12 · Tuna's days typed 14:18 · the phone 14:19. Fonts from Google here; the product self-hosts. The routes named in the build notes exist on <span style="font-family:var(--mono)">main</span> except the <span style="font-family:var(--mono)">/arrival/*</span> family, which is Codex's uncommitted build. The "Say it aloud" control pretends to hear "six" after a moment; real recognition is the browser's own, on-device. No overlay opens on this page.</p>
+
+</div>
+</div>
+
+<script>
+(function(){
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var root=document.getElementById('root');
+  function press(sel,attr,val){document.querySelectorAll(sel).forEach(function(x){x.setAttribute('aria-pressed',String(x.dataset[attr]===val));});}
+  try{var q=new URLSearchParams(location.search),g=q.get('ground'),n=q.get('notes');if(g==='paper'||g==='charcoal'){root.setAttribute('data-ground',g);press('.sk-ctl [data-g]','g',g);}if(n==='on'||n==='off'){root.setAttribute('data-notes',n);press('.sk-ctl [data-n]','n',n);}}catch(e){}
+  document.querySelectorAll('.sk-ctl [data-g]').forEach(function(b){b.addEventListener('click',function(){root.setAttribute('data-ground',b.dataset.g);press('.sk-ctl [data-g]','g',b.dataset.g);});});
+  document.querySelectorAll('.sk-ctl [data-n]').forEach(function(b){b.addEventListener('click',function(){root.setAttribute('data-notes',b.dataset.n);press('.sk-ctl [data-n]','n',b.dataset.n);});});
+
+  function resettle(el){el.classList.remove('settle');void el.offsetWidth;el.classList.add('settle');}
+  var mins=13*60+58;function tick(){mins++;var h=Math.floor(mins/60),mm=mins%60;return h+':'+(mm<10?'0'+mm:mm);} /* the example clock only moves forward: frame 01 is 13:58 */
+  var regs='unconfirmed',regsAt='',thr='defaulted',thrAt='',thrN=3,prevN=0,pencil=2;
+  function tocLine(){
+    var r=regs==='pencil'?'seven registers in pencil · '+regsAt:regs==='cf'?'seven registers c/f · '+regsAt:'seven registers read off the stock, unconfirmed';
+    var t=thr==='posted'?'low line '+thrN+' · posted '+thrAt:thr==='pencil'?'low line '+thrN+' in pencil · '+thrAt:thr==='cf'?'low line 3, defaulted, unconfirmed · c/f '+thrAt:thr==='reopened'?'low line reopened · nothing written yet':'low line 3, defaulted, unconfirmed';
+    document.getElementById('toc2-st').textContent=(thr==='posted'?'Activation complete · ':'Open · ')+r+' · '+t;
+    document.getElementById('toc5-st').textContent=pencil+(pencil===1?' line':' lines')+' in pencil · waiting on the seal';
+  }
+  function note(el,mark,html,acts,src){el.innerHTML='<span class="note-mark">'+mark+'</span><p>'+html+'</p>'+(acts?'<div class="acts">'+acts+'</div>':'')+(src?'<span class="note-src">'+src+'</span>':'');resettle(el);}
+
+  /* fo. 2 · the registers */
+  var regnote=document.getElementById('regnote');
+  document.querySelectorAll('#g-reg .chk').forEach(function(c){c.addEventListener('click',function(){
+    c.classList.toggle('on');c.classList.toggle('off');
+    var ln=c.closest('.ln'),p=ln.querySelector('.p'),v=ln.querySelector('.v');
+    var on=c.classList.contains('on');
+    p.textContent='switched by hand · posts at once';p.classList.add('ink');v.classList.toggle('pencil',!on);
+  });});
+  /* confirming sends what Mudavym read into the pencil batch (ADR 0144:31); only a register switched by hand posts at once, source manual */
+  document.getElementById('a-confirm').addEventListener('click',function(){
+    var at=tick(),manual=0;
+    document.querySelectorAll('#g-reg .ln:not(.head)').forEach(function(ln){var p=ln.querySelector('.p'),v=ln.querySelector('.v');
+      if(/switched/.test(p.textContent)){manual++;ln.classList.add('posted');p.textContent='posted · manual · '+at+' · Defne';p.classList.add('ink');}
+      else{v.classList.add('pencil');p.textContent='confirmed · pencil · fo. 5';p.classList.remove('ink');}});
+    regs='pencil';regsAt=at;pencil+=1;
+    regnote.setAttribute('data-state','pencil');
+    note(regnote,'In pencil · '+at,'Seven registers confirmed as read. They enter the book with everything else Mudavym proposed, when you hold the seal on fo. 5.'+(manual?' '+manual+' switched by hand posted at once, as your word.':''),'<button class="word seal" type="button">Read them on fo. 5</button><button class="word" type="button" id="a-leave-regs">Leave them out</button>','POST /arrival/config/propose_batch · source confirmed · 1 batch row for the seven'+(manual?' · PUT /cellar/:restaurantId/registers × '+manual+' · source manual':''));
+    tocLine();
+    document.getElementById('a-leave-regs').addEventListener('click',function(){location.reload();});
+  });
+
+  /* fo. 2 · the low-stock line */
+  var thrnote=document.getElementById('thrnote'),thrv=document.getElementById('thr-v'),thrp=document.getElementById('thr-p'),thrln=document.getElementById('thr-ln');
+  function fieldHtml(val,ph,btn,id){return '<span class="fieldrow"'+(val===''&&ph?' style="display:inline-flex;width:auto"':'')+'><input class="field num" id="thr-in" inputmode="numeric"'+(val!==''?' value="'+val+'"':'')+(ph?' placeholder="'+ph+'"':'')+' aria-label="Low-stock line, in bottles"><button class="btn sm" type="button" id="a-record">'+btn+'</button></span>';}
+  function wireField(){document.getElementById('a-record').addEventListener('click',function(){var n=parseInt(document.getElementById('thr-in').value,10);if(!(Number.isInteger(n)&&n>=0&&n<=999)){refused();return;}posted(n);});
+    document.getElementById('thr-in').addEventListener('keydown',function(e){if(e.key==='Enter'){document.getElementById('a-record').click();}});}
+  function posted(n){
+    var at=tick();var wasReopen=thr==='reopened';thr='posted';thrAt=at;if(wasReopen)prevN=thrN;thrN=n;
+    thrv.innerHTML=(prevN?'<s>'+prevN+' bottles</s>':'')+n+' bottles';thrv.className='v';thrp.textContent='posted · typed · '+at+' · Defne'+(prevN?' · corrects the '+prevN:'');thrp.className='p ink';thrln.classList.add('posted');thrln.classList.remove('mark');
+    thrnote.setAttribute('data-state','posted');
+    note(thrnote,'Posted '+at,'Recorded as yours. Activation is complete: the menu was uploaded at the door and the low line is confirmed. Reopening is a correcting entry — the '+n+' stays on the line, struck through, and nothing is written until a new number is posted.','<button class="word" type="button" id="a-reopen-thr">Reopen this line</button>');
+    tocLine();
+    document.getElementById('a-reopen-thr').addEventListener('click',reopen);
+  }
+  /* reopening is an inline act: the value is struck in place and nothing is written until a new one is posted (no overlay) */
+  function reopen(){
+    thr='reopened';
+    thrv.innerHTML='<s>'+thrN+' bottles</s>'+fieldHtml('','bottles','Post');thrv.className='v';thrp.textContent='reopened · nothing written until you post';thrp.className='p';thrln.classList.remove('posted');thrln.classList.add('mark');
+    thrnote.setAttribute('data-state','reopened');
+    note(thrnote,'Reopened','The '+thrN+' stays on the line, struck through. Post a new number and the journal names this row; leave it and nothing is written.','<button class="word" type="button" id="a-keep">Leave it as it was</button>');
+    wireField();tocLine();
+    document.getElementById('a-keep').addEventListener('click',function(){thr='posted';thrv.innerHTML=(prevN?'<s>'+prevN+' bottles</s>':'')+thrN+' bottles';thrp.textContent='posted · typed · '+thrAt+' · Defne'+(prevN?' · corrects the '+prevN:'');thrp.className='p ink';thrln.classList.add('posted');thrln.classList.remove('mark');
+      thrnote.setAttribute('data-state','posted');note(thrnote,'Posted '+thrAt,'Left as it was. Nothing was written.','<button class="word" type="button" id="a-reopen-thr">Reopen this line</button>');document.getElementById('a-reopen-thr').addEventListener('click',reopen);tocLine();});
+  }
+  function refused(){
+    /* the register's words verbatim, undated: nothing journals a refusal, so the line does not change */
+    thrnote.setAttribute('data-state','refused');
+    note(thrnote,'Refused','The register would not take it. Its words:</p><span class="verbatim">This is not a supported configuration value. Nothing was recorded.</span><p>Nothing was written. The register takes 0 to 999; say a number in range, or carry the line forward.','<button class="word seal" type="button" id="a-retry">Try again</button><button class="word" type="button" id="a-cf2">Carry it forward</button>');
+    document.getElementById('a-record').textContent='Try again';
+    document.getElementById('a-retry').addEventListener('click',function(){document.getElementById('thr-in').focus();});
+    document.getElementById('a-cf2').addEventListener('click',cf);
+  }
+  wireField();
+  document.getElementById('a-speak').addEventListener('click',function(){
+    thrnote.setAttribute('data-state','listening');
+    note(thrnote,'Listening — on this device','Say a number. Nothing leaves this browser; only the number is kept, and it goes in pencil.','<button class="word" type="button" id="a-stop">Stop</button>');
+    var t=setTimeout(function(){
+      var at=tick();thr='pencil';thrAt=at;thrN=6;pencil+=1;
+      thrv.innerHTML='6 bottles';thrv.className='v pencil';thrp.textContent='spoken · '+at+' · in pencil · 3 stays until the seal';thrp.className='p';thrln.classList.remove('mark');
+      thrnote.setAttribute('data-state','pencil');
+      note(thrnote,'In pencil · '+at,'You said six. Mudavym heard it here and kept only the number. It enters the book when you hold the seal on fo. 5 — with everything else it proposed, in one hold. Until then the default of three stays in use, unconfirmed.','<button class="word seal" type="button">Read it on fo. 5</button><button class="word" type="button" id="a-leave">Leave it out</button>');
+      tocLine();
+      document.getElementById('a-leave').addEventListener('click',function(){location.reload();});
+    },reduce?0:1400);
+    document.getElementById('a-stop').addEventListener('click',function(){clearTimeout(t);thrnote.setAttribute('data-state','say');note(thrnote,'To answer','Stopped. Nothing was kept. Three is still the default, unconfirmed; say the house\'s number or post three as yours.','<button class="word seal" type="button" id="a-speak2">Say it aloud</button>');document.getElementById('a-speak2').addEventListener('click',function(){document.getElementById('a-speak').click();});});
+  });
+
+  /* carry the page forward */
+  var pagenote=document.getElementById('pagenote');
+  function cf(){
+    var at=tick();
+    if(thr!=='posted'&&thr!=='pencil'&&thr!=='reopened'){thr='cf';thrAt=at;thrv.innerHTML='<span class="dflt" style="color:var(--ink-4);font-weight:400">3 bottles</span>';thrp.textContent='defaulted · not yet confirmed · offered '+at+' · c/f';thrln.classList.remove('mark');
+      thrnote.setAttribute('data-state','cf');
+      note(thrnote,'C/F · 6 Sep '+at,'Offered and carried forward. Three stays the default copied onto newly imported rows; nothing is confirmed.','<button class="word seal" type="button" id="a-answer">Answer it now</button>');
+      document.getElementById('a-answer').addEventListener('click',function(){location.reload();});}
+    if(regs==='unconfirmed'){regs='cf';regsAt=at;regnote.setAttribute('data-state','cf');note(regnote,'C/F · 6 Sep '+at,'Offered and carried forward. The seven stay as the books read them, unconfirmed.','<button class="word seal" type="button" id="a-answer-regs">Answer it now</button>');document.getElementById('a-answer-regs').addEventListener('click',function(){location.reload();});}
+    pagenote.setAttribute('data-state','cf');
+    note(pagenote,'Carried forward · 6 Sep '+at,'A recorded skip, not an absence. The next sitting opens the contents with this page as it stands.');
+    tocLine();
+  }
+  document.getElementById('a-cf').addEventListener('click',cf);
+
+  /* fo. 5 · the seal */
+  var hold=document.getElementById('hold'),lbl=document.getElementById('hold-lbl'),hn=document.getElementById('hold-note'),sealnote=document.getElementById('sealnote');
+  var timer=null,t0=0,sealed=false,armed=false,armT=null;
+  function seal(){if(sealed)return;sealed=true;hold.classList.remove('pouring');hold.classList.add('sealed');hold.setAttribute('aria-disabled','true');lbl.textContent='Sealed 14:12 — reading the receipt';hn.textContent='The wax landed once. Each line below reports on its own.';
+    var r=document.getElementById('receipt');r.hidden=false;r.classList.add('settle');
+    /* each row carries its own receipt outcome — never one "sealed" */
+    var out={b1:'<span class="pill ink">written</span>',b2:'<span class="pill">unconfirmed</span>',b3:'<span class="pill">refused</span>',b4:'<span class="pill ink">written</span>'};
+    Object.keys(out).forEach(function(id){var ln=document.getElementById(id);ln.querySelector('.p').innerHTML=out[id];if(/ink/.test(out[id]))ln.classList.add('posted');});
+    document.getElementById('fo5-cap').textContent='sealed 14:12 · 2 written · 1 refused · 1 unconfirmed';
+    sealnote.setAttribute('data-state','posted');
+    note(sealnote,'Sealed 14:12','Two entered. Bereket Gıda\'s currency was stated by Hasan at 14:10, after the proposal, so the proposal was left as it stands. The delivery days\' writer returned no receipt: read fo. 3 before another attempt. Undo is open until 13 Sep 14:12; the two written lines reverse as a unit.','<button class="word seal" type="button">Read fo. 3</button><button class="word" type="button">Undo this batch</button>');
+    document.getElementById('toc5-st').textContent='Sealed 14:12 · 2 written · 1 refused · 1 unconfirmed';
+  }
+  function start(){if(sealed)return;hold.classList.remove('retreat');hold.classList.add('pouring');t0=performance.now();timer=setTimeout(seal,reduce?0:620);}
+  function stop(){if(sealed||!timer)return;clearTimeout(timer);timer=null;hold.classList.remove('pouring');hold.classList.add('retreat');var p=Math.min(100,Math.round((performance.now()-t0)/620*100));hn.textContent='Released at '+p+'% — nothing sent.';}
+  hold.addEventListener('pointerdown',function(e){e.preventDefault();if(reduce){if(armed){seal();}else{armed=true;hold.setAttribute('data-armed','true');hn.textContent='Press again to seal';armT=setTimeout(function(){armed=false;hold.setAttribute('data-armed','false');},3000);}return;}start();});
+  hold.addEventListener('pointerup',stop);hold.addEventListener('pointerleave',stop);hold.addEventListener('pointercancel',stop);
+  hold.addEventListener('keydown',function(e){if(e.key==='Escape'){armed=false;hold.setAttribute('data-armed','false');return;}if(e.key!=='Enter'&&e.key!==' ')return;e.preventDefault();if(e.repeat)return;if(armed){seal();}else{armed=true;hold.setAttribute('data-armed','true');hn.textContent='Enter again to seal';armT=setTimeout(function(){armed=false;hold.setAttribute('data-armed','false');},3000);}});
+})();
+</script>
+</body>
+</html>

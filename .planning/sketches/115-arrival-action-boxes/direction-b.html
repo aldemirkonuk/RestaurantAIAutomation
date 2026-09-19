@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrival Next Act</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── colour tokens — apps/web/src/styles/mudavym.css. Charcoal is the ground (ADR 0138); paper is the declared exception. */
+.mudavym,.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC;--seal-deep:#7DC3CD;--seal-tint:rgba(95,176,188,.14);--seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F;--paper-1:#1D1813;--paper-2:#262019;
+  --ink-1:#EFE7D9;--ink-2:#C0B6A5;--ink-3:#8E8576;--ink-4:#ABA294;
+  color-scheme:dark;
+}
+.mudavym[data-ground="paper"]{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;--ink-4:#665d50;
+  color-scheme:light;
+}
+:root{
+  --serif:"Fraunces",Georgia,serif;--sans:"DM Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  /* motion — lib/mudavym/motion.ts. settle 320 / ink 160 / turn 420 / pour 620 are the tokens verbatim. tuck, stamp and tally are
+     cubic-bezier APPROXIMATIONS of its sampled linear() springs (springLinear(380,32), (500,26), (120,26)); the build uses the strings. */
+  --settle:cubic-bezier(.16,1,.3,1);--ink:cubic-bezier(.16,1,.3,1);--turn:cubic-bezier(.32,.72,0,1);
+  --tuck:cubic-bezier(.2,.9,.3,1.01);--stamp:cubic-bezier(.34,1.42,.64,1);--tally:cubic-bezier(.2,.8,.2,1);
+}
+.mudavym{--rule:color-mix(in srgb,var(--ink-3) 34%,transparent);--rule-soft:color-mix(in srgb,var(--ink-3) 20%,transparent);--rule-firm:color-mix(in srgb,var(--ink-2) 70%,transparent)}
+*{box-sizing:border-box}
+html,body{margin:0;background:#15130F}
+body{font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+.mudavym{background:var(--paper-0);color:var(--ink-1);min-height:100vh}
+a{color:inherit}
+button{font-family:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--seal-ring);outline-offset:2px}
+.dot{color:var(--seal)}
+.wrap{width:min(1320px,100% - 48px);margin:0 auto}
+@media (max-width:760px){.wrap{width:calc(100% - 24px)}}
+
+/* ── sketch chrome (not the product) ────────────────────────────────── */
+.sk-bar{display:flex;align-items:baseline;gap:18px;padding:16px 0 14px;border-bottom:1px solid var(--rule-soft);flex-wrap:wrap}
+.sk-mark{font:600 20px var(--serif);letter-spacing:-.02em}
+.sk-meta{font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4)}
+.sk-ctl{margin-left:auto;display:flex;gap:22px;font:500 12px var(--sans);color:var(--ink-4);flex-wrap:wrap}
+.sk-ctl span{display:inline-flex;gap:8px}
+.sk-ctl button{background:none;border:0;padding:0;font:500 12px var(--sans);color:var(--ink-4);cursor:pointer;text-underline-offset:4px;transition:color 160ms var(--ink)}
+.sk-ctl button[aria-pressed="true"]{color:var(--ink-1);text-decoration:underline}
+.sk-head{padding:36px 0 26px}
+.sk-head h1{font:600 38px/1.1 var(--serif);letter-spacing:-.015em;margin:0 0 12px}
+.sk-head .lede{font:italic 400 18px/1.5 var(--serif);color:var(--ink-2);max-width:880px;margin:0 0 22px}
+.marks{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;border-top:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft);padding:16px 0;margin:0 0 36px}
+.marks .m{font-size:12px;line-height:17px;color:var(--ink-2)}
+.marks .m b{display:block;font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-1);margin-bottom:6px}
+@media (max-width:900px){.marks{grid-template-columns:repeat(2,1fr)}}
+.frame{margin:0 0 56px}
+.cap{display:flex;align-items:baseline;gap:14px;margin:0 0 12px;font:500 10.5px/1.5 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);flex-wrap:wrap}
+.cap .n{color:var(--ink-1);font-weight:600}
+.cap .t{color:var(--ink-2);text-transform:none;letter-spacing:.03em;font-size:12px;flex:1 1 480px}
+.cap .w{margin-left:auto;text-transform:none;letter-spacing:.03em}
+.colophon{font:400 12px/18px var(--sans);color:var(--ink-4);border-top:1px solid var(--rule-soft);padding:18px 0 60px;margin-top:20px}
+.colophon b{color:var(--ink-2);font-weight:500}
+/* build notes are sketch chrome: hidden unless the toggle in the bar (or ?notes=on) shows them, so density is judged on product copy alone */
+.mudavym[data-notes="off"] .route{display:none}
+
+/* ── the product: header + book ─────────────────────────────────────── */
+.app{background:var(--paper-0);border:1px solid var(--rule-soft)}
+/* the header is HouseHeader (components/mudavym/HouseHeader.tsx:165-233): mark · rule · page · search · house · HouseBell · HouseUserMenu */
+.hdr{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 24px;border-bottom:1px solid var(--rule-soft)}
+.hdr .wm{font:600 20px var(--serif);letter-spacing:-.02em;line-height:1}
+.hdr .sep{width:1px;height:18px;background:var(--rule)}
+.hdr .pg{font:500 13px var(--sans);color:var(--ink-2)}
+.hdr .hsearch{display:inline-flex;align-items:center;gap:8px;margin-left:18px;padding:6px 10px;border:1px solid var(--rule-soft);border-radius:9px;background:var(--paper-1);color:var(--ink-4);font:500 12.5px var(--sans);cursor:pointer}
+.hdr .hsearch kbd{font:500 10px var(--mono);color:var(--ink-4);border:1px solid var(--rule);border-radius:4px;padding:1px 5px}
+.hdr .hright{margin-left:auto;display:inline-flex;align-items:center;gap:6px}
+.hdr .house{font:500 12.5px var(--sans);color:var(--ink-2);padding:0 8px 0 2px;white-space:nowrap}
+.hdr .hbtn{display:inline-flex;align-items:center;gap:7px;padding:7px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--ink-2);cursor:pointer;transition:background 160ms var(--ink),border-color 160ms var(--ink)}
+.hdr .hbtn:hover{background:var(--paper-1);border-color:var(--paper-2)}
+.hdr .hbtn.user{padding:5px 8px 5px 5px}
+.hdr .hbtn svg{display:block}
+.hdr .avatar{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:var(--seal-tint);color:var(--seal);font:700 11.5px var(--sans)}
+.hdr .hwho{font:500 12.5px var(--sans);color:var(--ink-1);white-space:nowrap}
+.book{display:grid;grid-template-columns:minmax(340px,36%) minmax(0,1fr)}
+.page{background:var(--paper-1);padding:34px 40px 40px;min-width:0;position:relative}
+.page.verso{border-right:1px solid var(--rule-soft)}
+.folio{font:500 10px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);margin:0 0 18px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.page h2{font:600 26px/1.15 var(--serif);letter-spacing:-.012em;margin:0 0 10px;color:var(--ink-1)}
+.page .lede{font:italic 400 15px/1.5 var(--serif);color:var(--ink-2);margin:0 0 22px}
+.page p{margin:0}
+.small{font-size:12.5px;line-height:18px;color:var(--ink-2)}
+.prov{font:400 12px/17px var(--sans);color:var(--ink-4);margin:8px 0 0}
+.route{font:500 10.5px/16px var(--mono);letter-spacing:.02em;color:var(--ink-4);margin:8px 0 0;overflow-wrap:anywhere;border-left:2px solid var(--rule);padding-left:8px}
+.route b{font-weight:600;color:var(--ink-2)}
+.route::before{content:"build note · ";color:var(--ink-3)}
+
+/* ledger lines — each rule is the line's own border, so a rule always underlines text (founder, 12 Sep) */
+.ln{display:grid;grid-template-columns:minmax(120px,160px) minmax(0,1fr) auto;gap:0 14px;align-items:baseline;padding:7px 0 8px;border-bottom:1px solid var(--rule)}
+.ln.head{border-bottom-color:var(--rule-firm)}
+.ln.head .k,.ln.head .v,.ln.head .p{font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4)}
+.ln .k{color:var(--ink-2);font-size:13px}
+.ln .v{font-size:14px;font-weight:500;color:var(--ink-1);min-width:0}
+.ln .v.pencil{color:var(--ink-4);font-weight:400}
+.ln .v.blank{color:var(--ink-4);font-weight:400;font-style:italic}
+.ln .v.dflt{color:var(--ink-4);font-weight:400}
+.ln .v s{color:var(--ink-4);font-weight:400;text-decoration:line-through;margin-right:8px}
+.ln .p{font:500 9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);white-space:nowrap;text-align:right}
+.ln .p.ink{color:var(--ink-2)}
+.ln .p.seal{color:var(--seal)}
+.ln.posted{border-bottom:3px double var(--ink-2)}
+.ln.sub{border-bottom:1px solid var(--ink-2)}
+.ln.mark{border-left:2px solid var(--seal);padding-left:10px;margin-left:-12px}
+.sum{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;font-size:13px;color:var(--ink-2)}
+.sum .v{font-weight:600;color:var(--ink-1)}
+.src{font:500 10px var(--mono);letter-spacing:.04em;color:var(--ink-4);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--rule);cursor:pointer;background:none;border:0;padding:0;text-align:left}
+.src:hover{color:var(--ink-2)}
+
+/* controls */
+.btn{display:inline-flex;align-items:center;gap:8px;font:600 13px var(--sans);padding:8px 14px;border:1px solid var(--seal);background:var(--seal);color:var(--paper-0);border-radius:4px;cursor:pointer;line-height:18px;white-space:nowrap;transition:background 160ms var(--ink),border-color 160ms var(--ink),color 160ms var(--ink),transform 160ms var(--ink)}
+.btn:hover{background:var(--seal-deep);border-color:var(--seal-deep)}
+.btn:active{transform:scale(.97)}
+.btn.quiet{background:transparent;color:var(--ink-2);border-color:var(--ink-4)}
+.btn.quiet:hover{color:var(--ink-1);border-color:var(--ink-1);background:transparent}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn[aria-disabled="true"]{opacity:.45;cursor:default;transform:none}
+.word{background:none;border:0;padding:0;font:500 13px var(--sans);color:var(--ink-2);text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1px;cursor:pointer;text-align:left;transition:color 160ms var(--ink),text-underline-offset 160ms var(--ink)}
+.word:hover{color:var(--ink-1);text-underline-offset:5px}
+.word.seal{color:var(--seal);font-weight:600}
+.word.seal:hover{color:var(--seal-deep)}
+.acts{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.fieldrow{display:inline-flex;gap:8px;align-items:center;width:100%;max-width:300px}
+.field{flex:1 1 60px;min-width:56px;background:transparent;border:0;border-bottom:1px solid var(--ink-3);font:500 14px/24px var(--sans);color:var(--ink-1);padding:0;border-radius:0}
+.field::placeholder{color:var(--ink-4);font-weight:400}
+.field:focus{outline:none;border-bottom-color:var(--seal)}
+.field.num{max-width:96px;font-variant-numeric:tabular-nums}
+.chk{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink-1);cursor:pointer;background:none;border:0;padding:0;text-align:left}
+.chk i{width:12px;height:12px;border:1px solid var(--ink-2);display:inline-block;position:relative;flex:none;transition:border-color 160ms var(--ink)}
+.chk.on i::after{content:"";position:absolute;inset:2px;background:var(--ink-1)}
+.chk.off{color:var(--ink-4)}
+.chk.off i{border-color:var(--ink-4)}
+.days{display:inline-flex;gap:5px;flex-wrap:wrap}
+.days button{font:500 10.5px var(--mono);letter-spacing:.06em;padding:3px 7px;border:1px solid var(--ink-3);color:var(--ink-4);border-radius:2px;background:none;cursor:pointer;transition:border-color 160ms var(--ink),color 160ms var(--ink),background 160ms var(--ink)}
+.days button.on{border-color:var(--ink-1);color:var(--ink-1);background:var(--paper-2)}
+/* skeletons are static paper-2 bars, as /logs draws them (LogsNext.tsx:228 .lg-skel) — no token is a loop */
+.skel{display:inline-block;height:11px;border-radius:4px;background:var(--paper-2);vertical-align:middle;max-width:100%}
+@keyframes settle{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.settle{animation:settle 320ms var(--settle) both}
+
+/* ── THE IDEA: one slip per page, holding the one next act ───────────── */
+/* A slip laid across the head of the folio. It holds exactly one act, its reason, what comes after, and the control that does it.
+   Its left edge is the ribbon: seal for an act, ink-3 for pencil and c/f, ink-1 for a refusal or a reopening. When the page is ruled off
+   the slip becomes the double rule and says who and when. The ledger beneath stays fully live — the slip points, it never hides. */
+.slip{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 28px;align-items:center;background:var(--paper-2);border-top:1px solid var(--rule-firm);border-bottom:1px solid var(--rule);padding:16px 22px 16px 24px;margin:0 0 24px;position:relative;animation:settle 320ms var(--settle) both}
+.slip::before{content:"";position:absolute;left:0;top:-1px;bottom:-1px;width:3px;background:var(--seal)}
+.slip .mark{font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);margin:0 0 6px}
+.slip .act{font:600 19px/1.25 var(--serif);letter-spacing:-.01em;color:var(--ink-1);margin:0}
+.slip .why{font:400 13px/18px var(--sans);color:var(--ink-2);margin:6px 0 0;max-width:560px}
+.slip .why.voice{font:italic 400 13.5px/19px var(--serif)}
+.slip .then{font:500 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);margin:10px 0 0}
+.slip .then b{color:var(--ink-2);font-weight:500}
+.slip .do{display:flex;flex-direction:column;align-items:flex-end;gap:10px;min-width:0}
+.slip .do .fieldrow{max-width:260px;justify-content:flex-end}
+.slip .verbatim{display:block;font:500 11px/15px var(--mono);letter-spacing:.02em;color:var(--ink-1);margin:8px 0 2px;padding:7px 9px;border:1px solid var(--rule);overflow-wrap:anywhere;max-width:560px}
+.slip .skel{background:var(--rule)}
+.slip[data-state="pencil"]::before,.slip[data-state="cf"]::before,.slip[data-state="blocked"]::before,.slip[data-state="reading"]::before{background:var(--ink-3)}
+.slip[data-state="refused"]::before,.slip[data-state="reopened"]::before{background:var(--ink-1)}
+.slip[data-state="cf"]{background:transparent}
+.slip[data-state="cf"] .act{color:var(--ink-2)}
+.slip[data-state="listening"]::before{background:var(--seal)}
+.slip[data-state="posted"]{background:transparent;border-top:3px double var(--ink-2);border-bottom:0;padding:12px 0 0;margin-bottom:18px}
+.slip[data-state="posted"]::before{display:none}
+.slip[data-state="posted"] .act{font-size:16px;color:var(--ink-2)}
+.slip[data-state="posted"] .mark{color:var(--ink-1)}
+.slip[data-state="sealed"]{background:var(--seal-tint);border-top-color:var(--seal)}
+.slip .hold{width:300px}
+.book-slip{margin:0 0 20px}
+.book-slip .act{font-size:17px}
+/* the graft frame borrows C's tally for the verso */
+.tally{display:flex;gap:18px;flex-wrap:wrap;font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);padding:8px 0 10px;border-bottom:1px solid var(--rule-firm);margin:0 0 6px}
+.tally b{color:var(--ink-1);font-weight:600;font-variant-numeric:tabular-nums}
+
+/* the seal — HoldToApprove's face (components/mudavym/HoldToApprove.tsx:233-254): track paper-1, ring seal-ring */
+.hold{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;padding:0 16px;border-radius:12px;border:1px solid var(--seal-ring);background:var(--paper-1);color:var(--ink-1);font:600 14px var(--sans);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;transition:border-color 160ms var(--ink),background 160ms var(--ink),transform 160ms var(--ink)}
+.hold:active{transform:scale(.985)}
+.hold .fill{position:absolute;left:0;top:0;bottom:0;width:100%;background:var(--seal-tint);transform-origin:left;transform:scaleX(0)}
+.hold.pouring .fill{transition:transform 620ms linear;transform:scaleX(1)}
+.hold.retreat .fill{transition:transform 300ms var(--tuck);transform:scaleX(0)}
+.hold .lbl{position:relative}
+.hold .wax{position:relative;width:20px;height:20px;color:var(--seal);opacity:0;transform:scale(.8)}
+.hold.sealed{border-color:var(--seal);background:var(--seal-tint);cursor:default}
+.hold.sealed .wax{opacity:1;transform:none;animation:stamp 360ms var(--stamp) both}
+.hold[data-armed="true"]{border-color:var(--seal)}
+@keyframes stamp{0%{transform:scale(.8);opacity:.3}100%{transform:scale(1);opacity:1}}
+.hold-note{font:500 10.5px var(--mono);letter-spacing:.04em;color:var(--ink-4);min-height:16px;margin-top:8px;text-align:right}
+.receipt{margin-top:14px}
+.pill{font:500 9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:2px 7px;border:1px solid var(--ink-3);color:var(--ink-4);border-radius:2px;white-space:nowrap}
+.pill.ink{border-color:var(--ink-1);color:var(--ink-1)}
+.pill.seal{border-color:var(--seal);color:var(--seal)}
+
+/* contents */
+.toc{list-style:none;margin:0;padding:0}
+.toc li{display:grid;grid-template-columns:44px minmax(0,1fr);gap:0 12px;padding:9px 0 8px;border-bottom:1px solid var(--rule);align-items:baseline}
+.toc li.done{border-bottom:3px double var(--ink-2)}
+.toc li.sub{border-bottom:1px solid var(--ink-2)}
+.toc .fo{font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);padding-top:4px}
+.toc .ti{font:600 16px/22px var(--serif);color:var(--ink-4);margin:0;background:none;border:0;padding:0;text-align:left;cursor:pointer;transition:color 160ms var(--ink);text-decoration:none}
+.toc .ti:hover{color:var(--ink-1)}
+.toc li.done .ti,.toc li.here .ti,.toc li.sub .ti{color:var(--ink-1)}
+.toc .st{font-size:12.5px;line-height:18px;color:var(--ink-4);margin-top:2px}
+.toc li.done .st,.toc li.sub .st{color:var(--ink-2)}
+.toc .here-mark{font:500 9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--seal);margin-left:10px}
+
+/* the state strip */
+.states{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.card{background:var(--paper-1);border:1px solid var(--rule-soft);padding:22px 26px 24px;min-width:0}
+.card .folio{margin-bottom:12px}
+.card .state-tag{font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-1);border-bottom:1px solid var(--rule-firm);display:inline-block;padding-bottom:4px;margin-bottom:14px}
+.card .slip{margin-bottom:14px}
+.card .ln{grid-template-columns:minmax(96px,130px) minmax(0,1fr)}
+.card .ln .p{grid-column:2;text-align:left;white-space:normal}
+
+/* the phone */
+.phones{display:grid;grid-template-columns:390px minmax(0,1fr);gap:36px;align-items:start}
+.phone{width:100%;max-width:390px;background:var(--paper-1);border:1px solid var(--rule-soft);padding:14px 18px 22px}
+.phone .status{display:flex;justify-content:space-between;font:500 9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);margin-bottom:14px}
+.phone .hdr{padding:0;min-height:40px;margin-bottom:12px}
+.phone .hdr .wm{font-size:17px}
+.phone .hdr .hsearch,.phone .hdr .house,.phone .hdr .hwho{display:none}
+.phone h2{font:600 21px/1.15 var(--serif);letter-spacing:-.012em;margin:0 0 10px;color:var(--ink-1)}
+.phone .lede{font:italic 400 14.5px/1.5 var(--serif);color:var(--ink-2);margin:0 0 18px}
+.phone .ln{grid-template-columns:96px minmax(0,1fr);gap:4px 10px}
+.phone .ln .p{grid-column:2;text-align:left;white-space:normal}
+.phone .slip{grid-template-columns:1fr;padding:14px 14px 14px 16px;margin:0 -18px 18px;gap:10px}
+.phone .slip .do{align-items:stretch}
+.phone .slip .do .fieldrow{max-width:none;justify-content:flex-start}
+.phone .slip .do .fieldrow .field{flex:1 1 auto;max-width:none}
+.phone .slip .do .word{align-self:flex-start}
+.phone .btn:not(.sm){width:100%;justify-content:center;padding:11px 16px;font-size:14px}
+.aside p{font-size:13px;line-height:20px;color:var(--ink-2);margin:0 0 12px}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin:0 -18px 14px;padding-left:18px;padding-right:18px;scrollbar-width:none;scroll-snap-type:x proximity;-webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 40px),transparent)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs span{flex:none;scroll-snap-align:start;font:500 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);padding:6px 8px 5px;border:1px solid var(--rule);border-radius:2px;line-height:1}
+.tabs span.done{border-bottom:3px double var(--ink-2);color:var(--ink-2)}
+.tabs span.here{color:var(--seal);border-color:var(--seal)}
+
+/* responsive — the same file renders at 390 */
+@media (max-width:900px){
+  .book{grid-template-columns:1fr}
+  .page.verso{border-right:0;border-bottom:1px solid var(--rule-soft)}
+  .slip{grid-template-columns:1fr;padding:14px 16px 14px 18px}
+  .slip .do{align-items:stretch}
+  .slip .do .fieldrow{max-width:none;justify-content:flex-start}
+  .slip .do .fieldrow .field{flex:1 1 auto;max-width:none}
+  .slip .do .word{align-self:flex-start}
+  .slip .hold{width:100%}
+  .states{grid-template-columns:1fr}
+  .phones{grid-template-columns:1fr}
+  .page{padding:22px 18px 26px}
+  .hdr{padding:0 16px}
+  .hdr .hsearch,.hdr .house,.hdr .hwho{display:none}
+  .ln{grid-template-columns:96px minmax(0,1fr)}
+  .ln .p{grid-column:2;text-align:left;white-space:normal}
+  .ln.mark{margin-left:-8px;padding-left:6px}
+  .sk-head h1{font-size:28px}
+  .marks{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  .hold.pouring .fill{transform:scaleX(1)}
+}
+</style>
+</head>
+<body>
+<div class="mudavym" data-ground="charcoal" data-notes="off" id="root">
+<div class="wrap">
+
+<div class="sk-bar">
+  <span class="sk-mark">Mudavym<span class="dot">.</span></span>
+  <span class="sk-meta">Sketch 115 · B · One slip, one act · /get-started · the arrival book</span>
+  <span class="sk-ctl"><span>Ground <button type="button" data-g="charcoal" aria-pressed="true">charcoal</button><button type="button" data-g="paper" aria-pressed="false">paper</button></span><span>Build notes <button type="button" data-n="off" aria-pressed="true">off</button><button type="button" data-n="on" aria-pressed="false">on</button></span></span>
+</div>
+
+<header class="sk-head">
+  <h1>One slip, one act<span class="dot">.</span></h1>
+  <p class="lede">Every folio carries a single slip at its head, and the slip holds exactly one thing to do: the act that unblocks the most, its reason, what comes after it, and the control that does it. When the act lands the slip advances; when the page is ruled off the slip becomes the double rule. The owner never searches the page for what to do next, and the ledger beneath stays fully live — the slip points, it never hides.</p>
+  <div class="marks">
+    <div class="m"><b>Next on this page</b>Seal ribbon. One act, its reason, and after it what comes next — named, and counted as what is left, never as a percentage.</div>
+    <div class="m"><b>In pencil</b>Grey ribbon. Mudavym heard or read it; the slip says it waits on the one seal on fo. 5 and offers to turn there.</div>
+    <div class="m"><b>Ruled off</b>No ribbon. The slip is the double rule: who, when, and the word to reopen. Reopening strikes the value in place and writes nothing until a new one is posted.</div>
+    <div class="m"><b>Carried forward</b>Grey ribbon, no fill. Offered, skipped, dated. The slip offers to answer it now.</div>
+    <div class="m"><b>Refused</b>Ink ribbon. The register's words verbatim, nothing written, the act offered again. Not dated on the line: nothing records a refusal.</div>
+    <div class="m"><b>Opens when</b>Grey ribbon. What unblocks the page, and that act instead.</div>
+  </div>
+</header>
+
+<!-- ═══════════════ 01 · the book at 1440 ═══════════════ -->
+<section class="frame" id="f1">
+  <div class="cap"><span class="n">01</span><span class="t">The book at 1440, 13:58 — reached from /get-started; /onboarding redirects here · Lokanta Meyhane, İstanbul, TRY · fo. 0 was read at 13:50 · fo. 2 What we pour, untouched · the slip is live: post the low-stock line (or say it aloud) and it advances to the seven registers, which go in pencil for the seal; carry the page forward; reopen. The book slip on the contents points at the open folio and so carries no button</span><span class="w">writes · PUT /cellar/:restaurantId/registers · PATCH /menus/threshold · POST /arrival/skip</span></div>
+  <div class="app">
+    <header class="hdr">
+      <span class="wm">Mudavym<span class="dot">.</span></span><span class="sep"></span><span class="pg">The house's book</span>
+      <button class="hsearch" type="button" aria-label="Search or act — open the command palette"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>Search or act</span><kbd>⌘K</kbd></button>
+      <span class="hright"><span class="house">Lokanta Meyhane</span><button class="hbtn" type="button" aria-label="Notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button><button class="hbtn user" type="button" aria-label="Account menu"><span class="avatar">D</span><span class="hwho">Defne</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></span>
+    </header>
+    <div class="book">
+      <aside class="page verso" aria-label="Contents">
+        <div class="folio"><span>Lokanta Meyhane · opening entries</span><span>kept by Defne · opened 6 Sep 2026</span></div>
+        <h2>Contents.</h2>
+        <div class="slip book-slip" data-state="say" id="bookslip">
+          <div><div class="mark">Next in the book · fo. 2 · open at right</div><p class="act">Confirm the low-stock line.</p><p class="why">The last invoice is read and its two lines wait in pencil. This line is the half of activation still open; the seven registers wait on the seal with the rest. Everything else can wait with a date.</p></div>
+          <div class="do"></div>
+        </div>
+        <ol class="toc">
+          <li class="done"><span class="fo">fo. 0</span><div><button class="ti" type="button">The last invoice</button><div class="st">Read · invoice of 4 Sep · Bereket Gıda matched · 2 lines proposed, in pencil · 13:50 · Defne</div></div></li>
+          <li class="done"><span class="fo">fo. 1</span><div><button class="ti" type="button">Currency</button><div class="st">Posted · TRY · stated at sign-up · 13:41 · Defne</div></div></li>
+          <li class="here"><span class="fo">fo. 2</span><div><button class="ti" type="button">What we pour<span class="here-mark">open at right</span></button><div class="st" id="toc2-st">Open · 2 left · the low-stock line, 3 defaulted, unconfirmed · seven registers read off the stock, unconfirmed</div></div></li>
+          <li><span class="fo">fo. 3</span><div><button class="ti" type="button">Whom we buy from</button><div class="st">Open · Bereket Gıda · 2 terms in pencil, read off fo. 0 · Tuna İçecek · not yet stated</div></div></li>
+          <li><span class="fo">fo. 4</span><div><button class="ti" type="button">What we hear about</button><div class="st">Open · nine producers kept as they are</div></div></li>
+          <li><span class="fo">fo. 5</span><div><button class="ti" type="button">The assistant</button><div class="st" id="toc5-st">2 lines in pencil · read off the last invoice · waiting on the seal</div></div></li>
+        </ol>
+        <div class="sum"><span>Opening stock</span><span class="v">42 lines · reviewed · Defne · 13:52</span></div>
+      </aside>
+
+      <article class="page recto" aria-labelledby="fo2-h">
+        <div class="folio"><span>fo. 2 · What we pour</span><span>read off the opening stock · 42 lines</span></div>
+        <h2 id="fo2-h">What does this house pour?</h2>
+        <p class="lede">Seven registers, read off the wine list you gave at the door, and one number that finishes activation.</p>
+
+        <div class="slip" data-state="say" id="slip">
+          <div>
+            <div class="mark">Next on this page · 2 left</div>
+            <p class="act">Confirm the low-stock line.</p>
+            <p class="why">Three is the default, copied onto newly imported rows; nobody has confirmed it. Say the house's number, or post three as yours — either finishes activation; the menu was uploaded at the door.</p>
+            <p class="then">then · <b>the seven registers</b> · in pencil, for the seal on fo. 5</p>
+          </div>
+          <div class="do"><span class="fieldrow"><input class="field num" id="s-in" inputmode="numeric" value="3" aria-label="Low-stock line"><button class="btn sm" type="button" id="s-record">Post</button></span><button class="word seal" type="button" id="s-speak">Say it aloud</button><button class="word" type="button" id="s-cf">Carry the page forward</button></div>
+        </div>
+
+        <div id="g-thr">
+          <div class="ln head"><span class="k">Activation</span><span class="v">Two facts</span><span class="p">Provenance</span></div>
+          <div class="ln posted"><span class="k">Menu uploaded</span><span class="v"><button class="src" type="button">yes · 42 lines read at the door</button></span><span class="p ink">posted · 13:52 · Defne</span></div>
+          <div class="ln mark" id="thr-ln">
+            <span class="k">Low-stock line</span>
+            <span class="v dflt" id="thr-v">3 bottles</span>
+            <span class="p" id="thr-p">defaulted · not yet confirmed · the slip points here</span>
+          </div>
+          <p class="route">activation = <b>menu uploaded + threshold configured</b> (menus.ts:63-66), the two lines above; the registers do not count · <b>PATCH /menus/threshold</b> · menus.controller.ts:91 · sets the default copied onto newly imported rows; existing item thresholds are not rewritten · while the slip points at this line its one control lives in the slip; the line takes a field of its own only once the slip has moved on</p>
+        </div>
+
+        <div id="g-reg" style="margin-top:18px">
+          <div class="ln head"><span class="k">Register</span><span class="v">What the books say</span><span class="p">Provenance</span></div>
+          <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Wines</button></span><span class="v"><button class="src" type="button">31 lines on the list · 0 in the cellar</button></span><span class="p">read · yes</span></div>
+          <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Beer</button></span><span class="v"><button class="src" type="button">4 lines on the list</button></span><span class="p">read · yes</span></div>
+          <div class="ln"><span class="k"><button class="chk off" type="button"><i></i>Whiskey</button></span><span class="v pencil"><button class="src" type="button">0 on the list · 92 in the shared catalogue</button></span><span class="p">read · none</span></div>
+          <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Cocktails</button></span><span class="v"><button class="src" type="button">5 lines on the list</button></span><span class="p">read · yes</span></div>
+          <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Spirits</button></span><span class="v"><button class="src" type="button">2 lines on the list</button></span><span class="p">read · yes</span></div>
+          <div class="ln"><span class="k"><button class="chk off" type="button"><i></i>Non-alcoholic</button></span><span class="v pencil"><button class="src" type="button">0 on the list · 57 in the shared catalogue</button></span><span class="p">read · none</span></div>
+          <div class="ln"><span class="k"><button class="chk off" type="button"><i></i>Soft drinks</button></span><span class="v pencil"><button class="src" type="button">0 on the list · 0 in the cellar</button></span><span class="p">read · none</span></div>
+          <p class="prov">A reading, not evidence — each count opens to the lines it was read from.</p>
+          <p class="route"><b>GET /cellar/:restaurantId/registers</b> · cellar-registers.ts:13-21 · a register you switch by hand posts at once as <b>manual</b> (PUT /cellar/:restaurantId/registers); the rest go in pencil as <b>confirmed</b> (POST /arrival/config/propose_batch) and wait on the seal, fo. 5</p>
+          <div class="acts" style="margin-top:8px"><button class="word seal" type="button" id="a-confirm-ledger">Confirm the seven · in pencil</button><span class="small">the ledger stays live out of order</span></div>
+        </div>
+
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 02 · fo. 0, and the two quiet folios ═══════════════ -->
+<section class="frame" id="f0">
+  <div class="cap"><span class="n">02</span><span class="t">fo. 0 — The last invoice, the page a new owner meets first (ADR 0144 §1: the contents open on it, and it is skippable): untouched · reading the photo · proposals in pencil, confirmed in place · carried forward. Then one slip each for fo. 1 (posted at sign-up) and fo. 4 (nine producers)</span><span class="w">writes · POST /procurement/documents · POST /arrival/config/propose_batch · POST /arrival/skip</span></div>
+  <div class="states">
+
+    <div class="card">
+      <div class="folio"><span>fo. 0 · The last invoice</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Untouched · start with the paper</span>
+      <div class="slip" data-state="say">
+        <div><div class="mark">Next in the book · fo. 0</div><p class="act">Photograph the last invoice through the door.</p><p class="why">Its header names the vendor and its footer prints the terms. What it says is proposed in pencil, confirmed on this page, and enters the book with the one seal on fo. 5 — nothing is asked twice.</p><p class="then">then · <b>fo. 2</b> · the low-stock line</p></div>
+        <div class="do"><button class="btn" type="button">Photograph it</button><button class="word" type="button">Upload a PDF or photo</button><button class="word" type="button">Carry it forward</button></div>
+      </div>
+      <div class="ln"><span class="k">The paper</span><span class="v blank">nothing photographed yet</span><span class="p">not read</span></div>
+      <div class="ln"><span class="k">Proposed</span><span class="v blank">—</span><span class="p">nothing until it is read</span></div>
+      <p class="route"><b>POST /procurement/documents</b> · source photo · classifies and extracts lines, writes no stock, cost or orders · Codex Arrival.tsx:433 "Photograph or upload the last invoice"</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 0 · The last invoice</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Reading the photo · loading</span>
+      <div class="slip" data-state="reading">
+        <div><div class="mark">Reading the paper</div><p class="act"><span class="skel" style="width:58%;height:16px"></span></p><p class="why">The photo is stored. Nothing is proposed until it is read, and nothing is asked in the meantime.</p></div>
+        <div class="do"><span class="skel" style="width:120px;height:32px"></span></div>
+      </div>
+      <div class="ln"><span class="k">The paper</span><span class="v">invoice · photographed 13:49</span><span class="p">stored · reading</span></div>
+      <div class="ln"><span class="k">Proposed</span><span class="v"><span class="skel" style="width:70%"></span></span><span class="p"><span class="skel" style="width:90px;height:9px"></span></span></div>
+      <p class="route">Codex Arrival.tsx:448 "Reading the papers…" · :358 "The paper is stored. Read its extracted details before adding a configuration proposal."</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 0 · The last invoice</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Proposals in pencil · confirmed in place · 13:50</span>
+      <div class="slip" data-state="pencil">
+        <div><div class="mark">In pencil · confirmed in place · 13:50</div><p class="act">Two lines read off the paper, confirmed.</p><p class="why">Bereket Gıda is matched in the vendor book. Tuesday and Friday, and the lira, sit in pencil on fo. 3 and enter the book with the one seal on fo. 5. Payment terms were not read off the footer; fo. 3 asks.</p><p class="then">the seal lands once · <b>on fo. 5</b> · never here</p></div>
+        <div class="do"><button class="btn quiet" type="button">Turn to fo. 5</button><button class="word" type="button">Leave them out</button></div>
+      </div>
+      <div class="ln"><span class="k">Vendor</span><span class="v"><button class="src" type="button">Bereket Gıda · matched in the vendor book</button></span><span class="p ink">read · 13:50</span></div>
+      <div class="ln"><span class="k">Delivery days</span><span class="v pencil">Tue · Fri</span><span class="p">in pencil · read off the footer · confirmed 13:50</span></div>
+      <div class="ln"><span class="k">Usual currency</span><span class="v pencil">TRY</span><span class="p">in pencil · every line in lira · confirmed 13:50</span></div>
+      <div class="ln"><span class="k">Payment terms</span><span class="v blank">not on the paper</span><span class="p">ask on fo. 3</span></div>
+      <div class="ln"><span class="k">Total</span><span class="v">₺4,812.50 · 6 lines</span><span class="p">read · not a setting</span></div>
+      <p class="route">ADR 0144:31 · a proposal confirmed in place still enters the book with the one held seal · Codex Arrival.tsx:318 payment terms are not extracted · <b>POST /arrival/config/propose_batch</b></p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 0 · The last invoice</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Carried forward · a recorded skip</span>
+      <div class="slip" data-state="cf">
+        <div><div class="mark">Carried forward · 6 Sep 13:44</div><p class="act">Offered and carried forward.</p><p class="why">Nothing was photographed. fo. 3 asks its terms one by one; this page waits with its date, and the book opens on fo. 2.</p></div>
+        <div class="do"><button class="btn quiet" type="button">Answer it now</button></div>
+      </div>
+      <div class="ln"><span class="k">The paper</span><span class="v blank">nothing photographed</span><span class="p">offered 13:44 · c/f</span></div>
+      <p class="route"><b>POST /arrival/skip</b> · arrival_folios: state skipped, actor, updated_at · told apart from a page nobody opened</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 1 · Currency</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Posted at sign-up · one line</span>
+      <div class="slip" data-state="posted">
+        <div><div class="mark">Ruled off · 13:41 · Defne · at the door</div><p class="act">TRY, stated at sign-up. Not asked twice.</p></div>
+        <div class="do"><button class="word" type="button">Reopen this page</button></div>
+      </div>
+      <div class="ln posted"><span class="k">Currency</span><span class="v">TRY · Turkish lira</span><span class="p ink">posted · stated · 13:41 · Defne</span></div>
+      <p class="route">ADR 0143:78 · fo. 1 shows the currency given at sign-up as already posted · <b>PUT /settings/currency</b> · settings.controller.ts:227</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 4 · What we hear about</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Untouched · one act</span>
+      <div class="slip" data-state="say">
+        <div><div class="mark">Next on this page · 1 left</div><p class="act">Keep the nine producers, or switch one off.</p><p class="why">Nine producers write to this house. A switch is your word and posts at once, for your own ears; nothing here is a gate.</p></div>
+        <div class="do"><button class="btn" type="button">Keep the nine</button><button class="word" type="button">Carry the page forward</button></div>
+      </div>
+      <div class="ln"><span class="k">Producers</span><span class="v dflt">nine · kept as they are</span><span class="p">open · nothing switched</span></div>
+      <p class="route"><b>PATCH /notifications/preferences</b> · notifications.controller.ts:351 · per person, not per house · five families per user, not one producer at a time</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════ 03 · every state ═══════════════ -->
+<section class="frame" id="f2">
+  <div class="cap"><span class="n">03</span><span class="t">Every state of the slip — the low-stock line on fo. 2 (Lokanta Meyhane, TRY) and fo. 3 (The Old Mill, Michigan, USD). Each card is one branch the same line can take, stamped with the example clock — not a sequence; the live frames follow one timeline (fo. 0 read 13:50 · frame 01 at 13:58 · the seal 14:12 · the phone 14:19)</span><span class="w">the slip advances; the ledger never moves</span></div>
+  <div class="states">
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Next · untouched</span>
+      <div class="slip" data-state="say">
+        <div><div class="mark">Next on this page · 2 left</div><p class="act">Confirm the low-stock line.</p><p class="why">Three is the default, copied onto newly imported rows; nobody has confirmed it. Say the house's number, or post three as yours.</p><p class="then">then · <b>the seven registers</b> · in pencil, for the seal</p></div>
+        <div class="do"><span class="fieldrow"><input class="field num" value="3" aria-label="Low-stock line"><button class="btn sm" type="button">Post</button></span><button class="word seal" type="button">Say it aloud</button></div>
+      </div>
+      <div class="ln mark"><span class="k">Low-stock line</span><span class="v dflt">3 bottles</span><span class="p">defaulted · not yet confirmed · the slip points here</span></div>
+      <p class="route">a default is not an answer: <b>restaurants.default_threshold_min</b> reads 3 (baseline :3580, menus.service.ts:18) and <b>threshold_configured</b> is false — in use, unconfirmed</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">In pencil · waiting on the seal</span>
+      <div class="slip" data-state="pencil">
+        <div><div class="mark">In pencil · waits on the seal</div><p class="act">Six bottles, spoken at 14:04.</p><p class="why">Heard on this device; only the number was kept. It enters the book with everything else Mudavym proposed, when you hold the seal on fo. 5.</p><p class="then">the seal lands once · <b>on fo. 5</b> · never here</p></div>
+        <div class="do"><button class="btn quiet" type="button">Turn to fo. 5</button><button class="word" type="button">Leave it out</button></div>
+      </div>
+      <div class="ln"><span class="k">Low-stock line</span><span class="v pencil">6 bottles</span><span class="p">spoken · 14:04 · in pencil</span></div>
+      <p class="route">a draft is not a setting: the default stays 3 and <b>threshold_configured</b> stays false until the seal lands</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Ruled off · once the seal has landed</span>
+      <div class="slip" data-state="posted">
+        <div><div class="mark">Ruled off · 6 Sep 14:12 · Defne</div><p class="act">Low line 6, spoken 14:04 · seven registers, confirmed 14:09 · both sealed 14:12.</p></div>
+        <div class="do"><button class="word" type="button">Reopen this page</button></div>
+      </div>
+      <div class="ln posted"><span class="k">Low-stock line</span><span class="v">6 bottles</span><span class="p ink">posted · spoken · sealed 14:12 · Defne</span></div>
+      <p class="route">activation complete: the menu was uploaded at the door and the low line is confirmed · <b>threshold_configured</b> true · the page is ruled off only once the seal has landed on the seven</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Reopened · a correcting entry, nothing written yet</span>
+      <div class="slip" data-state="reopened">
+        <div><div class="mark">Reopened · a correcting entry</div><p class="act">Post a new low-stock line, or leave it.</p><p class="why">The six stays on the line, struck through. Post a new number and the journal names this row; leave it and nothing is written.</p></div>
+        <div class="do"><span class="fieldrow"><input class="field num" placeholder="bottles" aria-label="New low-stock line"><button class="btn sm" type="button">Post</button></span><button class="word" type="button">Leave it as it was</button></div>
+      </div>
+      <div class="ln mark"><span class="k">Low-stock line</span><span class="v"><s>6 bottles</s></span><span class="p">reopened · nothing written until you post · the slip points here</span></div>
+      <p class="route">no overlay: ADR 0112 keeps the anchored Popover for a menu or a switcher and the Panel for a question; a reopening that commits nothing until a value is posted has no question to ask, so it is an inline act. The correcting row is written by the post, through the line's own register</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Carried forward · a recorded skip</span>
+      <div class="slip" data-state="cf">
+        <div><div class="mark">Carried forward · 6 Sep 14:02</div><p class="act">Offered and carried forward.</p><p class="why">Nothing changed. Three stays the default copied onto newly imported rows; nothing is confirmed. The next sitting opens here.</p></div>
+        <div class="do"><button class="btn quiet" type="button">Answer it now</button></div>
+      </div>
+      <div class="ln"><span class="k">Low-stock line</span><span class="v dflt">3 bottles</span><span class="p">defaulted · not yet confirmed · offered 14:02 · c/f</span></div>
+      <p class="route">the skip is a row: <b>arrival_folios</b> state skipped, actor, updated_at (Codex build, 20260913190500) — told apart from a page nobody opened; the default of 3 stays in use</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Refused · nothing written</span>
+      <div class="slip" data-state="refused">
+        <div><div class="mark">Refused · nothing written</div><p class="act">Confirm the low-stock line.</p><span class="verbatim">This is not a supported configuration value. Nothing was recorded.</span><p class="why">The register would not take a thousand; it takes 0 to 999. A refusal is not a value; the field keeps what you typed.</p></div>
+        <div class="do"><span class="fieldrow"><input class="field num" value="1000" aria-label="Low-stock line"><button class="btn sm" type="button">Try again</button></span><button class="word" type="button">Carry it forward</button></div>
+      </div>
+      <div class="ln mark"><span class="k">Low-stock line</span><span class="v dflt">3 bottles</span><span class="p">defaulted · not yet confirmed · the slip points here</span></div>
+      <p class="route">the words are the register's, verbatim, through arrivalError() (arrival-api.ts:186-195; arrival-contract.ts:94-96, thresholdMin 0–999) — the status code is not part of them · straight through PATCH /menus/threshold they would be class-validator's "thresholdMin must not be greater than 999" (set-threshold.dto.ts:11) · the refusal is session state: nothing journals it, so the line carries no date (README Q6)</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 3 · Whom we buy from</span><span>The Old Mill · Michigan · USD</span></div>
+      <span class="state-tag">Opens when · blocked with the reason</span>
+      <div class="slip" data-state="blocked">
+        <div><div class="mark">Opens when</div><p class="act">A vendor is written in this book.</p><p class="why">Terms belong to somebody. Write Great Lakes Provisions in the vendor book, or read the terms off the last invoice on fo. 0, and this page opens.</p></div>
+        <div class="do"><button class="btn quiet" type="button">Write a vendor</button><button class="word" type="button">Read the last invoice</button></div>
+      </div>
+      <div class="ln"><span class="k">Vendor</span><span class="v blank">no vendor is written</span><span class="p">0 providers</span></div>
+      <div class="ln"><span class="k">Minimum order</span><span class="v blank">—</span><span class="p">USD · house currency</span></div>
+      <p class="route"><b>PUT /vendor-terms/:providerId</b> needs a provider · none is guessed from other houses · POST /providers · providers.controller.ts:245</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Reading · loading</span>
+      <div class="slip" data-state="reading">
+        <div><div class="mark">Reading</div><p class="act"><span class="skel" style="width:62%;height:16px"></span></p><p class="why"><span class="skel" style="width:84%"></span></p></div>
+        <div class="do"><span class="skel" style="width:120px;height:32px"></span></div>
+      </div>
+      <div class="ln"><span class="k">Low-stock line</span><span class="v"><span class="skel" style="width:88px"></span></span><span class="p"><span class="skel" style="width:110px;height:9px"></span></span></div>
+      <p class="route">an unread register is not an empty one — no act is offered until the read returns; if it cannot, the slip says so in the source's words and offers to read again · the bars are static paper-2 (here --rule, on the paper-2 slip), as /logs draws them</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 2 · What we pour</span><span>Lokanta Meyhane · TRY</span></div>
+      <span class="state-tag">Could not be read · the source's words</span>
+      <div class="slip" data-state="refused">
+        <div><div class="mark">Could not be read</div><p class="act">This page's register did not answer.</p><span class="verbatim">The recorded registers could not be read.</span><p class="why">Nothing is shown in its place — not a blank, not the default. No act is offered until it reads.</p></div>
+        <div class="do"><button class="btn quiet" type="button">Read again</button></div>
+      </div>
+      <div class="ln"><span class="k">Low-stock line</span><span class="v blank">unread</span><span class="p">not empty · not 3 · unread</span></div>
+      <p class="route">Codex Arrival.tsx:108 · SourceFailure · the reason is the source's, verbatim; the fallback is "This part of the book could not be read."</p>
+    </div>
+
+    <div class="card">
+      <div class="folio"><span>fo. 3 · Whom we buy from</span><span>The Old Mill · Michigan · USD</span></div>
+      <span class="state-tag">A subtotal · partial</span>
+      <div class="slip" data-state="say">
+        <div><div class="mark">Next on this page · 1 left</div><p class="act">Write Marquette Dairy's terms.</p><p class="why">Great Lakes Provisions is stated. Write only what Marquette told you; a blank stays blank, and the page stays at a subtotal until both are stated or carried.</p></div>
+        <div class="do"><button class="btn" type="button">Write the terms</button><button class="word" type="button">Carry them forward</button></div>
+      </div>
+      <div class="ln sub"><span class="k">Great Lakes Provisions</span><span class="v">Tue · Fri · cutoff 2:00 PM the day before · min $250.00 · net 30</span><span class="p ink">stated · Marcus · Sep 6</span></div>
+      <div class="ln mark"><span class="k">Marquette Dairy</span><span class="v blank">not yet stated</span><span class="p">5 columns blank · the slip points here</span></div>
+      <div class="sum"><span>Vendors stated</span><span class="v">1 of 2</span></div>
+      <p class="route">every blank column is <b>NULL</b>, never a default (ADR 0116)</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════ 04 · fo. 5 · the seal ═══════════════ -->
+<section class="frame" id="f3">
+  <div class="cap"><span class="n">04</span><span class="t">fo. 5 — The assistant, 14:12: the slip is the seal's slip. Four lines in pencil; hold the wax (620 ms, pour) and it lands (stamp); the slip turns into the receipt line and every entry below reports on its own — written, refused, unconfirmed</span><span class="w">writes · POST /arrival/batches/:id/apply · then each line through its own register</span></div>
+  <div class="app">
+    <header class="hdr">
+      <span class="wm">Mudavym<span class="dot">.</span></span><span class="sep"></span><span class="pg">The house's book</span>
+      <button class="hsearch" type="button" aria-label="Search or act — open the command palette"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>Search or act</span><kbd>⌘K</kbd></button>
+      <span class="hright"><span class="house">Lokanta Meyhane</span><button class="hbtn" type="button" aria-label="Notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button><button class="hbtn user" type="button" aria-label="Account menu"><span class="avatar">D</span><span class="hwho">Defne</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></span>
+    </header>
+    <div class="book" style="grid-template-columns:1fr">
+      <article class="page recto">
+        <div class="folio"><span>fo. 5 · The assistant</span><span id="fo5-cap">4 lines in pencil · nothing posted yet</span></div>
+        <h2>Read what Mudavym put in pencil.</h2>
+        <p class="lede">What you typed is already posted and is not on this page. These four wait on one held seal, each entering through its own register.</p>
+        <div class="slip" data-state="say" id="sealslip">
+          <div><div class="mark">Four lines in pencil</div><p class="act">Read them, then hold the seal.</p><p class="why">One you spoke, two read off the last invoice, one confirmed on fo. 2. A line a person states after the proposal is left as it stands, and a writer that returns no receipt is reported as unconfirmed — line by line, never as one failure of the four.</p><p class="then">the seal lands once · <b>here</b> · never on a page you typed</p></div>
+          <div class="do">
+            <button class="hold" type="button" id="hold" aria-label="Hold to enter these four lines"><span class="fill"></span><svg class="wax" viewBox="0 0 100 100" aria-hidden="true"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/></svg><span class="lbl" id="hold-lbl">Hold to enter these four lines</span></button>
+            <div class="hold-note" id="hold-note">Hold 620 ms · Enter arms, Enter again seals</div>
+          </div>
+        </div>
+        <div class="ln head"><span class="k">On the page</span><span class="v">Proposed · read from</span><span class="p">Keep / leave out</span></div>
+        <div class="ln" id="b1"><span class="k">fo. 2 · Low-stock line</span><span class="v pencil">6 bottles — before: 3 · defaulted · spoken 14:04, on this device</span><span class="p"><button class="word" type="button">Leave out</button></span></div>
+        <div class="ln" id="b2"><span class="k">fo. 3 · Bereket Gıda · delivery days</span><span class="v pencil">Tue · Fri — before: not yet stated · <button class="src" type="button">read off invoice 4 Sep (fo. 0) · confirmed in place 13:50</button></span><span class="p"><button class="word" type="button">Leave out</button></span></div>
+        <div class="ln" id="b3"><span class="k">fo. 3 · Bereket Gıda · usual currency</span><span class="v pencil">TRY — before: not yet stated · <button class="src" type="button">every line on that invoice was in lira · confirmed 13:50</button></span><span class="p"><button class="word" type="button">Leave out</button></span></div>
+        <div class="ln" id="b4"><span class="k">fo. 2 · Seven registers</span><span class="v pencil">4 yes · 3 none — before: inferred, unconfirmed · confirmed on fo. 2 at 14:09 · <button class="src" type="button">read off 42 lines</button></span><span class="p"><button class="word" type="button">Leave out</button></span></div>
+        <p class="route">a line already <b>stated</b> by a person never enters the batch (ADR 0113 rule 3) · fo. 1 is Defne's own and is not here · apply crosses four services with no shared transaction; undo for seven days by batch id · the apply loop reports written · refused · unconfirmed per row (arrival.service.ts:708-710, :755-761), never one "Done" (ADR 0113 rule 4)</p>
+        <div class="receipt" id="receipt" hidden>
+          <div class="ln head"><span class="k">Receipt · 14:12</span><span class="v">Through</span><span class="p">Outcome</span></div>
+          <div class="ln posted"><span class="k">fo. 2 · Low-stock line · 6</span><span class="v">the low-stock register</span><span class="p"><span class="pill ink">written</span></span></div>
+          <div class="ln"><span class="k">fo. 3 · Bereket Gıda · delivery days</span><span class="v">the vendor's terms · <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink-1)">The writer did not return a confirmed receipt. Read the setting before another attempt.</span></span><span class="p"><span class="pill">unconfirmed</span></span></div>
+          <div class="ln"><span class="k">fo. 3 · Bereket Gıda · usual currency</span><span class="v">the vendor's profile · <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink-1)">This field changed after the proposal. It was left as it stands.</span> · Hasan stated TRY by hand at 14:10</span><span class="p"><span class="pill">refused</span></span></div>
+          <div class="ln posted"><span class="k">fo. 2 · Seven registers</span><span class="v">the cellar's registers · source: confirmed</span><span class="p"><span class="pill ink">written</span></span></div>
+          <p class="prov">Undo this batch until 13 Sep 14:12 — the two written lines reverse as a unit; lines changed since the seal are left as they stand.</p>
+          <p class="route">PATCH /menus/threshold · PUT /vendor-terms/:providerId · PATCH /providers/:id/usual-currency · PUT /cellar/:restaurantId/registers · POST /arrival/batches/:id/undo (migration 20260913190600)</p>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 05 · the phone ═══════════════ -->
+<section class="frame" id="f4">
+  <div class="cap"><span class="n">05</span><span class="t">390, 14:19 — Hasan at the phone, fo. 3 for one vendor · fo. 2 was ruled off at 14:12 · the slip stacks and its control really spans the width · delivery days already posted; the slip has moved on to the cutoff, whose field is empty until somebody types · a spoken line waits in pencil</span><span class="w">writes · PUT /vendor-terms/:providerId · PATCH /providers/:id/usual-currency</span></div>
+  <div class="phones">
+    <div class="phone">
+      <div class="status"><span>14:19</span><span>Lokanta Meyhane</span></div>
+      <header class="hdr" style="border:0"><span class="wm">Mudavym<span class="dot">.</span></span><span class="sep"></span><span class="pg">The house's book</span><span class="hright"><button class="hbtn" type="button" aria-label="Notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button><button class="hbtn user" type="button" aria-label="Account menu"><span class="avatar">H</span></button></span></header>
+      <div class="tabs"><span class="done">fo. 0 · read</span><span class="done">fo. 1</span><span class="done">fo. 2 · 14:12</span><span class="here">fo. 3 · here</span><span>fo. 4</span><span>fo. 5 · 1 in pencil</span></div>
+      <div class="folio"><span>fo. 3 · Whom we buy from</span><span>Tuna İçecek</span></div>
+      <h2>What did Tuna tell you?</h2>
+      <div class="slip" data-state="say">
+        <div><div class="mark">Next for Tuna · 2 left</div><p class="act">The order cutoff.</p><p class="why">The hour Tuna stops taking tomorrow's order. Nothing is filled in for you; what you type posts as your word the moment you post it.</p><p class="then">then · <b>minimum order</b> · the last one open</p></div>
+        <div class="do"><span class="fieldrow"><input class="field" placeholder="hh:mm" aria-label="Order cutoff time"><span class="small">the day before</span><button class="btn sm" type="button">Post</button></span><button class="word seal" type="button">Say it aloud</button></div>
+      </div>
+      <div class="ln posted"><span class="k">Delivery days</span><span class="v"><span class="days"><button type="button">Mon</button><button type="button" class="on">Tue</button><button type="button">Wed</button><button type="button">Thu</button><button type="button" class="on">Fri</button><button type="button">Sat</button><button type="button">Sun</button></span></span><span class="p ink">posted · typed · 14:18 · Hasan</span></div>
+      <div class="ln mark"><span class="k">Order cutoff</span><span class="v blank">not yet answered</span><span class="p">the slip points here</span></div>
+      <div class="ln"><span class="k">Minimum order</span><span class="v blank">not yet answered</span><span class="p">TRY · ₺</span></div>
+      <div class="ln"><span class="k">Payment terms</span><span class="v pencil">net 30</span><span class="p">spoken · 14:19 · in pencil · waits on fo. 5</span></div>
+      <div class="ln"><span class="k">Usual currency</span><span class="v">TRY</span><span class="p ink">stated · vendor profile</span></div>
+      <div class="acts" style="margin-top:16px"><button class="word" type="button">Carry Tuna forward</button><span class="small">a dated skip · nothing changes</span></div>
+    </div>
+    <div class="aside">
+      <p><b style="color:var(--ink-1);font-weight:500">What the phone changes.</b> The slip stacks — mark, act, reason, then the control across the full width — and stays at the head of the page, so a manager holding a phone reads one thing and does it with a thumb. The ledger beneath is still live for anything out of order.</p>
+      <p>"Net 30" was spoken while Tuna was on the line; the slip did not stop for it. It went in pencil at 14:19 and waits on fo. 5 — the first batch was sealed at 14:12, so this is a new one — and the slip moved to the next typed act. Delivery days posted the moment Hasan tapped them.</p>
+      <p>The cutoff field is empty. Nobody has said an hour, so no hour is drawn; a value that could be read as a proposal would post as Hasan's word on one tap. The count in the mark — 2 left — counts only the rows still unanswered (the cutoff and the minimum). The delivery days are posted, the currency is stated and net 30 is in pencil, so none of the three is in the count or in "then". Never a percentage.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 06 · the graft ═══════════════ -->
+<section class="frame" id="f5">
+  <div class="cap"><span class="n">06</span><span class="t">The graft the README recommends, drawn: fo. 2 at 13:58 with B's slip, its reason written in A's voice (the keeper's register, italic serif, one verb and one alternative), and C's counts on the contents verso in place of the book slip</span><span class="w">the same writes as frame 01</span></div>
+  <div class="app">
+    <header class="hdr">
+      <span class="wm">Mudavym<span class="dot">.</span></span><span class="sep"></span><span class="pg">The house's book</span>
+      <button class="hsearch" type="button" aria-label="Search or act — open the command palette"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>Search or act</span><kbd>⌘K</kbd></button>
+      <span class="hright"><span class="house">Lokanta Meyhane</span><button class="hbtn" type="button" aria-label="Notifications"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button><button class="hbtn user" type="button" aria-label="Account menu"><span class="avatar">D</span><span class="hwho">Defne</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></span>
+    </header>
+    <div class="book">
+      <aside class="page verso" aria-label="Contents">
+        <div class="folio"><span>Lokanta Meyhane · opening entries</span><span>kept by Defne · opened 6 Sep 2026</span></div>
+        <h2>Contents.</h2>
+        <p class="lede">Six pages, opened in any order. Counts, never a percentage.</p>
+        <div class="tally"><span>posted <b>2</b></span><span>in pencil <b>1</b></span><span>c/f <b>0</b></span><span>open <b>4</b></span></div>
+        <p class="prov" style="margin:0 0 10px">Acts, summed from the pages below. fo. 5's lines are fo. 3's and are not counted twice.</p>
+        <ol class="toc">
+          <li class="done"><span class="fo">fo. 0</span><div><button class="ti" type="button">The last invoice</button><div class="st">Read · invoice of 4 Sep · Bereket Gıda matched · 2 lines proposed, in pencil · 13:50</div></div></li>
+          <li class="done"><span class="fo">fo. 1</span><div><button class="ti" type="button">Currency</button><div class="st">Posted · TRY · stated at sign-up · 13:41</div></div></li>
+          <li class="here"><span class="fo">fo. 2</span><div><button class="ti" type="button">What we pour<span class="here-mark">open at right</span></button><div class="st">Open · 2 left · the low-stock line, 3 defaulted · seven registers unconfirmed</div></div></li>
+          <li><span class="fo">fo. 3</span><div><button class="ti" type="button">Whom we buy from</button><div class="st">Open · Bereket Gıda in pencil, read off fo. 0 · Tuna İçecek not yet stated</div></div></li>
+          <li><span class="fo">fo. 4</span><div><button class="ti" type="button">What we hear about</button><div class="st">Open · nine producers kept as they are</div></div></li>
+          <li><span class="fo">fo. 5</span><div><button class="ti" type="button">The assistant</button><div class="st">2 lines in pencil · waiting on the seal</div></div></li>
+        </ol>
+        <div class="sum"><span>Opening stock</span><span class="v">42 lines · reviewed · Defne · 13:52</span></div>
+      </aside>
+      <article class="page recto">
+        <div class="folio"><span>fo. 2 · What we pour</span><span>read off the opening stock · 42 lines</span></div>
+        <h2>What does this house pour?</h2>
+        <p class="lede">Seven registers, read off the wine list you gave at the door, and one number that finishes activation.</p>
+        <div class="slip" data-state="say">
+          <div>
+            <div class="mark">To answer · 2 left</div>
+            <p class="act">Confirm the low-stock line.</p>
+            <p class="why voice">Three is the default, copied onto rows as they are imported; nobody has confirmed it. Say the house's own number, or post the three as yours — either finishes activation.</p>
+            <p class="then">then · <b>the seven registers</b> · in pencil, for the seal on fo. 5</p>
+          </div>
+          <div class="do"><span class="fieldrow"><input class="field num" value="3" aria-label="Low-stock line"><button class="btn sm" type="button">Post</button></span><button class="word seal" type="button">Say it aloud</button><button class="word" type="button">Carry the page forward</button></div>
+        </div>
+        <div class="ln head"><span class="k">Activation</span><span class="v">Two facts</span><span class="p">Provenance</span></div>
+        <div class="ln posted"><span class="k">Menu uploaded</span><span class="v"><button class="src" type="button">yes · 42 lines read at the door</button></span><span class="p ink">posted · 13:52 · Defne</span></div>
+        <div class="ln mark"><span class="k">Low-stock line</span><span class="v dflt">3 bottles</span><span class="p">defaulted · not yet confirmed · the slip points here</span></div>
+        <div class="ln head" style="margin-top:18px"><span class="k">Register</span><span class="v">What the books say</span><span class="p">Provenance</span></div>
+        <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Wines</button></span><span class="v"><button class="src" type="button">31 lines on the list · 0 in the cellar</button></span><span class="p">read · yes</span></div>
+        <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Beer</button></span><span class="v"><button class="src" type="button">4 lines on the list</button></span><span class="p">read · yes</span></div>
+        <div class="ln"><span class="k"><button class="chk off" type="button"><i></i>Whiskey</button></span><span class="v pencil"><button class="src" type="button">0 on the list · 92 in the shared catalogue</button></span><span class="p">read · none</span></div>
+        <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Cocktails</button></span><span class="v"><button class="src" type="button">5 lines on the list</button></span><span class="p">read · yes</span></div>
+        <div class="ln"><span class="k"><button class="chk on" type="button"><i></i>Spirits</button></span><span class="v"><button class="src" type="button">2 lines on the list</button></span><span class="p">read · yes</span></div>
+        <div class="ln"><span class="k"><button class="chk off" type="button"><i></i>Non-alcoholic</button></span><span class="v pencil"><button class="src" type="button">0 on the list · 57 in the shared catalogue</button></span><span class="p">read · none</span></div>
+        <div class="ln"><span class="k"><button class="chk off" type="button"><i></i>Soft drinks</button></span><span class="v pencil"><button class="src" type="button">0 on the list · 0 in the cellar</button></span><span class="p">read · none</span></div>
+        <p class="prov">A reading, not evidence — each count opens to the lines it was read from.</p>
+        <div class="acts" style="margin-top:8px"><button class="word seal" type="button">Confirm the seven · in pencil</button><span class="small">the ledger stays live out of order</span></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<p class="colophon"><b>Example houses only</b> — Lokanta Meyhane (İstanbul, TRY; Defne, Hasan; Tuna İçecek, Bereket Gıda) and The Old Mill (Michigan, USD; Marcus; Great Lakes Provisions, Marquette Dairy). One timeline for Lokanta Meyhane: sign-up 13:41 · fo. 0 read 13:50 · opening stock 13:52 · frame 01 at 13:58 (its clock ticks from 13:59) · six spoken 14:04 · seven confirmed 14:09 · Hasan states Bereket's currency 14:10 · the seal 14:12 · Tuna's days typed 14:18 · the phone 14:19. Fonts from Google here; the product self-hosts. The routes named in the build notes exist on <span style="font-family:var(--mono)">main</span> except the <span style="font-family:var(--mono)">/arrival/*</span> family, which is Codex's uncommitted build. Which act is "next" is a rule on the client over GET /arrival's readout — no model, no new endpoint. "Say it aloud" pretends to hear "six" after a moment. No overlay opens on this page.</p>
+
+</div>
+</div>
+
+<script>
+(function(){
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var root=document.getElementById('root');
+  function press(sel,attr,val){document.querySelectorAll(sel).forEach(function(x){x.setAttribute('aria-pressed',String(x.dataset[attr]===val));});}
+  try{var q=new URLSearchParams(location.search),g=q.get('ground'),n=q.get('notes');if(g==='paper'||g==='charcoal'){root.setAttribute('data-ground',g);press('.sk-ctl [data-g]','g',g);}if(n==='on'||n==='off'){root.setAttribute('data-notes',n);press('.sk-ctl [data-n]','n',n);}}catch(e){}
+  document.querySelectorAll('.sk-ctl [data-g]').forEach(function(b){b.addEventListener('click',function(){root.setAttribute('data-ground',b.dataset.g);press('.sk-ctl [data-g]','g',b.dataset.g);});});
+  document.querySelectorAll('.sk-ctl [data-n]').forEach(function(b){b.addEventListener('click',function(){root.setAttribute('data-notes',b.dataset.n);press('.sk-ctl [data-n]','n',b.dataset.n);});});
+
+  var slip=document.getElementById('slip'),bookslip=document.getElementById('bookslip');
+  var thrv=document.getElementById('thr-v'),thrp=document.getElementById('thr-p'),thrln=document.getElementById('thr-ln'),toc2=document.getElementById('toc2-st'),toc5=document.getElementById('toc5-st');
+  var mins=13*60+58;function tick(){mins++;var h=Math.floor(mins/60),mm=mins%60;return h+':'+(mm<10?'0'+mm:mm);} /* the example clock only moves forward: frame 01 is 13:58 */
+  function resettle(el){el.classList.remove('settle');void el.offsetWidth;el.classList.add('settle');}
+  function setSlip(state,mark,act,why,then,doHtml){
+    slip.setAttribute('data-state',state);
+    slip.innerHTML='<div><div class="mark">'+mark+'</div><p class="act">'+act+'</p>'+(why?'<p class="why">'+why+'</p>':'')+(then?'<p class="then">'+then+'</p>':'')+'</div><div class="do">'+(doHtml||'')+'</div>';
+    resettle(slip);
+  }
+  function setBook(state,mark,act,why,doHtml){bookslip.setAttribute('data-state',state);bookslip.innerHTML='<div><div class="mark">'+mark+'</div><p class="act">'+act+'</p><p class="why">'+why+'</p></div><div class="do">'+(doHtml||'')+'</div>';resettle(bookslip);}
+
+  /* the page's memory: what each act's state is. "next" is a client rule over it — the act that unblocks the most, among the UNANSWERED ones.
+     slipOn says which line the slip points at; a pointed line has no control of its own (one act, one control), and takes a field only once the slip has moved on. */
+  var regs='unconfirmed',regsAt='',thr='defaulted',thrAt='',thrN=3,prevN=0,pencil=2,manualN=0,slipOn='thr';
+  function tocLine(){
+    var r=regs==='pencil'?'seven registers in pencil · '+regsAt:regs==='cf'?'seven registers c/f · '+regsAt:'seven registers read off the stock, unconfirmed';
+    var t=thr==='posted'?'low line '+thrN+' · posted '+thrAt:thr==='pencil'?'low line '+thrN+' in pencil · '+thrAt:thr==='cf'?'low line 3, defaulted, unconfirmed · c/f '+thrAt:thr==='reopened'?'low line reopened · nothing written yet':'the low-stock line, 3 defaulted, unconfirmed';
+    var left=(thr==='posted'||thr==='pencil'||thr==='cf'?0:1)+(regs==='unconfirmed'?1:0);
+    toc2.textContent=(thr==='posted'?'Activation complete · ':'Open · ')+(left?left+' left · ':'')+t+' · '+r;
+    toc5.textContent=pencil+(pencil===1?' line':' lines')+' in pencil · waiting on the seal';
+  }
+  function regsMark(on){document.querySelector('#g-reg .ln.head').classList.toggle('mark',on);}
+  function renderThr(){
+    var here=slipOn==='thr';
+    thrln.className='ln'+(here?' mark':'')+(thr==='posted'?' posted':'');
+    thrp.className='p';
+    if(thr==='defaulted'||thr==='refused'){
+      if(here){thrv.className='v dflt';thrv.textContent='3 bottles';thrp.textContent='defaulted · not yet confirmed · the slip points here';}
+      else{thrv.className='v';thrv.innerHTML='<span class="fieldrow"><input class="field num" id="thr-in" inputmode="numeric" value="3" aria-label="Low-stock line, in bottles"><button class="btn sm" type="button" id="a-record">Post</button></span>';thrp.textContent='3 · defaulted · not yet confirmed';
+        document.getElementById('a-record').addEventListener('click',function(){record(parseInt(document.getElementById('thr-in').value,10));});
+        document.getElementById('thr-in').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('a-record').click();});}
+    }else if(thr==='pencil'){thrv.className='v pencil';thrv.textContent=thrN+' bottles';thrp.textContent='spoken · '+thrAt+' · in pencil · 3 stays until the seal';}
+    else if(thr==='posted'){thrv.className='v';thrv.innerHTML=(prevN?'<s>'+prevN+' bottles</s>':'')+thrN+' bottles';thrp.className='p ink';thrp.textContent='posted · typed · '+thrAt+' · Defne'+(prevN?' · corrects the '+prevN:'');}
+    else if(thr==='cf'){thrv.className='v dflt';thrv.textContent='3 bottles';thrp.textContent='defaulted · not yet confirmed · offered '+thrAt+' · c/f';}
+    else if(thr==='reopened'){thrv.className='v';thrv.innerHTML='<s>'+thrN+' bottles</s>';thrp.textContent='reopened · nothing written until you post · the slip points here';}
+  }
+  function wire(){
+    var rec=document.getElementById('s-record'),inp=document.getElementById('s-in');
+    if(rec){rec.addEventListener('click',function(){record(parseInt(inp.value,10));});inp.addEventListener('keydown',function(e){if(e.key==='Enter')rec.click();});}
+    var sp=document.getElementById('s-speak');if(sp)sp.addEventListener('click',speak);
+    var c=document.getElementById('s-cf');if(c)c.addEventListener('click',cf);
+    var c7=document.getElementById('s-confirm');if(c7)c7.addEventListener('click',confirmRegs);
+    var lv=document.getElementById('s-leave');if(lv)lv.addEventListener('click',function(){location.reload();});
+    var an=document.getElementById('s-answer');if(an)an.addEventListener('click',function(){location.reload();});
+    var ro=document.getElementById('s-reopen');if(ro)ro.addEventListener('click',reopen);
+    var kp=document.getElementById('s-keep');if(kp)kp.addEventListener('click',keep);
+  }
+  var reopenWord='<button class="word" type="button" id="s-reopen">Reopen the low line</button>';
+  function actThr(){
+    slipOn='thr';
+    setSlip('say','Next on this page · '+(regs==='unconfirmed'?'2 left':'1 left'),'Confirm the low-stock line.','Three is the default, copied onto newly imported rows; nobody has confirmed it. Say the house\'s number, or post three as yours — either finishes activation; the menu was uploaded at the door.',(regs==='pencil'?'the seven already wait in pencil · <b>on fo. 5</b> · this line finishes activation':regs==='cf'?'the seven were carried forward · this line finishes activation':'then · <b>the seven registers</b> · in pencil, for the seal on fo. 5'),
+      '<span class="fieldrow"><input class="field num" id="s-in" inputmode="numeric" value="3" aria-label="Low-stock line"><button class="btn sm" type="button" id="s-record">Post</button></span><button class="word seal" type="button" id="s-speak">Say it aloud</button><button class="word" type="button" id="s-cf">Carry the page forward</button>');
+    renderThr();regsMark(false);wire();
+  }
+  function actRegs(){
+    slipOn='regs';
+    setSlip('say','Next on this page · 1 left','Confirm the seven registers.','Read off the 42 lines of the opening stock. The three read as <em>none</em> are as firm as the four <em>yes</em> once you confirm them — in pencil, for the seal on fo. 5. Tap any register below to switch it first; a switched one posts at once as your word.',(thr==='pencil'?'then · <b>the seal on fo. 5</b>, where the six already waits':'then · <b>the seal on fo. 5</b>'),
+      '<button class="btn" type="button" id="s-confirm">Confirm the seven · in pencil</button><button class="word" type="button" id="s-cf">Carry the page forward</button>'+(thr==='posted'?reopenWord:''));
+    renderThr();regsMark(true);wire();
+  }
+  function waiting(){
+    slipOn='none';
+    var what=(thr==='pencil'?'Six bottles, spoken at '+thrAt+' · seven registers, confirmed at '+regsAt+'.':'Seven registers, confirmed at '+regsAt+' · low line '+thrN+', posted.');
+    setSlip('pencil','In pencil · waits on the seal',what,'What Mudavym read enters the book with everything else it proposed, when you hold the seal on fo. 5.'+(manualN?' '+manualN+' switched by hand posted at once.':'')+(thr==='posted'?' Activation is complete.':''),'the seal lands once · <b>on fo. 5</b> · never here',
+      '<button class="btn quiet" type="button">Turn to fo. 5</button><button class="word" type="button" id="s-leave">Leave them out</button>'+(thr==='posted'?reopenWord:''));
+    renderThr();regsMark(false);wire();
+    setBook('pencil','Next in the book · fo. 5','Hold the seal.',pencil+(pencil===1?' line waits':' lines wait')+' in pencil. Nothing you typed waits.','<button class="btn quiet sm" type="button">Turn to fo. 5</button>');
+  }
+  /* confirming sends what Mudavym read into the pencil batch (ADR 0144:31); only a register switched by hand posts at once, source manual */
+  function confirmRegs(){
+    var at=tick();manualN=0;
+    document.querySelectorAll('#g-reg .ln').forEach(function(ln){ln.classList.remove('mark');if(ln.classList.contains('head'))return;var p=ln.querySelector('.p'),v=ln.querySelector('.v');
+      if(/switched/.test(p.textContent)){manualN++;ln.classList.add('posted');p.textContent='posted · manual · '+at+' · Defne';p.classList.add('ink');}
+      else{v.classList.add('pencil');p.textContent='confirmed · in pencil · waits on fo. 5';p.classList.remove('ink');}});
+    regs='pencil';regsAt=at;pencil+=1;
+    var w=document.getElementById('a-confirm-ledger');if(w)w.parentNode.remove();
+    if(thr==='posted'||thr==='pencil'){waiting();}
+    else{actThr();setBook('say','Next in the book · fo. 2 · open at right','Confirm the low-stock line.','The half of activation still open; the seven registers wait on the seal with the two lines from fo. 0.','');}
+    tocLine();
+  }
+  function postedThr(n){
+    var at=tick();thr='posted';thrAt=at;thrN=n;
+    if(regs==='pencil'){waiting();setBook('posted','Activation complete · '+at,'The menu was uploaded at the door and the low line is confirmed.','Next in the book: hold the seal on fo. 5, where the seven registers wait.','<button class="btn quiet sm" type="button">Turn to fo. 5</button>');}
+    else{actRegs();setBook('posted','Activation complete · '+at,'The menu was uploaded at the door and the low line is confirmed.','Next in the book: the seven registers on fo. 2, then the seal on fo. 5.','');}
+    tocLine();
+  }
+  function record(n){
+    if(!(Number.isInteger(n)&&n>=0&&n<=999)){
+      /* the register's words verbatim, undated: nothing journals a refusal, so the line does not change */
+      setSlip('refused','Refused · nothing written',(thr==='reopened'?'Post a new low-stock line, or leave it.':'Confirm the low-stock line.'),'</p><span class="verbatim">This is not a supported configuration value. Nothing was recorded.</span><p class="why">The register takes 0 to 999. A refusal is not a value; the field keeps what you typed'+(thr==='reopened'?', and the '+thrN+' stays struck through.':', and the default of three stays in use, unconfirmed.'),'',
+        '<span class="fieldrow"><input class="field num" id="s-in" inputmode="numeric" value="'+(isNaN(n)?'':n)+'" aria-label="Low-stock line"><button class="btn sm" type="button" id="s-record">Try again</button></span>'+(thr==='reopened'?'<button class="word" type="button" id="s-keep">Leave it as it was</button>':'<button class="word" type="button" id="s-cf">Carry it forward</button>'));
+      wire();return;
+    }
+    if(thr==='reopened'){prevN=thrN;}
+    postedThr(n);
+  }
+  function speak(){
+    slipOn='thr';renderThr();
+    setSlip('listening','Listening — on this device','Say a number.','Nothing leaves this browser; only the number is kept, and it goes in pencil.','','<button class="word" type="button" id="s-stop">Stop</button>');
+    var t=setTimeout(function(){
+      var at=tick();thr='pencil';thrAt=at;thrN=6;pencil+=1;
+      if(regs==='pencil'){waiting();}
+      else{actRegs();setBook('pencil','Next in the book · fo. 2 · open at right','Confirm the seven registers.','The six waits in pencil for the seal on fo. 5; the seven can join it in the same hold.','');}
+      tocLine();
+    },reduce?0:1400);
+    document.getElementById('s-stop').addEventListener('click',function(){clearTimeout(t);actThr();});
+  }
+  function cf(){
+    var at=tick();
+    if(thr!=='posted'&&thr!=='pencil'){thr='cf';thrAt=at;}
+    if(regs==='unconfirmed'){regs='cf';regsAt=at;}
+    slipOn='none';renderThr();regsMark(false);
+    setSlip('cf','Carried forward · 6 Sep '+at,'Offered and carried forward.','Nothing changed. Three stays the default copied onto newly imported rows; nothing is confirmed. The next sitting opens here.','','<button class="btn quiet" type="button" id="s-answer">Answer it now</button>');
+    setBook('cf','Next in the book · fo. 3','Nothing waits on this page; fo. 2 is carried forward.','A recorded skip, not an absence — the contents say offered '+at+', c/f. Tuna İçecek\'s terms are the next unanswered.','<button class="btn quiet sm" type="button">Turn to fo. 3</button>');
+    wire();tocLine();
+  }
+  /* reopening is an inline act: the value is struck in place and nothing is written until a new one is posted (no overlay) */
+  function reopen(){
+    thr='reopened';slipOn='thr';
+    setSlip('reopened','Reopened · a correcting entry','Post a new low-stock line, or leave it.','The '+thrN+' stays on the line, struck through. Post a new number and the journal names this row; leave it and nothing is written.','',
+      '<span class="fieldrow"><input class="field num" id="s-in" inputmode="numeric" placeholder="bottles" aria-label="New low-stock line"><button class="btn sm" type="button" id="s-record">Post</button></span><button class="word" type="button" id="s-keep">Leave it as it was</button>');
+    renderThr();regsMark(false);wire();tocLine();
+  }
+  function keep(){thr='posted';if(regs==='pencil'){waiting();}else{actRegs();}tocLine();}
+  document.querySelectorAll('#g-reg .chk').forEach(function(c){c.addEventListener('click',function(){c.classList.toggle('on');c.classList.toggle('off');var ln=c.closest('.ln'),p=ln.querySelector('.p'),v=ln.querySelector('.v');var on=c.classList.contains('on');p.textContent='switched by hand · posts at once';p.classList.add('ink');v.classList.toggle('pencil',!on);});});
+  document.getElementById('a-confirm-ledger').addEventListener('click',confirmRegs);
+  wire();
+
+  /* fo. 5 · the seal */
+  var hold=document.getElementById('hold'),lbl=document.getElementById('hold-lbl'),hn=document.getElementById('hold-note'),sealslip=document.getElementById('sealslip');
+  var timer=null,t0=0,sealed=false,armed=false;
+  function seal(){if(sealed)return;sealed=true;hold.classList.remove('pouring');hold.classList.add('sealed');hold.setAttribute('aria-disabled','true');lbl.textContent='Sealed 14:12';hn.textContent='The wax landed once. Each line reports on its own.';
+    sealslip.setAttribute('data-state','sealed');
+    sealslip.querySelector('.mark').textContent='Sealed 14:12 · 2 written · 1 refused · 1 unconfirmed';
+    sealslip.querySelector('.act').textContent='Two entered. Two did not.';
+    sealslip.querySelector('.why').innerHTML='Bereket Gıda\'s currency was stated by Hasan at 14:10, after the proposal, so the proposal was left as it stands. The delivery days\' writer returned no receipt: read fo. 3 before another attempt. <button class="word seal" type="button">Read fo. 3</button> <button class="word" type="button">Undo this batch</button>';
+    document.getElementById('fo5-cap').textContent='sealed 14:12 · 2 written · 1 refused · 1 unconfirmed';
+    sealslip.querySelector('.then').innerHTML='undo open until <b>13 Sep 14:12</b> · the two written lines reverse as a unit';
+    resettle(sealslip);
+    var r=document.getElementById('receipt');r.hidden=false;r.classList.add('settle');
+    /* each row carries its own receipt outcome — never one "sealed" */
+    var out={b1:'<span class="pill ink">written</span>',b2:'<span class="pill">unconfirmed</span>',b3:'<span class="pill">refused</span>',b4:'<span class="pill ink">written</span>'};
+    Object.keys(out).forEach(function(id){var ln=document.getElementById(id);ln.querySelector('.p').innerHTML=out[id];if(/ink/.test(out[id]))ln.classList.add('posted');});
+  }
+  function start(){if(sealed)return;hold.classList.remove('retreat');hold.classList.add('pouring');t0=performance.now();timer=setTimeout(seal,reduce?0:620);}
+  function stop(){if(sealed||!timer)return;clearTimeout(timer);timer=null;hold.classList.remove('pouring');hold.classList.add('retreat');var p=Math.min(100,Math.round((performance.now()-t0)/620*100));hn.textContent='Released at '+p+'% — nothing sent.';}
+  hold.addEventListener('pointerdown',function(e){e.preventDefault();if(reduce){if(armed){seal();}else{armed=true;hold.setAttribute('data-armed','true');hn.textContent='Press again to seal';setTimeout(function(){armed=false;hold.setAttribute('data-armed','false');},3000);}return;}start();});
+  hold.addEventListener('pointerup',stop);hold.addEventListener('pointerleave',stop);hold.addEventListener('pointercancel',stop);
+  hold.addEventListener('keydown',function(e){if(e.key==='Escape'){armed=false;hold.setAttribute('data-armed','false');return;}if(e.key!=='Enter'&&e.key!==' ')return;e.preventDefault();if(e.repeat)return;if(armed){seal();}else{armed=true;hold.setAttribute('data-armed','true');hn.textContent='Enter again to seal';setTimeout(function(){armed=false;hold.setAttribute('data-armed','false');},3000);}});
+})();
+</script>
+</body>
+</html>

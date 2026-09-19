@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 111 · /help · Direction B · Is it me, the house, or the service</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Sketch 111 · /help directions — shared base
+   Sketch board (outside .mudavym) + the house tokens (ADR 0042,
+   Warm Charcoal default per ADR 0138; paper is the declared exception).
+   Fonts: Google Fonts here for a file:// sketch; the product loads the same faces from
+   Google today (apps/web/index.html:24) and ADR 0149 row 9 decides to self-host them.
+   ============================================================ */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: #E6E1D7;
+  color: #211C16;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* ── the sketch board ───────────────────────────────────────────────── */
+.sk-band { padding: 30px 40px 6px; max-width: 1360px; }
+.sk-kicker { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #665d50; margin: 0 0 6px; }
+.sk-title { font-family: 'Fraunces', Georgia, serif; font-size: 28px; font-weight: 600; letter-spacing: -.015em; line-height: 1.1; margin: 0; }
+.sk-title .stop { color: #1A5E6B; }
+.sk-sub { font-size: 13.5px; color: #4f473c; max-width: 860px; margin: 8px 0 0; }
+.sk-sub b { color: #211C16; font-weight: 600; }
+.sk-label { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #665d50; padding: 30px 40px 10px; }
+.sk-label small { text-transform: none; letter-spacing: 0; font-family: 'DM Sans', system-ui, sans-serif; font-size: 12.5px; color: #665d50; margin-left: 10px; }
+.sk-frame { margin: 0 40px; border: 1px solid #b6ad9e; background: #15130F; overflow: hidden; position: relative; }
+.sk-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin: 0 40px; }
+.sk-cell { border: 1px solid #b6ad9e; background: #15130F; overflow: hidden; min-width: 0; }
+.sk-cell-h { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: #665d50; padding: 8px 12px; background: #F1EDE5; border-bottom: 1px solid #b6ad9e; }
+.sk-cell-h em { font-style: normal; text-transform: none; letter-spacing: 0; font-family: 'DM Sans', system-ui, sans-serif; font-size: 12px; color: #665d50; }
+.sk-mobile { width: 390px; max-width: 100%; margin: 0 40px; border: 1px solid #b6ad9e; background: #15130F; overflow: hidden; position: relative; }
+.sk-note { margin: 10px 40px 0; font-size: 12.5px; color: #4f473c; max-width: 860px; }
+.sk-foot { padding: 40px 40px 60px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: #665d50; }
+@media (max-width: 560px) {
+  .sk-band, .sk-label, .sk-foot { padding-left: 14px; padding-right: 14px; }
+  .sk-frame, .sk-strip, .sk-mobile, .sk-note { margin-left: 14px; margin-right: 14px; }
+  .sk-mobile { width: auto; }
+  .sk-strip { grid-template-columns: 1fr; }
+}
+
+/* ── the house tokens ───────────────────────────────────────────────── */
+.mudavym,
+.mudavym[data-ground="charcoal"] {
+  --seal: #5FB0BC;
+  --seal-deep: #7DC3CD;
+  --seal-tint: rgba(95, 176, 188, 0.14);
+  --seal-ring: rgba(95, 176, 188, 0.38);
+  --paper-0: #15130F;
+  --paper-1: #1D1813;
+  --paper-2: #262019;
+  --ink-1: #EFE7D9;
+  --ink-2: #C0B6A5;
+  --ink-3: #8E8576;
+  --ink-4: #ABA294;
+  --hatch: repeating-linear-gradient(135deg, transparent 0 3px, var(--ink-3) 3px 4px);
+  color-scheme: dark;
+}
+.mudavym[data-ground="paper"] {
+  --seal: #1a5e6b;
+  --seal-deep: #14515c;
+  --seal-tint: rgba(26, 94, 107, 0.1);
+  --seal-ring: rgba(26, 94, 107, 0.32);
+  --paper-0: #fffdf8;
+  --paper-1: #f3efe6;
+  --paper-2: #eae4d8;
+  --ink-1: #211c16;
+  --ink-2: #4f473c;
+  --ink-3: #7c7365;
+  --ink-4: #665d50;
+  color-scheme: light;
+}
+/* captions use --ink-4 everywhere, not --ink-3: ink-3 measures 3.58:1 on the charcoal board (under AA) and 4.59:1 on paper (meets the 4.5 AA threshold, but thinly) — one token, no ground-specific exception */
+.mudavym[data-ground="paper"] .hp-mono--dim, .mudavym[data-ground="paper"] .hp-sources li, .mudavym[data-ground="paper"] .hp-prose--muted, .mudavym[data-ground="paper"] .hp-kv dt, .mudavym[data-ground="paper"] .ovl-opt .k, .mudavym[data-ground="paper"] .ovl-opt small { color: var(--ink-4); }
+.mudavym {
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  container-type: inline-size;
+  container-name: page;
+  position: relative;
+}
+.mudavym a { color: inherit; }
+
+/* ── house header chrome (PageGate mounts HouseHeader above every next tree) ── */
+.mdv-hdr { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 20px; border-bottom: 1px solid var(--paper-2); background: color-mix(in srgb, var(--paper-0) 92%, transparent); }
+.mdv-hdr__mark { display: inline-flex; width: 24px; height: 24px; color: var(--seal); }
+.mdv-hdr__mark svg { width: 24px; height: 24px; }
+.mdv-hdr__house { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-1); padding: 5px 10px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1); }
+.mdv-hdr__house .chev { color: var(--ink-3); font-size: 10px; }
+.mdv-hdr__spacer { flex: 1; }
+.mdv-hdr__pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); padding: 5px 9px; border: 1px solid var(--paper-2); border-radius: 8px; }
+.mdv-hdr__pill .n { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--seal-deep); }
+.mdv-hdr__avatar { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--ink-3); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--ink-1); }
+
+/* ── page kit ───────────────────────────────────────────────────────── */
+.hp-wrap { max-width: 880px; margin: 0 auto; padding: 26px 20px 64px; }
+.hp-wordmark { font-family: 'Fraunces', Georgia, serif; font-weight: 600; letter-spacing: -.02em; font-size: 13px; line-height: 1; color: var(--ink-1); }
+.hp-wordmark .stop, .stop { color: var(--seal); }
+.hp-eyebrow { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); margin: 0; }
+.hp-eyebrow--seal { color: var(--seal-deep); font-weight: 600; font-size: 9.5px; }
+.hp-h1 { font-family: 'Fraunces', Georgia, serif; font-size: 34px; font-weight: 600; letter-spacing: -.015em; line-height: 1.1; margin: 4px 0 0; }
+.hp-lead { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 15px; color: var(--ink-2); margin: 8px 0 0; max-width: 640px; line-height: 1.45; }
+.hp-double { border-top: 1px solid var(--ink-1); border-bottom: 1px solid var(--ink-1); height: 3px; opacity: .5; margin: 16px 0 4px; }
+.hp-sec { margin-top: 34px; }
+.hp-h2 { font-family: 'Fraunces', Georgia, serif; font-size: 24px; font-weight: 500; letter-spacing: -.01em; line-height: 1.15; margin: 4px 0 12px; }
+.hp-h3 { font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 500; margin: 0; line-height: 1.3; }
+.hp-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
+.hp-mono--dim { color: var(--ink-3); }
+.hp-prose { font-size: 13.5px; line-height: 1.6; color: var(--ink-2); margin: 6px 0 0; }
+.hp-prose--muted { color: var(--ink-3); }
+.hp-prose a, .hp-link { color: var(--seal-deep); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.hp-row { border-top: 1px solid var(--paper-2); padding: 14px 0; }
+.hp-row:last-child { border-bottom: 1px solid var(--paper-2); }
+.hp-card { border: 1px solid var(--paper-2); border-radius: 12px; padding: 16px 18px; background: var(--paper-0); min-width: 0; }
+.hp-grid2 { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+.hp-btn { font: 500 13px/1 'DM Sans', system-ui, sans-serif; color: var(--ink-1); background: transparent; border: 1px solid var(--ink-3); border-radius: 8px; padding: 8px 12px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: border-color 160ms cubic-bezier(.16,1,.3,1), background-color 160ms cubic-bezier(.16,1,.3,1), color 160ms cubic-bezier(.16,1,.3,1); }
+.hp-btn:hover { background: var(--paper-1); border-color: var(--ink-2); }
+.hp-btn--seal { color: var(--seal-deep); border-color: var(--seal-ring); }
+.hp-btn--seal:hover { background: var(--seal-tint); border-color: var(--seal); }
+.hp-btn:disabled, .hp-btn[aria-disabled="true"] { color: var(--ink-3); cursor: not-allowed; border-color: var(--paper-2); background: transparent; }
+.hp-btn:focus-visible, .hp-faq-q:focus-visible, .hp-chip:focus-visible { outline: 2px solid var(--seal); outline-offset: 3px; }
+.hp-chip { display: inline-flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--paper-2); border-radius: 999px; padding: 3px 9px; background: transparent; cursor: default; white-space: nowrap; }
+.hp-chip[data-k="live"] { color: var(--seal-deep); border-color: var(--seal-ring); }
+.hp-chip[data-k="recorded"], .hp-chip[data-k="unproven"], .hp-chip[data-k="floor"] { color: var(--ink-2); border-color: var(--paper-2); }
+.hp-chip[data-k="floor"] { border-style: dashed; }
+.hp-chip[data-k="absent"] { color: var(--ink-3); border-color: var(--ink-3); border-style: dashed; }
+.hp-chip[data-k="failed"], .hp-chip[data-k="unread"], .hp-chip[data-k="refused"] { color: var(--ink-1); border-color: var(--ink-1); }
+.hp-chip[data-k="failed"]::before, .hp-chip[data-k="unread"]::before, .hp-chip[data-k="refused"]::before { content: ''; width: 6px; height: 6px; border-radius: 1px; background: var(--ink-1); }
+.hp-chip[data-k="live"]::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--seal); }
+.hp-chip--ctl { cursor: pointer; border-color: var(--ink-3); color: var(--ink-1); }
+.hp-chip--ctl .chev { color: var(--ink-3); }
+.hp-status { margin: 8px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-1); border-left: 2px solid var(--ink-3); padding-left: 8px; }
+.hp-status--done { color: var(--seal-deep); border-left-color: var(--seal-ring); }
+.hp-status--trouble { border-left-color: var(--ink-1); border-left-width: 3px; }
+.hp-skel { position: relative; overflow: hidden; background: var(--paper-2); border-radius: 3px; height: 12px; }
+.hp-skel::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, var(--paper-1), transparent); animation: hp-sheen 1.9s cubic-bezier(.45,0,.55,1) infinite; }
+@keyframes hp-sheen { to { transform: translateX(100%); } }
+.hp-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 320ms cubic-bezier(.16,1,.3,1); }
+.hp-fold[data-open="true"] { grid-template-rows: 1fr; }
+.hp-fold > div { overflow: hidden; min-height: 0; }
+.hp-chev { display: inline-block; transition: transform 320ms cubic-bezier(.16,1,.3,1); color: var(--ink-3); font-size: 11px; }
+.hp-chev[data-open="true"] { transform: rotate(180deg); }
+.hp-faq-q { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; background: none; border: 0; padding: 13px 0; cursor: pointer; color: var(--ink-1); font: 500 14.5px/1.4 'DM Sans', system-ui, sans-serif; }
+.hp-faq-q:hover { color: var(--seal-deep); }
+.hp-faq-q[aria-disabled="true"] { color: var(--ink-3); cursor: default; }
+.hp-faq-a { font-size: 13.5px; line-height: 1.6; color: var(--ink-2); margin: 0 0 13px; max-width: 680px; }
+.hp-pre { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.55; color: var(--ink-2); background: var(--paper-1); border: 1px solid var(--paper-2); border-radius: 10px; padding: 12px 14px; margin: 0; white-space: pre-wrap; word-break: break-word; }
+.hp-fig { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.hp-dash { color: var(--ink-3); }
+.hp-kv { display: grid; grid-template-columns: 150px 1fr; gap: 4px 14px; font-size: 13px; }
+.hp-kv dt { color: var(--ink-3); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; letter-spacing: .04em; padding-top: 2px; }
+.hp-kv dd { margin: 0; color: var(--ink-1); }
+.hp-sources { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.hp-sources li { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--ink-3); overflow-wrap: anywhere; }
+
+/* ── overlays (ADR 0112 shapes, drawn open inside a frame) ──────────── */
+.ovl { position: absolute; inset: 0; z-index: 10; }
+.ovl__scrim { position: absolute; inset: 0; background: rgba(0,0,0,.5); }
+.ovl--popover .ovl__scrim { background: transparent; }
+.ovl__sheet { position: absolute; top: 0; right: 0; bottom: 0; width: min(440px, 100%); background: var(--paper-0); color: var(--ink-1); border-left: 1px solid var(--paper-2); box-shadow: -18px 0 48px rgba(0,0,0,.35); padding: 22px 22px 28px; overflow: auto; }
+.ovl__panel { position: absolute; left: 50%; top: 10%; transform: translateX(-50%); width: min(620px, calc(100% - 32px)); background: var(--paper-0); color: var(--ink-1); border: 1px solid var(--paper-2); border-radius: 14px; box-shadow: 0 24px 64px rgba(0,0,0,.45); padding: 22px 24px 24px; }
+.ovl__pop { position: absolute; background: var(--paper-0); color: var(--ink-1); border: 1px solid var(--paper-2); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.4); padding: 8px; width: 320px; max-width: calc(100% - 24px); }
+.ovl__close { position: absolute; top: 18px; right: 20px; }
+.ovl__title { font-family: 'Fraunces', Georgia, serif; font-size: 22px; font-weight: 500; letter-spacing: -.01em; margin: 4px 0 6px; line-height: 1.15; }
+.ovl__foot { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.ovl-opt { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 9px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; }
+.ovl-opt:hover { background: var(--paper-1); }
+.ovl-opt[aria-checked="true"] { background: var(--seal-tint); }
+.ovl-opt .k { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--ink-3); }
+.ovl-opt[aria-checked="true"] .k { color: var(--seal-deep); }
+.ovl-opt small { display: block; color: var(--ink-3); font-size: 11.5px; }
+
+/* ── mobile: the same markup reflows in a narrow container ──────────── */
+@container page (max-width: 640px) {
+  .hp-grid2 { grid-template-columns: 1fr; }
+  .hp-h1 { font-size: 28px; }
+  .hp-wrap { padding: 20px 16px 48px; }
+  .hp-kv { grid-template-columns: 1fr; gap: 2px 0; }
+  .hp-kv dt { padding-top: 6px; }
+  .mdv-hdr { padding: 0 14px; }
+  .mdv-hdr__pill .t { display: none; }
+  .mdv-hdr__pill--role { display: none; }
+  .ovl__panel { top: 6%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-btn, .hp-fold, .hp-chev, .hp-skel::after { transition: none !important; animation: none !important; }
+}
+
+/* Direction B — the ladder */
+.b-wrap { max-width: 1120px; }
+.b-cols { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; margin-top: 26px; align-items: start; }
+.b-ladder { list-style: none; margin: 0; padding: 0; position: relative; }
+.b-ladder::before { content: ''; position: absolute; left: 17px; top: 18px; bottom: 18px; width: 1px; background: var(--paper-2); }
+.b-rung { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 0 18px; padding: 14px 0 18px; }
+.b-rung + .b-rung { border-top: 1px dashed var(--paper-2); }
+.b-rung__n { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--ink-3); background: var(--paper-0); display: inline-flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; color: var(--ink-1); position: relative; z-index: 1; }
+.b-rung[data-state="fault"] .b-rung__n, .b-rung[data-state="unread"] .b-rung__n { background: var(--ink-1); border-color: var(--ink-1); }
+.b-rung[data-state="fault"] .b-rung__n span, .b-rung[data-state="unread"] .b-rung__n span { color: var(--paper-0); }
+.b-rung[data-start="true"] .b-rung__n { border-color: var(--seal); box-shadow: 0 0 0 3px var(--seal-tint); }
+.b-rung[data-state="clear"] .b-rung__n { border-color: var(--seal-ring); }
+.b-rung__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 36px; }
+.b-word { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; padding: 3px 8px; border: 1px solid var(--paper-2); border-radius: 4px; color: var(--ink-2); }
+.b-word[data-k="clear"] { color: var(--seal-deep); border-color: var(--seal-ring); }
+.b-word[data-k="fault"], .b-word[data-k="unread"], .b-word[data-k="refused"] { color: var(--ink-1); border-color: var(--ink-1); border-left-width: 3px; }
+.b-word[data-k="open"] { color: var(--ink-1); border-color: var(--ink-3); }
+.b-word[data-k="reading"] { color: var(--ink-3); border-style: dashed; font-style: italic; }
+.b-word[data-k="unproven"] { color: var(--ink-2); border-color: var(--paper-2); }
+.b-word[data-k="notshown"], .b-word[data-k="session"] { color: var(--ink-2); border-color: var(--paper-2); }
+/* at narrow widths the rail lands under all four rungs, so its start line is repeated under the masthead */
+.b-startline { display: none; margin: 14px 0 0; padding: 10px 12px; border: 1px solid var(--seal-ring); border-radius: 10px; }
+.b-start { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 13px; color: var(--seal-deep); }
+.b-rung__title { margin-top: 2px; font-size: 18px; }
+.b-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 8px 0 0; }
+.b-conn { list-style: none; margin: 10px 0 0; padding: 0; }
+.b-conn li { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 0 12px; padding: 6px 0; border-top: 1px dashed var(--paper-2); align-items: baseline; }
+.b-conn li:first-child { border-top: 0; }
+.b-conn .hp-chip { justify-self: start; }
+.b-conn__name { font-size: 13.5px; color: var(--ink-1); }
+.b-conn li .hp-mono { grid-column: 2; }
+.b-q { list-style: none; margin: 8px 0 0; padding: 0; }
+.b-q li { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 0 12px; padding: 7px 0; border-top: 1px dashed var(--paper-2); align-items: baseline; }
+.b-q li:first-child { border-top: 0; }
+.b-q__n { font-size: 18px; color: var(--ink-1); justify-self: end; }
+.b-q__what { font-size: 13.5px; color: var(--ink-1); }
+.b-q__d { display: block; }
+.b-rail { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 16px; }
+.b-rail__card { border: 1px solid var(--paper-2); border-radius: 12px; padding: 16px 18px; background: var(--paper-1); }
+.b-rail__card:first-child { border-color: var(--seal-ring); background: var(--paper-0); }
+.b-rail__faq { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.b-ladder--cell::before { left: 17px; }
+@container page (max-width: 760px) {
+  .b-cols { grid-template-columns: 1fr; }
+  .b-rail { position: static; }
+  .b-startline { display: block; }
+  .b-conn li { grid-template-columns: 1fr; }
+  .b-conn li .hp-mono { grid-column: 1; }
+  .b-rung { grid-template-columns: 30px minmax(0, 1fr); gap: 0 12px; }
+  .b-rung__n { width: 30px; height: 30px; font-size: 12px; }
+  .b-ladder::before { left: 14px; }
+  .b-q li { grid-template-columns: 32px minmax(0, 1fr); }
+  .b-q li > :last-child { grid-column: 2; }
+}
+
+</style></head><body>
+<div class="sk-band">
+  <p class="sk-kicker">Sketch 111 · /help · Direction B</p>
+  <h1 class="sk-title">Is it me, the house, or the service<span class="stop">.</span></h1>
+  <p class="sk-sub">The page is a <b>triage ladder</b>, not a document. A person who opens /help is stuck; the first thing they need is to know which of three things is at fault, so the page reads the same routes as Direction A but arranges them as four rungs — the service (the deployment), the house’s connections, what is waiting, and you — each carrying a state <b>word</b> (clear · fault · open · unread · refused · unproven), never a colour. The rule is one sentence: a rung is clear only when every row answered for itself, otherwise it carries the word for its worst row, and the first rung that is not clear is where the rail starts — a rule, never a judgement. The rail answers for that rung: which FAQ entries belong to it, the one act that clears it, and the mail to a person, which the reader sees before it opens. An unread rung is a place to start, the same as a fault; a recorded row is unproven, never clear.</p>
+</div>
+
+<div class="sk-label">01 · Desktop 1440 · Larkspur &amp; Vine, Oakland · owner · en-US<small>rung 2 is the fault; the rail starts there</small></div>
+<div class="sk-frame mudavym" id="fB1"></div>
+
+<div class="sk-label">02 · Desktop 1440 · Sim Meyhouse, Kadıköy · staff · tr-TR<small>fork 2(b): rung 2 keeps the reads the role allows and names the refused ones, so the rail starts there; rung 4 is the person — clear — and says what the role may not do</small></div>
+<div class="sk-frame mudavym" id="fB2"></div>
+
+<div class="sk-label">03 · Overlay drawn open · a question gets a centred panel at 620<small>“Write to support with these readings?” — the reader sees the message before their mail app opens; the page sends nothing; closes with a word (Not now), never an X</small></div>
+<div class="sk-frame mudavym" id="fB3" style="height:900px"></div>
+
+<div class="sk-label">04 · The three open forks, as the rung each one changes<small>the founder picks with the sketch; the recommended option is marked</small></div>
+<div class="sk-strip" id="fB4"></div>
+
+<div class="sk-label">05 · States — a rung is a word, and the rail follows the first one that is not clear<small>loading, all clear, unproven, unread, the unreachable cascade, refused, partial, and the paper ground</small></div>
+<div class="sk-strip" id="fB5"></div>
+
+<div class="sk-label">06 · Mobile 390<small>the rail drops under the ladder, so its start line is repeated under the masthead; the spine narrows to 30px</small></div>
+<div class="sk-mobile mudavym" id="fB6"></div>
+
+<div class="sk-foot">example data, not a tenant · Warm Charcoal is the ground (ADR 0138); the paper cell in 05 is the declared exception · fonts from Google here and in the product today (apps/web/index.html:24 loads the same faces) · motion: settle on folds, ink on hovers, settle on the panel; reduced motion collapses all three</div>
+
+<script>
+/* Sketch 111 · shared renderers. Example data — not a tenant. */
+
+const AM_PATHS = [
+  'M0 38H72V540H0Z',
+  'M15 38H96L460 574H379Z',
+  'M0 346H305L353 416H0Z',
+  'M0 470H137V540H0Z',
+  'M99 0H151L278.7 187.8L284.8 273Z',
+  'M389.5 40H460.9L284.8 273L251.4 224Z',
+  'M412 40H483V574H412Z',
+];
+function markSvg() {
+  return `<svg viewBox="0 0 483 574" aria-hidden="true" fill="currentColor">${AM_PATHS.map((d) => `<path d="${d}"/>`).join('')}</svg>`;
+}
+
+/* Two houses. Strings are pre-formatted in each house's locale so the sketch
+   is deterministic: en-US · USD for Larkspur & Vine, tr-TR · TRY for Sim Meyhouse. */
+const HOUSES = {
+  us: {
+    key: 'us',
+    name: 'Larkspur & Vine',
+    place: 'Oakland, California',
+    person: 'Maya Okafor',
+    initial: 'M',
+    role: 'owner',
+    roleLabel: 'Owner',
+    manager: 'Jonah (manager)',
+    now: '2:14 PM',
+    nowIso: '2026-09-16T21:14:05Z',
+    bell: 3,
+    email: 'maya@larkspurvine.com',
+    service: { ready: true, ms: '84 ms', build: '1190cec4', since: 'up since 9:12 AM today', db: 'ok', http: 200 },
+    connections: [
+      { name: 'Toast POS', k: 'live', word: 'ingesting', detail: '312 checks in 30 days · last 1:48 PM today', proof: 'ingestion evidence, not a webhook health record', src: 'GET /pos-hub/status/:restaurantId' },
+      { name: 'Gmail read grant', who: 'maya@larkspurvine.com', k: 'failed', word: 'failed', detail: 'last attempt 2:02 PM today · refused', proof: 'last_read_at is written on a refused attempt too — this is not the last successful read, which is not recorded separately', src: 'GET /communications/letters/sender' },
+      { name: 'Google Calendar feed', k: 'recorded', word: 'recorded', detail: 'recorded Aug 30 · not proven', proof: 'no refresh failure is ever written for a calendar grant', src: 'GET /integrations/oauth/connections' },
+      { name: 'MCP · Supabase', k: 'live', word: 'probed', detail: 'probed Sep 13, 9:40 AM · ok', proof: 'a probe is dated; it is not live', src: 'GET /mcp-connections' },
+      { name: 'MCP · Stripe', k: 'unproven', word: 'never probed', detail: 'declared Sep 14 · never probed', proof: 'a declared server is a row, not a connection', src: 'GET /mcp-connections' },
+      { name: 'Microsoft sign-in grant', k: 'recorded', word: 'expired', detail: 'expired Sep 2 · expiry is not failure', proof: 'a manager’s read', src: 'GET /integrations/oauth/house-grants' },
+    ],
+    waiting: {
+      a: [
+        { n: 3, what: 'one-tap acts', detail: 'reorder Kermit Lynch · confirm the Friday count · release the Skurnik credit', src: 'GET /one-tap-actions/pending', to: '/' },
+        { n: 2, what: 'orders to approve', detail: 'Skurnik $1,284.50 · Kermit Lynch $612.00', src: 'GET /procurement/orders/pending', to: '/orders' },
+        { n: 2, what: 'Mudavym proposals awaiting a seal', detail: 'a letter to Skurnik · a draft order for Chambers St', src: 'GET /ask-ai/actions', event: true, floor: 20 },
+      ],
+      b: [
+        { n: 14, what: 'vendor identities to confirm', detail: 'complete: true (14 of a 50 cap)', src: 'GET /vendor-intel/identity/candidates', to: '/vendor-prices' },
+        { n: 9, what: 'POS lines that moved no stock', detail: 'unmatched till lines, 30 days', src: 'GET /pos-hub/unresolved/:restaurantId', to: '/inventory' },
+      ],
+      c: [
+        { n: 1, what: 'open credit claim', detail: 'Skurnik $96.00 promised · not recovered', src: 'GET /procurement/credits', to: '/receipts?tab=credits' },
+        { n: 3, what: 'sale units to review', detail: 'glass pours with no bottle size', src: 'GET /pos-hub/mappings/:restaurantId/sale-unit-review', to: '/inventory' },
+        { n: 6, what: 'catalogue matches proposed', detail: 'grey until you say so', src: 'catalogue-match proposals · GET /pos-hub/catalog-match/:restaurantId/proposals', to: '/recommendations/catalog' },
+      ],
+    },
+    failed: [
+      { what: 'Inbox read · Gmail grant', when: '2:02 PM today', why: 'token refresh refused (invalid_grant)', src: 'house_inbox_cursors.last_error via GET /communications/letters/sender', to: '/connections' },
+      { what: 'Letter to Skurnik', when: 'Sep 12, 4:31 PM', why: 'HOUSE_FAILED — the sender grant had expired', src: 'GET /conversations/threads?status=failed', to: '/communications' },
+      { what: 'Letter dispatcher · last run', when: 'not known since the last deploy', why: 'the last run is kept in memory, not written', src: 'house-letters.cron.ts:51', to: null, noreader: true },
+      { what: 'Mudavym execution', when: 'recorded, not listable', why: 'failed executions are stored; no route lists them', src: 'ask_ai_actions.status = failed · no reader', to: null, noreader: true },
+    ],
+    money: { order1: '$1,284.50', order2: '$612.00' },
+  },
+  tr: {
+    key: 'tr',
+    name: 'Sim Meyhouse',
+    place: 'Kadıköy, İstanbul',
+    person: 'Deniz Aksoy',
+    initial: 'D',
+    role: 'staff',
+    roleLabel: 'Staff',
+    owner: 'Ayşe Demir (owner)',
+    manager: 'Kerem (manager)',
+    now: '14:14',
+    nowIso: '2026-09-16T11:14:05Z',
+    bell: 1,
+    email: 'deniz@simmeyhouse.com.tr',
+    service: { ready: true, ms: '131 ms', build: '1190cec4', since: 'up since 09:12 today', db: 'ok', http: 200 },
+    connections: [
+      { name: 'Toast POS', k: 'live', word: 'ingesting', detail: '1.204 checks in 30 days · last 13:48 today', proof: 'ingestion evidence, not a webhook health record', src: 'GET /pos-hub/status/:restaurantId' },
+      { name: 'MCP · Supabase', k: 'live', word: 'probed', detail: 'probed 13.09.2026 09:40 · ok', proof: 'a probe is dated; it is not live', src: 'GET /mcp-connections' },
+      { name: 'Your Gmail grant', k: 'absent', word: 'none', detail: 'no grant is recorded for you', proof: 'your own grants only — this is not the house’s reader', src: 'GET /integrations/oauth/connections' },
+      { name: 'The house’s grants', k: 'refused', word: 'refused', detail: 'a manager-only read · ask Ayşe Demir or Kerem', proof: '403 from the gateway, printed, not hidden', src: 'GET /integrations/oauth/house-grants' },
+      { name: 'How the house pays', k: 'refused', word: 'refused', detail: 'a manager-only read (ADR 0114 G19)', proof: '403, printed', src: 'GET /billing/provider · GET /payment-methods' },
+    ],
+    waiting: {
+      a: [
+        { n: 1, what: 'one-tap act, yours', detail: 'confirm tonight’s rakı count', src: 'GET /one-tap-actions/pending', to: '/' },
+        { n: 2, what: 'orders waiting for a manager', detail: 'Kavaklıdere ₺48.250,00 · Doluca ₺12.900,00 · you cannot approve these; Kerem can', src: 'GET /procurement/orders/pending', to: '/orders', cannot: true },
+        { n: 0, what: 'Mudavym proposals', detail: 'none proposed for this house', src: 'GET /ask-ai/actions', event: true },
+      ],
+      b: [
+        { n: 3, what: 'vendor identities to confirm', detail: 'complete: true', src: 'GET /vendor-intel/identity/candidates', to: '/vendor-prices' },
+        { n: 21, what: 'POS lines that moved no stock', detail: 'unmatched till lines, 30 days', src: 'GET /pos-hub/unresolved/:restaurantId', to: '/inventory' },
+      ],
+      c: [
+        { n: 0, what: 'open credit claims', detail: 'none recorded', src: 'GET /procurement/credits', to: '/receipts?tab=credits' },
+        { n: 5, what: 'sale units to review', detail: 'kadeh pours with no bottle size', src: 'GET /pos-hub/mappings/:restaurantId/sale-unit-review', to: '/inventory' },
+        { n: 2, what: 'catalogue matches proposed', detail: 'grey until you say so', src: 'catalogue-match proposals · GET /pos-hub/catalog-match/:restaurantId/proposals', to: '/recommendations/catalog' },
+      ],
+    },
+    failed: [
+      { what: 'Inbox read · Gmail grant (Ayşe Demir)', when: '13:52 today', why: 'the house stopped using it (house_revoked)', src: 'house_inbox_cursors.last_error via GET /communications/letters/sender', to: '/connections' },
+      { what: 'Letter to Kavaklıdere', when: 'Sep 10, 11:20', why: 'HOUSE_FAILED — the sender grant had expired', src: 'GET /conversations/threads?status=failed', to: '/communications' },
+      { what: 'Letter dispatcher · last run', when: 'not known since the last deploy', why: 'the last run is kept in memory, not written', src: 'house-letters.cron.ts:51', to: null, noreader: true },
+      { what: 'Mudavym execution', when: 'recorded, not listable', why: 'failed executions are stored; no route lists them', src: 'ask_ai_actions.status = failed · no reader', to: null, noreader: true },
+    ],
+    money: { order1: '₺48.250,00', order2: '₺12.900,00' },
+  },
+};
+
+const FAQ = [
+  { slug: 'invite-team', q: 'How do I invite my team?', a: 'Owners and managers invite from Settings, under Team: share the invite code or the link, and the person joins with it. Staff can join; they cannot invite.', to: '/settings?tab=team', label: 'Open Team', managerOnly: true },
+  { slug: 'password-or-login', q: 'Where do I change my password, or the account I sign in with?', a: 'In your profile. Security holds the password; Connected accounts holds Google and Microsoft sign-in. Both belong to you, not to the restaurant, so neither appears in Settings.', to: '/profile', label: 'Open your profile' },
+  { slug: 'who-edits-settings', q: 'Who can change restaurant settings?', a: 'Owners and managers. A staff account is refused on the page and again by the gateway; it can still change its own profile.' },
+  { slug: 'reconnect-gmail', q: 'Mudavym stopped reading our inbox. What happened?', a: 'Rung 2 says why — if Google refused the token, reconnect on Connections; if the house stopped using it, ask a manager. Either way nothing is lost: the reader resumes from its cursor.', to: '/connections', label: 'Open Connections', managerOnly: true },
+  { slug: 'page-tours', q: 'Where are the page tours and the tips?', a: 'Learn & Help, at the bottom of the sidebar. From there you can replay any page’s tour or bring back the tips you dismissed.' },
+  { slug: 'services-permissions', q: 'Where do I control email, web and privacy access?', a: 'Settings, under Services & permissions. It is separate from the tours, and nothing the sommelier desk does grants email access.', to: '/settings?tab=services', label: 'Open Services & permissions', managerOnly: true },
+  { slug: 'privacy', q: 'Where is the privacy statement?', a: 'On its own page, public, readable before you have an account.', to: '/privacy', label: 'Read the privacy page' },
+  { slug: 'is-it-down', q: 'A page is not loading. Is the service down?', a: 'This page asks the gateway directly and prints what it said, labelled as the deployment’s answer, not this house’s. If the service is ready and a page still fails, the fault is in that page; name it when you write.' },
+];
+
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function header(h) {
+  return `<div class="mdv-hdr" role="banner">
+    <span class="mdv-hdr__mark">${markSvg()}</span>
+    <span class="mdv-hdr__house">${esc(h.name)} <span class="chev">▾</span></span>
+    <span class="mdv-hdr__spacer"></span>
+    <span class="mdv-hdr__pill"><span class="t">Bell</span> <span class="n">${h.bell}</span></span>
+    <span class="mdv-hdr__pill mdv-hdr__pill--role"><span class="t">${h.roleLabel}</span></span>
+    <span class="mdv-hdr__avatar" title="${esc(h.person)}">${h.initial}</span>
+  </div>`;
+}
+
+function masthead(h, title, lead, eyebrow) {
+  return `<header>
+    <span class="hp-wordmark">Mudavym<span class="stop">.</span></span>
+    <p class="hp-eyebrow" style="margin-top:6px">${esc(eyebrow || 'Help & Support · ' + h.name)}</p>
+    <h1 class="hp-h1">${title}<span class="stop">.</span></h1>
+    <p class="hp-lead">${lead}</p>
+  </header>
+  <div class="hp-double" aria-hidden="true"></div>`;
+}
+
+/* FAQ — role-aware: a manager-only destination for a staff reader is a disabled
+   control with its reason in words, never hidden. */
+function faqList(h, opts = {}) {
+  const open = opts.open || null;
+  const entries = opts.entries || FAQ;
+  return `<ul style="list-style:none;margin:0;padding:0;border-top:1px solid var(--paper-2)">${entries.map((e) => {
+    const isOpen = e.slug === open;
+    const refused = e.managerOnly && h.role === 'staff' && e.to;
+    const link = e.to
+      ? (refused
+        ? `<span class="hp-btn" aria-disabled="true" style="margin-top:8px">${esc(e.label)} — a manager’s page</span>`
+        : `<a class="hp-link" href="#${e.slug}">${esc(e.label)}</a>`)
+      : '';
+    return `<li id="faq-${e.slug}" style="border-bottom:1px solid var(--paper-2)">
+      <button type="button" class="hp-faq-q" aria-expanded="${isOpen}" data-fold="faq-${e.slug}-a">
+        <span>${esc(e.q)}</span><span class="hp-chev" data-open="${isOpen}">▼</span>
+      </button>
+      <div id="faq-${e.slug}-a" class="hp-fold" data-open="${isOpen}"><div>
+        <p class="hp-faq-a">${esc(e.a)} ${link}</p>
+      </div></div>
+    </li>`;
+  }).join('')}</ul>
+  ${opts.noFoot ? '' : '<p style="margin:10px 0 0"><span class="hp-mono hp-mono--dim">each answer is a deep link: /help#its-slug · eight entries in source (hp-faq.ts) · each destination route checked against App.tsx by test (hp-faq.test.ts); the prose is checked by no test</span></p>'}`;
+}
+
+/* Reach a person — decided today: support@mudavym.com. Slack is not decided,
+   so it is drawn unconfigured: a sentence, never a default workspace. */
+function contact(h, opts = {}) {
+  const slackConfigured = !!opts.slack;
+  const block = diagnostics(h, opts);
+  return `<div class="hp-grid2">
+    <div class="hp-card">
+      <p class="hp-eyebrow">Email</p>
+      <p class="hp-mono" style="font-size:14px;margin:8px 0 0;color:var(--ink-1);word-break:break-all">support@mudavym.com</p>
+      <p class="hp-prose">Opens a message with the block below already in it, so the first reply is not a request for it.</p>
+      <div style="margin-top:12px"><a class="hp-btn hp-btn--seal" href="mailto:support@mudavym.com">Write to support</a></div>
+      <p style="margin:10px 0 0"><span class="hp-mono hp-mono--dim">VITE_SUPPORT_EMAIL · set at build · <span style="white-space:nowrap">decided 2026-09-16 · ADR 0143 row 8</span></span></p>
+    </div>
+    <div class="hp-card">
+      <p class="hp-eyebrow">Slack</p>
+      ${slackConfigured
+        ? `<p class="hp-mono" style="font-size:14px;margin:8px 0 0;color:var(--ink-1)">mudavym.slack.com</p><p class="hp-prose">The Mudavym support channel. Paste the block below into your first message.</p><div style="margin-top:12px"><a class="hp-btn hp-btn--seal" href="#">Open the channel</a></div>`
+        : `<p class="hp-h3" style="margin-top:8px">No support channel is configured for this deployment.</p><p class="hp-prose hp-prose--muted">No link is drawn to a default workspace. Whether Slack exists at all is the founder’s call; until then this card is a sentence.</p><p style="margin:10px 0 0"><span class="hp-mono hp-mono--dim">VITE_SUPPORT_SLACK_URL — unset at build time</span></p>`}
+    </div>
+  </div>
+  <div style="margin-top:14px">
+    <button type="button" class="hp-faq-q" aria-expanded="${opts.blockOpen ? 'true' : 'false'}" data-fold="${opts.id || 'blk'}" style="padding:10px 0">
+      <span>What support will need</span><span class="hp-chev" data-open="${opts.blockOpen ? 'true' : 'false'}">▼</span>
+    </button>
+    <div id="${opts.id || 'blk'}" class="hp-fold" data-open="${opts.blockOpen ? 'true' : 'false'}"><div>
+      <pre class="hp-pre">${esc(block)}</pre>
+      <div style="margin-top:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="hp-btn">Copy the block</button>
+        <span class="hp-mono hp-mono--dim">nothing leaves this page until you send it · absences are written as “not recorded”</span>
+      </div>
+    </div></div>
+  </div>`;
+}
+
+function diagnostics(h, opts = {}) {
+  const g = h.service;
+  return [
+    'Mudavym — what support will need',
+    `House: ${h.name}`,
+    `House id: ${h.key === 'us' ? '7c1e…a4f0' : '550e…b2d1'}`,
+    `Role: ${h.role}`,
+    `Came from: ${opts.from || 'not recorded'}`,
+    `Page: https://mudavym.com/help`,
+    `Gateway (deployment): ${g.ready ? 'ready' : 'up but not ready'}, answered in ${g.ms}`,
+    `Gateway build: ${g.build}`,
+    `House line: ${opts.lineSummary || 'not recorded'}`,
+    `Browser: Chrome 130 · macOS`,
+    `Written: ${h.nowIso}`,
+  ].join('\n');
+}
+
+function waysBack(h) {
+  const staff = h.role === 'staff';
+  return `<div class="hp-row" style="border-top:1px solid var(--paper-2)">
+      <p class="hp-h3">Learn &amp; Help.</p>
+      <p class="hp-prose">At the bottom of the sidebar. Replay any page’s tour, or bring back the tips you dismissed. This page names it rather than pretending to a switch it does not hold.</p>
+    </div>
+    <div class="hp-row">
+      <p class="hp-h3">The app guide.</p>
+      <p class="hp-prose">The book: folio 0 is the last invoice through the door, then the registers in order.</p>
+      <div style="margin-top:10px"><a class="hp-btn" href="#">Open the app guide</a></div>
+    </div>
+    <div class="hp-row">
+      <p class="hp-h3">Services &amp; permissions.</p>
+      <p class="hp-prose">Email, web and privacy access, in Settings. Separate from the tours.</p>
+      <div style="margin-top:10px">${staff ? '<span class="hp-btn" aria-disabled="true">Manage services — a manager’s page</span>' : '<a class="hp-btn" href="#">Manage services</a>'}</div>
+    </div>
+    <div class="hp-row">
+      <p class="hp-h3">Your profile.</p>
+      <p class="hp-prose">Password, connected sign-ins and what may act as you. Yours, not the restaurant’s.</p>
+      <div style="margin-top:10px"><a class="hp-btn" href="#">Open your profile</a></div>
+    </div>`;
+}
+
+/* Sketch-board helpers */
+function label(text, small) {
+  return `<div class="sk-label">${text}${small ? `<small>${small}</small>` : ''}</div>`;
+}
+
+/* Folds are clickable in the sketch — settle 320ms, reduced-motion honoured by CSS. */
+function wireFolds(root) {
+  root.querySelectorAll('[data-fold]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.getAttribute('aria-disabled') === 'true') return;
+      const id = btn.getAttribute('data-fold');
+      const fold = root.querySelector('#' + CSS.escape(id)) || btn.parentElement.querySelector('#' + CSS.escape(id));
+      const open = btn.getAttribute('aria-expanded') !== 'true';
+      btn.setAttribute('aria-expanded', String(open));
+      const chev = btn.querySelector('.hp-chev');
+      if (chev) chev.setAttribute('data-open', String(open));
+      if (fold) fold.setAttribute('data-open', String(open));
+    });
+  });
+}
+
+/* Direction B — Is it me, the house, or the service? The triage ladder. */
+
+const B_SCOPE_WORD = { a: 'acts due now', b: 'acts due now + curation', c: 'every queue' };
+const NUM_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+function numWord(n) { return NUM_WORDS[n] || String(n); }
+function bRows(h, scope) { const w = h.waiting; return scope === 'c' ? [...w.a, ...w.b, ...w.c] : scope === 'b' ? [...w.a, ...w.b] : w.a; }
+/* A floor is not a total: a full page (the route's limit) makes the figure "at least". */
+function bFigure(h, scope) {
+  const rows = bRows(h, scope);
+  const n = rows.reduce((s, r) => s + r.n, 0);
+  const floored = rows.some((r) => r.floor && r.n >= r.floor);
+  return { rows, n, floored, text: (floored ? 'at least ' : '') + n };
+}
+
+/* THE RUNG RULE, in one place — read by the ladder, the rail and the mail body alike,
+   so they cannot disagree. A rung is CLEAR only when every row answered for itself
+   (live, or probed ok). Otherwise it carries the word for its worst row, in this order:
+   fault > unread > refused > unproven > open. The first rung that is not clear is where
+   the rail starts — a rule, never a judgement. Registers with no reader are disclosed
+   inside a rung, never counted toward its word. "Not shown" (a rung the page skips for
+   the role, fork 2a) and "from the session" (rung 4 under the cascade) are neither
+   clear nor a start. */
+const B_RANK = ['fault', 'unread', 'refused', 'unproven', 'open', 'clear'];
+function bWorst(ws) { for (const w of B_RANK) if (ws.includes(w)) return w; return 'clear'; }
+function bState(h, o = {}) {
+  const scope = o.scope || 'a';
+  const staff = h.role === 'staff';
+  const st = o.state;
+  const cascade = st === 'unreachable';
+  const service = cascade ? 'fault' : st === 'loading' ? 'reading' : 'clear';
+  const connWords = h.connections.map((x) => x.k === 'live' ? 'clear' : x.k === 'failed' ? 'fault' : x.k === 'refused' ? 'refused' : x.k === 'absent' ? 'clear' : 'unproven');
+  /* Rung 2 bundles connections with what last failed (ADR 0144 §2 puts them together);
+     a real, readable failure counts toward the rung's word even when no connections
+     row itself is k:'failed' — otherwise a refused connections register could hide a
+     recorded fault sitting right below it. Registers with no reader never count. */
+  const failedReal = h.failed.some((f) => !f.noreader);
+  let conn;
+  if (o.staffMode === 'a' && staff) conn = 'notshown';
+  else if (cascade || st === 'unread') conn = 'unread';
+  else if (st === 'loading') conn = 'reading';
+  else conn = bWorst(failedReal ? [...connWords, 'fault'] : connWords);
+  const fig = bFigure(h, scope);
+  let waiting;
+  if (cascade || st === 'unread') waiting = 'unread';
+  else if (st === 'loading') waiting = 'reading';
+  else if (st === 'empty' || fig.n === 0) waiting = 'clear';
+  else waiting = 'open';
+  const you = cascade ? 'session' : 'clear';
+  const words = [service, conn, waiting, you];
+  const startIdx = words.findIndex((w) => !['clear', 'reading', 'session', 'notshown'].includes(w));
+  return {
+    scope, staff, st, cascade, words, service, conn, waiting, you, fig, startIdx,
+    failedConn: h.connections.filter((x) => x.k === 'failed'),
+    refusedConn: h.connections.filter((x) => x.k === 'refused'),
+    unprovenConn: h.connections.filter((x) => x.k === 'recorded' || x.k === 'unproven'),
+    liveConn: h.connections.filter((x) => x.k === 'live'),
+  };
+}
+const B_WORD = { clear: 'clear', fault: 'fault', open: 'open', unread: 'unread', refused: 'refused', unproven: 'unproven', reading: 'reading', notshown: 'not shown', session: 'from the session' };
+
+/* A rung: number on the spine, a state WORD (never a colour), the reading, the sources. */
+function rung(n, o) {
+  const k = o.state;
+  return `<li class="b-rung" data-state="${k}" ${o.start ? 'data-start="true"' : ''}>
+    <span class="b-rung__n"><span>${n}</span></span>
+    <div class="b-rung__body">
+      <div class="b-rung__head">
+        <p class="hp-eyebrow">${esc(o.eyebrow)}</p>
+        <span class="b-word" data-k="${k}">${B_WORD[k]}</span>
+        ${o.start ? '<span class="b-start">start here</span>' : ''}
+      </div>
+      <p class="hp-h3 b-rung__title">${o.title}</p>
+      ${o.body || ''}
+      ${o.sources ? `<ul class="hp-sources">${o.sources.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
+    </div>
+  </li>`;
+}
+
+function rungService(h, S, o = {}) {
+  const s = h.service;
+  if (o.variant === 'none') return '';
+  if (S.service === 'fault') {
+    return rung(1, { eyebrow: 'The service · this deployment, not this house', state: 'fault', start: S.startIdx === 0, title: 'The gateway did not answer.',
+      body: `<p class="hp-prose">client said: Network Error · gave up after 8.0 s. Nothing below could be read either — a down gateway is why the rungs under this one say unread, not clear.</p><div style="margin-top:10px"><button class="hp-btn" type="button">Check again</button></div>`,
+      sources: ['GET /health/ready · public route', 'read ' + h.now + ' by this page'] });
+  }
+  if (S.service === 'reading') return rung(1, { eyebrow: 'The service · this deployment, not this house', state: 'reading', title: 'Asking the gateway whether it can serve requests.', body: `<div class="hp-skel" style="width:52%;margin-top:8px"></div>`, sources: ['GET /health/ready · one request in flight'] });
+  return rung(1, { eyebrow: 'The service · this deployment, not this house', state: 'clear', title: 'The service is up and can reach its database.',
+    body: `<p class="b-facts"><span class="hp-mono">answered ${s.http} in ${s.ms}</span><span class="hp-mono">database ${s.db}</span><span class="hp-mono">build ${s.build}</span><span class="hp-mono">${s.since}</span></p><p class="hp-prose hp-prose--muted">One answer for every house on this deployment. A clear rung here does not clear the ones below.</p>`,
+    sources: ['GET /health/ready · public route · memoised 5 s by the gateway', 'read ' + h.now + ' by this page'] });
+}
+
+/* What last failed lives inside rung 2 — ADR 0144 §2 puts it on top with the
+   connections. Three clocks, not ordered across them. FAILED is a recorded failure;
+   NO READER is a register no route can list; NOT SHOWN is skipped for the role. */
+function lastFailedBlock(h) {
+  const rows = h.failed;
+  const recorded = rows.filter((f) => !f.noreader && !f.role);
+  const rest = rows.filter((f) => f.noreader || f.role);
+  const line = (f) => {
+    const word = f.noreader ? 'no reader' : f.role ? 'not shown' : f.none ? 'none' : 'failed';
+    const k = f.noreader || f.role || f.none ? 'recorded' : 'failed';
+    return `<li><span class="hp-chip" data-k="${k}">${word}</span><span class="b-conn__name">${esc(f.what)} <span class="hp-mono hp-mono--dim">· ${esc(f.when)}</span></span><span class="hp-mono hp-mono--dim">${esc(f.why)} · ${esc(f.src)}</span></li>`;
+  };
+  return `<p class="hp-eyebrow" style="margin-top:14px">Last failed · three clocks, not ordered across them</p>
+    ${recorded.length ? `<ul class="b-conn">${recorded.map(line).join('')}</ul>` : `<p class="hp-prose hp-prose--muted" style="margin-top:6px">No failure is recorded in the two registers this page can read: inbox reads, house letters.</p>`}
+    ${rest.length ? `<ul class="b-conn">${rest.map(line).join('')}</ul>` : ''}`;
+}
+
+function rungConnections(h, S, o = {}) {
+  const c = h.connections;
+  if (S.conn === 'notshown') {
+    return rung(2, { eyebrow: 'The house', state: 'notshown', title: 'This rung is read by owners and managers.', body: `<p class="hp-prose">${esc(h.owner)} and ${esc(h.manager)} can read which connections are live and what last failed. Nothing is read for a staff account, and nothing is refused, either — the rung is not shown for your role.</p>`, sources: ['fork 2(a)'] });
+  }
+  if (S.conn === 'reading') return rung(2, { eyebrow: 'The house · connections', state: 'reading', title: 'Reading five registers.', body: `<div class="hp-skel" style="width:60%;margin-top:8px"></div><div class="hp-skel" style="width:48%;margin-top:8px"></div>` });
+  if (S.conn === 'unread') return rung(2, { eyebrow: 'The house · connections', state: 'unread', start: S.startIdx === 1, title: 'Could not be read.', body: `<p class="hp-status hp-status--trouble">GET /mcp-connections answered 500 at ${h.now}; GET /integrations/oauth/connections answered 503 — since 2026-09-12 a failed read there refuses in words instead of answering an empty list, so nothing is drawn as “nothing connected”. An unread rung is where to start, the same as a fault: it cannot be cleared.</p>`, sources: ['GET /pos-hub/status/:restaurantId · answered', 'GET /mcp-connections · 500', 'GET /integrations/oauth/connections · 503, a refusal in words'] });
+  const list = `<ul class="b-conn">${c.map((x) => `<li><span class="hp-chip" data-k="${x.k}">${esc(x.word)}</span><span class="b-conn__name">${esc(x.name)}</span><span class="hp-mono hp-mono--dim">${esc(x.detail)}</span></li>`).join('')}</ul>`;
+  let title;
+  if (S.conn === 'fault') {
+    if (S.failedConn.length) { const f = S.failedConn[0]; const [when, why] = f.detail.split(' · '); title = `${S.failedConn.length} of ${c.length} failed: the ${esc(f.name)}, ${esc(why)}, ${esc(when)}.`; }
+    else { const f = h.failed.find((x) => !x.noreader); title = `A failure is recorded: ${esc(f.what)}, ${esc(f.why)}, ${esc(f.when)}.`; }
+  }
+  else if (S.conn === 'refused') title = `${S.liveConn.length} answer for themselves · ${S.refusedConn.length} registers refused for your role.`;
+  else if (S.conn === 'unproven') title = `Nothing failed; ${S.unprovenConn.length} of ${c.length} are recorded, not proven.`;
+  else title = 'Every connection answered for itself; none failed.';
+  const note = S.conn === 'unproven' ? `<p class="hp-prose hp-prose--muted">Recorded is not proven: no refresh failure is ever written for a calendar grant, a declared MCP server is a row until it is probed, and an expired grant is expiry, not failure. That is why this rung says “unproven”, not “clear”.</p>` : '';
+  return rung(2, { eyebrow: 'The house · connections and what last failed', state: S.conn, start: S.startIdx === 1 && !o.noStart, title,
+    body: list + note + lastFailedBlock(h),
+    sources: ['GET /pos-hub/status/:restaurantId', 'GET /mcp-connections', 'GET /integrations/oauth/connections', S.staff ? 'GET /integrations/oauth/house-grants → 403' : 'GET /integrations/oauth/house-grants', ...(S.staff ? ['GET /billing/provider → 403', 'GET /payment-methods → 403'] : []), 'GET /communications/letters/sender', ...(S.staff ? [] : ['GET /conversations/threads?status=failed']), 'read ' + h.now] });
+}
+
+function rungWaiting(h, S, o = {}) {
+  const { rows, text } = S.fig;
+  const ctl = `<span class="hp-mono hp-mono--dim">counting: ${B_SCOPE_WORD[S.scope]}</span>`;
+  if (S.waiting === 'reading') return rung(3, { eyebrow: 'The house · waiting', state: 'reading', title: 'Reading three queues.', body: `<div class="hp-skel" style="width:44%;margin-top:8px"></div>` });
+  if (S.waiting === 'unread') return rung(3, { eyebrow: 'The house · waiting', state: 'unread', start: S.startIdx === 2, title: 'Could not be read.', body: `<p class="hp-status hp-status--trouble">GET /one-tap-actions/pending answered 500 at ${h.now}. The count is not 0; the two queues that answered are listed.</p><ul class="b-q">${rows.slice(1).map(bQ).join('')}</ul>`, sources: ['read ' + h.now + ' · the count route /pending/count is never used: it answers 0 on a failed read'] });
+  if (S.waiting === 'clear') return rung(3, { eyebrow: 'The house · waiting', state: 'clear', title: 'Nothing is waiting on the house.', body: `<p class="hp-prose hp-prose--muted">Three routes answered with empty lists at ${h.now}. ${ctl}</p>`, sources: ['GET /one-tap-actions/pending', 'GET /procurement/orders/pending', 'GET /ask-ai/actions'] });
+  return rung(3, { eyebrow: 'The house · waiting', state: 'open', start: S.startIdx === 2, title: `${text} ${S.scope === 'a' ? 'acts due now' : 'items waiting'}${S.staff ? ', 1 of them yours' : ''}. A queue, not a fault.`,
+    body: `<div style="margin:6px 0 4px">${ctl}</div><ul class="b-q">${rows.map(bQ).join('')}</ul>`,
+    sources: [...new Set(rows.map((r) => r.src)), ...(S.fig.floored ? ['proposals: the route stops at 20 — a full page is a floor, so the figure reads “at least”'] : []), 'read ' + h.now] });
+}
+function bQ(r) {
+  return `<li><span class="hp-fig b-q__n">${r.n}</span><span class="b-q__what">${esc(r.what)}${r.floor && r.n >= r.floor ? ' <span class="hp-chip" data-k="floor">at least</span>' : ''}<span class="hp-mono hp-mono--dim b-q__d">${esc(r.detail)}</span></span>${r.cannot ? '<span class="hp-mono hp-mono--dim">a manager’s act</span>' : r.event ? '<a class="hp-link" href="#">Open in Ask AI</a>' : '<a class="hp-link" href="#">Open</a>'}</li>`;
+}
+
+/* Rung 4 is the person. It is CLEAR for a staff account too: the refusals are on
+   the reads (rung 2), not on the person — what the role may not do is listed here. */
+function rungYou(h, S) {
+  if (S.you === 'session') return rung(4, { eyebrow: 'You', state: 'session', title: `${esc(h.person)} · ${esc(h.roleLabel.toLowerCase())} at ${esc(h.name)} — from the session, not from a read.`, sources: ['the signed-in token; GET /auth/me/role not reached'] });
+  if (S.staff) {
+    return rung(4, { eyebrow: 'You', state: 'clear', title: `${esc(h.person)} · staff at ${esc(h.name)}.`,
+      body: `<dl class="hp-kv" style="margin-top:8px"><dt>you may</dt><dd>confirm your own one-tap acts · change your profile · read the till’s status and the MCP list</dd><dt>you may not</dt><dd>approve orders (Kerem can) · read the house’s grants or how the house pays — refused by the gateway on rung 2, printed there, never hidden</dd><dt>ask</dt><dd>${esc(h.owner)} · ${esc(h.manager)}</dd></dl>`,
+      sources: ['GET /auth/me/role', 'GET /auth/me', 'the reads refused on rung 2 are refused by the gateway, not by this page — billing’s refusal is ADR 0114 G19'] });
+  }
+  return rung(4, { eyebrow: 'You', state: 'clear', title: `${esc(h.person)} · owner at ${esc(h.name)}.`,
+    body: `<dl class="hp-kv" style="margin-top:8px"><dt>you may</dt><dd>approve orders · reconnect a grant · change settings · invite the team</dd><dt>linked sign-ins</dt><dd>Google</dd></dl>`,
+    sources: ['GET /auth/me/role', 'GET /auth/me · linkedProviders'] });
+}
+
+function ladder(h, S, o = {}) {
+  return `<ol class="b-ladder">
+    ${rungService(h, S, { variant: o.serviceVariant })}
+    ${S.cascade ? rung(2, { eyebrow: 'The house · connections', state: 'unread', title: 'Not read — the gateway is down for you.', body: `<p class="hp-prose hp-prose--muted">Every house read goes through the same gateway. Nothing here is a fault of the house until it can be read.</p>` }) : rungConnections(h, S, o)}
+    ${S.cascade ? rung(3, { eyebrow: 'The house · waiting', state: 'unread', title: 'Not read.', body: `<p class="hp-prose hp-prose--muted">The queues are still there. This page cannot say how long they are.</p>` }) : rungWaiting(h, S, o)}
+    ${rungYou(h, S)}
+  </ol>`;
+}
+
+/* The rail's line follows the rule: the first rung that is not clear. */
+function startLine(h, S) {
+  const i = S.startIdx;
+  if (i === 0) return { title: 'Start at rung 1: the service.', body: 'Nothing on your side will fix it. Check again in a minute; if it stays down, write to a person — the message carries what the page could and could not read.', faqs: ['is-it-down'] };
+  if (i === 1) {
+    if (S.conn === 'unread') return { title: 'Start at rung 2: it could not be read.', body: 'Unread is not clear. Check again; if the rung stays unread, write to a person and say which read failed — the message names it.', faqs: ['is-it-down', 'reconnect-gmail'] };
+    if (S.conn === 'fault') {
+      if (S.failedConn.length) { const f = S.failedConn[0]; const [when, why] = f.detail.split(' · '); return { title: `Start at rung 2: the ${f.name}.`, body: `${why[0].toUpperCase() + why.slice(1)}, ${when}. Reconnecting is a manager’s act on Connections; the reader resumes from its cursor. Nothing else on the ladder is a fault.`, faqs: ['reconnect-gmail', 'services-permissions'], act: true }; }
+      const f = h.failed.find((x) => !x.noreader);
+      return { title: `Start at rung 2: ${f.what}.`, body: `${f.why[0].toUpperCase() + f.why.slice(1)}, ${f.when}. The line above says why — if it was Google that refused the token, reconnecting is a manager’s act on Connections; if the house stopped using it, ask a manager. Nothing else on the ladder is a fault.`, faqs: ['reconnect-gmail', 'services-permissions'], act: true };
+    }
+    if (S.conn === 'refused') return { title: `Start at rung 2: ${numWord(S.refusedConn.length)} registers are refused for your role.`, body: `That is the house working as declared, not a fault: the house’s grants and how it pays are a manager’s read. Ask ${h.manager}. Rung 3 holds two orders only a manager can approve.`, faqs: ['who-edits-settings', 'invite-team'] };
+    if (S.conn === 'unproven') return { title: `Start at rung 2: nothing failed; ${numWord(S.unprovenConn.length)} connections are unproven.`, body: 'A calendar grant never writes a failure, a declared MCP server is a row until it is probed, an expired grant is expiry. If the page that misbehaves is one of these, this is why it cannot be known here — probe it on Connections.', faqs: ['services-permissions', 'is-it-down'] };
+  }
+  if (i === 2) return { title: `Start at rung 3: ${S.fig.text} acts due now.`, body: 'A queue, not a fault. Each opens the page that owns it; nothing is approved here. If a page misbehaves, name it when you write.', faqs: ['page-tours'] };
+  return { title: 'Every rung is clear.', body: 'If a page still misbehaves, the fault is in that page, not the service or the house — name the page when you write.', faqs: ['page-tours', 'password-or-login'] };
+}
+
+/* The Ask entry is gated on the ROUTE shipping — ADR 0145: not until its readings pass;
+   on this tree neither the route nor a flag exists (ADR 0145:38, App.tsx has no
+   path="/ask"), and ADR 0149 deletes the flag registry at cutover. On-state hypothetical. */
+function askCard(o = {}) {
+  let inner;
+  if (o.askVariant === 'card') inner = `<p class="hp-h3" style="margin-top:6px">Ask AI, on any page.</p><p class="hp-prose">A proposal you confirm, never an act taken for you.</p><div style="margin-top:10px"><a class="hp-btn" href="#">Open Ask AI</a> <span class="hp-mono hp-mono--dim" style="margin-left:8px">or press ⌘⇧K</span></div>`;
+  else if (o.askVariant === 'none') inner = `<p class="hp-prose hp-prose--muted" style="margin-top:6px">No entry: /ask is not on this ladder.</p>`;
+  else if (o.askOn) inner = `<p class="hp-h3" style="margin-top:6px">Mudavym answers here. <span class="hp-chip" data-k="recorded" style="vertical-align:middle;margin-left:4px">hypothetical</span></p><p class="hp-prose">Out of a reading, with the reading named (ADR 0145).</p><div style="margin-top:10px"><a class="hp-btn" href="#">Open /ask</a></div><p style="margin:8px 0 0"><span class="hp-mono hp-mono--dim">drawn for the day /ask ships · ADR 0145’s shipping condition is not met on this tree</span></p>`;
+  else inner = `<p class="hp-h3" style="margin-top:6px">Mudavym answers here.</p><p class="hp-prose hp-prose--muted">Not available: /ask is not a route on this deployment.</p><p style="margin:6px 0 0"><span class="hp-mono hp-mono--dim">gated on the route shipping, not on a flag · ADR 0145: not until its readings pass</span></p>`;
+  return `<div class="b-rail__card"><p class="hp-eyebrow">Mudavym</p>${inner}</div>`;
+}
+
+/* ONE message body for the whole direction: the rail's button, the 620 panel and the
+   "Reach a person" fold all show this text. */
+function bMailBody(h, S, o = {}) {
+  const s = h.service;
+  const w = S.words;
+  const up = (x) => (x === 'clear' ? 'clear' : B_WORD[x].toUpperCase());
+  let d2;
+  if (S.conn === 'fault') {
+    if (S.failedConn.length) { const f = S.failedConn[0]; const [when, why] = f.detail.split(' · '); d2 = `${f.name}, ${why}, ${when}`; }
+    else { const f = h.failed.find((x) => !x.noreader); d2 = `${f.what}, ${f.why}, ${f.when}`; }
+  }
+  else if (S.conn === 'refused') d2 = `${S.refusedConn.length} registers refused for the role: house grants, billing`;
+  else if (S.conn === 'unproven') d2 = `nothing failed; ${S.unprovenConn.length} recorded, not proven`;
+  else if (S.conn === 'unread') d2 = 'GET /mcp-connections 500 · GET /integrations/oauth/connections 503';
+  else if (S.conn === 'notshown') d2 = 'not shown for a staff account';
+  else d2 = 'every connection answered for itself';
+  const d3 = S.waiting === 'unread' ? 'GET /one-tap-actions/pending 500; the count is not 0' : S.waiting === 'clear' ? 'nothing' : `${S.fig.text} acts due now${S.staff ? ', 1 of them mine' : ''}`;
+  return [
+    `Mudavym — the four rungs, read ${h.now}`,
+    `1 · the service (deployment): ${up(w[0])}${S.service === 'clear' ? ` — ${s.http} in ${s.ms}, build ${s.build}` : ' — Network Error, gave up after 8.0 s'}`,
+    `2 · the house’s connections: ${up(w[1])} — ${d2}`,
+    `3 · waiting on the house: ${up(w[2])} — ${d3}`,
+    `4 · you: ${up(w[3])} — ${h.person}, ${h.role}`,
+    `Came from: ${o.from || 'not recorded'}`,
+    `No reader: dispatcher last run (in memory) · Mudavym failed executions (no route)`,
+  ].join('\n');
+}
+
+function rail(h, S, o = {}) {
+  const L = startLine(h, S);
+  const entries = FAQ.filter((e) => L.faqs.includes(e.slug));
+  return `<aside class="b-rail">
+    <div class="b-rail__card">
+      <p class="hp-eyebrow hp-eyebrow--seal">What to do next</p>
+      <p class="hp-h3" style="margin-top:6px">${L.title}</p>
+      <p class="hp-prose">${L.body}</p>
+      ${entries.length ? `<ul class="b-rail__faq">${entries.map((e) => `<li><a class="hp-link" href="#faq-${e.slug}">${esc(e.q)}</a></li>`).join('')}</ul>` : ''}
+      ${L.act ? `<div style="margin-top:12px"><a class="hp-btn hp-btn--seal" href="#">Reconnect on Connections</a></div>` : ''}
+    </div>
+    <div class="b-rail__card">
+      <p class="hp-eyebrow">A person</p>
+      <p class="hp-mono" style="color:var(--ink-1);margin-top:6px">support@mudavym.com</p>
+      <p class="hp-prose hp-prose--muted">The message carries the four rungs as read at ${h.now} — the same text as “What the message carries” below. You see it before it opens.</p>
+      <div style="margin-top:10px"><button class="hp-btn hp-btn--seal" type="button">Write to support</button></div>
+      <p style="margin:8px 0 0"><span class="hp-mono hp-mono--dim">Slack: no channel is configured for this deployment</span></p>
+    </div>
+    ${askCard(o)}
+  </aside>`;
+}
+
+/* B's own "Reach a person": the address, the Slack sentence, and the ONE message body
+   in a fold — no second block, no second promise. */
+function bContact(h, S, o = {}) {
+  const id = o.id || 'blk-b';
+  return `<div class="hp-grid2">
+    <div class="hp-card">
+      <p class="hp-eyebrow">Email</p>
+      <p class="hp-mono" style="font-size:14px;margin:8px 0 0;color:var(--ink-1);word-break:break-all">support@mudavym.com</p>
+      <p class="hp-prose">Opens a message with the four rungs already in it — the same “Write to support” as the rail; the text is shown before your mail app opens.</p>
+      <div style="margin-top:12px"><button class="hp-btn hp-btn--seal" type="button">Write to support</button></div>
+      <p style="margin:10px 0 0"><span class="hp-mono hp-mono--dim">VITE_SUPPORT_EMAIL · set at build · <span style="white-space:nowrap">decided 2026-09-16 · ADR 0143 row 8</span></span></p>
+    </div>
+    <div class="hp-card">
+      <p class="hp-eyebrow">Slack</p>
+      <p class="hp-h3" style="margin-top:8px">No support channel is configured for this deployment.</p><p class="hp-prose hp-prose--muted">No link is drawn to a default workspace. Whether Slack exists at all is the founder’s call; until then this card is a sentence.</p><p style="margin:10px 0 0"><span class="hp-mono hp-mono--dim">VITE_SUPPORT_SLACK_URL — unset at build time</span></p>
+    </div>
+  </div>
+  <div style="margin-top:14px">
+    <button type="button" class="hp-faq-q" aria-expanded="${o.blockOpen ? 'true' : 'false'}" data-fold="${id}" style="padding:10px 0">
+      <span>What the message carries</span><span class="hp-chev" data-open="${o.blockOpen ? 'true' : 'false'}">▼</span>
+    </button>
+    <div id="${id}" class="hp-fold" data-open="${o.blockOpen ? 'true' : 'false'}"><div>
+      <pre class="hp-pre">${esc(bMailBody(h, S, o))}</pre>
+      <div style="margin-top:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="hp-btn">Copy instead</button>
+        <span class="hp-mono hp-mono--dim">nothing leaves this page until you send it · absences are written as “not recorded”</span>
+      </div>
+    </div></div>
+  </div>`;
+}
+
+function pageB(h, o = {}) {
+  const S = bState(h, o);
+  const L = startLine(h, S);
+  const groups = [
+    ['Rung 1 · the service', ['is-it-down']],
+    ['Rung 2 · the house', ['reconnect-gmail', 'services-permissions']],
+    ['Rung 3 · what is waiting', []],
+    ['Rung 4 · you', ['who-edits-settings', 'invite-team', 'password-or-login', 'page-tours', 'privacy']],
+  ];
+  const routes = S.staff ? 'thirteen' : 'twelve';
+  return `${header(h)}<div class="hp-wrap b-wrap">
+    ${masthead(h, 'Is it me, the house, or the service', 'Four rungs, read top to bottom. A rung is clear only when every row answered for itself; otherwise it carries the word for its worst row, and the first rung that is not clear is where to start. The rungs under it are still drawn, because a clear rung never clears the ones below it.')}
+    <p class="b-startline"><span class="hp-eyebrow hp-eyebrow--seal">What to do next</span><span class="hp-h3" style="display:block;margin-top:4px">${L.title}</span><a class="hp-link" href="#rail-${o.id || 'b'}" style="display:inline-block;margin-top:6px;font-size:12.5px">The rail, under the ladder</a></p>
+    <div class="b-cols">
+      <div>${ladder(h, S, o)}</div>
+      <div id="rail-${o.id || 'b'}">${rail(h, S, o)}</div>
+    </div>
+    <section class="hp-sec"><p class="hp-eyebrow">Questions</p><h2 class="hp-h2">Questions people ask, by rung</h2>
+      ${groups.map(([g, slugs]) => `<p class="hp-eyebrow hp-eyebrow--seal" style="margin-top:18px">${g}</p>${slugs.length ? faqList(h, { entries: FAQ.filter((e) => slugs.includes(e.slug)), open: o.faqOpen === undefined ? 'reconnect-gmail' : o.faqOpen, noFoot: true }) : '<p class="hp-prose hp-prose--muted" style="margin:4px 0 0">No written question belongs to the queue; each item opens the page that owns it.</p>'}`).join('')}
+      <p style="margin:10px 0 0"><span class="hp-mono hp-mono--dim">each answer is a deep link: /help#its-slug · eight entries in source (hp-faq.ts) · each destination route checked against App.tsx by test (hp-faq.test.ts); the prose is checked by no test · the rung tag is a second field on the entry</span></p>
+    </section>
+    <section class="hp-sec"><p class="hp-eyebrow">A person</p><h2 class="hp-h2">Reach a person</h2>${bContact(h, S, { id: 'blk-' + (o.id || 'b'), blockOpen: !!o.blockOpen, from: '/communications' })}</section>
+    <section class="hp-sec"><p class="hp-eyebrow">Ways back in</p><h2 class="hp-h2">Ways back in</h2>${waysBack(h)}</section>
+    <footer style="margin-top:34px"><p class="hp-mono hp-mono--dim">four rungs, ${routes} routes for ${S.staff ? 'a staff' : 'an owner'} account, each read on its own · a rung is clear, fault, open, unread, refused or unproven — a word, never a colour · nothing on this page is stored</p></footer>
+  </div>`;
+}
+
+function panelSupport(h) {
+  const S = bState(h);
+  return `<div class="ovl"><div class="ovl__scrim"></div>
+    <div class="ovl__panel" role="dialog" aria-label="Write to support with these readings">
+      <p class="hp-eyebrow">A question · centred panel</p>
+      <h2 class="ovl__title">Write to support with these readings?</h2>
+      <p class="hp-prose">Your mail app opens with this in the body. Nothing is sent by this page; the message is yours to finish.</p>
+      <dl class="hp-kv" style="margin-top:14px"><dt>to</dt><dd>support@mudavym.com</dd><dt>subject</dt><dd>Mudavym support — ${esc(h.name)}</dd></dl>
+      <pre class="hp-pre" style="margin-top:12px">${esc(bMailBody(h, S, { from: '/communications' }))}</pre>
+      <div class="ovl__foot"><a class="hp-btn hp-btn--seal" href="#">Open my mail</a><button class="hp-btn" type="button">Copy instead</button><button class="hp-btn" type="button">Not now</button></div>
+    </div></div>`;
+}
+
+/* Data variants for the states: the rule needs rows to act on. */
+function withConnections(h, connections, failed) { return { ...h, connections, failed: failed || h.failed }; }
+const CLEAR_CONN = (h) => [
+  h.connections[0],
+  { ...h.connections[1], k: 'live', word: 'read ok', detail: 'inbox read 2:02 PM today · ok' },
+  h.connections[3],
+];
+
+function bForkCells(h) {
+  const cell = (t, inner, ground) => `<div class="sk-cell"><div class="sk-cell-h">${t}</div><div class="mudavym"${ground ? ` data-ground="${ground}"` : ''}><div class="hp-wrap" style="padding:14px 18px 18px;max-width:none">${inner}</div></div></div>`;
+  const lad = (inner) => `<ol class="b-ladder b-ladder--cell">${inner}</ol>`;
+  const tr = HOUSES.tr;
+  const S = bState(h), Str = bState(tr), StrA = bState(tr, { staffMode: 'a' });
+  const railCards = (cards) => `<aside class="b-rail" style="margin-top:14px">${cards}</aside>`;
+  return [
+    cell('Fork 1 · a · acts due now <em>· 7</em>', lad(rungWaiting(h, bState(h, { scope: 'a' })))),
+    cell('Fork 1 · b · plus curation <em>· 30</em>', lad(rungWaiting(h, bState(h, { scope: 'b' })))),
+    cell('Fork 1 · c · every queue <em>· 40</em>', lad(rungWaiting(h, bState(h, { scope: 'c' })))),
+    cell('Fork 2 · a · rung 2 for owners and managers only <em>· not shown, not refused</em>', lad(rungConnections(tr, StrA, { staffMode: 'a' }))),
+    cell('Fork 2 · b · what the role allows, refusals named <em>· recommended · the rail starts at rung 2</em>', lad(rungConnections(tr, Str) + rungYou(tr, Str))),
+    cell('Fork 3 · a · keep the WIP whole <em>· the service as its own register (rung 1) plus the Ask AI card</em>', lad(rungService(h, S)) + railCards(askCard({ askVariant: 'card' }))),
+    cell('Fork 3 · b · FAQ and support only <em>· no rung 1, no Ask entry — the ladder starts at the house; the mail body and the rail still carry the readings, unchanged</em>', lad(rungConnections(h, S, { noStart: true })) + railCards(askCard({ askVariant: 'none' }))),
+    cell('Fork 3 · c · rung 1 is the deployment, labelled; Ask entry gated on /ask shipping <em>· recommended · off, then on (hypothetical) · the mail body and the rail are unchanged by this fork</em>', lad(rungService(h, S)) + railCards(`<p class="hp-eyebrow">off · the route is not on this deployment</p>${askCard({ askOn: false })}<p class="hp-eyebrow" style="margin-top:8px">on · once /ask ships</p>${askCard({ askOn: true })}`)),
+  ].join('');
+}
+
+function bStateCells(h) {
+  const cell = (t, inner, ground) => `<div class="sk-cell"><div class="sk-cell-h">${t}</div><div class="mudavym"${ground ? ` data-ground="${ground}"` : ''}><div class="hp-wrap" style="padding:14px 18px 18px;max-width:none">${inner}</div></div></div>`;
+  const lad = (inner) => `<ol class="b-ladder b-ladder--cell">${inner}</ol>`;
+  const railAfter = (hh, S) => rail(hh, S).replace('<aside class="b-rail">', '<aside class="b-rail" style="margin-top:14px">');
+  const noreader = h.failed.filter((f) => f.noreader);
+  const clearH = withConnections(h, CLEAR_CONN(h), noreader);
+  const unprovenH = withConnections(h, h.connections.filter((x) => x.k !== 'failed'), noreader);
+  const partialH = { ...h, waiting: { ...h.waiting, a: [h.waiting.a[0], h.waiting.a[1], { ...h.waiting.a[2], n: 20 }] } };
+  const trRefusedOnly = withConnections(HOUSES.tr, HOUSES.tr.connections, HOUSES.tr.failed.filter((f) => f.noreader));
+  const Sload = bState(h, { state: 'loading' }), Sclear = bState(clearH, { state: 'empty' }), Sunp = bState(unprovenH), Sunread = bState(h, { state: 'unread' }), Scas = bState(h, { state: 'unreachable' }), Str = bState(trRefusedOnly), Spart = bState(partialH);
+  return [
+    cell('Loading <em>· rungs read one by one; the rail waits on the first that is not clear</em>', lad(rungService(h, Sload) + rungConnections(h, Sload) + rungWaiting(h, Sload))),
+    cell('All clear <em>· CLEAR only when every row answered for itself (live, or probed ok); the two registers with no reader are disclosed, not counted</em>', lad(rungConnections(clearH, Sclear) + rungWaiting(clearH, Sclear)) + railAfter(clearH, Sclear)),
+    cell('Unproven <em>· nothing failed, but a recorded row is not a proven one — so the word is UNPROVEN, never clear, and the rail starts there</em>', lad(rungConnections(unprovenH, Sunp)) + railAfter(unprovenH, Sunp)),
+    cell('Unread <em>· a rung that could not be read is where to start, the same as a fault</em>', lad(rungConnections(h, Sunread) + rungWaiting(h, Sunread))),
+    cell('Unreachable <em>· the cascade: a down gateway makes rungs 2–3 unread, never clear; rung 4 is from the session, not from a read</em>', ladder(h, Scas)),
+    cell('Refused <em>· staff at Sim Meyhouse with no recorded failure: rung 2 is refused (not fault), rung 4 names what the role may not do</em>', lad(rungConnections(trRefusedOnly, Str) + rungYou(trRefusedOnly, Str))),
+    cell('Partial <em>· the proposals page is full: “at least” on the row, the title and the message</em>', lad(rungWaiting(partialH, Spart)) + `<pre class="hp-pre" style="margin-top:12px">${esc(bMailBody(partialH, Spart).split('\n')[3])}</pre>`),
+    cell('Paper ground <em>· the declared exception, the same rungs</em>', lad(rungService(h, bState(h)) + rungConnections(h, bState(h))), 'paper'),
+  ].join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const us = HOUSES.us, tr = HOUSES.tr;
+  document.getElementById('fB1').innerHTML = pageB(us, { id: 'us' });
+  document.getElementById('fB2').innerHTML = pageB(tr, { id: 'tr', faqOpen: 'who-edits-settings' });
+  document.getElementById('fB3').innerHTML = pageB(us, { id: 'ov', faqOpen: null }) + panelSupport(us);
+  document.getElementById('fB4').innerHTML = bForkCells(us);
+  document.getElementById('fB5').innerHTML = bStateCells(us);
+  document.getElementById('fB6').innerHTML = pageB(us, { id: 'm' });
+  document.querySelectorAll('.sk-frame, .sk-cell, .sk-mobile').forEach(wireFolds);
+});
+
+</script>
+</body></html>

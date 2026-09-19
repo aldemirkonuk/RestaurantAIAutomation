@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 112 · Direction C — The Paper Trail</title>
+<!-- The product self-hosts its faces; the sketch loads them from Google Fonts only so it renders from file://. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* sketch chrome — not the product */
+html, body { margin: 0; background: #d9d4cb; color: #2a2620; font-family: 'DM Sans', system-ui, sans-serif; }
+.sk-wrap { max-width: 1440px; margin: 0 auto; padding: 24px 20px 80px; }
+.sk-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; margin-bottom: 18px; }
+.sk-head h1 { margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 500; font-size: 22px; letter-spacing: -0.01em; }
+.sk-head p { margin: 0; font-size: 13px; color: #5a5348; max-width: 900px; }
+.sk-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #6b6356; margin: 34px 0 10px; display: flex; gap: 12px; align-items: baseline; }
+.sk-label small { letter-spacing: 0; text-transform: none; font-size: 12px; color: #7a7266; }
+.sk-note { font-size: 12.5px; color: #5a5348; max-width: 900px; margin: 0 0 12px; line-height: 1.5; }
+.sk-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+.sk-frame { border: 1px solid rgba(0,0,0,.18); box-shadow: 0 1px 0 rgba(255,255,255,.5) inset; }
+.sk-phone { width: 390px; box-sizing: border-box; border-radius: 28px; border: 6px solid #2a2620; overflow: hidden; background: #15130F; flex: none; }
+.sk-phone .vp-page { min-height: 760px; }
+
+/* Mudavym tokens — Warm Charcoal column verbatim (ADR 0042, ADR 0138) */
+.mudavym, .mudavym[data-ground="charcoal"] {
+  --seal: #5FB0BC; --seal-deep: #7DC3CD; --seal-tint: rgba(95,176,188,.14); --seal-ring: rgba(95,176,188,.38);
+  --paper-0: #15130F; --paper-1: #1D1813; --paper-2: #262019;
+  --ink-1: #EFE7D9; --ink-2: #C0B6A5; --ink-3: #8E8576; --ink-4: #ABA294;
+  /* no movement hue — the system defines none; movement is a sign and a word; the seal is given
+     to no figure and no mark on this page */
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif; --sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif; --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --settle: 320ms cubic-bezier(0.16,1,0.3,1); --ink-t: 160ms cubic-bezier(0.16,1,0.3,1); --turn: 420ms cubic-bezier(0.32,0.72,0,1);
+  color-scheme: dark;
+}
+.mudavym[data-ground="paper"] { --seal: #1a5e6b; --seal-deep: #14515c; --seal-tint: rgba(26,94,107,.1); --seal-ring: rgba(26,94,107,.32); --paper-0: #fffdf8; --paper-1: #f3efe6; --paper-2: #eae4d8; --ink-1: #211c16; --ink-2: #4f473c; --ink-3: #7c7365; --ink-4: #665d50; color-scheme: light; }
+@media (prefers-reduced-motion: reduce) { .mudavym * { transition-duration: 0ms !important; animation: none !important; } }
+
+.vp-page { background: var(--paper-0); color: var(--ink-1); font-family: var(--sans); font-size: 13px; line-height: 1.45; container-type: inline-size; container-name: page; min-height: 100%; }
+.vp-in { max-width: 1200px; margin: 0 auto; padding: 22px 16px 48px; }
+.vp-chrome { display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 16px; border-bottom: 1px solid var(--paper-2); font-size: 12px; color: var(--ink-2); }
+.vp-chrome .mark { width: 20px; height: 24px; display: inline-block; }
+.vp-chrome .house { font-weight: 500; color: var(--ink-1); }
+.vp-chrome .sp { flex: 1; }
+.vp-chrome .kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--paper-2); border-radius: 4px; padding: 1px 5px; color: var(--ink-3); }
+.vp-chrome .bell { width: 8px; height: 8px; border-radius: 50%; background: var(--seal); display: inline-block; margin-left: 4px; }
+.vp-wordmark { font-family: var(--serif); font-weight: 600; letter-spacing: -0.02em; font-size: 13px; line-height: 1; color: var(--ink-1); text-decoration: none; }
+.vp-wordmark b { color: var(--seal); font-weight: 600; }
+.vp-spine { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.vp-spine nav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+.vp-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 1px solid var(--paper-2); border-radius: 7px; background: var(--paper-1); color: var(--ink-2); font: inherit; font-size: 12.5px; cursor: pointer; text-decoration: none; transition: border-color var(--ink-t), background-color var(--ink-t), color var(--ink-t); white-space: nowrap; }
+.vp-btn:hover { border-color: var(--seal-ring); color: var(--ink-1); }
+.vp-btn[data-on="true"] { color: var(--ink-1); border-color: var(--ink-3); }
+.vp-btn.primary { background: var(--seal); color: var(--paper-0); border-color: var(--seal); font-weight: 500; }
+.vp-btn .n { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+.vp-crumb { margin: 20px 0 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.vp-h1 { margin: 0; font-family: var(--serif); font-size: 40px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.05; color: var(--ink-1); }
+.vp-h1 b { color: var(--seal); font-weight: 600; }
+.vp-standing { margin: 8px 0 0; font-family: var(--serif); font-style: italic; font-size: 15.5px; color: var(--ink-2); max-width: 820px; line-height: 1.45; }
+.vp-standing .src { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-left: 6px; }
+.vp-rule { border: 0; border-top: 1px solid var(--ink-1); border-bottom: 1px solid var(--ink-1); height: 3px; opacity: .5; margin: 22px 0 0; }
+.vp-rule-thin { border: 0; border-top: 1px solid var(--paper-2); margin: 0; }
+.vp-h2 { margin: 0; font-family: var(--serif); font-size: 20px; font-weight: 500; letter-spacing: -0.01em; color: var(--ink-1); }
+.vp-h2 small { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: 0; margin-left: 10px; font-weight: 400; }
+.vp-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+.vp-quiet { color: var(--ink-3); }
+.vp-num { font-family: var(--mono); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
+.pct { font-family: var(--mono); font-weight: 500; color: var(--ink-1); }
+
+/* the bottle: every identity */
+.vp-search { margin-top: 22px; max-width: 640px; }
+.vp-search label { display: block; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
+.vp-field { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border: 1px solid var(--paper-2); border-radius: 9px; background: var(--paper-1); color: var(--ink-1); font-family: var(--serif); font-size: 17px; }
+.vp-field .kbd { margin-left: auto; font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--paper-2); border-radius: 4px; padding: 1px 5px; color: var(--ink-3); }
+.vp-scope { margin: 8px 0 0; font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+.vp-scope b { color: var(--ink-2); font-weight: 500; }
+
+/* bottle head */
+.vp-bottle { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-end; }
+.vp-bottle .name { font-family: var(--serif); font-size: 28px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.1; }
+.vp-bottle .key { margin-top: 6px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+.vp-bottle .key b { color: var(--ink-2); font-weight: 500; }
+.vp-bottle .id { margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+.vp-bottle .id a { color: var(--seal); text-decoration: none; border-bottom: 1px solid var(--seal-ring); }
+.vp-trends { margin-left: auto; display: flex; gap: 8px; }
+.vp-chip { border: 1px solid var(--paper-2); border-radius: 8px; padding: 8px 12px; min-width: 120px; background: var(--paper-1); }
+.vp-chip[data-on="true"] { border-color: var(--ink-3); }
+.vp-chip .w { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.vp-chip .v { margin-top: 3px; font-family: var(--mono); font-size: 17px; font-weight: 500; }
+.vp-chip .v.down, .vp-chip .v.up { color: var(--ink-1); }
+.vp-chip .v .word { font-family: var(--sans); font-size: 11px; font-weight: 400; color: var(--ink-2); margin-left: 4px; }
+.vp-chip .v.refuse { font-family: var(--serif); font-style: italic; font-size: 13px; font-weight: 400; color: var(--ink-2); }
+.vp-chip .n { margin-top: 2px; font-size: 11px; color: var(--ink-3); }
+.vp-chip .n i { font-family: var(--serif); color: var(--ink-2); }
+
+/* the strip chart */
+.chart { margin-top: 16px; border: 1px solid var(--paper-2); border-radius: 10px; background: var(--paper-1); padding: 12px 14px 10px; }
+.chart .ch { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.chart .ch h3 { margin: 0; font-family: var(--serif); font-size: 15px; font-weight: 500; }
+.chart .ch .leg { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-2); margin-left: auto; }
+.chart .ch .leg span { display: inline-flex; align-items: center; gap: 6px; }
+.chart .ch .leg i { display: inline-block; width: 8px; height: 8px; }
+.chart .ch .leg i.sq { background: var(--ink-1); }
+.chart .ch .leg i.sqo { border: 1.5px solid var(--ink-2); box-sizing: border-box; }
+.chart .ch .leg i.ci { background: var(--ink-2); border-radius: 50%; }
+.chart .ch .leg i.cio { border: 1.5px solid var(--ink-3); border-radius: 50%; box-sizing: border-box; }
+.chart .ch .leg i.x { position: relative; }
+.chart .ch .leg i.x::before, .chart .ch .leg i.x::after { content: ''; position: absolute; left: 3px; top: -1px; width: 1.5px; height: 10px; background: var(--ink-2); transform: rotate(45deg); }
+.chart .ch .leg i.x::after { transform: rotate(-45deg); }
+.chart .scroll { margin-top: 8px; }
+.chart svg { width: 100%; height: auto; display: block; font-family: var(--mono); font-size: 11px; }
+.chart svg text { fill: var(--ink-3); }
+.chart svg .grid { stroke: var(--paper-2); stroke-width: 1; }
+.chart svg .axis { stroke: var(--ink-3); stroke-width: 1; }
+.chart svg .landed { stroke: var(--ink-1); stroke-width: 1; stroke-dasharray: 3 3; opacity: .7; }
+.chart svg .landed-t { fill: var(--ink-2); font-size: 10px; }
+.chart svg .own { fill: var(--ink-1); }
+.chart svg .agreed { fill: none; stroke: var(--ink-2); stroke-width: 1.5; }
+.chart svg .quote { fill: var(--ink-2); }       /* shape tells the class apart; no seal on a mark */
+.chart svg .pub { fill: none; stroke: var(--ink-3); stroke-width: 1.5; }
+.chart svg .outl { stroke: var(--ink-2); stroke-width: 1.5; }
+.chart svg .win { stroke: var(--ink-3); stroke-width: 1; fill: none; }
+.chart svg .win-t { fill: var(--ink-3); font-size: 9.5px; }
+.chart .foot { margin-top: 6px; font-size: 11.5px; color: var(--ink-3); line-height: 1.45; display: flex; gap: 14px; flex-wrap: wrap; }
+.chart .foot b { color: var(--ink-2); font-weight: 500; }
+
+/* the trail */
+.trail { margin-top: 22px; }
+.trail .head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.trail .head .sp { flex: 1; }
+.trail .head .filters { display: flex; gap: 6px; }
+.trail .head .filters .vp-btn { height: 26px; font-size: 11.5px; padding: 0 9px; }
+.entry { display: grid; grid-template-columns: 96px 1fr 280px; gap: 0 18px; padding: 14px 0; border-top: 1px solid var(--paper-2); }
+.entry:first-of-type { margin-top: 10px; }
+.entry .when, .waiting .w .when { font-family: var(--mono); font-size: 11px; color: var(--ink-3); padding-top: 4px; line-height: 1.5; }
+.entry .when b, .waiting .w .when b { display: block; color: var(--ink-2); font-weight: 500; font-size: 12px; }
+.paper { border: 1px solid var(--paper-2); border-radius: 9px; background: var(--paper-1); padding: 11px 13px; cursor: pointer; transition: border-color var(--ink-t); min-width: 0; }
+.paper:hover { border-color: var(--seal-ring); }
+.paper .eb { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); display: flex; gap: 8px; flex-wrap: wrap; }
+.paper .eb .cls { padding: 0 5px; border: 1px solid var(--paper-2); border-radius: 3px; text-transform: none; letter-spacing: 0; }
+.paper .r1 { margin-top: 5px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.paper .r1 .v { font-weight: 500; font-size: 14px; }
+.paper .r1 .q { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); }
+.paper .r1 .per { margin-left: auto; font-family: var(--mono); font-size: 18px; font-weight: 500; }
+.paper .r1 .per small { font-size: 11px; color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+.paper .r1 .per.seal { color: var(--seal); }
+.paper .r1 .lab { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--ink-3); color: var(--ink-2); }
+.paper .r1 .lab.agreed { border-style: dashed; color: var(--ink-3); }
+.paper .ex { margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-family: var(--mono); font-size: 11px; line-height: 1.6; white-space: pre; overflow-x: auto; }
+.paper .ex .hl { outline: 1px solid var(--seal-ring); background: var(--seal-tint); padding: 0 2px; }
+.paper .ex.said { font-family: var(--serif); font-style: italic; font-size: 13px; white-space: normal; color: var(--ink-1); border-left: 2px solid var(--ink-3); border-radius: 0; padding: 2px 10px; background: transparent; }
+.paper .r3 { margin-top: 7px; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+.paper .r3 a { color: var(--seal); text-decoration: none; border-bottom: 1px solid var(--seal-ring); }
+.paper .r3 i { font-style: normal; color: var(--ink-3); }
+/* struck by strike and colour, never opacity — the sentence saying why stays at --ink-2 */
+.paper.out .r1 .v, .paper.out .r1 .per { text-decoration: line-through; color: var(--ink-3); }
+.paper.out .r3 { font-family: var(--serif); font-style: italic; color: var(--ink-2); }
+/* the waiting band: proposals on no chart, in no chip, in no count — a person names them first */
+.waiting { margin-top: 18px; border: 1px dashed var(--ink-3); border-radius: 10px; padding: 12px 14px; }
+.waiting .wh { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.waiting .wh h3 { margin: 0; font-family: var(--serif); font-size: 15px; font-weight: 500; }
+.waiting .wh .rule { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+.waiting .w { display: grid; grid-template-columns: 96px 1fr 280px; gap: 0 18px; padding: 10px 0 0; margin-top: 10px; border-top: 1px solid var(--paper-2); }
+.waiting .w .paper { background: transparent; }
+.waiting .w .per { color: var(--ink-3); }
+.paper.more { background: transparent; border-style: dashed; font-family: var(--serif); font-style: italic; color: var(--ink-2); font-size: 13px; }
+.margin { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; padding-top: 4px; border-left: 1px solid var(--paper-2); padding-left: 14px; }
+.margin .t { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); display: block; margin-bottom: 3px; }
+.margin b { color: var(--ink-2); font-weight: 500; }
+.margin .who { display: block; font-family: var(--mono); font-size: 10.5px; margin-top: 2px; }
+.margin .undo { color: var(--seal); }
+.margin .none { font-family: var(--serif); font-style: italic; color: var(--ink-3); }
+.margin .decide { color: var(--seal); }
+
+/* record + index */
+.vp-lower { margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.vp-card { border: 1px solid var(--paper-2); border-radius: 10px; background: var(--paper-1); padding: 14px 16px; }
+.vp-card h3 { margin: 0; font-family: var(--serif); font-size: 15px; font-weight: 500; }
+.vp-card p { margin: 6px 0 0; }
+.vp-card .acts { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+.vp-index { border: 1px dashed var(--ink-3); border-radius: 10px; padding: 14px 16px; }
+.vp-index h3 { margin: 0; font-family: var(--serif); font-size: 15px; font-weight: 500; }
+.vp-index p { margin: 6px 0 0; font-size: 12px; color: var(--ink-2); }
+.vp-index .rule { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+
+/* mobile */
+@container page (max-width: 640px) {
+  .vp-in { padding: 14px 14px 40px; }
+  .vp-chrome { padding: 0 14px; gap: 10px; white-space: nowrap; }
+  .vp-chrome .hide-m { display: none; }
+  .vp-h1 { font-size: 30px; } .vp-standing { font-size: 14px; }
+  .vp-h2 small { display: block; margin: 4px 0 0; line-height: 1.5; }
+  .vp-bottle .name { font-size: 22px; }
+  .vp-trends { margin-left: 0; width: 100%; }
+  .vp-chip { flex: 1; min-width: 0; padding: 7px 9px; }
+  .vp-chip .v { font-size: 15px; }
+  .chart .ch .leg { margin-left: 0; width: 100%; gap: 10px; }
+  /* one scale, 1:1 with the desktop (900px for the 900 viewBox, so axis text stays 11px);
+     it scrolls sideways and opens on today — the script sets scrollLeft to the end */
+  .chart .scroll { overflow-x: auto; }
+  .chart svg { min-width: 900px; }
+  .chart .foot::before { content: 'Drawn at one scale, never shrunk. It opens on the last thirty days; drag left for the rest.'; color: var(--ink-2); }
+  .entry, .waiting .w { grid-template-columns: 1fr; gap: 6px; }
+  /* never below 11px; the longest line (50 columns) scrolls sideways inside the card. The strip opens scrolled to its
+     price column (the script sets scrollLeft to the end) and a shaded left edge says the line continues that way. */
+  .paper .ex { font-size: 11px; box-shadow: inset 14px 0 12px -12px rgba(0,0,0,.6); }
+  .entry .when, .waiting .w .when { padding-top: 0; display: flex; gap: 8px; align-items: baseline; }
+  .entry .when b, .waiting .w .when b { display: inline; }
+  .margin { border-left: 0; padding-left: 0; border-top: 1px dashed var(--paper-2); padding-top: 6px; }
+  .vp-lower { grid-template-columns: 1fr; }
+  .trail .head .filters { flex-wrap: wrap; }
+}
+
+/* overlays — ADR 0112, numbers from components/mudavym/sheet.css */
+.ov-stage { position: relative; height: 840px; overflow: hidden; background: var(--paper-0); }
+.ov-stage .under { position: absolute; inset: 0; padding: 22px 16px; opacity: .55; }
+.ov-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.5); }
+/* sheet width 100% max 440 (sheet.css:107-116); panel 10vh / min(620, 100%-32) / radius 14 (sheet.css:141-153); popover width 320 (Sheet.tsx:282), radius 14 */
+.ov-sheet { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; max-width: 440px; box-sizing: border-box; background: var(--paper-0); color: var(--ink-1); border-left: 1px solid var(--paper-2); box-shadow: -18px 0 48px rgba(23,19,15,.14); overflow: auto; font-family: var(--sans); }
+.ov-panel { position: absolute; left: 50%; top: 10vh; transform: translateX(-50%); width: min(620px, 100% - 32px); background: var(--paper-0); color: var(--ink-1); border: 1px solid var(--paper-2); border-radius: 14px; box-shadow: 0 24px 64px rgba(0,0,0,.4); font-family: var(--sans); container-type: inline-size; }
+.ov-pop { position: absolute; background: var(--paper-0); color: var(--ink-1); border: 1px solid var(--paper-2); border-radius: 14px; box-shadow: 0 12px 32px rgba(0,0,0,.35); width: 320px; max-width: calc(100% - 36px); font-family: var(--sans); overflow: hidden; }
+/* phone: full-width sheet; the panel becomes a bottom-anchored sheet with a grabber and detents (sketch 103) */
+.ov-stage.phone { height: 760px; }
+.ov-stage.phone .ov-sheet { max-width: 100%; border-left: 0; }
+.ov-stage.phone .ov-panel { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; max-height: 88%; border-radius: 14px 14px 0 0; border-bottom: 0; display: flex; flex-direction: column; box-sizing: border-box; }
+.ov-stage.phone .ov-panel::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--ink-3); margin: 8px auto 0; flex: none; }
+.ov-stage.phone .ov-panel .ov-head { padding-top: 12px; flex: none; }
+.ov-stage.phone .ov-panel .ov-body { overflow: auto; flex: 1; min-height: 0; }
+.ov-stage.phone .ov-panel .ov-foot { flex: none; }
+.ov-stage.phone .ov-form { grid-template-columns: 1fr; }
+.ov-stage.phone .sheetpaper { box-shadow: inset 14px 0 12px -12px rgba(0,0,0,.35); }
+.ov-stage.phone .detent { position: absolute; left: 0; right: 0; top: 12%; border-top: 1px dashed var(--ink-3); opacity: .6; }
+.ov-stage.phone .detent span { position: absolute; right: 12px; top: -16px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.ov-head { padding: 18px 22px 12px; border-bottom: 1px solid var(--paper-2); display: flex; align-items: baseline; gap: 12px; }
+.ov-head .eyebrow { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.ov-head h2 { margin: 3px 0 0; font-family: var(--serif); font-size: 20px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; }
+.ov-head .close { margin-left: auto; color: var(--ink-2); font-size: 12.5px; white-space: nowrap; border-bottom: 1px solid var(--paper-2); }
+.ov-body { padding: 14px 22px 22px; font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+.ov-body h4 { margin: 18px 0 6px; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.ov-body h4:first-child { margin-top: 0; }
+.ov-body .link { color: var(--seal); text-decoration: none; border-bottom: 1px solid var(--seal-ring); }
+.ov-body .sheetpaper { margin-top: 8px; padding: 12px 14px; border-radius: 6px; font-family: var(--mono); font-size: 11px; line-height: 1.7; white-space: pre; overflow-x: auto; }
+.ov-body .sheetpaper .hl { outline: 1px solid var(--seal-ring); background: var(--seal-tint); padding: 0 2px; }
+.ov-body .sheetpaper .dim { color: var(--ink-4); }   /* dimmed by colour on paper (--ink-4, the F18 rule), not by opacity */
+.ov-body dl { margin: 0; display: grid; grid-template-columns: 96px 1fr; gap: 6px 12px; }
+.ov-body dt { color: var(--ink-3); } .ov-body dd { margin: 0; color: var(--ink-1); }
+.ov-drawer .dec { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 9px 0; border-bottom: 1px solid var(--paper-2); }
+.ov-drawer .dec .a { color: var(--ink-1); } .ov-drawer .dec .a b { font-weight: 500; }
+.ov-drawer .dec .m { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+.ov-drawer .dec .undo { color: var(--seal); font-size: 11.5px; align-self: start; }
+.ov-drawer .dec .undo.none { color: var(--ink-3); font-family: var(--serif); font-style: italic; font-size: 12px; }
+.ov-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.ov-form .f { display: flex; flex-direction: column; gap: 5px; }
+.ov-form .f.wide { grid-column: 1 / -1; }
+.ov-form label { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.ov-form .in { min-height: 38px; box-sizing: border-box; border: 1px solid var(--paper-2); border-radius: 7px; background: var(--paper-1); padding: 7px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--ink-1); font-size: 13px; }
+.ov-form .in.mono { font-family: var(--mono); }
+.ov-form .in .ph { color: var(--ink-3); font-style: italic; font-family: var(--serif); }
+.ov-form .in .tail { margin-left: auto; color: var(--ink-3); font-size: 11px; }
+/* "required" is a word and a stronger rule, not a hue */
+.ov-form .in.req { border-color: var(--ink-2); }
+.ov-form .hint { font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+.ov-form .hint b { color: var(--ink-2); font-weight: 500; }
+.ov-form .hint.req { color: var(--ink-2); }
+@container (max-width: 480px) { .ov-form { grid-template-columns: 1fr; } .ov-body dl { grid-template-columns: 1fr; gap: 2px 0; } .ov-body dt { margin-top: 6px; } }
+.ov-form .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.ov-form .seg span { border: 1px solid var(--paper-2); border-radius: 6px; padding: 5px 9px; font-size: 12px; color: var(--ink-2); }
+.ov-form .seg span[data-on="true"] { border-color: var(--ink-3); color: var(--ink-1); }
+.ov-foot { padding: 12px 22px 18px; border-top: 1px solid var(--paper-2); display: flex; align-items: center; gap: 10px; }
+.ov-foot .note { font-size: 11.5px; color: var(--ink-3); flex: 1; line-height: 1.45; }
+.ov-foot .vp-btn.off { opacity: .5; cursor: not-allowed; }
+.ov-pop .row { padding: 9px 12px; border-bottom: 1px solid var(--paper-2); font-size: 12.5px; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.ov-pop .row:last-child { border-bottom: 0; }
+.ov-pop .row .n { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.ov-pop .row .tick { width: 14px; height: 14px; border: 1px solid var(--ink-3); border-radius: 3px; display: inline-block; margin-right: 8px; vertical-align: -2px; }
+/* the tick is ink, not seal — the seal is kept for links, the highlighted line and Confirm */
+.ov-pop .row .tick.on { background: var(--ink-2); border-color: var(--ink-2); }
+.ov-pop .row.note { display: block; font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+
+/* states */
+.st-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.st { background: var(--paper-0); color: var(--ink-1); font-family: var(--sans); border: 1px solid rgba(0,0,0,.18); padding: 16px; min-height: 300px; font-size: 12.5px; line-height: 1.5; }
+.st .tag { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.st h3 { margin: 8px 0 6px; font-family: var(--serif); font-size: 17px; font-weight: 500; line-height: 1.2; }
+.st p { margin: 0 0 8px; color: var(--ink-2); }
+.st .verbatim { font-family: var(--mono); font-size: 11px; color: var(--ink-1); border-left: 2px solid var(--ink-3); padding: 4px 8px; margin: 8px 0; overflow-wrap: anywhere; }
+.st .ph { height: 10px; border-radius: 3px; background: var(--paper-2); margin: 8px 0; }
+.st .ph.s { width: 60%; } .st .ph.m { width: 80%; }
+.st .act { color: var(--seal); }
+.st .cap { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.st .wh { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--paper-2); }
+.st .wh .w { font-family: var(--serif); font-style: italic; color: var(--ink-3); }
+@media (max-width: 1100px) { .st-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .st-grid { grid-template-columns: 1fr; } .sk-row { flex-direction: column; } .sk-row > * { width: 100%; max-width: 100%; box-sizing: border-box; flex-basis: auto; } .sk-phone { width: 100%; max-width: 390px; } }
+</style>
+</head>
+<body>
+<div class="sk-wrap">
+  <div class="sk-head">
+    <h1>Sketch 112 · Direction C — The Paper Trail</h1>
+    <p>Evidence-first. A price is a line on a paper, so the register is the papers in time order: each entry is the receipt line, the quote line, the rep's sentence or the captured page, with a link to the exact line — and the bottle's identity decision as a margin note beside it. Above, a strip chart of the same points against the last landed cost. There is no consensus figure at all. Example data, not a tenant.</p>
+  </div>
+
+  <div class="sk-label">1 · The page at desktop width <small>Harbor &amp; Vine, Brooklyn — USD house, manager signed in (Ayşe Demir), a bottle picked</small></div>
+  <p class="sk-note">Reads: the standing line from <code>identity/status</code> + <code>identity/candidates</code> (<code>complete</code>, <code>vendor-intel.controller.ts:477-481</code>) + <code>price-index/status</code>; the picker is the <em>new</em> beverage-identity search; the trail is <code>compare?identityId=</code> (new) with its <code>observations[]</code> extended; the waiting band is <code>identity/candidates</code> by identity; the posted-list register from <code>price-index/me</code> + <code>commodity-index/me</code> (ADR 0126). The chart is computed from the trail's own dates and prices — the formula is a comment in the SVG.</p>
+  <div class="sk-frame">
+  <div class="mudavym vp-page" id="stage" data-ground="charcoal">
+    <div class="vp-chrome">
+      <svg class="mark" viewBox="0 0 483 574" aria-hidden="true"><path d="M60 520V60h70l112 250L354 60h69v460h-68V210L263 420h-42L128 210v310z" fill="currentColor"/></svg>
+      <span class="house">Harbor &amp; Vine</span><span class="vp-quiet hide-m">Brooklyn</span>
+      <span class="sp"></span>
+      <span class="kbd">⌘K</span><span class="vp-quiet hide-m">Ask the book</span>
+      <span class="vp-quiet" style="margin-left:14px">Bell<span class="bell"></span></span>
+      <span class="vp-quiet" style="margin-left:14px">Ayşe D.</span>
+    </div>
+    <div class="vp-in">
+      <header class="vp-spine">
+        <a class="vp-wordmark" href="#">Mudavym<b>.</b></a>
+        <nav aria-label="Where this register is reached from"><a class="vp-btn" href="#">Cellar</a><a class="vp-btn" href="#">Documents</a><a class="vp-btn" href="#">Providers</a><a class="vp-btn" href="#" data-on="true">Vendor prices</a></nav>
+      </header>
+      <p class="vp-crumb">What the house pays</p>
+      <h1 class="vp-h1">Vendor prices<b>.</b></h1>
+      <p class="vp-standing">Every price here is a line on a paper this house holds, a page it captured, or a sentence somebody wrote down — 1,284 of them, on 41 bottles. 14 lines on your own papers and 3 captured pages name no bottle yet; they are drawn on no trail and counted in no figure — they wait for a person.</p>
+
+      <div class="vp-search">
+        <label>Pick a bottle</label>
+        <div class="vp-field">Domaine Tempier Bandol Rosé 2024 · 750 · 12<span class="kbd">/</span></div>
+        <p class="vp-scope">Searches <b>every beverage identity</b> — 3,912: wine, beer, spirits, and 212 this house named itself. A provisional identity shows its own rows and says it is provisional; nothing is pooled with a library bottle until a person confirms the link — a proposed match waits in its own band under the chart, on no chart and in no count.</p>
+      </div>
+
+      <hr class="vp-rule">
+
+      <div class="vp-bottle">
+        <div>
+          <div class="name">Domaine Tempier · Bandol Rosé · 2024</div>
+          <div class="key">identity <b>tempier|bandol-rose|2024|750|12</b> · confirmed · 17 papers name it in 90 days · 2 waiting to be named</div>
+          <div class="id">Last landed <b class="vp-num" style="color:var(--ink-1)">$30.20</b> / 750 ml · Skurnik receipt R-1187 · 4 Sep · <a href="#">the receipt line</a></div>
+        </div>
+        <div class="vp-trends" aria-label="Change, admitted quoted-class points, no minimum, base always printed">
+          <div class="vp-chip"><div class="w">7 days</div><div class="v refuse">no base</div><div class="n">2 quoted · nothing admitted in the prior 7 · <i>read the points</i></div></div>
+          <div class="vp-chip" data-on="true"><div class="w">30 days</div><div class="v down">−2.9%<span class="word">down</span></div><div class="n">6 quoted vs 3 in the prior 30</div></div>
+          <div class="vp-chip"><div class="w">90 days</div><div class="v up">+1.9%<span class="word">up</span></div><div class="n">11 quoted vs 9 in the prior 90 · not drawn</div></div>
+        </div>
+      </div>
+
+      <section class="chart" aria-label="Ninety days of sightings">
+        <div class="ch"><h3>Ninety days, per 750 ml, in USD</h3><div class="leg"><span><i class="sq"></i>landed</span><span><i class="sqo"></i>agreed</span><span><i class="ci"></i>quoted</span><span><i class="cio"></i>public page</span><span><i class="x"></i>outlier, kept</span></div></div>
+        <div class="scroll"><svg viewBox="0 0 900 272" role="img" aria-label="Strip chart of sightings: 17 marks, one per paper on the trail">
+          <!-- x: 48 + 9.29 per day from 18 Jun (d0) to today 16 Sep (d90 = 884); y: 204.6 − (price − 20) × 7.69 -->
+          <line class="grid" x1="48" x2="884" y1="204.6" y2="204.6"/><text x="6" y="208">$20</text>
+          <line class="grid" x1="48" x2="884" y1="166.2" y2="166.2"/><text x="6" y="170">$25</text>
+          <line class="grid" x1="48" x2="884" y1="127.7" y2="127.7"/><text x="6" y="131">$30</text>
+          <line class="grid" x1="48" x2="884" y1="89.2" y2="89.2"/><text x="6" y="93">$35</text>
+          <line class="grid" x1="48" x2="884" y1="50.8" y2="50.8"/><text x="6" y="54">$40</text>
+          <line class="axis" x1="48" x2="884" y1="222" y2="222"/>
+          <text x="48" y="236">18 Jun</text><text x="326.7" y="236">18 Jul</text><text x="605.4" y="236">17 Aug</text><text x="884" y="236" text-anchor="end">today</text>
+          <!-- windows: 30 days from 17 Aug (d60), 7 days from 9 Sep (d83) -->
+          <path class="win" d="M605.4 244 v6 h278.6 v-6"/><text class="win-t" x="605.4" y="266">30 days · 6 quoted</text>
+          <path class="win" d="M819.1 254 v4 h64.9 v-4"/><text class="win-t" x="884" y="266" text-anchor="end">7 days · 2 quoted · 0 public</text>
+          <!-- last landed rule: $30.20 from 4 Sep -->
+          <line class="landed" x1="772.6" x2="884" y1="126.2" y2="126.2"/><line class="landed" x1="680" x2="708" y1="14" y2="14"/><text class="landed-t" x="884" y="18" text-anchor="end">last landed $30.20 · 4 Sep</text>
+          <line class="landed" x1="560" x2="772" y1="126.2" y2="126.2" opacity=".3"/>
+          <!-- own paper, landed (3): 25 Jun $30.90 · 30 Jul $30.60 · 4 Sep $30.20 -->
+          <rect class="own" x="109" y="116.8" width="8" height="8"/><rect class="own" x="434.2" y="119.1" width="8" height="8"/><rect class="own" x="768.6" y="122.2" width="8" height="8"/>
+          <!-- agreed (1): 14 Sep $29.80 -->
+          <rect class="agreed" x="861.5" y="125.2" width="8" height="8"/>
+          <!-- quoted, admitted (11): seven feed lines, two quotes, one rep message … in date order -->
+          <circle class="quote" cx="66.6" cy="118.5" r="4"/><circle class="quote" cx="196.6" cy="116.9" r="4"/><circle class="quote" cx="326.7" cy="114.6" r="4"/><circle class="quote" cx="456.8" cy="115.4" r="4"/><circle class="quote" cx="586.8" cy="115.4" r="4"/><circle class="quote" cx="633.3" cy="119.3" r="4"/><circle class="quote" cx="651.9" cy="116.9" r="4"/><circle class="quote" cx="716.9" cy="115.4" r="4"/><circle class="quote" cx="744.7" cy="139.2" r="4"/><circle class="quote" cx="856.2" cy="129.2" r="4"/><circle class="quote" cx="874.8" cy="113.1" r="4"/>
+          <!-- public (1): 8 Sep Astor $38.99 — Wine.com the same day is waiting to be named and is not here -->
+          <circle class="pub" cx="809.8" cy="58.6" r="4"/>
+          <!-- struck (1): 2 Sep $19.90 -->
+          <line class="outl" x1="750" y1="201.4" x2="758" y2="209.4"/><line class="outl" x1="758" y1="201.4" x2="750" y2="209.4"/>
+        </svg></div>
+        <div class="foot"><span><b>No figure is drawn across the marks.</b> 17 marks, one per paper on the trail; the chips above are the admitted quoted-class change with both counts printed. There is no minimum, but a change needs a base: the 7-day chip has none and says so.</span><span>The dashed rule is what the house last paid, verified on a receipt. An agreed order is drawn hollow until its receipt lands. Proposals waiting to be named are on no chart.</span></div>
+      </section>
+
+      <section class="trail" aria-label="The papers">
+        <div class="head"><h2 class="vp-h2">The papers<small>17 in 90 days · newest first · the struck one is among the 12 quoted · 500-row window, complete</small></h2><span class="sp"></span><div class="filters"><span class="vp-btn" data-on="true">All <span class="n">17</span></span><span class="vp-btn">Own paper <span class="n">4</span></span><span class="vp-btn">Quoted <span class="n">12</span></span><span class="vp-btn">Public <span class="n">1</span></span><span class="vp-btn">Struck <span class="n">1</span></span></div></div>
+
+        <div class="entry">
+          <div class="when"><b>15 Sep</b>yesterday<br>ingested 06:10</div>
+          <div class="paper"><div class="eb"><span>Vendor feed · tier 3</span><span class="cls">quoted</span></div><div class="r1"><span class="v">Empire Merchants</span><span class="q">$31.90 · 1 × 750 ml</span><span class="per">$31.90<small>/ 750</small></span></div><div class="r3">Line 2214 of Empire's price file dated 15 Sep, ingested as written. <a href="#">The feed line ›</a> <i>· the file, not a page; no url</i></div></div>
+          <div class="margin"><span class="t">Identity</span>Named by feed key <b>EMP-88213 → GTIN 3760112034567</b><span class="who">GTIN linked by another house · 9 Sep · outcome shared, the person is not</span><span class="none">not yours to undo</span></div>
+        </div>
+        <div class="entry">
+          <div class="when"><b>14 Sep</b>2 days ago</div>
+          <div class="paper"><div class="eb"><span>Confirmed order · tier 2</span><span class="cls">own paper</span></div><div class="r1"><span class="v">Winebow</span><span class="lab agreed">agreed</span><span class="q">$357.60 · 12 × 750 ml</span><span class="per">$29.80<small>/ 750</small></span></div><div class="r3">PO-2291, confirmed by Winebow on 14 Sep. Not received: <i>an agreed price is not money paid; the receipt will say what landed.</i> <a href="#">Open the order ›</a></div></div>
+          <div class="margin"><span class="t">Identity</span>Named this bottle when the order was written<span class="who">Ayşe Demir, manager · this house · 13 Sep 16:40</span><span class="undo">Undo</span></div>
+        </div>
+        <div class="entry">
+          <div class="when"><b>13 Sep</b>3 days ago<br>recorded 14:02</div>
+          <div class="paper"><div class="eb"><span>Quote · tier 2</span><span class="cls">quoted</span></div><div class="r1"><span class="v">Winebow</span><span class="q">$357.60 · 12 × 750 ml · to 30 Sep</span><span class="per">$29.80<small>/ 750</small></span></div><div class="ex">1  RIDGE THREE VALLEYS 22        12/750   318.00
+<span class="hl">2  TEMPIER BANDOL RSE 24         12/750   357.60</span>
+3  LUSTAU FINO JARANA             6/750    96.00</div><div class="r3"><a href="#">/documents/q-2026-0913-winebow · line 2 ›</a> · recorded by Ayşe Demir, the quote attached and parsed to 6 lines · note <i>"Holds to end of month, per Dana."</i> · terms: min 12 btl · Thu 14:00 · net 30</div></div>
+          <div class="margin"><span class="t">Identity</span>Confirmed <b>"TEMPIER BANDOL RSE 24"</b> is this bottle<span class="who">Ayşe Demir, manager · this house · 13 Sep 14:04 · evidence: producer, name, vintage; pack stated</span><span class="undo">Undo</span></div>
+        </div>
+        <div class="entry">
+          <div class="when"><b>8 Sep</b>8 days ago<br>sweep 03:40</div>
+          <div class="paper"><div class="eb"><span>Public page · tier 4</span><span class="cls">public</span></div><div class="r1"><span class="v">Astor Wines</span><span class="q">$38.99 · 1 × 750 ml · parse 0.91</span><span class="per">$38.99<small>/ 750</small></span></div><div class="ex said">"Domaine Tempier Bandol Rosé 2024 — 750ml — $38.99"</div><div class="r3">The sentence as captured, with its anchor. <a href="#">astorwines.com/… #tempier-rose-2024 ›</a> <i>· a shelf price, signed by nobody · Wine.com captured the same day is waiting to be named — below, not here</i></div></div>
+          <div class="margin"><span class="t">Identity</span>Confirmed on the <b>public register</b> — this page is this bottle<span class="who">decided by another house · 8 Sep · outcome shared, the person is not</span><span class="none">not yours to undo</span></div>
+        </div>
+        <div class="entry">
+          <div class="when"><b>4 Sep</b>12 days ago<br>verified 17:20</div>
+          <div class="paper"><div class="eb"><span>Invoice · tier 1</span><span class="cls">own paper</span></div><div class="r1"><span class="v">Skurnik</span><span class="lab">landed</span><span class="q">$362.40 · 12 × 750 ml</span><span class="per">$30.20<small>/ 750</small></span></div><div class="ex">3  RIDGE THREE VALLEYS 22        12/750   318.00
+<span class="hl">4  TEMPIER BANDOL ROSE 24        12/750   362.40</span>
+5  LUSTAU FINO JARANA             6/750    96.00</div><div class="r3"><a href="#">/documents/r-1187 · line 4 ›</a> · counted 12 at the door, verified against the invoice by Ayşe D. <i>· this is the last landed rule on the chart</i></div></div>
+          <div class="margin"><span class="t">Identity</span>Confirmed receipt line <b>"TEMPIER BANDOL ROSE 24"</b> is this bottle<span class="who">Marco Ortiz, staff · this house · 4 Sep 17:20 · evidence: receipt R-1187 line 4</span><span class="undo">Undo</span></div>
+        </div>
+        <div class="entry">
+          <div class="when"><b>2 Sep</b>14 days ago</div>
+          <div class="paper out"><div class="eb"><span>Told to us · tier 7</span><span class="cls">quoted · struck</span></div><div class="r1"><span class="v">"the guy from Brooklyn Beverage"</span><span class="q">$19.90 · 1 × 750 ml</span><span class="per">$19.90<small>/ 750</small></span></div><div class="r3">No paper. Heard and written down by M. Ortiz. Flagged 3.4 MAD below the quoted median and struck on 2 Sep; kept here so it can be fixed at source. Nothing to open.</div></div>
+          <div class="margin"><span class="t">Identity</span>Named at the time of writing<span class="who">Marco Ortiz, staff · this house · 2 Sep</span><span class="undo">Undo</span></div>
+        </div>
+        <div class="entry">
+          <div class="when"><b>1 Sep</b>15 days ago<br>recorded 11:35</div>
+          <div class="paper"><div class="eb"><span>Rep message · tier 5</span><span class="cls">quoted</span></div><div class="r1"><span class="v">Empire Merchants · L. Moreno</span><span class="q">$28.50 · 1 × 750 ml</span><span class="per">$28.50<small>/ 750</small></span></div><div class="ex said">"Can do 28.50 on the Tempier rosé if you take 3 cases. — Luis"</div><div class="r3">The message as pasted by M. Ortiz. <i>No thread is linked — no writer files a message thread yet, so this page cannot open one.</i> "3 cases" is a condition in the sentence, not a term on record. The lowest admitted number on the trail, and no seal says so: a number with a condition is not a price.</div></div>
+          <div class="margin"><span class="t">Identity</span>Named at the time of writing<span class="who">Marco Ortiz, staff · this house · 1 Sep 11:35</span><span class="undo">Undo</span></div>
+        </div>
+        <div class="entry">
+          <div class="when"></div>
+          <div class="paper more">10 more papers between 18 Jun and 31 Aug — two receipts, seven feed lines, one quote. <span style="color:var(--seal);font-style:normal">Turn the page ›</span></div>
+          <div class="margin"></div>
+        </div>
+      </section>
+
+      <section class="waiting" aria-label="Waiting to be named">
+        <div class="wh"><h3>Waiting to be named — 2 proposals for this bottle</h3><span class="rule">proposed by the assistant, decided by nobody · on no chart, in no chip, in no count</span></div>
+        <div class="w">
+          <div class="when"><b>8 Sep</b>sweep 03:40</div>
+          <div class="paper" style="cursor:default"><div class="eb"><span>Public page · tier 4</span><span class="cls">names no bottle yet</span></div><div class="r1"><span class="v">Wine.com</span><span class="q">$41.99 · 1 × 750 ml · parse 0.88</span><span class="per">$41.99<small>/ 750 · not on the trail</small></span></div><div class="ex said">"Domaine Tempier Bandol Rose 2024 750 ml $41.99"</div><div class="r3">Proposed by title match, <b>0.95</b> — <i>a proposal, not a link (ADR 0113).</i> <a href="#">Confirm ›</a> &nbsp; <a href="#">It is something else ›</a></div></div>
+          <div class="margin"><span class="t">Identity</span><b>Nobody has decided.</b><span class="who">pending · staff may decide · the seal is held for Confirm</span><span class="decide">Decide ›</span></div>
+        </div>
+        <div class="w">
+          <div class="when"><b>11 Sep</b>verified 16:50</div>
+          <div class="paper" style="cursor:default"><div class="eb"><span>Invoice · tier 1 · line waiting</span><span class="cls">names no bottle yet</span></div><div class="r1"><span class="v">Skurnik</span><span class="q">$186.00 · 6 × 750 ml</span><span class="per">$31.00<small>/ 750 · not on the trail</small></span></div><div class="ex">3  TEMPIER BDL RS 24               6/750   186.00</div><div class="r3">Receipt R-1203, line 3, verified by Ayşe D. Proposed: <b>this bottle, in a 6-pack</b> by name match, 0.81 — <i>a different pack is a different identity key; a person says whether it is the same wine.</i> <a href="#">Confirm ›</a> &nbsp; <a href="#">It is something else ›</a></div></div>
+          <div class="margin"><span class="t">Identity</span><b>Nobody has decided.</b><span class="who">pending · staff may decide</span><span class="decide">Decide ›</span></div>
+        </div>
+      </section>
+
+      <div class="vp-lower">
+        <section class="vp-card">
+          <h3>Record a price</h3>
+          <p class="vp-said">A quote, a rep's message, a post, or a number heard. It becomes a paper on this trail with you as its writer, in the currency you state — there is no default.</p>
+          <div class="acts"><span class="vp-btn primary">Record a price</span><span class="vp-btn">Draft a vendor ask</span><span class="vp-btn">Name a waiting line <span class="n">14 in the house · 2 here</span></span></div>
+        </section>
+        <section class="vp-index">
+          <h3>Posted lists and indexes — not vendor quotes <span class="rule">a separate register by decision</span></h3>
+          <p>NY SLA posted wholesale · Bandol rosé, case of 12 · <span class="vp-num" style="color:var(--ink-1)">$337.20</span> ($28.10 / 750) · September · <span class="vp-quiet">not on the chart — a posting is neither a quote nor a shelf</span></p>
+          <p>BLS PPI, wine · <span class="vp-num" style="color:var(--ink-1)">+2.4% y/y</span> · <span class="vp-quiet">a context line, never a price for this bottle</span></p>
+        </section>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="sk-label">2 · Same trail, İstanbul house <small>Meyhane Kalamış — TRY house; the chart draws one currency at a time, and the euro paper says it is not drawn</small></div>
+  <div class="sk-frame">
+  <div class="mudavym vp-page" data-ground="charcoal">
+    <div class="vp-in" style="padding-top:18px">
+      <div class="vp-bottle" style="margin-top:0">
+        <div><div class="name">Kavaklıdere · Yakut · 2022</div><div class="key">identity <b>kavaklidere|yakut|2022|750|12</b> · confirmed · 14 papers in 90 days · 13 in ₺, 1 in €</div><div class="id">Last landed <b class="vp-num" style="color:var(--ink-1)">₺640,00</b> / 750 ml · Anadolu e-Fatura, irsaliye 2026-0912 · 7 Eyl</div></div>
+        <div class="vp-trends"><div class="vp-chip"><div class="w">7 days</div><div class="v up">+1,2%<span class="word">up</span></div><div class="n">2 quoted vs 1 in the prior 7 · <i>read the points</i></div></div><div class="vp-chip" data-on="true"><div class="w">30 days</div><div class="v up">+4,0%<span class="word">up</span></div><div class="n">6 quoted vs 2 in the prior 30 · ₺ only</div></div><div class="vp-chip"><div class="w">90 days</div><div class="v up">+11,2%<span class="word">up</span></div><div class="n">10 quoted vs 7 in the prior 90 · ₺ only</div></div></div>
+      </div>
+      <section class="chart">
+        <div class="ch"><h3>Ninety days, per 750 ml, in ₺</h3><div class="leg"><span class="vp-btn" data-on="true" style="height:24px;font-size:11px;padding:0 8px">₺ <span class="n">13</span></span><span class="vp-btn" style="height:24px;font-size:11px;padding:0 8px">€ <span class="n">1</span></span><span style="color:var(--ink-3)">one currency at a time — nothing converts</span></div></div>
+        <div class="scroll"><svg viewBox="0 0 900 222" role="img" aria-label="Strip chart, lira: 13 marks, one per lira paper">
+          <!-- x as the USD chart; y: 150 − (price − 560) × 0.8333 -->
+          <line class="grid" x1="48" x2="884" y1="150" y2="150"/><text x="6" y="154">₺560</text>
+          <line class="grid" x1="48" x2="884" y1="100" y2="100"/><text x="6" y="104">₺620</text>
+          <line class="grid" x1="48" x2="884" y1="50" y2="50"/><text x="6" y="54">₺680</text>
+          <line class="axis" x1="48" x2="884" y1="172" y2="172"/>
+          <text x="48" y="186">18 Haz</text><text x="326.7" y="186">18 Tem</text><text x="605.4" y="186">17 Ağu</text><text x="884" y="186" text-anchor="end">bugün</text><text class="win-t" x="605.4" y="216">30 days · 6 quoted</text><text class="win-t" x="884" y="216" text-anchor="end">7 days · 2 quoted</text>
+          <path class="win" d="M605.4 194 v5 h278.6 v-5"/><path class="win" d="M819.1 203 v4 h64.9 v-4"/>
+          <line class="landed" x1="800.5" x2="884" y1="83.3" y2="83.3"/><line class="landed" x1="674" x2="702" y1="14" y2="14"/><text class="landed-t" x="884" y="18" text-anchor="end">last landed ₺640,00 · 7 Eyl</text>
+          <!-- own paper, landed (3): 24 Haz ₺590 · 28 Tem ₺610 · 7 Eyl ₺640 -->
+          <rect class="own" x="99.7" y="121" width="8" height="8"/><rect class="own" x="415.6" y="104.3" width="8" height="8"/><rect class="own" x="796.5" y="79.3" width="8" height="8"/>
+          <!-- quoted (10): 22 Haz 585 · 10 Tem 595 · 1 Ağu 600 · 12 Ağu 605 · 20 Ağu 612 · 26 Ağu 618 · 30 Ağu 625 · 3 Eyl 630 · 11 Eyl 620 · 14 Eyl 655 -->
+          <circle class="quote" cx="85.2" cy="129.2" r="4"/><circle class="quote" cx="252.4" cy="120.8" r="4"/><circle class="quote" cx="456.8" cy="116.7" r="4"/><circle class="quote" cx="559" cy="112.5" r="4"/><circle class="quote" cx="633.3" cy="106.7" r="4"/><circle class="quote" cx="689" cy="101.7" r="4"/><circle class="quote" cx="726.2" cy="95.8" r="4"/><circle class="quote" cx="763.3" cy="91.7" r="4"/><circle class="quote" cx="837.7" cy="100" r="4"/><circle class="quote" cx="865.5" cy="70.8" r="4"/>
+        </svg></div>
+        <div class="foot"><span>13 marks, one per lira paper: 3 landed, 10 quoted. Vinum Import's €17,90 quote of 10 Eyl is a paper on the trail below and is <b>not drawn here</b>: a second currency has its own chart, and the ₺ chips do not count it.</span></div>
+      </section>
+      <section class="trail">
+        <div class="entry"><div class="when"><b>14 Eyl</b>2 days ago</div><div class="paper"><div class="eb"><span>Quote · tier 2</span><span class="cls">quoted</span></div><div class="r1"><span class="v">Anadolu İçecek Toptan</span><span class="q">₺7.860,00 · 12 × 750 ml</span><span class="per">₺655,00<small>/ 750</small></span></div><div class="r3"><a href="#">/documents/t-2026-0914-anadolu · satır 3 ›</a> · recorded by Deniz A.</div></div><div class="margin"><span class="t">Identity</span>Confirmed <b>"KAVAKLIDERE YAKUT 2022 75CL"</b> is this bottle<span class="who">Deniz Aksoy, owner · this house · 3 Eyl</span><span class="undo">Undo</span></div></div>
+        <div class="entry"><div class="when"><b>11 Eyl</b>5 days ago</div><div class="paper"><div class="eb"><span>Rep message · tier 5</span><span class="cls">quoted</span></div><div class="r1"><span class="v">Bosphorus Wine Depot</span><span class="q">₺620,00 · 1 × 750 ml</span><span class="per">₺620,00<small>/ 750</small></span></div><div class="ex said">"Yakut 2022 için 620 yapabiliriz, 6 koli alırsanız. Salı 12:00'ye kadar sipariş."</div><div class="r3">WhatsApp, pasted by Deniz A. <i>No thread is linked.</i> "6 koli" is a condition in the sentence.</div></div><div class="margin"><span class="t">Identity</span>Named at the time of writing<span class="who">Deniz Aksoy, owner · this house · 11 Eyl</span><span class="undo">Undo</span></div></div>
+        <div class="entry"><div class="when"><b>10 Eyl</b>6 days ago</div><div class="paper"><div class="eb"><span>Quote · tier 2 · EUR</span><span class="cls">quoted · not drawn</span></div><div class="r1"><span class="v">Vinum Import GmbH</span><span class="q">€214,80 · 12 × 750 ml</span><span class="per">€17,90<small>/ 750</small></span></div><div class="r3"><a href="#">/documents/q-2026-0910-vinum · line 1 ›</a> · min 1 palet · 14 gün · <i>in euro: on the trail, off the ₺ chart, in no ₺ figure</i></div></div><div class="margin"><span class="t">Identity</span>Linked by LWIN 1234567 from the importer's file<span class="who">decided by another house · 30 Ağu · outcome shared, the person is not</span><span class="none">not yours to undo</span></div></div>
+        <div class="entry"><div class="when"><b>7 Eyl</b>9 days ago<br>verified 15:05</div><div class="paper"><div class="eb"><span>e-Fatura · tier 1</span><span class="cls">own paper</span></div><div class="r1"><span class="v">Anadolu İçecek Toptan</span><span class="lab">landed</span><span class="q">₺7.680,00 · 12 × 750 ml</span><span class="per">₺640,00<small>/ 750</small></span></div><div class="ex">1  DOLUCA KAV 2021                12/750  7.020,00
+<span class="hl">2  KAVAKLIDERE YAKUT 2022         12/750  7.680,00</span>
+3  EFES PILSEN 50CL               24/500  1.404,00</div><div class="r3"><a href="#">/documents/r-2026-0912 · satır 2 ›</a> · irsaliye ile eşleşti, 12 sayıldı · verified by Deniz A.</div></div><div class="margin"><span class="t">Identity</span>Confirmed receipt line is this bottle<span class="who">Deniz Aksoy, owner · this house · 7 Eyl</span><span class="undo">Undo</span></div></div>
+        <div class="entry"><div class="when"></div><div class="paper more">10 more lira papers between 18 Haz and 3 Eyl — two e-Fatura, eight quotes. <span style="color:var(--seal);font-style:normal">Turn the page ›</span></div><div class="margin"></div></div>
+      </section>
+    </div>
+  </div>
+  </div>
+
+  <div class="sk-label">3 · Overlays drawn open <small>ADR 0112 — sheet for one paper in full, panel for Record a price (currency required, no default — fork 2, option a), popover for the chart's marks</small></div>
+  <div class="sk-row">
+    <div class="sk-frame" style="flex: 1 1 560px; min-width: 0">
+      <p class="sk-note" style="padding:8px 12px 0;margin:0">Sheet, 440 · the Winebow quote in full: every line, the one that is this bottle highlighted, what the other lines name, and the identity decisions on this paper. The document link is to the line (fork 6, option a). This exists only because the quote was <em>attached</em> when recorded — the Record panel's attach step, a new writer field, costed in the README; a hand-recorded row with no paper gets no sheet like this and its entry says "No paper".</p>
+      <div class="mudavym ov-stage" data-ground="charcoal">
+        <div class="under vp-page"><p class="vp-crumb">What the house pays</p><h1 class="vp-h1">Vendor prices<b>.</b></h1></div>
+        <div class="ov-scrim"></div>
+        <aside class="ov-sheet" id="sheet" aria-label="Quote from Winebow, 13 Sep">
+          <div class="ov-head"><div><div class="eyebrow">Quote · tier 2 · this house's own paper</div><h2>Winebow, 13 Sep 2026</h2></div><span class="close">Close</span></div>
+          <div class="ov-body">
+            <h4>The paper</h4>
+            <div class="mudavym sheetpaper" data-ground="paper" style="background:var(--paper-0);color:var(--ink-1)">WINEBOW  ·  QUOTE Q-77120  ·  VALID TO 30 SEP 2026
+<span class="dim">1  RIDGE THREE VALLEYS 22        12/750   318.00</span>
+<span class="hl">2  TEMPIER BANDOL RSE 24         12/750   357.60</span>
+<span class="dim">3  LUSTAU FINO JARANA             6/750    96.00</span>
+<span class="dim">4  FORADORI TEROLDEGO 22         12/750   256.80</span>
+<span class="dim">5  PRADEAUX BDL ROSE 23          12/750   334.80</span>
+<span class="dim">6  MISC GLASSWARE CREDIT                   -40.00</span></div>
+            <dl style="margin-top:12px">
+              <dt>This line</dt><dd>$357.60 for 12 × 750 ml → <span class="vp-num">$29.80</span> per 750 · in USD, as the paper states</dd>
+              <dt>Recorded</dt><dd>13 Sep 2026, 14:02 · Ayşe Demir · the quote attached as a PDF and parsed to 6 lines · note: <em>"Holds to end of month, per Dana."</em></dd>
+              <dt>Open</dt><dd><a class="link" href="#">/documents/q-2026-0913-winebow#line-2</a></dd>
+              <dt>Other lines</dt><dd>4 name other bottles on this trail's register; line 6 is not a price and is not on any trail.</dd>
+            </dl>
+            <div class="ov-drawer" style="margin-top:16px;border-top:1px solid var(--ink-1);padding-top:12px">
+              <h4 style="margin-top:0">Identity decisions on this paper</h4>
+              <div class="dec"><div><div class="a">Line 2 <b>is</b> Domaine Tempier · Bandol Rosé · 2024 · 750 · 12</div><div class="m">13 Sep 2026, 14:04 · Ayşe Demir, manager · this house · two minutes after the paper was recorded</div></div><span class="undo">Undo</span></div>
+              <div class="dec"><div><div class="a">Line 5 <b>is</b> Château Pradeaux · Bandol Rosé · 2023 · 750 · 12</div><div class="m">13 Sep 2026, 14:06 · Ayşe Demir, manager · this house</div></div><span class="undo">Undo</span></div>
+              <div class="dec"><div><div class="a">Line 1 <b>is</b> Ridge · Three Valleys · 2022 · 750 · 12</div><div class="m">linked by GTIN · decided by another house · 2 Aug · outcome shared, the person is not</div></div><span class="undo none">not yours to undo</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <div class="sk-frame" style="flex: 1 1 560px; min-width: 0">
+      <p class="sk-note" style="padding:8px 12px 0;margin:0">Panel, 620 · Record a price. The currency field is empty and required: a price carries the currency the vendor quoted, never the house's by inheritance (ADR 0117 rule 2). Record stays inert until it is stated. The source chosen decides what evidence is asked for — a written quote asks for its paper (the attach step, new), a message is pasted as sent, a number told has no paper and says so.</p>
+      <div class="mudavym ov-stage" data-ground="charcoal">
+        <div class="under vp-page"><p class="vp-crumb">What the house pays</p><h1 class="vp-h1">Vendor prices<b>.</b></h1></div>
+        <div class="ov-scrim"></div>
+        <div class="ov-panel" id="panel" role="dialog" aria-label="Record a price">
+          <div class="ov-head"><div><div class="eyebrow">Record a price</div><h2>What were you told, by whom, in what unit?</h2></div><span class="close">Cancel</span></div>
+          <div class="ov-body">
+            <div class="ov-form">
+              <div class="f wide"><label>Bottle</label><div class="in">Domaine Tempier Bandol Rosé 2024 · 750 · 12<span class="tail">beverage identity · confirmed</span></div></div>
+              <div class="f"><label>Vendor</label><div class="in">Empire Merchants<span class="tail">provider row</span></div></div>
+              <div class="f"><label>Currency</label><div class="in mono req"><span class="ph">state it</span><span class="tail">required</span></div><div class="hint req">No default. Empire's usual currency is not on record, and the house's is not inherited. Type the code the message used.</div></div>
+              <div class="f"><label>Price as quoted</label><div class="in mono">28.50</div></div>
+              <div class="f"><label>Pack · unit</label><div class="in mono">1 × 750 ml<span class="tail">required</span></div></div>
+              <div class="f wide"><label>Source</label><div class="seg"><span>Written quote</span><span data-on="true">Message from a rep</span><span>Social post</span><span>Told to me</span></div><div class="hint">A <b>written quote</b> asks for its paper — a file, or a document already in the house — and the trail links the line. A <b>message</b> is pasted as sent, below. A number <b>told to you</b> has no paper, and its entry says <i>No paper. Nothing to open.</i></div></div>
+              <div class="f wide"><label>The message, as sent</label><div class="in" style="height:auto;padding:10px 12px;align-items:flex-start"><span class="ph">Can do 28.50 on the Tempier rosé if you take 3 cases. — Luis</span></div><div class="hint">Pasted verbatim. It is shown on the trail as the sentence, so nobody has to trust the number without the words around it.</div></div>
+            </div>
+          </div>
+          <div class="ov-foot"><span class="note">One paper on this house's trail, tier 5, written by you. Without a currency there is no sighting — the button waits.</span><span class="vp-btn">Cancel</span><span class="vp-btn primary off">Record</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="sk-row" style="margin-top:18px">
+    <div class="sk-frame" style="width: 440px; max-width: 100%">
+      <p class="sk-note" style="padding:8px 12px 0;margin:0">Popover · the chart's marks, hanging off the legend. Ticks show and hide a class; the counts are counts of papers drawn.</p>
+      <div class="mudavym" data-ground="charcoal" style="background:var(--paper-0);position:relative;padding:18px 18px 300px">
+        <span class="vp-btn" data-on="true" style="height:26px;font-size:11.5px">Marks <span class="n">4 of 5 kinds · 16 of 17</span></span>
+        <div class="ov-pop" style="left:18px;top:52px">
+          <div class="row"><span><i class="tick on"></i>Landed — receipts verified</span><span class="n">3</span></div>
+          <div class="row"><span><i class="tick on"></i>Agreed — orders confirmed</span><span class="n">1</span></div>
+          <div class="row"><span><i class="tick on"></i>Quoted to this house, admitted</span><span class="n">11</span></div>
+          <div class="row"><span><i class="tick"></i>Public pages</span><span class="n">1 · hidden</span></div>
+          <div class="row"><span><i class="tick on"></i>Struck outliers</span><span class="n">1</span></div>
+          <div class="row note">16 marks drawn of the 17 papers the trail lists — Public pages is hidden. Hiding a kind hides its marks, not its papers; the trail and its counts do not change. The 2 papers waiting to be named are on no chart.</div>
+        </div>
+      </div>
+    </div>
+    <div class="sk-frame" style="flex:1 1 420px; min-width:0">
+      <p class="sk-note" style="padding:8px 12px 0;margin:0">A waiting line — one of the 14 the standing line counts. It is on no bottle's trail until a person names it; the assistant may propose, never decide (ADR 0113).</p>
+      <div class="mudavym" data-ground="charcoal" style="background:var(--paper-0);padding:18px;min-height:270px;box-sizing:border-box;font-family:var(--sans);color:var(--ink-1);font-size:12.5px">
+        <div class="paper" style="cursor:default"><div class="eb"><span>Invoice · tier 1 · line waiting</span><span class="cls">names no bottle</span></div><div class="r1"><span class="v">Skurnik</span><span class="q">$318.00 · 12 × 750 ml</span><span class="per" style="color:var(--ink-3)">— <small>no bottle, no per-750 on any trail</small></span></div><div class="ex">3  RIDGE THREE VALLEYS 22        12/750   318.00</div><div class="r3">Proposed: <b style="color:var(--ink-1);font-weight:500">Ridge · Three Valleys · 2022 · 750 · 12</b> by name match, 0.84 — <i>a proposal, not a link.</i> <a href="#">Confirm ›</a> &nbsp; <a href="#">It is something else ›</a> &nbsp; <span style="color:var(--ink-3)">Leave it</span></div></div>
+        <p style="margin:10px 0 0;color:var(--ink-3);font-size:11.5px">Confirming is append-only and logged with your name and role as they are now; the seal is held for it. Another house sees the outcome, not you.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sk-label">4 · States <small>the chart and the trail load and fail on their own; staff see the trail with the figures withheld — a fourth answer to fork 4, a read that does not exist (README, C's cost 8)</small></div>
+  <div class="mudavym st-grid" data-ground="charcoal">
+    <div class="st"><div class="tag">empty · the register</div><h3>No paper names a price yet.</h3><p>3,912 identities exist and none has been sighted by this house. The trail starts with the first receipt you verify, the first order you confirm, or the first price you record.</p><p class="cap">0 sightings · 0 waiting · no sweep subjects</p></div>
+    <div class="st"><div class="tag">empty · this identity</div><h3>Provisional — 2 papers, none confirmed.</h3><p>"House red, Ali's" is an identity this house named itself. Its two receipt lines are drawn on its own trail and say <em>provisional</em>; they will not join a library bottle until a person confirms one.</p><p class="cap">identity_key ali|house-red|unstated|size?|pack?</p></div>
+    <div class="st"><div class="tag">loading</div><h3>Turning the pages…</h3><div class="ph m"></div><div class="ph s"></div><div class="ph"></div><p class="vp-quiet" style="margin-top:12px">The chart waits for the trail; the trail arrives newest first and says "at least N" until the window closes. No shimmer.</p></div>
+    <div class="st"><div class="tag">refused · staff signed in</div><h3>The figures are owner and manager.</h3><p>The papers are listed and the identity questions are yours; what a vendor charges this house is not.</p><div class="wh"><span>13 Sep · Quote · Winebow</span><span class="w">$ withheld</span></div><div class="wh"><span>8 Sep · Public page · Astor</span><span class="w">$ withheld</span></div><div class="wh"><span>4 Sep · Invoice · Skurnik</span><span class="w">$ withheld</span></div><p class="cap" style="margin-top:8px">the identity margin stays live; the seal on Confirm is held for staff too</p></div>
+    <div class="st"><div class="tag">error · and partial</div><h3>The trail could not be read.</h3><div class="verbatim">connect ETIMEDOUT 10.0.3.12:5432</div><p>Nothing here is empty; it is unread. <span class="act">Try again</span></p><hr class="vp-rule-thin" style="margin:10px 0"><div class="tag">partial</div><p>500 of <b>at least 500</b> papers — the window stopped at 14 Jun and the chart says so on its axis. 14 lines waiting for a name are counted, not drawn.</p></div>
+  </div>
+
+  <div class="sk-label">5 · 390 px <small>the chart keeps one scale, scrolls sideways and opens on today; each paper stacks with its identity note beneath it; the paper sheet full-width and the record panel as a bottom sheet</small></div>
+  <div class="sk-row">
+    <div class="sk-phone"><div class="mudavym vp-page" id="phone" data-ground="charcoal"></div></div>
+    <div class="sk-phone"><div class="mudavym ov-stage phone" id="phone-sheet" data-ground="charcoal"><div class="under vp-page"><p class="vp-crumb" style="margin-top:0">What the house pays</p><h1 class="vp-h1" style="font-size:30px">Vendor prices<b>.</b></h1></div><div class="ov-scrim"></div></div></div>
+    <div class="sk-phone"><div class="mudavym ov-stage phone" id="phone-panel" data-ground="charcoal"><div class="under vp-page"><p class="vp-crumb" style="margin-top:0">What the house pays</p><h1 class="vp-h1" style="font-size:30px">Vendor prices<b>.</b></h1></div><div class="ov-scrim"></div><div class="detent"><span>upper detent · 88%</span></div></div></div>
+    <div class="sk-note" style="max-width:520px">On the phone the trail is the page. The chart is drawn at one scale (900 px for the 900 viewBox, so axis text stays 11 px), scrolls sideways, and opens scrolled to today — the last thirty days are the first screen; drag left for the rest. Each paper becomes one card with the date on top, the per-750 figure on the right, the excerpt at 11 px scrolling sideways inside the card — opened at its price column, the number the paper exists to prove, with a shaded left edge saying the line continues — and the identity note under a dashed rule. The paper sheet (second phone) takes the full width; the record panel (third phone) is a bottom-anchored sheet with a grabber and two detents (sketch 103), its form one column.</div>
+  </div>
+</div>
+<script>
+  (function () {
+    function clone(fromId, intoId) {
+      var s = document.getElementById(fromId), p = document.getElementById(intoId);
+      if (!s || !p) return null;
+      var c = s.cloneNode(true); c.removeAttribute('id');
+      c.querySelectorAll('[id]').forEach(function (n) { n.removeAttribute('id'); });
+      return { c: c, p: p };
+    }
+    var page = clone('stage', 'phone');
+    if (page) {
+      page.p.appendChild(page.c.querySelector('.vp-chrome'));
+      page.p.appendChild(page.c.querySelector('.vp-in'));
+    }
+    // every chart opens on today: a strip that scrolls (any container under 640) starts at its end
+    requestAnimationFrame(function () {
+      document.querySelectorAll('.chart .scroll').forEach(function (strip) { strip.scrollLeft = strip.scrollWidth; });
+      // a paper excerpt that scrolls opens on its price column — the number the paper exists to prove
+      document.querySelectorAll('.sk-phone .paper .ex, .sk-phone .sheetpaper').forEach(function (ex) { ex.scrollLeft = ex.scrollWidth; });
+    });
+    var sh = clone('sheet', 'phone-sheet'); if (sh) sh.p.appendChild(sh.c);
+    var pn = clone('panel', 'phone-panel'); if (pn) pn.p.appendChild(pn.c);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 110 · B · The Gazetteer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Mudavym tokens — the Warm Charcoal column of apps/web/src/styles/mudavym.css:45-65,
+   copied verbatim (ADR 0042 palette, ADR 0138 ground). The paper column is the ONE
+   declared exception (:78-94) and the cellar has no paper surface, so it is not drawn. */
+:root, .mudavym {
+  --seal: #5FB0BC; --seal-deep: #7DC3CD;
+  --seal-tint: rgba(95,176,188,.14); --seal-ring: rgba(95,176,188,.38);
+  --paper-0: #15130F; --paper-1: #1D1813; --paper-2: #262019;
+  --ink-1: #EFE7D9; --ink-2: #C0B6A5; --ink-3: #8E8576; --ink-4: #ABA294;
+  color-scheme: dark;
+  --sans: "DM Sans", "Plus Jakarta Sans", system-ui, sans-serif;
+  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* motion.ts — the seven tokens, by number */
+  --settle: 320ms cubic-bezier(.16,1,.3,1);
+  --ink-t: 160ms cubic-bezier(.16,1,.3,1);
+  --turn: 420ms cubic-bezier(.32,.72,0,1);
+  --scrim: rgba(0,0,0,.5); /* sheet.css:36-39 — charcoal wants the heavier scrim */
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin:0; background:var(--paper-0); color:var(--ink-1); font-family:var(--sans); font-size:14px; -webkit-font-smoothing:antialiased; }
+a { color: var(--seal-deep); }
+.sk-banner { background:#0B0A08; color:var(--ink-2); font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:7px 20px; border-bottom:1px solid var(--paper-2); }
+.sk-banner b { color: var(--ink-1); font-weight:500; }
+.sk-wrap { max-width:1400px; margin:0 auto; padding:18px 24px 60px; }
+.sk-sec { font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-4); margin:38px 0 10px; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:baseline; }
+.sk-sec b { color:var(--ink-1); font-weight:500; }
+.sk-sec small { font-family:var(--sans); text-transform:none; letter-spacing:0; font-size:12px; color:var(--ink-4); }
+.sk-intro { font-family:var(--serif); font-size:17px; line-height:1.5; color:var(--ink-2); margin:10px 0 0; max-width:78ch; }
+.sk-intro b { color: var(--ink-1); font-weight:600; }
+.sk-h { font-family:var(--serif); font-size:34px; font-weight:600; letter-spacing:-.022em; line-height:1.05; margin:6px 0 0; }
+.sk-h .dot { color:var(--seal); }
+.sk-note { font-size:12px; line-height:1.55; color:var(--ink-4); margin:8px 0 0; max-width:100ch; }
+.sk-note code, .note code, .said code { font-family:var(--mono); font-size:.92em; color:var(--ink-2); }
+.frame { border:1px solid var(--paper-2); border-radius:12px; overflow:hidden; background:var(--paper-0); }
+.frame-cap { font-size:11.5px; line-height:1.5; color:var(--ink-4); padding:7px 12px; border-top:1px solid var(--paper-2); background:var(--paper-1); }
+.frame-cap b { color:var(--ink-2); font-weight:600; }
+.two { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+.three { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; align-items:start; }
+.states { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; align-items:start; }
+@media (max-width: 900px) { .two, .three { grid-template-columns:1fr; } }
+
+/* ── the house header, as chrome (components/mudavym/house-header.css) ───── */
+.hh { display:flex; align-items:center; gap:12px; min-height:52px; padding:0 24px; border-bottom:1px solid var(--paper-2); background:color-mix(in srgb, var(--paper-0) 88%, transparent); }
+.hh-mark { font-family:var(--serif); font-weight:600; letter-spacing:-.02em; font-size:15px; color:var(--ink-1); }
+.hh-mark .dot { color:var(--seal); }
+.hh-rule { width:1px; height:18px; background:var(--paper-2); }
+.hh-page { font-family:var(--serif); font-weight:600; font-size:15px; letter-spacing:-.01em; white-space:nowrap; }
+.hh-search { display:inline-flex; align-items:center; gap:8px; margin:0 auto; padding:6px 10px 6px 11px; border:1px solid var(--paper-2); border-radius:9px; background:var(--paper-1); color:var(--ink-4); font-size:12.5px; min-width:0; }
+.hh-search kbd { font-family:var(--mono); font-size:10.5px; border:1px solid var(--paper-2); border-radius:4px; padding:1px 5px; color:var(--ink-4); }
+.hh-house { font-size:12.5px; color:var(--ink-2); white-space:nowrap; }
+.hh-ic { width:26px; height:26px; border-radius:50%; border:1px solid var(--paper-2); display:inline-flex; align-items:center; justify-content:center; color:var(--ink-4); font-size:10px; font-family:var(--mono); }
+@media (max-width: 640px) { .hh { padding:0 14px; gap:8px; } .hh-house, .hh-search span.t { display:none; } }
+
+/* ── page voice (pages/cellar/next/cellar-next.css:213-300) ───────────────── */
+.pg { padding:22px 24px 36px; }
+@media (max-width: 640px) { .pg { padding:16px 14px 28px; } }
+.crumb { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-4); margin:0 0 4px; }
+.h1 { font-family:var(--serif); font-size:40px; font-weight:600; letter-spacing:-.025em; line-height:1.05; margin:4px 0 0; }
+.h1 .dot, .h2 .dot { color:var(--seal); }
+.h2 { font-family:var(--serif); font-size:23px; font-weight:600; letter-spacing:-.015em; line-height:1.15; margin:0; }
+.standing { font-family:var(--serif); font-style:italic; font-size:15.5px; line-height:1.45; color:var(--ink-2); margin:8px 0 0; max-width:74ch; }
+.note { font-size:11.5px; line-height:1.5; color:var(--ink-4); margin:8px 0 0; max-width:104ch; }
+.said { font-size:12.5px; line-height:1.55; color:var(--ink-2); margin:0; }
+.rule { border:0; border-top:1px solid var(--ink-1); border-bottom:1px solid var(--ink-1); height:3px; opacity:.5; margin:16px 0 0; }
+.rule-thin { border:0; border-top:1px solid var(--paper-2); margin:0; }
+.sec { font-size:10.5px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-4); margin:0 0 10px; }
+.tiles { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
+.tile { border:1px solid var(--paper-2); border-radius:9px; background:var(--paper-1); padding:12px 14px; }
+.tile-l { font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-4); margin:0; }
+.tile-f { font-family:var(--mono); font-size:25px; line-height:1.05; margin:4px 0 0; font-variant-numeric:tabular-nums; color:var(--ink-1); }
+.tile-s { font-size:11px; color:var(--ink-4); margin:6px 0 0; line-height:1.4; }
+.btn { display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 11px; border:1px solid var(--paper-2); border-radius:7px; background:var(--paper-1); color:var(--ink-2); font-size:12px; font-weight:600; font-family:inherit; cursor:pointer; white-space:nowrap; text-decoration:none; transition:border-color var(--ink-t), color var(--ink-t), background-color var(--ink-t); }
+.btn:hover { border-color:var(--seal-ring); color:var(--seal-deep); }
+.btn[data-on="true"] { border-color:var(--seal-ring); background:var(--seal-tint); color:var(--seal-deep); }
+.btn[disabled], .btn[data-off="true"] { opacity:.55; cursor:not-allowed; }
+.btn.primary { background:var(--seal); border-color:var(--seal); color:var(--paper-0); }
+.btn .n { font-family:var(--mono); font-weight:400; color:var(--ink-4); }
+.btn[data-on="true"] .n { color:var(--seal-deep); }
+.controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.field { height:30px; padding:0 9px; border:1px solid var(--paper-2); border-radius:7px; background:var(--paper-1); color:var(--ink-4); font-size:12px; display:inline-flex; align-items:center; gap:8px; }
+.num { font-family:var(--mono); font-variant-numeric:tabular-nums lining-nums; white-space:nowrap; }
+.dim { color:var(--ink-4); }
+.seal-c { color:var(--seal-deep); }
+.chip { display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border-radius:999px; border:1px solid var(--paper-2); background:var(--paper-0); color:var(--ink-2); font-size:10.5px; white-space:nowrap; }
+.chip[data-seal="true"] { border-color:var(--seal-ring); background:var(--seal-tint); color:var(--seal-deep); }
+.marks { display:inline-flex; gap:2px; vertical-align:middle; }
+.mark { width:14px; height:14px; line-height:12px; text-align:center; font-family:var(--mono); font-size:9px; border:1px solid var(--paper-2); border-radius:3px; color:var(--ink-4); background:var(--paper-0); }
+.mark[data-on="true"] { border-color:var(--seal-ring); background:var(--seal-tint); color:var(--seal-deep); font-weight:600; }
+.hatch, .card.hatch { background-image:repeating-linear-gradient(135deg, transparent 0 6px, rgba(171,162,148,.38) 6px 7px); }
+.em { color:var(--ink-4); }
+.words { font-family:var(--serif); font-size:15px; line-height:1.5; color:var(--ink-2); }
+.words b { color:var(--ink-1); font-weight:600; }
+
+/* record cards — the /inventory dropdown anatomy (RowExpander.tsx) */
+.facts { display:grid; gap:10px 14px; grid-template-columns:repeat(auto-fit,minmax(108px,1fr)); margin:0; }
+.facts dt { font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-4); }
+.facts dd { margin:2px 0 0; font-size:13px; color:var(--ink-1); }
+.facts dd .em { font-size:12px; }
+.cards { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); }
+.card { border:1px solid var(--paper-2); border-radius:9px; background:var(--paper-1); padding:11px 12px 12px; min-width:0; }
+.card h5 { margin:0 0 8px; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-4); display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 8px; font-weight:700; }
+.card h5 .src { font-family:var(--mono); text-transform:none; letter-spacing:0; font-weight:400; font-size:9.5px; color:var(--ink-4); min-width:0; text-align:right; overflow-wrap:break-word; }
+.card[data-withheld="true"] { border-style:dashed; background-color:transparent; }
+.card p.said { font-size:12px; }
+.kv { display:flex; justify-content:space-between; gap:10px; font-size:12px; padding:3px 0; border-bottom:1px dotted var(--paper-2); }
+.kv:last-child { border-bottom:0; }
+.kv span:first-child { color:var(--ink-2); }
+.kv .num { color:var(--ink-1); }
+.ledger { width:100%; border-collapse:collapse; font-size:11.5px; }
+.ledger td { padding:3px 0; border-bottom:1px dotted var(--paper-2); vertical-align:top; }
+.ledger td:first-child { white-space:nowrap; }
+.ledger td + td { padding-left:8px; }
+.ledger td.num { text-align:right; white-space:nowrap; }
+.ledger tr:last-child td { border-bottom:0; }
+.ledger.two, .ledger.two tbody, .ledger.two tr, .ledger.two td { display:block; width:100%; }
+.ledger.two td:first-child { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-4); border-bottom:0; padding:6px 0 0; white-space:normal; }
+.ledger.two td + td { padding:1px 0 5px; font-family:var(--mono); font-size:11px; color:var(--ink-2); overflow-wrap:anywhere; }
+.spark { display:block; width:100%; height:44px; }
+.heat { display:grid; grid-template-columns:repeat(17,1fr); gap:1px; }
+.heat i { display:block; height:7px; background:var(--paper-2); border-radius:1px; }
+.heat i[data-q="1"] { background:rgba(95,176,188,.30); }
+.heat i[data-q="2"] { background:rgba(95,176,188,.55); }
+.heat i[data-q="3"] { background:var(--seal); }
+
+/* the seal: hold-to-approve, pour 620ms linear then stamp 360ms (HoldToApprove.tsx) */
+.hold { position:relative; display:inline-flex; align-items:center; gap:8px; height:34px; padding:0 14px 0 12px; border:1px solid var(--seal-ring); border-radius:8px; background:var(--paper-1); color:var(--ink-1); font-size:12.5px; font-weight:600; overflow:hidden; white-space:nowrap; }
+.hold .fill { position:absolute; inset:0; width:62%; background:var(--seal-tint); }
+.hold .lbl { position:relative; }
+.seal { width:18px; height:18px; border-radius:50%; border:1.5px solid var(--seal); display:inline-flex; align-items:center; justify-content:center; font-family:var(--serif); font-weight:600; font-size:9px; color:var(--seal); position:relative; }
+.seal[data-stamped="true"] { background:var(--seal); color:var(--paper-0); }
+.stamped { display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-2); }
+
+/* overlays — ADR 0112 three shapes, primitive numbers from components/mudavym/sheet.css */
+.ovl-stage { position:relative; display:grid; min-height:520px; overflow:hidden; }
+.ovl-stage > * { grid-area:1 / 1; min-width:0; }
+.ovl-scrim { background:var(--scrim); z-index:1; }
+.ovl-sheet { position:relative; z-index:2; justify-self:end; width:min(440px, 100%); background:var(--paper-0); border-left:1px solid var(--paper-2); box-shadow:-18px 0 48px rgba(0,0,0,.35); padding:18px 20px 20px; }
+.ovl-panel { position:relative; z-index:2; justify-self:center; align-self:start; margin:clamp(24px, 8vh, 64px) 0 24px; width:min(620px, calc(100% - 32px)); background:var(--paper-0); border:1px solid var(--paper-2); border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.45); padding:18px 20px 20px; }
+.ovl-pop { position:absolute; width:300px; background:var(--paper-0); border:1px solid var(--paper-2); border-radius:10px; box-shadow:0 14px 34px rgba(0,0,0,.4); padding:10px 12px; }
+.ovl-eyebrow { font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-4); margin:0; padding-right:56px; }
+.ovl-title { font-family:var(--serif); font-size:22px; font-weight:600; letter-spacing:-.015em; margin:4px 0 0; }
+.ovl-close { position:absolute; top:16px; right:18px; font-size:12px; color:var(--ink-4); text-decoration:underline; text-underline-offset:3px; }
+.ovl-sect { font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-4); margin:16px 0 6px; font-weight:700; }
+.ovl-item { display:grid; grid-template-columns:18px 1fr auto auto; gap:10px; align-items:start; padding:8px 0; border-bottom:1px dotted var(--paper-2); font-size:12.5px; }
+.ovl-item .cb[data-off="true"] { border-style:dashed; opacity:.6; }
+.qty { font-family:var(--mono); font-size:11.5px; min-width:30px; height:22px; padding:0 6px; border:1px solid var(--paper-2); border-radius:5px; background:var(--paper-1); color:var(--ink-1); display:inline-flex; align-items:center; justify-content:flex-end; }
+.qty.em { color:var(--ink-4); border-style:dashed; background:transparent; }
+.ovl-two .f dt small { font-family:var(--mono); font-size:9.5px; color:var(--ink-4); margin-left:6px; letter-spacing:0; text-transform:none; }
+.ovl-two .f dd[data-grey="true"] { color:var(--ink-2); }
+.ovl-item .cb { width:15px; height:15px; border:1px solid var(--paper-2); border-radius:4px; margin-top:1px; }
+.ovl-item .cb[data-on="true"] { border-color:var(--seal); background:var(--seal); }
+.ovl-item .cb[data-on="true"]::after { content:""; display:block; width:4px; height:8px; border:solid var(--paper-0); border-width:0 2px 2px 0; transform:translate(4px,1px) rotate(45deg); }
+.ovl-item .ttl { font-family:var(--serif); font-size:14px; }
+.ovl-item .sub { font-size:11px; color:var(--ink-4); margin-top:2px; }
+.ovl-item .kind { font-family:var(--mono); font-size:10.5px; color:var(--ink-4); text-align:right; }
+.ovl-btns { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.ovl-foot { font-size:11px; line-height:1.5; color:var(--ink-4); margin:14px 0 0; }
+.ovl-two { display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin-top:14px; }
+.ovl-two .f { border-bottom:1px solid var(--paper-2); padding:4px 0 6px; }
+.ovl-two .f dt { font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-4); }
+.ovl-two .f dd { margin:2px 0 0; font-size:14px; font-family:var(--serif); }
+.ovl-two .f dd small { font-family:var(--mono); font-size:10px; color:var(--ink-4); margin-left:6px; }
+.viewfinder { margin-top:14px; height:220px; border:1px dashed var(--ink-3); border-radius:8px; position:relative; background:var(--paper-1); display:flex; align-items:center; justify-content:center; color:var(--ink-4); font-size:12px; }
+.viewfinder::before, .viewfinder::after { content:""; position:absolute; width:22px; height:22px; border:2px solid var(--seal); }
+.viewfinder::before { top:12px; left:12px; border-right:0; border-bottom:0; }
+.viewfinder::after { bottom:12px; right:12px; border-left:0; border-top:0; }
+.ovl-cap { font-size:11.5px; color:var(--ink-4); padding:8px 12px; border-top:1px solid var(--paper-2); background:var(--paper-1); }
+
+/* phone frame */
+.phone { width:min(390px, 100%); border:1px solid var(--paper-2); border-radius:22px; overflow:hidden; background:var(--paper-0); }
+.phone .bar { height:24px; display:flex; align-items:center; justify-content:space-between; padding:0 16px; font-family:var(--mono); font-size:10px; color:var(--ink-4); }
+.phone .pg { padding:12px 14px 20px; }
+.phone .h1 { font-size:30px; }
+.phones { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
+.bsheet { border-top:1px solid var(--paper-2); background:var(--paper-1); border-radius:16px 16px 0 0; padding:10px 14px 16px; box-shadow:0 -12px 30px rgba(0,0,0,.35); }
+.bsheet .grab { width:36px; height:4px; border-radius:2px; background:var(--paper-2); margin:0 auto 8px; }
+.detent { display:flex; gap:6px; font-family:var(--mono); font-size:9.5px; color:var(--ink-4); margin:0 0 8px; }
+.detent b { color:var(--seal-deep); font-weight:500; }
+
+.srcs { font-size:11px; line-height:1.6; color:var(--ink-4); columns:2; column-gap:28px; margin:8px 0 0; }
+.srcs li { break-inside:avoid; }
+@media (max-width: 720px) { .srcs { columns:1; } }
+.scroll-x { overflow-x:auto; }
+
+/* reduced motion: the change still happens, it just doesn't travel (motion.ts:178-198) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition:none !important; animation:none !important; }
+}
+
+/* ── B · index and record ────────────────────────────────────────────────── */
+.frame > .mudavym { container-type:inline-size; }
+.gz { display:grid; grid-template-columns:332px 1fr; min-height:640px; }
+.idx { border-right:1px solid var(--paper-2); background:var(--paper-1); display:flex; flex-direction:column; min-width:0; }
+.idx-top { padding:14px 14px 10px; border-bottom:1px solid var(--paper-2); }
+.idx .field { width:100%; justify-content:flex-start; background:var(--paper-0); }
+.idx .chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+.idx-scroll { padding:4px 0 8px; }
+.ih { position:sticky; top:0; display:flex; justify-content:space-between; align-items:baseline; gap:8px; padding:10px 14px 5px; background:var(--paper-1); border-bottom:1px solid var(--ink-1); font-family:var(--serif); font-weight:600; font-size:14.5px; letter-spacing:-.01em; }
+.ih span { font-family:var(--mono); font-weight:400; font-size:10px; color:var(--ink-4); letter-spacing:0; }
+.il { display:grid; grid-template-columns:1fr auto; gap:1px 10px; padding:6px 14px 6px 12px; border-left:2px solid transparent; border-bottom:1px dotted var(--paper-2); cursor:pointer; transition:background-color var(--ink-t), border-color var(--ink-t); }
+.il:hover { background:var(--paper-2); }
+.il[data-on="true"] { background:var(--seal-tint); border-left-color:var(--seal); }
+.il .it { grid-column:1; grid-row:1; font-family:var(--serif); font-size:13.5px; color:var(--ink-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.il .ip { grid-column:1; grid-row:2; font-size:10.5px; color:var(--ink-4); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.il .io { grid-column:2; grid-row:1 / span 2; align-self:center; font-family:var(--mono); font-size:12px; color:var(--ink-2); }
+.il .io.em { color:var(--ink-4); }
+.il .io small { font-size:9.5px; color:var(--ink-4); }
+.idx-keys { margin-top:auto; padding:8px 14px 10px; border-top:1px solid var(--paper-2); font-family:var(--mono); font-size:10px; color:var(--ink-4); line-height:1.7; }
+.idx-keys b { color:var(--ink-2); font-weight:500; }
+.rp { padding:22px 26px 34px; min-width:0; }
+.rp .h1 { font-size:36px; }
+.rp .standing { font-size:15px; }
+.rp .cards { margin-top:14px; }
+.rp .facts { margin-top:16px; padding:12px 0; border-top:1px solid var(--paper-2); border-bottom:1px solid var(--paper-2); }
+.books { display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:8px; margin-top:12px; }
+.book { border:1px solid var(--paper-2); border-radius:8px; padding:8px 10px; font-size:11px; color:var(--ink-4); line-height:1.45; }
+.book b { display:block; font-family:var(--serif); font-size:13px; color:var(--ink-1); font-weight:600; margin-bottom:2px; }
+.book[data-on="true"] { border-color:var(--seal-ring); background:var(--seal-tint); }
+.book[data-on="true"] b { color:var(--seal-deep); }
+.book .src { font-family:var(--mono); font-size:9.5px; display:block; margin-top:3px; }
+.reg-row { display:grid; grid-template-columns:1fr auto auto auto; gap:8px 18px; align-items:baseline; padding:8px 0; border-bottom:1px dotted var(--paper-2); }
+.reg-row .rt { font-family:var(--serif); font-size:16px; }
+.reg-row .rs { font-size:11.5px; color:var(--ink-4); grid-column:1 / -1; margin-top:-4px; }
+.reg-row .num { font-size:12px; color:var(--ink-2); }
+.il[data-focus="true"] { outline:1px dashed var(--seal-ring); outline-offset:-2px; }
+.il .ip.say { white-space:normal; overflow:visible; text-overflow:clip; line-height:1.45; }
+.book .src { overflow-wrap:anywhere; }
+.peek { position:absolute; left:340px; top:120px; width:280px; z-index:3; background:var(--paper-0); border:1px solid var(--seal-ring); border-radius:10px; box-shadow:0 14px 34px rgba(0,0,0,.45); padding:10px 12px; }
+.peek .t { font-family:var(--serif); font-size:15px; color:var(--ink-1); }
+.peek .s { font-size:11px; color:var(--ink-4); margin-top:1px; }
+.peek .f { font-family:var(--mono); font-size:11.5px; color:var(--ink-2); margin-top:6px; line-height:1.6; }
+.peek .k { font-family:var(--mono); font-size:9.5px; color:var(--ink-4); margin-top:6px; }
+@container (max-width: 760px) {
+  .gz { grid-template-columns:1fr; }
+  .idx { border-right:0; border-bottom:1px solid var(--paper-2); }
+  .idx-scroll { max-height:320px; overflow:auto; }
+  .books { grid-template-columns:1fr 1fr; }
+}
+@container (max-width: 420px) {
+  .books { grid-template-columns:1fr; }
+}
+@container (max-width: 760px) {
+  .peek { left:14px; right:14px; width:auto; }
+}
+
+</style>
+</head>
+<body>
+<div class="sk-banner">Sketch · 110 · <b>B · The Gazetteer</b> · /cellar and its registers · warm charcoal ground · example data, not a tenant · no emoji</div>
+
+<div class="sk-wrap">
+  <p class="crumb">Mudavym · /cellar · third pass · 2026-09-17 · direction B of three</p>
+  <h1 class="sk-h">The Gazetteer<span class="dot">.</span></h1>
+  <p class="sk-intro">The cellar page is <b>one index of every title the house's books name</b>, in a column on the left, and <b>one bottle's whole record on the right</b> — the record is the page, not a row that opens. "See everything" is the index: every register in one scroll, with running heads. "Not crowded" is the record: one bottle's depth at a time, at full width, with every card the founder named. It is keyboard-first: the arrows walk the index, Space peeks, Enter opens (sketch 103, 2a). The house itself is the first entry in the gazetteer, so <code>/cellar</code> with nothing chosen is the house's own record — the top boxes, the registers, the naming rule — and the h1 there is the name the founder already decided (<b>The Cellar</b> here; Soft drinks for the café). Every 1440 frame is drawn with the invoice book and the recipe book populated and says so; the Partial state is the ship state. The record is the page, so the hold that spends money sits in its acts — drawn mid-pour in §5 on Boğazkere.</p>
+
+  <h2 class="sk-sec"><span>1</span><b>The page at 1440</b><small>Meyhouse · Palo Alto · USD · en-US · a wine chosen</small></h2>
+  <div class="frame"><div class="mudavym"><div class="hh"><span class="hh-mark">Mudavym<span class="dot">.</span></span><span class="hh-rule"></span><span class="hh-page">Cellar</span><span class="hh-search"><span class="t">Search or act</span> <kbd>⌘K</kbd></span><span class="hh-house">Meyhouse · Palo Alto</span><span class="hh-ic" title="Notifications">3</span><span class="hh-ic" title="Account">AK</span></div><div class="gz" id="us"></div></div><div class="frame-cap">The index groups by register in the house's own order and reads in one scroll; the right-hand figure on a line is what the cellar knows (on hand) or a dash where it cannot know. The record carries the /inventory dropdown's cards at full width, plus the five books as five named cards — a book that names the bottle is lit, a book that does not says so in words. <b>Drawn with the invoice book populated</b> — today it holds 0 rows (<code>wines.md:708</code>), so at ship Paid is a dash with its reason on every record, as the Partial state draws. <b>The recipe book is drawn populated too</b> — <code>cocktail_ingredients</code> holds 0 rows (<code>wines.md:706-707</code>), so at ship a cocktail’s index line says “recipe —” with that reason.</div></div>
+
+  <h2 class="sk-sec"><span>1b</span><b>/cellar with nothing chosen</b><small>the house is the first entry</small></h2>
+  <div class="frame"><div class="mudavym"><div class="hh"><span class="hh-mark">Mudavym<span class="dot">.</span></span><span class="hh-rule"></span><span class="hh-page">Cellar</span><span class="hh-search"><span class="t">Search or act</span> <kbd>⌘K</kbd></span><span class="hh-house">Meyhouse · Palo Alto</span><span class="hh-ic" title="Notifications">3</span><span class="hh-ic" title="Account">AK</span></div><div class="gz" id="us-house"></div></div><div class="frame-cap">Nothing chosen is not an empty pane: the house's own record — what it keeps tonight, which registers it carries and why, and where those facts come from. Esc from any bottle returns here.</div></div>
+
+  <h2 class="sk-sec"><span>1c</span><b>Space peeks, Enter promotes</b><small>the index keeps focus; the peek is a hover card beside the line (ADR 0112 F8: no scrim, no trap, never the seal) — the record on the right does not change until Enter</small></h2>
+  <div class="frame"><div class="mudavym" style="position:relative"><div class="hh"><span class="hh-mark">Mudavym<span class="dot">.</span></span><span class="hh-rule"></span><span class="hh-page">Cellar</span><span class="hh-search"><span class="t">Search or act</span> <kbd>⌘K</kbd></span><span class="hh-house">Meyhouse · Palo Alto</span><span class="hh-ic" title="Notifications">3</span><span class="hh-ic" title="Account">AK</span></div><div class="gz" id="us-peek"></div><div class="peek" id="peek" role="note" aria-label="Peek: Boğazkere 2021"><div class="t">Boğazkere 2021</div><div class="s">Kavaklıdere · Diyarbakır · red</div><div class="f">9 on hand · par 12 — at or under par<br>$62 a bottle · $15 a glass<br>38 sold · 9 d of till · paid $21.10</div><div class="k">Enter promotes it to the record · Space or Esc closes · ↑ ↓ walk on</div></div></div><div class="frame-cap">The cursor walked one line down from the open record and pressed <b>Space</b>: a peek of Boğazkere beside the index, while Öküzgözü stays the record on the right. The peek is the non-modal class the founder named in ADR 0112 F8 — no scrim, no focus trap, dismissed by moving, never a form and never the seal. <b>Enter</b> promotes the peeked line to the record (sketch 103 · 2a).</div></div>
+
+  <h2 class="sk-sec"><span>2</span><b>The same page in a Turkish house</b><small>Kadıköy Meyhane · İstanbul · TRY · tr-TR · a rakı chosen — a register the cellar cannot count</small></h2>
+  <div class="frame"><div class="mudavym"><div class="hh"><span class="hh-mark">Mudavym<span class="dot">.</span></span><span class="hh-rule"></span><span class="hh-page">Cellar</span><span class="hh-search"><span class="t">Search or act</span> <kbd>⌘K</kbd></span><span class="hh-house">Kadıköy Meyhane · İstanbul</span><span class="hh-ic" title="Notifications">3</span><span class="hh-ic" title="Account">AK</span></div><div class="gz" id="tr"></div></div><div class="frame-cap">A rakı's record is honest about what it lacks: Live vs shadow and Par and reorder are drawn hatched with the reason (the cellar keys stock on the wine library, ADR 0115 proposed, migration not applied). What is real stays real: the list price in ₺, the till's velocity, the invoice line matched by name, the one quote. Dates in tr-TR.</div></div>
+
+  <h2 class="sk-sec"><span>3</span><b>Adapting to the house</b><small>an alcohol-free café (nothing chosen, then a line chosen) and a whisky bar — each at full width, so the two panes are seen</small></h2>
+  <div class="frame"><div class="mudavym"><div class="hh"><span class="hh-mark">Mudavym<span class="dot">.</span></span><span class="hh-rule"></span><span class="hh-page">Soft drinks</span><span class="hh-search"><span class="t">Search or act</span> <kbd>⌘K</kbd></span><span class="hh-house">Çınaraltı Kahve · Kadıköy</span><span class="hh-ic" title="Notifications">3</span><span class="hh-ic" title="Account">AK</span></div><div class="gz" id="cafe-house"></div></div><div class="frame-cap"><b>Alcohol-free café, nothing chosen.</b> The house is the first entry, and for a one-register house its record <i>is</i> the register: the h1 is <b>Soft drinks</b>, there is no parent above it, and the index has one running head and no chips. Read a menu, Carry a bottle and Photograph a label are drawn refused with the gateway’s own sentence (<code>house-record.ts:184</code>), because reading a menu ends in carrying and nothing here can be carried.</div></div>
+  <div class="frame" style="margin-top:14px"><div class="mudavym"><div class="hh"><span class="hh-mark">Mudavym<span class="dot">.</span></span><span class="hh-rule"></span><span class="hh-page">Soft drinks</span><span class="hh-search"><span class="t">Search or act</span> <kbd>⌘K</kbd></span><span class="hh-house">Çınaraltı Kahve · Kadıköy</span><span class="hh-ic" title="Notifications">3</span><span class="hh-ic" title="Account">AK</span></div><div class="gz" id="cafe"></div></div><div class="frame-cap"><b>Alcohol-free café, a line chosen.</b> The page is called <b>Soft drinks</b> — the register's name in a house with no alcohol (founder, 2026-09-16) — and <code>/cellar</code>, <code>/non-alcoholic</code> and <code>/soft-drinks</code> are one page. The index's right-hand column is dashes throughout, said once at the head rather than 23 times; the record's Count into the cellar and Order more are refused, not hidden.</div></div>
+  <div class="frame" style="margin-top:14px"><div class="mudavym"><div class="hh"><span class="hh-mark">Mudavym<span class="dot">.</span></span><span class="hh-rule"></span><span class="hh-page">Cellar</span><span class="hh-search"><span class="t">Search or act</span> <kbd>⌘K</kbd></span><span class="hh-house">The Copper Still · Portland, OR</span><span class="hh-ic" title="Notifications">3</span><span class="hh-ic" title="Account">AK</span></div><div class="gz" id="bar"></div></div><div class="frame-cap"><b>Whisky bar — an excerpt: Whiskey, Wines and Beer drawn; Cocktails and Non-alcoholic are chips.</b> The index is 148 whiskies with a dash beside each and six wines with a count. The record of a whisky says at the top, in the standing line, that it cannot be counted or ordered here yet, and then shows everything that <i>is</i> known: the till, the invoice, the list price by the ounce, the quote.</div></div>
+
+  <h2 class="sk-sec"><span>4</span><b>States</b><small>loading · blank · refused · unread · partial</small></h2>
+  <div class="states" id="states"></div>
+
+  <h2 class="sk-sec"><span>5</span><b>Overlays the record opens, and the hold</b><small>the three cellar overlays of sketch 102; the record's Carry act opens the label reader; the record itself carries the seal, drawn mid-pour</small></h2>
+  <div class="two" style="margin-bottom:14px">
+    <div class="frame"><div class="ovl-stage mudavym"><div class="pg" id="frag1"></div><div class="ovl-scrim"></div>
+<aside class="ovl-sheet" aria-label="Carry these bottles. Carrying writes an inventory row for each ticked line. Leaving writes nothing.">
+  <p class="ovl-eyebrow">The register · a sheet, one object: the scan</p>
+  <h3 class="ovl-title">Carry these bottles</h3>
+  <a class="ovl-close" href="#">Close</a>
+  <p class="said" style="margin-top:8px">The reader proposes; you decide. Carrying writes one inventory row per ticked line. Leaving writes nothing.</p>
+  <p class="ovl-sect">From the menu scan · 9 found · nothing written yet</p>
+  <div class="ovl-item"><span class="cb" data-on="true"></span><div><div class="ttl">Öküzgözü 2022 · Kavaklıdere</div><div class="sub">sure · 91% · matched the library, exact</div></div><span class="qty" title="bottles to carry — six for a confident read, editable">6</span><div class="kind">wine · bottle 750 ml</div></div>
+  <div class="ovl-item"><span class="cb" data-on="true"></span><div><div class="ttl">Boğazkere 2021 · Kavaklıdere</div><div class="sub">fairly sure · 88% · matched the library, exact</div></div><span class="qty">6</span><div class="kind">wine · bottle 750 ml</div></div>
+  <div class="ovl-item"><span class="cb"></span><div><div class="ttl">Chianti Classico 2021 · Banfi</div><div class="sub">unsure · 54% — arrives unticked; check the producer before you carry it</div></div><span class="qty" title="one for a shaky read, editable">1</span><div class="kind">wine · bottle 750 ml</div></div>
+  <div class="ovl-item"><span class="cb" data-on="true"></span><div><div class="ttl">Suvla Karasakız 2021 · Suvla</div><div class="sub">sure · 90% · matched the library, exact</div></div><span class="qty">6</span><div class="kind">wine · bottle 750 ml</div></div>
+  <div class="ovl-item"><span class="cb" data-off="true"></span><div><div class="ttl">Efes Pilsen · Anadolu Efes</div><div class="sub">sure · 93% · a beer — the cellar cannot hold a keg yet, so this line stays unticked and nothing is written for it</div></div><span class="qty em">—</span><div class="kind em">beer · not carried</div></div>
+  <div class="ovl-item"><span class="cb" data-on="true"></span><div><div class="ttl">Vinkara Narince 2023 · Vinkara</div><div class="sub">fairly sure · 87% · matched the library, exact</div></div><span class="qty">6</span><div class="kind">wine · bottle 750 ml</div></div>
+  <p class="ovl-foot" style="margin-top:8px">3 more below, 2 of them ticked. A count per line — six for a confident read, one for a shaky one — and each is editable. Each carried line states its kind and its unit in the same step; the cellar never supplies either.</p>
+  <div class="ovl-btns"><button class="btn primary">Carry the 6 I ticked</button><button class="btn">Fix a line</button></div>
+  <p class="ovl-foot">Detection is a reading, not a record: a confidence is the reader's, and a row is written only when you press Carry — one inventory row per ticked line, through <code>POST /inventory/:rid/items/bulk</code>, the door /inventory's own carry already uses. No cost is taken from a menu price. The scanner's old approve step wrote nothing; this one reads back what the house accepted, by count, after it has.</p>
+</aside></div><div class="ovl-cap"><b>Carry these bottles</b> · side sheet, 440, slides in on <code>tuck</code>; a sheet usually leaves the page behind it undimmed; this one takes the scrim because carrying writes. Sketch 102 said migrate from <code>components/wines/MenuScannerModal.tsx</code>; the migration is written and sits unmerged in Codex’s page-ports worktree (census 2026-09-13, overlay1 manifest): two steps in one sheet — read the menu, then carry what it read through <code>POST /inventory/:restaurantId/items/bulk</code> (<code>inventory.controller.ts:77</code>), a bottle count per line from <code>detectedWinesToBatchRows</code> (six at or above 0.6, one below — <code>menuScannerPersistence.ts:23-25</code>), a shaky line arriving unticked. Landing it, not building it, is the cost. Drawn here: a beer line the sheet cannot carry stays unticked and says so; no path from a read line into the list exists on this page — the list is written where the menu is.</div></div>
+    <div class="frame"><div class="ovl-stage mudavym"><div class="pg" id="frag2"></div><div class="ovl-scrim"></div>
+<div class="ovl-panel" role="dialog" aria-label="This asks whether the engine read the bottle correctly. Confirming submits the reading to the house library for de-duplication; it puts no stock on a shelf. Leaving writes nothing.">
+  <p class="ovl-eyebrow">The label reader · a panel, one question</p>
+  <h3 class="ovl-title">Is this the bottle?</h3>
+  <a class="ovl-close" href="#">Not now</a>
+  <p class="said" style="margin-top:10px">This reading was read off a label by the engine. Nothing about it has been written down; the engine’s words stay grey until you take them.</p>
+  <dl class="ovl-two">
+    <div class="f"><dt>Name <small>sure · 96%</small></dt><dd data-grey="true">Öküzgözü</dd></div>
+    <div class="f"><dt>Producer <small>sure · 97%</small></dt><dd data-grey="true">Kavaklıdere</dd></div>
+    <div class="f"><dt>Vintage <small>unsure · 61%</small></dt><dd data-grey="true">2022</dd></div>
+    <div class="f"><dt>Type <small>yours</small></dt><dd>Red</dd></div>
+    <div class="f"><dt>Region <small>not scored</small></dt><dd data-grey="true">Elazığ</dd></div>
+    <div class="f"><dt>Country <small>not scored</small></dt><dd data-grey="true">Türkiye</dd></div>
+    <div class="f"><dt>Grape <small>fairly sure · 82%</small></dt><dd data-grey="true">Öküzgözü</dd></div>
+  </dl>
+  <p class="said" style="margin-top:12px">The engine is sure of the producer and unsure of the vintage — check the <b>2</b> before you say yes. Two fields it did not score at all, and they say so rather than wearing a low score. One field is yours: you fixed Type, so it is ink.</p>
+  <div class="ovl-btns" style="justify-content:space-between;align-items:center"><span class="ovl-foot" style="margin:0;flex:1 1 220px">Confirming adds it to the house library. It puts no bottle on a shelf.</span><span style="display:inline-flex;gap:6px;flex-wrap:wrap"><button class="btn">Not this bottle</button><button class="btn">Fix a field</button><button class="btn primary">Yes, carry it</button></span></div>
+  <p class="ovl-foot">Yes sends the reading to the house library’s staging (<code>POST /wines/submissions</code>), where the dedup worker resolves it; the house and the submitter come from the token. No stock is written — putting a bottle on a shelf is the carry sheet, a different act. Not this bottle keeps the photo and writes nothing; Not now writes nothing.</p>
+</div></div><div class="ovl-cap"><b>Is this the bottle?</b> · centred panel, min(620px, 100vw − 32px), lands on <code>settle</code>; the page dims beneath. Drawn to the staged file’s contract: <code>IsThisTheBottlePanel.tsx</code> (Codex’s page-ports worktree, census 2026-09-13, not on main) sends a confirmed reading to the house library’s staging — <code>POST /wines/submissions</code>, <code>wines.controller.ts:91</code> — puts no bottle on a shelf, scores each field as a number and a word (<code>sureness()</code>: sure · fairly sure · unsure · not scored) and closes with <b>Not now</b>; its own header calls “added to your cellar” the exact claim this page has refused to make. Landing it, not building it, is the cost. The legacy <code>WineValidationModal.tsx:162</code> asked the same question in a white modal and confirmed it into nothing.</div></div>
+    <div class="frame"><div class="ovl-stage mudavym"><div class="pg" id="frag3"></div><div class="ovl-scrim"></div>
+<div class="ovl-panel" role="dialog" aria-label="Photograph the label. A photo is not a record; nothing is written until the reading is confirmed.">
+  <p class="ovl-eyebrow">Camera · a panel, one step</p>
+  <h3 class="ovl-title">Photograph the label</h3>
+  <a class="ovl-close" href="#">Not now</a>
+  <div class="viewfinder">Hold the bottle so the label fills the frame.</div>
+  <div class="ovl-btns"><button class="btn primary">Take the photo</button><button class="btn">Choose a photo instead</button></div>
+  <p class="ovl-foot">A photo is not a record. Nothing is written until “Is this the bottle?” is answered — and even then the answer goes to the house library, never to a shelf. The camera surface is the one /get-started and the orders scanner already use (<code>components/scanner/CameraCapture.tsx</code>).</p>
+</div></div><div class="ovl-cap"><b>Photograph the label</b> · centred panel · target in sketch 102 and <b>still not started</b>: nothing in Codex’s page-ports worktree draws it — the census lists it as target (<code>routes-cellar-docs.md:58-59</code>), neither overlay manifest names a file for it, and a grep for “photograph” under that worktree’s <code>pages/cellar/next</code>, <code>components/wines</code> and <code>components/scanner</code> finds one code comment. <b>A build</b>, over the camera surface the house already has (<code>components/scanner/CameraCapture.tsx</code>), and priced as one in the README. On the phone this is the whole screen, and the question that follows is a bottom sheet at its half detent.</div></div>
+  </div>
+  <div class="two" style="margin-top:14px">
+    <div class="frame"><div class="mudavym" id="us-hold" style="min-height:520px"></div><div class="frame-cap"><b>The hold, mid-pour</b> · the record pane of Boğazkere 2021, 9 on hand against a par of 12. In this direction the record is the page, not a row or a sheet, so the seal lives in its acts: <i>Hold to order 12 from Mey İçki</i> pours 620 ms linear, then the stamp lands and the order exists (<code>POST /procurement/orders</code>, keyed on the row’s <code>inventoryId</code>, <code>BottleLeaf.tsx:17-24</code>). The page says <i>sent</i> only when the gateway has said so; above the house’s threshold the order waits on /orders for a manager’s seal. The peek (§1c) never carries it — a hover card is not a form.</div></div>
+    <div class="frame"><div class="mudavym"><div class="pg" style="padding:18px 20px"><p class="crumb">What the two directions share</p><h3 class="h2" style="font-size:20px">One record, three homes<span class="dot">.</span></h3><p class="said" style="margin-top:8px">A: the row opens in place; the hold opens a 440 sheet from it, because a row that opens in place is one of the house’s non-modal surfaces and never carries the seal. B: the record is the page; the hold sits in its acts. C: the record is a 440 sheet; the hold sits in its par card. The cards are the same <code>RowExpander</code> cards in all three; only the home moves.</p><p class="note">Drawn here so the founder sees the one act that spends money in every direction he is asked to choose between.</p></div></div><div class="frame-cap">Not an overlay — a note on where the seal lives in A, B and C, next to B’s.</div></div>
+  </div>
+
+  <h2 class="sk-sec"><span>6</span><b>On the phone · 390</b><small>the index is a screen; the record is a screen; the spine names where you are (sketch 103 · 1c)</small></h2>
+  <div class="phones" id="phones"></div>
+
+<h2 class="sk-sec"><span>Sources</span><b>every claim on this page was read from a file</b><small>re-verified 2026-09-17 on feat/mudavym-finish</small></h2>
+<ul class="srcs">
+  <li>The gateway’s refusal, quoted on every refused act: <code>apps/api-gateway/src/beverages/house-record.ts:184</code>. The order write and its key: <code>pages/cellar/next/BottleLeaf.tsx:17-24, 120</code> (<code>POST /procurement/orders</code>, <code>inventoryId</code>, hold-to-approve).</li>
+  <li>The staged overlays: <code>IsThisTheBottlePanel.tsx</code> (Codex’s page-ports worktree; <code>POST /wines/submissions</code>, closes “Not now”, “puts no bottle on a shelf”), <code>MenuScannerModal.tsx</code> there (<code>POST /inventory/:restaurantId/items/bulk</code>, a count per line: <code>menuScannerPersistence.ts:23-25</code>). No file draws <i>Photograph the label</i>: a build over <code>components/scanner/CameraCapture.tsx</code>.</li>
+  <li>Tokens: <code>apps/web/src/styles/mudavym.css:45-65</code> (charcoal, the decided ground, ADR 0138) — the paper escape at <code>:78-94</code> is not used here.</li>
+  <li>Motion: <code>apps/web/src/lib/mudavym/motion.ts:103-129</code> — settle 320, ink 160, tuck, turn 420, pour 620 linear, stamp 360, tally 840.</li>
+  <li>Overlay shapes and numbers: <code>components/mudavym/Sheet.tsx:21-23</code>, <code>sheet.css:16-39</code>; the cellar's three overlays: <code>.planning/06-pages/wines.md:1030-1052</code>, <code>102-modal-census/census.json</code>.</li>
+  <li>The record's cards and what is withheld: <code>pages/cellar/next/RowExpander.tsx</code>; the columns and their measured fill: <code>cellar-columns.ts</code>, <code>wines.md:698-776</code>.</li>
+  <li>Catalogue-only registers: <code>restaurant_inventory</code> keyed on <code>master_wine_id</code>; ADR 0115 Proposed, migration <code>20260903171000</code> written and not applied (<code>wines.md:1787-1830</code>).</li>
+  <li>The house's five books: <code>public.house_beverage_ledger</code> (migration <code>20260903120000</code>), <code>wines.md:594-612</code>; invoice and quote books hold 0 rows (<code>wines.md:707-709</code>).</li>
+  <li>Registers per house: <code>restaurant_cellar_registers</code>, <code>GET/PUT /cellar/:rid/registers</code>; reads: <code>GET /beverages/:rid/registers/:register</code>, <code>GET /beverages/:rid/row-record</code>, <code>GET /cocktails/:rid</code>, <code>GET /wines</code>.</li>
+  <li>Naming today: <code>cellar-format.ts:195-290</code> (The Cellar · The Bar · Drinks). Founder 2026-09-16: <b>/soft-drinks is the adaptive name of the non-alcoholic register for an alcohol-free house</b>, not a new classification.</li>
+  <li>Verdicts: <code>MAKEOVER-VERDICTS.md:191-199</code> ("so much crowded … put more character into it", "see everything"); wave four: rework. Field conclusions: <code>DESIGN-FOUNDATION.md:336-371, 435-445</code>.</li>
+  <li>Routes: <code>apps/web/src/App.tsx:322-333</code> — /wines /cellar /beer /whiskey /cocktails /spirits /non-alcoholic /soft-drinks, one component.</li>
+</ul>
+<p class="sk-note" style="margin-top:18px">Example data, not a tenant — every name, figure and date is invented for the drawing. Fonts load from Google here; the product self-hosts Fraunces, DM Sans and JetBrains Mono.</p>
+</div>
+
+<script>
+(function(){
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const EM = '—';
+function money(v, loc, cur, frac){ if (v===null||v===undefined) return `<span class="em">${EM}</span>`; return new Intl.NumberFormat(loc,{style:'currency',currency:cur,minimumFractionDigits:frac,maximumFractionDigits:frac}).format(v); }
+function n(v, loc){ return v===null||v===undefined ? EM : new Intl.NumberFormat(loc).format(v); }
+function date(iso, loc){ return new Intl.DateTimeFormat(loc,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(iso)); }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+const BOOKS = [['m','The list','menu_items','what we list, and charge'],['i','An invoice','procurement_document_lines','what we were charged, and when'],['o','An order','procurement_order_items','what we asked for'],['q','A quote','vendor_price_observations','who quoted it, off what'],['p','The till','pos_unresolved_lines','what we actually sold']];
+function marks(b){ return '<span class="marks">'+BOOKS.map((B,i)=>`<span class="mark" data-on="${b[i]!=='.'}" title="${B[1]}">${B[0]}</span>`).join('')+'</span>'; }
+
+/* ── houses ─────────────────────────────────────────────────────────────── */
+const US = { house:'Meyhouse', city:'Palo Alto', loc:'en-US', cur:'USD', carried:'Wines · Beer · Spirits · Cocktails · Non-alcoholic',
+  tiles:[['Titles in the books',194,'named by at least one of the five books: 183 on the list, 9 wines off it, 2 house lines no register holds'],['In the cellar',1067,'bottles on hand — wines only, the register the cellar counts'],['At or under their own par',3,'11 of 96 listed wines record a par'],['Sold · 9 d',5640,'till lines, every register, over the 9 days the till has lines for — the sum of A’s drawn lines and each section’s stated remainder'],['Off the list, in the cellar',9,'wines with stock and no line on the list']],
+  groups:[
+    {id:'wines', title:'Wines', counted:true, n:'105 · 1,067 on hand', lines:[
+      ['Öküzgözü 2022','Kavaklıdere',18,true],['Boğazkere 2021','Kavaklıdere',9],['Kalecik Karası 2022','Vinkara',22],['Karasakız 2021','Suvla',11],['Geyserville 2021','Ridge',6],['Bandol Rouge 2019','Domaine Tempier',4],['Chianti Classico 2021','Banfi',14],['Narince 2023','Vinkara',20],['Chablis 1er Cru Fourchaume 2022','Drouhin',7],['Chardonnay 2022','Cakebread',12]], more:'95 more'},
+    {id:'beer', title:'Beer', counted:false, n:'18 · not counted', lines:[['Efes Pilsen','Anadolu Efes',null],['Bomonti Filtresiz','Anadolu Efes',null],['Pale Ale','Sierra Nevada',null]], more:'15 more'},
+    {id:'spirits', title:'Spirits', counted:false, n:'44 · not counted', lines:[['Yeni Rakı 70 cl','Mey İçki',null],['Tekirdağ Gold','Mey İçki',null],['Hendrick’s','William Grant',null]], more:'41 more'},
+    {id:'cocktails', title:'Cocktails', counted:false, n:'11 · the house writes', lines:[['Rakı Sour','recipe · 5 lines',null],['Istanbul Mule','recipe · 4 lines',null]], more:'9 more'},
+    {id:'non_alcoholic', title:'Non-alcoholic', counted:false, n:'14 · not counted', lines:[['Ayran','Süt Aş',null],['Şalgam','Doğanay',null]], more:'12 more'},
+  ],
+  bottle:{reg:'wines', crumb:'Wines · Kavaklıdere · Elazığ', name:'Öküzgözü 2022', books:'mioqp', counted:true,
+    facts:[['Style','Red'],['Grape','Öküzgözü'],['Origin','Elazığ'],['Vintage','2022'],['Format','750 ml <span class="em" title="bottle_size_ml is 750 on every row — a constant, not a measurement">(constant)</span>'],['Last counted','{d:2026-09-02} · Deniz'],['Market','<span class="em" title="retail_price_avg has no writer">'+EM+'</span>']],
+    oh:18, shadow:17, par:12, list:58, glass:14, unit:'a glass', paid:19.40, cat:21, sold:41, vendor:'Mey İçki', under:false,
+    orders:[['PO-1188','2026-09-09','Mey İçki',12,'received 12 · invoice not read'],['PO-1102','2026-08-19','Mey İçki',12,'received 11 of 12 · 1 short, credit asked, not recovered']],
+    quotes:[['2026-09-03','Mey İçki rep · a price list',18.90]],
+    note:'Bright red fruit, soft tannin, a little pepper — <span class="em">inferred from grape and region, not recorded about this bottle</span> (data_enrichment.knowledge = inferred, 76% of the library).'},
+};
+const TR = { house:'Kadıköy Meyhane', city:'İstanbul', loc:'tr-TR', cur:'TRY', carried:'Rakı and spirits · Wines · Beer · Non-alcoholic',
+  tiles:[['Titles in the books',74,'71 on the list, 3 wines off it'],['In the cellar',412,'wines only'],['At or under their own par',1,'4 of 26 wine lines record a par'],['Sold · 9 d',2318,'till lines, every register, over the 9 days the till has lines for'],['Off the list, in the cellar',3,'wines with stock and no line on the list']],
+  groups:[
+    {id:'spirits', title:'Rakı and spirits', counted:false, n:'13 · not counted', lines:[['Yeni Rakı 70 cl','Mey İçki',null,true],['Tekirdağ Gold','Mey İçki',null],['Efe Yaş Üzüm','Efe Rakı',null],['Beylerbeyi Göbek','Elda',null]], more:'9 more'},
+    {id:'wines', title:'Wines', counted:true, n:'26 · 412 on hand', lines:[['Öküzgözü 2022','Kavaklıdere',24],['Boğazkere 2021','Kavaklıdere',8],['Narince 2023','Vinkara',31],['Emir 2023','Turasan',12]], more:'22 more'},
+    {id:'beer', title:'Beer', counted:false, n:'18 · not counted', lines:[['Efes Pilsen','Anadolu Efes',null],['Bomonti Filtresiz','Anadolu Efes',null]], more:'16 more'},
+    {id:'non_alcoholic', title:'Non-alcoholic', counted:false, n:'14 · not counted', lines:[['Ayran','Süt Aş',null],['Şalgam','Doğanay',null]], more:'12 more'},
+  ],
+  bottle:{reg:'spirits', crumb:'Rakı and spirits · Mey İçki · Tekirdağ', name:'Yeni Rakı 70 cl', books:'mioqp', counted:false, reason:'a rakı',
+    facts:[['Type','Rakı'],['Origin','Tekirdağ'],['ABV','<span class="em" title="offered, not drawn — 0 of 609 catalogue rows carry abv_pct">'+EM+'</span>'],['Format','<span class="em" title="volume_ml: 0 rows">'+EM+'</span>'],['Last counted','<span class="em" title="this kind has no cellar row">never — no cellar row</span>'],['Catalogue match','exact']],
+    oh:null, list:1150, glass:260, unit:'a duble', paid:612.00, cat:22, sold:184, vendor:'Mey İçki',
+    orders:[['PO-0931','2026-08-27','Mey İçki',6,'a free line, matched by name (exact) · received at the door 6 · invoice read']],
+    quotes:[['2026-09-03','Mey İçki rep · a price list',590.00]],
+    note:'No note: the catalogue records nothing about this bottle and nothing is inferred for a spirit.'},
+};
+const CAFE = { house:'Çınaraltı Kahve', city:'Kadıköy', loc:'tr-TR', cur:'TRY', single:true, dead:true, carried:'Soft drinks',
+  tiles:[['On the board',23,'menu lines, one register'],['Sold · 9 d',3695,'till lines, over the 9 days the till has lines for'],['With a paid price',17,'lines the invoice book names — the six house recipes have none'],['In the cellar',null,'not counted — the cellar cannot hold a soft drink yet'],['At or under par',null,'no par without a cellar row']],
+  groups:[{id:'non_alcoholic', title:'Soft drinks', counted:false, n:'23 · not counted', lines:[['Türk kahvesi','Kurukahveci Mehmet Efendi',null,true],['Çay','Çaykur',null],['Sahlep','house',null],['Filtre kahve','Petra Roasting',null],['Ayran','Süt Aş',null],['Limonata','house',null],['Şalgam','Doğanay',null],['Niğde Gazozu','Niğde Gazoz',null],['Cold brew','Petra Roasting',null]], more:'14 more'}],
+  bottle:{reg:'non_alcoholic', crumb:'Soft drinks · Kurukahveci Mehmet Efendi', name:'Türk kahvesi', books:'mi..p', counted:false, reason:'a soft drink',
+    facts:[['Type','Hot'],['Origin','<span class="em">'+EM+'</span>'],['Format','<span class="em" title="volume_ml: 0 rows">'+EM+'</span>'],['Last counted','<span class="em">never — no cellar row</span>'],['Catalogue match','<span class="em" title="no catalogue row names it; the house line keeps its record in full">none — a house line</span>']],
+    oh:null, list:90, glass:null, paid:11.20, cat:null, sold:612, vendor:null, mk:'the board sells a cup and the invoice buys a pack — no shared unit, so no markup', orders:[], quotes:[], note:'A house line with no catalogue row keeps its record in full: a drink nobody catalogued is not a drink nobody sold.'},
+};
+const BAR = { house:'The Copper Still', city:'Portland, OR', loc:'en-US', cur:'USD', carried:'Whiskey · Wines · Beer · Cocktails · Non-alcoholic', extraChips:['Cocktails','Non-alcoholic'],
+  tiles:[['Titles in the books',180,'148 whiskies, 6 wines, 12 beers, 9 cocktails, 5 non-alcoholic'],['In the cellar',38,'the six wines'],['At or under their own par',2,'of the six wines with a recorded par'],['Sold · 9 d',2409,'till lines, every register, over the 9 days the till has lines for'],['Off the list, in the cellar',0,'a nought, counted — every wine with stock has a list line']],
+  groups:[
+    {id:'whiskey', title:'Whiskey', counted:false, n:'148 · not counted', lines:[['Woodford Reserve','Brown-Forman',null],['Blanton’s Single Barrel','Buffalo Trace',null],['Eagle Rare 10','Buffalo Trace',null],['Lagavulin 16','Diageo',null,true],['Talisker 10','Diageo',null],['Hibiki Harmony','Suntory',null]], more:'142 more'},
+    {id:'wines', title:'Wines', counted:true, n:'6 · 38 on hand', lines:[['Pinot Noir 2022','Eyrie',8],['Pinot Gris 2023','King Estate',5],['Rosé 2023','Château d’Esclans',3]], more:'3 more'},
+    {id:'beer', title:'Beer', counted:false, n:'12 · not counted', lines:[['Pilsner','pFriem',null]], more:'11 more'},
+  ],
+  bottle:{reg:'whiskey', crumb:'Whiskey · Diageo · Islay', name:'Lagavulin 16', books:'mi.qp', counted:false, reason:'a whisky',
+    facts:[['Type','Single malt'],['Origin','Islay'],['Age','<span class="em" title="age_years: 0 of 272 rows">'+EM+'</span>'],['Cask','<span class="em" title="cask_finish: 0 rows">'+EM+'</span>'],['Proof','<span class="em" title="proof: 0 rows">'+EM+'</span>'],['Last counted','<span class="em">never — no cellar row</span>']],
+    oh:null, list:34, glass:18, unit:'the ounce', listUnit:'the double', paid:68.00, cat:54, sold:73, vendor:'Young’s Market', mk:'a pour price over a bottle cost is not a markup — this register lists no bottle price', orders:[], quotes:[['2026-09-01','Young’s Market rep · a price list',66.00]],
+    note:'The 16 on the label is an age statement the catalogue does not carry as a column (age_years is empty on all 272 rows), so it is in the name and nowhere else — it does not sort.'},
+};
+
+/* the one record drawn at or under its par, so the hold is seen: Boğazkere, 9 against 12 */
+const US_HOLD = JSON.parse(JSON.stringify(US));
+US_HOLD.groups[0].lines = US_HOLD.groups[0].lines.map(l=>[l[0],l[1],l[2],l[0]==='Boğazkere 2021']);
+US_HOLD.bottle = {reg:'wines', crumb:'Wines · Kavaklıdere · Diyarbakır', name:'Boğazkere 2021', books:'mioqp', counted:true,
+  facts:[['Style','Red'],['Grape','Boğazkere'],['Origin','Diyarbakır'],['Vintage','2021'],['Format','750 ml <span class="em">(constant)</span>'],['Last counted','{d:2026-09-02} · Deniz'],['Market','<span class="em">'+EM+'</span>']],
+  oh:9, shadow:9, par:12, list:62, glass:15, unit:'a glass', paid:21.10, cat:23, sold:38, vendor:'Mey İçki', under:true,
+  orders:[['PO-1190','2026-09-09','Mey İçki',12,'received 12 · invoice not read'],['PO-1104','2026-08-19','Mey İçki',12,'received 11 of 12 · 1 short, credit asked, not recovered']],
+  quotes:[['2026-09-03','Mey İçki rep · a price list',20.40]],
+  note:'Dark fruit, firm tannin, a dry finish — <span class="em">inferred from grape and region, not recorded about this bottle</span>.'};
+
+/* ── index ──────────────────────────────────────────────────────────────── */
+function index(H, sel, focus){
+  const chips = H.single ? '' : `<div class="chips"><span class="chip" data-seal="true">Every register</span>${H.groups.map(g=>`<span class="chip">${g.title}</span>`).join('')}${(H.extraChips||[]).map(c=>`<span class="chip">${c}</span>`).join('')}</div>`;
+  let h = `<div class="idx-top"><span class="field">Find a bottle, a producer, a grape <kbd style="margin-left:auto;font-family:var(--mono);font-size:10px;border:1px solid var(--paper-2);border-radius:4px;padding:0 5px">/</kbd></span>${chips}</div><div class="idx-scroll">`;
+  h += `<div class="il" data-on="${sel==='house'}"><span class="it">${H.house}<span class="dim"> · the house</span></span><span class="ip">what it keeps, and which registers it carries</span><span class="io"></span></div>`;
+  H.groups.forEach(g=>{
+    h += `<div class="ih">${g.title}<span>${g.n}</span></div>`;
+    g.lines.forEach(([t,p,oh,on])=> h += `<div class="il" data-on="${!!on && sel!=='house'}" data-focus="${focus===t}"><span class="it">${esc(t)}</span><span class="ip">${esc(p)}</span><span class="io${oh==null?' em':''}" title="${oh==null?(g.counted?'no cellar row':'not counted — the cellar cannot hold this kind'):'on hand'}">${H.single?'':(oh==null?EM:oh)}</span></div>`);
+    if (g.more) h += `<div class="il" style="cursor:default"><span class="ip say" style="grid-column:1/-1">${g.more} — the index keeps scrolling</span></div>`;
+  });
+  h += `</div><div class="idx-keys"><b>↑ ↓</b> move &nbsp; <b>Space</b> peek &nbsp; <b>Enter</b> open &nbsp; <b>/</b> find &nbsp; <b>Esc</b> the house</div>`;
+  return `<aside class="idx" aria-label="Index">${h}</aside>`;
+}
+
+/* ── record ─────────────────────────────────────────────────────────────── */
+function dfix(s, loc){ return s.replace(/\{d:([\d-]+)\}/g, (_,d)=>date(d,loc)); }
+function record(H){
+  const B = H.bottle, L = H.loc, C = H.cur;
+  const named = B.books.split('').filter(c=>c!=='.').length;
+  const standing = B.counted
+    ? `Named in <b>${named} of 5</b> books. ${B.books[1]==='.'?'Not in an invoice — the invoice book was read and names no line for it, which is why Paid is a dash and not a nought.':(named===5?'Every one of the five books names it; Paid is the invoice book’s own line.':'Every book but '+BOOKS.filter((_,i)=>B.books[i]==='.').map(b=>b[1].toLowerCase()).join(', ')+' names it.')}`
+    : `Named in <b>${named} of 5</b> books, and <b>not counted</b>: the cellar keys stock on the wine library, so ${B.reason} cannot be carried, counted or ordered here yet. Everything below that is real is drawn; everything that is not is drawn hatched with its reason.`;
+  const acts = B.counted
+    ? `<div class="controls" style="margin-top:14px"><a class="btn" href="#">Carry more · photograph a label</a>${B.oh<=B.par?`<span class="hold"><span class="fill"></span><span class="seal">M</span><span class="lbl">Hold to order 12 from ${B.vendor}</span></span>`:`<span class="btn" data-off="true" title="above its par">Order more</span><span class="note" style="margin:0">above its par of ${B.par}</span>`}<a class="btn" href="#">Open the series ▾</a></div>`
+    : `<div class="controls" style="margin-top:14px"><span class="btn" data-off="true" title="${GATE}">Count into the cellar</span><span class="btn" data-off="true" title="${ORDER_GATE}">Order more</span><a class="btn" href="#">Open the series ▾</a></div><p class="note" style="margin:6px 0 0">Both refused, never hidden — the gateway’s own sentence: “Nothing in this register can be counted into the cellar yet … adding to inventory is withheld rather than faked.”</p>`;
+  const facts = `<dl class="facts">${B.facts.map(([k,v])=>`<div><dt>${k}</dt><dd>${dfix(v,L)}</dd></div>`).join('')}</dl>`;
+  const books = `<h2 class="sec" style="margin-top:16px">In this house’s books</h2><div class="books">${BOOKS.map((b,i)=>`<div class="book" data-on="${B.books[i]!=='.'}"><b>${b[1]}</b>${B.books[i]!=='.'?b[3]:'does not name it'}<span class="src">${b[2]}</span></div>`).join('')}</div>`;
+  const cost = `<div class="card"><h5>What it costs and what it makes <span class="src">invoice · menu · catalogue</span></h5>
+    <div class="kv"><span>Last paid (invoice)</span><span class="num">${money(B.paid,L,C,2)}</span></div>
+    <div class="kv"><span>Received, last</span><span class="num">${B.counted?'12 × · '+date('2026-09-09',L):(B.orders.length?'6 × · '+date('2026-08-29',L):'<span class="em">'+EM+'</span>')}</span></div>
+    ${B.listUnit
+      ? `<div class="kv"><span>On our list, ${B.listUnit}</span><span class="num">${money(B.list,L,C,0)}</span></div><div class="kv"><span>On our list, ${B.unit||'a glass'}</span><span class="num">${money(B.glass,L,C,0)}</span></div>`
+      : `<div class="kv"><span>On our list</span><span class="num">${money(B.list,L,C,0)}${B.glass?' <span class="dim">· '+money(B.glass,L,C,0)+' '+(B.unit||'a glass')+'</span>':''}</span></div>`}
+    <div class="kv"><span>Catalogue reference</span><span class="num">${B.cat==null?'<span class="em" title="no catalogue row">'+EM+'</span>':B.cat+' <span class="em" title="price_reference is numeric with no currency column — a figure without a unit is not a price">no currency</span>'}</span></div>
+    <div class="kv"><span>Markup, list over paid</span><span class="num">${B.mk?'<span class="em" title="'+B.mk+'">'+EM+'</span>':(B.paid&&B.list?(B.list/B.paid).toFixed(1)+'×':'<span class="em" title="needs a paid price">'+EM+'</span>')}</span></div>${B.mk?'<p class="note" style="margin-top:4px">Markup refused: '+B.mk+'.</p>':''}
+    <p class="note" style="margin-top:8px">Received at the door is a count, not a cost. Paid is read from the invoice book only.</p></div>`;
+  const live = B.counted
+    ? `<div class="card"><h5>Live vs shadow <span class="src">restaurant_inventory · inventory_lots</span></h5><div class="kv"><span>Live</span><span class="num">${B.oh}</span></div><div class="kv"><span>Shadow, from lots</span><span class="num">${B.shadow}</span></div><div class="kv"><span>Difference</span><span class="num">${B.oh-B.shadow}</span></div><p class="note" style="margin-top:8px">A difference of one is a count to take, not a figure to average.</p></div>`
+    : `<div class="card hatch" data-withheld="true"><h5>Live vs shadow <span class="src">withheld</span></h5><p class="said dim">There is no live count to hold a shadow against: this kind has no cellar row yet. Drawn hatched, not dropped, so a keg never looks like a bottle whose stock merely happens to be unknown.</p></div>`;
+  const par = B.counted
+    ? `<div class="card"><h5>Par and reorder <span class="src">restaurant_inventory.threshold_min</span></h5><div class="kv"><span>Par</span><span class="num">${B.par}</span></div><div class="kv"><span>Runway at this velocity</span><span class="num">${Math.round(B.oh/(B.sold/9))} d</span></div><div class="kv"><span>Suggested order</span><span class="num">${B.oh<=B.par?12:'<span class="em">'+EM+'</span>'}</span></div><p class="note" style="margin-top:8px">${B.oh<=B.par?'At or under its own par — the hold above sends a real order.':'Above its par; nothing to order, and the control says so instead of hiding.'}</p></div>`
+    : `<div class="card hatch" data-withheld="true"><h5>Par and reorder <span class="src">withheld</span></h5><p class="said dim">Par, runway and a suggested order are arithmetic over a cellar row this kind does not have.</p></div>`;
+  const vel = `<div class="card"><h5>Velocity <span class="src">till · 9 days of evidence</span></h5><svg class="spark" viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="var(--seal)" stroke-width="1.5" points="0,30 25,26 50,32 75,18 100,22 125,12 150,20 175,9 200,14"/><line x1="0" y1="43" x2="200" y2="43" stroke="var(--paper-2)"/></svg><p class="note" style="margin-top:6px">${n(B.sold,L)} sold in the 9 days the till has lines for — runway divides by the same 9, never by 30. No zero-filled day.</p></div>`;
+  const heat = `<div class="card"><h5>When it sells <span class="src">till · any hour</span></h5><div class="heat">${Array.from({length:7*17},(_,i)=>{const h=i%17, d=Math.floor(i/17); const q = (h>=12&&h<=15)||(h>=5&&h<=9&&d>=4)? (h>=5&&h<=8?3:2) : (h>=10&&h<=16?1:0); return `<i data-q="${B.reg==='non_alcoholic'?(h<=8?3:(h<=12?2:(h<=15?1:0))):q}"></i>`;}).join('')}</div><p class="note" style="margin-top:6px">Mon–Sun by hour, 07:00–23:00 — the hours the till has evidence for. Lunch is drawn; /inventory’s 16:00–23:00 window would have dropped it.</p></div>`;
+  const orders = B.orders.length
+    ? `<div class="card"><h5>Order ledger <span class="src">${B.counted?'procurement_orders':'read by name · not writable'}</span></h5><table class="ledger">${B.orders.map(([id,d,v,q,s])=>`<tr><td>${id}</td><td>${date(d,L)}</td><td>${v}</td><td class="num">${q}</td><td class="dim">${s}</td></tr>`).join('')}</table><p class="note" style="margin-top:6px">${B.counted?'No line claims paid: the documents carry a status, never a payment date.':'A free line on /orders matched by name; a new order from here needs a cellar row this kind cannot have.'}</p></div>`
+    : `<div class="card" data-withheld="true"><h5>Order ledger <span class="src">0 rows</span></h5><p class="said dim">No order names it. ${B.counted?'':'An order written from here would need a cellar row this kind cannot have yet.'}</p></div>`;
+  const quotes = B.quotes.length
+    ? `<div class="card"><h5>Quoted <span class="src">vendor_price_observations</span></h5><table class="ledger">${B.quotes.map(([d,w,p])=>`<tr><td>${date(d,L)}</td><td>${w}</td><td class="num">${money(p,L,C,2)}</td></tr>`).join('')}</table><p class="note" style="margin-top:6px">A quote is a price somebody said, not a price we paid.</p></div>`
+    : `<div class="card" data-withheld="true"><h5>Quoted <span class="src">0 rows</span></h5><p class="said dim">The quote book was read and names no line for it.</p></div>`;
+  const src = `<div class="card"><h5>Where this ${B.counted?'wine':B.reason.replace('a ','')}’s facts come from</h5><table class="ledger two"><tr><td>On hand, par</td><td class="dim">restaurant_inventory${B.counted?'':' — no row'}</td></tr><tr><td>List price</td><td class="dim">menu_items</td></tr><tr><td>Paid</td><td class="dim">procurement_document_lines, invoices</td></tr><tr><td>Sold, when</td><td class="dim">pos_unresolved_lines</td></tr><tr><td>Notes</td><td class="dim">${B.counted?'master_wine_library, marked inferred or recalled':'beverages — nothing recorded'}</td></tr></table></div>`;
+  return `<section class="rp"><p class="crumb">${B.crumb}</p><h1 class="h1">${esc(B.name)}<span class="dot">.</span></h1><p class="standing">${standing}</p>${acts}${facts}${books}<div class="cards">${cost}${live}${par}${vel}${heat}${orders}${quotes}${src}</div><p class="words" style="margin-top:16px;font-size:14px">${B.note}</p></section>`;
+}
+function houseRecord(H){
+  const t = `<div class="tiles" style="margin-top:14px">${H.tiles.map(([l,v,s])=>`<div class="tile"><p class="tile-l">${l}</p><p class="tile-f${v==null?' em':''}" data-tally="${v==null?'':v}" data-loc="${H.loc}">${v==null?EM:''}</p>${s?`<p class="tile-s">${s}</p>`:''}</div>`).join('')}</div>`;
+  const acts = H.dead
+    ? `<div class="controls" style="margin-top:14px"><span class="btn" data-off="true" title="${GATE}">Read a menu</span><span class="btn" data-off="true" title="${GATE}">Carry a bottle</span><span class="btn" data-off="true" title="the label reader reads a wine label into the wine library; this house lists no wine">Photograph a label</span><a class="btn" href="#">Print the list</a></div><p class="note" style="margin:6px 0 0;max-width:70ch">Read a menu, Carry a bottle and Photograph a label are refused, not hidden. The gateway’s own sentence: “Nothing in this register can be counted into the cellar yet … adding to inventory is withheld rather than faked.” Reading a menu ends in carrying, and the list is written where the menu is, not here.</p>`
+    : `<div class="controls" style="margin-top:14px"><a class="btn" href="#">Read a menu</a><a class="btn" href="#">Carry a bottle</a><a class="btn" href="#">Photograph a label</a><a class="btn" href="#">Print the list</a></div>`;
+  const regs = H.groups.map(g=>`<div class="reg-row"><span class="rt">${g.title}</span><span class="num">${g.n}</span><a class="btn" href="#" style="height:26px">Open</a><span class="rs">${g.counted?'Counted from this house’s cellar rows.':(g.id==='cocktails'?'The one register this house writes.':'On the list, not counted — the cellar cannot hold this kind yet.')}</span></div>`).join('');
+  return `<section class="rp"><p class="crumb">The house · ${H.house} · ${H.city}</p><h1 class="h1">${H.single?'Soft drinks':'The Cellar'}<span class="dot">.</span></h1><p class="standing">${H.single?'One register, so this page is the register. Called Soft drinks, not Non-alcoholic — nothing here is defined against alcohol, because there is none.':'Called the Cellar because this house keeps bottles — wine is on its registers. '+H.groups.length+' registers, because that is what this house pours; the others are not drawn.'}</p><p class="note">Which registers a house carries is one row per (house, register), inferred from its books and confirmed at onboarding. Change it in Settings. The address stays /cellar whatever this page is called.</p>${acts}<h2 class="sec" style="margin-top:18px">In the building tonight</h2>${t}<h2 class="sec" style="margin-top:18px">The registers</h2>${regs}<div class="cards" style="margin-top:18px"><div class="card"><h5>Where the house’s facts come from</h5><table class="ledger two"><tr><td>Registers carried</td><td class="dim">restaurant_cellar_registers · confirmed 2 Sep by Aslı</td></tr><tr><td>Titles in the books</td><td class="dim">house_beverage_ledger, five tables</td></tr><tr><td>In the cellar</td><td class="dim">restaurant_inventory.stock_live</td></tr></table></div><div class="card" data-withheld="true"><h5>The floor <span class="src">0 zones confirmed</span></h5><p class="said dim">3 storage zones wait for a name somebody in this house will stand behind. None is drawn until then.</p><a class="btn" href="#" style="margin-top:8px">Confirm the zones</a></div></div></section>`;
+}
+const GATE = 'Nothing in this register can be counted into the cellar yet. restaurant_inventory is keyed on master_wine_id, so a keg, a bottle of rye and a case of cola have no stock row to write to — adding to inventory is withheld rather than faked.';
+const ORDER_GATE = 'An order line is keyed to a cellar row, which this kind cannot have yet.';
+/* tally: motion.ts:100 — springLinear(120, 26), integrated as motion.ts:56-70 does; overdamped, figures arrive and never bounce. An em dash never tallies. */
+function springCurve(k, c, m=1, rest=0.01){ const dt=1/1000, om=Math.sqrt(k/m); let x=1, v=0, tt=0; const pts=[]; while (tt<5){ v += ((-k*x - c*v)/m)*dt; x += v*dt; tt += dt; pts.push(1-x); if (Math.hypot(x, v/om) < rest) break; } pts[pts.length-1]=1; return pts; }
+const TALLY = springCurve(120, 26);
+function tally(el, target, loc){ if (target===null){ el.textContent=EM; return; } if (reduced){ el.textContent=n(target,loc); return; } const t0=performance.now(), D=840; (function step(now){ const tt=Math.min(1,(now-t0)/D); const e=TALLY[Math.min(TALLY.length-1, Math.round(tt*(TALLY.length-1)))]; el.textContent=n(Math.round(target*e),loc); if(tt<1) requestAnimationFrame(step); })(t0); }
+function mount(id, H, house, focus){ const el=document.getElementById(id); if(!el) return; el.innerHTML = index(H, house?'house':null, focus) + (house?houseRecord(H):record(H)); el.querySelectorAll('[data-tally]').forEach(x=>{ const v=x.getAttribute('data-tally'); tally(x, v===''?null:+v, x.getAttribute('data-loc')); }); }
+mount('us', US); mount('us-house', US, true); mount('tr', TR); mount('cafe-house', CAFE, true); mount('cafe', CAFE); mount('bar', BAR);
+(function(){ const el=document.getElementById('us-hold'); if(!el) return; el.innerHTML = record(US_HOLD); })();
+mount('us-peek', US, false, 'Boğazkere 2021');
+function placePeek(){ const f = document.querySelector('#us-peek .il[data-focus="true"]'), p = document.getElementById('peek'); if (f && p){ const host = p.offsetParent; const top = f.getBoundingClientRect().top - host.getBoundingClientRect().top; const narrow = host.getBoundingClientRect().width < 760; p.style.top = Math.max(8, top + (narrow ? f.offsetHeight + 4 : -6)) + 'px'; } }
+placePeek(); if (document.fonts && document.fonts.ready) document.fonts.ready.then(placePeek); addEventListener('resize', placePeek);
+
+/* ── fragments behind overlays ─────────────────────────────────────────── */
+['frag1','frag2','frag3'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML = `<p class="crumb">Wines · Kavaklıdere · Elazığ</p><h1 class="h1">Öküzgözü 2022<span class="dot">.</span></h1><p class="standing">Named in 5 of 5 books.</p><hr class="rule"><div class="tiles" style="margin-top:14px"><div class="tile"><p class="tile-l">On hand</p><p class="tile-f">18</p></div><div class="tile"><p class="tile-l">Last paid</p><p class="tile-f">$19.40</p></div><div class="tile"><p class="tile-l">Sold · 9 d</p><p class="tile-f">41</p></div></div>`; });
+
+/* ── states ─────────────────────────────────────────────────────────────── */
+const mini = (idx, rec) => `<div class="gz" style="grid-template-columns:1fr;min-height:0"><aside class="idx" style="border-right:0;border-bottom:1px solid var(--paper-2)">${idx}</aside><section class="rp" style="padding:14px 16px 18px">${rec}</section></div>`;
+const ih = (t,s)=>`<div class="ih" style="position:static">${t}<span>${s}</span></div>`;
+const STATES = [
+  ['Loading', mini(ih('Wines','reading…')+`<div class="il"><span class="ip say" style="grid-column:1/-1">The index holds Wines alone until the registers readout answers — the one group this page can serve without an answer. Nothing else is claimed.</span></div>`, `<p class="crumb">The house</p><h1 class="h1" style="font-size:26px">The Cellar<span class="dot">.</span></h1><p class="standing" style="font-size:14px">Finding out which building this is…</p><p class="note">A resolving session is never called a denied one. Figures do not tally until read; an unknown never shimmers.</p>`), 'Two reads: the registers, then each group. The record pane waits in words.'],
+  ['Blank', mini(ih('The index','0 titles')+`<div class="il"><span class="ip say" style="grid-column:1/-1">No book of this house names a drink yet. Blank, not empty.</span></div>`, `<p class="crumb">The house</p><h1 class="h1" style="font-size:26px">The Cellar<span class="dot">.</span></h1><p class="standing" style="font-size:14px">Nothing to open yet. Both ways in are here.</p><div class="controls" style="margin-top:12px"><a class="btn primary" href="#">Read a menu from a photo</a><a class="btn" href="#">Carry the first bottle</a></div>`), 'A blank gazetteer says so on both sides; neither pane is a zero.'],
+  ['Refused', mini(ih('The index','unread')+`<div class="il"><span class="ip say" style="grid-column:1/-1">Not read: no restaurant is active on this account.</span></div>`, `<p class="crumb">The house</p><h1 class="h1" style="font-size:26px">The Cellar<span class="dot">.</span></h1><p class="standing" style="font-size:14px">No restaurant is active on this account, so there is no book to open.</p><p class="note">Choose a branch, or ask an owner for access. A record you followed a link to on another house’s book answers 403 in the same words — nothing was read.</p>`), 'Refused is words on both panes, never an empty index beside an empty record.'],
+  ['Unread', mini(ih('Wines','could not be read')+`<div class="il"><span class="ip say" style="grid-column:1/-1">The wine register did not answer. <a href="#">Try again</a>. Beer, Spirits and Cocktails read; they are below.</span></div>`+ih('Beer','18 · not counted'), `<p class="crumb">Wines · Kavaklıdere</p><h1 class="h1" style="font-size:26px">Öküzgözü 2022<span class="dot">.</span></h1><p class="standing" style="font-size:14px">The record is dark.</p><p class="note">The house’s five books cannot be read on this database yet — the gateway said so (<code>readable: false</code>: the table they are read from has not been created here). The catalogue half of this record still reads: style, grape, origin. The house half is these words, not a column of noughts.</p>`), 'A failed group read leaves the other groups standing; a dark record is words, never zeroes.'],
+  ['Partial', mini(ih('Wines','500 read (capped) · a floor')+`<div class="il"><span class="it">Chardonnay 2022</span><span class="ip">Cakebread</span><span class="io">12</span></div><div class="il"><span class="ip say" style="grid-column:1/-1">Sake × 39 and cider × 4 are in the catalogue and no register can hold them — named here, not dropped.</span></div>`+ih('Cocktails','11 · the house writes')+`<div class="il"><span class="it">Rakı Sour</span><span class="ip">recipe ${EM} · <code>cocktail_ingredients</code> holds 0 rows</span><span class="io em">${EM}</span></div>`, `<p class="crumb">Wines · Cakebread · Napa</p><h1 class="h1" style="font-size:26px">Chardonnay 2022<span class="dot">.</span></h1><p class="standing" style="font-size:14px">Named in 2 of 5 books: the list, the till.</p><div class="cards" style="margin-top:10px;grid-template-columns:1fr 1fr"><div class="card" data-withheld="true"><h5>Paid <span class="src">0 rows</span></h5><p class="said dim">The invoice book holds nothing for this house.</p></div><div class="card" data-withheld="true"><h5>Market <span class="src">no writer</span></h5><p class="said dim"><code>retail_price_avg</code> is null on every row.</p></div></div>`), 'Partial is the ordinary state for months: it must look partial, not empty and not healthy.'],
+];
+document.getElementById('states').innerHTML = STATES.map(([t,h,c])=>`<div class="frame"><div class="mudavym"><p class="sk-sec" style="margin:10px 14px 4px"><b>${t}</b></p>${h}</div><div class="frame-cap">${c}</div></div>`).join('');
+
+/* ── phones ─────────────────────────────────────────────────────────────── */
+const hhp = (page)=>`<div class="hh" style="min-height:44px"><span class="hh-mark">Mudavym<span class="dot">.</span></span><span class="hh-rule"></span><span class="hh-page">${page}</span><span class="hh-search"><kbd>/</kbd></span><span class="hh-ic">3</span></div>`;
+const P1 = `<div class="phone mudavym"><div class="bar"><span>21:42</span><span>Mudavym.</span></div>${hhp('Cellar')}<div class="idx" style="border:0"><div class="idx-top"><span class="field">Find a bottle</span><div class="chips"><span class="chip" data-seal="true">Every register</span><span class="chip">Wines</span><span class="chip">Beer</span><span class="chip">Spirits</span></div></div><div class="idx-scroll"><div class="il"><span class="it">Meyhouse <span class="dim">· the house</span></span><span class="ip">what it keeps</span><span class="io"></span></div>${ih('Wines','105 · 1,067 on hand')}${US.groups[0].lines.slice(0,6).map(([t,p,oh,on])=>`<div class="il" data-on="${!!on}"><span class="it">${esc(t)}</span><span class="ip">${esc(p)}</span><span class="io">${oh}</span></div>`).join('')}${ih('Beer','18 · not counted')}${US.groups[1].lines.slice(0,2).map(([t,p])=>`<div class="il"><span class="it">${esc(t)}</span><span class="ip">${esc(p)}</span><span class="io em">${EM}</span></div>`).join('')}</div></div></div>`;
+const P2 = `<div class="phone mudavym"><div class="bar"><span>21:42</span><span>Mudavym.</span></div>${hhp('Cellar')}<div class="pg"><p class="detent" style="margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>‹ Index</b> · Wines · <b>Öküzgözü 2022</b></p><p class="note" style="margin:0 0 8px">The spine names where you are; a third level collapses into it.</p><p class="crumb">Wines · Kavaklıdere · Elazığ</p><h1 class="h1">Öküzgözü 2022<span class="dot">.</span></h1><p class="standing" style="font-size:13.5px">Named in 5 of 5 books.</p><div class="controls" style="margin-top:10px"><span class="btn" data-off="true">Order more</span><a class="btn" href="#">Carry more</a></div><dl class="facts" style="margin-top:12px;grid-template-columns:1fr 1fr 1fr"><div><dt>On hand</dt><dd>18 <span class="dim">/ 12</span></dd></div><div><dt>Last paid</dt><dd>$19.40</dd></div><div><dt>Sold · 9 d</dt><dd>41</dd></div><div><dt>Style</dt><dd>Red</dd></div><div><dt>Vintage</dt><dd>2022</dd></div><div><dt>Market</dt><dd><span class="em">${EM}</span></dd></div></dl><div class="books" style="grid-template-columns:repeat(5,1fr);gap:4px;margin-top:12px">${BOOKS.map((b,i)=>`<div class="book" data-on="${'mioqp'[i]!=='.'}" style="padding:6px 6px"><b style="font-size:11px">${b[1]}</b></div>`).join('')}</div><div class="cards" style="margin-top:12px;grid-template-columns:1fr"><div class="card"><h5>What it costs and what it makes</h5><div class="kv"><span>Last paid</span><span class="num">$19.40</span></div><div class="kv"><span>On our list</span><span class="num">$58 <span class="dim">· $14 a glass</span></span></div><div class="kv"><span>Markup</span><span class="num">3.0×</span></div></div><div class="card"><h5>Velocity <span class="src">9 days</span></h5><svg class="spark" viewBox="0 0 200 44" preserveAspectRatio="none"><polyline fill="none" stroke="var(--seal)" stroke-width="1.5" points="0,30 25,26 50,32 75,18 100,22 125,12 150,20 175,9 200,14"/></svg></div></div></div></div>`;
+document.getElementById('phones').innerHTML = P1 + P2;
+})();
+</script>
+</body></html>
