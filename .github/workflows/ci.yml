@@ -1161,8 +1161,17 @@ jobs:
       # 2026-09-18 amendment): the gate-ownership classifier's 84 PR shapes through
       # real git, its switch mutations (each must turn something red), and the
       # merge hook run for real against a local bare origin and a gh shim.
+      # `-c /dev/null --confcutdir=scripts` (gate-r3 own-r3-pytest-config-neuters-
+      # regression-net, 2026-09-19): CONFIRMED a repo-root pytest.ini/conftest.py
+      # naming either file (`--deselect`, or a `pytest_collection_modifyitems`
+      # skip hook) silently drops the gate's own 192 tests to 0 collected while
+      # this step still exits 0. `-c /dev/null` refuses any pytest.ini/
+      # pyproject.toml/setup.cfg/tox.ini above; `--confcutdir=scripts` stops
+      # conftest.py collection above scripts/ (none of these tests need one --
+      # none exists in the repo today). Belt-and-suspenders with OWNED_BASENAMES
+      # now also owning those basenames (scripts/pr_audit_gate.py).
       - name: scripts/ unit tests (simulator, operating hours, FK targets, price-history units, audit gate)
-        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py scripts/test_price_history_reads_group_by_unit.py scripts/test_pr_audit_gate.py scripts/test_require_pr_audit.py -q -p no:cacheprovider
+        run: python3 -m pytest -c /dev/null --confcutdir=scripts scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py scripts/test_price_history_reads_group_by_unit.py scripts/test_pr_audit_gate.py scripts/test_require_pr_audit.py -q -p no:cacheprovider
 
   # Lint Python code
   lint-python:
@@ -1373,7 +1382,17 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        # gate-r3 ci-unpinned-actions-supply-chain (2026-09-19): was @master, a
+        # mutable BRANCH with no release gate at all -- tracks whatever that
+        # org pushes to master next.
+        # CORRECTED 2026-09-19 (gate-r4, r4-gate.json): the sha above was
+        # actually the v0.36.0 TAG OBJECT (`git ls-remote --tags` returns the
+        # tag ref's own sha for an annotated tag, not what it points to), not
+        # a commit -- confirmed independently: `git ls-remote
+        # https://github.com/aquasecurity/trivy-action refs/tags/v0.36.0
+        # refs/tags/v0.36.0^{}` returns a9c7b0f0... for the tag and
+        # ed142fd0... (the peeled commit) for `^{}`. Re-pinned to the commit.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
