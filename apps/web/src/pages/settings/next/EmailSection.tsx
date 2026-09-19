@@ -28,15 +28,15 @@ import { senderUpdatedAt, type SettingsNextData } from './useSettingsNextData';
 export function EmailSection({ data }: { data: SettingsNextData }) {
   const { sender, saveSender, sendTestEmail, writer } = data;
   const [draft, setDraft] = useState<string | null>(null);
-  const stored = sender.data?.body ?? '';
+  const stored = sender.data?.row?.body ?? '';
   const value = draft ?? stored;
   const dirty = value.trim() !== stored;
 
-  useEffect(() => { setDraft(null); }, [sender.data?.id]);
+  useEffect(() => { setDraft(null); }, [sender.data?.row?.id]);
 
   return (
     <Register remote={sender} name="the sign-off on file">
-      {(row) => (
+      {({ row }) => (
         <>
           <Row
             label="Sign-off name"

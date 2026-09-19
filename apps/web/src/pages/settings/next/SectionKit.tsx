@@ -282,11 +282,14 @@ export function Register<T>({
       </Note>
     );
   }
+  // `ok` with no data is not "empty" — an empty answer is a value the register
+  // wraps (`SenderRegister.row`). A bare null here means the gateway answered
+  // with nothing readable, which is a failed read and is reported as one.
   if (remote.status === 'error' || remote.data === null) {
     return (
       <div role="alert" style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2)', margin: '0 0 12px' }}>
         <p style={{ margin: '0 0 8px', lineHeight: 1.55 }}>
-          {name.charAt(0).toUpperCase() + name.slice(1)} could not be read — {remote.error ?? 'unknown error'}. Nothing
+          {name.charAt(0).toUpperCase() + name.slice(1)} could not be read — {remote.error ?? 'the gateway answered with nothing readable'}. Nothing
           below is claimed for it; this is not an empty register.
         </p>
         <Action onClick={remote.reload}>Try again</Action>

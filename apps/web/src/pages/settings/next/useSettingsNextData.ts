@@ -54,7 +54,14 @@ export interface Remote<T> {
   set: (value: T) => void;
 }
 
-function useRemote<T>(key: string | null, fetcher: () => Promise<T>): Remote<T> {
+/**
+ * `T extends object` is load-bearing: `data === null` is how a `Remote` says "no
+ * answer held", and `Register` reads it that way. A register whose honest answer
+ * can be "nothing on file" must wrap it (`SenderRegister`), never resolve to a
+ * bare `null` — the two are indistinguishable downstream, and the second one
+ * used to render as "could not be read — unknown error" on a healthy read.
+ */
+function useRemote<T extends object>(key: string | null, fetcher: () => Promise<T>): Remote<T> {
   const [state, setState] = useState<{ status: RemoteStatus; data: T | null; error: string | null }>({
     status: 'idle',
     data: null,
@@ -189,6 +196,21 @@ export interface SenderIdentityRow {
    */
   updatedAt?: string | null;
   updated_at?: string | null;
+}
+
+/**
+ * What the sign-off read resolves to. `row: null` is a SUCCESSFUL read that
+ * found no `sender_identity` template — a house that has never set a sign-off
+ * name. It is wrapped, not returned bare, so it cannot be mistaken for the
+ * `data === null` that means "no answer held" (see `useRemote`).
+ */
+export interface SenderRegister {
+  row: SenderIdentityRow | null;
+}
+
+export async function fetchSender(restaurantId: string): Promise<SenderRegister> {
+  const { data } = await apiClient.get<SenderIdentityRow[]>(`/restaurants/${restaurantId}/templates`);
+  return { row: (Array.isArray(data) ? data : []).find((t) => t.type === 'sender_identity') ?? null };
 }
 
 /** The sign-off row's date, whichever spelling the gateway used. */
@@ -470,10 +492,7 @@ export function useSettingsNextData(active: SectionId) {
     return data;
   });
 
-  const sender = useRemote<SenderIdentityRow | null>(tenantKey('email'), async () => {
-    const { data } = await apiClient.get<SenderIdentityRow[]>(`/restaurants/${rid}/templates`);
-    return (Array.isArray(data) ? data : []).find((t) => t.type === 'sender_identity') ?? null;
-  });
+  const sender = useRemote<SenderRegister>(tenantKey('email'), () => fetchSender(rid as string));
 
   const chains = useRemote<ChainRow[]>(tenantKey('locations'), async () => {
     const { data } = await apiClient.get<ChainRow[]>('/organizations/chains');
@@ -584,7 +603,7 @@ export function useSettingsNextData(active: SectionId) {
     (name: string) =>
       writer.run('sender', async () => {
         const body = name.trim();
-        const current = sender.data;
+        const current = sender.data?.row;
         if (current?.id) await apiClient.patch(`/restaurants/${rid}/templates/${current.id}`, { body });
         else
           await apiClient.post(`/restaurants/${rid}/templates`, {
