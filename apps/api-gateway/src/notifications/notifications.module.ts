@@ -22,6 +22,7 @@ import { GrantSuspendedProducer } from "./producers/grant-suspended.producer";
 import { AddedToolProducer } from "./producers/added-tool.producer";
 import { ExperimentEndedProducer } from "./producers/experiment-ended.producer";
 import { NotificationProducersService } from "./producers/notification-producers.service";
+import { HouseEmailService } from "./house-email.service";
 
 @Module({
   imports: [
@@ -57,6 +58,10 @@ import { NotificationProducersService } from "./producers/notification-producers
   providers: [
     NotificationsService,
     LowStockAlertsService,
+    // POST /notifications/send-email (ADR 0149 answer 15). Reads the vendor
+    // book from `HouseLettersService`, which CommunicationsModule exports for
+    // it; the forwardRef import above already carries the edge.
+    HouseEmailService,
     // The producers (p4 fourth pass). The ledger is the only thing that writes;
     // the six below only decide what happened.
     ProducerLedgerService,

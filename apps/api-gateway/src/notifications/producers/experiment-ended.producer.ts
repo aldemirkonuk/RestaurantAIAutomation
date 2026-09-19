@@ -1,6 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { RecipientResolverService } from "../../communications/recipient-resolver.service";
+import {
+  NOTIFICATION_SEND_CATEGORY,
+  RecipientResolverService,
+} from "../../communications/recipient-resolver.service";
 import { GmailService } from "../../communications/gmail.service";
 import { UxOptimizerService } from "../../ux-optimizer/ux-optimizer.service";
 import type { AdminExperimentReport } from "../../ux-optimizer/ux-optimizer.service";
@@ -465,6 +468,9 @@ export class ExperimentEndedProducer {
       const resolved = await this.recipients.resolveRecipients({
         restaurantId: founderHouseId,
         roles: ["manager"],
+        // A report, not an alert: `financial_reports_channels` decides
+        // (OD-121, founder answer 15, 2026-09-16).
+        category: NOTIFICATION_SEND_CATEGORY["experiment-ended"],
         channels: ["email"],
       });
       const count = resolved.emails.length;
@@ -473,6 +479,20 @@ export class ExperimentEndedProducer {
           (count > 0 ? ` to=${resolved.emails.join(",")}` : "") +
           " — resolved for the record only; this producer writes an inbox row and sends no mail.",
       );
+      // A failed read comes back as an ANSWER now (`lookupFailed`), not a
+      // throw, so it is carried into the row's source the same way the catch
+      // below carries a thrown one — never as "no address is known".
+      if (resolved.lookupFailed) {
+        return {
+          count,
+          emails: resolved.emails,
+          source:
+            `${source} The member lookup FAILED (${resolved.lookupFailed.reason})` +
+            (count > 0
+              ? `, so the ${count} address(es) are the env fallback's alone.`
+              : ", so no address is known."),
+        };
+      }
       // `emails` is handed to the SENDER and to nothing else. The two callers
       // that touch the row (`sentence` and the metadata) read `count`.
       return { count, source, emails: resolved.emails };

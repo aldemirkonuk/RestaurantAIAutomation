@@ -81,13 +81,133 @@ By module (details and failing output in the named report):
   `delivery`, `price-negotiation`, `system-alert` and `send-email` still send to any
   user id or email address the body names. Who may notify whom is a product rule,
   not a scoping bug.
-  [FOUNDER ANSWERED 2026-09-16, build pending (not merged) — ADR 0149 row 15: the five uncalled POST
-  senders are closed (internal only); `send-email` is owner/manager, with recipients
-  limited to the house's members and its vendors' contacts; and the resolver sites
-  are mapped to categories, an unmapped category refused (OD-121).]
+  **[Built 2026-09-17, founder answer 15 of [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]]
+  ("Close five, restrict one"), branch `feat/finish-notify`.]** The five are no longer
+  HTTP routes (404); `git grep` over `apps/web/src`, `apps/mobile` and `services/` found
+  no caller, the orchestrator included, so none needed a service-key door. Their
+  `NotificationsService` methods stay for internal producers. `send-email` now takes a
+  validated `SendHouseEmailDto` and goes through `HouseEmailService`: owner or manager
+  of the token's house by a live `user_restaurant_access` row **only**
+  (`isLiveMembership`: active, `valid_from` not future, `valid_until` null or future).
+  **[Corrected 2026-09-17, same branch — this paragraph originally said the legacy
+  `users.restaurant_id`/`users.role` columns still applied when no access row existed;
+  that was this lane's own blocker (B1), found by its adversarial review the same day
+  and closed the same day. There is no fallback: `users.restaurant_id` is body-written
+  by public `POST /auth/register` (~~open separately in `v3.0-TECH-DEBT.md`~~
+  **[Corrected 2026-09-19: that entry, 44.1g, is marked ✅ CLOSED 2026-09-18 — PR
+  #392 closed the route, which now answers 410. The other sites still trusting a
+  `users.restaurant_id`/`users.role` fallback are tracked separately, as 44.1i, not
+  44.1g, until ADR 0166 places them.]**), and
+  trusting it here let anyone who knew a house's id register as its "owner" and send
+  as that house. The prose was never updated after the fix landed — see CLAUDE.md
+  §5b.]** Recipients are only
+  the house's active members and its vendor book (`HouseLettersService.book`), one
+  outside address refuses the whole send and is named, a failed read is 503, a
+  provider refusal 502, no provider 503 (the old path answered `success: true` with a
+  mock id), and one `system_audit_log` row per role refusal, recipient refusal,
+  provider failure or send, carrying counts, never an address (a 400/401 or an
+  unreadable roster writes none). The three web callers moved to `sendHouseEmail` (they used bare `axios`,
+  so carried no token and were already 401) and show the gateway's sentence.
+  `RecurringOrders` names no recipient and is unrouted; its send is refused with that
+  sentence. Pinned by `notifications/notification-senders-are-closed.spec.ts`.
 - **Notification preferences.** `ordersMode`, `reportsMode` and `digestFrequency` are
   free strings with no allowlist. `startTime`, `endTime` and `digestTime` have no HH:mm
   check, and the columns have no CHECK constraint.
+  **[Built 2026-09-17, same branch.]** The DTO now refuses anything outside
+  `both | in_app | off` and `daily | off`, and any time not `HH:mm` 24-hour, with a 400
+  before the service is reached. **[Fixed 2026-09-18, founder answer, ADR 0149 row 39,
+  recorded on train/finish-2: preferences are per person PER HOUSE.]** The 42P10 was
+  always a code defect, not a schema one — `notification_preferences` has carried
+  `UNIQUE (restaurant_id, user_id)` since the production baseline
+  (`20260805000000_baseline_from_production.sql:7212-7216`); the service upserted with
+  `onConflict: "user_id"`, naming no index at all. `updatePreferences` and
+  `registerPushSubscription` now upsert on `(restaurant_id, user_id)` /
+  `(user_id, endpoint)` respectively, `getPreferences` and the resolver's preference
+  read are both filtered by `restaurant_id` from the token, and a push subscription
+  moved to its own table, `notification_push_devices` (a device is not scoped to a
+  house). Migration:
+  `20260918120000_a_preference_is_kept_once_per_person_per_house.sql`. The columns
+  still carry no CHECK constraint (unchanged, out of this lane's scope). Pinned by
+  `notification-preferences-are-per-house.spec.ts` and, against real Postgres,
+  `p4-scratch/pglite-probe/notify-preferences-per-house.mjs`.
+- **Recipient routing (OD-121).** **[Built 2026-09-17, founder answer 15 (ADR 0149,
+  re-measured 2026-09-17): "map every resolver site to a category (eleven measured
+  2026-09-17, not the seven first counted)".]** There are eleven sends, each named in
+  one table, `NOTIFICATION_SEND_CATEGORY` (`communications/recipient-resolver.service.ts`),
+  and gate 2 reads that one category's array instead of a union of three. A resolve with
+  no or an unknown category throws `UnmappedNotificationCategoryError` before any read
+  and never reaches the legacy env fallback. Row 34 (ADR 0149, 2026-09-17) ratified two
+  of the original four judgement calls: the weekly report is `financial_reports`, the
+  recurring-order reminder `order_approval`. **[Ratified 2026-09-18, founder answer, ADR
+  0149 row 46]:** the remaining two, covering three sends — the daily SMS summary and
+  the experiment-ended notice are `financial_reports`, the inventory audit reminder
+  `calendar_reminders` — were the builder's own call (OD-121) and are now the founder's.
+  Row 46 also adds `sms` to `financial_reports_channels`' DEFAULT (migration
+  `20260918123000_a_daily_summary_can_reach_a_phone.sql`): the daily SMS summary is
+  SMS-only, and a row at the prior default (`email, dashboard`) could never receive it.
+  **ADR 0022's check, done and failed:** on the
+  stock row production held when measured on 2026-09-02 (`low_stock_channels` = its
+  default `['sms','push']`; not re-measured by this lane),
+  low-stock email is now declined by preference. **[Fixed 2026-09-18]:** with the 42P10
+  above closed, a member can now turn a declined channel back on again.
+  **[Corrected 2026-09-19, CLAUDE.md §5b — the previous sentence was wrong.**
+  `updatePreferences` (`notifications.service.ts:1156-1196`) has never had a field for
+  any of the six `*_channels` arrays, so closing the 42P10 does not restore this
+  control: a member still cannot change `low_stock_channels`,
+  `order_approval_channels`, `financial_reports_channels`, `delivery_channels`,
+  `inequality_alerts_channels` or `calendar_reminders_channels`, for any row, old or
+  new — there is no screen (`NotifySection.tsx` has no such control) or API path that
+  writes one. What the 42P10 fix actually restores is saving the fields
+  `updatePreferences` DOES write (`email_enabled`/`push_enabled`/`sms_enabled`/
+  `categories`/`quiet_hours_*`/the `lowStock` sub-object/`ordersMode`/`reportsMode`)
+  without a 500. ADR 0022's low-stock-declined-by-default finding is UNCHANGED by
+  this lane: still no screen or API can re-enable it. Same correction at OD-121;
+  open questions this raises are Q1 and Q2, both now answered — see the next
+  bracket, not a scratch report.]**
+  **[Corrected 2026-09-19, later the same day, CLAUDE.md §5b — the "UNCHANGED"
+  finding just above is now itself half-stale: Q1 is answered and built. Founder
+  answer, 19-lane blocking round, ~09:20Z (quoted verbatim in
+  `founder-sketch-decisions-106-115.md`): "low-stock = add 'email' to
+  low_stock_channels column DEFAULT (small additive migration in the notify
+  PR)." Built same day:
+  `20260919100000_a_low_stock_warning_can_reach_an_inbox.sql` widens
+  `low_stock_channels`' DEFAULT to `ARRAY['sms','push','email']`. This does not
+  reopen the screen/API gap described above — a member still cannot WRITE any
+  `*_channels` array — it only changes what a row gets when nobody ever wrote
+  one: a NEW row (or one reset to the default) now gets email; a row already
+  holding an explicit, customised array keeps exactly what it held.
+  Q2 — the STANDING RULE of whether a widened default should also move
+  existing rows already sitting at the old value — is answered too, same
+  round, batch 4 (~10:00Z), verbatim: *"channel-default standing rule =
+  untouched rows follow a widened default, customised rows never touched."*
+  Built same day, same migration: an
+  `UPDATE public.notification_preferences SET low_stock_channels =
+  ARRAY['sms','push','email'] WHERE low_stock_channels = ARRAY['sms','push']`
+  backfill, matched by exact array equality so a row someone customised away
+  from the old default is provably left alone (an unequal array, or NULL,
+  never matches). Proven against PGlite, not production —
+  `p4-scratch/pglite-probe/notify-lane-low-stock-backfill.mjs`. Production
+  held 0 `notification_preferences` rows when measured 2026-09-19 via the
+  Supabase MCP (SELECT only), so the backfill moves nothing there today; the
+  rule is recorded here as standing, for every row this or a later migration
+  ever meets, not only today's production state. **Not done by this pass:**
+  `financial_reports_channels` (row 46's earlier default widening, migration
+  `20260918123000`) is not backfilled — the standing rule applies to it too,
+  but doing so was outside this pass's task; flagged here as a follow-up, not
+  silently actioned. The durable record from here on is this bullet and this
+  file's 2026-09-19 changelog row, and `OPEN-DECISIONS.md`'s OD-121 entry —
+  not `lane-status-2026-09-18.md` or "the wave-5 notify report", which are
+  session-scratch files outside this repo that no other reader can open.]**
+  The digest
+  records `declined_by_preference`, not `no_recipients`.
+  Also closed: the resolver no longer counts an ended membership (`is_active = false`),
+  and a failed preferences, roster or contact read now fails the resolve (the legacy
+  house gets its env address, every other house nobody) instead of reading as "no
+  preferences", which allowed every channel. **[Changed 2026-09-18]:** preferences are
+  now read narrowed to the caller's house (`getNotificationPreferences` filters by
+  `restaurant_id`), settling the per-user vs per-(restaurant, user) fork this paragraph
+  used to call open (ADR 0149 row 39). Pinned by
+  `communications/notification-categories-route-one-array.spec.ts`.
 - **Wines.** The bottle picker searches only the wine library. That is the open fork
   between ADR 0144 and ADR 0124, not a code fault.
 - [ADDED 2026-09-16 — not in this list as written. **`POST /communications/email` as an
@@ -177,3 +297,6 @@ row does not name never reaches `RolesGuard`) was filed in its fifth.
 | 2026-09-12 | Adversarial pass | OVERTURNED the notifications fix: the push subscribe and unsubscribe siblings still wrote a victim's row |
 | 2026-09-12 | Orchestrating session | Every notification route scoped; two read-error baseline rows retired. Not re-audited: the founder's decision "Your word as PASS, no agents" |
 | 2026-09-16 | Aldemir, via ADR 0149 | Rows 15, 17, 18, 19 answered: notification senders and categories, public-register rows, the ex-member disconnect, and the `/communications/email` relay. Brackets beside "Named and not fixed"; being built, none claimed built |
+| 2026-09-17 | Notify lane (ADR 0149 answer 15) | Five senders closed, send-email restricted, OD-121 routed by category, preference DTO allowlisted. **[Corrected 2026-09-18, CLAUDE.md §5b: this row previously said "Not adversarially re-audited in this lane" — wrong. The lane WAS adversarially reviewed same-day, `wave2/review-notify.json` (`approve: false`), which found the B1 auth/register blocker this record's line 71-78 already documents as found and closed the same day. Confirmed twice: `wave4/notify-confirm.md`'s own re-audit found everything from that review either fixed or in the register.]** |
+| 2026-09-18 | Notify lane (ADR 0149 rows 39/46) | Preferences moved to per-(restaurant, user) upsert, 42P10 closed, push subscription relocated to `notification_push_devices`, the resolver's preference read narrowed by house, `sms` added to `financial_reports_channels`' default, OD-121's two founder-pending mappings ratified. Not independently adversarially re-audited before this row was written — the next wave's confirmer should re-run the pglite probe and the new jest suite against a fresh checkout. |
+| 2026-09-19 | Notify lane (sync + R-item pass, wave 5) | Synced onto `origin/main` (`cb756083e`, #392/#393) with this lane's uncommitted work; only textual conflicts (main had annotated OD-121/OD-112/OD-81/OD-123 with "build pending" notes this lane's own build supersedes, and separately added unrelated ADR 0124/0158/0147-register/0162 CLAIMS rows) — resolved by keeping this lane's fuller text and appending main's independent rows, no fact overwritten. Then fixed every R item from `lane-status-2026-09-18.md`'s notify section that did not need the founder, each proven, not asserted: **D1** dropped the CLAIMS row shelling out to `node /Users/…/p4-scratch/…mjs` (an absolute path outside the repo; the `decision-claims` CI job installs no `node_modules`, confirmed by reading `.github/workflows/ci.yml`'s `decision-claims` job — no in-repo static replacement exists for a real-Postgres proof, so the row is gone, not repointed). **D2** rescoped the CLAIMS row for row-39's restaurant filter to each method's body (`re.search` on `getPreferences`/`getNotificationPreferences`) after proving the old file-wide substring check held even on the pre-fix tree `60ed83a7e` (`getPreferences` took no `restaurantId` there at all). **D3** corrected this record's Notification-preferences paragraph and OD-121 in place: no runtime path writes any `*_channels` column (`notifications.service.ts:1156-1196`, `NotifySection.tsx` has no such control), so "a member can now turn a declined channel back on again" never became true. **D4** corrected the notify lane's own `v3.0-TECH-DEBT.md` entry, which called `POST /auth/register` "still open" (44.1g, same file, says CLOSED) and cited 44.1g for the *other* fallback sites, which 44.1i actually tracks. **D5** scoped 7 cross-house `notification_preferences` reads to `restaurant_id` (`low-stock-alerts.service.ts`, `scheduled-tasks.service.ts`, `team/broadcast-preferences.ts`, `calendar-reminders.service.ts` ×2, `producers/producer-ledger.service.ts`, `notification_agent.py`'s `_get_notification_preferences`) plus 2 web cache keys (`query-keys.ts`, `useSettingsNextData.ts`) that kept the previous house's preferences cached across a house switch; all 7 backend/Python sites got a new test proven to fail on the pre-fix code and pass on the post-fix code (toggled by hand, not merely written; `scheduled-tasks.service.ts` had no existing spec file, so one was added), and `query-keys.ts`'s key generation got a direct unit test — `useSettingsNextData.ts`'s cache-key change did not get an equivalent test (no test scaffold exists yet for that hook; typecheck plus the proven `query-keys` mechanism stand in, named as a gap, not silently skipped). **D6** added an `EXISTS (select 1 from public.users …)` guard to migration `20260918120000`'s backfill, which 23503'd the whole migration transaction on any `notification_preferences.user_id` absent from `public.users` (that column carries no FK — only `restaurant_id` does, baseline `:12794-12798` — while the new table's does); proven against real Postgres (PGlite, no Docker) with the orphaned-row 23503 reproduced pre-fix and the guarded backfill completing post-fix, both correctly and its own source row untouched. **[Corrected 2026-09-19, same day, CLAUDE.md §5b (independent-verifier finding, MODERATE) — D6's probe (`p4-scratch/pglite-probe/notify-lane-d6-fk-guard.mjs`) hand-transcribed the backfill's SQL inline instead of reading it from the migration file, so it could not detect a future hand-edit to that file; confirmed by stripping the EXISTS guard from the real file and re-running the probe unchanged, which still reported ALL GREEN (it never touched the file under test). Fixed same day: the probe now reads the migration with `readFileSync` and executes that exact text as its primary check (must not 23503 against the orphan fixture), with the pre-fix regression demo mechanically derived from the same text (the guard clause stripped by a targeted regex, not retyped by hand) rather than hand-typed, and fails loudly instead of skipping if that clause's exact wording ever changes. Re-verified both ways: guard present in the real file → ALL GREEN (5/5); guard removed by hand → correctly FAILS, then restored (`git diff` = 0 lines).]** Q1 and Q2 (whether/how to backfill `low_stock_channels`/`financial_reports_channels` defaults for existing rows) remain open — genuinely the founder's call, not filed as a new OD per this wave's "prefer no new OD rows"; see the wave-5 notify report. **[Corrected 2026-09-19, same day, CLAUDE.md §5b (independent-verifier finding, BLOCKING) — "Q1 ... remain[s] open" was false: the founder had ALREADY answered Q1, in the same 19-lane blocking round this wave's own rows draw from (`founder-sketch-decisions-106-115.md`, AskUserQuestion, 2026-09-19 ~09:20Z, verbatim): "low-stock = add 'email' to low_stock_channels column DEFAULT (small additive migration in the notify PR)." This wave's own R-item pass searched that exact file among its "6 founder-decision sources" and reported finding nothing — the search was not run, or its result was not read. Fixed same day, in the PR this decision named: migration `20260919100000_a_low_stock_warning_can_reach_an_inbox.sql` adds `email` to `low_stock_channels`' DEFAULT, mirroring row 46's `financial_reports_channels` shape (additive, existing rows untouched); a CLAIMS.jsonl row and a PGlite proof confirm it (an existing row keeps the old `{sms,push}` default, a new row created after the migration gets `{sms,push,email}`). Q2 — the STANDING rule of whether a widened default should also backfill rows already sitting at the old value — is a separate, general question ~~the founder has not answered for either column, and remains genuinely open; this correction does not touch it~~ **[Corrected 2026-09-19, later the same day, CLAUDE.md §5b — Q2 was answered a short time after this correction was written, same 19-lane blocking round, batch 4 (~10:00Z), verbatim: "channel-default standing rule = untouched rows follow a widened default, customised rows never touched." Built same session: migration `20260919100000`'s DEFAULT-widening ALTER is now followed by an `UPDATE ... WHERE low_stock_channels = ARRAY['sms','push']` that moves every row still holding exactly the prior default to the new one, leaving any customised row untouched — proven against PGlite (`p4-scratch/pglite-probe/notify-lane-low-stock-backfill.mjs`), not production. `financial_reports_channels` (row 46's earlier widening, migration `20260918123000`) is NOT backfilled by this pass — the rule applies to it too, but that was outside this pass's task, flagged as a follow-up rather than silently actioned. Full text of both answers, with rationale and the rejected alternative, is in this file's Recipient routing (OD-121) bullet above and in `OPEN-DECISIONS.md`'s OD-121 entry — that is the durable record from here, not `lane-status-2026-09-18.md` or "the wave-5 notify report", both session-scratch files outside this repo.]** |

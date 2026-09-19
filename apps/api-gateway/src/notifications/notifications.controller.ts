@@ -34,8 +34,10 @@ import {
   UpdatePreferencesDto,
   PushSubscribeDto,
   PushUnsubscribeDto,
+  SendHouseEmailDto,
 } from "./dto/notifications.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { HouseEmailService } from "./house-email.service";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { NotificationProducersService } from "./producers/notification-producers.service";
 
@@ -177,6 +179,10 @@ export class NotificationsController {
     @Optional()
     @Inject(forwardRef(() => LowStockAlertsService))
     private readonly lowStockAlerts?: LowStockAlertsService,
+    // Required by the injector (no @Optional): a server that cannot resolve it
+    // fails to boot. Typed optional only because it follows an optional
+    // parameter; the route answers 503 if a hand-built instance omits it.
+    private readonly houseEmail?: HouseEmailService,
   ) {}
 
   // =========================================================================
@@ -332,16 +338,25 @@ export class NotificationsController {
     }
   }
 
+  /**
+   * Preferences are per person PER HOUSE (ADR 0149 row 39, 2026-09-18): the
+   * house comes from the same verified token as the user, never from a
+   * query or body field, exactly like every other route in this controller.
+   */
   @Get("preferences")
   async getPreferences(
     @Query() query: GetPreferencesQueryDto,
-    @Req() req: Request & { user?: { userId?: string | null } },
+    @Req() req: ScopedRequest,
   ) {
     // Outside the try: the catch below turns every error into a 500, and a
     // refused scope must stay a 401/403.
     const userId = scopeOwnUserId(req, query?.userId);
+    const restaurantId = scopeRestaurantId(req);
     try {
-      return await this.notificationsService.getPreferences(userId);
+      return await this.notificationsService.getPreferences(
+        userId,
+        restaurantId,
+      );
     } catch (error) {
       this.logger.error(`Failed to get preferences: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -352,14 +367,16 @@ export class NotificationsController {
   async updatePreferences(
     @Query() query: GetPreferencesQueryDto,
     @Body() body: UpdatePreferencesDto,
-    @Req() req: Request & { user?: { userId?: string | null } },
+    @Req() req: ScopedRequest,
   ) {
     // Both places are compared: `body.userId || query.userId` used to let the
     // body win and ignore a query naming someone else.
     const userId = scopeOwnUserId(req, body?.userId, query?.userId);
+    const restaurantId = scopeRestaurantId(req);
     try {
       return await this.notificationsService.updatePreferences({
         userId,
+        restaurantId,
         email: body.email,
         push: body.push,
         sms: body.sms,
@@ -543,7 +560,7 @@ export class NotificationsController {
   }
 
   // =========================================================================
-  // EXISTING SENDING ENDPOINTS (preserved from original)
+  // THE TEST SEND — to the caller only
   // =========================================================================
 
   @Post("test")
@@ -565,118 +582,58 @@ export class NotificationsController {
     return { success: true, message: "Test notification sent" };
   }
 
-  @Post("order-approval")
-  async notifyOrderApproval(
-    @Body()
-    body: {
-      userId: string;
-      orderId: string;
-      wineName: string;
-      quantity: number;
-      providerName: string;
-      price?: number;
-    },
-  ) {
-    await this.notificationsService.sendOrderApprovalNotification(body);
-    return { success: true };
-  }
+  // =========================================================================
+  // WHO MAY NOTIFY WHOM (ADR 0149 answer 15, 2026-09-16; ADR 0147)
+  // =========================================================================
+  //
+  // CLOSED 2026-09-16: POST /notifications/order-approval, /low-stock,
+  // /delivery, /price-negotiation and /system-alert. Each sent to whatever user
+  // id, restaurant id or wording its body named, for any signed-in caller, and
+  // none had a caller: `git grep` over apps/web/src, apps/mobile and services/
+  // found no request to any of the five (the orchestrator included, so none
+  // needed an internal service-key door instead). Their service methods stay on
+  // NotificationsService for internal producers; they are no longer reachable
+  // over HTTP. `notification-senders-are-closed.spec.ts` pins the absence.
 
-  @Post("low-stock")
-  async notifyLowStock(
-    @Body()
-    body: {
-      restaurantId: string;
-      wineId: string;
-      wineName: string;
-      currentStock: number;
-      threshold: number;
-    },
-  ) {
-    await this.notificationsService.sendLowStockAlert(body);
-    return { success: true };
-  }
-
-  @Post("delivery")
-  async notifyDelivery(
-    @Body()
-    body: {
-      restaurantId: string;
-      orderId: string;
-      wineName: string;
-      quantity: number;
-      providerName: string;
-    },
-  ) {
-    await this.notificationsService.sendDeliveryNotification(body);
-    return { success: true };
-  }
-
-  @Post("price-negotiation")
-  async notifyPriceNegotiation(
-    @Body()
-    body: {
-      userId: string;
-      orderId: string;
-      wineName: string;
-      currentPrice: number;
-      proposedPrice: number;
-      providerName: string;
-    },
-  ) {
-    await this.notificationsService.sendPriceNegotiationNotification(body);
-    return { success: true };
-  }
-
-  @Post("system-alert")
-  async sendSystemAlert(
-    @Body()
-    body: {
-      restaurantId: string;
-      title: string;
-      message: string;
-      severity: "info" | "warning" | "error";
-    },
-  ) {
-    await this.notificationsService.sendSystemAlert(body);
-    return { success: true };
-  }
-
+  /**
+   * Send one email as the house, to the house's own people.
+   *
+   * An owner or a manager of the ACTIVE house only, and every recipient must be
+   * one of the house's members or a contact in its vendor book — decided by
+   * `HouseEmailService` from the token, never from the body. It sent to any
+   * address for any signed-in user until 2026-09-16.
+   *
+   * No `RolesGuard` here, deliberately. It reads `request.user.role`, which
+   * `JwtStrategy.validate` takes from `users.role` BEFORE the token's
+   * per-house role — one value for every house the person belongs to. A
+   * manager of this house whose account row says `staff` would be refused, and
+   * a manager of another house would pass. The per-house role in
+   * `user_restaurant_access` is the only thing that answers "owner or manager
+   * of the active house", and `HouseEmailService` reads it on every send.
+   */
   @Post("send-email")
-  async sendEmail(
-    @Body()
-    body: {
-      to: string[];
-      subject: string;
-      template_id?: string;
-      body_html: string;
-      body_text?: string;
-      cc?: string[];
-      bcc?: string[];
-    },
-  ) {
-    this.logger.log(`Sending email to ${body.to.join(", ")}`);
-
+  async sendEmail(@Body() body: SendHouseEmailDto, @Req() req: ScopedRequest) {
+    if (!this.houseEmail) {
+      throw new HttpException(
+        "Email sending is not wired on this server, so nothing was sent.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
     try {
-      const result = await this.notificationsService.sendEmail({
-        to: body.to,
-        subject: body.subject,
-        bodyHtml: body.body_html,
-        bodyText: body.body_text,
-        cc: body.cc,
-        bcc: body.bcc,
-      });
-
-      return {
-        success: true,
-        message_id: result.messageId,
-        timestamp: new Date().toISOString(),
-      };
+      return await this.houseEmail.send(
+        { userId: req?.user?.userId, restaurantId: req?.user?.restaurantId },
+        {
+          to: body.to,
+          cc: body.cc,
+          bcc: body.bcc,
+          subject: body.subject,
+          bodyHtml: body.body_html,
+          bodyText: body.body_text,
+        },
+      );
     } catch (error) {
-      this.logger.error(`Failed to send email: ${error.message}`, error.stack);
-      return {
-        success: false,
-        error: error.message,
-      };
+      this.logger.error(`send-email refused or failed: ${error?.message}`);
+      rethrow(error);
     }
   }
 

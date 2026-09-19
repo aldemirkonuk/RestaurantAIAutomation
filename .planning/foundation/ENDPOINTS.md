@@ -330,7 +330,7 @@ Rows are `Auth | Method | Path`, sorted by path then method.
 | ✅ | `GET` | `/mobile/feed` |
 | ✅ | `GET` | `/mobile/today-pulse` |
 
-### `notifications/notifications` (24)
+### `notifications/notifications` (24 listed, 5 struck 2026-09-17; the controller declares 21 routes at that date, and `GET /notifications/low-stock/held/:restaurantId` and `GET /notifications/producers/status` were never added to this list)
 
 | Auth | Method | Path |
 |---|---|---|
@@ -341,20 +341,20 @@ Rows are `Auth | Method | Path`, sorted by path then method.
 | ✅ | `PATCH` | `/notifications/:id/read` |
 | ✅ | `PATCH` | `/notifications/:id/unread` |
 | ✅ | `DELETE` | `/notifications/bulk` |
-| ✅ | `POST` | `/notifications/delivery` |
+| — | ~~`POST`~~ | ~~`/notifications/delivery`~~ — removed 2026-09-17 (ADR 0149 answer 15, ADR 0147 amendment: no web, mobile or orchestrator caller; the service method stays for internal producers) |
 | ✅ | `GET` | `/notifications/history` |
-| ✅ | `POST` | `/notifications/low-stock` |
-| ✅ | `POST` | `/notifications/order-approval` |
+| — | ~~`POST`~~ | ~~`/notifications/low-stock`~~ — removed 2026-09-17 (ADR 0149 answer 15, ADR 0147 amendment: no web, mobile or orchestrator caller; the service method stays for internal producers) |
+| — | ~~`POST`~~ | ~~`/notifications/order-approval`~~ — removed 2026-09-17 (ADR 0149 answer 15, ADR 0147 amendment: no web, mobile or orchestrator caller; the service method stays for internal producers) |
 | ✅ | `GET` | `/notifications/preferences` |
 | ✅ | `PATCH` | `/notifications/preferences` |
-| ✅ | `POST` | `/notifications/price-negotiation` |
+| — | ~~`POST`~~ | ~~`/notifications/price-negotiation`~~ — removed 2026-09-17 (ADR 0149 answer 15, ADR 0147 amendment: no web, mobile or orchestrator caller; the service method stays for internal producers) |
 | ✅ | `POST` | `/notifications/push/subscribe` |
 | ✅ | `POST` | `/notifications/push/unsubscribe` |
 | ✅ | `DELETE` | `/notifications/read/all` |
 | ✅ | `PATCH` | `/notifications/read/all` |
 | ✅ | `PATCH` | `/notifications/read/bulk` |
-| ✅ | `POST` | `/notifications/send-email` |
-| ✅ | `POST` | `/notifications/system-alert` |
+| ✅ | `POST` | `/notifications/send-email` — owner/manager of the token's house only; recipients limited to its members and vendor book (2026-09-17) |
+| — | ~~`POST`~~ | ~~`/notifications/system-alert`~~ — removed 2026-09-17 (ADR 0149 answer 15, ADR 0147 amendment: no web, mobile or orchestrator caller; the service method stays for internal producers) |
 | ✅ | `POST` | `/notifications/test` |
 | ✅ | `GET` | `/notifications/unread` |
 | ✅ | `GET` | `/notifications/unread/count` |

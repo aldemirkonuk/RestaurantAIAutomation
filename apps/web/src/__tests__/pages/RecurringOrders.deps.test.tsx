@@ -27,6 +27,14 @@ vi.mock('../../components/layout/Header', () => ({
   Header: () => null,
 }))
 
+// The price-inquiry send goes through the token-carrying API client since
+// 2026-09-17 (ADR 0149 answer 15); this test is about the fetch loop, and the
+// bare axios mock above has no `create`, so the client module is stubbed.
+vi.mock('../../services/api/notifications', () => ({
+  sendHouseEmail: vi.fn(),
+  houseEmailRefusal: vi.fn(() => ''),
+}))
+
 import axios from 'axios'
 import { RecurringOrders } from '../../pages/RecurringOrders'
 

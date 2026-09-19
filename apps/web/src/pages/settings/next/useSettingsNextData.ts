@@ -501,7 +501,15 @@ export function useSettingsNextData(active: SectionId) {
     return { preferences: data?.preferences ?? {}, updatedAt: data?.updatedAt ?? null };
   });
 
-  const notif = useRemote<NotificationPreferences>(accountKey(['notifications']), () =>
+  // (2026-09-19, D5) `notification_preferences` is per (restaurant_id, user_id)
+  // since ADR 0149 row 39, so this cannot share `accountKey`'s uid-only cache
+  // bucket with the genuinely account-level registers above -- an
+  // `accountKey` cache survives switching the active house, and the server
+  // response for this endpoint does not (it derives the house from the
+  // caller's token, per `notifications.controller.ts`'s `getPreferences`).
+  // `tenantKey` re-keys on `rid`, so switching houses refetches instead of
+  // reusing the previous house's preferences under the same key.
+  const notif = useRemote<NotificationPreferences>(tenantKey('notifications'), () =>
     fetchNotificationPreferences(uid as string),
   );
 

@@ -12,6 +12,7 @@ import { CommunicationsService } from "../communications/communications.service"
 import { GmailService } from "../communications/gmail.service";
 import { DatabaseService } from "../database/database.service";
 import { ExpoPushService } from "../push/expo-push.service";
+import type { DeliveryMode, DigestFrequency } from "./dto/notifications.dto";
 
 export interface NotificationPayload {
   type: string;
@@ -111,7 +112,14 @@ export class NotificationsService {
   }
 
   /**
-   * Send Web Push notification to a user's registered push subscriptions
+   * Send Web Push notification to every device a user has registered.
+   *
+   * Reads `notification_push_devices`, not `notification_preferences`
+   * (ADR 0149 row 39, 2026-09-18). A push subscription is a property of a
+   * BROWSER, not of a house: `notification_preferences` is now per
+   * (restaurant, user), and a device has no restaurant to belong to. The old
+   * column, `notification_preferences.push_subscription`, is left in place
+   * but unread — see `20260918120000_a_preference_is_kept_once_per_person_per_house.sql`.
    */
   async sendWebPush(
     userId: string,
@@ -122,14 +130,13 @@ export class NotificationsService {
     }
 
     try {
-      // Fetch push subscriptions for this user from DB
-      const { data: subscriptions, error } = await this.databaseService.supabase
-        .from("notification_preferences")
-        .select("push_subscription")
-        .eq("user_id", userId)
-        .not("push_subscription", "is", null);
+      // Fetch every device this user has registered.
+      const { data: devices, error } = await this.databaseService.supabase
+        .from("notification_push_devices")
+        .select("id, endpoint, subscription")
+        .eq("user_id", userId);
 
-      if (error || !subscriptions || subscriptions.length === 0) {
+      if (error || !devices || devices.length === 0) {
         return; // No subscriptions found
       }
 
@@ -143,8 +150,8 @@ export class NotificationsService {
         actions: payload.actions,
       });
 
-      for (const row of subscriptions) {
-        const sub = row.push_subscription as PushSubscription;
+      for (const device of devices) {
+        const sub = device.subscription as PushSubscription;
         if (!sub?.endpoint) continue;
 
         try {
@@ -154,15 +161,15 @@ export class NotificationsService {
           );
         } catch (pushErr: any) {
           if (pushErr?.statusCode === 410 || pushErr?.statusCode === 404) {
-            // Subscription expired or invalid - clean up
+            // Subscription expired or invalid - clean up that one device.
             this.logger.warn(
               `Push subscription expired for user ${userId}, cleaning up`,
             );
             await this.databaseService.supabase
-              .from("notification_preferences")
-              .update({ push_subscription: null })
+              .from("notification_push_devices")
+              .delete()
               .eq("user_id", userId)
-              .eq("push_subscription->>endpoint", sub.endpoint);
+              .eq("endpoint", device.endpoint);
           } else {
             this.logger.warn(`Web push failed: ${pushErr?.message}`);
           }
@@ -174,23 +181,35 @@ export class NotificationsService {
   }
 
   /**
-   * Register a push subscription for a user
+   * Register a push subscription for a user's device.
+   *
+   * Upserts into `notification_push_devices` on `(user_id, endpoint)` — a
+   * real unique index (`20260918120000_a_preference_is_kept_once_per_person_per_house.sql`),
+   * unlike the old target (`notification_preferences`, `onConflict:
+   * "user_id"`), which named no index at all and 42P10'd on every call
+   * (ADR 0149 row 39).
    */
   async registerPushSubscription(
     userId: string,
     subscription: PushSubscription,
   ): Promise<{ success: boolean }> {
+    if (!subscription?.endpoint) {
+      this.logger.error(
+        `registerPushSubscription: subscription has no endpoint for user ${userId}`,
+      );
+      return { success: false };
+    }
     try {
       const { error } = await this.databaseService.supabase
-        .from("notification_preferences")
+        .from("notification_push_devices")
         .upsert(
           {
             user_id: userId,
-            push_subscription: subscription,
-            push_enabled: true,
+            endpoint: subscription.endpoint,
+            subscription,
             updated_at: new Date().toISOString(),
           },
-          { onConflict: "user_id" },
+          { onConflict: "user_id,endpoint" },
         );
 
       if (error) {
@@ -463,47 +482,11 @@ export class NotificationsService {
     });
   }
 
-  /**
-   * Send email via GmailService (OAuth2).
-   * Falls back to a logged mock when GmailService is not injected (e.g. isolated unit tests).
-   */
-  async sendEmail(data: {
-    to: string[];
-    subject: string;
-    bodyHtml: string;
-    bodyText?: string;
-    cc?: string[];
-    bcc?: string[];
-  }): Promise<{ success: boolean; messageId: string }> {
-    this.logger.log(
-      `Sending email to: ${data.to.join(", ")} — ${data.subject}`,
-    );
-
-    if (this.gmailService) {
-      const result = await this.gmailService.sendEmail({
-        to: data.to,
-        subject: data.subject,
-        html: data.bodyHtml,
-        text: data.bodyText,
-        cc: data.cc,
-        bcc: data.bcc,
-      });
-      this.logger.log(
-        `Email ${result.success ? "sent" : "failed"} — MessageID: ${result.messageId}`,
-      );
-      return {
-        success: result.success,
-        messageId: result.messageId ?? `err-${Date.now()}`,
-      };
-    }
-
-    // Fallback mock (no GmailService available)
-    const messageId = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    this.logger.warn(
-      `GmailService not available — email mocked. MessageID: ${messageId}`,
-    );
-    return { success: true, messageId };
-  }
+  // `sendEmail` was removed 2026-09-16. Its one caller was POST
+  // /notifications/send-email, which now goes through `HouseEmailService`
+  // (owner/manager of the active house, recipients limited to the house's book).
+  // It also answered `success: true` with a mock message id whenever Gmail was
+  // not injected, so a send that never happened read as one that did.
 
   /**
    * Create a persistent notification row in the notifications table.
@@ -1117,12 +1100,19 @@ export class NotificationsService {
     };
   }
 
-  async getPreferences(userId: string) {
-    const { data, error } = await this.databaseService.supabase
+  /**
+   * `restaurantId` is optional only so existing callers that have not yet
+   * been re-checked (outside this lane's scope — see ADR 0149 row 39) keep
+   * compiling; every caller this lane owns (the controller) always supplies
+   * it, taken from the verified token, never from the request.
+   */
+  async getPreferences(userId: string, restaurantId?: string) {
+    let query = this.databaseService.supabase
       .from("notification_preferences")
       .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+      .eq("user_id", userId);
+    if (restaurantId) query = query.eq("restaurant_id", restaurantId);
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       this.logger.error(`getPreferences error: ${error.message}`);
@@ -1165,6 +1155,13 @@ export class NotificationsService {
 
   async updatePreferences(params: {
     userId: string;
+    /**
+     * The house this preference is for (ADR 0149 row 39, 2026-09-18):
+     * preferences are per person PER HOUSE, upserted on
+     * `(restaurant_id, user_id)` — the real unique index — never on
+     * `user_id` alone, which named no index and 42P10'd on every save.
+     */
+    restaurantId: string;
     email?: boolean;
     push?: boolean;
     sms?: boolean;
@@ -1174,14 +1171,18 @@ export class NotificationsService {
       enabled?: boolean;
       instantFirstAlert?: boolean;
       criticalImmediate?: boolean;
-      digestFrequency?: string;
+      digestFrequency?: DigestFrequency;
       digestTime?: string;
     };
-    ordersMode?: string;
-    reportsMode?: string;
+    // Narrowed 2026-09-16 (ADR 0147 "Named, not fixed"): the DTO now refuses
+    // anything outside these, so the column only ever receives a value a
+    // sender actually reads.
+    ordersMode?: DeliveryMode;
+    reportsMode?: DeliveryMode;
   }) {
     const updateData: Record<string, any> = {
       user_id: params.userId,
+      restaurant_id: params.restaurantId,
       updated_at: new Date().toISOString(),
     };
 
@@ -1213,7 +1214,7 @@ export class NotificationsService {
 
     const { data, error } = await this.databaseService.supabase
       .from("notification_preferences")
-      .upsert(updateData, { onConflict: "user_id" })
+      .upsert(updateData, { onConflict: "restaurant_id,user_id" })
       .select()
       .single();
 
@@ -1229,17 +1230,24 @@ export class NotificationsService {
   // PUSH SUBSCRIPTION MANAGEMENT
   // =========================================================================
 
+  /**
+   * Remove every device this user has registered for push.
+   *
+   * Deletes from `notification_push_devices`, not `notification_preferences`
+   * (ADR 0149 row 39). This no longer also flips `push_enabled` to `false`:
+   * that column is a per-HOUSE preference now, and this route (like its
+   * `subscribeToPush` sibling) carries no restaurant to scope it to. Turning
+   * push off for a house is `PATCH /notifications/preferences`; this route
+   * is "forget this browser," a device-level act, same as before the
+   * per-house split for everything except the column that split moved.
+   */
   async unregisterPushSubscription(
     userId: string,
   ): Promise<{ success: boolean }> {
     try {
       const { error } = await this.databaseService.supabase
-        .from("notification_preferences")
-        .update({
-          push_subscription: null,
-          push_enabled: false,
-          updated_at: new Date().toISOString(),
-        })
+        .from("notification_push_devices")
+        .delete()
         .eq("user_id", userId);
 
       if (error) {

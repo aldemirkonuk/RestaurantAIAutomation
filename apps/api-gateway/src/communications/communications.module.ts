@@ -115,6 +115,9 @@ import { HouseInboxCron } from "./inbox/house-inbox.cron";
     GmailWatchService,
     RecipientResolverService,
     ScheduledTenantsService,
+    // The vendor book, for `HouseEmailService` (POST /notifications/send-email):
+    // one definition of "an address this house may write to", not two.
+    HouseLettersService,
   ],
 })
 export class CommunicationsModule {}

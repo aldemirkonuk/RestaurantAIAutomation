@@ -268,6 +268,81 @@ export async function sendTestNotification(
   await apiClient.post("/notifications/test", { userId, channel });
 }
 
+// ===========================================================================
+// POST /notifications/send-email — the house writes to its own people
+// ===========================================================================
+
+export interface HouseEmailInput {
+  to: string[];
+  subject: string;
+  body_html: string;
+  body_text?: string;
+  cc?: string[];
+  bcc?: string[];
+}
+
+export interface HouseEmailReceipt {
+  success: true;
+  message_id: string | null;
+  timestamp: string;
+  recipients: { to: number; cc: number; bcc: number };
+  audited: boolean;
+}
+
+/**
+ * Send one email as the active house (ADR 0149 answer 15, 2026-09-16).
+ *
+ * The gateway sends only for an owner or a manager of the active house, and
+ * only to the house's members and the contacts in its vendor book; anything
+ * else is refused with a sentence naming why. Goes through `apiClient` so the
+ * session token rides along — the three callers used bare `axios`, which
+ * carried no token and so were answered 401 by the guarded route.
+ *
+ * Throws on any refusal or failure; read the reason with `houseEmailRefusal`.
+ */
+export async function sendHouseEmail(
+  input: HouseEmailInput,
+): Promise<HouseEmailReceipt> {
+  const body: HouseEmailInput = {
+    to: input.to,
+    subject: input.subject,
+    body_html: input.body_html,
+  };
+  if (input.body_text) body.body_text = input.body_text;
+  if (input.cc && input.cc.length > 0) body.cc = input.cc;
+  if (input.bcc && input.bcc.length > 0) body.bcc = input.bcc;
+  const response = await apiClient.post<HouseEmailReceipt>(
+    "/notifications/send-email",
+    body,
+  );
+  return response.data;
+}
+
+/**
+ * The gateway's own words for a refused or failed send, as one sentence.
+ * A validation refusal carries a list of messages; they are joined. A request
+ * that never reached the gateway says so rather than inventing a reason.
+ */
+export function houseEmailRefusal(error: unknown): string {
+  const e = error as {
+    response?: { status?: number; data?: { message?: unknown } };
+    message?: unknown;
+  };
+  const words = e?.response?.data?.message;
+  if (Array.isArray(words) && words.length > 0) {
+    return (
+      words.map((w) => String(w).trim().replace(/\.+$/, "")).join(". ") + "."
+    );
+  }
+  if (typeof words === "string" && words.trim()) return words;
+  if (e?.response?.status) {
+    return `The email was not sent (the server answered ${e.response.status}).`;
+  }
+  return typeof e?.message === "string" && e.message
+    ? `The email was not sent: ${e.message}`
+    : "The email was not sent: the server could not be reached.";
+}
+
 /**
  * Get notification history (for analytics/debugging)
  */

@@ -56,6 +56,69 @@ export interface EmailResult {
   error?: string;
 }
 
+/**
+ * RFC 5322 unfolding: a line break followed by a space or tab continues the
+ * header (a threaded reply's `References` may arrive folded). Any OTHER line
+ * break would begin a new header.
+ */
+function unfold(value: string): string {
+  return value.replace(/\r?\n(?=[ \t])/g, "");
+}
+
+const LINE_BREAK = /[\r\n]/;
+
+/**
+ * The first header of `options` that would inject a header line, or null.
+ *
+ * `createMimeMessage` writes To/Cc/Bcc/Reply-To/Message-ID/In-Reply-To/
+ * References/Subject into the header block unescaped, so a CR or LF inside any
+ * of them starts a header of the caller's choosing — a hidden `Bcc:` among
+ * them (2026-09-17, notify-lane review M1). Addresses and the Message-ID may
+ * carry no line break at all; the free-text headers may carry a FOLD (line
+ * break + whitespace), which `unfoldHeaders` removes before sending.
+ */
+export function headerInjectionField(options: EmailOptions): string | null {
+  const lists: Array<[string, string[] | undefined]> = [
+    ["To", options.to],
+    ["Cc", options.cc],
+    ["Bcc", options.bcc],
+  ];
+  for (const [name, list] of lists) {
+    if ((list ?? []).some((a) => LINE_BREAK.test(String(a)))) return name;
+  }
+  const exact: Array<[string, string | undefined]> = [
+    ["Reply-To", options.replyTo],
+    ["Message-ID", options.messageIdHeader],
+  ];
+  for (const [name, value] of exact) {
+    if (value !== undefined && LINE_BREAK.test(String(value))) return name;
+  }
+  const folded: Array<[string, string | undefined]> = [
+    ["Subject", options.subject],
+    ["In-Reply-To", options.inReplyTo],
+    ["References", options.references],
+  ];
+  for (const [name, value] of folded) {
+    if (value !== undefined && LINE_BREAK.test(unfold(String(value)))) {
+      return name;
+    }
+  }
+  return null;
+}
+
+function unfoldHeaders(options: EmailOptions): EmailOptions {
+  return {
+    ...options,
+    subject: unfold(String(options.subject ?? "")),
+    inReplyTo:
+      options.inReplyTo === undefined ? undefined : unfold(options.inReplyTo),
+    references:
+      options.references === undefined
+        ? undefined
+        : unfold(options.references),
+  };
+}
+
 @Injectable()
 export class GmailService implements OnModuleInit {
   private readonly logger = new Logger(GmailService.name);
@@ -153,6 +216,21 @@ export class GmailService implements OnModuleInit {
    * Send an email via Gmail API
    */
   async sendEmail(options: EmailOptions): Promise<EmailResult> {
+    // Refused BEFORE anything is logged or sent: a value carrying a line break
+    // would start a header of its own in the MIME block (and a line of its own
+    // in the log). Both transports go through here.
+    const injected = headerInjectionField(options);
+    if (injected) {
+      this.logger.error(
+        `EMAIL_HEADER_REFUSED header=${injected} — a value carries a line break that would start a new header; nothing was sent.`,
+      );
+      return {
+        success: false,
+        error: `The ${injected} header carries a line break, which would start a new header; nothing was sent.`,
+      };
+    }
+    options = unfoldHeaders(options);
+
     this.logger.log(`Sending email to: ${options.to.join(", ")}`);
     this.logger.log(`Subject: ${options.subject}`);
 
@@ -594,6 +672,14 @@ This is an automated alert from WineOps AI.
    * Create a MIME message for Gmail API
    */
   private createMimeMessage(options: EmailOptions): string {
+    // Second line of defence: sendEmail already refused and unfolded, so this
+    // can only fire for a caller that reached the builder another way.
+    const injected = headerInjectionField(options);
+    if (injected) {
+      throw new Error(
+        `Refusing to build a message: the ${injected} header carries a line break.`,
+      );
+    }
     const boundary = `boundary_${Date.now()}`;
     const generatedMessageId =
       options.messageIdHeader ||

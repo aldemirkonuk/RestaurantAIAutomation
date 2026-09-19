@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { SavedTemplate } from '../documents/GmailTemplateBuilder'
 import { defaultTemplates } from '../../data/emailTemplateCategories'
-import axios from 'axios'
+import { sendHouseEmail, houseEmailRefusal } from '../../services/api/notifications'
 
 interface QuickGmailModalProps {
   onClose: () => void
@@ -22,8 +22,6 @@ interface QuickGmailModalProps {
   prefilledRecipient?: string
   prefilledSubject?: string
 }
-
-const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
 export function QuickGmailModal({
   onClose,
@@ -204,26 +202,24 @@ export function QuickGmailModal({
         bodyText = selectedTemplate?.description || subject
       }
       
-      const response = await axios.post(`${API_URL}/api/v1/notifications/send-email`, {
+      // The gateway refuses anyone but an owner or manager of this house, and
+      // any address outside its members and vendor book (ADR 0149 answer 15);
+      // a refusal throws and its sentence is shown as-is.
+      await sendHouseEmail({
         to: recipients,
         subject: subject,
         body_html: bodyHtml,
         body_text: bodyText,
-        cc: cc.length > 0 ? cc : undefined,
-        bcc: bcc.length > 0 ? bcc : undefined,
+        cc,
+        bcc,
       })
-
-      if (response.data.success) {
-        setSendSuccess(true)
-        setTimeout(() => {
-          onClose()
-        }, 2000)
-      } else {
-        setSendError(response.data.error || 'Failed to send email')
-      }
-    } catch (error: any) {
+      setSendSuccess(true)
+      setTimeout(() => {
+        onClose()
+      }, 2000)
+    } catch (error: unknown) {
       console.error('Failed to send email:', error)
-      setSendError(error.response?.data?.error || error.message || 'Network error')
+      setSendError(houseEmailRefusal(error))
     } finally {
       setSending(false)
     }

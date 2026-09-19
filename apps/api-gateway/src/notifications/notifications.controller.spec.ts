@@ -14,6 +14,7 @@ import {
 } from "./dto/notifications.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NotificationProducersService } from "./producers/notification-producers.service";
+import { HouseEmailService } from "./house-email.service";
 
 /**
  * Notification reads are scoped to the restaurant on the VERIFIED token, not to
@@ -68,6 +69,11 @@ describe("NotificationsController", () => {
           provide: NotificationProducersService,
           useValue: mockProducersService,
         },
+        // POST /notifications/send-email's service is a REQUIRED dependency, so
+        // a server that cannot build it fails to boot. None of the handlers
+        // tested here reach it; notification-senders-are-closed.spec.ts runs
+        // the real one behind the real route.
+        { provide: HouseEmailService, useValue: {} },
       ],
     })
       // OD-20 guarded this controller at class level. A unit spec should not
@@ -423,8 +429,11 @@ describe("NotificationsController", () => {
       const result = await controller.getPreferences(mockQuery, REQ);
 
       expect(result).toEqual(expectedResponse);
+      // The house comes from the same token (ADR 0149 row 39): preferences
+      // are per person PER HOUSE.
       expect(mockNotificationsService.getPreferences).toHaveBeenCalledWith(
         mockQuery.userId,
+        "restaurant-456",
       );
     });
   });
@@ -468,6 +477,7 @@ describe("NotificationsController", () => {
       expect(result).toEqual(expectedResponse);
       expect(mockNotificationsService.updatePreferences).toHaveBeenCalledWith({
         userId: updateDto.userId,
+        restaurantId: "restaurant-456",
         email: updateDto.email,
         push: updateDto.push,
         sms: updateDto.sms,
@@ -494,6 +504,7 @@ describe("NotificationsController", () => {
       expect(mockNotificationsService.updatePreferences).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: mockQuery.userId,
+          restaurantId: "restaurant-456",
         }),
       );
     });

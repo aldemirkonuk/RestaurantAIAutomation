@@ -61,7 +61,7 @@ Two modules, one of which is a shared transport.
 | Mutate | `PATCH /preferences`, `/read/bulk`, `/read/all`, `/:id/read`, `/:id/unread`, `/:id/archive` | `:154,178,189,203,216,229` |
 | Delete | `DELETE /bulk`, `/read/all`, `/:id` | `:241,252,263` |
 | Push | `POST /push/subscribe`, `/push/unsubscribe` | `:278,291` |
-| Producers | `POST /`, `/test`, `/order-approval`, `/low-stock`, `/delivery`, `/price-negotiation`, `/system-alert`, `/send-email` | `:61,307,321,337,352,367,383,397` |
+| Producers | `POST /`, `/test`, `/send-email` (~~`/order-approval`, `/low-stock`, `/delivery`, `/price-negotiation`, `/system-alert`~~ closed 2026-09-17, ADR 0147 amendment) | `:197,555,603` (re-measured 2026-09-17; the other rows' lines are as first recorded) |
 
 **`apps/api-gateway/src/push/`** — no controller; a service module only
 (`expo-push.service.ts`, `push.module.ts`). It is a **shared seam**, injected into four
