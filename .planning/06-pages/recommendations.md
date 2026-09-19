@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-03
+updated: 2026-09-19
 links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[promotions]]", "[[reports]]", "[[providers]]", "[[inventory]]", "[[team]]", "[[recommendations-catalog]]"]
 ---
 
@@ -784,6 +784,112 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | `/recommendations` | Who takes this? | popover | Owed · fork F4 | A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's. | `pages/Recommendations.tsx:980 — not on the rebuilt docket` |
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
+
+### Sketch 120 (round 4), 2026-09-19 — build state, and the handoff to sketch 122
+
+<!-- This is the note useDigestSubscription.ts:16 means by "the page's build note". -->
+
+ADR 0160 §108 (`.planning/decisions/0160-*.md` on `feat/mudavym-finish`/
+`train/finish-2` — **not on this branch**, so it will not grep here) decided
+sketch 120's direction: *"direction A with C's quiet tier, and a fourth round
+(sketch 120) that adds function without disturbing the experience Wave Four
+already earns."* Sketch 120's own README
+(`.planning/sketches/120-recommendations-round-4/README.md`, same two
+branches, also not on this one) draws six numbered items and asks nine
+founder questions. Against that numbering, what shipped on `feat/page-recs`:
+
+**Built:** item 2, the house's post, as two `Sheet`s (`AccountSheet.tsx`,
+`DigestPost.tsx`); item 3, a one-line receipt under every act
+(`RecommendationsNext.tsx`'s `note`); item 4, a subject's account sheet, keyed
+on the two baseline rules the gateway can subject today; item 5, the
+catalogue as a read-only leaf (`CatalogView.tsx`).
+
+**Not built:** item 1, the delta cutting ("Since yesterday's letter") above
+the docket; item 6, the strip's send-log dot.
+
+**Forks built on a DEFAULT, not a founder decision — do not read either as
+settled:**
+- **Q3, the account door**, was left on "the two baseline rules where the
+  gateway can key it" — the README's own cheaper drawn option — rather than
+  extending a `subject` to the other ten rules. Not his pick; the cheaper of
+  the two the README named.
+- **Q5, the post's shape**, was built as a side `Sheet` because the README
+  calls that "the only shape ADR 0112 allows" without superseding the locked
+  decision (the alternative, a `Popover modal`, is what ADR 0112 F2 already
+  names "the signal that collapses the policy"). An ADR constraint left one
+  door open, not a founder choice.
+- **The catalogue's read-only-ness** is a standing open fork, not a build
+  default: `.planning/handoff/PROGRESS.md` §6 still lists "Recommendations
+  catalog: is it actionable?" among the forks not yet asked.
+
+**The handoff to sketch 122 (lane `recs-sketch`).** The founder's sketch-120
+feedback (`founder-sketch-decisions-106-115.md:143-149`, batch 3
+'RECOMMENDATIONS', 2026-09-19 ~09:45Z — he said only the first part is a
+requirement, the rest is brainstorming) is the brief for that round. Quoted
+exactly:
+
+> KEEP the days rail on top; SHOW THE HOUSE'S DECIDED GOALS ON TOP ("whatever
+> the restaurant has decided ... on top as the goal"); recommendations must be
+> brief/punchy with how to act, plus a goals chart where we recommend setting
+> a goal; apply ONE-TAP ACTIONS that approve automatically ("get back to
+> work"). Purpose: where an owner/manager looks when stuck, to see what they
+> could have done, or to predict the future and prepare early.
+
+Everything past that in his answer — 1A over 1B; the side sheet "liked
+(unsure)"; 2B "wants to see how the mail looks"; a newspaper-style digest
+"maybe another software"; the subject-account side sheet good "if it shows
+more than the table"; 3B inline dismissal with a real day, no overlay,
+"maybe"; "definitely not the fifth one"; "sixth one is all right" — he marked
+brainstorming, not a requirement. Sketch 122 may draw from it; none of it is
+decided.
+
+**The five sketch-120 questions still open fold into sketch 122, undecided
+here:** the delta (README Q1/Q8 — where it lives, and whether it is per
+subscriber or per house); the quiet tier (Q2 — fund the `reading · threshold
+· state` field, or keep accepting the `sourcesUnread` substitute); the post
+(Q6 — the digest builder's five choices, owed a founder confirmation before
+migration `20260917010100` merges); the send log (Q7 — whether a
+house-level count is even more than a member should see); and Q3/Q4/Q9
+bundled (the account door's real scope, the act verb — *Mark as briefed* vs.
+*Open Reports →* — and how far refusal copy should trim). This lane decided
+none of them: it took the cheaper default only where a default was
+unavoidable to ship (above), and left the rest exactly as open as it found
+them.
+
+**`/recommendations` stays dark.** `mudavym_design_recommendations` is
+untouched by this pass — off everywhere, per house, unchanged from before
+this note.
+
+### Repair pass, 2026-09-19 — the charcoal-contrast regression, and the adjacent theme fork
+
+Independent verification of the pass above found that its own fix introduced
+a second bug: adding `color: var(--ink-1, #211c16)` to `.rc-section-head h2`
+(`rec-next.css:123`) gave that selector specificity `(0,1,1)`, which beats a
+bare `.rc-dark-head` at `(0,1,0)` — so "Change a rule" (the one heading this
+page deliberately renders dim, `RecommendationsNext.tsx:817`, comment at
+`:806-810`) silently re-brightened to the same ink-1 as every other section
+head. Every per-selector check the earlier pass added still passed — each
+reads one selector's own declared color and never asks which rule wins when
+two of them match the same element.
+
+Fixed by doubling the selector (`.rc-dark-head.rc-dark-head`, `rec-next.css:367`,
+now `(0,2,0)`), which wins outright rather than on file order — a `:not()`
+clause on `.rc-section-head h2` alone would have guarded only this one
+caller. New regression case in `rec-next-ink.test.ts` ("the fifth heading …
+wins its cascade") builds the real `.rc-section-head` > `h2.rc-serif.rc-dark-head`
+nesting and asserts on `getComputedStyle`'s cascade-resolved winner, not a
+per-selector declared-value check; it fails against the pre-fix CSS and
+passes after.
+
+**For whoever picks up the theme fork next.** The same founder answer batch
+that is this section's own brief (`founder-sketch-decisions-106-115.md:143-146`,
+batch 3, 2026-09-19 ~09:45Z — the lines immediately before the RECOMMENDATIONS
+passage quoted above) also decided a THEME fork: default ground flips from
+charcoal to white/paper, with a per-person choice to keep charcoal — revising
+ADR 0149 row 6. ADR 0169 is reserved for the lane that records that decision,
+not this one. The fix above does not depend on which ground wins by default:
+`.rc-dark-head` still has to render dimmer than `.rc-section-head h2` under
+either ground, since charcoal stays available as a per-person choice.
 
 ## 2. Entry
 

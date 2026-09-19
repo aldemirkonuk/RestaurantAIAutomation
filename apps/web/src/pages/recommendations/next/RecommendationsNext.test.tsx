@@ -27,7 +27,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, createEvent, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 const navigate = vi.hoisted(() => vi.fn());
@@ -183,7 +183,10 @@ const base = {
   excludeDay,
   ruleOutDay,
   includeDay,
-  digest: { digestEnabled: false, digestHour: 7, digestMinUrgency: 'this_week', recipientEmail: null, lastSentAt: null },
+  // `set: false` — most houses have never touched this preference (the
+  // production-tenant shape is mostly single-tenant, minimal config). The
+  // rail must say so honestly, never fabricate "Not armed, 07:00".
+  digest: { set: false, digestEnabled: false, digestHour: 7, digestMinUrgency: 'this_week', recipientEmail: null, lastSentAt: null },
   team: undefined,
   teamFailed: false,
   loadTeam: vi.fn(),
@@ -403,7 +406,7 @@ describe('RecommendationsNext — the standing book', () => {
     expect(within(screen.getByTestId('rc-entry')).getByText('Draft the PO →')).toBeInTheDocument();
   });
 
-  it('renders the two controls with no backend disabled, each with its reason', () => {
+  it('renders the acted-agent control disabled with its reason, and the post as a live control', () => {
     mockData.current = { ...base, entries: [entry()] };
     draw();
     fireEvent.click(within(screen.getByTestId('rc-entry')).getByText('The working'));
@@ -412,9 +415,15 @@ describe('RecommendationsNext — the standing book', () => {
     expect(house).toBeDisabled();
     expect(screen.getByText(/nothing in the gateway can carry out a recommendation/i)).toBeInTheDocument();
 
-    const digest = screen.getByRole('button', { name: /Stored: off/ });
-    expect(digest).toBeDisabled();
-    expect(screen.getByText(/the preference stores, but nothing sends it/)).toBeInTheDocument();
+    // The post (sketch 120 item 1) reads the house's stored preference and
+    // opens two real sheets — it is no longer a disabled placeholder. This
+    // house has never set one, so the rail must say so honestly rather than
+    // inventing "Not armed, 07:00" from the gateway's unset-row defaults.
+    expect(screen.getByText('Not yet set for this house')).toBeInTheDocument();
+    const housePost = screen.getByRole('button', { name: "The house's post" });
+    const yourCopy = screen.getByRole('button', { name: 'Your copy' });
+    expect(housePost).toBeEnabled();
+    expect(yourCopy).toBeEnabled();
   });
 
   it('moves and acts from the keyboard', () => {
@@ -1398,5 +1407,21 @@ describe('RecommendationsNext — the month window', () => {
     expect(screen.queryByTestId('rc-dayhead')).not.toBeInTheDocument();
     // and the till window is asked back far enough to answer for August
     expect(requestPosBack).toHaveBeenLastCalledWith(48);
+  });
+});
+
+describe('RecommendationsNext — the catalogue nav tab', () => {
+  it('navigates client-side to /recommendations/catalog, the way react-router\'s Link does — a plain <a href> would full-page-reload instead and never mount the route below', () => {
+    mockData.current = { ...base, entries: [entry()] };
+    render(
+      <MemoryRouter initialEntries={['/recommendations']}>
+        <Routes>
+          <Route path="/recommendations" element={<RecommendationsNext />} />
+          <Route path="/recommendations/catalog" element={<div data-testid="rc-catalog-stub" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('link', { name: 'The catalogue' }));
+    expect(screen.getByTestId('rc-catalog-stub')).toBeInTheDocument();
   });
 });

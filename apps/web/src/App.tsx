@@ -87,6 +87,7 @@ const DocumentsReportsNext = lazyWithRefresh(() => import('./pages/documents-rep
 const ReportsNext = lazyWithRefresh(() => import('./pages/reports/next/ReportsNext'))
 const NotificationsNext = lazyWithRefresh(() => import('./pages/notifications/next/NotificationsNext'))
 const RecommendationsNext = lazyWithRefresh(() => import('./pages/recommendations/next/RecommendationsNext'))
+const RecommendationsCatalogView = lazyWithRefresh(() => import('./pages/recommendations/next/CatalogView'))
 const CalendarNext = lazyWithRefresh(() => import('./pages/calendar/next/CalendarNext'))
 const SettingsNext = lazyWithRefresh(() => import('./pages/settings/next/SettingsNext'))
 const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNext'))
@@ -333,7 +334,16 @@ function App() {
                   <Route path="/soft-drinks" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="soft_drinks" />} />} />
                   <Route path="/reports" element={<PageGate page="reports" legacy={<Reports />} next={<ReportsNext />} />} />
                   <Route path="/recommendations" element={<PageGate page="recommendations" legacy={<Recommendations />} next={<RecommendationsNext />} />} />
-                  <Route path="/recommendations/catalog" element={<InsightCatalog />} />
+                  <Route
+                    path="/recommendations/catalog"
+                    element={
+                      <PageGate
+                        page="recommendations"
+                        legacy={<InsightCatalog />}
+                        next={<RecommendationsCatalogView />}
+                      />
+                    }
+                  />
                   <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
                   {/* Vendor price comparison. Role gate is enforced server-side
                       too (owner/manager on /vendor-intel/*) — a hidden route is

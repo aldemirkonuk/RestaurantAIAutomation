@@ -86,3 +86,38 @@ describe('useMudavymDesign precedence', () => {
     expect(MUDAVYM_PAGES).toContain('orders');
   });
 });
+
+describe('recommendations stays flag-gated (ADR 0149 row 36 regression guard)', () => {
+  // A prior version of this lane's diff added an ALWAYS_ON set containing
+  // 'recommendations', making this hook return `true` for every house
+  // unconditionally. ADR 0149 row 36 (locked, 2026-09-17) names sixteen
+  // pages that resolve for every house in code, and explicitly excludes this
+  // one: "settings, cellar, recommendations and the receiving desk wait for
+  // their sketch review" — no later ADR or OPEN-DECISIONS entry lifts that
+  // exclusion. This test fails again the moment 'recommendations' (or any
+  // page not on that locked list) is special-cased to skip the gateway.
+  it('with no override and no active restaurant, resolves legacy — not true', async () => {
+    const { result } = renderHook(() => useMudavymDesign('recommendations'));
+    await act(async () => {});
+    expect(result.current).toBe(false);
+    expect(checkFlag).not.toHaveBeenCalled();
+  });
+
+  it('with an active restaurant, still asks the gateway for its own flag', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r1');
+    checkFlag.mockResolvedValue(checkResult(true, true));
+    const { result } = renderHook(() => useMudavymDesign('recommendations'));
+    expect(result.current).toBe(false); // legacy while the check is in flight
+    await waitFor(() => expect(result.current).toBe(true));
+    expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_recommendations');
+  });
+
+  it('an active-but-disabled flag keeps it on legacy, the same as any other page', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r1');
+    checkFlag.mockResolvedValue(checkResult(false, true));
+    const { result } = renderHook(() => useMudavymDesign('recommendations'));
+    await act(async () => {});
+    expect(result.current).toBe(false);
+    expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_recommendations');
+  });
+});

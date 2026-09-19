@@ -290,6 +290,12 @@ export class RecommendationActionsService {
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     return {
+      // `false` when no row exists for this house at all — the caller must
+      // not read the defaults below (`digestEnabled: false, digestHour: 7`)
+      // as a fact about what the house chose. See sketch 120's read-shape
+      // note: a house that never touched this setting must never be shown
+      // as "armed the post, then turned it off, at 07:00".
+      set: !!data,
       digestEnabled: !!data?.digest_enabled,
       digestHour: data?.digest_hour ?? 7,
       digestMinUrgency: data?.digest_min_urgency ?? "this_week",
