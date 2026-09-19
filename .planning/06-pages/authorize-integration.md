@@ -3,16 +3,16 @@ type: page
 route: /authorize/:integrationId
 slug: authorize-integration
 softwares: [settings-integrations]
-component: apps/web/src/pages/AuthorizeIntegration.tsx
+component: apps/web/src/pages/authorize-integration/next/AuthorizeIntegrationNext.tsx
 audience: owner
 tier: core
 archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 3
-maturity: complete
+maturity: partial
 status: documented
-updated: 2026-08-26
-links: ["[[PAGE-CONTRACT]]", "[[settings]]"]
+updated: 2026-09-17
+links: ["[[PAGE-CONTRACT]]", "[[settings]]", "[[../decisions/0144-the-book-opens-on-evidence-and-three-pages-get-a-job|ADR 0144]]"]
 ---
 
 # /authorize/:integrationId
@@ -117,3 +117,43 @@ Nothing directly. The grant is written server-side by the callback, after the us
 2. Emit consent-funnel signals: grant shown / allowed / cancelled (§5 is `none`). Consent is exactly the kind of decision worth measuring. *Blocked:* no sink (see [[get-started]] §13 item 4).
 3. Verify the `state` parameter handling on the `@Public()` callback (`integrations` controller `:106-108`) — out of scope for this page, but it is where this flow's trust actually sits.
 4. Make PAGE_MAP resolve this component's outbound edges so the consent flow stops being invisible on the graph (§9).
+
+## 14. The Next build (flag `mudavym_design_authorize_integration`), 2026-09-17
+
+**§§1–12 above describe the legacy page** (`AuthorizeIntegration.tsx`), still live
+with the flag off. Everything in this section is the flag-gated Next design
+(ADR 0144, founder row 16 of
+[[../decisions/0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once|ADR 0149]]:
+*"The disclosure and every factual claim the page makes are served by the
+gateway and sealed; the connection keeps the seal id and words digest as a
+receipt; each return page reads the outcome."*). Full design rationale and the
+D1 account-injection fix live in ADR 0144's 2026-09-17 amendment — cited here,
+not restated.
+
+**Files:**
+- `apps/web/src/pages/authorize-integration/next/AuthorizeIntegrationNext.tsx` — the consent card
+- `apps/web/src/pages/authorize-integration/CompleteIntegrationConsent.tsx` — the return leg
+- `apps/web/src/pages/authorize-integration/consent-browser.ts` — the tab-held proof (`sessionStorage`, never the delivery secret)
+- `apps/api-gateway/src/integrations/integration-consent.service.ts`, `integrations-oauth.service.ts`, `integrations-oauth.controller.ts`
+- `supabase/migrations/20260913191200_integration_consent_receipts.sql`, `20260913191300_mudavym_design_flag_authorize.sql`
+
+**Protocol, in sequence:**
+1. **Hold to seal** — the tab mints a 256-bit proof (kept in `sessionStorage`, never sent) and a request id; the server issues a challenge over the exact disclosure words, redeems it once the hold completes, and mints a single-use `integration_oauth_states` row bound to the user, house, browser-proof hash, and a receipt (`integration_consent_receipts`, append-only — `service_role` INSERT/SELECT only).
+2. **Provider round trip** — PKCE S256 both legs. The callback (`GET /integrations/oauth/:provider/callback`, `@Public()` — the provider calls it, not the user's session) never exchanges a code; it PARKS an encrypted `{code|error}` on the state row and mints a second, independent secret — `browser_delivery_secret_hash` — sent only in the redirect fragment to `/authorize/complete`.
+3. **Completion** — `POST /integrations/oauth/complete` (also `@Public()`, by the same necessity: the round trip can outlast a session) requires BOTH the sealing tab's proof and the delivery secret from step 2, claimed atomically. Either alone poisons the state (KL audit D1) — closing the case where a dishonest sealer forwards the bare provider URL to someone else and later completes with only her own proof, which would otherwise bind a stranger's provider account into her house.
+4. **Return** — `IntegrationReturnNotice` reads `integration_status`/`integration_reason` on the return path (default `/profile`, sanitised same-site) for both the manager and non-manager branch.
+
+**Still open** (none settled by ADR 0149's rows; full list in ADR 0144's amendment): the design's words bind to "the browser that sealed it", the build binds to the TAB — a second tab of the same browser is refused, which is a narrower promise than stated; `/authorize` and `/authorize/complete` render on `PublicShell`, built for signed-OUT pages; consent copy still says "WineOps" (a repo-wide rename question, not scoped here); `integration_consent_receipts` cascades with the user/house, so a consent record cannot outlive the account.
+
+## 15. The reading engine and `/ask` — page owed
+
+Unrelated capability, wired by the same lane and worth a pointer here since
+`/ask` has no page note of its own yet (none exists at
+`.planning/06-pages/ask.md`). The bound-Reading engine, the 15-reading
+catalogue and the `ask_reading_folios` table (ADR 0145, founder row 33 of
+ADR 0149) are built and covered by
+[[../decisions/0145-mudavym-answers-out-of-a-reading|ADR 0145]]'s 2026-09-17
+amendment. `POST /ask/folios` refuses cleanly (`503`, before any folio write
+or model call) while no page or palette entry calls it — **the `/ask` page
+itself is owed**: its sketch is a separate, reviewed piece of work, out of
+scope for this lane.

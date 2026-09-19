@@ -268,3 +268,85 @@ With this, all five forks this record named are answered.
 Everything cited above as a file, a line, a column or a grep count was run by me this session, read-only, on `/Users/aldemirkonuk/Projects/wt-p4` at `feat/mudavym-design-p4`, **HEAD `ca869d72`** — not the `86575566` the briefing packets quote; the branch moved by one commit under the design pass, and that commit touched no ask-ai or askai file, so the briefing's module measurements still describe the tree. Two guards were executed: `scripts/check_queried_tables_exist.py` (PASS, exit 0, 6 shrink-only debt entries) and `scripts/check_read_errors_not_swallowed.py` (PASS, 1444 files scanned, 190 sites, 190 baselined).
 
 **I ran nothing else.** No gateway boot, no HTTP request to any route, no browser, no test suite, no typecheck, no lint, and no database of any kind. Every production row count in this record — 206 inventory rows, 138 lots, 2 orders, 173 `pos_checks` over 26 days, the zeros on `procurement_documents` / `vendor_price_observations` / `price_history`, 4,226 library rows at 750 ml, 53 blank inventory names, 14 houses on USD — is an earlier session's dated measurement re-read from ADRs on this tree, and none should be quoted without its date. The test counts (47 gateway, 27 web), the call-site counts (36 / 25 / 19), and the 14-of-28 `HoldToApprove` split are the briefing's, measured by others and not re-measured here. The live state of the auto-send flags for any house is unknown to me; I measured only that the gateway names a column that does not exist and a threshold it cannot read.
+
+---
+
+## Amendment, 2026-09-17 — what the KL lane actually built, against this record's 15 build tasks
+
+Two fix rounds on `feat/p1-readout` worktree `wt-fin-KL` built R1 (the runner)
+and a working slice of the reply/acting surface. A prior adversarial audit
+scored the result at roughly 35–40% against this record's 15-item build list;
+this amendment does not re-score it, only records what changed since and what
+this lane's own scope explicitly left out. Recorded per CLAUDE.md §0.4.
+
+**Founder's row 33 answer** (ADR 0149's table, quoted verbatim): *"Codex's
+fifteen house readings after audit; standing questions later in their own
+record; the floating 'Wine Agent' button removed, so /ask and the palette
+panel are the two doors."*
+
+**Built:**
+- **R1 (build task 1), the recording client and the Reading runner.**
+  `RecordingSession` (`ask-readings/recording-session.ts`) proxies `.from`/
+  `.rpc`, refuses writes at the proxy, and traces only on `.then`.
+  `ReadingRunner` builds every cell, `sourcesQueried`, `rowsScanned` from that
+  trace — never from a literal a reading's author typed. A filter that
+  matched nothing is `empty_register` only when the trace scanned zero rows,
+  never when it scanned rows and found none matching (this was conflated
+  before this lane's fix rounds; it is R4's split, applied).
+- **Fifteen readings** in `reading-catalogue.ts` — matching the founder's row
+  33 count.
+- **Build task 6, the folio table.** `ask_reading_folios`
+  (migration `20260913190800`): a personal (`user_id ON DELETE CASCADE`),
+  house-scoped (`restaurant_id`) record, written BEFORE the model call so a
+  resubmitted request id replays rather than paying twice; RLS,
+  `service_role` only. `ai_proposed_actions` gained `reading_folio_id` with an
+  explicit `ON DELETE SET NULL` on the pointer column only, so deleting a
+  person never fails 23503 on a proposal their Reading backed.
+- **Model-failure honesty.** A model-side failure (the spend ceiling, an
+  outage, a reply that failed validation) is its own `could_not_answer`
+  reason, distinct from a books-side `could_not_read` — the union this record
+  calls for at line 126's R4, extended to the model side.
+
+**What this round (KL2, 2026-09-17) added, and why.** This round's brief
+explicitly withheld building `/ask` itself — its sketch is under review
+elsewhere — so `POST /ask/folios` (`BoundAskController`) remained, as the
+first fix round's own judge found it: fully wired (a typed DTO, `JwtAuthGuard`
+→ `AuthedRateLimitGuard` → `RolesGuard`, a per-person and per-house rate
+limit, the first-attempt spend gate) but reachable by anyone holding a valid
+JWT, with no page and no palette entry calling it. A route the product cannot
+yet reach from a page is not a route that cannot be reached at all — curl, a
+stale mobile build, or a future bug in an unrelated page could each reach it —
+and every hit is still a paid Sonnet-5 compose call. `BoundAskService.submit`
+now refuses with `503 Service Unavailable`, before writing a folio row or
+calling the model, unless `ASK_LAUNCHED` reads exactly `"true"` — an
+environment value unset everywhere in this repo today, so the route is closed
+by default in every deployment. `scripts/check_ask_ai_is_gated.py` §9 now
+asserts this gate is the first statement `submit` can reach, strictly before
+`this.folios.begin(`, and is proven to fail (exit 1) by deleting the gate,
+then restored and re-verified green.
+
+**The page itself is owed.** Per this record's own build task 13 and the
+founder's row 33 answer, `/ask` still needs: the route and the
+`mudavym_design_ask` flag (neither exists in `apps/web/src/App.tsx` or
+`feature-flag-registry.ts` as of this amendment — `grep -rn "mudavym_design_ask"
+apps supabase services` finds nothing); the `WineAgentFab` removed
+(`apps/web/src/guidance/components/WineAgentFab.tsx` is still mounted from
+`DashboardLayout.tsx`, still labelled "Wine Agent" and pointed at
+`/sommelier`); and the `/sommelier` → `/ask` redirect Fork 5's answer calls
+for (`/sommelier` still renders the legacy `SommelierAI` page, `App.tsx:415`,
+unchanged). None of that is built by this lane, by design — a dedicated,
+founder-reviewed sketch is the intended next step, not a KL-lane addition.
+`.planning/06-pages/authorize-integration.md` §15 [corrected 2026-09-19, was
+§13b before that page's own sections were reordered after its Roadmap
+(D-b, KL2 confirm)] carries a short pointer to this state since no
+`.planning/06-pages/ask.md` exists yet to hold it.
+
+**Still not built, unchanged from the first fix round's judge (not
+re-measured or re-scored by this amendment):** R2 (the provenance guard
+modelled on `check_analytics_cost_honesty.py`), R6/R7 (the shelf register-key
+declaration and the `not_in_service` state), R3's compile-time-census guard,
+build task 5 (the un-gated shelf endpoint), tasks 9, 11, 14 and 15, and the
+60-second client budget Fork 1 above names. `bound-ask.service.ts`'s compose
+step has the Sonnet-5 call select up to 8 cell ids and write no prose of its
+own — narrower than Fork 1's "answer on Sonnet 5" — a question this amendment
+repeats rather than answers, since no row in ADR 0149 covers it.

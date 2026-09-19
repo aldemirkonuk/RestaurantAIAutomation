@@ -1,3 +1,4 @@
+import { IntegrationReturnNotice } from '../../authorize-integration/IntegrationReturnNotice';
 /**
  * `/connections` — what acts for this house.
  *
@@ -274,6 +275,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   if (!d.isManager) {
     return (
       <div className="mudavym cx" data-ground={ground}>
+      <IntegrationReturnNotice />
         <div className="cx-refused" role="status">
           <h1>This page is for managers and owners.</h1>
           <p>
@@ -296,6 +298,11 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
 
   return (
     <div className="mudavym cx" data-ground={ground}>
+      {/* A manager can return here from the SAME /authorize consent flow a
+       * non-manager does (KL audit J9/D9) — the outcome notice was rendered
+       * only in the refusal branch above, so a manager's own grant landed
+       * with no visible result. */}
+      <IntegrationReturnNotice />
       <div className="cx-wrap">
         <div className="cx-eyebrow">Mudavym</div>
         <h1 className="cx-title">

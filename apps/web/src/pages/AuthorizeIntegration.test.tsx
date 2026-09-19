@@ -26,17 +26,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import AuthorizeIntegration from './AuthorizeIntegration'
+import { consentFixture } from './authorize-integration/__tests__/consent-fixture'
 import { integrationsApi } from '../services/api/integrations'
 
 vi.mock('../services/api/integrations', () => ({
-  integrationsApi: {
-    getCatalog: vi.fn(),
-    authorize: vi.fn(),
-    // ADR 0118 (retention) — the page now also asks the gateway how long this
-    // house keeps mirrored mail. Mocked here so these tests keep testing the
-    // catalogue; the retention rendering has its own file.
-    getRetentionDisclosure: vi.fn(),
-  },
+  integrationsApi: { getConsent: vi.fn(), consentChallenge: vi.fn(), authorize: vi.fn() },
 }))
 
 const READ_ENTRY = {
@@ -89,15 +83,11 @@ function renderAt(id: string) {
 
 describe('the consent screen offers what the server offers', () => {
   beforeEach(() => {
-    vi.mocked(integrationsApi.getCatalog).mockResolvedValue([
-      SEND_ENTRY,
-      READ_ENTRY,
-    ] as never)
-    // These entries carry no `mirrorsMail`, which is the shape an older gateway
-    // sends: the page shows no retention section and does not block Continue.
-    vi.mocked(integrationsApi.getRetentionDisclosure).mockRejectedValue(
-      new Error('not asked for in these cases'),
-    )
+    vi.mocked(integrationsApi.getConsent).mockImplementation(async id => {
+      const entry = [SEND_ENTRY, READ_ENTRY].find(value => value.id === id)
+      if (!entry) throw new Error(`This deployment's integration catalogue does not include "${id}".`)
+      return consentFixture(entry as never)
+    })
   })
 
   it('renders the sending grant, which HEAD refused as an unknown integration', async () => {
@@ -130,7 +120,7 @@ describe('the consent screen offers what the server offers', () => {
 
   it('renders nothing where a gateway sent no privacy block, rather than a reassurance', async () => {
     const { dataHandling, ...withoutBlock } = READ_ENTRY
-    vi.mocked(integrationsApi.getCatalog).mockResolvedValue([withoutBlock] as never)
+    vi.mocked(integrationsApi.getConsent).mockResolvedValue(consentFixture(withoutBlock as never))
     renderAt('gmail_read')
     expect(
       await screen.findByText(/Connect Gmail — reading vendor replies only to Mudavym/),
@@ -189,10 +179,7 @@ describe('the Drive consent screen discloses the mail archive', () => {
   }
 
   beforeEach(() => {
-    vi.mocked(integrationsApi.getCatalog).mockResolvedValue([DRIVE_ENTRY] as never)
-    vi.mocked(integrationsApi.getRetentionDisclosure).mockRejectedValue(
-      new Error('not asked for a grant that mirrors no mail'),
-    )
+    vi.mocked(integrationsApi.getConsent).mockResolvedValue(consentFixture(DRIVE_ENTRY as never))
   })
 
   it('prints that the house’s vendor mail may be written to this Drive', async () => {
@@ -219,7 +206,7 @@ describe('the Drive consent screen discloses the mail archive', () => {
     renderAt('google_drive')
     await screen.findByText(/Connect Google Drive to Mudavym/)
     expect(screen.queryByTestId('retention-disclosure')).toBeNull()
-    const button = screen.getByRole('button', { name: /Continue to Google/ })
+    const button = screen.getByRole('button', { name: /Hold to continue to Google/ })
     expect((button as HTMLButtonElement).disabled).toBe(false)
   })
 })

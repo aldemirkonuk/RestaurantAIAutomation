@@ -39,6 +39,18 @@ DTO = GW / "ask-ai" / "dto" / "ask-ai.dto.ts"
 MODEL_CLIENT = GW / "common" / "model-client" / "model-client.service.ts"
 AUTHED_GUARD = GW / "common" / "rate-limit" / "authed-rate-limit.guard.ts"
 
+# /ask/folios (BoundAskService et al.) is a SECOND route that spends money on
+# demand, added after this guard was first written. It was not caught here
+# until the KL audit (2026-09-17, J6/D12): the CLAIMS row that certifies the
+# first-attempt gate stays opt-in counts call sites by a bare grep, and a PASS
+# from THIS guard was being read as if it said something about that route,
+# when it read only the three files above. Checked below by the same standard
+# as ask-ai itself: DTO metatype, guard order and order, per-person AND
+# per-house rate limits, and the first-attempt spend gate.
+BOUND_CONTROLLER = GW / "ask-ai" / "bound-ask.controller.ts"
+BOUND_SERVICE = GW / "ask-ai" / "bound-ask.service.ts"
+BOUND_DTO = GW / "ask-ai" / "dto" / "bound-ask.dto.ts"
+
 failures: list[str] = []
 
 
@@ -75,7 +87,7 @@ def want(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    for path in (CONTROLLER, SERVICE, DTO, MODEL_CLIENT, AUTHED_GUARD):
+    for path in (CONTROLLER, SERVICE, DTO, MODEL_CLIENT, AUTHED_GUARD, BOUND_CONTROLLER, BOUND_SERVICE, BOUND_DTO):
         if not path.exists():
             cannot_check(f"{path.relative_to(ROOT)} does not exist")
 
@@ -83,6 +95,9 @@ def main() -> int:
     service = source(SERVICE)
     dto = source(DTO)
     client = source(MODEL_CLIENT)
+    bound_controller = source(BOUND_CONTROLLER)
+    bound_service = source(BOUND_SERVICE)
+    bound_dto = source(BOUND_DTO)
 
     # --- 1. The bodies are classes, so ValidationPipe has a metatype -------
     #
@@ -311,6 +326,104 @@ def main() -> int:
         "propose does not refuse an empty house before calling the model -- with no "
         "items, vendors or open orders nothing can be grounded, so the call is paid "
         "for and then rejected (ADR 0145 build item 8)",
+    )
+
+    # --- 9. /ask/folios (BoundAskService) is bounded the same way ----------
+    #
+    # A second money-spending route, added after this guard existed. Checked
+    # by SOURCE, same as ask-ai above, not by the CLAIMS row's bare grep --
+    # that grep can only count how many files opted in, never whether the one
+    # opted-in call site actually sits behind a DTO class, guard order, a
+    # rate limit, and a typed spend refusal.
+    #
+    # /ask has no caller (no page, no palette entry -- ADR 0145 row 33 defers
+    # the page itself). Every guard above still holds, but none of them stops
+    # a curl with a valid JWT, and every hit is a paid model call. The launch
+    # gate is the thing that does: it must be the FIRST statement `submit`
+    # can reach, before `this.folios.begin(` (KL audit D13, round 2). If this
+    # line moves below the folio write or is deleted, a refused-here request
+    # would instead write a folio row and spend a model call with no product
+    # surface ever having asked for it.
+    submit_body_start = bound_service.find("async submit(")
+    begin_at = bound_service.find("this.folios.begin(", submit_body_start)
+    # Anchored on the flag's own name, not the bare `!== "true"` comparison
+    # (D-d, KL2 confirm round): the old anchor stayed green through a rename
+    # of the env key, or a second, unrelated `!== "true"` landing ahead of
+    # it. This still does not require the specific comparison operator or
+    # value, only that the check reads ASK_LAUNCHED before any folio write --
+    # the CLAIMS row ADR-0145-ASK-FOLIOS-REFUSES-WITHOUT-LAUNCH-FLAG pins the
+    # exact literal as a second, independent line of defence.
+    gate_at = bound_service.find('"ASK_LAUNCHED"', submit_body_start)
+    want(
+        submit_body_start != -1 and gate_at != -1 and begin_at != -1 and gate_at < begin_at,
+        "BoundAskService.submit does not refuse before writing a folio when its launch "
+        "flag is unset -- /ask/folios has no page or palette caller yet, so a request "
+        "with nothing gating it would spend a model call for a route the product cannot "
+        "reach (KL audit D13, round 2)",
+    )
+    want(
+        "ServiceUnavailableException" in bound_service,
+        "BoundAskService no longer imports ServiceUnavailableException -- the launch "
+        "gate above depends on it",
+    )
+    want(
+        re.search(r"@Body\(\)\s+body:\s*BoundAskDto", bound_controller) is not None,
+        "bound-ask.controller.ts's submit does not take @Body() body: BoundAskDto -- "
+        "an inline @Body() type erases at runtime and ValidationPipe validates nothing",
+    )
+    want("@IsString()" in bound_dto, "BoundAskDto's utterance is not constrained to a string")
+    want(
+        re.search(r"@MaxLength\(\s*\d+\s*\)", bound_dto) is not None,
+        "BoundAskDto has no @MaxLength on the utterance -- an unbounded string reaches the model prompt",
+    )
+
+    bound_guards = re.search(r"@UseGuards\(([^)]*)\)", bound_controller)
+    if bound_guards is None:
+        failures.append("bound-ask.controller.ts declares no @UseGuards at all")
+    else:
+        names = [g.strip() for g in bound_guards.group(1).split(",") if g.strip()]
+        want(
+            names and names[0] == "JwtAuthGuard",
+            f"JwtAuthGuard is not first in bound-ask.controller.ts's @UseGuards (got {names})",
+        )
+        want(
+            "AuthedRateLimitGuard" in names,
+            "AuthedRateLimitGuard is not on bound-ask.controller.ts -- the route falls "
+            "through to the global IP-keyed default",
+        )
+        want("RolesGuard" in names, "RolesGuard is not on bound-ask.controller.ts")
+
+    want(
+        '@Post("folios")' in bound_controller,
+        "the /ask/folios route is gone or renamed; this guard no longer describes the tree",
+    )
+    submit_block = bound_controller[bound_controller.find('@Post("folios")') : bound_controller.find("submit(")]
+    want(
+        "@AuthedRateLimit(" in submit_block,
+        "POST /ask/folios declares no authenticated rate limit",
+    )
+    want('scope: "user"' in submit_block, "POST /ask/folios has no per-person limit")
+    want(
+        'scope: "restaurant"' in submit_block,
+        "POST /ask/folios has no per-house limit -- several members would each run at "
+        "their own per-person limit",
+    )
+
+    # Every model call this service makes must be metered on its FIRST attempt,
+    # not only a retry -- checked as the literal the spend ceiling reads, same
+    # test as ask-ai.service.ts above.
+    want(
+        re.search(
+            r"this\.modelClient\.call\(\s*\{[^;]{0,600}?\bgateFirstAttempt:\s*true\s*,", bound_service
+        )
+        is not None,
+        "bound-ask.service.ts does not pass the literal `gateFirstAttempt: true` on its "
+        "model call -- a caller who never retries would never be metered",
+    )
+    want(
+        re.search(r"\bretry:\s*false\b", bound_service) is not None,
+        "bound-ask.service.ts's model call does not disable transport retry -- a retried "
+        "call bypasses the first-attempt gate a second time for one user action",
     )
 
     if failures:

@@ -153,10 +153,127 @@ the page would stay the least finished surface in the product indefinitely.
 - Whether any surface other than the sommelier reads the database directly from
   the browser on the anon key. That measurement has still not been run.
 
+## Amendment, 2026-09-17 — what the `/authorize` lane actually built, and the defect a first fix round missed
+
+Two fix rounds on `feat/p1-readout` worktree `wt-fin-KL` built the seal
+ceremony this record specifies at line 135 above, and a second round closed a
+defect the first round's own tests did not cover. Recorded per CLAUDE.md
+§0.4/§4 — this is an amendment to an existing record, not a new document, so
+the retire-to-write rule does not apply.
+
+**Founder's row 16 answer** (ADR 0149's table, quoted verbatim): *"The
+disclosure and every factual claim the page makes are served by the gateway
+and sealed; the connection keeps the seal id and words digest as a receipt;
+each return page reads the outcome."*
+
+**What was built, matching the design at line 135 above:**
+- A seal challenge is minted when the hold starts and redeemed once by
+  `POST /integrations/oauth/:integrationId/authorize`
+  (`integration-consent.service.ts`), bound to the integration id, the house,
+  a digest of the exact disclosure words shown, and a browser-proof hash the
+  sealing tab alone holds the preimage of.
+- The provider callback (`GET /integrations/oauth/:provider/callback`,
+  `@Public()` by necessity — the provider calls it, not the user's session)
+  never exchanges a code. It only PARKS an encrypted `{code|error}` payload on
+  the single-use state row and redirects the browser to
+  `/authorize/complete#state=...&request=...&delivery=...` — the `delivery`
+  fragment is the round-2 delivery secret described below; a bullet showing
+  the pre-round-2 shape without it would describe a completed grant that no
+  longer completes
+  (`integrations-oauth.service.ts:handleCallback`).
+- Completion is a second, also-`@Public()` route,
+  `POST /integrations/oauth/complete`, requiring BOTH the tab-held proof and
+  the delivery secret from that same redirect fragment, and
+  claiming the parked payload atomically (`consumed_at IS NULL`) before the
+  PKCE-verified token exchange runs (`completeCallback`/`consumeBrowserState`).
+- PKCE S256 is used on both legs (`buildProviderUrl` / `exchangeCode`).
+- The receipt (`integration_consent_receipts`, migration `20260913191200`) is
+  append-only — `service_role` INSERT/SELECT only, no UPDATE/DELETE grantable
+  to anyone, asserted by a DO block at the end of its own migration — and the
+  connection row names it (`consent_receipt_id`).
+- `IntegrationReturnNotice` reads the outcome on the return page, for both the
+  manager and the non-manager branch (the manager branch was a gap the first
+  fix round closed).
+
+**D1, the defect this amendment exists to record.** The first fix round closed
+only the two-callback race — `poisonState` firing when a SECOND provider
+callback finds nothing left to park. It left open the ONE-callback attack that
+a naive reading of "bound to the browser that sealed it" does not close by
+itself: a dishonest sealer mints her own proof, never clicks Allow, and
+forwards the bare provider URL to someone else. Exactly one callback occurs,
+so the double-callback defence never fires. When the other person clicks
+Allow, their provider code parks under the sealer's state; the sealer — who
+never received that redirect — still holds her own original proof (it was
+never anything the OTHER person had) and can complete with it, binding a
+stranger's provider account into her own house. The connection would record
+the sealer as owner; `assertConsentMembership` checks the sealer, who is a
+genuine member, so it would have passed.
+
+The second fix round (2026-09-17) closed this with a second, independent
+secret: `browser_delivery_secret_hash` (migration `20260913191200`, column
+added this round), minted fresh only when a callback actually parks a result,
+sent ONLY in that redirect's own fragment, and required alongside the sealing
+proof at `/authorize/complete`. The sealer's proof is chosen before any
+redirect exists and can be forwarded; the delivery secret cannot, because it
+does not exist until a real provider round trip completes, and it travels
+only to whichever browser that round trip returns to. Completing now needs
+BOTH, from the SAME browser. A completion attempt holding only one of the two
+POISONS the state (`consumeBrowserState`), so a later, correct-looking retry
+by either party also fails. Proven in `integration-consent.spec.ts`'s describe
+block *"completing a grant needs the delivery secret from THIS callback, not
+just the sealing proof (KL audit D1, round 2)"*: a sealer holding only her
+proof is refused and cannot retry even with the real secret afterward; the
+browser that only received the callback, holding no proof, is refused the
+same way and poisons the state against the sealer too; and a legitimate
+single-browser completion is proven to bind only to the user/house recorded
+when the state was minted, never to anything the completing call supplies —
+the public `IntegrationConsentCompleteDto` carries no user or house field at
+all, by construction.
+
+**Deploy-window consequence of this fix (found by the round-2 confirmer,
+recorded here per CLAUDE.md 0.5 — not a shortcut, but a cost worth naming).**
+A state row parked by a gateway instance running BEFORE this round has no
+`browser_delivery_secret_hash` column value to check; completing it against
+an instance running AFTER this round is refused (missing delivery secret),
+cleanly — nothing is written, no token is exchanged, and the state is left
+unpoisoned so the person can restart the grant. During a rolling deploy this
+can refuse an in-flight grant for as long as a state row stays alive, which
+is `STATE_TTL_MS` (`integrations-oauth.service.ts:35`) — 10 minutes.
+
+**Also fixed this round:**
+- Migrations `20260913190800` and `20260913191200` are now idempotent
+  (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, and the DO-block
+  guard idiom from `20260902210000` for the one `ADD CONSTRAINT`, which has no
+  `IF NOT EXISTS` form of its own) — a re-application (a repeated
+  `supabase db push`, a rebuilt shadow database) is now a no-op rather than a
+  42P07/42701/42710. Proven at runtime, applying each migration twice, in a
+  fresh PGlite build (36/36 checks).
+- `CompleteIntegrationConsent.tsx`'s error exit pointed at `/connections`, a
+  managers-only page; a staff person refused there landed on a page they
+  cannot open. It now points at `/profile`, the same page `PublicShell`'s own
+  `homeHref` already uses.
+
+**Still open, not settled by row 16 or any other ADR 0149 row (carried from
+the first fix round's judge, unchanged this round):**
+- Consent copy still says "WineOps" in three places and one sentence carries
+  raw identifier backticks — a repo-wide rename question, not scoped to this
+  page, since three other lanes' tests pin the exact "WineOps" string today.
+- Tab vs. browser binding: this decision's words say "the browser that sealed
+  it"; the build binds to the TAB (`sessionStorage`), so a second tab of the
+  same browser is refused. The D1 fix above is orthogonal to this question —
+  it is about a second PERSON, not a second tab of one person.
+- `/authorize` and `/authorize/complete` render on `PublicShell`, built for
+  signed-OUT pages, for a signed-IN ceremony; `/authorize/complete` also
+  ignores the house's design flag and the ADR 0133 public-door switch.
+- `integration_consent_receipts` is `ON DELETE CASCADE` with the user and the
+  house; whether a consent record should outlive the account it was made on
+  is undecided.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-17 | KL lane (2 fix rounds) | Built `/authorize` per line 135 and row 16 of ADR 0149; closed D1 (account injection via a one-callback forwarded provider URL) with a second, delivery-secret binding; made migrations `20260913190800`/`191200` idempotent; fixed the error exit's dead-end link. See amendment above |
 | 2026-09-16 | Aldemir, via ADR 0149 | Rows 11, 13, 16: threshold on folio 2, `/onboarding` redirect, tutorial action boxes for review; "six locked ADRs" corrected to the measured statuses; `/authorize` serves and seals its disclosure and claims, keeps the seal id and words digest, and each return page reads the outcome. Brackets only, nothing rewritten |
 | 2026-09-12 | Aldemir | Four calls: folio 0 is the last invoice and is skippable; `/help` is the FAQ with the house's own state; `/vendor-prices` is the price register with identity as a drawer; `/promotions` is the money page and dismissal is house-wide |
 | 2026-09-12 | — | Created. Answers the one question [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] left open by design |
