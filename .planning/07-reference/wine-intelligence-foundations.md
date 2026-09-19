@@ -21,6 +21,19 @@ same day, and the pipeline design those answers call for is proposed in
 the design, its stages (P1–P13) and its build order live in the ADR. Each fork below
 is marked where it is listed.]
 
+[2026-09-18, round 2: the founder then answered most of the ADR's own questions,
+and three new ones: a data notice, Serper, and shop prices. ADR 0163 records his
+words as relayed, marks its readings, and lists what is still open. Four answers change
+how this document reads:
+
+- **Review.** It happens in /studio: developers approve each menu's extracted wines,
+  and sommeliers approve and add. Studio's promote path cannot write today (§2 item 4).
+- **Market price.** It comes from restaurant menu prices, and no real house has a menu
+  price in production (§3 S6; ADR 0163 §9).
+- **"Stocked".** No house that stocks a wine is real, so "stocked" in this document
+  means held by simulation or test houses (the definition below; ADR 0163 §2).
+- **The laptop tasks** run until the repo pipeline runs (§3; ADR 0163 §15).]
+
 What the founder asked for on 2026-09-18, as relayed to this session: the library
 "has already a lot of value" (taste notes, vintage, country), and where a value is
 missing the page should say "analytics coming soon" or leave the section out; the
@@ -34,7 +47,19 @@ scheduled works for wine extraction".
 `exzueerziesmczwlhomd`, run 2026-09-18. The queries are in the appendix (F-A to F-E).
 Code citations are to `origin/main` @ `09190ee50`. **live** means `deleted_at is null
 and superseded_by is null`. **stocked** means a distinct `master_wine_id` on an
-active, undeleted `restaurant_inventory` row: 173 wines on 175 lines.
+active, undeleted `restaurant_inventory` row: 173 wines on 175 lines. [Round 2,
+2026-09-18: every one of the 175 lines belongs to one of seven houses, one line per
+wine in each (verifier SELECT; the draft said eight houses). Eight rows are named
+below, and one of them holds nothing.
+
+- **Simulation rows (four):** Sim Bistro 81, Sim Meyhouse `a229f22b` 53 and Sim
+  Vanilla Kaleiçi 27 hold stock. The fourth, a second Sim Meyhouse (`aaecdb17`),
+  holds none.
+- **The four May houses:** ADMIN ROOM 10, ADMIN 1 2, YAREN 1 and ALDEMIR 1. The
+  founder ruled that none of them is real.
+
+So no real house stocks a wine today (production SELECT on `restaurants` and
+`restaurant_inventory`; ADR 0163 Context, fact 9).]
 
 ## Retire-to-write
 
@@ -184,6 +209,20 @@ Where it breaks (each point cited, none fixed here):
 
    None of these was executed: the column mismatch was read from `information_schema`,
    and the parents[3] fault was reproduced only on a path model.
+
+   [Round 2, 2026-09-18: the Studio promote path is worse than one column.
+
+   - **Promote.** It inserts six columns production lacks (`price`, `price_glass`,
+     `color`, `sweetness_level`, `tasting_notes`, `description`;
+     `studio_routes.py:1031-1048`), and its retry drops only the three audit columns
+     (`:1064-1072`). So every promote fails. No library row has source
+     `studio_promotion`.
+   - **Override and quality.** Both paths select enrichment columns the submissions
+     table lacks (`override_service.py:356-360`, `quality_routes.py:205-210`).
+     Promotion also needs a `pending_review` status that no submission has (92
+     `accepted`, 1 `pending`).
+   - **The fix.** /studio is the review surface the founder named, so ADR 0163 §13 and
+     step 0.17 retire these direct inserts in favour of its publish RPC.]
 5. **The page could not show a profile even if one existed.** `mapWine`
    (`wines.service.ts:147-214`) is the only projection of the library to any page, and
    it sends no structure, aroma, serving, ageing or quality field. It reads
@@ -258,6 +297,19 @@ until a reader exists, new table keyed by model); S4 → P5–P7 (discover, cite
 extraction, verify); S5 → P11; S6 → P10 (market price at read time, never a library
 column); S7 → G1 plus a canonical-type choice (ADR 0163 Q10); S8 → P13. The rows below
 are kept as the foundations reading and are not the plan.]
+
+[Round 2, 2026-09-18:
+
+- **S6's source is now restaurant menu prices.** The market price is a class-M
+  aggregate over approved menu sightings, shown only when at least 5 restaurant groups
+  list the wine (the 5 is proposed; ADR 0163 Q16), or an estimate labelled with its
+  count. It sits beside the house index and the Hi-Time public listing, never merged
+  with them (ADR 0163 §9). No wine has 5 listings today, and the estimate cannot pass
+  its held-out test until at least 16 wines do, so the line starts blank.
+- **S4 runs on every wine from the first paid night**, before S1/S2's inference (ADR
+  0163 §4).
+- **The out-of-repo row below.** The founder keeps those four tasks until the repo
+  pipeline runs, and ADR 0163 §15 contains them until then.]
 
 | # | What runs | How often | Reads | Writes | Gate |
 |---|---|---|---|---|---|
@@ -347,7 +399,7 @@ the drawing.
 | Recommendations | `GET /analytics/recommendations/:rid` (`:915`) | no library field | pairing and attribute reasons, once the insight families run | later |
 | Ask / sommelier | ask-ai (`ask-ai/`), with no library reference found by grep; sommelier routed to the assistant (ADR 0143 §3) | none | answers read from the contract, under ADR 0145 | later |
 | Menu import | `POST /menus/import` (`menus.controller.ts:36`) | creates stubs | the S1 hand-off | owed (§2.1) |
-| Vendor prices | MCP `prices.compare` (`tool-catalog.ts:165`); `VendorPriceCompare.tsx` via `/wines` | `masterWineId` only; `retail_price_avg` is 0 | a market reference beside the vendor price | fork F4 (ADR 0117/0126) [ANSWERED 2026-09-18, *"Both, labelled"*; ADR 0163 §9] |
+| Vendor prices | MCP `prices.compare` (`tool-catalog.ts:165`); `VendorPriceCompare.tsx` via `/wines` | `masterWineId` only; `retail_price_avg` is 0 | a market reference beside the vendor price | fork F4 (ADR 0117/0126) [ANSWERED 2026-09-18, *"Both, labelled"*; ADR 0163 §9. Round 2: the market price is read from restaurant menu prices (class M), and never placed beside a vendor quote as comparable] |
 | Orchestrator analytics (admin key) | `/api/v1/analytics/wine/{id}/scores`, `/trends`, `/wine/{id}/timeline` (`analytics_routes.py:77, 218, 389`) | tables that are empty in production | — | dead. Retire or rebuild, later |
 
 ## 6. How the insight types connect
@@ -383,7 +435,10 @@ each step with its check). Item 1 is answered below. Item 2 → ADR 0163 steps 0
 close a live run). Items 3–5 → steps 0.6–0.7. Item 7 → partly retired: `wine_research_service.py` and the Celery tasks
 (`haiku_tasks.py`, `ontology_tasks.py`) belong to lanes ADR 0163 §12 retires;
 `override_service.py`, `quality_routes.py`, `studio_routes.py` and
-`dataset_ingestion_service.py` are not addressed by ADR 0163 and keep this item's check. Item 8 → Stage 1. Item 9 → step 0.11. Item 10 → Stage 2 (P5–P7, keyed on
+`dataset_ingestion_service.py` are not addressed by ADR 0163 and keep this item's check. [Round 2: ADR 0163
+§13 and step 0.17 now address `override_service.py`, `quality_routes.py` and
+`studio_routes.py`. Their direct library inserts retire in favour of the publish RPC.
+Only `dataset_ingestion_service.py` keeps this item's check.] Item 8 → Stage 1. Item 9 → step 0.11. Item 10 → Stage 2 [round 2: Stage 1] (P5–P7, keyed on
 library rows). Item 11 → per-cell `model_id`, `prompt_hash`, `run_id` and `batch_id`
 (ADR 0163 §3). Item 12 → G1 and ADR 0163 Q10. Items 13–15 are unchanged and outside
 ADR 0163.]
@@ -415,7 +470,10 @@ ADR 0163.]
      0117/0126 index). [ANSWERED 2026-09-18: *"Both, labelled"*: the house index
      first, a public retail figure beside it marked as a public listing. ADR 0163 §9
      computes both per house at read time, rejects Serper as an issuer, and limits the
-     public line to shops whose terms permit it (Hi-Time only today).]
+     public line to shops whose terms permit it (Hi-Time only today).] [Round 2,
+     2026-09-18: the market price itself is now read from restaurant menu prices. Hi-Time
+     is used (*"Use Hi-Time, ask the rest"*), the other three shops are asked, and Serper
+     is not used even to find URLs (*"No"*). ADR 0163 §9.]
    - **F5**: whether inferred values may be shown on a page, and how they are marked.
      [ANSWERED 2026-09-18 (relayed as a paraphrase): shown, labelled honestly with
      their provenance. ADR 0163 §1.]
@@ -423,9 +481,15 @@ ADR 0163.]
      asked; ADR 0163 §7 recommends a database view with a hand-written type.]
 
    *Check:* each fork has a register row or an answer. [Met for F1–F5; F6 and the
-   questions ADR 0163 raises are listed in that ADR for the founder.]
+   questions ADR 0163 raises are listed in that ADR for the founder.] [Round 2,
+   2026-09-18: most of those questions are answered, and the ADR records each answer
+   verbatim as relayed. The market price now comes from menu prices; review happens in
+   /studio; every wine is sourced; the legacy profiles stop showing. What is still open
+   is listed under ADR 0163's "Still open after round 2".]
 2. **Clear the four stale `running` rows in `research_runs`, and add a reaper.** This is
    a production write and needs the founder's word. *Check:* F-A `runs_running = 0`.
+   [Round 2: the laptop tasks that open these rows run until cutover, so the reaper
+   stays disarmed until 7 days after it (ADR 0163 §15, step 0.15).]
 3. **Stop `mapWine` reading the column that does not exist.** *Check:* the claim
    `WINE-ML-MAPWINE-READS-ABSENT-TASTING-NOTES` flips.
 4. **Give `/wines` and `meta/*` a live filter.** *Check:* appendix Q11 returns 0 non-live
@@ -461,6 +525,9 @@ ADR 0163.]
     - `08-softwares/wine-library-sommelier.md` §4.
     - `foundation/EXTERNAL_CONNECTIONS.md` §3: re-verify it; do not merge it.
     - "347" in `07-reference/INDEX.md` and `06-pages/reports.md`.
+    - [Round 2] `08-softwares/wine-studio.md:42` and `06-pages/studio.md:40` list
+      promotion into the master library as working. It cannot succeed (§2 item 4; ADR
+      0163 step 0.17).
 
 ## 8. Claims
 
