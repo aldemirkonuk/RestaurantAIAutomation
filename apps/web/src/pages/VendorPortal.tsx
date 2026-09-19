@@ -1,3 +1,6 @@
+import { PublicShell } from '../components/mudavym/PublicShell'
+import { usePublicDesign } from '../lib/mudavym/publicDesign'
+import '../components/mudavym/public-pages.css'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import axios from 'axios'
@@ -49,10 +52,10 @@ interface VendorPage {
  */
 
 /** Price per 750ml equivalent, so a case and a bottle sort against each other. */
-function unitPrice(l: Listing): number | null {
+export function unitPrice(l: Listing): number | null {
   if (l.price === null || l.packSize <= 0) return null
   const perUnit = l.price / l.packSize
-  if (!l.volumeMl || l.volumeMl <= 0) return perUnit
+  if (!l.volumeMl || l.volumeMl <= 0) return null
   return perUnit * (750 / l.volumeMl)
 }
 
@@ -72,12 +75,15 @@ function formatMoney(value: number | null, currency: string): string {
 function formatFormat(l: Listing): string {
   const parts: string[] = []
   if (l.packSize > 1) parts.push(`${l.packSize}-pack`)
-  if (l.volumeMl) parts.push(l.volumeMl >= 1000 ? `${l.volumeMl / 1000}L` : `${l.volumeMl}ml`)
+  if (l.volumeMl)
+    parts.push(l.volumeMl >= 1000 ? `${l.volumeMl / 1000}L` : `${l.volumeMl}ml`)
   if (l.unitLabel) parts.push(l.unitLabel)
   return parts.length ? parts.join(' · ') : 'Single unit'
 }
 
 export function VendorPortal() {
+  const publicDesign = usePublicDesign()
+  const [reload, setReload] = useState(0)
   const { slug } = useParams<{ slug: string }>()
   const [page, setPage] = useState<VendorPage | null>(null)
   const [loading, setLoading] = useState(true)
@@ -88,10 +94,11 @@ export function VendorPortal() {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setPage(null)
     setError(null)
 
     axios
-      .get(`${API_URL}/api/v1/vendor-portal/${slug}`)
+      .get(`${API_URL}/api/v1/vendor-portal/${encodeURIComponent(slug ?? '')}`)
       .then((res) => {
         if (!cancelled) setPage(res.data.page)
       })
@@ -110,7 +117,7 @@ export function VendorPortal() {
     return () => {
       cancelled = true
     }
-  }, [slug])
+  }, [slug, reload])
 
   // Injected rather than rendered into the tree: JSON-LD must live in a real
   // <script type="application/ld+json"> element for crawlers to read it, and
@@ -131,7 +138,9 @@ export function VendorPortal() {
         item: {
           '@type': 'Product',
           name: l.productName,
-          ...(l.producer ? { brand: { '@type': 'Brand', name: l.producer } } : {}),
+          ...(l.producer
+            ? { brand: { '@type': 'Brand', name: l.producer } }
+            : {}),
           ...(l.vintage ? { productionDate: String(l.vintage) } : {}),
           ...(l.price !== null
             ? {
@@ -139,10 +148,13 @@ export function VendorPortal() {
                   '@type': 'Offer',
                   price: l.price,
                   priceCurrency: l.currency,
-                  availability:
-                    l.inStock === false
-                      ? 'https://schema.org/OutOfStock'
-                      : 'https://schema.org/InStock',
+                  ...(l.inStock === null
+                    ? {}
+                    : {
+                        availability: l.inStock
+                          ? 'https://schema.org/InStock'
+                          : 'https://schema.org/OutOfStock',
+                      }),
                   seller: { '@type': 'Organization', name: page.displayName },
                 },
               }
@@ -151,9 +163,11 @@ export function VendorPortal() {
       })),
     })
     document.head.appendChild(el)
+    const previousTitle = document.title
     document.title = `${page.displayName} — wine catalogue`
     return () => {
       document.head.removeChild(el)
+      document.title = previousTitle
     }
   }, [page])
 
@@ -178,7 +192,8 @@ export function VendorPortal() {
         if (pa === null && pb === null) return 0
         if (pa === null) return 1
         if (pb === null) return -1
-        return pa - pb
+        const currencyOrder = a.currency.localeCompare(b.currency)
+        return currencyOrder || pa - pb
       })
     } else if (sortBy === 'vintage') {
       sorted.sort((a, b) => (b.vintage ?? 0) - (a.vintage ?? 0))
@@ -187,6 +202,227 @@ export function VendorPortal() {
     }
     return sorted
   }, [page, query, sortBy])
+
+  if (publicDesign) {
+    return (
+      <PublicShell
+        measure="board"
+        title={
+          loading
+            ? 'Opening the catalogue'
+            : error || !page
+              ? 'Catalogue unavailable'
+              : page.displayName
+        }
+        eyebrow="Published vendor catalogue"
+        voice={page?.tagline ?? undefined}
+        homeHref="/login"
+        seal={false}
+        footer={
+          <>
+            <a className="mdv-link" href="/login">
+              Published on Mudavym
+            </a>
+            . Prices and availability are supplied by the vendor.
+          </>
+        }
+      >
+        <div className="mdv-public-stack">
+          {loading ? (
+            <p role="status">Loading catalogue…</p>
+          ) : error || !page ? (
+            <div className="mdv-pub__plate mdv-public-stack">
+              <p role="alert">
+                {error || 'This catalogue could not be loaded.'}
+              </p>
+              <button
+                className="mdv-btn"
+                onClick={() => setReload((n) => n + 1)}
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
+            <>
+              {(page.about ||
+                page.logoUrl ||
+                page.contactEmail ||
+                page.contactPhone ||
+                page.websiteUrl) && (
+                <section
+                  className="mdv-pub__plate mdv-public-stack"
+                  aria-label="About the vendor"
+                >
+                  {page.logoUrl && (
+                    <img
+                      className="mdv-public-logo"
+                      src={page.logoUrl}
+                      alt={`${page.displayName} logo`}
+                    />
+                  )}
+                  {page.about && <p>{page.about}</p>}
+                  <div className="mdv-public-contacts">
+                    {page.contactEmail && (
+                      <a
+                        className="mdv-link"
+                        href={`mailto:${page.contactEmail}`}
+                      >
+                        {page.contactEmail}
+                      </a>
+                    )}
+                    {page.contactPhone && (
+                      <a className="mdv-link" href={`tel:${page.contactPhone}`}>
+                        {page.contactPhone}
+                      </a>
+                    )}
+                    {page.websiteUrl && (
+                      <a
+                        className="mdv-link"
+                        href={page.websiteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Vendor website
+                      </a>
+                    )}
+                  </div>
+                </section>
+              )}
+              <div className="mdv-public-toolbar">
+                <div>
+                  <label htmlFor="vendor-search" className="mdv-label">
+                    Find a wine
+                  </label>
+                  <input
+                    id="vendor-search"
+                    className="mdv-input"
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Wine, producer, grape or place"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="vendor-sort" className="mdv-label">
+                    Sort catalogue
+                  </label>
+                  <select
+                    id="vendor-sort"
+                    className="mdv-input"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                  >
+                    <option value="name">Name</option>
+                    <option value="price">Per 750ml, within currency</option>
+                    <option value="vintage">Vintage, newest first</option>
+                  </select>
+                </div>
+              </div>
+              <p className="mdv-note" role="status">
+                {visible.length} of {page.listings.length} listings
+                {page.updatedAt && !Number.isNaN(Date.parse(page.updatedAt))
+                  ? ` · Updated ${new Date(page.updatedAt).toLocaleDateString()}`
+                  : ''}
+              </p>
+              {!visible.length ? (
+                <div className="mdv-pub__plate">
+                  <p>
+                    {query
+                      ? 'No listings match your search.'
+                      : 'This vendor has not published any listings yet.'}
+                  </p>
+                  {query && (
+                    <button className="mdv-btn" onClick={() => setQuery('')}>
+                      Clear search
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div
+                  className="mdv-pub__scroll"
+                  role="region"
+                  aria-label="Wine catalogue, scroll horizontally for prices"
+                  tabIndex={0}
+                >
+                  <table className="mdv-public-table">
+                    <caption className="sr-only">
+                      {page.displayName} published wine catalogue
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Wine</th>
+                        <th scope="col">Vintage</th>
+                        <th scope="col">Origin</th>
+                        <th scope="col">Format</th>
+                        <th scope="col" className="mdv-public-number">
+                          List price
+                        </th>
+                        <th scope="col" className="mdv-public-number">
+                          Per 750ml
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visible.map((l) => (
+                        <tr key={l.id}>
+                          <td>
+                            <strong>{l.productName}</strong>
+                            {l.producer && <small>{l.producer}</small>}
+                            {l.grapeVarieties && (
+                              <small>{l.grapeVarieties}</small>
+                            )}
+                            <small>
+                              {l.inStock === null
+                                ? 'Availability not stated'
+                                : l.inStock
+                                  ? 'In stock'
+                                  : 'Out of stock'}
+                            </small>
+                            {l.notes && <small>{l.notes}</small>}
+                          </td>
+                          <td>{l.vintage ?? 'Not stated'}</td>
+                          <td>
+                            {[l.region, l.country].filter(Boolean).join(', ') ||
+                              'Not stated'}
+                          </td>
+                          <td>
+                            {formatFormat(l)}
+                            {l.minOrderQuantity !== null && (
+                              <small>Minimum order: {l.minOrderQuantity}</small>
+                            )}
+                            {l.leadTimeDays !== null && (
+                              <small>Lead time: {l.leadTimeDays} days</small>
+                            )}
+                          </td>
+                          <td className="mdv-public-number">
+                            {formatMoney(l.price, l.currency)}
+                            {l.price !== null && (
+                              <small>
+                                {l.currency} · per{' '}
+                                {l.packSize > 1 ? 'pack' : 'unit'}
+                              </small>
+                            )}
+                          </td>
+                          <td className="mdv-public-number">
+                            {formatMoney(unitPrice(l), l.currency)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="mdv-note">
+                These are published list prices. Contact the vendor for your
+                terms. A dash means the price or bottle size is not stated;
+                prices in different currencies are not converted.
+              </p>
+            </>
+          )}
+        </div>
+      </PublicShell>
+    )
+  }
 
   if (loading) {
     return (
@@ -204,9 +440,14 @@ export function VendorPortal() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <div className="max-w-md text-center">
           <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-7 h-7 text-amber-600" strokeWidth={1.75} />
+            <AlertCircle
+              className="w-7 h-7 text-amber-600"
+              strokeWidth={1.75}
+            />
           </div>
-          <h1 className="text-lg font-semibold text-gray-900">Catalogue unavailable</h1>
+          <h1 className="text-lg font-semibold text-gray-900">
+            Catalogue unavailable
+          </h1>
           <p className="mt-2 text-sm text-gray-500 leading-relaxed">{error}</p>
         </div>
       </div>
@@ -230,8 +471,12 @@ export function VendorPortal() {
               </div>
             )}
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold text-gray-900">{page.displayName}</h1>
-              {page.tagline && <p className="mt-1 text-gray-500">{page.tagline}</p>}
+              <h1 className="text-2xl font-bold text-gray-900">
+                {page.displayName}
+              </h1>
+              {page.tagline && (
+                <p className="mt-1 text-gray-500">{page.tagline}</p>
+              )}
               <div className="mt-3 flex flex-wrap gap-4 text-sm text-gray-500">
                 {page.contactEmail && (
                   <a
@@ -266,7 +511,9 @@ export function VendorPortal() {
             </div>
           </div>
           {page.about && (
-            <p className="mt-6 text-sm text-gray-600 leading-relaxed max-w-3xl">{page.about}</p>
+            <p className="mt-6 text-sm text-gray-600 leading-relaxed max-w-3xl">
+              {page.about}
+            </p>
           )}
         </div>
       </header>
@@ -321,19 +568,39 @@ export function VendorPortal() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr className="text-left text-gray-500">
-                    <th scope="col" className="px-4 py-3 font-medium">Wine</th>
-                    <th scope="col" className="px-4 py-3 font-medium">Vintage</th>
-                    <th scope="col" className="px-4 py-3 font-medium">Origin</th>
-                    <th scope="col" className="px-4 py-3 font-medium">Format</th>
-                    <th scope="col" className="px-4 py-3 font-medium text-right">Price</th>
-                    <th scope="col" className="px-4 py-3 font-medium text-right">Per 750ml</th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Wine
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Vintage
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Origin
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      Format
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-4 py-3 font-medium text-right"
+                    >
+                      Price
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-4 py-3 font-medium text-right"
+                    >
+                      Per 750ml
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {visible.map((l) => (
                     <tr key={l.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <div className="font-medium text-gray-900">{l.productName}</div>
+                        <div className="font-medium text-gray-900">
+                          {l.productName}
+                        </div>
                         {l.producer && (
                           <div className="text-gray-500">{l.producer}</div>
                         )}
@@ -343,11 +610,16 @@ export function VendorPortal() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">{l.vintage ?? 'NV'}</td>
                       <td className="px-4 py-3 text-gray-600">
-                        {[l.region, l.country].filter(Boolean).join(', ') || '—'}
+                        {l.vintage ?? 'NV'}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">{formatFormat(l)}</td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {[l.region, l.country].filter(Boolean).join(', ') ||
+                          '—'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {formatFormat(l)}
+                      </td>
                       <td className="px-4 py-3 text-right text-gray-900">
                         {formatMoney(l.price, l.currency)}
                       </td>
@@ -363,8 +635,8 @@ export function VendorPortal() {
         )}
 
         <p className="mt-6 text-xs text-gray-400">
-          Prices are list prices published by the vendor and may not reflect negotiated
-          terms. Contact the vendor to confirm availability.
+          Prices are list prices published by the vendor and may not reflect
+          negotiated terms. Contact the vendor to confirm availability.
         </p>
       </main>
     </div>

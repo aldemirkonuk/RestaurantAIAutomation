@@ -17,12 +17,16 @@ ever returned OBS-03 infrastructure counters. The business metrics below were ad
 2026-08-04; before that the claim was aspirational.
 """
 
+import asyncio
+import hmac
 import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 
 from config.settings import get_settings
 
@@ -236,9 +240,46 @@ def verify_admin_key(x_admin_key: Optional[str] = Header(None)) -> str:
     expected = os.getenv("ADMIN_API_KEY", "")
     if not x_admin_key:
         raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Key")
-    if not expected or x_admin_key != expected:
+    if not expected or not hmac.compare_digest(x_admin_key, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Key")
     return x_admin_key
+
+
+class AgentOperationRequest(BaseModel):
+    request_id: UUID
+
+
+# Only registered agents may create a lock; arbitrary route names cannot grow it.
+_operation_locks: dict[str, asyncio.Lock] = {}
+
+
+@router.post("/api/v1/health/agents/{name}/{action}")
+async def operate_agent(name: str, action: str, body: AgentOperationRequest,
+                        _key: str = Depends(verify_admin_key)):
+    """Server-only lifecycle endpoint. The gateway verifies current operator grants.
+
+    The gateway records the request before dispatch and never retries automatically.
+    No raw agent exception (which may contain another house's data) crosses this API.
+    """
+    if action not in {"restart", "stop"}:
+        raise HTTPException(status_code=400, detail="Unknown agent operation")
+    orchestrator = get_orchestrator()
+    if orchestrator is None:
+        raise HTTPException(status_code=503, detail="Orchestrator not running")
+    if name not in orchestrator.agents:
+        raise HTTPException(status_code=404, detail="Agent not running")
+    lock = _operation_locks.setdefault(name, asyncio.Lock())
+    if lock.locked():
+        raise HTTPException(status_code=409, detail="An operation is already in progress")
+    async with lock:
+        try:
+            method = orchestrator.restart_agent if action == "restart" else orchestrator.stop_agent
+            result = await method(name)
+            success = result.get("success") is True
+        except Exception:
+            success = False
+        return {"success": success, "agent": name, "action": action,
+                "request_id": str(body.request_id)}
 
 
 @router.get("/api/v1/health/agents")

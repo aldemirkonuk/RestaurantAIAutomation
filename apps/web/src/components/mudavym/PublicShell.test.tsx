@@ -145,7 +145,7 @@ describe('PublicShell — the same house at every door', () => {
 /* ── both grounds ────────────────────────────────────────────────────────── */
 
 describe('PublicShell — both grounds (ADR 0042)', () => {
-  it('declares no ground of its own, so it follows the app theme', () => {
+  it('declares no ground of its own, so the shared charcoal default applies', () => {
     const { container } = render(
       <PublicShell title="A">
         <p>body</p>
@@ -171,15 +171,13 @@ describe('PublicShell — both grounds (ADR 0042)', () => {
     expect(root).toHaveAttribute('data-ground', 'charcoal');
   });
 
-  it('treats an explicit paper ground as "no claim", not as a second declaration', () => {
+  it('honors the explicit shared paper exception on the same token node', () => {
     const { container } = render(
       <PublicShell title="A" ground="paper">
         <p>body</p>
       </PublicShell>,
     );
-    // `data-ground="paper"` would freeze the page on the light column even
-    // under the app's own dark theme. Paper is the absence of a claim.
-    expect(shellRoot(container).hasAttribute('data-ground')).toBe(false);
+    expect(shellRoot(container)).toHaveAttribute('data-ground', 'paper');
   });
 
   it('defines no colour outside the token column', () => {

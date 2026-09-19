@@ -119,11 +119,11 @@ export class LogsTimelineService {
       this.fetchInventoryTxns(db, restaurantId, correlationId, cursor),
       this.fetchDocuments(db, restaurantId, correlationId, cursor),
       this.fetchAuditLog(db, restaurantId, correlationId, cursor),
-      // event_store is not restaurant-scoped, so it is read only when a
-      // correlation_id names the rows to read. `null` — not an empty result —
-      // is what says "not queried", so the skip is reported as a skip.
+      // A correlation identifies a thread, not its owner. The event writer
+      // stamps payload.restaurant_id; filter that before pagination as well.
+      // With no correlation we still omit this source, as the UI contract says.
       correlationId
-        ? this.fetchEventStore(db, correlationId, cursor)
+        ? this.fetchEventStore(db, restaurantId, correlationId, cursor)
         : Promise.resolve(null),
     ]);
 
@@ -332,13 +332,15 @@ export class LogsTimelineService {
   }
 
   /**
-   * event_store is not restaurant-scoped, so the caller only reaches this when
-   * a correlation_id names the rows to read; without one it would dump the
-   * whole platform's event stream into every restaurant's timeline. The skip
-   * is decided by the caller so that `sourcesQueried` can report it.
+   * event_store has no restaurant column. All current production writers
+   * (inventory_engine.py) stamp payload.restaurant_id, so that declared house
+   * is the ownership key. A correlation can be reused across houses and is
+   * never authority to read another event. Older/unattributed rows are withheld
+   * rather than guessing their owner from a matching row in another register.
    */
   private fetchEventStore(
     db: any,
+    restaurantId: string,
     correlationId: string,
     cursor: Cursor,
   ): Promise<SourceResult> {
@@ -348,7 +350,8 @@ export class LogsTimelineService {
         .select(
           "event_id, aggregate_type, aggregate_id, event_type, correlation_id, created_at, payload",
         )
-        .eq("correlation_id", correlationId);
+        .eq("correlation_id", correlationId)
+        .contains("payload", { restaurant_id: restaurantId });
       const { data, error } = await windowed(q, "created_at", cursor);
       if (error) throw error;
       return (data || []).map((r: any) => ({

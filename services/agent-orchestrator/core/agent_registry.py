@@ -259,19 +259,31 @@ class LazyAgentProxy:
         self._message_count: int = 0
         self._error_count: int = 0
         self._created_at: Optional[datetime] = None
+        self._lifecycle_lock = asyncio.Lock()
+        self._stopped = False
+        self._lifecycle_error = False
 
     @property
     def is_loaded(self) -> bool:
         return self._instance is not None
 
     @property
+    def loaded_instance(self):
+        """Return an existing instance without triggering lazy construction."""
+        return self._instance
+
+    @property
     def is_active(self) -> bool:
-        return self._is_started and not self._is_suspended
+        return self._is_started and not self._is_suspended and not self._lifecycle_error
 
     @property
     def state(self) -> str:
         if not self._instance:
             return "idle"
+        if self._lifecycle_error:
+            return "error"
+        if self._stopped:
+            return "stopped"
         if self._is_suspended:
             return "suspended"
         if self._is_started:
@@ -291,57 +303,82 @@ class LazyAgentProxy:
         return self._instance
 
     async def ensure_started(self):
-        """Ensure the agent is instantiated and started."""
+        """Serialize starts so concurrent callers cannot duplicate workers."""
+        async with self._lifecycle_lock:
+            return await self._ensure_started()
+
+    async def _ensure_started(self):
         instance = await self.get_instance()
-        if not self._is_started:
-            await instance.start()
-            self._is_started = True
-            self._is_suspended = False
-            logger.info(f"Started agent: {self.spec.name}")
-        elif self._is_suspended:
-            await self.resume()
-        self._last_activity = time.time()
-        return instance
+        if self._lifecycle_error:
+            raise RuntimeError("Agent lifecycle failed; complete a stop before starting again")
+        try:
+            if not self._is_started:
+                await instance.start()
+                if getattr(getattr(instance, "status", None), "value", None) != "active":
+                    raise RuntimeError("Agent did not reach active state")
+                self._is_started = True
+                self._is_suspended = False
+                self._stopped = False
+                logger.info(f"Started agent: {self.spec.name}")
+            elif self._is_suspended:
+                await self._resume()
+            self._last_activity = time.time()
+            return instance
+        except BaseException:
+            self._lifecycle_error = True
+            raise
+
+    async def restart(self):
+        """Keep stop/start atomic with respect to other lazy start callers."""
+        async with self._lifecycle_lock:
+            await self._stop()
+            return await self._ensure_started()
 
     async def suspend(self):
-        """Suspend an idle agent to free resources."""
-        if self._instance and self._is_started and not self._is_suspended:
-            try:
-                # Stop consuming from queues but keep instance in memory
-                if hasattr(self._instance, "pause"):
+        """Pause an idle instance without racing an operator stop/restart."""
+        async with self._lifecycle_lock:
+            if self._instance and self.is_active:
+                try:
                     await self._instance.pause()
-                self._is_suspended = True
-                logger.info(
-                    f"Suspended idle agent: {self.spec.name} (idle for {self.idle_seconds:.0f}s)"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to suspend agent {self.spec.name}: {e}")
+                    self._is_suspended = True
+                except BaseException:
+                    self._lifecycle_error = True
+                    raise
 
     async def resume(self):
-        """Resume a suspended agent."""
+        async with self._lifecycle_lock:
+            await self._resume()
+
+    async def _resume(self):
         if self._instance and self._is_suspended:
             try:
-                if hasattr(self._instance, "resume"):
-                    await self._instance.resume()
-                elif hasattr(self._instance, "start"):
-                    await self._instance.start()
+                await self._instance.resume()
                 self._is_suspended = False
                 self._last_activity = time.time()
-                logger.info(f"Resumed agent: {self.spec.name}")
-            except Exception as e:
-                logger.warning(f"Failed to resume agent {self.spec.name}: {e}")
+            except BaseException:
+                self._lifecycle_error = True
+                raise
 
     async def stop(self):
-        """Stop and unload the agent."""
+        """Stop while retaining the instance and any incompletely drained work."""
+        async with self._lifecycle_lock:
+            await self._stop()
+
+    async def _stop(self):
         if self._instance:
             try:
-                if hasattr(self._instance, "stop"):
-                    await self._instance.stop()
+                await self._instance.stop()
+                if getattr(getattr(self._instance, "status", None), "value", None) != "stopped":
+                    raise RuntimeError("Agent did not reach stopped state")
                 self._is_started = False
                 self._is_suspended = False
+                self._stopped = True
+                self._lifecycle_error = False
                 logger.info(f"Stopped agent: {self.spec.name}")
-            except Exception as e:
-                logger.warning(f"Error stopping agent {self.spec.name}: {e}")
+            except BaseException:
+                self._lifecycle_error = True
+                logger.exception(f"Error stopping agent {self.spec.name}")
+                raise
 
     def record_activity(self):
         """Record that the agent processed a message."""

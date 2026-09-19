@@ -98,6 +98,16 @@ export class OrchestratorService implements OnModuleDestroy {
     return { "X-Admin-Key": key };
   }
 
+  async operateAgent(name: string, action: "restart" | "stop", requestId: string): Promise<{ success: boolean }> {
+    if (!isSafePathSegment(name) || !["restart", "stop"].includes(action)) {
+      throw new BadRequestException("Unknown agent operation.");
+    }
+    if (!this.orchestratorConfigured) throw new Error("Orchestrator not configured");
+    const response = await this.httpClient.post(`/api/v1/health/agents/${name}/${action}`,
+      { request_id: requestId }, { headers: this.getAdminHeaders(), timeout: 20000 });
+    return response.data;
+  }
+
   /**
    * Forward a studio request to the orchestrator, preserving the caller's own Bearer token.
    *

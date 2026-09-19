@@ -1,0 +1,110 @@
+/* PublicShell content: shared tokens on both grounds; no app-shell dependency. */
+.mdv-pub .mdv-public-stack {
+  display: grid;
+  gap: 18px;
+}
+.mdv-pub .mdv-public-stack > p {
+  margin: 0;
+}
+.mdv-pub .mdv-public-stack > .mdv-btn {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+  min-height: 44px;
+}
+.mdv-pub .mdv-public-address {
+  overflow-wrap: anywhere;
+}
+.mdv-pub .mdv-public-record {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+.mdv-pub .mdv-public-record div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 14px;
+}
+.mdv-pub .mdv-public-record dt {
+  color: var(--ink-3);
+}
+.mdv-pub .mdv-public-record dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.mdv-pub .mdv-public-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: end;
+}
+.mdv-pub .mdv-public-toolbar > :first-child {
+  flex: 1 1 240px;
+}
+.mdv-pub .mdv-public-contacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.mdv-pub .mdv-public-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border-radius: 10px;
+}
+.mdv-pub .mdv-public-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.mdv-pub .mdv-public-table th {
+  color: var(--ink-3);
+  font-weight: 500;
+  text-align: left;
+}
+.mdv-pub .mdv-public-table th,
+.mdv-pub .mdv-public-table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--paper-2);
+  vertical-align: top;
+}
+.mdv-pub .mdv-public-table td small {
+  display: block;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+.mdv-pub .mdv-public-table .mdv-public-number {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mdv-pub .mdv-public-prose {
+  display: grid;
+  gap: 22px;
+}
+
+/* globals.css enforces white controls with !important. Override only this shell. */
+.mdv-pub input.mdv-input,
+.mdv-pub select.mdv-input {
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+  background-color: var(--paper-0) !important;
+  border-color: var(--paper-2);
+  color-scheme: inherit !important;
+  min-height: 44px;
+}
+.mdv-pub input.mdv-input::placeholder {
+  color: var(--ink-3) !important;
+  -webkit-text-fill-color: var(--ink-3) !important;
+}
+
+.mdv-pub .mdv-public-contacts a {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.mdv-pub .mdv-pub__title {
+  overflow-wrap: anywhere;
+}

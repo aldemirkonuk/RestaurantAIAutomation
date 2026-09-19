@@ -1,3 +1,6 @@
+import { PublicShell } from '../components/mudavym/PublicShell'
+import { usePublicDesign } from '../lib/mudavym/publicDesign'
+import '../components/mudavym/public-pages.css'
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
@@ -12,6 +15,7 @@ const fieldClass =
   'block w-full pl-11 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 shadow-sm transition-all focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
 
 export function ResetPassword() {
+  const publicDesign = usePublicDesign()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
@@ -61,18 +65,120 @@ export function ResetPassword() {
     }
   }
 
+  if (publicDesign) {
+    return (
+      <PublicShell
+        title={
+          !token
+            ? 'This link is incomplete'
+            : success
+              ? 'Password updated'
+              : 'Choose a new password'
+        }
+        eyebrow="Account access"
+        voice={
+          !token
+            ? 'Request another link to continue.'
+            : success
+              ? 'Your next step is to sign in.'
+              : 'Use at least eight characters.'
+        }
+        homeHref="/login"
+        footer={
+          <Link className="mdv-link" to="/login">
+            Back to sign in
+          </Link>
+        }
+      >
+        <div className="mdv-pub__plate mdv-public-stack">
+          {!token ? (
+            <Link className="mdv-btn mdv-btn--seal" to="/forgot-password">
+              Request a new link
+            </Link>
+          ) : success ? (
+            <p role="status">
+              Your password has changed. Redirecting you to sign in…
+            </p>
+          ) : (
+            <form
+              className="mdv-public-stack"
+              onSubmit={handleSubmit}
+              aria-busy={loading}
+            >
+              {error && (
+                <div className="mdv-public-stack">
+                  <p className="mdv-alert" role="alert">
+                    {error}
+                  </p>
+                  <Link className="mdv-link" to="/forgot-password">
+                    Request a new link
+                  </Link>
+                </div>
+              )}
+              <div>
+                <label className="mdv-label" htmlFor="password">
+                  New password
+                </label>
+                <input
+                  className="mdv-input"
+                  id="password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+              <div>
+                <label className="mdv-label" htmlFor="confirmPassword">
+                  Confirm new password
+                </label>
+                <input
+                  className="mdv-input"
+                  id="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+              <button
+                className="mdv-btn mdv-btn--seal"
+                type="submit"
+                disabled={loading}
+              >
+                {loading ? 'Updating…' : 'Reset password'}
+              </button>
+            </form>
+          )}
+        </div>
+      </PublicShell>
+    )
+  }
+
   if (!token) {
     return (
       <AuthShell title="Mudavym" subtitle="Reset your password">
         <AuthCard>
           <div className="flex flex-col items-center text-center gap-4 py-4">
             <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
-              <AlertCircle className="w-7 h-7 text-red-600" strokeWidth={1.75} />
+              <AlertCircle
+                className="w-7 h-7 text-red-600"
+                strokeWidth={1.75}
+              />
             </div>
             <div>
-              <p className="text-base font-semibold text-gray-900">Invalid reset link</p>
+              <p className="text-base font-semibold text-gray-900">
+                Invalid reset link
+              </p>
               <p className="mt-1.5 text-sm text-gray-500 leading-relaxed">
-                This link is missing its reset token. Request a new one to continue.
+                This link is missing its reset token. Request a new one to
+                continue.
               </p>
             </div>
             <Link
@@ -93,10 +199,15 @@ export function ResetPassword() {
         <AuthCard>
           <div className="flex flex-col items-center text-center gap-4 py-4">
             <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
-              <CheckCircle2 className="w-7 h-7 text-emerald-600" strokeWidth={1.75} />
+              <CheckCircle2
+                className="w-7 h-7 text-emerald-600"
+                strokeWidth={1.75}
+              />
             </div>
             <div>
-              <p className="text-base font-semibold text-gray-900">Password updated</p>
+              <p className="text-base font-semibold text-gray-900">
+                Password updated
+              </p>
               <p className="mt-1.5 text-sm text-gray-500 leading-relaxed">
                 Redirecting you to sign in…
               </p>
@@ -116,19 +227,28 @@ export function ResetPassword() {
             animate={{ opacity: 1, y: 0 }}
             className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
           >
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
+            <AlertCircle
+              className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"
+              strokeWidth={1.75}
+            />
             <p className="text-sm text-red-700">{error}</p>
           </motion.div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               New Password
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Lock className="h-[18px] w-[18px] text-wine-400" strokeWidth={1.75} />
+                <Lock
+                  className="h-[18px] w-[18px] text-wine-400"
+                  strokeWidth={1.75}
+                />
               </div>
               <input
                 id="password"
@@ -146,12 +266,18 @@ export function ResetPassword() {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="confirmPassword"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Confirm New Password
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Lock className="h-[18px] w-[18px] text-wine-400" strokeWidth={1.75} />
+                <Lock
+                  className="h-[18px] w-[18px] text-wine-400"
+                  strokeWidth={1.75}
+                />
               </div>
               <input
                 id="confirmPassword"
@@ -167,7 +293,13 @@ export function ResetPassword() {
             </div>
           </div>
 
-          <Button type="submit" variant="default" size="lg" className="w-full" disabled={loading}>
+          <Button
+            type="submit"
+            variant="default"
+            size="lg"
+            className="w-full"
+            disabled={loading}
+          >
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin" />
@@ -179,7 +311,10 @@ export function ResetPassword() {
           </Button>
 
           <p className="text-center text-sm text-gray-500">
-            <Link to="/login" className="font-medium text-wine-600 hover:text-wine-700">
+            <Link
+              to="/login"
+              className="font-medium text-wine-600 hover:text-wine-700"
+            >
               Back to sign in
             </Link>
           </p>

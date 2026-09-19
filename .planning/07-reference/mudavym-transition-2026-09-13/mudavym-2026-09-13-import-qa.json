@@ -1,0 +1,7 @@
+{
+  "imported_payloads": 22,
+  "relative_markdown_links_checked": 51,
+  "missing": [],
+  "hash_mismatch": [],
+  "scope": "Imported historical bundle links and payloads only; existing vault references and remote GitHub anchors are not re-probed."
+}

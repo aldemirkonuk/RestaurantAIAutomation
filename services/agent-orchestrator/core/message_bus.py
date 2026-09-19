@@ -478,6 +478,10 @@ class MessageHandler(Protocol):
 # =============================================================================
 
 
+class ConsumerUnavailable(Exception):
+    """No work was accepted: requeue without retry/idempotency side effects."""
+
+
 class MessageBus:
     """
     Production-grade RabbitMQ message bus with:
@@ -506,6 +510,7 @@ class MessageBus:
         self.exchanges: Dict[str, AbstractExchange] = {}
         self.queues: Dict[str, AbstractQueue] = {}
         self.handlers: Dict[str, List[Callable]] = {}
+        self._consumers: Dict[str, Dict[str, Any]] = {}
 
         # Resilience
         self.circuit_breaker = CircuitBreaker("rabbitmq", circuit_breaker_config)
@@ -812,20 +817,29 @@ class MessageBus:
         queue_name: str,
         callback: Callable[[Dict[str, Any]], Awaitable[None]],
         auto_ack: bool = False,
-    ) -> None:
+    ) -> str:
         """
-        Start consuming with idempotency and automatic retries
+        Start consuming; return a tag for cancelling just this subscription.
+        Existing callers may continue to ignore the return value.
         """
         queue = self.queues.get(queue_name)
         if not queue:
             raise ValueError(f"Queue '{queue_name}' not found")
 
+        registration = {"queue_name": queue_name, "callback": callback,
+                        "tasks": set(), "stopping": False, "cancelled": False,
+                        "cancel_confirmed": asyncio.Event()}
+
         async def message_handler(message: AbstractIncomingMessage) -> None:
             start_time = asyncio.get_event_loop().time()
             exchange_name = message.exchange or "unknown"
 
-            async with message.process(ignore_processed=auto_ack):
+            # This handler acknowledges/rejects explicitly. The context must
+            # not acknowledge a second time when the handler returns.
+            async with message.process(ignore_processed=True):
                 try:
+                    if registration["stopping"]:
+                        raise ConsumerUnavailable("Subscription is stopping")
                     # Check idempotency (async Redis-backed)
                     idempotency_key = message.headers.get("x-idempotency-key", "")
                     if idempotency_key and await self._is_duplicate_async(
@@ -859,6 +873,18 @@ class MessageBus:
 
                     if not auto_ack:
                         await message.ack()
+
+                except ConsumerUnavailable:
+                    # No acceptance means no idempotency mark and no retry
+                    # exhaustion. Manual-ack BaseAgents are safe to redeliver.
+                    registration["stopping"] = True
+                    if not registration["cancelled"]:
+                        # If cancellation failed, hold this delivery unacked.
+                        # Requeueing to a still-live stopping consumer would
+                        # create a hot loop. A stop retry releases the waiter.
+                        await registration["cancel_confirmed"].wait()
+                    if not auto_ack:
+                        await message.reject(requeue=True)
 
                 except json.JSONDecodeError as e:
                     logger.error(f"Invalid JSON: {e}")
@@ -925,9 +951,52 @@ class MessageBus:
                         self.metrics.messages_dead_lettered += 1
                         await message.reject(requeue=False)
 
-        await queue.consume(message_handler, no_ack=auto_ack)
-        self.handlers[queue_name] = [callback]
-        logger.info(f"🎧 Started consuming from: {queue_name}")
+        async def tracked_handler(message: AbstractIncomingMessage) -> None:
+            task = asyncio.current_task()
+            registration["tasks"].add(task)
+            try:
+                await message_handler(message)
+            finally:
+                registration["tasks"].discard(task)
+
+        tag = await queue.consume(tracked_handler, no_ack=auto_ack)
+        self._consumers[tag] = registration
+        self.handlers.setdefault(queue_name, []).append(callback)
+        logger.info(f"Started consuming from: {queue_name}")
+        return tag
+
+    async def stop_consuming(
+        self, queue_name: str, consumer_tag: str, timeout: float = 30.0
+    ) -> None:
+        """Cancel one subscription and wait for callbacks, never cancel work.
+
+        A failed cancellation/drain keeps the registration for a safe retry.
+        A late callback retains its stopping flag and requeues the delivery.
+        """
+        registration = self._consumers.get(consumer_tag)
+        if registration is None:
+            return  # Already cancelled and drained.
+        if registration["queue_name"] != queue_name:
+            raise ValueError("Consumer tag does not belong to this queue")
+        registration["stopping"] = True
+        deadline = asyncio.get_running_loop().time() + timeout
+        if not registration["cancelled"]:
+            await self.queues[queue_name].cancel(consumer_tag, timeout=max(0.0, timeout))
+            registration["cancelled"] = True
+            registration["cancel_confirmed"].set()
+        tasks = set(registration["tasks"])
+        if tasks:
+            _, pending = await asyncio.wait(
+                tasks, timeout=max(0.0, deadline - asyncio.get_running_loop().time())
+            )
+            if pending:
+                raise TimeoutError("Message callbacks are still draining")
+        self._consumers.pop(consumer_tag, None)
+        callbacks = self.handlers.get(queue_name, [])
+        if registration["callback"] in callbacks:
+            callbacks.remove(registration["callback"])
+        if not callbacks:
+            self.handlers.pop(queue_name, None)
 
     def _is_duplicate(self, idempotency_key: str) -> bool:
         """Check if message was already processed (sync wrapper)"""
@@ -1066,10 +1135,8 @@ class MessageBus:
 
         try:
             # Cancel consumers
-            for queue_name in list(self.handlers.keys()):
-                queue = self.queues.get(queue_name)
-                if queue:
-                    await queue.cancel()
+            for tag, registration in list(self._consumers.items()):
+                await self.stop_consuming(registration["queue_name"], tag)
 
             # Close channel and connection
             if self.channel and not self.channel.is_closed:

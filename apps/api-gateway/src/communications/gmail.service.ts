@@ -35,6 +35,8 @@ import {
 } from "./email-templates";
 
 export interface EmailOptions {
+  /** Public account mail only; recipient/provider account is unchanged. */
+  senderName?: "Mudavym";
   to: string[];
   subject: string;
   html: string;
@@ -600,7 +602,7 @@ This is an automated alert from WineOps AI.
       `<wineops-${Date.now()}-${Math.random().toString(36).slice(2)}@wineops.ai>`;
 
     const headers = [
-      `From: WineOps AI <${this.senderEmail}>`,
+      `From: ${options.senderName === "Mudavym" ? "Mudavym" : "WineOps AI"} <${this.senderEmail}>`,
       `To: ${options.to.join(", ")}`,
       options.cc?.length ? `Cc: ${options.cc.join(", ")}` : "",
       options.bcc?.length ? `Bcc: ${options.bcc.join(", ")}` : "",
@@ -680,7 +682,7 @@ This is an automated alert from WineOps AI.
     });
 
     const info = await transporter.sendMail({
-      from: `"WineOps AI" <${this.senderEmail}>`,
+      from: `"${options.senderName === "Mudavym" ? "Mudavym" : "WineOps AI"}" <${this.senderEmail}>`,
       to: options.to.join(", "),
       cc: options.cc?.length ? options.cc.join(", ") : undefined,
       bcc: options.bcc?.length ? options.bcc.join(", ") : undefined,
@@ -752,7 +754,8 @@ This is an automated alert from WineOps AI.
 
     return this.sendEmail({
       to: [data.to],
-      subject: `You've been invited to WineOps Studio as ${data.roleLabel}`,
+      senderName: "Mudavym",
+      subject: `You've been invited to Mudavym Studio as ${data.roleLabel}`,
       html,
     });
   }

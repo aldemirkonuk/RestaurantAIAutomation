@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 3
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-13
 links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[no-access]]", "[[login]]", "[[dashboard]]"]
 ---
 
@@ -134,3 +134,12 @@ Named absences:
 4. Decide whether the unauthenticated preview should name the inviter (`auth.service.ts:793`). *Blocked:* founder call.
 5. Move to the shared axios client (`:38`, `:59`).
 6. Track invite viewed / accepted / abandoned — the highest-value growth event in the product, currently unmeasured (§5). *Blocked:* no sink (see [[get-started]] §11).
+
+
+### PublicShell implementation — 2026-09-13
+
+Implemented in the page-finalization working branch from `60ed83a7`; this is a code/test record, not a production-deployment claim. The new public treatment uses the shared `PublicShell` and `usePublicDesign()` (`VITE_MUDAVYM_PUBLIC`, overridden by the existing `mudavym.design.public` browser preference). The legacy rendering remains available with that switch off. No new server authorization or public endpoint is introduced by the visual port.
+
+A failed preview now stays a retryable read error rather than pretending that an invitation expired, in both legacy and new renderings. The new shell preserves the existing public restaurant/role preview, encoded sign-in return path, account-creation invitation and explicit accept action. Accept refreshes memberships before navigation. No additional inviter/organization disclosure was added; changing the public preview contract remains a founder decision. No invitation was redeemed during validation.
+
+Verification: `apps/web/src/pages/__tests__/publicPages.recovery.test.tsx` (ten behavior tests across the seven pages), existing PublicShell/public-switch tests (34), web/gateway TypeScript checks. Vendor read/JSON-LD tests (five) and account email body/sender identity tests (five) are isolated and perform no real sends or database writes. Remaining product choices are recorded under [[OPEN-DECISIONS#Public-page completion — 2026-09-13]]. The earlier audit is available from [[MUDAVYM-TRANSITION-2026-09-13]].

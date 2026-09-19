@@ -993,3 +993,12 @@ lands, this route is open.
    `drive-says-it-may-hold-the-mail.spec.ts` fails if a future pass widens the
    scope list, which is what makes "no re-authorisation loop" checkable rather
    than remembered.
+
+## Execution reconciliation — 2026-09-13
+
+WhatsApp inbound and reply paths are recovered under ADR 0121. Accepted webhooks now have durable, tenant-scoped receipts and retryable database failures. Reply authorization reads the actual signed userId and retains unknown delivery state after uncertain transport. See ADR 0121 for local safety and migration evidence.
+
+
+### Codex execution — overlay packet, 2026-09-13
+
+The recovered communications overlays and their interaction regressions were reconciled with current main. The cross-page seal, partial-result and validation account is appended to ADR 0118 under “overlay commitments”; the workspace immutable manifest records exactly what was integrated. This is implementation evidence, not a new design decision.

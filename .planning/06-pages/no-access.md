@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 2
 maturity: hollow
 status: documented
-updated: 2026-08-26
+updated: 2026-09-13
 links: ["[[PAGE-CONTRACT]]", "[[invite-landing]]", "[[login]]"]
 ---
 
@@ -109,3 +109,12 @@ Nothing persistent. `logout()` clears client state (`AuthContext.tsx:583`) and b
 2. If wired — add a membership branch to `ProtectedRoute` that redirects here when `availableRestaurants` is empty *after* the fetch settles (`ProtectedRoute.tsx:22-124`, `AuthContext.tsx:290-356`). Requires distinguishing "empty" from "still loading" and from "fetch failed", which the context does not currently expose.
 3. Either way — stop fabricating `'My Restaurant'` (`AuthContext.tsx:347-355`). This is the real defect; the orphaned page is only its symptom.
 4. Correct [PAGE_MAP](../foundation/PAGE_MAP.md), which records an outbound `n_no_access --> n_login` edge but omits the page from entry points — routed is not reachable (`v3.0-TECH-DEBT.md:229`).
+
+
+### PublicShell implementation — 2026-09-13
+
+Implemented in the page-finalization working branch from `60ed83a7`; this is a code/test record, not a production-deployment claim. The new public treatment uses the shared `PublicShell` and `usePublicDesign()` (`VITE_MUDAVYM_PUBLIC`, overridden by the existing `mudavym.design.public` browser preference). The legacy rendering remains available with that switch off. No new server authorization or public endpoint is introduced by the visual port.
+
+The new shell explains the signed-in account's lack of restaurant access, retains sign-out and sign-in paths and directs the reader to an owner's invitation. It does not manufacture a branch or create a restaurant. Root integration owns wiring this existing route into the protected-route denial branch; rendering this component alone is not evidence that every protected route reaches it.
+
+Verification: `apps/web/src/pages/__tests__/publicPages.recovery.test.tsx` (ten behavior tests across the seven pages), existing PublicShell/public-switch tests (34), web/gateway TypeScript checks. Vendor read/JSON-LD tests (five) and account email body/sender identity tests (five) are isolated and perform no real sends or database writes. Remaining product choices are recorded under [[OPEN-DECISIONS#Public-page completion — 2026-09-13]]. The earlier audit is available from [[MUDAVYM-TRANSITION-2026-09-13]].

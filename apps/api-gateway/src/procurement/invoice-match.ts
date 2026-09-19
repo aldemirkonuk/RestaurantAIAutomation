@@ -118,6 +118,8 @@ export class MatchUnitError extends Error {
 }
 
 export interface MatchInput {
+  /** Already-booked ledger quantity. Canonical bottles; never converted again. */
+  stockedQtyInBottles?: number | null;
   // -------------------------------------------------------------------------
   // ORDERED (PO, EDI 850)
   // -------------------------------------------------------------------------
@@ -493,6 +495,13 @@ export function toBottleOperands(input: MatchInput): {
     input.stockedQty,
   );
 
+  if (input.stockedQtyInBottles != null && rawStocked != null) {
+    throw new MatchUnitError(
+      "alias_conflict",
+      "Already-booked quantity was supplied in both bottles and counted units.",
+    );
+  }
+
   const ordered = resolveUnit(
     "The order",
     input.orderedUom,
@@ -524,6 +533,14 @@ export function toBottleOperands(input: MatchInput): {
   // number are checked, so an absent packing slip cannot block a valid match.
   const participating: Array<[string, ResolvedUnit]> = [
     ["the order", ordered],
+    ...(input.stockedQtyInBottles != null
+      ? [
+          [
+            "the stock ledger",
+            resolveUnit("The stock ledger", "bottle", 1, null),
+          ] as [string, ResolvedUnit],
+        ]
+      : []),
     ...(rawShipped !== null
       ? ([["the packing slip", shipped]] as Array<[string, ResolvedUnit]>)
       : []),
@@ -550,12 +567,16 @@ export function toBottleOperands(input: MatchInput): {
 
   return {
     orderedQty: Math.max(0, conv(rawOrdered ?? 0, ordered)),
-    shippedQty: rawShipped === null ? null : Math.max(0, conv(rawShipped, shipped)),
-    invoiceQty: rawInvoice === null ? null : Math.max(0, conv(rawInvoice, invoice)),
+    shippedQty:
+      rawShipped === null ? null : Math.max(0, conv(rawShipped, shipped)),
+    invoiceQty:
+      rawInvoice === null ? null : Math.max(0, conv(rawInvoice, invoice)),
     acceptedQty: Math.max(0, conv(rawAccepted ?? 0, counted)),
     rejectedQty: Math.max(0, conv(rawRejected ?? 0, counted)),
     freeGoodsQty: Math.max(0, conv(rawFreeGoods ?? 0, counted)),
-    stockedQty: rawStocked === null ? null : conv(rawStocked, counted),
+    stockedQty:
+      input.stockedQtyInBottles ??
+      (rawStocked === null ? null : conv(rawStocked, counted)),
     units: { ordered, shipped, invoice, counted },
   };
 }

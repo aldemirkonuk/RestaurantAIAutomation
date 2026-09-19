@@ -1,0 +1,10 @@
+CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
+CREATE TABLE users(user_id uuid PRIMARY KEY);
+CREATE TABLE restaurants(id uuid PRIMARY KEY);
+CREATE TABLE mcp_seal_challenges(id uuid PRIMARY KEY, subject_kind text NOT NULL CONSTRAINT chk_mcp_seal_challenges_subject_kind CHECK(subject_kind IN ('mcp_tool')));
+CREATE TABLE integration_oauth_states(state text PRIMARY KEY, consumed_at timestamptz, expires_at timestamptz NOT NULL);
+CREATE TABLE integration_oauth_connections(id uuid PRIMARY KEY);
+CREATE TABLE restaurant_feature_flags(restaurant_id uuid PRIMARY KEY);
+GRANT USAGE ON SCHEMA public TO service_role;
+INSERT INTO users VALUES('11111111-1111-4111-8111-111111111111');
+INSERT INTO restaurants VALUES('22222222-2222-4222-8222-222222222222');

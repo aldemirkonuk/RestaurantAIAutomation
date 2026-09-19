@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 3
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-13
 links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[get-started]]", "[[login]]", "[[dashboard]]"]
 ---
 
@@ -141,3 +141,12 @@ A column written by one endpoint and read by nothing is exactly the "data with n
 4. Fail startup when `FRONTEND_URL` is unset instead of falling back to a hard-coded Vercel host (`auth.service.ts:703-706`) — same posture `jwt-secret.ts` now takes for `JWT_SECRET`.
 5. Move to the shared axios client (`:31-38`).
 6. Track verify success/failure/resend (§5 is `none`). *Blocked:* no sink.
+
+
+### PublicShell implementation — 2026-09-13
+
+Implemented in the page-finalization working branch from `60ed83a7`; this is a code/test record, not a production-deployment claim. The new public treatment uses the shared `PublicShell` and `usePublicDesign()` (`VITE_MUDAVYM_PUBLIC`, overridden by the existing `mudavym.design.public` browser preference). The legacy rendering remains available with that switch off. No new server authorization or public endpoint is introduced by the visual port.
+
+Token verification keeps the existing endpoint and onboarding redirect. The signed-out, tokenless page links to sign in before resending; it does not call the authenticated endpoint without a session or invent an anonymous resend service. Signed-in resend retains the one-minute server/client protection, shows errors inline and describes acceptance as a **request**, not proof of delivery. The backend resend/queue path still merits a separate delivery-outcome repair; this visual port does not claim it now proves SMTP acceptance.
+
+Verification: `apps/web/src/pages/__tests__/publicPages.recovery.test.tsx` (ten behavior tests across the seven pages), existing PublicShell/public-switch tests (34), web/gateway TypeScript checks. Vendor read/JSON-LD tests (five) and account email body/sender identity tests (five) are isolated and perform no real sends or database writes. Remaining product choices are recorded under [[OPEN-DECISIONS#Public-page completion — 2026-09-13]]. The earlier audit is available from [[MUDAVYM-TRANSITION-2026-09-13]].

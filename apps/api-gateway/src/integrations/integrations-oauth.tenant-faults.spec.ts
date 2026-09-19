@@ -123,6 +123,7 @@ describe("fault 1: DELETE /integrations/oauth/:integrationId is scoped to the ho
     const controller = new IntegrationsOauthController(
       { disconnect } as unknown as IntegrationsOauthService,
       {} as OrganizationsService,
+      {} as never,
     );
 
     await controller.disconnect(
@@ -210,6 +211,7 @@ describe("fault 2: GET /integrations/oauth/connections never reports a failed re
     const controller = new IntegrationsOauthController(
       service,
       {} as OrganizationsService,
+      {} as never,
     );
 
     await expect(

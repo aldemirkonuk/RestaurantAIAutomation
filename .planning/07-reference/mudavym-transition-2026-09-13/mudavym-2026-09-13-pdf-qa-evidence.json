@@ -1,0 +1,143 @@
+{
+  "pdf": "audit-workspace/output/pdf/Mudavym-Company-Product-and-Migration-Review.pdf",
+  "pdf_sha256": "ab9df11adaa01cb77186e7de0ab7a8944a9a8b1d8bdad75360d9b5e7d6880afe",
+  "source_sha256": "29e3e422f08045516d5d64f9034a9f4c031cdfa70bccd7a6c8db1d870b960231",
+  "page_count": 15,
+  "page_evidence": [
+    {
+      "page": 1,
+      "text_characters": 3033,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 16,
+      "render_sha256": "adadd0b87dcca2a5e6694d5ded06a180adcc9054a8ffe96507c2717a6d0cabf8",
+      "visual_review": "passed"
+    },
+    {
+      "page": 2,
+      "text_characters": 3340,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 14,
+      "render_sha256": "a14b05c7936e974e6ce484eb14a64255072be2ad11ce8ccc83aea9b24b99a148",
+      "visual_review": "passed"
+    },
+    {
+      "page": 3,
+      "text_characters": 3108,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 12,
+      "render_sha256": "4504542c419400421b25380a64e90cf7c02348e4f03152e87de99af3782f1276",
+      "visual_review": "passed"
+    },
+    {
+      "page": 4,
+      "text_characters": 3106,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 11,
+      "render_sha256": "7169df31140faecf18b4f3336e3433f1d6bb3cbf0ab8dd04074c8999b2786763",
+      "visual_review": "passed"
+    },
+    {
+      "page": 5,
+      "text_characters": 3004,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 8,
+      "render_sha256": "5541b9fb5aaf083249c617331f30075691553c4410af92c48a2126ef1c129fd8",
+      "visual_review": "passed"
+    },
+    {
+      "page": 6,
+      "text_characters": 2958,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 13,
+      "render_sha256": "0c977785c577ad202a9913b2318a60ef2b5f3fd26c1d90a17052d05fe4fec74c",
+      "visual_review": "passed"
+    },
+    {
+      "page": 7,
+      "text_characters": 1974,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 2,
+      "render_sha256": "df5b32b6bf8b678dff5b5a3fd8659874bcef56edbf4a67508a3048c8faba3a34",
+      "visual_review": "passed"
+    },
+    {
+      "page": 8,
+      "text_characters": 3779,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 19,
+      "render_sha256": "5826ba3a9f75eee365a2365bd700dfbf00b2b73d9b357e374d5afebd9d988d82",
+      "visual_review": "passed"
+    },
+    {
+      "page": 9,
+      "text_characters": 3729,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 18,
+      "render_sha256": "c1356379178ed5c1aad9e0c879f84237890757f745d3d39a7184632bfc7ba253",
+      "visual_review": "passed"
+    },
+    {
+      "page": 10,
+      "text_characters": 2892,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 7,
+      "render_sha256": "7efe643dc28274e49e516fd2281967f1ba0d3f3a54e44811a86513f409652a45",
+      "visual_review": "passed"
+    },
+    {
+      "page": 11,
+      "text_characters": 3003,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 12,
+      "render_sha256": "cca298aa9a7db0434139059d7bfb9215f2bec3641c32a95622c67aa78a15e13e",
+      "visual_review": "passed"
+    },
+    {
+      "page": 12,
+      "text_characters": 1984,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 0,
+      "render_sha256": "a852b3d149f94be7914b016a2d69566e514e4e00955210294a0228223ee376ff",
+      "visual_review": "passed"
+    },
+    {
+      "page": 13,
+      "text_characters": 3106,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 12,
+      "render_sha256": "bbfce87c42e7d051ebeb9d0a459a62c74dfcff8fa5a54b9b0741f31b64294554",
+      "visual_review": "passed"
+    },
+    {
+      "page": 14,
+      "text_characters": 3487,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 16,
+      "render_sha256": "07e0740aed873870320c65ae2ad3d9324d6775142773132bc4860c5f005c1fde",
+      "visual_review": "passed"
+    },
+    {
+      "page": 15,
+      "text_characters": 3687,
+      "out_of_bounds_characters": 0,
+      "link_annotations": 15,
+      "render_sha256": "84295732dba5e3c986f62fe870ba4bd14e65c0d81adc8bcd4f0f721b962c4fe9",
+      "visual_review": "passed"
+    }
+  ],
+  "required_text_present": {
+    "184": true,
+    "PUBLIC": true,
+    "invoiceCurrency": true,
+    "720": true,
+    "231": true,
+    "mudavym.com": true,
+    "Sources": true,
+    "11 design flags": true,
+    "text-credit purchase": true
+  },
+  "visual_review": "passed_all_15_pages",
+  "method": "All pages visually inspected as Poppler PNGs; final unchanged pages matched previously inspected PNG SHA-256, changed pages5/9/14/15 reinspected individually at original detail. Tables, footnotes, source page, numbering and bounds checked.",
+  "text_geometry_pass": true,
+  "scope": "Artifact rendering verification, not application or production test coverage."
+}

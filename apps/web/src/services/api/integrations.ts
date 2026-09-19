@@ -7,7 +7,7 @@ import { apiClient } from './client'
  * catalogue is how `gmail_send` shipped on 2026-09-04 with a Connect button
  * that led to "unknown integration".
  */
-export type IntegrationId = 'google_drive' | 'excel' | 'gmail_send' | 'gmail_read'
+export type IntegrationId = 'google_drive' | 'excel' | 'gmail_send' | 'gmail_read' | 'google_calendar'
 export type IntegrationProvider = 'google' | 'microsoft'
 
 export interface ScopeDisclosure {
@@ -139,6 +139,27 @@ export interface IntegrationConnection {
   connectedAt: string | null
 }
 
+export interface IntegrationConsentDisclosure {
+  version: 1
+  integration: IntegrationCatalogEntry
+  retention: RetentionDisclosure | null
+  digest: string
+  statements: {
+    personalAccount: string
+    providerNext: string
+    tokenStorage: string
+    revocation: string
+    retentionCadence: string
+  }
+}
+
+export interface IntegrationConsentBinding {
+  disclosureDigest: string
+  browserProofHash: string
+  browserRequestId: string
+  returnPath: string
+}
+
 export const integrationsApi = {
   /**
    * Scope disclosure comes from the server so the consent screen always shows
@@ -161,12 +182,27 @@ export const integrationsApi = {
   },
 
   /** Returns the provider consent URL to navigate to. */
-  async authorize(id: IntegrationId, returnPath: string): Promise<string> {
+  async authorize(id: IntegrationId, binding: IntegrationConsentBinding & { challenge: string }): Promise<string> {
     const { data } = await apiClient.post<{
       success: boolean
       authorizationUrl: string
-    }>(`/integrations/oauth/${id}/authorize`, null, { params: { returnPath } })
+    }>(`/integrations/oauth/${id}/authorize`, binding)
     return data.authorizationUrl
+  },
+
+  async getConsent(id: string): Promise<IntegrationConsentDisclosure> {
+    const { data } = await apiClient.get<{ disclosure: IntegrationConsentDisclosure }>(`/integrations/oauth/${encodeURIComponent(id)}/disclosure`)
+    return data.disclosure
+  },
+
+  async consentChallenge(id: IntegrationId, binding: IntegrationConsentBinding): Promise<string> {
+    const { data } = await apiClient.post<{ challenge: string }>(`/integrations/oauth/${id}/seal-challenge`, binding)
+    return data.challenge
+  },
+
+  async completeConsent(state: string, browserProof: string): Promise<string> {
+    const { data } = await apiClient.post<{ destination: string }>('/integrations/oauth/complete', { state, browserProof })
+    return data.destination
   },
 
   async disconnect(id: IntegrationId): Promise<void> {

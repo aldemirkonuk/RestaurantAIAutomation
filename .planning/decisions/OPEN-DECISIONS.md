@@ -150,3 +150,19 @@
 | OD-16 | **Advisory authority = findings-only**, escalating to the founder | 2026-08-24 |
 | OD-17 | **7-artifact unit anatomy**, agendas banner-marked provisional until real work exists | 2026-08-24 |
 | — | **One entity reaffirmed** — two-company (research lab + app) proposal argued and declined; separation lives in the data model ([0001](0001-mudavym-single-entity.md) review trail, [0006](0006-neural-footprint-architecture.md)) | 2026-08-24 |
+
+
+## Public-page completion — 2026-09-13
+
+These are pending choices, not new numbered ADRs. The founder has authorized complete page implementation and deployment; that authorization closes no unanswered product or policy fork by itself. The seven shared-shell implementations are recorded in their existing page dossiers.
+
+| Choice | Current conservative behavior | Recommendation / required answer |
+|---|---|---|
+| Public support identity and destination | No invented support mailbox and no changed provider sender credentials | Founder supplies the staffed support address; connect it to Help and the factual privacy contact. Account mail now uses Mudavym as its display name; confirm whether the sender address should use this staffed mailbox. |
+| Signed-out verification resend | Sign in first; the existing resend endpoint remains authenticated | Keep the sign-in path unless a separate enumeration-resistant anonymous resend flow is explicitly chosen and abuse-tested. |
+| Invitation preview disclosure | Existing restaurant and role preview retained; no added organization/inviter details | Confirm whether signed-out previews should remain readable or reveal details only after sign-in. A change requires matching API/read-model treatment. |
+| Vendor catalogue endorsement | Vendor logo and published-on-Mudavym wordmark; no approval seal | Retain publisher attribution without an approval die unless Mudavym intends to vouch for vendor content. |
+| Privacy policy facts | New shell states verified product behavior and avoids unsupported retention/revocation guarantees | Supply legal entity, privacy contact, retention/deletion terms and processor commitments before treating this as a complete policy. Broader Excel permissions must remain accurately disclosed. |
+| Font hosting | Existing Google Fonts request retained and disclosed | Prefer self-hosting the approved licensed font assets if the founder wants no third-party font request; this change must cover all entrances, not this page alone. |
+
+The request-success copy intentionally does not assert email delivery. The existing verification resend backend can acknowledge queue attempts despite delivery failure; audit and repair that independently of the visual shell before claiming a verified sending outcome. No test in this completion group sends mail, redeems an invite or changes a live password.

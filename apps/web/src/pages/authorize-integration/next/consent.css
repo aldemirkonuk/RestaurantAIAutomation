@@ -1,0 +1,27 @@
+.mdv-consent { line-height: 1.65; overflow-wrap: anywhere; }
+.mdv-consent p { margin: .65rem 0; }
+.mdv-consent section { padding: 1.75rem 0; border-top: 1px solid color-mix(in srgb, var(--ink-3) 25%, transparent); }
+.mdv-consent h2 { font-family: 'Fraunces', Georgia, serif; font-size: 1.6rem; font-weight: 440; line-height: 1.25; margin: 0 0 1rem; }
+.mdv-consent h3 { font-weight: 550; font-size: 1rem; margin: .2rem 0; }
+.mdv-consent ul { list-style: disc; padding-inline-start: 1.25rem; }
+.mdv-consent li { margin: .65rem 0; }
+.mdv-consent-intro { padding-bottom: 1.25rem; }
+.mdv-consent-scopes { list-style: none; padding: 0; }
+.mdv-consent-scopes li { display: grid; grid-template-columns: 2rem 1fr; gap: 1rem; padding: .75rem 0; }
+.mdv-consent-number { color: var(--ink-3); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: .75rem; }
+.mdv-consent code { display: block; font-family: 'JetBrains Mono', ui-monospace, monospace; color: var(--ink-3); font-size: .7rem; overflow-wrap: anywhere; }
+.mdv-consent-facts > div { display: grid; grid-template-columns: 9rem 1fr; gap: 1rem; padding: .9rem 0; border-bottom: 1px solid color-mix(in srgb, var(--ink-3) 25%, transparent); }
+.mdv-consent-facts dt { color: var(--ink-3); font-size: .82rem; }
+.mdv-consent-facts dd { margin: 0; }
+.mdv-consent-window { display: flex; gap: 1rem; align-items: baseline; margin: 1rem 0; }
+.mdv-consent-window strong { font: 3rem/1 'Fraunces', Georgia, serif; color: var(--seal); }
+.mdv-consent-citations { font-size: .82rem; }
+.mdv-consent-citations a { color: var(--seal); text-decoration: underline; text-underline-offset: 3px; }
+.mdv-consent-citations small { color: var(--ink-3); }
+.mdv-consent-seal { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; }
+.mdv-consent button, .mdv-consent a { min-height: 44px; }
+@media (max-width: 560px) {
+  .mdv-consent-facts > div { grid-template-columns: 1fr; gap: .3rem; }
+  .mdv-consent-scopes li { grid-template-columns: 1.5rem 1fr; gap: .65rem; }
+  .mdv-consent-window { flex-wrap: wrap; }
+}
