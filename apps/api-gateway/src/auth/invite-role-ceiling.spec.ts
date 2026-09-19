@@ -13,7 +13,8 @@ import { asDatabaseService, makeStubDb } from "../team/testing/supabase-stub";
  * active access row for the house the body named, and wrote `dto.role`
  * unchanged. `RolesGuard` gates on `users.role`, a GLOBAL column
  * (`JwtStrategy.validate`: `role: user.role ?? payload.role`), so it said
- * nothing about the house being invited to. A manager could mint an owner's
+ * nothing about the house being invited to. [Since PR #393's sixth round it
+ * reads the role in the house the token names: `role-in-house.spec.ts`.] A manager could mint an owner's
  * invite, and a manager in one house who is staff in another could mint any
  * invite for the second. Whoever redeemed it became that role (`/auth/join`
  * takes the role from the invite).

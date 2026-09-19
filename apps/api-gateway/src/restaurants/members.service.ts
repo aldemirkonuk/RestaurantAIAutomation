@@ -232,11 +232,15 @@ export class MembersService {
       }
     }
 
+    // Only the ACTIVE row, the one the target read above admitted them by. A
+    // member admitted by their `users` row may still hold an inactive row here;
+    // rewriting it would hand a role nobody granted to whoever reactivates it.
     const { error: uraErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .update({ role: newRole })
       .eq("user_id", targetUserId)
-      .eq("restaurant_id", restaurantId);
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true);
 
     if (uraErr) {
       this.logger.error(
@@ -246,7 +250,9 @@ export class MembersService {
     }
 
     // `users.role` is ONE value for every house the person belongs to, and
-    // `RolesGuard` gates every `@Roles` route on it. A change in this house
+    // `RolesGuard` gates every `@Roles` route on it. [Since PR #393's sixth
+    // round, only for a token that names no house: a token that names one gets
+    // the role in that house (`auth/house-role.ts`).] A change in this house
     // writes it only when their `users` row names this house; a member here
     // whose `users` row names another house keeps the role that house gave
     // them. For a member known only by that row, it IS their role here, so a
@@ -309,24 +315,38 @@ export class MembersService {
       ? await this.assertMembership(actorUserId, restaurantId)
       : await this.assertMembership(actorUserId, restaurantId, "owner|manager");
 
-    const { data: targetAccess } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", targetUserId)
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
+    // Both target reads bind their errors. `maybeSingle()` answers `data: null`
+    // for "no row" AND for "the query failed", so a failed access read used to
+    // look like "no access row": the removal then fell through to the `users`
+    // row, read the target's role there, and a manager whose target was an
+    // owner by access row (and anything else by `users.role`) could remove them
+    // (PR #393's planner, risk 4). A target whose role here cannot be read is
+    // not removed.
+    const { data: targetAccess, error: targetAccessErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", targetUserId)
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .maybeSingle();
+    if (targetAccessErr) {
+      this.cannotReadRemovalTarget(targetUserId, restaurantId, targetAccessErr);
+    }
 
     // The target's role here, read the way `assertMembership` reads a member:
     // their access row, or with none, a `users` row naming this house.
     let targetRole: string | null = targetAccess?.role ?? null;
     if (!targetAccess) {
-      // Fallback: check if target user has restaurant_id set in users table
-      const { data: targetUser } = await this.databaseService.supabase
-        .from("users")
-        .select("restaurant_id, role")
-        .eq("user_id", targetUserId)
-        .maybeSingle();
+      const { data: targetUser, error: targetUserErr } =
+        await this.databaseService.supabase
+          .from("users")
+          .select("restaurant_id, role")
+          .eq("user_id", targetUserId)
+          .maybeSingle();
+      if (targetUserErr) {
+        this.cannotReadRemovalTarget(targetUserId, restaurantId, targetUserErr);
+      }
 
       if (!targetUser || targetUser.restaurant_id !== restaurantId) {
         throw new NotFoundException("Member not found in this restaurant");
@@ -359,11 +379,7 @@ export class MembersService {
         }
       }
 
-      await this.databaseService.supabase
-        .from("users")
-        .update({ restaurant_id: null })
-        .eq("user_id", targetUserId);
-
+      await this.clearUsersRowHouse(targetUserId, restaurantId);
       return;
     }
 
@@ -382,6 +398,12 @@ export class MembersService {
       }
     }
 
+    // The `users` row first, then the access row: if the delete fails the
+    // person is still a member by their access row, which is the truth; the
+    // other order could leave them a member by a `users` row nobody meant to
+    // keep (v3.0-TECH-DEBT 44.1j).
+    await this.clearUsersRowHouse(targetUserId, restaurantId);
+
     const { error } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .delete()
@@ -392,12 +414,50 @@ export class MembersService {
       this.logger.error(`removeMember delete failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to remove member");
     }
+  }
 
-    // Also clear the legacy restaurant_id in users table just in case
-    await this.databaseService.supabase
+  /**
+   * The person's `users` row stops naming THIS house, and only this house.
+   *
+   * Removal cleared `users.restaurant_id` whatever house it named, so taking
+   * someone out of house B also took away house A, the one their `users` row
+   * named: their home house in the token, and for a member known only by that
+   * row, their membership there. A role or a removal in one house must not
+   * change what a person may do in another (ADR 0162, answer A). The write's
+   * error is read: a removal that left the row naming this house would leave
+   * the person a member by it.
+   */
+  private async clearUsersRowHouse(
+    targetUserId: string,
+    restaurantId: string,
+  ): Promise<void> {
+    const { error } = await this.databaseService.supabase
       .from("users")
       .update({ restaurant_id: null })
-      .eq("user_id", targetUserId);
+      .eq("user_id", targetUserId)
+      .eq("restaurant_id", restaurantId);
+    if (error) {
+      this.logger.error(
+        `removeMember could not clear users.restaurant_id for ${targetUserId} ` +
+          `in ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException("Failed to remove member");
+    }
+  }
+
+  /** A target whose role here cannot be read is not removed. */
+  private cannotReadRemovalTarget(
+    targetUserId: string,
+    restaurantId: string,
+    err: { message: string },
+  ): never {
+    this.logger.error(
+      `removeMember: could not read the role of ${targetUserId} in ` +
+        `${restaurantId}: ${err.message}`,
+    );
+    throw new InternalServerErrorException(
+      "Could not read this member's role here, so nobody was removed.",
+    );
   }
 
   async addMember(

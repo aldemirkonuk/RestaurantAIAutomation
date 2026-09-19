@@ -1,9 +1,9 @@
 # 0162 — Managers grant manager or staff, on both doors
 
-- **Status:** Locked 2026-09-18. The founder chose this in chat from the options below, in his words: *"Managers grant manager or staff"*. Re-confirmed the same day after the question was found to carry a wrong premise, with an owner rule added (see the dated addendum). Four forks that addendum left open were answered the same day (second addendum).
+- **Status:** Locked 2026-09-18. The founder chose this in chat from the options below, in his words: *"Managers grant manager or staff"*. Re-confirmed the same day after the question was found to carry a wrong premise, with an owner rule added (see the dated addendum). Four forks that addendum left open were answered the same day (second addendum). **[Sixth round, 2026-09-18: the ADR 0090 merge audit of `dcf91322` blocked on two consequences of answer A. Both are built here, as answer A requires (third addendum).]**
 - **Date:** 2026-09-18
 - **Decider:** Aldemir (founder)
-- **Keywords:** roles, invite, invitation, add member, remove member, role ceiling, manager, owner, staff, owners manage owners, last owner, co-owner, role change scope, setup-era member, users-row fallback, generateInvite, addMember, removeMember, updateMemberRole, grantRefusal, role-grant, migration 20260918153000
+- **Keywords:** roles, invite, invitation, add member, remove member, role ceiling, manager, owner, staff, owners manage owners, last owner, co-owner, role change scope, setup-era member, users-row fallback, generateInvite, addMember, removeMember, updateMemberRole, grantRefusal, role-grant, migration 20260918153000, RolesGuard, JwtStrategy, validateJwtPayload, house-role, roleInHouse, leaveRestaurant, deleteMember, per-house role
 - **Links:** [[0147-the-pages-endpoints-answer-only-for-the-callers-house-and-person]] (the invite fault is its addendum's second finding), [[0088-a-team-change-is-recorded-and-a-wage-is-not-invented]] (the `user_restaurant_access.role` CHECK, and `assertAccess` no longer trusting `users.role`), `v3.0-TECH-DEBT.md` 44.1h–44.1q, PR #392 (where the fault was found), PR #393 (this build), `supabase/migrations/20260918153000_a_setup_era_manager_holds_their_house_by_a_row.sql` (answer B)
 
 **Index row:** not added to `decisions/README.md` here. That file is gate-owned, and its row for this record goes in a separate PR.
@@ -110,7 +110,8 @@ relied on the fallback and its only effect was the stale chain. Both halves were
 - Given up: an owner's say over each new manager. If a house needs that, this
   record is what gets superseded.
 - A manager can no longer remove an owner through `MembersService.removeMember`
-  (the dated addendum below).
+  (the dated addendum below). **[Sixth round: nor through `TeamService.deleteMember`,
+  the Team page's remove (third addendum).]**
 - Still open, filed rather than fixed here (`v3.0-TECH-DEBT.md`):
   - 44.1i. Every check that reads the `users` row would admit a stale one as well as
     the legacy one. That covers `assertMembership`, `resolveRestaurantRole` with
@@ -122,21 +123,24 @@ relied on the fallback and its only effect was the stale chain. Both halves were
     the open claim `ADR-0162-USERS-ROW-FALLBACK-RETIRED` trips when any of three
     admissions changes, and resolved claims pin the other three sites (answer B).]**
   - 44.1j. `leaveRestaurant` and `TeamService.deleteMember` leave
-    `users.restaurant_id` set.
+    `users.restaurant_id` set. **[Closed 2026-09-18, sixth round (third addendum).]**
   - 44.1k. The role columns' constraints are uneven.
   - 44.1l. `generateInvite` still swallows two reads.
   - 44.1m. `registerRestaurant` ignores the errors of the founding owner's
     organisation and access-row writes.
   - 44.1n. The owner rule has gaps on other doors, and 4 houses have no owner.
     **[Updated 2026-09-18, fourth round: the co-owner fork is answered (C) and the 4
-    houses are left untouched (D); the other gaps stay open.]**
+    houses are left untouched (D); the other gaps stay open.]** **[Sixth round: the
+    Team page's remove and its count are closed (third addendum). Still open: the
+    hand-over race, and a `users`-row owner demoting the only access-row owner.]**
   - 44.1o. `addMember` overwrites the person's organisation role.
   - 44.1p. `updateMemberRole` never checks that the target belongs to the house, so
     an owner of any house can rewrite anyone's global `users.role`. **[Closed
     2026-09-18, fourth round (answer A).]**
   - 44.1q. `RolesGuard` gates on the global `users.role`, so a role changed in a house
     other than the one the person's `users` row names does not reach `@Roles` routes
-    (filed in the fifth round; answer A below).
+    (filed in the fifth round; answer A below). **[Closed 2026-09-18, sixth round:
+    `req.user.role` is now the role in the house the token names (third addendum).]**
 - Revisit if: a house asks for owner-approved managers; or a fourth role appears.
   A new role needs a rank in `role-grant.ts`, and until it has one it grants nothing.
 - Claims: `ADR-0147-INVITE-ROLE-CEILING` covers the invitation door,
@@ -266,7 +270,10 @@ and `assertMembership` do). Which `@Roles` routes lack such a check was not swep
 Production, read-only, 2026-09-18: 7 of the 14 active access rows (held by 4 of the
 8 people with one) are in a house other than the one the person's `users` row names.
 None of those 7 differs in role from `users.role`, so nobody is affected today. Filed
-OPEN as 44.1q, with the question above.
+OPEN as 44.1q, with the question above. **[Closed 2026-09-18, sixth round (third addendum): the
+merge audit swept the routes (38 `@Roles` decorators in 9 controllers (a 39th match, `identity-curation.controller.ts:29`, sits inside a JSDoc comment); 36 of them in 7
+controllers that call no membership check of their own), and `req.user.role` is now the role in the house the token
+names.]**
 
 **B. The YAREN manager gets a manager row.** His answer: *"Give them a manager row"*.
 Migration `20260918153000_a_setup_era_manager_holds_their_house_by_a_row.sql` writes
@@ -326,6 +333,112 @@ passed every test (the round-3 verifier). The membership sweep in 44.1g gained
 `ProspectsService.accessibleRestaurantIds`, which adds the token's house without
 re-checking it.
 
+## Addendum 2026-09-18 (third): the merge audit's BLOCK, and answer A carried through
+
+**[Added 2026-09-18, PR #393's sixth round.]** The ADR 0090 merge audit of `dcf91322`
+blocked the PR. Its correctness reviewer approved with notes; its adversarial reviewer
+blocked on two findings, both consequences of answer A (*"Only that house"*) that the
+fifth round had filed rather than built:
+
+1. **`@Roles` still answered with the global role.** `RolesGuard` reads
+   `req.user.role`, and `JwtStrategy.validate` filled it from `users.role`. Since answer
+   A stopped a role change from writing `users.role` for a house the `users` row does
+   not name, a person demoted in house B kept manager on B's `@Roles` routes. There are
+   38 decorators in 9 controllers (a 39th match sits inside a JSDoc comment). 36 of them sit in 7 controllers (vendor-intel,
+   price-index, commodity, house-mail-archive, ask-ai, distributor-feed, sender-trust)
+   that call no membership check of their own, per the audit's grep (44.1q).
+2. **Leavers stayed members.** `leaveRestaurant` and `TeamService.deleteMember` deleted
+   the access row and left `users.restaurant_id` naming the house, so the `users`-row
+   fallback that answer B keeps for the YAREN manager also admitted anyone who had left
+   (44.1j). `updateMemberRole` would reach them, and they could invite at `users.role`.
+
+*Why this is answer A, not a new fork.* The founder's rule, as the orchestrating
+session restated it on 2026-09-18: a role in one house must never change what a
+person may do in another. Both findings break it. The first lets house A's role act in
+house B. The second lets a house the person left keep treating them as a member.
+`RolesGuard` reading the role in the house the request names was already the first
+option 44.1q named. It is built here once, where every consumer reads, and not by
+retiring 39 decorators.
+
+*What changed* (details, line numbers and tests in `v3.0-TECH-DEBT.md` 44.1j, 44.1n
+and 44.1q):
+
+- **The role on every request is the role in the token's house.**
+  `AuthService.validateJwtPayload` reads it alongside the `users` read, exactly as
+  `assertMembership` reads a member (`auth/house-role.ts`, `roleInHouse`).
+  `JwtStrategy.validate` puts it on `req.user.role` and never falls back to `users.role`
+  or the token's claim. No membership means no role, and `@Roles` refuses it. A failed
+  read is a 503, because a 403 would state something about the person that nothing
+  measured, and setting no role would close only `RolesGuard` while `IdentityService`
+  also reads the role. A token that names no house keeps the old behaviour, which is
+  stated and tested. This is the seventh site that reads the `users`-row fallback
+  (44.1i), and it retires with the other six.
+- **Leaving or being removed clears `users.restaurant_id`, for that house only.**
+  `leaveRestaurant` and `TeamService.deleteMember` now clear it only when it names the
+  house being left, read the write's error, and clear before deleting the access row.
+  `removeMember` used to clear it whatever house it named; it now filters the same way
+  (`clearUsersRowHouse`).
+- **The Team page's remove follows the owner rule.** `TeamService.deleteMember` now
+  refuses a manager who removes an owner (44.1n's Team-page bullet), counts active
+  owners only, and refuses when the count cannot be read.
+- **Failed reads stop the removal.** Both removals now refuse on a read that failed.
+  Before, a failed read of the target's access row in `removeMember` fell through to the
+  `users` row, so a manager could remove an owner whose `users.role` said otherwise.
+- **A role change rewrites only the active row.** `updateMemberRole`'s access-row
+  UPDATE now filters `is_active`, so a member admitted by their `users` row does not have
+  an inactive row rewritten.
+
+*Measured before deploying, read-only (Supabase MCP, SELECT only, 2026-09-18).* 14
+active access rows, and 0 of them differ from the holder's `users.role`, so no member's
+role changes. The one `users` row naming a house with no row behind it is the YAREN
+manager, who stays manager there. There are 0 stale leavers to repair.
+`switchRestaurant`'s organisation fallback can open a session for 7 (person, house)
+pairs with no membership. All 7 belong to 3 simulation accounts (Sim Bistro's owner,
+manager and staff), and those sessions lose the `@Roles` passage their Sim Bistro role
+gave them. That is answer A's outcome, and `assertMembership` already refused them
+there.
+
+*Still open.* Whether a role change should write `users.role` at all; it now matters
+only for a token that names no house. Also open: the rest of 44.1n (the hand-over
+race, and a `users`-row owner demoting the only access-row owner), 44.1i (the fallback
+retires once migration `20260918153000` is applied in production), and 44.1k–44.1m and
+44.1o.
+
+Claims: `ADR-0162-ROLE-IN-TOKEN-HOUSE`, `ADR-0162-LEAVING-ENDS-MEMBERSHIP` and
+`ADR-0162-TEAM-REMOVE-OWNERS` are new. `ADR-0162-OWNERS-REMOVE-OWNERS` and
+`ADR-0162-ROLE-CHANGE-THIS-HOUSE-ONLY` were extended, and the open tripwire's text
+now names the seventh site. All five verifies are static and were run against 49
+mutants and 3 controls: every mutant turned the expected claim red and no control
+tripped. 41 of those mutants are runtime changes; 40 fail at least one jest test. The
+one survivor (the owner count's test reverted to `count && count <= 1`) is equivalent
+once the count's error is read, and only its claim catches it.
+
+## Addendum 2026-09-18 (fourth): three holes found beside this PR, and two answers
+
+The round-6 verifier found three holes that existed before PR #393 and sit outside
+its diff (v3.0-TECH-DEBT 44.1r-44.1t). Two were put to the founder the same night
+(`AskUserQuestion`, 2026-09-18):
+
+- **Sessions (44.1r).** Leaving or being removed does not end the session in that
+  house: `refreshAccessToken` re-mints a token naming the house with no membership
+  check, and every route not limited by `@Roles` still answers. Separately,
+  `switchRestaurant`'s organisation fallback opens a session in any house of the
+  organisation without a membership row (measured: 7 pairs, all three simulation
+  accounts). His answer, the offered recommendation: **"Membership only"** - a
+  session in a house needs a membership row there; a removed person is signed out
+  of that house on their next request; organisation membership alone opens no
+  house. Built in a follow-up PR right after this one.
+- **"Owner only" (44.1s).** `RolesGuard` (`roles.guard.ts:30-37`) lets a manager
+  through wherever a route requires `owner`; 11 non-spec `@Roles('owner')`
+  decorators exist (vendor-intel scrape and sweeps, price-index reopen, and
+  others). His answer: **"Keep managers in"** - today's behaviour stays, and those
+  routes are relabelled owner-or-manager so the code says what it does (follow-up
+  PR). This does not touch the grant rule above: who may GRANT owner is unchanged.
+- **A leaver's next login (44.1t).** After leaving their home house, a person's
+  fresh login names no house and carries `users.role` (column default `manager`),
+  which nothing resets. Not put to the founder: it follows from answer A and 44.1r,
+  and the follow-up PR resets the role with the house.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -341,3 +454,6 @@ re-checking it.
 | 2026-09-18 | PR #393 round-4 build | Built A and B, recorded A–D, moved the invite spec onto the filter-honouring stub, closed 44.1p, and mutation-tested the six claims (52 mutants), the specs (16 jest mutants) and the migration (11 PGlite mutants), all caught |
 | 2026-09-18 | PR #393 round-4 verifier | Found V1 (the role change's `users` write with `.eq("user_id", …)` dropped) passing every test, the tripwire blind to an admission removed while a dead read stayed (C5) and to `resolveRestaurantRole` and `assertAccess`, the migration row blind to a CTE backfill (C3b), two target reads missing from the fallbacks to retire, and answer A's `RolesGuard` consequence unrecorded |
 | 2026-09-18 | PR #393 round-5 build | Asserted the owner's and a legacy member's `users.role` unchanged (V1 now fails a test), pinned three admissions exactly in the tripwire, made the backfill check read each statement in any order, listed six fallback sites, filed 44.1q from a production re-read, and re-ran the claims table (72 mutants, 3 controls held) and the jest table (30 mutants), all caught |
+| 2026-09-18 | PR #393 merge audit of `dcf91322` (ADR 0090: planner, correctness reviewer, adversarial reviewer) | Correctness: approve with notes. Adversarial: BLOCK on `@Roles` still gated by the global `users.role` (39 decorators in 10 controllers, swept) and on leavers kept as members by the `users`-row fallback |
+| 2026-09-18 | PR #393 round-6 build | Made `req.user.role` the role in the token's house, cleared `users.restaurant_id` for the house left on all three exits, put the owner rule on the Team page's remove, stopped both removals on a failed read, filtered the role change's UPDATE to the active row; re-measured production read-only; 49 claim mutants and 3 controls, 41 jest mutants (1 equivalent survivor) |
+| 2026-09-18 | Aldemir (AskUserQuestion) | On the round-6 verifier's findings: "Membership only" for sessions (44.1r), "Keep managers in" for owner-only routes (44.1s); fourth addendum |

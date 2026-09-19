@@ -109,7 +109,9 @@ export class AuthController {
    * route wrote passed those four helpers and
    * `switchRestaurant`. `RolesGuard` gates on
    * `users.role` too: `JwtStrategy.validate` sets `role: user.role ?? payload.role`.
-   * The full sweep is v3.0-TECH-DEBT 44.1g.]
+   * The full sweep is v3.0-TECH-DEBT 44.1g.] [Sixth round of PR #393: for a
+   * token that names a house, `RolesGuard` now gates on the role in THAT house
+   * (`auth/house-role.ts`, v3.0-TECH-DEBT 44.1q), not on `users.role`.]
    * No web or mobile surface called it: a person opens a house through
    * `POST /auth/register/restaurant` and joins one only through an invitation.
    * It answers 410 rather than 404 so a stale client is told where to go.
@@ -428,7 +430,8 @@ export class AuthController {
 
   /**
    * Generate an invite code for a restaurant. `RolesGuard` only pre-filters on
-   * `users.role`, which is global. The service reads the inviter's role in the
+   * `users.role`, which is global. [Since PR #393's sixth round it pre-filters on
+   * the role in the house the token names (`auth/house-role.ts`).] The service reads the inviter's role in the
    * house the body names, the way `MembersService.assertMembership` does (the
    * access row there, or with none a `users` row naming that house), and applies
    * ADR 0162: an owner invites any role, a manager a manager or staff, staff
