@@ -247,6 +247,13 @@ The founder does not want long chat replies. Detail belongs in documents.
 - If tests fail, paste the failure. If a step was skipped, name it.
 - Use the Browser pane preview tools to verify anything user-visible; do not ask
   the founder to check manually.
+- **Never scope `tsc` errors from a tail.** `tsc` emits files in path order, so the
+  last 20–50 lines are always the same few files — two sessions read `tail` as "2
+  files, ~40 errors" when `apps/mobile` really had 11 files / 482 (2026-09-19).
+  Count with `tsc --noEmit | grep -c "error TS"` and break down with
+  `grep "error TS" | cut -d'(' -f1 | sort | uniq -c`. A wall of `TS2582`/`TS2304`
+  ("Cannot find name 'describe'") means ambient types are not *installed*, not
+  that the code is wrong — check `node_modules/@types/` before touching source.
 
 ---
 
