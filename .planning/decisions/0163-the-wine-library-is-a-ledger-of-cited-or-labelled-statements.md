@@ -2330,6 +2330,9 @@ months.]
   connector list is documented (connectors can be removed per routine), but it has no
   permission-mode picker and is a research preview. None of this changes the
   recommendation if Q20 picks a dedicated seat.]
+  **[ANSWERED 2026-09-18, founder via `AskUserQuestion`: "Claude's cloud
+  (Recommended)" - option (b), cloud Cowork tasks that use only the connector. The
+  41 laptop PDFs are uploaded first (step 0.20, his earlier "upload").]**
 - **Q20 A dedicated seat, or the founder's own pool** [round 3].
   - **Shared.** The pipeline competes with his development sessions. On that basis the
     laptop tasks had 37 of 41 runs refused since 09-04 (fact 10). The old four, which
@@ -2347,6 +2350,9 @@ months.]
 
   **Recommendation:** a dedicated seat before the first night. "Every wine from day
   one" cannot hold on a pool that refused 9 runs in 10.
+  **[ANSWERED 2026-09-18, founder via `AskUserQuestion`: "Yes, a separate seat
+  (Recommended)" - a dedicated account whose credits and connectors serve only the
+  pipeline; he creates it (his keystroke).]**
 - **Q21 Usage credits** [round 3].
   - **Off** (our reading of his words): a refused run stops and waits for the reset.
   - **On, with a monthly cap:** runs go on past the plan's limit, billed at standard
@@ -2354,6 +2360,8 @@ months.]
     Billed API use would also bring back the batch design at `056de928e` (§11).
 
   **Recommendation:** off until step 1.5 has measured what the plan covers.
+  **[ANSWERED 2026-09-18, founder via `AskUserQuestion`: "Off until the pilot
+  (Recommended)".]**
 - **Q22 A house waiting at upload** [round 3, §11]. A scheduled task cannot answer a
   waiting person.
   - **Keep the existing synchronous read** on the API, billed, under its per-restaurant
@@ -2369,6 +2377,13 @@ months.]
   (That API inputs are not used for training by default is from memory and was not
   re-checked.) **Recommendation:** switch it off before the first real house's menu is
   read.
+  **[ANSWERED 2026-09-18, founder via `AskUserQuestion`, his own words: "do not opt
+  out yet" - training stays ON for the pipeline's account for now. Consequences: house
+  menus passing through the tasks may be used to train Anthropic's models, so the
+  house notice (§14, Q17 (h)) must say so while this holds; the question returns before
+  the first real house's menu is read. He did not choose the lawyer review of the
+  consumer terms' "develop or train ... models" clause offered in the same question; it
+  stays in Q17 (i).]**
 
 ## Not verified (named per CLAUDE.md §0.5)
 
