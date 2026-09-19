@@ -400,6 +400,14 @@ function embeddedProviderName(embed: unknown): string | null {
   return typeof name === "string" && name.trim() !== "" ? name : null;
 }
 
+/**
+ * GmailService refused to build the message (ADR 0172: `refusedBeforeSend`),
+ * so Gmail was never called and the vendor provably has nothing. A distinct
+ * type so `isDefiniteSendRefusal` can recognise it by `instanceof` — never by
+ * its text, which embeds the vendor's own contact address.
+ */
+export class SendRefusedBeforeSendError extends BadRequestException {}
+
 @Injectable()
 export class ProcurementService {
   private readonly logger = new Logger(ProcurementService.name);
@@ -5991,6 +5999,10 @@ export class ProcurementService {
    * that direction sends a real vendor a second purchase order.
    */
   private isDefiniteSendRefusal(error: any): boolean {
+    // A header refusal (ADR 0172) is identified by TYPE, not by text: the
+    // message embeds the vendor's contact address, which a vendor controls.
+    if (error instanceof SendRefusedBeforeSendError) return true;
+
     const text = `${error?.message ?? ""} ${error?.response?.data ? JSON.stringify(error.response.data) : ""}`;
     if (!text.trim()) return false;
 
@@ -6227,6 +6239,14 @@ export class ProcurementService {
       replyTo,
     });
     if (!result.success) {
+      // A header refusal (ADR 0172) happens before Gmail is called: the data is
+      // wrong, not the credentials, so do not send anyone to re-auth Gmail.
+      if (result.refusedBeforeSend) {
+        throw new SendRefusedBeforeSendError(
+          `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
+            "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address) and approve again.",
+        );
+      }
       throw new BadRequestException(
         `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
           "Check Gmail credentials (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).",
