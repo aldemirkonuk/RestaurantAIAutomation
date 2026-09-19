@@ -1,5 +1,5 @@
 /**
- * Email Templates for WineOps AI Communications
+ * Email Templates for Mudavym Communications
  * ==============================================
  * Provides HTML email templates for various communication scenarios:
  * - Low stock alerts
@@ -176,14 +176,14 @@ function baseLayout(title: string, content: string): string {
   <div style="padding: 20px;">
     <div class="container">
       <div class="header">
-        <h1>WineOps AI</h1>
+        <h1>Mudavym</h1>
         <p>${title}</p>
       </div>
       <div class="body">
         ${content}
       </div>
       <div class="footer">
-        <p>WineOps AI - Intelligent Wine Operations</p>
+        <p>Mudavym - Intelligent Wine Operations</p>
         <p>This is an automated message. Do not reply directly.</p>
       </div>
     </div>

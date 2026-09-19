@@ -1,6 +1,15 @@
 # 0121 — The house's text sender
 
 - **Status:** **Accepted 2026-09-05 in FIVE parts the founder decided; the rest stays Proposed.**
+  **P0 and P1 are BUILT** (2026-09-06 on `feat/connect-text-sender`; ported onto
+  main 2026-09-13, `178d470e`, on the founder's verbatim "Land both now"
+  (`.planning/handoff/PROGRESS.md:139`); reconciled and gap-fixed 2026-09-17,
+  see "What P0 and P1 made true" and the review trail below. A message can
+  leave for a house holding a live provider credential; `house_text_sender_credentials`
+  holds zero rows on this deployment and no route writes one, so nothing sends
+  in production from this pass alone (see "What only the founder can decide"
+  below for the fork that leaves open). Templates, house-initiated conversations
+  and the SMS legs are still Proposed and still refused.
   **A sixth and seventh were accepted on 2026-09-05/06** and are written up in
   the founder-answer sections at the foot of this document: (6) WhatsApp is
   **bring-your-own billing** — a Tech Provider has no credit line, so each house
@@ -25,11 +34,12 @@
   **both** ways of getting a number are built as states — the house brings its
   own name, or Mudavym registers per house and bills with the information the
   registrar needs (founder question 3, OD-23, is *narrowed*, not closed: who
-  pays is still open). Still Proposed: the WhatsApp transport itself, the
-  inbound webhook, templates behind the seal, the hand-off, and founder
-  questions 4, 5 and 6. **Nothing sends because of this pass** — see
-  "What shipped on 2026-09-05" below, which says exactly what does and does not
-  exist.
+  pays is still open). The WhatsApp transport and the inbound webhook are now
+  BUILT (P0/P1, see the status line above). Still Proposed: templates behind
+  the seal, the hand-off, and founder questions 4, 5 and 6. **Nothing sent
+  because of the 2026-09-05 pass** — see "What shipped on 2026-09-05" below,
+  which says exactly what did and did not exist as of that date; "What P0 and
+  P1 made true" below covers 2026-09-06 onward.
 - **Date:** 2026-09-04 (research); 2026-09-05 (the three decisions above)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** SMS, text sender, WhatsApp, Cloud API, 10DLC, TCR, brand, campaign,
@@ -910,6 +920,54 @@ quarter's aggregate.
 6. **Where does the text composer live?** A second mode on `/communications`
    beside the letter, or its own surface. Retire-to-write says adding one costs
    retiring one.
+9. **Added 2026-09-17, from the reconciliation pass's two adversarial judges —
+   none answered, none decided by this pass:**
+   - **The reply seal.** Should a WhatsApp reply dispatch immediately with no
+     seal and no recall window, as built? A house letter queues with a cancel
+     window, and ADR 0112 F10 says *"money, sends and ledger rows keep the seal
+     before."*
+   - **Reachability override.** Does a vendor's inbound WhatsApp message prove
+     the number is textable, overriding an unstated or `main_line` `phone_type`?
+     Or must the book say `mobile` before a reply may go? Today the UI says
+     "nothing is texted to it" for an unstated/`main_line` number and the send
+     path texts it anyway (`phone-reachability.ts` is never consulted by
+     `whatsapp-send.service.ts`).
+   - **"Main line" is an answer the UI cannot record.** `phone_type` reads
+     `main_line` as `stated: false` always, because it is byte-identical to the
+     column's own default. A manager who picks "Main line" in `ContactsSection`
+     watches the select snap back to "Nobody has said." Should "Main line" ever
+     be a recordable stated answer?
+   - **Stopping a sender.** "Stop it" on Connections is one click, a fixed
+     reason string, and no way back afterward (both declare controls stay
+     disabled). Should it need `HoldToApprove` and a typed reason, matching this
+     page's other revokes?
+   - **The vendor phone book's readers.** `GET communications/text-senders/
+     whatsapp/phone-book` has no role check — every house member, not only
+     managers, can read every vendor's full phone book. Is that the intended
+     scope?
+   - **Unmatched inbound.** A WhatsApp message from a number in no vendor's
+     contacts is acknowledged to Meta and dropped, counted only in a log. A
+     vendor writing from a new mobile is invisible to the house forever. Should
+     an unmatched message be held for a manager to attach to a vendor?
+   - **The migration's fail-loud design.** Migration `20260913190100`
+     deliberately fails if it finds an existing duplicate (two live `meta_cloud`
+     credentials sharing a `sender_ref`, or two inbound WhatsApp receipts with
+     the same `(restaurant_id, message_id)`). It auto-applies on merge, and a
+     failed apply wedges production and blocks every PR. The duplicate risk is
+     reasoned low — zero credential rows measured 2026-09-12, no code on `main`
+     writes inbound WhatsApp rows — but nobody has run the count. **Before
+     merge: a founder-authorized, read-only production count of both
+     predicates.** Production reads are out of bounds from this worktree (no
+     `.env`, no connection string), so this pass could not run it.
+
+   A secondary list of smaller forks — who may reply (today: manager/owner
+   only), the reply's target number (today: always the vendor's last inbound
+   number, no choice among contacts), the suffix-match threshold (today: 9+
+   digits), the round-count rule (today: per vendor per channel, worded
+   accurately as of this pass), and non-text attachments (today: stored as an
+   unfetched placeholder) — was raised by the same two adversarial passes and is
+   not repeated here to keep this record short (CLAUDE.md §8); each is a session
+   artifact this pass's own fix report names, not a permanent citation.
 
 ---
 
@@ -954,7 +1012,10 @@ quarter's aggregate.
 | 2026-09-04 | — | Created. Research only; no code, no migration, no build. |
 | 2026-09-05 | Claude (build pass) | **Accepted in three parts and built to the edge of a send.** Three tables (`house_text_senders`, `person_text_consents`, `team_note_deliveries`), one `TextSenderService` that refuses every time and names which half is missing, the P0 broadcast-honesty fix, and three surfaces. Two research corrections to the 2026-09-04 draft, both from primary sources fetched 2026-09-05: the US 10DLC timeline is **13-20 business days** (brand minutes to 3-5 days, campaign 10-15), not "several days or even several weeks"; and a **Meta business portfolio is capped at 2 phone numbers, raisable to 20** — the WhatsApp analogue of the 100-campaign TCR cap, which would have limited a single-portfolio deployment to 20 houses. Two findings the draft did not have: Twilio's US guidelines list **"shared phone numbers"** among the restricted use cases (so a1 is a carrier prohibition, not only a STOP-scope objection), and a US campaign **is rejected if consent is a condition of buying or holding an account**. The Türkiye Sender ID requirement turned out to be **wet-signed, stamped paperwork on the house's own letterhead** (company/brand registration certificate, LOA, authorization letter, NOC), which no form in this product can automate. |
 | 2026-09-04 | Claude (audit correction) | **Four citations in `07-reference/messaging-senders.md` were wrong; re-measured against the worktree and corrected.** The commitment guard is `letters/house-letters.service.ts:276` (the test) and `:282` (the block), not `:273`. The unresolved-merge-token guard is `:127` (the pattern), `:286` (the test), `:291` (the block), not `:119,282`. The undo window is `:72` (the status word) and `:419-420` (the row that carries `status` and `scheduled_send_at` together), not `:72,413`. All three verified identical at `902ee67f`, at `HEAD` and in the worktree, so the drift was in the citation, not in the file. The retire-to-write paragraph also named the wrong absorbed items: the pointer in `communications.md` is **§13 item 14** (`:670-671`), not §13.9 — §13.9 is *"The Mudavym sending subdomain"* (`:644`); the pointer in `team.md` is **§13 item 7d** (`:659-660`), not 7a/7c. The third pointer, at `AdminPanel.tsx`, **had never been written**: the paragraph claimed a retirement that had not happened. It is written now (`AdminPanel.tsx:823-824`, above the "Plivo SMS" row at `:825`), so the claim is true rather than merely corrected. |
+| 2026-09-13 | Claude (port pass, `178d470e`) | **P0 and P1 ported from `feat/connect-text-sender` (built 2026-09-06) onto main, on the founder's verbatim "Land both now" (`.planning/handoff/PROGRESS.md:139`).** Adds the Meta webhook, `whatsapp-send`, `whatsapp-inbound`, `whatsapp-book`, `text-dispatch`, `text-config`, composer guardrails and phone reachability, reconciled with main's text module as it had moved since. Closed one hole in the same pass: two restaurants holding the same Meta phone number id would have sent to whichever the query returned first — now refused, with a test. Not closed at this point: the database still allowed the state (a unique index needed its own migration; see the next row). Full detail in "What P0 and P1 made true, 2026-09-06" below. |
+| 2026-09-17 | Claude (reconciliation + fix pass, this worktree) | **Migration `20260913190100` added (two partial unique indexes, additive, `IF NOT EXISTS`); ten defects found by two independent adversarial judge passes fixed and re-verified.** Fixed: the exact-duplicate-number vendor match silently resolving to the first row (now refused as `"ambiguous"`, mirrored into the inbound webhook's `book_ambiguous` disposition); an unknown dispatch outcome returning the machine code `refused_by_provider` (now a distinct `outcome_unknown`); Meta delivery-status callbacks (`sent`/`delivered`/`read`/`failed`) being counted and dropped instead of applied to the house's own outbound row by `wamid`, forward-only (`WhatsAppInboundService.applyStatus`); the outbound mirror row carrying no `procurement_conversations.status`, so it defaulted to `'DRAFT'` and `getConversationHistory` hid every sent WhatsApp reply from the house's own history (now `SENDING` at insert, `SENT`/`SEND_UNCONFIRMED`/`FAILED` at settle); `ContactsSection.tsx` painting four CSS custom properties that exist nowhere in `styles/mudavym.css`, so paper-theme fallbacks rendered on the charcoal ground with two sentences under WCAG AA contrast (now real house tokens, guarded by a test that reads the shipped token file); the Meta handshake's 403 refusal echoing the caller-supplied `hub.mode` (now a fixed sentence); `TextConfigService.warnOnce()` never being called (now wired to `onModuleInit`) and a dead `platformAccessToken` getter reading an env var nothing sets (removed); `GET whatsapp/window/:providerId` returning the database's raw error text to the caller and accepting any string as the id (now `ParseUUIDPipe`, and both `WhatsAppBookService` read failures log rather than echo); the composer guardrail copy calling a WhatsApp reply "this letter" and claiming "on this order" for a channel with none (now channel-aware wording, `composerGuardrails({ channel: "whatsapp" })`); the webhook running under the default 100/min rate limit instead of the existing 1000/min `webhook` profile. Re-measured on this tree: gateway tsc (both configs) 0 errors; `heavy.sh npx jest --runInBand --forceExit` over `src/communications/text`, `src/communications/letters`, `src/providers`, `src/push`, `gateway-honesty.spec.ts`, `communications-security.spec.ts`, `auth/guards/jwt-auth.guard.spec.ts` — 23 suites / 441 tests passed; web tsc 0 errors; `heavy.sh npx vitest run` over `pages/connections/next`, `pages/providers/next`, `EditProviderModal.deliveryDays.test.tsx`, `styles/mudavym-ground.test.ts` — 11 files / 181 tests passed; gateway and web eslint `--quiet` on the 36 touched files, 0 problems; `check_decision_claims.sh` 345 checked / 345 holding (10 new CI-safe rows added below, none using `npx jest` — the original five rows all did, which CI's `decision-claims` job cannot run, and that gap is PR #368's CI regression); `check_migration_versions_unique`, `check_migration_probe_safety`, `check_read_errors_not_swallowed`, `check_money_routes_are_sealed`, `check_web_reads_gateway_dto_keys`, `check_route_exposure`, `check_new_tables_are_locked_down`, `check_read_columns_exist`, `check_queried_tables_exist`, `check_log_sanitizer_usage`, `check_no_seeded_defaults`, `check_citation_pairing`, `check_od_ids_exist`, `check_adr_numbers_unique`, `check_no_conflict_markers`, `check_flag_readby_anchors`, `check_test_scripts_are_real`, `check_migrations_single_home` all PASS. **Not re-fixed, and not this pass's to decide** — each needs a founder answer this record does not carry: whether an inbound WhatsApp message should override an unstated/`main_line` phone-reachability reading; whether "Stop it" on Connections needs `HoldToApprove` and a typed reason (today it is one click, a fixed reason string, and no way back); whether "Main line" should ever be a recordable stated answer (today it is indistinguishable from the column default and the picker's choice cannot stick); and a founder-authorized read-only production count of both migration predicates before merge (production reads are out of bounds from this worktree — no `.env`, no connection string). Not filed as new `OPEN-DECISIONS.md` rows by this pass, to avoid an OD-number collision against the other lanes running in parallel this same session (`decision-register-rots`, `register-row-shifts-citations`); named here and in this pass's own fix report for whoever reconciles the wave to file. |
 | 2026-09-05 | Claude (transport + billing pass) | **The standing and the billing model accepted, and built to the edge of a dispatch.** Two migrations (`house_text_sender_credentials`; `plan_message_allowances` + `house_message_meter` + `house_message_credits`), one transport interface with two adapters proven against doc-sourced fixtures, a per-house credential store reusing `TokenCryptoService`, the meter and the refusal, and a sealed `POST /communications/text-credits/purchase` — added to `check_money_routes_are_sealed.py`'s scope **in the same pass**, because that guard's own header records that the last money route went unsealed by being outside a census. Six research corrections, each from the provider's current docs on 2026-09-05: a **Tech Provider has no credit line and cannot invoice for API usage**, which settles the WhatsApp leg's billing by construction and becomes founder question 7; the binding cap is **10 new houses per rolling 7 days**, not the portfolio's 20-number ceiling, which under this shape binds the house; **Business Verification gates App Review** and App Review averages ~24h; **Embedded Signup v2 dies 2026-10-15**; US 10DLC fees are **$4.50 + $41.50**, not "$44 + $15", and a tax ID caps at five Brands; and **Hosted SMS is US/CA only and refuses mobile numbers**, so bring-your-own-number does not exist outside North America, while **STOP does not work on an alphanumeric sender** so a Türkiye opt-out must ride in the body. `transport_not_built` was split: a connected sender with no provider account now says so, because that is a fact the house can act on. Two sources could NOT be read and are named rather than smoothed over — `www.facebook.com` is `Disallow: /` (Business Verification's document list) and `business.whatsapp.com` disallows this agent by name (the per-country WhatsApp rate card), so **no WhatsApp per-message rate appears anywhere in this pass's output**. |
+| 2026-09-17 | Claude (F3, ceremony fix pass, `wt-fin-F`) | **Founder answer, 2026-09-17: "Stopping a house's text sender takes hold-to-approve and a TYPED reason, like the other revokes on `/connections`."** Answers the fork the 2026-09-17 reconciliation row above and `connections.md`'s "Execution reconciliation" section both left open. The one-click, fixed-reason-string control (`"Stopped by a manager from the Connections page."`) is replaced in `ConnectionsNext.tsx`'s `TextSenderRow`: the control is now `HoldToApprove` (`AttachmentRow.tsx:181`'s `hold` shape, the same pattern `HouseServerControls.tsx:332` and this page's payment/grant rows already use), gated `disabled` on a typed, non-blank reason so the gesture cannot even arm on a placeholder, with a new `<textarea>` sibling row (`data-testid="text-sender-stop-reason-<channel>"`) carrying the text into `revokeTextSender({ senderId, reason })` — the gateway's `RevokeSenderDto.reason` already required and persisted this field (`text-senders.dto.ts`, `text-sender.service.ts revoke()`); only the client sent a fixed string before this pass. `RevokeSenderDto` carries no seal/challenge field, so unlike the payment and grant rows' `HoldToApprove` (which mint a real one-time server seal via `onChallenge`), this control's `onChallenge` captures the typed reason locally at the moment the hold BEGINS and refuses (same shape as a failed seal mint) if it reads blank — that branch is unreachable through the UI while `disabled` holds. A failed stop (thrown, or the gateway's 200 `{revoked:false}` sentinel) keeps the typed reason on screen rather than clearing it, so a manager retrying does not have to reconstruct what they wrote. Four vitest cases replace the three prior ones: the hold refuses to arm on a blank reason; a held approval sends the *typed* reason (not the old fixed string) and re-reads the register (ADR 0083); a thrown refusal lands in `stopNote` and keeps the typed reason in the box; the 200 `{revoked:false}` refusal does the same. Re-measured on this tree: web tsc 0 errors; `heavy.sh npx vitest run src/pages/connections/next/ConnectionsNext.test.tsx` — 63/63 passed (62 confirmed on this tree pre-pass by the F2 confirmer, net +1 from replacing the file's 3 stop-control tests with 4); `eslint --quiet --resolve-plugins-relative-to p4-scratch/web-lint` on both touched files — 0 problems. The production duplicate-count precondition for migration `20260913190100` and the remaining ADR 0121 founder forks (inbound-message phone-reachability override, "Main line" as a stated answer) are **not** this pass's to decide and stay open — the founder is running the production counts. |
 
 ## Founder answer, 2026-09-05 (batch 53) — question 7
 
@@ -1185,3 +1246,21 @@ of the world past step 3 is reachable from a row.
 | Date | Who | What |
 |---|---|---|
 | 2026-09-06 | Claude (parent) | The numbers 565ea4d4's message pointed at this trail for (audit adb8de250209ceb96 found the row incomplete): on an archive of that commit's index, `npx jest src/communications src/billing src/team` 553 passed / 38 suites; gateway tsc (both configs) 0 errors; check_gateway_boots PASS; check_money_routes_are_sealed PASS (6 money writes redeem a seal, 4 allow-listed with a reason) and `--self-test` 7 cases; `scripts/reconcile_message_credit_purchases.py --self-test` 4 decisions and 6 report properties, 0 writes; check_new_tables_are_locked_down, check_fk_targets_exist, check_read_columns_exist, check_read_errors_not_swallowed, check_no_seeded_defaults, check_a_count_is_recorded, check_citation_pairing, check_od_ids_exist PASS; migration versions unique; the builder's PGlite probe 77 checks, 0 errors; the order proof by mutation reproduced by the audit (charge above markAttempting fails stateAtChargeTime, 1 of 13). 9ac36595 (the charge path's direct tests): `npx jest src/billing` 100 passed / 6 suites; ten one-change mutations each killed by the case that names it. |
+
+
+## Execution reconciliation — 2026-09-13
+
+**Superseded as verification evidence by the 2026-09-17 review-trail row above** —
+this section's "14 focused gateway suites / 284 tests" and "disposable PostgreSQL 17
+fixture" are Codex's own report from the porting pass and were not reproducible from
+this tree (no PG17 fixture ships in the repo); the 2026-09-17 row gives numbers
+measured on this tree, through `heavy.sh`, reproducibly. Kept below as the narrative
+record of what the port pass did, not as the tree's current verification.
+
+Recovered the text transport feature from `178d470e` onto current main `60ed83a7`, retaining the later house-letter named-actor checks. The original reflected challenge is now explicitly `text/plain`. Every authenticated text-sender action resolves signed `userId` through `houseActor`; the old `id` annotation otherwise wrote or authorized an unnamed person. A reply also refuses a blank service-level writer.
+
+Inbound acceptance is durable: POST explicitly answers 200 after handled outcomes and 503 for transient book/write failures, so the provider can retry. Duplicate lookup is house-scoped and inbound-only; a unique-constraint conflict counts as already stored only after the house's receipt is read. Migration `20260913190100_whatsapp_sender_and_inbound_identity.sql` prevents two live Meta credentials sharing a number and prevents concurrent duplicate inbound receipts with no order. It fails on existing duplicates without deleting history. Routing also refuses any duplicate credential and a revoked parent sender.
+
+Replies recheck the current vendor phone book, require the current Meta sender to match the receiving number, and use the newest provider timestamp rather than webhook arrival order. Future/invalid timestamps cannot open a customer window. Mirror updates are house-scoped; a missing mirror receipt refuses dispatch. Unknown transport outcomes remain unknown and are never retried automatically.
+
+Local verification: 14 focused gateway suites / 284 tests pass, gateway TypeScript passes. A disposable PostgreSQL 17 fixture proved both unique indexes, their tenant/channel/direction boundaries, revoked-history behavior and repeat application. These are local checks, not a full historical replay or evidence of production migration or live message delivery. No provider messages, credentials or customer data were used.

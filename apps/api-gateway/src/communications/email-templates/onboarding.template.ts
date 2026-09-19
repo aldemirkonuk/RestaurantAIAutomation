@@ -22,11 +22,11 @@ export function onboardingEmailTemplate(data: OnboardingEmailData): string {
 
   const content = `
     <h2 style="margin: 0 0 8px; color: #111827; font-size: 22px; font-weight: 700;">
-      Welcome to WineOps AI, ${firstName} 🍷
+      Welcome to Mudavym, ${firstName} 🍷
     </h2>
     <p style="margin: 0 0 24px; color: #6b7280; font-size: 15px; line-height: 1.6;">
       <strong>${restaurantName}</strong>${restaurantCity ? ` in ${restaurantCity}` : ""} is now set up.
-      Here's everything you need to get the most out of WineOps in your first week.
+      Here's everything you need to get the most out of Mudavym in your first week.
     </p>
 
     <!-- Step cards -->
@@ -80,7 +80,7 @@ export function onboardingEmailTemplate(data: OnboardingEmailData): string {
               </td>
               <td style="vertical-align: top;">
                 <p style="margin: 0 0 4px; color: #111827; font-size: 14px; font-weight: 700;">Add your wine vendors</p>
-                <p style="margin: 0; color: #6b7280; font-size: 13px; line-height: 1.5;">WineOps AI negotiates with suppliers automatically once you add them. Add at least one vendor to unlock automated procurement.</p>
+                <p style="margin: 0; color: #6b7280; font-size: 13px; line-height: 1.5;">Mudavym negotiates with suppliers automatically once you add them. Add at least one vendor to unlock automated procurement.</p>
               </td>
             </tr>
           </table>
@@ -126,12 +126,12 @@ export function onboardingEmailTemplate(data: OnboardingEmailData): string {
 
     <p style="margin: 0; color: #9ca3af; font-size: 13px; line-height: 1.6; border-top: 1px solid #f3f4f6; padding-top: 20px;">
       Questions? Reply to this email or visit our help centre. We typically respond within 2 hours.
-      <br>— The WineOps AI team
+      <br>— The Mudavym team
     </p>
   `;
 
   return baseTemplate({
-    title: `Welcome to WineOps AI — ${restaurantName}`,
+    title: `Welcome to Mudavym — ${restaurantName}`,
     preheader: `Your restaurant is set up. Here's what to do next.`,
     content,
     showFooter: true,

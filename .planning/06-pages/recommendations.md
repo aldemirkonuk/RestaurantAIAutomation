@@ -78,6 +78,11 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
   `recommendation_digest_prefs` — verified by grep across the repo on 2026-09-02, and
   stated in [[08-softwares/recommendations]]:101-103. The legacy page's toggle says
   "top actions to your inbox"; no inbox receives anything.
+  **[2026-09-17, ADR 0149 row 26: the sender is BUILT and ships OFF — §9 "The digest
+  sender". The control's reason says a digest goes only to a member who asked for it,
+  and that asking for it or editing the house's digest from this page waits on the
+  page's re-sketch (108). It states no deployment fact (on/off), because the page reads
+  none — `GET /recommendations/digest/subscription` returns `armed` for the rebuild.]**
 - 🚧 **"Let Mudavym do it" renders DISABLED** on every entry, with the reason: no
   autonomous execution path exists in the gateway for any recommendation, with or
   without permission. The only autonomous switch in the product
@@ -861,6 +866,8 @@ Raw `fetch` against `${VITE_API_GATEWAY_URL}/api/v1/analytics/recommendations`
 | GET | `/analytics/recommendations/:rid` | `Recommendations.tsx:196` |
 | GET | `…/:rid/history`, `…/:rid/actions?status=` | `Recommendations.tsx:219` |
 | GET/PUT | `…/:rid/digest` | `Recommendations.tsx:252,383` |
+| GET/PUT/DELETE | `/recommendations/digest/subscription` | **new 2026-09-17** (ADR 0149 row 26) — the person's own subscription in the session's house (JWT; tenant and person from the token); GET states every reason it would not arrive. **No page calls it yet.** `analytics/digest/recommendation-digest.controller.ts` |
+| GET/POST | `/recommendations/digest/unsubscribe/:token` | **new 2026-09-17** — `@Public`, the link in the mail: GET renders and changes nothing, POST (button or RFC 8058 one-click) stops that one digest |
 | POST | `…/:rid/action` | `Recommendations.tsx:263` |
 | POST | `…/:rid/bulk-action` | `Recommendations.tsx:404` |
 | GET | `/restaurants/:rid/team/members` | assignment picker, `Recommendations.tsx:346` → `services/api/team.ts:124` |
@@ -991,6 +998,73 @@ Outside the page's own paths, and therefore filed rather than built (2026-09-02)
   digest control disabled with that reason; the fix belongs in
   `apps/api-gateway/src/analytics/insights/insight-scheduler.service.ts` (or a sibling)
   and is §13.6.
+  **[2026-09-17 — BUILT, switched off. The founder's answer (ADR 0149 row 26) was
+  "Build the sender".** `apps/api-gateway/src/analytics/digest/` holds a 15-minute
+  `@Cron` over the opted-in houses (`ScheduledTenantsService`, ADR 0022) that mails a
+  member only when all five hold: the house's `digest_enabled`; the PERSON's own active
+  row in the new `recommendation_digest_subscriptions` (their frequency, daily or weekly
+  + ISO weekday — no default, nobody subscribes anybody else); an active, in-window
+  `user_restaurant_access` row; `notification_preferences.email_enabled`; and
+  `categories.ai`. Due times are the house's `digest_hour` on `restaurants.timezone`
+  (UTC, said in the letter, when unset); a member inside their quiet hours
+  (`reminder-window.ts` `isWithinQuietHours`, the gateway reading of the columns
+  `notification_agent.py:1487` reads) is deferred, and past 12 h late the due is recorded
+  `expired`, never sent late. Each send is CLAIMED first in the new
+  `recommendation_digest_sends` (UNIQUE `restaurant_id, user_id, period_key`, migration
+  `20260917010100`), so two gateway instances cannot both mail; the row ends `sent` /
+  `failed` (provider words, not retried) / `skipped_empty` (what the engine evaluated,
+  and which sources it could not read) / `expired`. The letter quotes the engine's own
+  three sentences with rule, category and first-seen date — nothing recomputed — from
+  `RecommendationsService.getRecommendations` (which now also returns `sourcesUnread`),
+  branded Mudavym on the declared paper surface, via `GmailService.sendEmail` (From
+  "Mudavym", `List-Unsubscribe` + one-click) — the account-mail path, not a member's
+  own mailbox. The unsubscribe link needs no sign-in: a 32-byte token stored only as its
+  SHA-256, which can stop that one digest and nothing else. `recipient_email` is NOT
+  mailed (a free address, not a member). Armed only by `DIGEST_SEND_ENABLED=true`
+  (default off; `env.example`), and it sends nothing without `API_PUBLIC_URL`.
+  Evidence: 5 jest suites, 88 tests (the five brief cases each broke by a sabotaged sender — claim
+  treated as won, quiet check removed, empty check removed, failure read as success,
+  stopped subscriptions read as active), migration applied twice to PGlite with a
+  wrong-column negative control, `CLAIMS.jsonl` `ADR-0149-DIGEST-CLAIMS-BEFORE-IT-SENDS`.
+  **Not built:** any UI to subscribe (the page is awaiting sketch 108); the /settings
+  "Notify" section still calls every category dead, which is now false for `ai` once
+  the sender is armed.]**
+  **[2026-09-17, review round (digest-review.md D1–D9) — fixed before any merge:**
+  (D1) the "saved after the due time" gate now applies to the LATE branch only: a save
+  of the house's digest row or of a subscription after a due no longer cancels a timely
+  digest (probe P-B: house row re-saved 04:02Z sent nothing all day; P-E: a quiet-hours
+  member's re-save sent nothing), it only withholds the `expired` row for a due that is
+  past 12 h and predates the save (tally `lateBeforeChange`); and `subscribe` writes
+  nothing when the choice is unchanged. (D2) membership is decided on EVERY
+  `user_restaurant_access` row: the `users.restaurant_id` fallback runs only for a house
+  with no access rows at all, so a house whose rows are all revoked has no members (P-A
+  had mailed a revoked member). `DatabaseService.getRestaurantMemberIds` still has the
+  old shape and is not changed here. (D4) an `expired` row states the fact and lists the
+  possible causes instead of asserting one (P-C). (D5) the page's reason above. (D6) the
+  one-click `POST …/unsubscribe/:token` is `@SkipRateLimit()` — mailbox providers post
+  from shared IPs. (D8) the Gmail-API path quotes a From display name carrying an RFC
+  5322 special and encodes a non-ASCII one (`fromDisplayName`). (D9) `servedReason` is
+  worded for a member, not as a `restaurant_feature_flags` insert. Evidence: 5 jest
+  suites, 101 tests (was 88); 8 mutations, each reverting one fix (D1 gate, D1 no-op
+  write, D2, D4, D5, D6, D8, D9), each failed at least one new case. Not mutation-run:
+  the no-access-rows fallback case and the three `fromDisplayName` unit cases, which
+  pin behaviour rather than a fix.
+  **BUILDER'S CHOICES — FOUNDER CONFIRMATION OWED BEFORE MIGRATION `20260917010100`
+  MERGES** (review D3; CLAUDE.md §0.1–0.2 — none of these is in ADR 0149, which says
+  only "Build the sender", and the migration makes (a) permanent in production):
+  (a) a per-PERSON `recommendation_digest_subscriptions` table with a per-person
+  frequency and weekday, while `digest_hour` and the urgency floor stay per house;
+  (b) `notification_preferences.categories.ai` as the digest's category gate — ADR 0149
+  row 15 / OD-121 keep the category mapping for the founder, in the vocabulary of the
+  six `*_channels` arrays, which this does not use; (c) `recipient_email` is never
+  mailed; (d) the 12-hour late limit, and `expired` rows past it; (e) from the D1 fix, a
+  subscription or a house switching its digest on within 12 h after a due time is
+  served that period's digest at the next sweep. **Owed, not built:** the subscribe
+  control AND the house digest editor on the rebuilt page (sketch 108) — the only UI
+  that sets `digest_enabled` today is the legacy toggle (`Recommendations.tsx:382`),
+  which ADR 0149 deletes, so after cutover the digest needs raw API calls until both
+  exist; and the /settings Notify copy (`settings/next/NotifySection.tsx:261`, "no sender
+  branches on categories"), owed to the settings lane.]**
 - ~~**Nothing records when a rule first fired**~~ **Closed 2026-09-03.** The feed now
   attaches `firstSeenAt` per rule from `recommendation_impressions`
   (`recommendations.service.ts` `attachFirstSeen`), and the page renders it with the clock
@@ -1151,7 +1225,8 @@ denominator — "17 rules were read. 4 entries stand" — so a thin feed is legi
 |---|---|---|
 | Act / dismiss / snooze / done / pin | `recommendation_actions` (migration `20260720120000`) | the card's disposition on this page **and** the hidden/pinned set that `ContextualInsights` applies on [[orders]] and [[inventory]] (`ContextualInsights.tsx:125-138`) |
 | Assign to a teammate | `recommendation_actions.assigned_to` | assignee's view |
-| Digest frequency | `recommendation_digest_prefs` | 🚧 **nothing** — no scheduler reads the table and no mail is sent (§9) |
+| Digest frequency | `recommendation_digest_prefs` | 🚧 **nothing** — no scheduler reads the table and no mail is sent (§9) **[2026-09-17: the digest sender reads it (hour, floor, on/off) and writes `last_sent_at`; it is switched off by default, so in production still nothing is sent until `DIGEST_SEND_ENABLED` is set — §9]** |
+| A person's digest subscription | `recommendation_digest_subscriptions` (2026-09-17) | the digest sender's audience; a stop by link or session is a soft stop (`unsubscribed_at` / `_via`) |
 
 **All of these land today.** The 2026-08-26 note that "all of these are 401" is
 superseded: the writes reach `recommendation_actions`, and the only write with no
@@ -1240,6 +1315,12 @@ execution, no first-fired timestamp — in the same way.
    `analytics/insights/insight-scheduler.service.ts` reads `digest_enabled` /
    `digest_hour` / `digest_min_urgency` and sends (writing `last_sent_at`), or the
    endpoints and the table go. *Blocker: founder call on whether the product mails.*
+   **[2026-09-17: the founder answered "Build the sender" (ADR 0149 row 26); built in
+   `analytics/digest/` as a sibling module rather than inside the insight scheduler, and
+   shipped off — §9. Still owed: the subscribe control on the rebuilt page.]**
+   **[2026-09-17, review: also owed — the house digest editor (the legacy toggle is
+   the only UI that sets `digest_enabled`), and founder confirmation of the builder's
+   choices (a)–(e) listed in §9 before the migration merges.]**
 8. ~~**Expose first-fired time so "standing" stops being an em dash.**~~ **Done
    2026-09-03** — `attachFirstSeen` in `recommendations.service.ts`, rendered by
    `standingOf()` with the clock it read named on the row (§1b second pass).
