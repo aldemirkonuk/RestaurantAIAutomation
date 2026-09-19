@@ -1,5 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 import { create } from "zustand";
+import { clearPersistedQueries } from "@/lib/queryClient";
+import { useFeedLocal } from "./feedLocal";
 import { API_URL } from "@/config";
 
 const ACCESS_KEY = "wineops_access_token";
@@ -21,6 +23,7 @@ export interface SessionUser {
 }
 
 interface SessionState {
+  generation: number;
   status: "booting" | "signedOut" | "locked" | "signedIn";
   user: SessionUser | null;
   accessToken: string | null;
@@ -69,6 +72,7 @@ async function fetchMe(accessToken: string): Promise<SessionUser | null> {
 }
 
 export const useSession = create<SessionState>((set, get) => ({
+  generation: 0,
   status: "booting",
   user: null,
   accessToken: null,
@@ -96,6 +100,8 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 
   signIn: async (email, password) => {
+    const generation = get().generation + 1;
+    set({ generation });
     const res = await fetch(`${API_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -103,7 +109,9 @@ export const useSession = create<SessionState>((set, get) => ({
     });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
-      throw new Error(body?.message ?? "Sign-in failed. Check your email and password.");
+      throw new Error(
+        body?.message ?? "Sign-in failed. Check your email and password.",
+      );
     }
     const { accessToken, refreshToken } = await res.json();
     await Promise.all([
@@ -111,10 +119,15 @@ export const useSession = create<SessionState>((set, get) => ({
       SecureStore.setItemAsync(REFRESH_KEY, refreshToken),
     ]);
     const user = await fetchMe(accessToken);
+    if (get().generation !== generation) return;
+    clearPersistedQueries();
+    useFeedLocal.setState({ hidden: {}, clearedThisSession: 0 });
     set({ accessToken, user, status: "signedIn" });
   },
 
   adoptTokens: async (accessToken, refreshToken) => {
+    const generation = get().generation + 1;
+    set({ generation });
     await Promise.all([
       SecureStore.setItemAsync(ACCESS_KEY, accessToken),
       refreshToken
@@ -122,6 +135,9 @@ export const useSession = create<SessionState>((set, get) => ({
         : Promise.resolve(),
     ]);
     const user = await fetchMe(accessToken);
+    if (get().generation !== generation) return;
+    clearPersistedQueries();
+    useFeedLocal.setState({ hidden: {}, clearedThisSession: 0 });
     set({ accessToken, user, status: "signedIn" });
   },
 
@@ -129,7 +145,7 @@ export const useSession = create<SessionState>((set, get) => ({
     const token = get().accessToken;
     if (!token) return;
     const user = await fetchMe(token);
-    if (user) set({ user });
+    if (user && get().accessToken === token) set({ user });
   },
 
   unlock: () => {
@@ -138,6 +154,14 @@ export const useSession = create<SessionState>((set, get) => ({
 
   signOut: async () => {
     const token = get().accessToken;
+    set({
+      generation: get().generation + 1,
+      status: "signedOut",
+      user: null,
+      accessToken: null,
+    });
+    clearPersistedQueries();
+    useFeedLocal.setState({ hidden: {}, clearedThisSession: 0 });
     // Best-effort server logout; local teardown always wins.
     if (token) {
       fetch(`${API_URL}/auth/logout`, {
@@ -149,7 +173,6 @@ export const useSession = create<SessionState>((set, get) => ({
       SecureStore.deleteItemAsync(ACCESS_KEY),
       SecureStore.deleteItemAsync(REFRESH_KEY),
     ]);
-    set({ status: "signedOut", user: null, accessToken: null });
   },
 
   setAccessToken: (token) => {
@@ -160,6 +183,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
 /** Refresh flow used by the API client on 401. Returns the new token or null. */
 export async function refreshAccessToken(): Promise<string | null> {
+  const generation = useSession.getState().generation;
   try {
     const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
     if (!refreshToken) return null;
@@ -172,7 +196,7 @@ export async function refreshAccessToken(): Promise<string | null> {
     const body = await res.json();
     const access: string | undefined = body.accessToken;
     const nextRefresh: string | undefined = body.refreshToken;
-    if (!access) return null;
+    if (!access || useSession.getState().generation !== generation) return null;
     useSession.getState().setAccessToken(access);
     if (nextRefresh) {
       await SecureStore.setItemAsync(REFRESH_KEY, nextRefresh);

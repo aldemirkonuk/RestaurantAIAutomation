@@ -66,9 +66,13 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
 
   const finishFold = useCallback(() => {
     haptic.commit();
-    fold.value = withTiming(1, { duration: 380, easing: Easing.bezier(0.5, 0, 0.9, 0.4) }, (done) => {
-      if (done) runOnJS(handleFolded)();
-    });
+    fold.value = withTiming(
+      1,
+      { duration: 380, easing: Easing.bezier(0.5, 0, 0.9, 0.4) },
+      (done) => {
+        if (done) runOnJS(handleFolded)();
+      },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -92,7 +96,10 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
       setHoldingId(entryId);
       fold.value = withSpring(0.1, spring.gentle);
       graceX.value = 1;
-      graceX.value = withTiming(0, { duration: GRACE_MS, easing: Easing.linear });
+      graceX.value = withTiming(0, {
+        duration: GRACE_MS,
+        easing: Easing.linear,
+      });
       graceTimer.current = setTimeout(finishFold, GRACE_MS);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
@@ -114,7 +121,12 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
 
   /** Instant, not vendor-visible: quick file-away without the fold. */
   const instantAction = useCallback(
-    (path: string, label: string, body?: unknown, method: "POST" | "PATCH" = "POST") => {
+    (
+      path: string,
+      label: string,
+      body?: unknown,
+      method: "POST" | "PATCH" = "POST",
+    ) => {
       enqueue({
         path,
         method,
@@ -125,9 +137,13 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
         feedItemId: item.id,
       });
       haptic.confirm();
-      fold.value = withTiming(1, { duration: 240, easing: Easing.bezier(0.4, 0, 1, 1) }, (done) => {
-        if (done) runOnJS(handleFolded)();
-      });
+      fold.value = withTiming(
+        1,
+        { duration: 240, easing: Easing.bezier(0.4, 0, 1, 1) },
+        (done) => {
+          if (done) runOnJS(handleFolded)();
+        },
+      );
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
     [item.id],
@@ -136,7 +152,10 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
   const open = useCallback(() => {
     if (holdingId) return;
     if (item.kind === "draft_approval" && item.orderId) {
-      router.push({ pathname: "/draft/[orderId]", params: { orderId: item.orderId, feedItemId: item.id } });
+      router.push({
+        pathname: "/draft/[orderId]",
+        params: { orderId: item.orderId, feedItemId: item.id },
+      });
     } else if (item.kind === "receipt_verification" && item.orderId) {
       router.push({
         pathname: "/cellar/receive/[orderId]",
@@ -167,17 +186,14 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
     transform: [{ scaleX: graceX.value }],
   }));
 
-  const primaryAction = (): { label: string; run: () => void; secondaryLabel?: string } => {
+  const primaryAction = (): {
+    label: string;
+    run: () => void;
+    secondaryLabel?: string;
+  } => {
     switch (item.kind) {
       case "order_approval":
-        return {
-          label: "Approve",
-          run: () =>
-            commitWithGrace(
-              `/procurement/orders/${item.orderId}/approve`,
-              item.wineName ? `Order approved: ${item.wineName}` : "Order approved",
-            ),
-        };
+        return { label: "Review & approve", run: open };
       case "draft_approval":
         return { label: "Review & send", run: open };
       case "receipt_verification":
@@ -228,13 +244,27 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
         <Animated.View
           pointerEvents="none"
           style={[
-            { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: color.wineDeep, zIndex: 2 },
+            {
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: color.wineDeep,
+              zIndex: 2,
+            },
             shadowStyle,
           ]}
         />
 
         <View style={{ padding: space.lg, gap: space.xs }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: space.sm,
+            }}
+          >
             <View
               style={{
                 width: 6,
@@ -258,13 +288,16 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
             {item.subtitle}
           </AppText>
 
-          <View style={{ flexDirection: "row", gap: space.sm, marginTop: space.sm }}>
+          <View
+            style={{ flexDirection: "row", gap: space.sm, marginTop: space.sm }}
+          >
             {!holding ? (
               <>
                 <PressableScale
                   onPress={action.run}
                   style={{
-                    backgroundColor: item.kind === "alert" ? color.fill : color.wine,
+                    backgroundColor:
+                      item.kind === "alert" ? color.fill : color.wine,
                     borderRadius: radius.control,
                     paddingVertical: 10,
                     paddingHorizontal: space.xl,
@@ -277,7 +310,8 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
                     {action.label}
                   </AppText>
                 </PressableScale>
-                {item.kind !== "alert" && (item.orderId || item.conversationId) ? (
+                {item.kind !== "alert" &&
+                (item.orderId || item.conversationId) ? (
                   <PressableScale
                     onPress={open}
                     style={{
@@ -287,7 +321,9 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
                       backgroundColor: color.fill,
                     }}
                   >
-                    <AppText variant="bodyMedium">{action.secondaryLabel ?? "Details"}</AppText>
+                    <AppText variant="bodyMedium">
+                      {action.secondaryLabel ?? "Details"}
+                    </AppText>
                   </PressableScale>
                 ) : null}
               </>

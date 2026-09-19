@@ -33,6 +33,10 @@ links: ["[[PAGE-CONTRACT]]", "[[reports]]", "[[inventory]]", "[[orders]]", "[[ca
 - **Reports View all** → [[reports]] `/reports`
 - **Quick Actions panel** → user-configured shortcuts (any internal route or external URL)
 
+## Active branch cache correction — 2026-09-13 (pending release)
+
+The month-ledger cache key includes restaurant as well as year/month. Cache hits and unmounts invalidate older in-flight reads, so returning to cached house A cannot later render house B's delayed calendar response. Two hook tests exercise both the same-month branch switch and the late-response race.
+
 ## 1. Purpose
 
 The owner/manager landing page: today's KPIs (revenue, stock, orders, alerts), a
