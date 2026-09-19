@@ -1,0 +1,230 @@
+/* ============================================================
+   The endpaper shell — sketch 118, Direction B (ADR 0143 row 35)
+   ============================================================
+
+   Tokens only, same discipline as auth-house.css: every colour is a
+   `.mudavym` custom property, no hex, no rgb()/hsl(), no `prefers-color-
+   scheme`. EVERY SELECTOR STARTS AT `.mdv-endpaper`, which sits on the same
+   element as `.mudavym.mdv-auth` (auth-house.css's field/focus rules keep
+   applying to every control inside unchanged — this file adds only what
+   auth-house.css does not: the book frame and the leaf's own typography).
+
+   Scope: only `/login`, `/register`, and (per ADR 0164) the sign-in house
+   chooser mount here — the three screens ADR 0143 row 35 named. It replaces
+   the old house-colour-only card for exactly these callers; nothing else
+   references this file.
+
+   Ground: this shell states `data-ground="paper"` on its own root by
+   default (matching every other rebuilt page's convention of owning its own
+   ground, `lib/mudavym/shellGround.ts`) — mudavym.css's bare `.mudavym`
+   selector resolves to Warm Charcoal now ("the ground is decided, not
+   preferred", 2026-08-24), so a page that wants paper must say so. A
+   `[data-ground="charcoal"]` instance is supported for parity (both grounds
+   ship, ADR 0042) and is how the visual sweep captures the dark rendering. */
+
+.mdv-endpaper {
+  --mdv-ep-shade: color-mix(in srgb, var(--ink-1) 22%, transparent);
+}
+.mdv-endpaper[data-ground='charcoal'] {
+  --mdv-ep-shade: color-mix(in srgb, var(--paper-0) 90%, transparent);
+}
+
+/* ── the book: a 340px endpaper (verso) + a leaf (recto) ─────────────────── */
+
+.mdv-ep-book {
+  display: grid;
+  grid-template-columns: 340px minmax(420px, 600px);
+  background: var(--paper-0);
+  border: 1px solid var(--paper-2);
+  box-shadow: 0 34px 70px -40px var(--mdv-ep-shade);
+  position: relative;
+  border-radius: 2px;
+  overflow: hidden;
+  text-align: left;
+}
+/* the gutter shadow between the two pages */
+.mdv-ep-book::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 340px;
+  width: 36px;
+  transform: translateX(-50%);
+  background: linear-gradient(to right, transparent, var(--paper-2) 50%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+/* wide variant — the restaurant-details leaf (register step 2), a rail +
+   panel layout that needs more room than the 600px default recto. */
+.mdv-ep-book--wide {
+  grid-template-columns: 340px minmax(480px, 800px);
+}
+.mdv-ep-book--wide::before {
+  left: 340px;
+}
+
+/* ── the endpaper — decorative, permanent, the house mark tiled ─────────── */
+
+.mdv-ep-endpaper {
+  position: relative;
+  overflow: hidden;
+  padding: 40px 34px;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-1);
+  min-width: 0;
+}
+.mdv-ep-tile {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.mdv-ep-top {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mdv-ep-kicker {
+  font-family: var(--sans, inherit);
+  font: 500 10px/1.4 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mdv-ep-wordmark {
+  display: inline-flex;
+}
+.mdv-ep-body {
+  position: relative;
+  z-index: 1;
+  margin: auto 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mdv-ep-house {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.3;
+  color: var(--ink-2);
+  max-width: 250px;
+}
+.mdv-ep-tagline {
+  font-size: 12.5px;
+  line-height: 19px;
+  color: var(--ink-3);
+  max-width: 240px;
+}
+
+/* ── the recto leaf ───────────────────────────────────────────────────────
+   Ruled-paper lines are decorative background only (background-clip:
+   content-box means the padding box, not the content, carries them, so a
+   focus ring inside a field is never crossed by a rule). */
+
+.mdv-ep-leaf {
+  padding: 52px 52px 48px;
+  position: relative;
+  background-image: repeating-linear-gradient(to bottom, transparent 0 26px, var(--paper-2) 26px 27px);
+  background-origin: content-box;
+  background-clip: content-box;
+  min-width: 0;
+  min-height: 0;
+}
+.mdv-ep-leaf::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 36px;
+  border-left: 1px solid var(--ink-3);
+  opacity: 0.3;
+  pointer-events: none;
+}
+.mdv-ep-leaf-inner {
+  position: relative;
+  padding-left: 6px;
+}
+.mdv-ep-folio {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  font: 500 10px/1.4 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mdv-ep-leaf-title {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 600;
+  font-size: 26px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+  color: var(--ink-1);
+}
+.mdv-ep-leaf-lede {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 14.5px;
+  line-height: 24px;
+  color: var(--ink-2);
+  margin: 0 0 28px;
+  max-width: 460px;
+}
+
+/* ── narrow viewport: the endpaper stacks as a band above the leaf ───────
+   Matches sketch 118's own phone treatment, not a naive full-height stack:
+   under 700px there is no room for two pages side by side, so the endpaper
+   collapses to a fixed ~150px band (kicker + wordmark + house line only —
+   the tag caption is dropped, it does not fit) and the leaf drops its ruled
+   lines and outer padding to read like a plain mobile form. */
+
+@media (max-width: 700px) {
+  .mdv-ep-book,
+  .mdv-ep-book--wide {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+  .mdv-ep-book::before {
+    display: none;
+  }
+  .mdv-ep-endpaper {
+    padding: 18px 20px;
+    min-height: 0;
+    height: 150px;
+    flex-direction: row;
+    align-items: center;
+  }
+  .mdv-ep-endpaper .mdv-ep-top {
+    gap: 4px;
+  }
+  .mdv-ep-tagline {
+    display: none;
+  }
+  .mdv-ep-leaf {
+    padding: 28px 20px 26px;
+    background-image: none;
+  }
+  .mdv-ep-leaf::after {
+    display: none;
+  }
+  .mdv-ep-leaf-inner {
+    padding-left: 0;
+  }
+  .mdv-ep-leaf-title {
+    font-size: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-endpaper * {
+    animation: none !important;
+  }
+}

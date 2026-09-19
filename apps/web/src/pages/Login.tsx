@@ -5,6 +5,7 @@ import { Button } from '../components/ui'
 import { Mail, Lock, AlertCircle, ArrowRight, KeyRound } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
+import { EndpaperShell } from '../components/brand/EndpaperShell'
 import '../components/brand/auth-house.css'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton, type GoogleSignInHandle } from '../components/auth/GoogleSignInButton'
@@ -185,25 +186,28 @@ export function Login() {
     greyedOut.length === 0
   const setPasswordHref = `/forgot-password?email=${encodeURIComponent(identity?.email ?? email)}`
 
-  return (
-    <AuthShell title="Mudavym" subtitle="Sign in to manage your wine inventory" house={on}>
-      <AuthCard house={on}>
-        {(error || authError) && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
-          >
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
-            <div>
-              <p className={on ? 'text-sm font-medium !text-red-900' : 'text-sm font-medium text-red-900'}>Login Failed</p>
-              <p className={on ? 'text-sm !text-red-700' : 'text-sm text-red-700'}>{error || authError}</p>
-            </div>
-          </motion.div>
-        )}
+  // The fields themselves never change with `on` (ADR 0143 row 35 — sketch
+  // 118 — reopens colour-only for exactly this pair of pages, but "same
+  // fields and flow" still holds): this tree is shared by both the endpaper
+  // shell and today's card, and only the chrome around it branches below.
+  const content = (
+    <>
+      {(error || authError) && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
+        >
+          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
+          <div>
+            <p className={on ? 'text-sm font-medium !text-red-900' : 'text-sm font-medium text-red-900'}>Login Failed</p>
+            <p className={on ? 'text-sm !text-red-700' : 'text-sm text-red-700'}>{error || authError}</p>
+          </div>
+        </motion.div>
+      )}
 
-        {/* ── Step 1: who are you? ─────────────────────────────────── */}
-        {!atMethodStep && (
+      {/* ── Step 1: who are you? ─────────────────────────────────── */}
+      {!atMethodStep && (
           <form onSubmit={handleContinue} className="space-y-5">
             <div>
               <label htmlFor="email" className={on ? 'block text-sm font-medium text-inkm-2 mb-2' : 'block text-sm font-medium text-gray-700 mb-2'}>
@@ -443,7 +447,25 @@ export function Login() {
             </Link>
           </p>
         </div>
-      </AuthCard>
+    </>
+  )
+
+  // sketch 118 · Direction B (the endpaper), the founder's 2026-09-19 pick —
+  // ADR 0149 row 35.
+  return on ? (
+    <EndpaperShell
+      kicker="The house"
+      houseLine="Kept, page by page."
+      tag="Every house's book looks the same on the inside — this is where yours opens."
+      folio="Sign in"
+    >
+      <h2 className="mdv-ep-leaf-title">Welcome back.</h2>
+      <p className="mdv-ep-leaf-lede">Your house keeps its book here.</p>
+      {content}
+    </EndpaperShell>
+  ) : (
+    <AuthShell title="Mudavym" subtitle="Sign in to manage your wine inventory">
+      <AuthCard>{content}</AuthCard>
     </AuthShell>
   )
 }

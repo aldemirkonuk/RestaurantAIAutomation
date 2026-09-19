@@ -8,6 +8,7 @@ import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
 import { currencyForCountry, currencyToRecord } from '../lib/currency'
 import { CurrencyStep } from '../components/onboarding/CurrencyStep'
+import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
@@ -39,8 +40,9 @@ const HOUSE_SHADOW = 'shadow-[0_24px_64px_-24px_var(--seal-tint),0_8px_24px_-12p
 /** The shared Button merges `className` last (tailwind-merge), so this replaces
  *  its wine fill and its literal-rgba shadow rather than stacking on them. */
 const HOUSE_BUTTON = 'bg-seal text-paper-0 hover:bg-seal-deep shadow-none hover:shadow-none'
-/** BrandMark's ink tone is two literals; `cn()` lets these replace both. */
-const HOUSE_WORDMARK = 'text-inkm-1 dark:text-inkm-1'
+// `HOUSE_WORDMARK` (BrandMark's ink-token override) moved to the endpaper's
+// own wordmark (`EndpaperShell.tsx`) — the wordmark this file rendered above
+// the old single card no longer exists on the `on` path (sketch 118).
 
 // Email availability check result
 type EmailAvailability = {
@@ -1444,11 +1446,77 @@ export function Register() {
   // For the restaurant form (path B step 2), render outside the card to support the wider rail layout
   const isRestaurantForm = path === 'create' && pathBStep === 2
 
+  // sketch 118 · Direction B endpaper copy, one case per screen the user can
+  // reach — unioned with the existing path/pathAStep/pathBStep state so no
+  // new state is introduced and the real flow (above) is untouched. The
+  // founder's 2026-09-19 pick — ADR 0149 row 35.
+  const endpaperFor = (): { kicker: string; houseLine: string; tag: string; folio: string; title: string; lede: string } => {
+    if (path === 'selector') {
+      return {
+        kicker: 'A new set of books',
+        houseLine: 'Every house keeps its own.',
+        tag: 'Open one, or be entered in one that already exists.',
+        folio: 'Register',
+        title: 'Whose book is this?',
+        lede: 'A new house is a new set of books, or a line in one that exists.',
+      }
+    }
+    if (path === 'join') {
+      const named = invitePreview?.valid ? invitePreview.restaurant : undefined
+      return {
+        kicker: 'Join',
+        houseLine: named ?? 'Every house keeps its own.',
+        tag:
+          pathAStep === 2 && invitePreview?.valid && invitePreview.inviter && invitePreview.role
+            ? `${invitePreview.inviter} is expecting you, as a ${invitePreview.role}.`
+            : 'The code names the house before you have an account.',
+        folio: pathAStep === 1 ? 'Join · 1 of 2' : 'Join · 2 of 2',
+        title: 'Be entered in a book that exists.',
+        lede:
+          pathAStep === 1
+            ? 'The code names the house before you have an account.'
+            : `Joining ${named ?? 'a house'}.`,
+      }
+    }
+    // path === 'create'
+    if (pathBStep === 1) {
+      return {
+        kicker: 'Register · 1 of 2',
+        houseLine: 'Who keeps this book?',
+        tag: 'Your restaurant comes next, on its own leaf.',
+        folio: 'Register · 1 of 2',
+        title: 'Who keeps this book?',
+        lede: 'Your restaurant comes next.',
+      }
+    }
+    return {
+      kicker: 'Register · 2 of 2',
+      houseLine: restaurantName.trim() || 'Register · 2 of 2',
+      tag: 'Read once; nothing here is converted later.',
+      folio: 'Register · 2 of 2',
+      title: 'What house is this?',
+      lede: 'Read once; nothing here is converted later.',
+    }
+  }
+
+  if (on) {
+    const ep = endpaperFor()
+    return (
+      <EndpaperShell kicker={ep.kicker} houseLine={ep.houseLine} tag={ep.tag} folio={ep.folio} wide={isRestaurantForm}>
+        <h2 className="mdv-ep-leaf-title">{ep.title}</h2>
+        <p className="mdv-ep-leaf-lede">{ep.lede}</p>
+        <AnimatePresence mode="wait" initial={false}>
+          <div key={stepKey}>{content}</div>
+        </AnimatePresence>
+      </EndpaperShell>
+    )
+  }
+
   return (
-    <div className={on ? 'mdv-auth mudavym relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-paper-0' : 'relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]'}>
+    <div className="relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]">
       <div
         aria-hidden
-        className={on ? 'pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,var(--seal-tint),transparent_50%),radial-gradient(ellipse_at_100%_100%,var(--seal-tint),transparent_45%)]' : 'pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(26,94,107,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(26,94,107,0.07),transparent_45%)]'}
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(26,94,107,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(26,94,107,0.07),transparent_45%)]"
       />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1463,10 +1531,10 @@ export function Register() {
             transition={{ delay: 0.1, type: 'spring' }}
             className="inline-flex mb-5"
           >
-            <BrandMark size={34} className={on ? HOUSE_WORDMARK : undefined} />
+            <BrandMark size={34} />
           </motion.div>
-          <h1 className={on ? 'text-3xl font-semibold tracking-tight !text-inkm-1 mb-2' : 'text-3xl font-semibold tracking-tight text-gray-900 mb-2'}>Join Mudavym</h1>
-          <p className={on ? 'text-[15px] !text-inkm-3' : 'text-[15px] text-gray-500'}>Transform your restaurant&apos;s wine operations</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-gray-900 mb-2">Join Mudavym</h1>
+          <p className="text-[15px] text-gray-500">Transform your restaurant&apos;s wine operations</p>
         </div>
 
         <AnimatePresence mode="wait" initial={false}>
@@ -1479,14 +1547,14 @@ export function Register() {
             /* All other steps: standard glass card */
             <div
               key={stepKey}
-              className={on ? `rounded-2xl border border-seal-tint bg-paper-1 backdrop-blur-md p-8 overflow-hidden ${HOUSE_SHADOW}` : 'rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8 overflow-hidden shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]'}
+              className="rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8 overflow-hidden shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]"
             >
               {content}
             </div>
           )}
         </AnimatePresence>
 
-        <p className={on ? 'text-center text-xs !text-inkm-3 mt-8' : 'text-center text-xs text-gray-400 mt-8'}>© 2026 Mudavym. All rights reserved.</p>
+        <p className="text-center text-xs text-gray-400 mt-8">© 2026 Mudavym. All rights reserved.</p>
       </motion.div>
     </div>
   )

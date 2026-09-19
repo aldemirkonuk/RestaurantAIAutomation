@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 118 · Direction A · The single leaf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --rust:#A03A2A; --amber:#8A5A14; --amber-tint:rgba(180,124,20,.10);
+  color-scheme:light;
+}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --rust:#D8735F; --amber:#D4A344; --amber-tint:rgba(212,163,68,.12);
+  color-scheme:dark;
+}
+:root{--serif:"Fraunces",Georgia,serif;--sans:"DM Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace}
+.mudavym{--shade:color-mix(in srgb,var(--ink-1) 22%,transparent)}
+.mudavym[data-ground="charcoal"]{--shade:color-mix(in srgb,var(--paper-0) 90%,transparent)}
+*{box-sizing:border-box}
+html{background:var(--paper-1)}
+body{margin:0;background:var(--paper-1);color:var(--ink-1);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--seal-ring);outline-offset:2px}
+.wrap{width:1360px;margin:0 auto;padding:28px 0 96px}
+
+/* top bar */
+.bar{display:flex;align-items:baseline;gap:18px;padding:6px 0 18px;border-bottom:1px solid var(--paper-2);margin-bottom:34px}
+.mark{font:600 22px var(--serif);letter-spacing:-.01em}
+.mark .dot{color:var(--seal)}
+.bar .meta{font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.ground{margin-left:auto;display:flex;gap:10px;align-items:baseline;font:500 12px var(--sans);color:var(--ink-3)}
+.ground button{background:none;border:0;padding:0;font:500 12px var(--sans);color:var(--ink-3);cursor:pointer;text-underline-offset:4px;transition:color 160ms}
+.ground button[aria-pressed="true"]{color:var(--ink-1);text-decoration:underline}
+.ground button:hover{color:var(--ink-1)}
+
+/* header */
+h1{font:600 40px/1.1 var(--serif);letter-spacing:-.015em;margin:0 0 12px}
+h1 .dot{color:var(--seal)}
+.lede{font:italic 400 19px/1.45 var(--serif);color:var(--ink-2);max-width:900px;margin:0 0 48px}
+.eyebrow{font:500 10px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin:0 0 8px}
+
+/* frames */
+.frame{margin:0 0 72px}
+.cap{display:flex;align-items:baseline;gap:14px;margin:0 0 20px;font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.cap .n{color:var(--ink-1);font-weight:600}
+.cap .t{color:var(--ink-2);text-transform:none;letter-spacing:.04em;font-size:12.5px}
+.cap .w{margin-left:auto;text-transform:none;letter-spacing:.04em;font-size:11px}
+.stage{background:var(--paper-2);border-radius:2px;padding:64px 40px;display:flex;justify-content:center}
+.stage.mobile-stage{padding:48px 40px}
+
+/* the single leaf — one ruled page, no spine, no second leaf */
+.leaf{width:600px;background:var(--paper-0);border:1px solid var(--paper-2);box-shadow:0 34px 70px -40px var(--shade);
+  padding:52px 56px 48px;position:relative;
+  background-image:repeating-linear-gradient(to bottom,transparent 0 26px,var(--paper-2) 26px 27px);
+  background-origin:content-box;background-clip:content-box}
+.leaf::after{content:"";position:absolute;top:0;bottom:0;left:40px;border-left:1px solid var(--ink-3);opacity:.3;pointer-events:none}
+.leaf-inner{padding-left:6px}
+.folio{position:absolute;top:18px;right:24px;font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.leaf h2{font:600 27px/1.2 var(--serif);letter-spacing:-.01em;margin:0 0 8px;color:var(--ink-1)}
+.leaf .lede2{font:italic 400 14.5px/24px var(--serif);color:var(--ink-2);margin:0 0 30px;max-width:460px}
+
+/* fields — vertical, generous, one act per view (not a ledger row: this is a form, not a register) */
+.fgroup{margin:0 0 20px}
+.fgroup label{display:block;font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:0 0 8px}
+.field{display:block;width:100%;background:var(--paper-0);border:0;border-bottom:1px solid var(--ink-3);font:500 15px/28px var(--sans);color:var(--ink-1);padding:0 0 2px;border-radius:0}
+.field::placeholder{color:var(--ink-3);font-weight:400}
+.field:focus{outline:none;border-bottom-color:var(--seal)}
+select.field{appearance:none;-webkit-appearance:none;cursor:pointer}
+.sel{position:relative}
+.sel::after{content:"";position:absolute;right:2px;top:11px;width:7px;height:7px;border-right:1px solid var(--ink-3);border-bottom:1px solid var(--ink-3);transform:rotate(45deg);pointer-events:none}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}
+.hint{font-size:12px;line-height:18px;color:var(--ink-3);margin:6px 0 0}
+
+/* buttons + links */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;font:600 14px var(--sans);padding:13px 18px;border:1px solid var(--seal);background:var(--seal);color:var(--paper-0);border-radius:2px;cursor:pointer;transition:background 160ms,border-color 160ms;line-height:20px}
+.btn:hover{background:var(--seal-deep);border-color:var(--seal-deep)}
+.btn.quiet{background:transparent;color:var(--ink-2);border-color:var(--ink-3)}
+.btn.quiet:hover{color:var(--ink-1);border-color:var(--ink-1);background:transparent}
+.btn[disabled]{opacity:.5;cursor:default}
+.word{background:none;border:0;padding:0;font:500 13.5px var(--sans);color:var(--seal);text-decoration:underline;text-underline-offset:4px;cursor:pointer}
+.word:hover{color:var(--seal-deep)}
+.foot-line{margin-top:28px;padding-top:22px;border-top:1px solid var(--paper-2);font-size:13.5px;color:var(--ink-3);text-align:center}
+.row-between{display:flex;justify-content:flex-end;margin:-10px 0 22px}
+.row-between .word{font-size:13px}
+
+/* divider */
+.divider{display:flex;align-items:center;gap:14px;margin:24px 0;color:var(--ink-3)}
+.divider span:not(.dtext){height:1px;flex:1;background:var(--paper-2)}
+.dtext{font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase}
+
+/* google button — the real glyph, honest chrome */
+.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 18px;border:1px solid var(--ink-3);background:var(--paper-0);border-radius:2px;font:500 14px var(--sans);color:var(--ink-1);cursor:pointer}
+.gbtn:hover{border-color:var(--ink-1)}
+.gbtn svg{width:18px;height:18px;flex:none}
+
+/* messages — quiet, coloured only where the state is real */
+.msg{border-left:2px solid var(--ink-3);padding:12px 16px;font-size:13px;line-height:19px;color:var(--ink-2);margin:0 0 22px}
+.msg b{display:block;color:var(--ink-1);font-weight:600;margin-bottom:3px}
+.msg.err{border-left-color:var(--rust)}
+.msg.err b{color:var(--rust)}
+.msg.warn{border-left-color:var(--amber);background:var(--amber-tint)}
+.msg.warn b{color:var(--amber)}
+.unavailable{border:1px dashed var(--ink-3);padding:10px 14px;margin:0 0 14px;color:var(--ink-3);font-size:12.5px;line-height:18px;border-radius:2px}
+.chip-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--paper-2);background:var(--paper-1);border-radius:2px;padding:11px 14px;margin:0 0 22px;font-size:13.5px}
+.chip-row b{font-weight:500;color:var(--ink-1)}
+.chip-row .word{font-size:12.5px}
+
+/* invite code + readback */
+.code{display:flex;gap:6px;margin:0 0 18px}
+.code span{width:36px;height:44px;border-bottom:2px solid var(--ink-3);font:600 20px/44px var(--mono);text-align:center;color:var(--ink-1)}
+.code span.on{border-bottom-color:var(--seal)}
+.readback{font:600 16px/24px var(--serif);color:var(--ink-1);margin:0 0 24px}
+.readback em{font-style:italic;font-weight:400;color:var(--ink-2)}
+
+/* spinner */
+.spin{width:16px;height:16px;border:2px solid var(--paper-0);border-top-color:transparent;border-radius:50%;opacity:.85;animation:spin 800ms linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* caption — outside the frame, the honest record */
+.cite{font:500 11px/19px var(--mono);color:var(--ink-3);max-width:620px;margin:16px auto 0}
+.cite b{font-weight:600;color:var(--ink-4)}
+
+/* the phone */
+.phone-shell{width:390px;background:var(--paper-0);border:1px solid var(--paper-2);box-shadow:0 34px 70px -40px var(--shade);
+  padding:40px 26px 34px;position:relative}
+.phone-shell::before{content:"";position:absolute;top:14px;left:50%;transform:translateX(-50%);width:64px;height:5px;border-radius:3px;background:var(--paper-2)}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* narrow viewport — the whole page, not just §10's framed phone */
+@media (max-width:700px){
+  .wrap{width:100%;padding:20px 18px 72px;box-sizing:border-box}
+  .bar{flex-wrap:wrap;row-gap:8px}
+  .bar .meta{order:3;width:100%}
+  h1{font-size:28px}
+  .lede{font-size:15.5px;margin-bottom:32px}
+  .frame{margin-bottom:52px}
+  .cap{flex-wrap:wrap;row-gap:4px}
+  .cap .w{margin-left:0;width:100%}
+  .stage{padding:26px 14px}
+  .leaf{width:100% !important;padding:30px 20px 26px}
+  .row2{grid-template-columns:1fr;gap:0}
+  .phone-shell{width:100%;padding:32px 16px 28px}
+  .cite{max-width:100%}
+}
+</style>
+</head>
+<body class="mudavym" data-ground="paper">
+<div class="wrap">
+
+<div class="bar">
+  <span class="mark">Mudavym<span class="dot">.</span></span>
+  <span class="meta">Sketch 118 · Direction A · The single leaf · 2026-09-17</span>
+  <div class="ground" aria-label="Ground">
+    <button type="button" data-g="paper" aria-pressed="true">Paper</button><span>/</span><button type="button" data-g="charcoal" aria-pressed="false">Charcoal</button>
+  </div>
+</div>
+
+<p class="eyebrow">/login and /register, quietly re-bound</p>
+<h1>The single leaf<span class="dot">.</span></h1>
+<p class="lede">Today's centred card, kept exactly where it is and asked to do exactly what it does — only the paper is now the house's own: ruled lines, Fraunces for what matters, the seal where a hand would press. One page, no spine, no second leaf. The safest translation of the flyleaf look, and the one closest to what is already on screen.</p>
+
+<!-- 01 · LOGIN -->
+<section class="frame" id="s1">
+  <div class="cap"><span class="n">01</span><span class="t">/login — sign in, once the address is known</span><span class="w">writes · POST /auth/login</span></div>
+  <div class="stage"><div class="leaf">
+    <span class="folio">Sign in</span>
+    <div class="leaf-inner">
+      <h2>Welcome back.</h2>
+      <p class="lede2">Your house keeps its book here.</p>
+      <div class="chip-row"><b>defne@meyhane.com</b><button class="word" type="button">Change</button></div>
+      <div class="fgroup">
+        <label for="a-pw">Password</label>
+        <input class="field" id="a-pw" type="password" value="••••••••" aria-label="Password">
+      </div>
+      <div class="row-between"><button class="word" type="button">Forgot password?</button></div>
+      <button class="btn" type="button">Sign In</button>
+      <div class="divider"><span></span><span class="dtext">or</span><span></span></div>
+      <button class="gbtn" type="button">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign in with Google
+      </button>
+      <p class="foot-line">Don't have an account? <button class="word" type="button">Create one now</button></p>
+    </div>
+  </div></div>
+</section>
+<p class="cite">Second of two steps (<b>Login.tsx:206-404</b>): the first asks only the address (<b>POST /auth/sign-in-methods</b>, 10 req/10 min — see 05) and this page draws only the methods that identity actually has (<b>identityProviders.ts</b>) — never inferred from the domain. Google button: real GSI widget, outline/large/rectangular, 360px (<b>GoogleSignInButton.tsx:119-125</b>).</p>
+
+<!-- 02 · REGISTER — the door -->
+<section class="frame" id="s2">
+  <div class="cap"><span class="n">02</span><span class="t">/register — the door: whose book is this?</span><span class="w">reads · GET /auth/invite/:code</span></div>
+  <div class="stage"><div class="leaf">
+    <span class="folio">Register</span>
+    <div class="leaf-inner">
+      <h2>Whose book is this?</h2>
+      <p class="lede2">A new house is a new set of books, or a line in one that exists.</p>
+      <button class="btn" type="button" style="margin-bottom:14px">I'm opening a new house</button>
+      <button class="btn quiet" type="button">I have an invite code</button>
+      <p class="foot-line">Already have an account? <button class="word" type="button">Sign in</button></p>
+    </div>
+  </div></div>
+</section>
+<p class="cite">Replaces today's two feature cards — icons, bullet lists, a "Most Popular" pill (<b>Register.tsx:253-330</b>) — with the same fork asked quietly. Nothing about what each path unlocks is lost; it moves to the page that path opens.</p>
+
+<!-- 03 · REGISTER — opening a house -->
+<section class="frame" id="s3">
+  <div class="cap"><span class="n">03</span><span class="t">/register — opening a house, first leaf: the keeper</span><span class="w">reads · POST /auth/check-email</span></div>
+  <div class="stage"><div class="leaf">
+    <span class="folio">Register · 1 of 2</span>
+    <div class="leaf-inner">
+      <h2>Who keeps this book?</h2>
+      <p class="lede2">Your restaurant comes next.</p>
+      <div class="fgroup"><label for="a-cn">Full name</label><input class="field" id="a-cn" value="Defne Aydın" aria-label="Full name"></div>
+      <div class="fgroup"><label for="a-ce">Email</label><input class="field" id="a-ce" type="email" value="defne@meyhane.com" aria-label="Email"></div>
+      <div class="row2">
+        <div class="fgroup"><label for="a-cp">Password</label><input class="field" id="a-cp" type="password" value="••••••••••" aria-label="Password"></div>
+        <div class="fgroup"><label for="a-cc">Confirm password</label><input class="field" id="a-cc" type="password" value="••••••••••" aria-label="Confirm password"></div>
+      </div>
+      <button class="btn" type="button">Continue →</button>
+      <p class="foot-line">Already have an account? <button class="word" type="button">Sign in</button></p>
+    </div>
+  </div></div>
+</section>
+<p class="cite">Same four fields as today's create path (<b>Register.tsx:791-903</b>) — no sign-up with Google exists yet (<b>auth.service.ts:1629-1656</b> resolves an existing address only), so the door stays typed-only here, stated rather than hidden.</p>
+
+<!-- 04 · REGISTER — the house, with currency -->
+<section class="frame" id="s4">
+  <div class="cap"><span class="n">04</span><span class="t">/register — the house, second leaf: what it's called, where, and what it reports in</span><span class="w">writes · POST /auth/register/restaurant</span></div>
+  <div class="stage"><div class="leaf" style="width:680px">
+    <span class="folio">Register · 2 of 2</span>
+    <div class="leaf-inner">
+      <h2>What house is this?</h2>
+      <p class="lede2">Read once; nothing here is converted later.</p>
+      <div class="fgroup"><label for="a-rn">Restaurant name</label><input class="field" id="a-rn" value="Lokanta Meyhane" aria-label="Restaurant name"></div>
+      <div class="row2">
+        <div class="fgroup"><label for="a-rc">Cuisine</label><input class="field" id="a-rc" value="Meyhane" placeholder="Optional" aria-label="Cuisine"></div>
+        <div class="fgroup"><label for="a-rco">Country</label><span class="v sel" style="display:block"><select class="field" id="a-rco" aria-label="Country"><option>Türkiye</option></select></span></div>
+      </div>
+      <div class="fgroup"><label for="a-ra">Address</label><input class="field" id="a-ra" value="Asmalı Sk. 8, Beyoğlu, İstanbul" aria-label="Address"><p class="hint">Google Places — the point it resolves to is what the map uses.</p></div>
+      <div class="row2">
+        <div class="fgroup"><label for="a-rcity">City</label><input class="field" id="a-rcity" value="İstanbul" aria-label="City"></div>
+        <div class="fgroup"><label for="a-rst">District</label><input class="field" id="a-rst" value="Beyoğlu" aria-label="District"></div>
+      </div>
+      <div class="fgroup" style="border-top:1px solid var(--paper-2);padding-top:20px">
+        <label for="a-rcur">Currency</label>
+        <span class="sel" style="display:block"><select class="field" id="a-rcur" aria-label="Currency"><option>TRY — Turkish lira</option><option>EUR — Euro</option><option>USD — US dollar</option></select></span>
+        <p class="hint">Defaulted from Türkiye. We will record TRY. Each vendor invoice still keeps the currency it was billed in — nothing is converted.</p>
+      </div>
+      <div class="fgroup"><label for="a-rp">Phone</label><input class="field" id="a-rp" placeholder="+90 …" aria-label="Phone"><p class="hint">Optional</p></div>
+      <button class="btn" type="button">Create Restaurant →</button>
+      <button class="btn quiet" type="button" style="margin-top:12px">← Back</button>
+    </div>
+  </div></div>
+</section>
+<p class="cite">Today's three sub-screens — name/cuisine/country, address/city/state/postal/neighbourhood, currency+phone (<b>Register.tsx:1150-1430</b>, <b>restaurantSection</b> 1-3) — drawn here as one flowing leaf; every field survives, none renamed. Currency statement is <b>CurrencyStep.tsx:44-50</b> verbatim: a stated default, "not yet" records nothing, never a silent USD.</p>
+
+<!-- 05 · REGISTER — joining a house -->
+<section class="frame" id="s5">
+  <div class="cap"><span class="n">05</span><span class="t">/register — joining a house: the code, read back, then the same four fields</span><span class="w">writes · POST /auth/join</span></div>
+  <div class="stage"><div class="leaf">
+    <span class="folio">Join</span>
+    <div class="leaf-inner">
+      <h2>Be entered in a book that exists.</h2>
+      <p class="lede2">The code names the house before you have an account.</p>
+      <label for="a-ic" style="display:block;font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:0 0 8px">Invite code</label>
+      <div class="code" aria-label="Invite code K7M2Q9RD"><span class="on">K</span><span class="on">7</span><span class="on">M</span><span class="on">2</span><span class="on">Q</span><span class="on">9</span><span class="on">R</span><span class="on">D</span></div>
+      <p class="readback">Defne is expecting you at Lokanta Meyhane <em>— as a manager.</em></p>
+      <div class="fgroup"><label for="a-jn">Full name</label><input class="field" id="a-jn" value="Hasan Yıldız" aria-label="Full name"></div>
+      <div class="fgroup"><label for="a-je">Email</label><input class="field" id="a-je" type="email" value="hasan@meyhane.com" aria-label="Email"></div>
+      <div class="row2">
+        <div class="fgroup"><label for="a-jp">Password</label><input class="field" id="a-jp" type="password" value="••••••••••" aria-label="Password"></div>
+        <div class="fgroup"><label for="a-jc">Confirm password</label><input class="field" id="a-jc" type="password" value="••••••••••" aria-label="Confirm password"></div>
+      </div>
+      <button class="btn" type="button">Join Restaurant</button>
+    </div>
+  </div></div>
+</section>
+<p class="cite">Code validated 400ms after the last keystroke (<b>Register.tsx:219-242</b>); an expired or already-used code replaces the read-back with the reason rather than a blank field. Join, like create, has no Google road today.</p>
+
+<!-- 06 · ERROR — wrong password -->
+<section class="frame" id="s6">
+  <div class="cap"><span class="n">06</span><span class="t">error — the password did not match</span><span class="w">401 · Invalid credentials</span></div>
+  <div class="stage"><div class="leaf">
+    <span class="folio">Sign in</span>
+    <div class="leaf-inner">
+      <h2>Welcome back.</h2>
+      <p class="lede2">Your house keeps its book here.</p>
+      <div class="msg err"><b>That password did not match.</b>Check it and try again, or reset it below.</div>
+      <div class="chip-row"><b>defne@meyhane.com</b><button class="word" type="button">Change</button></div>
+      <div class="fgroup"><label for="a-ep">Password</label><input class="field" id="a-ep" type="password" value="" placeholder="••••••••" aria-label="Password" style="border-bottom-color:var(--rust)"></div>
+      <div class="row-between"><button class="word" type="button">Forgot password?</button></div>
+      <button class="btn" type="button">Sign In</button>
+    </div>
+  </div></div>
+</section>
+<p class="cite">The server answers <b>401 Invalid credentials</b> for a wrong password and for an unknown address alike (<b>auth.service.ts:206,268</b>) — an enumeration guard, not an omission. The page shows only "that password did not match"; it does not say whether the address itself exists.</p>
+
+<!-- 07 · ERROR — locked out / 429 -->
+<section class="frame" id="s7">
+  <div class="cap"><span class="n">07</span><span class="t">error — too many attempts from this network</span><span class="w">429 · Too many requests</span></div>
+  <div class="stage"><div class="leaf">
+    <span class="folio">Sign in</span>
+    <div class="leaf-inner">
+      <h2>Welcome back.</h2>
+      <p class="lede2">Your house keeps its book here.</p>
+      <div class="msg warn"><b>Too many tries — wait a moment.</b>This address has been checked too many times from this connection. Try again in 6 minutes.</div>
+      <div class="fgroup"><label for="a-le">Email address</label><input class="field" id="a-le" type="email" value="defne@meyhane.com" aria-label="Email Address" disabled></div>
+      <button class="btn" type="button" disabled>Continue</button>
+    </div>
+  </div></div>
+</section>
+<p class="cite">Real limit, not invented: <b>10 requests / 10 min</b>, per network, in-memory per gateway instance (<b>rate-limit.guard.ts:181-191</b>, <b>auth.controller.ts:520</b>). Not an account lock — the same address signs in cleanly from another network, or from this one once the window resets (<b>X-RateLimit-Reset</b>). "6 minutes" reads the header; no such copy exists today.</p>
+
+<!-- 08 · LOADING -->
+<section class="frame" id="s8">
+  <div class="cap"><span class="n">08</span><span class="t">loading — the request is in flight</span><span class="w">Login.tsx:346-350</span></div>
+  <div class="stage"><div class="leaf">
+    <span class="folio">Sign in</span>
+    <div class="leaf-inner">
+      <h2>Welcome back.</h2>
+      <p class="lede2">Your house keeps its book here.</p>
+      <div class="chip-row"><b>defne@meyhane.com</b><button class="word" type="button" disabled style="color:var(--ink-3);text-decoration:none">Change</button></div>
+      <div class="fgroup"><label for="a-lp">Password</label><input class="field" id="a-lp" type="password" value="••••••••" aria-label="Password" disabled></div>
+      <button class="btn" type="button" disabled><span class="spin"></span>Signing in…</button>
+    </div>
+  </div></div>
+</section>
+<p class="cite">One spinner, one word changed ("Sign In" → "Signing in…") — the same affordance the app already uses on every submit (<b>Button</b> component), only re-inked. Register's own loading states read "Creating your restaurant…" (<b>Register.tsx:1417-1422</b>) and "Joining…" (<b>:748-752</b>).</p>
+
+<!-- 09 · GOOGLE-ONLY ACCOUNT -->
+<section class="frame" id="s9">
+  <div class="cap"><span class="n">09</span><span class="t">a Google-only account — no password exists to type</span><span class="w">methods = [google]</span></div>
+  <div class="stage"><div class="leaf">
+    <span class="folio">Sign in</span>
+    <div class="leaf-inner">
+      <h2>Welcome back.</h2>
+      <p class="lede2">Your house keeps its book here.</p>
+      <div class="chip-row"><b>hasan@gmail.com</b><button class="word" type="button">Change</button></div>
+      <p class="hint" style="margin:0 0 18px">This address signs in with Google only — there is no password to type.</p>
+      <button class="gbtn" type="button">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign in with Google
+      </button>
+      <div class="unavailable" style="margin-top:18px">A Microsoft account is also linked to this address, but Microsoft has no button on this page yet.</div>
+    </div>
+  </div></div>
+</section>
+<p class="cite">Real branch: <b>showPassword=false, showGoogle=true</b> when the identity's only method is Google (<b>Login.tsx:166-168</b>). The Microsoft row only appears for an address with a real linked-but-unrenderable provider (<b>identity.unavailable</b>, <b>Login.tsx:369-385</b>) — off by default (<b>SHOW_DECLARED_PROVIDERS = false</b>, :59), never a standing dead row.</p>
+
+<!-- 10 · 390 MOBILE -->
+<section class="frame" id="s10">
+  <div class="cap"><span class="n">10</span><span class="t">390 · the same leaf, standing width</span><span class="w">no second breakpoint of its own</span></div>
+  <div class="stage mobile-stage"><div class="phone-shell">
+    <div class="leaf" style="width:100%;box-shadow:none;border:0;padding:28px 22px 26px">
+      <span class="folio" style="position:static;display:block;margin-bottom:18px">Sign in</span>
+      <div class="leaf-inner" style="padding-left:0">
+        <h2 style="font-size:23px">Welcome back.</h2>
+        <p class="lede2" style="margin-bottom:22px">Your house keeps its book here.</p>
+        <div class="fgroup"><label for="a-me">Email address</label><input class="field" id="a-me" type="email" value="defne@meyhane.com" aria-label="Email Address"></div>
+        <button class="btn" type="button">Continue →</button>
+      </div>
+    </div>
+  </div></div>
+</section>
+<p class="cite">The leaf drops its border and shadow under 480px and the ruled lines carry the page instead — no separate mobile composition to maintain (today's pages already collapse this way; only the ink changes). Rendered at 390×844.</p>
+
+</div>
+<script>
+(function(){
+  var body=document.querySelector('.mudavym');
+  document.querySelectorAll('.ground button').forEach(function(b){
+    b.addEventListener('click',function(){
+      var g=b.getAttribute('data-g');
+      body.setAttribute('data-ground',g);
+      document.querySelectorAll('.ground button').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});
+    });
+  });
+})();
+</script>
+</body>
+</html>

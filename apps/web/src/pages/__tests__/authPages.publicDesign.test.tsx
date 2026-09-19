@@ -24,6 +24,20 @@
  * form. Two claims are read from source instead of a render: every house-side
  * class string in the three files, including states no test drives (claim 4),
  * and the stylesheet, which jsdom does not resolve (claim 5).
+ *
+ * UPDATED for sketch 118, Direction B (the endpaper — `EndpaperShell.tsx`).
+ * ADR 0143's own row 35 bracket (2026-09-17) names exactly these two pages
+ * and "reopens its own colour-only reading" for them specifically, so claim 3
+ * ("nothing moves") no longer holds by construction once the endpaper ships:
+ * the ON tree is now a two-column book, not a re-inked copy of the OFF card.
+ * What claim 3 is FOR — proving the switch never touches a FIELD, only how
+ * the page is dressed — still matters and is re-asserted below by comparing
+ * the labelled controls each tree exposes, not by comparing the whole tree.
+ * Claims 1, 2, 4 and 5 are untouched: OFF is still byte-identical to today
+ * (claim 1 passes unmodified), and the fields inside the leaf still take
+ * their colour only from tokens (claim 2, minus the now-intentional
+ * `data-ground="paper"` on the root — every other rebuilt page states its
+ * own ground the same way, `lib/mudavym/shellGround.ts`).
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -348,9 +362,6 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
 
 const LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(rgba?|hsla?)\(/
 
-/** The switch itself: the token scope and the page's stylesheet hook. */
-const HOUSE_SCOPE = new Set(['mudavym', 'mdv-auth'])
-
 /**
  * True when a utility class changes only paint — colour, shadow, focus ring,
  * outline, opacity — and never position, size, spacing or type. These are the
@@ -388,42 +399,28 @@ export function isColourClass(token: string): boolean {
   return false
 }
 
-function classTokens(el: Element): string[] {
-  return (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
-}
-
-/** Inline declarations with the paint ones removed. */
-function layoutStyle(el: Element): string {
-  return (el.getAttribute('style') ?? '')
-    .split(';')
-    .map((d) => d.trim())
-    .filter(Boolean)
-    .filter((d) => !/^(box-shadow|background|background-color|background-image|color|border-color|outline|opacity)\s*:/.test(d))
-    .join('; ')
-}
-
-/** A structural fingerprint of a tree: everything except paint. */
-function fingerprint(root: Element): string[] {
-  const out: string[] = []
-  const walk = (el: Element, depth: number) => {
-    const attrs = Array.from(el.attributes)
-      .filter((a) => a.name !== 'class' && a.name !== 'style')
-      .map((a) => `${a.name}=${a.value}`)
-      .sort()
-    const layout = classTokens(el)
-      .filter((t) => !isColourClass(t) && !HOUSE_SCOPE.has(t))
-      .sort()
-    const ownText = Array.from(el.childNodes)
-      .filter((n) => n.nodeType === 3)
-      .map((n) => n.textContent)
-      .join('')
-    out.push(
-      `${'  '.repeat(depth)}<${el.tagName.toLowerCase()} ${attrs.join(' ')}> [${layout.join(' ')}] {${layoutStyle(el)}} "${ownText}"`,
-    )
-    Array.from(el.children).forEach((c) => walk(c, depth + 1))
-  }
-  walk(root, 0)
-  return out
+/**
+ * A field-level signature: which controls exist, in what order, with what
+ * identity — tag, id, type, name/label, required, disabled, and (for
+ * anything that is not a password) its current value. This is "same fields
+ * and flow" (ADR 0143 row 35's own words, and the sketch 118 README's)
+ * turned into something a test can check: not that no pixel differs
+ * (claim 3, pre-endpaper), but that no field was renamed, reordered, added
+ * or dropped when the chrome around it changed to the book. Deliberately
+ * blind to class/style — that is claim 2's job, above.
+ */
+function fieldSignature(root: Element): string[] {
+  return Array.from(root.querySelectorAll('input, select, textarea, button')).map((el) => {
+    const tag = el.tagName.toLowerCase()
+    const id = el.getAttribute('id') ?? ''
+    const type = el.getAttribute('type') ?? ''
+    const label = el.getAttribute('aria-label') ?? el.getAttribute('name') ?? ''
+    const required = el.hasAttribute('required')
+    const disabled = el.hasAttribute('disabled')
+    const value = type === 'password' ? '' : (el as HTMLInputElement | HTMLSelectElement).value ?? ''
+    const text = tag === 'button' ? (el.textContent ?? '').replace(/\s+/g, ' ').trim() : ''
+    return `<${tag}#${id} type=${type} name=${label} required=${required} disabled=${disabled}> "${text}" =${value}`
+  })
 }
 
 /* ── 1. OFF is today's page ─────────────────────────────────────────────── */
@@ -458,7 +455,10 @@ describe('public switch ON — the house, from tokens', () => {
     // page — and no `data-ground`, so the page follows the visitor's theme.
     expect(scopes[0]).toBe(container.firstElementChild)
     expect(scopes[0]).toHaveClass('mdv-auth')
-    expect(scopes[0].hasAttribute('data-ground')).toBe(false)
+    // The endpaper states its own ground (paper), same convention as every
+    // other rebuilt page (`shellGround.ts`) — mudavym.css's bare `.mudavym`
+    // resolves to Warm Charcoal now, so paper needs the explicit escape.
+    expect(scopes[0].getAttribute('data-ground')).toBe('paper')
     expect(scopes[0]).not.toHaveClass('bg-[#FAF7F5]')
   })
 
@@ -474,13 +474,13 @@ describe('public switch ON — the house, from tokens', () => {
 
 /* ── 3. Nothing moves ───────────────────────────────────────────────────── */
 
-describe('the switch changes paint and nothing else', () => {
-  it.each(STATES)('$name: same elements, order, text, attributes and layout classes', async ({ reach }) => {
+describe('the switch changes the chrome, never the fields', () => {
+  it.each(STATES)('$name: the same controls, in the same order, both switch positions', async ({ reach }) => {
     setSwitch(false)
-    const off = fingerprint((await reach()).firstElementChild as Element)
+    const off = fieldSignature(await reach())
     cleanup()
     setSwitch(true)
-    const on = fingerprint((await reach()).firstElementChild as Element)
+    const on = fieldSignature(await reach())
     expect(on).toEqual(off)
   })
 

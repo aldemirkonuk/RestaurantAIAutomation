@@ -126,6 +126,19 @@ Secondary gaps:
 
 **Should be:** two unambiguous doors — join an existing workspace, or open a new one — neither of which tells an anonymous visitor anything about addresses they did not already control.
 
+**2026-09-19 — sketch 118 Direction B built** (the founder's pick over the README's A; ADR 0149 row 35). `on === true` now
+renders `EndpaperShell` (`components/brand/EndpaperShell.tsx`) around the same
+path/step state machine (`Register.tsx:66-1500`, untouched — same fields, same
+`path`/`pathAStep`/`pathBStep`/`restaurantSection`). One deliberate scope-trim:
+the door (§"Whose book is this?") keeps today's two feature cards
+(`Register.tsx:254-352`) rather than the sketch's plainer two-button redraw of
+that one screen — a bigger, separately-reviewable change, not a field. The
+restaurant-details step (`restaurantSection` 1–3, `Register.tsx:1064-1433`)
+keeps its existing rail+panel sub-navigation inside a wider leaf, rather than
+the sketch's single flowing form — the sketch's own README says it "does not
+commit to how [that] leaf/book chrome would repeat three times". Join step 2 and
+create step 2 need the api-gateway, so they are covered by vitest only.
+
 | State | Handled? | Evidence |
 |---|---|---|
 | Empty | n/a | — |
