@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { EndpaperShell } from './EndpaperShell'
 
 /**
@@ -192,6 +192,65 @@ describe('EndpaperShell', () => {
       expect(calls[0].el).toBe(container.querySelector('.mdv-ep-leaf-inner'))
       expect(calls[0].options.duration).toBe(420)
       expect(container.querySelector('.mdv-ep-endpaper')?.contains(calls[0].el)).toBe(false)
+    })
+  })
+
+  /*
+   * The front matter (/login's Easter egg; founder 2026-09-19, sketch 118
+   * front-matter.html Direction 1). jsdom has no Web Animations, so the turn
+   * lands at once; what is under test is where the page lands, what stays
+   * alive underneath, and where focus goes.
+   */
+  describe('the front matter', () => {
+    const TURN = 'Turn back to the front of the book'
+
+    it('is not there unless asked for — /register and every other caller get a plain endpaper', () => {
+      render(
+        <EndpaperShell kicker="k" houseLine="h">
+          <p>x</p>
+        </EndpaperShell>,
+      )
+      expect(screen.queryByRole('button', { name: TURN })).toBeNull()
+    })
+
+    it('turns to the inside cover and the poem, keeps what was typed, and gives focus to the poem', () => {
+      const { container } = render(
+        <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+          <input aria-label="Email address" />
+        </EndpaperShell>,
+      )
+      fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'defne@meyhane.test' } })
+      const turn = screen.getByRole('button', { name: TURN })
+      expect(turn).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(turn)
+
+      const title = screen.getByRole('heading', { name: 'Every house keeps a book.' })
+      expect(document.activeElement).toBe(title)
+      expect(screen.getAllByText('müdavim').length).toBeGreaterThan(0)
+      expect(screen.getByText('Front matter')).toBeInTheDocument()
+      expect(container.querySelector('.mdv-ep-leaf-inner')).toHaveAttribute('inert')
+      expect(turn).toHaveAttribute('aria-expanded', 'true')
+      // the sign-in is covered, not unmounted: the typed address is still there
+      expect(screen.getByLabelText('Email address')).toHaveValue('defne@meyhane.test')
+    })
+
+    it('turns back on Escape and on its own link, returning focus to the endpaper', () => {
+      const { container } = render(
+        <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+          <input aria-label="Email address" />
+        </EndpaperShell>,
+      )
+      const turn = screen.getByRole('button', { name: TURN })
+      fireEvent.click(turn)
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.queryByRole('heading', { name: 'Every house keeps a book.' })).toBeNull()
+      expect(screen.getByText('Sign in')).toBeInTheDocument()
+      expect(container.querySelector('.mdv-ep-leaf-inner')).not.toHaveAttribute('inert')
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: TURN }))
+
+      fireEvent.click(screen.getByRole('button', { name: TURN }))
+      fireEvent.click(screen.getByRole('button', { name: 'Turn back to sign in →' }))
+      expect(screen.queryByRole('heading', { name: 'Every house keeps a book.' })).toBeNull()
     })
   })
 })

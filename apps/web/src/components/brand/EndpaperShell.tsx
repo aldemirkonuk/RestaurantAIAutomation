@@ -1,7 +1,8 @@
-import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Seal } from '../mudavym/Seal'
 import { MarkDraws } from '../mudavym/MarkDraws'
-import { animate, ink, turn } from '../../lib/mudavym/motion'
+import { animate, ink, prefersReducedMotion, turn, type MotionToken } from '../../lib/mudavym/motion'
+import { FrontMatterPoem, InsideCover } from './FrontMatter'
 import { cn } from '../../lib/utils'
 import './endpaper.css'
 
@@ -11,6 +12,18 @@ import './endpaper.css'
  * to another leaf, not opening the book again.
  */
 let markHasDrawn = false
+
+/**
+ * A whole leaf turning over is twice the arc of a screen change, so it takes
+ * the house `turn` curve at a longer reach (the motion canvas's own "The page
+ * turns" rotates 92°; a full leaf is 180°).
+ */
+const LEAF_TURN: MotionToken = { easing: turn.easing, ms: 760 }
+
+/** Under 700px the endpaper is a band above the leaf (endpaper.css). */
+function isNarrow(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 700px)').matches
+}
 
 export interface EndpaperShellProps {
   /**
@@ -45,6 +58,15 @@ export interface EndpaperShellProps {
    */
   ground?: 'paper' | 'charcoal'
   className?: string
+  /**
+   * The Easter egg (/login only; founder, 2026-09-19): the endpaper becomes a
+   * page you can turn back, to the inside cover and a short poem about the
+   * book the house keeps. Nothing on the page advertises it — no dog-ear,
+   * no hint (his words: "not intrigued by that") — but it is a real button,
+   * reachable and named for keyboard and screen-reader users. The leaf's own
+   * content stays mounted underneath, so whatever was typed survives.
+   */
+  frontMatter?: boolean
 }
 
 /**
@@ -74,6 +96,7 @@ export function EndpaperShell({
   wide = false,
   ground = 'paper',
   className,
+  frontMatter = false,
 }: EndpaperShellProps) {
   const tileId = useId()
   const playRef = useRef<boolean | null>(null)
@@ -81,9 +104,118 @@ export function EndpaperShell({
   const play = playRef.current
 
   const kickerRef = useRef<HTMLSpanElement>(null)
-  const voiceRef = useRef<HTMLDivElement>(null)
+  const voiceRef = useRef<HTMLSpanElement>(null)
   const leafRef = useRef<HTMLDivElement>(null)
   const lastPage = useRef(pageKey)
+
+  // ── the front matter ────────────────────────────────────────────────────
+  // closed → opening → open → closing → closed. While turning, both spreads
+  // are mounted, and every swap is keyed to the leaf's own progress, never to
+  // the clock — so it stays hidden whatever the curve:
+  //   - the inside cover is what lies UNDER the endpaper, so it is there from
+  //     the first frame and the lifting leaf reveals it (and is covered again
+  //     only as the leaf lands back on it);
+  //   - the right page changes at the instant the leaf is edge-on (47%–53%),
+  //     a cut, not a dissolve (sketch 118 front-matter.html crossfades there).
+  const poemId = useId()
+  const [phase, setPhase] = useState<'closed' | 'opening' | 'open' | 'closing'>('closed')
+  const front = phase === 'open'
+  const shown = phase !== 'closed'
+  const sheetRef = useRef<HTMLDivElement>(null)
+  const versoRef = useRef<HTMLSpanElement>(null)
+  const turnRef = useRef<HTMLButtonElement>(null)
+  const coverRef = useRef<HTMLSpanElement>(null)
+  const poemTitleRef = useRef<HTMLHeadingElement>(null)
+  const poemRef = useRef<HTMLDivElement>(null)
+  const settledOnce = useRef(false)
+
+  const turnTo = useCallback((toFront: boolean) => {
+    setPhase((now) => {
+      if (now === 'opening' || now === 'closing') return now
+      if (toFront === (now === 'open')) return now
+      // Reduced motion and the phone band change the page in place; the band
+      // drops the poem over the form in the effect below instead of a leaf.
+      if (prefersReducedMotion() || isNarrow()) return toFront ? 'open' : 'closed'
+      return toFront ? 'opening' : 'closing'
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (phase !== 'opening' && phase !== 'closing') return
+    const opening = phase === 'opening'
+    const OUT = [{ opacity: 1 }, { opacity: 1, offset: 0.47 }, { opacity: 0, offset: 0.53 }, { opacity: 0 }]
+    const IN = [{ opacity: 0 }, { opacity: 0, offset: 0.47 }, { opacity: 1, offset: 0.53 }, { opacity: 1 }]
+    // under the leaf: shown throughout the lift, gone only as the leaf lands on it
+    const UNDER = opening ? [{ opacity: 1 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 1, offset: 0.97 }, { opacity: 0 }]
+    const OVER = opening ? [{ opacity: 0 }, { opacity: 0 }] : [{ opacity: 0 }, { opacity: 0, offset: 0.97 }, { opacity: 1 }]
+    const pairs: [Element | null, Keyframe[]][] = [
+      [
+        sheetRef.current,
+        opening
+          ? [{ transform: 'perspective(2400px) rotateY(0deg)' }, { transform: 'perspective(2400px) rotateY(-180deg)' }]
+          : [{ transform: 'perspective(2400px) rotateY(-180deg)' }, { transform: 'perspective(2400px) rotateY(0deg)' }],
+      ],
+      // the leaf's back fades as it lands on the page it is turning onto
+      [versoRef.current, opening ? [{ opacity: 1 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }] : [{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1 }]],
+      [leafRef.current, opening ? OUT : IN],
+      [poemRef.current, opening ? IN : OUT],
+      [turnRef.current, OVER],
+      [coverRef.current, UNDER],
+    ]
+    const runs = pairs.flatMap(([el, frames]) => (el ? [animate(el, frames, LEAF_TURN)] : []))
+    const settle = () => {
+      setPhase(opening ? 'open' : 'closed')
+      for (const run of runs) run?.cancel()
+    }
+    if (runs.length === 0 || runs.some((run) => !run)) {
+      settle()
+      return
+    }
+    const done = window.setTimeout(settle, LEAF_TURN.ms)
+    return () => window.clearTimeout(done)
+  }, [phase])
+
+  // The leaf under the poem is inert while it is covered, so nothing hidden
+  // can take focus; focus follows the page — the poem's title when the front
+  // matter lands, the endpaper again when the book turns back.
+  useEffect(() => {
+    const leafContent = leafRef.current
+    if (leafContent) {
+      if (shown) leafContent.setAttribute('inert', '')
+      else leafContent.removeAttribute('inert')
+    }
+    if (phase !== 'open' && phase !== 'closed') return
+    if (!settledOnce.current && phase === 'closed') return
+    settledOnce.current = true
+    if (phase === 'open') {
+      if (isNarrow() && poemRef.current) {
+        animate(
+          poemRef.current,
+          [
+            { transform: 'perspective(1400px) rotateX(-70deg)', opacity: 0.2 },
+            { transform: 'perspective(1400px) rotateX(0deg)', opacity: 1 },
+          ],
+          turn,
+          { fill: 'none' },
+        )
+      }
+      poemTitleRef.current?.focus({ preventScroll: true })
+    } else {
+      turnRef.current?.focus({ preventScroll: true })
+    }
+  }, [phase, shown])
+
+  useEffect(() => {
+    if (!front) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        turnTo(false)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [front, turnTo])
 
   useEffect(() => {
     markHasDrawn = true
@@ -114,6 +246,21 @@ export function EndpaperShell({
     )
   }, [pageKey])
 
+  const endpaperFace = (
+    <>
+      <span className="mdv-ep-top">
+        <span className="mdv-ep-kicker" ref={kickerRef}>
+          {kicker}
+        </span>
+        <MarkDraws size={26} play={play} className="mdv-ep-wordmark" />
+      </span>
+      <span className="mdv-ep-body" ref={voiceRef}>
+        <span className="mdv-ep-house">{houseLine}</span>
+        {tag && <span className="mdv-ep-tagline">{tag}</span>}
+      </span>
+    </>
+  )
+
   return (
     <div
       className="mdv-auth mudavym mdv-endpaper"
@@ -121,7 +268,7 @@ export function EndpaperShell({
     >
       <div className={cn('mdv-ep-stage', wide && 'mdv-ep-stage--wide')}>
         <div className={cn('mdv-ep-book', wide && 'mdv-ep-book--wide', className)}>
-          <div className="mdv-ep-endpaper">
+          <div className="mdv-ep-endpaper" data-front={front ? '' : undefined}>
             <svg className="mdv-ep-tile" aria-hidden="true">
               <defs>
                 <pattern id={tileId} width="112" height="112" patternUnits="userSpaceOnUse">
@@ -135,23 +282,61 @@ export function EndpaperShell({
               </defs>
               <rect width="100%" height="100%" fill={`url(#${tileId})`} />
             </svg>
-            <div className="mdv-ep-top">
-              <span className="mdv-ep-kicker" ref={kickerRef}>
-                {kicker}
+            {frontMatter ? (
+              <button
+                type="button"
+                ref={turnRef}
+                className="mdv-ep-turn"
+                aria-label={front ? 'Turn back to sign in' : 'Turn back to the front of the book'}
+                aria-expanded={front}
+                aria-controls={poemId}
+                data-endpaper-chrome=""
+                onClick={() => turnTo(!front)}
+              >
+                {endpaperFace}
+              </button>
+            ) : (
+              endpaperFace
+            )}
+            {frontMatter && shown && (
+              <span className="mdv-ep-cover-in" ref={coverRef}>
+                <InsideCover />
               </span>
-              <MarkDraws size={26} play={play} className="mdv-ep-wordmark" />
-            </div>
-            <div className="mdv-ep-body" ref={voiceRef}>
-              <span className="mdv-ep-house">{houseLine}</span>
-              {tag && <span className="mdv-ep-tagline">{tag}</span>}
-            </div>
+            )}
           </div>
-          <div className="mdv-ep-leaf">
-            {folio && <span className="mdv-ep-folio">{folio}</span>}
+          <div className="mdv-ep-leaf" data-front={front ? '' : undefined}>
+            {(phase === 'opening' || front ? 'Front matter' : folio) && (
+              <span className="mdv-ep-folio">{phase === 'opening' || front ? 'Front matter' : folio}</span>
+            )}
             <div className="mdv-ep-leaf-inner" ref={leafRef}>
               {children}
             </div>
+            {frontMatter && shown && (
+              <div id={poemId} ref={poemRef} className="mdv-ep-poem-page" data-endpaper-chrome="">
+                <FrontMatterPoem id={poemId} ref={poemTitleRef} onBack={() => turnTo(false)} />
+              </div>
+            )}
           </div>
+          {(phase === 'opening' || phase === 'closing') && (
+            <div ref={sheetRef} className="mdv-ep-sheet" aria-hidden="true">
+              {/* The leaf's recto is the endpaper as it stands, so the turn
+                  starts from exactly what was on the page. */}
+              <span className="mdv-ep-sheet-face mdv-ep-sheet-face--recto">
+                <svg className="mdv-ep-tile">
+                  <rect width="100%" height="100%" fill={`url(#${tileId})`} />
+                </svg>
+                <span className="mdv-ep-top">
+                  <span className="mdv-ep-kicker">{kicker}</span>
+                  <MarkDraws size={26} play={false} className="mdv-ep-wordmark" />
+                </span>
+                <span className="mdv-ep-body">
+                  <span className="mdv-ep-house">{houseLine}</span>
+                  {tag && <span className="mdv-ep-tagline">{tag}</span>}
+                </span>
+              </span>
+              <span className="mdv-ep-sheet-face mdv-ep-sheet-face--verso" ref={versoRef} />
+            </div>
+          )}
         </div>
         <p className="mdv-ep-colophon">© 2026 Mudavym. All rights reserved.</p>
       </div>

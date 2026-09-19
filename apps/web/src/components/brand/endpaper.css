@@ -352,6 +352,185 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
   --mdv-ep-code-rule: var(--seal-deep);
 }
 
+/* ── the front matter (/login only) ──────────────────────────────────────
+   The Easter egg, sketch 118 front-matter.html Direction 1 (founder,
+   2026-09-19). The endpaper is a real button, and nothing about it says so:
+   no dog-ear, no hover lift, no pointer ("not intrigued by that"). Only a
+   keyboard focus ring gives it away, because a focusable control must show
+   where focus is. */
+
+.mdv-ep-turn {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  margin: -40px -34px;
+  padding: 40px 34px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.mdv-ep-turn:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -8px;
+}
+.mdv-ep-endpaper[data-front] .mdv-ep-turn {
+  visibility: hidden;
+}
+
+/* the inside front cover: the word the product is named for */
+.mdv-ep-cover-in {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px 34px;
+}
+.mdv-ep-cover-card {
+  display: block;
+  background: var(--paper-1);
+  padding: 24px 24px 26px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink-3) 20%, transparent);
+}
+.mdv-ep-cover-word {
+  display: block;
+  font: italic 400 54px/1 'Fraunces', Georgia, serif;
+  letter-spacing: -0.02em;
+  color: var(--ink-1);
+}
+.mdv-ep-cover-rule {
+  display: block;
+  width: 28px;
+  border-top: 2px solid var(--seal);
+  margin: 18px 0 14px;
+}
+.mdv-ep-cover-def {
+  display: block;
+  font: 400 16px/25px 'Fraunces', Georgia, serif;
+  color: var(--ink-2);
+}
+.mdv-ep-cover-pos {
+  font-style: italic;
+  color: var(--ink-3);
+  margin-right: 2px;
+}
+.mdv-ep-cover-card--inline {
+  display: none;
+}
+
+/* the front-matter page shares the leaf's cell with the sign-in content,
+   which stays mounted (and inert) underneath so nothing typed is lost */
+.mdv-endpaper .mdv-ep-leaf {
+  display: grid;
+}
+.mdv-ep-leaf-inner,
+.mdv-ep-poem-page {
+  grid-area: 1 / 1;
+}
+.mdv-ep-leaf[data-front] > .mdv-ep-leaf-inner {
+  visibility: hidden;
+}
+.mdv-ep-poem-page {
+  position: relative;
+  padding-left: 6px;
+  transform-origin: 50% 0;
+}
+.mdv-ep-poem-title {
+  font: 600 25px/28px 'Fraunces', Georgia, serif;
+  letter-spacing: -0.01em;
+  margin: 0 0 28px;
+  color: var(--ink-1);
+  background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--mdv-ep-rule) calc(100% - 1px));
+  background-size: 100% 28px;
+}
+.mdv-ep-poem-title:focus {
+  outline: none;
+}
+.mdv-ep-poem-title:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 4px;
+}
+.mdv-ep-stanza {
+  margin: 0 0 28px;
+  font: 400 15.5px/28px 'Fraunces', Georgia, serif;
+  color: var(--ink-1);
+}
+.mdv-ep-line {
+  display: block;
+  background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--mdv-ep-rule) calc(100% - 1px));
+  /* one rule per written line, so a line that wraps on a phone rests on two */
+  background-size: 100% 28px;
+}
+.mdv-ep-line--in {
+  padding-left: 1.4em;
+}
+.mdv-ep-stanza--closing {
+  font-style: italic;
+  color: var(--ink-2);
+}
+.mdv-ep-poem-back {
+  margin: 0;
+  text-align: right;
+}
+.mdv-ep-poem-back button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  font: 500 13px/28px 'DM Sans', system-ui, sans-serif;
+  color: var(--seal);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.mdv-ep-poem-back button:hover {
+  color: var(--seal-deep);
+}
+
+/* the leaf in mid-turn: hinged at the gutter, two faces */
+.mdv-ep-sheet {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 340px;
+  z-index: 5;
+  transform-origin: 100% 50%;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+.mdv-ep-sheet-face {
+  position: absolute;
+  inset: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  overflow: hidden;
+}
+.mdv-ep-sheet-face--recto {
+  display: flex;
+  flex-direction: column;
+  padding: 40px 34px;
+  background: var(--paper-1);
+}
+.mdv-ep-sheet-face--recto > .mdv-ep-top,
+.mdv-ep-sheet-face--recto > .mdv-ep-body {
+  position: relative;
+  z-index: 1;
+}
+.mdv-ep-sheet-face--verso {
+  transform: rotateY(180deg);
+  background: linear-gradient(to left, color-mix(in srgb, var(--ink-1) 7%, var(--paper-0)), var(--paper-0) 30%);
+  box-shadow: 0 0 0 1px var(--paper-2);
+}
+
 /* ── narrow viewport: the endpaper becomes a band above the leaf ─────────
    Under 700px there is no room for two pages side by side, so the endpaper
    collapses to a band: kicker, then the wordmark, then the house line, each
@@ -404,5 +583,28 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
   .mdv-ep-folio {
     top: 12px;
     right: 16px;
+  }
+  /* the band is the button; on a phone the poem drops over the form and
+     carries the inside cover's word at its head */
+  .mdv-ep-turn {
+    margin: -18px -20px -20px;
+    padding: 18px 20px 20px;
+  }
+  .mdv-ep-endpaper[data-front] .mdv-ep-turn {
+    visibility: visible;
+  }
+  .mdv-ep-cover-in,
+  .mdv-ep-sheet {
+    display: none;
+  }
+  .mdv-ep-cover-card--inline {
+    display: block;
+    margin: 0 0 28px;
+  }
+  .mdv-ep-cover-word {
+    font-size: 44px;
+  }
+  .mdv-ep-poem-page {
+    padding-left: 0;
   }
 }
