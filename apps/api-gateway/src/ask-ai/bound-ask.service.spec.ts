@@ -14,6 +14,11 @@ import { BoundAskDto } from "./dto/bound-ask.dto";
 
 const HOUSE = "22222222-2222-4222-8222-222222222222";
 const USER = "11111111-1111-4111-8111-111111111111";
+// Every test above this file's role-gate `describe` block is about DISPOSITION
+// routing or the launch/validation gates, none of which a role can affect --
+// they all submit as OWNER so the new required parameter changes nothing
+// about what they were already proving.
+const OWNER = "owner";
 
 function pendingFolio(overrides: Partial<ReadingFolio> = {}): ReadingFolio {
   return {
@@ -40,13 +45,18 @@ function harness(configValues: Record<string, string> = { ASK_LAUNCHED: "true" }
     ...folio, status: failureReason ? "failed" : "complete", answer, finding: finding ?? null, failure_reason: failureReason ?? null,
   }));
   const folios = { begin, finish } as any;
-  const db = { getClient: () => ({}) } as any; // never touched by the not_built / no_reading_matched / model_knowledge paths
+  // Spied, not a bare arrow: the role-gate tests below prove a REFUSED
+  // reading never reaches the runner by asserting this was never called --
+  // the same "never touched" property the not_built / no_reading_matched /
+  // model_knowledge paths already had, extended to the new gate.
+  const getClient = jest.fn(() => ({}));
+  const db = { getClient } as any;
   // Every test below exercises submit()'s real behaviour, so the harness
   // defaults the launch gate ON; the gate itself is proven OFF-by-default
   // separately, below, with no override.
   const config = new ConfigService(configValues);
   const service = new BoundAskService(db, config, modelClient, nfVerdicts, folios);
-  return { service, call, begin, finish };
+  return { service, call, begin, finish, getClient };
 }
 
 function dto(overrides: Partial<BoundAskDto> = {}): BoundAskDto {
@@ -61,7 +71,7 @@ function dto(overrides: Partial<BoundAskDto> = {}): BoundAskDto {
 describe("BoundAskService.submit: refuses cleanly while /ask has no caller", () => {
   it("refuses with no ASK_LAUNCHED set at all -- production carries none today", async () => {
     const { service, begin, call } = harness({});
-    await expect(service.submit(HOUSE, USER, dto())).rejects.toMatchObject({ status: 503 });
+    await expect(service.submit(HOUSE, USER, OWNER, dto())).rejects.toMatchObject({ status: 503 });
     expect(begin).not.toHaveBeenCalled();
     expect(call).not.toHaveBeenCalled();
   });
@@ -69,7 +79,7 @@ describe("BoundAskService.submit: refuses cleanly while /ask has no caller", () 
   it("refuses on any value short of the exact string \"true\"", async () => {
     for (const value of ["false", "TRUE", "1", "yes"]) {
       const { service, begin, call } = harness({ ASK_LAUNCHED: value });
-      await expect(service.submit(HOUSE, USER, dto())).rejects.toMatchObject({ status: 503 });
+      await expect(service.submit(HOUSE, USER, OWNER, dto())).rejects.toMatchObject({ status: 503 });
       expect(begin).not.toHaveBeenCalled();
       expect(call).not.toHaveBeenCalled();
     }
@@ -77,14 +87,14 @@ describe("BoundAskService.submit: refuses cleanly while /ask has no caller", () 
 
   it("a request that would otherwise be malformed is still refused as unlaunched first, never as a 400", async () => {
     const { service, begin } = harness({});
-    await expect(service.submit(HOUSE, USER, dto({ utterance: "   " }))).rejects.toMatchObject({ status: 503 });
+    await expect(service.submit(HOUSE, USER, OWNER, dto({ utterance: "   " }))).rejects.toMatchObject({ status: 503 });
     expect(begin).not.toHaveBeenCalled();
   });
 
   it("submits normally once ASK_LAUNCHED=true, proving the gate is the only thing refusing it above", async () => {
     const { service, begin } = harness({ ASK_LAUNCHED: "true" });
     begin.mockResolvedValue({ created: false, folio: pendingFolio({ status: "complete" }) });
-    const result = await service.submit(HOUSE, USER, dto());
+    const result = await service.submit(HOUSE, USER, OWNER, dto());
     expect(result.status).toBe("complete");
   });
 });
@@ -92,19 +102,19 @@ describe("BoundAskService.submit: refuses cleanly while /ask has no caller", () 
 describe("BoundAskService.submit: request validation and idempotent replay", () => {
   it("refuses a blank utterance before touching the folio store", async () => {
     const { service, begin } = harness();
-    await expect(service.submit(HOUSE, USER, dto({ utterance: "   " }))).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.submit(HOUSE, USER, OWNER, dto({ utterance: "   " }))).rejects.toBeInstanceOf(BadRequestException);
     expect(begin).not.toHaveBeenCalled();
   });
 
   it("refuses a readingId that is not in the catalogue", async () => {
     const { service } = harness();
-    await expect(service.submit(HOUSE, USER, dto({ readingId: "not.a.real.reading" }))).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.submit(HOUSE, USER, OWNER, dto({ readingId: "not.a.real.reading" }))).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("a replayed request id never calls the model or finishes the folio again", async () => {
     const { service, begin, call, finish } = harness();
     begin.mockResolvedValue({ created: false, folio: pendingFolio({ status: "complete" }) });
-    const result = await service.submit(HOUSE, USER, dto());
+    const result = await service.submit(HOUSE, USER, OWNER, dto());
     expect(result.status).toBe("complete");
     expect(call).not.toHaveBeenCalled();
     expect(finish).not.toHaveBeenCalled();
@@ -116,7 +126,7 @@ describe("BoundAskService.submit: disposition routing", () => {
     const { service, begin, call, finish } = harness();
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "forecast" }));
-    await service.submit(HOUSE, USER, dto());
+    await service.submit(HOUSE, USER, OWNER, dto());
     expect(call).toHaveBeenCalledTimes(1); // the pick call only
     expect(finish.mock.calls[0][1]).toEqual({ kind: "not_built", reason: "unimplemented_question" });
   });
@@ -125,7 +135,7 @@ describe("BoundAskService.submit: disposition routing", () => {
     const { service, begin, call, finish } = harness();
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "unrecognized" }));
-    await service.submit(HOUSE, USER, dto());
+    await service.submit(HOUSE, USER, OWNER, dto());
     expect(finish.mock.calls[0][1]).toEqual({ kind: "no_reading_matched", reason: "no_matching_question" });
   });
 
@@ -134,7 +144,7 @@ describe("BoundAskService.submit: disposition routing", () => {
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));
     call.mockResolvedValueOnce(modelTextReply({ kind: "model_knowledge", text: "General wine knowledge." }));
-    await service.submit(HOUSE, USER, dto());
+    await service.submit(HOUSE, USER, OWNER, dto());
     expect(call).toHaveBeenCalledTimes(2);
     expect(finish.mock.calls[0][1]).toEqual({
       kind: "model_knowledge", source: "model_knowledge", sourceLabel: "Not from the house's books", text: "General wine knowledge.",
@@ -146,7 +156,7 @@ describe("BoundAskService.submit: disposition routing", () => {
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));
     call.mockResolvedValueOnce(modelTextReply({ kind: "model_knowledge", text: "ok" }));
-    await service.submit(HOUSE, USER, dto());
+    await service.submit(HOUSE, USER, OWNER, dto());
     for (const [options] of call.mock.calls) {
       expect(options.gateFirstAttempt).toBe(true);
       expect(options.retry).toBe(false);
@@ -159,7 +169,7 @@ describe("BoundAskService.submit: model-side failures are never a books claim (K
     const { service, begin, call, finish } = harness();
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockRejectedValueOnce(new ModelSpendCeilingError("over the daily allowance"));
-    await service.submit(HOUSE, USER, dto());
+    await service.submit(HOUSE, USER, OWNER, dto());
     expect(finish.mock.calls[0][1]).toEqual({ kind: "could_not_answer", reason: "spend_ceiling" });
     expect(finish.mock.calls[0][3]).toBe("spend_ceiling"); // failureReason persisted too
   });
@@ -168,7 +178,7 @@ describe("BoundAskService.submit: model-side failures are never a books claim (K
     const { service, begin, call, finish } = harness();
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockRejectedValueOnce(new Error("ETIMEDOUT"));
-    await service.submit(HOUSE, USER, dto());
+    await service.submit(HOUSE, USER, OWNER, dto());
     expect(finish.mock.calls[0][1]).toEqual({ kind: "could_not_answer", reason: "model_unavailable" });
   });
 
@@ -177,7 +187,7 @@ describe("BoundAskService.submit: model-side failures are never a books claim (K
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));
     call.mockResolvedValueOnce(modelTextReply({ kind: "model_knowledge", text: "" })); // fails bindKnowledgeReply
-    await service.submit(HOUSE, USER, dto());
+    await service.submit(HOUSE, USER, OWNER, dto());
     expect(finish.mock.calls[0][1]).toEqual({ kind: "could_not_answer", reason: "invalid_model_reply" });
   });
 
@@ -185,9 +195,84 @@ describe("BoundAskService.submit: model-side failures are never a books claim (K
     const { service, begin, call, finish } = harness();
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "not-a-real-class" }));
-    await service.submit(HOUSE, USER, dto());
+    await service.submit(HOUSE, USER, OWNER, dto());
     expect(call).toHaveBeenCalledTimes(1);
     expect(finish.mock.calls[0][1]).toEqual({ kind: "could_not_answer", reason: "invalid_model_reply" });
+  });
+});
+
+// Founder, batch 4, 2026-09-19, his words: "do not give money or sensitive
+// incentives like sales etc to the staff, maybe we should exclude staff from
+// this equation" -> price, vendor, open-order and sales readings are owner
+// and manager only, ENFORCED ON THE SERVER PER READING. Proven here at the
+// dispatch boundary (BoundAskService.submit); the exhaustive per-reading,
+// per-role matrix is proven in reading-catalogue.spec.ts.
+//
+// FAILING BEFORE THIS CHANGE: `submit` took no role parameter at all -- every
+// caller holding a valid JWT reached every one of the fifteen readings,
+// staff included. Restoring `submit(restaurantId, userId, input)` (drop the
+// `role` argument) and removing the `isReadingAllowedForRole` branch
+// reproduces that: a staff caller asking about "orders.open" reaches
+// `ReadingRunner` exactly like an owner does.
+describe("BoundAskService.submit: the role gate on price/vendor/open-order/sales readings (founder, batch 4, 2026-09-19)", () => {
+  it("staff asking a restricted reading (orders.open) is refused not_permitted, and the runner never touches the DB", async () => {
+    const { service, begin, call, finish, getClient } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "orders.open" }));
+    await service.submit(HOUSE, USER, "staff", dto());
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "owner_manager_only", readingId: "orders.open" });
+    expect(getClient).not.toHaveBeenCalled(); // zero DB cost for a refused reading
+    expect(call).toHaveBeenCalledTimes(1); // the pick call only -- no compose call either
+  });
+
+  it("owner asking the same restricted reading is NOT refused -- the gate lets it reach the runner", async () => {
+    const { service, begin, call, getClient } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "orders.open" }));
+    await service.submit(HOUSE, USER, "owner", dto());
+    expect(getClient).toHaveBeenCalled(); // reached ReadingRunner construction
+  });
+
+  it("manager asking the same restricted reading is also NOT refused", async () => {
+    const { service, begin, call, getClient } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "orders.open" }));
+    await service.submit(HOUSE, USER, "manager", dto());
+    expect(getClient).toHaveBeenCalled();
+  });
+
+  it("a null role (no membership row resolved) is refused a restricted reading -- fails closed, not open", async () => {
+    const { service, begin, call, finish, getClient } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "vendors.active" }));
+    await service.submit(HOUSE, USER, null, dto());
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "owner_manager_only", readingId: "vendors.active" });
+    expect(getClient).not.toHaveBeenCalled();
+  });
+
+  it("staff asking an OPEN reading (inventory.position) is unaffected -- the gate never widened to readings nobody asked to restrict", async () => {
+    const { service, begin, call, getClient } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "inventory.position" }));
+    await service.submit(HOUSE, USER, "staff", dto());
+    expect(getClient).toHaveBeenCalled(); // reached the runner, exactly like before this change
+  });
+
+  it("the gate applies identically when the page names the reading directly (readingId on the request), skipping the pick call entirely", async () => {
+    const { service, begin, call, finish, getClient } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio({ reading_id: "sales.check_activity" }) });
+    await service.submit(HOUSE, USER, "staff", dto({ readingId: "sales.check_activity" }));
+    expect(call).not.toHaveBeenCalled(); // no pick call at all for a page-chosen reading
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "owner_manager_only", readingId: "sales.check_activity" });
+    expect(getClient).not.toHaveBeenCalled();
+  });
+
+  it("a role refusal is folio-recorded as complete, not failed -- the system worked correctly, it did not error", async () => {
+    const { service, begin, call, finish } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "receipts.verified_line" }));
+    await service.submit(HOUSE, USER, "staff", dto());
+    expect(finish.mock.calls[0][3]).toBeUndefined(); // failureReason
   });
 });
 

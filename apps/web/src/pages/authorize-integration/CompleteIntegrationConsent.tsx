@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { PublicShell } from '../../components/mudavym/PublicShell'
+import { AuthorizeShell } from './AuthorizeShell'
 import { integrationsApi } from '../../services/api/integrations'
 import { forgetConsentBrowser, readConsentBrowser } from './consent-browser'
 
@@ -38,10 +38,16 @@ export default function CompleteIntegrationConsent() {
   }, [])
   // /connections is managers-only (KL audit J9/D9 residue): a staff person's
   // OWN grant lives on /profile, so the exit on a refusal goes there, same as
-  // PublicShell's own homeHref just below — never to a page some of the
+  // the shell's own homeHref just below — never to a page some of the
   // people who can land here are not allowed to open.
-  return <PublicShell title={error ? 'The permission did not finish' : 'Finishing your connection'} eyebrow="Returning from the provider" seal={false} homeHref="/profile">
+  //
+  // `chrome="own"` (the default): this route sits outside PageGate and
+  // ProtectedRoute (App.tsx) — the round trip "can outlast a session" — so
+  // there is no ambient masthead to defer to, and this shell decides its own
+  // design (per-house flag if a house is known, else the public-door switch;
+  // see AuthorizeShell.tsx).
+  return <AuthorizeShell title={error ? 'The permission did not finish' : 'Finishing your connection'} eyebrow="Returning from the provider" homeHref="/profile">
     {error ? <p role="alert" className="mdv-alert">{error}</p> : <p role="status">Checking this tab’s permission and recording the provider’s answer…</p>}
     {error && <a className="mdv-link" href="/profile">Open Profile</a>}
-  </PublicShell>
+  </AuthorizeShell>
 }

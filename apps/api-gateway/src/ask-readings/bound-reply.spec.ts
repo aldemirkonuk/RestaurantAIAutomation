@@ -4,6 +4,7 @@ import {
   findingReply,
   isBoundReply,
   modelFailureReply,
+  notPermittedReply,
 } from "./bound-reply";
 import { Finding } from "./reading.types";
 
@@ -95,6 +96,15 @@ describe("modelFailureReply: the model side never shares a shape with a book fac
   });
 });
 
+// Founder, batch 4, 2026-09-19: a reading a role is not permitted to read
+// never shares a shape with a books fact or a model failure -- it is its own
+// kind, decided before the runner exists, and it never carries a Finding.
+describe("notPermittedReply: a role refusal never claims the books were read", () => {
+  it("carries the refused reading's id and the one named reason, with no finding key at all", () => {
+    expect(notPermittedReply("vendors.active")).toEqual({ kind: "not_permitted", reason: "owner_manager_only", readingId: "vendors.active" });
+  });
+});
+
 describe("isBoundReply: a wire boundary that must never call a tampered shape complete", () => {
   it("accepts a real reading reply, and re-derives the same binding rather than trusting focus verbatim", () => {
     const f = finding();
@@ -125,5 +135,12 @@ describe("isBoundReply: a wire boundary that must never call a tampered shape co
     expect(isBoundReply({ kind: "made_up_kind", reason: "whatever" })).toBe(false);
     expect(isBoundReply(null)).toBe(false);
     expect(isBoundReply("a string")).toBe(false);
+  });
+
+  it("accepts not_permitted only for a real reading id, the one named reason, and no attached finding", () => {
+    expect(isBoundReply(notPermittedReply("orders.open"))).toBe(true);
+    expect(isBoundReply({ kind: "not_permitted", reason: "not_a_real_reason", readingId: "orders.open" })).toBe(false);
+    expect(isBoundReply({ kind: "not_permitted", reason: "owner_manager_only", readingId: "not.a.real.reading" })).toBe(false);
+    expect(isBoundReply({ kind: "not_permitted", reason: "owner_manager_only", readingId: "orders.open", finding: finding() })).toBe(false);
   });
 });

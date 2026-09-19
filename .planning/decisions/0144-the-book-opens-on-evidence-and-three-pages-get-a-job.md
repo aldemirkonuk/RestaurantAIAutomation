@@ -1,6 +1,6 @@
 # 0144 — The book opens on evidence, and three pages are given a job
 
-- **Status:** Locked on four founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 11, 13 and 16: the arrival's threshold, `/onboarding` redirect and tutorial action boxes; a correction to section 3's count of locked records; and the `/authorize` residue. Answered, not built. Each is a bracket at the sentence it touches.]**
+- **Status:** Locked on four founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 11, 13 and 16: the arrival's threshold, `/onboarding` redirect and tutorial action boxes; a correction to section 3's count of locked records; and the `/authorize` residue. Answered, not built. Each is a bracket at the sentence it touches.]** **[2026-09-19, founder batch 4, KL lane — three of the four residue items below answered and two built; see the Review trail and the bracket at each.]**
 - **Date:** 2026-09-12
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** mudavym, onboarding, folio zero, first evidence, help, vendor-prices, price register, promotions, offers, landed cost, design wave
@@ -262,17 +262,50 @@ the first fix round's judge, unchanged this round):**
   it"; the build binds to the TAB (`sessionStorage`), so a second tab of the
   same browser is refused. The D1 fix above is orthogonal to this question —
   it is about a second PERSON, not a second tab of one person.
+  **[CONFIRMED 2026-09-19, founder batch 4, his words: "provider grant = tab
+  scope OK." The build's narrower promise stands as built; no change made.]**
 - `/authorize` and `/authorize/complete` render on `PublicShell`, built for
   signed-OUT pages, for a signed-IN ceremony; `/authorize/complete` also
   ignores the house's design flag and the ADR 0133 public-door switch.
+  **[ANSWERED AND BUILT 2026-09-19, founder batch 4, his words: "/authorize
+  and /authorize/complete: do what's needed, not short term" -> give both
+  pages a proper signed-in frame that honours the design flag and the ADR
+  0133 public-door switch, instead of `PublicShell`. Built this round as
+  `AuthorizeShell`
+  (`apps/web/src/pages/authorize-integration/AuthorizeShell.tsx`): a house
+  known via `AuthContext` is gated on the per-house flag
+  (`useMudavymDesign('authorize_integration')`, the same flag
+  `/authorize/:integrationId` already carries via `PageGate`); no house known
+  (a lapsed session on the return leg) falls back to the ADR 0133 public-door
+  switch (`usePublicDesign`) rather than defaulting to legacy for an
+  unrelated reason. Flag/switch OFF still renders `PublicShell` unchanged --
+  byte for byte today's page. Flag ON renders a light, signed-in-capable
+  frame that never imports `DashboardLayout` or its sidebar nav, preserving
+  App.tsx's own reason for keeping this ceremony outside it ("a decision
+  point... sidebar navigation... would only offer ways to wander off
+  mid-grant"); `/authorize/:integrationId`'s Next component uses
+  `chrome="ambient"` (content only -- `PageGate` already mounts a
+  `HouseHeader` above it) so the redesign no longer draws two competing
+  signed-in mastheads on one screen, a defect this fix incidentally closes
+  along the way. No founder-reviewed sketch exists for this ceremony's
+  signed-in visual treatment, so no new chrome was invented beyond reusing
+  `PublicShell`'s own tokens and structural classes -- the same
+  delegate-the-shape split ADR 0144 §2 drew for `/help`. Tests:
+  `AuthorizeShell.test.tsx` (12 cases) plus the pre-existing
+  `consent-flow.test.tsx` (8 cases, unmodified, still green).]**
 - `integration_consent_receipts` is `ON DELETE CASCADE` with the user and the
   house; whether a consent record should outlive the account it was made on
   is undecided.
+  **[CONFIRMED 2026-09-19, founder batch 4, his words: "consent receipts =
+  delete with the account." The existing `ON DELETE CASCADE`
+  (`supabase/migrations/20260913191200_integration_consent_receipts.sql`) is
+  the intended behaviour; no migration change made.]**
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-19 | Aldemir (founder, batch 4), built same day by KL lane | Answered three of the four residue items: tab-scope binding confirmed as built (no change); consent-receipt cascade confirmed as intended (no change); `/authorize` + `/authorize/complete` given a proper signed-in frame (`AuthorizeShell`) honouring the design flag and the ADR 0133 public-door switch, replacing `PublicShell`. The WineOps-copy item stays open, unscoped. Brackets only, nothing rewritten |
 | 2026-09-17 | KL lane (2 fix rounds) | Built `/authorize` per line 135 and row 16 of ADR 0149; closed D1 (account injection via a one-callback forwarded provider URL) with a second, delivery-secret binding; made migrations `20260913190800`/`191200` idempotent; fixed the error exit's dead-end link. See amendment above |
 | 2026-09-16 | Aldemir, via ADR 0149 | Rows 11, 13, 16: threshold on folio 2, `/onboarding` redirect, tutorial action boxes for review; "six locked ADRs" corrected to the measured statuses; `/authorize` serves and seals its disclosure and claims, keeps the seal id and words digest, and each return page reads the outcome. Brackets only, nothing rewritten |
 | 2026-09-12 | Aldemir | Four calls: folio 0 is the last invoice and is skippable; `/help` is the FAQ with the house's own state; `/vendor-prices` is the price register with identity as a drawer; `/promotions` is the money page and dismissal is house-wide |

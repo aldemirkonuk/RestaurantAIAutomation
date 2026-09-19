@@ -16,8 +16,9 @@ import {
   findingReply,
   ModelFailureReason,
   modelFailureReply,
+  notPermittedReply,
 } from "../ask-readings/bound-reply";
-import { isReadingId, QUESTION_DISPOSITIONS, READING_CATALOGUE } from "../ask-readings/reading-catalogue";
+import { isReadingAllowedForRole, isReadingId, QUESTION_DISPOSITIONS, READING_CATALOGUE } from "../ask-readings/reading-catalogue";
 import { ReadingFolio, ReadingFolioStore } from "../ask-readings/reading-folio.store";
 import { ReadingRunner } from "../ask-readings/reading-runner";
 import { Finding, QuestionClass, ReadingArgs } from "../ask-readings/reading.types";
@@ -98,8 +99,16 @@ export class BoundAskService {
    * The folio is written BEFORE any paid call (ADR 0145), so a resubmitted
    * request id returns the saved folio, pending or finished, instead of paying
    * for the same question twice.
+   *
+   * `role` is the CALLER's role at `restaurantId` (`req.user.role`, read by
+   * `JwtStrategy` from the house named in the token, ADR 0162) -- never a
+   * client-supplied field on `input`, which would make the gate below
+   * trivially spoofable. Passed through even when no reading this session
+   * happens to touch is role-restricted, because which readings ARE
+   * restricted is a per-reading catalogue fact this service does not see
+   * until after picking (founder, batch 4, 2026-09-19).
    */
-  async submit(restaurantId: string, userId: string, input: BoundAskDto): Promise<ReadingFolio> {
+  async submit(restaurantId: string, userId: string, role: string | null, input: BoundAskDto): Promise<ReadingFolio> {
     // `/ask/folios` has no caller yet. The KL lane's audit (2026-09-17) found
     // it fully wired and reachable -- the route, the guards, the rate limit,
     // the model call -- with no `/ask` page or palette entry pointing at it
@@ -156,6 +165,11 @@ export class BoundAskService {
         answer = { kind: "no_reading_matched", reason: "no_matching_question" };
       } else if (disposition.kind === "model_knowledge") {
         answer = await this.knowledge(folio);
+      } else if (!isReadingAllowedForRole(disposition.id, role)) {
+        // Decided before the runner exists: no DB read, no compose call, the
+        // same zero-cost-refusal shape as the ASK_LAUNCHED gate above. Never
+        // a Finding -- the books were never queried for this ask.
+        answer = notPermittedReply(disposition.id);
       } else {
         const runner = new ReadingRunner(this.db.getClient());
         finding = await runner.run(restaurantId, disposition.id, pick.args, input.readingVersion || 1);

@@ -1,4 +1,5 @@
-import { Finding, ReadingOutcome, ReadingReason } from "./reading.types";
+import { isReadingId } from "./reading-catalogue";
+import { Finding, ReadingId, ReadingOutcome, ReadingReason } from "./reading.types";
 
 declare const knowledgeText: unique symbol;
 export type ModelKnowledgeText = string & { readonly [knowledgeText]: true };
@@ -26,6 +27,18 @@ export const MODEL_FAILURE_REASONS: readonly ModelFailureReason[] = [
   "invalid_model_reply",
 ];
 
+/**
+ * Why a Reading the caller's ROLE refused never reached the books. This is
+ * never a fact about the house's data (never `not_in_your_books` /
+ * `could_not_read`) and never a model-side failure (never
+ * `could_not_answer`) -- it is a fact about who is asking, decided before
+ * the runner is ever constructed (founder, batch 4, 2026-09-19: "do not
+ * give money or sensitive incentives like sales etc to the staff"). A role
+ * refusal never carries a Finding: the books were never queried.
+ */
+export type RoleRestrictedReason = "owner_manager_only";
+export const ROLE_RESTRICTED_REASONS: readonly RoleRestrictedReason[] = ["owner_manager_only"];
+
 type CellId = Finding["rows"][number]["cells"][number]["id"];
 export type BoundReply =
   | { kind: "reading"; finding: Finding; focus: Array<{ cellId: CellId }> }
@@ -36,6 +49,7 @@ export type BoundReply =
       text: ModelKnowledgeText;
     }
   | { kind: "could_not_answer"; reason: ModelFailureReason; finding?: Finding }
+  | { kind: "not_permitted"; reason: RoleRestrictedReason; readingId: ReadingId }
   | { kind: Exclude<ReadingOutcome, "read">; reason: ReadingReason; finding?: Finding };
 
 const KNOWLEDGE_LABEL = "Not from the house's books";
@@ -112,6 +126,17 @@ export function modelFailureReply(reason: ModelFailureReason, finding?: Finding)
 }
 
 /**
+ * A reading the caller's role refused. Minted BEFORE the runner is
+ * constructed, so this never carries a Finding -- the books were never
+ * queried, and the DB and compose-model costs the runner and the composer
+ * would otherwise spend are never paid (same zero-cost-refusal shape as the
+ * `ASK_LAUNCHED` gate in `BoundAskService.submit`).
+ */
+export function notPermittedReply(readingId: ReadingId): BoundReply {
+  return { kind: "not_permitted", reason: "owner_manager_only", readingId };
+}
+
+/**
  * Persistence is a wire boundary too: an unknown or tampered shape must never
  * look complete. The store refuses to serve a complete folio this rejects.
  */
@@ -137,6 +162,16 @@ export function isBoundReply(raw: unknown): raw is BoundReply {
   }
   if (raw.kind === "could_not_answer") {
     return MODEL_FAILURE_REASONS.includes(raw.reason as ModelFailureReason) && attachedFindingOk;
+  }
+  if (raw.kind === "not_permitted") {
+    // Never carries a Finding -- the books were never queried for a refusal
+    // decided before the runner exists.
+    return (
+      ROLE_RESTRICTED_REASONS.includes(raw.reason as RoleRestrictedReason) &&
+      typeof raw.readingId === "string" &&
+      isReadingId(raw.readingId) &&
+      raw.finding === undefined
+    );
   }
   return (
     NON_READING_KINDS.includes(raw.kind as Exclude<ReadingOutcome, "read">) &&

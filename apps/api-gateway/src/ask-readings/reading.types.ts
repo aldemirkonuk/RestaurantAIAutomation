@@ -1,3 +1,5 @@
+import { Role } from "../auth/guards/roles.guard";
+
 /** Wire values are proof, not model-authored prose (ADR 0145). */
 export type ReadingId =
   | "inventory.position" | "inventory.low_stock" | "inventory.in_transit"
@@ -71,4 +73,22 @@ export interface ReadingDescriptor {
   window: boolean;
   shelves: string[];
   meaning: string;
+  /**
+   * Who may receive this reading's ANSWER (not just see it named in the
+   * catalogue). Required, never defaulted -- an omitted field silently
+   * meaning "open to everyone" is exactly the kind of unstated assumption
+   * this file's other types refuse to allow (Provenance, ReadingOutcome).
+   *
+   * Founder, batch 4, 2026-09-19, his words: "do not give money or sensitive
+   * incentives like sales etc to the staff, maybe we should exclude staff
+   * from this equation" -> price, vendor, open-order and sales readings are
+   * owner and manager only, enforced server-side per reading (see
+   * `isReadingAllowedForRole` in reading-catalogue.ts). Every other reading
+   * carries `["owner", "manager", "staff"]`, unchanged from today's
+   * behaviour. Whether staff may reach `/ask` AT ALL is a separate, still
+   * OPEN question (his leaning is to exclude them; to be confirmed with the
+   * `/ask` sketch) -- this field narrows individual readings and does not
+   * answer that.
+   */
+  allowedRoles: readonly Role[];
 }

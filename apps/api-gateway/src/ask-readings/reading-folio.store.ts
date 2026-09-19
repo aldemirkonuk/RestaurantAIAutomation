@@ -72,9 +72,18 @@ export class ReadingFolioStore {
     return data.map(row => this.check(row, restaurantId, userId));
   }
   async finish(folio: ReadingFolio, answer: BoundReply, finding?: Finding, failureReason?: string): Promise<ReadingFolio> {
+    // `not_permitted` (founder, batch 4, 2026-09-19 -- the role gate) is the
+    // one non-`finding` outcome that DOES name a real reading: the caller's
+    // role refused it before a Finding was ever created, so the row would
+    // otherwise record no reading id at all for a security-relevant refusal
+    // reached by a naturally-worded question. Every other non-`finding`
+    // outcome (not_built, no_reading_matched, model_knowledge) genuinely has
+    // no reading to name, and keeps falling through to `folio.reading_id`
+    // exactly as before.
+    const refusedReadingId = answer.kind === "not_permitted" ? answer.readingId : undefined;
     const { data, error } = await this.db.getClient().from("ask_reading_folios").update({
       status: failureReason ? "failed" : "complete", reply_kind: answer.kind, answer,
-      reading_id: finding?.readingId || folio.reading_id,
+      reading_id: finding?.readingId || refusedReadingId || folio.reading_id,
       reading_version: finding?.readingVersion || folio.reading_version,
       reading_args: finding?.args || folio.reading_args,
       finding: finding || null, failure_reason: failureReason || null, completed_at: new Date().toISOString(),

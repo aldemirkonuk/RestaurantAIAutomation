@@ -183,6 +183,24 @@ describe("ReadingFolioStore.finish: a compare-and-swap on pending", () => {
     expect(finished.status).toBe("failed");
     expect(finished.failure_reason).toBe("model_unavailable");
   });
+
+  // Founder, batch 4, 2026-09-19 (the role gate): unlike not_built /
+  // no_reading_matched / model_knowledge, a role refusal DOES name a real
+  // reading -- it is decided after the question was classified, before a
+  // Finding exists. A naturally-worded question never named a readingId at
+  // `begin()` time (only a page-chosen one does), so without this the row
+  // would record no reading id at all for a security-relevant refusal.
+  it("a role refusal (not_permitted) backfills reading_id from the answer, though no Finding was ever produced -- and is complete, not failed", async () => {
+    const f = fixture();
+    const s = store(f);
+    const { folio } = await s.begin({ restaurantId: HOUSE_A, userId: USER, requestId: "req-1", utterance: "who do we buy from", origin: "page" });
+    expect(folio.reading_id).toBeNull(); // natural-language ask: unknown until the model picks
+    const reply: BoundReply = { kind: "not_permitted", reason: "owner_manager_only", readingId: "vendors.active" };
+    const finished = await s.finish(folio, reply);
+    expect(finished.status).toBe("complete"); // refused correctly, not an error
+    expect(finished.reading_id).toBe("vendors.active");
+    expect(finished.finding).toBeNull();
+  });
 });
 
 describe("ReadingFolioStore scoping and integrity", () => {
