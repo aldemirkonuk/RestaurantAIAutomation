@@ -48,7 +48,29 @@ panel, broadcast, shift import/export. Staff side: my week, acknowledge schedule
 take cover, request time off.
 
 ## 1a. Features
-Manager Shift Desk (owner/manager):
+
+- **Certifications on file — a SHEET off the roster row** (built 2026-09-06, packet 2
+  of the overlay layer; census 102 · ADR 0112). `pages/team/next/CertificationsSheet.tsx`,
+  opened from the expanded roster row's Credentials card.
+  - **The rebuilt roster could READ credentials and write none.** Filing, correcting
+    and removing lived only on the legacy desk (`pages/team/command/OpsRulesPanel.tsx:37`),
+    which packet 4 deletes — so without this sheet the act leaves the product.
+  - **All four routes, all tenant-scoped in the path**: `GET`, `POST`,
+    `PATCH /:certId` and `DELETE /:certId` under `/team/:restaurantId/certifications`
+    (`team.controller.ts:228,232,241,251`).
+  - **One person, not a register.** The legacy desk listed every certificate in the
+    house behind a member dropdown; here the file belongs to the row already open.
+  - **The status is the SERVER's word** (`valid · expiring · expired · submitted`) and
+    is never worked out again in the browser — a second opinion about whether a
+    certificate has expired is how two screens disagree about whether somebody may work.
+  - **An unreadable file is never drawn as an empty one**, because filing a duplicate
+    on the strength of a failed read is the harm.
+  - **A certificate that expires before it was issued is refused**; a certificate with
+    no expiry is ordinary and is filed as one.
+  - **What the schema cannot do is said on the sheet**: `team_certifications` carries
+    no role and no applies-to column, so which shifts require a certificate is not
+    recorded, and no "required for" picker is offered.
+  - Proved by `Certifications.test.tsx` (16 assertions).Manager Shift Desk (owner/manager):
 - Week grid with schedule create, copy-week, publish
 - Shifts with callouts, cover offers, and assignment
 - Certifications; coverage-rule templates; time-off management
@@ -322,7 +344,7 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | `/team` | Shift actions | popover | Built | A row's own menu. | `pages/team/next/WeekGrid.tsx:424` |
 | `/team` | What changed here | sheet | Built | The audit trail of one record. | `pages/team/next/TeamRecord.tsx:273 (TrailSheet)` |
 | `/team` | Invite a team member | popover · modal | Built | Anchored under its button like a popover, but a form that commits — so it traps focus and dims. The one exception; the studio invite reuses this component (F2, 2026-09-05). | `components/team/InviteTeamDialog.tsx:199 — 'Popover modal', the one exception ADR 0112 names; also opened from /get-started and /settings` |
-| `/team` | Certifications on file | sheet | Owed · fork F4 | One person's certificates are one record; opened from the roster row. | `pages/team/command/OpsRulesPanel.tsx:37 (legacy desk); team_certifications has no role or applies-to column; built by the founder's ruling 2026-09-05` |
+| `/team` | Certifications on file | sheet | Built · fork F4 | One person's certificates are one record; opened from the roster row. BUILT 2026-09-06 (packet 2): file, correct and remove against all four /team/:restaurantId/certifications routes — the rebuilt roster could only LIST them, and the desk that could write them is deleted with packet 4. The status is the SERVER's word and is never worked out again here; an UNREADABLE file is never drawn as an empty one. | `BUILT 2026-09-06 as pages/team/next/CertificationsSheet.tsx (was pages/team/command/OpsRulesPanel.tsx:37, the legacy desk); team_certifications has no role or applies-to column` |
 | `/team` | Desk row menu | — | Retires | Shift actions, Publish this week, Copy last week. | `pages/team/command/ManagerShiftDesk.tsx:868` |
 | `/team` | Desk message composer | — | Retires | A note to the crew. | `pages/team/command/ManagerShiftDesk.tsx:981` |
 | `/team` | Desk confirm sheet | — | Retires | Publish this week · Copy last week. | `pages/team/command/ManagerShiftDesk.tsx:1061` |
@@ -331,6 +353,7 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | `/team` | Ops rules | — | Retires · fork F4 | The first-rule form is inline on the rebuilt page (ADR 0089). **Certifications** are built as the sheet drawn above (decided 2026-09-05, F4). | `pages/team/command/OpsRulesPanel.tsx:37` |
 | `/team` | Import shift configurations | — | Delete | No import route exists. Delete with the desk. | `components/team/ShiftImportModal.tsx:135 — opened only from the legacy desk` |
 
+| `tm-cert-tuck` | The certificate file opens | *Open the certificate file* on a roster row — the house `Sheet` on `tuck`, 300ms. It adds no motion of its own and `prefers-reduced-motion` renders none |
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
 ## 2. Entry

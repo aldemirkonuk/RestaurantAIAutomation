@@ -24,6 +24,7 @@ import { ink } from '../../../lib/mudavym/motion';
 import { EM, MONO, SANS, SERIF, fmtDays, fmtLastContact } from './pv-format';
 import { TwinSheet } from './TwinSheet';
 import { UsualCurrencyCoveragePanel } from './UsualCurrencyCoveragePanel';
+import { NewVendorSheet } from './NewVendorSheet';
 import { useProvidersNextData, type ProviderCardVM } from './useProvidersNextData';
 
 /**
@@ -118,6 +119,7 @@ function BucketCard({
 export default function ProvidersNext() {
   const data = useProvidersNextData();
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
+<<<<<<< ours
   /*
    * A sheet opened FROM THE CURRENCY PROMPT — the panel's link or `?vendor=` —
    * carries the reason it was opened, so `UsualCurrencySection` can put the
@@ -152,6 +154,9 @@ export default function ProvidersNext() {
     setOpenProvider(found.provider);
   }, [data.cards]);
 
+  /* The owed act: adding a vendor. Three legacy modals, one sheet. */
+  const [adding, setAdding] = useState(false);
+
   return (
     <div
       className="mudavym min-h-screen"
@@ -179,11 +184,31 @@ export default function ProvidersNext() {
               Providers
             </h1>
           </div>
-          <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
-            {data.hasData
-              ? `${data.cards.length} vendors — the learned detail lives inside each card`
-              : 'Reaching the gateway…'}
-          </span>
+          <div className="flex items-end gap-4">
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              data-testid="add-vendor"
+              style={{
+                fontFamily: SANS,
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: '7px 13px',
+                borderRadius: 9,
+                border: '1px solid var(--seal, #1A5E6B)',
+                background: 'var(--seal, #1A5E6B)',
+                color: 'var(--paper-0, #FBF8F1)',
+                cursor: 'pointer',
+              }}
+            >
+              Add a vendor
+            </button>
+            <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+              {data.hasData
+                ? `${data.cards.length} vendors — the learned detail lives inside each card`
+                : 'Reaching the gateway…'}
+            </span>
+          </div>
         </header>
 
         {data.isError && (
@@ -254,6 +279,7 @@ export default function ProvidersNext() {
         </div>
       </div>
 
+<<<<<<< ours
       {openProvider && (
         <TwinSheet
           provider={openProvider}
@@ -263,6 +289,20 @@ export default function ProvidersNext() {
             setOpenProvider(null);
           }}
         />
+=======
+      {openProvider && <TwinSheet provider={openProvider} onClose={() => setOpenProvider(null)} />}
+
+      {/* The vendor being added is ONE object however it was found — the
+          catalogue search, the custom vendor and the duplicate question were
+          three legacy modals and are one sheet and one panel here. */}
+      {/* Mounted only while it is open. Its hooks — the house, the duplicate
+          check, the create mutation — are the composer's, not the page's, and
+          a closed sheet must not hold them. (At packet 0's merge this becomes
+          the `dirty` + `onTear` case: the draft is then torn to a stub rather
+          than discarded.) */}
+      {adding && (
+        <NewVendorSheet open onClose={() => setAdding(false)} onAdded={data.refetch} />
+>>>>>>> theirs
       )}
     </div>
   );

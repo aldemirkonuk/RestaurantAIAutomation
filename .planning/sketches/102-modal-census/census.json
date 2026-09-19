@@ -426,7 +426,7 @@
     },
     {
      "name": "A one-tap action of your own",
-     "status": "owed",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -483,7 +483,7 @@
       ]
      ],
      "footer": "An action names what it will do before it does it.",
-     "why": "A person's own act is one object on the rail; the rail stays producer-defined otherwise.",
+     "why": "A person's own act is one object on the rail; the rail stays producer-defined otherwise. BUILT 2026-09-06 (packet 2): pages/dashboard/next/OneTapSheet.tsx — write, change and take off the rail against POST/PUT/DELETE /one-tap-actions; the mark carries over, the colour theme does not (one chromatic colour), and the two unbuilt triggers say so.",
      "source": "components/dashboard/QuickActionsPanel.tsx:332 and pages/Notifications.tsx:1705 (legacy); built by the founder's ruling 2026-09-05",
      "acts": null,
      "went": null,
@@ -727,7 +727,7 @@
     },
     {
      "name": "A new order",
-     "status": "owed",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -772,15 +772,15 @@
       ]
      ],
      "footer": "Nothing is sent by saving a draft.",
-     "why": "The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext.",
-     "source": "pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903 (wine config); OrdersNext has only DraftRail (AI drafts) — no manual create path was found",
+     "why": "The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext. BUILT 2026-09-06 (packet 2): several lines, one POST per line because CreateOrderDto carries one, and a per-line account of what landed. The agreed price is OFFERED grey from the NEW route GET /procurement/last-agreement, never applied.",
+     "source": "BUILT 2026-09-06 as pages/orders/next/NewOrderSheet.tsx (was pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903)",
      "acts": null,
      "went": null,
      "fork": "F5"
     },
     {
      "name": "Add a vendor first",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -806,8 +806,8 @@
       ]
      ],
      "footer": null,
-     "why": "A question with two answers. Travels with the new-order sheet.",
-     "source": "components/orders/OrderGuardModal.tsx:27",
+     "why": "A question with two answers. Travels with the new-order sheet. BUILT 2026-09-06: reached before the composer opens on an empty vendor list, and again on the gateway's 403 no_vendors, where it says the order was NOT placed. An unreadable vendor list never opens it.",
+     "source": "BUILT 2026-09-06 as pages/orders/next/VendorFirstPanel.tsx (was components/orders/OrderGuardModal.tsx:27)",
      "acts": null,
      "went": null,
      "fork": null
@@ -1078,7 +1078,7 @@
     },
     {
      "name": "Carry this bottle · an auction lot",
-     "status": "owed",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -1160,9 +1160,9 @@
        ]
       ]
      ],
-     "footer": "A lot's cost is the hammer plus the premium; the ledger keeps both (ADR 0070).",
-     "why": "The same sheet, a fourth start: an auction bottle is still one bottle entering the book.",
-     "source": "components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet",
+     "footer": "A lot's cost is the hammer plus the premium. CORRECTED 2026-09-06: the ledger keeps the SUM as a unit cost, not both figures — inventory_lots has no column for a hammer price, a premium, an auction house, a lot number or a sale date.",
+     "why": "The same sheet, a fourth start: an auction bottle is still one bottle entering the book. BUILT 2026-09-06 (packet 2): the bottle is chosen from the register and enters through the SAME POST /inventory the carry sheet uses; (hammer + premium) / bottles becomes costPerBottle with provenance `manual`, the working is printed, and the sheet says in words that the lot's own details are NOT saved (ADR 0083). An UNSTATED premium is refused rather than read as zero.",
+     "source": "BUILT 2026-09-06 as pages/inventory/command/AuctionLotStart.tsx (was components/orders/AuctionPurchaseModal.tsx:133 — unreachable AND pointing at two routes that do not exist)",
      "acts": null,
      "went": null,
      "fork": "F4"
@@ -1577,7 +1577,7 @@
     },
     {
      "name": "Is this the bottle?",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -1639,8 +1639,8 @@
       ]
      ],
      "footer": null,
-     "why": "A question the reader must answer before anything is written.",
-     "source": "components/wines/WineValidationModal.tsx:162 · components/wines/AddWineModal.tsx:148 ('Wine detected')",
+     "why": "A question the reader must answer before anything is written. BUILT 2026-09-06 (packet 2) WITH THE WRITE IT NEVER HAD: 'Yes, carry it' posts to /wines/submissions, where both legacy questions only moved rows in component state. The reading stays grey until a person takes it, and an UNSCORED field says so rather than reading as an unsure one.",
+     "source": "BUILT 2026-09-06 as pages/cellar/next/IsThisTheBottlePanel.tsx (was WineValidationModal.tsx:162 and AddWineModal.tsx:148)",
      "acts": null,
      "went": null,
      "fork": null
@@ -1925,7 +1925,7 @@
     },
     {
      "name": "A new vendor",
-     "status": "owed",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -2001,15 +2001,15 @@
       ]
      ],
      "footer": "Terms are written on the vendor's row afterwards, each with its provenance.",
-     "why": "The vendor being added is one object; the old page split it across three modals.",
-     "source": "components/providers/AddProviderModal.tsx:361 (+ Add Provider Type :629) · components/providers/VendorSearchModal.tsx:161",
+     "why": "The vendor being added is one object; the old page split it across three modals. BUILT 2026-09-06 (packet 2): both doors in one sheet, the legacy field set entire, and the delivery days and the address written as SEPARATE acts that are reported separately — a terms failure never presents as a failed create.",
+     "source": "BUILT 2026-09-06 as pages/providers/next/NewVendorSheet.tsx (was AddProviderModal.tsx:361 + :629 and VendorSearchModal.tsx:161)",
      "acts": null,
      "went": null,
      "fork": null
     },
     {
      "name": "A vendor you already have?",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -2042,8 +2042,8 @@
       ]
      ],
      "footer": null,
-     "why": "A question with two answers before a write.",
-     "source": "components/providers/VendorMatchModal.tsx:108",
+     "why": "A question with two answers before a write. BUILT 2026-09-06: it refuses the save while unanswered, never merges two records, and its confidence figure names WHICH similarity it measured rather than printing a bare percentage.",
+     "source": "BUILT 2026-09-06 as pages/providers/next/VendorTwinPanel.tsx (was components/providers/VendorMatchModal.tsx:108)",
      "acts": null,
      "went": null,
      "fork": null
@@ -2261,7 +2261,7 @@
     },
     {
      "name": "The house's reply, drafted",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -2304,8 +2304,8 @@
       ]
      ],
      "footer": "A draft never looks sent (prc-02).",
-     "why": "A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118).",
-     "source": "components/orders/DraftEmailApprovalPanel.tsx:130 (legacy, on /orders)",
+     "why": "A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118). BUILT 2026-09-06 (packet 2) WITH TWO NEW GATEWAY ROUTES: POST orders/:id/draft-seal-challenge mints over the LETTER when the hold begins, and POST orders/:id/send-drafted-reply spends it. `send_draft` is its own seal act, so a seal minted to approve an order's money cannot send its mail, and a paragraph edited after the hold is refused rather than posted.",
+     "source": "BUILT 2026-09-06 as pages/communications/next/DraftedReplyPanel.tsx (was components/orders/DraftEmailApprovalPanel.tsx:130, on /orders)",
      "acts": null,
      "went": null,
      "fork": null
@@ -2588,7 +2588,7 @@
     },
     {
      "name": "A note from this meeting?",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -2634,8 +2634,8 @@
       ]
      ],
      "footer": null,
-     "why": "A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders).",
-     "source": "pages/calendar/MeetingMemoPrompt.tsx:109",
+     "why": "A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders). BUILT 2026-09-06 (packet 2) WITH THE WRITE IT NEVER HAD: the legacy onSave was `// Future: persist to documents API`. The note is APPENDED to the day-book entry under a dated heading (PATCH /calendar/events/:eventId); nothing already written is replaced, and the kind is in the heading because there is no column for it.",
+     "source": "BUILT 2026-09-06 as pages/calendar/next/MeetingNotePanel.tsx (was pages/calendar/MeetingMemoPrompt.tsx:109, whose onSave wrote NOTHING)",
      "acts": null,
      "went": null,
      "fork": null
@@ -2994,7 +2994,7 @@
    "overlays": [
     {
      "name": "Approve from the bell",
-     "status": "owed",
+     "status": "built",
      "shape": "panel",
      "wide": false,
      "modal": false,
@@ -3025,8 +3025,8 @@
       ]
      ],
      "footer": "The seal never sits in a popover; the bell hands off to this panel.",
-     "why": "The bell is a menu; a commitment needs a room that cannot be dismissed by accident.",
-     "source": "ADR 0112, founder answer 2026-09-04 — 'a one-click approval from the bell opens the panel first'; not built",
+     "why": "The bell is a menu; a commitment needs a room that cannot be dismissed by accident. BUILT 2026-09-06 (packet 2): the popover CLOSES first, the panel reads GET /procurement/orders/:id fresh rather than trusting the notice, and the seal is the house's one implementation (SealedApproveDie). A settled order is told so and offered no hold. No producer writes an order id onto a notification today, so the control is rare rather than decorative — notifications.md §9.",
+     "source": "BUILT 2026-09-06 as components/notifications/ApproveFromBellPanel.tsx, handed off from HouseBell.tsx (ADR 0112, founder answer 2026-09-04)",
      "acts": null,
      "went": null,
      "fork": null
@@ -3100,7 +3100,7 @@
    "overlays": [
     {
      "name": "Who takes this?",
-     "status": "owed",
+     "status": "built",
      "shape": "popover",
      "wide": false,
      "modal": false,
@@ -3127,8 +3127,8 @@
       ]
      ],
      "footer": null,
-     "why": "A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's.",
-     "source": "pages/Recommendations.tsx:980 — not on the rebuilt docket",
+     "why": "A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's. BUILT 2026-09-06 (packet 2): the docket's inline list moved onto the anchored Popover, so nothing under it shifts while somebody is choosing; the roster's four states stay four, and 'nobody' is offered LAST.",
+     "source": "BUILT 2026-09-06 as pages/recommendations/next/WhoTakesThisPopover.tsx (was pages/Recommendations.tsx:980; the docket's inline list is replaced)",
      "acts": null,
      "went": null,
      "fork": "F4"
@@ -4013,7 +4013,7 @@
     },
     {
      "name": "Certifications on file",
-     "status": "owed",
+     "status": "built",
      "shape": "sheet",
      "wide": false,
      "modal": false,
@@ -4070,8 +4070,8 @@
       ]
      ],
      "footer": "A certificate is a fact with two dates; the schedule reads the second one.",
-     "why": "One person's certificates are one record; opened from the roster row.",
-     "source": "pages/team/command/OpsRulesPanel.tsx:37 (legacy desk); team_certifications has no role or applies-to column; built by the founder's ruling 2026-09-05",
+     "why": "One person's certificates are one record; opened from the roster row. BUILT 2026-09-06 (packet 2): file, correct and remove against all four /team/:restaurantId/certifications routes — the rebuilt roster could only LIST them, and the desk that could write them is deleted with packet 4. The status is the SERVER's word and is never worked out again here; an UNREADABLE file is never drawn as an empty one.",
+     "source": "BUILT 2026-09-06 as pages/team/next/CertificationsSheet.tsx (was pages/team/command/OpsRulesPanel.tsx:37, the legacy desk); team_certifications has no role or applies-to column",
      "acts": null,
      "went": null,
      "fork": "F4"

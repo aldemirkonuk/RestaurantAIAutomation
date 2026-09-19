@@ -221,59 +221,6 @@ These render legacy markup inside a house-flagged page **today**. Move each onto
 
 A rebuilt page cannot do something its legacy page could. Build the act, not a shell: the endpoint, the four states, the provenance, the ceremony. Several need a gateway route that does not exist yet — say so and build it.
 
-**`/`** — flag `mudavym_design_dashboard`
-
-- **A one-tap action of your own** — sheet. A person's own act is one object on the rail; the rail stays producer-defined otherwise.
-  `components/dashboard/QuickActionsPanel.tsx:332 and pages/Notifications.tsx:1705 (legacy); built by the founder's ruling 2026-09-05`
-
-**`/orders`** — flag `mudavym_design_orders`
-
-- **A new order** — sheet. The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext.
-  `pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903 (wine config); OrdersNext has only DraftRail (AI drafts) — no manual create path was found`
-- **Add a vendor first** — panel. A question with two answers. Travels with the new-order sheet.
-  `components/orders/OrderGuardModal.tsx:27`
-
-**`/inventory`** — flag `mudavym_design_inventory`
-
-- **Carry this bottle · an auction lot** — sheet. The same sheet, a fourth start: an auction bottle is still one bottle entering the book.
-  `components/orders/AuctionPurchaseModal.tsx:133 (legacy, unreachable); built by the founder's ruling 2026-09-05 as a start of the carry sheet`
-
-**`/cellar · /wines · /beer · /whiskey · /cocktails · /spirits · /non-alcoholic · /soft-drinks`** — flag `mudavym_design_cellar`
-
-- **Is this the bottle?** — panel. A question the reader must answer before anything is written.
-  `components/wines/WineValidationModal.tsx:162 · components/wines/AddWineModal.tsx:148 ('Wine detected')`
-
-**`/providers`** — flag `mudavym_design_providers`
-
-- **A new vendor** — sheet. The vendor being added is one object; the old page split it across three modals.
-  `components/providers/AddProviderModal.tsx:361 (+ Add Provider Type :629) · components/providers/VendorSearchModal.tsx:161`
-- **A vendor you already have?** — panel. A question with two answers before a write.
-  `components/providers/VendorMatchModal.tsx:108`
-
-**`/communications`** — flag `mudavym_design_communications`
-
-- **The house's reply, drafted** — panel · seal. A question with the seal — nothing reaches a vendor without a person's hold (ADR 0118).
-  `components/orders/DraftEmailApprovalPanel.tsx:130 (legacy, on /orders)`
-
-**`/calendar`** — flag `mudavym_design_calendar`
-
-- **A note from this meeting?** — panel. A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders).
-  `pages/calendar/MeetingMemoPrompt.tsx:109`
-
-**`/notifications`** — flag `mudavym_design_notifications`
-
-- **Approve from the bell** — panel · seal. The bell is a menu; a commitment needs a room that cannot be dismissed by accident.
-  `ADR 0112, founder answer 2026-09-04 — 'a one-click approval from the bell opens the panel first'; not built`
-
-**`/recommendations`** — flag `mudavym_design_recommendations`
-
-- **Who takes this?** — popover. A choice from a short list, anchored to the entry's control. **Confirmed by the founder 2026-09-06**: the fifth F4 act is built like the other four — the docket keeps assignment, and the roster it reads is the team's.
-  `pages/Recommendations.tsx:980 — not on the rebuilt docket`
-
-**`/team`** — flag `mudavym_design_team`
-
-- **Certifications on file** — sheet. One person's certificates are one record; opened from the roster row.
-  `pages/team/command/OpsRulesPanel.tsx:37 (legacy desk); team_certifications has no role or applies-to column; built by the founder's ruling 2026-09-05`
 
 
 ## 8. Packet 3 — the seven targets

@@ -167,6 +167,37 @@ while the flag is off — `apps/web/src/pages/dashboard/next/`):
     read (the failure quoted), refused read (403 told apart from a 500, no pointless
     retry). The pending count is an em dash, never a zero, while the register is
     unread.
+  - **A one-tap action of your own is a SHEET** (built 2026-09-06, packet 2 of the
+    overlay layer; census 102 · ADR 0112). `pages/dashboard/next/OneTapSheet.tsx`.
+    Until this landed the rail could raise an action from a four-field expander and
+    nothing else — the two legacy surfaces it replaced could do more, and that gap
+    is what the packet calls an *owed act*.
+    - **What it does now.** Writes one (`POST /one-tap-actions`,
+      `one-tap-actions.controller.ts:146`), CHANGES one already on the rail
+      (`PUT /one-tap-actions/:actionId`, `:195`) and TAKES ONE OFF it
+      (`DELETE /one-tap-actions/:actionId`, `:333` — a soft delete). Every one
+      takes the restaurant and the author from the token; the sheet sends neither.
+      Only a person-written card offers *Change it*; a house-raised one never does.
+    - **The mark, not a colour.** The legacy icon picker carries over as a closed
+      set of eight lucide marks the card actually renders (`markFor`). The legacy
+      six-colour theme picker does NOT: ADR 0112 rule 8 gives this house one
+      chromatic colour, so the field is dropped rather than re-skinned and the
+      gateway's `color` column simply never hears from this sheet.
+    - **The href rule is the legacy's own**, restated with its citation
+      (`data/quickActions.ts:206`): `/`, `https://` or `http://`, and nothing is
+      posted until it holds.
+    - **Two of the census drawing's three triggers do not exist and say so.**
+      "When I tap it" is the built one; "On a threshold" and "On a schedule" are
+      disabled with the sentence that names what is missing — `one_tap_actions`
+      carries no trigger column and nothing reads it on a clock (ADR 0083).
+    - **Esc tears the sheet, it does not bin it** (sketch 103, 1b — *The Stub*).
+      The draft lives on the panel, so leaving a NEW action holds the words on the
+      rail and re-opening finds them; leaving an EDIT keeps nothing, because a
+      half-typed change to a row that already exists is a confusion, not a stub.
+    - **Its accessible name is the contract** (sketch 103, 1e — *Announced*): what
+      it asks, what it writes, and that leaving writes nothing.
+    - Proved by `OneTapSheet.test.tsx` (17 assertions); 14 of them fail against a
+      copy of the pre-packet `OneTapPanel.tsx`.
   - **A tenant switch never leaves the previous house's actions on screen.** The
     reset effect blanks the register the moment `restaurantId` changes
     (`OneTapPanel.tsx:135-139`), and a response that arrives after the switch is
@@ -194,7 +225,8 @@ this list is the note-side index (ADR 0044 §2).
 | `open-arrive` | Opening line entrance | the Fraunces "Good evening / before service" header, once on mount |
 | `cal-arrive` | Staggered arrival | every real day cell of the sales calendar, per month paint |
 | `kpi-tally` | Figures arrive | the five KPIs + "Waiting on you" count; an em dash never counts |
-| `day-open` | Settle expansion | the day-detail panel; each Waiting-on-you row into its HoldToApprove; the "write a new one-tap action" form on the rail |
+| `day-open` | Settle expansion | the day-detail panel; each Waiting-on-you row into its HoldToApprove |
+| `tuck` | The overlay primitive's right slide-in, 300ms | **A one-tap action of your own** — `OneTapSheet`, the rail's own sheet (built 2026-09-06). `prefers-reduced-motion` renders none, from `components/mudavym/Sheet.tsx` and nothing local |
 | `day-scrub` | Scrub the day | the tape strip in day detail — un-eased on purpose, per-day samples |
 | `hold-pour` / `seal-stamp` | Hold-to-approve → the seal lands | the approvals queue **and** (2026-09-05) the ONE one-tap card whose act is real — a delivery confirmation, whose hold mints the seal the write carries back. The rail's written-note card lost the die that day: it is a record, and the wax is rationed to the act that moves stock. The seal only stays if the server said yes |
 | `ink-micro` | Micro-states | hovers/focus, nothing moves more than 2px |
@@ -241,7 +273,7 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | Page | Overlay | Shape | Status | Where the act lives or went | Source |
 |---|---|---|---|---|---|
 | `/` | The working behind a figure | — | Retires · fork F7 | Decided 2026-09-05 (F7): the KPI row expands in place — 'show the working' under the figure, like DayDetail under the sales calendar. Not an overlay; the expansion is still owed on KpiRow.tsx. | `pages/Dashboard.tsx:1109 — the Vendor Spend · Active Inventory · Pending Orders · Low Stock detail modals; nothing on pages/dashboard/next/KpiRow.tsx opens today` |
-| `/` | A one-tap action of your own | sheet | Owed · fork F4 | A person's own act is one object on the rail; the rail stays producer-defined otherwise. | `components/dashboard/QuickActionsPanel.tsx:332 and pages/Notifications.tsx:1705 (legacy); built by the founder's ruling 2026-09-05` |
+| `/` | A one-tap action of your own | sheet | Built · fork F4 | A person's own act is one object on the rail; the rail stays producer-defined otherwise. BUILT 2026-09-06 (packet 2): pages/dashboard/next/OneTapSheet.tsx — write, change and take off the rail against POST/PUT/DELETE /one-tap-actions; the mark carries over, the colour theme does not (one chromatic colour), and the two unbuilt triggers say so. | `components/dashboard/QuickActionsPanel.tsx:332 and pages/Notifications.tsx:1705 (legacy); built by the founder's ruling 2026-09-05` |
 | `/` | Add an important date | — | Retires | The calendar's entry sheet — the house has one day-book (ADR 0111). | `components/dashboard/AddImportantDateModal.tsx:125` |
 | `/` | Edit a quick action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail (OneTapPanel). A person's own action is built as the sheet drawn above (decided 2026-09-05, F4). | `components/dashboard/QuickActionsPanel.tsx:332` |
 | `/` | Daily sales report (a day) | — | Retires | DayDetail expands in place under the sales calendar (pages/dashboard/next/SalesCalendar.tsx:217). | `pages/Dashboard.tsx:1414` |

@@ -44,6 +44,7 @@ import { getActiveRestaurantId } from "../../../services/api/client";
 import { useTypedInventorySubscription } from "../../../contexts/RealtimeContext";
 import { ManualReceiptWorkspace } from "../../../components/inventory/ManualReceiptWorkspace";
 import { AddWineSelectionModal } from "../../../components/wines/AddWineSelectionModal";
+import { AuctionLotStart } from "./AuctionLotStart";
 import { MenuScannerFlow } from "../../../components/scanner/MenuScannerFlow";
 import { summarizeMenuScanPersist } from "../../../lib/menuScannerPersistence";
 import { ThemedSelect } from "../../../components/ui/ThemedSelect";
@@ -178,6 +179,10 @@ export function InventoryCommandPage() {
   const [activeFlag, setActiveFlag] = useState<RowFlag | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAddWine, setShowAddWine] = useState(false);
+  /* THE FOURTH START (census 102; the founder, 2026-09-05). An auction bottle
+     is still one bottle entering the book, so it goes in through the same
+     write below — see AuctionLotStart's header for the packet-1 merge point. */
+  const [showAuctionLot, setShowAuctionLot] = useState(false);
   const [showAddWineSelection, setShowAddWineSelection] = useState(false);
   const [showMenuScanner, setShowMenuScanner] = useState(false);
   const [showManualReceipt, setShowManualReceipt] = useState(false);
@@ -200,6 +205,7 @@ export function InventoryCommandPage() {
 
   const anyModalOpen =
     showAddWine ||
+    showAuctionLot ||
     showAddWineSelection ||
     showMenuScanner ||
     showManualReceipt ||
@@ -1408,6 +1414,7 @@ export function InventoryCommandPage() {
         onSelectSingle={() => setShowAddWine(true)}
         onSelectMenu={() => setShowMenuScanner(true)}
         onSelectReceipt={() => setShowManualReceipt(true)}
+        onSelectAuction={() => setShowAuctionLot(true)}
         title="Add Wine to Inventory"
         subtitle="One label, a whole menu, or a delivery with many lines"
       />
@@ -1433,6 +1440,28 @@ export function InventoryCommandPage() {
         isOpen={showManualReceipt}
         onClose={() => setShowManualReceipt(false)}
         onSaved={() => void refetchInventory()}
+      />
+
+      {/* The auction start. Its own Sheet today so packet 1's migration of the
+          carry sheet is untouched; at that merge it becomes the sheet's fourth
+          tab and this block collapses into it. One write into the book either
+          way — the same `createInventoryItem` the carry sheet uses. */}
+      <AuctionLotStart
+        open={showAuctionLot}
+        onClose={() => setShowAuctionLot(false)}
+        onCarry={async ({ wine, quantity, costPerBottle }) => {
+          await createInventoryItem.mutateAsync({
+            wineId: wine.id,
+            stockLive: quantity,
+            thresholdMin: 0,
+            // A person typed the hammer price, so the figure is `manual`. That
+            // is the honest one of the four the lot table's CHECK allows; it is
+            // not an estimate and it did not come off an invoice.
+            costPerBottle,
+            costProvenance: "manual" as const,
+          } as any);
+          void refetchInventory();
+        }}
       />
 
       <AddWineToInventoryModal

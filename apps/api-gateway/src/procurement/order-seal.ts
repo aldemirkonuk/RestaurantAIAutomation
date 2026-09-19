@@ -52,6 +52,56 @@ export const ORDER_SEAL_ACT = "approve";
  */
 export const ORDER_CANCEL_ACT = "cancel";
 
+/**
+ * The third act this module seals: SENDING the letter the house drafted.
+ *
+ * ADR 0118 — *nothing reaches a vendor without a person's hold* — and packet 2
+ * of the overlay layer, which builds the panel that hold lives on. Until this
+ * act existed the only approval of a drafted reply was
+ * `POST orders/:id/approve-draft`, which sends a letter to a vendor on an
+ * unsealed request: a click, and the mail is gone.
+ *
+ * A SEPARATE act rather than a second use of `approve`, for exactly the reason
+ * `cancel` is separate: a seal minted to approve an order's MONEY must not be
+ * spendable to send that order's MAIL, and the reverse. `SealChallengeService`
+ * compares the act and refuses the mismatch by name.
+ *
+ * ITS ARGS ARE THE LETTER, NOT THE ORDER. What must not change between the hold
+ * and the send is the WORDS, the recipient and who is copied — not the order's
+ * total. A person holds over a paragraph they have read; an edit after the hold
+ * is exactly the substitution the seal exists to catch, and hashing the order's
+ * figures instead would let the paragraph change freely.
+ */
+export const ORDER_SEND_DRAFT_ACT = "send_draft";
+
+/**
+ * What the hold was over, for `send_draft`.
+ *
+ * The body is hashed rather than carried so a long letter does not travel twice
+ * and so the args have a fixed size; the recipient and the copies travel whole
+ * because they are short and because a refusal that can NAME the address it
+ * expected is worth more than one that says "something changed".
+ *
+ * Whitespace is collapsed and the ends trimmed before hashing: a trailing
+ * newline the textarea added is not a change to the letter, and a seal that
+ * broke on one would teach people that the seal is flaky, which is worse than
+ * no seal at all.
+ */
+export function draftSealArgs(input: {
+  body: string;
+  to: string | null | undefined;
+  cc?: string[] | null;
+}): Record<string, unknown> {
+  return {
+    // The letter, normalised. NOT the order total — see above.
+    body: (input.body ?? "").replace(/\s+/g, " ").trim(),
+    to: (input.to ?? "").trim().toLowerCase(),
+    // Sorted, so the same three addresses in a different order are the same
+    // letter. A person did not change the letter by re-typing a cc.
+    cc: [...(input.cc ?? [])].map((e) => e.trim().toLowerCase()).sort(),
+  };
+}
+
 /** Money, as one string, so issue and redemption cannot disagree about format. */
 export function normaliseSealTotal(value: unknown): string {
   if (value === null || value === undefined || value === "") return "unknown";
