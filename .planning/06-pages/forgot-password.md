@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 4
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-13
 links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[reset-password]]"]
 ---
 
@@ -117,3 +117,12 @@ No queue, no notification, no ledger entry.
 2. Alert on the mock-sender fallback — today a misconfigured `GmailService` degrades this page to a no-op with only a `logger.warn` (`auth.service.ts:1607-1611`).
 3. Move both throttle stores to a shared cache before the gateway runs more than one replica. *Blocked:* no guard-reachable shared cache — stated at `password-reset-throttle.guard.ts:20-28`.
 4. Emit a `password_reset_requested` signal (§5 is `none`) — it is the only observable proxy for login trouble. *Blocked:* no sink (see [[get-started]] §11).
+
+
+### PublicShell implementation — 2026-09-13
+
+Implemented in the page-finalization working branch from `60ed83a7`; this is a code/test record, not a production-deployment claim. The new public treatment uses the shared `PublicShell` and `usePublicDesign()` (`VITE_MUDAVYM_PUBLIC`, overridden by the existing `mudavym.design.public` browser preference). The legacy rendering remains available with that switch off. No new server authorization or public endpoint is introduced by the visual port.
+
+The new form preserves the login email prefill, required email input, per-IP throttle message and enumeration-resistant request. A network failure stays a recoverable error; success says a reset email was **requested**, conditional on an account existing, because the API deliberately does not prove delivery. One-hour expiry remains. The verification/reset/Studio invite email subject/body/header/footer product identity now reads Mudavym; underlying sender account and links remain deployment configuration. No real email was sent to validate this change.
+
+Verification: `apps/web/src/pages/__tests__/publicPages.recovery.test.tsx` (ten behavior tests across the seven pages), existing PublicShell/public-switch tests (34), web/gateway TypeScript checks. Vendor read/JSON-LD tests (five) and account email body/sender identity tests (five) are isolated and perform no real sends or database writes. Remaining product choices are recorded under [[OPEN-DECISIONS#Public-page completion — 2026-09-13]]. The earlier audit is available from [[MUDAVYM-TRANSITION-2026-09-13]].

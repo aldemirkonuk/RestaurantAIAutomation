@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 5
 maturity: complete
 status: documented
-updated: 2026-08-26
+updated: 2026-09-13
 links: ["[[PAGE-CONTRACT]]", "[[forgot-password]]", "[[login]]"]
 ---
 
@@ -116,3 +116,12 @@ Exclusively `password_resets` rows written by `POST /auth/request-password-reset
 1. Surface the session caveat, or build revocation. The real fix is a per-user token generation/`iat` floor checked in `JwtStrategy#validate` (`jwt.strategy.ts:17-40`), applied to `changePassword` too. *Blocked:* founder decision — `auth.service.ts:1668-1675` deliberately deferred it rather than half-building it.
 2. Depends on [[forgot-password]] item 1: mixed-case accounts can never reach this page at all.
 3. Emit `password_reset_completed` (§5 is `none`) — the only end-of-funnel confirmation that a recovery worked. *Blocked:* no sink.
+
+
+### PublicShell implementation — 2026-09-13
+
+Implemented in the page-finalization working branch from `60ed83a7`; this is a code/test record, not a production-deployment claim. The new public treatment uses the shared `PublicShell` and `usePublicDesign()` (`VITE_MUDAVYM_PUBLIC`, overridden by the existing `mudavym.design.public` browser preference). The legacy rendering remains available with that switch off. No new server authorization or public endpoint is introduced by the visual port.
+
+The new page preserves the token URL, eight-character minimum, confirmation match, server errors and successful redirect. An absent token offers a new-link route immediately, and an unsuccessful reset retains a new-link route beside the error. Browser autofill identifies both fields as new passwords. The isolated test proves a missing token and mismatching confirmation make no API call. No live password was changed.
+
+Verification: `apps/web/src/pages/__tests__/publicPages.recovery.test.tsx` (ten behavior tests across the seven pages), existing PublicShell/public-switch tests (34), web/gateway TypeScript checks. Vendor read/JSON-LD tests (five) and account email body/sender identity tests (five) are isolated and perform no real sends or database writes. Remaining product choices are recorded under [[OPEN-DECISIONS#Public-page completion — 2026-09-13]]. The earlier audit is available from [[MUDAVYM-TRANSITION-2026-09-13]].

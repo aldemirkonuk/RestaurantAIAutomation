@@ -12,6 +12,16 @@ disagrees with the tree, the tree wins. Re-measure before acting on any line her
 marked "agent died" has partial or no edits in its worktree. Inspect `git status` there
 before continuing.
 
+## 0b. Founder-authorized page finalization, 2026-09-13
+
+This update supersedes older audit-only and queue-status instructions where they differ; it preserves their evidence below. The founder has now requested complete Wave Four and successor page finalization, thorough research, detailed documentation in the existing Obsidian vault, and the associated commits, pushes, merges and deployments. Work begins from main `60ed83a7`; PR373's endpoint repairs are already merged, so the older statement that they follow in another PR is historical.
+
+The dated review and its final PDF are now indexed at [[MUDAVYM-TRANSITION-2026-09-13]]. Its findings remain tied to the audited SHA; completion of a later fix must be recorded with its own tests and commit. Current canonical host is `mudavym.com`, with `www` redirecting to it. New chat progress is three or four bracketed words; the detailed account belongs here and in the owning page/ADR.
+
+Product choices already answered in ADR0143–0145 are carried forward. Genuine unresolved choices remain questions, not inferred permission: especially page-specific visibility/content, first Ask readings, notification recipient authority and remaining motion/overlay proposals. The broader execution authorization permits finishing decided work without repeatedly asking to commit or deploy; it does not turn historical scratch suggestions into founder decisions or authorize undisclosed vendor sends/charges during verification.
+
+The vault import is complete. All seven public pages now have a shared-shell path behind the existing public switch; page dossiers record their behavior and remaining decisions. Isolated checks: 108 unique web tests (14 optional capture cases skipped), ten gateway tests and both TypeScript checks passed using the source checkout's installed dependencies through ignored local symlinks. No package lock or dependency version was changed. Actual browser coverage and its limits are recorded in [[handoff/evidence/public-pages-2026-09-13/IMPLEMENTATION-AND-VALIDATION]]. No production deployment has been performed by this group.
+
 ## 0a. Final state, 2026-09-13 (supersedes sections 0 and 3 wherever they differ)
 
 **On main:** #363, #366, #361, and merge train 2 (#372). The train carried #367 parity,

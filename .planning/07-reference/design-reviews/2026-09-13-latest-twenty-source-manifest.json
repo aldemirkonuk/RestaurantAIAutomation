@@ -1,0 +1,730 @@
+{
+  "review_date": "2026-09-13",
+  "reference_main": "60ed83a7e6d5eb8b8e0e631783a598cd0f562bff",
+  "source_checkout": ".claude/worktrees/quizzical-goldberg-5d7b8f within original restaurant-ai-automation checkout",
+  "scope": "085 through104 in the numbered vault,21 directories because089 is assigned twice; additive external login105\u2013107 appendix",
+  "files": [
+    {
+      "sketch": "085-mudavym-guestbook",
+      "files": [
+        {
+          "bytes": 80653,
+          "sha256": "14dd627d2f9d6bf6afa4dc27236fba12fb7f7d2229a0e0a9da02771bb1183d31",
+          "source_path": ".planning/sketches/085-mudavym-guestbook/index.html"
+        },
+        {
+          "bytes": 4002,
+          "sha256": "f75b99e2e0b08f9589208bcdbf4cca7bae5a10a0a43557ee80e0b23c77ebdd78",
+          "source_path": ".planning/sketches/085-mudavym-guestbook/motion.json"
+        },
+        {
+          "bytes": 21116,
+          "sha256": "2f1f8b128eeb5afdafdb06781195a7caabf68dad9414123d0047405037ee6867",
+          "source_path": ".planning/sketches/085-mudavym-guestbook/notes.md"
+        }
+      ]
+    },
+    {
+      "sketch": "086-mudavym-warmmachine",
+      "files": [
+        {
+          "bytes": 91821,
+          "sha256": "32a9bace6e42ae8bf84dab4001c90abcc9e5ab6ea8758041bff16fa4bdc3f5e9",
+          "source_path": ".planning/sketches/086-mudavym-warmmachine/index.html"
+        },
+        {
+          "bytes": 5900,
+          "sha256": "6dfd4a693d2321c686a032a4a45c532bac924444ff8b54204412b13a6dbdcfb7",
+          "source_path": ".planning/sketches/086-mudavym-warmmachine/motion.json"
+        },
+        {
+          "bytes": 28089,
+          "sha256": "a5242850a6023a92bb00dffd504b857c8e00e60972ce56dcfb979dcf45774307",
+          "source_path": ".planning/sketches/086-mudavym-warmmachine/notes.md"
+        }
+      ]
+    },
+    {
+      "sketch": "087-mudavym-motion-canvas",
+      "files": [
+        {
+          "bytes": 3714,
+          "sha256": "5af717f502866d226f321a213ad25faa9c786be57b3b1d5ff6b1d0fdf8574583",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/CONTRACT.md"
+        },
+        {
+          "bytes": 183110,
+          "sha256": "cc95015b682f77ea8c21f65e04562c2e39dea70d5ba1971b0e9eab59eff373dd",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/founder-curation.dc.html"
+        },
+        {
+          "bytes": 870511,
+          "sha256": "01fe56e5e963466bb0abe7bfbd2a750b3e45101be5aa127a209b80fc1b85b110",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/index.html"
+        },
+        {
+          "bytes": 18501,
+          "sha256": "295458e0ef8d416e023ff4db7f5563f7ce3bf670a71f99f2373b8dbc56e114b1",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/notes.md"
+        },
+        {
+          "bytes": 71425,
+          "sha256": "5326e438aa6438e15ace7662f2495ad380e87302214982b5331d245cc2218aaf",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/acc.html"
+        },
+        {
+          "bytes": 49595,
+          "sha256": "74be78dfcd46a2d1dfded5f63d8bca54cc78293f814bb044526ebe1e1cbfcf32",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/ent.html"
+        },
+        {
+          "bytes": 70580,
+          "sha256": "0315c8b93296e1da8db8a32b4f51e47c0af4565bfc1bceb7b9723474ca7ac2d5",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/inv.html"
+        },
+        {
+          "bytes": 65899,
+          "sha256": "cb3a2b185ec099f61e2dfa3fae01a40611392a2b14c4d3b912483b376afae9ef",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/itl.html"
+        },
+        {
+          "bytes": 52477,
+          "sha256": "9e1c61f331f89544a6c006543a6060c88cc3fe293c0a334ef84ae5e610859bfc",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/nav.html"
+        },
+        {
+          "bytes": 42143,
+          "sha256": "ee1cdf7cb21556fb5c2c420d0c62aea3ea9a8e89a8316749d68041b2741bafdf",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/num.html"
+        },
+        {
+          "bytes": 65371,
+          "sha256": "8e21e879efc8f3e353dd5648357221f0fd4da82020e885bf3df11b4bb555cb1e",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/prc.html"
+        },
+        {
+          "bytes": 48581,
+          "sha256": "245e6a5f83555ddb561705d9cd9ca7f5470805175ddcfca85aa386fd242bb931",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/sig-a.html"
+        },
+        {
+          "bytes": 54685,
+          "sha256": "44651139d9f84ad38f40571dabaa3fff2292d8fcf0c7893a4154e0680bea78b2",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/sig-b.html"
+        },
+        {
+          "bytes": 53596,
+          "sha256": "e8bb66489419b9a1bdbfb408731a37f9e4efdc01d077c47d5e4e9ad43bfc1f38",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/sig-c.html"
+        },
+        {
+          "bytes": 44403,
+          "sha256": "c215504e6ba333194201f80d0ef1913515b00e63f04a3b8d7bc3ea20478281e8",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/sig-d.html"
+        },
+        {
+          "bytes": 13102,
+          "sha256": "2e758b4f4670ebdb39acafa1c2fce4e9ba11ce639e8b9036463e020038f7ba7c",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/sig-hero.html"
+        },
+        {
+          "bytes": 72155,
+          "sha256": "782eaf3cf5988ff4db2035f32cbeaf6e87e02254a4aa143cc950bce4f92d467f",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/srf.html"
+        },
+        {
+          "bytes": 51337,
+          "sha256": "05fc52d6d1f6c19e6bd3db842b4d6f1d1729dcabbcf90891993f3d44cb985c04",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/st.html"
+        },
+        {
+          "bytes": 56841,
+          "sha256": "44efe1ea3a48bd03abe24973b252d6a1ed362f859e4ae04cf0117e4f56c983bc",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/parts/sys.html"
+        },
+        {
+          "bytes": 872734,
+          "sha256": "12f4eb7f007d0903612e1d4aaa40c5d098c39545ec630073a1eb4990ee768eba",
+          "source_path": ".planning/sketches/087-mudavym-motion-canvas/shortlist.html"
+        }
+      ]
+    },
+    {
+      "sketch": "088-documents-reports-directions",
+      "files": [
+        {
+          "bytes": 7332,
+          "sha256": "328fc0577e2e34705b3113eca0a17700678e2888d87ddd4fa06b8f7e9f7758bc",
+          "source_path": ".planning/sketches/088-documents-reports-directions/DirectionA.dc.html"
+        },
+        {
+          "bytes": 5210,
+          "sha256": "594b4d53257fb7f7a8d3d0ff66b340f78ef79b3f1fdcf715c50730c3d1b1c78b",
+          "source_path": ".planning/sketches/088-documents-reports-directions/DirectionC.dc.html"
+        },
+        {
+          "bytes": 9607,
+          "sha256": "8d506015cb4e558c6db7167b9bce1e4a8554e67012f8a7a9ce3d8c42943f1b24",
+          "source_path": ".planning/sketches/088-documents-reports-directions/DirectionD.dc.html"
+        },
+        {
+          "bytes": 8679,
+          "sha256": "8d99fe70d37f7ffdeab2e47f1182bfd8b2e9ad8defaaa15d7a506885b46a4927",
+          "source_path": ".planning/sketches/088-documents-reports-directions/DirectionE.dc.html"
+        },
+        {
+          "bytes": 10224,
+          "sha256": "e52706343c0974c623e7bdea6b85499dde26def235dcaa4cad6786e16192c76b",
+          "source_path": ".planning/sketches/088-documents-reports-directions/Main.dc.html"
+        },
+        {
+          "bytes": 1869,
+          "sha256": "32410dd49d48c70d2fff002c018e54a50268316043ba3c98da6d11fa0e17a226",
+          "source_path": ".planning/sketches/088-documents-reports-directions/canvas.json"
+        }
+      ]
+    },
+    {
+      "sketch": "089-agreed-invoice-directions",
+      "files": [
+        {
+          "bytes": 48683,
+          "sha256": "9ab203568d27b040cc03f366d9a10db4ae1d19d823301bbcb98abc4700620565",
+          "source_path": ".planning/sketches/089-agreed-invoice-directions/DirectionA.dc.html"
+        },
+        {
+          "bytes": 49944,
+          "sha256": "32729139ce37b9b43714618d70c498c3be64785d6cd215f68d22a735edcf1e71",
+          "source_path": ".planning/sketches/089-agreed-invoice-directions/DirectionB.dc.html"
+        },
+        {
+          "bytes": 59272,
+          "sha256": "92d646346a3be0bd4a49037cf19aba267cfaa122a89a6945753d25e49b5adf2c",
+          "source_path": ".planning/sketches/089-agreed-invoice-directions/DirectionC.dc.html"
+        },
+        {
+          "bytes": 1791,
+          "sha256": "45f8ddf6448e03bf33b0a4b2d6881852a855f5707f1b7574e29c2b150d148761",
+          "source_path": ".planning/sketches/089-agreed-invoice-directions/canvas.json"
+        }
+      ]
+    },
+    {
+      "sketch": "089-notifications-directions",
+      "files": [
+        {
+          "bytes": 85573,
+          "sha256": "b4a911d706711ae7270ad620e6a64744d550043837f16363c6bfd75c017322a4",
+          "source_path": ".planning/sketches/089-notifications-directions/day-strip.html"
+        },
+        {
+          "bytes": 11696,
+          "sha256": "334f79919d2c1c4a1eb0c11caabea99f12d6a221d65366f1295a1b7acd5dd0a1",
+          "source_path": ".planning/sketches/089-notifications-directions/index.html"
+        },
+        {
+          "bytes": 83282,
+          "sha256": "262816b8592cc6a096a0b32e7a4fcdbef3e7c54681826d2c6e520b6bed3e4c2b",
+          "source_path": ".planning/sketches/089-notifications-directions/three-column-desk.html"
+        }
+      ]
+    },
+    {
+      "sketch": "090-recommendations-directions",
+      "files": [
+        {
+          "bytes": 5587,
+          "sha256": "f2fc3f80704f10ea0040cae18c6b365f66bd4756e8f90e7d5dbe1bdda6e86674",
+          "source_path": ".planning/sketches/090-recommendations-directions/index.html"
+        },
+        {
+          "bytes": 24601,
+          "sha256": "85cf224365895d95f88b59c882abbc03a203e211ab164b8228368aefda6cbbdc",
+          "source_path": ".planning/sketches/090-recommendations-directions/run-sheet.html"
+        },
+        {
+          "bytes": 19751,
+          "sha256": "5ea5b56f207df27df80f518c6c4cc52775a14f6a8bebe0abc91648f40414d265",
+          "source_path": ".planning/sketches/090-recommendations-directions/two-pane-docket.html"
+        }
+      ]
+    },
+    {
+      "sketch": "091-settings-directions",
+      "files": [
+        {
+          "bytes": 4305,
+          "sha256": "fd8abf843032ffc75a79a4edd4c004ae6bcbd8257d8b6a3786a410a29f622c6a",
+          "source_path": ".planning/sketches/091-settings-directions/index.html"
+        },
+        {
+          "bytes": 33476,
+          "sha256": "b48ee89013ccbf1ca969c90df55d849d29039e0ef6c9e459b6f40496c3da8364",
+          "source_path": ".planning/sketches/091-settings-directions/single-page-scroll.html"
+        },
+        {
+          "bytes": 21629,
+          "sha256": "4fecd046d7c29899c2ca92843348786061f84304ce7537828629108bef1043d5",
+          "source_path": ".planning/sketches/091-settings-directions/vendor-terms.html"
+        }
+      ]
+    },
+    {
+      "sketch": "092-cellar-directions",
+      "files": [
+        {
+          "bytes": 22998,
+          "sha256": "fb0361402a849cb65a3e7726ef8b6a5709b72e98f3b748a535bc5d716ee28ce5",
+          "source_path": ".planning/sketches/092-cellar-directions/cellar-floor.html"
+        },
+        {
+          "bytes": 6168,
+          "sha256": "93afd0617c4dc6f829a00139d80c59c5ae9ffc095522f0dc1eaf4911bc4f68ad",
+          "source_path": ".planning/sketches/092-cellar-directions/index.html"
+        },
+        {
+          "bytes": 20335,
+          "sha256": "e93979bddb29983fd9d6009e1bdfe6ac18c14243e082e8cceb49ac9c4cc4535b",
+          "source_path": ".planning/sketches/092-cellar-directions/one-register-with-kind.html"
+        }
+      ]
+    },
+    {
+      "sketch": "093-notifications-directions-2",
+      "files": [
+        {
+          "bytes": 70098,
+          "sha256": "bdb8067eb42f1177d74cf50ea55ebdd76dc2565d7d2258f3f47ffdaa786282da",
+          "source_path": ".planning/sketches/093-notifications-directions-2/day-rail-ledger.html"
+        },
+        {
+          "bytes": 28292,
+          "sha256": "d4556044d06c441034c0ef279e69ec441bba60c18ab99dd273da004c9874efbe",
+          "source_path": ".planning/sketches/093-notifications-directions-2/index.html"
+        },
+        {
+          "bytes": 55127,
+          "sha256": "90f73d894065dbfde67273858f60066a79a81d1ad46dd913c46d6384ea438bbf",
+          "source_path": ".planning/sketches/093-notifications-directions-2/standing-accounts.html"
+        },
+        {
+          "bytes": 79266,
+          "sha256": "8d5354e49ed522c0716cb66981cb0a2c8d8ab5fe643b8d01524a020353c3afa4",
+          "source_path": ".planning/sketches/093-notifications-directions-2/two-rooms.html"
+        }
+      ]
+    },
+    {
+      "sketch": "094-recommendations-directions-2",
+      "files": [
+        {
+          "bytes": 43322,
+          "sha256": "a3c09a4c3a4c421c40bb1a412ef1cb0bf051948dddca80d7eab9bcbbb4baeba7",
+          "source_path": ".planning/sketches/094-recommendations-directions-2/action-docket.html"
+        },
+        {
+          "bytes": 34081,
+          "sha256": "e7fafbb2cd0cfd1e8633b13e7968db8581e5cda16d11c98cc71c314438e42bf3",
+          "source_path": ".planning/sketches/094-recommendations-directions-2/calendar-strip.html"
+        },
+        {
+          "bytes": 24867,
+          "sha256": "4a4713a9d0f6b79b960534b6945b5f7ab37bc7129a443a39771c9661cc03afb1",
+          "source_path": ".planning/sketches/094-recommendations-directions-2/case-ledger.html"
+        },
+        {
+          "bytes": 21058,
+          "sha256": "47ed91c3a1b83a91caf9dd57be8a6dac7b9e30f2f718cc094ed5dd14d9e232d9",
+          "source_path": ".planning/sketches/094-recommendations-directions-2/index.html"
+        }
+      ]
+    },
+    {
+      "sketch": "095-cellar-merged",
+      "files": [
+        {
+          "bytes": 12637,
+          "sha256": "e1dfb079acf6466443b913fff6679e965e13285a97ea430955f64f6c6388570e",
+          "source_path": ".planning/sketches/095-cellar-merged/index.html"
+        },
+        {
+          "bytes": 22087,
+          "sha256": "bd7c433a57f314d702da6548c9194d3ec5a528faf34acfffb91f6d9af21fa0dc",
+          "source_path": ".planning/sketches/095-cellar-merged/merged-parent.html"
+        },
+        {
+          "bytes": 20059,
+          "sha256": "e6268e20c8d5ce5a1a20277a19d6c0d0ecf1629943408e74f31ff5b129984727",
+          "source_path": ".planning/sketches/095-cellar-merged/merged-register.html"
+        },
+        {
+          "bytes": 32830,
+          "sha256": "e32e96bfb310bafea194ca2c1585e75fdd5b0f1bda980dd946a758dd67f21bac",
+          "source_path": ".planning/sketches/095-cellar-merged/merged-row-open.html"
+        }
+      ]
+    },
+    {
+      "sketch": "096-reports-keyboard-arrange",
+      "files": [
+        {
+          "bytes": 16829,
+          "sha256": "e2c4cebd39c539548b0f28509f80625d8bf235660bb8af93fba22d02bf9e57c7",
+          "source_path": ".planning/sketches/096-reports-keyboard-arrange/compass-card.html"
+        },
+        {
+          "bytes": 18667,
+          "sha256": "5149de7bf274498b9c5b8e80fc17e324640b8116cc9e43abadd5b90c572858e9",
+          "source_path": ".planning/sketches/096-reports-keyboard-arrange/grip-and-placing-bar.html"
+        },
+        {
+          "bytes": 10466,
+          "sha256": "69d9b035ff18a33e48f0c78a9d1b0898ec1eb5f24af58fedb9e43b26ff4a8c28",
+          "source_path": ".planning/sketches/096-reports-keyboard-arrange/index.html"
+        },
+        {
+          "bytes": 16065,
+          "sha256": "c447ccb0f56e9ef7086a9daac1e6e631c3c9c750e053b60fd9aa371a571cdc42",
+          "source_path": ".planning/sketches/096-reports-keyboard-arrange/move-to-menu.html"
+        }
+      ]
+    },
+    {
+      "sketch": "097-integrations-home",
+      "files": [
+        {
+          "bytes": 22036,
+          "sha256": "f65d7471b51023cf95649afd1edec446792946ac81b243880acb4d02f4376e2e",
+          "source_path": ".planning/sketches/097-integrations-home/checklist.html"
+        },
+        {
+          "bytes": 33865,
+          "sha256": "7070afd86666a681e495d4586853807e6b58e79fce0843c0178b0474f81085a1",
+          "source_path": ".planning/sketches/097-integrations-home/connections.html"
+        },
+        {
+          "bytes": 9036,
+          "sha256": "52c3db27bb7f0996929f4419443f56a11a9415862a864237b2c2a013ff23bd07",
+          "source_path": ".planning/sketches/097-integrations-home/index.html"
+        },
+        {
+          "bytes": 18922,
+          "sha256": "55bd527532a832f07d39008639c641ecc7dda896e31f5f2f8d3af26999cca0bb",
+          "source_path": ".planning/sketches/097-integrations-home/profile-after.html"
+        }
+      ]
+    },
+    {
+      "sketch": "098-calendar-quant-overlay",
+      "files": [
+        {
+          "bytes": 26755,
+          "sha256": "5a4d93cbceb6a6d15f45df43b220039932e910744be517fc41a97e600cc009f7",
+          "source_path": ".planning/sketches/098-calendar-quant-overlay/connections.html"
+        },
+        {
+          "bytes": 16718,
+          "sha256": "3a0b65bf7c74147c87321c7b846d123d45f09ca4a6b26575f26876836472b879",
+          "source_path": ".planning/sketches/098-calendar-quant-overlay/index.html"
+        },
+        {
+          "bytes": 85421,
+          "sha256": "c06679062b0e79becb53ba50df8b1066e20f160cff79636a4ab4422896225a0a",
+          "source_path": ".planning/sketches/098-calendar-quant-overlay/month-overlay.html"
+        }
+      ]
+    },
+    {
+      "sketch": "099-modal-shapes",
+      "files": [
+        {
+          "bytes": 3087,
+          "sha256": "9bfc9597144edd54e16597e8efe7cfdf02a4dadc48585e742da9354556e17657",
+          "source_path": ".planning/sketches/099-modal-shapes/README.md"
+        },
+        {
+          "bytes": 26132,
+          "sha256": "bf3946d2e353d8b1bc8871ff1386c3025b8038db09933a9677483445b3186127",
+          "source_path": ".planning/sketches/099-modal-shapes/index.html"
+        },
+        {
+          "bytes": 28495,
+          "sha256": "bfc9e2b1260cfeff13754c6e2ea3aed6fe56139b5fb25f261c681ce10f3e8d9b",
+          "source_path": ".planning/sketches/099-modal-shapes/panel.html"
+        },
+        {
+          "bytes": 39382,
+          "sha256": "73f63cb346094cea205ac8cc356112a65d0fbab44fc9ac2e54c1db62172d308f",
+          "source_path": ".planning/sketches/099-modal-shapes/popover.html"
+        },
+        {
+          "bytes": 28655,
+          "sha256": "e0c06c1c46266ff7f140971f9cc773afd62051b47d3a1bea6ba8b3eb9a89e9b9",
+          "source_path": ".planning/sketches/099-modal-shapes/sheet.html"
+        }
+      ]
+    },
+    {
+      "sketch": "100-email-composer",
+      "files": [
+        {
+          "bytes": 3818,
+          "sha256": "6c45436771700888f39f78f155c936408824a71600af8f863a2d937946492da1",
+          "source_path": ".planning/sketches/100-email-composer/README.md"
+        },
+        {
+          "bytes": 32913,
+          "sha256": "e69c83171675a4426ce506af496722fdcf49c07b07f0384381975a6211ddc5cd",
+          "source_path": ".planning/sketches/100-email-composer/account.html"
+        },
+        {
+          "bytes": 34927,
+          "sha256": "aec494bdece63e6cf2cd6bfe2c2ab377ee17c032e586955a6eabcf4cd6e15738",
+          "source_path": ".planning/sketches/100-email-composer/compose.html"
+        },
+        {
+          "bytes": 34620,
+          "sha256": "2fa3b7f038b50dca841fc4c8c52101c87a4b318965191d4424ef4767f830fcd0",
+          "source_path": ".planning/sketches/100-email-composer/index.html"
+        },
+        {
+          "bytes": 30723,
+          "sha256": "e6b34fffc1a0ec2d6f7d19b7e71628098551dba7163294a338a14437e7bfafe2",
+          "source_path": ".planning/sketches/100-email-composer/templates.html"
+        }
+      ]
+    },
+    {
+      "sketch": "101-config-assistant",
+      "files": [
+        {
+          "bytes": 6089,
+          "sha256": "4df9a67b6ec130760b8be33bb10b429e211c7de4757024fcd5ebaae907e08c87",
+          "source_path": ".planning/sketches/101-config-assistant/README.md"
+        },
+        {
+          "bytes": 24154,
+          "sha256": "d4943d4675540b2abd1aa71446b78a70675dd4a3a2fc7108fe640c8129f8dd3a",
+          "source_path": ".planning/sketches/101-config-assistant/conversation.html"
+        },
+        {
+          "bytes": 28653,
+          "sha256": "432ea47f09c67312dd05b489b98f655892097013a878bcc5dcc33302a656f167",
+          "source_path": ".planning/sketches/101-config-assistant/index.html"
+        },
+        {
+          "bytes": 27178,
+          "sha256": "f8f9bc18dc13fc07969a0e9d1aec70a2175db7fe4dc56e5092d294389ae2d53d",
+          "source_path": ".planning/sketches/101-config-assistant/onboarding-step.html"
+        },
+        {
+          "bytes": 34568,
+          "sha256": "5ad1da37d401ac58a837c163ecb83d1f8233ac83d88fb0e2229aa4ab6fcfcd31",
+          "source_path": ".planning/sketches/101-config-assistant/proposal.html"
+        }
+      ]
+    },
+    {
+      "sketch": "102-modal-census",
+      "files": [
+        {
+          "bytes": 34660,
+          "sha256": "935e238285fb58cac0d71a6b3df1d39823592bf60806e569717f9639810c8247",
+          "source_path": ".planning/sketches/102-modal-census/BUILD-PROMPT.md"
+        },
+        {
+          "bytes": 43563,
+          "sha256": "f9adafc266474df126e3435e17e4c9be412c58a6dc61d670224a89ee66eeba86",
+          "source_path": ".planning/sketches/102-modal-census/README.md"
+        },
+        {
+          "bytes": 137686,
+          "sha256": "2b0fa758e3882ba7482c704cc207073b55d0d72219ee39284a94b50c9987b66d",
+          "source_path": ".planning/sketches/102-modal-census/census.json"
+        },
+        {
+          "bytes": 179134,
+          "sha256": "5baec029aba4a61616f4fafe7d4d8a93825c9f1b23d077cf90c9d5e0908dc237",
+          "source_path": ".planning/sketches/102-modal-census/index.html"
+        },
+        {
+          "bytes": 33492,
+          "sha256": "322e60005b4f91f55ef0aba9ac17a7eb254420804740fd0063dee321981f6082",
+          "source_path": ".planning/sketches/102-modal-census/research/A-command-first.md"
+        },
+        {
+          "bytes": 33986,
+          "sha256": "d71ea206ec794df4dd1088dc9384834e4daf8cf86d4da92a4fd48df9e1e658df",
+          "source_path": ".planning/sketches/102-modal-census/research/B-ops-finance.md"
+        },
+        {
+          "bytes": 39948,
+          "sha256": "85de9d50855d42b849b6c554ad0479346f8d56c2e46a28837326383da7d98809",
+          "source_path": ".planning/sketches/102-modal-census/research/C-ai-mobile.md"
+        },
+        {
+          "bytes": 3865,
+          "sha256": "bd6f4adeb77afa6a0917d6817a4f0d887811ba50c88836bda033e8a97064f0af",
+          "source_path": ".planning/sketches/102-modal-census/research/D-implementation.md"
+        },
+        {
+          "bytes": 32112,
+          "sha256": "af40a5d294a8ddf8bbd771c64a4be6dbe7e8bc32e658333f57d6515a380c8b35",
+          "source_path": ".planning/sketches/102-modal-census/research/E-adversary.md"
+        },
+        {
+          "bytes": 29781,
+          "sha256": "4b89d8df08fb0888b6eaf2772b4d167445379a66696e92097fc32b2ef917f795",
+          "source_path": ".planning/sketches/102-modal-census/research/F-security-ceremonies.md"
+        },
+        {
+          "bytes": 4510,
+          "sha256": "f043b3111425f69760e45301a62303a9b8ec87488f1b4961c40755bb74f84e8b",
+          "source_path": ".planning/sketches/102-modal-census/research/G-security-adversary.md"
+        },
+        {
+          "bytes": 43701,
+          "sha256": "57e9b3d0c48367520e8d9988b502637ffa4ab2119fd389bba99fccc220ae4522",
+          "source_path": ".planning/sketches/102-modal-census/research/H-assistant-security-deep.md"
+        },
+        {
+          "bytes": 2962,
+          "sha256": "788ca06852cc3c1c04fbcf32c57d6a9a4981d1db1a1947f565527ea889e60844",
+          "source_path": ".planning/sketches/102-modal-census/research/I-deep-pass-check.md"
+        },
+        {
+          "bytes": 2223,
+          "sha256": "408173f1fb1c08d191438095204e0b96271850cce987a394eb72de603c23a20a",
+          "source_path": ".planning/sketches/102-modal-census/research/adversary-brief.md"
+        }
+      ]
+    },
+    {
+      "sketch": "103-overlay-experience",
+      "files": [
+        {
+          "bytes": 4325,
+          "sha256": "ca280a2d48dac7187e1ee985bfe0b2fd37d1bcd400128d7500f5690da7fd721e",
+          "source_path": ".planning/sketches/103-overlay-experience/README.md"
+        },
+        {
+          "bytes": 119160,
+          "sha256": "94768a03c34676e877fbd04d57d12a2b52ad4b877bbc1abb01389b203e096735",
+          "source_path": ".planning/sketches/103-overlay-experience/canvas.dc.html"
+        }
+      ]
+    },
+    {
+      "sketch": "104-onboarding-directions",
+      "files": [
+        {
+          "bytes": 5072,
+          "sha256": "06a76676524a96303b703d4f17169a49622ae41b219ccd7ffa2293b7ef387f21",
+          "source_path": ".planning/sketches/104-onboarding-directions/README.md"
+        },
+        {
+          "bytes": 64829,
+          "sha256": "add73a77e6a298c409b13828209fc0048514e921eb362af9895755ab44d65bee",
+          "source_path": ".planning/sketches/104-onboarding-directions/direction-a.html"
+        },
+        {
+          "bytes": 8175,
+          "sha256": "e3d4e053d5f9508155bb2bb16dcba64e8c2c9a26ede04ef3ebc829ebd452a524",
+          "source_path": ".planning/sketches/104-onboarding-directions/direction-a.md"
+        },
+        {
+          "bytes": 82487,
+          "sha256": "9c463691b002d4ece333eb0fd3e2011a626907c826e7762872998c3a0bffd651",
+          "source_path": ".planning/sketches/104-onboarding-directions/direction-b.html"
+        },
+        {
+          "bytes": 6832,
+          "sha256": "0211d4dffac5f302605449733f937d0a937281a5e4769398ca073b7e2081dc13",
+          "source_path": ".planning/sketches/104-onboarding-directions/direction-b.md"
+        },
+        {
+          "bytes": 77867,
+          "sha256": "1c408272f1ca5eeadd50425088c2f8ef4824323ba0809c8bffd55bfa51b25a06",
+          "source_path": ".planning/sketches/104-onboarding-directions/direction-c.html"
+        },
+        {
+          "bytes": 8306,
+          "sha256": "d73b9e68fd278268eca24d307336eba424976af81a10e33fcedaafc33b4406f1",
+          "source_path": ".planning/sketches/104-onboarding-directions/direction-c.md"
+        },
+        {
+          "bytes": 69423,
+          "sha256": "dce42a8202cebc2ca9fa635036545be8fdf81913711f6a9b37bd326a33e2acef",
+          "source_path": ".planning/sketches/104-onboarding-directions/direction-d.html"
+        },
+        {
+          "bytes": 8059,
+          "sha256": "262c01a8db231d87c7b53b7cde33d5a2bc2cf45cf601ec995dc5ef1b732565d7",
+          "source_path": ".planning/sketches/104-onboarding-directions/direction-d.md"
+        },
+        {
+          "bytes": 53322,
+          "sha256": "250c6d4a7931c1d848b27f6ee2ef0eb4dd06b791227fe334f32a6c394617c36a",
+          "source_path": ".planning/sketches/104-onboarding-directions/direction-e.html"
+        },
+        {
+          "bytes": 6943,
+          "sha256": "e54ea9d9b564e2f58f03a2bbc4535e6923bcdf7db2c4f75ada338cdfbfbf13b2",
+          "source_path": ".planning/sketches/104-onboarding-directions/direction-e.md"
+        }
+      ]
+    }
+  ],
+  "coverage_note": "Manifest hashes are source acquisition, not evidence every byte was reasoned through. Read coverage is named in the review. HTML text was extracted without running script; browser observations belong to root visual review.",
+  "external_login_appendix": {
+    "source_checkout": "p4-scratch sibling of the original restaurant-ai-automation checkout",
+    "selection": "Located in withdrawn-sketches; winner null; no individual founder selection established",
+    "files": [
+      {
+        "source_path": "withdrawn-sketches/105-login-house-door/README.md",
+        "bytes": 11883,
+        "sha256": "107d11cd0569dd64d68f98e6114e0a048c58d5c1d0f8f01b2cb51f2d2d1ca70a"
+      },
+      {
+        "source_path": "withdrawn-sketches/105-login-house-door/index.html",
+        "bytes": 45404,
+        "sha256": "c0c8543c3ab6f33b12b4887ed2dcea4fb1d920eb22c18523568f2dc8cb6fc0b3"
+      },
+      {
+        "source_path": "withdrawn-sketches/106-login-ledger-entry/README.md",
+        "bytes": 12962,
+        "sha256": "fd704ed0cc68b5099130941c5a9014d6b063ce6bfb7568dc2af831521eaa53bf"
+      },
+      {
+        "source_path": "withdrawn-sketches/106-login-ledger-entry/index.html",
+        "bytes": 55853,
+        "sha256": "d003630ec828613b1520e4fb80920ef21e3b3352074cb3290e77f00e31f2d861"
+      },
+      {
+        "source_path": "withdrawn-sketches/107-login-the-regular/README.md",
+        "bytes": 10685,
+        "sha256": "5290558dc152235babb9b446c1dee63cf43099971e283043279fdaf1206d86ec"
+      },
+      {
+        "source_path": "withdrawn-sketches/107-login-the-regular/index.html",
+        "bytes": 41348,
+        "sha256": "ae20f74e52d7ac74f7ba46a0f53b55379ff7af6797576ec0c689b24024fd316f"
+      },
+      {
+        "source_path": "newpages/login-register-brief.md",
+        "bytes": 6113,
+        "sha256": "9dd33e51a89e7970a45daf33db3aea3177b5cc6dde81761e0cfdb755b2e1efdd"
+      },
+      {
+        "source_path": "newpages/login/finder.md",
+        "bytes": 25906,
+        "sha256": "56a93f29c3342d5cf60bc3625cb13dd2932f157d68b19774b749305eab4e02f9"
+      },
+      {
+        "source_path": "makeover-artboards/Login.dc.html",
+        "bytes": 7798,
+        "sha256": "bedb45a07540ae727d8c30b256c0077bb2aae386654699c33f04e1c1e0920332"
+      }
+    ]
+  }
+}

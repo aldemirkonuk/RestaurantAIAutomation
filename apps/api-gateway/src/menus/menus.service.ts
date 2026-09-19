@@ -1,3 +1,4 @@
+import { restoreArrivalEntry } from "../arrival/restore-entry";
 import {
   Injectable,
   Logger,
@@ -35,6 +36,8 @@ interface InsertedMenuItem {
 
 export interface MenuImportReviewItem {
   menuItemId: string;
+  inventoryItemId?: string | null;
+  inventoryCreated?: boolean;
   submissionId: string | null;
   name: string;
   producer: string | null;
@@ -50,6 +53,39 @@ export interface MenuImportReviewItem {
 
 @Injectable()
 export class MenusService {
+  restoreArrivalThreshold(
+    restaurantId: string,
+    actorId: string,
+    batchId: string,
+    rowId: string,
+  ) {
+    return restoreArrivalEntry(
+      this.dbService,
+      "threshold",
+      restaurantId,
+      actorId,
+      batchId,
+      rowId,
+    );
+  }
+
+  /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
+  restoreArrival(
+    restaurantId: string,
+    actorId: string,
+    batchId: string,
+    rowId: string,
+  ) {
+    return restoreArrivalEntry(
+      this.dbService,
+      "menu_item",
+      restaurantId,
+      actorId,
+      batchId,
+      rowId,
+    );
+  }
+
   private readonly logger = new Logger(MenusService.name);
 
   constructor(
@@ -82,6 +118,40 @@ export class MenusService {
       items = dto.data.items ?? [];
     }
 
+    return this.importParsedItems(items, restaurantId, userId, dto.method);
+  }
+
+  /** Arrival reads evidence without creating menu, library or inventory rows. */
+  async previewArrivalMenu(
+    method: "scan" | "csv",
+    content: string,
+    restaurantId: string,
+    binary = false,
+  ): Promise<WineExtractItem[]> {
+    const items =
+      method === "scan"
+        ? await this.scanParser.parse(content, restaurantId, true)
+        : binary
+          ? await this.csvParser.parseExcel(content)
+          : this.csvParser.parse(content);
+    if (!items.length)
+      throw new BadRequestException(
+        "No supported beverage items were extracted. Nothing was imported.",
+      );
+    if (items.length > 500)
+      throw new BadRequestException(
+        "This menu contains more than 500 entries. Divide the evidence into smaller files.",
+      );
+    return items.map(({ raw_text: _raw, ...item }) => item);
+  }
+
+  /** The same owning persistence path, entered only after Arrival's held seal. */
+  async importParsedItems(
+    items: WineExtractItem[],
+    restaurantId: string,
+    userId: string,
+    method: "scan" | "csv" | "manual",
+  ) {
     // 2. Create or reuse the restaurant's active menu
     const menu = await this.upsertMenu(restaurantId);
 
@@ -92,7 +162,7 @@ export class MenusService {
       restaurantId,
       menu.id,
       userId,
-      dto.method,
+      method,
     );
 
     // 7. Mark menu_uploaded for everyone on this restaurant (matches the
@@ -424,6 +494,12 @@ export class MenusService {
       const menuItem = insertedMenuItems[idx];
       return {
         menuItemId: menuItem?.id,
+        inventoryItemId: menuItem
+          ? (inventoryMap.get(menuItem.id) ?? null)
+          : null,
+        inventoryCreated: menuItem
+          ? inventoryMap.created.has(menuItem.id)
+          : false,
         submissionId: menuItem
           ? (submissionMap.get(menuItem.id) ?? null)
           : null,
@@ -536,8 +612,10 @@ export class MenusService {
   private async addToInventory(
     menuItems: InsertedMenuItem[],
     restaurantId: string,
-  ): Promise<Map<string, string>> {
-    const result = new Map<string, string>();
+  ): Promise<Map<string, string> & { created: Set<string> }> {
+    const result = Object.assign(new Map<string, string>(), {
+      created: new Set<string>(),
+    });
     const validItems = menuItems.filter((i) => i.wine_library_id);
     if (validItems.length === 0) return result;
 
@@ -574,7 +652,10 @@ export class MenusService {
         );
         continue;
       }
-      if (created) result.set(item.id, created.id);
+      if (created) {
+        result.set(item.id, created.id);
+        result.created.add(item.id);
+      }
     }
 
     return result;

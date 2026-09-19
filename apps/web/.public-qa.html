@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Mudavym public page QA</title>
+<style>body{margin:0;background:#383838;font:14px system-ui;color:white}header{padding:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}label{display:flex;gap:5px;align-items:center}iframe{display:block;margin:auto;border:0;background:#15130f;height:calc(100vh - 70px);max-width:100%}button,select{font:inherit;padding:6px}output{font-variant-numeric:tabular-nums}</style></head><body>
+<header><strong>Local visual QA</strong><label>Page <select id="page"><option value="/forgot-password">Forgot password</option><option value="/reset-password">Reset missing token</option><option value="/reset-password?token=qa-placeholder">Reset form</option><option value="/verify-email">Verify email</option><option value="/invite/qa-placeholder">Invite read failure</option><option value="/no-access">No access</option><option value="/privacy">Privacy</option><option value="/v/qa-placeholder">Vendor read failure</option></select></label><label>Width <select id="width"><option>375</option><option>768</option><option selected>1080</option></select></label><label>Ground <select id="ground"><option value="charcoal">Charcoal</option><option value="paper">Paper</option></select></label><output id="size"></output></header>
+<iframe id="frame" title="Public page under review" src="/forgot-password" width="1080"></iframe>
+<script>
+const frame=document.querySelector('iframe'),page=document.querySelector('#page'),width=document.querySelector('#width'),ground=document.querySelector('#ground'),size=document.querySelector('#size');
+function measure(){let d=frame.contentDocument;size.textContent=`Actual ${frame.clientWidth}px · page ${d?.documentElement.scrollWidth ?? '…'}px`;}
+function paint(){const el=frame.contentDocument?.querySelector('.mudavym');if(el&&el.dataset.ground!==ground.value)el.dataset.ground=ground.value;measure();}
+page.onchange=()=>frame.src=page.value;width.onchange=()=>{frame.width=width.value;measure()};ground.onchange=paint;
+frame.onload=()=>{paint();setTimeout(paint,1500);setTimeout(paint,4000)};window.onresize=measure;
+</script></body></html>

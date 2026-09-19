@@ -1,3 +1,4 @@
+import { restoreArrivalEntry } from "../arrival/restore-entry";
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
@@ -128,6 +129,11 @@ interface AnswerRow {
 
 @Injectable()
 export class CellarRegistersService {
+  /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
+  restoreArrival(restaurantId: string, actorId: string, batchId: string, rowId: string) {
+    return restoreArrivalEntry(this.dbService, "cellar", restaurantId, actorId, batchId, rowId);
+  }
+
   private readonly logger = new Logger(CellarRegistersService.name);
 
   constructor(private readonly dbService: DatabaseService) {}

@@ -1,18 +1,141 @@
+import { PublicShell } from '../components/mudavym/PublicShell'
+import { usePublicDesign } from '../lib/mudavym/publicDesign'
+import '../components/mudavym/public-pages.css'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Cookie, Database, KeyRound, Share2, LineChart, Bug } from 'lucide-react'
+import {
+  ArrowLeft,
+  Cookie,
+  Database,
+  KeyRound,
+  Share2,
+  LineChart,
+  Bug,
+} from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 
 /**
  * Privacy notice.
  *
- * Written to match what the code actually does rather than boilerplate: the app
- * sets no cookies, keeps session tokens in localStorage, ships interaction
- * telemetry disabled, defaults partner sharing to off, and sends only a
- * pseudonymous id (never email or name) to error tracking — see
- * lib/error-tracking.ts, which strips PII before every event leaves the browser.
- * If any of those change, this page has to change with them.
+ * Factual product behavior, shared across legacy and new public treatments.
+ * Provider scopes, browser storage and reporting must be checked when changed;
+ * this page does not invent a retention schedule or provider-revocation guarantee.
  */
 export default function Privacy() {
+  const publicDesign = usePublicDesign()
+  if (publicDesign) {
+    return (
+      <PublicShell
+        title="Privacy & data"
+        measure="document"
+        eyebrow="The public record"
+        homeHref="/login"
+        voice="What the product stores, what connections permit, and where to review your choices."
+        footer={
+          <>
+            <Link className="mdv-link" to="/login">
+              Sign in
+            </Link>{' '}
+            to review your account and connections.
+          </>
+        }
+      >
+        <div className="mdv-pub__prose mdv-public-prose">
+          <section className="mdv-pub__plate">
+            <h2>Your account and browser</h2>
+            <p>
+              Mudavym stores your account details and the restaurant records you
+              enter. Sign-in tokens are kept in browser local storage and
+              removed when you sign out. Browser storage also remembers
+              interface preferences.
+            </p>
+          </section>
+          <section className="mdv-pub__plate">
+            <h2>Signing in with a provider</h2>
+            <p>
+              Signing in with Google identifies your account using your email
+              address, name and profile picture. Mudavym does not receive your
+              Google password. Connecting a working service, such as Drive or
+              email, is a separate permission.
+            </p>
+          </section>
+          <section className="mdv-pub__plate">
+            <h2>Connected services</h2>
+            <p>
+              Each provider presents its requested permissions before you
+              connect. These vary: Google Drive uses access to files created or
+              selected for the app; Microsoft Excel requests file read and write
+              access to your OneDrive. Connected credentials are encrypted when
+              stored. Review the specific connection before granting access.
+            </p>
+            <p>
+              Disconnecting stops Mudavym using the saved connection. Review
+              your provider account as well to manage provider-side permissions
+              and files already created there.
+            </p>
+          </section>
+          <section className="mdv-pub__plate">
+            <h2>Tools acting for you</h2>
+            <p>
+              Restaurant connections can expose tools that read or change
+              records. Where a connection asks for your consent, review its
+              listed tools and permissions first. An owner configuring a
+              connection and your consent for it to act in your name are
+              separate choices.
+            </p>
+          </section>
+          <section className="mdv-pub__plate">
+            <h2>Usage and error reporting</h2>
+            <p>
+              The deployment controls whether optional interaction telemetry and
+              Sentry error monitoring are enabled. Error reports can include
+              technical details, page or request information and account or
+              restaurant identifiers. The application filters contact details,
+              credentials and request values before reporting. Public pages load
+              fonts from Google Fonts, which involves a request from your
+              browser to Google.
+            </p>
+          </section>
+          <section className="mdv-pub__plate">
+            <h2>Published information</h2>
+            <p>
+              A vendor catalogue that is published is accessible without signing
+              in. Its listings and published contact details can be read by
+              visitors and search engines. Check these details before
+              publication.
+            </p>
+          </section>
+          <section className="mdv-pub__plate">
+            <h2>Your controls</h2>
+            <ul>
+              <li>
+                Review your identity and personal permissions in{' '}
+                <Link className="mdv-link" to="/profile">
+                  your profile
+                </Link>
+                .
+              </li>
+              <li>
+                Review services available to your restaurant in{' '}
+                <Link className="mdv-link" to="/connections">
+                  Connections
+                </Link>
+                . Available controls depend on your role and which features your
+                restaurant has enabled.
+              </li>
+              <li>
+                Where an older page is enabled, connection controls remain under{' '}
+                <Link className="mdv-link" to="/settings">
+                  Settings
+                </Link>
+                .
+              </li>
+            </ul>
+          </section>
+        </div>
+      </PublicShell>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-[#FAF7F5] px-4 py-12">
       <div className="mx-auto w-full max-w-2xl">
@@ -30,7 +153,7 @@ export default function Privacy() {
           <Section
             icon={Cookie}
             title="Cookies"
-            body="Mudavym sets no tracking or advertising cookies. We don't use a cookie-consent banner because there is nothing to consent to. Your sign-in session is kept in your browser's local storage instead of a cookie, and it is cleared when you sign out."
+            body="Mudavym keeps sign-in tokens and interface preferences in browser local storage. Signing out removes your sign-in tokens. Connected services may have their own browser storage and privacy choices."
           />
 
           <Section
@@ -42,25 +165,25 @@ export default function Privacy() {
           <Section
             icon={Database}
             title="Connected integrations"
-            body="Connecting Google Drive or Microsoft Excel grants Mudavym permission to write files on your behalf. We request the narrowest scopes that work — access is limited to files Mudavym creates, not your whole drive. The access and refresh tokens are encrypted before being stored, and you can revoke a connection at any time from Settings → Integrations, which also revokes it at the provider."
+            body="Providers show their requested permissions before you connect. Google Drive uses access to files created or selected for the app; Microsoft Excel requests file read and write access to your OneDrive. Connected credentials are encrypted when stored. Disconnecting stops Mudavym using the saved connection; review your provider account to manage provider-side permissions and files already created there."
           />
 
           <Section
             icon={LineChart}
             title="Product analytics"
-            body="Interaction telemetry is off unless your deployment explicitly enables it and you turn on Usage analytics in Settings. When it is on, what leaves the browser is a page name, an event type, an optional element name, and a number — never text you typed, never text the app rendered, and never the contents of your inventory."
+            body="The deployment controls whether optional interaction telemetry is enabled. Personal connection consents and restaurant service settings serve different purposes; review the permissions listed for each connection. Public pages also load fonts from Google Fonts, which involves a request from your browser to Google."
           />
 
           <Section
             icon={Bug}
             title="Error and performance monitoring"
-            body="When a deployment configures error tracking (Sentry), crashes and slow requests are reported so we can fix them. What is sent is technical: the error type and stack trace, the page or request involved, browser and app-version details, and two opaque identifiers — your account id and your restaurant id — which mean nothing outside our own database. Your email address and your name are never sent. Reports are scrubbed of contact details, addresses and credentials before they leave the app, and request parameters are reported by name without their values. If no error-tracking key is configured, nothing is sent at all."
+            body="When the deployment enables Sentry, error and performance reports can include technical details, page or request information, browser and app-version details, and account or restaurant identifiers. The application filters contact details, credentials and request values before reporting."
           />
 
           <Section
             icon={Share2}
             title="Sharing with partners"
-            body="Data sharing with logistics and POS partners is off by default and stays off until you turn it on and confirm which partner you are connecting. We do not sell your data, and we do not share it with advertisers."
+            body="Connected services can exchange restaurant records according to their requested permissions. A published vendor catalogue is accessible without signing in: its listings and published contact details can be read by visitors and search engines. Review the details before publication."
           />
         </div>
 
@@ -69,21 +192,30 @@ export default function Privacy() {
           <ul className="mt-2.5 space-y-1.5 text-sm text-gray-600">
             <li>
               Review permissions and analytics in{' '}
-              <Link to="/settings" className="font-medium text-wine-600 hover:text-wine-700">
+              <Link
+                to="/settings"
+                className="font-medium text-wine-600 hover:text-wine-700"
+              >
                 Settings → Services &amp; permissions
               </Link>
               .
             </li>
             <li>
               Disconnect integrations in{' '}
-              <Link to="/settings" className="font-medium text-wine-600 hover:text-wine-700">
+              <Link
+                to="/settings"
+                className="font-medium text-wine-600 hover:text-wine-700"
+              >
                 Settings → Integrations
               </Link>
               .
             </li>
             <li>
               Unlink a sign-in provider or delete your account from{' '}
-              <Link to="/profile" className="font-medium text-wine-600 hover:text-wine-700">
+              <Link
+                to="/profile"
+                className="font-medium text-wine-600 hover:text-wine-700"
+              >
                 your profile
               </Link>
               .

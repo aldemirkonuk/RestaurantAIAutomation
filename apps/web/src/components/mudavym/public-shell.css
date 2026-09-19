@@ -4,11 +4,10 @@
 
    Tokens only. There is NOT ONE hex literal in this file, no
    `prefers-color-scheme` block and no `[data-theme]` block — every colour is a
-   `.mudavym` custom property from `styles/mudavym.css`, so both grounds arrive
-   by the three routes ADR 0042 already defines (the app's `.dark` class, an
-   explicit `data-ground="charcoal"`, and mudavym.css's own pre-hydration media
-   query) and none of them can be contradicted from here.
-   `PublicShell.test.tsx` reads this file back and asserts all three.
+   `.mudavym` custom property from `styles/mudavym.css`. The current token
+   contract defaults to Warm Charcoal; an explicit data-ground="paper" opts
+   into the shared paper exception. This stylesheet owns neither palette.
+   `PublicShell.test.tsx` checks that no competing theme branch is introduced.
 
    There are also no `box-shadow` colours, deliberately: the separation in this
    house is a hairline and a change of ground (`--paper-1` on `--paper-0`,

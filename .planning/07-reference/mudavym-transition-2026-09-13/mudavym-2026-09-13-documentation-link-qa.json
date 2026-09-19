@@ -1,0 +1,21 @@
+{
+  "audit_date": "2026-09-13",
+  "checked_files": [
+    "handoff-corpus-audit.md",
+    "surface-capability-matrix.md",
+    "safari-artifact-source-map.md",
+    "current-documentation-delta.md"
+  ],
+  "checked_local_links": 233,
+  "errors": [],
+  "current_counts_verified": {
+    "support": 10,
+    "page": 49,
+    "software": 26
+  },
+  "diff_totals": [
+    18088,
+    322,
+    38
+  ]
+}
