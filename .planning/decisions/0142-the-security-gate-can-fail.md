@@ -187,7 +187,14 @@ rewritten guard read every flag the gate step carried, and none of the things
 GitHub applies to that step from outside it. `working-directory: .github/workflows`
 on the gate step -- or the same key under a job-level or workflow-level
 `defaults.run` -- makes GitHub `cd` there first, so the gate's `.` scans a
-directory with no lockfiles: trivy v0.74.0 exits 0 there, measured, while the repo
+directory with no lockfiles: trivy v0.74.0 exits 0 there, measured [CORRECTED 2026-09-12:
+false as written, found by the third adversarial pass and re-measured the same day with
+trivy v0.74.0 on a copy of `.github/workflows` -- the gate's exact command exits **1**
+there, `FATAL ... ignore file not found: .trivyignore`, because `--ignorefile .trivyignore`
+resolves against the working directory. It exits 0 (nothing scanned) only when a
+`.trivyignore` ALSO exists in that subdirectory. The hole stands, one file wider: a PR
+can add the key and the file together, which is why the guard now also refuses any
+tracked `.trivyignore` or trivy config outside the root `.trivyignore`], while the repo
 root still carries 143 finding rows. `shell:` on the step, or under
 `defaults.run`, can likewise swallow the exit code. The guard passed all of them.
 It now refuses `working-directory` or `shell` on any trivy step, and either key
