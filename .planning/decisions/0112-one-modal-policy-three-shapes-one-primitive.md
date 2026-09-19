@@ -1,6 +1,6 @@
 # 0112 — One modal policy: three shapes, one primitive, and the overlay wears the page's ground
 
-- **Status:** Locked — ratified by the founder 2026-09-05 at the sketch 102 census review; built behind the existing per-page design flags **[AMENDED 2026-09-19 by [[0176-amend-0112-swipe-is-the-phone-intent-gesture]]: on the phone's seal sheet a full-page swipe up is the intent gesture (web and the notification shade keep the hold), and the notification rule at `:257-258` admits a tap straight onto the seal sheet and, as ADR 0175 Phase 2, a hold inside the shade below a per-house ceiling. Nothing below is rewritten.]**
+- **Status:** Locked — ratified by the founder 2026-09-05 at the sketch 102 census review; built behind the existing per-page design flags **[AMENDED 2026-09-19 by [[0176-amend-0112-swipe-is-the-phone-intent-gesture]]: on the phone's seal sheet a full-page swipe up is the intent gesture (web and the notification shade keep the hold), and the notification rule at `:257-258` admits a tap straight onto the seal sheet and, as ADR 0175 Phase 2, a hold inside the shade below a per-order ceiling and a per-house daily cap (both 0 by default; ADR 0175 D2). Nothing below is rewritten.]**
 - **Date:** 2026-09-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** modal, sheet, panel, popover, overlay, dialog, focus trap, scrim, ground, portal, shell, mudavym, design foundation

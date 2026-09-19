@@ -13,7 +13,7 @@ ADR 0112 makes the seal the ceremony for money, sends and ledger rows. It record
 On 2026-09-19 the founder made two changes that the text above does not allow:
 
 - **On the phone's seal sheet, a Robinhood-style swipe up replaces the hold.** He rejected a handle-and-track swipe: he wants the full experience, where the whole review screen is the drag surface. After the commit, a Mudavym-logo processing state morphs into the tick.
-- **The notification shade may approve (ADR 0175 Phase 2).** It uses a hold, below a per-house ceiling, on an unlocked phone.
+- **The notification shade may approve (ADR 0175 Phase 2).** It uses a hold, below a per-order ceiling and a per-house daily cap (both 0 by default; ADR 0175 D2), on an unlocked phone.
 
 Two facts frame both changes. The seal that runs today on the web is a hold plus a single-use challenge redeemed on the session (`common/seal/seal-challenge.service.ts`). The passkey seal that F12 plans does not exist yet: "No WebAuthn registration or assertion route exists" (`apps/web/src/pages/profile/next/SecurityRegister.tsx:236`).
 
@@ -46,7 +46,7 @@ Two facts frame both changes. The seal that runs today on the web is a hold plus
 
 **A3. The notification rule (`0112:257-258`) now reads:**
 - *Phase 1:* a notification's button may open the app directly on the seal sheet. The tap is not the intent.
-- *Phase 2:* below the house's ceiling (which starts at 0), on an unlocked phone, with the house's switch on, a hold inside the notification shade is the seal. Otherwise the notification lands on the seal sheet, never on the tap alone. When Phase 2 is built, the refusal "a card is the wrong place to arm one" (`apps/api-gateway/src/one-tap-actions/one-tap-workflow.ts:99,104`) is retired for `approve_and_send` only. It stands for every other card.
+- *Phase 2:* below the per-order ceiling and within the per-house daily cap (both start at 0; ADR 0175 D2), on an unlocked, enrolled phone, with the house's switch on, a hold inside the notification shade is the seal. Otherwise the notification lands on the seal sheet, never on the tap alone. When Phase 2 is built, the refusal "a card is the wrong place to arm one" (`apps/api-gateway/src/one-tap-actions/one-tap-workflow.ts:99,104`) is retired for `approve_and_send` only. It stands for every other card.
 
 **A4. Unchanged.** The three shapes. F10's closed list, and "money, sends and ledger rows keep the seal before". The authority rule (F11 as amended by F12's ruling 2). F12's passkey seal, which stays the target on both platforms. The swipe proves intent to the server through the redeemed challenge, not through a device-local biometric boolean, so F12's "nothing ships on a device-local prompt" still holds.
 
