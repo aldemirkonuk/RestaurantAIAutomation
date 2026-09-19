@@ -22,7 +22,9 @@ def _wrap(body, tags=None):
 
 
 def _paragraphs(html):
-    return re.findall(r'<p style="margin: 0 0 12px; line-height: 1.6;">(.*?)</p>', html, re.S)
+    return re.findall(
+        r'<p style="margin: 0 0 12px; line-height: 1.6;">(.*?)</p>', html, re.S
+    )
 
 
 def test_html_looking_body_arrives_as_visible_text():
@@ -57,10 +59,29 @@ def test_order_ref_is_escaped():
 
 
 def test_only_the_wrappers_own_tags_survive_a_hostile_body():
-    out = _wrap("<img src=x onerror=alert(1)>\n\n<style>*{}</style>", {"order_id": "o-1"})
+    out = _wrap(
+        "<img src=x onerror=alert(1)>\n\n<style>*{}</style>", {"order_id": "o-1"}
+    )
     tags = set(re.findall(r"<\s*([a-zA-Z!/]+)", out))
-    assert tags <= {"!DOCTYPE", "html", "/html", "head", "/head", "meta", "body", "/body",
-                    "table", "/table", "tr", "/tr", "td", "/td", "p", "/p", "br/"}
+    assert tags <= {
+        "!DOCTYPE",
+        "html",
+        "/html",
+        "head",
+        "/head",
+        "meta",
+        "body",
+        "/body",
+        "table",
+        "/table",
+        "tr",
+        "/tr",
+        "td",
+        "/td",
+        "p",
+        "/p",
+        "br/",
+    }
 
 
 def test_none_body_is_empty_not_a_crash():
