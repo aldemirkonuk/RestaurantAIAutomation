@@ -74,6 +74,13 @@ describe("vendor mail is escaped (ADR 0170)", () => {
     expect(html).toContain("Hi $&amp;$1,");
   });
 
+  it("does not read $ patterns in the sender name as replacement tokens", async () => {
+    const html = await harness().send("Thanks,\n[Manager Name]", {
+      senderName: "$&$1 Wines",
+    });
+    expect(html).toContain("<br>$&amp;$1 Wines</p>");
+  });
+
   it("escapes the sender name substituted for a signature placeholder", async () => {
     const html = await harness().send("Thanks,\n[Manager Name]", {
       senderName: '<script>x</script> & "Co"',

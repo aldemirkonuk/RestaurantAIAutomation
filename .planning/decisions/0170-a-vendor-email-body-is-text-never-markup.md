@@ -10,7 +10,12 @@
 
 ## Context
 
-Every email Mudavym sends to a vendor gets its HTML from `ProcurementService.buildEmailHtml` (`procurement.service.ts:6081` on `origin/main` 1fba79f57). It has four callers:
+Mudavym builds vendor-bound email HTML in **two** places. *(Corrected 2026-09-19 after the PR #399 audit: the first draft said "every email… gets its HTML from `buildEmailHtml`", which was false.)*
+
+- **The gateway**, in `ProcurementService.buildEmailHtml` (`procurement.service.ts:6081` on `origin/main` 1fba79f57). This PR fixes it. It has four callers, listed below.
+- **The orchestrator**, in `EmailComposerService._wrap_html` (`services/agent-orchestrator/services/email_composer_service.py:710`), used by `ProviderConversationAgent._send_message` (`provider_conversation_agent.py:3055`). It is reached, for example, from `conversation.approved`, which `POST /conversations/:id/approve` publishes with a client-supplied `modified_message`. It posts the result as `bodyHtml` to `POST /communications/email` (`communications.controller.ts:236-243`), which sends it verbatim. It has the same fault, and the same rule applies. It is fixed in the companion branch `fix/python-composer-escaping` (acb19de5b) and tracked by the `open` CLAIMS row `ADR-0170-PYTHON-COMPOSER-ESCAPES`, which that PR flips to `resolved`.
+
+The gateway's four callers:
 
 | Caller (origin/main) | Path | Where the body comes from |
 |---|---|---|
@@ -28,7 +33,7 @@ Every email Mudavym sends to a vendor gets its HTML from `ProcurementService.bui
 
 The gateway's system-mail templates (`communications/email-templates/*.ts`, about 450 `${}` sites, plus `email-templates-legacy.ts`) have no escaper at all, and no templating engine is installed. They are covered below as step 2.
 
-**Evidence that plain text is the only real input.** On production (`exzueerziesmczwlhomd`, 2026-09-19), a read-only count of `procurement_conversations` rows whose `content` matches `<[a-z]…>` returned **0 of 17 outbound and 0 of 10 inbound**. The approval editor is a plain `<textarea>`. The Python draft writers store LLM *text* (`provider_conversation_agent.py:2522`). The Python composer's own HTML (`email_composer_service.py:710`) goes to a different gateway route and never reaches `buildEmailHtml`.
+**Evidence that plain text is the only real input.** On production (`exzueerziesmczwlhomd`, 2026-09-19), a read-only count of `procurement_conversations` rows whose `content` matches `<[a-z]…>` returned **0 of 17 outbound and 0 of 10 inbound**. `message_text` was measured separately, because the auto-send sweep falls back to it (`:6398`). 10 of 27 contain HTML, and **all 10 are inbound vendor mail** (`direction=inbound`, `status=DRAFT`, `content` null, the latest dated 2026-07-06). The sweep only sends rows with `status=AUTO_SEND_SCHEDULED` (`:6280`), so none of them is ever sent. The approval editor is a plain `<textarea>`. The Python draft writers store LLM *text* (`provider_conversation_agent.py:2522`). The Python composer's own HTML (`email_composer_service.py:710`) goes to a different gateway route and never reaches `buildEmailHtml`.
 
 ## Options considered
 
@@ -39,7 +44,7 @@ The gateway's system-mail templates (`communications/email-templates/*.ts`, abou
 
 ## Decision
 
-**A vendor email body is always text.** `buildEmailHtml` is `textToEmailHtml(rawBody)`. That function escapes `& < > " '` and only then writes `<p>` and `<br>`, so the only tags in the output are its own. Every data value spliced into vendor HTML afterwards (the vendor first name and the sender name) passes through the same `escapeHtml`, and is substituted with a replacer function, not a pattern string. There is one escaper, `apps/api-gateway/src/common/html/escape-html.ts`, and `experiment-ended.producer.ts`'s private copy now imports it.
+**A vendor email body is always text.** `buildEmailHtml` is `textToEmailHtml(rawBody)`. That function escapes `& < > " '` and only then writes `<p>` and `<br>`, so the only tags in the output are its own. Every data value spliced into vendor HTML afterwards (the vendor first name and the sender name) passes through the same `escapeHtml`, and is substituted with a replacer function, not a pattern string. There is one HTML escaper for mail, `apps/api-gateway/src/common/html/escape-html.ts`. `seo/seo.service.ts:26` `escapeXml` serves XML and is untouched, and `experiment-ended.producer.ts`'s private copy now imports it.
 
 If rich vendor mail is ever wanted (bold, a link), it comes from a **structured** body, meaning named slots rendered by our code and never from HTML inside a draft. That is the slot model the comms-templates lane is designing for editable templates.
 
@@ -49,7 +54,7 @@ The gateway templates interpolate data with no escaping. They are **not** conver
 - The ~450 sites mix data with HTML fragments built by other helpers (`tableRow`, `metricBox`, `alertBox`, `baseTemplate`'s `content`). Escaping at the wrong layer double-escapes live mail.
 - They are about to be rebuilt anyway by the comms-templates lane (research 2026-09-19: a read-only catalogue first, then slot editing, rendered server-side and escaped).
 
-The per-site census (class CONST / NUM / FRAGMENT / DATA / URL, with origins) is summarised under *Template census* below. CLAIMS row `ADR-0170-TEMPLATES-ESCAPE-DATA` is `open` and must **not** hold until the templates escape their data. It flips red the day they do, which forces this section to be struck.
+The per-site census (class CONST / NUM / FRAGMENT / DATA / URL, with origins) is summarised under *Template census* below. CLAIMS row `ADR-0170-TEMPLATES-ESCAPE-DATA` is `open` and must **not** hold until the templates escape their data. It holds only when **all** the chokepoints named in the census escape: `tableRow` value, `alertBox` title and message, `baseTemplate` title and header name, and the live free-text template `custom-reminder`. It flips red the day they do, which forces this section to be struck. The defect is also filed in `v3.0-TECH-DEBT.md`, under "System-mail templates interpolate data unescaped".
 
 ## Template census
 
@@ -58,7 +63,7 @@ Sonnet census, 2026-09-19, read-only at 1fba79f57. Full tables are in the scratc
 - **Interpolations by class:** about 95 DATA, about 70 NUM, 14 URL, 3 FRAGMENT, and several hundred CONST style tokens.
 - **Two chokepoints carry most of the DATA.** `tableRow`'s `value` (provider, driver and staff names and free-text notes, through the same parameter as currency output) and `alertBox`'s `message` (`notes`, `specialRequests`, `specialInstructions`, `threadSummary`). In every call site found, the value sits inside a `<td>` or `<p>` that the helper itself writes, and no caller passes markup. So **escaping inside those two helpers is the recommended first move of step 2.** `baseTemplate`'s `title`, `preheader` and `headerName` are plain-text slots and can be escaped the same way. `headerLogo` and `ctaButton.url` are URL slots: they need attribute escaping plus a scheme check, not text escaping.
 - **Live internal paths with free text:** `custom-reminder.template.ts` (`title`, `description`, via `scheduled-tasks.service.ts:835`), and `onboarding.template.ts` / `password-reset.template.ts` (fields the account owner typed at sign-up).
-- **Vendor-bound paths outside `buildEmailHtml`:** `email-templates-legacy.ts`'s `orderInquiryTemplate` puts a request-body `wineName` into mail to a request-body `vendorEmail` (`communications.controller.ts:620-630`). The census called it live, but **it is not reachable in production**: the route is `@UseGuards(NonProductionGuard)` (`communications.controller.ts:566`, which returns 404 when `NODE_ENV=production`, ADR 0019 D2). It is a dev/sim exposure only. `vendor-action.template.ts` (`aiDraftedMessage`, the vendor's own `latestMessage`) has **no production caller**.
+- **Vendor-bound paths outside `buildEmailHtml`:** the Python composer (see Context; companion fix). Also: `email-templates-legacy.ts`'s `orderInquiryTemplate` puts a request-body `wineName` into mail to a request-body `vendorEmail` (`communications.controller.ts:620-630`). The census called it live, but **it is not reachable in production**: the route is `@UseGuards(NonProductionGuard)` (`communications.controller.ts:566`, which returns 404 when `NODE_ENV=production`, ADR 0019 D2). It is a dev/sim exposure only. `vendor-action.template.ts` (`aiDraftedMessage`, the vendor's own `latestMessage`) has **no production caller**.
 - **Dead code:** `order-notification.template.ts` and `payment-due.template.ts` have no caller, nor do five functions in `email-templates-legacy.ts`. Delete them rather than escape them, with the legacy removal under ADR 0149.
 
 ## Consequences
@@ -73,3 +78,4 @@ Sonnet census, 2026-09-19, read-only at 1fba79f57. Full tables are in the scratc
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-19 | Claude (Opus 5) | Created; vendor path built and mutation-tested; step 2 recorded open |
+| 2026-09-19 | PR #399 audit (3 angles, APPROVE WITH NOTES) | Scope corrected: the Python composer path was named and tracked by an open row; `message_text` measured; the open row's trigger widened to all chokepoints; a `$&` sender-name test added; the defect filed in the tech-debt register |
