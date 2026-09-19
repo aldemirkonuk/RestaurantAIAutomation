@@ -94,6 +94,16 @@ Of 124 worktrees, 58 held uncommitted files or commits that had never been pushe
 - Every snapshot excludes node_modules, dist, coverage, test results, build output and
   .env files. None is for merge; the session that owns each worktree decides what to do
   with it.
+- **[Updated 2026-09-19 ~18:00Z]** Every hit in those 5 was checked and is a false positive:
+  "ask-the-sommelier" prose, `github_pat_` or `sk_live_` named inside code and docs, the
+  env.example placeholders, and a spec's placeholder JWT (`signature-placeholder`). All 5
+  are now pushed as `wip/2026-09-19/others/<name>`. Also pushed: the 4 local branches whose
+  only commit was never pushed, as `wip/2026-09-19/branches/<name>`
+  (fix/frontend-url-comma-list-in-links, fix/e2e-legacy-waves-schema-rot-gated,
+  fix/current-user-has-no-id-field, fix/apps-web-e2e-tsconfig-types-node), and the 5 git
+  stash entries, as `wip/2026-09-19/stash/0..4`. The only thing kept local on purpose is
+  `reserve/adr-0164-0167`: a set of ADR-number placeholders that must never reach a remote.
+  If CI's number guard saw them, it would report a collision.
 
 **Ordering constraints recorded today:**
 - The promos cut merges only after the comms branch `claude/wizardly-knuth-31d531`
