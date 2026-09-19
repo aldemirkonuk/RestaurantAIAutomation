@@ -1,6 +1,6 @@
 # 0170 — A vendor email body is text, never markup
 
-- **Status:** Proposed 2026-09-19. The founder locks it; an agent never does. The vendor-path half is built on `fix/email-html-escaping`. The template half is step 2, still open, and tracked by an `open` CLAIMS row.
+- **Status:** Proposed 2026-09-19. The founder locks it; an agent never does. Both vendor paths are built: the gateway in PR #399 (`fix/email-html-escaping`, merged d7e69ec08), and the orchestrator in `fix/python-composer-escaping` (see the addendum). The template half is step 2, still open, and tracked by an `open` CLAIMS row.
 - **Date:** 2026-09-19
 - **Decider:** Aldemir (founder)
 - **Keywords:** email, html, escaping, escapeHtml, textToEmailHtml, buildEmailHtml, vendor email, draft, approveDraft, modifiedContent, personalizeGreeting, applyEmailPlaceholders, sanitiser, allowlist, email-templates, baseTemplate, XSS, phishing
@@ -13,7 +13,7 @@
 Mudavym builds vendor-bound email HTML in **two** places. *(Corrected 2026-09-19 after the PR #399 audit: the first draft said "every email… gets its HTML from `buildEmailHtml`", which was false.)*
 
 - **The gateway**, in `ProcurementService.buildEmailHtml` (`procurement.service.ts:6081` on `origin/main` 1fba79f57). This PR fixes it. It has four callers, listed below.
-- **The orchestrator**, in `EmailComposerService._wrap_html` (`services/agent-orchestrator/services/email_composer_service.py:710`), used by `ProviderConversationAgent._send_message` (`provider_conversation_agent.py:3055`). It is reached, for example, from `conversation.approved`, which `POST /conversations/:id/approve` publishes with a client-supplied `modified_message`. It posts the result as `bodyHtml` to `POST /communications/email` (`communications.controller.ts:236-243`), which sends it verbatim. It has the same fault, and the same rule applies. It is fixed in the companion branch `fix/python-composer-escaping` (acb19de5b) and tracked by the `open` CLAIMS row `ADR-0170-PYTHON-COMPOSER-ESCAPES`, which that PR flips to `resolved`.
+- **The orchestrator**, in `EmailComposerService._wrap_html` (`services/agent-orchestrator/services/email_composer_service.py:710`), used by `ProviderConversationAgent._send_message` (`provider_conversation_agent.py:3055`). It is reached, for example, from `conversation.approved`. `POST /conversations/:id/approve` stores the client-supplied `modified_message` as `manager_approved_message` (`conversations.service.ts:726`) and publishes the event. The event carries only a `modified` flag, and the handler reads the text back (`provider_conversation_agent.py:2812-2813`). It posts the result as `bodyHtml` to `POST /communications/email` (`communications.controller.ts:236-243`), which sends it verbatim. It has the same fault, and the same rule applies. It is fixed by PR #401 (`fix/python-composer-escaping`), and the CLAIMS row `ADR-0170-PYTHON-COMPOSER-ESCAPES` is `resolved`. The fix also covers the second caller of `_send_message`, the scarcity auto-reply (`provider_conversation_agent.py:3179`), which sends to the vendor with no approval step and puts the vendor contact's name into the body.
 
 The gateway's four callers:
 
@@ -38,13 +38,13 @@ The gateway's system-mail templates (`communications/email-templates/*.ts`, abou
 ## Options considered
 
 1. **Always treat the body as text: escape, then paragraphise.** *(chosen)* Nothing a draft contains can become markup. If an LLM emits a tag, the vendor sees the literal `<b>`. That looks odd, but it is safe and visible, and the evidence above says it does not happen today. No new dependency.
-2. **Sanitise HTML bodies with an allowlist** (`sanitize-html` or DOMPurify on jsdom). This keeps `<b>` and `<a>` when they are wanted. It adds a dependency and a policy to keep correct forever, and ADR 0100 exists because hand-maintained HTML filters in this repo produced eight CodeQL findings. It also keeps `<a href>`, which is the phishing vector itself, unless links are stripped too. At that point it is option 1 with extra moving parts. There is no input that needs it: 0 of 27 production bodies contain HTML.
+2. **Sanitise HTML bodies with an allowlist** (`sanitize-html` or DOMPurify on jsdom). This keeps `<b>` and `<a>` when they are wanted. It adds a dependency and a policy to keep correct forever, and ADR 0100 exists because hand-maintained HTML filters in this repo produced eight CodeQL findings. It also keeps `<a href>`, which is the phishing vector itself, unless links are stripped too. At that point it is option 1 with extra moving parts. There is no input that needs it: 0 of 27 production `content` bodies contain HTML, and the 10 `message_text` values that do are inbound and never sent (see Context).
 3. **Refuse an HTML-looking body** (400 on approve; skip in the sweep). This is loud, but it blocks a manager's one-tap approve over a stray `<` in "qty < 5", and in the unattended auto-send sweep a refusal becomes a stuck draft. It punishes the common harmless case to stop a case the escape already neutralises.
 4. **Do nothing.** The pass-through stays live on every vendor send path.
 
 ## Decision
 
-**A vendor email body is always text.** `buildEmailHtml` is `textToEmailHtml(rawBody)`. That function escapes `& < > " '` and only then writes `<p>` and `<br>`, so the only tags in the output are its own. Every data value spliced into vendor HTML afterwards (the vendor first name and the sender name) passes through the same `escapeHtml`, and is substituted with a replacer function, not a pattern string. There is one HTML escaper for mail, `apps/api-gateway/src/common/html/escape-html.ts`. `seo/seo.service.ts:26` `escapeXml` serves XML and is untouched, and `experiment-ended.producer.ts`'s private copy now imports it.
+**A vendor email body is always text.** `buildEmailHtml` is `textToEmailHtml(rawBody)`. That function escapes `& < > " '` and only then writes `<p>` and `<br>`, so the only tags in the output are its own. Every data value spliced into vendor HTML afterwards (the vendor first name and the sender name) passes through the same `escapeHtml`, and is substituted with a replacer function, not a pattern string. There is one HTML escaper for mail, `apps/api-gateway/src/common/html/escape-html.ts`. `seo/seo.service.ts:26` `escapeXml` serves XML and is untouched. `experiment-ended.producer.ts`'s private copy of the escaper now imports `escape-html.ts`.
 
 If rich vendor mail is ever wanted (bold, a link), it comes from a **structured** body, meaning named slots rendered by our code and never from HTML inside a draft. That is the slot model the comms-templates lane is designing for editable templates.
 
@@ -66,6 +66,20 @@ Sonnet census, 2026-09-19, read-only at 1fba79f57. Full tables are in the scratc
 - **Vendor-bound paths outside `buildEmailHtml`:** the Python composer (see Context; companion fix). Also: `email-templates-legacy.ts`'s `orderInquiryTemplate` puts a request-body `wineName` into mail to a request-body `vendorEmail` (`communications.controller.ts:620-630`). The census called it live, but **it is not reachable in production**: the route is `@UseGuards(NonProductionGuard)` (`communications.controller.ts:566`, which returns 404 when `NODE_ENV=production`, ADR 0019 D2). It is a dev/sim exposure only. `vendor-action.template.ts` (`aiDraftedMessage`, the vendor's own `latestMessage`) has **no production caller**.
 - **Dead code:** `order-notification.template.ts` and `payment-due.template.ts` have no caller, nor do five functions in `email-templates-legacy.ts`. Delete them rather than escape them, with the legacy removal under ADR 0149.
 
+## Addendum — 2026-09-19: the orchestrator path, and the PR #399 audit notes
+
+**The Python half is built.** On `fix/python-composer-escaping`, `EmailComposerService._wrap_html` (`email_composer_service.py:710`) now applies `html.escape(p, quote=True)` to each paragraph **before** writing `<br/>`, and escapes `order_ref` in the Ref line. `tests/test_vendor_mail_is_escaped.py` has 7 cases. Four mutations each turn it red: the body left raw, `<br/>` written before escaping, `order_ref` left raw, and `quote=False`. CLAIMS row `ADR-0170-PYTHON-COMPOSER-ESCAPES` is now `resolved`.
+
+**Why the pass-through mattered most: prompt injection.** The auto-send body (`AUTO_SEND_SCHEDULED`, written by `inbound-responder.service.ts:545`) is LLM output replying to *inbound vendor mail*, which an outsider controls. Before this ADR, a message that steered the model into emitting `<a href=…>` went out verbatim, under the house's name, after the two-minute undo window, with no human reading it. Escaping makes that output inert. (The founder has since decided to retire vendor auto-send entirely. That decision is recorded in ADR 0175, which is on its own branch; the change itself is separate.)
+
+**Every gateway caller is now pinned.** The PR #399 adversary replaced one caller's `html: this.buildEmailHtml(content)` with `html: content`, and every check stayed green. The resolved row now also counts the four `sendProviderEmail({` call sites and requires that each passes `buildEmailHtml` output. Mutating the manual-reply or approveDraft caller turns it red.
+
+**Internal-recipient Python mail is out of scope and recorded here.** `email_client.send_template_email` (`services/email_client.py:311`, rendered by `_render_template` with raw `str.replace`) is called only from `notification_agent.py` (:578 … :1938), always to `manager["email"]`. It renders DATA unescaped. `compose_vendor_email` and `compose_manager_review_email` (`email_composer_service.py:208, 295`, including `_build_manager_review_html`, which interpolates the AI draft and vendor names raw) have no caller. These belong with step 2 of the system-mail templates.
+
+**Severity caveat for step 2.** "Recipients are internal" is true of today's callers only. System mail goes to configured recipient lists (managers, `MANAGER_EMAIL`), so if a vendor or other outsider is ever put on one, step 2 becomes an external exposure.
+
+**Step-2 row tightened.** `ADR-0170-TEMPLATES-ESCAPE-DATA` now also requires `baseTemplate`'s `preheader`. It names `custom-reminder`'s `data.title` and `data.description` instead of a bare `escapeHtml` that an import alone would satisfy. A fix spelled differently leaves it open, so update the verify alongside the fix; it can never report a false fix.
+
 ## Consequences
 
 - An HTML-looking draft now reaches the vendor as visible text. That is the intended trade.
@@ -79,3 +93,4 @@ Sonnet census, 2026-09-19, read-only at 1fba79f57. Full tables are in the scratc
 |---|---|---|
 | 2026-09-19 | Claude (Opus 5) | Created; vendor path built and mutation-tested; step 2 recorded open |
 | 2026-09-19 | PR #399 audit (3 angles, APPROVE WITH NOTES) | Scope corrected: the Python composer path was named and tracked by an open row; `message_text` measured; the open row's trigger widened to all chokepoints; a `$&` sender-name test added; the defect filed in the tech-debt register |
+| 2026-09-19 | Claude (Opus 5) | Addendum: Python path built and mutation-tested; row flipped to resolved; callers pinned; wording corrected per the #399 compliance and adversary notes |
