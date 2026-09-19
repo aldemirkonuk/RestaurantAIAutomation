@@ -111,7 +111,13 @@ const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
 
 // Standard pages (lazy loaded)
 const Providers = lazyWithRefresh(() => import('./pages/Providers'))
-const Promotions = lazyWithRefresh(() => import('./pages/Promotions'))
+// `pages/Promotions.tsx` (the legacy page this replaces) stays in the tree,
+// file untouched, with no import here and no route — ADR 0160 §113 ships
+// PromotionsNext to every house with no per-house flag, so there is no
+// `legacy` branch left to render it from (see PromotionsNext.tsx's own
+// header). It is deleted only once the founder approves the deletion
+// manifest (ADR 0149), not by this branch.
+const PromotionsNext = lazyWithRefresh(() => import('./pages/promotions/next/PromotionsNext'))
 const Communications = lazyWithRefresh(() => import('./pages/Communications'))
 const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
 const ReceiptsPage = lazyWithRefresh(() => import('./pages/ReceiptsPage'))
@@ -351,7 +357,11 @@ function App() {
                     path="/distributors"
                     element={<Navigate to="/providers?tab=discover" replace />}
                   />
-                  <Route path="/promotions" element={<Promotions />} />
+                  {/* Sketch 113 direction B (ADR 0160 §113), shipped to every
+                      house with no per-house flag — no PageGate here, see
+                      PromotionsNext.tsx's own header. Legacy `Promotions.tsx`
+                      is untouched in the tree, just no longer imported. */}
+                  <Route path="/promotions" element={<PromotionsNext />} />
                   {/* Both halves split by role INSIDE the element: the legacy
                       entry always did (TeamCommandPage.tsx:36-37) and TeamNext
                       now does too. Routed straight to the manager surface, a

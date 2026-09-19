@@ -62,6 +62,15 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // ADR 0160 §113 (2026-09-17), sketch 113 direction B. `/promotions` is
+  // listed here ONLY so `PromotionsNext.tsx` can pass `page="promotions"` to
+  // `HouseHeader`/`pageNameFor` — both take `MudavymPage`, and `PAGE_NAMES`
+  // is an exhaustive `Record<MudavymPage, …>` (pageNames.ts:31-33). It is
+  // deliberately NOT read by `PageGate` and carries NO
+  // `mudavym_design_promotions` flag: the brief was to ship this page to
+  // every house with no new per-house flag (App.tsx mounts `PromotionsNext`
+  // directly), so `useMudavymDesign('promotions')` is never called.
+  'promotions',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];

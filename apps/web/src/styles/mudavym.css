@@ -61,6 +61,15 @@
   --ink-3: #8E8576;
   --ink-4: #ABA294;
 
+  /* loss / warn — sketch 113 (ADR 0160 §113): the verdict "above" and the
+     "agreed / undated / suspended" state have no word in the base palette.
+     Values are the sketch's own (direction-b.html:14, direction-c.html:14).
+     Contrast against --paper-0 (#15130F): warn 8.13:1, loss 7.05:1. */
+  --warn: #D9A15B;
+  --warn-tint: rgba(217, 161, 91, 0.14);
+  --loss: #D98C7A;
+  --loss-tint: rgba(217, 140, 122, 0.14);
+
   color-scheme: dark;
 }
 
@@ -89,6 +98,15 @@
   --ink-2: #4f473c;
   --ink-3: #7c7365;
   --ink-4: #665d50;
+
+  /* loss / warn, paper pair — no sketch draws this ground for 113, so these
+     are new: darker/more-saturated rotations of the charcoal pair, the same
+     relationship --seal-deep bears to --seal. Contrast against --paper-0
+     (#fffdf8): warn 5.18:1, loss 6.01:1 (both pass WCAG AA for text). */
+  --warn: #96601A;
+  --warn-tint: rgba(150, 96, 26, 0.14);
+  --loss: #A8402C;
+  --loss-tint: rgba(168, 64, 44, 0.14);
 
   color-scheme: light;
 }
