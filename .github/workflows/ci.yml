@@ -1157,8 +1157,8 @@ jobs:
       # scripts/test_docgen.py is NOT here: measured in a clean venv it errors at
       # collection (it imports cv2/PIL/jinja2 through scripts/docgen). It stays
       # unguarded and is named here so that is a known gap, not a forgotten one.
-      - name: scripts/ unit tests (simulator, operating hours, FK targets, price-history units)
-        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py scripts/test_price_history_reads_group_by_unit.py -q -p no:cacheprovider
+      - name: scripts/ unit tests (simulator, operating hours, FK targets, price-history units, jev prompt gate)
+        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py scripts/test_price_history_reads_group_by_unit.py scripts/jev/prompt_gate_test.py -q -p no:cacheprovider
 
   # Lint Python code
   lint-python:

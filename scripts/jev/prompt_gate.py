@@ -124,27 +124,57 @@ _KEY_VAR_NAMES = ("JEV_API_KEY", "TYPESAFE_API_KEY")  # founder set JEV_API_KEY
 # for anyone following TypeSafe's own docs naming instead.
 
 
+def _read_env_file(env_path: Path, var_names: tuple[str, ...]) -> str | None:
+    try:
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("export "):
+                line = line[len("export "):].lstrip()
+            for var_name in var_names:
+                if line.startswith(f"{var_name}="):
+                    value = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if value:
+                        return value
+    except OSError:
+        pass
+    return None
+
+
 def _load_env_var(*var_names: str) -> str | None:
-    """Generic lookup: environment first, then the nearest repo-root .env,
-    walking up from this script."""
+    """Environment first, then the nearest `.env` at or above this script,
+    bounded so a file dropped outside the repo can never supply the key.
+
+    The bounds matter more than they look. This walk used to run to "/" and
+    take the first matching line it found anywhere above the script. Worktrees
+    of this repo live under /private/tmp (mode 1777) and under ~/Documents, so
+    any unprivileged local process could drop a .env in a shared ancestor and
+    have every prompt typed in those checkouts POSTed to TypeSafe under a key
+    it controls — and the annotation would look exactly the same, so nothing
+    would show it had happened.
+
+    Three rules, each carrying its own weight:
+      * a world-writable directory never supplies a key, whatever it holds;
+      * the FIRST .env found wins, so a nearer file cannot be skipped past;
+      * the walk stops at a real repo root — a `.git` DIRECTORY. A `.git`
+        FILE marks a linked worktree, which must keep walking: the checkouts
+        under .claude/worktrees/ hold no .env of their own and read the main
+        one above them.
+    """
     for var_name in var_names:
         value = os.environ.get(var_name)
         if value:
             return value
     here = Path(__file__).resolve()
     for parent in [here.parent, *here.parents]:
+        try:
+            world_writable = bool(parent.stat().st_mode & 0o002)
+        except OSError:
+            return None
         env_path = parent / ".env"
-        if env_path.is_file():
-            try:
-                for line in env_path.read_text().splitlines():
-                    line = line.strip()
-                    for var_name in var_names:
-                        if line.startswith(f"{var_name}="):
-                            value = line.split("=", 1)[1].strip().strip('"').strip("'")
-                            if value:
-                                return value
-            except OSError:
-                pass
+        if env_path.is_file() and not world_writable:
+            return _read_env_file(env_path, var_names)
+        if (parent / ".git").is_dir():
+            return None
     return None
 
 
@@ -182,25 +212,51 @@ def _ask_jev(prompt_text: str, api_key: str) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+# The annotation is injected into the model's context, so every field read out
+# of the response is treated as hostile input, not as data. A `choice` echoed
+# verbatim would put an arbitrary remote string in the system-reminder slot of
+# every agent session in this repo — sessions that hold shell, gh, Supabase and
+# Vercel credentials. Nothing below is trusted: the choice must be one of our
+# own declared criteria, the numbers must really be numbers in range, and the
+# risk LABEL comes from our own criteria list rather than the response's
+# `legend`, which is remote text too.
+_RISK_LABELS = tuple(
+    level.split(":", 1)[0].strip() for level in QUESTIONS["risk"]["criteria"]
+)
+_ANNOTATION_MAX = 200
+
+
+def _safe_number(value: object, low: float, high: float) -> float | None:
+    """A real number in range, or None. Rejects bool, str and NaN."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if number != number or not (low <= number <= high):  # NaN fails both
+        return None
+    return number
+
+
 def _format_annotation(answers: dict) -> str:
     """One short, highlighted line — this is what "highlight what Jev
     touched" means in practice: every annotation names the three answers
     plainly so it's obvious this came from Jev, not from the agent's own
     judgment."""
-    req_type = answers.get("request_type", {}).get("choice", "unknown")
-    req_conf = answers.get("request_type", {}).get("confidence")
-    risk_score = answers.get("risk", {}).get("score")
-    risk_legend = answers.get("risk", {}).get("legend", {})
-    risk_label = None
-    if risk_score is not None and risk_legend:
-        # nearest level below-or-equal the (possibly fractional) score
-        nearest = max(
-            (int(k) for k in risk_legend if int(k) <= round(risk_score)),
-            default=None,
-        )
-        if nearest is not None:
-            risk_label = risk_legend.get(str(nearest), "").split(":", 1)[0] or None
-    needs_clarification = answers.get("needs_clarification", {}).get("noul")
+    if not isinstance(answers, dict):
+        return "[JEV] unreadable answer shape — proceeding without a check"
+
+    def section(name: str) -> dict:
+        value = answers.get(name)
+        return value if isinstance(value, dict) else {}
+
+    choice = section("request_type").get("choice")
+    allowed = QUESTIONS["request_type"]["criteria"]
+    req_type = choice if choice in allowed else "unknown"
+    req_conf = _safe_number(section("request_type").get("confidence"), 0.0, 1.0)
+
+    risk_score = _safe_number(section("risk").get("score"), 0.0, len(_RISK_LABELS) - 1)
+    risk_label = _RISK_LABELS[round(risk_score)] if risk_score is not None else None
+
+    needs_clarification = _safe_number(section("needs_clarification").get("noul"), 0.0, 1.0)
 
     parts = [f"type={req_type}"]
     if req_conf is not None:
@@ -210,7 +266,7 @@ def _format_annotation(answers: dict) -> str:
     if needs_clarification is not None:
         parts.append(f"ambiguous={needs_clarification:.2f}")
 
-    return "[JEV] " + " · ".join(parts)
+    return ("[JEV] " + " · ".join(parts))[:_ANNOTATION_MAX]
 
 
 def _declared_for(argv: list[str]) -> str | None:
@@ -312,7 +368,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = _ask_jev(str(prompt_text), api_key or "test")
         annotation = _format_annotation(result.get("answers", {}))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError) as exc:
+    # Deliberately broad. A narrow tuple let TypeError and AttributeError
+    # escape on a response whose score was a string or whose answers were a
+    # list: the hook crashed, the annotation was lost and a traceback reached
+    # stderr. Nothing a third party returns may end the prompt submission.
+    except Exception as exc:  # noqa: BLE001 — fail open is the decision
         annotation = f"[JEV] unavailable ({type(exc).__name__}) — proceeding without a check"
 
     emit(annotation)
