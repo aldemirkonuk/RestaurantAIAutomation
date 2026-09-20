@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   ConflictException,
   ServiceUnavailableException,
+  InternalServerErrorException,
   Logger,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -20,6 +21,8 @@ import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 import { devBypassEnvEnabled } from "./dev-bypass.util";
+import { grantRefusal } from "./role-grant";
+import { roleInHouse, tokenHouse } from "./house-role";
 import {
   IDENTITY_PROVIDERS,
   IdentityProviderDescriptor,
@@ -100,15 +103,6 @@ export interface TokenPair {
 export interface LoginCredentials {
   email: string;
   password: string;
-}
-
-export interface RegisterData {
-  email: string;
-  password: string;
-  name: string;
-  restaurantId: string;
-  role: "owner" | "manager" | "staff";
-  phone?: string;
 }
 
 /** "Google", "Google and Microsoft", "Google, Microsoft and Apple". */
@@ -338,48 +332,6 @@ export class AuthService {
     // /verify-email on that. Changing the row instead would edit real data to
     // work around a dev tool, and would follow the account into production.
     return this.generateTokens(user, true);
-  }
-
-  /**
-   * Register new user
-   */
-  async register(data: RegisterData): Promise<TokenPair> {
-    // Check if user already exists
-    const { data: existingUser } = await this.databaseService.supabase
-      .from("users")
-      .select("email")
-      .eq("email", data.email)
-      .single();
-
-    if (existingUser) {
-      throw new UnauthorizedException("Email already registered");
-    }
-
-    // Hash password
-    const passwordHash = await bcrypt.hash(data.password, this.SALT_ROUNDS);
-
-    // Create user
-    const { data: newUser, error } = await this.databaseService.supabase
-      .from("users")
-      .insert({
-        email: data.email,
-        password_hash: passwordHash,
-        name: data.name,
-        restaurant_id: data.restaurantId,
-        role: data.role,
-        phone: data.phone,
-      })
-      .select()
-      .single();
-
-    if (error || !newUser) {
-      this.logger.error(`Registration failed: ${error?.message}`);
-      throw new UnauthorizedException("Registration failed");
-    }
-
-    this.logger.log(`New user registered: ${newUser.email}`);
-
-    return this.generateTokens(newUser);
   }
 
   /**
@@ -721,20 +673,66 @@ export class AuthService {
   }
 
   /**
-   * Validate JWT payload
+   * The person behind a token, with their role IN THE HOUSE THE TOKEN NAMES.
+   *
+   * `JwtStrategy.validate` builds `req.user` from this on every request, and
+   * `RolesGuard` gates every `@Roles` route on its `role`. That role used to be
+   * the global `users.role`, one value for every house, so a role changed in a
+   * house the `users` row does not name never reached `@Roles`, and someone with
+   * no membership in a house carried their other house's role into it (PR #393
+   * round-3 audit, finding 1; v3.0-TECH-DEBT 44.1q; ADR 0162 answer A). Now the
+   * role is read in the token's house, as `MembersService.assertMembership`
+   * reads it (`house-role.ts`), and returned as `house_role`: null is no role.
+   *
+   * A token that names no house returns the `users` row as it always did, and
+   * `JwtStrategy.validate` keeps `users.role` for it. That is today's behaviour,
+   * kept on purpose: such a session has no house to be a member of.
+   *
+   * The access read runs beside the `users` read, not after it, so the check
+   * adds no round trip. A failed access read is a 503, never a role: a guess
+   * either way would be a claim about the person that nothing measured.
    */
   async validateJwtPayload(payload: JwtPayload): Promise<any> {
-    const { data: user } = await this.databaseService.supabase
-      .from("users")
-      .select("*")
-      .eq("user_id", payload.sub)
-      .single();
+    const house = tokenHouse(payload);
+    const [{ data: user }, houseAccess] = await Promise.all([
+      this.databaseService.supabase
+        .from("users")
+        .select("*")
+        .eq("user_id", payload.sub)
+        .single(),
+      house
+        ? this.databaseService.supabase
+            .from("user_restaurant_access")
+            .select("role")
+            .eq("user_id", payload.sub)
+            .eq("restaurant_id", house)
+            .eq("is_active", true)
+            .maybeSingle()
+        : Promise.resolve(null),
+    ]);
 
     if (!user) {
       throw new UnauthorizedException("User not found");
     }
 
-    return user;
+    if (!house) {
+      return user;
+    }
+
+    if (!houseAccess || houseAccess.error) {
+      this.logger.error(
+        `validateJwtPayload could not read the role of ${payload.sub} in ` +
+          `${house}: ${houseAccess?.error?.message ?? "no answer"}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not confirm your role in this house. Nothing was done; try again.",
+      );
+    }
+
+    return {
+      ...user,
+      house_role: roleInHouse(houseAccess.data, user, house),
+    };
   }
 
   /**
@@ -1083,7 +1081,8 @@ export class AuthService {
   }
 
   /**
-   * Generate an invite code for a restaurant (owner/manager only).
+   * Generate an invite code for a restaurant. An owner of the house may invite
+   * any role, a manager a manager or staff, staff nobody (ADR 0162).
    * Produces 8-char code from unambiguous charset (no 0/O/1/I).
    */
   async generateInvite(
@@ -1091,24 +1090,74 @@ export class AuthService {
     restaurantId: string,
     dto: InviteDto,
   ): Promise<object> {
-    const { data: userAccess } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (!userAccess) {
-      // Fallback: check users table if user_restaurant_access row isn't present
-      const { data: user } = await this.databaseService.supabase
-        .from("users")
-        .select("restaurant_id, role")
+    // The inviter's role IN THIS HOUSE, read exactly as
+    // `MembersService.assertMembership` reads it (`members.service.ts`): an
+    // active access row here decides, and its role is the answer (a NULL role
+    // grants nothing); with no row, a `users` row whose `restaurant_id` names
+    // this house is read at `users.role || "staff"`; anything else grants
+    // nothing. One named difference: `assertMembership` discards both reads'
+    // errors, so a failed read looks like "no row"; here either answers 503.
+    //
+    // `RolesGuard` let the caller through on `users.role`: `JwtStrategy.validate`
+    // sets `role: user.role ?? payload.role` from an unscoped `users` read
+    // (`validateJwtPayload`), and that column is GLOBAL, one value for every
+    // house the person belongs to. [Since PR #393's sixth round the guard reads
+    // the role in the house the TOKEN names (`validateJwtPayload`); this read
+    // still decides, for the house the BODY names.] The body names the house. So the guard
+    // proves nothing about this house, and nothing here compared the role
+    // granted with the inviter's own: a manager could mint an owner's invite
+    // (v3.0-TECH-DEBT 44.1h, closed 2026-09-18).
+    //
+    // The `users`-row read stays. Production, read-only 2026-09-18: one manager,
+    // created 2026-05-09 with `users.restaurant_id` naming a house created the
+    // same day, has never had an access row for it; they are a setup-era member
+    // of that house, not someone who left it. Dropping the read would lock them
+    // out of inviting there while `assertMembership` still admits them. Who may
+    // grant what is ADR 0162 (`role-grant.ts`), and it caps both reads.
+    // Migration 20260918153000 writes that manager's access row (the founder's
+    // answer B, 2026-09-18). Once it is applied in production this read can
+    // retire in a follow-up, with the same fallback in `assertMembership`,
+    // `resolveRestaurantRole` and `assertAccess` (v3.0-TECH-DEBT 44.1i); not
+    // before, or that manager loses the house.
+    const { data: inviterAccess, error: accessError } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
         .eq("user_id", userId)
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
         .maybeSingle();
-      if (!user || user.restaurant_id !== restaurantId) {
-        throw new ForbiddenException("Access denied to this restaurant");
+    if (accessError) {
+      throw new ServiceUnavailableException(
+        "Could not read your role in this house, so no invite was made.",
+      );
+    }
+
+    let inviterRole: string | null;
+    if (inviterAccess) {
+      inviterRole = inviterAccess.role ?? null;
+    } else {
+      const { data: inviter, error: inviterError } =
+        await this.databaseService.supabase
+          .from("users")
+          .select("restaurant_id, role")
+          .eq("user_id", userId)
+          .maybeSingle();
+      if (inviterError) {
+        throw new ServiceUnavailableException(
+          "Could not read your role in this house, so no invite was made.",
+        );
       }
+      inviterRole =
+        inviter && inviter.restaurant_id === restaurantId
+          ? inviter.role || "staff"
+          : null;
+    }
+
+    const grantedRole = dto.role || "manager";
+    const refusal = grantRefusal(inviterRole, grantedRole, "invite");
+    if (refusal) {
+      throw new ForbiddenException(refusal);
     }
 
     const { data: restaurant } = await this.databaseService.supabase
@@ -1156,7 +1205,7 @@ export class AuthService {
         restaurant_id: restaurantId,
         code,
         invited_by: userId,
-        role: dto.role || "manager",
+        role: grantedRole,
       })
       .select("id, code, expires_at")
       .single();
@@ -1170,7 +1219,7 @@ export class AuthService {
       restaurantId,
       inviteId: invite.id,
       email: dto.targetEmail ?? null,
-      role: dto.role || "manager",
+      role: grantedRole,
     });
 
     // Mark team_member_invited=true in onboarding progress (fire-and-forget)
@@ -2253,8 +2302,8 @@ export class AuthService {
    *
    * On enumeration: revealing is a deliberate choice, not an accident (ADR
    * 0024). The leak already exists — `GET /auth/check-email` is `@Public()` and
-   * answers `available: true/false` to anyone, and `POST /auth/register`
-   * replies "Email already registered". This makes it intentional, narrower in
+   * answers `available: true/false` to anyone (`POST /auth/register` also
+   * replied "Email already registered" until it was closed, 2026-09-18). This makes it intentional, narrower in
    * shape, and rate-limited. `requestPasswordReset` stays enumeration-safe and
    * is untouched.
    */
@@ -2531,6 +2580,32 @@ export class AuthService {
           "You're the only owner. Transfer ownership first.",
         );
       }
+    }
+
+    // The `users` row stops naming this house BEFORE the access row goes, and
+    // only when it names this house (a `users` row naming another house is that
+    // house's business). Until 2026-09-18 only the access row was deleted, so
+    // `users.restaurant_id` still named the house and the `users`-row fallback
+    // (`assertMembership`, `generateInvite`, `updateMemberRole`'s target read,
+    // `JwtStrategy`'s role) still counted the leaver as a member at
+    // `users.role` (v3.0-TECH-DEBT 44.1j). The order is the safe one of two
+    // non-atomic writes: if the delete below fails, the person is still a
+    // member by their access row and can try again; the other order would
+    // leave them a member by a row they meant to be gone.
+    const { error: usersError } = await this.databaseService.supabase
+      .from("users")
+      .update({ restaurant_id: null })
+      .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId);
+
+    if (usersError) {
+      this.logger.error(
+        `leaveRestaurant could not clear users.restaurant_id for ${userId} in ` +
+          `${restaurantId}: ${usersError.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not leave this restaurant. Nothing was changed; try again.",
+      );
     }
 
     const { error } = await this.databaseService.supabase

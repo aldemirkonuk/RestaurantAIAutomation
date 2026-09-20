@@ -446,6 +446,14 @@ export class TeamService {
    * the person whose access it revoked. The receipt says whether each of those
    * two writes actually happened, because a removal that silently failed to
    * file itself looks identical to one that filed itself correctly.
+   *
+   * Owners manage owners (ADR 0162, the founder's addendum 2026-09-18): a
+   * manager removes a manager or staff here, never an owner, the same rule as
+   * `MembersService.removeMember`. Until PR #393's sixth round this door let a
+   * manager remove an owner whenever another owner remained (v3.0-TECH-DEBT
+   * 44.1n). And the removal now also stops the person's `users` row naming this
+   * house, so the `users`-row fallback no longer counts them as a member here
+   * (44.1j).
    */
   async deleteMember(
     userId: string,
@@ -457,50 +465,115 @@ export class TeamService {
     notified: boolean;
     accessRevoked: boolean;
   }> {
-    await this.assertAccess(userId, restaurantId, "manager");
+    const actor = await this.assertAccess(userId, restaurantId, "manager");
 
     // Capture the before-state while it still exists. Nothing below can
-    // reconstruct it once the rows are gone.
-    const { data: member } = await this.sb
+    // reconstruct it once the rows are gone. Every read before the first write
+    // binds its error: a failed read here used to look like "no row", and the
+    // owner check below then had nothing to refuse on.
+    const { data: member, error: memberErr } = await this.sb
       .from("team_members")
       .select("user_id, display_name, position, email")
       .eq("id", memberId)
       .eq("restaurant_id", restaurantId)
-      .single();
+      .maybeSingle();
+    if (memberErr) this.cannotReadRemovalTarget(memberId, memberErr);
 
     let previousRole: string | null = null;
     let accessRevoked = false;
 
-    // If member has a linked user, check their access role — owners cannot be removed.
     if (member?.user_id) {
-      const { data: access } = await this.sb
+      // The access row in any state, because this removal deletes it in any
+      // state. Its role is the before-state the audit row records.
+      const { data: access, error: accessErr } = await this.sb
         .from("user_restaurant_access")
-        .select("role")
+        .select("role, is_active")
         .eq("user_id", member.user_id)
         .eq("restaurant_id", restaurantId)
-        .single();
+        .maybeSingle();
+      if (accessErr) this.cannotReadRemovalTarget(memberId, accessErr);
       previousRole = access?.role ?? null;
+      const activeOwner = access?.is_active === true && access.role === "owner";
 
-      if (access?.role === "owner") {
-        const { count } = await this.sb
+      // What the person is here, read the way `assertMembership` reads a
+      // member: an active access row decides; with none, a `users` row naming
+      // this house, at its role.
+      let targetRole: string | null =
+        access?.is_active === true ? (access.role ?? null) : null;
+      if (access?.is_active !== true) {
+        const { data: linked, error: linkedErr } = await this.sb
+          .from("users")
+          .select("restaurant_id, role")
+          .eq("user_id", member.user_id)
+          .maybeSingle();
+        if (linkedErr) this.cannotReadRemovalTarget(memberId, linkedErr);
+        if (linked && linked.restaurant_id === restaurantId) {
+          targetRole = linked.role ?? null;
+        }
+      }
+
+      // Owners manage owners: a manager removes a manager or staff, never an
+      // owner, whether the owner is one by an active access row, by the
+      // `users` row, or by an inactive owner's row this removal would delete.
+      // Before any write.
+      if (
+        (targetRole === "owner" || access?.role === "owner") &&
+        actor.role !== "owner"
+      ) {
+        throw new ForbiddenException(
+          "Only an owner of this house can remove an owner.",
+        );
+      }
+
+      if (activeOwner) {
+        // Active owners only, and a failed count refuses: `if (count && …)`
+        // skipped this guard whenever the count could not be read.
+        const { count, error: countErr } = await this.sb
           .from("user_restaurant_access")
           .select("*", { count: "exact", head: true })
           .eq("restaurant_id", restaurantId)
-          .eq("role", "owner");
+          .eq("role", "owner")
+          .eq("is_active", true);
+        if (countErr) this.cannotReadRemovalTarget(memberId, countErr);
 
-        if (count && count <= 1) {
+        if ((count ?? 0) <= 1) {
           throw new ForbiddenException(
             "Cannot remove the last owner of the restaurant.",
           );
         }
       }
 
-      // Remove from user_restaurant_access so they lose access and are not backfilled.
-      await this.sb
+      // The `users` row stops naming this house (only this house) before the
+      // access row goes; the reverse order could leave the person a member by
+      // a `users` row nobody meant to keep (v3.0-TECH-DEBT 44.1j).
+      const { error: clearErr } = await this.sb
+        .from("users")
+        .update({ restaurant_id: null })
+        .eq("user_id", member.user_id)
+        .eq("restaurant_id", restaurantId);
+      if (clearErr) {
+        this.logger.error(
+          `deleteMember could not clear users.restaurant_id for ` +
+            `${member.user_id} in ${restaurantId}: ${clearErr.message}`,
+        );
+        throw new InternalServerErrorException("Failed to remove member");
+      }
+
+      // Remove from user_restaurant_access so they lose access and are not
+      // backfilled. Its error is read: `accessRevoked: true` on a delete that
+      // failed would be a receipt for something that did not happen.
+      const { error: revokeErr } = await this.sb
         .from("user_restaurant_access")
         .delete()
         .eq("user_id", member.user_id)
         .eq("restaurant_id", restaurantId);
+      if (revokeErr) {
+        this.logger.error(
+          `deleteMember could not revoke access for ${member.user_id} in ` +
+            `${restaurantId}: ${revokeErr.message}`,
+        );
+        throw new InternalServerErrorException("Failed to remove member");
+      }
       accessRevoked = true;
     }
 
@@ -535,6 +608,19 @@ export class TeamService {
     });
 
     return { removed: true, accessRevoked, ...receipt };
+  }
+
+  /** A member whose role here cannot be read is not removed. */
+  private cannotReadRemovalTarget(
+    memberId: string,
+    err: { message: string },
+  ): never {
+    this.logger.error(
+      `deleteMember could not read member ${memberId}: ${err.message}`,
+    );
+    throw new InternalServerErrorException(
+      "Could not read this member's role here, so nobody was removed.",
+    );
   }
 
   // ── Certifications ───────────────────────────────────────────────────────

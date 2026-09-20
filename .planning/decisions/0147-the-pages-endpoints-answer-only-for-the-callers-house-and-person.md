@@ -53,10 +53,25 @@ By module (details and failing output in the named report):
 
 - **Vendor intel, faults 1 and 2.** Decisions on public-register rows with no house can
   be undone from any house, and name a person from another house. This is a founder
-  fork with options A-D; the recommendation is C.
-  [FOUNDER ANSWERED 2026-09-16, build pending (not merged) — ADR 0149 row 17: a new nullable deciding-house
-  column, and the person's name and the undo only inside that house. Also carried into
-  ADR 0124.]
+  fork with options A-D; the recommendation is C. **[2026-09-17: answered C by the
+  founder on 2026-09-16 (ADR 0149 answer 17) and built on `feat/finish-vintel`.
+  Migration `20260917010000` adds the nullable `beverage_identity_decisions.deciding_restaurant_id`.
+  Decide and undo write it from the token's active house. The log names the person
+  only inside that house; other houses see the outcome and when. [Corrected
+  2026-09-17, review round 2: another house's OWN row is a 404, identical to a
+  missing id — a 403 there would confirm the id exists. A SHARED row decided
+  elsewhere stays a readable 403.] A shared decision logged before the column is
+  shown to no house with its person and cannot be undone. That is not because no
+  platform-operator role exists — a person-naming allowlist
+  (`PLATFORM_ADMIN_USER_IDS`) already exists (`ProspectsController.assertPlatformAdmin`,
+  one route today) and was deliberately not extended here: letting an operator undo a
+  decision no house owns is a new permission and the founder's call, surfaced in the
+  lane's fix report rather than filed as a register row (filing one here repoints ~178
+  citations across ~89 unrelated files — `scripts/check_citation_pairing.py:69` — a
+  blast radius this lane declined to take on unasked).
+  `decide` also gained a claim-first write order (claim, then link, then log) that
+  answers a new 409 when two houses decide one shared candidate at the same moment.
+  See ADR 0124's review trail, 2026-09-17.]**
 - **Integrations.** Who may disconnect an integration for a user with no tenant is a
   founder fork. The spec pins today's refusal.
   [FOUNDER ANSWERED 2026-09-16, build pending (not merged) — ADR 0149 row 18: the creator of a grant may
@@ -101,6 +116,57 @@ By module (details and failing output in the named report):
   no caller of these routes (the preferences report grepped `apps/mobile`).
 - `markAsRead`, `markAsUnread` and `archiveNotification` on an id that is not the
   caller's return 404, where they used to return 500 from `.single()` finding no row.
+
+## Addendum 2026-09-18: a sign-up body never names a house
+
+The same fault as the first of this record's three, in the one place a caller has no
+token yet: `POST /auth/register` took `restaurantId` and `role` from its body and
+wrote both onto the new user, and the token that came back was scoped to that house
+in that role. It is closed rather than fixed, because nothing calls it: a person
+opens a house through `POST /auth/register/restaurant` and joins one only through an
+invitation, and both of those take the house from a record the server made, never
+from the body. The route answers 410 with those two doors named, and
+`AuthService.register` is deleted so no writer is left. Detail and the production
+read are in `v3.0-TECH-DEBT.md` 44.1g; the claim is `ADR-0147-REGISTER-NAMES-NO-HOUSE`.
+
+The same day, PR #392's adversarial review found the invitation door's own form of
+the fault. `POST /auth/invite` is `@Roles("owner","manager")`, and `RolesGuard` gates
+on `users.role`. That is a GLOBAL column, one value per person:
+`JwtStrategy.validate` sets `role: user.role ?? payload.role` from an unscoped
+`users` read. The body names the house being invited to. Nothing compared the role
+granted with the inviter's role in that house, so a manager could mint an owner's
+invite. It is closed the way this record closes the others, by reading from the house
+the request is about. The inviter's role in the invited house is read exactly as
+`MembersService.assertMembership` reads it: the active access row there, or, with none,
+a `users` row that names that house. A failed read answers 503. The `users`-row read
+stays because a setup-era manager depends on it (44.1h). The grant then follows
+[[0162-managers-grant-manager-or-staff-on-both-doors]]: owners any role, managers
+manager or staff, staff nothing. Detail is in 44.1h; the claim is
+`ADR-0147-INVITE-ROLE-CEILING`.
+
+The records of the register fix counted which endpoints re-check membership. The
+count said "only the logs and members endpoints" (44.1g and the claim
+`ADR-0147-REGISTER-NAMES-NO-HOUSE`), and both now carry a dated correction. A grep
+finds these re-checks:
+
+- `assertMembership`: 10 calls in 3 files.
+- `assertCanManageRestaurant` and `resolveRestaurantRole`: 40 calls in 15 files.
+- `TeamService.assertAccess`: 35 calls in 5 files.
+- `AuthService.getUserRoleAtRestaurant`: 1 call.
+- `AuthService.switchRestaurant`: 1 call.
+- Two inline reads, in `integrations-oauth.service.ts` and `price-index-review.service.ts`.
+- `ProspectsService.accessibleRestaurantIds`: 1 call (`GET /prospects?scope=all`).
+  Found by PR #393's round-3 verifier; that round's build had listed it only in its
+  evidence.
+
+The first three accept a `users` row that names the house, and `generateInvite` now
+reads it the same way. `switchRestaurant` falls back to any house of an organisation
+the person belongs to. `accessibleRestaurantIds` reads the person's active access rows,
+then adds the token's house without checking it is among them. The rest read access
+rows only. The detail is in 44.1g's bracket. What stays open is 44.1i–44.1o and
+44.1q; 44.1p (a role change reaching non-members) was closed in PR #393's fourth
+round (ADR 0162, second addendum), and 44.1q (a role changed in a house the `users`
+row does not name never reaches `RolesGuard`) was filed in its fifth.
 
 ## Review trail
 

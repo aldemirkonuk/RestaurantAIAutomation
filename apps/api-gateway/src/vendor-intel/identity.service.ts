@@ -29,6 +29,7 @@
 
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -746,9 +747,46 @@ export class IdentityService {
    * `beverage_identity_decisions`** naming who (id, name and role as they were),
    * when, which candidate, and the evidence the server had rendered to them.
    *
-   * THE ORDER IS DELIBERATE: link, then log, then projection. If the log write
-   * fails the call fails and says the link was written, rather than leaving a
-   * link nobody can account for while reporting success.
+   * THE ORDER IS DELIBERATE: claim, then link, then log.
+   *
+   * CLAIM FIRST (vintel review 2026-09-17, defect 1). The candidate is taken
+   * with ONE conditional update — `status` from `pending` to the decision,
+   * only where it still reads `pending` — before anything else is written.
+   * The read above cannot do that: two requests can both read `pending`. Before
+   * this, two houses deciding one shared candidate at the same moment BOTH
+   * succeeded: the log held a confirmation by one house and a rejection by the
+   * other, the link was written, and the house that rejected could later undo
+   * its rejection, return the candidate to `pending` with the link still
+   * written, and be refused (403) the link it could see. Postgres takes a row
+   * lock for the UPDATE and re-checks `status = 'pending'` on the row as it now
+   * stands, so exactly one request gets the row back. The other gets zero rows,
+   * which is a 409 with nothing linked and nothing logged.
+   *
+   * A claim whose link or log write then FAILS (an error comes back) is
+   * RELEASED: returned to `pending`, and only if it is still this call's claim.
+   * The error says what was and was not written, and whether the release
+   * worked.
+   *
+   * WHAT THE RELEASE DOES NOT COVER (corrected after review 2026-09-17, defect
+   * 4; this comment used to say a failure never strands a candidate). The
+   * claim, the link and the log are three separate writes, not one
+   * transaction. Three states are left behind that no session can undo,
+   * because an undo needs a logged decision:
+   *   - the process dies (a redeploy's SIGTERM, an OOM) after the claim and
+   *     before the log: the candidate reads decided, has no logged decision,
+   *     is gone from the queue and is absent from the log;
+   *   - the release itself fails: the same state, and the error says so;
+   *   - the log write fails after a confirm: the claim is released but the
+   *     link STAYS written with no decision behind it. The link is not cleared
+   *     there, because `writeLink` does not read what the subject carried
+   *     before, so a clear could remove a link that predates this call.
+   * The one surface built for the first two: a later `decide` on such a
+   * candidate reads the log, finds no standing decision behind its status and
+   * answers a 409 naming the state, rather than "already decided". There is no
+   * queue entry and no sweep for them. The fix that removes all three is claim,
+   * link and log in ONE database transaction (a function called by RPC); it
+   * was not built. None of this can happen in production yet: no application
+   * code writes a candidate (CLAIMS `ADR-0124-NO-CANDIDATE-WRITER`).
    */
   async decide(params: {
     candidateId: string;
@@ -767,45 +805,66 @@ export class IdentityService {
 
     const cand = await this.loadCandidate(params.candidateId);
 
-    if (cand.status !== "pending") {
-      throw new BadRequestException(
-        `That candidate was already ${cand.status}. A decision is not re-taken silently; a manager can undo it, which is itself logged.`,
-      );
-    }
+    // The house rule comes FIRST, before anything else about the candidate is
+    // said (vintel review 2026-09-17, defect 5). Answered after the status
+    // check, another house's candidate told this house that it exists (403)
+    // and whether it was decided (400, naming the outcome). It is now the 404
+    // a missing id gets (ADR 0147), exactly as `undo` answers a decision.
     this.requireSameHouse(cand.restaurant_id, house);
+
+    if (cand.status !== "pending") {
+      await this.refuseDecided(cand);
+    }
+
+    const note = params.note ?? null;
+    const decidedAt = await this.claimCandidate({
+      candidateId: params.candidateId,
+      decision: params.decision,
+      userId: actor.userId,
+      note,
+    });
 
     let linkWritten: string | null = null;
     if (params.decision === "confirmed") {
-      linkWritten = await this.writeLink(
-        cand.subject_table as IdentitySubjectTable,
-        cand.subject_id,
-        cand.identity_id,
-        actor.userId,
-      );
+      try {
+        linkWritten = await this.writeLink(
+          cand.subject_table as IdentitySubjectTable,
+          cand.subject_id,
+          cand.identity_id,
+          actor.userId,
+        );
+      } catch (err) {
+        throw await this.releaseClaim({
+          candidateId: params.candidateId,
+          decision: params.decision,
+          decidedAt,
+          cause: err,
+          written: "No link was written and nothing was logged.",
+        });
+      }
     }
 
-    const decisionId = await this.appendDecision({
-      candidate: cand,
-      action: params.decision,
-      actor,
-      note: params.note ?? null,
-      linkWritten,
-      undoesDecisionId: null,
-    });
-
-    const { error: updErr } = await this.databaseService.supabase
-      .from("beverage_identity_candidates")
-      .update({
-        status: params.decision,
-        decided_by: actor.userId,
-        decided_at: new Date().toISOString(),
-        decision_note: params.note ?? null,
-      })
-      .eq("id", params.candidateId);
-    if (updErr) {
-      throw new BadRequestException(
-        `The link was ${linkWritten ? "written" : "not written"} and the decision was logged as ${decisionId}, but the candidate's own status could not be updated: ${updErr.message}. The log is the record; the candidate row is stale.`,
-      );
+    let decisionId: string;
+    try {
+      decisionId = await this.appendDecision({
+        candidate: cand,
+        action: params.decision,
+        actor,
+        decidingHouse: house,
+        note,
+        linkWritten,
+        undoesDecisionId: null,
+      });
+    } catch (err) {
+      throw await this.releaseClaim({
+        candidateId: params.candidateId,
+        decision: params.decision,
+        decidedAt,
+        cause: err,
+        written: linkWritten
+          ? `The link was written (${linkWritten}) and stays written; no decision was logged for it.`
+          : "No link was written.",
+      });
     }
 
     return {
@@ -814,6 +873,133 @@ export class IdentityService {
       linkWritten,
       decisionId,
     };
+  }
+
+  /**
+   * Refuse a decision on a candidate that no longer reads `pending`, saying
+   * which of two things is true. Always throws.
+   *
+   * A candidate's `status` is what the application currently believes; the
+   * log is the record. A decided status with a STANDING logged decision behind
+   * it (a confirm or reject that no undo row names) is a decision already
+   * taken: a 400. A decided status with NO standing decision behind it is a
+   * claim stranded by a decide that died between its claim and its log, or
+   * whose release failed (see `decide`), or of one still being written: a 409
+   * that says so. A log that could not be read is neither: it
+   * is a failure, and says so.
+   */
+  private async refuseDecided(cand: { id: string; status: string }): Promise<never> {
+    const { data, error } = await this.databaseService.supabase
+      .from("beverage_identity_decisions")
+      .select("id, action, undoes_decision_id")
+      .eq("candidate_id", cand.id);
+    if (error) {
+      throw new BadRequestException(
+        `That candidate reads ${cand.status}, and whether a logged decision stands behind it could not be read (${error.message}). Nothing was decided.`,
+      );
+    }
+    const rows = (data ?? []) as Array<{
+      id: string;
+      action: string;
+      undoes_decision_id: string | null;
+    }>;
+    const undone = new Set(
+      rows.filter((r) => r.action === "undone").map((r) => r.undoes_decision_id),
+    );
+    const standing = rows.some((r) => r.action !== "undone" && !undone.has(r.id));
+    if (!standing) {
+      this.logger.error(
+        `identity candidate ${cand.id} reads ${cand.status} with no standing logged decision: a claim stranded by an interrupted decide`,
+      );
+      throw new ConflictException(
+        `That candidate reads ${cand.status}, but no logged decision stands behind it: a decision took it and is either still being written or was interrupted before it was logged. Nothing was decided now. If it stays this way it cannot be undone from any session, because there is no logged decision to undo.`,
+      );
+    }
+    // No promise of an undo here: a decision logged before the deciding house
+    // was recorded (20260917010000) cannot be taken back by any house.
+    throw new BadRequestException(
+      `That candidate was already ${cand.status}. A decision is not re-taken silently. It can be taken back only by an owner or manager of the house that took it, and only where the log recorded which house that was; the undo is itself logged.`,
+    );
+  }
+
+  /**
+   * Take a pending candidate for one decision, or refuse: the compare-and-set
+   * behind `decide`. Returns the `decided_at` it stamped, which is what lets
+   * `releaseClaim` recognise this call's own claim and nobody else's.
+   *
+   * A failed update THROWS (nothing was written). Zero rows back means another
+   * request took the candidate between the read and this write: a 409, never a
+   * silent success over the other decision.
+   */
+  private async claimCandidate(args: {
+    candidateId: string;
+    decision: "confirmed" | "rejected";
+    userId: string;
+    note: string | null;
+  }): Promise<string> {
+    const decidedAt = new Date().toISOString();
+    const { data, error } = await this.databaseService.supabase
+      .from("beverage_identity_candidates")
+      .update({
+        status: args.decision,
+        decided_by: args.userId,
+        decided_at: decidedAt,
+        decision_note: args.note,
+      })
+      .eq("id", args.candidateId)
+      .eq("status", "pending")
+      .select("id");
+    if (error) {
+      throw new BadRequestException(
+        `The candidate could not be taken for this decision (${error.message}). Nothing was linked or logged.`,
+      );
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new ConflictException(
+        "Another decision on that candidate was taken at the same moment, so this one was not taken: nothing was linked or logged. Reload the queue to see what it says now.",
+      );
+    }
+    return decidedAt;
+  }
+
+  /**
+   * Return a claimed candidate to `pending` after a later step failed, and
+   * build the error that says so. Only this call's own claim is released
+   * (`status` and `decided_at` must still be what `claimCandidate` wrote), so
+   * a release can never undo somebody else's decision.
+   */
+  private async releaseClaim(args: {
+    candidateId: string;
+    decision: "confirmed" | "rejected";
+    decidedAt: string;
+    cause: unknown;
+    written: string;
+  }): Promise<BadRequestException> {
+    const reason =
+      args.cause instanceof Error ? args.cause.message : String(args.cause);
+    const { data, error } = await this.databaseService.supabase
+      .from("beverage_identity_candidates")
+      .update({
+        status: "pending",
+        decided_by: null,
+        decided_at: null,
+        decision_note: null,
+      })
+      .eq("id", args.candidateId)
+      .eq("status", args.decision)
+      .eq("decided_at", args.decidedAt)
+      .select("id");
+    const released = error
+      ? `The candidate could NOT be returned to pending (${error.message}): it reads ${args.decision} with no logged decision behind it, no house can undo that from a session, and a later decision on it is refused with a 409 naming this state.`
+      : Array.isArray(data) && data.length > 0
+        ? "The candidate was returned to pending."
+        : "The candidate was no longer this decision's to return (it had changed since), so it was left as it now reads.";
+    if (error) {
+      this.logger.error(
+        `identity claim on ${args.candidateId} could not be released after a failed ${args.decision}: ${error.message}`,
+      );
+    }
+    return new BadRequestException(`${reason} ${args.written} ${released}`);
   }
 
   /**
@@ -853,7 +1039,7 @@ export class IdentityService {
 
     const { data: prior, error: readErr } = await this.databaseService.supabase
       .from("beverage_identity_decisions")
-      .select("id, candidate_id, restaurant_id, action, link_written")
+      .select("id, candidate_id, restaurant_id, deciding_restaurant_id, action, link_written")
       .eq("id", params.decisionId)
       .maybeSingle();
     if (readErr) {
@@ -864,12 +1050,26 @@ export class IdentityService {
     if (!prior) throw new NotFoundException("No such decision.");
     const before = prior as any;
 
+    // The house rule comes FIRST, before anything else about the row is said:
+    // a refusal that first explained "that row is an undo" would already have
+    // described another house's log to this one.
+    //
+    // Another house's OWN decision is a 404, the same answer as an id that does
+    // not exist (ADR 0147: "a row that is not the caller's is a 404"). That row
+    // is never in this house's log, so a 403 would confirm to the caller that
+    // the id exists (vintel review 2026-09-17, defect 2). A SHARED decision is
+    // in every house's log, so its refusal stays a readable 403.
+    if (before.restaurant_id && before.restaurant_id !== house) {
+      throw new NotFoundException("No such decision.");
+    }
+    const refusal = this.undoRefusal(before, house);
+    if (refusal) throw new ForbiddenException(refusal);
+
     if (before.action === "undone") {
       throw new BadRequestException(
         "That row IS an undo. Undoing an undo would be a re-confirmation, which is a decision somebody has to take on the evidence.",
       );
     }
-    this.requireSameHouse(before.restaurant_id, house);
 
     const alreadyUndone = await this.databaseService.supabase
       .from("beverage_identity_decisions")
@@ -902,6 +1102,7 @@ export class IdentityService {
       candidate: cand,
       action: "undone",
       actor,
+      decidingHouse: house,
       note: params.note ?? null,
       linkWritten: linkCleared,
       undoesDecisionId: params.decisionId,
@@ -936,6 +1137,16 @@ export class IdentityService {
    * A failed read THROWS. An empty array here would say "nobody in this house
    * has ever decided anything", which is a claim, and a query that failed has
    * made no claim at all.
+   *
+   * WHO IS NAMED, AND TO WHOM (ADR 0149 answer 17, ADR 0124 addendum
+   * 2026-09-16). A decision on a shared register is shown to every house, but
+   * the PERSON is shown only inside the house that took it: another house reads
+   * the outcome, when, the evidence and the link, and `decided_by`,
+   * `decided_by_label`, `decided_by_role` and `note` come back null with
+   * `person_shown: false`. The deciding house's id never leaves either; the row
+   * says `decided_in` ("this_house" / "another_house" / "unrecorded") instead.
+   * Each row also carries `undo_refusal`: null when this house may take it back,
+   * otherwise the sentence the undo route would refuse with.
    */
   async decisions(
     restaurantId: string | null,
@@ -948,7 +1159,7 @@ export class IdentityService {
     let q = this.databaseService.supabase
       .from("beverage_identity_decisions")
       .select(
-        "id, candidate_id, restaurant_id, action, decided_by, decided_by_label, decided_by_role, decided_at, evidence_shown, note, link_written, undoes_decision_id",
+        "id, candidate_id, restaurant_id, deciding_restaurant_id, action, decided_by, decided_by_label, decided_by_role, decided_at, evidence_shown, note, link_written, undoes_decision_id",
       )
       .order("decided_at", { ascending: false })
       .limit(capped);
@@ -959,10 +1170,11 @@ export class IdentityService {
         `The identity decision log could not be read (${error.message}). This is a failure, not an empty log.`,
       );
     }
-    const items = data ?? [];
+    const items = ((data ?? []) as any[]).map((row) => this.presentDecision(row, house));
     return {
       items,
-      scope: "this house's decisions, plus decisions on the public registers",
+      scope:
+        "this house's decisions, plus decisions on the public registers — the person is named only where this house took the decision",
       limit: capped,
       // A full page is a FLOOR, not a total. The page must not print `items.length`
       // as "N decisions" when the query was capped at exactly that many.
@@ -1019,18 +1231,113 @@ export class IdentityService {
   }
 
   /**
-   * A candidate or decision that names a house may only be acted on from it.
+   * A candidate that names a house may only be DECIDED from it.
    *
-   * A row with NO house (a public-register candidate, `restaurant_id` NULL)
-   * still passes, and that is deliberately left as it was. ADR 0124 Q2 shows
-   * those rows to every house, and whether any house may decide or undo one is
-   * an open question the founder has not ruled on. This guard does not settle
-   * it by default.
+   * Another house's candidate is answered with the SAME 404 as an id that
+   * does not exist (`loadCandidate`), per ADR 0147: "a row that is not the
+   * caller's is a 404". It was a 403 until the review of 2026-09-17 (defect
+   * 5), which told the caller the id exists; that candidate is never in this
+   * house's queue, so there is nothing true to say about it here.
+   *
+   * A candidate with NO house (a public-register row, `restaurant_id` NULL)
+   * still passes: ADR 0124 Q2 lets any house answer the shared queue, and the
+   * founder kept that on 2026-09-16 (ADR 0149 answer 17). What changed is what
+   * the decision records — the deciding house — and so who may take it back
+   * (`undoRefusal`) and who reads the person (`presentDecision`).
    */
   private requireSameHouse(rowHouse: string | null, actorHouse: string) {
     if (rowHouse && rowHouse !== actorHouse) {
-      throw new ForbiddenException("That candidate belongs to another house.");
+      throw new NotFoundException("No such candidate.");
     }
+  }
+
+  /**
+   * Which house took a logged decision, as far as the log can say.
+   *
+   * A HOUSE row is decided only from its own house (`requireSameHouse` on
+   * decide, and the migration's `bid_house_row_is_decided_by_its_house`
+   * CHECK), so a NULL `deciding_restaurant_id` there — a row logged before
+   * 20260917010000 — is read as that house. It was always that house's to
+   * read and undo, which is unchanged. A SHARED row's house was never recorded
+   * before that migration, so a NULL there is unknown and is returned as null;
+   * nothing guesses it.
+   */
+  private decidingHouseOf(row: {
+    restaurant_id?: string | null;
+    deciding_restaurant_id?: string | null;
+  }): string | null {
+    return row.restaurant_id ?? row.deciding_restaurant_id ?? null;
+  }
+
+  /**
+   * Why THIS house may not take a decision back, or null when it may.
+   *
+   * Only the house that took a decision undoes it. A shared decision logged
+   * before the deciding house was recorded is refused to every house from a
+   * session: nothing names a house that owns it, so this says so rather than
+   * guessing one. (`undo` answers another house's HOUSE row with a 404 before
+   * this runs; the house-row sentence below is what the log read would say if
+   * such a row ever reached it, which its filter prevents.)
+   *
+   * WHO ELSE COULD, AND WHY NOT (measured 2026-09-17; corrected after review
+   * the same day). House membership roles are owner, manager and staff
+   * (`user_restaurant_access_role_known`). `RolesGuard` also admits a legacy
+   * `admin` string from `users.role` as owner/manager-equivalent, but such a
+   * session carries one active house like any other and nothing grants it
+   * reach across houses. The `X-Admin-Key` service key (ADR 0099) names no
+   * person, and an undo is a logged decision that must name one. There IS a
+   * person-naming operator gate: the `PLATFORM_ADMIN_USER_IDS` allowlist
+   * (`ProspectsController.assertPlatformAdmin`, fail-closed, one route today:
+   * `GET /prospects/triage`). It was NOT extended here, because letting an
+   * operator undo a decision no house owns is a new permission, which is the
+   * founder's call and was not part of ADR 0149 answer 17: an open fork,
+   * named in ADR 0124's review trail (2026-09-17) and not yet answered. It
+   * matters only if such a row exists, and no application code inserts a
+   * candidate at all (CLAIMS `ADR-0124-NO-CANDIDATE-WRITER`). Production's
+   * count was not queried.
+   */
+  private undoRefusal(
+    row: { restaurant_id?: string | null; deciding_restaurant_id?: string | null },
+    actorHouse: string,
+  ): string | null {
+    const decidingHouse = this.decidingHouseOf(row);
+    if (decidingHouse === actorHouse) return null;
+    if (row.restaurant_id) {
+      return "That decision belongs to another house.";
+    }
+    if (!decidingHouse) {
+      return "That decision on a shared register was taken before Mudavym recorded which house took each decision (migration 20260917010000), so no house can be shown to own it and no house may take it back. The decision and its link stand as logged.";
+    }
+    return "That decision on a shared register was taken in another house. Only an owner or manager of the house that took it may take it back; this house can see the outcome and when it was taken, not who took it.";
+  }
+
+  /**
+   * One log row as THIS house may read it.
+   *
+   * Inside the deciding house the row is returned whole. Anywhere else the
+   * person is removed — id, name, role and their note, since a note is the
+   * person's own words — and the outcome, the time, the evidence the server
+   * showed and the link it wrote stay. The deciding house's id is never
+   * returned: `decided_in` says which of the three cases this is.
+   */
+  private presentDecision(row: any, actorHouse: string): any {
+    const rest = { ...row };
+    delete rest.deciding_restaurant_id;
+    const decidingHouse = this.decidingHouseOf(row);
+    const undo_refusal = this.undoRefusal(row, actorHouse);
+    if (decidingHouse === actorHouse) {
+      return { ...rest, decided_in: "this_house", person_shown: true, undo_refusal };
+    }
+    return {
+      ...rest,
+      decided_by: null,
+      decided_by_label: null,
+      decided_by_role: null,
+      note: null,
+      decided_in: decidingHouse ? "another_house" : "unrecorded",
+      person_shown: false,
+      undo_refusal,
+    };
   }
 
   private async loadCandidate(candidateId: string): Promise<any> {
@@ -1062,6 +1369,8 @@ export class IdentityService {
     candidate: any;
     action: "confirmed" | "rejected" | "undone";
     actor: Required<IdentityActor>;
+    /** The house the session acts in — the token's, never the request body's. */
+    decidingHouse: string;
     note: string | null;
     linkWritten: string | null;
     undoesDecisionId: string | null;
@@ -1083,6 +1392,10 @@ export class IdentityService {
       .insert({
         candidate_id: args.candidate.id,
         restaurant_id: args.candidate.restaurant_id ?? null,
+        // Which house took it (20260917010000). On a shared-register row this
+        // is the only record of that, and it is what limits the person's name
+        // and the undo to that house.
+        deciding_restaurant_id: args.decidingHouse,
         action: args.action,
         decided_by: args.actor.userId,
         decided_by_label: args.actor.label,
