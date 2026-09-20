@@ -7,39 +7,45 @@ What it does, every time you submit a prompt to any of those three agents in
 this repo: sends the prompt to TypeSafe's Jev API with three atomic questions
 (request type, risk, ambiguity), then annotates — it never blocks. The founder
 decision on 2026-09-20 was explicit: "always annotate ... never block ...
-let the LLM take action." See .planning/decisions/<NNN>-jev-prompt-gate.md.
+let the LLM take action." See .planning/decisions/0177-jev-annotates-every-coding-agent-prompt-never-blocks.md.
 
 One script, three JSON dialects, because Cursor / Claude Code / Codex each
-define their own UserPromptSubmit stdin/stdout shape:
+define their own UserPromptSubmit stdin/stdout shape. The annotation must
+reach the MODEL, not (only) the human:
 
-  - Cursor          (`beforeSubmitPrompt`): stdin has `hook_event_name`, `prompt`.
-                    stdout ONLY supports {"continue": bool, "user_message": str}.
-                    No additionalContext field exists for this event — the
-                    annotation can only reach the human, not the model, on
-                    this tool. (Verified against docs.cursor.com/docs/hooks,
-                    2026-09-20 — see ADR for citation.)
+  - Cursor          (`beforeSubmitPrompt`): stdin has `hook_event_name`,
+                    `prompt`, `cursor_version`. Native docs only list
+                    `{continue, user_message}`; `user_message` is the block
+                    reason and is NOT rendered when continue is true, and
+                    this event has no documented context-injection field.
+                    Production Cursor plugins (Vercel) still emit
+                    `additional_context` for the mapped UserPromptSubmit
+                    event, and Cursor's third-party-hooks page says Claude's
+                    nested `hookSpecificOutput` format is accepted. We emit
+                    all three so at least one lands: continue=true,
+                    additional_context, and hookSpecificOutput.additionalContext.
   - Claude Code     (`UserPromptSubmit`): stdin has `hook_event_name`, `prompt`.
-                    stdout supports {"hookSpecificOutput": {"hookEventName":
-                    "UserPromptSubmit", "additionalContext": str}} — this text
-                    is injected into Claude's context as a system reminder and
-                    saved in the transcript, but is not rendered as a chat
-                    bubble by itself.
-  - Codex CLI       (`UserPromptSubmit`): same shape as Claude Code's
-                    additionalContext mechanism (OpenAI copied Claude Code's
-                    hook vocabulary deliberately).
+                    stdout MUST nest additionalContext under hookSpecificOutput
+                    with hookEventName UserPromptSubmit. Claude wraps that
+                    string in a system reminder and inserts it alongside the
+                    submitted prompt. A top-level additionalContext is
+                    silently ignored (code.claude.com/docs/en/hooks-guide).
+  - Codex CLI       (`UserPromptSubmit`): same nested additionalContext
+                    shape. Codex adds it as extra developer context AFTER
+                    the user prompt (openai/codex#40680), so the text is
+                    wrapped as "this is an annotation, not a new task".
+
+Each config passes `--for=<cursor|claude|codex>` so the script knows which
+of the three invoked it. That matters because Cursor runs *both*
+`.cursor/hooks.json` and `.claude/settings.json` for the same prompt
+(docs.cursor.com/docs/reference/third-party-hooks: UserPromptSubmit maps
+to beforeSubmitPrompt, all sources run, responses merge). The Claude
+config, when Cursor is the caller, exits without a TypeSafe call.
 
 Never blocks. Never raises on the TypeSafe call failing — a network error,
 missing key, or non-200 response degrades to a short "Jev unavailable" note
 and always exits 0, because a third-party judgment call must never be able to
 stop you from working (fail open, per the founder's decision).
-
-A webhook notification layer (Discord) was built and then explicitly declined
-by the founder on 2026-09-20, same session — see ADR 0177's addendum for why
-it was considered (Claude Desktop / Codex Desktop's additionalContext channel
-is not reliably visible even when it fires) and why it was removed rather
-than left in as unused code (the founder confirmed the model already reading
-the annotation is the part that matters; visibility add-ons were declined,
-not deferred).
 """
 
 from __future__ import annotations
@@ -51,6 +57,7 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 try:
     import certifi  # noqa: WPS433 — optional; several macOS python.org installs
@@ -67,6 +74,11 @@ TYPESAFE_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 TYPESAFE_MODEL = "jev-latest"
 TIMEOUT_SECONDS = 6  # keep this well under every tool's hook timeout so a
 # slow or hung TypeSafe call never becomes a slow or hung prompt submission
+
+MODEL_INSTRUCTION = (
+    "This is a classification of the user's prompt, not a new task. "
+    "If ambiguous is 0.80 or higher, ask a clarifying question before acting."
+)
 
 # The three atomic questions asked of every submitted prompt. Kept here, in
 # one place, per the TypeSafe skill's own "vibe coding" guidance: questions
@@ -145,6 +157,9 @@ def _ask_jev(prompt_text: str, api_key: str) -> dict:
     """One TypeSafe call, all three questions batched together (Speculative
     Fan-Out — one round trip, not three). Raises on any failure; caller
     decides the fail-open behavior."""
+    fake = os.environ.get("JEV_FAKE_ANSWERS")
+    if fake is not None:
+        return {"answers": json.loads(fake)}
     body = json.dumps(
         {
             "state": {"user_message": prompt_text},
@@ -198,41 +213,96 @@ def _format_annotation(answers: dict) -> str:
     return "[JEV] " + " · ".join(parts)
 
 
-def main() -> int:
+def _declared_for(argv: list[str]) -> str | None:
+    for arg in argv:
+        if arg.startswith("--for="):
+            value = arg.split("=", 1)[1].strip()
+            if value in ("cursor", "claude", "codex"):
+                return value
+    return None
+
+
+def _is_cursor_payload(payload: dict[str, Any]) -> bool:
+    event = payload.get("hook_event_name") or payload.get("hookEventName") or ""
+    return event == "beforeSubmitPrompt" or any(
+        key in payload for key in ("conversation_id", "cursor_version", "workspace_roots")
+    )
+
+
+def resolve_platform(payload: dict[str, Any], argv: list[str] | None = None) -> str:
+    """cursor | cursor-replay | claude | codex.
+
+    cursor-replay is Cursor executing the Claude-Code config for the same
+    prompt. Skip the TypeSafe call; the --for=cursor invocation already ran.
+    """
+    declared = _declared_for(argv if argv is not None else sys.argv[1:])
+    if declared == "claude" and _is_cursor_payload(payload):
+        return "cursor-replay"
+    if declared in ("cursor", "claude", "codex"):
+        return declared
+    if _is_cursor_payload(payload):
+        return "cursor"
+    if payload.get("turn_id"):
+        return "codex"
+    return "claude"
+
+
+def model_facing_text(annotation: str, platform: str) -> str:
+    """The string the MODEL must see. Codex appends this after the user
+    prompt as a developer message, so the instruction that it is not a new
+    task is load-bearing there; Claude wraps it as a system reminder."""
+    if platform == "cursor-replay":
+        return ""
+    return f"{annotation}\n{MODEL_INSTRUCTION}"
+
+
+def emit_payload(platform: str, annotation: str) -> dict[str, Any]:
+    """Stdout JSON for one platform. Never includes decision:block."""
+    if platform == "cursor-replay":
+        return {"continue": True}
+
+    facing = model_facing_text(annotation, platform)
+    nested = {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": facing,
+    }
+    if platform == "cursor":
+        # continue=true never blocks. additional_context is the Vercel-plugin
+        # Cursor dialect. hookSpecificOutput is Claude's dialect, which
+        # Cursor's third-party-hooks page claims to accept. user_message is
+        # kept for the hook log; it does not render when continue is true.
+        return {
+            "continue": True,
+            "user_message": annotation,
+            "additional_context": facing,
+            "hookSpecificOutput": nested,
+        }
+    return {"hookSpecificOutput": nested}
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except json.JSONDecodeError:
         payload = {}
 
-    event_name = payload.get("hook_event_name") or payload.get("hookEventName") or ""
-    prompt_text = payload.get("prompt", "")
-    is_cursor = event_name == "beforeSubmitPrompt"
+    platform = resolve_platform(payload, argv)
+    prompt_text = payload.get("prompt", "") if isinstance(payload, dict) else ""
 
-    def emit(annotation: str, blocked_message: str | None = None) -> None:
-        if is_cursor:
-            # Cursor's beforeSubmitPrompt only supports continue/user_message
-            # (no additionalContext) — see module docstring. Never block.
-            print(json.dumps({"continue": True, "user_message": annotation}))
-        else:
-            # Claude Code and Codex CLI share the same UserPromptSubmit
-            # additionalContext shape.
-            print(
-                json.dumps(
-                    {
-                        "hookSpecificOutput": {
-                            "hookEventName": "UserPromptSubmit",
-                            "additionalContext": annotation,
-                        }
-                    }
-                )
-            )
+    def emit(annotation: str) -> None:
+        print(json.dumps(emit_payload(platform, annotation)))
 
-    if not prompt_text.strip():
+    if platform == "cursor-replay":
+        emit("")
+        return 0
+
+    if not str(prompt_text).strip():
         emit("[JEV] empty prompt, nothing to check")
         return 0
 
     api_key = _load_api_key()
-    if not api_key:
+    if not api_key and os.environ.get("JEV_FAKE_ANSWERS") is None:
         emit(
             "[JEV] not configured — set JEV_API_KEY in .env to enable "
             "the Jev prompt check"
@@ -240,7 +310,7 @@ def main() -> int:
         return 0
 
     try:
-        result = _ask_jev(prompt_text, api_key)
+        result = _ask_jev(str(prompt_text), api_key or "test")
         annotation = _format_annotation(result.get("answers", {}))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, ValueError) as exc:
         annotation = f"[JEV] unavailable ({type(exc).__name__}) — proceeding without a check"

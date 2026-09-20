@@ -186,6 +186,65 @@ real, and can't be until the CLI itself is installed.
   start throttling normal dev traffic, or if the founder wants Jev's `risk`
   answer to actually gate something instead of only annotate.
 
+## Addendum 2026-09-20 — the annotation must reach the model on all three tools
+
+The founder asked whether Jev was doing its job. Live measurement in Cursor
+3.21.16 (hook log `cursor.hooks.workspaceId-6bcc50b7ea4fb5ac1b54215923669953.log`,
+2026-09-20): the gate ran, TypeSafe answered, Cursor logged "executed
+successfully and returned valid response" — and **neither the founder nor the
+model saw the line**. Two independent defects:
+
+1. **`user_message` is a block reason, not a chat line.** Cursor's hooks docs
+   (fetched 2026-09-20, https://cursor.com/docs/hooks) define `user_message`
+   as "Message shown to the user when the prompt is blocked." With
+   `continue: true` there is no documented rendering. The founder confirmed
+   they have never seen a `[JEV]` line on screen. The ADR's earlier claim
+   that "only the Cursor path is confirmed to reach the founder directly
+   (`user_message`)" is **false** and is superseded by this addendum.
+2. **`beforeSubmitPrompt` has no documented context-injection field.** The
+   same docs page lists `additional_context` on `sessionStart` / `postToolUse`
+   / `postToolUseFailure` only. So the Cursor dialect this ADR originally
+   shipped (`continue` + `user_message`) reached nobody.
+
+**Claude Code** (https://code.claude.com/docs/en/hooks, fetched 2026-09-20):
+`UserPromptSubmit` injects `hookSpecificOutput.additionalContext` as a
+system reminder *alongside the submitted prompt*. A top-level
+`additionalContext` is silently ignored (hooks-guide). The script already
+emitted the nested form; this addendum keeps that shape and adds a one-line
+instruction so the model treats the annotation as a classification, not a
+new task. Not live-fired end-to-end in this session (`claude` is installed;
+the founder was in Cursor). The dialect is pinned by
+`scripts/jev/prompt_gate_test.py`.
+
+**Codex CLI** (https://developers.openai.com/codex/hooks, fetched 2026-09-20):
+the same nested `additionalContext` is "added as extra developer context."
+openai/codex#40680 records that it is appended *after* the user prompt as a
+`role: developer` message, which is why the instruction line ("not a new
+task") is load-bearing on this path. The documented timeout key is
+`timeout` (seconds), not `timeoutSec`. The command is rooted with
+`git rev-parse --show-toplevel` so a Codex cwd that is not the repo root
+still finds the script. Project-local `.codex/hooks.json` loads only when
+that layer is trusted (`/hooks` in the CLI). Codex itself is still not
+installed on the founder's machine — config-verified, not fired.
+
+**Cursor injection, best available path:** emit three fields at once,
+`continue: true`, `additional_context` (the dialect the Vercel Cursor plugin
+uses for the mapped UserPromptSubmit event, observed in
+`~/.claude/plugins/.../vercel/0.45.1/hooks/user-prompt-submit-skill-inject.mjs`),
+and Claude's nested `hookSpecificOutput.additionalContext` (Cursor's
+third-party-hooks page says that format is accepted). Whether any of those
+actually reach the model on `beforeSubmitPrompt` is **not documented**; the
+next prompt in this Cursor session is the empirical check. `user_message`
+is kept only so the hook log still prints `[JEV]`.
+
+**Double call:** Cursor runs project hooks *and* `.claude/settings.json`
+(priority list on https://cursor.com/docs/reference/third-party-hooks;
+observed `Found 2 hook(s)` / `Merged 2 valid response(s)` for the same
+`generation_id`, 1 ms apart, so a file lock cannot dedupe). Each config now
+passes `--for=cursor|claude|codex`. When `--for=claude` sees a Cursor
+payload (`beforeSubmitPrompt` / `cursor_version` / `conversation_id`) it
+returns `{continue: true}` and does not call TypeSafe.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |

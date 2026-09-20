@@ -3,7 +3,7 @@
   "hooks": {
     "beforeSubmitPrompt": [
       {
-        "command": "python3 scripts/jev/prompt_gate.py",
+        "command": "python3 scripts/jev/prompt_gate.py --for=cursor",
         "timeout": 8,
         "failClosed": false
       }

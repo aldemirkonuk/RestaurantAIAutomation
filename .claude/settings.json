@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 $CLAUDE_PROJECT_DIR/scripts/jev/prompt_gate.py",
+            "command": "python3 $CLAUDE_PROJECT_DIR/scripts/jev/prompt_gate.py --for=claude",
             "timeout": 8
           }
         ]
