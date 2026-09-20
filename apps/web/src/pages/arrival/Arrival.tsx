@@ -735,9 +735,20 @@ export default function Arrival() {
   }
   const book = query.data
   const active = ARRIVAL_FOLIOS.find((row) => row.id === folio)!
+  /*
+   * The page names the ground it is already on. `.ar-page` paints
+   * `background: var(--paper-0)`, but since ADR 0138 the bare `.mudavym`
+   * selector redefines `--paper-0` to Warm Charcoal in every app theme, so the
+   * literal paint says nothing about which ground actually renders — the two
+   * selectors are both (0,1,0) and Vite decides which chunk's CSS is injected
+   * first. `charcoal` is the documented synonym of that base
+   * (styles/mudavym.css:40-46), so this changes no pixel; it makes the markup
+   * state the ground instead of leaving it to injection order.
+   */
   return (
     <main
       className="mudavym ar-page"
+      data-ground="charcoal"
       data-testid="arrival-book"
       style={
         {
