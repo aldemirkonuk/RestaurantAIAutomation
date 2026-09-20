@@ -560,11 +560,13 @@ export class ProvidersService {
     }
   }
 
-  async getProviderOrders(providerId: string) {
+  async getProviderOrders(providerId: string, restaurantId: string) {
+    await this.getProvider(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select("*")
       .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -593,7 +595,8 @@ export class ProvidersService {
     return data ?? [];
   }
 
-  async getProviderPerformance(providerId: string) {
+  async getProviderPerformance(providerId: string, restaurantId: string) {
+    await this.getProvider(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_performance_metrics")
       .select("*")
@@ -614,6 +617,7 @@ export class ProvidersService {
     providerId: string,
     dto: ProviderRatingDto,
   ): Promise<void> {
+    await this.getProvider(providerId, restaurantId);
     const payload = {
       provider_id: providerId,
       restaurant_id: restaurantId,
@@ -642,7 +646,9 @@ export class ProvidersService {
 
   async getProviderContacts(
     providerId: string,
+    restaurantId: string,
   ): Promise<ProviderContactResponseDto[]> {
+    await this.getProvider(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_contacts")
       .select("*")
@@ -664,7 +670,9 @@ export class ProvidersService {
   async addProviderContact(
     providerId: string,
     dto: CreateProviderContactDto,
+    restaurantId: string,
   ): Promise<ProviderContactResponseDto> {
+    await this.getProvider(providerId, restaurantId);
     // Demote any existing primary contact before inserting a new primary
     if (dto.isPrimary) {
       await this.databaseService.supabase
@@ -704,7 +712,9 @@ export class ProvidersService {
     providerId: string,
     contactId: string,
     dto: UpdateProviderContactDto,
+    restaurantId: string,
   ): Promise<ProviderContactResponseDto> {
+    await this.getProvider(providerId, restaurantId);
     const updatePayload: Record<string, any> = {};
     if (dto.name !== undefined) updatePayload.name = dto.name;
     if (dto.email !== undefined) updatePayload.email = dto.email;
@@ -734,7 +744,9 @@ export class ProvidersService {
   async deleteProviderContact(
     providerId: string,
     contactId: string,
+    restaurantId: string,
   ): Promise<void> {
+    await this.getProvider(providerId, restaurantId);
     const { error } = await this.databaseService.supabase
       .from("provider_contacts")
       .delete()
@@ -806,17 +818,20 @@ export class ProvidersService {
     restaurantId: string,
     wineId?: string,
   ): Promise<{ primary: any | null; alternatives: any[] }> {
-    let query = this.databaseService.supabase
+    if (!restaurantId || String(restaurantId).trim() === "") {
+      throw new BadRequestException(
+        "Recommendations cannot be listed without a restaurant.",
+      );
+    }
+
+    const query = this.databaseService.supabase
       .from("providers")
       .select("*")
       .is("deleted_at", null)
       .eq("is_active", true)
+      .eq("restaurant_id", restaurantId)
       .order("reliability_score", { ascending: false })
       .limit(5);
-
-    if (restaurantId) {
-      query = query.eq("restaurant_id", restaurantId);
-    }
 
     const { data, error } = await query;
 

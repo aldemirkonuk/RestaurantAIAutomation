@@ -6,6 +6,7 @@ import {
   HttpException,
   HttpStatus,
   NotFoundException,
+  ForbiddenException,
   Param,
   Patch,
   Post,
@@ -39,6 +40,29 @@ import {
   usualCurrencyCoverageSentence,
   vendorCurrencySentence,
 } from "./vendor-currency";
+
+type AuthUser = { userId?: string; restaurantId?: string | null };
+
+/**
+ * The caller's house, from the verified token and nowhere else. A session that
+ * names no house has no provider of its own to read, so it is refused rather
+ * than handed an unfiltered query (ADR 0147).
+ */
+function houseOf(user: AuthUser | undefined): string {
+  if (!user?.restaurantId) {
+    throw new ForbiddenException("This session names no restaurant.");
+  }
+  return user.restaurantId;
+}
+
+/** A status the service chose deliberately survives; anything else is a 500. */
+function rethrow(error: unknown, fallback: string): never {
+  if (error instanceof HttpException) throw error;
+  throw new HttpException(
+    (error as { message?: string })?.message || fallback,
+    HttpStatus.INTERNAL_SERVER_ERROR,
+  );
+}
 
 @ApiTags("providers")
 @Controller("providers")
@@ -157,23 +181,19 @@ export class ProvidersController {
 
   @Get("recommendations")
   @ApiOperation({ summary: "Get recommended providers" })
-  @ApiQuery({ name: "restaurantId", required: true })
   @ApiQuery({ name: "wineId", required: false })
   @ApiResponse({ status: 200, description: "Recommended providers" })
   async getRecommendations(
-    @Query("restaurantId") restaurantId: string,
-    @Query("wineId") wineId?: string,
+    @Query("wineId") wineId: string | undefined,
+    @CurrentUser() user: AuthUser,
   ) {
     try {
       return await this.providersService.getRecommendations(
-        restaurantId,
+        houseOf(user),
         wineId,
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to get recommendations",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to get recommendations");
     }
   }
 
@@ -450,14 +470,17 @@ export class ProvidersController {
   @Get(":id/orders")
   @ApiOperation({ summary: "Provider order history" })
   @ApiResponse({ status: 200, description: "Returns provider orders" })
-  async getProviderOrders(@Param("id") providerId: string) {
+  async getProviderOrders(
+    @Param("id") providerId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
     try {
-      return await this.providersService.getProviderOrders(providerId);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch provider orders",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      return await this.providersService.getProviderOrders(
+        providerId,
+        houseOf(user),
       );
+    } catch (error) {
+      rethrow(error, "Failed to fetch provider orders");
     }
   }
 
@@ -467,14 +490,17 @@ export class ProvidersController {
     status: 200,
     description: "Returns provider performance metrics",
   })
-  async getProviderPerformance(@Param("id") providerId: string) {
+  async getProviderPerformance(
+    @Param("id") providerId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
     try {
-      return await this.providersService.getProviderPerformance(providerId);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch provider performance",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      return await this.providersService.getProviderPerformance(
+        providerId,
+        houseOf(user),
       );
+    } catch (error) {
+      rethrow(error, "Failed to fetch provider performance");
     }
   }
 
@@ -488,16 +514,13 @@ export class ProvidersController {
   ): Promise<{ success: boolean }> {
     try {
       await this.providersService.rateProvider(
-        user.restaurantId,
+        houseOf(user),
         providerId,
         dto,
       );
       return { success: true };
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to rate provider",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to rate provider");
     }
   }
 
@@ -510,14 +533,15 @@ export class ProvidersController {
   @ApiResponse({ status: 200, type: [ProviderContactResponseDto] })
   async getProviderContacts(
     @Param("id") providerId: string,
+    @CurrentUser() user: AuthUser,
   ): Promise<ProviderContactResponseDto[]> {
     try {
-      return await this.providersService.getProviderContacts(providerId);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch provider contacts",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      return await this.providersService.getProviderContacts(
+        providerId,
+        houseOf(user),
       );
+    } catch (error) {
+      rethrow(error, "Failed to fetch provider contacts");
     }
   }
 
@@ -527,14 +551,16 @@ export class ProvidersController {
   async addProviderContact(
     @Param("id") providerId: string,
     @Body() dto: CreateProviderContactDto,
+    @CurrentUser() user: AuthUser,
   ): Promise<ProviderContactResponseDto> {
     try {
-      return await this.providersService.addProviderContact(providerId, dto);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to add provider contact",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      return await this.providersService.addProviderContact(
+        providerId,
+        dto,
+        houseOf(user),
       );
+    } catch (error) {
+      rethrow(error, "Failed to add provider contact");
     }
   }
 
@@ -545,18 +571,17 @@ export class ProvidersController {
     @Param("id") providerId: string,
     @Param("contactId") contactId: string,
     @Body() dto: UpdateProviderContactDto,
+    @CurrentUser() user: AuthUser,
   ): Promise<ProviderContactResponseDto> {
     try {
       return await this.providersService.updateProviderContact(
         providerId,
         contactId,
         dto,
+        houseOf(user),
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to update provider contact",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to update provider contact");
     }
   }
 
@@ -566,15 +591,17 @@ export class ProvidersController {
   async deleteProviderContact(
     @Param("id") providerId: string,
     @Param("contactId") contactId: string,
+    @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
     try {
-      await this.providersService.deleteProviderContact(providerId, contactId);
+      await this.providersService.deleteProviderContact(
+        providerId,
+        contactId,
+        houseOf(user),
+      );
       return { success: true };
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to delete provider contact",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to delete provider contact");
     }
   }
 
@@ -610,24 +637,20 @@ export class ProvidersController {
 
   @Get(":id/recommendations")
   @ApiOperation({ summary: "AI-powered provider recommendations" })
-  @ApiQuery({ name: "restaurantId", required: false })
   @ApiQuery({ name: "wineId", required: false })
   @ApiResponse({ status: 200, description: "Provider recommendations" })
   async getProviderRecommendations(
     @Param("id") _providerId: string,
-    @Query("restaurantId") restaurantId?: string,
-    @Query("wineId") wineId?: string,
+    @Query("wineId") wineId: string | undefined,
+    @CurrentUser() user: AuthUser,
   ) {
     try {
       return await this.providersService.getRecommendations(
-        restaurantId ?? "",
+        houseOf(user),
         wineId,
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to get recommendations",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to get recommendations");
     }
   }
 
