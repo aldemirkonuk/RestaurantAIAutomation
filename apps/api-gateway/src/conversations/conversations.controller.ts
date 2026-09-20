@@ -9,6 +9,7 @@ import {
   Logger,
   HttpException,
   HttpStatus,
+  ForbiddenException,
   UseGuards,
 } from "@nestjs/common";
 import { ConversationsService } from "./conversations.service";
@@ -20,8 +21,22 @@ import {
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 
 type AuthUser = { userId: string; restaurantId: string };
+
+/**
+ * The caller's house, from the verified token and nowhere else. A session that
+ * names no house has no conversation of its own to act on, so it is refused
+ * rather than handed an unfiltered query.
+ */
+function houseOf(user: AuthUser): string {
+  if (!user?.restaurantId) {
+    throw new ForbiddenException("This session names no restaurant.");
+  }
+  return user.restaurantId;
+}
 
 interface ApproveConversationDto {
   approved: boolean;
@@ -45,7 +60,13 @@ interface RejectConversationDto {
 // Every route here reads or mutates vendor communications, and approve/reject send
 // real email. The controller previously carried no guard at all, so the whole surface
 // was reachable unauthenticated via the service-role key (which bypasses RLS).
-@UseGuards(JwtAuthGuard)
+//
+// Every by-id route below answers only for the caller's own house, and a row in
+// another house is a 404, the same answer as a row that does not exist (ADR 0147;
+// ADR 0171). Approve, edit and reject also take a role: they decide what a vendor is
+// told, so only an owner or a manager may (ADR 0116; ADR 0162 — the role IN THIS
+// house, which is what `RolesGuard` reads from the token).
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("conversations")
 export class ConversationsController {
   private readonly logger = new Logger(ConversationsController.name);
@@ -290,10 +311,18 @@ export class ConversationsController {
    */
   @Post(":conversationId/summarize")
   @ApiOperation({ summary: "Regenerate AI summary for a conversation thread" })
-  async regenerateSummary(@Param("conversationId") conversationId: string) {
+  async regenerateSummary(
+    @CurrentUser() user: AuthUser,
+    @Param("conversationId") conversationId: string,
+  ) {
+    const restaurantId = houseOf(user);
     try {
-      return await this.conversationsService.regenerateSummary(conversationId);
+      return await this.conversationsService.regenerateSummary(
+        conversationId,
+        restaurantId,
+      );
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error(`Failed to regenerate summary: ${error.message}`);
       throw new HttpException(
         "Failed to regenerate summary",
@@ -325,11 +354,12 @@ export class ConversationsController {
    * Get all pending conversations
    */
   @Get("pending/list")
-  async getPendingConversations() {
-    this.logger.log("Fetching all pending conversations");
+  async getPendingConversations(@CurrentUser() user: AuthUser) {
+    const restaurantId = houseOf(user);
+    this.logger.log("Fetching pending conversations");
     try {
       const conversations =
-        await this.conversationsService.getPendingConversations();
+        await this.conversationsService.getPendingConversations(restaurantId);
       return { conversations, count: conversations.length };
     } catch (error) {
       this.logger.error(
@@ -349,12 +379,18 @@ export class ConversationsController {
    * Get conversation by ID
    */
   @Get(":conversationId")
-  async getConversation(@Param("conversationId") conversationId: string) {
+  async getConversation(
+    @CurrentUser() user: AuthUser,
+    @Param("conversationId") conversationId: string,
+  ) {
+    const restaurantId = houseOf(user);
     this.logger.log(`Fetching conversation ${conversationId}`);
 
     try {
-      const conversation =
-        await this.conversationsService.getConversation(conversationId);
+      const conversation = await this.conversationsService.getConversation(
+        conversationId,
+        restaurantId,
+      );
 
       if (!conversation) {
         throw new HttpException("Conversation not found", HttpStatus.NOT_FOUND);
@@ -372,13 +408,14 @@ export class ConversationsController {
         conversation_context: conversation.conversation_context,
       };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error(
         `Failed to fetch conversation: ${error.message}`,
         error.stack,
       );
       throw new HttpException(
-        error.message || "Failed to fetch conversation",
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+        "Failed to fetch conversation",
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -388,17 +425,20 @@ export class ConversationsController {
    * Triggers conversation.approved event for procurement agent to resume
    */
   @Post(":conversationId/approve")
+  @Roles("owner", "manager")
   async approveConversation(
+    @CurrentUser() user: AuthUser,
     @Param("conversationId") conversationId: string,
     @Body() body: ApproveConversationDto,
   ) {
+    const restaurantId = houseOf(user);
     this.logger.log(
       `Approving conversation ${conversationId} via ${body.approval_channel}`,
     );
 
     try {
       if (!body.approved) {
-        return this.rejectConversation(conversationId, {
+        return await this.rejectConversation(user, conversationId, {
           reason: "Manager declined approval",
           manager_notes: body.manager_notes,
         });
@@ -406,6 +446,7 @@ export class ConversationsController {
 
       const result = await this.conversationsService.approveConversation(
         conversationId,
+        restaurantId,
         {
           modifiedMessage: body.modified_message,
           managerNotes: body.manager_notes,
@@ -427,13 +468,14 @@ export class ConversationsController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error(
         `Failed to approve conversation: ${error.message}`,
         error.stack,
       );
       throw new HttpException(
-        error.message || "Failed to approve conversation",
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+        "Failed to approve conversation",
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -442,10 +484,13 @@ export class ConversationsController {
    * Edit AI message before sending
    */
   @Put(":conversationId/message")
+  @Roles("owner", "manager")
   async editMessage(
+    @CurrentUser() user: AuthUser,
     @Param("conversationId") conversationId: string,
     @Body() body: EditMessageDto,
   ) {
+    const restaurantId = houseOf(user);
     this.logger.log(`Editing message for conversation ${conversationId}`);
 
     try {
@@ -458,6 +503,7 @@ export class ConversationsController {
 
       const result = await this.conversationsService.editMessage(
         conversationId,
+        restaurantId,
         body.new_message,
         body.manager_notes,
       );
@@ -476,13 +522,14 @@ export class ConversationsController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error(
         `Failed to edit message: ${error.message}`,
         error.stack,
       );
       throw new HttpException(
-        error.message || "Failed to edit message",
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+        "Failed to edit message",
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -492,15 +539,19 @@ export class ConversationsController {
    * Triggers conversation.rejected event
    */
   @Post(":conversationId/reject")
+  @Roles("owner", "manager")
   async rejectConversation(
+    @CurrentUser() user: AuthUser,
     @Param("conversationId") conversationId: string,
     @Body() body: RejectConversationDto,
   ) {
+    const restaurantId = houseOf(user);
     this.logger.log(`Rejecting conversation ${conversationId}`);
 
     try {
       const result = await this.conversationsService.rejectConversation(
         conversationId,
+        restaurantId,
         body.reason,
         body.manager_notes,
       );
@@ -518,13 +569,14 @@ export class ConversationsController {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error(
         `Failed to reject conversation: ${error.message}`,
         error.stack,
       );
       throw new HttpException(
-        error.message || "Failed to reject conversation",
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+        "Failed to reject conversation",
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

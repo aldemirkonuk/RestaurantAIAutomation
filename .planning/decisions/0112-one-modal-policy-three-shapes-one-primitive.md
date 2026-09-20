@@ -1,6 +1,6 @@
 # 0112 — One modal policy: three shapes, one primitive, and the overlay wears the page's ground
 
-- **Status:** Locked — ratified by the founder 2026-09-05 at the sketch 102 census review; built behind the existing per-page design flags
+- **Status:** Locked — ratified by the founder 2026-09-05 at the sketch 102 census review; built behind the existing per-page design flags **[AMENDED 2026-09-19 by [[0176-amend-0112-swipe-is-the-phone-intent-gesture]]: on the phone's seal sheet a full-page swipe up is the intent gesture (web and the notification shade keep the hold), and the notification rule at `:257-258` admits a tap straight onto the seal sheet and, as ADR 0175 Phase 2, a hold inside the shade below a per-order ceiling and a per-house daily cap (both 0 by default; ADR 0175 D2). Nothing below is rewritten.]**
 - **Date:** 2026-09-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** modal, sheet, panel, popover, overlay, dialog, focus trap, scrim, ground, portal, shell, mudavym, design foundation
@@ -165,6 +165,7 @@ spectrum, not a shape (see Consequences).
 | 2026-09-05 | — | **Census (sketch 102).** Every overlay in the web app read and given a shape or a reason: 141 sites folded into 117 overlays — 31 built, 10 migrate, 12 owed, 7 target, 42 retire, 15 delete, 3 not a shape (after the 2026-09-05 rulings). Seven forks for the founder (F1–F7). |
 | 2026-09-05 | founder | **Ratified (F1) — status → Locked.** F2: the studio invite reuses `InviteTeamDialog` with a second opener. F5: the manual order starts in the owed 'A new order' sheet. F7: a dashboard figure expands in place, no overlay. F3: a 640 sheet. F4: every legacy act is rebuilt to its full purpose (the founder's bar recorded below). F6: HouseHeader's bell and menu survive. All seven answered. |
 | 2026-09-19 | Aldemir (founder, chat, ~11:35Z) + Sonnet 5 (PR #391 audit M4) | **Amended F10** — a WhatsApp message a person sends by clicking Send does not need `HoldToApprove` first; the click is the consent. Scoped to person-sent WhatsApp sends only; every other item on F10's closed list (money, other sends, ledger rows) is unchanged. Named, not built here: people can delete their own sent messages, and the surface reads like WhatsApp Web inside the house frame — both filed as follow-ups on ADR 0121. Meta's WhatsApp Cloud API was checked against its public docs and does not support a business deleting/recalling a message it sent for the recipient (see ADR 0121 item 9). |
+| 2026-09-19 | founder | **Amended by 0176:** phone swipe as the intent gesture; tap-to-seal-sheet and the Phase 2 in-shade hold (ADR 0175). |
 
 ## Founder answers (2026-09-04)
 

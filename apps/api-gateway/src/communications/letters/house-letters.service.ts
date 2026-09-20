@@ -65,6 +65,11 @@ import { composerGuardrails, type GuardrailHit } from "./composer-guardrails";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import type { IntegrationId } from "../../integrations/integrations-oauth.constants";
 import { HouseSenderService } from "./house-sender.service";
+import {
+  addressListHeader,
+  base64Body,
+  unstructuredHeader,
+} from "../mime-headers";
 import type {
   InsertedInsightDto,
   QueueLetterDto,
@@ -879,14 +884,20 @@ export async function sendThroughGrant(params: {
   // nothing after it is a malformed header, which Gmail either rejects or
   // silently repairs. Omitting it lets Gmail stamp the authenticated mailbox,
   // which is the true answer and the one we could not have written ourselves.
+  //
+  // Headers go through mime-headers.ts (ADR 0172): a Turkish subject is RFC
+  // 2047 encoded rather than sent as raw bytes, a line break in the subject
+  // cannot start a new header, and the body is base64 under its UTF-8 charset.
+  const from = params.from.trim();
   const mime = [
-    ...(params.from.trim() ? [`From: ${params.from.trim()}`] : []),
-    `To: ${params.to}`,
-    `Subject: ${params.subject}`,
+    ...(from ? [addressListHeader("From", [from])] : []),
+    addressListHeader("To", [params.to]),
+    unstructuredHeader("Subject", params.subject),
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
     "",
-    params.text,
+    base64Body(params.text),
   ].join("\r\n");
 
   const doFetch = params.fetchImpl ?? fetch;

@@ -206,13 +206,23 @@ in-progress lane) and said *"do all of your recommendations"*. The resulting rul
 recorded with the verdict in ADR 0149 row 35 and ADR 0143's bracket). This deliberately
 changes "same fields and flow". An unknown Google account is still refused by the gateway.
 
+**The front-matter Easter egg** (`front-matter.html`, drawn for his review).
+- His verdict, 2026-09-19: *"Book is great"*. Remove the dog-ear hint (*"not intrigued
+  by that"*): nothing on the page may invite the click. The rest he left to the builder
+  (*"you decide rest"*).
+- The builder picked **Direction 1, turn back to the front matter**, because it keeps
+  the book open and the typed address alive. It is built on /login only, as the
+  `frontMatter` prop of `EndpaperShell`, with the copy `front-matter.html` drew.
+- The endpaper is a real button, named for screen readers, with no hover, pointer or
+  corner hint. Only a keyboard focus ring shows it.
+- On a desktop the leaf turns over the gutter and reveals the inside cover beneath it.
+  The right page cuts to the poem at the instant the leaf is edge-on, and the leaf's
+  blank back lands and fades. On a phone the band drops the poem over the form.
+- Escape and "Turn back to sign in" reverse it. The form stays mounted, inert, under
+  the poem.
+- Direction 2 (close the book onto its back cover) is not built.
+
 **Not built:**
-- The front-matter Easter egg: clicking the endpaper turns back to a poem about the
-  house, or closes the book onto its back cover. He asked for a sketch first. It is
-  `front-matter.html`, two live directions at desktop and phone width, and waits for his
-  verdict. Nothing of it is built. Its copy claims only what the product does: it reads
-  invoices, keeps the count, notices price creep and low stock, drafts but never sends
-  without a person, and seals every approval.
 - Four more signature moments from the motion canvas were offered: the seal on success,
   the invite code becoming a person, the wrong password wiped gently, and "the house
   knows you". His answer was *"not sure, if we don't need it then don't"*, so none is
