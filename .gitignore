@@ -85,7 +85,7 @@ supabase/.temp/
 
 # IDE / local tooling (never ship to CI or production images from git)
 .cursor/
-# Deliberate carve-out (ADR 0177): the Jev prompt-gate hook config is shared
+# Deliberate carve-out (ADR 0182): the Jev prompt-gate hook config is shared
 # team behavior, not personal IDE state — everything else under .cursor/
 # stays ignored.
 !.cursor/hooks.json
