@@ -103,6 +103,54 @@ compelling agents to do so, because CLAUDE.md is already over its own ~200-line
 budget (254 lines measured 2026-09-20) and adding to it is a separate, unrelated
 cleanup this ADR does not take on.
 
+## Addendum 2026-09-20 — the desktop-app gap is worse than "invisible by design"
+
+The founder asked what else could close the Claude Code/Codex visibility gap,
+specifically naming **Claude Desktop** and **Codex Desktop** (the GUI apps,
+distinct from the CLIs this ADR originally targeted). Researched via web
+search against upstream issue trackers before answering, rather than assuming
+the CLI's documented behavior carries over:
+
+- **Claude Desktop** documents that it fires the *same* hook events as the
+  CLI (`code.claude.com/docs/en/hooks`: "Hooks run wherever Claude Code
+  runs... the Desktop app... fire the same hook events"). In practice,
+  multiple confirmed open bugs show the Desktop app executes hooks and
+  **enforces blocks**, but drops the user-facing feedback entirely — no
+  `systemMessage`, no block reason, no visible explanation, just an
+  indistinguishable hang (`anthropics/claude-code` issues **#66555**,
+  **#59822**, **#74299**). A separate, actively-tracked bug
+  (**#87657**) shows some Desktop sessions load **zero** hooks despite
+  correctly declared settings, intermittently, mid-session.
+- **Codex Desktop** documents the same `hooks.json`/`config.toml` mechanism as
+  the CLI, but community reports (`openai/codex` issues **#35863**,
+  **#18090**, **#21639**) show SessionStart/command hooks detected in the UI
+  but never executed, or regressed entirely across app updates — one
+  side-by-side table in #21639 shows `additionalContext` reaching the model on
+  Codex CLI 0.128.0 and silently not reaching it on 0.130.0+, same config.
+
+**Conclusion carried into the decision:** the CLI/Cursor paths this ADR
+targets are the *reliable* ones. The GUI desktop apps are not just
+"invisible-by-design" (this ADR's original framing) — they are currently
+buggy on top of that, version-dependent, and not something to depend on.
+
+**Added in response:** an optional, fire-and-forget Discord webhook
+(`DISCORD_WEBHOOK_URL`) posted from the same `emit()` call on every tool,
+every event — see `_notify_discord` in `prompt_gate.py`. This makes the
+founder's visibility depend on Discord's delivery, not on any one desktop
+app's hook-rendering reliability. Live-tested 2026-09-20: degrades silently
+and correctly with no URL set and with a syntactically-invalid URL; not yet
+tested against a real Discord channel (no webhook URL provided as of this
+addendum — the founder still needs to create one and add it to `.env`).
+
+**Named, not built:** the founder also asked about a prompt writing surface
+outside all three tools — draft a prompt, get Jev's read, then paste the
+(possibly revised) prompt into whichever of Claude Desktop / Codex Desktop /
+Cursor is actually being used. This sidesteps the entire hook-reliability
+question above, since it depends on no hook API at all. Not built in this
+PR — it is a second tool, not an extension of the hook script, and needs its
+own scope decision (a CLI prompt? a tiny local web page? does it call Jev
+once or interactively?) before building it.
+
 ## Consequences
 
 - Every prompt submitted to Cursor, Claude Code, or Codex CLI in this repo now
