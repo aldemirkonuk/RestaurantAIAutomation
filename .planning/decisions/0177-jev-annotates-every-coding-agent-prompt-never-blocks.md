@@ -133,23 +133,37 @@ targets are the *reliable* ones. The GUI desktop apps are not just
 "invisible-by-design" (this ADR's original framing) — they are currently
 buggy on top of that, version-dependent, and not something to depend on.
 
-**Added in response:** an optional, fire-and-forget Discord webhook
-(`DISCORD_WEBHOOK_URL`) posted from the same `emit()` call on every tool,
-every event — see `_notify_discord` in `prompt_gate.py`. This makes the
-founder's visibility depend on Discord's delivery, not on any one desktop
-app's hook-rendering reliability. Live-tested 2026-09-20: degrades silently
-and correctly with no URL set and with a syntactically-invalid URL; not yet
-tested against a real Discord channel (no webhook URL provided as of this
-addendum — the founder still needs to create one and add it to `.env`).
+**Built, then explicitly declined, same session:** a fire-and-forget Discord
+webhook (`DISCORD_WEBHOOK_URL`) was added and live-tested (degraded correctly
+with no URL and with a bad URL) as a way to make founder visibility depend on
+Discord's delivery instead of any one desktop app's rendering. The founder
+selected Discord by accident in an earlier multi-select, asked for other
+options, was offered a curated list (native macOS notification, Telegram,
+ntfy.sh), and then chose **none of them** — deciding the model already
+reading the annotation is what matters, and that a founder-visible echo is
+not needed. The Discord code was removed rather than left in unused,
+consistent with this repo's "don't add unused things" norm. If this changes
+later, the removed diff is in this PR's git history (commit `ddf8740ff`, the
+first push of it) and is a small, self-contained re-add.
 
-**Named, not built:** the founder also asked about a prompt writing surface
-outside all three tools — draft a prompt, get Jev's read, then paste the
-(possibly revised) prompt into whichever of Claude Desktop / Codex Desktop /
-Cursor is actually being used. This sidesteps the entire hook-reliability
-question above, since it depends on no hook API at all. Not built in this
-PR — it is a second tool, not an extension of the hook script, and needs its
-own scope decision (a CLI prompt? a tiny local web page? does it call Jev
-once or interactively?) before building it.
+**Named, not built:** the founder separately asked about a prompt-writing
+surface outside all three tools — draft a prompt, get Jev's read, then paste
+the (possibly revised) prompt into whichever app is in use. Clarified in the
+same exchange that this isn't actually needed: the founder's real ask was
+"include Jev as workflow step one, supplementing the AI before it acts" —
+which the hook already does, since `additionalContext` reaches the model's
+own context regardless of whether it's echoed to the founder. No separate
+composer tool is planned.
+
+**Founder's stated next step (2026-09-20):** move from GUI desktop apps to
+the **Claude Code CLI** and **Codex CLI** in this repo, since those are the
+surfaces this addendum's research found reliable. Operationally: this hook
+only fires once `.claude/settings.json` and `.codex/hooks.json` are present
+in whatever working directory the CLI is launched from. As of this addendum,
+`codex` is not installed on the founder's machine (`command -v codex` finds
+nothing; only `claude` resolves) — the Codex path is config-verified
+(valid JSON, matches documented schema) but not yet fired end-to-end for
+real, and can't be until the CLI itself is installed.
 
 ## Consequences
 

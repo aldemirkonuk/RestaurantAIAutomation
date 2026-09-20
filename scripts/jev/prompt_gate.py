@@ -33,15 +33,13 @@ missing key, or non-200 response degrades to a short "Jev unavailable" note
 and always exits 0, because a third-party judgment call must never be able to
 stop you from working (fail open, per the founder's decision).
 
-Optional Discord notification (`_notify_discord`, `DISCORD_WEBHOOK_URL` in
-.env): added 2026-09-20 because the additionalContext channel on Claude
-Desktop and Codex Desktop is not reliably visible to the founder even when it
-fires — see ADR 0177's gap analysis, which cites real upstream bugs
-(anthropics/claude-code#66555, #59822, #74299, #87657;
-openai/codex#35863, #18090, #21639), not just the documented "invisible by
-design" limitation on the CLI path. The Discord post is best-effort and
-silent on failure; it is never the thing the founder depends on for
-correctness, only for visibility.
+A webhook notification layer (Discord) was built and then explicitly declined
+by the founder on 2026-09-20, same session — see ADR 0177's addendum for why
+it was considered (Claude Desktop / Codex Desktop's additionalContext channel
+is not reliably visible even when it fires) and why it was removed rather
+than left in as unused code (the founder confirmed the model already reading
+the annotation is the part that matters; visibility add-ons were declined,
+not deferred).
 """
 
 from __future__ import annotations
@@ -116,9 +114,7 @@ _KEY_VAR_NAMES = ("JEV_API_KEY", "TYPESAFE_API_KEY")  # founder set JEV_API_KEY
 
 def _load_env_var(*var_names: str) -> str | None:
     """Generic lookup: environment first, then the nearest repo-root .env,
-    walking up from this script. Shared by the TypeSafe key and the webhook
-    URL — same reasoning as _load_api_key, kept as one helper so the two
-    don't drift into different lookup behavior."""
+    walking up from this script."""
     for var_name in var_names:
         value = os.environ.get(var_name)
         if value:
@@ -138,36 +134,6 @@ def _load_env_var(*var_names: str) -> str | None:
             except OSError:
                 pass
     return None
-
-
-def _notify_discord(prompt_text: str, annotation: str, event_name: str) -> None:
-    """Fire-and-forget POST to a Discord incoming webhook, so the founder
-    sees Jev's read even on a surface (Claude Desktop, Codex Desktop) whose
-    own additionalContext channel isn't reliably visible — see ADR 0177's
-    gap analysis. Never raises, never blocks, never delays emit(): errors are
-    swallowed silently on purpose, the same fail-open posture as the
-    TypeSafe call itself. A short prompt preview only (200 chars) — this
-    webhook is a visibility aid, not a full audit log."""
-    webhook_url = _load_env_var("DISCORD_WEBHOOK_URL", "JEV_DISCORD_WEBHOOK_URL")
-    if not webhook_url:
-        return
-    preview = prompt_text[:200] + ("…" if len(prompt_text) > 200 else "")
-    body = json.dumps(
-        {
-            "content": f"**{event_name}**\n{annotation}\n> {preview}",
-        }
-    ).encode("utf-8")
-    req = urllib.request.Request(
-        webhook_url,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        urllib.request.urlopen(req, timeout=3, context=_SSL_CONTEXT).close()
-    except Exception:  # noqa: BLE001 — a failed notification must never
-        # surface as a failed prompt submission
-        pass
 
 
 def _load_api_key() -> str | None:
@@ -243,7 +209,6 @@ def main() -> int:
     is_cursor = event_name == "beforeSubmitPrompt"
 
     def emit(annotation: str, blocked_message: str | None = None) -> None:
-        _notify_discord(prompt_text, annotation, event_name or "prompt")
         if is_cursor:
             # Cursor's beforeSubmitPrompt only supports continue/user_message
             # (no additionalContext) — see module docstring. Never block.
@@ -269,7 +234,7 @@ def main() -> int:
     api_key = _load_api_key()
     if not api_key:
         emit(
-            "[JEV] not configured — set TYPESAFE_API_KEY in .env to enable "
+            "[JEV] not configured — set JEV_API_KEY in .env to enable "
             "the Jev prompt check"
         )
         return 0
