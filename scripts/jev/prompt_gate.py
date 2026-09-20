@@ -7,7 +7,7 @@ What it does, every time you submit a prompt to any of those three agents in
 this repo: sends the prompt to TypeSafe's Jev API with three atomic questions
 (request type, risk, ambiguity), then annotates — it never blocks. The founder
 decision on 2026-09-20 was explicit: "always annotate ... never block ...
-let the LLM take action." See .planning/decisions/0177-jev-annotates-every-coding-agent-prompt-never-blocks.md.
+let the LLM take action." See .planning/decisions/0182-jev-annotates-every-coding-agent-prompt-never-blocks.md.
 
 One script, three JSON dialects, because Cursor / Claude Code / Codex each
 define their own UserPromptSubmit stdin/stdout shape. The annotation must
