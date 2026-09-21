@@ -202,13 +202,29 @@
      single class alone is (0,1,0), and (0,1,0) > (0,0,1) regardless of
      source order or which file either rule lives in.
 
-     The order-independence claim survives, on a different floor: it holds
-     not because of any layer, but because the hoisted base block keeps
-     this file's rules and mudavym.css's rules in the same relative order
-     across dev and prod (measured: dev index 2311/2312, prod offset 22868
-     vs the utilities' 126466) -- Vite reorders separate CSS files against
-     each other between serve and build, but never reorders rules within
-     the one hoisted block `@layer base` produces.
+     The order-independence claim survives, but not on this floor. mudavym.css
+     is not part of the hoisted base block: `@import './mudavym.css'` at
+     globals.css:4 inlines it ahead of `@tailwind base` on line 6, so its
+     rules sit outside whatever Tailwind hoists there. Fresh build
+     (dist/assets/index-BjKV6-Nn.css): mudavym.css's own
+     `.mudavym,.mudavym[data-ground=charcoal]{` ground rule lands at offset
+     25893, before Tailwind's preflight `*,:before,:after{` at 27816, which
+     is itself before this file's bare `h1{` at 34195. The earlier 'dev
+     index 2311/2312, prod offset 22868' measurement is the evidence that
+     mudavym.css moves relative to globals.css between dev and prod -- it
+     was misread here as evidence that it stays put.
+
+     The real floor: the win is order-independent because this rule and the
+     bare `h1`-`p` rules above that it must beat are both declared in this
+     same `@layer base` block in globals.css, which Tailwind emits as one
+     hoisted block at `@tailwind base` in source order, in dev and prod
+     alike (same build: bare `h1{` at 34195, `:where(.mudavym) h1` at
+     35017 -- the later declaration wins the same-specificity tie). A source
+     line number here would drift the moment either rule moves; the
+     built-CSS offsets above do not, because comment-only edits leave the
+     compiled bundle byte-identical. Where mudavym.css lands no longer
+     matters to this fix, because mudavym.css does not carry an h1-p colour
+     rule any more -- see its own comment.
 
      Also: scratchpad `b1-cascade-check.html`, on record elsewhere as this
      fix's "real Chrome proof", built its case with native `@layer` blocks.

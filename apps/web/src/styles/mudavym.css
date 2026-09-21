@@ -285,7 +285,8 @@ html .mudavym input[type]::-webkit-datetime-edit-text {
    CSS cascade layers. It doesn't ship one — apps/web's tailwindcss 3.4.19
    compiles `@layer base` away, confirmed as 0 `@layer` occurrences in the
    built CSS. The specificity hole closes on a same-specificity tie broken
-   by source order inside Tailwind's hoisted base block, and the dev/prod
-   build-order difference closes because that hoisted block keeps this
-   file's and globals.css's rules in the same relative order either way.
+   by source order inside Tailwind's hoisted base block. The dev/prod
+   build-order difference closes because the rule no longer lives in this
+   file: the fix and the rules it must beat now share globals.css's one
+   hoisted base block, so this file's placement is irrelevant to it.
    See globals.css's own comment for the corrected mechanism in full. */
