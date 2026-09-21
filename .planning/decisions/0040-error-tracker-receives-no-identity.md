@@ -198,6 +198,7 @@ agreeing *constant* is the easy half to check and the half that matters least.
 |---|---|---|
 | 2026-08-28 | — | Created; proposed, awaiting founder lock |
 | 2026-08-28 | audit | Scrubber symmetry gap found and closed; guard extended to containers (amendment above) |
+| 2026-09-21 | PR #427 (self-authored; its own security and compliance audits BLOCKED v1) | Amended — `before_send` never scrubbed `request.url`; `query_string`, a path-borne credential (`@Public()` `/calendar/feed/<token>.ics`) and breadcrumbs were all missed. See the amendment below the trail |
 
 ---
 

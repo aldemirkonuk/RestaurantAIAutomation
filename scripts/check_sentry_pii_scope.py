@@ -511,8 +511,14 @@ PUBLIC_PATH_PARAMS_NOT_CREDENTIALS = {
     ":page": "sitemap page number",
     ":key": "experiment / series key -- a name, not a secret",
     ":restaurantId": "tenant id, already in the JWT and in every URL",
-    ":id": "opaque row id, authorised separately",
-    ":orderId": "order id, authorised separately",
+    # `:id` and `:orderId` were here and are deliberately REMOVED (2026-09-21,
+    # PR #427's compliance audit). They matched ZERO @Public() routes — they
+    # were pre-authorisations for routes that do not exist, and they pre-blessed
+    # the two most generic parameter names in the repo. A future
+    # `@Public() @Get("report/:id")` bearing a share token would have been
+    # classified as not-a-credential and passed green. Leaving them out means
+    # such a route fails the build until someone looks at it, which is the whole
+    # point of this check. Re-add one only with a route named and read.
 }
 
 _PUBLIC_RE = re.compile(r"@Public\(\)")
