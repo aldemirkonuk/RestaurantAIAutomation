@@ -38,7 +38,6 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { DatabaseService } from "../database/database.service";
 import {
   GmailService,
-  headerInjectionField,
 } from "../communications/gmail.service";
 import { HouseLettersService } from "../communications/letters/house-letters.service";
 import { NotificationsController } from "./notifications.controller";
@@ -638,9 +637,13 @@ describe("send-email: no header can be injected through an address", () => {
     },
   );
 
-  it("[REVIEW-FAILS] the mail sender itself refuses a line break in any header, before any transport", async () => {
+  it("[REVIEW-FAILS] the mail sender itself lets no line break start a header (ADR 0172), before any transport", async () => {
     // The REAL GmailService.sendEmail, configured as if OAuth were ready, with
-    // only the Gmail API call replaced. It must refuse before sending.
+    // only the Gmail API call replaced. The MIME half of the M1 finding
+    // (2026-09-17) is closed by ADR 0172's encoder (mime-headers.ts, #402): an
+    // address carrying a line break is refused before anything is sent, free
+    // text is encoded, and threading headers are REBUILT from their msg-id
+    // tokens. Whatever the path, no injected header may reach the wire.
     const real = new GmailService({ get: () => undefined } as any);
     const send = jest.fn(async () => ({ data: { id: "m", threadId: "t" } }));
     Object.assign(real as any, {
@@ -650,14 +653,18 @@ describe("send-email: no header can be injected through an address", () => {
     });
     jest.spyOn((real as any).logger, "log").mockImplementation(() => {});
     jest.spyOn((real as any).logger, "error").mockImplementation(() => {});
+    jest.spyOn((real as any).logger, "warn").mockImplementation(() => {});
+
+    const headerBlocks = () =>
+      send.mock.calls.map((call: any) =>
+        Buffer.from(call[0].requestBody.raw, "base64url").toString("utf8").split("\r\n\r\n")[0],
+      );
 
     for (const patch of [
       { to: [INJECTED] },
       { cc: ["ok@vendor.test", "b\r\nBcc: x@evil.test"] },
       { bcc: ["c\nTo: x@evil.test"] },
-      { subject: "Hi\r\nBcc: x@evil.test" },
       { replyTo: "r@vendor.test\r\nBcc: x@evil.test" },
-      { references: "<a@b>\r\nBcc: x@evil.test" },
     ]) {
       const result = await real.sendEmail({
         to: ["orders@vendor.test"],
@@ -666,28 +673,33 @@ describe("send-email: no header can be injected through an address", () => {
         ...patch,
       });
       expect(result.success).toBe(false);
-      expect(result.error).toMatch(/line break/);
+      expect(result.refusedBeforeSend).toBe(true);
     }
     expect(send).not.toHaveBeenCalled();
 
-    // Both states: a folded References (CRLF + space) is a continuation, not a
-    // new header — it is unfolded and the message goes out with no Bcc line.
-    const ok = await real.sendEmail({
-      to: ["orders@vendor.test"],
-      subject: "Hello",
-      html: "<p>Hi</p>",
-      references: "<a@b>\r\n <c@d>",
-    });
-    expect(ok.success).toBe(true);
-    expect(send).toHaveBeenCalledTimes(1);
-    const raw = Buffer.from(
-      (send.mock.calls[0] as any)[0].requestBody.raw,
-      "base64url",
-    ).toString("utf8");
-    const headerBlock = raw.split("\r\n\r\n")[0];
-    expect(headerBlock).toContain("References: <a@b> <c@d>");
-    expect(headerBlock).not.toMatch(/^Bcc:/m);
-    expect(headerInjectionField({ to: ["a@b.test"], subject: "s", html: "" })).toBeNull();
+    // Free text and threading: encoded or rebuilt, sent, and carrying no
+    // injected header line.
+    for (const patch of [
+      { subject: "Hi\r\nBcc: x@evil.test" },
+      { references: "<a@b>\r\nBcc: x@evil.test" },
+      { references: "<a@b>\r\n <c@d>" },
+    ]) {
+      const result = await real.sendEmail({
+        to: ["orders@vendor.test"],
+        subject: "Hello",
+        html: "<p>Hi</p>",
+        ...patch,
+      });
+      expect(result.success).toBe(true);
+    }
+    expect(send).toHaveBeenCalledTimes(3);
+    for (const block of headerBlocks()) {
+      // No header line of the attacker's making: nothing starts a Bcc line, and
+      // the injected text survives only as words inside the Subject value.
+      expect(block).not.toMatch(/^Bcc:/im);
+      const carrying = block.split("\r\n").filter((line) => /evil\.test/.test(line));
+      expect(carrying.every((line) => line.startsWith("Subject:"))).toBe(true);
+    }
   });
 });
 
