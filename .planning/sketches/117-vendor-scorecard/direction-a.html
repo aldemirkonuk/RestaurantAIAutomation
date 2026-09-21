@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 117 · Direction A — The Ledger Card</title>
+<!-- The product self-hosts its faces; the sketch loads them from Google Fonts only so it renders from file://. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ================================================================
+   Sketch chrome — NOT the product. Grey paper around the specimens.
+   ================================================================ */
+html, body { margin: 0; background: #d9d4cb; color: #2a2620; font-family: 'DM Sans', system-ui, sans-serif; }
+.sk-wrap { max-width: 1440px; margin: 0 auto; padding: 24px 20px 80px; }
+.sk-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; margin-bottom: 18px; }
+.sk-head h1 { margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 500; font-size: 22px; letter-spacing: -0.01em; }
+.sk-head p { margin: 0; font-size: 13px; color: #5a5348; max-width: 980px; line-height: 1.5; }
+.sk-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #6b6356; margin: 34px 0 10px; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.sk-label small { letter-spacing: 0; text-transform: none; font-size: 12px; color: #7a7266; }
+.sk-note { font-size: 12.5px; color: #5a5348; max-width: 980px; margin: 0 0 12px; line-height: 1.5; }
+.sk-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+.sk-frame { border: 1px solid rgba(0,0,0,.18); box-shadow: 0 1px 0 rgba(255,255,255,.5) inset; }
+.sk-phone { width: 390px; box-sizing: border-box; border-radius: 28px; border: 6px solid #2a2620; overflow: hidden; background: #15130F; flex: none; }
+.sk-cap { font-size: 11.5px; color: #6b6356; margin: 6px 0 0; max-width: 440px; line-height: 1.45; }
+.sk-col { display: flex; flex-direction: column; gap: 0; }
+
+/* ================================================================
+   Mudavym tokens — the Warm Charcoal column, verbatim from
+   apps/web/src/styles/mudavym.css (ADR 0042, ADR 0138).
+   ================================================================ */
+.mudavym, .mudavym[data-ground="charcoal"] {
+  --seal: #5FB0BC; --seal-deep: #7DC3CD;
+  --seal-tint: rgba(95,176,188,.14); --seal-ring: rgba(95,176,188,.38);
+  --paper-0: #15130F; --paper-1: #1D1813; --paper-2: #262019;
+  --ink-1: #EFE7D9; --ink-2: #C0B6A5; --ink-3: #8E8576; --ink-4: #ABA294;
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* motion — lib/mudavym/motion.ts tokens, nothing else */
+  --settle: 320ms cubic-bezier(0.16,1,0.3,1);
+  --ink-t: 160ms cubic-bezier(0.16,1,0.3,1);
+  --turn: 420ms cubic-bezier(0.32,0.72,0,1);
+  --tuck: 300ms cubic-bezier(0.2,0.9,0.3,1); /* stand-in for the sampled linear() of the tuck spring */
+  color-scheme: dark;
+}
+.mudavym[data-ground="paper"] {
+  --seal: #1a5e6b; --seal-deep: #14515c;
+  --seal-tint: rgba(26,94,107,.1); --seal-ring: rgba(26,94,107,.32);
+  --paper-0: #fffdf8; --paper-1: #f3efe6; --paper-2: #eae4d8;
+  --ink-1: #211c16; --ink-2: #4f473c; --ink-3: #7c7365; --ink-4: #665d50;
+  color-scheme: light;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mudavym * { transition-duration: 0ms !important; animation: none !important; }
+}
+
+/* ================================================================
+   The page. Prefix pv- (providers) and lc- (the ledger card).
+   ================================================================ */
+.pv-page { background: var(--paper-0); color: var(--ink-1); font-family: var(--sans); font-size: 13px; line-height: 1.45; container-type: inline-size; container-name: page; position: relative; overflow: hidden; }
+.pv-in { max-width: 1200px; margin: 0 auto; padding: 22px 16px 40px; }
+
+/* house header — the chrome PageGate mounts above every rebuilt page (house-header.css) */
+.pv-chrome { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 24px; border-bottom: 1px solid var(--paper-2); font-size: 12.5px; color: var(--ink-2); background: var(--paper-0); }
+.pv-chrome .mark { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--seal); box-sizing: border-box; position: relative; }
+.pv-chrome .mark::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--seal); }
+.pv-chrome .rule { width: 1px; height: 18px; background: var(--paper-2); }
+.pv-chrome .page { font-family: var(--serif); font-weight: 600; font-size: 15px; color: var(--ink-1); letter-spacing: -0.01em; }
+.pv-chrome .search { margin: 0 auto; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px 6px 11px; border: 1px solid var(--paper-2); border-radius: 9px; background: var(--paper-1); color: var(--ink-3); font-size: 12.5px; min-width: 260px; }
+.pv-chrome .kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--paper-2); border-radius: 4px; padding: 1px 5px; color: var(--ink-3); margin-left: auto; }
+.pv-chrome .house { color: var(--ink-1); font-weight: 500; }
+.pv-chrome .bell { width: 8px; height: 8px; border-radius: 50%; background: var(--seal); display: inline-block; margin-left: 2px; }
+
+.pv-wordmark { font-family: var(--serif); font-weight: 600; letter-spacing: -0.02em; font-size: 13px; line-height: 1; color: var(--ink-1); }
+.pv-wordmark b { color: var(--seal); font-weight: 600; }
+.pv-h1 { margin: 4px 0 0; font-family: var(--serif); font-size: 30px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1; color: var(--ink-1); }
+.pv-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; margin-bottom: 18px; }
+.pv-standing { font-size: 12px; color: var(--ink-3); max-width: 520px; text-align: right; line-height: 1.5; }
+.pv-standing b { color: var(--ink-2); font-weight: 500; }
+
+/* the bucket grid — ProvidersNext.tsx BucketCard, verbatim geometry */
+.pv-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.pv-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--paper-2); background: var(--paper-1); cursor: pointer; text-align: left; font: inherit; color: inherit; transition: border-color var(--ink-t), background-color var(--ink-t); }
+.pv-card:hover { border-color: var(--seal-ring); background: var(--paper-0); }
+.pv-card[data-open="true"] { border-color: var(--seal-ring); }
+.pv-card .type { font-family: var(--mono); font-size: 8.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--seal-deep); }
+.pv-card .name { display: block; font-family: var(--serif); font-size: 16px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; color: var(--ink-1); }
+.pv-card dl { margin: 0; display: grid; gap: 2px; font-size: 11.5px; color: var(--ink-2); }
+.pv-card dl div { display: flex; justify-content: space-between; gap: 12px; }
+.pv-card dt { color: var(--ink-3); }
+.pv-card dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.pv-card dd.w { font-family: var(--sans); }
+/* the ONE behavioural fact the MERGE verdict allows on the card */
+.pv-card .did { margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--paper-2); font-size: 11.5px; color: var(--ink-2); display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.pv-card .did .k { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.pv-card .did .v { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-1); text-align: right; }
+.pv-card .did .v i { font-family: var(--serif); font-style: italic; color: var(--ink-3); font-size: 11.5px; }
+.pv-em { color: var(--ink-3); }
+
+/* the sheet — ADR 0112, sheet.css: width 100%, max-width 440, slides on tuck */
+.pv-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.22); }
+.lc-sheet { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; max-width: 440px; background: var(--paper-0); border-left: 1px solid var(--paper-2); box-shadow: -18px 0 40px rgba(0,0,0,.35); display: flex; flex-direction: column; transition: transform var(--tuck); }
+.lc-sheet .hd { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--paper-2); }
+.lc-sheet .hd .eyebrow { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--seal-deep); }
+.lc-sheet .hd .title { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; margin-top: 2px; }
+.lc-sheet .hd .esc { margin-left: auto; font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--paper-2); border-radius: 4px; padding: 2px 6px; color: var(--ink-3); }
+.lc-sheet .spine { display: flex; gap: 6px; align-items: center; font-family: var(--mono); font-size: 10px; color: var(--ink-3); padding: 8px 18px 0; letter-spacing: .04em; }
+.lc-sheet .spine b { color: var(--ink-2); font-weight: 500; }
+.lc-body { overflow: auto; padding: 0 18px 22px; }
+.lc-sec { padding: 12px 0; border-bottom: 1px solid var(--paper-2); }
+.lc-sec h3 { margin: 0 0 6px; font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+.lc-fact { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 4px 0; font-size: 12.5px; }
+.lc-fact .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.lc-fact .v { text-align: right; color: var(--ink-1); }
+
+/* the ledger card — five measured lines with their denominators */
+.lc-window { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 11.5px; color: var(--ink-3); flex-wrap: wrap; }
+.lc-window .chips { display: inline-flex; gap: 4px; }
+.lc-window .chip { font-family: var(--mono); font-size: 10.5px; padding: 2px 7px; border: 1px solid var(--paper-2); border-radius: 6px; color: var(--ink-2); cursor: pointer; transition: border-color var(--ink-t); }
+.lc-window .chip[data-on="true"] { border-color: var(--ink-3); color: var(--ink-1); }
+.lc-line { display: grid; grid-template-columns: 1fr auto; gap: 2px 14px; padding: 10px 0; border-top: 1px dashed var(--paper-2); cursor: pointer; transition: background-color var(--ink-t); }
+.lc-line:hover { background: var(--paper-1); }
+.lc-window + .lc-line { border-top: 0; }
+.lc-line .lbl { font-family: var(--serif); font-size: 14.5px; font-weight: 500; color: var(--ink-1); letter-spacing: -0.005em; }
+.lc-line .fig { font-family: var(--mono); font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-1); text-align: right; white-space: nowrap; letter-spacing: -0.01em; }
+.lc-line .fig small { font-size: 11px; color: var(--ink-3); font-weight: 400; margin-left: 4px; letter-spacing: 0; }
+.lc-line .fig.refuse { font-family: var(--serif); font-style: italic; font-size: 13px; font-weight: 400; color: var(--ink-2); white-space: normal; max-width: 150px; }
+.lc-line .den { grid-column: 1 / -1; font-size: 11.5px; color: var(--ink-2); line-height: 1.5; }
+.lc-line .den .q { color: var(--ink-3); }
+.lc-line .prior { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--ink-3); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.lc-line .prior .w { font-family: var(--sans); }
+.lc-line .prior .rows { color: var(--seal); text-decoration: none; border-bottom: 1px solid var(--seal-ring); font-family: var(--sans); }
+.lc-line.minor .lbl { font-size: 12.5px; color: var(--ink-2); font-weight: 400; }
+.lc-line.minor .fig { font-size: 13px; color: var(--ink-2); font-weight: 400; }
+.lc-turn { margin-top: 10px; border: 1px solid var(--paper-2); border-radius: 8px; padding: 10px 12px; background: var(--paper-1); }
+.lc-turn summary { cursor: pointer; font-size: 12px; color: var(--ink-2); list-style: none; display: flex; justify-content: space-between; }
+.lc-turn summary::after { content: "turn ›"; font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.lc-turn[open] summary::after { content: "close"; }
+.lc-turn p { margin: 8px 0 0; font-size: 11.5px; color: var(--ink-2); line-height: 1.55; }
+.lc-turn p b { color: var(--ink-1); font-weight: 500; }
+.lc-turn .src { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.lc-shadow { margin-top: 12px; border: 1px dashed var(--ink-3); border-radius: 8px; padding: 10px 12px; }
+.lc-shadow .t { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.lc-shadow .t b { font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.lc-shadow .t span { font-size: 11px; color: var(--ink-3); }
+.lc-shadow p { margin: 6px 0 0; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+.lc-shadow .lab { display: flex; gap: 6px; margin-top: 8px; align-items: center; font-size: 11px; color: var(--ink-3); flex-wrap: wrap; }
+.lc-btn { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border: 1px solid var(--paper-2); border-radius: 6px; background: var(--paper-1); color: var(--ink-2); font: inherit; font-size: 11.5px; cursor: pointer; transition: border-color var(--ink-t), color var(--ink-t); }
+.lc-btn:hover { border-color: var(--seal-ring); color: var(--ink-1); }
+.lc-btn.primary { background: var(--seal); border-color: var(--seal); color: var(--paper-0); font-weight: 500; }
+.lc-quiet { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; margin: 6px 0 0; }
+.lc-quiet i { font-family: var(--serif); }
+
+/* skeleton — loading is a shape, never a number */
+.lc-skel { height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--paper-1), var(--paper-2), var(--paper-1)); background-size: 200% 100%; animation: lc-sh 1.6s linear infinite; }
+@keyframes lc-sh { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+
+/* level two — the rows behind a figure (sketch 103 1c, the spindle) */
+.lc-rows { width: 100%; }
+.lc-rows table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.lc-rows th { text-align: left; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; padding: 6px 0; border-bottom: 1px solid var(--paper-2); }
+.lc-rows td { padding: 7px 0; border-bottom: 1px solid var(--paper-2); vertical-align: top; color: var(--ink-2); }
+.lc-rows td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink-1); }
+.lc-rows td.n.late { color: var(--ink-1); }
+.lc-rows td a { color: var(--seal); text-decoration: none; border-bottom: 1px solid var(--seal-ring); }
+.lc-rows tr.struck td { color: var(--ink-3); }
+.lc-rows tr.struck td .why { font-family: var(--serif); font-style: italic; }
+.lc-rows .sum { margin-top: 10px; font-size: 11.5px; color: var(--ink-2); line-height: 1.5; }
+
+/* a sheet drawn on its own, at full height, nothing scrolls inside it */
+.lc-sheet.standalone { position: relative; max-width: none; box-shadow: none; border-left: 0; height: auto; }
+.lc-sheet.standalone .lc-body { overflow: visible; }
+.lc-sheet.standalone::before { display: none !important; }
+.lc-sheet.standalone { border-radius: 0 !important; height: auto !important; }
+
+/* states strip */
+.st-frame { width: 440px; flex: none; background: var(--paper-0); border: 1px solid var(--paper-2); color: var(--ink-1); font-family: var(--sans); font-size: 13px; line-height: 1.45; }
+@media (max-width: 600px) {
+  .sk-wrap { padding: 12px 8px 40px; }
+  .st-frame, .sk-phone { width: 100%; max-width: 100%; }
+  .sk-row > .sk-frame { width: 100% !important; }
+}
+.st-note { background: var(--paper-1); border: 1px solid var(--paper-2); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; color: var(--ink-2); line-height: 1.5; margin: 12px 0 0; }
+.st-note b { color: var(--ink-1); font-weight: 500; }
+.st-note .src { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.st-note .act { margin-top: 8px; display: flex; gap: 6px; }
+
+/* phone — the same markup under a 390 container; the sheet is a bottom sheet with detents (103 1c/2e) */
+@container page (max-width: 480px) {
+  .pv-in { padding: 16px 14px 28px; }
+  .pv-chrome { padding: 0 14px; }
+  .pv-chrome .search { display: none; }
+  .pv-head { flex-direction: column; align-items: flex-start; }
+  .pv-standing { text-align: left; }
+  .pv-grid { grid-template-columns: 1fr; }
+  .lc-sheet { top: auto; left: 0; right: 0; bottom: 0; max-width: none; height: 88%; border-left: 0; border-top: 1px solid var(--paper-2); border-radius: 18px 18px 0 0; box-shadow: 0 -18px 40px rgba(0,0,0,.4); }
+  .lc-sheet::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--ink-3); margin: 8px auto 0; opacity: .7; }
+  .lc-sheet .hd { padding-top: 10px; }
+  .lc-line .fig { font-size: 17px; }
+}
+</style>
+</head>
+<body>
+<div class="sk-wrap">
+  <div class="sk-head">
+    <h1>Sketch 117 · Direction A — The Ledger Card</h1>
+    <p>The scorecard lives <b>inside the vendor sheet on /providers</b>. The bucket card keeps the MERGE verdict's promise (three facts) and gains the <b>one behavioural fact</b> the verdict allows, read from the ledger. Everything measured is in the TwinSheet under a new section, <i>What they did</i>: five lines, each a fraction with its denominator printed, its prior window beside it, and a link to the rows that produced it. There is no ranking and no vendor is compared with another here — that is a different page's question.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">1 · Desktop, 1200 · Harbor &amp; Vine, Brooklyn (USD) <small>the providers grid with Skurnik's sheet open — the sheet is the home of the scorecard</small></div>
+  <div class="mudavym sk-frame" data-ground="charcoal">
+  <div class="pv-page" style="min-height: 1240px;">
+    <div class="pv-chrome"><span class="mark"></span><span class="rule"></span><span class="page">Providers</span><span class="search">Search the house… <span class="kbd">⌘K</span></span><span class="house">Harbor &amp; Vine</span><span class="bell"></span></div>
+    <!-- drawn with the grid reflowed beside the open sheet so all six cards stay legible; the product's Sheet overlays the page (sheet.css) and the grid does not move -->
+    <div class="pv-in" style="padding-right: 456px;">
+      <div class="pv-head">
+        <div><div class="pv-wordmark">Muda<b>vym</b></div><h1 class="pv-h1">Providers</h1></div>
+        <div class="pv-standing">6 vendors — the learned detail lives inside each card. <b>4 have enough deliveries to score this window</b>; the score needs 5. Read from the orders, receiving, credits and mail registers at 09:41.</div>
+      </div>
+      <div class="pv-grid">
+        <button class="pv-card" data-open="true"><div><span class="type">Wine &amp; spirits</span><span class="name">Skurnik Wines &amp; Spirits</span></div>
+          <dl><div><dt>Open orders</dt><dd>2</dd></div><div><dt>Lead time</dt><dd class="w">2 days</dd></div><div><dt>Contact</dt><dd class="w">yesterday</dd></div></dl>
+          <div class="did"><span class="k">Did · 90 d</span><span class="v">12 of 14 on time</span></div></button>
+        <button class="pv-card"><div><span class="type">Wine &amp; spirits</span><span class="name">Empire Merchants</span></div>
+          <dl><div><dt>Open orders</dt><dd>1</dd></div><div><dt>Lead time</dt><dd class="w">3 days</dd></div><div><dt>Contact</dt><dd class="w">4 days ago</dd></div></dl>
+          <div class="did"><span class="k">Did · 90 d</span><span class="v">11 of 11 on time</span></div></button>
+        <button class="pv-card"><div><span class="type">Wine importer</span><span class="name">Winebow</span></div>
+          <dl><div><dt>Open orders</dt><dd>0</dd></div><div><dt>Lead time</dt><dd class="w">4 days</dd></div><div><dt>Contact</dt><dd class="w">12 days ago</dd></div></dl>
+          <div class="did"><span class="k">Did · 90 d</span><span class="v">4 of 6 on time</span></div></button>
+        <button class="pv-card"><div><span class="type">Wine &amp; spirits</span><span class="name">Southern Glazer's</span></div>
+          <dl><div><dt>Open orders</dt><dd>0</dd></div><div><dt>Lead time</dt><dd class="w">—</dd></div><div><dt>Contact</dt><dd class="w">never contacted</dd></div></dl>
+          <div class="did"><span class="k">Did · 90 d</span><span class="v"><i>2 deliveries — too few to score</i></span></div></button>
+        <button class="pv-card"><div><span class="type">Produce</span><span class="name">Greenmarket Provisions</span></div>
+          <dl><div><dt>Open orders</dt><dd>3</dd></div><div><dt>Lead time</dt><dd class="w">1 day</dd></div><div><dt>Contact</dt><dd class="w">today</dd></div></dl>
+          <div class="did"><span class="k">Did · 90 d</span><span class="v">31 of 34 on time</span></div></button>
+        <button class="pv-card"><div><span class="type">Ice &amp; dry goods</span><span class="name">Brooklyn Ice &amp; Provisions</span></div>
+          <dl><div><dt>Open orders</dt><dd>0</dd></div><div><dt>Lead time</dt><dd class="w">—</dd></div><div><dt>Contact</dt><dd class="w">never contacted</dd></div></dl>
+          <div class="did"><span class="k">Did · 365 d</span><span class="v"><i>no orders — nothing to score</i></span></div></button>
+      </div>
+      <p class="lc-quiet" style="margin-top:14px">The card's one fact is the first line of the sheet — never a score, never a grade. Open the card for the other four and the rows behind each.</p>
+    </div>
+
+    <div class="pv-scrim"></div>
+    <aside class="lc-sheet" aria-label="Skurnik Wines &amp; Spirits — details">
+      <div class="hd"><div><div class="eyebrow">Wine &amp; spirits</div><div class="title">Skurnik Wines &amp; Spirits</div></div><span class="esc">Esc</span></div>
+      <div class="lc-body">
+        <div class="lc-sec">
+          <div class="lc-fact"><span class="k">Contact</span><span class="v">marco@skurnik.example</span></div>
+          <div class="lc-fact"><span class="k">Lead time</span><span class="v">2 days</span></div>
+          <div class="lc-fact"><span class="k">Payment terms</span><span class="v">Net 30</span></div>
+          <div class="lc-fact"><span class="k">Last contact</span><span class="v">yesterday</span></div>
+        </div>
+        <div class="lc-sec">
+          <h3>Usual currency</h3>
+          <div class="lc-fact"><span class="k">Bills in</span><span class="v">USD · stated by the house</span></div>
+        </div>
+        <div class="lc-sec">
+          <h3>Terms this house holds</h3>
+          <div class="lc-fact"><span class="k">Cutoff</span><span class="v">Tue, Thu 14:00 · stated</span></div>
+          <div class="lc-fact"><span class="k">Minimum</span><span class="v">12 bottles · inferred from 14 receipts</span></div>
+        </div>
+
+        <div class="lc-sec" style="border-bottom:0">
+          <h3>What they did</h3>
+          <div class="lc-window">
+            <span class="chips"><span class="chip">30 d</span><span class="chip" data-on="true">90 d</span><span class="chip">365 d</span></span>
+            <span>19 Jun – 17 Sep · against the 90 days before it</span>
+          </div>
+
+          <div class="lc-line">
+            <span class="lbl">On time</span><span class="fig">12<small>of 14</small></span>
+            <span class="den">Landed by the expected date. <span class="q">2 landed late, by 1 and 3 days. 1 delivery had no expected date and is not counted.</span></span>
+            <span class="prior"><span>prior 90 d · 9 of 13</span><a class="rows" href="#rows">14 deliveries ›</a></span>
+          </div>
+          <div class="lc-line">
+            <span class="lbl">Lines as ordered</span><span class="fig">209<small>of 212</small></span>
+            <span class="den">Lines with no short, refused or damaged verdict at receiving. <span class="q">3 lines: 2 short, 1 refused broken at the door.</span></span>
+            <span class="prior"><span>prior 90 d · 171 of 174</span><a class="rows" href="#">3 verdicts ›</a></span>
+          </div>
+          <div class="lc-line">
+            <span class="lbl">Price as agreed</span><span class="fig">183<small>of 187</small></span>
+            <span class="den">Invoiced lines at the agreed price. <span class="q">4 above it, mean +2.1%. 25 lines had no agreed price and are not compared.</span></span>
+            <span class="prior"><span>prior 90 d · 158 of 160</span><a class="rows" href="#">4 lines ›</a></span>
+          </div>
+          <div class="lc-line">
+            <span class="lbl">Reply time</span><span class="fig">5 h 40<small>median · 9</small></span>
+            <span class="den">Hours from our message to their next reply in the same thread. <span class="q">Slowest 31 h. 2 of our messages have no reply yet — not counted, not forgotten.</span></span>
+            <span class="prior"><span>prior 90 d · 7 h 10 · 7 replies</span><a class="rows" href="#">9 replies ›</a></span>
+          </div>
+          <div class="lc-line">
+            <span class="lbl">Credits</span><span class="fig">$286.00<small>of $412.50</small></span>
+            <span class="den">Recovered by credit memo, of what was promised. <span class="q">2 of 3 claims credited. 1 promised 9 Aug, 39 days, still open — promised is not recovered.</span></span>
+            <span class="prior"><span>prior 90 d · $0 of $0 · no claims</span><a class="rows" href="#">3 claims ›</a></span>
+          </div>
+          <div class="lc-line minor">
+            <span class="lbl">Tone · minor, not scored</span><span class="fig">1 of 9 read as terse</span>
+            <span class="den"><span class="q">A model's reading of the vendor's replies. Not in any figure above. 0 of 9 labelled by a person.</span></span>
+          </div>
+
+          <details class="lc-turn">
+            <summary>How this is scored</summary>
+            <p>Each line is a <b>count of records over a count of records</b>, from this house's own registers; nothing is weighted and nothing is summed into a grade. <b>The window is compared with the window before it</b>, both counts printed; a window under 5 deliveries prints its count and no comparison. <b>Missing is not zero</b>: a register that did not answer says so on its line. <b>Tone</b> is read, not scored. <span class="src">orders · receiving verdicts · invoice match · procurement_conversations · procurement_credits</span></p>
+          </details>
+
+          <div class="lc-shadow">
+            <div class="t"><b>Shadow run</b><span>since 3 Sep · nothing ships</span></div>
+            <p>Would have alerted on <b>4 Sep</b>: <i>reply time doubled — 5 h 40 this window against 2 h 50 in the 30 before</i>. Was that worth an alert?</p>
+            <div class="lab"><span class="lc-btn">Yes</span><span class="lc-btn">No</span><span class="lc-btn">Unsure</span><span>0 of 1 labelled here · 3 of 11 across the house</span></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+  </div>
+  <p class="sk-cap">Left: ProvidersNext's bucket grid, byte-for-byte geometry, with the <i>Did</i> line as the fourth row — drawn reflowed beside the sheet so every card is legible; the product's Sheet overlays the grid and the grid does not move. Right: the TwinSheet, its existing sections intact, and the ledger card as the last section.</p>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">2 · The rows behind a figure <small>level two of the spindle (sketch 103 1c) — "On time · 14 deliveries" opened from the sheet</small></div>
+  <div class="sk-row">
+    <div class="mudavym sk-frame" data-ground="charcoal" style="width:440px; flex:none;">
+    <div class="pv-page">
+      <aside class="lc-sheet standalone">
+        <div class="spine"><b>Skurnik</b><span>›</span><span>On time</span></div>
+        <div class="hd"><div><div class="eyebrow">90 d · 19 Jun – 17 Sep</div><div class="title">14 deliveries, 12 by the expected date</div></div><span class="esc">Esc</span></div>
+        <div class="lc-body">
+          <div class="lc-rows">
+            <table>
+              <thead><tr><th>Order</th><th>Expected</th><th>Landed</th><th style="text-align:right">Late</th></tr></thead>
+              <tbody>
+                <tr><td><a href="#">PO-2291</a></td><td class="n">16 Sep</td><td class="n">16 Sep 10:42</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2284</a></td><td class="n">12 Sep</td><td class="n">15 Sep 09:10</td><td class="n late" style="text-align:right">+3 d</td></tr>
+                <tr><td><a href="#">PO-2277</a></td><td class="n">9 Sep</td><td class="n">9 Sep 11:05</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2270</a></td><td class="n">5 Sep</td><td class="n">5 Sep 08:55</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2263</a></td><td class="n">2 Sep</td><td class="n">2 Sep 12:20</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2251</a></td><td class="n">26 Aug</td><td class="n">27 Aug 10:15</td><td class="n late" style="text-align:right">+1 d</td></tr>
+                <tr><td><a href="#">PO-2244</a></td><td class="n">22 Aug</td><td class="n">22 Aug 09:40</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2236</a></td><td class="n">19 Aug</td><td class="n">19 Aug 11:30</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2229</a></td><td class="n">12 Aug</td><td class="n">12 Aug 10:05</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2221</a></td><td class="n">8 Aug</td><td class="n">8 Aug 09:12</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2214</a></td><td class="n">1 Aug</td><td class="n">1 Aug 13:45</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2207</a></td><td class="n">25 Jul</td><td class="n">25 Jul 10:30</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2199</a></td><td class="n">18 Jul</td><td class="n">18 Jul 09:58</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2190</a></td><td class="n">3 Jul</td><td class="n">3 Jul 11:10</td><td class="n" style="text-align:right">—</td></tr>
+                <tr class="struck"><td><a href="#">PO-2183</a></td><td class="n"><span class="why">no expected date</span></td><td class="n">24 Jun 10:20</td><td class="n" style="text-align:right">not counted</td></tr>
+              </tbody>
+            </table>
+            <p class="sum">The rule: <b>landed at or before 23:59 on the expected date</b>, the vendor's stated date on the order. A delivery with no expected date is listed and not counted — it cannot be late against nothing. 14 counted, 1 listed. The count on the sheet equals the rows here.</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+    </div>
+    <div class="mudavym sk-frame" data-ground="charcoal" style="width:440px; flex:none;">
+    <div class="pv-page">
+      <aside class="lc-sheet standalone">
+        <div class="spine"><b>Skurnik</b><span>›</span><span>Credits</span></div>
+        <div class="hd"><div><div class="eyebrow">90 d · 19 Jun – 17 Sep</div><div class="title">3 claims, 2 credited</div></div><span class="esc">Esc</span></div>
+        <div class="lc-body">
+          <div class="lc-rows">
+            <table>
+              <thead><tr><th>Claim</th><th>Reason</th><th style="text-align:right">Asked</th><th style="text-align:right">Allowed</th></tr></thead>
+              <tbody>
+                <tr><td><a href="#">C-77</a><br><span class="pv-em">opened 3 Jul · credited 19 Aug</span></td><td>2 short<br><span class="pv-em">PO-2190 line 4</span></td><td class="n" style="text-align:right">$182.50</td><td class="n" style="text-align:right">$182.50</td></tr>
+                <tr><td><a href="#">C-81</a><br><span class="pv-em">opened 27 Jul · credited 26 Aug</span></td><td>1 broken<br><span class="pv-em">PO-2207 line 9</span></td><td class="n" style="text-align:right">$118.00</td><td class="n" style="text-align:right">$103.50</td></tr>
+                <tr><td><a href="#">C-88</a><br><span class="pv-em">opened 9 Aug · <b style="color:var(--ink-1)">promised</b> 12 Aug</span></td><td>price above agreed<br><span class="pv-em">INV-55120 line 7</span></td><td class="n" style="text-align:right">$112.00</td><td class="n" style="text-align:right">—</td></tr>
+              </tbody>
+            </table>
+            <p class="sum"><b>Recovered $286.00</b> is the sum of what the vendor <b>allowed</b> on credited claims — not what we asked. C-81 asked $118.00 and was allowed $103.50; the difference is on the row, not hidden in the total. <b>C-88 is promised, not recovered</b>: "the rep said next order" is aged here, 39 days, and chased from /receipts. <span class="pv-em">credit-ledger.ts: claimed is not recovered.</span></p>
+          </div>
+        </div>
+      </aside>
+    </div>
+    </div>
+  </div>
+  <p class="sk-cap">Two of the five row sheets. Every figure on the ledger card opens to a list whose count equals the figure; rows that are listed and not counted are struck with the reason in italic.</p>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">3 · Meyhane Kalamış, Kadıköy (TRY, tr-TR) <small>the same sheet where currency, locale and the e-İrsaliye response window change what a line can say</small></div>
+  <div class="sk-row">
+    <div class="mudavym sk-frame" data-ground="charcoal" style="width:440px; flex:none;">
+    <div class="pv-page">
+      <aside class="lc-sheet standalone">
+        <div class="hd"><div><div class="eyebrow">Şarap dağıtım</div><div class="title">Kavaklıdere Dağıtım</div></div><span class="esc">Esc</span></div>
+        <div class="lc-body">
+          <div class="lc-sec"><div class="lc-fact"><span class="k">Bills in</span><span class="v">TRY · stated by the house</span></div><div class="lc-fact"><span class="k">Cutoff</span><span class="v">Pzt, Per 13:00 · stated</span></div></div>
+          <div class="lc-sec" style="border-bottom:0">
+            <h3>What they did</h3>
+            <div class="lc-window"><span class="chips"><span class="chip">30 g</span><span class="chip" data-on="true">90 g</span><span class="chip">365 g</span></span><span>19.06 – 17.09 · önceki 90 güne karşı</span></div>
+            <div class="lc-line"><span class="lbl">On time</span><span class="fig">7<small>of 9</small></span>
+              <span class="den">Landed by the expected date. <span class="q">2 late, 1 and 2 days. Two e-İrsaliye response windows closed by silence — recorded as what the law deems, never as this house agreeing.</span></span>
+              <span class="prior"><span>prior 90 g · 8 of 9</span><a class="rows" href="#">9 teslimat ›</a></span></div>
+            <div class="lc-line"><span class="lbl">Lines as ordered</span><span class="fig">94<small>of 96</small></span>
+              <span class="den">No short, refused or damaged verdict. <span class="q">2 short on 04.09.</span></span>
+              <span class="prior"><span>prior 90 g · 88 of 88</span><a class="rows" href="#">2 kayıt ›</a></span></div>
+            <div class="lc-line"><span class="lbl">Price as agreed</span><span class="fig">91<small>of 96</small></span>
+              <span class="den">Invoiced lines at the agreed price, in TRY. <span class="q">5 above it, mean +6,2 %. Lines quoted in EUR are compared in EUR — 0 this window.</span></span>
+              <span class="prior"><span>prior 90 g · 86 of 88</span><a class="rows" href="#">5 satır ›</a></span></div>
+            <div class="lc-line"><span class="lbl">Reply time</span><span class="fig">22 sa<small>median · 6</small></span>
+              <span class="den">From our message to their next reply. <span class="q">Slowest 3 g 4 sa. Phone calls are not on the record and are not counted.</span></span>
+              <span class="prior"><span>prior 90 g · 4 replies — under 5, no comparison</span><a class="rows" href="#">6 yanıt ›</a></span></div>
+            <div class="lc-line"><span class="lbl">Credits</span><span class="fig">₺1.200,00<small>of ₺3.840,00</small></span>
+              <span class="den">Recovered by credit memo, of what was promised. <span class="q">1 of 2 claims credited. 1 promised 21.08, 27 gün, still open.</span></span>
+              <span class="prior"><span>prior 90 g · ₺0,00 of ₺0,00 · no claims</span><a class="rows" href="#">2 talep ›</a></span></div>
+            <div class="lc-line minor"><span class="lbl">Tone · minor, not scored</span><span class="fig">0 of 6 read as terse</span><span class="den"><span class="q">Turkish replies; the model's reading is unlabelled and not in any figure above.</span></span></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+    </div>
+    <div class="sk-col" style="max-width: 520px;">
+      <p class="sk-note">What changes for a Turkish house, and only this: <b>money in ₺ with tr-TR separators</b> (₺1.200,00), dates as dd.mm, the window chips in <i>g</i> for gün; the on-time line carries the ADR 0103 clock fact where it applies — a response window that closed by silence is <b>recorded as what the law deems</b> (delivery-clock.service.ts `lapseDeeming`), and the sheet prints that sentence rather than a tick. A vendor reached by phone has no reply record; the line says so instead of scoring the silence.</p>
+      <p class="sk-note">A prior window with 4 replies prints "under 5, no comparison" — the minimum is per measure, not per vendor, so the on-time line can compare while the reply line cannot.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">4 · States <small>too few · nothing to score · loading · read failed and not collected (partial) · refused</small></div>
+  <div class="sk-row">
+    <div class="mudavym sk-frame st-frame" data-ground="charcoal">
+      <div class="lc-body" style="padding-top:14px">
+        <div style="padding:0 0 10px; border-bottom:1px solid var(--paper-2)"><div style="font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--seal-deep)">Wine &amp; spirits</div><div style="font-family:var(--serif); font-size:20px; font-weight:600; letter-spacing:-.015em">Southern Glazer's</div></div>
+        <div class="lc-sec" style="border-bottom:0"><h3>What they did</h3>
+          <div class="lc-window"><span class="chips"><span class="chip">30 d</span><span class="chip" data-on="true">90 d</span><span class="chip">365 d</span></span><span>19 Jun – 17 Sep</span></div>
+          <div class="lc-line"><span class="lbl">On time</span><span class="fig refuse">2 deliveries — the score needs 5</span>
+            <span class="den"><span class="q">Both by the expected date. Listed, not scored: two records cannot say what a vendor does.</span></span>
+            <span class="prior"><span>365 d · 7 of 8 — that window scores</span><a class="rows" href="#">2 deliveries ›</a></span></div>
+          <div class="lc-line"><span class="lbl">Lines as ordered</span><span class="fig refuse">29 lines on 2 deliveries</span><span class="den"><span class="q">Same two deliveries; the line count is real, the score is withheld with them.</span></span></div>
+          <div class="lc-line"><span class="lbl">Price as agreed</span><span class="fig refuse">not scored</span></div>
+          <div class="lc-line"><span class="lbl">Reply time</span><span class="fig">14 h 05<small>median · 5</small></span><span class="den"><span class="q">Replies are their own count — 5 this window, so this line scores while the delivery lines wait.</span></span></div>
+          <div class="lc-line"><span class="lbl">Credits</span><span class="fig">$0.00<small>of $0.00</small></span><span class="den"><span class="q">No claims opened — nothing to recover, not a clean record.</span></span></div>
+        </div>
+      </div>
+      <p class="sk-cap" style="padding:0 18px 14px; color:var(--ink-3)"><b style="color:var(--ink-2)">Too few.</b> The minimum is per measure. The 365-day window is offered because it would score.</p>
+    </div>
+
+    <div class="mudavym sk-frame st-frame" data-ground="charcoal">
+      <div class="lc-body" style="padding-top:14px">
+        <div style="padding:0 0 10px; border-bottom:1px solid var(--paper-2)"><div style="font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--seal-deep)">Ice &amp; dry goods</div><div style="font-family:var(--serif); font-size:20px; font-weight:600; letter-spacing:-.015em">Brooklyn Ice &amp; Provisions</div></div>
+        <div class="lc-sec" style="border-bottom:0"><h3>What they did</h3>
+          <div class="st-note"><b>Nothing to score.</b> This vendor is in the book and has <b>no orders in 365 days</b>, no receiving record, no claim and no mail thread. The five lines are not drawn as zeros — an empty register is not a perfect vendor. <span class="src">GET /providers/:id/orders → 0 rows</span>
+            <div class="act"><span class="lc-btn">Place an order ›</span><span class="lc-btn">Retire from the book</span></div></div>
+        </div>
+        <div class="lc-sec" style="border-bottom:0; margin-top:8px"><h3>Loading</h3>
+          <div class="lc-line"><span class="lbl">On time</span><span class="lc-skel" style="width:64px"></span><span class="den"><span class="lc-skel" style="width:70%"></span></span></div>
+          <div class="lc-line"><span class="lbl">Lines as ordered</span><span class="lc-skel" style="width:64px"></span><span class="den"><span class="lc-skel" style="width:55%"></span></span></div>
+          <div class="lc-line"><span class="lbl">Price as agreed</span><span class="lc-skel" style="width:64px"></span></div>
+          <p class="lc-quiet">Reading the orders, receiving, credits and mail registers… the labels wait for their figures; no figure counts up from zero.</p>
+        </div>
+      </div>
+      <p class="sk-cap" style="padding:0 18px 14px; color:var(--ink-3)"><b style="color:var(--ink-2)">No orders</b>, and <b style="color:var(--ink-2)">loading</b>: labels are certain, figures are shapes.</p>
+    </div>
+
+    <div class="mudavym sk-frame st-frame" data-ground="charcoal">
+      <div class="lc-body" style="padding-top:14px">
+        <div style="padding:0 0 10px; border-bottom:1px solid var(--paper-2)"><div style="font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--seal-deep)">Wine &amp; spirits</div><div style="font-family:var(--serif); font-size:20px; font-weight:600; letter-spacing:-.015em">Empire Merchants</div></div>
+        <div class="lc-sec" style="border-bottom:0"><h3>What they did</h3>
+          <div class="lc-window"><span class="chips"><span class="chip">30 d</span><span class="chip" data-on="true">90 d</span><span class="chip">365 d</span></span><span>19 Jun – 17 Sep</span></div>
+          <div class="lc-line"><span class="lbl">On time</span><span class="fig">11<small>of 11</small></span><span class="prior"><span>prior 90 d · 10 of 10</span><a class="rows" href="#">11 deliveries ›</a></span></div>
+          <div class="lc-line"><span class="lbl">Lines as ordered</span><span class="fig">140<small>of 140</small></span><span class="prior"><span>prior 90 d · 122 of 123</span><a class="rows" href="#">0 verdicts ›</a></span></div>
+          <div class="lc-line"><span class="lbl">Price as agreed</span><span class="fig">112<small>of 121</small></span><span class="den"><span class="q">9 above, mean +4.8%.</span></span><span class="prior"><span>prior 90 d · 118 of 119</span><a class="rows" href="#">9 lines ›</a></span></div>
+          <div class="lc-line"><span class="lbl">Reply time</span><span class="fig refuse">not collected</span><span class="den"><span class="q">No mailbox is connected for this vendor; their mail lands in a shared inbox the house has not linked. Not slow — unknown.</span></span><span class="prior"><span></span><a class="rows" href="#">Connect the inbox ›</a></span></div>
+          <div class="lc-line"><span class="lbl">Credits</span><span class="fig refuse">the credits register did not answer</span><span class="den"><span class="q">GET /procurement/credits?providerId= returned 502 at 09:41. Unknown, not zero.</span></span><span class="prior"><span></span><a class="rows" href="#">Try again</a></span></div>
+        </div>
+      </div>
+      <p class="sk-cap" style="padding:0 18px 14px; color:var(--ink-3)"><b style="color:var(--ink-2)">Partial.</b> Three lines score, one is not collected, one failed to read — each says which, on its own line.</p>
+    </div>
+
+    <div class="mudavym sk-frame st-frame" data-ground="charcoal">
+      <div class="lc-body" style="padding-top:14px">
+        <div style="padding:0 0 10px; border-bottom:1px solid var(--paper-2)"><div style="font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--seal-deep)">Wine &amp; spirits</div><div style="font-family:var(--serif); font-size:20px; font-weight:600; letter-spacing:-.015em">Skurnik Wines &amp; Spirits</div></div>
+        <div class="lc-sec" style="border-bottom:0"><h3>What they did</h3>
+          <div class="st-note"><b>Withheld for your role.</b> The scorecard reads the credits and invoice registers, which this house keeps to owners and managers. The vendor's record above is yours; the five figures are not. <span class="src">403 · scorecard read · role: staff</span>
+            <div class="act"><span class="lc-btn">Ask Deniz A. to open it</span></div></div>
+          <div class="lc-line" style="opacity:.55"><span class="lbl">On time</span><span class="fig">—</span></div>
+          <div class="lc-line" style="opacity:.55"><span class="lbl">Lines as ordered</span><span class="fig">—</span></div>
+          <div class="lc-line" style="opacity:.55"><span class="lbl">Price as agreed</span><span class="fig">—</span></div>
+          <div class="lc-line" style="opacity:.55"><span class="lbl">Reply time</span><span class="fig">—</span></div>
+          <div class="lc-line" style="opacity:.55"><span class="lbl">Credits</span><span class="fig">—</span></div>
+        </div>
+      </div>
+      <p class="sk-cap" style="padding:0 18px 14px; color:var(--ink-3)"><b style="color:var(--ink-2)">Refused.</b> The labels stay so a staff member knows what exists; the figures are em dashes, never zeros.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">5 · Phone, 390 <small>the grid at one column; the sheet becomes a bottom sheet at its upper detent (sketch 103 1c)</small></div>
+  <div class="sk-row">
+    <div class="sk-phone">
+      <div class="mudavym" data-ground="charcoal">
+      <div class="pv-page" style="min-height: 780px;">
+        <div class="pv-chrome"><span class="mark"></span><span class="rule"></span><span class="page">Providers</span><span class="house" style="margin-left:auto">Harbor &amp; Vine</span><span class="bell"></span></div>
+        <div class="pv-in">
+          <div class="pv-head"><div><div class="pv-wordmark">Muda<b>vym</b></div><h1 class="pv-h1">Providers</h1></div><div class="pv-standing">6 vendors · 4 score this window · the score needs 5.</div></div>
+          <div class="pv-grid">
+            <button class="pv-card" data-open="true"><div><span class="type">Wine &amp; spirits</span><span class="name">Skurnik Wines &amp; Spirits</span></div><dl><div><dt>Open orders</dt><dd>2</dd></div><div><dt>Lead time</dt><dd class="w">2 days</dd></div><div><dt>Contact</dt><dd class="w">yesterday</dd></div></dl><div class="did"><span class="k">Did · 90 d</span><span class="v">12 of 14 on time</span></div></button>
+            <button class="pv-card"><div><span class="type">Wine &amp; spirits</span><span class="name">Empire Merchants</span></div><dl><div><dt>Open orders</dt><dd>1</dd></div><div><dt>Lead time</dt><dd class="w">3 days</dd></div><div><dt>Contact</dt><dd class="w">4 days ago</dd></div></dl><div class="did"><span class="k">Did · 90 d</span><span class="v">11 of 11 on time</span></div></button>
+          </div>
+        </div>
+        <div class="pv-scrim"></div>
+        <aside class="lc-sheet">
+          <div class="hd"><div><div class="eyebrow">Wine &amp; spirits</div><div class="title">Skurnik Wines &amp; Spirits</div></div><span class="esc">Esc</span></div>
+          <div class="lc-body">
+            <div class="lc-sec" style="border-bottom:0"><h3>What they did</h3>
+              <div class="lc-window"><span class="chips"><span class="chip">30 d</span><span class="chip" data-on="true">90 d</span><span class="chip">365 d</span></span><span>19 Jun – 17 Sep</span></div>
+              <div class="lc-line"><span class="lbl">On time</span><span class="fig">12<small>of 14</small></span><span class="den"><span class="q">2 late, 1 and 3 days. 1 with no expected date, not counted.</span></span><span class="prior"><span>prior · 9 of 13</span><a class="rows" href="#">14 ›</a></span></div>
+              <div class="lc-line"><span class="lbl">Lines as ordered</span><span class="fig">209<small>of 212</small></span><span class="prior"><span>prior · 171 of 174</span><a class="rows" href="#">3 ›</a></span></div>
+              <div class="lc-line"><span class="lbl">Price as agreed</span><span class="fig">183<small>of 187</small></span><span class="den"><span class="q">4 above, mean +2.1%. 25 not compared.</span></span><span class="prior"><span>prior · 158 of 160</span><a class="rows" href="#">4 ›</a></span></div>
+              <div class="lc-line"><span class="lbl">Reply time</span><span class="fig">5 h 40<small>· 9</small></span><span class="prior"><span>prior · 7 h 10 · 7</span><a class="rows" href="#">9 ›</a></span></div>
+              <div class="lc-line"><span class="lbl">Credits</span><span class="fig">$286.00<small>of $412.50</small></span><span class="den"><span class="q">1 promised 39 days — not recovered.</span></span><span class="prior"><span>prior · no claims</span><a class="rows" href="#">3 ›</a></span></div>
+              <div class="lc-line minor"><span class="lbl">Tone · not scored</span><span class="fig">1 of 9 terse</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+      </div>
+    </div>
+    <p class="sk-note" style="max-width:480px">The phone opens the sheet directly on <i>What they did</i> when the card's <i>Did</i> line is tapped (the same "opened for a reason" latch ProvidersNext uses for the currency prompt); tapping the name opens at the top. The lower detent shows the vendor's record; the upper shows the ledger card; the row sheets are a third detent with one breadcrumb.</p>
+  </div>
+</div>
+</body>
+</html>
