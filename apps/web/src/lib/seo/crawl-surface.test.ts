@@ -171,6 +171,9 @@ describe('apps/web/vercel.json serves every App.tsx route and nothing else', () 
     // set the same key, so this does not lean on order: a rule that matches a token route and
     // sets one of these keys differently fails, before or after the token rule. Give a site-wide
     // Referrer-Policy a source that leaves the token routes out.
+    // Limits (ADR 0158, Known limits): three hosts, sources read as JS regular expressions, and
+    // slashless paths only; /reset-password/ is not probed here, in the census, or matched by the
+    // token rule (open claim ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH).
     const tokenPaths = TOKEN_PREFIXES.map((p) => (p.endsWith('/') ? `${p}abc123` : p));
     for (const host of HOSTS) {
       for (const path of tokenPaths) {
