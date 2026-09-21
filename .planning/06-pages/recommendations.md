@@ -787,22 +787,29 @@ Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the poli
 
 ### Sketch 120 (round 4), 2026-09-19 — build state, and the handoff to sketch 122
 
-<!-- This is the note useDigestSubscription.ts:16 means by "the page's build note". -->
+<!-- This is the note useDigestSubscription.ts:17 means by "Sketch 120 (round 4)". -->
 
 ADR 0160 §108 (`.planning/decisions/0160-*.md` on `feat/mudavym-finish`/
 `train/finish-2` — **not on this branch**, so it will not grep here) decided
 sketch 120's direction: *"direction A with C's quiet tier, and a fourth round
 (sketch 120) that adds function without disturbing the experience Wave Four
 already earns."* Sketch 120's own README
-(`.planning/sketches/120-recommendations-round-4/README.md`, same two
-branches, also not on this one) draws six numbered items and asks nine
-founder questions. Against that numbering, what shipped on `feat/page-recs`:
+(`.planning/sketches/120-recommendations-round-4/README.md`) is **not** on
+either of those branches: as of 2026-09-19 it was an untracked file in
+`/Users/aldemirkonuk/Projects/wt-finish`. A same-day orchestrator snapshot
+(`origin/wip/2026-09-19/others/wt-finish`@`218b02cd7`) later preserved it as
+an uncommitted-work backup, not as a commit on `feat/mudavym-finish` or
+`train/finish-2` — re-checked 2026-09-21, still true
+(`git log --all -- '.planning/sketches/120*'` returns only that snapshot
+commit). It draws six numbered items and asks nine founder questions.
+Against that numbering, what shipped on `feat/page-recs`:
 
-**Built:** item 2, the house's post, as two `Sheet`s (`AccountSheet.tsx`,
-`DigestPost.tsx`); item 3, a one-line receipt under every act
-(`RecommendationsNext.tsx`'s `note`); item 4, a subject's account sheet, keyed
-on the two baseline rules the gateway can subject today; item 5, the
-catalogue as a read-only leaf (`CatalogView.tsx`).
+**Built:** item 2, the house's post, as two `Sheet`s inside `DigestPost.tsx`
+(`:71` the house's post, `:184` "Your copy"); item 3, a one-line receipt
+under every act (`Entry.tsx:755-766`, through `rec-format.ts`'s
+`receiptFor` at `:298`); item 4, a subject's account sheet
+(`AccountSheet.tsx`), keyed on the two baseline rules the gateway can
+subject today; item 5, the catalogue as a read-only leaf (`CatalogView.tsx`).
 
 **Not built:** item 1, the delta cutting ("Since yesterday's letter") above
 the docket; item 6, the strip's send-log dot.
@@ -813,19 +820,22 @@ settled:**
   gateway can key it" — the README's own cheaper drawn option — rather than
   extending a `subject` to the other ten rules. Not his pick; the cheaper of
   the two the README named.
-- **Q5, the post's shape**, was built as a side `Sheet` because the README
-  calls that "the only shape ADR 0112 allows" without superseding the locked
-  decision (the alternative, a `Popover modal`, is what ADR 0112 F2 already
-  names "the signal that collapses the policy"). An ADR constraint left one
-  door open, not a founder choice.
+- **Q5, the post's shape**, was built as a side `Sheet` — the README's own
+  recommended path, (a) of the three it draws (README Q5, `README.md:357-367`).
+  ADR 0112 rules out only (b), a second `Popover modal` ("the signal that
+  collapses the policy", ADR 0112 F2); (c), `/settings` row 26, is also
+  allowed. The Sheet is the README's pick between two ADR-legal paths, not
+  the only shape ADR 0112 allows, and not a founder choice.
 - **The catalogue's read-only-ness** is a standing open fork, not a build
   default: `.planning/handoff/PROGRESS.md` §6 still lists "Recommendations
   catalog: is it actionable?" among the forks not yet asked.
 
 **The handoff to sketch 122 (lane `recs-sketch`).** The founder's sketch-120
-feedback (`founder-sketch-decisions-106-115.md:143-149`, batch 3
+feedback (`founder-sketch-decisions-106-115.md:146-151`, batch 3
 'RECOMMENDATIONS', 2026-09-19 ~09:45Z — he said only the first part is a
-requirement, the rest is brainstorming) is the brief for that round. Quoted
+requirement, the rest is brainstorming) is the brief for that round; the
+same feedback is bracketed into `ADR 0160` §108 on `train/finish-2`
+(`:160-175`, PR #391 audit M2, 2026-09-19) as this decision's record. Quoted
 exactly:
 
 > KEEP the days rail on top; SHOW THE HOUSE'S DECIDED GOALS ON TOP ("whatever
@@ -847,14 +857,19 @@ decided.
 here:** the delta (README Q1/Q8 — where it lives, and whether it is per
 subscriber or per house); the quiet tier (Q2 — fund the `reading · threshold
 · state` field, or keep accepting the `sourcesUnread` substitute); the post
-(Q6 — the digest builder's five choices, owed a founder confirmation before
-migration `20260917010100` merges); the send log (Q7 — whether a
-house-level count is even more than a member should see); and Q3/Q4/Q9
+(README Q5 — its place and shape; he "liked (unsure)" the side sheet — and
+his 2B note, he wants to see how the mail looks); the send log (Q7 — whether
+a house-level count is even more than a member should see); and Q3/Q4/Q9
 bundled (the account door's real scope, the act verb — *Mark as briefed* vs.
-*Open Reports →* — and how far refusal copy should trim). This lane decided
-none of them: it took the cheaper default only where a default was
-unavoidable to ship (above), and left the rest exactly as open as it found
-them.
+*Open Reports →* — and how far refusal copy should trim). **[2026-09-19: Q6,
+the digest builder's five choices, is no longer one of these — the founder
+answered all five (a)–(e) at about 11:20Z
+(`founder-sketch-decisions-106-115.md:170-175`), and `origin/train/finish-2`
+@`311968205` already brackets them into this file's §9. What is still open
+about the post is its place/shape and the mail preview, named above — decided
+neither.]** This lane decided none of them: it took the cheaper default only
+where a default was unavoidable to ship (above), and left the rest exactly
+as open as it found them.
 
 **`/recommendations` stays dark.** `mudavym_design_recommendations` is
 untouched by this pass — off everywhere, per house, unchanged from before

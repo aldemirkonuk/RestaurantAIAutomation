@@ -26,7 +26,6 @@ const STATUS = {
   subscription: null,
   preferences: {
     email: true,
-    category: { key: 'ai', on: true },
     quietHours: { enabled: false, start: '22:00', end: '07:00' },
     usingDefaults: true,
   },

@@ -39,10 +39,16 @@ export interface QuietHours {
 
 /**
  * `DigestSubscriptionStatus`, mirrored field-for-field from
- * `recommendation-digest.service.ts:1338-1378` on `feat/finish-digest`. Kept
- * as a hand-written type rather than an import — the two branches do not
- * share a build — so a drift there is a compile error here, not a silent
- * mismatch, the day the branches merge and this can become a real import.
+ * `recommendation-digest.service.ts:1335-1374` on `train/finish-2` — this
+ * lane's actual dependency (this hook itself calls
+ * `/recommendations/digest/subscription` below, which exists only there).
+ * `feat/finish-digest` still carries the same interface at `:1344-1384`, but
+ * with a `preferences.category` field the train has already dropped (PR #391
+ * audit B2(b), 2026-09-19: the subscription alone is the gate now — see
+ * recommendations.md's "Sketch 120 (round 4)" note). Kept as a hand-written
+ * type rather than an import — neither branch shares a build with this one —
+ * so a drift there is a compile error here, not a silent mismatch, the day
+ * either branch merges and this can become a real import.
  */
 export interface DigestSubscriptionStatus {
   armed: boolean;
@@ -65,7 +71,6 @@ export interface DigestSubscriptionStatus {
   } | null;
   preferences: {
     email: boolean;
-    category: { key: string; on: boolean };
     quietHours: QuietHours;
     usingDefaults: boolean;
   };

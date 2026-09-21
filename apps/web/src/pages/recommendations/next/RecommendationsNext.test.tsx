@@ -415,7 +415,7 @@ describe('RecommendationsNext — the standing book', () => {
     expect(house).toBeDisabled();
     expect(screen.getByText(/nothing in the gateway can carry out a recommendation/i)).toBeInTheDocument();
 
-    // The post (sketch 120 item 1) reads the house's stored preference and
+    // The post (sketch 120 item 2) reads the house's stored preference and
     // opens two real sheets — it is no longer a disabled placeholder. This
     // house has never set one, so the rail must say so honestly rather than
     // inventing "Not armed, 07:00" from the gateway's unset-row defaults.

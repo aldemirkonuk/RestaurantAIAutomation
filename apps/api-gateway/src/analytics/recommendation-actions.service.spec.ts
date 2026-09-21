@@ -4,8 +4,8 @@ import { RecommendationActionsService } from "./recommendation-actions.service";
  * `getDigestPref`'s `set` field is the one honesty guarantee the UI has for
  * "this house never touched the digest": DigestPost.tsx:63/218/371 all read
  * it to decide between "Not yet set for this house" and showing the actual
- * values. Nothing pinned that contract before this — see r4-lanes.json
- * (key=recs) must_fix #4.
+ * values. Nothing pinned that contract before this — see recommendations.md's
+ * "Sketch 120 (round 4)" note (item 2, the house's post).
  *
  * `getDigestPref` was un-exercised: no row and a real row both fell through
  * to the SAME defaulted shape unless `set` is asserted separately from the

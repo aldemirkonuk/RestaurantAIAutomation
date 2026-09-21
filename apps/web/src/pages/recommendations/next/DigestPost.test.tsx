@@ -1,5 +1,5 @@
 /**
- * `DigestPost` — sketch 120 item 1, the two-door replacement for the disabled
+ * `DigestPost` — sketch 120 item 2, the two-door replacement for the disabled
  * "Daily digest" placeholder. Two different facts must never blur into one
  * control: the house's own armed/hour/floor row, and a person's own copy of
  * it, on the sender built on `feat/finish-digest`.
@@ -141,7 +141,6 @@ describe('DigestPost — your copy sheet', () => {
         subscription: null,
         preferences: {
           email: true,
-          category: { key: 'ai', on: true },
           quietHours: { enabled: false, start: '22:00', end: '07:00' },
           usingDefaults: true,
         },
@@ -179,7 +178,6 @@ describe('DigestPost — your copy sheet', () => {
         },
         preferences: {
           email: true,
-          category: { key: 'ai', on: true },
           quietHours: { enabled: false, start: '22:00', end: '07:00' },
           usingDefaults: true,
         },
