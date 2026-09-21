@@ -14,6 +14,16 @@
 -- Re-versioned past this branch's own tip (20260917020000) and past
 -- origin/main's, per CLAUDE.md §5b: never reuse a migration version.
 --
+-- Renamed again 2026-09-21 (r5 must-fix): the version this migration shipped
+-- with, 20260917150000, cleared origin/main and this branch's own tip but
+-- collided with a sibling worktree's file of the same name-by-convention --
+-- wt-pg-cellar's `20260917150000_a_house_sets_its_own_cellar_ceremony.sql`,
+-- picked the same afternoon. Neither branch was an open PR yet, so
+-- check_migration_versions_unique.py (which only sees origin/main + open
+-- PRs) could not catch it; a verifier found it by reading both worktrees
+-- directly. Re-versioned past the highest of origin/main + all 36 open PRs
+-- at the time of this rename (20260920100100).
+--
 -- Why a timestamp and not a boolean: a boolean cannot say WHEN, and a
 -- dismissal with no date cannot be reviewed or expired. `dismissed_at IS NULL`
 -- is the single fact "on the table"; there is no second column to disagree

@@ -17,7 +17,7 @@ links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[orders]]"]
 
 # /promotions — vendor offers, trusted senders, prospects
 
-> **[amended 2026-09-19: this page describes the LEGACY `/promotions` (three tabs, still live until the ADR 0149 legacy deletion). The rebuilt `/promotions` holds offers only; Trusted senders and Strangers (prospects), with hold-to-trust and add-vendor, moved to `/communications` → "Who is writing" (ADR 0160 §113 Open item 3, founder 2026-09-18). The gateway routes below never moved — they are not promotions-scoped.]**
+> **[amended 2026-09-19: this page describes the LEGACY `/promotions` (three tabs, still live until the ADR 0149 legacy deletion). The rebuilt `/promotions` holds offers only; Trusted senders and Strangers (prospects), with hold-to-trust and add-vendor, moved to `/communications` → "Who is writing" (ADR 0160 §113 Open item 3, founder 2026-09-18). The gateway routes below never moved — they are not promotions-scoped.]** **[corrected 2026-09-21: "still live" above is stale the moment `feat/page-promos` lands. `App.tsx` routes `/promotions` only to `PromotionsNext` (`App.tsx:364`); the legacy `pages/Promotions.tsx` stays in the tree, file untouched, with no import and no route (`App.tsx:114-119`), until the founder approves the ADR 0149 deletion manifest.]**
 
 > **Part of** [[08-softwares/promotions|Promotions]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 

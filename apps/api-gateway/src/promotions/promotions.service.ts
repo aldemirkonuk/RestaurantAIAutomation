@@ -28,9 +28,14 @@ import {
  * house's offers, with vendor names, to any signed-in account. That read is
  * a separate, pre-existing fault this module does not touch (see the build
  * doc's not_fixed — fixing five endpoints shared with `ProviderPromotionsPanel`
- * is a wider change than this page). This module is the page's own read
+ * is a wider change than this page). **[corrected 2026-09-21: "the build
+ * doc" was a scratch report never committed to this repo, so that pointer
+ * resolved to nothing for the next reader. The record is now
+ * `v3.0-TECH-DEBT.md`, "GET /providers/promotions/active reads every house's
+ * vendor offers with no restaurant clause" (origin: follow-up chip
+ * task_38bd6fbb).]** This module is the page's own read
  * because the page needs three things that route never had — the house's
- * dismissal (a column, `20260917150000`), the expiry state as a word, and
+ * dismissal (a column, `20260921060250`), the expiry state as a word, and
  * the grade — and one read that carries all of them with one `read_at`.
  *
  * HONESTY (ADR 0020 / 0051)
