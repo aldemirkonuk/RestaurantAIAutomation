@@ -128,9 +128,8 @@ const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
 // Public vendor catalogue — resolved by slug, also served on a vendors.* subdomain.
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 // Owner/manager only — vendor pricing is the restaurant's negotiating position.
-// [Corrected 2026-09-19, repair pass, wt-pg-vprices] `VendorPriceCompare.tsx`
-// is routed again, as PageGate's `legacy` branch — see the route comment
-// below for why the 2026-09-18 "unrouted" plan was superseded.
+// `VendorPriceCompare.tsx` is routed as PageGate's `legacy` branch — see the
+// route comment below for the flag this page ships behind.
 const VendorPriceCompare = lazyWithRefresh(() => import('./pages/VendorPriceCompare'))
 const VendorPricesNext = lazyWithRefresh(() => import('./pages/vendor-prices/next/VendorPricesNext'))
 const DevTruth = lazyWithRefresh(() => import('./pages/DevTruth'))
