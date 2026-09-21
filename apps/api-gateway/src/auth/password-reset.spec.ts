@@ -20,7 +20,11 @@ interface TableConfig {
   passwordResetsUpdate?: { error?: any };
 }
 
-function makeAuthService(cfg: TableConfig, gmailOverrides: Partial<any> = {}) {
+function makeAuthService(
+  cfg: TableConfig,
+  gmailOverrides: Partial<any> = {},
+  configOverrides: Record<string, unknown> = {},
+) {
   const usersChain: any = {
     select: () => usersChain,
     update: () => usersChain,
@@ -84,7 +88,9 @@ function makeAuthService(cfg: TableConfig, gmailOverrides: Partial<any> = {}) {
     verify: jest.fn(),
     decode: jest.fn(),
   } as any;
-  const configService = { get: jest.fn().mockReturnValue(undefined) } as any;
+  const configService = {
+    get: jest.fn((key: string) => configOverrides[key]),
+  } as any;
   const tokenBlacklist = { blacklistToken: jest.fn() } as any;
   const gmail = {
     sendEmail: jest.fn().mockResolvedValue({ success: true, messageId: "m1" }),
@@ -119,6 +125,33 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
 
     expect(result).toEqual({ sent: true });
     expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses only the first origin when FRONTEND_URL is a comma-separated allow-list (R1/F5)", async () => {
+    // `this.configService.get("FRONTEND_URL")` hands back the whole
+    // CORS allow-list (cors-origins.ts's shape); before this test, an
+    // AuthService that read it raw here still passed every reset test in
+    // this file (they all mock configService.get to return undefined).
+    const { svc, gmail } = makeAuthService(
+      {
+        users: {
+          data: { user_id: "u1", name: "Ada Lovelace", email: "ada@x.com" },
+          error: null,
+        },
+        passwordResetsSelect: { data: null, error: null },
+        passwordResetsInsert: { data: { token: "tok-1" }, error: null },
+      },
+      {},
+      { FRONTEND_URL: "https://mudavym.com,https://www.mudavym.com" },
+    );
+
+    await svc.requestPasswordReset("ada@x.com", "1.2.3.4");
+
+    expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
+    const html = (gmail.sendEmail as jest.Mock).mock.calls[0][0].html as string;
+    expect(html).toContain('href="https://mudavym.com/reset-password?token=tok-1"');
+    // The raw comma-joined string must never leak into a mailed reset link.
+    expect(html).not.toContain(",https://www.mudavym.com");
   });
 
   it("returns the identical { sent: true } for an unknown email and sends nothing", async () => {

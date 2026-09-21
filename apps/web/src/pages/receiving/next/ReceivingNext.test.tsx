@@ -577,3 +577,44 @@ describe('F10 — the hand-off carries the order, and the rate names its populat
     expect(screen.getByText(/not a property of the refusals above/)).toBeInTheDocument()
   })
 })
+
+/**
+ * F11 — `/deliveries/:id` (DeliveryRedirect.tsx) resolves to an order and
+ * hands off here as `?order=…`; this queue is where the founder's "worst
+ * money first" decision on it lives (ReceivingNext.tsx `highlightOrderId`).
+ * Before this pass the queue had no way to open one row from outside it at
+ * all — the hand-off was a bare `/receiving`, indistinguishable from any
+ * other visit.
+ */
+describe('F11 — a delivery hand-off opens its row in the decision queue', () => {
+  const ManagerBodyHighlighted = () => (
+    <RcManagerQueue data={useManagerQueue()} highlightOrderId="ord-1" />
+  )
+
+  it('expands the matching row and does not print a "not in the queue" line', async () => {
+    get.mockResolvedValue(
+      queuePayload({ items: [queueItem({ orderId: 'ord-1' }), queueItem({ orderId: 'ord-2', orderNumber: 'PO-2' })] }),
+    )
+    harness(ManagerBodyHighlighted)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /PO-1/ })).toHaveAttribute('aria-expanded', 'true'),
+    )
+    expect(screen.getByRole('button', { name: /PO-2/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('highlight-order-missing')).not.toBeInTheDocument()
+  })
+
+  it('says so, in one honest sentence, when the read came back and the order is not in the queue', async () => {
+    get.mockResolvedValue(queuePayload({ items: [queueItem({ orderId: 'ord-2', orderNumber: 'PO-2' })] }))
+    harness(ManagerBodyHighlighted)
+
+    expect(await screen.findByTestId('highlight-order-missing')).toHaveTextContent('ord-1')
+  })
+
+  it('says nothing while the queue is still loading', () => {
+    get.mockReturnValue(new Promise(() => {})) // never resolves
+    harness(ManagerBodyHighlighted)
+
+    expect(screen.queryByTestId('highlight-order-missing')).not.toBeInTheDocument()
+  })
+})

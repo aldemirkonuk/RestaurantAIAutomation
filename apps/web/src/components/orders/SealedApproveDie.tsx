@@ -14,9 +14,10 @@
  * was **"give both legacy call sites the hold gesture"** — approval stays
  * proven everywhere, and never becomes a one-click mint-and-approve.
  *
- * Those two sites are the legacy `pages/Orders.tsx` (what a house actually
- * sees: `mudavym_design_orders` is OFF in production) and
- * `pages/dashboard/next/WaitingOnYou.tsx`. They get ONE implementation, here,
+ * Those two sites are the legacy `pages/Orders.tsx` (still on main, but no
+ * longer what a house sees: `orders` has been live in code for every house
+ * since ADR 0149 row 36, 2026-09-17 — `mudavym_design_orders` is no longer
+ * read) and `pages/dashboard/next/WaitingOnYou.tsx`. They get ONE implementation, here,
  * rather than two more copies of the mint: a second implementation of "exactly
  * once" is how the two learn to disagree about what a seal is.
  *

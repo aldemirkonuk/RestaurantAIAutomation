@@ -1,6 +1,7 @@
 /**
- * ProfileNext — the Mudavym redesign of `/profile`, behind
- * `mudavym_design_profile` (ADR 0044 p4 wave).
+ * ProfileNext — the Mudavym redesign of `/profile` (ADR 0044 p4 wave). Live
+ * in code for every house since ADR 0149 row 36 (2026-09-17) —
+ * `mudavym_design_profile` is no longer read.
  *
  * THE VERDICT (MAKEOVER-VERDICTS.md:216, `/profile` — KEEP+)
  * ----------------------------------------------------------
@@ -89,6 +90,16 @@
  * what it rendered before — the route redirects here and the flag is off in
  * production — so every branch below is conditional, and the test file proves
  * both sides.
+ *
+ * CORRECTED 2026-09-19 (wave5/live-confirm.md "4c", CLAUDE.md §5b — struck
+ * rather than deleted): "the flag is off in production" stopped being true
+ * on this branch. `connections` is one of ADR 0149 row 36's sixteen
+ * `LIVE_PAGES` (`useMudavymDesign.ts`), so `connectionsOn` below
+ * (`useMudavymDesign('connections')`) now reads true in production
+ * unconditionally, with no `restaurant_feature_flags` row needed — only a QA
+ * `localStorage` override can still force it false. The OFF branch is real
+ * code, kept for exactly that override and proven by the test file as
+ * stated, but it is no longer what a real house sees.
  *
  * WHAT THE MOVE COST, STATED RATHER THAN HIDDEN
  * ---------------------------------------------

@@ -565,6 +565,9 @@ export class ScheduledTasksService implements OnModuleInit {
             restaurantName: tenant.name,
             orderId:
               delivery.order_number || delivery.id?.substring(0, 8) || "N/A",
+            // The link carries the row id the page resolves on; the number
+            // above is only the words a person reads (review of #424).
+            orderUuid: delivery.id,
             providerName: delivery.providers?.name || "Unknown Provider",
             expectedDate: delivery.expected_delivery_date || tomorrowStr,
             items: [
