@@ -378,8 +378,14 @@ fixed; the rest are named here rather than silently accepted.
       slashless form, `auth.service.ts:980` and `:2145`). The token rule's source, from #385,
       has no optional trailing slash, and neither the guard nor the census probes that form.
       Tracked by the open CLAIMS row `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH`, which fails
-      the build the day the source is fixed until it is flipped; the fix is one regex in
-      `apps/web/vercel.json` plus the probes, in a follow-up.
+      the build the day some no-referrer rule matches both forms, however the fix is shaped,
+      until it is flipped; like the guard it reads sources as Python regular expressions, and an
+      unreadable one reads as still open. The fix is one regex in `apps/web/vercel.json` plus
+      the probes, in a follow-up.
+    - **`X-Robots-Tag` off the canonical host.** On the retired alias and the preview-shaped
+      host the guard requires `noindex` in every value and `nofollow` in at least one; only
+      `mudavym.com` is held to exactly `noindex, nofollow`. A rule adding `noindex, follow`
+      on another host passes, which is low risk because those hosts are already `noindex`.
 - **The ADR number.** `scripts/check_adr_numbers_unique.py` reports the next free number as
   0150, not 0158, because it sweeps git refs and cannot see an uncommitted file in another
   worktree: ADR 0149 is unpushed in `/Users/aldemirkonuk/Projects/wt-finish` (the main finish
