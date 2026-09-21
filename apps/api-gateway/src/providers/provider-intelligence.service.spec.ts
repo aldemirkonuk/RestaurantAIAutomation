@@ -22,18 +22,25 @@ import { DatabaseService } from "../database/database.service";
  * code returned exactly the same rows, just after a guaranteed-failing round
  * trip. That is the shape of test this repository keeps discovering it has.
  */
+const HOUSE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
 describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () => {
   let service: ProviderIntelligenceService;
   let rpc: jest.Mock;
   let from: jest.Mock;
+  let eq: jest.Mock;
   let limit: jest.Mock;
 
   function buildClient(result: { data: any[] | null; error: any }) {
     limit = jest.fn().mockResolvedValue(result);
     const order = jest.fn().mockReturnValue({ limit });
     const ilike = jest.fn().mockReturnValue({ order });
-    const eq = jest.fn().mockReturnValue({ ilike });
-    const select = jest.fn().mockReturnValue({ eq });
+    // Two `.eq()` calls now: provider, then house (ADR 0147). The chain node
+    // returns itself so the count is what the test reads, not the shape.
+    const chain: Record<string, unknown> = { ilike };
+    eq = jest.fn().mockReturnValue(chain);
+    chain.eq = eq;
+    const select = jest.fn().mockReturnValue(chain);
     from = jest.fn().mockReturnValue({ select });
     rpc = jest.fn();
     return { from, rpc };
@@ -53,7 +60,7 @@ describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () 
   it("never calls the phantom RPC", async () => {
     service = await makeService({ data: [], error: null });
 
-    await service.searchConversationMemory("prov-1", "shipping");
+    await service.searchConversationMemory("prov-1", HOUSE, "shipping");
 
     expect(rpc).not.toHaveBeenCalled();
   });
@@ -64,9 +71,14 @@ describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () 
       error: null,
     });
 
-    const rows = await service.searchConversationMemory("prov-1", "shipping");
+    const rows = await service.searchConversationMemory(
+      "prov-1",
+      HOUSE,
+      "shipping",
+    );
 
     expect(from).toHaveBeenCalledWith("conversation_embeddings");
+    expect(eq).toHaveBeenCalledWith("restaurant_id", HOUSE);
     expect(rows).toHaveLength(1);
   });
 
@@ -79,7 +91,7 @@ describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () 
     // The old shape swallowed every failure into `return data || []`, so a
     // broken search and a search with no hits were the same answer.
     await expect(
-      service.searchConversationMemory("prov-1", "shipping"),
+      service.searchConversationMemory("prov-1", HOUSE, "shipping"),
     ).rejects.toMatchObject({ code: "PGRST205" });
   });
 
@@ -87,7 +99,7 @@ describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () 
     service = await makeService({ data: [], error: null });
 
     await expect(
-      service.searchConversationMemory("prov-1", "nothing-matches-this"),
+      service.searchConversationMemory("prov-1", HOUSE, "nothing-matches-this"),
     ).resolves.toEqual([]);
   });
 });

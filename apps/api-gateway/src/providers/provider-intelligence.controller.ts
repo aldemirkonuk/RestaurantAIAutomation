@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
@@ -16,6 +17,37 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
 import { DatabaseService } from "../database/database.service";
 
+type AuthUser = { userId?: string; restaurantId?: string | null };
+
+/**
+ * The caller's house, from the verified token and nowhere else. A session that
+ * names no house has no provider intelligence of its own to read, so it is
+ * refused rather than handed an unfiltered query (ADR 0147).
+ */
+function houseOf(user: AuthUser | undefined): string {
+  if (!user?.restaurantId) {
+    throw new ForbiddenException("This session names no restaurant.");
+  }
+  return user.restaurantId;
+}
+
+/** A status the service chose deliberately survives; anything else is a 500. */
+function rethrow(error: unknown, fallback: string): never {
+  if (error instanceof HttpException) throw error;
+  throw new HttpException(
+    (error as { message?: string })?.message || fallback,
+    HttpStatus.INTERNAL_SERVER_ERROR,
+  );
+}
+
+/**
+ * `JwtAuthGuard` answers "is this a signed-in account?", never "is this row
+ * yours" — so until ADR 0147 was applied here, fifteen of these reads carried
+ * no restaurant clause and any signed-in account of any house could read every
+ * house's vendor knowledge, promotions, conversation memory, sessions and
+ * sentiment. Every route below now takes its house from the token through
+ * `houseOf(user)` and hands it to the service, which puts it in the query.
+ */
 @ApiTags("provider-intelligence")
 @Controller("providers")
 @UseGuards(JwtAuthGuard)
@@ -34,15 +66,17 @@ export class ProviderIntelligenceController {
   @ApiQuery({ name: "category", required: false })
   async getKnowledge(
     @Param("id") providerId: string,
-    @Query("category") category?: string,
+    @Query("category") category: string | undefined,
+    @CurrentUser() user: AuthUser,
   ) {
     try {
-      return await this.intelligenceService.getKnowledge(providerId, category);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch provider knowledge",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      return await this.intelligenceService.getKnowledge(
+        providerId,
+        houseOf(user),
+        category,
       );
+    } catch (error) {
+      rethrow(error, "Failed to fetch provider knowledge");
     }
   }
 
@@ -50,14 +84,17 @@ export class ProviderIntelligenceController {
   @ApiOperation({
     summary: "List unresolved contradictions in provider knowledge",
   })
-  async getContradictions(@Param("id") providerId: string) {
+  async getContradictions(
+    @Param("id") providerId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
     try {
-      return await this.intelligenceService.getContradictions(providerId);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch contradictions",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      return await this.intelligenceService.getContradictions(
+        providerId,
+        houseOf(user),
       );
+    } catch (error) {
+      rethrow(error, "Failed to fetch contradictions");
     }
   }
 
@@ -65,18 +102,21 @@ export class ProviderIntelligenceController {
   @ApiOperation({ summary: "Verify an extracted knowledge fact" })
   async verifyKnowledge(
     @Param("knowledgeId") knowledgeId: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: AuthUser,
   ) {
     try {
+      // `userId`, not `id`. `JwtStrategy.validate` returns `userId` and never
+      // `id` (auth/strategies/jwt.strategy.ts), so the `user.id` that stood
+      // here wrote `verified_by: undefined` on every verification — ADR 0147's
+      // third fault shape, in the one handler on this controller that records
+      // an actor.
       return await this.intelligenceService.verifyKnowledge(
         knowledgeId,
-        user.id,
+        user.userId as string,
+        houseOf(user),
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to verify knowledge",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to verify knowledge");
     }
   }
 
@@ -85,74 +125,74 @@ export class ProviderIntelligenceController {
   // =========================================================================
 
   @Get(":id/promotions")
-  @ApiOperation({ summary: "Get all promotions for a provider" })
+  @ApiOperation({ summary: "Get this restaurant's promotions for a provider" })
   @ApiQuery({ name: "status", required: false })
   async getPromotions(
     @Param("id") providerId: string,
-    @Query("status") status?: string,
+    @Query("status") status: string | undefined,
+    @CurrentUser() user: AuthUser,
   ) {
     try {
-      return await this.intelligenceService.getPromotions(providerId, status);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch promotions",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      return await this.intelligenceService.getPromotions(
+        providerId,
+        houseOf(user),
+        status,
       );
+    } catch (error) {
+      rethrow(error, "Failed to fetch promotions");
     }
   }
 
   @Get("promotions/active")
-  @ApiOperation({ summary: "Get all active promotions across all providers" })
-  async getAllActivePromotions() {
+  @ApiOperation({
+    summary: "Get this restaurant's active promotions across its providers",
+  })
+  async getAllActivePromotions(@CurrentUser() user: AuthUser) {
     try {
-      return await this.intelligenceService.getAllActivePromotions();
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch active promotions",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      return await this.intelligenceService.getAllActivePromotions(
+        houseOf(user),
       );
+    } catch (error) {
+      rethrow(error, "Failed to fetch active promotions");
     }
   }
 
   @Get("promotions/expiring")
-  @ApiOperation({ summary: "Get promotions expiring soon" })
+  @ApiOperation({ summary: "Get this restaurant's promotions expiring soon" })
   @ApiQuery({ name: "days", required: false })
-  async getExpiringPromotions(@Query("days") days?: string) {
+  async getExpiringPromotions(
+    @Query("days") days: string | undefined,
+    @CurrentUser() user: AuthUser,
+  ) {
     try {
       return await this.intelligenceService.getExpiringPromotions(
+        houseOf(user),
         days ? parseInt(days, 10) : 7,
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch expiring promotions",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to fetch expiring promotions");
     }
   }
 
   @Get("promotions/compare")
-  @ApiOperation({ summary: "Cross-vendor promotion comparison matrix" })
-  async comparePromotions() {
+  @ApiOperation({
+    summary: "Cross-vendor promotion comparison matrix for this restaurant",
+  })
+  async comparePromotions(@CurrentUser() user: AuthUser) {
     try {
-      return await this.intelligenceService.comparePromotions();
+      return await this.intelligenceService.comparePromotions(houseOf(user));
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to compare promotions",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to compare promotions");
     }
   }
 
   @Get("promotions/savings")
-  @ApiOperation({ summary: "Total savings from promotions" })
-  async getPromoSavings() {
+  @ApiOperation({ summary: "Total savings from this restaurant's promotions" })
+  async getPromoSavings(@CurrentUser() user: AuthUser) {
     try {
-      return await this.intelligenceService.getPromoSavings();
+      return await this.intelligenceService.getPromoSavings(houseOf(user));
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch promo savings",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to fetch promo savings");
     }
   }
 
@@ -167,18 +207,17 @@ export class ProviderIntelligenceController {
   @ApiQuery({ name: "limit", required: false })
   async getConversationMemory(
     @Param("id") providerId: string,
-    @Query("limit") limit?: string,
+    @Query("limit") limit: string | undefined,
+    @CurrentUser() user: AuthUser,
   ) {
     try {
       return await this.intelligenceService.getConversationMemory(
         providerId,
+        houseOf(user),
         limit ? parseInt(limit, 10) : 50,
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch conversation memory",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to fetch conversation memory");
     }
   }
 
@@ -187,21 +226,23 @@ export class ProviderIntelligenceController {
   async searchConversationMemory(
     @Param("id") providerId: string,
     @Body() body: { query: string },
+    @CurrentUser() user: AuthUser,
   ) {
     try {
+      // The house is read before the body is judged: a session with no house
+      // gets the same 403 whether or not it sent a query string, so the 400 is
+      // never a hint that the 403 could have been avoided.
+      const restaurantId = houseOf(user);
       if (!body.query) {
         throw new HttpException("Query is required", HttpStatus.BAD_REQUEST);
       }
       return await this.intelligenceService.searchConversationMemory(
         providerId,
+        restaurantId,
         body.query,
       );
     } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new HttpException(
-        error.message || "Failed to search conversation memory",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to search conversation memory");
     }
   }
 
@@ -214,31 +255,33 @@ export class ProviderIntelligenceController {
   @ApiQuery({ name: "includeCompleted", required: false })
   async getSessions(
     @Param("id") providerId: string,
-    @Query("includeCompleted") includeCompleted?: string,
+    @Query("includeCompleted") includeCompleted: string | undefined,
+    @CurrentUser() user: AuthUser,
   ) {
     try {
       return await this.intelligenceService.getSessions(
         providerId,
+        houseOf(user),
         includeCompleted === "true",
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch sessions",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to fetch sessions");
     }
   }
 
   @Get(":id/sessions/:sessionId/summary")
   @ApiOperation({ summary: "Get session summary with extracted intelligence" })
-  async getSessionSummary(@Param("sessionId") sessionId: string) {
+  async getSessionSummary(
+    @Param("sessionId") sessionId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
     try {
-      return await this.intelligenceService.getSessionSummary(sessionId);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch session summary",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      return await this.intelligenceService.getSessionSummary(
+        sessionId,
+        houseOf(user),
       );
+    } catch (error) {
+      rethrow(error, "Failed to fetch session summary");
     }
   }
 
@@ -251,18 +294,17 @@ export class ProviderIntelligenceController {
   @ApiQuery({ name: "limit", required: false })
   async getSentimentTrend(
     @Param("id") providerId: string,
-    @Query("limit") limit?: string,
+    @Query("limit") limit: string | undefined,
+    @CurrentUser() user: AuthUser,
   ) {
     try {
       return await this.intelligenceService.getSentimentTrend(
         providerId,
+        houseOf(user),
         limit ? parseInt(limit, 10) : 30,
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch sentiment trend",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to fetch sentiment trend");
     }
   }
 
@@ -335,32 +377,36 @@ export class ProviderIntelligenceController {
   // =========================================================================
 
   @Get("intelligence/compare")
-  @ApiOperation({ summary: "Cross-vendor intelligence comparison" })
+  @ApiOperation({
+    summary: "Cross-vendor intelligence comparison for this restaurant",
+  })
   @ApiQuery({ name: "providerIds", required: false, type: String })
-  async compareProviders(@Query("providerIds") providerIdsStr?: string) {
+  async compareProviders(
+    @Query("providerIds") providerIdsStr: string | undefined,
+    @CurrentUser() user: AuthUser,
+  ) {
     try {
       const providerIds = providerIdsStr
         ? providerIdsStr.split(",").map((id) => id.trim())
         : undefined;
-      return await this.intelligenceService.compareProviders(providerIds);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to compare providers",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      return await this.intelligenceService.compareProviders(
+        houseOf(user),
+        providerIds,
       );
+    } catch (error) {
+      rethrow(error, "Failed to compare providers");
     }
   }
 
   @Get("intelligence/leverage")
-  @ApiOperation({ summary: "Current negotiation leverage signals" })
-  async getLeverageSignals() {
+  @ApiOperation({
+    summary: "Current negotiation leverage signals for this restaurant",
+  })
+  async getLeverageSignals(@CurrentUser() user: AuthUser) {
     try {
-      return await this.intelligenceService.getLeverageSignals();
+      return await this.intelligenceService.getLeverageSignals(houseOf(user));
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch leverage signals",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to fetch leverage signals");
     }
   }
 }
