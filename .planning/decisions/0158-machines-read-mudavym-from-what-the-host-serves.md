@@ -386,6 +386,11 @@ fixed; the rest are named here rather than silently accepted.
       host the guard requires `noindex` in every value and `nofollow` in at least one; only
       `mudavym.com` is held to exactly `noindex, nofollow`. A rule adding `noindex, follow`
       on another host passes, which is low risk because those hosts are already `noindex`.
+    - **What the census reads.** The base host only, not `--duplicate-host`; slashless samples
+      only; and `X-Robots-Tag` as a superset (`noindex` and `nofollow` present), so a live
+      `noindex, nofollow, all` passes there while the static guard pins `mudavym.com` to exactly
+      `noindex, nofollow` (reported by the finish session, 2026-09-21). Pinning it is in the
+      follow-up.
 - **The ADR number.** `scripts/check_adr_numbers_unique.py` reports the next free number as
   0150, not 0158, because it sweeps git refs and cannot see an uncommitted file in another
   worktree: ADR 0149 is unpushed in `/Users/aldemirkonuk/Projects/wt-finish` (the main finish
