@@ -23,7 +23,9 @@ would be to discover later:
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import sys
 from datetime import date, datetime, timedelta
@@ -47,6 +49,11 @@ from scripts.simulate.service import FOOD_ITEMS, WineList  # noqa: E402
 
 MENU = REPO_ROOT / "datasets" / "sim" / "menus" / "bistro.json"
 FIXTURE = REPO_ROOT / "datasets" / "sim" / "fixtures" / "operating-hours-cases.json"
+#: ADR 0135 — the canned day the nightly backtests against. Same seed and date
+#: as ADR 0093's live day (run 937a23f0, 17·0·3), so the recorded production
+#: run and this offline regeneration are the same document.
+CANNED_DAY = REPO_ROOT / "datasets" / "sim" / "fixtures" / "scenario-canned-day.json"
+
 POS_HUB_SERVICE = (
     REPO_ROOT / "apps" / "api-gateway" / "src" / "pos-hub" / "pos-hub.service.ts"
 )
@@ -1397,3 +1404,78 @@ def test_replay_of_an_identical_plan_proceeds(monkeypatch, capsys):
     assert cli_mod.main(_apply_argv("--replay")) == 0
     assert "replay of run run-0" in capsys.readouterr().out
     assert len(second.urls("/pos-hub/webhook/")) == len(first.urls("/pos-hub/webhook/"))
+
+
+# ---------------------------------------------------------------------------
+# The canned day — a pinned expectation with a drift assertion (ADR 0135)
+# ---------------------------------------------------------------------------
+
+
+def _canonical_hash(document: dict) -> str:
+    canonical = json.dumps(
+        document, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def test_the_canned_day_matches_its_pinned_fixture(menu_items, hours, wine_list):
+    """`datasets/sim/fixtures/scenario-canned-day.json` pins the expectation the
+    engine derives for bistro / random / seed 7 / 2026-09-02 — the day ADR 0093
+    replayed into production. The determinism tests above prove two runs of one
+    seed agree with EACH OTHER; this one proves today's engine agrees with the
+    engine that was checked in. Any change to the scenario library, the sale-
+    volume mirror, the menu snapshot or the hours fixture moves the hash, and
+    the failure names the command that re-pins it on purpose:
+
+        SCENARIO_CANNED_DAY_WRITE=1 python3 -m pytest scripts/test_simulate_scenarios.py -k canned_day
+
+    Wave H (services/agent-orchestrator/tests/e2e_gateway) reads the same
+    fixture and, where a gateway loads SimposModule, compares the recorded run's
+    totals against it — the offline half and the live half of one backtest.
+    """
+    _ctx, _expectation, expected, _outcomes = build(
+        menu_items, hours, wine_list, "random"
+    )
+    digest = _canonical_hash(expected)
+    document = {
+        "fixture_version": "1.0.0",
+        "generated_by": "SCENARIO_CANNED_DAY_WRITE=1 python3 -m pytest scripts/test_simulate_scenarios.py -k canned_day",
+        "source": "scripts/simulate/scenarios.py::build_expectation via scripts/test_simulate_scenarios.py::build",
+        "params": {
+            "archetype": "bistro",
+            "scenario": "random",
+            "seed": SEED,
+            "service_date": SERVICE_DATE.isoformat(),
+            "timezone": TZ,
+            "hours_source": "fixture",
+            "inventory_source": "archetype",
+            "base_covers": 80,
+        },
+        "totals": expected["totals"],
+        "check_count": len(expected.get("checks") or []),
+        "low_stock_expected": sorted(
+            str(row.get("wine_name") or row.get("name") or "")
+            for row in (expected.get("low_stock") or [])
+        ),
+        "content_hash": digest,
+    }
+    if os.environ.get("SCENARIO_CANNED_DAY_WRITE") == "1":
+        CANNED_DAY.write_text(
+            json.dumps(document, indent=2, sort_keys=False) + "\n", encoding="utf-8"
+        )
+    assert (
+        CANNED_DAY.exists()
+    ), f"{CANNED_DAY} is missing — generate it once with {document['generated_by']}"
+    pinned = json.loads(CANNED_DAY.read_text(encoding="utf-8"))
+    assert pinned["params"] == document["params"], (
+        pinned["params"],
+        document["params"],
+    )
+    assert pinned["content_hash"] == digest, (
+        "the canned day drifted from its pinned expectation — totals now "
+        f"{expected['totals']} vs pinned {pinned['totals']}. If the change is "
+        f"intended, re-pin with: {document['generated_by']}"
+    )
+    assert pinned["totals"] == expected["totals"]
+    # The fixture must describe a real day, not an empty one (absence-as-health).
+    assert pinned["totals"]["checks"] > 0 and pinned["check_count"] > 0

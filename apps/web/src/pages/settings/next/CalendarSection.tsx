@@ -56,7 +56,7 @@ export function CalendarSection({ data }: { data: SettingsNextData }) {
                 </Action>
               }
             >
-              <p style={{ fontFamily: MONO, fontSize: 11, wordBreak: 'break-all', color: 'var(--ink-2)',
+              <p data-secret="credential" style={{ fontFamily: MONO, fontSize: 11, wordBreak: 'break-all', color: 'var(--ink-2)',
                 background: 'var(--paper-1)', border: '1px solid var(--paper-2)', borderRadius: 8, padding: '7px 9px', margin: '9px 0 0' }}>
                 {url}
               </p>
