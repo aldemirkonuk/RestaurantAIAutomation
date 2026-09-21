@@ -64,6 +64,15 @@
  * which is exactly the state production is in. What the port bought is that
  * with the flag ON there is now a home at all — `profile.md` §9 G12a.
  *
+ * CORRECTED 2026-09-19 (wave5/live-confirm.md "4c", CLAUDE.md §5b — struck
+ * rather than deleted): "which is exactly the state production is in" is no
+ * longer true. `connections` is one of ADR 0149 row 36's sixteen
+ * `LIVE_PAGES`, so `mudavym_design_connections` now reads ON in production
+ * unconditionally (ProfileNext.tsx's own header, corrected the same pass).
+ * This page is still A home for the panel — nothing here is conditional, as
+ * the paragraph above says — but `/connections` Register II is now the OTHER
+ * one a real house actually sees, not a flag-gated possibility.
+ *
  * WHAT IS STILL NOT HERE, PER §6: plan MANAGEMENT and any charge. The plan is
  * shown because the restaurant is on one and it already decides something real;
  * changing it is a restaurant decision with a price behind it (OD-23,
