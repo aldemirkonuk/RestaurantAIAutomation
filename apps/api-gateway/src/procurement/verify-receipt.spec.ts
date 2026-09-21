@@ -30,7 +30,8 @@ import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.ser
  *  D3  markDelivered booked `order.quantity` into the ledger while writing
  *      `quantity_received: null`. The door's anti-double-book guard reads that
  *      column (`receiving.service.ts:194`), so NULL read as 0 and the door
- *      booked the whole delivery a second time.
+ *      booked the whole delivery a second time. [ADR 0192, 2026-09-21: the
+ *      door now reconciles against the ledger and no path writes the column.]
  *
  * Before this file there was no test of verifyReceipt anywhere in the repo;
  * `invoice-match.spec.ts` covers only the pure computeMatch function.
@@ -476,7 +477,7 @@ describe("verifyReceipt — adjustments cannot reach another tenant", () => {
 // ---------------------------------------------------------------------------
 // D3
 // ---------------------------------------------------------------------------
-describe("markDelivered — the column records what was booked", () => {
+describe("markDelivered — books what arrived, and writes no received column (ADR 0192)", () => {
   const pendingOrder = {
     id: ORDER,
     order_number: "ORD-2026-00002",
@@ -490,10 +491,11 @@ describe("markDelivered — the column records what was booked", () => {
     status: "APPROVED",
   };
 
-  it("writes quantity_received equal to what it booked when the caller sends no quantity", async () => {
-    // The web client sends none (useOrdersData.ts:68). Pre-fix, the ledger got
-    // order.quantity and the column got NULL, so the door's `alreadyBooked`
-    // read 0 and booked all 12 again.
+  it("books the order's quantity when the caller sends none, and writes no received column", async () => {
+    // The web client sends none (useOrdersData.ts:68). The door reconciles
+    // against the LEDGER (`readBookedOrderBottles`), not a column, so what was
+    // booked is what the order received — there is no second copy to keep in
+    // step, and ADR 0192 forbids writing one.
     const { db, calls } = makeDb({ orderRow: pendingOrder });
 
     await service(db).markDelivered(REST, ORDER, USER);
@@ -506,11 +508,10 @@ describe("markDelivered — the column records what was booked", () => {
     expect(live!.args.p_delta).toBe(12);
 
     expect(calls.orderUpdates).toHaveLength(1);
-    expect(calls.orderUpdates[0].quantity_received).toBe(12);
-    expect(calls.orderUpdates[0].quantity_received).toBe(live!.args.p_delta);
+    expect("quantity_received" in calls.orderUpdates[0]).toBe(false);
   });
 
-  it("records an explicit short count as the short count, not the ordered count", async () => {
+  it("books an explicit short count as the short count, not the ordered count", async () => {
     const { db, calls } = makeDb({ orderRow: pendingOrder });
 
     await service(db).markDelivered(REST, ORDER, USER, 9);
@@ -520,7 +521,7 @@ describe("markDelivered — the column records what was booked", () => {
         c.name === "apply_stock_movement" && c.args.p_stock_state === "live",
     );
     expect(live!.args.p_delta).toBe(9);
-    expect(calls.orderUpdates[0].quantity_received).toBe(9);
+    expect("quantity_received" in calls.orderUpdates[0]).toBe(false);
   });
 
   it("books five cases as sixty bottles and converts an explicitly case-priced agreement once", async () => {
@@ -531,16 +532,19 @@ describe("markDelivered — the column records what was booked", () => {
     await service(db).markDelivered(REST, ORDER, USER);
     const live = calls.rpc.find(c => c.name === "apply_stock_movement" && c.args.p_stock_state === "live");
     expect(live?.args).toMatchObject({ p_delta: 60, p_unit_cost: 30, p_cost_provenance: "estimated" });
-    expect(calls.orderUpdates[0].quantity_received).toBe(5); // documented order-unit display cache
+    // Five cases book SIXTY bottles, and no order-unit "5" is written anywhere.
+    expect("quantity_received" in calls.orderUpdates[0]).toBe(false);
   });
 
-  it("never leaves quantity_received NULL after booking stock", async () => {
+  it("writes no received column on ANY of its updates", async () => {
     const { db, calls } = makeDb({ orderRow: pendingOrder });
     await service(db).markDelivered(REST, ORDER, USER);
-    expect(calls.orderUpdates[0].quantity_received).not.toBeNull();
+    expect(calls.orderUpdates.length).toBeGreaterThan(0);
+    for (const update of calls.orderUpdates)
+      expect(Object.keys(update)).not.toContain("quantity_received");
   });
 
-  it("D6 (ADR 0168) — the verify-receipt notice names how many BOTTLES were booked, not the order's own unit count", async () => {
+  it("D6 (ADR 0190, filed as 0168) — the verify-receipt notice names how many BOTTLES were booked, not the order's own unit count", async () => {
     // Neither `service()` nor `makeDb` wires a notificationsService, so every
     // test above this one skips the `if (this.notificationsService)` block
     // entirely and could not have caught this — the notice is only

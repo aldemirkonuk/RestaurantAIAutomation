@@ -435,7 +435,11 @@ function CalmChip({ children, icon: Icon }: { children: string; icon: typeof Han
  * assumed would be a number nobody measured.
  */
 function deliveryWords(result: Record<string, unknown> | null | undefined): string {
-  const booked = result?.bottlesBooked ?? result?.quantityBooked;
+  // BOTTLES only. `quantityBooked` is the order's quantity in the order's own
+  // unit (five CASES reads 5), so falling back to it printed "5 bottles" for
+  // sixty. The gateway sends `bottlesBooked` from the ledger (ADR 0192) or
+  // null when it could not read it back; null is said, never filled in.
+  const booked = result?.bottlesBooked;
   const orderNumber = result?.orderNumber;
   const named = typeof orderNumber === 'string' && orderNumber.trim() !== ''
     ? ` on ${orderNumber}`

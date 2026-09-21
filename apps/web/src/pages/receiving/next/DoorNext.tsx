@@ -60,6 +60,7 @@ import {
   readPaper,
   suggestOutcome,
   inWords,
+  type PriorReading,
   OUTCOME_LABEL,
   REFUSAL_REASONS,
   SERIF,
@@ -111,11 +112,11 @@ export default function DoorNext() {
   /* ── the order — fetched live, degrading honestly (point 1) ───────────── */
   const [order, setOrder] = useState<DoorOrderVM | null>(null);
   const [orderState, setOrderState] = useState<'loading' | 'ok' | 'unreachable'>('loading');
-  /* What earlier trucks on this order already brought, in boxes. Null when it
-     could not be read or the pack size is not knowable — the match line then
-     behaves exactly as it did before split deliveries were a thing, rather than
-     treating "unknown" as "none". */
-  const [priorBoxes, setPriorBoxes] = useState<number | null>(null);
+  /* What earlier trucks on this order already brought, in BOTTLES with the pack
+     beside them (ADR 0192) — never a rounded box count. `null` while loading;
+     `'unread'` when the read failed, which the match line and the credit letter
+     SAY rather than treating "unknown" as "none". */
+  const [prior, setPrior] = useState<PriorReading>(null);
 
   /* ── the photograph (point 2) ─────────────────────────────────────────── */
   const [uploading, setUploading] = useState(false);
@@ -210,8 +211,16 @@ export default function DoorNext() {
     // received must still be countable — the count stands on its own.
     receivingApi
       .doorReceivedSoFar(orderId)
-      .then((r) => alive && setPriorBoxes(r.receivedBoxes))
-      .catch(() => alive && setPriorBoxes(null));
+      .then(
+        (r) =>
+          alive &&
+          setPrior(
+            typeof r.receivedQtyBottles === 'number' && Number.isFinite(r.receivedQtyBottles)
+              ? { bottles: r.receivedQtyBottles, packSize: r.packSize ?? null }
+              : 'unread',
+          ),
+      )
+      .catch(() => alive && setPrior('unread'));
     return () => {
       alive = false;
     };
@@ -351,7 +360,7 @@ export default function DoorNext() {
     }
   }
 
-  const match = matchLine(counted, orderState === 'ok' ? order : null, priorBoxes ?? 0);
+  const match = matchLine(counted, orderState === 'ok' ? order : null, prior);
   const suggested = suggestOutcome(match);
   const outcome: DoorOutcome = outcomeChoice ?? suggested;
   // THE CREDIT LETTER MAY ONLY CLAIM AN ATTACHMENT THAT EXISTS. This was
@@ -368,7 +377,7 @@ export default function DoorNext() {
     hasPhoto,
     driverName,
     initials,
-    alreadyReceivedBoxes: priorBoxes ?? 0,
+    alreadyReceived: prior,
   });
 
   const initialsOk = initials.trim().length >= 2;
@@ -394,7 +403,7 @@ export default function DoorNext() {
         hasPhoto,
         driverName,
         initials,
-        alreadyReceivedBoxes: priorBoxes ?? 0,
+        alreadyReceived: prior,
       };
       const res = await submitDoorReceipt({
         orderId,
@@ -662,7 +671,10 @@ export default function DoorNext() {
             </div>
             {outcomeChoice === null && suggested === 'short' && (
               <p className="mt-2 text-xs text-inkm-3" aria-live="polite">
-                Suggested from the count — the boxes came up {inWords(Math.abs(match?.deltaBoxes ?? 0))}{' '}
+                Suggested from the count —{' '}
+                {match?.deltaBoxes != null
+                  ? `the boxes came up ${inWords(Math.abs(match.deltaBoxes))}`
+                  : `the count came up ${match?.deltaWords ?? 'some'}`}{' '}
                 short. Tap to change.
               </p>
             )}

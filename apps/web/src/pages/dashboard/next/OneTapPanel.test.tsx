@@ -246,10 +246,9 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
                 receivedBy: 'user-7',
                 receivedByName: 'Ada Lovelace',
                 receivedByNameReason: null,
-                quantityReceived: 72,
-                unitType: 'bottle',
+                received: { readable: true, quantityInStockUom: 72, stockUom: 'bottle', words: '6 cases' },
                 bottlesTotal: 72,
-                summary: 'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 72 bottles booked in.',
+                summary: 'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 6 cases on the shelf.',
               },
               message:
                 'That order is already booked in as delivered, so nothing was changed. Booking it twice would double the stock.',
@@ -297,10 +296,9 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
               receivedBy: 'user-7',
               receivedByName: 'Ada Lovelace',
               receivedByNameReason: null,
-              quantityReceived: 72,
-              unitType: 'bottle',
+              received: { readable: true, quantityInStockUom: 72, stockUom: 'bottle', words: '6 cases' },
               bottlesTotal: 72,
-              summary: 'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 72 bottles booked in.',
+              summary: 'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 6 cases on the shelf.',
             },
             message: 'An order is delivered once. Nothing was changed.',
           },
@@ -369,6 +367,33 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     await waitFor(() =>
       expect(screen.getByText(/the quantity booked came back as —\./)).toBeInTheDocument(),
     );
+  });
+
+  it('never prints the order-unit quantity as bottles when the ledger count is missing (ADR 0192)', async () => {
+    // `quantityBooked` is the order's quantity in the order's own unit: five
+    // CASES reads 5. Falling back to it printed "5 bottles" for sixty.
+    serve([deliveryCard]);
+    api.post.mockImplementation(async (path: string) => {
+      if (String(path).endsWith('/seal-challenge')) return { data: { challenge: 't' } };
+      return {
+        data: {
+          ...deliveryCard,
+          status: 'completed',
+          executionResult: { act: 'deliver', quantityBooked: 5, bottlesBooked: null },
+        },
+      };
+    });
+    draw();
+    await waitFor(() => expect(screen.getByText('Confirm the Barolo delivery')).toBeInTheDocument());
+
+    const die = screen.getByRole('button', { name: 'Hold to confirm the delivery' });
+    fireEvent.keyDown(die, { key: 'Enter' });
+    fireEvent.keyDown(die, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(screen.getByText(/the quantity booked came back as —\./)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/5 bottles booked/)).toBeNull();
   });
 
   it('refuses a delivery card that names no order, without offering the die', async () => {

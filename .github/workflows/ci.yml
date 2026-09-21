@@ -996,6 +996,20 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_quantity_units.py --self-test
 
+      # ADR 0192 (founder, 2026-09-21): what an order received is the stock
+      # ledger's count, and the app no longer reads or writes
+      # procurement_orders.quantity_received. The column had four writers in two
+      # units; the desk read the door's BOTTLES as cases and pre-filled a +660
+      # bottle correction. The column stays in the schema until a later ADR
+      # drops it, so this is what keeps it dark.
+      - name: No app code reads or writes procurement_orders.quantity_received
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_no_quantity_received_column.py
+
+      - name: The received-column guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_no_quantity_received_column.py --self-test
+
       - name: Explain a failure
         if: failure()
         run: |
@@ -1008,6 +1022,7 @@ jobs:
           echo "::notice::'does not say what unit it is in' means a *Qty*/*Quantity* DTO field crossed the wire with no unit in its name and no same-prefix unit sibling. Put the unit in the NAME (xQtyBottles, or xQtyInCountedUom when it must match another field). A comment is not a declaration -- JSON does not carry comments."
           echo "::notice::'exempted as a DEPRECATED ALIAS, but the declared field it aliases is gone' means the properly-named field was deleted and only the unitless alias remains. That is the original defect back under its own name, not an alias."
           echo "::notice::The unit guard does NOT verify that a declared unit is the CORRECT one -- only a test at a real pack size does that. Never let it stand in for one."
+          echo "::notice::[quantity_received] means app code names procurement_orders.quantity_received, or a client names quantityReceived / quantityReceivedUom. ADR 0192: what an order received is the stock ledger's count -- read the gateway's received block (shelf-received.ts). Do not add an ALLOWLIST entry to pass; an entry needs a reason a reviewer can check, and an entry that excuses nothing is exit 2."
           echo "::notice::Exit 2 from that guard is CANNOT CHECK, not a skip: a file it reads is missing or a method it anchors on was renamed. Fix the anchor, do not delete the step."
           echo "::notice::RLS NEVER ENABLED means a migration creates a public table that no migration ever puts RLS on. Add it in the CREATING migration -- unless that migration has already shipped to production, in which case a follow-up is the only fix that reaches both production and a fresh build."
           echo "::notice::anon/authenticated STILL GRANTED means a table is client-reachable over PostgREST. The OD-72 default-privileges ratchet covers tables created after 20260825210000; an explicit GRANT after that undoes it."
