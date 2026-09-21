@@ -5,6 +5,15 @@ import { OAuth2Client } from "google-auth-library";
 import * as nodemailer from "nodemailer";
 import { htmlToText } from "../common/html/html-to-text";
 import {
+  addressListHeader,
+  base64Body,
+  mailboxHeader,
+  messageIdHeader,
+  MimeHeaderError,
+  threadingHeader,
+  unstructuredHeader,
+} from "./mime-headers";
+import {
   lowStockAlertTemplate,
   lowStockDigestTemplate,
   type LowStockDigestData,
@@ -54,6 +63,12 @@ export interface EmailResult {
   threadId?: string;
   rfc822MessageId?: string;
   error?: string;
+  /**
+   * true when mime-headers.ts refused to build the message (ADR 0172): Gmail
+   * was never called, so the recipient provably did not get it, and the cause
+   * is the data (an address or message id), never the Gmail credentials.
+   */
+  refusedBeforeSend?: boolean;
 }
 
 /**
@@ -290,6 +305,7 @@ export class GmailService implements OnModuleInit {
       return {
         success: false,
         error: errorMessage,
+        ...(error instanceof MimeHeaderError && { refusedBeforeSend: true }),
       };
     }
   }
@@ -685,16 +701,21 @@ This is an automated alert from WineOps AI.
       options.messageIdHeader ||
       `<wineops-${Date.now()}-${Math.random().toString(36).slice(2)}@wineops.ai>`;
 
+    // Every value goes through mime-headers.ts (ADR 0172): free text is RFC 2047
+    // encoded with CR/LF collapsed, addresses and our own Message-ID are refused on a
+    // control character; the vendor's In-Reply-To/References are rebuilt from
+    // their <msg-id> tokens, never refused. A refusal throws inside sendEmail's try and comes back
+    // as { success: false } — nothing is sent with a half-built header block.
     const headers = [
-      `From: WineOps AI <${this.senderEmail}>`,
-      `To: ${options.to.join(", ")}`,
-      options.cc?.length ? `Cc: ${options.cc.join(", ")}` : "",
-      options.bcc?.length ? `Bcc: ${options.bcc.join(", ")}` : "",
-      options.replyTo ? `Reply-To: ${options.replyTo}` : "",
-      `Message-ID: ${generatedMessageId}`,
-      options.inReplyTo ? `In-Reply-To: ${options.inReplyTo}` : "",
-      options.references ? `References: ${options.references}` : "",
-      `Subject: ${options.subject}`,
+      mailboxHeader("From", "WineOps AI", this.senderEmail),
+      addressListHeader("To", options.to),
+      options.cc?.length ? addressListHeader("Cc", options.cc) : "",
+      options.bcc?.length ? addressListHeader("Bcc", options.bcc) : "",
+      options.replyTo ? addressListHeader("Reply-To", [options.replyTo]) : "",
+      messageIdHeader("Message-ID", generatedMessageId),
+      threadingHeader("In-Reply-To", options.inReplyTo),
+      threadingHeader("References", options.references),
+      unstructuredHeader("Subject", options.subject),
       "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
     ]
@@ -703,15 +724,20 @@ This is an automated alert from WineOps AI.
 
     const textPart = options.text || this.htmlToPlainText(options.html);
 
+    // base64, not 8bit: the parts carry ₺, —, and Turkish letters, and 7bit is
+    // the default when no Content-Transfer-Encoding is declared. The base64
+    // alphabet has no "_", so no part can contain the `boundary_…` delimiter.
     const body = [
       `--${boundary}`,
       'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
       "",
-      textPart,
+      base64Body(textPart),
       `--${boundary}`,
       'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
       "",
-      options.html,
+      base64Body(options.html),
       `--${boundary}--`,
     ].join("\r\n");
 

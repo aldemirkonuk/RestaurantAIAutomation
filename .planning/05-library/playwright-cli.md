@@ -32,8 +32,9 @@ repo evidence:
 - `apps/web/package.json:64` — `"@playwright/test": "^1.58.0"` (devDependency)
 - `apps/web/package.json:17` — `"test:e2e": "playwright test"`
 - `apps/web/playwright.config.ts`
-- `apps/web/e2e/` — `auth.setup.ts`, `navigation.spec.ts`, `prod-smoke.spec.ts`,
-  `smoke.spec.ts`, `studio-flow.spec.ts`
+- `apps/web/e2e/` — `auth.setup.ts`, `navigation.spec.ts`, `retired-routes.spec.ts`,
+  `smoke.spec.ts`, `studio-flow.spec.ts`, and `nightly/` (the production walk, its own
+  config; see `apps/web/e2e/README.md`). `prod-smoke.spec.ts` was deleted by ADR 0135.
 
 So the open question is not "adopt Playwright" but **"what else should it be pointed at"**:
 

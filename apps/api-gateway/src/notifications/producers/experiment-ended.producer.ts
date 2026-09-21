@@ -15,6 +15,8 @@ import {
   type ProducerTally,
 } from "./producer-ledger.service";
 import { dayIn } from "./producer-copy";
+// founderWords is free text and the arms come from the database (ADR 0170).
+import { escapeHtml } from "../../common/html/escape-html";
 
 /**
  * "The note experiment ended and no winner is recorded."
@@ -567,20 +569,3 @@ export class ExperimentEndedProducer {
     return parts.join(" ");
   }
 }
-
-/**
- * The five characters that would otherwise let a figure or a founder's own
- * words change the shape of the HTML part. The body is plain prose assembled in
- * this file, so this is belt rather than braces — but `founderWords` is a
- * person's free text and the arms come from the database, and neither should
- * ever be one `<` away from mattering.
- */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
