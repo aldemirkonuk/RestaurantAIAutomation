@@ -15,6 +15,36 @@ updated: 2026-09-01
 links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
 ---
 
+> **[SUPERSEDED IN PART — 2026-09-21] The verdict ledger described below no longer exists.**
+> The founder declined to build it. His condition was *"if it's bulletproof … then build"*, and a
+> research pass found it is not: the ledger stated a conservation invariant in three places
+> (`receiving.service.ts:1147-1150`, the PGlite probe, and the manager-facing copy) and enforced it
+> in none — the over-take trigger's first statement returned early for every fresh row
+> (`20260919170000_…:188`), so appending "accepted 12" then "damaged 2" on a 12-bottle order left 14
+> counted against 12, permanently, in an append-only record. The one figure that would have shown it,
+> "not counted", was clamped by `Math.max(ordered, counted) - counted` (`receiving.service.ts:1164`)
+> and read 0 in exactly that case — identical to a perfect delivery. Fifteen tests, none exercising a
+> violation.
+>
+> Stripped in `8ea44f527` on `r5/receiving`: the migration, `receiving-verdict-ledger.{ts,spec}`,
+> `receiving-line-verdicts.spec.ts`, `receiving-verdicts-route.spec.ts`, `RcVerdictLedger.{tsx,test}`,
+> both `orders/:id/verdicts` routes and every reference. **The desk rebuild survives** — only
+> `totalAtRiskByCurrency` and one `sheet.css` rule were ever ledger-independent, and both are intact.
+> Recovery: `refs/snapshots/receiving-preStrip/20260921`, full history on
+> `origin/wip/2026-09-19/receiving`.
+>
+> **Every mention of the ledger, the verdict routes, or `receiving_line_verdicts` below is a dated
+> record of what was true before that commit, not a description of the tree.** In particular:
+> **OD-126 and OD-127 are RESOLVED**, not open — 126 because the table it asked about is gone, 127
+> because its cascade-vs-trigger conflict went with the migration (which also unblocks the go-live
+> demo-house cleanup, ADR 0131). **OD-125 remains open but is narrowed**: what survives is whether
+> ADR 0104's D13 binds `/receiving` to the `deliveries` domain and whether the queue is finished as
+> B+ — no longer irreversible, since no append-only table is keyed to the answer.
+>
+> If the ledger is ever rebuilt, the unanswered product question returns with it: what should happen
+> when an append would overshoot the ordered quantity — refuse it, warn, or force `beyond_order`?
+
+
 # /receiving — Receiving home (role-split)
 
 > **Part of** [[08-softwares/receiving|Receiving]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
