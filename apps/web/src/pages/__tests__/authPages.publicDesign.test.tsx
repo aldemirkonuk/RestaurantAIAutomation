@@ -421,7 +421,11 @@ export function isColourClass(token: string): boolean {
  * blind to class/style — that is claim 2's job, above.
  */
 function fieldSignature(root: Element): string[] {
-  return Array.from(root.querySelectorAll('input, select, textarea, button, label, a[href]')).map((el) => {
+  // The endpaper's own controls (the front-matter turn, /login only) are the
+  // book's chrome, not the form's: they exist only on the house path by design.
+  return Array.from(root.querySelectorAll('input, select, textarea, button, label, a[href]'))
+    .filter((el) => !el.closest('[data-endpaper-chrome]'))
+    .map((el) => {
     const tag = el.tagName.toLowerCase()
     // A field's label and a link's destination are part of "same fields and
     // flow" too (PR #397's audit plan): the label's words, and where a link goes.
@@ -578,6 +582,36 @@ describe('Google on the first page — the house path only', () => {
     setSwitch(false)
     await STATES.find((st) => st.name === 'login-email')!.reach()
     expect(googleHost()).toHaveAttribute('aria-hidden', 'true')
+  })
+})
+
+/* ── 3c. The front matter — /login's endpaper only ───────────────────────── */
+
+/*
+ * The founder's Easter egg (2026-09-19): the endpaper on /login turns back to
+ * the front matter. It belongs to /login's house path alone — not /register,
+ * and not today's page.
+ */
+describe('the front matter — /login on the house path only', () => {
+  const TURN = 'Turn back to the front of the book'
+  const reachOf = (name: string) => STATES.find((st) => st.name === name)!.reach
+
+  it('ON /login offers the turn', async () => {
+    setSwitch(true)
+    await reachOf('login-email')()
+    expect(screen.getByRole('button', { name: TURN })).toBeInTheDocument()
+  })
+
+  it('ON /register does not', async () => {
+    setSwitch(true)
+    await reachOf('register-selector')()
+    expect(screen.queryByRole('button', { name: TURN })).toBeNull()
+  })
+
+  it('OFF /login does not', async () => {
+    setSwitch(false)
+    await reachOf('login-email')()
+    expect(screen.queryByRole('button', { name: TURN })).toBeNull()
   })
 })
 
