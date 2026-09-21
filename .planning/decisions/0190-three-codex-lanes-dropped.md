@@ -500,8 +500,14 @@ answer):**
   0183 itself is contended air. A direct sweep of every visible ref
   (`git for-each-ref refs/remotes/origin refs/heads`, filtered to
   `.planning/decisions/01[7-9][0-9]-*.md`) found the claimed range stops at **0182**
-  (`feat/jev-prompt-gate`) with 0178–0181 held by `docs/endpoint-universe-plan` and nothing
-  at all between 0183 and 0199 on any ref — so **0190** was taken: a gap of 7 past the
+  (`feat/jev-prompt-gate`) with 0178–0181 held by `docs/endpoint-universe-plan`. **That
+  sweep misread 0183–0199 and is corrected here by the round-6 ruling pass, which
+  re-ran it across every `refs/heads` and `refs/remotes` ref:** **0185** is held by
+  `feat/security-headers` and `origin/pr-418`
+  (`0185-mudavym-com-sends-its-security-headers.md`). 0190 is the only file in that
+  range on any other ref and it is this one, so the number taken is still free and the
+  guard still exits 0 — the misreading changed the reasoning, not the outcome. So
+  **0190** was taken: a gap of 7 past the
   measured next-free, comfortably clear of the contended 0178–0182 cluster, still zero
   collision risk against anything currently visible. `git mv
   0168-three-codex-lanes-dropped.md 0190-three-codex-lanes-dropped.md` (history-preserving
@@ -526,4 +532,5 @@ answer):**
 | 2026-09-19 | Opus, fan-out verdicts (`r4-drops.json`) | DROP/REJECT independently re-derived for B, D and H against each worktree and its audit artifacts; 6 corrections specified for lane D's own draft |
 | 2026-09-19 | Claude (Sonnet 5), lane "drops" | Created this consolidated record; applied lane D's 6 corrections; independently re-verified snapshot refs, the reserve-branch state, and one load-bearing code citation per lane |
 | 2026-09-21 | Claude (Sonnet 5), lane "drops", round 5 | Closed round 4's 5 must-fix text items: named the two residual on-`main` defects under Consequences instead of a false "listed elsewhere/retired" claim; folded the spot-count voice fork into correction 6 as ADR 0143-governed (fork counts 3→4 answered, 5→4 open); fixed `bits.tsx:9`→`9-10` (×3), `D-confirm.md:6`→`4`, named lane B's two root causes, and the exact 11-of-13 byte-identical file split with lane E; marked every snapshot/lane-sync ref local-only in the Decision table, each lane's Snapshot ref line, and Evidence trail, with the `git ls-remote` proof; unquoted "Codex work only after audit" as `MEMORY.md`'s paraphrase, not the founder's words. Found and correctly declined to fix (no authority over the colliding branch): the ADR-0168 number collision against `origin/wip/2026-09-19/others/wt-fin-D`. |
+| 2026-09-21 | Claude (Opus 5), lane "drops", round 6 ruling | Independently reproduced `check_adr_numbers_unique.py` exit 0 at `40e7cca29` (0190, 1052 refs) and re-swept every `refs/heads`/`refs/remotes` ref for `.planning/decisions/01[7-9][0-9]-*.md`. The rename is sound and 0190 is free, but round 6's own sweep note was wrong about 0183–0199: **0185** is held by `feat/security-headers`/`origin/pr-418`. Corrected in place above rather than left standing (CLAUDE.md §5b). Ruled ready. |
 | 2026-09-21 | Claude (Sonnet 5), lane "drops", round 6 | Closed round 5's 1 must-fix item: renumbered this file 0168→0190 (`git mv`, H1, this row) rather than touching the colliding branch, which remains outside this lane's authority exactly as round 5 found; number chosen as a deliberate gap past the freshly re-measured next-free (0183), not the tightest free number, per this round's contested-numbers rule. `check_adr_numbers_unique.py` exit 0 after, quoted above. |
