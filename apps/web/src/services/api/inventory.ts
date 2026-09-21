@@ -52,7 +52,8 @@ interface RawInventoryRow {
   retail_price_avg?: number | null;
   markup_ratio?: number | null;
   menu_price_glass?: number | null;
-  menu_price_bottle?: number | null;
+  /** The house bottle price (ADR 0193: one column, menu_price_current). */
+  menu_price_current?: number | null;
 }
 
 /**
@@ -88,7 +89,7 @@ export function normalizeInventoryItem(
     updatedAt: item.updatedAt ?? item.updated_at,
     bottleSizeMl: item.bottleSizeMl ?? item.bottle_size_ml ?? undefined,
     menuPriceGlass: item.menuPriceGlass ?? item.menu_price_glass ?? undefined,
-    menuPriceBottle: item.menuPriceBottle ?? item.menu_price_bottle ?? undefined,
+    menuPriceBottle: item.menuPriceBottle ?? item.menu_price_current ?? undefined,
     retailPriceAvg: item.retailPriceAvg ?? item.retail_price_avg ?? undefined,
     markupRatio: item.markupRatio ?? item.markup_ratio ?? undefined,
     lastCountedAt: item.lastCountedAt ?? item.last_counted_at ?? null,

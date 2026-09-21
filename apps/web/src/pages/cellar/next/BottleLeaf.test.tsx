@@ -116,7 +116,8 @@ function cellarRow(over: Partial<CellarRow> = {}): CellarRow {
   };
 }
 
-// Cellar lane, 2026-09-19 (migration 20260921112300). The founder: "we're
+// Cellar lane, 2026-09-19 (the house price is menu_price_current since ADR
+// 0193, 2026-09-21). The founder: "we're
 // going to add a per house bottle price ... our library price will be just
 // the average price." Two changes, one section: a new house-typed fact
 // (`menuPriceBottle`, mirroring the existing `menuPriceGlass`), and the

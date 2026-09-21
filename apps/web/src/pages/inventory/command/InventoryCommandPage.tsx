@@ -77,11 +77,15 @@ import {
   type RowFlag,
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
+import { HousePriceCell, type AdviceLoad } from "./HousePriceCell";
+import { getPriceAdvice } from "../../../services/api/pricing";
 import { ReceivingWorkspace } from "./ReceivingWorkspace";
 import { CellarMapView } from "./CellarMapView";
 
+// "Your price" (ADR 0193) sits between Runway and Market: the house's own
+// bottle / glass price, editable, beside the market figure it is not.
 const GRID =
-  "34px minmax(215px,1.5fr) 80px 128px 195px 90px 78px 84px 92px 106px 32px";
+  "34px minmax(215px,1.5fr) 80px 128px 195px 90px 78px 150px 84px 92px 106px 32px";
 
 const SORTS = [
   { value: "runway", label: "Runway, shortest first" },
@@ -104,7 +108,7 @@ const SORTABLE_COL: Record<number, SortKey> = {
   0: "name", // Wine
   4: "velocity",
   5: "runway",
-  7: "value",
+  8: "value",
 };
 
 const FLAG_DEFS: Array<{ key: RowFlag; label: string; dot: string }> = [
@@ -144,7 +148,38 @@ export function InventoryCommandPage() {
     locationsUnavailable,
     mappingsUnavailable,
   } = useStorageLocations();
-  const { availableRestaurants, refreshBranches } = useAuth();
+  const { availableRestaurants, refreshBranches, activeRole, user } = useAuth();
+  // ADR 0193: a wine's price is the manager's to change. The page offers the
+  // controls to owners and managers only; the gateway refuses anyone else
+  // regardless of what this page shows.
+  const canEditPrice =
+    ((activeRole ?? user?.role ?? null) as string | null) === "owner" ||
+    ((activeRole ?? user?.role ?? null) as string | null) === "manager";
+
+  // Per-wine advice toward the house's target margin (ADR 0193). A failed
+  // read is shown as "advice unavailable" on each row, never as no advice.
+  const adviceQuery = useQuery({
+    queryKey: ["pricing-advice", getActiveRestaurantId()],
+    queryFn: getPriceAdvice,
+    staleTime: 30_000,
+    retry: 1,
+  });
+  const refetchAdvice = adviceQuery.refetch;
+  const adviceLoad: AdviceLoad = useMemo(() => {
+    if (adviceQuery.isError)
+      return {
+        status: "error",
+        message:
+          (adviceQuery.error as Error | null)?.message ??
+          "the price advice could not be read",
+      };
+    if (!adviceQuery.data) return { status: "loading" };
+    return {
+      status: "ready",
+      byId: new Map(adviceQuery.data.wines.map((w) => [w.inventoryId, w])),
+      targetSet: adviceQuery.data.target.set,
+    };
+  }, [adviceQuery.isError, adviceQuery.error, adviceQuery.data]);
   const multiLocation = availableRestaurants.length > 1;
   const createInventoryItem = useCreateInventoryItem();
   const navigate = useNavigate();
@@ -461,6 +496,9 @@ export function InventoryCommandPage() {
         },
       },
       { header: "WAC", value: (i) => i.wac ?? i.price ?? "" },
+      // The house's own prices (ADR 0193), beside -- never instead of -- Market.
+      { header: "Your bottle price", value: (i) => i.menuPriceBottle ?? "" },
+      { header: "Your glass price", value: (i) => i.menuPriceGlass ?? "" },
       { header: "Market", value: (i) => i.marketPrice ?? "" },
       {
         header: "Value",
@@ -1120,7 +1158,7 @@ export function InventoryCommandPage() {
           )}
           <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <div className="min-w-[1180px]">
+              <div className="min-w-[1330px]">
                 <div
                   className="grid items-center gap-x-3 px-5 h-10 bg-gray-50 border-b border-gray-100"
                   style={{ gridTemplateColumns: GRID }}
@@ -1141,13 +1179,14 @@ export function InventoryCommandPage() {
                     "Stock, live / shadow",
                     "Velocity",
                     "Runway",
+                    "Your price",
                     "Market",
                     "Value",
                     "Status",
                     "",
                   ].map((h, i) => {
                     const sortKey = SORTABLE_COL[i];
-                    const rightAlign = i === 6 || i === 7;
+                    const rightAlign = i === 6 || i === 7 || i === 8;
                     if (sortKey) {
                       const activeSort = sort === sortKey;
                       return (
@@ -1320,6 +1359,18 @@ export function InventoryCommandPage() {
                             ? "n/a"
                             : `${Math.max(0, Math.round(run))}d`}
                         </div>
+                        <HousePriceCell
+                          inventoryId={item.inventoryId!}
+                          wineName={item.name}
+                          bottle={item.menuPriceBottle ?? null}
+                          glass={item.menuPriceGlass ?? null}
+                          advice={adviceLoad}
+                          canEdit={canEditPrice}
+                          onChanged={() => {
+                            void refetchInventory();
+                            void refetchAdvice();
+                          }}
+                        />
                         <div
                           className={cn(
                             "text-right font-mono text-xs font-bold",

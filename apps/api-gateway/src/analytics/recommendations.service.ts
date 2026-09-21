@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import * as crypto from "crypto";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
@@ -17,6 +17,11 @@ import {
   parseSuppressionKey,
   suppressionKeys,
 } from "./insights/suppression";
+import {
+  MarginAdviceService,
+  type HouseAdvice,
+} from "../pricing/margin-advice.service";
+import type { PriceAdvice } from "../pricing/margin-to-target";
 
 export interface Recommendation {
   /** The observed number, restated ("Tuesday sales 12% below average Tuesdays"). */
@@ -59,6 +64,21 @@ export interface Recommendation {
   feedback?: "helpful" | "not_helpful" | null;
   assignedTo?: string | null;
   assignedName?: string | null;
+  /**
+   * The per-wine numbers behind a price-advice entry (ADR 0193), so the
+   * sentence is auditable and a page can offer the one-tap accept. Present
+   * only on `margin_to_target`.
+   */
+  priceAdvice?: Array<{
+    inventoryId: string;
+    wineName: string | null;
+    kind: PriceAdvice["kind"];
+    state: PriceAdvice["state"];
+    price: number | null;
+    advisedPrice: number | null;
+    currentMarginPct: number | null;
+    targetPct: number | null;
+  }>;
 }
 
 /**
@@ -82,6 +102,12 @@ export class RecommendationsService {
     private readonly goalsService: GoalsService,
     private readonly actions: RecommendationActionsService,
     private readonly dbService: DatabaseService,
+    // ADR 0193. Optional only so the existing unit specs can construct this
+    // service without it; Nest always injects it (AnalyticsModule imports
+    // PricingModule). When it is absent the response says price advice was
+    // not computed (`priceAdviceReadable: false`) rather than going quiet.
+    @Optional()
+    private readonly marginAdvice?: MarginAdviceService,
   ) {}
 
   async getRecommendations(
@@ -94,6 +120,8 @@ export class RecommendationsService {
     stateCounts: Record<"active" | "snoozed" | "dismissed" | "done", number>;
     suppressed: number;
     suppressionsReadable: boolean;
+    priceAdviceReadable: boolean;
+    priceAdviceReason: string | null;
   }> {
     const [
       financial,
@@ -104,6 +132,7 @@ export class RecommendationsService {
       cashflow,
       insightsRes,
       goals,
+      priceAdviceRes,
     ] = await Promise.allSettled([
       this.analyticsService.getFinancialSummary(restaurantId),
       this.analyticsService.getRiskProfile(restaurantId),
@@ -113,6 +142,9 @@ export class RecommendationsService {
       this.advanced.getCashflow(restaurantId),
       this.insightGenerator.generate(restaurantId, { maxPerCategory: 4 }),
       this.goalsService.listGoals(restaurantId, "active"),
+      this.marginAdvice
+        ? this.marginAdvice.adviseHouse(restaurantId)
+        : Promise.reject(new Error("price advice is not wired into this build")),
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;
@@ -126,7 +158,15 @@ export class RecommendationsService {
       cashflow: ok(cashflow),
       insights: ok(insightsRes)?.insights ?? [],
       goals: ok(goals) ?? [],
+      priceAdvice: ok(priceAdviceRes) as HouseAdvice | null,
     };
+    const priceAdviceReason =
+      priceAdviceRes.status === "rejected"
+        ? String(
+            (priceAdviceRes.reason as { message?: string } | undefined)?.message ??
+              priceAdviceRes.reason,
+          )
+        : null;
 
     const recs: Recommendation[] = [];
     let rulesEvaluated = 0;
@@ -247,6 +287,91 @@ export class RecommendationsService {
       urgency: "this_week",
       score: 2,
     }));
+
+    // ---- Price toward the house's target margin (ADR 0193) ----------------
+    // THE FOUNDER, 2026-09-21: "... advise the manager or owner to increase
+    // decrease the prices so that the profit margin is where it's needed. We
+    // don't want market average because that will be already shown in another
+    // column." The numbers come from MarginAdviceService: price = cost / (1 -
+    // target), the house's own cost and target, never the market average, and
+    // nothing changes until a manager accepts a line on /inventory.
+    const pa = ctx.priceAdvice;
+    const pricedWines =
+      pa?.wines.filter(
+        (w) => (w.bottle?.price ?? null) !== null || (w.glass?.price ?? null) !== null,
+      ) ?? [];
+    rule(
+      "margin_target_unset",
+      !!pa && !pa.target.set && pricedWines.length > 0,
+      () => ({
+        observation: `No target margin is set, so none of this house's ${pricedWines.length} priced wine${pricedWines.length === 1 ? "" : "s"} can be judged against one.`,
+        recommendation:
+          "Set the margin you need on a bottle and on a glass, and how close is close enough (Settings, Target margin). Each wine then gets an exact raise-to or lower-to price, applied only when you accept it.",
+        rationale:
+          "Advice toward a margin nobody chose would be a default dressed as a decision. The target is the house's own number, so until it is set there is no advice.",
+        category: "pricing",
+        urgency: "this_month",
+        score: 1.6,
+      }),
+    );
+
+    const adviceLines = (pa?.wines ?? []).flatMap((w) =>
+      [w.bottle, w.glass]
+        .filter(
+          (a): a is PriceAdvice =>
+            !!a && (a.state === "raise" || a.state === "lower"),
+        )
+        .map((a) => ({ w, a })),
+    );
+    // Furthest from target first: that is the line worth the manager's tap.
+    adviceLines.sort(
+      (x, y) =>
+        Math.abs((y.a.currentMarginPct ?? 0) - (y.a.targetPct ?? 0)) -
+        Math.abs((x.a.currentMarginPct ?? 0) - (x.a.targetPct ?? 0)),
+    );
+    const blind = (pa?.counts.no_cost ?? 0) + (pa?.counts.no_price ?? 0);
+    rule("margin_to_target", !!pa && pa.target.set && adviceLines.length > 0, () => {
+      const raises = adviceLines.filter((l) => l.a.state === "raise").length;
+      const lowers = adviceLines.length - raises;
+      return {
+        observation: `${adviceLines.length} ${adviceLines.length === 1 ? "price sits" : "prices sit"} outside your target margin: ${raises} below it, ${lowers} above it.${blind > 0 ? ` ${blind} more cannot be judged (no recorded cost or no price).` : ""}`,
+        recommendation:
+          adviceLines
+            .slice(0, 3)
+            .map((l) => `${l.w.wineName ?? "A wine"}: ${l.a.sentence}`)
+            .join(" ") +
+          " Accept each on Inventory, under Your price. Nothing changes until you do.",
+        rationale:
+          "Price = cost / (1 - target) is the price that exactly earns the margin you set, from this house's recorded cost and its own target, never the market average.",
+        category: "pricing",
+        urgency: "this_week",
+        score: 2.4,
+        priceAdvice: adviceLines.map(({ w, a }) => ({
+          inventoryId: w.inventoryId,
+          wineName: w.wineName,
+          kind: a.kind,
+          state: a.state,
+          price: a.price,
+          advisedPrice: a.advisedPrice,
+          currentMarginPct: a.currentMarginPct,
+          targetPct: a.targetPct,
+        })),
+      };
+    });
+    rule(
+      "margin_advice_blind",
+      !!pa && pa.target.set && (pa.counts.no_cost ?? 0) > 0,
+      () => ({
+        observation: `${pa!.counts.no_cost} price${pa!.counts.no_cost === 1 ? "" : "s"} cannot be judged against your target margin: this house has no recorded cost for ${pa!.counts.no_cost === 1 ? "that wine" : "those wines"}.`,
+        recommendation:
+          "Receive the next delivery against its invoice (or record what you paid) so each wine carries a cost. Until then those wines get no price advice, and no margin is claimed for them.",
+        rationale:
+          "A margin needs a cost. An unknown cost is reported as unknown, never as a healthy margin (ADR 0051).",
+        category: "pricing",
+        urgency: "this_month",
+        score: 1.2,
+      }),
+    );
 
     // ---- Risk rules -------------------------------------------------------
     const hhi = ctx.risk?.vendorConcentration?.hhi;
@@ -507,6 +632,11 @@ export class RecommendationsService {
       // it as clean (ADR 0020).
       suppressed: suppressedCount,
       suppressionsReadable: dispositions.readable,
+      // ADR 0193: whether the price advice behind the pricing entries could be
+      // computed at all. `false` means those entries are MISSING, not that
+      // every price is on target, and the reason says why.
+      priceAdviceReadable: priceAdviceRes.status === "fulfilled",
+      priceAdviceReason,
     };
   }
 

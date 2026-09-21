@@ -196,12 +196,24 @@ describe("InventoryService", () => {
     });
   });
 
-  // Cellar lane, 2026-09-19 — migration 20260921112300. The founder: "we're
-  // going to add a per house bottle price." menu_price_bottle mirrors its
-  // sibling menu_price_glass exactly: read via mapInventoryItem, written on
-  // create (both the single and bulk paths) and on update.
-  describe("menu_price_bottle — this house's own bottle price (mirrors menu_price_glass)", () => {
-    it("maps row.menu_price_bottle to menuPriceBottle via mapInventoryItem", () => {
+  // ADR 0193 (founder, 2026-09-21: "it should be changed whenever the manager
+  // wants"). The house's own bottle price IS `menu_price_current` -- the
+  // column every margin, valuation and POS path already reads. The cellar
+  // lane's second column (`menu_price_bottle`, migration 20260921112300) was
+  // removed before merge; these tests pin that there is one bottle price,
+  // that it reaches the wire as `menuPriceBottle`, and that an edit goes
+  // through `set_house_menu_price` (history row + actor), never a plain UPDATE.
+  describe("the house bottle price is menu_price_current (ADR 0193)", () => {
+    const priceRpc = (result: Record<string, unknown> | null, error: unknown = null) =>
+      mockRpc.mockImplementation(async (fn: string) =>
+        fn === "set_house_menu_price"
+          ? { data: result, error }
+          : { data: null, error: null },
+      );
+    const priceCalls = () =>
+      mockRpc.mock.calls.filter(([fn]: [string]) => fn === "set_house_menu_price");
+
+    it("maps row.menu_price_current to menuPriceBottle via mapInventoryItem", () => {
       const row = {
         id: "inv-5",
         wine_name: "Boğazkere 2021",
@@ -211,14 +223,27 @@ describe("InventoryService", () => {
         pour_size_ml: null,
         glasses_per_bottle_override: null,
         menu_price_glass: 15,
-        menu_price_bottle: 62,
+        menu_price_current: 62,
       };
       const result = (service as any).mapInventoryItem(row);
       expect(result.menuPriceGlass).toBe(15);
       expect(result.menuPriceBottle).toBe(62);
     });
 
-    it("never returns menuPriceBottle as null-coerced-to-a-number — undefined when the column is null, same as menuPriceGlass", () => {
+    it("reads no second bottle column: a row carrying only menu_price_bottle has no house bottle price", () => {
+      const row = {
+        id: "inv-5b",
+        wine_name: "Boğazkere 2021",
+        master_wine_library: null,
+        restaurants: null,
+        menu_price_current: null,
+        menu_price_bottle: 99,
+      };
+      const result = (service as any).mapInventoryItem(row);
+      expect(result.menuPriceBottle).toBeUndefined();
+    });
+
+    it("undefined, not a coerced number, when the column is null -- and the key is mapped", () => {
       const row = {
         id: "inv-6",
         wine_name: "Boğazkere 2021",
@@ -228,34 +253,25 @@ describe("InventoryService", () => {
         pour_size_ml: null,
         glasses_per_bottle_override: null,
         menu_price_glass: null,
-        menu_price_bottle: null,
+        menu_price_current: null,
       };
       const result = (service as any).mapInventoryItem(row);
       expect(result.menuPriceGlass).toBeUndefined();
       expect(result.menuPriceBottle).toBeUndefined();
-      // `hasOwnProperty`, not just `toBeUndefined()`: a key that was never SET
-      // and a key explicitly mapped to `undefined` both read as `undefined` on
-      // access, so the assertion above alone would pass even with the mapping
-      // line deleted outright. This is the one that actually distinguishes
-      // "mapped, and happened to be null" from "never mapped at all".
+      // A key never SET and a key mapped to undefined both read undefined; this
+      // is the assertion that tells "mapped, and null" from "never mapped".
       expect(Object.prototype.hasOwnProperty.call(result, "menuPriceBottle")).toBe(true);
     });
 
-    it("includes menu_price_bottle in the INSERT payload sent to Supabase", async () => {
+    it("writes menuPriceBottle into menu_price_current on create -- never menu_price_bottle", async () => {
       mockSingle
-        .mockResolvedValueOnce({
-          data: { name: "Barolo Riserva" },
-          error: null,
-        })
-        .mockResolvedValueOnce({
-          data: null,
-          error: { code: "PGRST116", message: "not found" },
-        })
+        .mockResolvedValueOnce({ data: { name: "Barolo Riserva" }, error: null })
+        .mockResolvedValueOnce({ data: null, error: { code: "PGRST116", message: "not found" } })
         .mockResolvedValueOnce({
           data: {
             id: "inv-7",
             wine_name: "Barolo Riserva",
-            menu_price_bottle: 62,
+            menu_price_current: 62,
             master_wine_library: { name: "Barolo Riserva", bottle_size_ml: 750 },
             restaurants: { default_pour_ml: 150, measurement_unit: "oz" },
           },
@@ -272,17 +288,15 @@ describe("InventoryService", () => {
       } as any);
 
       const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
-      expect(insertCall).toMatchObject({ menu_price_bottle: 62 });
+      expect(insertCall).toMatchObject({ menu_price_current: 62 });
+      expect(insertCall).not.toHaveProperty("menu_price_bottle");
     });
 
-    it("omits menu_price_bottle from the INSERT payload when the caller never sent it — never a silent 0", async () => {
+    it("omits the bottle price from the INSERT when the caller never sent it -- never a silent 0", async () => {
       mockSingle
         .mockResolvedValueOnce({ data: { name: "Barolo Riserva" }, error: null })
         .mockResolvedValueOnce({ data: null, error: { code: "PGRST116", message: "not found" } })
-        .mockResolvedValueOnce({
-          data: { id: "inv-8", wine_name: "Barolo Riserva" },
-          error: null,
-        });
+        .mockResolvedValueOnce({ data: { id: "inv-8", wine_name: "Barolo Riserva" }, error: null });
 
       await service.createInventoryItem("rest-1", {
         wineId: "mw-4",
@@ -293,31 +307,89 @@ describe("InventoryService", () => {
       } as any);
 
       const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall).not.toHaveProperty("menu_price_current");
       expect(insertCall).not.toHaveProperty("menu_price_bottle");
     });
 
-    it("includes menu_price_bottle in the UPDATE payload sent to Supabase", async () => {
-      // updateInventoryItem checks ownership (maybeSingle) before any write
-      // (ADR 0141, second correction), then reads old values (single, for the
-      // event payload only), then updates, then re-fetches (single) for the
-      // response — four Supabase round trips in that exact order.
+    it("an edit goes through set_house_menu_price as 'manual' with the actor from the JWT, and no plain UPDATE touches a price", async () => {
+      priceRpc({ outcome: "changed", bottle_price: 70, glass_price: 15, previous_bottle: 62, previous_glass: 15 });
+      // ownership (maybeSingle), old values (single), reload (single).
       mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
       mockSingle
         .mockResolvedValueOnce({
           data: { stock_live: 3, shadow_stock: 0, threshold_min: 6, master_wine_id: "mw-5" },
           error: null,
         })
-        .mockResolvedValueOnce({
-          data: { id: "inv-9", menu_price_bottle: 70 },
-          error: null,
-        });
+        .mockResolvedValueOnce({ data: { id: "inv-9", menu_price_current: 70 }, error: null });
 
-      await service.updateInventoryItem("rest-1", "inv-9", {
-        menuPriceBottle: 70,
-      } as any);
+      const result: any = await service.updateInventoryItem(
+        "rest-1",
+        "inv-9",
+        { menuPriceBottle: 70, thresholdMin: 5 } as any,
+        "user-7",
+      );
 
-      const updateCall = mockSupabaseChain.update.mock.calls[0][0];
-      expect(updateCall).toMatchObject({ menu_price_bottle: 70 });
+      expect(priceCalls()).toHaveLength(1);
+      expect(priceCalls()[0][1]).toMatchObject({
+        p_restaurant_id: "rest-1",
+        p_inventory_id: "inv-9",
+        p_set_bottle: true,
+        p_bottle_price: 70,
+        p_set_glass: false,
+        p_change_source: "manual",
+        p_changed_by: "user-7",
+      });
+      for (const [patch] of mockSupabaseChain.update.mock.calls) {
+        expect(patch).not.toHaveProperty("menu_price_current");
+        expect(patch).not.toHaveProperty("menu_price_glass");
+        expect(patch).not.toHaveProperty("menu_price_bottle");
+      }
+      expect(result.menuPriceBottle).toBe(70);
+      expect(result.priceChange.outcome).toBe("changed");
+    });
+
+    it("a refused price change (the writer's 22023: nobody named) is a 400 and NOTHING else in the PATCH is written", async () => {
+      priceRpc(null, { code: "22023", message: "a price change names the person who made it" });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
+
+      await expect(
+        service.updateInventoryItem("rest-1", "inv-9", { menuPriceGlass: 12, thresholdMin: 5 } as any, null),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(mockSupabaseChain.update).not.toHaveBeenCalled();
+    });
+
+    it("the writer's P0002 (not this house's wine) is a 404", async () => {
+      priceRpc(null, { code: "P0002", message: "no inventory item" });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
+
+      await expect(
+        service.updateInventoryItem("rest-1", "inv-9", { menuPriceBottle: 70 } as any, "user-7"),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    it("an answer with no outcome is an error, never a quiet success", async () => {
+      priceRpc({});
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
+
+      await expect(
+        service.updateInventoryItem("rest-1", "inv-9", { menuPriceBottle: 70 } as any, "user-7"),
+      ).rejects.toMatchObject({ status: 500 });
+      expect(mockSupabaseChain.update).not.toHaveBeenCalled();
+    });
+
+    it("null clears a price through the same writer (the manager may take a price off)", async () => {
+      priceRpc({ outcome: "changed", bottle_price: 62, glass_price: null });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-9" }, error: null });
+      mockSingle
+        .mockResolvedValueOnce({ data: { stock_live: 3, shadow_stock: 0, threshold_min: 6 }, error: null })
+        .mockResolvedValueOnce({ data: { id: "inv-9", menu_price_current: 62, menu_price_glass: null }, error: null });
+
+      await service.updateInventoryItem("rest-1", "inv-9", { menuPriceGlass: null } as any, "user-7");
+      expect(priceCalls()[0][1]).toMatchObject({
+        p_set_glass: true,
+        p_glass_price: null,
+        p_set_bottle: false,
+      });
     });
   });
 

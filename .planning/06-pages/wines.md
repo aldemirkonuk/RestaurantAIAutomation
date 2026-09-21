@@ -1334,6 +1334,10 @@ draws (index-plus-record, side by side); that is Owed #11's still-open
   just the average price" — never a fallback for the house figure. This is
   the MANUAL field only: what "dynamic" should mean is the founder's own
   open question, not decided here — see the Seventh pass's own report.]**
+  **[SUPERSEDED 2026-09-21 — ADR 0193, Eighth pass below. The founder answered
+  "dynamic" and picked "Advise to target margin". There is ONE bottle-price
+  column, `menu_price_current` (the one every margin already read);
+  `menu_price_bottle` and its migration were removed before merge.]**
 - **The register buttons' visual form** (a table of rows vs. a card grid) —
   `Registers.tsx` already puts the registers and "in the building tonight" on
   the SAME parent page with no click (graft #1's substance), as cards rather
@@ -1527,6 +1531,10 @@ house bottle price. That's a huge thing ... gotta be dynamic."*
   on, per CLAUDE.md §5b: the record says what is actually true of the tree
   now, not a round-trip through a state that was never separately committed.
 - **`restaurant_inventory.menu_price_bottle`, added (founder-requested).**
+  **[REMOVED 2026-09-21, before merge — ADR 0193: a second column for the
+  meaning `menu_price_current` already carried. The migration file is deleted
+  and every reader repointed; the account below is the record of what the
+  seventh pass did, not of what ships.]**
   Migration `20260921112300_a_house_sets_its_own_bottle_price.sql`: additive,
   nullable `numeric(10,2)`, no default, no backfill, no author/timestamp
   columns — the exact shape `menu_price_glass` already has, mirrored rather
@@ -1723,7 +1731,8 @@ false-passing, and neither is about anything must_fix #1-#3 touched.]**
 - **The Space-peek and the register buttons' visual form** — unchanged from
   the Fifth pass; see the bracket on each one's own bullet above. Neither
   was in this pass's must_fix list or the founder's bottle-price answer.
-- **What "dynamic" means for the house's own bottle price is the founder's
+- **[ANSWERED 2026-09-21 — ADR 0193; built in the Eighth pass below.]**
+  **What "dynamic" means for the house's own bottle price is the founder's
   own open question, not decided here** (CLAUDE.md §0.1 — an undecided fork
   is not this lane's to default). His words name an intent ("gotta be
   dynamic") but not a mechanism. Returned as a founder question, with
@@ -1743,6 +1752,32 @@ false-passing, and neither is about anything must_fix #1-#3 touched.]**
   inside this lane's own worktree). The bracket text to add to its §110,
   verbatim, is given in this pass's own report for whichever session owns
   `wt-finish-train2` to paste in.
+
+### Eighth pass, 2026-09-21 — the price follows the menu and the manager; advice aims at the house's margin (ADR 0193)
+
+The founder, verbatim: *"Dynamic means two things 1. it could be changed every
+time a menu is updated and secondly it should be changed whenever the manager
+wants and also ... recommendations ... make sure that endpoint exists that we
+will ask or recommend or advise the manager or owner to increase decrease the
+prices so that the profit margin is where it's needed. We don't want market
+average because that will be already shown in another column"* — and he picked
+"Advise to target margin". Everything built is listed in
+[ADR 0193](../decisions/0193-a-house-price-follows-its-menu-and-its-manager-and-advice-aims-at-its-own-margin.md)
+§Decision; this page's share of it:
+
+- `BottleLeaf.tsx` "Bottle price (this house)" now reads `menu_price_current`
+  through the same `menuPriceBottle` wire field; its "set one in Inventory"
+  note is now true (`/inventory` → "Your price", owners and managers).
+- `/inventory` gains "Your price" (bottle · glass, edited in place) beside
+  "Market", with the advice under it ("Raise btl to $57.14", one tap).
+- Settings gains "Target margin" (bottle %, glass %, close-enough points; no
+  default).
+- `/menu` price corrections and added lines now write the house price
+  (`change_source = 'import'`); the menu-line PATCH is house-scoped.
+
+Forks F1-F7 (who may change a price, the band's units, menu dating, a priceless
+menu line, create-path attribution, the defaulted pour and bottle sizes under
+glass advice) are in the ADR for the founder to confirm.
 
 ## 2. Entry
 Sidebar item (`apps/web/src/components/layout/Sidebar.tsx:79`). PAGE_MAP records

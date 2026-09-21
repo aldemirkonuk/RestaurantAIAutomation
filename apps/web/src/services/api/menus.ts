@@ -32,6 +32,13 @@ export interface MenuImportReviewItem {
   bottlePrice: number | null
   matched: boolean
   needsReview: boolean
+  /**
+   * What this line did to the house's own bottle/glass price (ADR 0193:
+   * a menu update changes the house price). `failed` carries the reason in
+   * `priceSyncError`; the page says so rather than implying the price moved.
+   */
+  priceSync?: 'changed' | 'unchanged' | 'stale' | 'no_price' | 'not_linked' | 'failed'
+  priceSyncError?: string | null
 }
 
 export interface MenuImportResult {

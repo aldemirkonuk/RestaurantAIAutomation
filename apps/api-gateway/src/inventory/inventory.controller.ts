@@ -15,6 +15,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { InventoryService } from "./inventory.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { OrganizationsService } from "../organizations/organizations.service";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -31,7 +32,13 @@ import {
 @Controller("inventory")
 @UseGuards(JwtAuthGuard)
 export class InventoryController {
-  constructor(private readonly inventoryService: InventoryService) {}
+  constructor(
+    private readonly inventoryService: InventoryService,
+    // ADR 0193: a wine's selling price is the manager's to change ("it should
+    // be changed whenever the manager wants", founder 2026-09-21). The role
+    // is resolved from the house's access rows, not from the token's claim.
+    private readonly organizations: OrganizationsService,
+  ) {}
 
   @Get(":restaurantId")
   @ApiOperation({ summary: "Get all inventory items for a restaurant" })
@@ -295,6 +302,22 @@ export class InventoryController {
     @Body() dto: UpdateInventoryItemDto,
     @CurrentUser() user?: { userId?: string },
   ) {
+    // Only an owner or a manager may change the house's own bottle or glass
+    // price. Checked before anything in this PATCH is written, so a refused
+    // price change does not half-apply the other fields beside it.
+    if (dto.menuPriceBottle !== undefined || dto.menuPriceGlass !== undefined) {
+      if (!user?.userId) {
+        throw new HttpException(
+          "A price change names the person who made it, and this session names nobody. Nothing was changed.",
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      await this.organizations.assertCanManageRestaurant(
+        user.userId,
+        restaurantId,
+        "change a wine's price",
+      );
+    }
     try {
       return await this.inventoryService.updateInventoryItem(
         restaurantId,

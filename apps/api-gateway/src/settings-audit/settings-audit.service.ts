@@ -73,7 +73,16 @@ export type SettingsRegister =
    * The founder, 2026-09-05 batch 59: *"Twice a year, and the house types its
    * carrying cost."*
    */
-  | "carrying-cost";
+  | "carrying-cost"
+  /**
+   * The margin this house needs on a bottle and on a glass, and its "close
+   * enough" band (ADR 0193). A fact about the HOUSE that decides whether any
+   * price advice may be printed at all -- the same reason the carrying cost
+   * has its own register. The founder, 2026-09-21: "... advise the manager or
+   * owner to increase decrease the prices so that the profit margin is where
+   * it's needed."
+   */
+  | "target-margin";
 
 /**
  * The action strings this service writes, and the ones it reads back.
@@ -101,6 +110,12 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * clause is gated on the answer.
    */
   "carrying_cost_changed",
+  /**
+   * The house stated the margin it needs (ADR 0193). Added 2026-09-21: until
+   * then nothing held a house's target, so no price advice could be computed
+   * against one.
+   */
+  "target_margin_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

@@ -16,6 +16,10 @@ import { NfEventRef } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
 import { mapStockCountResult } from "./stock-count-result";
+import {
+  setHouseMenuPrice,
+  type HousePriceResult,
+} from "../pricing/house-menu-price";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { classifyStock } from "../common/stock-status";
 import {
@@ -125,10 +129,12 @@ export class InventoryService {
       // "any edit at all" (which is what row.updated_at would give it).
       lastCountedAt: row.last_counted_at ?? null,
       menuPriceGlass: row.menu_price_glass ?? undefined,
-      // This house's own bottle price (migration 20260921112300) — never the
-      // wine library's reference price. Same undefined-not-null idiom as
-      // menuPriceGlass above.
-      menuPriceBottle: row.menu_price_bottle ?? undefined,
+      // This house's own bottle price -- never the wine library's reference
+      // price. ADR 0193: it IS `menu_price_current`, the column every margin,
+      // valuation and POS path already reads; the cellar lane's short-lived
+      // second column (`menu_price_bottle`) was removed before merge so there
+      // is one number. Same undefined-not-null idiom as menuPriceGlass above.
+      menuPriceBottle: row.menu_price_current ?? undefined,
       glassesPerBottleOverride: row.glasses_per_bottle_override ?? undefined,
       retailPriceAvg: retailPriceAvg ?? undefined,
       markupRatio: markupRatio ?? undefined,
@@ -968,10 +974,14 @@ export class InventoryService {
     };
     if (dto.saleType !== undefined) insertData.sale_type = dto.saleType;
     if (dto.pourSizeMl !== undefined) insertData.pour_size_ml = dto.pourSizeMl;
+    // The house's own prices (ADR 0193: bottle = menu_price_current). The
+    // price-history trigger (20260921113200) opens this wine's first
+    // menu_price_versions row from this insert; this create path names no
+    // actor, so the row says so in its reason.
     if (dto.menuPriceGlass !== undefined)
       insertData.menu_price_glass = dto.menuPriceGlass;
     if (dto.menuPriceBottle !== undefined)
-      insertData.menu_price_bottle = dto.menuPriceBottle;
+      insertData.menu_price_current = dto.menuPriceBottle;
     if (dto.bottleSizeMl !== undefined)
       insertData.bottle_size_ml = dto.bottleSizeMl;
     if (dto.glassesPerBottleOverride !== undefined)
@@ -1261,10 +1271,11 @@ export class InventoryService {
       if (line.saleType !== undefined) insertData.sale_type = line.saleType;
       if (line.pourSizeMl !== undefined)
         insertData.pour_size_ml = line.pourSizeMl;
+      // ADR 0193: bottle = menu_price_current; the trigger records the version.
       if (line.menuPriceGlass !== undefined)
         insertData.menu_price_glass = line.menuPriceGlass;
       if (line.menuPriceBottle !== undefined)
-        insertData.menu_price_bottle = line.menuPriceBottle;
+        insertData.menu_price_current = line.menuPriceBottle;
       if (line.storageLocationId !== undefined)
         insertData.storage_location_id = line.storageLocationId;
 
@@ -1437,6 +1448,16 @@ export class InventoryService {
       this.logger,
     );
 
+    // ADR 0193: the house's own prices go FIRST, and only through the one
+    // writer (see writeHousePrices); a refusal applies nothing else here.
+    const priceChange = await this.writeHousePrices(
+      client,
+      restaurantId,
+      itemId,
+      dto,
+      performedBy ?? null,
+    );
+
     // Fetch old values for the event payload only (informational — the actual
     // stock delta is computed inside set_stock_absolute against a locked
     // read, not against this value).
@@ -1462,10 +1483,8 @@ export class InventoryService {
     if (dto.isActive !== undefined) updateData.is_active = dto.isActive;
     if (dto.saleType !== undefined) updateData.sale_type = dto.saleType;
     if (dto.pourSizeMl !== undefined) updateData.pour_size_ml = dto.pourSizeMl;
-    if (dto.menuPriceGlass !== undefined)
-      updateData.menu_price_glass = dto.menuPriceGlass;
-    if (dto.menuPriceBottle !== undefined)
-      updateData.menu_price_bottle = dto.menuPriceBottle;
+    // menuPriceGlass / menuPriceBottle are NOT here: they went through
+    // set_house_menu_price above, so they carry a version row and an actor.
     if (dto.bottleSizeMl !== undefined)
       updateData.bottle_size_ml = dto.bottleSizeMl;
     if (dto.glassesPerBottleOverride !== undefined)
@@ -1619,7 +1638,43 @@ export class InventoryService {
     }
 
     const rollup = await this.fetchLotRollup(restaurantId);
-    return this.mapInventoryItem(data, rollup.get(itemId));
+    const mapped = this.mapInventoryItem(data, rollup.get(itemId));
+    // Said, not implied: "unchanged" and "stale" are different answers from
+    // "changed", and the page tells the manager which one happened.
+    return priceChange ? { ...mapped, priceChange } : mapped;
+  }
+
+  /**
+   * THE HOUSE'S OWN PRICES on an inventory PATCH (ADR 0193, founder
+   * 2026-09-21: "it should be changed whenever the manager wants").
+   *
+   * Written only through set_house_menu_price: house-scoped again in SQL,
+   * changed_by from the JWT (a change naming nobody is refused, 400), and the
+   * trigger closes the open menu_price_versions row and opens a 'manual' one.
+   * Called before any other write in the PATCH, so a refused price change does
+   * not half-apply the fields beside it. Who may call it is the controller's
+   * check (owner or manager), not this method's. Null when the PATCH names
+   * neither price.
+   */
+  private async writeHousePrices(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    itemId: string,
+    dto: UpdateInventoryItemDto,
+    performedBy: string | null,
+  ): Promise<HousePriceResult | null> {
+    if (dto.menuPriceBottle === undefined && dto.menuPriceGlass === undefined) {
+      return null;
+    }
+    return setHouseMenuPrice(client, {
+      restaurantId,
+      inventoryId: itemId,
+      ...(dto.menuPriceBottle !== undefined ? { bottle: dto.menuPriceBottle } : {}),
+      ...(dto.menuPriceGlass !== undefined ? { glass: dto.menuPriceGlass } : {}),
+      source: "manual",
+      changedBy: performedBy,
+      reason: "typed on /inventory",
+    });
   }
 
   /**

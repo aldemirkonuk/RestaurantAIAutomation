@@ -47,7 +47,7 @@ export interface InventoryItem {
   pourSizeMl?: number;
   pourSizeOz?: number;
   menuPriceGlass?: number;
-  /** This house's own bottle price (migration 20260921112300) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
+  /** This house's own bottle price — never the wine library's reference price. ADR 0193: stored in `restaurant_inventory.menu_price_current` (one bottle-price column); changed by a manager on /inventory or by a menu update. */
   menuPriceBottle?: number;
   glassesPerBottle?: number;
   glassesPerBottleOverride?: number;
@@ -114,9 +114,10 @@ export interface UpdateInventoryItemRequest {
   bottleSizeMl?: number;
   saleType?: SaleType;
   pourSizeMl?: number;
-  menuPriceGlass?: number;
-  /** This house's own bottle price (migration 20260921112300) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
-  menuPriceBottle?: number;
+  /** null clears it (owner/manager only; ADR 0193). */
+  menuPriceGlass?: number | null;
+  /** This house's own bottle price — never the wine library's reference price. ADR 0193: stored in `restaurant_inventory.menu_price_current` (one bottle-price column); changed by a manager on /inventory or by a menu update. null clears it (owner/manager only). */
+  menuPriceBottle?: number | null;
   glassesPerBottleOverride?: number;
 }
 
@@ -135,7 +136,7 @@ export interface CreateInventoryItemRequest {
   saleType?: SaleType;
   pourSizeMl?: number;
   menuPriceGlass?: number;
-  /** This house's own bottle price (migration 20260921112300) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
+  /** This house's own bottle price — never the wine library's reference price. ADR 0193: stored in `restaurant_inventory.menu_price_current` (one bottle-price column); changed by a manager on /inventory or by a menu update. */
   menuPriceBottle?: number;
   glassesPerBottleOverride?: number;
 }
@@ -174,7 +175,7 @@ export interface BulkInventoryLine {
   saleType?: SaleType;
   pourSizeMl?: number;
   menuPriceGlass?: number;
-  /** This house's own bottle price (migration 20260921112300) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
+  /** This house's own bottle price — never the wine library's reference price. ADR 0193: stored in `restaurant_inventory.menu_price_current` (one bottle-price column); changed by a manager on /inventory or by a menu update. */
   menuPriceBottle?: number;
 }
 

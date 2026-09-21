@@ -14,6 +14,10 @@ import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { WineExtractItem } from "./wine-extract-item.interface";
+import {
+  setHouseMenuPrice,
+  type HousePriceOutcome,
+} from "../pricing/house-menu-price";
 
 const FREE_TIER_MANUAL_LIMIT = 25;
 const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
@@ -32,7 +36,28 @@ interface InsertedMenuItem {
   id: string;
   wine_library_id: string | null;
   name: string;
+  // The menu's own prices and when this line was written: ADR 0193 carries
+  // them to the house's price, dated by the line ("the newest dated change
+  // wins").
+  by_glass_price?: number | string | null;
+  bottle_price?: number | string | null;
+  created_at?: string | null;
 }
+
+/**
+ * What happened to the house's own price when a menu line was written or
+ * corrected (ADR 0193). Said per line, because a menu import that silently
+ * dropped a price is the defect this build closes:
+ *   changed    the house price now matches the menu line
+ *   unchanged  it already did
+ *   stale      a newer price is in effect (a manager set one after this line
+ *              was dated); the menu line keeps its own price, the house's
+ *              later price stands
+ *   no_price   the line carries no price, so nothing was written
+ *   not_linked the line has no inventory row, so there is no house price
+ *   failed     the write was refused or failed; `priceSyncError` says why
+ */
+export type MenuPriceSync = HousePriceOutcome | "no_price" | "not_linked" | "failed";
 
 export interface MenuImportReviewItem {
   menuItemId: string;
@@ -47,6 +72,9 @@ export interface MenuImportReviewItem {
   bottlePrice: number | null;
   matched: boolean;
   needsReview: boolean;
+  /** ADR 0193: what this line did to the house's own price. */
+  priceSync?: MenuPriceSync;
+  priceSyncError?: string | null;
 }
 
 @Injectable()
@@ -236,16 +264,40 @@ export class MenusService {
   async reviewMenuItem(
     menuItemId: string,
     userId: string,
+    callerRestaurantId: string | null | undefined,
     dto: ReviewMenuItemDto,
-  ): Promise<{ menuItemId: string; fieldName: string; newValue: string }> {
+  ): Promise<{
+    menuItemId: string;
+    fieldName: string;
+    newValue: string;
+    priceSync?: MenuPriceSync;
+    priceSyncError?: string | null;
+  }> {
+    // TENANT CHECK (ADR 0193, fixed before this route could write a price).
+    // `PATCH /menus/items/:id` names no restaurant, so `JwtAuthGuard`'s
+    // path/body comparison has nothing to compare, and this lookup used to run
+    // on the id ALONE: a caller authenticated for any house could correct --
+    // and, from this build on, re-price -- another house's menu line by its
+    // id. The house now comes from the verified token and the row is read
+    // scoped to it; a foreign or unknown id is the same 404, so the route does
+    // not confirm another house's ids exist. No house on the token is refused.
+    if (!callerRestaurantId) {
+      throw new ForbiddenException(
+        "This session is not attached to a restaurant, so no menu line can be corrected.",
+      );
+    }
     const { data: menuItem, error } = await this.dbService.supabase
       .from("menu_items")
       .select("*")
       .eq("id", menuItemId)
+      .eq("restaurant_id", callerRestaurantId)
       .maybeSingle();
 
-    if (error || !menuItem) {
-      throw new NotFoundException("Menu item not found");
+    if (error) {
+      throw new Error(`Could not read the menu item: ${error.message}`);
+    }
+    if (!menuItem || menuItem.restaurant_id !== callerRestaurantId) {
+      throw new NotFoundException("No menu item of this restaurant");
     }
 
     const oldValue = (menuItem as Record<string, unknown>)[dto.fieldName];
@@ -267,7 +319,8 @@ export class MenusService {
         status: "flagged",
         review_notes: `Manager corrected ${dto.fieldName}`,
       })
-      .eq("id", menuItemId);
+      .eq("id", menuItemId)
+      .eq("restaurant_id", callerRestaurantId);
 
     if (updateErr) {
       throw new Error(`Failed to update menu_item: ${updateErr.message}`);
@@ -278,7 +331,40 @@ export class MenusService {
       await this.dbService.supabase
         .from("restaurant_inventory")
         .update({ wine_name: dto.newValue })
-        .eq("id", menuItem.inventory_item_id);
+        .eq("id", menuItem.inventory_item_id)
+        .eq("restaurant_id", callerRestaurantId);
+    }
+
+    // A PRICE correction is a menu update, and a menu update changes the
+    // house's own price (ADR 0193, founder 2026-09-21: "it could be changed
+    // every time a menu is updated"). Written through set_house_menu_price as
+    // change_source 'import', dated now, by the person on the token.
+    let priceSync: MenuPriceSync | undefined;
+    let priceSyncError: string | null = null;
+    if (isPrice) {
+      if (!menuItem.inventory_item_id) {
+        priceSync = "not_linked";
+      } else {
+        try {
+          const r = await setHouseMenuPrice(this.dbService.supabase, {
+            restaurantId: callerRestaurantId,
+            inventoryId: menuItem.inventory_item_id,
+            ...(dto.fieldName === "bottle_price"
+              ? { bottle: newValueTyped as number }
+              : { glass: newValueTyped as number }),
+            source: "import",
+            changedBy: userId,
+            reason: `menu line corrected (${dto.fieldName})`,
+          });
+          priceSync = r.outcome;
+        } catch (err) {
+          priceSync = "failed";
+          priceSyncError = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `menu_item ${menuItemId}: the house price was not updated: ${priceSyncError}`,
+          );
+        }
+      }
     }
 
     if (menuItem.submission_id) {
@@ -304,7 +390,12 @@ export class MenusService {
       }
     }
 
-    return { menuItemId, fieldName: dto.fieldName, newValue: dto.newValue };
+    return {
+      menuItemId,
+      fieldName: dto.fieldName,
+      newValue: dto.newValue,
+      ...(priceSync !== undefined ? { priceSync, priceSyncError } : {}),
+    };
   }
 
   /**
@@ -447,7 +538,7 @@ export class MenusService {
     const { data, error: menuItemsErr } = await this.dbService.supabase
       .from("menu_items")
       .insert(menuItemRows)
-      .select("id, wine_library_id, name");
+      .select("id, wine_library_id, name, by_glass_price, bottle_price, created_at");
 
     if (menuItemsErr) {
       this.logger.error(`Failed to insert menu_items: ${menuItemsErr.message}`);
@@ -461,9 +552,10 @@ export class MenusService {
 
     // Seed restaurant_inventory (awaited — previously fire-and-forget into a
     // table named "inventory" that does not exist in this schema).
-    const inventoryMap = await this.addToInventory(
+    const { inventoryMap, priceSync } = await this.addToInventory(
       insertedMenuItems,
       restaurantId,
+      userId,
     );
     await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
 
@@ -501,6 +593,12 @@ export class MenusService {
         bottlePrice: r.item.bottle_price ?? null,
         matched: r.matched,
         needsReview: !r.matched,
+        priceSync: menuItem
+          ? (priceSync.get(menuItem.id)?.outcome ?? "not_linked")
+          : "not_linked",
+        priceSyncError: menuItem
+          ? (priceSync.get(menuItem.id)?.error ?? null)
+          : null,
       };
     });
   }
@@ -596,14 +694,33 @@ export class MenusService {
    * Seeds restaurant_inventory for every menu item that resolved to a
    * master_wine_library row. Returns a menuItemId → restaurant_inventory.id
    * map so the caller can backfill menu_items.inventory_item_id.
+   *
+   * THE MENU'S PRICES REACH THE HOUSE (ADR 0193, founder 2026-09-21: "it
+   * could be changed every time a menu is updated"). This used to insert the
+   * row with no price at all -- the scanned line's by_glass_price /
+   * bottle_price sat on `item` and were dropped -- and an existing row was
+   * never touched by a re-scan. Now every linked line with a price writes it
+   * through set_house_menu_price as change_source 'import', DATED BY THE LINE
+   * (`created_at`), so the newest dated change wins: a line older than a
+   * price a manager typed is reported "stale" and does not overwrite it. A
+   * line that states no price leaves the house's price alone -- a scan that
+   * missed the glass column is not a decision to clear it.
    */
   private async addToInventory(
     menuItems: InsertedMenuItem[],
     restaurantId: string,
-  ): Promise<Map<string, string>> {
+    userId: string,
+  ): Promise<{
+    inventoryMap: Map<string, string>;
+    priceSync: Map<string, { outcome: MenuPriceSync; error: string | null }>;
+  }> {
     const result = new Map<string, string>();
+    const priceSync = new Map<
+      string,
+      { outcome: MenuPriceSync; error: string | null }
+    >();
     const validItems = menuItems.filter((i) => i.wine_library_id);
-    if (validItems.length === 0) return result;
+    if (validItems.length === 0) return { inventoryMap: result, priceSync };
 
     const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
 
@@ -615,33 +732,76 @@ export class MenusService {
         .eq("master_wine_id", item.wine_library_id)
         .maybeSingle();
 
-      if (existing?.id) {
-        result.set(item.id, existing.id);
-        continue;
-      }
+      let inventoryId: string | null = existing?.id ?? null;
+      if (!inventoryId) {
+        // Inserted WITHOUT a price on purpose: the price goes through
+        // set_house_menu_price below, so its version row says 'import' and
+        // names the person, instead of the trigger's "no person named".
+        const { data: created, error } = await this.dbService.supabase
+          .from("restaurant_inventory")
+          .insert({
+            restaurant_id: restaurantId,
+            master_wine_id: item.wine_library_id,
+            wine_name: item.name,
+            threshold_min: thresholdMin,
+            is_active: true,
+          })
+          .select("id")
+          .single();
 
-      const { data: created, error } = await this.dbService.supabase
-        .from("restaurant_inventory")
-        .insert({
-          restaurant_id: restaurantId,
-          master_wine_id: item.wine_library_id,
-          wine_name: item.name,
-          threshold_min: thresholdMin,
-          is_active: true,
-        })
-        .select("id")
-        .single();
-
-      if (error) {
-        this.logger.warn(
-          `inventory seeding failed for "${item.name}" (non-fatal): ${error.message}`,
-        );
-        continue;
+        if (error) {
+          this.logger.warn(
+            `inventory seeding failed for "${item.name}" (non-fatal): ${error.message}`,
+          );
+          continue;
+        }
+        inventoryId = created?.id ?? null;
       }
-      if (created) result.set(item.id, created.id);
+      if (!inventoryId) continue;
+      result.set(item.id, inventoryId);
+      priceSync.set(
+        item.id,
+        await this.carryMenuPrice(item, restaurantId, inventoryId, userId),
+      );
     }
 
-    return result;
+    return { inventoryMap: result, priceSync };
+  }
+
+  /** One linked menu line's prices onto the house's own (see addToInventory). */
+  private async carryMenuPrice(
+    item: InsertedMenuItem,
+    restaurantId: string,
+    inventoryId: string,
+    userId: string,
+  ): Promise<{ outcome: MenuPriceSync; error: string | null }> {
+    const price = (v: unknown): number | null => {
+      if (v === null || v === undefined || v === "") return null;
+      const n = typeof v === "number" ? v : Number(v);
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    };
+    const bottle = price(item.bottle_price);
+    const glass = price(item.by_glass_price);
+    if (bottle === null && glass === null) return { outcome: "no_price", error: null };
+    try {
+      const r = await setHouseMenuPrice(this.dbService.supabase, {
+        restaurantId,
+        inventoryId,
+        ...(bottle !== null ? { bottle } : {}),
+        ...(glass !== null ? { glass } : {}),
+        source: "import",
+        changedBy: userId,
+        effectiveFrom: item.created_at ?? null,
+        reason: "menu line",
+      });
+      return { outcome: r.outcome, error: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `menu line ${item.id} ("${item.name}"): the house price was not updated: ${message}`,
+      );
+      return { outcome: "failed", error: message };
+    }
   }
 
   private async getDefaultThresholdMin(restaurantId: string): Promise<number> {

@@ -389,14 +389,17 @@ export default function BottleLeaf({
                   house's own `menu_price_glass` — a real column a manager
                   sets — never the wine library's reference price.
 
-                  CLOSED 2026-09-19 (cellar lane, migration 20260921112300,
-                  founder: "we're going to add a per house bottle price").
-                  `restaurant_inventory.menu_price_bottle` now exists — same
-                  shape as `menu_price_glass` — and "Bottle price" below reads
-                  it. It is a MANUAL figure only: what "dynamic" should mean
-                  (cost-plus markup, following the market average, or staying
-                  manual) is the founder's own open question, not decided
-                  here — see this pass's own report. "Market average" (above)
+                  CLOSED 2026-09-19, RE-POINTED 2026-09-21 (ADR 0193; founder:
+                  "we're going to add a per house bottle price"). "Bottle
+                  price" below is this house's own price, read from
+                  `menu_price_current` -- the column every margin and
+                  valuation already reads; the lane's short-lived second
+                  column was removed so there is one number. "Dynamic" is
+                  decided (ADR 0193): the price follows the menu (a menu
+                  import or correction writes it) and a manager changes it on
+                  Inventory at any time, every change on the record; advice
+                  toward the house's target margin is offered there, never
+                  applied on its own and never from the market. "Market average" (above)
                   is the library's own reused reference figure, relabelled in
                   this same pass; it is a different column from this one and
                   is kept as the fallback nowhere below, so a reader can never

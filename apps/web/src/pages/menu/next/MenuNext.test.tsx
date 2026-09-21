@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
+import { housePriceNote } from './menu-price-note';
 import { getMenu, discardMenuItem, addMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
@@ -162,6 +163,34 @@ describe('MenuNext — add', () => {
     fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Forbidden'));
     expect(nameField).toHaveValue('American black coffee');
+  });
+
+  // ADR 0193: a priced line also sets the linked wine's own price, and the
+  // gateway says per line whether it did. A failed price write must not read
+  // as a price that moved.
+  it('says plainly when the line was added but the house price was NOT updated', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValue({ priceSync: 'failed', priceSyncError: 'the price writer is down' } as never);
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Barolo' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/NOT updated \(the price writer is down\)/),
+    );
+  });
+
+  it('says when the house price now follows the line, and says nothing for a line with no price', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValueOnce({ priceSync: 'changed' } as never);
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Barolo' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId('menu-add-price-note')).toHaveTextContent(/now matches the line/),
+    );
+    expect(housePriceNote({ priceSync: 'no_price' })).toBeNull();
+    expect(housePriceNote({ priceSync: 'not_linked' })).toBeNull();
+    expect(housePriceNote({ priceSync: 'stale' })?.text).toMatch(/kept/);
   });
 });
 

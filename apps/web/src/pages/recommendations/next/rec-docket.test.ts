@@ -12,7 +12,11 @@
 import { describe, expect, it } from 'vitest';
 import { ACT_LABEL, ACT_ORDER, ACT_SAY, CHANGE_A_RULE, MONEY_WITHHELD, actOf } from './rec-docket';
 
-/** The twelve named rules in `recommendations.service.ts`, plus the family. */
+/**
+ * The named rules in `recommendations.service.ts`, plus the family: the
+ * original twelve and the three price-advice rules ADR 0193 added
+ * (2026-09-21).
+ */
 const RULES = [
   'sales_below_weekday_baseline',
   'weekly_demand_slide',
@@ -26,6 +30,9 @@ const RULES = [
   'spend_acceleration',
   'staff_spread',
   'pairing_promotion',
+  'margin_to_target',
+  'margin_target_unset',
+  'margin_advice_blind',
 ];
 
 describe('the docket — filing by the act', () => {

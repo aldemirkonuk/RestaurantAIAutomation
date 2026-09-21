@@ -112,6 +112,8 @@ export const SECTION_IDS = [
   // position is not its identity, but a bookmark is, and `?tab=` is the id.
   'currency',
   'carrying-cost',
+  // ADR 0193 (2026-09-21), appended for the same bookmark reason.
+  'target-margin',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -179,6 +181,12 @@ export const SECTIONS: SectionSpec[] = [
   // product had ever asked a house for that number.
   { id: 'carrying-cost', label: 'Carrying cost', title: 'What holding stock costs', kind: 'restaurant', group: 'house', order: 6,
     description: 'What a month of holding stock costs this house, as a percent of its value. Until it is stated, no alert here prints a saving.' },
+  // Its own register for the carrying cost's reason: a fact about the HOUSE
+  // that decides whether any price advice may be printed at all. The founder,
+  // 2026-09-21: "... advise the manager or owner to increase decrease the
+  // prices so that the profit margin is where it's needed." (ADR 0193)
+  { id: 'target-margin', label: 'Target margin', title: 'The margin this house needs', kind: 'restaurant', group: 'house', order: 7,
+    description: 'The margin you need on a bottle and on a glass. Until it is set, no wine is advised to raise or lower its price.' },
 ];
 
 /**

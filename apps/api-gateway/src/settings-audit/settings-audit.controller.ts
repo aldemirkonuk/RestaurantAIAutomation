@@ -45,6 +45,7 @@ export const REGISTERS: SettingsRegister[] = [
   "preferences",
   "currency",
   "carrying-cost",
+  "target-margin",
 ];
 
 /**

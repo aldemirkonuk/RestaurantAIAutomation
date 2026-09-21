@@ -106,11 +106,11 @@ export class CreateInventoryItemDto {
   @Min(0)
   menuPriceGlass?: number;
 
-  // This house's own price for a whole bottle (migration 20260921112300),
-  // never the wine library's reference price. Manager-typed, same shape as
-  // its sibling `menuPriceGlass` above: optional, nullable-by-omission, no
-  // floor beyond zero. Founder, 2026-09-19: "we're going to add a per house
-  // bottle price."
+  // This house's own price for a whole bottle, never the wine library's
+  // reference price. ADR 0193: stored in `menu_price_current`, the column
+  // every margin and valuation already reads (one bottle-price column, not
+  // two). Founder, 2026-09-19: "we're going to add a per house bottle price";
+  // 2026-09-21: "it should be changed whenever the manager wants".
   @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
   @IsOptional()
   @IsNumber()
@@ -219,18 +219,18 @@ export class UpdateInventoryItemDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  menuPriceGlass?: number;
+  menuPriceGlass?: number | null;
 
-  // This house's own price for a whole bottle (migration 20260921112300),
-  // never the wine library's reference price. Manager-typed, same shape as
-  // its sibling `menuPriceGlass` above: optional, nullable-by-omission, no
-  // floor beyond zero. Founder, 2026-09-19: "we're going to add a per house
-  // bottle price."
+  // This house's own price for a whole bottle, never the wine library's
+  // reference price. ADR 0193: stored in `menu_price_current`, the column
+  // every margin and valuation already reads (one bottle-price column, not
+  // two). Founder, 2026-09-19: "we're going to add a per house bottle price";
+  // 2026-09-21: "it should be changed whenever the manager wants".
   @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
   @IsOptional()
   @IsNumber()
   @Min(0)
-  menuPriceBottle?: number;
+  menuPriceBottle?: number | null;
 
   @ApiPropertyOptional({ description: "Bottle size in ml (override)" })
   @IsOptional()
@@ -391,11 +391,11 @@ export class BulkInventoryLineDto {
   @Min(0)
   menuPriceGlass?: number;
 
-  // This house's own price for a whole bottle (migration 20260921112300),
-  // never the wine library's reference price. Manager-typed, same shape as
-  // its sibling `menuPriceGlass` above: optional, nullable-by-omission, no
-  // floor beyond zero. Founder, 2026-09-19: "we're going to add a per house
-  // bottle price."
+  // This house's own price for a whole bottle, never the wine library's
+  // reference price. ADR 0193: stored in `menu_price_current`, the column
+  // every margin and valuation already reads (one bottle-price column, not
+  // two). Founder, 2026-09-19: "we're going to add a per house bottle price";
+  // 2026-09-21: "it should be changed whenever the manager wants".
   @ApiPropertyOptional({ description: "Menu price per bottle (this house's own price, not the library's)" })
   @IsOptional()
   @IsNumber()

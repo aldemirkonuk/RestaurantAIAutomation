@@ -155,7 +155,7 @@ export interface CellarRow {
   glassesPerBottle: number | null;
   /** This house's own by-the-glass price — a real column a manager sets, never the library's reference price. */
   menuPriceGlass: number | null;
-  /** This house's own whole-bottle price (migration 20260921112300) — a real column a manager sets, never the library's reference price. Same shape as `menuPriceGlass`. */
+  /** This house's own whole-bottle price (ADR 0193: `menu_price_current`, one column) — set by a manager or a menu update, never the library's reference price. Same shape as `menuPriceGlass`. */
   menuPriceBottle: number | null;
   /** Null = unmeasured (the analytics join has nothing for this row yet), told apart from a failed read via `analyticsReadable`. */
   velocityPerDay: number | null;

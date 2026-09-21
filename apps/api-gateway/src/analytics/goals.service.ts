@@ -181,6 +181,10 @@ export class GoalsService {
     "spend_acceleration",
     "staff_spread",
     "pairing_promotion",
+    // ADR 0193 (2026-09-21): price advice toward the house's target margin.
+    "margin_target_unset",
+    "margin_to_target",
+    "margin_advice_blind",
   ];
 
   private static readonly GOAL_BEHIND_KEY =

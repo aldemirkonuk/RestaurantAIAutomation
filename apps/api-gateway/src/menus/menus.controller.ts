@@ -61,14 +61,23 @@ export class MenusController {
 
   @Patch("items/:id")
   @ApiOperation({
-    summary: "Apply a manager correction to one menu item field",
+    summary:
+      "Apply a manager correction to one menu item field of the caller's own house. A price correction also updates the house's own bottle/glass price (ADR 0193)",
   })
   async reviewMenuItem(
     @Param("id") id: string,
     @Body() dto: ReviewMenuItemDto,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: { userId: string; restaurantId?: string },
   ) {
-    return this.menusService.reviewMenuItem(id, user.userId, dto);
+    // The house comes from the JWT, never the body: this route names no
+    // restaurant, so the service scopes the menu line to the caller's own
+    // (ADR 0193 -- it used to load the line by id alone).
+    return this.menusService.reviewMenuItem(
+      id,
+      user.userId,
+      user.restaurantId ?? null,
+      dto,
+    );
   }
 
   @Patch(":restaurantId/items/:id/discard")

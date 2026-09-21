@@ -11,7 +11,11 @@
  *   POST  /menus/items                        add one line (existing route;
  *                                              its tenant check was a real
  *                                              gap — see menus.service.ts —
- *                                              closed alongside this page)
+ *                                              closed alongside this page).
+ *                                              ADR 0193: a priced line also
+ *                                              sets the linked wine's own
+ *                                              price; the page says what
+ *                                              happened (housePriceNote)
  *
  * WHAT THIS DOES NOT DO. `addMenuItem`'s DTO is the review-step shape
  * (name/producer/category/vintage/region/grape_variety/by_glass_price/
@@ -25,6 +29,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, type MenuLine } from '../../../services/api/menus';
+import { housePriceNote } from './menu-price-note';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { Wordmark } from '@/components/mudavym';
@@ -281,6 +286,19 @@ export default function MenuNext() {
                 error={add.isError ? (add.error instanceof Error ? add.error.message : 'no reason given') : null}
                 onAdd={(fields, opts) => add.mutate(fields, opts)}
               />
+              {(() => {
+                const note = add.isSuccess ? housePriceNote(add.data) : null;
+                return note ? (
+                  <p
+                    role={note.tone === 'alert' ? 'alert' : 'status'}
+                    className="cl-said"
+                    style={{ fontSize: 12, marginTop: 6 }}
+                    data-testid="menu-add-price-note"
+                  >
+                    {note.text}
+                  </p>
+                ) : null;
+              })()}
             </div>
 
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 16 }}>
