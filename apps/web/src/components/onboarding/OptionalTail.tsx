@@ -108,7 +108,10 @@ export function OptionalTail({ restaurantId }: OptionalTailProps) {
         <OptionalRow icon={<ExternalLink className="w-4 h-4 text-gray-500" />} title="Subscribe to your calendar">
           {icalUrl ? (
             <div className="flex items-center gap-2">
-              <code className="text-xs bg-gray-50 border border-gray-100 rounded px-2 py-1 truncate flex-1">
+              <code
+                data-secret="credential"
+                className="text-xs bg-gray-50 border border-gray-100 rounded px-2 py-1 truncate flex-1"
+              >
                 {icalUrl}
               </code>
               <button
