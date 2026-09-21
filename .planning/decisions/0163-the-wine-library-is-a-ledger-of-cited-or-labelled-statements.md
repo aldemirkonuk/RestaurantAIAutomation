@@ -37,7 +37,18 @@
   plan credits (§11; Q22, DECIDED bracket). Still Proposed: whether Jev belongs in
   the §14 notice was put to him and came back undecided — he wants an experiment
   on two synthetic menus first, so it stays open until that experiment's result
-  is put to him (§14; Context, "Round 6").
+  is put to him (§14; Context, "Round 6"). **Amended again 2026-09-21 (round 7)**
+  with the experiment's result and four more answers: Jev stays P7(b), a
+  co-signer alongside Opus, span-only, non-English still routed to `review`, and
+  the pilot gold-set plan gains the round's no-hint abbreviation set (§4 P7; Q6
+  (remainder)); the §14 notice now names TypeSafe's Jev as a processor beside
+  the Cowork/Claude line (§14); the menu-upload billed read fails **closed**
+  rather than open on a spend-ledger read error, a decision record only, its
+  code left to another lane (§11; Q22, DECIDED bracket); and the
+  language-coverage CLAIMS row is re-pointed at TypeSafe's current `models.md`
+  text, unchanged in substance (Q6 (remainder); `CLAIMS.jsonl`). Still Proposed:
+  everything round 7 did not touch (Context, "Round 7", "What this does not
+  settle").
 - **Date:** 2026-09-18
 - **Decider:** Aldemir (founder). The design was drafted by a research workflow
   (six evidence lanes, three candidate designs, one judge, two adversarial passes;
@@ -493,6 +504,130 @@ complex. This docs-only round did not run that experiment and records no result
 from it; the fork stays open where round 5 left it (§14, below) until the
 experiment's result is put to him.
 
+### Round 7: the Jev experiment and four more answers (2026-09-21)
+
+Round 6's precondition was met the same day: the two-synthetic-menu experiment he
+asked for ran on his own Mac, against Menu A (7 lines, English) and Menu B (9
+lines, Turkish/Italian/French, abbreviations, mixed currencies), plus two further
+adversarial rounds the experimenter added per CLAUDE.md §3 rather than stopping at
+the first clean result (`jev-exp.md`, all raw logs under `jev-exp/raw/`, 710
+Jev calls and 355 Opus calls, 0 failures). No house data left the machine — every
+menu and claim is synthetic and was labelled by the same model that later served
+as the Opus baseline, a bias the record states rather than hides. A second,
+independent adversarial pass recomputed every figure from the raw logs with its
+own script, found the headline result **overstated** (every Menu B claim spelled
+out the abbreviation the checker had to confirm, e.g. "The Château Margaux
+listed…" for "Ch. Marg."), and ran a further round that withheld the hint
+(`jev-judge.md`, Menu D, 45 claims, 8 of them non-English). Full pointer: both
+files and every fixture, script and raw log live under
+`.../scratchpad/q921/jev-exp/` and `.../scratchpad/q921/jev-judge/` (session
+scratchpad, not this repo).
+
+**Headline numbers** (tables in both files; re-derivation matched the original to
+every cell but one small citation drift):
+
+- **As specified, Jev tied Claude Opus 5** (the existing P7(c) judge): both
+  100% — 96/96 main-set claims, 171/171 once the first adversarial round is
+  pooled in — with zero disagreements. Jev caught no false claim Opus missed and
+  blocked no true claim Opus accepted.
+- **The fair re-run found a real gap.** With the abbreviation withheld, Jev
+  accepted 5 of the round's 22 false claims — every one an abbreviation or
+  format reading: four wrong expansions (Barbaresco for "Barb. d'Asti" at 0.89,
+  Pavillon Rouge, Vino Nobile, Saint-Julien) and the Turkish "kdh" (glass) read
+  as carafe at 0.87, so 2 at p ≥ 0.8 — while Opus rejected all 22 (run 1; run 2
+  accepted 4, Saint-Julien falling to 0.36). Of the round's 10 wrong-expansion
+  claims, Jev caught 6 in run 1 and 7 in run 2, Opus all 10 (recounted at last
+  call from `jev-exp/raw/judge_J_*_span_*.jsonl`). Jev settled the
+  deliberately ambiguous "Ch. Haut-B." at 0.94 (wrongly confident) against
+  Opus's 0.38. Pooled over 216 span-condition claims: Jev wrong and Opus right
+  on 5, never the reverse (McNemar p = 0.0625 — directional, not significant at
+  this sample size).
+- **Jev made no error on a claim written in another language.** 28 claims
+  written in Turkish, Italian or French across both adversarial rounds (lower
+  95% bound 0.88) and a 48-claim line-blind control (a true claim shown the
+  wrong wine's line, to confirm the checker reads the line rather than answering
+  from world knowledge) — 0 errors on either. Its confidence is measurably lower
+  on Turkish text than English. **One of its five misses above was on Turkish
+  menu text all the same**: the claim "costs 240 Turkish lira per carafe" was
+  written in English against the line "Sevilen Güneşin Kızı beyaz, İzmir '22 ….
+  kdh 240 / şişe 1.100 TL", and Jev accepted it at 0.87 (`kdh` is *kadeh*, a
+  glass). The experiment labels a claim's language by the claim's words, not
+  the line's, so "no language error" holds only in that sense (`jev-judge.md`
+  counts this miss as a format error; `jev-judge/fixtures_judge.py`, D10-f1).
+- **It never blocked a true claim**, 0 of 280 span-condition verdicts across
+  both files, and it **added nothing beside Opus** — 0 extra false claims caught
+  in 216 pooled span claims, which is what the (b)∧(c) AND gate actually asks of
+  it (§4 P7: independence, not a second detector).
+- **Efficiency is where it won**: about 154ms median (p90 197) against Opus's
+  1,918ms API time (≈12x faster; ≈26x on wall time through the CLI, which Opus
+  ran on because the repo's own `ANTHROPIC_API_KEY` had no credit — a finding
+  unrelated to Jev, noted and not chased further); about $0.0000185 per claim
+  against $0.0079–0.0125 for Opus at list price (≈420–680x cheaper; `jev-judge.md`
+  states 166–680x, its low end an output-tokens-only floor for Opus). Opus's real
+  cost is plan-credit quota under §11, not dollars — the dollar figures are
+  list-price equivalents for comparison only.
+- TypeSafe's docs (`models.md`, re-fetched 2026-09-21 for this experiment,
+  `.../jev-exp/docs/models.md`) carry a "Language support" section that
+  `TYPESAFE_AI_OVERVIEW.md`'s 2026-09-17 crawl did not record — whether the
+  vendor added it since or that crawl missed it is not known (`jev-judge.md`,
+  "Possibly old wording") (Q6 (remainder), below): *"English is the primary training language and where
+  accuracy is currently best. Other languages, including CJK scripts, are
+  handled but not equally well."* It still does not name Italian or Turkish
+  specifically, so §4 P7's language-coverage gap (Q6 (remainder), below) is not
+  closed by it.
+
+**His four answers**, relayed as the options he picked rather than a direct
+quote (no verbatim was given for these four; §0.4's numbering distinction
+applies the same way round 5's did for its ten paraphrased items). The relay's
+own words, verbatim from session memory `founder-answers-2026-09-21-round5.md`
+(the relay's, not his): *"KEEP AS CO-SIGNER (both must agree with the Opus
+judge, never accepts alone, cited span only, non-English to review until the
+pilot gold set) and NAME TypeSafe in the house notice + subprocessor
+register"*, and *"spend ceiling fails CLOSED for menu-upload billed reads"*;
+the brief handed to the build lane for the same answer adds *"if the spend
+ledger cannot be read, the read waits and says why; other paths unchanged"*:
+
+1. **Does Jev stay the P7(b) claim checker, and how?** Yes, unchanged in shape —
+   Jev stays a **co-signer**: (a), Jev (b) and Opus (c) must all still agree
+   before auto-accepting, exactly the AND gate §4 P7 already has; Jev never
+   accepts a claim alone; the span-only design stays (the experiment's own
+   comparison, `jev-exp.md`, found it better than whole-menu: 0 errors against 1);
+   and every non-English claim keeps routing to `review` until the pilot's gold
+   set exists, unchanged from Q6 (remainder)'s existing default. **What
+   changes:** the pilot gold-set plan (§5 G6) gains one addition — the judge's
+   no-hint abbreviation set is folded into it, so the gold examples include
+   abbreviation-expansion claims with the expansion withheld, not only claims
+   that spell it out for the checker. See Q6 (remainder)'s own DECIDED bracket,
+   below, for where this lands.
+2. **Does the §14 notice name TypeSafe/Jev?** Yes — the notice names TypeSafe
+   AI's Jev as a processor of the menu text it checks, beside the existing
+   Claude/Cowork line (Q17 (h)). See §14's own DECIDED bracket, below, for the
+   wording and what ships with it.
+3. **The menu-upload billed read on a spend-ledger read error.** Fails
+   **CLOSED**, reversing Q22's "kept as it stands" reading of the existing
+   fail-open design (`model-client.service.ts:600-606`) for this one call site:
+   the read waits and says why, and every other path is unchanged.
+   This is a decision record only: the code change is a different lane's work
+   ("cellar"), not built in this docs-only round. See §11's Q22 DECIDED
+   bracket, below.
+4. **CLAIMS row `ADR-0163-JEV-LANGUAGE-COVERAGE-UNSTATED`.** Re-pointed at
+   TypeSafe's current `models.md` language text rather than the silent
+   2026-09-17 crawl it used to cite — see Q6 (remainder)'s DECIDED bracket and
+   `CLAIMS.jsonl`, both below. The claim's substance is unchanged: Italian and
+   Turkish are still neither confirmed nor excluded by name, so the row stays
+   `open`.
+
+**What this does not settle.** The experiment is synthetic, author-labelled and
+small (171–216 claims depending on how pooled); it is evidence for the pilot's
+design, not a substitute for the gold set itself (§5), and none of the four
+answers above claims otherwise. **[Last call, 2026-09-21: one fork this round's
+evidence opens, not decided here.]** "Non-English claims to review" can key on
+the claim's own words or on the cited span Jev reads. P7's question is one the
+gateway writes (§4 P7), not the menu's own words, so keyed on the claim the rule
+may rarely fire — and the one Turkish-line miss above (`kdh`) was an English
+claim that it would not have routed. Opus's rejection is what kept that
+claim out of auto-accept. Which reading §4 P7 means is the founder's call.
+
 ## Options considered
 
 The research ran six evidence lanes (repo assets, state-of-the-art methods, sources
@@ -943,6 +1078,18 @@ P12 stays on `wine-worker` (§11's Gateway and `wine-worker` rows).]
   pages. [Superseded design, self-hosted MiniCheck for English and mDeBERTa
   otherwise: kept in git at this line, commit `a99078485`, for history — not
   restated here per Q6's own shrunk comparison, below.]
+  **[Round 7, 2026-09-21: DECIDED — Jev stays exactly this shape.** The
+  two-synthetic-menu experiment round 6 asked for ran (Context, "Round 7"); the
+  founder confirms this (b)∧(c) AND gate unchanged, span-only, Jev never
+  auto-accepting alone, and every non-English claim still routed to `review`
+  until the pilot's gold set exists — nothing in this paragraph changes.
+  **What changes:** the pilot gold-set plan (§5 G6) gains one addition, the
+  experiment's own adversarial re-run — an abbreviation-expansion claim with
+  the expansion withheld, on which Jev accepted 5 of 22 false claims (all
+  abbreviation or format readings) where Opus rejected all 22 — so the gold set
+  does not draw only from claims that spell the expansion out (§5 G6's own
+  round-7 bracket names the set). See Q6 (remainder), below, for the full result
+  and the language-coverage CLAIMS row it also touches.]
 - **P8 Infer, descriptive fields only** [batch]. Enum outputs (WSET SAT levels;
   sweetness bands per Reg. (EU) 2019/33 Annex III Part B). Samples: 1 Opus 5 + 2
   Sonnet 5, emit at ≥2 of 3, else coarsen or omit; stocked wines 5 samples, emit at ≥4
@@ -1057,6 +1204,26 @@ is empty or does not cover the batch.** A bad value rejects the cell, not the ro
     this sample too. A failed re-check withdraws the cell and counts against the first
     reviewer. A reviewer below the field's floor loses instant publish (§13; how that is
     measured is Q15).]
+  - [Round 7, 2026-09-21, founder, DECIDED: **the pilot gold set for P7's checkers
+    gains the no-hint abbreviation set.** P7(b)'s threshold is calibrated on this
+    pilot's gold (§4 P7), and until now nothing here said the gold must include a
+    wrong abbreviation expansion the checker is *not* handed. The set is Menu D
+    of the round-7 experiment's adversarial re-check (Context, "Round 7"): 11
+    synthetic lines whose abbreviations each expand to a plausible wrong
+    neighbour — "Ch. Haut-B." (ambiguous by design), "St-Jos." (Saint-Joseph, not
+    Saint-Julien), "Coche-D." (Dury, not Bizouard), "Montepulc. d'Abr." (not Vino
+    Nobile), "Ch. Pav. Bl. du Ch. Marg." (Pavillon Blanc, not Rouge), "Amarone d.
+    Valp. Cl." (not Recioto), "Barb. d'Asti Sup." (Barbera, not Barbaresco),
+    "yarım şişe" (half bottle), "Ch. Pichon" (ambiguous by design), "kdh"
+    (*kadeh*, a glass, not a carafe) and "Krug Gr. Cuv. 171ème Éd." — with 47 claims (23 true, 22 false, 2 ambiguous; 8 written
+    in Turkish, Italian or French) that name the expansion without the line
+    spelling it out. Its fixtures are `jev-judge/fixtures_judge.py`,
+    `judge_claims.json` and `menu_D.txt` in the session scratchpad
+    (`.../scratchpad/q921/jev-judge/`), **not in this repo**: the pilot copies
+    them in when its gold set is built, or rebuilds them from the list above.
+    They are author-labelled (Claude Opus 5, no sommelier), so they join the gold
+    set as seed items a reviewer confirms, not as gold on arrival (the
+    "a pre-label a human never looked at is not gold" rule above).]
 - **G7 audit:** before publication for wines a real house stocks; for every other
   inferred cell, a 60-cell stratified audit within 7 days of publication. **If the
   audit is not done in 7 days, the batch's inferred cells withdraw and health turns
@@ -1381,7 +1548,7 @@ recommendation (Round 4 research pass, below: the full (a)–(i) gate holds beca
 every real house is Turkish) that a lawyer clear Law 4250 and the Data Act question
 before the first real house's prices pool. The founder chose otherwise, having been
 shown the cost §14 already states: **models already trained are
-not retrained** (:1803 below [recomputed 2026-09-21; was :1743, was :1715]). Concretely, this means pooling and the aggregate guards above (k=5,
+not retrained** (:2011 below [recomputed 2026-09-21; was :1803, was :1743, was :1715]). Concretely, this means pooling and the aggregate guards above (k=5,
 the 25% cap, no cost/invoice/POS data, no sign-in-free price page) still apply as
 engineering guardrails — nothing here removes them — but this ADR no longer treats a
 lawyer's sign-off on Türkiye's Law 4250 art. 6 and the notice's wording (Q17 (e)–(i))
@@ -1551,7 +1718,11 @@ everything that writes, stays on the gateway, which spends no model credits.
   (`model-client.service.ts:600-606`). Whether that path stays on billed API, or the
   house waits for the next run, is Q22. Either way it is counted apart from the
   pipeline. [Round 6, 2026-09-21: DECIDED — it stays on the billed synchronous
-  read, under this ceiling as it stands (Q22, DECIDED bracket).]
+  read, under this ceiling as it stands (Q22, DECIDED bracket).] [Round 7,
+  2026-09-21: DECIDED — corrected. "As it stands" no longer includes the
+  fail-open behaviour above: on a spend-ledger read error, this one call site
+  is to fail **closed** — decided, not yet built on `main` (Q22, DECIDED
+  bracket, below, has the full reasoning and what stays fail-open elsewhere).]
 
 **Gateway crons are gated by role.** `ScheduleModule.forRoot()` is unconditional
 (`app.module.ts:84`), so every gateway process with production credentials would run
@@ -1756,7 +1927,14 @@ see)"*.]
     A median over an odd number of lists is one list's price, so that promise could
     not be kept (§9, Q16 (f)).]
   - its costs, invoices, POS data and sales are never pooled;
-  - it can stop at any time, and its own analytics keep working.
+  - it can stop at any time, and its own analytics keep working;
+  - **[Round 7, 2026-09-21, founder, DECIDED — new bullet:]** each checked menu
+    line and its claim also goes to TypeSafe AI's Jev, a hosted API, beside the
+    Claude/Cowork line above (Q17 (h)); TypeSafe states it does not train on
+    customer data, and that zero data retention is enterprise-only and on
+    request, not the default (`TYPESAFE_AI_OVERVIEW.md` §7; the DPA/MCA
+    themselves are vendor-stated and not independently reviewed, same bar as
+    every other vendor's terms this ADR holds, §9, §11).
 - **Where it is shown:** at sign-up, at the first menu upload, on /privacy and in
   settings.
 - **The record.** Each showing is recorded with its notice version in
@@ -1779,6 +1957,36 @@ see)"*.]
   not run the experiment and records no result from it. The fork stays open
   exactly as round 5 left it, now with a stated precondition: the experiment's
   result goes to him, and his call on it closes this fork.]
+  **[Round 7, 2026-09-21, founder: DECIDED — the notice names Jev.** The
+  experiment ran (Context, "Round 7"; full numbers there and in `jev-exp.md`/
+  `jev-judge.md`); relayed as the option he picked, not a direct quote. The
+  notice gains the bullet above, disclosing TypeSafe's Jev as a processor of
+  menu text beside the Cowork/Claude line. **TypeSafe also goes in the
+  subprocessor register.** No such register exists yet in this repo today —
+  `.planning/01-org/corporate/compliance-privacy/compliance-privacy-charter.md:202`
+  records "no policy, no DPA, no data-processing record, no subprocessor
+  register", `compliance.subprocessor_classification` 0/50, and ADR 0182's
+  2026-09-21 addendum names this same absence for Jev's own coding-agent-prompt
+  use, filing it as OD-133 rather than inventing a register inline. This ADR
+  does not create that register either — OD-133 already tracks the gap and is
+  the founder's to close (ADR 0182, Addendum 2026-09-21) — but this decision
+  adds a second, independent reason TypeSafe belongs in it whenever it is
+  built: OD-133 covers Jev reading coding-agent prompts, and this covers Jev
+  reading menu-price claims, two different data flows to the same
+  unclassified vendor. **What changes:** step 0.18's build order gains a
+  bullet for the notice text (below); no code changes in this docs-only round.
+  [Last call, 2026-09-21: **TypeSafe is now in the register's documented
+  seed.** The compliance team's plan builds the subprocessor register by
+  classifying `.planning/foundation/EXTERNAL_CONNECTIONS.md`'s host list rather
+  than writing a new one
+  (`01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-agenda-full.md:26-28`),
+  and TypeSafe was missing from that list — its only caller today,
+  `scripts/jev/prompt_gate.py:74`, sits outside the `apps/**`/`services/**`
+  scope the list's host census greps, so a re-run of that census would not
+  have added it either. It now has a row there naming both data flows, left
+  **unclassified**: classifying it (and its retention terms) is still OD-133's,
+  and this bracket does not decide it. `CLAIMS.jsonl`
+  `ADR-0163-TYPESAFE-IN-REGISTER-SEED` fails the build if the row is removed.]]
 
 **The opt-out.**
 
@@ -2129,11 +2337,22 @@ plan-credit health rules (0.22) pass their checks. Stage 0 still spends no credi
   lawyer revises it later, not as a precondition to shipping. The first two
   bullets stay engineering work and are unaffected (§14).]
 
+  [Round 7, 2026-09-21, founder, DECIDED: the first bullet's notice copy gains
+  the Jev/TypeSafe disclosure sentence (§14, "What it says", new bullet); no
+  other bullet here changes. Filing TypeSafe in a subprocessor register is
+  OD-133's work, not this step's — no register exists in this repo to link
+  from yet (§14's own DECIDED bracket). [Last call, 2026-09-21: TypeSafe now
+  has an unclassified row in the register's documented seed,
+  `foundation/EXTERNAL_CONNECTIONS.md` (§14's bracket); classifying it stays
+  OD-133's.]]
+
   *Checks:*
   - a non-owner cannot change the setting;
   - the setup assistant cannot propose it;
   - a house with no acknowledgement row contributes nothing;
-  - the page copy test fails if the old analytics promise returns.
+  - the page copy test fails if the old analytics promise returns;
+  - **[Round 7]** the page copy test also fails if the Jev/TypeSafe sentence is
+    missing.
 - 0.19 [Round 2] **Class M (§9).**
   - `menu_price_sightings`, and `menu_list_price()` enforcing k, the 25% cap, one
     price per group, currency, area, the 18-month window and the outlier trim.
@@ -2486,18 +2705,18 @@ months.]
     The apparent tension against Q21 ("off until the pilot") is already
     reconciled in §11, not a contradiction: the round-3 answer *"since we're
     going to use claude cowork, as long as credits allow"* is recorded here
-    (:2481-2484 [recomputed 2026-09-21; was :2402-2405, was :2352-2355, was
+    (:2700-2703 [recomputed 2026-09-21; was :2481-2484, was :2402-2405, was :2352-2355, was
     :2235-2238, was :2177-2180, stale by this ADR's own earlier edits]), and
     the round-3 diff log states *"Answered: Q1 in full
-    (plan credits, no dollar limit)"* (Review trail, :3407 [recomputed
-    2026-09-21; was :3290, was :3235, was :3012, was
+    (plan credits, no dollar limit)"* (Review trail, :3706 [recomputed
+    2026-09-21; was :3407, was :3290, was :3235, was :3012, was
     :2981, was :2489]); Q1
-    does not appear in this section's own intro list (:2456-2460 [recomputed
-    2026-09-21; was :2377-2381, was :2327-2331, was :2210-2214, was
+    does not appear in this section's own intro list (:2675-2679 [recomputed
+    2026-09-21; was :2456-2460, was :2377-2381, was :2327-2331, was :2210-2214, was
     :2152-2156]). With Q21 off, "credits allow" now means
     exactly the Max seat's included weekly/session usage — a refused run stops
-    and waits for the reset, which is what §11 (:1517-1520, :1543-1547
-    [recomputed 2026-09-21; was :1474-1477, :1500-1504, was :1446-1449, :1472-1476, was :1346-1349, :1372-1376])
+    and waits for the reset, which is what §11 (:1684-1687, :1710-1714
+    [recomputed 2026-09-21; was :1517-1520, :1543-1547, was :1474-1477, :1500-1504, was :1446-1449, :1472-1476, was :1346-1349, :1372-1376])
     already says. Re-measured 2026-09-18 (Supabase, SELECT-only):
     `master_wine_library` is still 3,589 live / 3,314 eligible, unchanged from
     the ADR's own count; `research_runs` still has 4 rows stuck `running`
@@ -2532,13 +2751,13 @@ months.]
   against. **Recommendation:** confirm both readings.]
   - **[Research pass, 2026-09-18: Q2's reading is still open — the top-level
     answer does not settle it.** The founder's *"After automatic checks"*
-    (:1084, :2367-2368 [recomputed 2026-09-21; was :1041, :2288-2289, was :1013, :2238-2239, was :932,
+    (:1251, :2586-2587 [recomputed 2026-09-21; was :1084, :2367-2368, was :1041, :2288-2289, was :1013, :2238-2239, was :932,
     :2191]) picks
     publish-then-audit over audit-before-publish, but says
     nothing about whether "automatic checks" still includes (i) a field's
     pre-publication gold pilot (G6) before its first cell ever shows, and (ii)
     real-house pre-review (G7). The register itself still lists "Q2's reading
-    (to confirm)" as open (:2456-2460 [recomputed 2026-09-21; was :2377-2381, was :2327-2331,
+    (to confirm)" as open (:2675-2679 [recomputed 2026-09-21; was :2456-2460, was :2377-2381, was :2327-2331,
     was :2148-2156, was :2191-2196]), and it has never been put
     back to him. **Since answered below (DECIDED 2026-09-19): both gates
     stay.**
@@ -2558,7 +2777,7 @@ months.]
     `wine_profile_v1` or publication-gate table exists (Supabase, checked
     2026-09-18) — so asking now is free and rebuilding withdrawal/audit logic
     after cells are live is not; the ADR's own design text already states the
-    stricter reading (G7 at :1060, G6 at :1048 [recomputed 2026-09-21; was :1017, :1005, was
+    stricter reading (G7 at :1227, G6 at :1195 [recomputed 2026-09-21; was :1060, :1048, was :1017, :1005, was
     :989, :977, was :918, :897]); and 2026 guidance on AI-assisted publishing
     (Logora's AI-moderation guide; Glean's AI review-workflow guide, both
     fetched 2026-09-18) treats staged human review before publish as the norm
@@ -2632,12 +2851,52 @@ months.]
     mention Q17(h) already covers. Not decided here — flagged only so it is not
     silently assumed either way. [Round 6, 2026-09-21: since asked, and not
     answered — he wants a two-menu experiment first (§14, "Whether the notice
-    must name Jev"; Context, "Round 6").]]**
+    must name Jev"; Context, "Round 6").]
+    [Round 7, 2026-09-21: **experiment run, DECIDED.** Full numbers in Context,
+    "Round 7"; source `jev-exp.md` and the adversarial check `jev-judge.md`
+    (`.../scratchpad/q921/`). As specified, Jev tied Opus 5 at 100% (96/96, then
+    171/171 pooled); the judge's own re-run, built to defeat that result by
+    withholding the abbreviation hint every Menu B claim had spelled out,
+    found Jev accepting 5 of 22 false claims, every one an abbreviation or
+    format reading, where Opus caught all 22, and 0 extra false claims caught
+    beside Opus across 216 pooled span claims either way. Jev made no error on
+    a claim written in another language in either run (28 such claims, 0
+    wrong), though one of its five misses was an English claim about a Turkish
+    line (`kdh`, a glass, accepted as a carafe at 0.87; Context, "Round 7"); and
+    it never accepted a true claim shown the wrong wine's line (0 of 48). Efficiency: ≈12x faster and ≈420–680x
+    cheaper than Opus at list price, though Opus's real cost on this pipeline
+    is plan-credit quota, not dollars (§11). **Founder, relayed as the option
+    he picked, not a direct quote:** Jev stays P7(b), unchanged in shape — a
+    co-signer with Opus, never accepting alone, span-only, non-English still
+    routed to `review` until the pilot's gold set exists (§4 P7's own DECIDED
+    bracket, above, restates this in place). **What changes:** the pilot
+    gold-set plan (§5 G6) gains the judge's no-hint abbreviation set as an
+    addition — abbreviation-expansion claims with the expansion withheld, not
+    only ones that spell it out for the checker, so the gold set can catch the
+    gap this experiment found rather than the gap the first, easier run
+    missed. Separately, the §14 notice question this pointer led to is
+    answered too — see §14's own DECIDED bracket.]
+    [Round 7, 2026-09-21: **the CLAIMS row corrected.** `CLAIMS.jsonl`'s
+    `ADR-0163-JEV-LANGUAGE-COVERAGE-UNSTATED` cited `TYPESAFE_AI_OVERVIEW.md`
+    (crawled 2026-09-17, silent on language) as the reason every non-English
+    claim routes to review. TypeSafe's live `models.md`, re-fetched 2026-09-21
+    for the Jev experiment, now carries a "Language support" section
+    `TYPESAFE_AI_OVERVIEW.md` did not have: *"English is the primary training
+    language and where accuracy is currently best. Other languages, including
+    CJK scripts, are handled but not equally well."* Folded into
+    `TYPESAFE_AI_OVERVIEW.md` §7 this round. **It still does not name Italian
+    or Turkish**, so the substance of this claim is unchanged — coverage for
+    the two languages this pipeline needs is still neither confirmed nor
+    excluded — but the row was citing a file that was silent on the topic
+    entirely, not one that discussed language in general terms and simply
+    omitted these two; the row's `claim` and `verify` are corrected to match
+    what the record now actually says (CLAUDE.md §5b: re-measured, not copied
+    forward). Status stays `open`.]]**
 - **Q10 Canonical `primary_type`.** The choice is one enum, or three axes.
   **Recommendation:** three axes as cells, with the one-enum slice derived from them.
   - **[Research pass, 2026-09-18: the three-axis recommendation above does
     not collide with the ADR's own sweetness rule. Corrected, 2026-09-19:
-    the rule at :855 [recomputed 2026-09-21; was :812, was :784, was :723] forbids a model-parsed
+    the rule at :990 [recomputed 2026-09-21; was :855, was :812, was :784, was :723] forbids a model-parsed
     `primary_type` only because that
     field feeds the `beverage_kind` classifier; it does not bind a separate
     sweetness cell, so there was no rule to revise away from.**
@@ -2647,12 +2906,12 @@ months.]
       still can't be both sparkling and rosé.
     - *Three axes (the ADR's current text, above)* — colour × effervescence ×
       sweetness as separate cells. This does not conflict with the ADR's own
-      boundary rule (:615-620 [recomputed 2026-09-21; was :572-577, was :547-552, was
+      boundary rule (:750-755 [recomputed 2026-09-21; was :615-620, was :572-577, was :547-552, was
       :486-491]) that
       sweetness is descriptive and inferable,
-      shown "estimated" (P8, :946 [recomputed 2026-09-21; was :903, was :875, was :794]):
+      shown "estimated" (P8, :1093 [recomputed 2026-09-21; was :946, was :903, was :875, was :794]):
       the never-inferred rule at
-      :855 [recomputed 2026-09-21; was :812, was :784, was :723] binds
+      :990 [recomputed 2026-09-21; was :855, was :812, was :784, was :723] binds
       `primary_type` itself, because that is the field `beverage_kind` reads
       — a sweetness cell that is not `primary_type` is not bound by it, so
       the two rules do not force a choice. Backfill is still lossy:
@@ -2759,7 +3018,7 @@ months.]
       Kaleiçi", worth naming to him as a coincidence even though this house
       has its own login).
     - All six still have 0 rows in `restaurant_wine_roster` (matches the
-      ADR's "stock nothing" claim, :285-287 [recomputed 2026-09-21; was :277-279, was
+      ADR's "stock nothing" claim, :296-298 [recomputed 2026-09-21; was :285-287, was :277-279, was
       :268-270, was :251-253]).
     **Recommendation: put the two evidence groups to him as one grouped
     confirmation**, not six separate asks — faster, and every claim is
@@ -2797,8 +3056,8 @@ months.]
     table this flow would read — does not exist (`42P01`, relation does not
     exist).
     **Recommendation stands at (a), cite or don't publish.** It is already
-    what §1 (:645-654 [recomputed 2026-09-21; was :602-611, was :577-586, was :516-525]) and §13
-    (:1612-1616 [recomputed 2026-09-21; was :1568-1572, was :1540-1544, was :1440-1444]) implement, so it needs no new
+    what §1 (:780-789 [recomputed 2026-09-21; was :645-654, was :602-611, was :577-586, was :516-525]) and §13
+    (:1783-1787 [recomputed 2026-09-21; was :1612-1616, was :1568-1572, was :1540-1544, was :1440-1444]) implement, so it needs no new
     schema; option (b) would let one uncorroborated claim publish with no way
     to check it later, exactly what ADR 0020 rejected, and credentialing
     alone isn't a correctness guarantee (the Court of Master Sommeliers' 2018
@@ -3260,8 +3519,8 @@ months.]
     apart from the plan-credit pipeline**, exactly as the ADR's own draft has
     it (above, this Q22's own pre-research recommendation). [Citation
     corrected 2026-09-19: the prior draft pointed at :1911, which is
-    §11 step 0.21 (the pipeline connector), now at :2157 after this ADR's
-    own later edits (recomputed 2026-09-21; was :2078, was :2028, was :1928,
+    §11 step 0.21 (the pipeline connector), now at :2376 after this ADR's
+    own later edits (recomputed 2026-09-21; was :2157, was :2078, was :2028, was :1928,
     was :1911) — an unrelated section, not this passage.] A cheaper
     sync model and a faster async queue are both worth
     revisiting once a real house's cost/latency is measurable — neither is
@@ -3280,6 +3539,31 @@ months.]
     whenever one does; a house's first menu upload keeps its instant synchronous
     read rather than waiting for the next task run, and that spend is tracked
     separately from plan-credit usage (§11, Cost).]**
+  - **[DECIDED 2026-09-21, founder, round 7:** the one thing round 6 left
+    undecided — corrected. The menu-upload billed read is to **fail closed**
+    when the restaurant's spend ledger cannot be read: the read waits and says
+    why, rather than going ahead uncounted. Relayed as the option he picked, not
+    a direct quote (the relay's words are in Context, "Round 7"). **What the
+    code does today, read at last call:** the ceiling's read,
+    `allowedBySpendCeiling` (`model-client.service.ts:618-667`), admits the call
+    whenever the ledger cannot be read — `sumAgentSpend` returning `null`
+    (`:648`, "`if (read === null) return true;`") or its own `catch`
+    (`:664-666`, "`catch { return true; }`"). And this path reads the ledger
+    only before a *retry* (`retryAllowedBySpendCeiling`, `:607-611`, called at
+    `:337` and `:381`): its call (`menus/parsers/scan-parser.service.ts:287`)
+    does not set `gateFirstAttempt`, so the first attempt never reads the
+    ledger at all (`:295-296`). Failing closed therefore needs a ledger read
+    before the first attempt as well as closed retries; flipping the two
+    `return true`s alone would not do it. **Scope:** this call site only; every
+    other path is unchanged (the relay's *"other paths unchanged"*). The
+    docstring's stated reason for fail-open ("the ceiling is a safety valve
+    against retry storms, not an accounting gate, and the instrument must never
+    break the thing it measures", `:600-603`) stays the rule for them.
+    **What changes in data:** nothing — no real house has billed against this
+    path (round 6's bracket). **Not built here:** this is a decision record
+    only; the code change lands in a separate build lane (named "cellar" by the
+    session running these lanes, not by the founder), and this bracket does not
+    claim it has landed.]**
 - **Q23 The account's training setting** [round 3]. The consumer terms let inputs
   train Anthropic's models unless the account opts out (fact 13), and house menus
   would pass through the tasks. Is training switched off on the account the tasks run
@@ -3314,14 +3598,29 @@ months.]
   split triggers were not executed against a database.]
 - Hi-Time's terms were read by the critic (silent, §9); the other hosts' were not.
 - The accuracy of MiniCheck and mDeBERTa on wine claims was never measured before
-  round 5 replaced them with Jev (Q6). **Jev's own accuracy on wine claims is also
-  unmeasured** — TYPESAFE_AI_OVERVIEW.md's benefits (§6) are vendor cookbook results
-  in other domains (legal re-ranking, guardrails, RAG filtering), not a wine-claim
-  or NLI/entailment benchmark, and no independent (non-vendor) benchmark of Jev was
-  found in that crawl. **Jev's language coverage is unmeasured and unstated**, not
-  merely unmeasured like the others in this list — the record consulted for this
-  decision does not say which languages Jev handles at all, so Italian and Turkish
-  coverage (§4 P7; Q6) is a named open item, not an oversight. The accuracy of the
+  round 5 replaced them with Jev (Q6). **[Round 7, 2026-09-21: Jev's accuracy on
+  wine claims is now partially measured, not wholly unmeasured** — the two-menu
+  experiment round 6 asked for ran and was adversarially re-checked (Context,
+  "Round 7"; `jev-exp.md`, `jev-judge.md`), on 171–216 synthetic,
+  author-labelled claims. It found no accuracy gap between Jev and Opus on the
+  claims as specified, and a real one (5 of 22 false claims accepted, every one
+  an abbreviation or format reading) once the checker was denied the hint. **This is not the pilot's
+  gold set** (§5) — small, synthetic, single-author, and it does not touch a
+  real menu, OCR output or P6 extraction mistakes — so the floors in §5 are
+  still unset by it. Jev's benefits as TYPESAFE_AI_OVERVIEW.md §6 states them
+  remain vendor cookbook results in other domains, not a wine-claim or
+  NLI/entailment benchmark; no independent, non-vendor benchmark of Jev was
+  found in either crawl.]** **Jev's language coverage remains unstated for the
+  two languages that matter here**, though no longer *entirely* silent — TypeSafe's
+  `models.md`, re-fetched 2026-09-21, now states a general position (English
+  primary, other languages "handled but not equally well") without naming
+  Italian or Turkish either way (Q6 (remainder); `CLAIMS.jsonl`,
+  `ADR-0163-JEV-LANGUAGE-COVERAGE-UNSTATED`, corrected this round). The
+  experiment itself made no error on 28 claims written in another language
+  (one miss was an English claim about a Turkish line, `kdh`; Context, "Round
+  7"), but that sample is this ADR's own synthetic test, not vendor coverage
+  evidence,
+  and does not close the gap (§4 P7; Q6). The accuracy of the
   legacy identity columns, and whether Wikidata grape items carry a usable
   berry-colour statement, are also unmeasured.
 - Whether the gateway reports to Sentry, the org usage tier, and the credit balance
@@ -3406,7 +3705,8 @@ months.]
 | 2026-09-18 | Round-2 verifier (workflow agent): the diff against 795e8073a; quotes compared by script; every /studio, loader, parser, settings, Stripe and registry citation re-read; production SELECTs on `restaurants`, `restaurant_inventory`, `user_roles`, `users`, `invite_tokens`, `override_events`, the submissions table, the price and menu tables, and `data_enrichment->'menus'`; both cost scripts re-run | Answers verbatim (P and R match the relay character for character) and readings marked. Fixed, each marked "verifier" in the text: (1) three role-holding accounts, not two people (fact 6, §13, Consequences, Q4); (2) live-row `review_status` added; (3) the 7-menu rows are not live; (4) "by file name" city claim; (5) fact 8's heading over-read a usage-telemetry line; (6) the notice promised that a house's prices never appear, which a median breaks (§9, §14, Q16 (f)); (7) "nothing already held needs consent" was a legal conclusion (§14, Q17 (g)); (8) "required by Law 4250" was a legal conclusion (§9, Q17 (f)); (9) the estimate cannot pass its held-out test until at least 16 wines have a list price, and today none has at k = 5 (§5, §9, Consequences, Q16 (g)); (10) the estimate's label now says restaurant listings, so it cannot read as a shop price; (11) "re-scope N" on a cost overrun would have let cost undo *"Every wine from day one"* (Consequences); (12) the backlog now starts on the first paid night, staged, instead of after the audit, and its pace is Q1 (b); (13) Q15's "for speed" recommendation is tied to a measured bar under F1; (14) Q2 names the reading of "check their values" that would point to (a); (15) §15 rule 7's "another org" was unbacked; (16) §13's promotion rule marked as open (Q15); (17) the ROADMAP citation for "sommeliers/producers" added. Costs re-derived: every round-2 figure reproduces from `every-wine-cost.py` and `critic-cost-model.py` |
 | 2026-09-18 | Round 3: four founder answers (AskUserQuestion, relayed) plus one host research lane (Cowork, routines, usage limits, the terms, and the laptop tasks' 81 runs) | Still Proposed. The answers are recorded verbatim as relayed, with each reading marked as the relay's or ours. Answered: Q1 in full (plan credits, no dollar limit), Q2 as (b), Q14's direction and Q15's rule. §11 is rewritten as "Hosts and credits". Model work runs as Cowork tasks with repo-served prompts. The gateway stays the only writer and keeps health, enqueue and the publish gates, through a pipeline connector that can only stage. Credits set the pace, never the bar, and claims are served in a stated order. Amended: §3, §4, §5, §6, §8, §12, §13, §15, Consequences, Build order (0.21 and 0.22 added; 1.1 replaced; 1.2 set aside; 1.5, 1.8, 1.10 and Stage 3 amended) and Cost (now the API-equivalent size, not a bill). Facts 10–13 added. Q17 (h) and (i) and Q19–Q23 raised. The earlier §11 is kept at `056de928e` |
 | 2026-09-18 | Round-3 verifier (workflow agent): the diff against 056de928e; the four answers compared with the relay; `cowork-wine-runs.tsv` recounted; `scheduled-tasks.json` and `harness.py` re-read; nine Anthropic pages re-fetched | Answers verbatim and readings marked; every fact-12 and fact-13 claim holds. Fixed, each marked "verifier": (1) fact 10's model history omitted the return to Haiku (9, 24, 13, 35 runs); (2) 09-11 lateness was 15 minutes to 2.3 hours, not 1 to 2.5; (3) the concurrency inference has a counter-sign (a non-wine task started at the same second); (4) the Desktop-tasks page documents Claude Code's local tasks, not Cowork's; (5) Cowork egress settings do not bind web fetch, web search or MCPs, so the never-list cannot be enforced inside a task (fact 12, §4 P5, §8, §11); (6) the connector's reach was attributed to where its token is held; the tools are the boundary; (7) "never runs SQL" would have failed `submit` and step 0.21's guard; (8) on a shared seat a task reading untrusted pages carries the Supabase connector, so the one-writer rule depends on per-task limits (§11, Q20); (9) a routine has no permission-mode picker (§11, Q19); (10) the outside dead-man alarm was listed on the gateway; (11) §6 put batch rules on the synchronous path; (12) `lease_expired_unsubmitted` is never green, and "a lease expired" stays red; (13) task identity and model are self-reported; (14) "with nothing submitted" ignored part-submitted runs; (15) a host that cannot run gold's model goes to the founder, never a quiet fallback; (16) /studio "shows no pay or reward terms" was wider than either reading; (17) usage credits are off today, not off by decision; (18) what a stale cell shows while P11 waits for credits is unspecified, flagged open. The brief's pause order read backwards and was fixed |
-| 2026-09-19 | Round 4: research pass across Q6, Q10, Q11, Q14, Q15, Q16, Q17 (incl. (a)'s EU half), Q18 and Q20, plus §13/step 0.17's tech-debt wording, three new CLAIMS.jsonl rows and a citation sweep, corrected against an Opus adversarial pass | Still Proposed. Fixes, numbered: (1) Q6 — mDeBERTa's own model card names the same ANLI/CC BY-NC lineage as MiniCheck, so the ADR's fallback did not clear the licence risk; HHEM ruled out as English-only; mDeBERTa stands, with the licence question folded into Q17's lawyer gate. (2) Q10 — the sparkling/rosé conflation measured, not asserted (53 of 369 sparkling rows and 1 of 115 rosé rows cross colour and effervescence); revised to colour × style {still, sparkling, fortified} with sweetness kept separate, then corrected to state this is the ADR's original three axes, not two — the :812 rule (was :784, was :723; recomputed 2026-09-21) binds only `primary_type`, because that is what feeds `beverage_kind`, not a separate sweetness cell. (3) Q11 — the four presumed-test houses' zero-user count re-confirmed by direct SELECT (all four, not three, as the prior count had it); the two presumed-real houses' independent signups and operating businesses cited. (4) Q14 — form (rewards, cash later) and structure (points per verdict recorded, against a flat stipend and a per-hour rate) resolved; the rate itself stays parked on OD-23, re-confirmed still unstruck. (5) Q15 — named D-12's current "5 in a row" as a third baseline option, measured at about 0.57 agreement; the existing recommendation needed no fresh pass. (6) Q16 — confirmed k=5 over k=3 (0 vs 9 qualifying wines today) against a regulatory direction that has only tightened since the ADR's own citations (DOJ's RealPage settlement, AB 325, Connecticut HB8002). (7) Q17 — the lawyer gate does not split by jurisdiction today because every real house is Turkish, re-confirmed by a SELECT joining `restaurants` to `users` (corrected: YAREN 2 users and ALDEMIR 0, not the reverse); (a)'s EU opt-in half flagged as the verifier's own departure from his literal words, to be asked, not assumed. (8) Q18 — retention revised to keep-until-superseded, reusing ADR 0118's machinery; corrected to state plainly that this recommendation relies on no case law, and that a prior draft's citation to *Bartz v. Anthropic* is not carried forward. (9) Q20 — Max 20x named as its own confirmation, not folded into the separate-seat answer. (10) §13/step 0.17 — the tech-debt filing corrected: the register's deletion is a real founder decision (2026-09-19), reserved as ADR 0165 but not yet written, so the three broken /studio promotion paths are filed as three open `CLAIMS.jsonl` rows instead of a `v3.0-TECH-DEBT.md` entry (`ADR-0163-STUDIO-PROMOTE-DIRECT-INSERT`, `-OVERRIDE-AUTOPROMOTE-SELECT`, `-QUALITY-PATCH-SELECT`). (11) Citations repaired: :2235-2238 (was :2177-2180), :2210-2214 (was :2152-2156), Q1's cross-reference to the round-3 review-trail row (now :3012, was :2981, was :2489), and Q22's stale :1911 (now read against :1928, where step 0.21 sits today). [Round 5, 2026-09-19: every one of these shifted again by round 5's insertions and was recomputed a further time: :2352-2355 (was :2235-2238, was :2177-2180); :2327-2331 (was :2210-2214, was :2152-2156); the round-3 review-trail row at :3235 (was :3012, was :2981, was :2489); step 0.21 at :2028 (was :1928, was :1911). See each Q-block's own DECIDED bracket for the live number; this row keeps round 4's own account of what it repaired, unedited otherwise.] [Correction pass, 2026-09-21: shifted a further time by this pass's own insertions, made to close round 4's four-item must-fix list against round 5's draft: :2402-2405 (was :2352-2355); :2377-2381 (was :2327-2331); the round-3 review-trail row at :3290 (was :3235); step 0.21 at :2078 (was :2028). Again, see each Q-block's own DECIDED bracket for the live number; this row still keeps round 4's own account of what it repaired, unedited otherwise.] [Round 6, 2026-09-21: shifted a further time by round 6's insertions and recomputed at its last call: :2481-2484 (was :2402-2405); :2456-2460 (was :2377-2381); the round-3 review-trail row at :3407 (was :3290); step 0.21 at :2157 (was :2078). Same rule: the Q-block brackets carry the live number, and this row is otherwise unedited.] Re-checked: Supabase SELECTs on `master_wine_library` (`primary_type` spellings, sparkling/rosé name-matches, fortified/dessert counts), `restaurants` LEFT JOIN `users`, `restaurant_inventory`, `user_roles`; `OPEN-DECISIONS.md`'s OD-23 row; `studio_routes.py`, `override_service.py` and `quality_routes.py` against every migration touching `master_wine_library`/`master_wine_library_submissions`; `retention-rules.ts` (ADR 0118); `docs/retire-tech-debt`'s commit log; HuggingFace model cards for mDeBERTa, MiniCheck, Bespoke-MiniCheck and HHEM; support.claude.com's Max-tier pricing pages |
+| 2026-09-19 | Round 4: research pass across Q6, Q10, Q11, Q14, Q15, Q16, Q17 (incl. (a)'s EU half), Q18 and Q20, plus §13/step 0.17's tech-debt wording, three new CLAIMS.jsonl rows and a citation sweep, corrected against an Opus adversarial pass | Still Proposed. Fixes, numbered: (1) Q6 — mDeBERTa's own model card names the same ANLI/CC BY-NC lineage as MiniCheck, so the ADR's fallback did not clear the licence risk; HHEM ruled out as English-only; mDeBERTa stands, with the licence question folded into Q17's lawyer gate. (2) Q10 — the sparkling/rosé conflation measured, not asserted (53 of 369 sparkling rows and 1 of 115 rosé rows cross colour and effervescence); revised to colour × style {still, sparkling, fortified} with sweetness kept separate, then corrected to state this is the ADR's original three axes, not two — the :812 rule (was :784, was :723; recomputed 2026-09-21) binds only `primary_type`, because that is what feeds `beverage_kind`, not a separate sweetness cell. (3) Q11 — the four presumed-test houses' zero-user count re-confirmed by direct SELECT (all four, not three, as the prior count had it); the two presumed-real houses' independent signups and operating businesses cited. (4) Q14 — form (rewards, cash later) and structure (points per verdict recorded, against a flat stipend and a per-hour rate) resolved; the rate itself stays parked on OD-23, re-confirmed still unstruck. (5) Q15 — named D-12's current "5 in a row" as a third baseline option, measured at about 0.57 agreement; the existing recommendation needed no fresh pass. (6) Q16 — confirmed k=5 over k=3 (0 vs 9 qualifying wines today) against a regulatory direction that has only tightened since the ADR's own citations (DOJ's RealPage settlement, AB 325, Connecticut HB8002). (7) Q17 — the lawyer gate does not split by jurisdiction today because every real house is Turkish, re-confirmed by a SELECT joining `restaurants` to `users` (corrected: YAREN 2 users and ALDEMIR 0, not the reverse); (a)'s EU opt-in half flagged as the verifier's own departure from his literal words, to be asked, not assumed. (8) Q18 — retention revised to keep-until-superseded, reusing ADR 0118's machinery; corrected to state plainly that this recommendation relies on no case law, and that a prior draft's citation to *Bartz v. Anthropic* is not carried forward. (9) Q20 — Max 20x named as its own confirmation, not folded into the separate-seat answer. (10) §13/step 0.17 — the tech-debt filing corrected: the register's deletion is a real founder decision (2026-09-19), reserved as ADR 0165 but not yet written, so the three broken /studio promotion paths are filed as three open `CLAIMS.jsonl` rows instead of a `v3.0-TECH-DEBT.md` entry (`ADR-0163-STUDIO-PROMOTE-DIRECT-INSERT`, `-OVERRIDE-AUTOPROMOTE-SELECT`, `-QUALITY-PATCH-SELECT`). (11) Citations repaired: :2235-2238 (was :2177-2180), :2210-2214 (was :2152-2156), Q1's cross-reference to the round-3 review-trail row (now :3012, was :2981, was :2489), and Q22's stale :1911 (now read against :1928, where step 0.21 sits today). [Round 5, 2026-09-19: every one of these shifted again by round 5's insertions and was recomputed a further time: :2352-2355 (was :2235-2238, was :2177-2180); :2327-2331 (was :2210-2214, was :2152-2156); the round-3 review-trail row at :3235 (was :3012, was :2981, was :2489); step 0.21 at :2028 (was :1928, was :1911). See each Q-block's own DECIDED bracket for the live number; this row keeps round 4's own account of what it repaired, unedited otherwise.] [Correction pass, 2026-09-21: shifted a further time by this pass's own insertions, made to close round 4's four-item must-fix list against round 5's draft: :2402-2405 (was :2352-2355); :2377-2381 (was :2327-2331); the round-3 review-trail row at :3290 (was :3235); step 0.21 at :2078 (was :2028). Again, see each Q-block's own DECIDED bracket for the live number; this row still keeps round 4's own account of what it repaired, unedited otherwise.] [Round 6, 2026-09-21: shifted a further time by round 6's insertions and recomputed at its last call: :2481-2484 (was :2402-2405); :2456-2460 (was :2377-2381); the round-3 review-trail row at :3407 (was :3290); step 0.21 at :2157 (was :2078). Same rule: the Q-block brackets carry the live number, and this row is otherwise unedited.] [Round 7, 2026-09-21: shifted a further time by round 7's insertions and recomputed at its last call, by content match against `git show HEAD`: :2700-2703 (was :2481-2484); :2675-2679 (was :2456-2460); the round-3 review-trail row at :3706 (was :3407); step 0.21 at :2376 (was :2157). Same rule again.] Re-checked: Supabase SELECTs on `master_wine_library` (`primary_type` spellings, sparkling/rosé name-matches, fortified/dessert counts), `restaurants` LEFT JOIN `users`, `restaurant_inventory`, `user_roles`; `OPEN-DECISIONS.md`'s OD-23 row; `studio_routes.py`, `override_service.py` and `quality_routes.py` against every migration touching `master_wine_library`/`master_wine_library_submissions`; `retention-rules.ts` (ADR 0118); `docs/retire-tech-debt`'s commit log; HuggingFace model cards for mDeBERTa, MiniCheck, Bespoke-MiniCheck and HHEM; support.claude.com's Max-tier pricing pages |
 | 2026-09-19 | Round 5: the founder's twelve answers (`AskUserQuestion`, relayed via session memory `founder-sketch-decisions-106-115.md`) to every question round 4 deepened, a claim-checker reversal to TypeSafe AI's Jev, and a full self-citation re-sweep | Still Proposed. Each of the twelve is recorded as a DECIDED bracket at its own Q-block (Context, "Round 5" carries the summary table with the this-ADR-question ↔ memory-item-number mapping); item 2's *"Ship now, fix later"* is taken against this ADR's own recommendation, with the shown-and-accepted consequence recorded at §9 ("models already trained are not retrained"); item 4's *"we're gonna use JEV and it's already inside the repo"* replaces §4 P7(b)'s self-hosted MiniCheck/mDeBERTa design with TypeSafe AI's Jev, a hosted API (prior design kept at commit `a99078485` for history) — the MiniCheck/mDeBERTa/HHEM comparison in Q6's own research pass is shrunk to a pointer, which is this addition's retire-to-write for `07-reference/TYPESAFE_AI_OVERVIEW.md` (copied into this branch byte-identical to the main checkout's untracked source, `diff` confirmed; its `INDEX.md` row replicated byte-identical to the main checkout's uncommitted diff, `diff` confirmed; neither file in the main checkout was touched). Jev's language coverage for Italian and Turkish is not stated in that record, so it is carried forward as its own open item (§4 P7, "Not verified") rather than assumed either way, backed by a new CLAIMS.jsonl row (`ADR-0163-JEV-LANGUAGE-COVERAGE-UNSTATED`, status open, mutation-tested: flips to matching when the record is edited to state coverage, confirmed by temporarily adding such a line and restoring it byte-identical). Amended: the status block and Decider line; Context (Round 5 section added); §4 P7 (rewritten around Jev); §9 (legal-review/EU DECIDED bracket); the `wine-worker` build-order row; adversarial-table row A16; Cost's "not included" line; the four top-level recap brackets for Q2/Q6/Q10/Q11; all eleven deep-dive Q-blocks carrying an answer (Q2, Q6, Q10, Q11, Q13, Q14, Q15, Q16, Q17 ×2 (legal review and its EU sub-fork), Q18, Q20); "Not verified" (Jev's own accuracy and language coverage named); and this Review trail. Every pre-existing self-citation whose target moved because of this round's insertions was located by content match in the edited file (not carried forward by arithmetic alone) and recomputed, each keeping a "was :N" trail; round 4's own review-trail row above is left as its original text with a dated bracket appended naming the further shift, per the house rule that records are corrected in place with dated brackets, never silently rewritten. Guards re-run and green: `scripts/check_decision_claims.sh` (359 `CLAIMS.jsonl` rows, 358 checkable claims after the one `_comment` line, all 358 holding — this run also covers the bundled OD-id-collision and migration-version-collision checks, both clean) and, run separately for the same corpus, `scripts/check_adr_numbers_unique.py` (930 refs after this round's own edits added a few, no collision) and `scripts/check_od_ids_exist.py` (1,412 documents against 118 register rows, PASS). No OD row, ADR number or migration was added by this round. Not done: propagating the twelve answers into every Build-order step, Cost-table figure or CLAIMS row their design implies beyond the sections named above — each DECIDED bracket states what changes, but turning that into code (a `wine_type`/`sweetness` migration for Q10, a Jev API client for Q6, the six houses' `is_simulation`/real-house flags for Q11, and so on) is separate build work this docs-only round does not do |
 | 2026-09-21 | Correction pass: round 4's own last-call must-fix list against round 5's draft (four items), run before this branch's commit | Still Proposed. Closes all four, none found already-fixed or aimed at the wrong target. (1) The Q11 DECIDED bracket's arithmetic was wrong: it said flagging the four confirmed-not-real houses made "eight rows... not four", but step 0.3 already flagged eight (the four "Sim " rows plus YAREN, ALDEMIR, ADMIN 1, ADMIN ROOM) before this answer. Corrected to twelve of the 14 `restaurants` rows (Context, fact 9); step 0.3 itself gains a dated round-5 bracket recording the same count. (2) The closure overclaim in the status block, the Decider line and the "What this settles" paragraph — each said round 5 closed every question but Jev's language coverage — is corrected in all three: the ADR's own text already left four more things open (Q14's reward *structure*, Q11's stuck `research_runs`/registry rows/`pg_cron`, Q22 never put to him, the Jev-in-§14-notice fork noted but not asked), so each is now named, and "What this settles" is expanded to explain all of them plus the new Pre-pool ToS fork below. (3) §4's round-3 stage-map bracket still read "P7(b) and P12 on `wine-worker`"; round 5 had already moved P7(b) to a gateway call to Jev in §11's `wine-worker` row, but neither the §4 intro bracket nor §11's own Gateway row said so — both gain a dated round-5 bracket, and the Gateway row now names the Jev call directly. (4) *"Ship now, fix later"* (Q17, §9) was never carried into three texts that still gated pooling on a lawyer: §14's "Before any pooling" list, the Consequences line and step 0.18's "lawyer-drafted clickwrap" bullet. Each gains a dated round-5 bracket stating that the order changed under Q17's answer and that whether a non-lawyer Terms of Service still gates pooling is its own open founder question ("Pre-pool ToS"), not decided here. Every self-citation whose target moved because of these insertions was re-located by content match against `git show HEAD` (not carried forward by arithmetic) and recomputed with a "was :N" hop appended to its existing trail; round 4's own review-trail row is again left as its original text, with a second dated bracket appended alongside round 5's, per the same house rule that records are corrected in place, never silently rewritten. Guards re-run and green: `scripts/check_decision_claims.sh` (358 checked, 358 holding, unchanged — no CLAIMS.jsonl row was touched this pass); `scripts/check_adr_numbers_unique.py` (1,045 refs checked, no collision, 0163 the only number this document introduces); `scripts/check_od_ids_exist.py` (1,412 documents against 118 register rows, PASS, the same 2 known absorbed-merge notices); `scripts/check_citation_pairing.py` (179 register citations against 119 rows, PASS — unaffected, since none of the citations touched this pass are `OPEN-DECISIONS.md` register citations); `scripts/check_no_conflict_markers.py` (1,450 planning documents, PASS). No OD row, ADR number, CLAIMS row or migration added or changed. None of the founder questions this pass surfaced or left open (Q14's reward structure and rate, Pre-pool ToS, Q22, Jev-in-notice) is answered here — each stays exactly as open as it was, for the founder to decide |
 | 2026-09-21 | Round 6: three of the four founder questions the correction pass named (`AskUserQuestion`, relayed via session memory `founder-answers-2026-09-21-round5.md`), one deferred | Still Proposed. Closes three, leaves one open with a stated precondition. (1) **Q14's structure**, verbatim: *"couple choices to be decided -> points per verdict (free credits) main for now (the details of this will be decided later), flat monthly stipend, or hour rate."* Points per verdict, paid as free credits, is the main path now; a flat stipend and a per-hour rate are named as live alternatives, not rejected; the point value and its conversion rate are left for later, same as the rate already parked on OD-23 — this does not reopen OD-23 or add a new open item, it only names the shape (Q14's own DECIDED bracket, §13). (2) **Pre-pool ToS**, verbatim: *"Notice, opt-out, our ToS."* The Terms of Service that ships before the first real house's menu pools is one Mudavym writes itself, not a lawyer-drafted clickwrap; a lawyer revises it later, not before. Fixed at the three places the correction pass named as still reading "lawyer-drafted first": §14's "Before any pooling" list, the Consequences line, and step 0.18 — each gains a dated round-6 bracket, none is silently rewritten. (3) **Q22**, relayed as the option he picked, confirms this ADR's own recommendation and the research pass's exactly as drafted: keep the existing synchronous billed read, under the per-restaurant ceiling, counted apart from the plan-credit pipeline (Q22's own DECIDED bracket, §11). (4) **Not answered: whether Jev belongs in the §14 notice.** Put to him alongside the other three; he deferred rather than chose, asking for an experiment first — in his words *"analyze their behaviours analyze 2 menus each, and tell me the analytics if JEV helped and how much, with what efficiency, use short menus but one super simple one super complex (different langs, abbreviations and so on), then report back"* — before deciding. This docs-only round did not run the experiment and records no result from it; the fork stays exactly as open as the correction pass left it, now carrying that precondition (§14, a new bracket after "Wording"; Q6's "Noted but not asked" line gains a pointer to it). Amended: the status block (a new round-6 sentence, and the round-5 "Still Proposed" list trimmed to what is still actually open); Context (round 5's "What this settles" paragraph past-tensed where round 6 closes an item, and a new "Round 6" subsection after round 5's); §11 (a bracket on "A house waiting at upload", which still read Q22 as open); §13 (Q14's new DECIDED bracket); §14 (a bracket on "Wording", the Jev-notice bracket, the "Before any pooling" bracket, and the Consequences-line bracket); step 0.18 (a new bracket); Q6 (the notice-fork pointer); Q17 (e) (a bracket: our own ToS ships first, the lawyer revises it later); Q22 (its new DECIDED bracket, which also states that the per-restaurant ceiling it keeps fails open on a spend-ledger read error by design, `model-client.service.ts:600-606`, and that failing closed was not part of the question); this Review trail. Citations: every pre-existing numeric self-citation whose target moved because of this round's insertions (the :1743 "not retrained" line, the Q1 research-pass trio, the §11 run-refusal pair, the Q2 research-pass pair, G6/G7, the :812 `primary_type` rule twice, the §2 boundary, P8, fact 9's six unasked rows, the §1/§13 pair, step 0.21) was re-located by script against `git show HEAD` — each old target line compared byte-for-byte with its new line, 26 of 26 identical — and recomputed with a "was :N" hop appended to its existing trail; round 4's review-trail row gains a third dated bracket naming the further shift, its own text otherwise unedited. CLAIMS.jsonl untouched: none of the three answers or the one deferral is a checkable fact, no `CLAIMS.jsonl` row cites this document by line, and a full run confirms the ledger is unaffected (`scripts/check_decision_claims.sh`: 395 checked, 395 holding — the corpus grew from the correction pass's 358 via unrelated merges, not this round). Guards re-run and green in the worktree: `scripts/check_adr_numbers_unique.py` (1,075 refs checked, no collision, 0163 the only number this document introduces); `scripts/check_od_ids_exist.py` (1,423 documents against 119 register rows, PASS, the same 2 known absorbed-merge notices); `scripts/check_citation_pairing.py` (181 register citations against 120 rows, PASS); `scripts/check_no_conflict_markers.py` (5,436 tracked files plus 1,461 planning documents, PASS). No OD row, ADR number, CLAIMS row or migration added or changed |
+| 2026-09-21 | Round 7: the two-menu Jev experiment round 6 asked for ran, was adversarially re-checked, and its result went to the founder alongside three more questions his own deferral had opened (`AskUserQuestion`, relayed via session memory `founder-answers-2026-09-21-round5.md` — none of the four came with a direct quote, unlike rounds 5 and 6; the relay's own words are quoted verbatim in Context, "Round 7") | Still Proposed. Closes all four items this round opened or inherited from the round-6 deferral. **The experiment:** `jev-exp.md` (specified run, 96–171 claims) found Jev tied Claude Opus 5 (the existing P7(c) judge) at 100%, no disagreements; an independent adversarial pass, `jev-judge.md`, recomputed every figure from the raw logs (matched, one small citation drift) and found the 100% **overstated** — every Menu B claim spelled out the abbreviation for the checker — then ran a further round withholding the hint (45 claims, 8 non-English): Jev accepted 5 of 22 false claims, every one an abbreviation or format reading, Opus rejected all 22, and Jev caught 0 extra false claims beside Opus across 216 pooled span claims either way. Jev made 0 errors on the 28 claims written in another language and on the 48-claim line-blind control (one of its five misses was an English claim about a Turkish line, `kdh`), never blocked a true claim (0 of 280), ran ≈12x faster and ≈420–680x cheaper than Opus at list price (Opus's real cost is plan-credit quota, §11, not dollars). Both files are session-scratchpad, not this repo: `.../scratchpad/q921/jev-exp/` and `.../scratchpad/q921/jev-judge/`. **(1) Does Jev stay P7(b)?** Yes, unchanged in shape — co-signer with Opus (the existing (a)∧(b)∧(c)∧(d) AND gate), never accepting alone, span-only, non-English still to `review` until the pilot's gold set exists; the judge's own no-hint abbreviation set (Menu D) is added to the pilot gold-set plan so it draws on a harder case than the specified run's (§4 P7's own DECIDED bracket; Q6 (remainder)'s, longer, with the full numbers). **(2) Does the §14 notice name TypeSafe/Jev?** Yes — a new notice bullet (§14, "What it says") discloses Jev as a processor of the checked menu text beside the existing Cowork/Claude line; TypeSafe also belongs in a subprocessor register, which does not exist in this repo yet (`compliance-privacy-charter.md:202`, 0/50) — ADR 0182's 2026-09-21 addendum already files that absence as OD-133 for Jev's coding-agent-prompt use, and this decision names menu-claim use as a second, independent reason TypeSafe belongs there when it is built, without inventing the register inline or filing a new OD row (§14's own DECIDED bracket; step 0.18 gains the build-order bullet). **(3) The menu-upload billed read on a spend-ledger error.** Fails **closed**, correcting round 6's "kept as it stands" reading of the existing fail-open design — scoped to this one call site (`model-client.service.ts` `allowedBySpendCeiling`, :618–667, the `read === null` return at :648 and the bare `catch` at :664–666), not every caller of the same method. **Decision record only: the code lands in a separate lane ("cellar"), not built in this docs-only round** (§11; Q22's own DECIDED bracket has the full scope note). **(4) `CLAIMS.jsonl` row `ADR-0163-JEV-LANGUAGE-COVERAGE-UNSTATED`.** Corrected against TypeSafe's current `models.md`, re-fetched 2026-09-21 and folded into `TYPESAFE_AI_OVERVIEW.md` §7 — the vendor now states a general, non-per-language position ("English is the primary training language... other languages... handled but not equally well") the 2026-09-17 crawl this row used to cite did not have. The row's substance is unchanged (Italian and Turkish are still named nowhere), so it stays `open`; only the citation and the reasoning are corrected (CLAUDE.md §5b). The verify command was written first to grep the whole file for "italian" or "turkish" and caught itself: the file's own new prose, explaining that those two languages are *not* named, contains both words, which made the naive check pass "holding" the moment it was written (`check_decision_claims.sh` reported it STALE). Rewritten as a Python check that extracts only the quoted vendor text after "Language support" and searches within that span — re-run, holds `no`, matches `open`. Amended: the status block; Context (a new "Round 7" subsection with the headline numbers and the four answers); §4 P7 (a DECIDED bracket restating the gate unchanged, pointing to the gold-set addition); §14 ("What it says" gains the Jev/TypeSafe bullet, and its own DECIDED bracket answers the notice fork); §11 (the "A house waiting at upload" bracket, and Q22's own new DECIDED bracket with the full scope note); step 0.18 (a bracket and a new check); Q6 (remainder) (two new brackets: the experiment result and the CLAIMS correction); "Not verified" (Jev's accuracy line — now partially measured, not wholly unmeasured; the language line updated to match); `TYPESAFE_AI_OVERVIEW.md` (a new "Language support" bullet in §7, frontmatter dated); `CLAIMS.jsonl` (one row corrected, `verified` moved to 2026-09-21); `wine-intelligence-foundations.md:399` (an unrelated pre-existing drift found by this round's own guard run, OD-102's citation off by one line after the register grew across the merge — corrected 63→64, digits only); this Review trail. No new self-citation "was :N" sweep was run against the rest of this document's internal line-number citations (`:855`-style, `primary_type`, G6/G7 and similar) after this round's insertions — **stated shortcut, CLAUDE.md §0.5**: none of the four CI guards below reads an internal `0163:N` self-citation (`check_citation_pairing.py` covers only citations INTO `OPEN-DECISIONS.md`, confirmed by re-reading its own docstring this round), so nothing here fails silently from it, but a reader following one of this file's own `:N` pointers written before this round may land a few lines short of its target until a future round's sweep catches up. Guards re-run and green in the worktree: `scripts/check_decision_claims.sh` (413 checked, 413 holding — the corpus grew from round 6's 395 via unrelated merges plus this round's one correction, not a net add); `scripts/check_adr_numbers_unique.py` (1,092 refs checked, no collision, 0163 the only number this document introduces); `scripts/check_od_ids_exist.py` (1,428 documents against 120 register rows, PASS, the same 2 known absorbed-merge notices); `scripts/check_citation_pairing.py` (181 register citations against 121 rows, PASS after the `wine-intelligence-foundations.md:399` fix above — 1 DISAGREEING before it); `scripts/check_no_conflict_markers.py` (5,500 tracked files plus 1,467 planning documents, PASS). `ruff check .` and `black --check .` under `services/agent-orchestrator` both clean (no Python touched this round). No OD row, ADR number or migration added; one CLAIMS row corrected in place (not added) **[Last call, 2026-09-21: eight corrections before commit, none changing an answer.** (i) Answer (1) was half built: three brackets said §5 G6's pilot gold-set plan gains the no-hint abbreviation set, but §5 carried no such text. G6 now has a round-7 bracket naming Menu D's 11 lines and 47 claims, saying its fixtures live only in the session scratchpad, and applying G6's existing rule that a pre-label no human confirmed is not gold. (ii) The narrowed CLAIMS verify described above was reverted to the whole-file grep. Mutation: a new bullet stating Italian and Turkish coverage outside the quoted span left the narrowed check at exit 1 (open, PASS) — a fixed-but-unstruck entry staying green, the §5b failure. `TYPESAFE_AI_OVERVIEW.md`'s own prose now avoids the two names instead. Re-mutated: a coverage line flips the row STALE (FAIL); the file moved away gives exit 2 (FAIL); restored byte-identical. (iii) Answer (2)'s register: the compliance plan builds it from `foundation/EXTERNAL_CONNECTIONS.md` (`regulatory-posture-agenda-full.md:26-28`), which lacked TypeSafe. It now has an unclassified row there, guarded by a new resolved row, `ADR-0163-TYPESAFE-IN-REGISTER-SEED` (row removed: FAIL; restored). Classification stays OD-133's. (iv) Q22's bracket described the wrong mechanism. This path's call (`scan-parser.service.ts:287`) never sets `gateFirstAttempt`, so the ledger is read only before a retry, and failing closed needs a first-attempt read too. The bracket also said "now fails closed" of code not on `main`, and credited the lane name "cellar" to the founder. All three are corrected, and the relay's "waits and says why; other paths unchanged" is recorded. (v) "5 of 22 wrong expansions" was 5 of 22 false claims (four wrong expansions and one format reading), recounted from `jev-exp/raw/judge_J_*_span_*.jsonl`. (vi) "No language error anywhere" held only for claims written in another language. The `kdh` miss was an English claim on a Turkish line. Whether "non-English" keys on the claim or on the cited span is left for the founder (Context, "What this does not settle"). (vii) The "Language support" section is now recorded as absent from the 2026-09-17 crawl, not as added since; `jev-judge.md` could not tell which. (viii) The stated self-citation shortcut above said pointers would "land a few lines short". Measured, every live one had moved, by 11–227 lines from round 7's draft alone. The sweep was run instead: 16 live citations (26 target lines) were re-located by content match against `git show HEAD`, 26 of 26 byte-identical, each given a "was :N" hop. Round 4's row gains its fourth bracket. The shortcut no longer stands. Guards after these edits: `check_decision_claims.sh` 414 checked, 414 holding (one row added); `check_adr_numbers_unique.py` 1,094 refs, no collision; `check_citation_pairing.py` 181 citations against 121 rows, PASS; `check_od_ids_exist.py` 1,428 documents against 120 rows, PASS; `check_no_conflict_markers.py` 5,500 files plus 1,467 planning documents, PASS.] |

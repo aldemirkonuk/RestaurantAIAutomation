@@ -36,6 +36,7 @@ import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { failureOf, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
+import { useReportExports, type ExportDesk } from './useReportExports';
 import {
   ANALYSIS_IDS,
   DEFAULT_ON,
@@ -201,6 +202,12 @@ export interface ReportsNextData {
    * thing (`ReportsNext.test.tsx`).
    */
   goalsDesk: GoalsDesk;
+  /**
+   * The export desk (OD-81): a cutting written up by the gateway to a CSV and a
+   * print page, with the status the server holds. Behind this seam for the same
+   * reason as the goals desk.
+   */
+  exportDesk: ExportDesk;
   /** One entry per analysis currently being read. Absent = not on the sheet. */
   registers: Partial<Record<AnalysisId, Register<unknown>>>;
   /** Always read, on the sheet or not: the ⌘K palette searches it. */
@@ -297,10 +304,12 @@ export function useReportsNextData(
   }, [qc]);
 
   const goalsDesk = useGoalsDesk({ place: placeCutting, queryRoot: ROOT });
+  const exportDesk = useReportExports({ queryRoot: ROOT });
 
   return {
     restaurantId: rid,
     goalsDesk,
+    exportDesk,
     registers,
     reading,
     tillDays,

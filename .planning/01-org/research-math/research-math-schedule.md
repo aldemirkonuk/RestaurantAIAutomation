@@ -24,7 +24,7 @@ person. A slip with a product reason attached and no record is the earliest sign
 
 | Long-horizon item | Why it cannot be sliced | Owner |
 |---|---|---|
-| **The OD-03 bake-off on this repo's own workloads** | A truncated bake-off produces a pick from repute with a table attached — the thing `OD-03 (OPEN-DECISIONS.md:28)` explicitly forbids | [[harness-model-routing-charter]] |
+| **The OD-03 bake-off on this repo's own workloads** | A truncated bake-off produces a pick from repute with a table attached — the thing `OD-03 (OPEN-DECISIONS.md:29)` explicitly forbids | [[harness-model-routing-charter]] |
 | **Golden sets with real (free) negatives, 3 task types** | Sets rushed to a deadline are sets authored by imagination; that is the documented failure mode (`eval_guest_merge_policies.py:10`) | [[evaluation-doneability-charter]] |
 | **NF-A brought to one joinable event** | Half-instrumented telemetry is worse than none: it looks measured and is not | [[neural-footprint-instrumentation-charter]] |
 

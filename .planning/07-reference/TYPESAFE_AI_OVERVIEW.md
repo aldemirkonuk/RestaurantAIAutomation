@@ -2,8 +2,11 @@
 type: reference
 title: TypeSafe AI (Jev) — product overview, use cases, benefits, limitations
 status: research record
-updated: 2026-09-17
-source: docs.typesafe.ai (crawled 2026-09-17), typesafe-ai/skills GitHub repo
+updated: 2026-09-21 (§7 "Language support" added; everything else is the
+  2026-09-17 crawl, unchanged)
+source: docs.typesafe.ai (crawled 2026-09-17; §7's "Language support"
+  re-fetched 2026-09-21 for ADR 0163's Jev experiment, `models.md` — see
+  ADR 0163 §4 P7, Q6 (remainder), round 7), typesafe-ai/skills GitHub repo
 ---
 
 # TypeSafe AI — full overview
@@ -176,6 +179,20 @@ reproducible via a `json_cache.json` shipped with each cookbook.
 - **Data/legal**: TypeSafe states a commitment not to train on customer data, offers a
   Data Processing Agreement and a Master Customer Agreement, and offers zero data
   retention (ZDR) for enterprise customers on request (`privacy@typesafe.ai`).
+- **Language support** (added to the vendor's docs after this crawl; text
+  re-fetched 2026-09-21 from `models.md` for ADR 0163's Jev experiment — this
+  bullet is the one part of this file not from the 2026-09-17 crawl, see the
+  frontmatter): *"Jev accepts natural-language text. English is the primary
+  training language and where accuracy is currently best. Other languages,
+  including CJK scripts, are handled but not equally well; test on your own
+  content before relying on Jev for a non-English workload, and pay close
+  attention to Confidence when routing."* This is a general position, not a
+  per-language list — it names no language but English and CJK scripts, so it
+  neither confirms nor excludes coverage for the two languages ADR 0163's
+  pipeline needs (§4 P7, Q6 (remainder) still tracks this as its own open item,
+  via `CLAIMS.jsonl` `ADR-0163-JEV-LANGUAGE-COVERAGE-UNSTATED`, whose check is a
+  whole-file search for those two language names — so this file must not
+  spell them out except to record the vendor's coverage for them).
 
 ## 8. Limitations — the vendor's own published "jaggedness" list for jev-1.13
 
