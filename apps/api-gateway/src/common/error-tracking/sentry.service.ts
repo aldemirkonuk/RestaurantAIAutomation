@@ -71,7 +71,7 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
  * Routes that carry a credential in the PATH rather than the query. Stripping
  * the query does not reach these: `/invite/<code>` IS the invite credential.
  */
-const TOKEN_PATH_PREFIXES = ['/invite/', '/studio/invite/'] as const;
+const TOKEN_PATH_PREFIXES = ["/invite/", "/studio/invite/"] as const;
 
 /**
  * The URL as Sentry may keep it: origin and path only, with a path-borne token

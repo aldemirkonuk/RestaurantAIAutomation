@@ -29,12 +29,20 @@ jest.mock("@sentry/node", () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { SentryService, scrubSentryEvent, scrubUrl } = require("./sentry.service");
+const sentryService = require("./sentry.service");
+// Destructured separately: keeping the `require` on ONE short line keeps it
+// adjacent to its eslint-disable comment. Prettier wraps a longer destructure
+// across lines, which moves the `} = require(...)` away from the comment and
+// the rule fires again.
+const { SentryService, scrubSentryEvent, scrubUrl } = sentryService;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { SentryInterceptor } = require("./sentry.interceptor");
 
 function serviceWithDsn() {
-  const config = { get: (key: string) => (key === "SENTRY_DSN" ? "https://key@example.test/1" : "test") };
+  const config = {
+    get: (key: string) =>
+      key === "SENTRY_DSN" ? "https://key@example.test/1" : "test",
+  };
   const service = new SentryService(config as never);
   service.initialize();
   return service;
@@ -133,8 +141,14 @@ describe("sentry — what reaches the error tracker", () => {
 
     it("strips identity from free-form extra, request body and contexts", () => {
       const event = scrubSentryEvent({
-        extra: { email: "chef@restaurant.example", phone: "555-0100", orderId: "ord-9" },
-        request: { data: { name: "Ada Chef", password: "hunter2", note: "keep" } },
+        extra: {
+          email: "chef@restaurant.example",
+          phone: "555-0100",
+          orderId: "ord-9",
+        },
+        request: {
+          data: { name: "Ada Chef", password: "hunter2", note: "keep" },
+        },
         contexts: {
           order: { total: 42 },
           account: { first_name: "Ada", last_name: "Chef", plan: "pro" },
@@ -177,7 +191,9 @@ describe("sentry — what reaches the error tracker", () => {
       // captureException wraps the context as `{ extra: ... }` before handing
       // it to Sentry, so the request context sits one level down.
       const reported = (
-        captureExceptionMock.mock.calls[0][1] as { extra: Record<string, unknown> }
+        captureExceptionMock.mock.calls[0][1] as {
+          extra: Record<string, unknown>;
+        }
       ).extra;
       expect(reported).toEqual({
         url: "/api/v1/invites/accept",
@@ -221,12 +237,27 @@ describe("sentry — what reaches the error tracker", () => {
 
 describe("request.url never carries a credential (founder ruling 2026-09-21)", () => {
   it.each([
-    ["https://mudavym.com/reset-password?token=abc", "https://mudavym.com/reset-password"],
-    ["https://mudavym.com/verify-email?token=abc", "https://mudavym.com/verify-email"],
+    [
+      "https://mudavym.com/reset-password?token=abc",
+      "https://mudavym.com/reset-password",
+    ],
+    [
+      "https://mudavym.com/verify-email?token=abc",
+      "https://mudavym.com/verify-email",
+    ],
     ["https://mudavym.com/x?a=1&token=abc&b=2", "https://mudavym.com/x"],
-    ["https://mudavym.com/reset-password#token=abc", "https://mudavym.com/reset-password"],
-    ["https://mudavym.com/invite/SECRET", "https://mudavym.com/invite/<redacted>"],
-    ["https://mudavym.com/studio/invite/S", "https://mudavym.com/studio/invite/<redacted>"],
+    [
+      "https://mudavym.com/reset-password#token=abc",
+      "https://mudavym.com/reset-password",
+    ],
+    [
+      "https://mudavym.com/invite/SECRET",
+      "https://mudavym.com/invite/<redacted>",
+    ],
+    [
+      "https://mudavym.com/studio/invite/S",
+      "https://mudavym.com/studio/invite/<redacted>",
+    ],
     ["/invite/SECRET?x=1", "/invite/<redacted>"],
     ["https://mudavym.com/orders", "https://mudavym.com/orders"],
     ["/", "/"],

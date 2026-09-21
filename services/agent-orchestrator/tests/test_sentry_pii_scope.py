@@ -164,12 +164,24 @@ def test_scrub_lists_match_the_typescript_runtimes():
 @pytest.mark.parametrize(
     "raw,want",
     [
-        ("https://mudavym.com/reset-password?token=abc", "https://mudavym.com/reset-password"),
-        ("https://mudavym.com/verify-email?token=abc", "https://mudavym.com/verify-email"),
+        (
+            "https://mudavym.com/reset-password?token=abc",
+            "https://mudavym.com/reset-password",
+        ),
+        (
+            "https://mudavym.com/verify-email?token=abc",
+            "https://mudavym.com/verify-email",
+        ),
         ("https://mudavym.com/x?a=1&token=abc&b=2", "https://mudavym.com/x"),
-        ("https://mudavym.com/reset-password#token=abc", "https://mudavym.com/reset-password"),
+        (
+            "https://mudavym.com/reset-password#token=abc",
+            "https://mudavym.com/reset-password",
+        ),
         ("https://mudavym.com/invite/SECRET", "https://mudavym.com/invite/<redacted>"),
-        ("https://mudavym.com/studio/invite/S", "https://mudavym.com/studio/invite/<redacted>"),
+        (
+            "https://mudavym.com/studio/invite/S",
+            "https://mudavym.com/studio/invite/<redacted>",
+        ),
         ("/invite/SECRET?x=1", "/invite/<redacted>"),
         ("https://mudavym.com/orders", "https://mudavym.com/orders"),
         ("/", "/"),
