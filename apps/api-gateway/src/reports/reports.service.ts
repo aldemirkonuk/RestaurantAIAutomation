@@ -1,4 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  GoneException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
   GenerateReportDto,
@@ -9,6 +14,22 @@ import {
   ScheduleReportDto,
   ScheduledReportResponseDto,
 } from "./dto/reports.dto";
+
+/**
+ * A `generated_reports` row that can be shown as a report (OD-81).
+ *
+ * The retired `POST /reports/generate` wrote rows with `status = 'pending'` and
+ * all three file columns NULL, and nothing ever completed one. Such a row is
+ * not a report that is late — it is a report that can never exist — so the
+ * list and the single read both leave it out, on both pages that read this
+ * table (the Sorting Office and the legacy Documents page). Any row with a
+ * file, or a status other than `pending` (including NULL), still reads.
+ *
+ * Deletion is untouched: `deleteReport` is not filtered, so such a row can
+ * still be removed by id.
+ */
+export const WRITTEN_REPORT_FILTER =
+  "status.is.null,status.neq.pending,pdf_url.not.is.null,excel_url.not.is.null,csv_url.not.is.null";
 
 interface GeneratedReportRow {
   id: string;
@@ -41,35 +62,25 @@ export class ReportsService {
 
   constructor(private readonly databaseService: DatabaseService) {}
 
+  /**
+   * OD-81, retired 2026-09-17. This method inserted a `generated_reports` row
+   * with `status: "pending"` and every file column NULL, and nothing in the
+   * repo ever advanced it — so every row it wrote was a report that could never
+   * exist, listed on /documents-reports with a View button that could only
+   * fail. The founder's answer (ADR 0149, row 20) was a real export, and that
+   * lives at `POST /reports/exports` (`exports/report-exports.service.ts`).
+   *
+   * It refuses rather than disappearing: a caller still pointed here learns
+   * where the writer went, and no path is left that files a phantom row.
+   */
   async generateReport(
-    restaurantId: string,
-    dto: GenerateReportDto,
+    _restaurantId: string,
+    _dto: GenerateReportDto,
   ): Promise<ReportResponseDto> {
-    const payload = {
-      restaurant_id: restaurantId,
-      report_type: dto.reportType,
-      report_period_start: dto.periodStart,
-      report_period_end: dto.periodEnd,
-      title: dto.title,
-      report_data: dto.parameters ?? {},
-      status: "pending",
-    };
-
-    const { data, error } = await this.databaseService.supabase
-      .from("generated_reports")
-      .insert(payload)
-      .select("*")
-      .single();
-
-    if (error) {
-      this.logger.error("Failed to generate report", {
-        restaurantId,
-        error: error.message,
-      });
-      throw error;
-    }
-
-    return this.mapReportRow(data as GeneratedReportRow);
+    throw new GoneException(
+      "POST /reports/generate filed a report nothing ever wrote, and is retired (OD-81). " +
+        "Export a cutting of the /reports sheet with POST /reports/exports.",
+    );
   }
 
   /**
@@ -99,6 +110,7 @@ export class ReportsService {
       .from("generated_reports")
       .select("*", { count: "exact" })
       .eq("restaurant_id", restaurantId)
+      .or(WRITTEN_REPORT_FILTER)
       .order("created_at", { ascending: false })
       .limit(limit);
     // `range` carries the offset — and restates the identical limit — so it is
@@ -139,7 +151,8 @@ export class ReportsService {
       .select("*")
       .eq("restaurant_id", restaurantId)
       .eq("id", reportId)
-      .single();
+      .or(WRITTEN_REPORT_FILTER)
+      .maybeSingle();
 
     if (error) {
       this.logger.error("Failed to get report", {
@@ -149,6 +162,11 @@ export class ReportsService {
       });
       throw error;
     }
+    // Absent, another house's, or a report that was never written: one answer,
+    // 404, which says nothing about which. `.single()` turned all three into a
+    // PGRST116 the controller reported as a 500 — a server failure for a
+    // question with a true answer.
+    if (!data) throw new NotFoundException("No such report for this house.");
 
     return this.mapReportRow(data as GeneratedReportRow);
   }

@@ -109,7 +109,7 @@ export class CommunicationsController {
    * ---------------------------------
    * Every vendor letter this deployment sends leaves from ONE mailbox that
    * every restaurant on it shares (`gmail.service.ts:78-80`,
-   * `GMAIL_SENDER_EMAIL` falling back to `notifications@wineops.ai`). The
+   * `GMAIL_SENDER_EMAIL` falling back to `notifications@mudavym.com`). The
    * sign-off inside the letter carries the house's name; the envelope does not.
    * DESIGN-FOUNDATION §6b measured that as the largest gap on the connections
    * surface, and a page cannot state it without being able to READ it — so
@@ -151,7 +151,7 @@ export class CommunicationsController {
     const configured =
       this.configService.get<string>("GMAIL_SENDER_EMAIL") ?? null;
     return {
-      address: resolved || configured || "notifications@wineops.ai",
+      address: resolved || configured || "notifications@mudavym.com",
       scope: "deployment",
       configuredBy: "GMAIL_SENDER_EMAIL",
       resolvedFromProfile: Boolean(resolved),
@@ -455,18 +455,18 @@ export class CommunicationsController {
 
     const result = await this.gmailService.sendEmail({
       to: this.managerEmails,
-      subject: "🍷 WineOps Test Email - Connection Successful!",
+      subject: "🍷 Mudavym Test Email - Connection Successful!",
       html: `
 <!DOCTYPE html>
 <html>
 <head><title>Test Email</title></head>
 <body style="font-family: Arial, sans-serif; padding: 20px;">
-  <h1 style="color: #7c2d12;">WineOps AI - Test Email</h1>
+  <h1 style="color: #7c2d12;">Mudavym - Test Email</h1>
   <p>Congratulations! Your Gmail API integration is working correctly.</p>
   <p><strong>Recipients:</strong> ${this.managerEmails.join(", ")}</p>
   <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
   <hr>
-  <p style="color: #666;">This is an automated test from WineOps AI.</p>
+  <p style="color: #666;">This is an automated test from Mudavym.</p>
 </body>
 </html>
       `,
@@ -482,7 +482,7 @@ export class CommunicationsController {
 
   /**
    * TEST ENDPOINT: Send a template email to specified recipients
-   * Uses ready-made templates: "test" (simple WineOps test) or "low-stock" (low stock alert with sample data)
+   * Uses ready-made templates: "test" (simple Mudavym test) or "low-stock" (low stock alert with sample data)
    */
   // D2: @Public() removed — this sent a real Gmail message to ANY address an
   // anonymous caller named, i.e. an open relay on our verified sender domain.
@@ -505,18 +505,18 @@ export class CommunicationsController {
     if (dto.template === "test") {
       const result = await this.gmailService.sendEmail({
         to: dto.to,
-        subject: "🍷 WineOps AI - Test Email",
+        subject: "🍷 Mudavym - Test Email",
         html: `
 <!DOCTYPE html>
 <html>
 <head><title>Test Email</title></head>
 <body style="font-family: Arial, sans-serif; padding: 20px;">
-  <h1 style="color: #7c2d12;">WineOps AI - Test Email</h1>
-  <p>This email was sent using the WineOps AI ready-made test template.</p>
+  <h1 style="color: #7c2d12;">Mudavym - Test Email</h1>
+  <p>This email was sent using the Mudavym ready-made test template.</p>
   <p><strong>Recipients:</strong> ${dto.to.join(", ")}</p>
   <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
   <hr>
-  <p style="color: #666;">This is an automated message from WineOps AI.</p>
+  <p style="color: #666;">This is an automated message from Mudavym.</p>
 </body>
 </html>
         `,

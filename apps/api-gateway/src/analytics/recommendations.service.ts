@@ -86,7 +86,18 @@ export class RecommendationsService {
 
   async getRecommendations(
     restaurantId: string,
-    opts: { includeHidden?: boolean; surface?: string } = {},
+    opts: {
+      includeHidden?: boolean;
+      surface?: string;
+      /**
+       * False for a read that is not a showing. The recommendations digest
+       * composes the feed before it knows whether any mail will go out (two
+       * gateway instances may both compose; one sends), so it records what it
+       * actually mailed on its own send row (`recommendation_digest_sends.
+       * rule_keys`) instead of logging an impression for every compose.
+       */
+      recordImpressions?: boolean;
+    } = {},
   ): Promise<{
     recommendations: Recommendation[];
     rulesEvaluated: number;
@@ -94,6 +105,8 @@ export class RecommendationsService {
     stateCounts: Record<"active" | "snoozed" | "dismissed" | "done", number>;
     suppressed: number;
     suppressionsReadable: boolean;
+    /** Engine sources that rejected on this read, by name. Empty = all answered. */
+    sourcesUnread: string[];
   }> {
     const [
       financial,
@@ -116,6 +129,24 @@ export class RecommendationsService {
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;
+    // Which sources did not answer. `ok()` turns a rejected source into `null`,
+    // and a rule over `null` does not fire — so without this list "nothing
+    // fired" and "nothing could be read" are the same result. The digest
+    // sender (analytics/digest) says which it was; the page may too.
+    const sourcesUnread = (
+      [
+        ["financial summary", financial],
+        ["risk profile", risk],
+        ["inventory science", invSci],
+        ["menu engineering", menu],
+        ["seasonality", seasonality],
+        ["cashflow", cashflow],
+        ["insights", insightsRes],
+        ["goals", goals],
+      ] as Array<[string, PromiseSettledResult<unknown>]>
+    )
+      .filter(([, r]) => r.status === "rejected")
+      .map(([name]) => name);
 
     const ctx = {
       financial: ok(financial),
@@ -491,9 +522,11 @@ export class RecommendationsService {
     // is the first time it was ever shown, not this request.
     await this.attachFirstSeen(restaurantId, visible);
 
-    void this.logImpressions(restaurantId, visible, opts.surface).catch(
-      () => undefined,
-    );
+    if (opts.recordImpressions !== false) {
+      void this.logImpressions(restaurantId, visible, opts.surface).catch(
+        () => undefined,
+      );
+    }
 
     return {
       recommendations: visible,
@@ -507,6 +540,7 @@ export class RecommendationsService {
       // it as clean (ADR 0020).
       suppressed: suppressedCount,
       suppressionsReadable: dispositions.readable,
+      sourcesUnread,
     };
   }
 

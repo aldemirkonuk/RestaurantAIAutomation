@@ -1,7 +1,9 @@
+import { GoneException, NotFoundException } from "@nestjs/common";
 import { PATH_METADATA } from "@nestjs/common/constants";
 import { DatabaseService } from "../database/database.service";
+import { MemorySupabase } from "./exports/__fixtures__/memory-supabase";
 import { ReportsController } from "./reports.controller";
-import { ReportsService } from "./reports.service";
+import { ReportsService, WRITTEN_REPORT_FILTER } from "./reports.service";
 
 /**
  * OD-45. The Documents page read and deleted `generated_reports` rows straight from
@@ -48,7 +50,9 @@ function makeSupabaseStub(result: { data?: unknown; error?: unknown } = {}) {
       calls.range = [from, to];
       return builder;
     }),
+    or: jest.fn(() => builder),
     single: jest.fn(() => Promise.resolve(result)),
+    maybeSingle: jest.fn(() => Promise.resolve(result)),
     then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
   });
 
@@ -253,7 +257,9 @@ describe("refileReport / getReportCrossFile (Sorting Office)", () => {
         lte: jest.fn(() => builder),
         order: jest.fn(() => builder),
         limit: jest.fn(() => builder),
+        or: jest.fn(() => builder),
         single: jest.fn(() => Promise.resolve(resolve())),
+        maybeSingle: jest.fn(() => Promise.resolve(resolve())),
         then: (r: (v: unknown) => unknown) => Promise.resolve(resolve()).then(r),
       });
       return builder;
@@ -384,5 +390,85 @@ describe("ReportsController routing", () => {
     // declaration order; this pins the paths themselves.
     expect(pathOf("getReportCrossFile")).toBe(":id/cross-file");
     expect(pathOf("refileReport")).toBe(":id");
+  });
+});
+
+describe("generated_reports: a report that can never exist is not shown (OD-81)", () => {
+  /**
+   * Against a store that APPLIES the filter (`exports/__fixtures__/
+   * memory-supabase.ts` evaluates PostgREST's `or=` the way SQL does, NULL <>
+   * 'pending' included), not a stub that records it was called. Both pages that
+   * read this table — the Sorting Office and the legacy Documents page — read
+   * through these two methods.
+   */
+  const HOUSE = "11111111-1111-4111-8111-111111111111";
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+
+  function seeded() {
+    const mem = new MemorySupabase();
+    const row = (id: string, over: Record<string, unknown>) =>
+      mem.seed("generated_reports", {
+        ...ROW,
+        id,
+        restaurant_id: HOUSE,
+        pdf_url: null,
+        excel_url: null,
+        csv_url: null,
+        created_at: `2026-09-${id.slice(-2)}T00:00:00.000Z`,
+        ...over,
+      });
+    row("phantom-01", { status: "pending" });
+    row("written-02", { status: "completed", pdf_url: "https://example.test/a.pdf" });
+    row("pending-with-file-03", { status: "pending", csv_url: "https://example.test/b.csv" });
+    row("no-status-04", { status: null });
+    row("failed-05", { status: "failed" });
+    row("foreign-06", { restaurant_id: OTHER, status: "completed", pdf_url: "https://example.test/c.pdf" });
+    const service = new ReportsService({ supabase: mem.supabase } as unknown as DatabaseService);
+    return { mem, service };
+  }
+
+  it("lists every row but the pending one with no file, and counts only what it lists", async () => {
+    const { service } = seeded();
+    const list = await service.listReports(HOUSE);
+    expect(list.reports.map((r) => r.id).sort()).toEqual([
+      "failed-05",
+      "no-status-04",
+      "pending-with-file-03",
+      "written-02",
+    ]);
+    expect(list.total).toBe(4);
+  });
+
+  it("reads the phantom row, and another house's, as 404 — and so refuses to cross-file or re-file them", async () => {
+    const { mem, service } = seeded();
+    await expect(service.getReport(HOUSE, "phantom-01")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getReport(HOUSE, "foreign-06")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getReportCrossFile(HOUSE, "phantom-01")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.refileReport(HOUSE, "phantom-01", "financial_summary" as never, null),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(mem.rows("generated_reports").find((r) => r.id === "phantom-01")!.report_type).toBe(ROW.report_type);
+    await expect(service.getReport(HOUSE, "written-02")).resolves.toMatchObject({ id: "written-02" });
+  });
+
+  it("files no new pending row: POST /reports/generate is retired with 410", async () => {
+    const { mem, service } = seeded();
+    const before = mem.rows("generated_reports").length;
+    await expect(
+      service.generateReport(HOUSE, {
+        reportType: "financial_summary",
+        title: "t",
+        periodStart: "2026-09-01",
+        periodEnd: "2026-09-16",
+      } as never),
+    ).rejects.toBeInstanceOf(GoneException);
+    expect(mem.rows("generated_reports")).toHaveLength(before);
+    expect(mem.log.filter((l) => l.endsWith(":insert"))).toEqual([]);
+  });
+
+  it("the filter is the one both methods send", () => {
+    expect(WRITTEN_REPORT_FILTER).toBe(
+      "status.is.null,status.neq.pending,pdf_url.not.is.null,excel_url.not.is.null,csv_url.not.is.null",
+    );
   });
 });

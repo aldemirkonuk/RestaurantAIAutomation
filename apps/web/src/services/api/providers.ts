@@ -55,6 +55,18 @@ export interface ProviderContact {
   email: string
   phone: string
   isPrimary: boolean
+  /**
+   * What kind of line this is, as the book holds it. `null` means nobody has
+   * said — which is now a different row from one recorded as a main line
+   * (ADR 0121 P0 item 2).
+   */
+  phoneType?: string | null
+  /** Only `mobile` can be texted. The server decides this, never the sheet. */
+  reach?: 'mobile' | 'landline' | 'unstated'
+  /** False for `main_line` too: it is also the column's own default. */
+  phoneTypeStated?: boolean
+  /** The server's sentence about this number. Shown verbatim. */
+  reachSays?: string
 }
 
 export interface ProviderOrder {
