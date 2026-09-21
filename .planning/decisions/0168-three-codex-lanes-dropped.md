@@ -4,10 +4,11 @@
   this is not a fresh open fork, but the founder can supersede)
 - **Date:** 2026-09-19
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent.
-  This record applies the founder's already-stated Codex-adoption rule ("Codex work only
-  after audit"; "adopt it only if the quality baseline is great and align with our needs")
-  to three audited lanes. It does not ask the founder to weigh a new judgment call, except
-  the open founder questions listed under Consequences.
+  This record applies the founder's already-stated Codex-adoption rule (per `MEMORY.md`'s
+  own index paraphrase, Codex work lands only after an audit; the founder's verbatim words
+  are "adopt it only if the quality baseline is great and align with our needs") to three
+  audited lanes. It does not ask the founder to weigh a new judgment call, except the open
+  founder questions listed under Consequences.
 - **Keywords:** codex, codex-lane-b, codex-lane-d, codex-lane-h, wt-fin-b, wt-fin-d,
   wt-fin-h, adoption-audit, receiving, procurement, auth-rewrite, inventory-overlays,
   calendar-push, drop-not-adopt
@@ -19,9 +20,10 @@
   [[0117-a-price-sighting-names-its-source-its-date-and-its-unit]] (Q25 currency, violated
   by D), [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]]
   (the finish-goal this work was meant to serve), [[0162-managers-grant-manager-or-staff-on-both-doors]]
-  (fourth addendum, answers lane B's auth founder question), PR #374 (overlay foundation,
-  lane A — D's undelivered prerequisite), PR #392 / PR #393 (auth work lane B's rewrite
-  conflicts with)
+  (fourth addendum, answers lane B's auth founder question),
+  [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] (2026-09-12 founder answer,
+  governs lane D's spot-count voice fork), PR #374 (overlay foundation, lane A — D's
+  undelivered prerequisite), PR #392 / PR #393 (auth work lane B's rewrite conflicts with)
 
 **Index row:** not added to `decisions/README.md` here, following [[0162-managers-grant-manager-or-staff-on-both-doors]]'s
 own note — that file is gate-owned and its row goes in a separate pass.
@@ -68,9 +70,10 @@ listed under Lane D below and their sourcing is in Evidence trail.
    rulings first. This is the option the founder's bar exists to prevent — patching a
    lane that scored badly to look green, instead of building to the bar directly.
 3. **Drop; leave each worktree exactly as found; record why and where the work is kept.**
-   Chosen for all three. Nothing is lost — each lane's full diff is preserved byte-for-byte
-   at a snapshot ref (below), and the requirements each lane surfaced are carried forward
-   as open founder questions instead of being rediscovered later.
+   Chosen for all three. Nothing is lost from this machine's clone — each lane's full diff
+   is preserved byte-for-byte at a snapshot ref (below; local-only unless pushed — see the
+   Decision table), and the requirements each lane surfaced are carried forward as open
+   founder questions instead of being rediscovered later.
 4. *(Saying nothing.)* Costs the most: a census/first-pass claim (D's ADOPT, H's green
    tests) would stand as the only recorded verdict, and a later session merging on that
    alone would ship the money-corruption bug in D or the `/calendar` outage in H.
@@ -85,11 +88,17 @@ at its own snapshot ref, taken 2026-09-18 23:22:23 -0400 against the same parent
 (`60ed83a7e`) across all three lanes, independently re-verified by this session via
 `git show --stat` rather than copied from any prior report:
 
-| Lane | Snapshot ref | Commit | Files | Diff |
-|---|---|---|---|---|
-| B | `refs/snapshots/wt-fin-B/20260919T0325` | `b266a70d` | 43 | +2089 / -561 |
-| D | `refs/snapshots/wt-fin-D/20260919T0325` | `10094f59` | 47 | +9129 / -126 |
-| H | `refs/snapshots/wt-fin-H/20260919T0325` | `7ace83c7` | 30 | +4816 / -24 |
+| Lane | Snapshot ref | Commit | Files | Diff | Remote |
+|---|---|---|---|---|---|
+| B | `refs/snapshots/wt-fin-B/20260919T0325` | `b266a70d` | 43 | +2089 / -561 | local-only |
+| D | `refs/snapshots/wt-fin-D/20260919T0325` | `10094f59` | 47 | +9129 / -126 | local-only |
+| H | `refs/snapshots/wt-fin-H/20260919T0325` | `7ace83c7` | 30 | +4816 / -24 | local-only |
+
+**All three snapshot refs are local-only, and so are the `refs/lane-sync/*` copies named
+per lane below** — confirmed this session: `git ls-remote origin 'refs/snapshots/*'
+'refs/lane-sync/*' 'refs/heads/reserve/*'` returns nothing, while `git ls-remote origin
+refs/heads/main` resolves. This work is safe only while this machine's clone exists,
+unless the orchestrator pushes these refs to `origin`.
 
 (B and D's file/diff counts match the prior audit reports' own re-measured figures; H's
 insertion/deletion counts were not stated in the prior verdict and are newly measured here
@@ -121,10 +130,14 @@ notification copy), plus an unrelated rewrite of `auth.service.ts`.
   landed the invite-role-ceiling and owner-removal fixes recorded in
   [[0162-managers-grant-manager-or-staff-on-both-doors]] after this lane's worktree was cut.
 - **A prior, independent audit already scored this lane REJECT at 6** for the same two
-  root causes (`mudavym-finish-goal-2026-09-16.md:130-131`).
-- **`refs/lane-sync/wt-fin-E/20260919T041635Z` carries byte-identical copies of this
-  lane's new files** — lane E's own audit must reach the same D1/D4/D5/D6 conclusions
-  before any of that content is adopted from lane E.
+  root causes, named at `mudavym-finish-goal-2026-09-16.md:130-131`: it "silently decided
+  the quantity_received fork + staff floor app-wide" — the quantity_received half is D4
+  above; the staff-floor half is not among this ADR's own reasons.
+- **`refs/lane-sync/wt-fin-E/20260919T041635Z` carries byte-identical copies of 11 of
+  this lane's 13 new files**, confirmed by blob hash this session; two differ —
+  `apps/mobile/src/api/__tests__/accountBoundary.test.ts` and
+  `apps/mobile/src/state/__tests__/outbox.test.ts`. Lane E's own audit must reach the
+  same D1/D4/D5/D6 conclusions before any of that content is adopted from lane E.
 - **One correction to the underlying audit report, applied here:** its auth founder
   question is mostly already answered. [[0162-managers-grant-manager-or-staff-on-both-doors]]'s
   fourth addendum (2026-09-18, confirmed at that file's line 459) records the founder's
@@ -134,7 +147,8 @@ notification copy), plus an unrelated rewrite of `auth.service.ts`.
   reviving this lane.
 
 **Snapshot ref:** `refs/snapshots/wt-fin-B/20260919T0325` (`b266a70d`, 43 files,
-+2089/-561 — see table above). Also present, same content: `refs/lane-sync/wt-fin-B/20260919T041244Z`.
++2089/-561 — see table above; local-only, not on `origin`). Also present, same content:
+`refs/lane-sync/wt-fin-B/20260919T041244Z` (also local-only).
 
 ### Lane D — inventory-overlay port (Codex's port of `wt-port-ov1`)
 
@@ -156,7 +170,7 @@ ones directly against the snapshot ref rather than taking the audit's word:
   a JS `number`, not the raw string, a trailing decimal point is dropped on every render
   (`Number("12.")` is `12`), so typing `12.50` keystroke-by-keystroke lands `1250` in
   `costPerBottle`, corrupting average cost.
-- **Locked-ADR currency violation, reproduced independently.** `pages/inventory/command/bits.tsx:9`
+- **Locked-ADR currency violation, reproduced independently.** `pages/inventory/command/bits.tsx:9-10`
   hard-codes `` `$${Math.round(n).toLocaleString()}` `` in `fmtMoney` (confirmed by this
   session, exact line, at the snapshot ref); `RemoveFromInventoryModal.tsx` uses this
   `fmtMoney` for the write-off's sealed dollar figure. [[0117-a-price-sighting-names-its-source-its-date-and-its-unit]]
@@ -185,7 +199,7 @@ ones directly against the snapshot ref rather than taking the audit's word:
 **Corrections applied to the superseded draft in `wt-fin-D`, per the Opus review of it:**
 1. Defect count corrected to 17 total / **12** major (was "7 of 17").
 2. The 47 staged paths in that worktree are **lane A's 19 plus lane D's 28**
-   (`D-confirm.md:6`); this ADR drops only lane D's 28 and does not decide lane A
+   (`D-confirm.md:4`); this ADR drops only lane D's 28 and does not decide lane A
    (that is PR #374's own question).
 3. The draft's "0168 is provisional, renumber on collision" paragraph is stale; see
    Evidence trail below for what the numbering guard actually reported this session.
@@ -194,25 +208,32 @@ ones directly against the snapshot ref rather than taking the audit's word:
    `/private/tmp` or `~/.claude` paths the draft cited.
 5. **Two of the defects above are not risks avoided by dropping — they are already on
    `origin/main` today**, independently confirmed by this session in the current
-   `wt-drops` checkout: `pages/inventory/command/bits.tsx:9`'s hard-coded `$`, imported by
+   `wt-drops` checkout: `pages/inventory/command/bits.tsx:9-10`'s hard-coded `$`, imported by
    `RemoveFromInventoryModal.tsx:21` (both lines confirmed), and the non-UUID
    `` id: `WINE_${Date.now()}` `` fire-and-forget add at `AddWineToInventoryModal.tsx:210`
-   (confirmed). These are pre-existing residuals, not this lane's introduction, and are
-   listed as open items under their owning ADRs (0117, and a new one for the id scheme)
-   rather than in `v3.0-TECH-DEBT.md` (retired, per CLAUDE.md §4).
-6. Of the draft's eight open forks, **three are already answered or governed elsewhere**
+   (confirmed). These are pre-existing residuals, not this lane's introduction; they are
+   not currently tracked as an open item anywhere, and `v3.0-TECH-DEBT.md` remains the
+   live defect register (CLAUDE.md:130), not a retired one. They are named in full under
+   Consequences below, as residual defects that survive the drop either way.
+6. Of the draft's eight open forks, **four are already answered or governed elsewhere**
    and are not carried forward as open items below: F13/consent — *"consent panel = delete
    and say so on /settings"* (confirmed at `mudavym-finish-goal-2026-09-16.md:61`); the
    write-off/spot-count seal — already governed by locked [[0112-one-modal-policy-three-shapes-one-primitive]]
    F12 (confirmed Locked, ratified 2026-09-05; F12 "closed" per that file), which requires
    a server-minted challenge for exactly this kind of ceremony, so no new founder ruling is
-   needed, only the build; and receipt scope at full width — already settled by
+   needed, only the build; receipt scope at full width — already settled by
    [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]]'s
-   full-purpose bar, which does not allow a narrower partial port. The five remaining
+   full-purpose bar, which does not allow a narrower partial port; and spot-count's
+   floor-count voice input — already covered by [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]]'s
+   founder answer of 2026-09-12 (that file's lines 236-244: recognition is "the browser's
+   own speech recognition ... the same recognition `SpotCountPanel.tsx:84-86` already
+   uses"), so spot-count already runs the rule's own on-device mechanism rather than
+   departing from it — no new founder ruling needed there either. The four remaining
    forks are genuinely open and are listed under Consequences.
 
 **Snapshot ref:** `refs/snapshots/wt-fin-D/20260919T0325` (`10094f59`, 47 files,
-+9129/-126 — see table above; matches the draft's own figure, independently re-measured).
++9129/-126 — see table above; matches the draft's own figure, independently re-measured;
+local-only, not on `origin`).
 
 ### Lane H — Google Calendar push port
 
@@ -260,7 +281,8 @@ ones directly against the snapshot ref rather than taking the audit's word:
 
 **Snapshot ref:** `refs/snapshots/wt-fin-H/20260919T0325` (`7ace83c7`, 30 files,
 +4816/-24 — see table above; file count matches the prior verdict's "30 staged files",
-the insertion/deletion counts are newly measured by this session).
+the insertion/deletion counts are newly measured by this session; local-only, not on
+`origin`).
 
 ## Consequences
 
@@ -268,6 +290,14 @@ the insertion/deletion counts are newly measured by this session).
   particular, `/calendar` does not gain a whole-house 503 trigger (H), no seal ships
   without ADR 0112's server challenge (D), and no receiving code silently resolves the
   open `quantity_received` fork (B).
+- **Residual defects already on origin/main (not lane D's, they survive the drop):**
+  dropping lane D neither introduces nor removes these; they were true before this ADR
+  and remain true after it.
+  - (a) `apps/web/src/pages/inventory/command/bits.tsx:9-10`: `fmtMoney` hard-codes `$`,
+    imported by `RemoveFromInventoryModal.tsx:21`. Against [[0117-a-price-sighting-names-its-source-its-date-and-its-unit]]
+    Q25; already counted in `scripts/money_currency_baseline.json:37` (2 sites).
+  - (b) `apps/web/src/components/inventory/AddWineToInventoryModal.tsx:210`: the
+    non-UUID `` id: `WINE_${Date.now()}` `` fire-and-forget add, tracked nowhere else.
 - **Harder / given up, per lane:**
   - **B:** the receiving/procurement fixes and the auth rewrite have to be rebuilt from
     current `main`. The auth half should build only as the [[0162-managers-grant-manager-or-staff-on-both-doors]]
@@ -303,7 +333,7 @@ the next attempt at each lane starts from them)
    own audit decide the overlapping pieces, and rescue from B only what E does not carry**
    — rescuing from both would audit the same code twice.
 
-**Lane D (5 of the original 8 forks; the other 3 are answered/governed — see Lane D
+**Lane D (4 of the original 8 forks; the other 4 are answered/governed — see Lane D
 corrections above):**
 1. May a menu scan write stock quantities, and if so at what default, and must the result
    be an editable proposal a person confirms rather than a direct write? (Lane D silently
@@ -321,10 +351,6 @@ corrections above):**
    server transaction instead of separate client calls? **Recommendation: one atomic
    server endpoint** — two client calls produced the lane's false "gone from the book"
    readback.
-5. Does ADR 0143's on-device voice-recognition rule (set for Arrival) also cover
-   spot-count's floor-count voice input, which used the browser's Web Speech API?
-   **Recommendation: extend it** — the rule's reason is data locality, which does not
-   stop applying just because the speaker is staff rather than a guest.
 
 **Lane H (3; the first two are `blocks_ready`, i.e. a re-land cannot proceed without an
 answer):**
@@ -364,10 +390,13 @@ answer):**
   `refs/snapshots/wt-fin-B/20260919T0325` = `b266a70d` (43 files, +2089/-561),
   `refs/snapshots/wt-fin-D/20260919T0325` = `10094f59` (47 files, +9129/-126),
   `refs/snapshots/wt-fin-H/20260919T0325` = `7ace83c7` (30 files, +4816/-24) — all three
-  parented on `60ed83a7e`, timestamped 2026-09-18 23:22:23 -0400.
+  parented on `60ed83a7e`, timestamped 2026-09-18 23:22:23 -0400. **All are local-only:**
+  `git ls-remote origin 'refs/snapshots/*' 'refs/lane-sync/*' 'refs/heads/reserve/*'`
+  returns nothing, while `git ls-remote origin refs/heads/main` resolves — confirmed this
+  session.
 - **Code citations this session re-derived directly** (not taken only on an audit's word),
   each read from the cited ref, not from a working tree outside this lane:
-  `bits.tsx:9` (`refs/snapshots/wt-fin-D/20260919T0325` and, identically, current
+  `bits.tsx:9-10` (`refs/snapshots/wt-fin-D/20260919T0325` and, identically, current
   `origin/main` in this `wt-drops` checkout); `RemoveFromInventoryModal.tsx:21` (current
   `origin/main`); `AddWineToInventoryModal.tsx:210` (current `origin/main`);
   `AddWineToInventoryModal.tsx`'s Carry-sheet cost input (`refs/snapshots/wt-fin-D/20260919T0325`);
@@ -426,9 +455,37 @@ answer):**
   will compare clean against that reservation — that comparison needs the file in the
   index, which is the orchestrator's step, not this lane's.
 
+  **Round 5 update (2026-09-21): that comparison has now run, with this file committed at
+  `HEAD` (`ab0f94030`) — and it is not clean.** `check_adr_numbers_unique.py` (re-run twice,
+  stable both times) now reports:
+  ```
+  COLLISION: ADR 0168 names more than one decision.
+    this ref:  .planning/decisions/0168-three-codex-lanes-dropped.md
+    elsewhere: .planning/decisions/0168-codex-lane-d-inventory-overlay-port-dropped.md
+               on origin/wip/2026-09-19/others/wt-fin-D
+    Next free number, swept across every ref: 0183
+  ```
+  This is not this ADR's number colliding with a live rival decision. The reservation
+  commit above (`1af3907a`, 2026-09-19 10:46:38 -0400 — earlier than either snapshot)
+  already retired that exact filename in favor of this one: its diff removes
+  `0168-codex-lane-d-inventory-overlay-port-dropped.md` and adds
+  `0168-three-codex-lanes-dropped.md`, one line each, confirmed by this session via
+  `git show --stat`. The `others/wt-fin-D` branch was created later that day
+  (`fdb3cd368`, 2026-09-19 14:14:16 -0400, message *"uncommitted work of another session,
+  snapshotted 2026-09-19, NOT for merge"*) by a broader snapshot sweep unrelated to this
+  lane, which preserved `wt-fin-D`'s still-dirty working tree byte-for-byte — including a
+  file the 10:46 reservation had already superseded 3.5 hours earlier, because nothing
+  inside that worktree itself was ever edited to match the reservation. **Not fixed
+  here:** renaming either file is outside this round's 5 must-fix items, and the
+  colliding copy lives on a different worktree's snapshot branch — marked "NOT for
+  merge," fetched and inspected read-only, never checked out or pushed to — which this
+  lane has no authority to rewrite. Reported per CLAUDE.md §5b rather than worked around
+  or silently left stale.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-19 | Opus, fan-out verdicts (`r4-drops.json`) | DROP/REJECT independently re-derived for B, D and H against each worktree and its audit artifacts; 6 corrections specified for lane D's own draft |
 | 2026-09-19 | Claude (Sonnet 5), lane "drops" | Created this consolidated record; applied lane D's 6 corrections; independently re-verified snapshot refs, the reserve-branch state, and one load-bearing code citation per lane |
+| 2026-09-21 | Claude (Sonnet 5), lane "drops", round 5 | Closed round 4's 5 must-fix text items: named the two residual on-`main` defects under Consequences instead of a false "listed elsewhere/retired" claim; folded the spot-count voice fork into correction 6 as ADR 0143-governed (fork counts 3→4 answered, 5→4 open); fixed `bits.tsx:9`→`9-10` (×3), `D-confirm.md:6`→`4`, named lane B's two root causes, and the exact 11-of-13 byte-identical file split with lane E; marked every snapshot/lane-sync ref local-only in the Decision table, each lane's Snapshot ref line, and Evidence trail, with the `git ls-remote` proof; unquoted "Codex work only after audit" as `MEMORY.md`'s paraphrase, not the founder's words |
