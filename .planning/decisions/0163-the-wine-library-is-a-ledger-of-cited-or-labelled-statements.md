@@ -21,16 +21,25 @@
   market price k=5, the wine-type axes, the Wilson reviewer floor, menu-PDF
   retention, sommelier pay and additions, the EU opt-in, the six-house grouping and
   the Max 20x seat. Still Proposed: Jev's language coverage for Italian and Turkish
-  is unmeasured (new open item, §4 P7; Q6), the sommelier reward rate stays parked
-  on OD-23, and ADR 0165's tech-debt-register retirement is reserved but unwritten.
+  is unmeasured (new open item, §4 P7; Q6); the reward's *rate* stays parked on
+  OD-23 and its *structure* — points per verdict, a flat stipend or a per-hour
+  rate — was never chosen (§13; Q14, DECIDED bracket); Q11's stuck
+  `research_runs` rows, the two registry rows and `pg_cron` were not part of this
+  round's question and are still his to close (§2; Q11 (remainder)); whether Jev
+  belongs in the §14 notice, and whether a non-lawyer Terms of Service still gates
+  pooling under *"Ship now, fix later,"* are each noted but not asked (§14); Q22
+  has never been put to him at all (§11); and ADR 0165's tech-debt-register
+  retirement is reserved but unwritten.
 - **Date:** 2026-09-18
 - **Decider:** Aldemir (founder). The design was drafted by a research workflow
   (six evidence lanes, three candidate designs, one judge, two adversarial passes;
   round 2 added two research lanes, on /studio and on menu prices and the notice;
   round 3 added one, on Cowork, routines, usage limits and the laptop tasks' run
   history; round 4 added a research pass re-testing ten open questions; round 5
-  recorded his answers to all twelve, closing every open founder question in this
-  ADR except Jev's language coverage); none of it binds until he locks it.
+  recorded his answers to all twelve, closing most of this ADR's open founder
+  questions — several stay open regardless, some because his own answers opened
+  them (Status, above, and Context, "What this settles", below, name them));
+  none of it binds until he locks it.
 - **Keywords:** wine library, master_wine_library, enrichment, provenance, cell,
   evidence, citation, inference, growth, crawl, robots.txt, terms, market price,
   batch, spend cap, lease, health, wine_profile_v1, WineProfile, LWIN, ADR 0130,
@@ -408,13 +417,29 @@ numbers, so both are given.
 | 11 | Q11 (rest) The six unasked houses | Confirms both evidence groups as drafted: Gullit's Tavern, Yaren's Fine Dine, Meyhouse Palo Alto and YARDOM are **not** real; Chez Community and The Old House Pub **are** real | §2; Q11 |
 | 12 | Q13 What a sommelier may add | (a): own-voice notes are `stated` and signed; a third-party fact still needs a citation | §1; Q13 |
 
-**What this settles and what it does not.** Every one of round 4's ten deepened
-questions is now decided except the language-coverage gap Q6's answer itself opens
-(below). Item 2's *"Ship now, fix later"* is the one answer taken against this ADR's
-own recommendation, and the consequence was shown to him before he chose it: §14
-already states that "models already trained are not retrained" — a legal problem
-found after pooling starts cannot be undone by switching a setting, only mitigated
-going forward (§9, §14; Q17, DECIDED bracket below). Item 4 replaces this ADR's
+**What this settles and what it does not.** Eight of round 4's ten deepened
+questions are now fully decided. The other two are decided only in part: Q11 only
+for the six unasked houses, leaving its stuck `research_runs` rows, the two
+registry rows and `pg_cron` open — they were never part of this round's question
+to him (Q11 (remainder), DECIDED bracket below); and Q14 only for the reward's
+*form* (rewards, not cash) and its *rate*'s parking on OD-23, leaving the reward
+*structure* — points per verdict, a flat stipend or a per-hour rate — unchosen
+(Q14, DECIDED bracket below). Two more items are open because this round's
+answers created them, not because it left them undone: Q6's answer opens a
+language-coverage gap (below), and, separately, whether Jev belongs in the §14
+notice is noted but not asked (§14 fork, above). Item 2's *"Ship now, fix later"*
+is the one answer taken against this ADR's own recommendation, and the
+consequence was shown to him before he chose it: §14 already states that "models
+already trained are not retrained" — a legal problem found after pooling starts
+cannot be undone by switching a setting, only mitigated going forward (§9, §14;
+Q17, DECIDED bracket below). That answer also reorders work that used to gate on
+the lawyer review: whether a plain, non-lawyer Terms of Service still ships
+before the first real house's menu pools is now its own open founder question
+("Pre-pool ToS"), not decided here (§14, the Consequences line and step 0.18 each
+carry a dated round-5 bracket saying so). And outside round 4's ten, untouched by
+this round: Q22 — whether a house's first upload keeps its instant billed read or
+waits for a task run — has never been put to him at all (below). Item 4 replaces
+this ADR's
 drafted self-hosted checker (§4 P7) with a paid hosted API from a vendor this repo
 has not previously used in product code — the record researched for that pick
 (`.planning/07-reference/TYPESAFE_AI_OVERVIEW.md`, crawled 2026-09-17, copied into
@@ -747,7 +772,10 @@ Stage names are P1–P13; the foundations schedule S1–S8 maps onto them
 extraction (P6), the judge (P7(c)) and inference samples (P8). Intake, P3, P4, every
 fetch, the deterministic checks, P9–P11 and P13 stay on the gateway, and P7(b) and
 P12 on `wine-worker`. Each task claims its units from the gateway and submits through
-the pipeline connector, which only stages.]
+the pipeline connector, which only stages.] [Round 5, 2026-09-19: P7(b) moves off
+`wine-worker`. Q6's DECIDED answer (below) replaces the self-hosted checker with a
+gateway call to TypeSafe's Jev, so P7(b) now runs on the gateway beside P7(a); only
+P12 stays on `wine-worker` (§11's Gateway and `wine-worker` rows).]
 
 - **P1 Intake, as sightings** [gateway `@Cron`; house paper the same day]. Each line
   becomes a roster sighting naming its list and read date; a menu price is a
@@ -1310,7 +1338,7 @@ recommendation (Round 4 research pass, below: the full (a)–(i) gate holds beca
 every real house is Turkish) that a lawyer clear Law 4250 and the Data Act question
 before the first real house's prices pool. The founder chose otherwise, having been
 shown the cost §14 already states: **models already trained are
-not retrained** (:1715 below). Concretely, this means pooling and the aggregate guards above (k=5,
+not retrained** (:1743 below [recomputed 2026-09-21; was :1715]). Concretely, this means pooling and the aggregate guards above (k=5,
 the 25% cap, no cost/invoice/POS data, no sign-in-free price page) still apply as
 engineering guardrails — nothing here removes them — but this ADR no longer treats a
 lawyer's sign-off on Türkiye's Law 4250 art. 6 and the notice's wording (Q17 (e)–(i))
@@ -1379,7 +1407,7 @@ everything that writes, stays on the gateway, which spends no model credits.
 | Where | What runs there |
 |---|---|
 | Postgres | state; the gates as SQL; the view; what health reads |
-| Gateway (Railway, always on) | P1 receiving menus; the P4 enqueue triggers and sweep; every fetch, through the fetch module (§8); P3 identity SQL; the deterministic P6 and P7(a) checks (exact substring on the hashed page, `value_norm`); P9 gates and the publish RPC; P10; P11 re-fetch and hash compare; P13 health (the outside dead-man alarm that watches it is Sentry Crons or a `pg_cron` witness, never the gateway itself, §6; verifier, 2026-09-18: the draft listed the alarm in this row); leases, fencing tokens, and opening and closing every run; the pipeline connector (below) |
+| Gateway (Railway, always on) | P1 receiving menus; the P4 enqueue triggers and sweep; every fetch, through the fetch module (§8); P3 identity SQL; the deterministic P6 and P7(a) checks (exact substring on the hashed page, `value_norm`); P7(b) the claim check, a hosted API call to TypeSafe's Jev [Round 5, 2026-09-19: moved here from `wine-worker`, Q6's DECIDED answer, below]; P9 gates and the publish RPC; P10; P11 re-fetch and hash compare; P13 health (the outside dead-man alarm that watches it is Sentry Crons or a `pg_cron` witness, never the gateway itself, §6; verifier, 2026-09-18: the draft listed the alarm in this row); leases, fencing tokens, and opening and closing every run; the pipeline connector (below) |
 | `wine-worker` (Railway cron, Python, from Stage 1) | JavaScript rendering for allowed URLs; P12 embeddings. Its deployment is proven by the Railway `cronSchedule` and its ledger rows, never by code. [Round 2: moved from Stage 2, because P7 needs the checker from the first night.] [Round 5, 2026-09-19: P7(b)'s self-hosted MIT checkers (MiniCheck, mDeBERTa) are struck — Q6's DECIDED answer moves that check to a hosted API call (Jev) the gateway makes directly, so `wine-worker` no longer hosts a checker model at all.] |
 | Cowork scheduled tasks (plan credits) | Model work only: P1/P2 reading a menu into lines; P5 URL discovery (URLs only); P6 cited extraction, as quote strings the gateway checks; P7(c) the judge, as its own task with its own prompt; P8 samples, one task per model, because a task has one configured model |
 
@@ -1721,6 +1749,14 @@ toward class M or training:
 - /privacy gains the section;
 - Terms of Service exist.
 
+[Round 5, 2026-09-19: Q17's DECIDED answer, *"Ship now, fix later"* (§9, above),
+reorders the lawyer half of this ADR's plan — a lawyer's sign-off is no longer a
+precondition to shipping (§9, DECIDED bracket). Whether "Terms of Service exist"
+above still means a lawyer-drafted Terms of Service, or ships as a plain one
+Mudavym writes now with a lawyer to revise later, is not decided here: it is its
+own open founder question ("Pre-pool ToS"). The first two bullets above are
+engineering work, not legal review, and are unaffected.]
+
 No real house has uploaded a menu (Context, fact 8). So no customer house's menu is
 held today, and the notice has nothing to cover retroactively. [Verifier, 2026-09-18:
 the draft concluded that "nothing already held needs consent". That is a legal
@@ -1849,7 +1885,10 @@ kills). "Applied" means the Decision above carries it.
     cannot pass its test until at least 16 wines do (§9). So the restaurant line starts
     blank for almost every wine, and is mostly the estimate after that.
   - **Before any pooling.** A notice, an opt-out and Terms of Service must ship before
-    the first real house's menu counts.
+    the first real house's menu counts. [Round 5, 2026-09-19: Q17's *"Ship now, fix
+    later"* (§9) reorders the lawyer half of this; whether a non-lawyer Terms of
+    Service still gates pooling is open, not decided here (§14; founder question
+    "Pre-pool ToS").]
   - **Two writers.** Until cutover, two writers run, and health carries a named
     `laptop_writer_armed` state.
 - **Given up:** Serper, the scrapers and the rich file's estimates as sources; showing
@@ -1926,7 +1965,11 @@ plan-credit health rules (0.22) pass their checks. Stage 0 still spends no credi
   Sim Meyhouse (`a229f22b`, `aaecdb17`). Add the four May houses the founder ruled not
   real: YAREN, ALDEMIR, ADMIN 1 and ADMIN ROOM (Context, fact 9). *Check:* the count is
   8, and every house holding a stocked wine is flagged. The six unasked houses stay
-  unflagged until he answers Q11.]
+  unflagged until he answers Q11.] [Round 5, 2026-09-19: Q11 DECIDED — flag
+  **twelve** rows, not eight. Gullit's Tavern, Yaren's Fine Dine, Meyhouse Palo Alto
+  and YARDOM are confirmed not real and join the eight already flagged (Q11
+  (remainder), DECIDED bracket, below). *Check:* the count is 12, and Chez
+  Community and The Old House Pub stay unflagged as real houses.]
 - 0.4 Migrations: `wine_field_observations`, `source_documents`, `job_leases`, and the
   extensions in §3. *Check:* `check_new_tables_are_locked_down.py` and the migration
   ledger guard pass; the fresh-database build passes.
@@ -1999,6 +2042,13 @@ plan-credit health rules (0.22) pass their checks. Stage 0 still spends no credi
   - `ServicesPermissions.tsx:88` and /privacy are amended.
   - A lawyer-drafted clickwrap is linked from `/register` (the founder, with a
     lawyer).
+
+  [Round 5, 2026-09-19: Q17's DECIDED answer, *"Ship now, fix later"* (§9), no
+  longer requires a lawyer's sign-off before shipping, so whether this step's last
+  bullet still ships as a lawyer-drafted clickwrap, or as a plain Terms of Service
+  Mudavym writes now with a lawyer to revise later, is open — not decided here
+  (§14; founder question "Pre-pool ToS"). The first two bullets are engineering
+  work and are unaffected.]
 
   *Checks:*
   - a non-owner cannot change the setting;
@@ -2357,17 +2407,18 @@ months.]
     The apparent tension against Q21 ("off until the pilot") is already
     reconciled in §11, not a contradiction: the round-3 answer *"since we're
     going to use claude cowork, as long as credits allow"* is recorded here
-    (:2352-2355 [recomputed 2026-09-19 for round 5's insertions; was
+    (:2402-2405 [recomputed 2026-09-21; was :2352-2355, was
     :2235-2238, was :2177-2180, stale by this ADR's own earlier edits]), and
     the round-3 diff log states *"Answered: Q1 in full
-    (plan credits, no dollar limit)"* (Review trail, :3235 [was :3012, was
+    (plan credits, no dollar limit)"* (Review trail, :3290 [recomputed
+    2026-09-21; was :3235, was :3012, was
     :2981, was :2489]); Q1
-    does not appear in this section's own intro list (:2327-2331 [recomputed
-    2026-09-19; was :2210-2214, was
+    does not appear in this section's own intro list (:2377-2381 [recomputed
+    2026-09-21; was :2327-2331, was :2210-2214, was
     :2152-2156]). With Q21 off, "credits allow" now means
     exactly the Max seat's included weekly/session usage — a refused run stops
-    and waits for the reset, which is what §11 (:1446-1449, :1472-1476
-    [recomputed 2026-09-19; was :1346-1349, :1372-1376])
+    and waits for the reset, which is what §11 (:1474-1477, :1500-1504
+    [recomputed 2026-09-21; was :1446-1449, :1472-1476, was :1346-1349, :1372-1376])
     already says. Re-measured 2026-09-18 (Supabase, SELECT-only):
     `master_wine_library` is still 3,589 live / 3,314 eligible, unchanged from
     the ADR's own count; `research_runs` still has 4 rows stuck `running`
@@ -2402,13 +2453,14 @@ months.]
   against. **Recommendation:** confirm both readings.]
   - **[Research pass, 2026-09-18: Q2's reading is still open — the top-level
     answer does not settle it.** The founder's *"After automatic checks"*
-    (:1013, :2238-2239 [recomputed 2026-09-19; was :932, :2191]) picks
+    (:1041, :2288-2289 [recomputed 2026-09-21; was :1013, :2238-2239, was :932,
+    :2191]) picks
     publish-then-audit over audit-before-publish, but says
     nothing about whether "automatic checks" still includes (i) a field's
     pre-publication gold pilot (G6) before its first cell ever shows, and (ii)
     real-house pre-review (G7). The register itself still lists "Q2's reading
-    (to confirm)" as open (:2327-2331 [recomputed 2026-09-19; was :2148-2156,
-    was :2191-2196]), and it has never been put
+    (to confirm)" as open (:2377-2381 [recomputed 2026-09-21; was :2327-2331,
+    was :2148-2156, was :2191-2196]), and it has never been put
     back to him. **Since answered below (DECIDED 2026-09-19): both gates
     stay.**
     - *Confirm both gates* (recommended) — keep G6 and G7 as designed.
@@ -2427,8 +2479,8 @@ months.]
     `wine_profile_v1` or publication-gate table exists (Supabase, checked
     2026-09-18) — so asking now is free and rebuilding withdrawal/audit logic
     after cells are live is not; the ADR's own design text already states the
-    stricter reading (G7 at :989, G6 at :977 [recomputed 2026-09-19; was
-    :918, :897]); and 2026 guidance on AI-assisted publishing
+    stricter reading (G7 at :1017, G6 at :1005 [recomputed 2026-09-21; was
+    :989, :977, was :918, :897]); and 2026 guidance on AI-assisted publishing
     (Logora's AI-moderation guide; Glean's AI review-workflow guide, both
     fetched 2026-09-18) treats staged human review before publish as the norm
     for exactly the segment this touches most — paying, real restaurant
@@ -2504,7 +2556,7 @@ months.]
   **Recommendation:** three axes as cells, with the one-enum slice derived from them.
   - **[Research pass, 2026-09-18: the three-axis recommendation above does
     not collide with the ADR's own sweetness rule. Corrected, 2026-09-19:
-    the rule at :784 [recomputed 2026-09-19; was :723] forbids a model-parsed
+    the rule at :812 [recomputed 2026-09-21; was :784, was :723] forbids a model-parsed
     `primary_type` only because that
     field feeds the `beverage_kind` classifier; it does not bind a separate
     sweetness cell, so there was no rule to revise away from.**
@@ -2514,10 +2566,12 @@ months.]
       still can't be both sparkling and rosé.
     - *Three axes (the ADR's current text, above)* — colour × effervescence ×
       sweetness as separate cells. This does not conflict with the ADR's own
-      boundary rule (:547-552 [recomputed 2026-09-19; was :486-491]) that
+      boundary rule (:572-577 [recomputed 2026-09-21; was :547-552, was
+      :486-491]) that
       sweetness is descriptive and inferable,
-      shown "estimated" (P8, :875 [was :794]): the never-inferred rule at
-      :784 [was :723] binds
+      shown "estimated" (P8, :903 [recomputed 2026-09-21; was :875, was :794]):
+      the never-inferred rule at
+      :812 [recomputed 2026-09-21; was :784, was :723] binds
       `primary_type` itself, because that is the field `beverage_kind` reads
       — a sweetness cell that is not `primary_type` is not bound by it, so
       the two rules do not force a choice. Backfill is still lossy:
@@ -2624,8 +2678,8 @@ months.]
       Kaleiçi", worth naming to him as a coincidence even though this house
       has its own login).
     - All six still have 0 rows in `restaurant_wine_roster` (matches the
-      ADR's "stock nothing" claim, :268-270 [recomputed 2026-09-19; was
-      :251-253]).
+      ADR's "stock nothing" claim, :277-279 [recomputed 2026-09-21; was
+      :268-270, was :251-253]).
     **Recommendation: put the two evidence groups to him as one grouped
     confirmation**, not six separate asks — faster, and every claim is
     sourced so a wrong flag is easy to catch before cutover; still flags
@@ -2635,9 +2689,10 @@ months.]
     both evidence groups exactly as put to him.** Gullit's Tavern, Yaren's Fine
     Dine, Meyhouse Palo Alto and YARDOM are **not** real; Chez Community and The
     Old House Pub **are** real. **What changes:** all six leave "unflagged"
-    status. The four non-real houses join the earlier four (YAREN, ALDEMIR, ADMIN
-    1, ADMIN ROOM) as `is_simulation` (step 0.3, now eight rows flagged in total,
-    not four); Chez Community and The Old House Pub instead count as real houses
+    status. The four non-real houses join the earlier eight (the four "Sim " rows
+    plus YAREN, ALDEMIR, ADMIN 1, ADMIN ROOM) as `is_simulation` (step 0.3, now
+    **twelve** of the 14 `restaurants` rows flagged in total, not eight — Context,
+    fact 9); Chez Community and The Old House Pub instead count as real houses
     from this ADR's first night — their wines are sourced first and reviewed
     before publication (§2, G7), same as any other real house. Still open,
     unchanged by this answer: closing the 4 stuck `research_runs` rows, the two
@@ -2661,8 +2716,8 @@ months.]
     table this flow would read — does not exist (`42P01`, relation does not
     exist).
     **Recommendation stands at (a), cite or don't publish.** It is already
-    what §1 (:577-586 [recomputed 2026-09-19; was :516-525]) and §13
-    (:1540-1544 [was :1440-1444]) implement, so it needs no new
+    what §1 (:602-611 [recomputed 2026-09-21; was :577-586, was :516-525]) and §13
+    (:1568-1572 [recomputed 2026-09-21; was :1540-1544, was :1440-1444]) implement, so it needs no new
     schema; option (b) would let one uncorroborated claim publish with no way
     to check it later, exactly what ADR 0020 rejected, and credentialing
     alone isn't a correctness guarantee (the Court of Master Sommeliers' 2018
@@ -3102,9 +3157,9 @@ months.]
     apart from the plan-credit pipeline**, exactly as the ADR's own draft has
     it (above, this Q22's own pre-research recommendation). [Citation
     corrected 2026-09-19: the prior draft pointed at :1911, which is
-    §11 step 0.21 (the pipeline connector), now at :2028 after this ADR's
-    own later edits (recomputed again 2026-09-19 for round 5's insertions;
-    was :1928, was :1911) — an unrelated section, not this passage.] A cheaper
+    §11 step 0.21 (the pipeline connector), now at :2078 after this ADR's
+    own later edits (recomputed 2026-09-21; was :2028, was :1928,
+    was :1911) — an unrelated section, not this passage.] A cheaper
     sync model and a faster async queue are both worth
     revisiting once a real house's cost/latency is measurable — neither is
     justified pre-emptively against zero volume.]**
@@ -3234,5 +3289,6 @@ months.]
 | 2026-09-18 | Round-2 verifier (workflow agent): the diff against 795e8073a; quotes compared by script; every /studio, loader, parser, settings, Stripe and registry citation re-read; production SELECTs on `restaurants`, `restaurant_inventory`, `user_roles`, `users`, `invite_tokens`, `override_events`, the submissions table, the price and menu tables, and `data_enrichment->'menus'`; both cost scripts re-run | Answers verbatim (P and R match the relay character for character) and readings marked. Fixed, each marked "verifier" in the text: (1) three role-holding accounts, not two people (fact 6, §13, Consequences, Q4); (2) live-row `review_status` added; (3) the 7-menu rows are not live; (4) "by file name" city claim; (5) fact 8's heading over-read a usage-telemetry line; (6) the notice promised that a house's prices never appear, which a median breaks (§9, §14, Q16 (f)); (7) "nothing already held needs consent" was a legal conclusion (§14, Q17 (g)); (8) "required by Law 4250" was a legal conclusion (§9, Q17 (f)); (9) the estimate cannot pass its held-out test until at least 16 wines have a list price, and today none has at k = 5 (§5, §9, Consequences, Q16 (g)); (10) the estimate's label now says restaurant listings, so it cannot read as a shop price; (11) "re-scope N" on a cost overrun would have let cost undo *"Every wine from day one"* (Consequences); (12) the backlog now starts on the first paid night, staged, instead of after the audit, and its pace is Q1 (b); (13) Q15's "for speed" recommendation is tied to a measured bar under F1; (14) Q2 names the reading of "check their values" that would point to (a); (15) §15 rule 7's "another org" was unbacked; (16) §13's promotion rule marked as open (Q15); (17) the ROADMAP citation for "sommeliers/producers" added. Costs re-derived: every round-2 figure reproduces from `every-wine-cost.py` and `critic-cost-model.py` |
 | 2026-09-18 | Round 3: four founder answers (AskUserQuestion, relayed) plus one host research lane (Cowork, routines, usage limits, the terms, and the laptop tasks' 81 runs) | Still Proposed. The answers are recorded verbatim as relayed, with each reading marked as the relay's or ours. Answered: Q1 in full (plan credits, no dollar limit), Q2 as (b), Q14's direction and Q15's rule. §11 is rewritten as "Hosts and credits". Model work runs as Cowork tasks with repo-served prompts. The gateway stays the only writer and keeps health, enqueue and the publish gates, through a pipeline connector that can only stage. Credits set the pace, never the bar, and claims are served in a stated order. Amended: §3, §4, §5, §6, §8, §12, §13, §15, Consequences, Build order (0.21 and 0.22 added; 1.1 replaced; 1.2 set aside; 1.5, 1.8, 1.10 and Stage 3 amended) and Cost (now the API-equivalent size, not a bill). Facts 10–13 added. Q17 (h) and (i) and Q19–Q23 raised. The earlier §11 is kept at `056de928e` |
 | 2026-09-18 | Round-3 verifier (workflow agent): the diff against 056de928e; the four answers compared with the relay; `cowork-wine-runs.tsv` recounted; `scheduled-tasks.json` and `harness.py` re-read; nine Anthropic pages re-fetched | Answers verbatim and readings marked; every fact-12 and fact-13 claim holds. Fixed, each marked "verifier": (1) fact 10's model history omitted the return to Haiku (9, 24, 13, 35 runs); (2) 09-11 lateness was 15 minutes to 2.3 hours, not 1 to 2.5; (3) the concurrency inference has a counter-sign (a non-wine task started at the same second); (4) the Desktop-tasks page documents Claude Code's local tasks, not Cowork's; (5) Cowork egress settings do not bind web fetch, web search or MCPs, so the never-list cannot be enforced inside a task (fact 12, §4 P5, §8, §11); (6) the connector's reach was attributed to where its token is held; the tools are the boundary; (7) "never runs SQL" would have failed `submit` and step 0.21's guard; (8) on a shared seat a task reading untrusted pages carries the Supabase connector, so the one-writer rule depends on per-task limits (§11, Q20); (9) a routine has no permission-mode picker (§11, Q19); (10) the outside dead-man alarm was listed on the gateway; (11) §6 put batch rules on the synchronous path; (12) `lease_expired_unsubmitted` is never green, and "a lease expired" stays red; (13) task identity and model are self-reported; (14) "with nothing submitted" ignored part-submitted runs; (15) a host that cannot run gold's model goes to the founder, never a quiet fallback; (16) /studio "shows no pay or reward terms" was wider than either reading; (17) usage credits are off today, not off by decision; (18) what a stale cell shows while P11 waits for credits is unspecified, flagged open. The brief's pause order read backwards and was fixed |
-| 2026-09-19 | Round 4: research pass across Q6, Q10, Q11, Q14, Q15, Q16, Q17 (incl. (a)'s EU half), Q18 and Q20, plus §13/step 0.17's tech-debt wording, three new CLAIMS.jsonl rows and a citation sweep, corrected against an Opus adversarial pass | Still Proposed. Fixes, numbered: (1) Q6 — mDeBERTa's own model card names the same ANLI/CC BY-NC lineage as MiniCheck, so the ADR's fallback did not clear the licence risk; HHEM ruled out as English-only; mDeBERTa stands, with the licence question folded into Q17's lawyer gate. (2) Q10 — the sparkling/rosé conflation measured, not asserted (53 of 369 sparkling rows and 1 of 115 rosé rows cross colour and effervescence); revised to colour × style {still, sparkling, fortified} with sweetness kept separate, then corrected to state this is the ADR's original three axes, not two — the :784 rule (was :723; recomputed by round 5) binds only `primary_type`, because that is what feeds `beverage_kind`, not a separate sweetness cell. (3) Q11 — the four presumed-test houses' zero-user count re-confirmed by direct SELECT (all four, not three, as the prior count had it); the two presumed-real houses' independent signups and operating businesses cited. (4) Q14 — form (rewards, cash later) and structure (points per verdict recorded, against a flat stipend and a per-hour rate) resolved; the rate itself stays parked on OD-23, re-confirmed still unstruck. (5) Q15 — named D-12's current "5 in a row" as a third baseline option, measured at about 0.57 agreement; the existing recommendation needed no fresh pass. (6) Q16 — confirmed k=5 over k=3 (0 vs 9 qualifying wines today) against a regulatory direction that has only tightened since the ADR's own citations (DOJ's RealPage settlement, AB 325, Connecticut HB8002). (7) Q17 — the lawyer gate does not split by jurisdiction today because every real house is Turkish, re-confirmed by a SELECT joining `restaurants` to `users` (corrected: YAREN 2 users and ALDEMIR 0, not the reverse); (a)'s EU opt-in half flagged as the verifier's own departure from his literal words, to be asked, not assumed. (8) Q18 — retention revised to keep-until-superseded, reusing ADR 0118's machinery; corrected to state plainly that this recommendation relies on no case law, and that a prior draft's citation to *Bartz v. Anthropic* is not carried forward. (9) Q20 — Max 20x named as its own confirmation, not folded into the separate-seat answer. (10) §13/step 0.17 — the tech-debt filing corrected: the register's deletion is a real founder decision (2026-09-19), reserved as ADR 0165 but not yet written, so the three broken /studio promotion paths are filed as three open `CLAIMS.jsonl` rows instead of a `v3.0-TECH-DEBT.md` entry (`ADR-0163-STUDIO-PROMOTE-DIRECT-INSERT`, `-OVERRIDE-AUTOPROMOTE-SELECT`, `-QUALITY-PATCH-SELECT`). (11) Citations repaired: :2235-2238 (was :2177-2180), :2210-2214 (was :2152-2156), Q1's cross-reference to the round-3 review-trail row (now :3012, was :2981, was :2489), and Q22's stale :1911 (now read against :1928, where step 0.21 sits today). [Round 5, 2026-09-19: every one of these shifted again by round 5's insertions and was recomputed a further time: :2352-2355 (was :2235-2238, was :2177-2180); :2327-2331 (was :2210-2214, was :2152-2156); the round-3 review-trail row at :3235 (was :3012, was :2981, was :2489); step 0.21 at :2028 (was :1928, was :1911). See each Q-block's own DECIDED bracket for the live number; this row keeps round 4's own account of what it repaired, unedited otherwise.] Re-checked: Supabase SELECTs on `master_wine_library` (`primary_type` spellings, sparkling/rosé name-matches, fortified/dessert counts), `restaurants` LEFT JOIN `users`, `restaurant_inventory`, `user_roles`; `OPEN-DECISIONS.md`'s OD-23 row; `studio_routes.py`, `override_service.py` and `quality_routes.py` against every migration touching `master_wine_library`/`master_wine_library_submissions`; `retention-rules.ts` (ADR 0118); `docs/retire-tech-debt`'s commit log; HuggingFace model cards for mDeBERTa, MiniCheck, Bespoke-MiniCheck and HHEM; support.claude.com's Max-tier pricing pages |
+| 2026-09-19 | Round 4: research pass across Q6, Q10, Q11, Q14, Q15, Q16, Q17 (incl. (a)'s EU half), Q18 and Q20, plus §13/step 0.17's tech-debt wording, three new CLAIMS.jsonl rows and a citation sweep, corrected against an Opus adversarial pass | Still Proposed. Fixes, numbered: (1) Q6 — mDeBERTa's own model card names the same ANLI/CC BY-NC lineage as MiniCheck, so the ADR's fallback did not clear the licence risk; HHEM ruled out as English-only; mDeBERTa stands, with the licence question folded into Q17's lawyer gate. (2) Q10 — the sparkling/rosé conflation measured, not asserted (53 of 369 sparkling rows and 1 of 115 rosé rows cross colour and effervescence); revised to colour × style {still, sparkling, fortified} with sweetness kept separate, then corrected to state this is the ADR's original three axes, not two — the :812 rule (was :784, was :723; recomputed 2026-09-21) binds only `primary_type`, because that is what feeds `beverage_kind`, not a separate sweetness cell. (3) Q11 — the four presumed-test houses' zero-user count re-confirmed by direct SELECT (all four, not three, as the prior count had it); the two presumed-real houses' independent signups and operating businesses cited. (4) Q14 — form (rewards, cash later) and structure (points per verdict recorded, against a flat stipend and a per-hour rate) resolved; the rate itself stays parked on OD-23, re-confirmed still unstruck. (5) Q15 — named D-12's current "5 in a row" as a third baseline option, measured at about 0.57 agreement; the existing recommendation needed no fresh pass. (6) Q16 — confirmed k=5 over k=3 (0 vs 9 qualifying wines today) against a regulatory direction that has only tightened since the ADR's own citations (DOJ's RealPage settlement, AB 325, Connecticut HB8002). (7) Q17 — the lawyer gate does not split by jurisdiction today because every real house is Turkish, re-confirmed by a SELECT joining `restaurants` to `users` (corrected: YAREN 2 users and ALDEMIR 0, not the reverse); (a)'s EU opt-in half flagged as the verifier's own departure from his literal words, to be asked, not assumed. (8) Q18 — retention revised to keep-until-superseded, reusing ADR 0118's machinery; corrected to state plainly that this recommendation relies on no case law, and that a prior draft's citation to *Bartz v. Anthropic* is not carried forward. (9) Q20 — Max 20x named as its own confirmation, not folded into the separate-seat answer. (10) §13/step 0.17 — the tech-debt filing corrected: the register's deletion is a real founder decision (2026-09-19), reserved as ADR 0165 but not yet written, so the three broken /studio promotion paths are filed as three open `CLAIMS.jsonl` rows instead of a `v3.0-TECH-DEBT.md` entry (`ADR-0163-STUDIO-PROMOTE-DIRECT-INSERT`, `-OVERRIDE-AUTOPROMOTE-SELECT`, `-QUALITY-PATCH-SELECT`). (11) Citations repaired: :2235-2238 (was :2177-2180), :2210-2214 (was :2152-2156), Q1's cross-reference to the round-3 review-trail row (now :3012, was :2981, was :2489), and Q22's stale :1911 (now read against :1928, where step 0.21 sits today). [Round 5, 2026-09-19: every one of these shifted again by round 5's insertions and was recomputed a further time: :2352-2355 (was :2235-2238, was :2177-2180); :2327-2331 (was :2210-2214, was :2152-2156); the round-3 review-trail row at :3235 (was :3012, was :2981, was :2489); step 0.21 at :2028 (was :1928, was :1911). See each Q-block's own DECIDED bracket for the live number; this row keeps round 4's own account of what it repaired, unedited otherwise.] [Correction pass, 2026-09-21: shifted a further time by this pass's own insertions, made to close round 4's four-item must-fix list against round 5's draft: :2402-2405 (was :2352-2355); :2377-2381 (was :2327-2331); the round-3 review-trail row at :3290 (was :3235); step 0.21 at :2078 (was :2028). Again, see each Q-block's own DECIDED bracket for the live number; this row still keeps round 4's own account of what it repaired, unedited otherwise.] Re-checked: Supabase SELECTs on `master_wine_library` (`primary_type` spellings, sparkling/rosé name-matches, fortified/dessert counts), `restaurants` LEFT JOIN `users`, `restaurant_inventory`, `user_roles`; `OPEN-DECISIONS.md`'s OD-23 row; `studio_routes.py`, `override_service.py` and `quality_routes.py` against every migration touching `master_wine_library`/`master_wine_library_submissions`; `retention-rules.ts` (ADR 0118); `docs/retire-tech-debt`'s commit log; HuggingFace model cards for mDeBERTa, MiniCheck, Bespoke-MiniCheck and HHEM; support.claude.com's Max-tier pricing pages |
 | 2026-09-19 | Round 5: the founder's twelve answers (`AskUserQuestion`, relayed via session memory `founder-sketch-decisions-106-115.md`) to every question round 4 deepened, a claim-checker reversal to TypeSafe AI's Jev, and a full self-citation re-sweep | Still Proposed. Each of the twelve is recorded as a DECIDED bracket at its own Q-block (Context, "Round 5" carries the summary table with the this-ADR-question ↔ memory-item-number mapping); item 2's *"Ship now, fix later"* is taken against this ADR's own recommendation, with the shown-and-accepted consequence recorded at §9 ("models already trained are not retrained"); item 4's *"we're gonna use JEV and it's already inside the repo"* replaces §4 P7(b)'s self-hosted MiniCheck/mDeBERTa design with TypeSafe AI's Jev, a hosted API (prior design kept at commit `a99078485` for history) — the MiniCheck/mDeBERTa/HHEM comparison in Q6's own research pass is shrunk to a pointer, which is this addition's retire-to-write for `07-reference/TYPESAFE_AI_OVERVIEW.md` (copied into this branch byte-identical to the main checkout's untracked source, `diff` confirmed; its `INDEX.md` row replicated byte-identical to the main checkout's uncommitted diff, `diff` confirmed; neither file in the main checkout was touched). Jev's language coverage for Italian and Turkish is not stated in that record, so it is carried forward as its own open item (§4 P7, "Not verified") rather than assumed either way, backed by a new CLAIMS.jsonl row (`ADR-0163-JEV-LANGUAGE-COVERAGE-UNSTATED`, status open, mutation-tested: flips to matching when the record is edited to state coverage, confirmed by temporarily adding such a line and restoring it byte-identical). Amended: the status block and Decider line; Context (Round 5 section added); §4 P7 (rewritten around Jev); §9 (legal-review/EU DECIDED bracket); the `wine-worker` build-order row; adversarial-table row A16; Cost's "not included" line; the four top-level recap brackets for Q2/Q6/Q10/Q11; all eleven deep-dive Q-blocks carrying an answer (Q2, Q6, Q10, Q11, Q13, Q14, Q15, Q16, Q17 ×2 (legal review and its EU sub-fork), Q18, Q20); "Not verified" (Jev's own accuracy and language coverage named); and this Review trail. Every pre-existing self-citation whose target moved because of this round's insertions was located by content match in the edited file (not carried forward by arithmetic alone) and recomputed, each keeping a "was :N" trail; round 4's own review-trail row above is left as its original text with a dated bracket appended naming the further shift, per the house rule that records are corrected in place with dated brackets, never silently rewritten. Guards re-run and green: `scripts/check_decision_claims.sh` (359 `CLAIMS.jsonl` rows, 358 checkable claims after the one `_comment` line, all 358 holding — this run also covers the bundled OD-id-collision and migration-version-collision checks, both clean) and, run separately for the same corpus, `scripts/check_adr_numbers_unique.py` (930 refs after this round's own edits added a few, no collision) and `scripts/check_od_ids_exist.py` (1,412 documents against 118 register rows, PASS). No OD row, ADR number or migration was added by this round. Not done: propagating the twelve answers into every Build-order step, Cost-table figure or CLAIMS row their design implies beyond the sections named above — each DECIDED bracket states what changes, but turning that into code (a `wine_type`/`sweetness` migration for Q10, a Jev API client for Q6, the six houses' `is_simulation`/real-house flags for Q11, and so on) is separate build work this docs-only round does not do |
+| 2026-09-21 | Correction pass: round 4's own last-call must-fix list against round 5's draft (four items), run before this branch's commit | Still Proposed. Closes all four, none found already-fixed or aimed at the wrong target. (1) The Q11 DECIDED bracket's arithmetic was wrong: it said flagging the four confirmed-not-real houses made "eight rows... not four", but step 0.3 already flagged eight (the four "Sim " rows plus YAREN, ALDEMIR, ADMIN 1, ADMIN ROOM) before this answer. Corrected to twelve of the 14 `restaurants` rows (Context, fact 9); step 0.3 itself gains a dated round-5 bracket recording the same count. (2) The closure overclaim in the status block, the Decider line and the "What this settles" paragraph — each said round 5 closed every question but Jev's language coverage — is corrected in all three: the ADR's own text already left four more things open (Q14's reward *structure*, Q11's stuck `research_runs`/registry rows/`pg_cron`, Q22 never put to him, the Jev-in-§14-notice fork noted but not asked), so each is now named, and "What this settles" is expanded to explain all of them plus the new Pre-pool ToS fork below. (3) §4's round-3 stage-map bracket still read "P7(b) and P12 on `wine-worker`"; round 5 had already moved P7(b) to a gateway call to Jev in §11's `wine-worker` row, but neither the §4 intro bracket nor §11's own Gateway row said so — both gain a dated round-5 bracket, and the Gateway row now names the Jev call directly. (4) *"Ship now, fix later"* (Q17, §9) was never carried into three texts that still gated pooling on a lawyer: §14's "Before any pooling" list, the Consequences line and step 0.18's "lawyer-drafted clickwrap" bullet. Each gains a dated round-5 bracket stating that the order changed under Q17's answer and that whether a non-lawyer Terms of Service still gates pooling is its own open founder question ("Pre-pool ToS"), not decided here. Every self-citation whose target moved because of these insertions was re-located by content match against `git show HEAD` (not carried forward by arithmetic) and recomputed with a "was :N" hop appended to its existing trail; round 4's own review-trail row is again left as its original text, with a second dated bracket appended alongside round 5's, per the same house rule that records are corrected in place, never silently rewritten. Guards re-run and green: `scripts/check_decision_claims.sh` (358 checked, 358 holding, unchanged — no CLAIMS.jsonl row was touched this pass); `scripts/check_adr_numbers_unique.py` (1,045 refs checked, no collision, 0163 the only number this document introduces); `scripts/check_od_ids_exist.py` (1,412 documents against 118 register rows, PASS, the same 2 known absorbed-merge notices); `scripts/check_citation_pairing.py` (179 register citations against 119 rows, PASS — unaffected, since none of the citations touched this pass are `OPEN-DECISIONS.md` register citations); `scripts/check_no_conflict_markers.py` (1,450 planning documents, PASS). No OD row, ADR number, CLAIMS row or migration added or changed. None of the founder questions this pass surfaced or left open (Q14's reward structure and rate, Pre-pool ToS, Q22, Jev-in-notice) is answered here — each stays exactly as open as it was, for the founder to decide |
