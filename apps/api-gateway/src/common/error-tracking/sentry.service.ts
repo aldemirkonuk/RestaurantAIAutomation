@@ -57,6 +57,7 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
 /**
  * Remove secrets and PII from a Sentry event before transmission.
  * - drops credential request headers and cookies
+ * - reduces `request.url` to origin+path, and redacts a path-borne token
  * - reduces `user` to a pseudonymous id (+ non-PII custom keys like restaurant_id)
  * - strips common PII keys from free-form extra/contexts/request payloads
  *
@@ -66,6 +67,32 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
  *
  * Exported so the scrubbing contract can be unit-tested.
  */
+/**
+ * Routes that carry a credential in the PATH rather than the query. Stripping
+ * the query does not reach these: `/invite/<code>` IS the invite credential.
+ */
+const TOKEN_PATH_PREFIXES = ['/invite/', '/studio/invite/'] as const;
+
+/**
+ * The URL as Sentry may keep it: origin and path only, with a path-borne token
+ * replaced. Founder ruling 2026-09-21 — strip the query ENTIRELY rather than
+ * redact known secret-bearing parameter names, because an allow-list reports
+ * health for every parameter nobody remembered to add. A plain string cut,
+ * never `new URL()`: this runs on an error path and must not itself throw.
+ *
+ * Kept identical in all three runtimes; scripts/check_sentry_pii_scope.py fails
+ * the build if one of them stops covering `request.url`.
+ */
+export function scrubUrl(raw: string): string {
+  const q = raw.search(/[?#]/);
+  const path = q === -1 ? raw : raw.slice(0, q);
+  for (const prefix of TOKEN_PATH_PREFIXES) {
+    const at = path.indexOf(prefix);
+    if (at !== -1) return `${path.slice(0, at + prefix.length)}<redacted>`;
+  }
+  return path;
+}
+
 export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
   if (event.request) {
     const headers = event.request.headers;
@@ -75,6 +102,9 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
       }
     }
     delete event.request.cookies;
+    if (typeof event.request.url === "string") {
+      event.request.url = scrubUrl(event.request.url);
+    }
   }
   if (event.user) {
     for (const key of PII_USER_KEYS) {

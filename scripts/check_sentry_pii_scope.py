@@ -148,6 +148,17 @@ CONTAINER_PATTERNS = {
         "ts": r"request\??\.data\b",
         "py": r"""request\.(?:get|pop)\(\s*['"]data['"]""",
     },
+    # Added 2026-09-21. `request.url` carries the full URL INCLUDING the query,
+    # and the three token-bearing routes put a credential there:
+    # `/reset-password?token=`, `/verify-email?token=` (query) and
+    # `/invite/<code>` (path). Every other container was scrubbed and this one
+    # was not, so a JS error on a reset page shipped the token to Sentry.
+    # Pinned here so that closing it in one runtime and not the others fails the
+    # build, and so that removing it later fails the build too.
+    "request.url": {
+        "ts": r"request\??\.url\b",
+        "py": r"""request\.(?:get|pop)\(\s*['"]url['"]""",
+    },
 }
 REQUIRED_CONTAINERS = frozenset(CONTAINER_PATTERNS)
 
@@ -474,6 +485,7 @@ export function scrubSentryEvent(event) {
   if (event.request) {
     const headers = event.request.headers
     delete event.request.cookies
+    event.request.url = scrubUrl(event.request.url)
   }
   if (event.user) { drop(event.user) }
   scrubPiiKeys(event.extra)
@@ -508,6 +520,7 @@ def scrub_sentry_event(event, hint=None):
     if isinstance(request, dict):
         headers = request.get("headers")
         request.pop("cookies", None)
+        request["url"] = scrub_url(request.get("url"))
         _scrub_pii_keys(request.get("data"))
     user = event.get("user")
     _scrub_pii_keys(event.get("extra"))

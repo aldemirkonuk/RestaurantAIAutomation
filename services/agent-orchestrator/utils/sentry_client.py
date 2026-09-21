@@ -75,6 +75,37 @@ def _scrub_pii_keys(obj: Any) -> None:
             obj.pop(key, None)
 
 
+# Routes that carry a credential in the PATH rather than the query. Stripping
+# the query does not reach these: `/invite/<code>` IS the invite credential.
+TOKEN_PATH_PREFIXES = ("/invite/", "/studio/invite/")
+
+
+def scrub_url(raw: str) -> str:
+    """
+    The URL as Sentry may keep it: origin and path only, with a path-borne
+    token replaced.
+
+    Founder ruling 2026-09-21 -- strip the query ENTIRELY rather than redact
+    known secret-bearing parameter names, because an allow-list reports health
+    for every parameter nobody remembered to add. A plain string cut, never
+    urlparse: this runs inside `before_send` on an error path and must not
+    itself throw, and it must work on a relative URL.
+
+    Kept identical in all three runtimes; scripts/check_sentry_pii_scope.py
+    fails the build if one of them stops covering `request.url`.
+    """
+    path = raw
+    for sep in ("?", "#"):
+        cut = path.find(sep)
+        if cut != -1:
+            path = path[:cut]
+    for prefix in TOKEN_PATH_PREFIXES:
+        at = path.find(prefix)
+        if at != -1:
+            return path[: at + len(prefix)] + "<redacted>"
+    return path
+
+
 def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dict]:
     """
     Strip credentials and identity from an event before it is transmitted.
@@ -102,6 +133,9 @@ def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dic
                 if name.lower() in SENSITIVE_HEADERS:
                     headers.pop(name, None)
         request.pop("cookies", None)
+        url = request.get("url")
+        if isinstance(url, str):
+            request["url"] = scrub_url(url)
         _scrub_pii_keys(request.get("data"))
 
     user = event.get("user")

@@ -29,7 +29,7 @@ jest.mock("@sentry/node", () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { SentryService, scrubSentryEvent } = require("./sentry.service");
+const { SentryService, scrubSentryEvent, scrubUrl } = require("./sentry.service");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { SentryInterceptor } = require("./sentry.interceptor");
 
@@ -216,5 +216,40 @@ describe("sentry — what reaches the error tracker", () => {
       expect(result).toEqual({ ok: true });
       expect(captureExceptionMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("request.url never carries a credential (founder ruling 2026-09-21)", () => {
+  it.each([
+    ["https://mudavym.com/reset-password?token=abc", "https://mudavym.com/reset-password"],
+    ["https://mudavym.com/verify-email?token=abc", "https://mudavym.com/verify-email"],
+    ["https://mudavym.com/x?a=1&token=abc&b=2", "https://mudavym.com/x"],
+    ["https://mudavym.com/reset-password#token=abc", "https://mudavym.com/reset-password"],
+    ["https://mudavym.com/invite/SECRET", "https://mudavym.com/invite/<redacted>"],
+    ["https://mudavym.com/studio/invite/S", "https://mudavym.com/studio/invite/<redacted>"],
+    ["/invite/SECRET?x=1", "/invite/<redacted>"],
+    ["https://mudavym.com/orders", "https://mudavym.com/orders"],
+    ["/", "/"],
+    ["", ""],
+  ])("%s -> %s", (raw: string, want: string) => {
+    expect(scrubUrl(raw)).toBe(want);
+  });
+
+  it("scrubSentryEvent applies it to a real event", () => {
+    const event: any = scrubSentryEvent({
+      request: { url: "https://mudavym.com/reset-password?token=SECRET" },
+    });
+    expect(event.request.url).toBe("https://mudavym.com/reset-password");
+    expect(JSON.stringify(event)).not.toContain("SECRET");
+  });
+
+  it("does not throw on a malformed URL, because it runs on an error path", () => {
+    expect(() => scrubUrl("http://[::1")).not.toThrow();
+    expect(() => scrubUrl("%%%")).not.toThrow();
+  });
+
+  it("leaves a non-string url untouched rather than coercing it", () => {
+    const event: any = scrubSentryEvent({ request: { url: 42 } });
+    expect(event.request.url).toBe(42);
   });
 });

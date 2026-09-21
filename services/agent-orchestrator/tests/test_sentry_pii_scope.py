@@ -159,3 +159,50 @@ def test_scrub_lists_match_the_typescript_runtimes():
         "proxy-authorization",
         "x-api-key",
     ]
+
+
+@pytest.mark.parametrize(
+    "raw,want",
+    [
+        ("https://mudavym.com/reset-password?token=abc", "https://mudavym.com/reset-password"),
+        ("https://mudavym.com/verify-email?token=abc", "https://mudavym.com/verify-email"),
+        ("https://mudavym.com/x?a=1&token=abc&b=2", "https://mudavym.com/x"),
+        ("https://mudavym.com/reset-password#token=abc", "https://mudavym.com/reset-password"),
+        ("https://mudavym.com/invite/SECRET", "https://mudavym.com/invite/<redacted>"),
+        ("https://mudavym.com/studio/invite/S", "https://mudavym.com/studio/invite/<redacted>"),
+        ("/invite/SECRET?x=1", "/invite/<redacted>"),
+        ("https://mudavym.com/orders", "https://mudavym.com/orders"),
+        ("/", "/"),
+        ("", ""),
+    ],
+)
+def test_scrub_url_keeps_origin_and_path_only(raw, want):
+    """Founder ruling 2026-09-21: strip the query entirely, redact a path-borne token."""
+    from utils.sentry_client import scrub_url
+
+    assert scrub_url(raw) == want
+
+
+def test_scrub_sentry_event_applies_it():
+    from utils.sentry_client import scrub_sentry_event
+
+    event = {"request": {"url": "https://mudavym.com/reset-password?token=SECRET"}}
+    scrub_sentry_event(event)
+    assert event["request"]["url"] == "https://mudavym.com/reset-password"
+    assert "SECRET" not in repr(event)
+
+
+def test_scrub_url_never_raises():
+    """It runs inside before_send on an error path; it must not add a second failure."""
+    from utils.sentry_client import scrub_url
+
+    for raw in ("http://[::1", "%%%", "?", "#"):
+        scrub_url(raw)
+
+
+def test_a_non_string_url_is_left_alone():
+    from utils.sentry_client import scrub_sentry_event
+
+    event = {"request": {"url": 42}}
+    scrub_sentry_event(event)
+    assert event["request"]["url"] == 42

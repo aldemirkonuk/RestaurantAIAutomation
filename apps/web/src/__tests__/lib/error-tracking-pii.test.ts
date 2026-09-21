@@ -186,3 +186,49 @@ describe('error tracking — what reaches Sentry', () => {
     })
   })
 })
+
+describe('request.url never carries a credential (founder ruling 2026-09-21)', () => {
+  const cases: Array<[string, string]> = [
+    // query-borne: the two reset/verify routes
+    ['https://mudavym.com/reset-password?token=abc123', 'https://mudavym.com/reset-password'],
+    ['https://mudavym.com/verify-email?token=abc123', 'https://mudavym.com/verify-email'],
+    // a second parameter must not survive either — the whole query goes
+    ['https://mudavym.com/x?a=1&token=abc&b=2', 'https://mudavym.com/x'],
+    // fragments too: a token in the hash is still a token
+    ['https://mudavym.com/reset-password#token=abc', 'https://mudavym.com/reset-password'],
+    // path-borne: stripping the query does NOT reach these
+    ['https://mudavym.com/invite/SECRETCODE', 'https://mudavym.com/invite/<redacted>'],
+    ['https://mudavym.com/studio/invite/SECRET', 'https://mudavym.com/studio/invite/<redacted>'],
+    // relative URLs must work — this runs before the SDK normalises anything
+    ['/invite/SECRETCODE?x=1', '/invite/<redacted>'],
+    // ordinary pages are left alone
+    ['https://mudavym.com/orders', 'https://mudavym.com/orders'],
+    ['/', '/'],
+    ['', ''],
+  ]
+  it.each(cases)('%s -> %s', async (raw, want) => {
+    const { scrubUrl } = await freshModule()
+    expect(scrubUrl(raw)).toBe(want)
+  })
+
+  it('scrubSentryEvent applies it to a real event', async () => {
+    const { scrubSentryEvent } = await freshModule()
+    const event: any = { request: { url: 'https://mudavym.com/reset-password?token=SECRET' } }
+    scrubSentryEvent(event)
+    expect(event.request.url).toBe('https://mudavym.com/reset-password')
+    expect(JSON.stringify(event)).not.toContain('SECRET')
+  })
+
+  it('does not throw on a malformed URL, because it runs on an error path', async () => {
+    const { scrubUrl } = await freshModule()
+    expect(() => scrubUrl('http://[::1')).not.toThrow()
+    expect(() => scrubUrl('%%%')).not.toThrow()
+  })
+
+  it('leaves a non-string url untouched rather than coercing it', async () => {
+    const { scrubSentryEvent } = await freshModule()
+    const event: any = { request: { url: 42 } }
+    scrubSentryEvent(event)
+    expect(event.request.url).toBe(42)
+  })
+})
