@@ -7,7 +7,14 @@ import { baseTemplate, metricBox, tableRow, alertBox } from "./base-template";
 
 export interface DeliveryETAData {
   restaurantName: string;
+  /** Display text for "Order #..." (the order number when it has one). */
   orderId: string;
+  /**
+   * The order's primary key. The link must carry this: /orders/:id matches
+   * on the row id (OrdersNext looks rows up by r.id), never on the number.
+   * Absent -> the mail links to /orders, not to a page that cannot resolve.
+   */
+  orderUuid?: string;
   providerName: string;
   expectedDate: Date | string;
   expectedTimeWindow?: string; // e.g., '10:00 AM - 12:00 PM'
@@ -117,7 +124,9 @@ export function deliveryETATemplate(data: DeliveryETAData): string {
     content,
     ctaButton: {
       text: "View Order Details",
-      url: `${frontendUrl()}/orders/${data.orderId}`,
+      url: data.orderUuid
+        ? `${frontendUrl()}/orders/${encodeURIComponent(data.orderUuid)}`
+        : `${frontendUrl()}/orders`,
       color: colors.info,
     },
   });

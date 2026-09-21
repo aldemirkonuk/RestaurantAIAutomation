@@ -82,6 +82,37 @@ describe.each(Object.entries(FRONTEND_URL_SCENARIOS))(
       assertHonestCtaUrl(extractHref(html));
     });
 
+    it("delivery-eta links the order's row id, never its number (review of #424)", () => {
+      const uuid = "3f1c2a9e-8b7d-4c6e-9a10-5d2b7e4f8c21";
+      const html = deliveryETATemplate({
+        restaurantName: "Sim Meyhouse",
+        orderId: "ORD-2026-1234",
+        orderUuid: uuid,
+        providerName: "Anadolu",
+        expectedDate: "2026-09-20",
+        items: [{ name: "Barolo", quantity: 6 }],
+        totalItems: 6,
+      });
+      const href = extractHref(html);
+      assertHonestCtaUrl(href);
+      // OrdersNext resolves /orders/:id by r.id (the UUID); a number or a
+      // prefix lands on its not-found banner.
+      expect(href.endsWith(`/orders/${uuid}`)).toBe(true);
+      expect(href).not.toContain("ORD-2026-1234");
+      // The words a person reads still carry the number.
+      expect(html).toContain("Order #ORD-2026-1234");
+
+      const noId = deliveryETATemplate({
+        restaurantName: "Sim Meyhouse",
+        orderId: "N/A",
+        providerName: "Anadolu",
+        expectedDate: "2026-09-20",
+        items: [],
+        totalItems: 0,
+      });
+      expect(extractHref(noId).endsWith("/orders")).toBe(true);
+    });
+
     it("daily-summary CTA", () => {
       const html = dailySummaryTemplate({
         restaurantName: "Sim Meyhouse",

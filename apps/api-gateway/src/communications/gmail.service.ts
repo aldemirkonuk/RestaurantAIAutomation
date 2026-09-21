@@ -515,6 +515,8 @@ This is an automated alert from Mudavym.
     to: string[];
     restaurantName: string;
     orderId: string;
+    /** The order's row id, for the link; orderId is the display number. */
+    orderUuid?: string;
     providerName: string;
     expectedDate: Date | string;
     expectedTimeWindow?: string;
