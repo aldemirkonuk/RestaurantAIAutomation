@@ -136,6 +136,7 @@ import {
 } from "../letters/house-letters.service";
 import { HouseSenderService } from "../letters/house-sender.service";
 import { houseActor, type TokenUser } from "../letters/house-letters.actor";
+import { MimeHeaderError } from "../mime-headers";
 import {
   OrganizationsService,
   RestaurantRoleUnreadableError,
@@ -194,6 +195,18 @@ export interface RelayResult {
   messageId?: string;
   threadId?: string;
   error?: string;
+  /**
+   * `true` only when `success` is `false` AND the failure is a header refusal
+   * (ADR 0172's `MimeHeaderError`, thrown by `mime-headers.ts` before any
+   * provider call) rather than a transport failure — GmailService/
+   * `sendThroughGrant` never called the provider, so nothing left the
+   * process. `sendAsOrchestrator` reads this to answer 422 rather than 200
+   * (founder, 2026-09-21: "a header refusal on the relay path answers a
+   * FINAL 422 — not 200 success:false — so both send paths behave alike").
+   * Typed, never inferred from `error`'s text (PR #405's own rule: classify
+   * by fields, not strings).
+   */
+  refusedBeforeSend?: boolean;
   channel: "email";
   door: RelayDoor;
   /** Populated only on the person door: which mailbox it sent (or will send)
@@ -332,7 +345,7 @@ export class RelayEmailService {
       throw err;
     }
 
-    return this.dispatch({
+    const result = await this.dispatch({
       ...base,
       ...this.addresses(dto),
       subject: dto.subject,
@@ -342,6 +355,30 @@ export class RelayEmailService {
       inReplyTo: dto.inReplyTo,
       references: dto.references,
     });
+
+    // Founder, 2026-09-21: "a header refusal on the relay path answers a
+    // FINAL 422 (not 200 success:false), so both send paths behave alike and
+    // the draft closes with the reason shown." `dispatch()` already wrote the
+    // ATTEMPTED and FAILED rows (with `refusedBeforeSend: true` on the
+    // latter) before returning — this only decides what the HTTP RESPONSE
+    // says, the same way `sendAsPerson`'s guardrail refusal already answers
+    // 422 rather than a 200 carrying `success: false`. The orchestrator's own
+    // `_relay_final_refusal_code` (provider_conversation_agent.py) then reads
+    // this 422 through the SAME "gateway refused the send: HTTP {code}"
+    // string the 400/403/422 door refusals already produce, so a header
+    // refusal closes the draft exactly like any other structural one.
+    if (!result.success && result.refusedBeforeSend) {
+      // Every `MimeHeaderError` sentence already ends in a full stop
+      // (mime-headers.ts), so drop it before appending ours — this text is
+      // stored on the draft verbatim and shown to a manager.
+      const said = (
+        result.error ?? "the provider refused to build this message"
+      ).replace(/\.\s*$/, "");
+      throw new UnprocessableEntityException(
+        `${said}. Nothing was sent — the provider was never called. Fix the header named above and try again.`,
+      );
+    }
+    return result;
   }
 
   // ==========================================================================
@@ -675,6 +712,15 @@ export class RelayEmailService {
     let threadId: string | undefined;
     let error: string | undefined;
     let success = false;
+    // `MimeHeaderError` (ADR 0172): the encoder refused to build the message
+    // — no provider was ever called, so this proves non-delivery the same
+    // way a pre-transport door refusal does. Set from a typed `instanceof`
+    // check, never from `error`'s text (PR #405's rule). Both transports can
+    // throw it: `GmailService.sendEmail` catches it internally and this class
+    // re-throws it (`sendThroughDeploymentMailbox`, below) to keep one
+    // detection point here; `sendThroughGrant` (the person door's transport)
+    // throws it directly, uncaught, already.
+    let refusedBeforeSend = false;
     try {
       const result = await send(plan);
       success = true;
@@ -683,6 +729,7 @@ export class RelayEmailService {
     } catch (err) {
       success = false;
       error = err instanceof Error ? err.message : String(err);
+      refusedBeforeSend = err instanceof MimeHeaderError;
     }
 
     const outcomeRecorded = await this.insertBestEffort(
@@ -692,7 +739,7 @@ export class RelayEmailService {
         correlationId,
         success
           ? { outcome: "sent", messageId: messageId ?? null, threadId: threadId ?? null, ...extraAudit }
-          : { outcome: "failed", error, ...extraAudit },
+          : { outcome: "failed", error, refusedBeforeSend, ...extraAudit },
         success ? null : (error ?? null),
       ),
       `the ${success ? "sent" : "failed"} outcome of ${correlationId}`,
@@ -703,6 +750,7 @@ export class RelayEmailService {
       messageId,
       threadId,
       error,
+      ...(refusedBeforeSend ? { refusedBeforeSend } : {}),
       channel: "email",
       door: plan.door,
       ...(extraAudit.sender
@@ -730,6 +778,17 @@ export class RelayEmailService {
       references: plan.references,
     });
     if (result.success !== true) {
+      // ADR 0172: `GmailService.sendEmail` catches `MimeHeaderError` itself
+      // and reports it as `refusedBeforeSend` rather than letting it
+      // propagate — re-throw the SAME typed error here so `dispatch()`'s
+      // catch can tell "the provider refused" (a transport failure) apart
+      // from "we never called the provider" (a header refusal) without
+      // parsing `result.error`'s text.
+      if (result.refusedBeforeSend) {
+        throw new MimeHeaderError(
+          result.error ?? "the provider reported no reason",
+        );
+      }
       throw new Error(result.error ?? "the provider reported no reason");
     }
     return { messageId: result.messageId, threadId: result.threadId };

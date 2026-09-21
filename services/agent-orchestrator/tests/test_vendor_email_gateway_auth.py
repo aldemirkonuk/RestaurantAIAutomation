@@ -419,6 +419,50 @@ async def test_a_relay_400_403_or_422_is_a_definite_refusal(
     assert ProviderConversationAgent._is_definite_send_refusal(result["error"])
 
 
+# ---------------------------------------------------------------------------
+# ADR 0099 (locked 2026-09-19, narrowed 2026-09-21, founder decision): "a
+# 400/403/422 relay refusal is FINAL = 'Close, no retry'". `_is_definite_send_
+# refusal` above is UNCHANGED by this — it still classifies these three codes
+# "definite" — what changed is which function the CALLER (`_handle_
+# conversation_approved`) consults first, so the two must never disagree on
+# the codes they share.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", [400, 403, 422])
+def test_relay_final_refusal_code_matches_400_403_and_422(status: int):
+    text = f"gateway refused the send: HTTP {status} — refused"
+    assert ProviderConversationAgent._relay_final_refusal_code(text) == str(status)
+
+
+@pytest.mark.parametrize("status", [401, 404, 429, 500, 503])
+def test_relay_final_refusal_code_is_none_for_every_other_code(status: int):
+    """401 (ambiguous, parks) and every code the founder's answer did not
+    name (404, 429, 5xx) fall through to `_is_definite_send_refusal`
+    unchanged — this function must never widen past exactly {400, 403, 422}."""
+    text = f"gateway refused the send: HTTP {status} — refused"
+    assert ProviderConversationAgent._relay_final_refusal_code(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        None,
+        "no email delivery method available: ADMIN_API_KEY is not configured",
+        "invalid_grant: Bad Request",
+        "550 5.1.1 user unknown",
+    ],
+)
+def test_relay_final_refusal_code_is_none_for_non_relay_shaped_errors(text):
+    """Every OTHER definite-refusal shape `_is_definite_send_refusal` already
+    recognises (no credential, SMTP 5xx, ...) does not carry the relay's own
+    'gateway refused the send: HTTP ...' sentence, so this function must leave
+    them alone — they keep going through `_release_send_claim` ('released for
+    retry'), not `_close_relay_refused`."""
+    assert ProviderConversationAgent._relay_final_refusal_code(text) is None
+
+
 @pytest.mark.asyncio
 async def test_a_relay_401_stays_ambiguous_and_parks_for_a_person(
     composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch
@@ -481,11 +525,16 @@ async def test_a_relay_404_or_429_is_unchanged_and_still_ambiguous(
 
 @pytest.mark.parametrize("status", [400, 403, 422])
 @pytest.mark.asyncio
-async def test_a_relay_400_403_or_422_end_to_end_is_released_for_retry(
+async def test_a_relay_400_403_or_422_end_to_end_closes_with_no_retry(
     monkeypatch: pytest.MonkeyPatch, status: int
 ):
-    """End to end through `_handle_conversation_approved`: the claim is handed
-    back for retry, not parked, for each of the three definite codes."""
+    """End to end through `_handle_conversation_approved`: for each of the
+    three relay-final codes, the row CLOSES as RELAY_REFUSED — the claim is
+    NOT handed back, and nothing raises to trigger a bus retry.
+
+    [CORRECTED 2026-09-21, founder: superseded the 2026-09-19 "released for
+    retry" behaviour this test asserted before ("relay 4xx = split by code")
+    — "a 400/403/422 relay refusal is FINAL = 'Close, no retry'"."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
     import services.email_composer_service as mod
@@ -500,10 +549,13 @@ async def test_a_relay_400_403_or_422_end_to_end_is_released_for_retry(
     monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
     agent = _approved_agent(_approved_conversation())
 
-    with pytest.raises(RuntimeError, match="released for retry"):
-        await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+    # No raise — closing is quiet, it never triggers a bus retry.
+    await agent._handle_conversation_approved({"conversation_id": CONVO_A})
 
-    assert agent.database.supabase.conversation["status"] == "PENDING_APPROVAL"
+    assert agent.database.supabase.conversation["status"] == "RELAY_REFUSED"
+    reason = agent.database.supabase.conversation["relay_refusal_reason"]
+    assert f"HTTP {status}" in reason
+    assert "refused" in reason
 
 
 @pytest.mark.asyncio
@@ -732,10 +784,13 @@ async def test_an_approved_vendor_mail_posts_exactly_the_body_the_gateway_admits
 async def test_a_door_refusal_is_never_recorded_as_sent_and_its_sentence_is_logged(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """[CORRECTED 2026-09-19: a 403 is now a DEFINITE refusal (ADR 0099,
-    founder decision, lane answers batch 4) — it releases the claim and
-    raises, rather than parking ambiguously as this test used to leave
-    unasserted.]"""
+    """[CORRECTED 2026-09-19: a 403 is a DEFINITE refusal (ADR 0099, founder
+    decision, lane answers batch 4) — it released the claim and raised.]
+    [CORRECTED 2026-09-21: the founder narrowed that — a relay 403 is
+    RELAY-FINAL ("Close, no retry"), so it now CLOSES the row as
+    RELAY_REFUSED, carrying the gateway's own sentence, and does NOT raise
+    (a raise is what would make the bus retry a request that would only be
+    refused again).]"""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
     import services.email_composer_service as mod
@@ -755,15 +810,16 @@ async def test_a_door_refusal_is_never_recorded_as_sent_and_its_sentence_is_logg
     monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
     agent = _approved_agent(_approved_conversation())
 
-    with pytest.raises(RuntimeError, match="released for retry") as excinfo:
-        await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+    # No raise: a relay-final refusal closes quietly, it does not retry.
+    await agent._handle_conversation_approved({"conversation_id": CONVO_A})
 
     assert len(_FakeSession.calls) == 1
     assert agent.database.supabase.conversation["status"] != "SENT"
-    # Definite refusal: the claim is handed back for retry, not parked.
-    assert agent.database.supabase.conversation["status"] == "PENDING_APPROVAL"
-    assert "HTTP 403" in str(excinfo.value)
-    assert "not one of this house's conversations" in str(excinfo.value)
+    # Relay-final refusal: CLOSED, not handed back and not left PENDING_APPROVAL.
+    assert agent.database.supabase.conversation["status"] == "RELAY_REFUSED"
+    reason = agent.database.supabase.conversation["relay_refusal_reason"]
+    assert "HTTP 403" in reason
+    assert "not one of this house's conversations" in reason
 
 
 @pytest.mark.asyncio

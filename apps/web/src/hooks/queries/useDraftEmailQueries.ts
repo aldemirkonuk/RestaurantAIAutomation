@@ -153,6 +153,12 @@ export interface OrderConversationDto {
   aiGenerated?: boolean | null
   specialConditions?: string[]
   /**
+   * The relay gateway's own refusal sentence, set only when
+   * `status === 'RELAY_REFUSED'` (ADR 0099, founder 2026-09-21: a 400/403/422
+   * relay refusal closes the draft rather than retrying it, and this is why).
+   */
+  relayRefusalReason?: string | null
+  /**
    * Provenance for `rollingSummary`: which engine read this answer, and when.
    *
    * `conversation_context.model` / `.analyzed_at`, written beside the summary by

@@ -7479,6 +7479,7 @@ export class ProcurementService {
         message_text,
         constraint_flags,
         rolling_summary,
+        relay_refusal_reason,
         procurement_orders!left(
           id, order_number, quantity,
           inventory:inventory_id(wine_name)
@@ -7534,6 +7535,12 @@ export class ProcurementService {
       draftContent: row.content ?? row.message_text ?? null,
       constraintFlags: row.constraint_flags,
       rollingSummary: row.rolling_summary,
+      // The relay gateway's own sentence for a RELAY_REFUSED row (ADR 0099,
+      // founder 2026-09-21). Null for every other status — the column is
+      // scoped to that status by
+      // procurement_conversations_relay_refusal_reason_scoped (migration
+      // 20260921113000).
+      relayRefusalReason: row.relay_refusal_reason ?? null,
       orderNumber: row.procurement_orders?.order_number ?? null,
       quantity: row.procurement_orders?.quantity ?? null,
       wineName: row.procurement_orders?.inventory?.wine_name ?? null,
@@ -7568,6 +7575,7 @@ export class ProcurementService {
         ai_generated,
         conversation_context,
         email_headers,
+        relay_refusal_reason,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price, status, ai_autonomy_paused,
           inventory:inventory_id(wine_name)
@@ -7636,6 +7644,10 @@ export class ProcurementService {
       // Sender authentication (DKIM/DMARC) captured on inbound rows in Phase 0; null on
       // outbound rows and on inbound rows that predate transport capture.
       senderVerified: row.email_headers?.transport?.senderVerified ?? null,
+      // The relay gateway's own sentence for a RELAY_REFUSED row (ADR 0099,
+      // founder 2026-09-21) — the order's thread drawer is the other panel a
+      // relay draft is read on, beside getConversationHistory's ledger.
+      relayRefusalReason: row.relay_refusal_reason ?? null,
     }));
   }
 

@@ -89,6 +89,11 @@ export class RelayEmailController {
       "Person door, after every other check held: this house has no connected sending mailbox (nobody has granted gmail_send, or the grant could not be read). The body carries a plain sentence and code: 'house_mailbox_not_connected'. Nothing was queued.",
   })
   @ApiResponse({
+    status: 422,
+    description:
+      "A blocked house-letter guardrail (person door), or a header refusal (ADR 0172 — either door: an address or minted id the message could not be built with). Either way the provider was never called and the send is FINAL, not retried (founder, 2026-09-21).",
+  })
+  @ApiResponse({
     status: 503,
     description:
       "A check could not be made (a read failed, including the caller's role) or the queue row could not be written. Nothing was sent or queued.",

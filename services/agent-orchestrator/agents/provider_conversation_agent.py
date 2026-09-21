@@ -2596,9 +2596,21 @@ class ProviderConversationAgent(BaseAgent):
             self.logger.error(f"Error creating approval request: {e}")
             return None
 
-    # Statuses that mean "a send for this conversation is already in flight or
-    # already happened". A claim must never be granted over one of these.
-    _SEND_TERMINAL_STATUSES = ("SENDING", "SENT", "AUTO_SENT", "SEND_UNCONFIRMED")
+    # Statuses that mean "a send for this conversation is already in flight,
+    # already happened, or is CLOSED and must not be reattempted". A claim
+    # must never be granted over one of these. RELAY_REFUSED (added
+    # 2026-09-21, ADR 0099) belongs here for the same reason SEND_UNCONFIRMED
+    # does: without it, a bus replay of the SAME approval event — the exact
+    # scenario `_claim_conversation_for_send` exists to guard against — could
+    # re-claim a closed row and send it anyway, which is precisely what
+    # "Close, no retry" rules out.
+    _SEND_TERMINAL_STATUSES = (
+        "SENDING",
+        "SENT",
+        "AUTO_SENT",
+        "SEND_UNCONFIRMED",
+        "RELAY_REFUSED",
+    )
 
     def _mint_rfc822_message_id(self) -> str:
         """Mint an RFC822 Message-ID BEFORE the send.
@@ -2718,6 +2730,42 @@ class ProviderConversationAgent(BaseAgent):
 
         return False
 
+    _RELAY_FINAL_CODES = ("400", "403", "422")
+
+    @staticmethod
+    def _relay_final_refusal_code(error: Any) -> Optional[str]:
+        """Is this a 400/403/422 from the relay's OWN doors — final, not retried?
+
+        ADR 0099, founder answer 2026-09-21: "a 400/403/422 relay refusal is
+        FINAL = 'Close, no retry'" — narrower, and a correction, to the
+        2026-09-19 answer `_is_definite_send_refusal` still encodes above
+        ("definite ... released for retry"). These three codes are the relay's
+        own doors deciding, BEFORE any transport, that this exact request
+        cannot go out: a malformed body (400), a door refusing what the
+        request names — no house/vendor/conversation, an address outside the
+        house's book, a conversation or order that belongs to someone else
+        (403) — or a blocked guardrail, or (since the same day) a header the
+        message could not be built with, ADR 0172 (422). Retrying the SAME
+        request refuses it again, identically — a person editing the draft is
+        what changes the outcome, not the bus trying again. So the caller
+        below CLOSES the conversation instead of releasing its claim.
+
+        401 (the orchestrator's own service key wrong/missing at the gateway)
+        and every other code (404, 429, 5xx, ...) are UNCHANGED by this
+        answer and fall through to `_is_definite_send_refusal` above, exactly
+        as they did before — this function returns `None` for all of them,
+        never overlapping with that one's own classification of the same
+        codes.
+        """
+        text = str(error or "").strip()
+        if not text:
+            return None
+        match = re.search(r"gateway refused the send: HTTP (\d{3})\b", text, re.I)
+        if not match:
+            return None
+        code = match.group(1)
+        return code if code in ProviderConversationAgent._RELAY_FINAL_CODES else None
+
     def _claim_conversation_for_send(
         self, conversation_id: str, outbound_message_id: str
     ) -> bool:
@@ -2798,6 +2846,39 @@ class ProviderConversationAgent(BaseAgent):
                 f"Could not release send claim for {conversation_id}: {e}"
             )
 
+    def _close_relay_refused(self, conversation_id: str, reason: str) -> None:
+        """Close a claimed conversation as refused by the relay's own doors —
+        definite, and DONE (ADR 0099, founder 2026-09-21: "Close, no retry").
+
+        Unlike `_release_send_claim`, this does NOT hand the claim back: a
+        400/403/422 is the gateway deciding, before any transport, that this
+        exact request cannot go out — releasing it would only let a retry
+        (manual or the bus's own) walk into the same refusal again. Unlike
+        `_park_send_unconfirmed`, the vendor never held this message (the
+        relay refused before, or instead of, any transport reaching it), so
+        there is nothing to reconcile against the vendor thread — only a
+        draft to fix and send again as new.
+
+        `reason` is the gateway's own sentence, stored verbatim in
+        `relay_refusal_reason` (migration 20260921113000) so a manager reading
+        the draft sees exactly what the relay said. Best-effort, same posture
+        as its siblings above: if this write fails the row stays SENDING,
+        which is also not re-claimable.
+        """
+        try:
+            self.database.supabase.table("procurement_conversations").update(
+                {"status": "RELAY_REFUSED", "relay_refusal_reason": reason}
+            ).eq("id", conversation_id).eq("status", "SENDING").execute()
+            self.logger.warning(
+                f"Send for {conversation_id} refused by the relay ({reason}) — "
+                "closed, not released: retrying would refuse it again."
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Could not close {conversation_id} as RELAY_REFUSED: {e}. "
+                "Row remains SENDING (still not re-claimable)."
+            )
+
     async def _handle_conversation_approved(self, payload: Dict[str, Any]) -> None:
         """Handle manager approval of a generated message.
 
@@ -2828,11 +2909,18 @@ class ProviderConversationAgent(BaseAgent):
              a concurrent approval, or a bus redelivery cannot reach the send at
              all. There was no guard of any kind here before — every redelivery
              sent again.
-          2. Classify a failure as a DEFINITE refusal (an allow-list of proofs
-             that nothing left the process) versus an AMBIGUOUS one (timeout,
-             reset, hang-up — anything where the client cannot know).
-          3. Release the claim ONLY on a definite refusal, and re-raise so the
-             bus retries a send that provably did not happen.
+          2. Classify a failure as a RELAY-FINAL refusal (the relay's own
+             doors, 400/403/422 — proof nothing left the process AND that a
+             bare retry would refuse it again), a DEFINITE refusal otherwise
+             (an allow-list of other proofs, e.g. SMTP 5xx, bad credentials),
+             or an AMBIGUOUS one (timeout, reset, hang-up — anything where the
+             client cannot know).
+          3a. CLOSE a relay-final refusal as RELAY_REFUSED (ADR 0099, founder
+              2026-09-21: "Close, no retry") — the gateway's own sentence
+              stored on the row, no claim released, no re-raise, so nothing
+              retries a request that would only be refused again.
+          3b. Release the claim on any OTHER definite refusal, and re-raise so
+             the bus retries a send that provably did not happen.
           4. Park an ambiguous failure as SEND_UNCONFIRMED — visible to a human,
              and NOT re-claimable — then return without raising, so no retry can
              produce a second message.
@@ -2938,6 +3026,25 @@ class ProviderConversationAgent(BaseAgent):
             send_error = e
 
         if send_error is not None:
+            relay_final_code = self._relay_final_refusal_code(send_error)
+            if relay_final_code is not None:
+                # ADR 0099, founder 2026-09-21: "Close, no retry." The relay's
+                # own doors refused this exact request (400/403/422) before,
+                # or instead of, any transport — retrying it would refuse it
+                # again, identically. Close it, name the gateway's own
+                # sentence on the row, and do NOT raise: a raise is what makes
+                # `BaseAgent._process_with_retry` / the bus retry this
+                # message, which is exactly what "no retry" rules out.
+                self._close_relay_refused(conversation_id, str(send_error))
+                self.logger.error(
+                    f"RELAY REFUSAL ({relay_final_code}) for conversation "
+                    f"{conversation_id} (provider {provider_id}): {send_error!r}. "
+                    f"Closed as RELAY_REFUSED (Message-ID {outbound_message_id}) — "
+                    "final, not retried. A person must edit the draft and send "
+                    "it again as a new message if it should still go out."
+                )
+                return
+
             if self._is_definite_send_refusal(send_error):
                 # Proven not delivered: safe to hand back and safe to retry.
                 self._release_send_claim(conversation_id, prior_status, str(send_error))

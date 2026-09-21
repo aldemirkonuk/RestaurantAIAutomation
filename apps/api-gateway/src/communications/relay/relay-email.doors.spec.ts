@@ -733,6 +733,55 @@ describe("the orchestrator's door", () => {
     expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.ATTEMPTED, RELAY_AUDIT_ACTIONS.FAILED]);
   });
 
+  // ADR 0172 + ADR 0099, founder 2026-09-21: "a header refusal on the relay
+  // path answers a FINAL 422 (not 200 success:false), so both send paths
+  // behave alike and the draft closes with the reason shown." A header
+  // refusal happens INSIDE dispatch()'s transport attempt (mime-headers.ts,
+  // after every door and DTO check already held), so — unlike a door
+  // refusal, which throws BEFORE dispatch() and is a 4xx already — it used
+  // to fall into the SAME generic catch as any other transport failure and
+  // answer 200 with `success: false`, indistinguishable from a genuine
+  // provider outage.
+  it("is 422 — not 200 — for a header refusal inside dispatch, and still records a FAILED row naming it", async () => {
+    gmail.sendEmail.mockResolvedValue({
+      success: false,
+      error: "Could not fold the Subject header.",
+      refusedBeforeSend: true,
+    });
+    const res = await post(ORCHESTRATOR_SEND, asService);
+
+    expect(res.status).toBe(422);
+    expect(String(res.body.message)).toMatch(/Could not fold the Subject header/);
+    expect(String(res.body.message)).toMatch(/the provider was never called/);
+    // The sentence is stored on the draft and shown to a manager verbatim, so
+    // the encoder's own full stop must not double up with ours.
+    expect(String(res.body.message)).not.toMatch(/\.\./);
+    // The audit trail still tells the whole story — ATTEMPTED then FAILED,
+    // with refusedBeforeSend on the record — even though the HTTP answer is
+    // now a definite refusal rather than a 200.
+    expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.ATTEMPTED, RELAY_AUDIT_ACTIONS.FAILED]);
+    expect(audit()[1]).toMatchObject({
+      reason: "Could not fold the Subject header.",
+      changes: expect.objectContaining({
+        outcome: "failed",
+        refusedBeforeSend: true,
+      }),
+    });
+  });
+
+  it("is 200 with refusedBeforeSend unset for an ordinary transport failure — 422 is not the default", async () => {
+    gmail.sendEmail.mockResolvedValue({
+      success: false,
+      error: "invalid_grant: Token has been expired or revoked.",
+    });
+    const res = await post(ORCHESTRATOR_SEND, asService);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(false);
+    expect(res.body.refusedBeforeSend).toBeUndefined();
+    expect(audit()[1].changes).toMatchObject({ refusedBeforeSend: false });
+  });
+
   it("refuses 503 and sends nothing when the attempt row cannot be written", async () => {
     knobs.failInsert = (table, row) =>
       table === "system_audit_log" && row.action === RELAY_AUDIT_ACTIONS.ATTEMPTED
