@@ -795,6 +795,97 @@ words is not stripped and is governed by `_S`'s ordinary bound like any
 other separator, same residual shape as before this round, now stated
 explicitly rather than only implied.
 
+**gate-r5 last-call round — 2026-09-20.** The gate-r4 round above was itself
+put through its own dedicated last-call audit (r5-gate.json, an Opus pass
+over gate-r4's own diff) before it ever merged, the same discipline gate-r4
+applied to gate-r3. Verdict: NOT READY. Most of gate-r4 held up on
+re-measurement, but that round introduced one ownership regression, one
+fresh bypass of that same round's own push fix, and one exponential regex —
+none of the three named in this ADR. All six findings are closed or named
+below.
+
+- **HIGH, fresh regression, closed.** Retiring the 40-char inline-HTML probe
+  (gate-r4, bullet above) also retired the only thing in `skeleton()` that
+  stripped a processing instruction (`<?x?>`) or a CDATA section
+  (`<![CDATA[x]]>`) — bracketed correction in place on that bullet, above,
+  with the fix and the measurement.
+- **HIGH, fresh defect, closed.** `_HTML_TAG_RE` (the same gate-r4 fix)
+  backtracks exponentially on an unclosed tag: its attribute-name and
+  unquoted-value character classes both admitted a quote character, so a
+  quoted attribute with an embedded space and no closing `">"` had two ways
+  to parse the same run — CONFIRMED doubling time, 0.10s/0.41s/1.66s at
+  N=18/20/22 repeats of `' a="b c"'`, extrapolating to minutes by N=30 and
+  days by N=40. It fails closed (the ownership deadlines report CANNOT
+  CHECK), but a PR carrying this shape could not be classified at all.
+  Fixed by excluding both quote characters from the name and unquoted-value
+  classes (`[^\s=/>"']+` / `[^\s>"']+`), so a quoted value has exactly one
+  parse — CONFIRMED fixed: N=20000 now runs in 0.005s.
+  `test_html_tag_re_does_not_catastrophically_backtrack_on_an_unclosed_tag`
+  (`scripts/test_pr_audit_gate.py`) asserts a wall-clock bound, not merely a
+  changed pattern string.
+- **HIGH, fresh bypass, closed.** `_push_reason()` (gate-r4's own push fix,
+  above) compared a refspec's `src` to `("HEAD", "@")` before stripping a
+  leading `"+"` — git's own force-push marker — so `"+HEAD"`/`"+@"` matched
+  neither that check nor anything else in the function and fell through to
+  allowed. CONFIRMED exit 0 before this fix (function call and the full
+  hook, stdin JSON, both), exit 2 after; confirmed live against a local
+  bare origin that `git push origin +HEAD` from a checkout of `main` really
+  does move the remote's `main`. Fixed by stripping one leading `"+"` from
+  each `spec` before the `":"` split, which fixes both places in the
+  function that compare `src`. `+HEAD` and `+@` added to
+  `test_r4_push_head_or_at_with_no_explicit_destination_is_blocked`
+  (`scripts/test_require_pr_audit.py`); a mutation reintroducing the
+  unstripped comparison is killed.
+- **Records corrected, no behaviour change.** ci.yml's PR-shape count (was
+  84, hardcoded and never updated as cases were added — re-measure via
+  `len(CASES)`, don't copy forward, now 108), a "Belt-and-suspenders with
+  OWNED_BASENAMES" line false since gate-r4 narrowed that rule to
+  `conftest.py` under `scripts/` only, a trivy comment's "the sha above"
+  that lost its referent when the line it pointed to was consolidated away,
+  and this file's own citation of a test name that never existed
+  (`test_ci_pytest_flags_pin_the_gates_own_isolation`, corrected to
+  `test_ci_pytest_step_is_config_isolated_from_pytest_ini_and_conftest`) —
+  each corrected in place with a dated bracket at its own location (ci.yml
+  or `pr_audit_gate.py`, not repeated here).
+- **Residual closed, per the founder's own delegated pytest-config-ownership
+  principle** ("own exactly what can influence the gate's own test run").
+  Neither `-c /dev/null` nor `--confcutdir=scripts` (gate-r3, above)
+  isolates MODULE resolution: an unowned root-level `pytest.py`, `pytest/`,
+  `_pytest/` or `sitecustomize.py` can still shadow the real `pytest`
+  package, because `python3 -m pytest` prepends the current directory to
+  `sys.path` before the import resolves. CONFIRMED in a scratch repo: a
+  two-line root `pytest.py` (`print("527 passed"); sys.exit(0)`) made a run
+  over one FAILING test print "527 passed" and exit 0 — a fake pass over a
+  real failure, with nothing in `OWNED_BASENAMES` or `TEST_CONFIG_BASENAMES`
+  to catch the file that did it. Fixed with `-P` (Python 3.11+, this job's
+  own pinned `PYTHON_VERSION`), the interpreter's own answer to exactly this
+  class of bug (`PYTHONSAFEPATH`) — CONFIRMED fixed in the same scratch
+  repo. `test_ci_pytest_step_is_config_isolated_from_pytest_ini_and_conftest`
+  is extended to pin it, mutation-tested by hand (removing `-P` from ci.yml
+  turns that test red; restored from a snapshot, confirmed clean by diff).
+- **Named, not code-changed — no marginal risk either way.** Two bullets
+  above overclaim precision they don't have: the gh-api exemption bullet's
+  "those three stay blocked, unchanged" (a `gh api` invocation ANYWHERE in
+  a command exempts a merge call made by a DIFFERENT program elsewhere in
+  the same command — grants nothing new, since the direct sanctioned route
+  already gives the same ungating), and the push-residual bullet's
+  `$UNRELATED` example (undersells a same-command `export NAME=main`
+  assignment, which `_collect_assignments()` does not parse and which can
+  resolve to main exactly as directly as the already-fixed bare `NAME=main`
+  case). Both bracketed in place at their own bullets, above.
+
+Re-measured on this round's own tree, not copied from gate-r4: the full
+`ci.yml` scripts/ step (8 files, `-P` added) is 534 passed (527 at gate-r4's
+own baseline, +7 new here); `test_pr_audit_gate.py` alone 103 (was 99 at
+this round's own HEAD, measured in an isolated local clone);
+`test_require_pr_audit.py` alone 231 (was 228, same method); `--self-test`
+98 invariants held, unchanged; claims 359/359; citation pairing 178/120,
+unchanged. Not done, stated plainly: no branch-protection or live-repo
+verification was attempted, same restriction as the two rounds above; the
+GitHub-markdown-renders-PI/CDATA-as-invisible claim is carried from
+r5-gate.json's own finding, not independently re-run against the live API
+in this round.
+
 ### Amendment — 2026-09-17, founder pipeline redesign
 
 **Founder decision, verbatim, in the main session:** *"change ADR 90 to be a
