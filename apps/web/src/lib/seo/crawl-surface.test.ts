@@ -101,12 +101,54 @@ function hasPathToRegexpBraces(source: string): boolean {
 }
 
 /**
+ * Why path-to-regexp 6.1.0 (the version `@vercel/routing-utils` pins) would refuse `source`, or
+ * null. A refused source fails `vercel build`, so nothing deploys, while every test here would
+ * otherwise stay green (found by the merge-train session with `/legal*`). These are its lexer's
+ * own rules: a modifier (`*`, `+`, `?`) must directly follow a group's closing `)` at the top
+ * level; a group cannot start with `?`, cannot be empty, and cannot hold a capturing group (only
+ * `(?...)`); an opening `(` must be closed. A stray `)` at the top level is a literal character to
+ * it, so it is not refused (and this test then cannot read it as a regular expression). Checked
+ * once (a scratch script, not committed) against path-to-regexp 6.1.0, which decides, compiled
+ * with Vercel's options, over 76 sources: nothing this accepts is refused by it and nothing this
+ * refuses is accepted, apart from `:name` and `{...}` sources, which are thrown on before this.
+ * `vercel build` stays the authority.
+ */
+function pathToRegexpRefuses(source: string): string | null {
+  let depth = 0;
+  let afterGroup = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '\\') {
+      i += 1;
+      afterGroup = false;
+    } else if (ch === '(') {
+      if (depth === 0 && source[i + 1] === '?') return 'a group cannot start with ?';
+      if (depth === 0 && source[i + 1] === ')') return 'an empty group';
+      if (depth > 0 && source[i + 1] !== '?') return 'a capturing group inside a group';
+      depth += 1;
+      afterGroup = false;
+    } else if (ch === ')') {
+      // Only a `)` that closes a group can be followed by a modifier; a stray one is a literal.
+      afterGroup = depth === 1;
+      if (depth > 0) depth -= 1;
+    } else if (depth === 0 && (ch === '*' || ch === '+' || ch === '?')) {
+      if (!afterGroup) return `a modifier ${ch} that does not follow a group`;
+      afterGroup = false;
+    } else {
+      afterGroup = false;
+    }
+  }
+  return depth === 0 ? null : 'an unbalanced (';
+}
+
+/**
  * Every value that a `headers` rule of `config` sets for `key` on a request to `pathname` on
  * `host`, in file order. A condition or source this does not model throws rather than pass
  * unexamined: a cookie or query condition, a host outside HOSTS, a `:name` parameter, a `{...}`
- * group. Sources are read as JavaScript regular expressions, anchored and case-sensitive, which is
- * what Vercel compiles them to for the syntax the repo uses (`strict` and `sensitive` path-to-regexp
- * options, ADR 0158 Known limits); a literal `.` is a literal dot to Vercel and any character here.
+ * group, a source path-to-regexp refuses. Sources are read as JavaScript regular expressions,
+ * anchored and case-sensitive, which is what Vercel compiles them to for the syntax the repo uses
+ * (`strict` and `sensitive` path-to-regexp options, ADR 0158 Known limits); a literal `.` is a
+ * literal dot to Vercel and any character here.
  */
 function headerValuesFor(config: VercelConfig, key: string, pathname: string, host: string): string[] {
   const values: string[] = [];
@@ -115,7 +157,17 @@ function headerValuesFor(config: VercelConfig, key: string, pathname: string, ho
     if (/(^|[^?]):[A-Za-z_]/.test(rule.source) || hasPathToRegexpBraces(rule.source)) {
       throw new Error(`crawl-surface: cannot evaluate header source ${rule.source}; extend headerValuesFor()`);
     }
-    if (!new RegExp(`^${rule.source}$`).test(pathname)) continue;
+    const refused = pathToRegexpRefuses(rule.source);
+    if (refused) {
+      throw new Error(`crawl-surface: cannot evaluate header source ${rule.source}: path-to-regexp refuses it (${refused}), so vercel build would fail`);
+    }
+    let pattern: RegExp;
+    try {
+      pattern = new RegExp(`^${rule.source}$`);
+    } catch {
+      throw new Error(`crawl-surface: cannot evaluate header source ${rule.source}: not a JavaScript regular expression`);
+    }
+    if (!pattern.test(pathname)) continue;
     if (!(rule.has ?? []).every((c) => conditionHolds(c, host))) continue;
     if ((rule.missing ?? []).some((c) => conditionHolds(c, host))) continue;
     for (const h of rule.headers ?? []) if (h.key.toLowerCase() === key.toLowerCase()) values.push(h.value);
@@ -219,6 +271,31 @@ describe('apps/web/vercel.json serves every App.tsx route and nothing else', () 
         ).toBe(true);
         if (host === CANONICAL_HOST) expect(new Set(robots), `${at} X-Robots-Tag`).toEqual(new Set(['noindex, nofollow']));
       }
+    }
+  });
+
+  it('the header evaluator refuses a source path-to-regexp refuses, so a rule that cannot deploy is not passed', () => {
+    const rule = (source: string): VercelConfig => ({
+      rewrites: [],
+      headers: [{ source, headers: [{ key: 'Referrer-Policy', value: 'origin' }] }],
+    });
+    const values = (source: string, path = '/a') => headerValuesFor(rule(source), 'Referrer-Policy', path, CANONICAL_HOST);
+    for (const source of ['/legal*', '/(.*)/?', '/a(b', '/(?a)', '/()', '/((a)b)', '/a+', '/a?', '/a)*', '/(a)??']) {
+      expect(() => values(source), source).toThrow(/path-to-regexp refuses it/);
+    }
+    // A stray `)` is a literal to path-to-regexp, so it is not refused, but it is not a regular
+    // expression either: it is reported as unreadable rather than crashing on a SyntaxError.
+    expect(() => values('/a)')).toThrow(/not a JavaScript regular expression/);
+    // The shapes the repo uses, and their neighbours, are accepted.
+    for (const [source, path] of [
+      ['/(.*)', '/a'],
+      ['/(a)?', '/a'],
+      ['/(a)*', '/aa'],
+      ['/((?!x/).*)', '/a'],
+      ['/((?:a|b)(?:/.*)?|c/.*)', '/a/'],
+      ['/a\\?b', '/a?b'],
+    ]) {
+      expect(values(source, path), source).toEqual(['origin']);
     }
   });
 

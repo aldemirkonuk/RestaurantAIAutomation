@@ -383,23 +383,40 @@ fixed; the rest are named here rather than silently accepted.
       headers) and strict (no optional trailing delimiter). A `:name` parameter, a `{...}` group
       (`/{(.*)}` compiles to `^/(.*)$`, while a plain RegExp reads the braces literally), a
       cookie, query, regular-expression or string-valued host condition, and a host outside
-      `HOSTS` all throw. A bare `*` and a trailing `/?` after a literal are not valid
-      path-to-regexp (`Unexpected MODIFIER`), so they cannot be deployed. One difference remains
-      and errs stricter: a literal `.` outside a group is a literal dot to Vercel and any
-      character to the guard.
+      `HOSTS` all throw, and so does a source path-to-regexp refuses: a bare `*` or a trailing
+      `/?` after a literal (`Unexpected MODIFIER`), an unbalanced or empty group, a capturing group
+      inside a group. Such a source fails `vercel build`, so nothing deploys, while every test here
+      would otherwise stay green (found by the merge-train session with `/legal*`). That check was
+      compared once with `path-to-regexp@6.1.0` over 76 sources (a scratch script, not
+      committed); `vercel build` stays the authority, and the Vercel build check on a PR is not one
+      of main's required contexts. One difference remains and errs stricter: a literal `.` outside a group is a literal dot to Vercel and any
+      character to the guard. A model of Vercel must pass those options: compiling a source
+      with the library's DEFAULT options is wrong twice (case-insensitive, and an optional
+      trailing delimiter, so the old token source would match `/reset-password/` while
+      production does not; two sessions were misled by exactly that).
     - **Trailing slash (fixed in the source).** `/reset-password/`, `/reset-password/?token=x`
       and `/verify-email/` answered 200 on production with neither `Referrer-Policy` nor
       `X-Robots-Tag` (measured 2026-09-21; the HTML `noindex, nofollow` meta was present and the
       app's emails link the slashless form, `auth.service.ts:980` and `:2145`). The token rule's
       source, from #385, had no optional trailing slash and Vercel matches strictly. The optional
-      slash now sits inside the capture group; the guard and the census probe each token path
+      slash now sits inside the capture group. Run through `@vercel/routing-utils@6.6.0`'s
+      `getTransformedRoutes`, the transformer the build uses, the whole file has no error and the
+      token rule compiles to `^(?:/((?:reset-password|verify-email)(?:/.*)?|invite/.*|studio/invite/.*))$`
+      (before: no optional slash). The guard and the census probe each token path
       with and without a trailing slash, and the resolved CLAIMS row
       `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH` checks the source. Before the change the census
       failed on exactly the four unmatched samples (measured), so the deployed answer is read by
-      its `token-route` lines. Not checked: whether the gateway's access logs record the `Referer`
-      header, which would show whether a token link that gained a trailing slash was ever logged;
-      the browser default `strict-origin-when-cross-origin` sends the full URL on same-origin
-      requests, and on this host `/api/*` is one.
+      its `token-route` lines. What the gap cost is narrower than a token in a log. In the
+      production bundle (measured 2026-09-21) the axios clients are created with the absolute
+      gateway URL as their base (`baseURL: "https://wineopsapi-gateway-production.up.railway.app"`),
+      the reset-password page posts to that URL explicitly, and the WebSocket goes to the same
+      host, so those requests are cross-origin and the browser default
+      `strict-origin-when-cross-origin` sends the gateway only the origin. The one relative
+      `fetch("/api/...")` found (the studio-invite redeem chunk) is on a route the token rule
+      already covered. The full URL, token included, went to same-origin requests only, chiefly
+      the page's own assets. The scan covered the entry bundle and 60 of its lazy chunks, not
+      every chunk. What the gap removed is the `no-referrer` guarantee this ADR states and the
+      header layer of `noindex`; the HTML meta stayed.
     - **`X-Robots-Tag` off the canonical host.** On the retired alias and the preview-shaped
       host the guard requires `noindex` in every value and `nofollow` in at least one; only
       `mudavym.com` is held to exactly `noindex, nofollow`. A rule adding `noindex, follow`
