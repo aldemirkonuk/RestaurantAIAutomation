@@ -9,14 +9,21 @@
  * is new behaviour, and `carries the bottles in through the book's own write` is
  * the one that matters.
  *
- * The line this must not cross: an auction lot's own details have NO COLUMN, and
- * the sheet must never look like it saved them.
+ * UPDATED 2026-09-21 (founder answer 2, "Build all now"): the lot's own
+ * details — auction house, lot number, sale date, hammer price and premium
+ * WITH a currency — are now written to `auction_lot_records`, a table of
+ * their own (`20260921113900_an_auction_lot_keeps_its_own_details.sql`),
+ * linked to the `restaurant_inventory` row `onCarry` hands back. The old
+ * "must never look like it saved them" line is now the opposite: it must
+ * never look like it did NOT save them, and it must never let a lot without
+ * a chosen currency through — never inferred.
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const wines = vi.hoisted(() => ({ search: vi.fn() }));
+const auctionApi = vi.hoisted(() => ({ createAuctionLotRecord: vi.fn() }));
 
 vi.mock('@/services/api/wines', () => ({
   searchWines: (...a: unknown[]) => wines.search(...a),
@@ -24,29 +31,37 @@ vi.mock('@/services/api/wines', () => ({
 vi.mock('@/services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
+vi.mock('@/services/api/inventory', () => ({
+  createAuctionLotRecord: (...a: unknown[]) => auctionApi.createAuctionLotRecord(...a),
+}));
 
 import { AuctionLotStart, lotCost, lotWords, EMPTY_LOT } from './AuctionLotStart';
 
 const WINE = { id: 'w1', name: 'Barolo Monfortino', producer: 'Giacomo Conterno', vintage: 2016 };
 
 function draw(over: Partial<React.ComponentProps<typeof AuctionLotStart>> = {}) {
-  const onCarry = vi.fn().mockResolvedValue(undefined);
+  const onCarry = vi.fn().mockResolvedValue({ inventoryId: 'inv-1' });
   render(<AuctionLotStart open onClose={() => {}} onCarry={onCarry} {...over} />);
   return { onCarry };
 }
 
-/** Pick a bottle and fill a lot that resolves. */
+/** Pick a bottle and fill a lot that resolves, including its currency. */
 async function fillALot(bottles = '6') {
   fireEvent.change(screen.getByTestId('auction-search'), { target: { value: 'Barolo' } });
   fireEvent.click(await screen.findByTestId('auction-pick', undefined, { timeout: 2000 }));
+  fireEvent.change(screen.getByTestId('auction-house'), { target: { value: "Christie's" } });
+  fireEvent.change(screen.getByTestId('auction-lot'), { target: { value: '112' } });
+  fireEvent.change(screen.getByTestId('auction-date'), { target: { value: '2026-09-01' } });
   fireEvent.change(screen.getByTestId('auction-hammer'), { target: { value: '1200' } });
   fireEvent.change(screen.getByTestId('auction-premium'), { target: { value: '300' } });
+  fireEvent.change(screen.getByTestId('auction-currency'), { target: { value: 'USD' } });
   fireEvent.change(screen.getByTestId('auction-bottles'), { target: { value: bottles } });
 }
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   wines.search.mockReset().mockResolvedValue([WINE]);
+  auctionApi.createAuctionLotRecord.mockReset().mockResolvedValue({ id: 'rec-1' });
 });
 
 describe('lotCost — the working, and what it refuses', () => {
@@ -75,6 +90,11 @@ describe('lotCost — the working, and what it refuses', () => {
   it('rounds the per-bottle figure to the money it is', () => {
     const c = lotCost({ ...EMPTY_LOT, hammer: '100', premium: '0', bottles: '3' });
     expect(c.ok && c.perBottle).toBe(33.33);
+  });
+
+  it('does not need a currency to compute — currency gates the button, not the arithmetic', () => {
+    // EMPTY_LOT.currency is '' — lotCost is silent about it either way.
+    expect(lotCost({ ...EMPTY_LOT, hammer: '10', premium: '0', bottles: '1' }).ok).toBe(true);
   });
 });
 
@@ -110,28 +130,79 @@ describe('the sheet', () => {
     );
   });
 
-  it('cannot be carried until a bottle AND a resolvable lot are both there', async () => {
+  it('cannot be carried until a bottle, a resolvable lot AND a currency are all there', async () => {
     draw();
     expect(screen.getByTestId('auction-carry')).toBeDisabled();
     await fillALot('6');
     expect(screen.getByTestId('auction-carry')).not.toBeDisabled();
     fireEvent.change(screen.getByTestId('auction-premium'), { target: { value: '' } });
     expect(screen.getByTestId('auction-carry')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('auction-premium'), { target: { value: '300' } });
+    expect(screen.getByTestId('auction-carry')).not.toBeDisabled();
+    // Currency alone, never inferred: clearing it back out holds the button
+    // exactly as an unstated premium does.
+    fireEvent.change(screen.getByTestId('auction-currency'), { target: { value: '' } });
+    expect(screen.getByTestId('auction-carry')).toBeDisabled();
   });
 
-  it('says the lot’s own details are NOT kept, before and after the write', async () => {
+  it('will not carry a lot whose record would be refused — house, lot number and sale date are held back like the currency, and named', async () => {
     const { onCarry } = draw();
-    expect(screen.getByTestId('auction-not-kept')).toHaveTextContent(
-      /does NOT keep the auction house, the lot number or the sale date/,
-    );
+    await fillALot('6');
+    expect(screen.getByTestId('auction-carry')).not.toBeDisabled();
+    expect(screen.queryByTestId('auction-details-missing')).not.toBeInTheDocument();
+    for (const [id, words] of [
+      ['auction-house', 'the auction house'],
+      ['auction-lot', 'the lot number'],
+      ['auction-date', 'the sale date'],
+    ] as const) {
+      const kept = (screen.getByTestId(id) as HTMLInputElement).value;
+      fireEvent.change(screen.getByTestId(id), { target: { value: '' } });
+      expect(screen.getByTestId('auction-carry')).toBeDisabled();
+      expect(screen.getByTestId('auction-details-missing')).toHaveTextContent(words);
+      fireEvent.change(screen.getByTestId(id), { target: { value: kept } });
+    }
+    expect(screen.getByTestId('auction-carry')).not.toBeDisabled();
+    expect(onCarry).not.toHaveBeenCalled();
+  });
+
+  it('saves the lot’s own details, WITH the chosen currency, once the stock is carried', async () => {
+    const { onCarry } = draw();
     await fillALot('6');
     fireEvent.change(screen.getByTestId('auction-house'), { target: { value: "Christie's" } });
+    fireEvent.change(screen.getByTestId('auction-lot'), { target: { value: '112' } });
+    fireEvent.change(screen.getByTestId('auction-date'), { target: { value: '2026-09-01' } });
     fireEvent.click(screen.getByTestId('auction-carry'));
     await waitFor(() => expect(onCarry).toHaveBeenCalled());
-    expect(await screen.findByTestId('auction-done')).toHaveTextContent(/were NOT saved/);
+    await waitFor(() =>
+      expect(auctionApi.createAuctionLotRecord).toHaveBeenCalledWith({
+        inventoryId: 'inv-1',
+        auctionHouse: "Christie's",
+        lotNumber: '112',
+        saleDate: '2026-09-01',
+        hammerPrice: 1200,
+        buyersPremium: 300,
+        currency: 'USD',
+        bottles: 6,
+      }),
+    );
+    expect(await screen.findByTestId('auction-done')).toHaveTextContent(/were saved/);
+    expect(screen.getByTestId('auction-done')).not.toHaveTextContent(/NOT saved/);
   });
 
-  it('says what did not happen when the write is refused, and keeps the figures', async () => {
+  it('names the auction record as a SEPARATE fact when the stock carries but the record fails', async () => {
+    auctionApi.createAuctionLotRecord.mockRejectedValue(new Error('lot table down'));
+    const { onCarry } = draw();
+    await fillALot('6');
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    await waitFor(() => expect(onCarry).toHaveBeenCalled());
+    expect(await screen.findByTestId('auction-failure')).toHaveTextContent(
+      /carried in.*NOT saved \(lot table down\)/s,
+    );
+    // The stock write itself is not repeated or rolled back from here.
+    expect(onCarry).toHaveBeenCalledTimes(1);
+  });
+
+  it('says what did not happen when the stock write itself is refused, and keeps the figures', async () => {
     const onCarry = vi.fn().mockRejectedValue(new Error('shelf locked'));
     draw({ onCarry });
     await fillALot('6');
@@ -142,6 +213,8 @@ describe('the sheet', () => {
       ),
     );
     expect(screen.getByTestId('auction-hammer')).toHaveValue('1200');
+    // Refused before the stock write, so the lot record is never attempted.
+    expect(auctionApi.createAuctionLotRecord).not.toHaveBeenCalled();
   });
 
   it('never draws an unreadable register as a register without the bottle', async () => {

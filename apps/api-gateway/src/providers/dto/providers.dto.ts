@@ -88,11 +88,19 @@ export class CreateProviderDto {
 
   @ApiPropertyOptional({
     description:
-      "Vendor type (distributor, importer, wholesaler, winery_direct, broker, other)",
+      "Vendor type (distributor, importer, wholesaler, winery_direct, broker, other). Deprecated alias of primaryBusinessType, kept for older callers.",
   })
   @IsString()
   @IsOptional()
   type?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "What kind of business this vendor is, TYPED BY A PERSON (or free text — a house may name its own). Left unset when nobody has said — never assumed 'Distributor' (founder, 2026-09-21). The create sheet's 'Not stated' choice sends nothing rather than a guess.",
+  })
+  @IsString()
+  @IsOptional()
+  primaryBusinessType?: string;
 
   @ApiPropertyOptional({ description: "Vendor phone number" })
   @IsString()
@@ -230,6 +238,14 @@ export class UpdateProviderDto {
   @IsString()
   @IsOptional()
   type?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "What kind of business this vendor is, TYPED BY A PERSON (or free text). Left unset when nobody has said — never assumed 'Distributor' (founder, 2026-09-21).",
+  })
+  @IsString()
+  @IsOptional()
+  primaryBusinessType?: string;
 }
 
 export class ProviderRatingDto {

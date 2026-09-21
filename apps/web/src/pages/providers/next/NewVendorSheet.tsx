@@ -139,7 +139,11 @@ export const EMPTY_VENDOR: VendorDraft = {
   website: '',
   address: '',
   accountNumber: '',
-  businessType: 'Distributor',
+  // Empty, never 'Distributor'. A vendor added without stating a type is not
+  // a distributor by default — "Not stated" is a real choice, settable later
+  // (founder, 2026-09-21). See the header for the identical rule on
+  // paymentTerms.
+  businessType: '',
   specialties: [],
   // Empty, never 'Net 30'. See the header.
   paymentTerms: '',
@@ -321,8 +325,9 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
     try {
       const result = await createProvider.mutateAsync({
         name: draft.name.trim(),
-        primaryBusinessType:
-          (draft.businessType as 'Distributor' | 'Importer' | 'Wholesaler') || 'Distributor',
+        // Empty, never assumed — "Not stated" sends nothing (founder,
+        // 2026-09-21), same rule as paymentTerms below.
+        primaryBusinessType: draft.businessType || undefined,
         phone: draft.phone.trim(),
         email: draft.email.trim(),
         physicalAddress: draft.address.trim(),
@@ -693,6 +698,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
                 onChange={(e) => set({ businessType: e.target.value })}
                 data-testid="vendor-type"
               >
+                <option value="">Not stated</option>
                 {BUSINESS_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {t}

@@ -54,7 +54,9 @@ import MonthLedger, { DayLedger } from './MonthLedger';
 import TimeGrid from './TimeGrid';
 import AgendaRoll from './AgendaRoll';
 import EventSheet, { type SheetTarget } from './EventSheet';
-import MeetingNotePanel, { meetingsAwaitingNote } from './MeetingNotePanel';
+import MeetingNotePanel, { meetingsAwaitingNote, withoutNotedMeetings } from './MeetingNotePanel';
+import { useDayNotesInRange } from '@/hooks/queries';
+import { getErrorMessage } from '@/services/api/client';
 import './calendar-next.css';
 
 const VIEWS: Array<{ key: CalView; label: string; hint: string }> = [
@@ -341,12 +343,30 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
   const openEvent = (event: CalEvent) => setSheet({ mode: 'edit', event });
 
   /* Meetings that have ended and carry no note yet, minus the ones answered in
-     this session. Computed from the events the page already holds — no second
-     read, so the list and the calendar can never disagree. */
-  const awaitingNote = useMemo(
+     this session. Since 2026-09-21 a note lives in its own table
+     (calendar_day_notes), not in the entry's description, so the events alone
+     cannot say which meetings already carry one: the notes across the same
+     days are read, and a meeting they answer is not listed. Until that read
+     answers, nothing is listed; if it FAILS, the meetings are listed with a
+     line saying their notes could not be read — never as if there were none. */
+  const noteCandidates = useMemo(
     () => meetingsAwaitingNote(data.events, new Date()).filter((e) => !answered.has(e.id)),
     [data.events, answered],
   );
+  // `meetingsAwaitingNote` sorts oldest first, so the ends are the range.
+  const noteRange = useMemo(
+    () =>
+      noteCandidates.length === 0
+        ? null
+        : { from: noteCandidates[0].date, to: noteCandidates[noteCandidates.length - 1].date },
+    [noteCandidates],
+  );
+  const notesRead = useDayNotesInRange(noteRange);
+  const notesUnread = noteRange !== null && notesRead.isError;
+  const awaitingNote = useMemo(() => {
+    if (notesRead.data) return withoutNotedMeetings(noteCandidates, notesRead.data);
+    return notesUnread ? noteCandidates : [];
+  }, [noteCandidates, notesRead.data, notesUnread]);
 
   /* ── the standing line: only what the page actually knows ─────────────── */
   const standing = useMemo(() => {
@@ -584,8 +604,16 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
             claims the meeting happened — the entry says when it was, and the
             house asks. */}
         {awaitingNote.length > 0 && (
-          <section aria-label="Meetings without a note" style={{ marginTop: 24 }}>
+          <section
+            aria-label={notesUnread ? 'Meetings whose notes could not be read' : 'Meetings without a note'}
+            style={{ marginTop: 24 }}
+          >
             <div className="cn-rule2" />
+            {notesUnread && (
+              <p className="cn-meta" data-testid="cn-note-unread" style={{ margin: '8px 0 0' }}>
+                Whether these already have a note could not be read ({getErrorMessage(notesRead.error)}).
+              </p>
+            )}
             {awaitingNote.map((e) => (
               <p
                 key={e.id}

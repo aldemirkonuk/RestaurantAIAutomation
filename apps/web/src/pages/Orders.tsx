@@ -3151,7 +3151,9 @@ Shadow stock has been moved to Live Stock.`)
                           // Filter providers based on search
                           const filteredProviders = allProviders.filter(provider =>
                             provider.name.toLowerCase().includes(providerSearchQuery.toLowerCase()) ||
-                            provider.primaryBusinessType.toLowerCase().includes(providerSearchQuery.toLowerCase())
+                            // Not stated (undefined) matches nothing rather than throwing — a
+                            // vendor added without a type is a real state now, not an absent field.
+                            (provider.primaryBusinessType ?? '').toLowerCase().includes(providerSearchQuery.toLowerCase())
                           )
 
                           if (filteredProviders.length === 0) {

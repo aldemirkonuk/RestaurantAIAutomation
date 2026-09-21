@@ -28,6 +28,7 @@ import {
   useCreateCalendarEvent,
   useUpdateCalendarEvent,
   useDeleteCalendarEvent,
+  useCreateDayNote,
 } from '../../hooks/queries'
 import { useAuth } from '../../contexts/AuthContext'
 import { useCalendarEventsSubscription } from '../../contexts/RealtimeContext'
@@ -171,6 +172,7 @@ export default function CalendarPage() {
   const createEvent = useCreateCalendarEvent()
   const updateEvent = useUpdateCalendarEvent()
   const deleteEvent = useDeleteCalendarEvent()
+  const createDayNote = useCreateDayNote()
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -322,10 +324,19 @@ export default function CalendarPage() {
     [editingEvent, restaurantId, createEvent, updateEvent]
   )
 
-  const handleMemoSave = useCallback((_memo: MeetingMemo) => {
-    // Future: persist to documents API
+  const handleMemoSave = useCallback((memo: MeetingMemo) => {
+    // ADR 0111 §1: its own table (calendar_day_notes), never
+    // calendar_events.description. Built 2026-09-21 (founder answer 2) —
+    // this used to be a comment ("Future: persist to documents API") and
+    // nothing else; the memo was collected and thrown away.
+    createDayNote.mutate({
+      businessDate: memo.eventDate,
+      docType: memo.docType,
+      eventTitle: memo.eventTitle,
+      body: memo.notes,
+    })
     setMemoPromptOpen(false)
-  }, [])
+  }, [createDayNote])
 
   const handleModalDelete = useCallback(
     (eventId: string) => {

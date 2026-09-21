@@ -25,13 +25,76 @@ import {
   InventoryItemResponseDto,
   InventorySummaryResponseDto,
   UnmappedToastItemResponseDto,
+  CreateAuctionLotRecordDto,
+  AuctionLotRecordResponseDto,
 } from "./dto/inventory.dto";
+import { AuctionLotRecordsService } from "./auction-lot-records.service";
 
 @ApiTags("inventory")
 @Controller("inventory")
 @UseGuards(JwtAuthGuard)
 export class InventoryController {
-  constructor(private readonly inventoryService: InventoryService) {}
+  constructor(
+    private readonly inventoryService: InventoryService,
+    private readonly auctionLotRecords: AuctionLotRecordsService,
+  ) {}
+
+  // ==========================================================================
+  // AUCTION LOT RECORDS — an auction lot's own details, kept. Built
+  // 2026-09-21 (founder answer 2) closing the gap AuctionLotStart.tsx and
+  // inventory.md §9 named 2026-09-06 (ADR 0083). Tenant scope comes from the
+  // JWT, never the body or a path param — unlike the rest of this
+  // controller, which predates that rule. Declared BEFORE `:restaurantId`
+  // below on purpose: Nest/Express match routes in declaration order, and a
+  // single dynamic segment there would otherwise swallow GET
+  // /inventory/auction-lots as `restaurantId = "auction-lots"`.
+  // ==========================================================================
+
+  @Post("auction-lots")
+  @ApiOperation({
+    summary:
+      "Record an auction lot's own details against the stock it produced",
+  })
+  @ApiResponse({ status: 201, type: AuctionLotRecordResponseDto })
+  async createAuctionLotRecord(
+    @Body() dto: CreateAuctionLotRecordDto,
+    @CurrentUser()
+    user: {
+      userId: string;
+      restaurantId: string;
+      name?: string;
+      email?: string;
+    },
+  ): Promise<AuctionLotRecordResponseDto> {
+    const recordedByName = (user.name ?? user.email ?? "").trim();
+    return this.auctionLotRecords.create(
+      user.restaurantId,
+      user.userId,
+      recordedByName,
+      dto,
+    );
+  }
+
+  @Get("auction-lots")
+  @ApiOperation({
+    summary: "Every auction lot recorded for one inventory item, newest first",
+  })
+  @ApiResponse({ status: 200, type: [AuctionLotRecordResponseDto] })
+  async listAuctionLotRecords(
+    @Query("inventoryId") inventoryId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<AuctionLotRecordResponseDto[]> {
+    if (!inventoryId) {
+      throw new HttpException(
+        "inventoryId is required",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.auctionLotRecords.listForInventoryItem(
+      user.restaurantId,
+      inventoryId,
+    );
+  }
 
   @Get(":restaurantId")
   @ApiOperation({ summary: "Get all inventory items for a restaurant" })

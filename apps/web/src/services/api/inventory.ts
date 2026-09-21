@@ -472,6 +472,54 @@ export async function unmapToastItem(
   return response.data;
 }
 
+// ── Auction lot records — an auction lot's own details, kept. Built
+// 2026-09-21 (founder answer 2), closing the gap AuctionLotStart.tsx and
+// inventory.md §9 named 2026-09-06 (ADR 0083). ──────────────────────────────
+
+export interface AuctionLotRecord {
+  id: string;
+  inventoryId: string;
+  auctionHouse: string;
+  lotNumber: string;
+  saleDate: string;
+  hammerPrice: number;
+  buyersPremium: number;
+  currency: string;
+  bottles: number;
+  recordedByName: string;
+  createdAt: string;
+}
+
+export interface CreateAuctionLotRecordInput {
+  inventoryId: string;
+  auctionHouse: string;
+  lotNumber: string;
+  saleDate: string;
+  hammerPrice: number;
+  buyersPremium: number;
+  /** ISO-4217, never inferred — exactly what the sheet's currency picker held. */
+  currency: string;
+  bottles: number;
+}
+
+export async function createAuctionLotRecord(
+  data: CreateAuctionLotRecordInput
+): Promise<AuctionLotRecord> {
+  const response = await apiClient.post<AuctionLotRecord>(
+    `${INVENTORY_PATH}/auction-lots`,
+    data
+  );
+  return response.data;
+}
+
+export async function fetchAuctionLotRecords(inventoryId: string): Promise<AuctionLotRecord[]> {
+  const params = new URLSearchParams({ inventoryId });
+  const response = await apiClient.get<AuctionLotRecord[]>(
+    `${INVENTORY_PATH}/auction-lots?${params.toString()}`
+  );
+  return response.data;
+}
+
 // ==================== Export all functions ====================
 
 export const inventoryApi = {
@@ -491,6 +539,8 @@ export const inventoryApi = {
   mapToastItem,
   bulkMapToastItems,
   unmapToastItem,
+  createAuctionLotRecord,
+  fetchAuctionLotRecords,
 };
 
 export default inventoryApi;
