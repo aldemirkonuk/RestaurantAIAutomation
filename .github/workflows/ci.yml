@@ -354,6 +354,41 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/check_migration_versions_unique.py
 
+      # Uniqueness is not ORDER (ADR 0212; founder, 2026-09-21: "Migration order
+      # check" -- yes, into ci.yml). The step above proves no two files share a
+      # version; it cannot see a NEW file dated behind a version the base already
+      # holds. Such a file is unique, merges green, and production -- already past
+      # it -- runs it after migrations that every fresh database (`supabase db
+      # reset`, schema-parity's comparison copy) runs it before; `supabase db push`
+      # refuses it outright without --include-all. Measured 2026-09-21: #391 had
+      # already landed four such files on main, and PR #414 carried four more.
+      #
+      # pull_request: every file ADDED since the merge base (renames count as adds)
+      # must sort strictly after the newest version on origin/<base_ref>, read
+      # from the fetch above. push: the pushed range against the tree at
+      # `github.event.before`. workflow_dispatch (pr_audit_gate.py's post-merge
+      # re-run): HEAD against its first parent.
+      #
+      # Why the pull_request run is enough: main's protection is `strict: true`
+      # (measured 2026-09-21), so a PR merges only when its head is up to date
+      # with main, and bringing it up to date re-runs this step against the new
+      # tip. No migration can land between this check passing and the merge
+      # without making the PR stale and forcing a fresh run against the new
+      # ceiling. The push arm is the backstop for whatever reaches main without
+      # that run (an admin merge, relaxed protection) -- loud, but after the fact.
+      #
+      # The guard prints its own diagnosis and fix; the notices below describe
+      # the uniqueness step. Exit 2 is CANNOT CHECK (base ref missing, shallow
+      # clone, no merge base, zero `before`), a failure and never a skip.
+      - name: A migration this change adds sorts after every version already on its base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          ./scripts/check_migration_order.py --self-test
+          ./scripts/check_migration_order.py --event "$EVENT_NAME" --base-ref "$BASE_REF" --before "$BEFORE_SHA"
+
       - name: Explain a failure
         if: failure()
         run: |
