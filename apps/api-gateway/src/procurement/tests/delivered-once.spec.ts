@@ -35,9 +35,11 @@ import { InventoryLedgerService } from "../../inventory-ledger/inventory-ledger.
 import { ProcurementOrderStatus } from "../dto/procurement.dto";
 import {
   deliveredWhenInWords,
+  earlierDeliveryOf,
   orderInWords,
   refuseSecondDelivery,
 } from "../delivered-once";
+import { composeShelfReceived } from "../shelf-received";
 
 type Row = Record<string, any>;
 
@@ -188,6 +190,14 @@ function makeDb(opts: {
    * fails, which is a DIFFERENT fact and must not read as "no name".
    */
   users?: Row[] | "unreadable";
+  /** Live ledger rows already booked for the order (ADR 0192's "received"). */
+  ledger?: Row[];
+  /** The order's lines — where a case order states its pack size. */
+  lines?: Row[];
+  /** A read failure for ONE table, e.g. the ledger, while the order reads fine. */
+  tableErrors?: Record<string, Record<string, any>>;
+  /** The live `apply_stock_movement` answers this error instead of booking. */
+  liveRpcError?: Record<string, any> | null;
 }) {
   const store: Record<string, Row[]> = {
     procurement_orders: [{ ...opts.order }],
@@ -198,8 +208,12 @@ function makeDb(opts: {
         master_wine_id: "55555555-5555-4555-8555-555555555555",
         shadow_stock: 0,
         in_transit_quantity: 0,
+        uom: "bottle",
       },
     ],
+    inventory_transactions: (opts.ledger ?? []).map((r) => ({ ...r })),
+    procurement_order_items: (opts.lines ?? []).map((r) => ({ ...r })),
+    procurement_receipt_events: [],
     inventory_events: [],
     calendar_events: [],
     users:
@@ -220,10 +234,30 @@ function makeDb(opts: {
         // `receivedByNameReason` exists for.
         table === "users" && opts.users === "unreadable"
           ? { code: "42501", message: "permission denied for table users" }
-          : (opts.readError ?? null),
+          : (opts.tableErrors?.[table] ?? opts.readError ?? null),
       ),
+    // The RPC books into the ledger the way `apply_stock_movement` does:
+    // one row per idempotency key, carrying the order id. That is what the
+    // `received` block reads back (ADR 0192), so a movement that is refused
+    // leaves nothing to read.
     rpc: async (name: string, args: Row) => {
       calls.rpc.push({ name, args });
+      if (name === "apply_stock_movement") {
+        if (args.p_stock_state === "live" && opts.liveRpcError)
+          return { data: null, error: opts.liveRpcError };
+        const rows = (store.inventory_transactions ??= []);
+        if (!rows.some((r) => r.idempotency_key === args.p_idempotency_key)) {
+          rows.push({
+            id: `tx-${rows.length + 1}`,
+            restaurant_id: args.p_restaurant_id,
+            order_id: args.p_order_id,
+            inventory_id: args.p_inventory_id,
+            stock_type: args.p_stock_state,
+            quantity_change: args.p_delta,
+            idempotency_key: args.p_idempotency_key,
+          });
+        }
+      }
       return { data: null, error: null };
     },
     storage: { from: () => ({}) },
@@ -258,10 +292,30 @@ const baseOrder = {
   bottles_total: 12,
   unit_type: "bottle",
   final_price: 40,
-  quantity_received: null,
   delivered_at: null,
   received_by: null,
   status: "APPROVED",
+};
+
+/** One live ledger row for the order, as a booking path leaves it. */
+const booked = (change: number, key: string, over: Row = {}): Row => ({
+  id: `seed-${key}`,
+  restaurant_id: REST,
+  order_id: ORDER,
+  inventory_id: INVENTORY,
+  stock_type: "live",
+  quantity_change: change,
+  idempotency_key: key,
+  ...over,
+});
+
+/** A case order's line, stating 12 bottles to the case. */
+const caseLine = {
+  id: "line-1",
+  restaurant_id: REST,
+  order_id: ORDER,
+  unit_type: "case",
+  bottles_per_unit: 12,
 };
 
 const liveMovements = (calls: Calls) =>
@@ -280,10 +334,42 @@ describe("markDelivered — the first delivery still happens", () => {
 
     expect(out.status).toBe(ProcurementOrderStatus.DELIVERED);
     expect(store.procurement_orders[0].status).toBe("DELIVERED");
-    expect(store.procurement_orders[0].quantity_received).toBe(12);
     expect(store.procurement_orders[0].received_by).toBe(USER_A);
     expect(liveMovements(calls)).toHaveLength(1);
     expect(liveMovements(calls)[0].args.p_delta).toBe(12);
+    // ADR 0192: the column is not written, and what the order received is
+    // read back from the ledger the booking just wrote.
+    for (const update of calls.orderUpdates)
+      expect("quantity_received" in update).toBe(false);
+    expect(out.received).toMatchObject({
+      readable: true,
+      quantityInStockUom: 12,
+      words: "12 bottles",
+    });
+  });
+
+  it("a refused stock movement is not reported as stock received", async () => {
+    // The live `apply_stock_movement` result used to go unread: a refusal still
+    // recorded an `order_delivered` event for bottles that never moved. The
+    // order stays DELIVERED — the caller's word that the truck came — but the
+    // ledger holds nothing, so nothing claims it does.
+    const { db, calls, store } = makeDb({
+      order: { ...baseOrder },
+      liveRpcError: { message: "item belongs to another house" },
+    });
+
+    const out = await service(db).markDelivered(REST, ORDER, USER_A);
+
+    expect(out.status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(liveMovements(calls)).toHaveLength(1);
+    expect(
+      store.inventory_events.filter((e) => e.event_type === "order_delivered"),
+    ).toHaveLength(0);
+    expect(out.received).toMatchObject({
+      readable: true,
+      quantityInStockUom: 0,
+      words: "0 bottles",
+    });
   });
 
   it("sends the goods-arrived exclusion as part of the UPDATE, not only as a read", async () => {
@@ -336,8 +422,8 @@ describe("markDelivered — an order is delivered once", () => {
         ...baseOrder,
         status: "DELIVERED",
         delivered_at: deliveredAt,
-        quantity_received: 12,
       },
+      ledger: [booked(12, `order-delivered-live:${ORDER}`)],
     });
 
     let thrown: any;
@@ -388,10 +474,18 @@ describe("markDelivered — an order is delivered once", () => {
         status: "DELIVERED",
         delivered_at: "2026-09-04T14:05:00.000Z",
         received_by: USER_A,
+        // The retired column holds a number the ledger does not; ADR 0192
+        // says it is not read, and the assertions below prove it is not.
         quantity_received: 5,
+        quantity: 5,
         unit_type: "case",
         bottles_total: 60,
       },
+      lines: [caseLine],
+      ledger: [
+        booked(60, `order-delivered-live:${ORDER}`),
+        booked(5, "door-receipt:ev-2"),
+      ],
     });
 
     let thrown: any;
@@ -411,58 +505,48 @@ describe("markDelivered — an order is delivered once", () => {
       [
         "bottlesTotal",
         "deliveredAt",
-        "quantityReceived",
-        "quantityUnitWhy",
+        "received",
         "receivedBy",
         "receivedByName",
         "receivedByNameReason",
         "summary",
-        "unitType",
       ].sort(),
     );
 
-    // A CASE ORDER CANNOT STATE THE COUNT'S UNIT, AND SAYS SO.
-    //
-    // `quantity_received` has four writers: three write the order's own unit
-    // and `recordDoorReceipt` writes BOTTLES, and nothing on the row records
-    // which. For `case` the two differ by the pack size, so the unit is
-    // REFUSED — `quantity-received-unit.ts`, imported rather than restated.
-    // An earlier draft of this file printed "5 cases (60 bottles)" from the
-    // order's `unit_type` alone; that is the silent multiplication ADR 0011
-    // forbids, and this assertion is what stops it coming back.
+    // WHAT THE EARLIER DELIVERY RECEIVED IS THE LEDGER'S COUNT (ADR 0192):
+    // 60 from the one-tap delivery and 5 from the door, shown as whole cases
+    // and loose bottles from the line's pack of 12, never rounded to "5" or
+    // "6". The 5 in the retired column is nowhere in the body.
     expect(body.earlierDelivery).toMatchObject({
       deliveredAt: "2026-09-04T14:05:00.000Z",
       receivedBy: USER_A,
       receivedByName: "Ada Lovelace",
       receivedByNameReason: null,
-      quantityReceived: 5,
-      unitType: null,
       bottlesTotal: 60,
+      received: {
+        readable: true,
+        quantityInStockUom: 65,
+        stockUom: "bottle",
+        packs: 5,
+        looseInStockUom: 5,
+        words: "5 cases + 5 bottles",
+      },
     });
-    expect(body.earlierDelivery.quantityUnitWhy).toMatch(
-      /cannot be placed in a unit/i,
-    );
-    // The count is left OUT of the sentence rather than printed under a guess.
     expect(body.earlierDelivery.summary).toBe(
-      "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace.",
+      "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 5 cases + 5 bottles on the shelf.",
     );
-    // Not "5 cases", and not a bare "5 booked in" either.
-    expect(body.earlierDelivery.summary).not.toMatch(/case/i);
-    expect(body.earlierDelivery.summary).not.toMatch(/booked in/i);
   });
 
-  it("states the unit when the order's own unit cannot multiply", async () => {
-    // A bottle order: the door's bottle count and the desk's order-unit count
-    // are the same number, so the unit is stated and the sentence carries it.
+  it("a bottle order reads its ledger in bottles", async () => {
     const { db } = makeDb({
       order: {
         ...baseOrder,
         status: "DELIVERED",
         delivered_at: "2026-09-04T14:05:00.000Z",
         received_by: USER_A,
-        quantity_received: 12,
         unit_type: "bottle",
       },
+      ledger: [booked(12, `order-delivered-live:${ORDER}`)],
     });
     let thrown: any;
     try {
@@ -471,9 +555,37 @@ describe("markDelivered — an order is delivered once", () => {
       thrown = e;
     }
     const earlier = thrown.getResponse().earlierDelivery;
-    expect(earlier.unitType).toBe("bottle");
+    expect(earlier.received.stockUom).toBe("bottle");
     expect(earlier.summary).toBe(
-      "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles booked in.",
+      "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles on the shelf.",
+    );
+  });
+
+  it("a ledger that cannot be read leaves the count out, never prints a zero", async () => {
+    const { db } = makeDb({
+      order: {
+        ...baseOrder,
+        status: "DELIVERED",
+        delivered_at: "2026-09-04T14:05:00.000Z",
+        received_by: USER_A,
+      },
+      ledger: [booked(12, `order-delivered-live:${ORDER}`)],
+      tableErrors: {
+        inventory_transactions: { code: "57014", message: "statement timeout" },
+      },
+    });
+    let thrown: any;
+    try {
+      await service(db).markDelivered(REST, ORDER, USER_B);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(ConflictException);
+    const earlier = thrown.getResponse().earlierDelivery;
+    expect(earlier.received.readable).toBe(false);
+    expect(earlier.received.why).toContain("statement timeout");
+    expect(earlier.summary).toBe(
+      "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace.",
     );
   });
 
@@ -488,7 +600,6 @@ describe("markDelivered — an order is delivered once", () => {
         status: "DELIVERED",
         delivered_at: "2026-09-04T14:05:00.000Z",
         received_by: USER_A,
-        quantity_received: 12,
       },
       users: "unreadable",
     });
@@ -514,7 +625,6 @@ describe("markDelivered — an order is delivered once", () => {
         status: "DELIVERED",
         delivered_at: "2026-09-04T14:05:00.000Z",
         received_by: null,
-        quantity_received: 12,
       },
     });
     let thrown: any;
@@ -534,9 +644,9 @@ describe("markDelivered — an order is delivered once", () => {
       order: {
         ...baseOrder,
         status: "PARTIALLY_RECEIVED",
-        quantity_received: 3,
         delivered_at: "2026-09-04T14:05:00.000Z",
       },
+      ledger: [booked(3, "door-receipt:ev-1")],
     });
 
     let thrown: any;
@@ -548,7 +658,7 @@ describe("markDelivered — an order is delivered once", () => {
 
     expect(thrown).toBeInstanceOf(ConflictException);
     expect(thrown.message).toMatch(/receiving door/i);
-    expect(thrown.message).toMatch(/3 recorded as received/);
+    expect(thrown.message).toMatch(/3 bottles on the shelf/);
     expect(calls.orderUpdates).toHaveLength(0);
     expect(liveMovements(calls)).toHaveLength(0);
   });
@@ -558,7 +668,6 @@ describe("markDelivered — an order is delivered once", () => {
       order: {
         ...baseOrder,
         status: "COMPLETED",
-        quantity_received: 12,
         delivered_at: "2026-09-04T14:05:00.000Z",
       },
     });
@@ -645,8 +754,14 @@ describe("markDelivered — two confirmations at once, one winner", () => {
     const racedBody = err.getResponse();
     expect(racedBody.reason).toBe("order_already_delivered");
     expect(racedBody.earlierDelivery.summary).toMatch(/^Delivered on /);
-    expect(racedBody.earlierDelivery.quantityReceived).toBe(12);
-    expect(racedBody.earlierDelivery.unitType).toBe("bottle");
+    // The winner's shelf as it stood when the loser lost. The winner books
+    // AFTER its status write, so at that instant the ledger may not hold its
+    // bottles yet; the reading is a real read of the ledger (readable, in
+    // bottles), never the caller's asserted quantity.
+    expect(racedBody.earlierDelivery.received).toMatchObject({
+      readable: true,
+      stockUom: "bottle",
+    });
 
     // One winner in the row, one live movement in the ledger.
     expect(store.procurement_orders[0].status).toBe("DELIVERED");
@@ -658,6 +773,44 @@ describe("markDelivered — two confirmations at once, one winner", () => {
 // The words themselves
 // ---------------------------------------------------------------------------
 describe("delivered-once — the sentence", () => {
+  it("states the door's rejections and a counted-not-booked truck BESIDE the count (ADR 0192)", () => {
+    // The founder: "rejected and counted-but-not-booked shown beside it". The
+    // summary is the one line four surfaces print verbatim, so it carries both;
+    // neither is folded into the ledger's 12.
+    const received = composeShelfReceived({
+      order: { id: ORDER, inventory_id: INVENTORY, unit_type: "bottle" },
+      stockUom: "bottle",
+      ledger: [booked(12, "door-receipt:ev-1") as any],
+      doorEvents: [
+        { order_id: ORDER, counted_qty_bottles: 13, rejected_qty_bottles: 1 },
+        { order_id: ORDER, counted_qty_bottles: 24, rejected_qty_bottles: 0 },
+      ],
+      lines: [],
+    });
+    const beside =
+      "(1 bottle rejected at the door; 24 bottles counted at the door and not on the shelf yet)";
+    const earlier = earlierDeliveryOf({
+      deliveredAt: "2026-09-04T14:05:00.000Z",
+      receivedBy: USER_A,
+      receivedByName: "Ada Lovelace",
+      receivedByNameReason: null,
+      received,
+      bottlesTotal: 36,
+    });
+    expect(earlier.summary).toBe(
+      `Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles on the shelf ${beside}.`,
+    );
+    expect(
+      refuseSecondDelivery({
+        orderId: ORDER,
+        orderNumber: "ORD-2026-00042",
+        deliveredAt: "2026-09-04T14:05:00.000Z",
+        status: ProcurementOrderStatus.DELIVERED,
+        received,
+      }),
+    ).toContain(`12 bottles on the shelf for it ${beside}.`);
+  });
+
   it("says a missing timestamp is missing instead of inventing one", () => {
     expect(deliveredWhenInWords(null)).toBe("at a time this order never recorded");
     expect(deliveredWhenInWords("not-a-date")).toMatch(/is not a date/);
@@ -680,7 +833,13 @@ describe("delivered-once — the sentence", () => {
       orderId: ORDER,
       orderNumber: "ORD-2026-00042",
       deliveredAt: "2026-09-04T14:05:00.000Z",
-      quantityReceived: 12,
+      received: composeShelfReceived({
+        order: { id: ORDER, inventory_id: INVENTORY, unit_type: "bottle" },
+        stockUom: "bottle",
+        ledger: [booked(12, "k") as any],
+        doorEvents: [],
+        lines: [],
+      }),
     };
     const delivered = refuseSecondDelivery({
       ...common,

@@ -109,8 +109,108 @@ export type MatchTone = 'even' | 'short' | 'over' | 'incomparable';
 export interface MatchLine {
   text: string;
   tone: MatchTone;
-  /** counted − expected, in boxes. Null when boxes cannot be compared. */
+  /**
+   * counted − expected, in WHOLE boxes. Null when boxes cannot be compared, and
+   * null when the difference is not a whole number of boxes — see `deltaBottles`.
+   */
   deltaBoxes: number | null;
+  /** counted − expected, in bottles, exact. Null when there is no pack to count by. */
+  deltaBottles: number | null;
+  /** The difference as it is said: "two", "5 bottles", "4 boxes + 5 bottles". */
+  deltaWords: string | null;
+}
+
+/**
+ * What earlier trucks on this order already brought — ADR 0192.
+ *
+ * In BOTTLES, from the gateway (`GET /procurement/receiving/orders/:id/received`):
+ * what the door's own events accepted across every truck (ADR 0062 D3, the model
+ * the door books by). NEVER rounded to boxes: five boxes and seven bottles used to be
+ * `Math.round(67 / 12)` = "6 earlier", on the match line and in the vendor's
+ * credit letter.
+ *
+ * `'unread'` = the read failed. It is NOT zero: a match line that compared the
+ * second truck against the whole order because the first could not be read
+ * would accuse the vendor of a shortfall nobody measured.
+ */
+export interface PriorReceipt {
+  bottles: number;
+  /** Bottles per box, exact; null when the order states no pack. */
+  packSize: number | null;
+}
+export type PriorReading = PriorReceipt | 'unread' | null;
+
+/** "11 boxes + 7 bottles", "5 boxes", "7 bottles". Never rounded. */
+export function boxesAndBottles(bottles: number, packSize: number): string {
+  const boxes = Math.floor(bottles / packSize);
+  const loose = bottles - boxes * packSize;
+  const b = `${boxes} ${boxes === 1 ? 'box' : 'boxes'}`;
+  const l = `${loose} ${loose === 1 ? 'bottle' : 'bottles'}`;
+  if (boxes === 0) return l;
+  return loose === 0 ? b : `${b} + ${l}`;
+}
+
+/** The pack the door counts by: the gateway's, else the order's own exact ratio. */
+function doorPack(order: DoorOrderVM, prior: PriorReceipt | null): number | null {
+  if (prior?.packSize && prior.packSize >= 1) return prior.packSize;
+  if (
+    order.expectedBoxes !== null &&
+    order.expectedBoxes > 0 &&
+    order.expectedBottles !== null &&
+    Number.isInteger(order.expectedBottles / order.expectedBoxes)
+  )
+    return order.expectedBottles / order.expectedBoxes;
+  return null;
+}
+
+/**
+ * The running total against the order, exact. Shared by the match line and the
+ * credit letter so the two can never state two different shortfalls.
+ */
+export function runningAgainstOrder(
+  counted: number,
+  order: DoorOrderVM,
+  prior: PriorReceipt | null,
+): {
+  expected: number;
+  /** "14" when whole boxes, "11 boxes + 7 bottles" when not. */
+  running: string;
+  /** "8" when whole boxes, "5 boxes + 7 bottles" when not; null with no earlier truck. */
+  earlier: string | null;
+  deltaBoxes: number | null;
+  deltaBottles: number | null;
+  deltaWords: string;
+} | null {
+  if (order.expectedBoxes === null) return null;
+  const expected = order.expectedBoxes;
+  const priorBottles = prior && prior.bottles > 0 ? prior.bottles : 0;
+  if (priorBottles === 0) {
+    const delta = counted - expected;
+    return {
+      expected,
+      running: String(counted),
+      earlier: null,
+      deltaBoxes: delta,
+      deltaBottles: null,
+      deltaWords: inWords(delta),
+    };
+  }
+  const pack = doorPack(order, prior);
+  if (pack === null) return null;
+  const runningBottles = counted * pack + priorBottles;
+  const deltaBottles = runningBottles - expected * pack;
+  const whole = priorBottles % pack === 0;
+  const deltaWhole = deltaBottles % pack === 0;
+  return {
+    expected,
+    running: whole ? String(runningBottles / pack) : boxesAndBottles(runningBottles, pack),
+    earlier: whole ? String(priorBottles / pack) : boxesAndBottles(priorBottles, pack),
+    deltaBoxes: deltaWhole ? deltaBottles / pack : null,
+    deltaBottles,
+    deltaWords: deltaWhole
+      ? inWords(deltaBottles / pack)
+      : boxesAndBottles(Math.abs(deltaBottles), pack),
+  };
 }
 
 const SMALL_WORDS = [
@@ -137,41 +237,67 @@ export function inWords(n: number): string {
  * The live line under the count. Spec point 1: the delta as the count is
  * entered — "14 of 16, two short" — while the driver is still there.
  *
- * `alreadyReceivedBoxes` is what earlier trucks on this order already brought.
- * Split deliveries are normal in wine, and without it the second truck's six
- * boxes were compared against the WHOLE purchase order and called ten short
- * while the driver stood there — an accusation the paperwork does not support.
- * Zero when nothing has arrived yet, which is the ordinary case and the shape
- * every existing caller had.
+ * `prior` is what earlier trucks on this order already brought (ADR 0192), in
+ * bottles. Split deliveries are normal in wine, and without it the second
+ * truck's six boxes were compared against the WHOLE purchase order and called
+ * ten short while the driver stood there — an accusation the paperwork does not
+ * support. `null` when nothing has arrived yet, which is the ordinary case.
+ * `'unread'` when the read failed: the line says so rather than comparing
+ * against the whole order as though nothing had come.
  */
 export function matchLine(
   counted: number,
   order: DoorOrderVM | null,
-  alreadyReceivedBoxes = 0,
+  prior: PriorReading = null,
 ): MatchLine | null {
   if (!order) return null;
   if (order.expectedBoxes !== null) {
-    const expected = order.expectedBoxes;
-    const prior = Math.max(0, Math.round(alreadyReceivedBoxes));
-    const running = counted + prior;
-    const delta = running - expected;
+    if (prior === 'unread') {
+      return {
+        text:
+          `${counted} of ${order.expectedBoxes} in this truck — what earlier trucks brought ` +
+          `could not be read, so no shortfall is claimed here. The desk matches it.`,
+        tone: 'incomparable',
+        deltaBoxes: null,
+        deltaBottles: null,
+        deltaWords: null,
+      };
+    }
+    const r = runningAgainstOrder(counted, order, prior);
+    if (r === null) {
+      return {
+        text:
+          `${counted} of ${order.expectedBoxes} in this truck, with ${prior?.bottles ?? 0} bottles ` +
+          `from earlier trucks — this order states no bottles per box, so they are matched at a desk.`,
+        tone: 'incomparable',
+        deltaBoxes: null,
+        deltaBottles: null,
+        deltaWords: null,
+      };
+    }
     // Only name the earlier truck when there was one — the ordinary delivery's
     // line must not grow a clause about a second truck that does not exist.
-    const total = prior > 0 ? `${running} of ${expected} with the earlier ${prior}` : `${counted} of ${expected}`;
+    const total = r.earlier
+      ? `${r.running} of ${r.expected} with the earlier ${r.earlier}`
+      : `${r.running} of ${r.expected}`;
+    const delta = r.deltaBottles ?? r.deltaBoxes ?? 0;
+    const base = { deltaBoxes: r.deltaBoxes, deltaBottles: r.deltaBottles };
     if (delta === 0) {
-      return { text: `${total} — all there.`, tone: 'even', deltaBoxes: 0 };
+      return { text: `${total} — all there.`, tone: 'even', ...base, deltaWords: null };
     }
     if (delta < 0) {
       return {
-        text: `${total} — ${inWords(delta)} short.`,
+        text: `${total} — ${r.deltaWords} short.`,
         tone: 'short',
-        deltaBoxes: delta,
+        ...base,
+        deltaWords: r.deltaWords,
       };
     }
     return {
-      text: `${total} — ${inWords(delta)} more than ordered.`,
+      text: `${total} — ${r.deltaWords} more than ordered.`,
       tone: 'over',
-      deltaBoxes: delta,
+      ...base,
+      deltaWords: r.deltaWords,
     };
   }
   if (order.expectedBottles !== null) {
@@ -180,6 +306,8 @@ export function matchLine(
       text: `The order says ${order.expectedBottles} bottles — box and bottle counts are matched at a desk.`,
       tone: 'incomparable',
       deltaBoxes: null,
+      deltaBottles: null,
+      deltaWords: null,
     };
   }
   return null;
@@ -283,11 +411,13 @@ export interface CreditDraftInput {
   driverName: string;
   initials: string;
   /**
-   * Boxes earlier trucks on this order already brought. A credit letter that
-   * ignores them claims a shortfall the vendor's own paperwork disproves, which
-   * is the fastest way to lose a claim that was otherwise good.
+   * What earlier trucks on this order already brought, in bottles (ADR 0192).
+   * A credit letter that ignores them claims a shortfall the vendor's own
+   * paperwork disproves, which is the fastest way to lose a claim that was
+   * otherwise good. `'unread'` = the read failed, and the letter claims no
+   * shortfall figure rather than one computed without them.
    */
-  alreadyReceivedBoxes?: number;
+  alreadyReceived?: PriorReading;
 }
 
 /**
@@ -317,17 +447,29 @@ export function creditDraft(input: CreditDraftInput): string | null {
   const orderRef = order?.orderNumber ? `order ${order.orderNumber}` : 'this order';
   const wine = order?.wineName ? ` (${order.wineName})` : '';
   const expected = order?.expectedBoxes;
+  const prior = input.alreadyReceived ?? null;
 
-  const prior = Math.max(0, Math.round(input.alreadyReceivedBoxes ?? 0));
-  const running = counted + prior;
-  const arrived =
-    prior > 0 ? `arrived ${counted} boxes, ${running} of` : `arrived ${counted} of`;
+  // The same arithmetic as the match line, so the letter and the screen can
+  // never state two different shortfalls. Exact: bottles, never a rounded box.
+  const r =
+    order && prior !== 'unread' ? runningAgainstOrder(counted, order, prior) : null;
+  const short = (() => {
+    if (expected === null || expected === undefined)
+      return `arrived ${counted} boxes — short of what was ordered`;
+    if (prior === 'unread')
+      return (
+        `arrived ${counted} boxes against an order of ${expected}; what earlier trucks ` +
+        `brought could not be read at the door, so the shortfall is left to the invoice match`
+      );
+    if (!r) return `arrived ${counted} boxes — short of what was ordered`;
+    return r.earlier
+      ? `arrived ${counted} boxes, ${r.running} of ${r.expected} boxes — ${r.deltaWords} short at the door`
+      : `arrived ${counted} of ${r.expected} boxes — ${r.deltaWords} short at the door`;
+  })();
 
   const what =
     outcome === 'short'
-      ? expected !== null && expected !== undefined
-        ? `${arrived} ${expected} boxes — ${inWords(running - expected)} short at the door`
-        : `arrived ${counted} boxes — short of what was ordered`
+      ? short
       : `was refused at the door${reason ? ` — ${refusalLabel(reason)?.toLowerCase()}` : ''}`;
 
   const evidence = hasPhoto

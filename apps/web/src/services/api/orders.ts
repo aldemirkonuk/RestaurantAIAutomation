@@ -13,6 +13,7 @@ import type {
   UpdateOrderRequest,
   PaginationParams,
   PaginatedResponse,
+  ShelfReceived,
 } from './types';
 
 const ORDERS_PATH = '/procurement/orders';
@@ -309,21 +310,60 @@ export interface EarlierDelivery {
   /** Why there is no name, when one was wanted. Distinguishes a failed lookup
    *  from an order nobody signed for — they are not the same fact. */
   receivedByNameReason: string | null;
-  quantityReceived: number | null;
   /**
-   * The unit `quantityReceived` is stated in, or `null` — a REFUSAL, not a
-   * default. `procurement_orders.quantity_received` has four writers: three
-   * write the order's own unit and the receiving door writes bottles, and the
-   * row does not say which. For `case`/`pack`/`split_case` the two differ by
-   * the pack size, so the gateway states no unit and `summary` omits the count
-   * rather than printing one that could be off by twelve.
+   * What the earlier delivery put on the shelf — the stock ledger's count
+   * (ADR 0192). `null` when the body carried no readable block; a block with
+   * `readable: false` is a failed read, never a zero.
    */
-  unitType: string | null;
-  /** Why the unit is, or is not, stated. Always present. */
-  quantityUnitWhy: string;
+  received: ShelfReceived | null;
   bottlesTotal: number | null;
-  /** "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles booked in." */
+  /** "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 5 cases + 5 bottles on the shelf." */
   summary: string;
+}
+
+/**
+ * Read the gateway's `received` block (ADR 0192) structurally, or `null`.
+ * Every field is type-checked before it is believed: a block that says
+ * `readable: true` but carries no whole count is not a reading.
+ */
+export function readShelfReceivedBlock(raw: unknown): ShelfReceived | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const b = raw as Record<string, unknown>;
+  const int = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isSafeInteger(v) ? v : null;
+  const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+  if (b.readable === false) {
+    return {
+      readable: false,
+      why: str(b.why) ?? 'What this order received could not be read.',
+      quantityInStockUom: null,
+      stockUom: null,
+      packUnit: null,
+      packSize: null,
+      packs: null,
+      looseInStockUom: null,
+      words: null,
+      rejectedAtDoorBottles: null,
+      countedNotBookedBottles: null,
+    };
+  }
+  const quantity = int(b.quantityInStockUom);
+  const stockUom = str(b.stockUom);
+  const words = str(b.words);
+  if (b.readable !== true || quantity === null || quantity < 0 || !stockUom || !words) return null;
+  return {
+    readable: true,
+    why: null,
+    quantityInStockUom: quantity,
+    stockUom,
+    packUnit: str(b.packUnit),
+    packSize: int(b.packSize),
+    packs: int(b.packs),
+    looseInStockUom: int(b.looseInStockUom),
+    words,
+    rejectedAtDoorBottles: int(b.rejectedAtDoorBottles),
+    countedNotBookedBottles: int(b.countedNotBookedBottles),
+  };
 }
 
 export interface AlreadyDeliveredRefusal {
@@ -378,9 +418,7 @@ export function alreadyDeliveredRefusal(
             receivedBy: str(raw.receivedBy),
             receivedByName: str(raw.receivedByName),
             receivedByNameReason: str(raw.receivedByNameReason),
-            quantityReceived: num(raw.quantityReceived),
-            unitType: str(raw.unitType),
-            quantityUnitWhy: str(raw.quantityUnitWhy) ?? '',
+            received: readShelfReceivedBlock(raw.received),
             bottlesTotal: num(raw.bottlesTotal),
             summary,
           }

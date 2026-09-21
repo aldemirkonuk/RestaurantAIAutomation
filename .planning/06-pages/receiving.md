@@ -121,7 +121,10 @@ Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/
   403 that names the item; a failed ownership *lookup* is a 422, never a pass.
 - **Marking a delivery at the door cannot book it twice.** `quantity_received`
   now records what was actually booked instead of NULL, so `recordDoorReceipt`'s
-  `alreadyBooked` sees it. `?quantityReceived=` is validated: a non-numeric,
+  `alreadyBooked` sees it. **[2026-09-21, ADR 0192: no longer through the column —
+  `recordDoorReceipt` reads what was already booked from the stock ledger
+  (`readBookedOrderBottles`), and the app neither reads nor writes
+  `quantity_received`.]** `?quantityReceived=` is validated: a non-numeric,
   fractional or negative value is a 400 that says which, not a 200 that marks
   the order delivered with no stock booked.
 

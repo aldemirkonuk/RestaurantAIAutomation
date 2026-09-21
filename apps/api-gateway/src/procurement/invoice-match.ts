@@ -55,10 +55,9 @@
  *     factor produces confident, wrong cost maths.
  *   - An **absent** unit resolves to the ORDER's unit, and the order's own
  *     absent unit resolves to `bottle`. This is not the guess the ADR forbids:
- *     every existing client seeds its physical count from the order's own
- *     quantity (`ReceivingWorkspace.tsx` — `stockedQty = order.quantityReceived
- *     ?? order.quantity`), so the order's unit is what an undeclared number
- *     already IS. With no unit stated anywhere the whole call is in bottles and
+ *     a client that declares no unit counts in the order's own unit (the desk
+ *     declares `countedUom: 'bottle'` when it counts a part case — ADR 0192),
+ *     so the order's unit is what an undeclared number already IS. With no unit stated anywhere the whole call is in bottles and
  *     every conversion is the identity, which is exactly the old behaviour.
  *
  * Pure: no DB, no I/O. Throws only `MatchUnitError`, which the HTTP layer maps

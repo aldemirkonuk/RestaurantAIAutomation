@@ -45,7 +45,14 @@ import {
 } from "./invoice-match";
 import { readAliasedQuantity } from "./quantity-aliases";
 import { readBookedOrderBottles } from "./booked-order-quantity";
-import { readQuantityReceived } from "./quantity-received-unit";
+import {
+  readOneShelfReceived,
+  readShelfReceived,
+  RECEIVED_IS_NOT_TYPED_IN,
+  RECEIVED_IS_THE_LEDGER,
+  shelfUnreadable,
+  type ShelfReceived,
+} from "./shelf-received";
 import { draftClaimFromMatch } from "./documents/credit-ledger";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import {
@@ -351,12 +358,6 @@ interface ProcurementOrderRow {
    * a query that never asked.
    */
   provider_name?: string | null;
-  /**
-   * `quantity_received`, present on every route that selects `*`. Read through
-   * the key test for the same reason as `provider_name` — a route that selects
-   * a column list has not learned the column is empty.
-   */
-  quantity_received?: number | null;
   /**
    * The recurrence rule this order carries, and the occurrence it was minted
    * for (ADR 0125's addendum, 2026-09-05). All six are OPTIONAL and read
@@ -2725,6 +2726,16 @@ export class ProcurementService {
       throw error;
     }
 
+    // WHAT EACH ORDER RECEIVED, FROM THE LEDGER — ADR 0192. One batched
+    // reading for the whole page (four reads, not four per order), taken
+    // after the page itself was read under the same tenant scope. A failed
+    // read arrives on each order as `readable:false`, never as a zero.
+    const shelf = await readShelfReceived(
+      this.databaseService.supabase,
+      restaurantId,
+      (data || []) as any[],
+    );
+
     const orders = (data || []).map((row: any) => {
       const orderRow: ProcurementOrderRow = {
         ...row,
@@ -2743,17 +2754,21 @@ export class ProcurementService {
       // "read, and states nothing" — which is the honest reading of a header
       // with nothing under it, and is what the page prints the refusal for.
       const lines = embeddedOrderLines(row.procurement_order_items);
-      return this.mapOrderRow(orderRow, {
-        read: true,
-        stated: foldOrderPriceUnit(lines),
-        // The fees of the ONE line, and only when there is exactly one. Two
-        // lines carrying two deposits do not add up to an order-level deposit —
-        // they are two facts about two lines, and folding them would invent a
-        // third. `upsertOrderLine` writes exactly one line per order today, so
-        // this is that line; the day it writes two, this reports nothing rather
-        // than a sum nobody agreed to.
-        fees: lines.length === 1 ? readAgreementFees(lines[0]) : undefined,
-      });
+      return this.mapOrderRow(
+        orderRow,
+        {
+          read: true,
+          stated: foldOrderPriceUnit(lines),
+          // The fees of the ONE line, and only when there is exactly one. Two
+          // lines carrying two deposits do not add up to an order-level deposit —
+          // they are two facts about two lines, and folding them would invent a
+          // third. `upsertOrderLine` writes exactly one line per order today, so
+          // this is that line; the day it writes two, this reports nothing rather
+          // than a sum nobody agreed to.
+          fees: lines.length === 1 ? readAgreementFees(lines[0]) : undefined,
+        },
+        shelf.get(row.id),
+      );
     });
     const total = count ?? orders.length;
 
@@ -2800,7 +2815,14 @@ export class ProcurementService {
       provider_name: embeddedProviderName(row.provider),
     };
 
-    return this.mapOrderRow(orderRow);
+    // The route the door, the phone and the desk read: it states what the
+    // ledger booked for this order (ADR 0192).
+    const received = await readOneShelfReceived(
+      this.databaseService.supabase,
+      restaurantId,
+      row,
+    );
+    return this.mapOrderRow(orderRow, undefined, received);
   }
 
   /**
@@ -2873,6 +2895,19 @@ export class ProcurementService {
      */
     opts?: { statusTransitionAlreadyChecked?: boolean },
   ): Promise<OrderResponseDto> {
+    // ADR 0192 — WHAT AN ORDER RECEIVED IS NOT TYPED IN. This route used to
+    // write `procurement_orders.quantity_received` from the body with no stock
+    // movement behind it, so any caller could make an order "receive" a number
+    // the shelf never saw. Refused BEFORE anything is read or written, in
+    // words, naming where a delivery is actually recorded. A null says
+    // nothing and is let through, as every other field here treats it.
+    if (dto.quantityReceivedInOrderUom != null || dto.quantityReceived != null) {
+      throw new BadRequestException({
+        reason: RECEIVED_IS_NOT_TYPED_IN,
+        message: RECEIVED_IS_THE_LEDGER,
+      });
+    }
+
     // ADR 0125 — the state change is the one field on this DTO that is not a
     // note about the order but a claim about where the order IS. Until this,
     // `status: dto.status ?? undefined` reached the UPDATE unread, so any
@@ -2921,16 +2956,6 @@ export class ProcurementService {
       rejection_reason: dto.rejectionReason ?? undefined,
       delivery_notes: dto.deliveryNotes ?? undefined,
       tracking_number: dto.trackingNumber ?? undefined,
-      // Stored in the order's own unit_type, beside `quantity`. The canonical
-      // field says so in its name; the old unitless one is still accepted, and
-      // the two disagreeing is a 400 rather than a silent choice.
-      quantity_received:
-        readAliasedQuantity({
-          canonicalName: "quantityReceivedInOrderUom",
-          canonical: dto.quantityReceivedInOrderUom,
-          aliasName: "quantityReceived",
-          alias: dto.quantityReceived,
-        }) ?? undefined,
       price_verified: dto.priceVerified ?? undefined,
       invoice_image_url: dto.invoiceImageUrl ?? undefined,
       discrepancy_notes: dto.discrepancyNotes ?? undefined,
@@ -4286,28 +4311,20 @@ export class ProcurementService {
     userId: string,
     quantityReceived?: number,
   ): Promise<OrderResponseDto> {
-    // What the ledger is about to be told, decided ONCE and written down in the
-    // same breath. `resolvedQuantity` below used to be computed separately and
-    // the column written as `quantityReceived ?? null` — so the web client,
-    // which sends no quantity (useOrdersData.ts:68), booked `order.quantity`
-    // into the ledger and left the column NULL.
+    // What the ledger is about to be told, decided ONCE. ADR 0192: this
+    // method no longer writes `procurement_orders.quantity_received` at all —
+    // what an order received is what the ledger booked for it, and the door
+    // reconciles against the ledger (`readBookedOrderBottles`), not a column.
     //
-    // That gap is the door's anti-double-book guard, defeated. recordDoorReceipt
-    // reads `alreadyBooked = Number(order.quantity_received ?? 0)`
-    // (receiving.service.ts:194) to work out what is left to book; a NULL reads
-    // as 0, so the door books the full count a second time on top of what this
-    // method already booked. The column has to record what was BOOKED, not what
-    // the caller happened to say.
-    //
-    // Read before the update so `resolvedQuantity` is available to write. A
+    // Read before the update so `resolvedQuantity` is available to book. A
     // failed read is raised, not defaulted to 0: silently booking nothing and
-    // recording nothing is how this defect stayed invisible the first time.
+    // recording nothing is how an earlier defect here stayed invisible.
     //
     // AN ORDER IS DELIVERED ONCE (founder, 2026-09-05). The same read now also
     // carries the state, so the question "has this already arrived" is answered
     // BEFORE anything is written. `status` decides; `delivered_at`,
-    // `received_by`, `quantity_received`, `unit_type`, `bottles_total` and
-    // `order_number` are the EARLIER DELIVERY the refusal hands back, because
+    // `received_by`, `order_number` and the ledger's reading of what was
+    // received (ADR 0192) are the EARLIER DELIVERY the refusal hands back, because
     // the founder's 409 (batch 46) exists so a caller can show what already
     // happened instead of an error. See `delivered-once.ts` for the decision and
     // for what a second delivery actually did, measured rather than assumed.
@@ -4315,7 +4332,7 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "quantity, status, delivered_at, received_by, quantity_received, " +
+          "id, inventory_id, quantity, status, delivered_at, received_by, " +
             "unit_type, bottles_total, order_number, final_price",
         )
         .eq("restaurant_id", restaurantId)
@@ -4365,16 +4382,20 @@ export class ProcurementService {
     }
 
     if (ORDER_GOODS_ARRIVED_STATUSES.includes(currentStatus)) {
-      const quantityReceived =
-        existingRow.quantity_received == null
-          ? null
-          : Number(existingRow.quantity_received);
+      // What the earlier delivery put on the shelf, from the ledger (ADR 0192).
+      // A failed read travels as `readable:false` and the sentence leaves the
+      // count out rather than printing a zero.
+      const received = await readOneShelfReceived(
+        this.databaseService.supabase,
+        restaurantId,
+        { ...existingRow, id: orderId },
+      );
       const sentence = refuseSecondDelivery({
         orderId,
         orderNumber: existingRow.order_number ?? null,
         status: currentStatus,
         deliveredAt: existingRow.delivered_at ?? null,
-        quantityReceived,
+        received,
       });
 
       // Named here and not left to the caller: the page that must print
@@ -4408,12 +4429,7 @@ export class ProcurementService {
           receivedBy: existingRow.received_by ?? null,
           receivedByName: receiver.name,
           receivedByNameReason: receiver.reason,
-          // RAW, both of them: `earlierDeliveryOf` asks
-          // `quantity-received-unit.ts` which unit this column is in, and that
-          // reading refuses to state one for a multiplying unit rather than
-          // guessing between the door's bottles and the desk's cases.
-          quantityReceived: existingRow.quantity_received ?? null,
-          unitType: existingRow.unit_type ?? null,
+          received,
           bottlesTotal:
             existingRow.bottles_total == null
               ? null
@@ -4471,8 +4487,7 @@ export class ProcurementService {
     // clause: PostgREST sends `status=not.in.(...)` and Postgres, in READ
     // COMMITTED, re-evaluates that qualifier after taking the row lock — the
     // loser of the race therefore matches nothing and writes nothing, rather
-    // than overwriting the winner's `delivered_at`, `received_by` and
-    // `quantity_received`.
+    // than overwriting the winner's `delivered_at` and `received_by`.
     //
     // The set is imported, not restated. A guard whose two halves are typed out
     // twice is a guard with two answers waiting to disagree.
@@ -4482,7 +4497,6 @@ export class ProcurementService {
         status: ProcurementOrderStatus.DELIVERED,
         delivered_at: new Date().toISOString(),
         received_by: userId,
-        quantity_received: resolvedQuantity,
       })
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
@@ -4513,7 +4527,7 @@ export class ProcurementService {
           await this.databaseService.supabase
             .from("procurement_orders")
             .select(
-              "status, delivered_at, received_by, quantity_received, " +
+              "id, inventory_id, quantity, status, delivered_at, received_by, " +
                 "unit_type, bottles_total, order_number",
             )
             .eq("restaurant_id", restaurantId)
@@ -4524,6 +4538,17 @@ export class ProcurementService {
           any
         >;
         const racedStatus = readOrderStatus(racedRow.status);
+        // The winner's delivery, from the ledger. When the re-read failed the
+        // row is empty and the reading says so (`readable:false`).
+        const racedReceived = racedError
+          ? shelfUnreadable(
+              `The order could not be read back (${racedError.message}), so what the other delivery put on the shelf is not known here.`,
+            )
+          : await readOneShelfReceived(
+              this.databaseService.supabase,
+              restaurantId,
+              { ...existingRow, ...racedRow, id: orderId },
+            );
         const racedReceiver = await resolveReceiverName(
           this.databaseService.supabase as any,
           racedRow.received_by ?? null,
@@ -4548,8 +4573,7 @@ export class ProcurementService {
             receivedBy: racedRow.received_by ?? null,
             receivedByName: racedReceiver.name,
             receivedByNameReason: racedReceiver.reason,
-            quantityReceived: racedRow.quantity_received ?? null,
-            unitType: racedRow.unit_type ?? null,
+            received: racedReceived,
             bottlesTotal:
               racedRow.bottles_total == null
                 ? null
@@ -4605,6 +4629,15 @@ export class ProcurementService {
     );
     if (!deliveryOwns.ok)
       throw new ServiceUnavailableException(deliveryOwns.error);
+
+    // Set when the live stock movement below is REFUSED. Before ADR 0192 its
+    // result was never looked at, so a failed booking still recorded an
+    // `order_delivered` event for bottles that never moved and told the
+    // manager they were "stocked in". The order stays DELIVERED — that is the
+    // caller's word that the truck came — but nothing claims the shelf moved:
+    // the response's `received` block is read from the ledger, and reads what
+    // is really there.
+    let stockNotMoved: string | null = null;
 
     if (deliveryOwns.value.booked) {
       this.logger.log(
@@ -4691,47 +4724,63 @@ export class ProcurementService {
                 p_restaurant_id: restaurantId,
               });
             }
-            await this.databaseService.supabase.rpc("apply_stock_movement", {
-              p_inventory_id: order.inventoryId,
-              p_stock_state: "live",
-              p_delta: receivedBottles,
-              p_transaction_type: "purchase",
-              p_source: "order",
-              p_reason: "order delivered — physical receipt",
-              p_unit_cost: unitCost,
-              p_cost_provenance: costProvenance,
-              p_order_id: orderId,
-              p_idempotency_key: `order-delivered-live:${orderId}`,
-              // ADR 0141 — same reason as the shadow release above.
-              p_restaurant_id: restaurantId,
-            });
+            const live = await this.databaseService.supabase.rpc(
+              "apply_stock_movement",
+              {
+                p_inventory_id: order.inventoryId,
+                p_stock_state: "live",
+                p_delta: receivedBottles,
+                p_transaction_type: "purchase",
+                p_source: "order",
+                p_reason: "order delivered — physical receipt",
+                p_unit_cost: unitCost,
+                p_cost_provenance: costProvenance,
+                p_order_id: orderId,
+                p_idempotency_key: `order-delivered-live:${orderId}`,
+                // ADR 0141 — same reason as the shadow release above.
+                p_restaurant_id: restaurantId,
+              },
+            );
 
-            // in_transit_quantity is a separate denormalized display counter.
-            await this.databaseService.supabase
-              .from("restaurant_inventory")
-              .update({
-                in_transit_quantity: Math.max(
-                  0,
-                  currentInTransit - receivedBottles,
-                ),
-              })
-              .eq("restaurant_id", restaurantId)
-              .eq("id", order.inventoryId);
+            if (live?.error) {
+              stockNotMoved = live.error.message ?? String(live.error);
+              this.logger.error(
+                `markDelivered: order ${orderId} is DELIVERED but its stock ` +
+                  `movement was refused (${stockNotMoved}) — nothing was booked`,
+              );
+            } else {
+              // in_transit_quantity is a separate denormalized display counter.
+              await this.databaseService.supabase
+                .from("restaurant_inventory")
+                .update({
+                  in_transit_quantity: Math.max(
+                    0,
+                    currentInTransit - receivedBottles,
+                  ),
+                })
+                .eq("restaurant_id", restaurantId)
+                .eq("id", order.inventoryId);
+            }
           }
 
-          await this.databaseService.supabase.from("inventory_events").insert({
-            restaurant_id: restaurantId,
-            inventory_id: order.inventoryId,
-            master_wine_id: masterWineId ?? null,
-            event_type: "order_delivered",
-            quantity_change: receivedBottles,
-            source: "procurement",
-            idempotency_key: idempotencyKey,
-            metadata: {
-              orderId,
-              deliveredAt: order.deliveredAt,
-            },
-          });
+          // The event records a quantity that MOVED. When the movement was
+          // refused there is no such quantity, and recording one is the lie
+          // this used to tell.
+          if (!stockNotMoved) {
+            await this.databaseService.supabase.from("inventory_events").insert({
+              restaurant_id: restaurantId,
+              inventory_id: order.inventoryId,
+              master_wine_id: masterWineId ?? null,
+              event_type: "order_delivered",
+              quantity_change: receivedBottles,
+              source: "procurement",
+              idempotency_key: idempotencyKey,
+              metadata: {
+                orderId,
+                deliveredAt: order.deliveredAt,
+              },
+            });
+          }
         } catch (eventError) {
           this.logger.warn(
             "Failed to record inventory event for delivered order",
@@ -4764,8 +4813,10 @@ export class ProcurementService {
           // ORDER's own unit (a 5-case order of 12 resolves to 5), while the
           // ledger booked `receivedBottles` bottles (60) at :4681. Pre-fix
           // this notice told the manager 5 bottles came in when 60 did
-          // (ADR 0168 D6).
-          message: `${receivedBottles} bottles stocked in. Confirm the physical count against the vendor invoice.`,
+          // (ADR 0190 D6 — filed as 0168 before its renumbering).
+          message: stockNotMoved
+            ? `Delivery recorded, but the stock did NOT move (${stockNotMoved}). Nothing is on the shelf for it yet; book it at the receiving door.`
+            : `${receivedBottles} bottles stocked in. Confirm the physical count against the vendor invoice.`,
           priority: "critical",
           actionUrl: `/inventory?verify=${orderId}`,
           actionLabel: "Verify receipt",
@@ -4782,7 +4833,15 @@ export class ProcurementService {
       );
     }
 
-    return order;
+    // What the order received, read back from the ledger AFTER the booking
+    // (ADR 0192) — so a movement that was refused reads as nothing on the
+    // shelf rather than as the quantity the caller asserted.
+    const received = await readOneShelfReceived(
+      this.databaseService.supabase,
+      restaurantId,
+      row,
+    );
+    return this.mapOrderRow(orderRow, undefined, received);
   }
 
   /**
@@ -5159,8 +5218,8 @@ export class ProcurementService {
     }
 
     // The immutable ledger states bottles and retains receipts after stock is
-    // consumed. quantity_received is only a historical display cache: its four
-    // writers used different units, so it cannot authorize a stock correction.
+    // consumed. It is also what "received" MEANS (ADR 0192), so the correction
+    // below is measured against the same number every screen shows.
     const stockedQtyInBottles =
       hasMatchFields && orderRow.inventory_id
         ? await readBookedOrderBottles(
@@ -5283,15 +5342,15 @@ export class ProcurementService {
           }
           const derivedAcceptedQty =
             stockedQtyInBottles / unitReading.units.counted.bottlesPerUnit;
-          // `procurement_orders.quantity_received` and `.accepted_quantity`
-          // are INTEGER columns (baseline_from_production.sql:4539, :4560).
+          // `procurement_orders.accepted_quantity` is an INTEGER column
+          // (baseline_from_production.sql:4560).
           // Nobody stated an accepted count in the counted unit here, so it is
           // BACK-DERIVED from what the ledger already booked — and that
           // division does not always land on a whole pack: 59 bottles already
           // booked on a 12-pack case order derives 4.9167 cases. Refused HERE,
           // before `openCreditClaim` (which runs ahead of the update below and
           // does not roll back) can raise a claim against a write that is
-          // about to fail its own column type (ADR 0168 D5).
+          // about to fail its own column type (ADR 0190 D5 — filed as 0168).
           if (!Number.isInteger(derivedAcceptedQty)) {
             throw new BadRequestException(
               `Cannot verify this receipt: ${stockedQtyInBottles} bottles ` +
@@ -5462,8 +5521,9 @@ export class ProcurementService {
         `Receipt price comparison for order ${orderId}: ${comparisonNotes}`,
       );
 
+      // `quantity_received` is not written (ADR 0192): what this order
+      // received is the ledger's sum, which the correction above just moved.
       Object.assign(update, {
-        quantity_received: acceptedQty + rejectedQty,
         accepted_quantity: acceptedQty,
         rejected_quantity: rejectedQty,
         rejected_reason: body.rejectedReason ?? null,
@@ -5869,20 +5929,21 @@ export class ProcurementService {
    * (`check_order_capture_contract.py` cannot read a `...(x ? {} : {})`) and
    * the reason a reader of this method can see every field at once.
    *
-   * `providerName`, `quantityReceived` and `quantityReceivedUom` follow the
-   * same three-state rule but take their "was this read?" answer from the KEY
-   * being present on the row rather than from an argument — see the comments
-   * at each. A route that neither joins `providers` nor selects `*` therefore
-   * emits none of them, which is the honest report of a query that did not ask.
+   * `providerName` follows the same three-state rule but takes its "was this
+   * read?" answer from the KEY being present on the row rather than from an
+   * argument. A route that does not join `providers` therefore emits no
+   * `providerName`, which is the honest report of a query that did not ask.
+   *
+   * `received` (ADR 0192) takes its answer from the third argument: the
+   * ledger reading when the route read one, `undefined` when it did not. It is
+   * never derived from the row — `procurement_orders.quantity_received` is not
+   * read by the app any more.
    */
   private mapOrderRow(
     row: ProcurementOrderRow,
     priceUnit: AgreedPriceUnitReading = { read: false },
+    received: ShelfReceived | undefined = undefined,
   ): OrderResponseDto {
-    // Read once. Both DTO keys come from the same reading, so computing it
-    // twice would be two chances for them to disagree.
-    const receivedRead = "quantity_received" in row;
-    const received = readQuantityReceived(row.quantity_received, row.unit_type);
     // The same discipline for the recurrence. `recurrence_frequency` is the key
     // that decides for all six, because it is the one column whose NULL means
     // "does not repeat" — the other five are NULL on a non-recurring order too,
@@ -5922,14 +5983,9 @@ export class ProcurementService {
       // row rather than on a reading argument.
       providerName:
         "provider_name" in row ? (row.provider_name ?? null) : undefined,
-      // `quantity_received` and its unit, together or not at all (ADR 0070).
-      // Present on every route that selects `*`; absent on the ones that select
-      // a column list, which have not learned the column is empty. The unit is
-      // derived from the ROW — `quantity-received-unit.ts` carries the
-      // measurement of the four writers and why a multiplying unit is refused
-      // rather than guessed.
-      quantityReceived: receivedRead ? received.quantity : undefined,
-      quantityReceivedUom: receivedRead ? received.uom : undefined,
+      // What the stock ledger booked for this order (ADR 0192), or undefined
+      // on a route that did not read it. `readable:false` travels as itself.
+      received,
       // The recurrence, as SIX keys that travel together (ADR 0125's addendum).
       // The key test again, and here it closes the exact hole the rebuilt page
       // was left with: `useOrdersNextData` set `recurring = false` because the

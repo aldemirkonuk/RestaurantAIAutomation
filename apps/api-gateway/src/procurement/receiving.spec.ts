@@ -467,7 +467,8 @@ describe("recordDoorReceipt", () => {
     expect(r.alreadyRecorded).toBe(true);
     expect(r.stockBooked).toBe(true);
     expect(r.stockDelta).toBe(24);
-    expect(shared.calls.orderUpdates[0].quantity_received).toBe(24);
+    // ADR 0192: the order is not told a received count; the ledger holds it.
+    expect("quantity_received" in shared.calls.orderUpdates[0]).toBe(false);
   });
 
   // ==========================================================================
@@ -476,9 +477,10 @@ describe("recordDoorReceipt", () => {
 
   it("adds a second truck to the first instead of replacing it", async () => {
     // Truck one brings 8 boxes, truck two brings 6. The order used to record 6
-    // received, not 14, because quantity_received was set ABSOLUTELY — and the
-    // match line called truck two short against the full PO while the driver
-    // waited.
+    // received, not 14, because its received column was set ABSOLUTELY — and
+    // the match line called truck two short against the full PO while the
+    // driver waited. The running total is the events' sum; the column is not
+    // written at all (ADR 0192).
     const shared = makeDb({ order: packTwelve });
     const service = new ReceivingService(shared.db);
 
@@ -490,7 +492,7 @@ describe("recordDoorReceipt", () => {
     });
     expect(first.receivedQtyBottles).toBe(96);
     expect(shared.calls.rpc[0].args.p_delta).toBe(96);
-    expect(shared.calls.orderUpdates[0].quantity_received).toBe(96);
+    expect("quantity_received" in shared.calls.orderUpdates[0]).toBe(false);
 
     const second = await service.recordDoorReceipt({
       ...base,
@@ -504,7 +506,7 @@ describe("recordDoorReceipt", () => {
     expect(shared.calls.rpc[1].args.p_idempotency_key).not.toBe(
       shared.calls.rpc[0].args.p_idempotency_key,
     );
-    expect(shared.calls.orderUpdates[1].quantity_received).toBe(168);
+    expect("quantity_received" in shared.calls.orderUpdates[1]).toBe(false);
   });
 
   it("does not swallow a second truck that happens to bring the same count", async () => {
