@@ -54,6 +54,40 @@ must-fix finding). Same column, same content, renamed to
 against `origin/main` and 36 open PRs; `feature-flag-registry.ts`, `App.tsx`
 and `useMudavymDesign.ts` all cite the new version.
 
+**[Renamed again 2026-09-21, round-6 must-fix closure, wt-r5-vprices]** The
+bracket above was already wrong when it was written: "confirmed unique
+again" is true but was never the right test — `check_migration_versions_unique.py`
+checks only that no two files share one version, not that a new file is the
+newest, which is the actual house rule; a green run from it is the repo's
+"absence reported as health" pattern, not proof of order. By the time
+`20260921000000` landed, `r5/promos` (commit `872baff9d`,
+2026-09-21T02:08:42-04:00) and `r5/notify` (commit `1c682b8d1`,
+2026-09-21T02:22:11-04:00, which alone added all three of its 2026-09-21
+migrations) had already committed newer 2026-09-21 migrations on their own
+branches — both reachable *before* the bracket above's own commit
+(`fb8d57400`, 02:28:24), so a sweep that actually covered every branch would
+have caught them; these two timestamps were re-measured directly from
+`git log --follow` on each sibling branch for this bracket, not copied
+forward from the previous verifier's report (CLAUDE.md §5b). Independent
+verification swept
+`refs/heads` + `refs/remotes/origin` twice (2026-09-21T14:44:22Z and again
+at 2026-09-21T14:47:50Z, unchanged) via `git ls-tree -r <ref> --
+supabase/migrations` per ref; the five newest 2026-09-2x versions found,
+newest first:
+`20260921100000_a_low_stock_warning_can_reach_an_inbox.sql` (`r5/notify`),
+`20260921093000_a_daily_summary_can_reach_a_phone.sql` (`r5/notify`),
+`20260921090000_a_preference_is_kept_once_per_person_per_house.sql`
+(`r5/notify`),
+`20260921060250_an_offer_dismissed_is_dismissed_for_the_house.sql`
+(`r5/promos`), then this lane's own `20260921000000_mudavym_design_vendor_prices.sql`
+— the oldest of the five, i.e. exactly the one exposed to out-of-order
+application. Same column, same content, renamed again to
+`20260921150000_mudavym_design_vendor_prices.sql`, comfortably past the
+`20260921100000` ceiling the sweep found rather than one step above it (a
+single step lost the race last time). `feature-flag-registry.ts`, `App.tsx`
+and `useMudavymDesign.ts` all cite this version now; this bracket is the
+settled version until the next sweep proves otherwise.
+
 **Fixed against the sections below, so read them as history, not current state:**
 route is reachable now (§2's "unreachable" gap is closed); the identity log is a
 drawer opened from the page header plus staff's own 403 fallback, not the always-mounted
