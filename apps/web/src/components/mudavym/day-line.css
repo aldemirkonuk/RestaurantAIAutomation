@@ -1,0 +1,136 @@
+/* The day line — sketch 119 §E, a PAGE element (not chrome). Tokens only
+   (styles/mudavym.css). Reduced-scope v1: a wrapping row of tick chips
+   rather than the sketch's pixel-timed band with DOM-measured labels — see
+   DayLine.tsx's own doc comment. */
+
+.mdv-dayline {
+  padding: 14px 16px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 12px;
+  font-family: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  /* Paints the house ground (tokens only — the ground follows whatever the
+     .mudavym scope decides). It used to be transparent, "sitting on the page
+     under it": but the page under it is a LEGACY page, and measured 2026-09-21 in the Browser pane: this root's ink-1 (#EFE7D9) landed on
+     the legacy page's own light ground, rgb(250,247,245), at about 1.1:1.
+     A .mudavym root carries its own ground or its ink is unreadable. */
+  background: var(--paper-0);
+  color: var(--ink-1);
+}
+
+.mdv-dayline__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mdv-dayline__eyebrow {
+  margin: 0;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mdv-dayline__hours {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--ink-1);
+}
+
+.mdv-dayline__head {
+  margin: 0;
+  padding-top: 2px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--ink-4);
+  /* Wraps rather than running off the card: offline the head carries
+     "from 14:02 · offline · will read on return · 2 of 3 registers · 1 not
+     read", which at 390 ran past the card's edge and cut the count. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mdv-dayline__ticks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.mdv-dayline__tick {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--paper-2);
+  border-radius: 999px;
+  color: var(--ink-1);
+  text-decoration: none;
+  font-size: 12px;
+  background: var(--paper-0);
+}
+
+a.mdv-dayline__tick:hover {
+  background: var(--paper-1);
+}
+
+/* Offline: the ticks shown are from the last read, not live — a dashed
+   border says so without a second sentence per tick. */
+.mdv-dayline__ticks[data-stale] .mdv-dayline__tick {
+  border-style: dashed;
+  color: var(--ink-3);
+}
+
+/* Now: the device's clock among the house's readings (sketch 119 §E). Not a
+   chip — a plain mark, so it never reads as one more record. Hollow offline:
+   the clock still moves, the ticks around it do not. */
+.mdv-dayline__now {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 2px 5px 10px;
+  border-left: 2px solid var(--ink-1);
+  color: var(--ink-1);
+  font-size: 12px;
+}
+
+.mdv-dayline__now[data-offline] {
+  border-left-style: dashed;
+  color: var(--ink-3);
+}
+
+.mdv-dayline__nowword {
+  font-weight: 600;
+}
+
+.mdv-dayline__tickat {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.mdv-dayline__ticklabel {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdv-dayline__quiet {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.mdv-dayline__unread {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}

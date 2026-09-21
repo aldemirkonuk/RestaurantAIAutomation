@@ -48,6 +48,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { HouseHeader } from './HouseHeader';
 import { SheetStackProvider } from './SheetStack';
+import { useInHouseShell } from './houseShellContext';
 import { MudavymPage, useMudavymDesign } from '../../lib/mudavym/useMudavymDesign';
 import {
   MudavymGroundContext,
@@ -72,6 +73,9 @@ export interface PageGateProps {
 
 export function PageGate({ page, legacy, next }: PageGateProps) {
   const showNext = useMudavymDesign(page);
+  // Under the app shell (sketch 119 D) the shell owns the one house header;
+  // mounting a second here would put two banners on the page.
+  const inShell = useInHouseShell();
   const token = useRef<symbol>(Symbol('mudavym-page-gate'));
   const [ground, setGround] = useState<MudavymGround | undefined>(undefined);
 
@@ -103,7 +107,7 @@ export function PageGate({ page, legacy, next }: PageGateProps) {
           the named spine and the phone's breadcrumb live here — and a Sheet
           mounted anywhere else behaves exactly as it always did. */}
       <SheetStackProvider>
-        <HouseHeader page={page} ground={ground} />
+        {!inShell && <HouseHeader page={page} ground={ground} />}
         {next}
       </SheetStackProvider>
     </MudavymGroundContext.Provider>

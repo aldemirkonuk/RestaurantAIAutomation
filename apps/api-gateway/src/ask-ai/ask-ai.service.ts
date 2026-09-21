@@ -3,10 +3,13 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import {
@@ -129,6 +132,15 @@ export interface CandidateSets {
  * unchanged and unbypassed, and both of them produce a DRAFT — so nothing
  * reaches a vendor without a person acting twice.
  */
+/** The one act a proposal's seal approves. */
+export const PROPOSAL_SEAL_ACT = "apply";
+
+/**
+ * Every column the seal reads of a proposal, as a module-level literal for
+ * `scripts/check_read_columns_exist.py`.
+ */
+const PROPOSAL_SEAL_COLUMNS = "id, family, action_type, payload, status";
+
 @Injectable()
 export class AskAiService {
   private readonly logger = new Logger(AskAiService.name);
@@ -139,6 +151,11 @@ export class AskAiService {
     private readonly modelClient: ModelClientService,
     private readonly nfVerdicts: NfVerdictService,
     private readonly procurement: ProcurementService,
+    // The seal a proposal is applied with from the house counter (sketch 119
+    // D). Optional so the suites that construct this service positionally
+    // keep compiling; when it is absent the sealed routes REFUSE — a seal
+    // check that vanishes with its own dependency must never apply anything.
+    @Optional() private readonly sealChallenges?: SealChallengeService,
   ) {}
 
   /**
@@ -764,6 +781,120 @@ export class AskAiService {
       this.logger.error(`Ask AI execution failed for ${actionId}: ${reason}`);
       throw err;
     }
+  }
+
+  /**
+   * The arguments a proposal's seal is bound to: the row as it is stored.
+   *
+   * Read fresh for the mint AND for the redemption, so a proposal whose stored
+   * action changed between the two is refused ("changed after the seal was
+   * issued") rather than applied as something other than what was held.
+   * A proposal that is not open in THIS house is a 404 — the same answer as
+   * one that does not exist.
+   */
+  private async readProposalSealArgs(
+    restaurantId: string,
+    actionId: string,
+  ): Promise<Record<string, unknown>> {
+    const { data, error } = await this.databaseService
+      .getClient()
+      .from("ai_proposed_actions")
+      .select(PROPOSAL_SEAL_COLUMNS)
+      .eq("id", actionId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `Ask AI could not read proposal ${actionId}: ${error.message}`,
+      );
+      throw new ServiceUnavailableException("Could not read that proposal.");
+    }
+    const row = data as {
+      id: string;
+      family: string | null;
+      action_type: string | null;
+      payload: Record<string, unknown> | null;
+      status: string;
+    } | null;
+    if (!row || row.status !== "proposed") {
+      throw new NotFoundException(
+        "That action is no longer waiting for confirmation.",
+      );
+    }
+    return {
+      actionId: row.id,
+      family: row.family,
+      actionType: row.action_type,
+      payload: row.payload ?? {},
+    };
+  }
+
+  private requireSeal(): SealChallengeService {
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued or checked (the seal service is not wired into Ask AI), " +
+          "so nothing was applied. This is a gateway fault, not a decision about this proposal.",
+      );
+    }
+    return this.sealChallenges;
+  }
+
+  /**
+   * Mint the one-time seal a proposal's application has to carry back — when
+   * the hold BEGINS (the house counter's sheet calls this from
+   * `HoldToApprove`'s `onChallenge`). Bound to this person, this proposal, the
+   * act `apply` and the proposal's stored arguments.
+   */
+  async issueProposalSeal(
+    restaurantId: string,
+    userId: string,
+    actionId: string,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    const seals = this.requireSeal();
+    const args = await this.readProposalSealArgs(restaurantId, actionId);
+    const issued = await seals.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "ai_proposed_action",
+      subjectId: actionId,
+      action: PROPOSAL_SEAL_ACT,
+      args,
+    });
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
+  }
+
+  /**
+   * Apply a proposal behind a redeemed seal — "applied only by the seal"
+   * (the founder's pick of 2026-09-21, sketch 119 D).
+   *
+   * Redeem FIRST, then the same compare-and-swap confirm every proposal goes
+   * through, UNTOUCHED: a sealed application carries no edits, because an edit
+   * after the seal would be applying something other than what was held. The
+   * seal is spent even if the confirm then refuses (a stale id) — a seal is
+   * good for one attempt at one act, exactly as an order's is.
+   */
+  async confirmSealed(
+    restaurantId: string,
+    userId: string,
+    actionId: string,
+    challenge: string | null | undefined,
+  ) {
+    const seals = this.requireSeal();
+    const args = await this.readProposalSealArgs(restaurantId, actionId);
+    await seals.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "ai_proposed_action",
+      subjectId: actionId,
+      action: PROPOSAL_SEAL_ACT,
+      args,
+      challenge: challenge ?? null,
+    });
+    return this.confirm(restaurantId, userId, actionId);
   }
 
   async discard(restaurantId: string, userId: string, actionId: string) {

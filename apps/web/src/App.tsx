@@ -44,16 +44,16 @@ function lazyWithRefresh<T extends ComponentType<any>>(
 }
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Toaster } from 'sonner'
+import { AppToaster } from './components/mudavym/AppToaster'
 import { AuthProvider } from './contexts/AuthContext'
 import { RealtimeProvider } from './contexts/RealtimeContext'
 import { WebSocketProvider } from './lib/websocket'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
-import { PageLoader } from './components/ui/page-loader'
+import { HousePageLoader } from './components/mudavym/HousePageLoader'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
-import { OfflineBanner } from './components/ui/SyncStatus'
+import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
 
 // Layout
 import { DashboardLayout } from './components/layout/DashboardLayout'
@@ -71,6 +71,7 @@ import { NoAccess } from './pages/NoAccess'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { Orders } from './pages/Orders'
 import { PageGate } from './components/mudavym'
+import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
 import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 
 // Onboarding pages (lazy loaded)
@@ -160,12 +161,18 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
-          <ToastProvider>
-            <AuthProvider>
+          <AuthProvider>
+            {/* Nested INSIDE AuthProvider (not outside it, as sonner's
+                Toaster/OfflineBanner below still are) so its gate
+                (`useMudavymDesign('shell')`, ToastContext.tsx) reads the
+                restaurant identity reactively from context rather than only
+                ever falling back to a localStorage snapshot — the same
+                identity DashboardLayout's copy of the gate reads. */}
+            <ToastProvider>
               <WebSocketProvider>
                 <RealtimeProvider>
                   <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <Suspense fallback={<PageLoader />}>
+            <Suspense fallback={<HousePageLoader />}>
               <Routes>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
@@ -411,49 +418,39 @@ function App() {
                   
                   {/* Dev/Test Pages */}
                   <Route path="/dev-sandbox" element={<ProtectedRoute requiredRole="owner"><DevSandbox /></ProtectedRoute>} />
-                </Route>
 
-                {/* Catch all */}
-                <Route path="*" element={<Navigate to="/" replace />} />
+                  {/*
+                    Catch-all, NESTED under DashboardLayout on purpose (sketch
+                    119, the shared pieces): `DashboardLayout` has already made
+                    the shell/legacy choice for the whole page before this
+                    renders, so the in-app 404 (shell on) or the silent
+                    `Navigate` home (shell off, today's behaviour) is never a
+                    separate race against the flag check. A path outside the
+                    host's own crawlable-prefix allow-list never reaches this —
+                    the host answers its own real 404 first (ADR 0158).
+                  */}
+                  <Route path="*" element={<ShellCatchAll />} />
+                </Route>
               </Routes>
             </Suspense>
                   </Router>
                 </RealtimeProvider>
 
-                {/* Toast Notifications */}
-                <Toaster
-                position="top-right"
-                gap={12}
-                toastOptions={{
-                  unstyled: true,
-                  classNames: {
-                    toast:
-                      'flex items-center gap-3 w-full max-w-sm p-4 bg-white rounded-xl border border-slate-200 shadow-lg',
-                    title: 'text-sm font-semibold text-slate-900',
-                    description: 'text-sm text-slate-500',
-                    success: 'border-emerald-200 bg-emerald-50',
-                    error: 'border-rose-200 bg-rose-50',
-                    warning: 'border-amber-200 bg-amber-50',
-                    info: 'border-blue-200 bg-blue-50',
-                    actionButton:
-                      'px-3 py-1.5 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800',
-                    cancelButton: 'px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900',
-                    closeButton: 'text-slate-400 hover:text-slate-600',
-                  },
-                }}
-                closeButton
-                richColors
-                expand={false}
-              />
-                {/* Offline Banner - shows at top when offline */}
-                <OfflineBanner />
+                {/* Toast Notifications — ONE Toaster, house-styled when the
+                    shell gate is on, legacy otherwise (AppToaster.tsx). */}
+                <AppToaster />
+                {/* Offline Banner - legacy: in flow here, after the router,
+                    when offline. House-styled with the shell gate on: fixed
+                    to the foot of the window (house-offline-banner.css says
+                    why), whenever a queued change is not yet confirmed. */}
+                <AppOfflineBanner />
                 
                 {/* Sync Status Indicator - disabled (was floating bottom-right)
                 <SyncStatus position="bottom-right" />
                 */}
               </WebSocketProvider>
-            </AuthProvider>
-          </ToastProvider>
+            </ToastProvider>
+          </AuthProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </ErrorBoundary>

@@ -62,6 +62,12 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // Not a page: the app SHELL (sketch 119 direction D, the founder's pick of
+  // 2026-09-21; ADR 0149 row 5). `DashboardLayout` reads this gate and renders
+  // `HouseShell` — rooms rail, house header, counter, the phone's four doors —
+  // around whatever page is routed, legacy or rebuilt. Off, the legacy
+  // Sidebar layout renders byte-for-byte. Column added by 20260921114300.
+  'shell',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];

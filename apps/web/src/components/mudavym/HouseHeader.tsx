@@ -62,7 +62,7 @@
  * needs to declare anything — `.dark .mudavym` turns both.
  */
 
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { BrandMark } from '../brand/BrandMark';
@@ -157,12 +157,30 @@ function HouseOfRecord() {
 }
 
 export interface HouseHeaderProps {
-  page: MudavymPage;
+  /**
+   * The rebuilt page this header sits above (PageGate's mount). Absent when
+   * the APP SHELL mounts the header (sketch 119 D): the shell stands above
+   * every route, legacy or rebuilt, and names the page by its room instead.
+   */
+  page?: MudavymPage;
   /** The ground PageGate measured. `undefined` = nobody has declared one. */
   ground?: MudavymGround;
+  /**
+   * The shell's name for the page — the room's own name from `rooms.ts`.
+   * `null` prints nothing: a route the rooms table does not name is not given
+   * a title-cased slug.
+   */
+  name?: string | null;
+  /** The shell's one extra control (the counter's toggle), left of the bell. */
+  trailing?: ReactNode;
+  /**
+   * Mounted by the app shell. Keeps the bar sticky on a phone — the legacy
+   * mobile bar it used to yield to is deleted under the shell.
+   */
+  shell?: boolean;
 }
 
-export function HouseHeader({ page, ground }: HouseHeaderProps) {
+export function HouseHeader({ page, ground, name, trailing, shell = false }: HouseHeaderProps) {
   const { pathname } = useLocation();
   const auth = useContext(AuthContext);
   const [keys] = useState(chord);
@@ -185,13 +203,16 @@ export function HouseHeader({ page, ground }: HouseHeaderProps) {
   // house; outside an AuthProvider (an isolated mount, a sandbox) there is
   // nobody to speak for, and a header full of dead controls is worse than none.
   if (!auth) return null;
-  if (NO_CHROME.has(page)) return null;
+  if (page && NO_CHROME.has(page)) return null;
+
+  const pageName = shell || !page ? (name ?? null) : pageNameFor(page, pathname);
 
   return (
     <header
       className="mudavym mdv-hdr"
       data-ground={ground === 'charcoal' ? 'charcoal' : undefined}
       data-stuck={stuck ? 'true' : undefined}
+      data-shell={shell ? 'true' : undefined}
       /* `<header>` only maps to the banner landmark when it is scoped to
          <body>; nested inside <main> it is generic, and an aria-label on a
          generic element is dropped. Declaring the role makes the chrome a
@@ -205,8 +226,12 @@ export function HouseHeader({ page, ground }: HouseHeaderProps) {
           <Link to="/" className="mdv-hdr__mark" aria-label="Mudavym — dashboard">
             <BrandMark variant="mark" size={24} mark="mono" alt="" />
           </Link>
-          <span className="mdv-hdr__rule" aria-hidden />
-          <span className="mdv-hdr__page">{pageNameFor(page, pathname)}</span>
+          {pageName && (
+            <>
+              <span className="mdv-hdr__rule" aria-hidden />
+              <span className="mdv-hdr__page">{pageName}</span>
+            </>
+          )}
         </div>
 
         {/* Below 900px the words are hidden and below 640px the chord is too,
@@ -225,6 +250,7 @@ export function HouseHeader({ page, ground }: HouseHeaderProps) {
 
         <div className="mdv-hdr__right">
           <HouseOfRecord />
+          {trailing}
           <HouseBell />
           <ThemeMenu className="mdv-hdr__theme" />
           <HouseUserMenu />

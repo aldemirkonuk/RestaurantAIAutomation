@@ -46,12 +46,19 @@ vi.mock('react-router-dom', async () => {
 })
 
 const activeRestaurantId = vi.hoisted(() => ({ current: 'rest-A' }))
-vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    activeRestaurantId: activeRestaurantId.current,
-    user: { userId: 'u1', restaurantId: activeRestaurantId.current, role: 'manager' },
-  }),
-}))
+// `AuthContext` (the object, not just `useAuth`) is exported too — DayLine.tsx
+// and useMudavymDesign.ts both read it with `useContext(AuthContext)` directly
+// (see ReceivingHome.test.tsx's identical comment for the full reasoning).
+vi.mock('../../../contexts/AuthContext', async () => {
+  const { createContext } = await import('react')
+  return {
+    AuthContext: createContext<unknown>(null),
+    useAuth: () => ({
+      activeRestaurantId: activeRestaurantId.current,
+      user: { userId: 'u1', restaurantId: activeRestaurantId.current, role: 'manager' },
+    }),
+  }
+})
 
 const pendingByType = vi.hoisted(() => vi.fn())
 const flushDoorOutbox = vi.hoisted(() => vi.fn())

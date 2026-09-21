@@ -243,6 +243,45 @@ export async function confirmAction(
   }
 }
 
+/**
+ * Mint the one-time seal a proposal is applied with — called when the hold
+ * BEGINS (`HoldToApprove`'s `onChallenge`), never at the moment of applying.
+ * The house counter's sheet is the caller (sketch 119 D: a proposal is
+ * "applied only by the seal"). A refusal rejects with the gateway's sentence.
+ */
+export async function mintProposalSeal(actionId: string): Promise<string | null> {
+  try {
+    const { data } = await apiClient.post<{ challenge?: string }>(
+      `/ask-ai/actions/${actionId}/seal-challenge`,
+      {},
+    )
+    return data?.challenge ?? null
+  } catch (error) {
+    throw classify(error)
+  }
+}
+
+/**
+ * Apply a proposal behind the seal minted when the hold began. The seal
+ * travels in a header, as an order approval's does; the proposal is applied
+ * untouched — a sealed application carries no edits.
+ */
+export async function applyProposalSealed(
+  actionId: string,
+  challenge: string,
+): Promise<AskAiConfirmResult> {
+  try {
+    const { data } = await apiClient.post<AskAiConfirmResult>(
+      `/ask-ai/actions/${actionId}/sealed-confirm`,
+      {},
+      { headers: { 'x-seal-challenge': challenge } },
+    )
+    return data
+  } catch (error) {
+    throw classify(error)
+  }
+}
+
 /** The operator says no. Recorded as a signal, not swallowed. */
 export async function discardAction(actionId: string): Promise<void> {
   try {
@@ -257,6 +296,8 @@ export const askAiApi = {
   listOpen: listOpenProposals,
   listCandidates,
   confirm: confirmAction,
+  mintSeal: mintProposalSeal,
+  applySealed: applyProposalSealed,
   discard: discardAction,
 }
 

@@ -708,7 +708,7 @@ export class ReceivingService {
     const open = [...byOrder.entries()].filter(([, v]) => !v.verified);
     if (!open.length) return [];
 
-    const { data: orders } = await this.db
+    const { data: orders, error: ordersError } = await this.db
       .getClient()
       .from("procurement_orders")
       .select("id, order_number, status")
@@ -716,6 +716,12 @@ export class ReceivingService {
         "id",
         open.map(([id]) => id),
       );
+    // A failed read of the orders is not "none of them closed". Ignoring the
+    // error left `numbers` empty, so the COMPLETED/CANCELLED filter below let
+    // every closed order through and printed each without its number — an
+    // inflated queue built from a read that did not happen. The house counter
+    // (sketch 119 D) reads this register, so the failure must reach it.
+    if (ordersError) throw new Error(ordersError.message);
     const numbers = new Map(
       (orders ?? []).map((o) => [
         o.id,

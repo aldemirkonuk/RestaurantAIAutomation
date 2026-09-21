@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+  UseGuards,
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -166,6 +174,65 @@ export class AskAiController {
       user.userId,
       id,
       body?.payload,
+    );
+  }
+
+  /**
+   * Mint the seal a proposal is applied with (the house counter, sketch 119 D:
+   * a proposal is "applied only by the seal"). Called when the hold BEGINS.
+   * Owner or manager, like confirm: the seal is the act that writes.
+   */
+  @Post("actions/:id/seal-challenge")
+  @ApiOperation({
+    summary:
+      "Mint the one-time seal this proposal's application has to carry back",
+    description:
+      "Bound to this person, this proposal, the act `apply` and the proposal's stored arguments. " +
+      "A proposal not open in this house is a 404, the same answer as one that does not exist.",
+  })
+  @Roles("owner", "manager")
+  @AuthedRateLimit({
+    limit: 60,
+    windowSeconds: 60,
+    scope: "user",
+    message: "Too many seals at once. Try again shortly.",
+  })
+  async sealChallenge(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    return this.askAi.issueProposalSeal(user.restaurantId, user.userId, id);
+  }
+
+  /**
+   * Apply a proposal behind a redeemed seal. The seal travels in the
+   * `x-seal-challenge` header, as an order approval's does; without one — or
+   * with one spent, expired, someone else's, or issued before the proposal
+   * changed — nothing is applied and the refusal says which.
+   */
+  @Post("actions/:id/sealed-confirm")
+  @ApiOperation({
+    summary: "Apply a proposal, behind a redeemed seal",
+    description:
+      "The sealed apply the house counter uses. The proposal is applied untouched — a sealed application carries no edits.",
+  })
+  @Roles("owner", "manager")
+  @AuthedRateLimit({
+    limit: 60,
+    windowSeconds: 60,
+    scope: "user",
+    message: "Too many confirmations at once. Try again shortly.",
+  })
+  async sealedConfirm(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+    @Headers("x-seal-challenge") challenge?: string,
+  ) {
+    return this.askAi.confirmSealed(
+      user.restaurantId,
+      user.userId,
+      id,
+      challenge ?? null,
     );
   }
 

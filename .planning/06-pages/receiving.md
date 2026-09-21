@@ -139,6 +139,8 @@ and held by `scripts/check_windowed_figures.py` in CI:
   pins are adopted marked `tenantUnknown` rather than discarded or re-attributed.
 - **An offline non-attempt says "holding"**, never `sent 0 · failed 0`.
 
+- **Decided 2026-09-21, built 2026-09-21 (reduced scope, stated):** sketch 119 direction E's *day line* is a PAGE element on this page's own first line, not chrome (the founder's shell pick, ADR 0160 review trail of that date) — `DayLine.tsx`, mounted above all three role renderings (staff, manager, owner alike — it carries no money), self-gated on the `shell` flag. See `dashboard.md`'s own entry (identical build) for the full reduced-scope reasoning: three of the sketch's six registers this session, a tick-chip row rather than the pixel-timed band, and what is deferred and why. The shell itself is D, the counter; its feature list is in `DESIGN-FOUNDATION.md` §3 item 2.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receiving`)
 
 > **Chrome (2026-09-04).** With the flag on, this page is framed by the house

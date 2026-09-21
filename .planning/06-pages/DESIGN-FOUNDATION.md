@@ -271,6 +271,156 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      absent. What it makes retirable, on the founder's call above, is the
      per-page masthead `Wordmark` in those sixteen files. Nothing else here
      supersedes a document.
+
+   **The app shell is sketch 119 direction D, "the counter" — picked 2026-09-21**
+   (ADR 0160 review trail, that date; ADR 0149 row 5). This is the shell's owning
+   note — the shell is chrome, and chrome is excluded from every page note's
+   §Surface by PAGE-CONTRACT — so its §1a feature list lives here.
+
+   **§1a. Features — the app shell** (flag `mudavym_design_shell`, OFF by default,
+   migration `20260921114300`; browser override `mudavym.design.shell`; with it
+   off the legacy `Sidebar`/`DashboardLayout` renders byte-for-byte —
+   `apps/web/src/components/mudavym/HouseShell.tsx`, gated in
+   `components/layout/DashboardLayout.tsx`):
+
+   - **The rooms rail** — words only, grouped The floor · The door · The cellar ·
+     The books · The people, *Ask Mudavym.* first (opens the ⌘⇧K panel),
+     Settings · Connections · The desk · Help in the foot; tucks to a 28 px strip
+     on ⌘\ (remembered per person). One rooms table (`lib/mudavym/rooms.ts`)
+     feeds the rail, the phone's Rooms sheet and the header's page name.
+     Internal tools (`/studio`, `/simpos`, `/dev/truth`, `/dev-sandbox`) are in
+     no room (a test holds it). A room is hidden only where the gateway or the
+     route refuses the person (Vendor prices for staff, The desk below owner,
+     Connections below manager or with its flag off).
+   - **The house header, once** — the built `HouseHeader`, mounted by the shell
+     for every route (legacy or rebuilt), naming the page by its room; it gains
+     one control, the counter's toggle, with a dot when acts wait (a hollow dot
+     when a register was not read — never a number). Under the shell `PageGate`
+     mounts no second header and the legacy `Header` keeps only its title.
+   - **The counter** — a 320 px right column holding what waits on the signed-in
+     person, by verb: **Seal** (orders awaiting the seal), **Verify** (deliveries
+     counted by case, credits promised), **Reply** (vendor replies waiting),
+     **Decide** (identity candidates, invitations) and **Mudavym proposes**
+     (`ai_proposed_actions`). One read, `GET /house/counter`, seven registers,
+     each answering for itself — answered (count and first rows), refused for
+     this role (in words), or not read (a hollow ring, the failure named, *Read
+     again*). The head counts registers, never acts (*5 of 7 registers · 2
+     refused*); nothing sums across a failure. Polled at 60 s and on window
+     focus; offline it freezes and dates itself. The route (and `GET
+     /house/day`) admits a MEMBER only — owner, manager, staff — and refuses a
+     session with no role in the house its token names (ADR 0162), so the
+     aggregate is never a wider door than the reads it sums.
+   - **Acts in place** — each act opens a `Sheet` over the page you are on. A
+     SEALED act completes there on any page with the same ceremony and server
+     seal as its owning page: an order through `SealedApproveDie` (mint when the
+     hold begins, one seal per order, a failed mint approves nothing, the
+     gateway's refusal printed as said); a proposal through its own seal
+     (`POST /ask-ai/actions/:id/seal-challenge` then `sealed-confirm`, subject
+     kind `ai_proposed_action`, migration `20260921114400`) — applied only by the
+     seal, never by a click. Verify, Reply and invitations open their own page;
+     identity candidates say no page decides them yet.
+   - **The width rule, "Open first, then remember"** — open at normal widths on a
+     person's first visits; tucked below 1280 px and on `/reports` and
+     `/inventory` to a ~52 px strip that still shows each verb with its count (a
+     ring for a verb with a register not read, a dash for one refused — never a
+     blank edge); after that each person's choice per page wins. Kept per device
+     in localStorage keyed by the person (`lib/mudavym/counterPrefs.ts` says why
+     not the server route).
+   - **The house said** — the sitting's own log of what the house sealed,
+     refused, or could not read, newest first; module state only, so it clears
+     on reload, and it starts again when the person or the house changes
+     without one (a shared till, a branch switch).
+   - **The palette (⌘K) under the shell** — *On the counter* is its first
+     section (each act opens in place; a register not read is one row saying
+     so, whose action reads again; an act is never kept as a "recent"), then
+     *Rooms* from the same rooms table the rail reads, in place of the legacy
+     Navigation list. Outside the shell the palette is unchanged
+     (`components/mudavym/shellPalette.ts`).
+   - **Offline** — a strip under the header says the device is offline and
+     that the counter keeps its last read, dated, until the device is back; it
+     claims nothing about what a page does offline.
+   - **The phone (below 768 px)** — no rail, no column: four doors on a bottom
+     bar, Counter (a dot) · Rooms · Search · Ask; the counter and the rooms open
+     as sheets; the house header is the only bar and stays sticky.
+   - **The boundary under the shell** — a second `ErrorBoundary` wraps the routed
+     page, so a page crash leaves the rooms, the counter, the bell and the search
+     standing; ITS SCREEN (second pass, 2026-09-21) is `HouseErrorScreen.tsx`,
+     house tokens, the same category words `ErrorBoundary` always computed
+     (network · session · server · unknown) passed through a new render-function
+     `fallback` prop (`ErrorBoundaryFallbackInfo`) rather than a second copy of
+     the class — the outer boundary at `App.tsx` (the shell itself, and every
+     legacy page) is untouched and keeps its own generic screen.
+   - **One house toast** (second pass, 2026-09-21) — `useToast()`
+     (`contexts/ToastContext.tsx`) keeps its exact public surface for its ~9
+     callers, gated the same way: off, its own Radix toasts, byte for byte;
+     on, every call forwards to `sonner` instead, landing on the SAME
+     `<Toaster/>` the ~30 direct `sonner` callers already use
+     (`components/mudavym/AppToaster.tsx`, restyled to house tokens — no
+     red/amber/emerald severity colour, the same rule the counter's ring
+     keeps — capped at 3 visible, `App.tsx`'s one mount). Two rendering
+     systems become one only under the gate; legacy is unchanged.
+   - **The house offline banner** (second pass, 2026-09-21) —
+     `AppOfflineBanner.tsx`, gated the same way (legacy `OfflineBanner`
+     unchanged when off). Sketch 103's rule, queued is never confirmed,
+     applied to this aggregate banner: offline-with-a-queue never says "will
+     sync" (a promise about a future the device cannot keep from here) —
+     "queued on this device — not sent, not confirmed"; back online and
+     sending is its own line, "sent … not yet confirmed"; a send that failed
+     says so in words. The FULL per-record four-rung ladder still needs
+     `useSyncManager` to expose more than an aggregate `pendingCount` — not
+     built (see below).
+   - **The page loader and skeletons** (second pass, 2026-09-21) —
+     `HousePageLoader.tsx`, the ONE Suspense fallback in `App.tsx`, gated
+     (legacy: the original instant `PageLoader`, unchanged). On: a ladder —
+     silent for 400 ms (most chunks are cached and load faster; showing
+     anything for those reads as a stutter), a quiet mark + skeleton from
+     400 ms, "taking longer than usual" past 12 s.
+   - **The in-app 404** (second pass, 2026-09-21) — the defect named below is
+     fixed: the catch-all (`ShellCatchAll.tsx`) is now NESTED under
+     `DashboardLayout`'s route, so it reads the identical `useMudavymDesign`
+     value `DashboardLayout` already resolved before it ever renders — no
+     separate "still deciding" race. Off, `Navigate` home, unchanged. On,
+     `HouseNotFound.tsx` — reads the same rooms table the rail does, names
+     the nearest room the path stood in when there is one, never an internal
+     tool. A path outside the host's crawlable-prefix allow-list never
+     reaches this (ADR 0158's own real 404 answers first).
+   - **E's day line, as a PAGE element** (second pass, 2026-09-21;
+     `components/mudavym/DayLine.tsx`, `apps/api-gateway/src/house/house-day.*`)
+     — on the dashboard and the receiving page (all three renderings), not
+     chrome, self-gated on `shell`; see the two pages' own §Surface notes for
+     the full reduced-scope reasoning (three of the sketch's six registers,
+     drawn as a wrapping tick-chip row rather than the pixel-timed band with
+     DOM-measured no-overlap labels).
+   - **Corrected at the lane's last call (2026-09-21)** — (1) `ToastProvider`
+     is ONE component whose tree shape does not change with the gate: it had
+     returned a House or a Legacy component, and since the house flag answers
+     after the first render that remounted the whole app beneath it (socket,
+     router, every page) once per load; (2) the undo toast the lane was asked
+     for — `useToast().undo(message, onUndo)`, one *Undo* control, an 8 s
+     drain — on both paths; (3) the house offline banner is fixed to the foot
+     of the window (above the four doors on a phone): mounted last in
+     `App.tsx`, its `sticky; top: 0` had left it at y=2497 of a 2527 px page;
+     (4) the day line, the 404, the error screen and the page loader paint the
+     house ground instead of `transparent` — the 404's headline measured about
+     1.1:1 on the legacy page under it; (5) the day line marks *now* by the
+     device's clock among the ticks (hollow offline), says *will read on
+     return* offline, and carries a working *Read again* on a register that
+     did not answer; (6) the proposal sheet says "from the counter": the Ask
+     panel's `ProposalCard` still applies with the unsealed `confirm`.
+   - **Gone everywhere, regardless of the gate** — the floating Wine Agent
+     button (ADR 0149 row 33, ADR 0145): deleted outright (second pass,
+     2026-09-21), not merely unmounted under the shell — a static guard
+     (`__tests__/no-wine-agent-fab.test.ts`) fails the build if it is
+     imported, mounted, or re-exported anywhere. The legacy mobile top bar is
+     gone only UNDER the shell, unchanged outside it.
+   - **Not built** — the Judge/market row (by decision: only once its
+     register exists — no placeholder row, no placeholder route; the day
+     line's `deliveryExpected` and `shifts` registers carry the identical
+     rule for their own reasons, each stated where they are named above); the
+     palette carrying typed text into *Ask Mudavym.*; the offline held-queue
+     row and the full per-record four-rung ladder (the banner above carries
+     that honesty rule at the AGGREGATE level only, pending a richer
+     `useSyncManager`).
 3. **Page anatomy archetypes** — ✅ *proposed map exists (2026-08-26, founder's
    chosen first step)*: seven product archetypes (`command` · `list+detail` ·
    `canvas` · `form` · `calendar` · `chat` · `document`) + three structural buckets
