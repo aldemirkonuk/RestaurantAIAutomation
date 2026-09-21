@@ -595,6 +595,16 @@ closed self-adversarially, in this same round, before ever shipping.
   outcomes, and unlike them it was never tag-shape-constrained, so it was
   also the one place in `skeleton()` that could strip unrelated prose
   sharing a stray `"<"`/`">"` (`"a < b, c > d"`) instead of real markup.
+  [CORRECTED 2026-09-20, r5-gate.json must-fix 1: "changes zero outcomes"
+  held only against THIS suite as it stood that round, not against the
+  shape the retired probe actually matched — a processing instruction
+  (`<?x?>`) and a CDATA section (`<![CDATA[x]]>`) both matched the old
+  `<[^<>]{0,40}>` but match neither the comment nor the tag-grammar strip
+  above, so retiring it silently released both (CONFIRMED with `_scan_text`
+  on HEAD vs. the fix, both spaced and unspaced). Closed the same way the
+  comment was: `_HTML_PI_RE`/`_HTML_CDATA_RE`, no length bound, each on its
+  own unambiguous closing delimiter. Cases I1–I3, counted by
+  `test_the_gate_r5_last_call_added_3_cases`; a mutation per strip.]
   `scripts/test_pr_audit_gate.py` cases H1–H5, counted by
   `test_the_gate_r4_round_added_7_cases`. Measured before/after
   (`_scan_text`, direct call): all five RELEASED before, OWNED after; two
