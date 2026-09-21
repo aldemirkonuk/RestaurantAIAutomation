@@ -31,16 +31,27 @@ def _make_agent():
     agent.config = {"mock_mode": True}
     agent.sms_client = MagicMock()
     agent.sms_client.send_sms = AsyncMock(return_value={"success": True})
-    agent.sms_client.send_sms_with_action_buttons = AsyncMock(return_value={"success": True})
+    agent.sms_client.send_sms_with_action_buttons = AsyncMock(
+        return_value={"success": True}
+    )
     agent.email_client = MagicMock()
     agent.email_client.send_template_email = AsyncMock(return_value={"success": True})
     agent.push_service = MagicMock()
-    agent.push_service.send_approval_notification = AsyncMock(return_value={"success": True})
-    agent.push_service.send_push_notification = AsyncMock(return_value={"success": True})
+    agent.push_service.send_approval_notification = AsyncMock(
+        return_value={"success": True}
+    )
+    agent.push_service.send_push_notification = AsyncMock(
+        return_value={"success": True}
+    )
     return agent
 
 
-MANAGER = {"id": "mgr-1", "name": "Ada", "phone": "+15551234567", "email": "ada@example.com"}
+MANAGER = {
+    "id": "mgr-1",
+    "name": "Ada",
+    "phone": "+15551234567",
+    "email": "ada@example.com",
+}
 
 
 class TestGetBaseUrl:
@@ -65,7 +76,9 @@ class TestGetBaseUrl:
 
 class TestOrderApprovalLinks:
     @pytest.mark.asyncio
-    async def test_approve_and_reject_open_the_order_with_no_token_scheme(self, monkeypatch):
+    async def test_approve_and_reject_open_the_order_with_no_token_scheme(
+        self, monkeypatch
+    ):
         monkeypatch.setenv("FRONTEND_URL", "https://mudavym.com")
         from config.settings import get_settings
 
@@ -73,7 +86,9 @@ class TestOrderApprovalLinks:
         agent = _make_agent()
 
         with (
-            patch.object(agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)),
+            patch.object(
+                agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)
+            ),
             patch.object(
                 agent,
                 "_get_notification_preferences",
@@ -123,7 +138,9 @@ class TestOrderApprovalLinks:
         agent = _make_agent()
 
         with (
-            patch.object(agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)),
+            patch.object(
+                agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)
+            ),
             patch.object(
                 agent,
                 "_get_notification_preferences",
@@ -146,7 +163,11 @@ class TestOrderApprovalLinks:
         kwargs = agent.sms_client.send_sms_with_action_buttons.call_args.kwargs
         assert "..." not in kwargs["message"]
         assert "Approve:" not in kwargs["message"]
-        assert kwargs["approve_url"] == kwargs["reject_url"] == "https://mudavym.com/orders/ord-9"
+        assert (
+            kwargs["approve_url"]
+            == kwargs["reject_url"]
+            == "https://mudavym.com/orders/ord-9"
+        )
 
         get_settings.cache_clear()
 
@@ -161,7 +182,9 @@ class TestDeliveryConfirmationLink:
         agent = _make_agent()
 
         with (
-            patch.object(agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)),
+            patch.object(
+                agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)
+            ),
             patch.object(
                 agent,
                 "_get_notification_preferences",
@@ -199,7 +222,9 @@ class TestDeliveryConfirmationLink:
         agent = _make_agent()
 
         with (
-            patch.object(agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)),
+            patch.object(
+                agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)
+            ),
             patch.object(
                 agent,
                 "_get_notification_preferences",
@@ -247,7 +272,9 @@ class TestNegotiationCompleteLinks:
         agent = _make_agent()
 
         with (
-            patch.object(agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)),
+            patch.object(
+                agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)
+            ),
             patch.object(
                 agent, "_get_notification_preferences", AsyncMock(return_value={})
             ),
@@ -291,7 +318,9 @@ class TestNegotiationCompleteLinks:
         agent = _make_agent()
 
         with (
-            patch.object(agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)),
+            patch.object(
+                agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)
+            ),
             patch.object(
                 agent, "_get_notification_preferences", AsyncMock(return_value={})
             ),
@@ -323,7 +352,9 @@ class TestPathMappings:
     nearest real pages are `/notifications`, `/`, `/logs`."""
 
     @pytest.mark.asyncio
-    async def test_high_priority_alert_sms_uses_notifications_not_alerts(self, monkeypatch):
+    async def test_high_priority_alert_sms_uses_notifications_not_alerts(
+        self, monkeypatch
+    ):
         monkeypatch.setenv("FRONTEND_URL", "https://mudavym.com")
         from config.settings import get_settings
 
@@ -331,12 +362,18 @@ class TestPathMappings:
         agent = _make_agent()
 
         with (
-            patch.object(agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)),
+            patch.object(
+                agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)
+            ),
             patch.object(agent, "_push_targets", AsyncMock(return_value=[])),
             patch.object(agent, "_log_notification", AsyncMock()),
         ):
             await agent.send_high_priority_alert(
-                {"restaurant_id": "rest-A", "title": "Anomaly", "message": "Something odd."}
+                {
+                    "restaurant_id": "rest-A",
+                    "title": "Anomaly",
+                    "message": "Something odd.",
+                }
             )
 
         body = agent.sms_client.send_sms.call_args.args[1]
@@ -357,12 +394,18 @@ class TestPathMappings:
         agent = _make_agent()
 
         with (
-            patch.object(agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)),
+            patch.object(
+                agent, "_get_manager_for_restaurant", AsyncMock(return_value=MANAGER)
+            ),
             patch.object(agent, "_push_targets", AsyncMock(return_value=[])),
             patch.object(agent, "_log_notification", AsyncMock()),
         ):
             await agent.send_fraud_alert(
-                {"restaurant_id": "rest-A", "details": "Suspicious.", "entity": "Vendor X"}
+                {
+                    "restaurant_id": "rest-A",
+                    "details": "Suspicious.",
+                    "entity": "Vendor X",
+                }
             )
 
         body = agent.sms_client.send_sms.call_args.args[1]

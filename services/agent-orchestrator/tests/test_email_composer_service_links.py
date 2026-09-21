@@ -68,7 +68,9 @@ def test_falls_back_to_mudavym_when_frontend_url_is_unset(monkeypatch):
     get_settings.cache_clear()
     svc = _service()
 
-    html = svc._build_manager_review_html({"order_id": "ord-9", "conversation_id": "conv-1"})
+    html = svc._build_manager_review_html(
+        {"order_id": "ord-9", "conversation_id": "conv-1"}
+    )
 
     assert "app.wineops.ai" not in html
     assert 'href="https://mudavym.com/orders/ord-9"' in html
@@ -94,7 +96,9 @@ def test_falls_back_to_mudavym_when_frontend_url_and_environment_are_unset(monke
     get_settings.cache_clear()
     svc = _service()
 
-    html = svc._build_manager_review_html({"order_id": "ord-9", "conversation_id": "conv-1"})
+    html = svc._build_manager_review_html(
+        {"order_id": "ord-9", "conversation_id": "conv-1"}
+    )
 
     assert "app.wineops.ai" not in html
     assert 'href="https://mudavym.com/orders/ord-9"' in html
@@ -115,7 +119,9 @@ def test_falls_back_to_localhost_when_frontend_url_is_unset_in_development(monke
     get_settings.cache_clear()
     svc = _service()
 
-    html = svc._build_manager_review_html({"order_id": "ord-9", "conversation_id": "conv-1"})
+    html = svc._build_manager_review_html(
+        {"order_id": "ord-9", "conversation_id": "conv-1"}
+    )
 
     assert "app.wineops.ai" not in html
     assert 'href="http://localhost:5173/orders/ord-9"' in html
@@ -134,7 +140,9 @@ def test_falls_back_to_localhost_when_frontend_url_is_unset_with_debug(monkeypat
     get_settings.cache_clear()
     svc = _service()
 
-    html = svc._build_manager_review_html({"order_id": "ord-9", "conversation_id": "conv-1"})
+    html = svc._build_manager_review_html(
+        {"order_id": "ord-9", "conversation_id": "conv-1"}
+    )
 
     assert "app.wineops.ai" not in html
     assert 'href="http://localhost:5173/orders/ord-9"' in html
@@ -158,7 +166,9 @@ def test_uses_first_origin_when_frontend_url_is_comma_separated(monkeypatch):
     get_settings.cache_clear()
     svc = _service()
 
-    html = svc._build_manager_review_html({"order_id": "ord-9", "conversation_id": "conv-1"})
+    html = svc._build_manager_review_html(
+        {"order_id": "ord-9", "conversation_id": "conv-1"}
+    )
 
     assert 'href="https://mudavym.com/orders/ord-9"' in html
     # The raw comma-joined string must never leak into the mailed href --

@@ -883,7 +883,9 @@ Please try again or add items to inventory manually.""",
         if manager.get("phone"):
             # `/alerts` is not a route (App.tsx) -- the nearest real page is
             # `/notifications`.
-            sms_body = f"⚠️ {title}\n{message[:140]}\n{self._get_base_url()}/notifications"
+            sms_body = (
+                f"⚠️ {title}\n{message[:140]}\n{self._get_base_url()}/notifications"
+            )
             result = await self.sms_client.send_sms(
                 manager["phone"], sms_body, priority="urgent"
             )
