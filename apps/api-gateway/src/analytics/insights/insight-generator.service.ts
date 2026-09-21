@@ -161,12 +161,22 @@ export class InsightGeneratorService {
     restaurantId: string,
     opts: {
       categories?: InsightCategory[];
+      /**
+       * Only these types (the catalogue's "open live items", ADR 0191). A
+       * narrowed read filters BEFORE the per-category cap, is uncapped unless
+       * `maxPerCategory` is passed, and is NEVER persisted — see below.
+       */
+      candidateKeys?: string[];
       maxPerCategory?: number;
       persist?: boolean;
     } = {},
   ) {
     const startedAt = Date.now();
-    const maxPerCategory = opts.maxPerCategory ?? 5;
+    const narrowed = (opts.candidateKeys?.length ?? 0) > 0;
+    // The cap keeps a MIXED feed readable. A read narrowed to one type is the
+    // manager asking for that type's whole list, so it is not capped.
+    const maxPerCategory =
+      opts.maxPerCategory ?? (narrowed ? Number.POSITIVE_INFINITY : 5);
     const [bundle, suppressions] = await Promise.all([
       this.loadBundle(restaurantId),
       this.actions.listSuppressions(restaurantId),
@@ -188,6 +198,14 @@ export class InsightGeneratorService {
     if (opts.categories?.length) {
       const set = new Set(opts.categories);
       insights = insights.filter((i) => set.has(i.category));
+    }
+    // BEFORE the cap below, never after it: filtering a capped list would
+    // hide a type's live items whenever five higher-scoring insights of other
+    // types share its category, and the catalogue would then say "nothing
+    // live" about a type that fired (ADR 0191).
+    if (narrowed) {
+      const keys = new Set(opts.candidateKeys);
+      insights = insights.filter((i) => keys.has(i.candidateKey));
     }
 
     // ---- The manager's dismissals, honoured HERE ---------------------------
@@ -224,7 +242,11 @@ export class InsightGeneratorService {
       return true;
     });
 
-    if (opts.persist) {
+    // A narrowed read is never persisted, whatever the caller asked:
+    // `persist()` REPLACES every stored row of the requested categories (of
+    // every category when none is named), so writing one type's list back
+    // would delete every other type's stored insights for the house.
+    if (opts.persist && !narrowed) {
       await this.persist(restaurantId, ranked, opts.categories);
     }
 

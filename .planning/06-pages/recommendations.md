@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-19
+updated: 2026-09-21
 links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[promotions]]", "[[reports]]", "[[providers]]", "[[inventory]]", "[[team]]", "[[recommendations-catalog]]"]
 ---
 
@@ -828,7 +828,19 @@ settled:**
   the only shape ADR 0112 allows, and not a founder choice.
 - **The catalogue's read-only-ness** is a standing open fork, not a build
   default: `.planning/handoff/PROGRESS.md` §6 still lists "Recommendations
-  catalog: is it actionable?" among the forks not yet asked.
+  catalog: is it actionable?" among the forks not yet asked. [**CLOSED
+  2026-09-21 by the founder, recorded in [[0191-the-recommendations-catalogue-is-actionable-not-a-read-only-leaf]]:**
+  actionable, not a read-only leaf. Each type can be turned on or off for the
+  house (owner/manager, audited in `system_audit_log`) and opened to its
+  live recommendations with the feed's own one-tap acts (Pin/Dismiss). The
+  owner/manager gate holds on the catalogue's door only — the feed's "whole
+  rule" dismiss and the Dismissed tab's Restore still write the same row for
+  any member; ADR 0191 "The gate holds on one door" leaves that to the
+  founder. Both writes reuse the SAME
+  `recommendation_actions` store NEW-434 already keys `insight:<candidate_key>`
+  — no new table, no migration. Built in `CatalogView.tsx`/`rec-catalog.ts`
+  (lane `recs-catalogue`, `wt-recs-cat`) and `analytics.controller.ts`'s new
+  `PUT insight-catalog/types/:restaurantId/:candidateKey/toggle`.]
 
 **The handoff to sketch 122 (lane `recs-sketch`).** The founder's sketch-120
 feedback (`founder-sketch-decisions-106-115.md:146-151`, batch 3

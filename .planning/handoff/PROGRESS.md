@@ -239,7 +239,8 @@ validated and tenant-scoped. Sources: `/Users/aldemirkonuk/Projects/p4-scratch/w
 
 - **Promotions:** the senders and prospects tabs; the window for "bought N".
 - **Help:** waiting queues; the staff readiness line; contact channels.
-- **Recommendations catalog:** is it actionable?
+- **Recommendations catalog:** is it actionable? [**ANSWERED 2026-09-21** —
+  yes; see [[0191-the-recommendations-catalogue-is-actionable-not-a-read-only-leaf]].]
 - **Public pages:**
   - how /privacy and /v/:slug are treated;
   - resending while signed out;

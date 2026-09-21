@@ -1,5 +1,18 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { INSIGHT_CANDIDATES } from "./insights/insight-catalog";
+import { insightRuleId } from "./insights/suppression";
+
+/** The `system_audit_log.action` a catalogue on/off files (ADR 0191). */
+export type TypeToggleAction =
+  | "recommendation_type_turned_on"
+  | "recommendation_type_turned_off";
+
+/** Whether the audit row reached `system_audit_log`, and why not. */
+export interface TypeToggleAuditReceipt {
+  recorded: boolean;
+  reason: string | null;
+}
 
 /**
  * The manager's disposition against a recommendation card. `active` is the
@@ -213,6 +226,93 @@ export class RecommendationActionsService {
       .single();
     if (error) throw new Error(error.message);
     return this.toRow(data);
+  }
+
+  /**
+   * Turn one catalogue type on or off for the house, and file who did it
+   * (ADR 0191 — the founder, 2026-09-21: "owner/manager only, audited").
+   *
+   * The write is the SAME `recommendation_actions` row a rule-scope dismiss
+   * already writes: the bare `insight:<candidateKey>` key, which
+   * `InsightGeneratorService.generate()` filters every live instance of the
+   * type against. No parallel store.
+   *
+   * "Audited" means a row in `system_audit_log` — the house's audit trail,
+   * the one `recordAccessChange` (team/access-audit.ts) and the settings
+   * register write, and the one /logs reads back. `recommendation_actions`
+   * alone cannot be the audit: it is one row per key, upserted, so turning a
+   * type back on overwrites `created_by` and erases who turned it off.
+   *
+   * The audit write never throws, on the same contract as
+   * `recordAccessChange`: the change has already landed, and failing the
+   * request because the paper failed would report a change that took effect
+   * as one that did not. The receipt goes back to the caller and to the
+   * client, so a lost audit row is visible instead of inferred from a short
+   * log. `actorUserId` is required — `public.users.user_id` from the JWT,
+   * never the body — and the controller refuses the toggle without one.
+   */
+  async setTypeEnabled(
+    restaurantId: string,
+    candidateKey: string,
+    enabled: boolean,
+    actorUserId: string,
+  ): Promise<{
+    row: RecommendationActionRow;
+    ruleKey: string;
+    audit: TypeToggleAuditReceipt;
+  }> {
+    if (!actorUserId) throw new Error("a signed-in actor is required");
+    // Only a type the catalogue actually lists. Without this, the owner door
+    // would write any string — including an instance-scope `a#b#c` key —
+    // and file it in the audit log as a "type".
+    if (!INSIGHT_CANDIDATES.some((c) => c.key === candidateKey))
+      throw new Error(`Unknown catalogue type '${candidateKey}'`);
+    const ruleKey = insightRuleId(candidateKey);
+    const row = await this.setAction(
+      restaurantId,
+      ruleKey,
+      { status: enabled ? "active" : "dismissed" },
+      undefined,
+      actorUserId,
+    );
+
+    const action: TypeToggleAction = enabled
+      ? "recommendation_type_turned_on"
+      : "recommendation_type_turned_off";
+    let audit: TypeToggleAuditReceipt;
+    try {
+      const { error } = await this.dbService
+        .getClient()
+        .from("system_audit_log")
+        .insert({
+          actor_type: "user",
+          actor_id: actorUserId,
+          action,
+          entity_type: "recommendation_type",
+          // `entity_id` is a uuid column and a candidate key is not a uuid:
+          // the restaurant stands as the entity (the settings register's own
+          // convention for a house-wide setting) and the type is named in
+          // `changes`.
+          entity_id: restaurantId,
+          changes: {
+            candidate_key: candidateKey,
+            rule_key: ruleKey,
+            enabled: { to: enabled },
+          },
+          restaurant_id: restaurantId,
+          reason: null,
+        });
+      audit = error
+        ? { recorded: false, reason: error.message }
+        : { recorded: true, reason: null };
+    } catch (err: any) {
+      audit = { recorded: false, reason: err?.message || String(err) };
+    }
+    if (!audit.recorded)
+      this.logger.error(
+        `${action} happened but the audit row did not write: ${audit.reason}`,
+      );
+    return { row, ruleKey, audit };
   }
 
   async bulkSetAction(
