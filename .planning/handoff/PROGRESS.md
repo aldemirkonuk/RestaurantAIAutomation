@@ -41,11 +41,29 @@ p4 after #289, #369 MCP port, and this handoff doc. Those PRs and train 1 (#371)
 as landed or superseded. The endpoint faults (ADR 0147) follow in their own PR.
 
 **Still open, in priority order:**
-1. **#368 text-sender port.** Its five ADR-0121 CLAIMS rows (P0-PUSH, P0-PHONE,
-   P1-WEBHOOK, P1-WINDOW, P1-HTTP-CENSUS) hold locally but REGRESSED in CI's "Decision
-   register matches reality" job. The likely cause is a verify command that depends on
-   the local environment (node_modules or jest). Read those rows' `verify` fields
-   against what that CI job installs.
+1. **#368 text-sender port — RESOLVED on `wt-fin-F`, 2026-09-17, superseding #368.**
+   The cause of the CI regression was confirmed: all five original rows' `verify`
+   fields ran `npx jest`, and CI's `decision-claims` job only checks out the repo —
+   it installs nothing, so `npx` itself was the failure (`.github/workflows/ci.yml:540-548`).
+   Rewritten as ten grep/python-only rows (`ADR-0121-P0-PUSH` through
+   `ADR-0121-P1-STATUS-CALLBACK` in `CLAIMS.jsonl`), none using `npx jest` or `vitest`;
+   `check_decision_claims.sh` 345 checked / 345 holding on this tree. Ten defects a
+   two-pass adversarial judge found were also fixed (ADR 0121's 2026-09-17 review-trail
+   row has the list). **The "Stop it" ceremony question is answered and built** (F3
+   lane, same worktree, same day): the founder said hold-to-approve plus a typed
+   reason, matching this page's other revokes; the one-click fixed-reason control is
+   replaced, with the typed reason kept on the record and both the success and
+   refusal paths under test (see ADR 0121's 2026-09-17 (F3) review-trail row). Three
+   remain, each needing a founder answer: whether an inbound WhatsApp message proves
+   phone reachability, whether "Main line" can be a stated answer, and a
+   founder-authorized production duplicate count before merge.
+   **[CORRECTED 2026-09-19, PR #391 audit M1: the production duplicate count is no longer
+   owed — measured 2026-09-18, founder-authorized, read-only (Supabase MCP SELECT only):
+   both predicates are 0. 0 restaurants hold two live `meta_cloud` credentials sharing a
+   `sender_ref`, and 0 hold two inbound WhatsApp receipts sharing `(restaurant_id,
+   message_id)`. Migration `20260913190100`'s merge precondition is satisfied. The other
+   two forks (phone-reachability override, "Main line" as a stated answer) stay open — see
+   ADR 0121 item 9.]**
 2. **#362 security gate.** Rewrite the guard on PyYAML (brief in section 3).
 3. **#349 nightly E2E.** Its merge of main is in progress in wt-e2e, with 6 conflicts.
 4. **Ports:** calpush, ov0, ov1, ov2, motions (section 4). The founder chose to land all
@@ -54,7 +72,83 @@ as landed or superseded. The endpoint faults (ADR 0147) follow in their own PR.
 
 **Two findings that are fixed nowhere:**
 - `GET /logs` correlationId reads across houses.
-- No unique index on Meta phone number id.
+- ~~No unique index on Meta phone number id.~~ **Fixed on `wt-fin-F`, 2026-09-17**:
+  migration `20260913190100_whatsapp_sender_and_inbound_identity.sql` (two partial
+  unique indexes, additive). Not yet on `main` — lands when this lane's PR merges.
+
+## 0c. The finish goal, 2026-09-16/17 (supersedes 0a and 0b wherever they differ)
+
+The founder set one goal on 2026-09-16: *"complete every page there is ... and remove legacy
+pages and actually full delete them. Commit push deploy everything ... So finish the
+mudavym.com and deploy it."* The decisions that goal produced are [ADR 0149](../decisions/0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once.md)
+(38 answers, the cutover, the deletion manifest as a gated stop) and [ADR 0160](../decisions/0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes.md)
+(his dictated sketch review, page by page, with the pick and what it owes). Read both before
+touching anything below. The audit pipeline every PR now runs through changed the same week:
+[ADR 0090's 2026-09-17 amendment](../decisions/0090-pr-audit-gate-autonomous-merge.md) — one Opus
+planner, two Sonnet reviewers on its plan, the planner resumed for the final say.
+
+**On main (2026-09-17):** #384 (ADR 0149 and the record amendments), #386 (the new audit
+pipeline), #387 (train 1: the overlay foundation adopted from Codex's #374, and a shared
+vendor-intel decision naming its deciding house). The SEO/GEO session landed #385 and #388
+(ADR 0158: robots, sitemaps, llms.txt, per-route heads, a real 404, a served `/v/:slug`).
+Production was verified after #387: the gateway answers `commit 3a752010`, and the live web
+bundle contains `mdv-denied`, a string only that branch added.
+
+**Codex's uncommitted work was rescued and audited.** Everything Codex left in
+`~/Documents/ChatGPT/Mudavym/worktrees` is copied byte-for-byte to
+`/Users/aldemirkonuk/Projects/codex-rescue-2026-09-16/` (690 files; that directory is the
+only backup). Each lane was judged, fixed and independently confirmed before adoption, per
+ADR 0149 row 1. Verdicts: ADOPT after fixes — A overlay foundation (merged), C public doors,
+F text sender, G security gate, IJ admin desk, KL authorize consent; REJECT — B page-action
+integrity (it silently decided the `quantity_received` fork and widened the ADR 0088 staff
+floor app-wide), D overlay packet 1 (money input regression, Escape discarding a receipt,
+absence reported as health), H calendar push, C2 arrival (unreachable page, apply refuses
+valid proposals). The rejected lanes' good parts are being rebuilt, not adopted.
+
+**Branches ready or in flight** (all off `origin/main`, each verified on an archived index):
+
+| Branch / worktree | What it carries | State |
+|---|---|---|
+| `feat/finish-leaks` / `wt-fin-leaks` | logs correlation leak, provider-intelligence tenant leaks, `increment_trust_counter` + `seed_sim_restaurant` revoke (migration 20260917010400, ADR 0159), production source maps off | confirmed, pushed; **in `train/finish-2` (2026-09-18)** |
+| `feat/finish-reports` / `wt-fin-reports` | report exports (CSV + print-ready page), 90-day retention, 50 per house, paging; the MCP-offload direction documented | confirmed, pushed; **in `train/finish-2`** |
+| `feat/finish-rename` / `wt-fin-rename` | one pass, user-visible WineOps to Mudavym | confirmed, pushed; **in `train/finish-2`**; the From-name default the digest added now says Mudavym too |
+| `feat/finish-digest` / `wt-fin-digest` | recommendations digest sender, per-person subscription, off behind `DIGEST_SEND_ENABLED` | ~~confirmed~~ **[2026-09-18: the confirmation missed two red guards, `check_analytics_cost_honesty` exit 2 and `check_order_capture_contract` 13 > 12; fixed in 13b30a59]**, pushed; **in `train/finish-2`** |
+| `feat/finish-security-gate` / `wt-fin-G` | ADR 0142 security gate that can fail and says when it cannot check | confirmed, pushed; gate-owned paths, needs the founder's word |
+| `feat/finish-text-sender` / `wt-fin-F` | WhatsApp leg, Meta webhook, unique-index migration 20260913190100 | fix round; ~~two production duplicate counts owed before merge~~ **[2026-09-18: measured, 0 and 0 — see below]** |
+| `feat/finish-authorize-consent` / `wt-fin-KL` | `/authorize` consent receipts, Ask readings backend behind `ASK_LAUNCHED` | fix round (a state-replay blocker was found and fixed; the `/ask` page is still owed) |
+| `feat/finish-live` / `wt-fin-live` | sixteen locked pages resolve to Mudavym for every house in code, plus `.planning/06-pages/LIVE-CHECKLIST.md` | fix round; the sweep must actually exercise the six pages no house has ever had on |
+| `feat/finish-links` / `wt-fin-links` | `/orders/:id`, `/deliveries/:id`, the dead `app.wineops.ai` links, service-worker actions, template CTAs | fix round |
+| `feat/finish-relay` / `wt-fin-relay` | the `/communications/email` relay behind two locked doors; the person door now queues with ADR 0118's two-minute undo | fix round |
+| `feat/finish-notify` / `wt-fin-notify` | five uncalled senders closed, `send-email` restricted, eleven resolver sites mapped to categories | fix round |
+| `wt-fin-IJ` | the `/admin` operator desk (SQL-only platform grant AND Studio developer) | fix round |
+| `feat/page-{settings,cellar,help,vprices,promos,receiving,recs}` / `wt-pg-*` | the seven pages whose direction ADR 0160 locked | building |
+
+**Sketches.** Thirteen sets are in `.planning/sketches/106`–`118` and published for review at
+`https://claude.ai/artifact/4aFbY744aZv1GR2YmytzdQ`. Picked: 107 B+, 108 A with C's quiet tier,
+109 A with two grafts, 110 A with B's detail (C rejected), 111 A, 112 A with C's chart and paper
+trail, 113 B with C's density and bundles. 106 went back for two SOTA directions (sketch 119);
+120 is a fourth recommendations round; 117 is the vendor scorecard; 118 is the flyleaf login.
+**[CORRECTED 2026-09-19, PR #391 audit B1: the "110 A with B's detail (C rejected)" and "111 A"
+picks above are what ADR 0160 later found were the sketch README's own recommendations, not his
+picks, and rewrote. His actual picks: 110 cellar is **direction B**, the gazetteer, with C **kept
+in mind, not built now** (not rejected, and not "A with B's detail"); 111 help is **delegated to
+the builder**, not "direction A". See ADR 0160 §110/§111 and its 2026-09-18 review-trail row.]**
+
+**Owed by the founder, blocking a merge or a build:** ~~the two production duplicate counts for
+migration 20260913190100 and the published-vendor-page count (the SQL is in the session
+transcript; the CLI here cannot read that project)~~ **[2026-09-18: measured read-only through
+the Supabase connector, which can read project `exzueerziesmczwlhomd`: 0 duplicate groups on
+`house_text_sender_credentials (sender_ref)` live meta rows and 0 on `procurement_conversations
+(restaurant_id, message_id)` whatsapp inbound rows, both because both sets are empty (0 rows,
+0 whatsapp conversations), so the two unique indexes build; `vendor_portal_pages` holds 0 rows,
+0 published, so the `VendorPortal.tsx` client JSON-LD removal is not urgent and stays with the
+cutover]**; his word on `feat/finish-security-gate`
+because it touches gate-owned paths; the pick between sketch 119's shell directions; the wine
+detail surface (ADR 0160 §110 item 4) and the bundle shape (§113) still need drawing.
+
+**What has not started:** `/get-started` (the arrival), `/ask` and the `/sommelier` redirect,
+`/authorize`'s page, the app-shell build, the deletion manifest itself, and the security-headers
+block in `apps/web/vercel.json` (the SEO session owns that file until its PR lands; it has).
 
 ## 0. Latest state (supersedes section 3 wherever they differ)
 
@@ -115,9 +209,9 @@ out), re-verify, commit, and land it alone.
 - Main's `GET /logs` accepts a `correlationId` that reads `event_store` rows across houses
   for any signed-in user. The MCP port removed the same argument from its own tool; see
   p4-scratch/ports/mcp.md.
-- The database allows two houses to hold the same Meta phone number id. The text-sender
-  port refuses that case in code, but the unique index needs its own migration; see
-  p4-scratch/ports/text.md.
+- ~~The database allows two houses to hold the same Meta phone number id.~~ **Fixed on
+  `wt-fin-F`, 2026-09-17**: migration `20260913190100` adds the unique index; see
+  ADR 0121's 2026-09-17 review-trail row. p4-scratch/ports/text.md is superseded here.
 
 ## 1. Rules a continuing session must keep
 
@@ -157,7 +251,7 @@ out), re-verify, commit, and land it alone.
 | Audit depth for the merge queue | "Your word as PASS, no agents" | this file; each PR marker comment |
 | Seven 2026-09-06 branches that never landed | "Triage each, then decide" | this file, section 4 |
 | MCP server (ADR 0132, was Proposed) | "Lock 0132 and land it" | to record in ADR 0132 when ported |
-| Text sender + calendar push | "Land both now" | ADR 0121 / 0111 review rows when ported |
+| Text sender + calendar push | "Land both now" | ADR 0121's review row done (`wt-fin-F`, 2026-09-17, quoted verbatim in the status line) / ADR 0111's still pending |
 | Overlay packets 0, 1, 2 (ADR 0112) | "Port all three now" | when ported |
 | Motions doc (ADR 0134) | "Land it as Proposed" | when ported |
 | #349 nightly E2E trace leak | "Fix trace, then land it" | ADR 0135 "Audit fixes" |
@@ -211,7 +305,7 @@ unresolved**. The agents that were resolving them died on the weekly limit.
 | Port worktree | Branch | Base | Conflicts at apply | Must also do |
 |---|---|---|---|---|
 | `wt-port-mcp` | feat/connect-mudavym-mcp-server | 161d92cc | 2 unmerged, 3 files with markers | Lock ADR 0132 (founder, today). Rename migration `20260906170000_a_house_gives_its_assistant_a_key.sql` to `20260912200000`. Confirm keys are hashed, reads are house-scoped, and a revoked key is refused. check_route_exposure |
-| `wt-port-text` | feat/connect-text-sender | 161d92cc | 3 / 4 | The Meta webhook must verify X-Hub-Signature-256 on the raw body with a timing-safe compare. Main's text module has moved on, so reconcile. Add an ADR 0121 review row |
+| `wt-port-text` | feat/connect-text-sender | 161d92cc | 3 / 4 | **Done on `wt-fin-F`, 2026-09-17** — the Meta webhook verifies X-Hub-Signature-256 on the raw body with `crypto.timingSafeEqual`; reconciled with main's moved text module; ADR 0121 carries a 2026-09-17 review row |
 | `wt-port-calpush` | feat/connect-calendar-push | 161d92cc | 1 / 2 | Rename migration `20260906190000_...` to `20260912200100`. ADR 0111 stays Proposed |
 | `wt-port-ov0` | feat/overlays-packet-0-primitive | 161d92cc | 3 / 4 | ONE Sheet: keep #359's Escape and focus-trap fixes. Add SheetStack, Denied and Stub on main's Sheet API. the OD number it files must not collide. Do not resurrect .planning/01-org files main deleted |
 | `wt-port-ov1` | feat/overlays-packet-1 | 161d92cc | clean (1 file with marker-like text) | A clean apply is not proof: compare every touched file with what #289 rebuilt |

@@ -660,7 +660,9 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               )}
             </div>
 
-            {/* the digest — a control whose sender does not exist */}
+            {/* the digest — its sender is built (ADR 0149 row 26); asking for it, and
+                editing the house's digest, from this page wait on the re-sketch (108).
+                The reason states no deployment fact this page does not read. */}
             <div className="rc-aside-block">
               <div className="rc-micro">Daily digest</div>
               <button type="button" className="rc-dark rc-dark-wide" disabled>
@@ -671,8 +673,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                     : `Stored: ${data.digest.digestEnabled ? 'on' : 'off'}, ${data.digest.digestHour}:00`}
               </button>
               <p className="rc-why">
-                Disabled on purpose: the preference stores, but nothing sends it — no scheduler
-                reads <span className="rc-num">recommendation_digest_prefs</span>.
+                {`Disabled on purpose: this shows the house's stored preference. A digest goes only to a member who asked for it, and asking for it ${EM} or changing the house's digest ${EM} from this page waits on the page's rebuild.`}
               </p>
             </div>
 

@@ -120,10 +120,11 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
     expect(result).toEqual({ sent: true });
     expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
     // ADR 0143's mail rename covers this email too (Lane C judge D5d/F10: no
-    // test previously pinned senderName/subject at this call site, only in
-    // the template's own unit test).
+    // test previously pinned the From name/subject at this call site, only in
+    // the template's own unit test). No From override: absent means
+    // gmail.service's "Mudavym" default.
     const call = gmail.sendEmail.mock.calls[0][0];
-    expect(call.senderName).toBe("Mudavym");
+    expect(call.fromName ?? "Mudavym").toBe("Mudavym");
     expect(call.subject).toBe("Reset your Mudavym password");
     expect(call.to).toEqual(["ada@x.com"]);
   });

@@ -44,8 +44,6 @@ import {
 } from "./email-templates";
 
 export interface EmailOptions {
-  /** Public account mail only; recipient/provider account is unchanged. */
-  senderName?: "Mudavym";
   to: string[];
   subject: string;
   html: string;
@@ -57,19 +55,59 @@ export interface EmailOptions {
   inReplyTo?: string;
   references?: string;
   messageIdHeader?: string;
+  /**
+   * Display name on the From line. Absent means "Mudavym", the name every
+   * existing caller sends since the one-pass rename (ADR 0149, round 11). Only
+   * the recommendations digest passes one today ("Mudavym"). CR, LF, quotes and angle brackets are
+   * stripped, so a name cannot open a second header.
+   */
+  fromName?: string;
+  /**
+   * RFC 2369 `List-Unsubscribe`, plus RFC 8058 `List-Unsubscribe-Post` when
+   * `oneClick` is set. Only an http(s) URL with no whitespace or angle brackets
+   * is emitted; anything else is dropped rather than half-written.
+   */
+  listUnsubscribe?: { url: string; oneClick?: boolean };
+}
+
+/** The display name, made safe to sit inside a quoted From header. */
+export function safeFromName(name: string | undefined): string {
+  const cleaned = (name ?? "").replace(/[\r\n"<>\\]+/g, " ").trim();
+  return cleaned || "Mudavym";
 }
 
 /**
- * The display name on the From line: account mail (verification, password
- * reset, Studio invite) says Mudavym, everything else still says WineOps AI.
- * One of two constants, handed RAW to the encoder that owns the line —
- * mailboxHeader on the Gmail path (ADR 0172), nodemailer's own address
- * object on the SMTP fallback — never pre-quoted into a string here.
+ * The display name as it may be written RAW into a MIME From header (the Gmail
+ * API path builds its own header block; nodemailer does this for the SMTP path).
+ *
+ *  - Plain atext and spaces ("Mudavym", "Meyhouse Palo Alto") are written bare,
+ *    so every existing caller's From line stays a plain name.
+ *  - Any other ASCII (an RFC 5322 special such as `,` `:` `;` `@` `.` `(`) is
+ *    quoted: bare, "Meyhouse, Palo Alto" would parse as two mailboxes.
+ *    `safeFromName` has already removed `"` and `\`, so the quoted form needs no
+ *    escaping.
+ *  - Non-ASCII is an RFC 2047 encoded-word, which must not sit inside quotes.
  */
-function senderDisplayName(
-  options: Pick<EmailOptions, "senderName">,
-): "Mudavym" | "WineOps AI" {
-  return options.senderName === "Mudavym" ? "Mudavym" : "WineOps AI";
+export function fromDisplayName(name: string | undefined): string {
+  const safe = safeFromName(name);
+  if (/^[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]+$/.test(safe)) return safe;
+  if (/^[\x20-\x7e]+$/.test(safe)) return `"${safe}"`;
+  return `=?UTF-8?B?${Buffer.from(safe, "utf8").toString("base64")}?=`;
+}
+
+/** The List-Unsubscribe headers for `options`, or [] when none may be written. */
+export function listUnsubscribeHeaders(
+  spec: EmailOptions["listUnsubscribe"],
+): Array<[string, string]> {
+  if (!spec || typeof spec.url !== "string") return [];
+  if (!/^https?:\/\/[^\s<>]+$/.test(spec.url)) return [];
+  const headers: Array<[string, string]> = [
+    ["List-Unsubscribe", `<${spec.url}>`],
+  ];
+  if (spec.oneClick) {
+    headers.push(["List-Unsubscribe-Post", "List-Unsubscribe=One-Click"]);
+  }
+  return headers;
 }
 
 export interface EmailResult {
@@ -107,7 +145,7 @@ export class GmailService implements OnModuleInit {
     const refreshToken = this.configService.get<string>("GMAIL_REFRESH_TOKEN");
     this.senderEmail =
       this.configService.get<string>("GMAIL_SENDER_EMAIL") ||
-      "notifications@wineops.ai";
+      "notifications@mudavym.com";
 
     if (!clientId || !clientSecret || !refreshToken) {
       this.logger.warn(
@@ -150,7 +188,7 @@ export class GmailService implements OnModuleInit {
 
       // Resolve the actual sender address from the Gmail profile so the From
       // header matches the OAuth2-authorized account. Using a mismatched From
-      // (e.g. notifications@wineops.ai when the account is a @gmail.com address)
+      // (e.g. notifications@mudavym.com when the account is a @gmail.com address)
       // fails SPF/DKIM alignment and lands in spam.
       try {
         const profile = await this.gmail.users.getProfile({ userId: "me" });
@@ -279,7 +317,7 @@ ${daysUntilStockout ? `Days Until Stockout: ~${daysUntilStockout} days` : ""}
 ${data.recommendedQty ? `Recommended Action: Order ${data.recommendedQty} bottles from ${data.preferredSupplier || "preferred supplier"}` : ""}
 ${data.estimatedDelivery ? `Estimated Delivery: ${data.estimatedDelivery}` : ""}
 
-This is an automated alert from WineOps AI.
+This is an automated alert from Mudavym.
     `.trim();
 
     return this.sendEmail({
@@ -318,7 +356,7 @@ This is an automated alert from WineOps AI.
           }`,
       ),
       "",
-      "This is an automated digest from WineOps AI.",
+      "This is an automated digest from Mudavym.",
     ].join("\n");
 
     return this.sendEmail({
@@ -626,6 +664,13 @@ This is an automated alert from WineOps AI.
    */
   private createMimeMessage(options: EmailOptions): string {
     const boundary = `boundary_${Date.now()}`;
+    // The house's own name (ADR 0149 / PR #391) reaches the From header, and it
+    // is handed to ADR 0172's encoder RAW: mailboxPieces already collapses
+    // control characters and escapes `"` and `\` inside the quoted form, so a
+    // house actually called `Ops "Night" Desk` keeps its quotes. safeFromName
+    // would delete them; it stays for the nodemailer path, which builds its own
+    // header block.
+    const fromName = options.fromName?.trim() || "Mudavym";
     const generatedMessageId =
       options.messageIdHeader ||
       `<wineops-${Date.now()}-${Math.random().toString(36).slice(2)}@wineops.ai>`;
@@ -636,7 +681,7 @@ This is an automated alert from WineOps AI.
     // their <msg-id> tokens, never refused. A refusal throws inside sendEmail's try and comes back
     // as { success: false } — nothing is sent with a half-built header block.
     const headers = [
-      mailboxHeader("From", senderDisplayName(options), this.senderEmail),
+      mailboxHeader("From", fromName, this.senderEmail),
       addressListHeader("To", options.to),
       options.cc?.length ? addressListHeader("Cc", options.cc) : "",
       options.bcc?.length ? addressListHeader("Bcc", options.bcc) : "",
@@ -645,6 +690,13 @@ This is an automated alert from WineOps AI.
       threadingHeader("In-Reply-To", options.inReplyTo),
       threadingHeader("References", options.references),
       unstructuredHeader("Subject", options.subject),
+      // List-Unsubscribe carries structured URIs, not free text: RFC 2047 must
+      // NOT touch them. listUnsubscribeHeaders already refuses anything that is
+      // not `https?://` with no whitespace or angle brackets, so no CR/LF can
+      // reach the header block through this path.
+      ...listUnsubscribeHeaders(options.listUnsubscribe).map(
+        ([name, value]) => `${name}: ${value}`,
+      ),
       "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
     ]
@@ -721,7 +773,10 @@ This is an automated alert from WineOps AI.
     });
 
     const info = await transporter.sendMail({
-      from: { name: senderDisplayName(options), address: this.senderEmail },
+      from: `"${safeFromName(options.fromName)}" <${this.senderEmail}>`,
+      headers: Object.fromEntries(
+        listUnsubscribeHeaders(options.listUnsubscribe),
+      ),
       to: options.to.join(", "),
       cc: options.cc?.length ? options.cc.join(", ") : undefined,
       bcc: options.bcc?.length ? options.bcc.join(", ") : undefined,
@@ -767,7 +822,7 @@ This is an automated alert from WineOps AI.
 
     return this.sendEmail({
       to: [data.to],
-      subject: `Welcome to WineOps AI — ${data.restaurantName} is ready 🍷`,
+      subject: `Welcome to Mudavym — ${data.restaurantName} is ready 🍷`,
       html,
     });
   }
@@ -793,7 +848,6 @@ This is an automated alert from WineOps AI.
 
     return this.sendEmail({
       to: [data.to],
-      senderName: "Mudavym",
       subject: `You've been invited to Mudavym Studio as ${data.roleLabel}`,
       html,
     });

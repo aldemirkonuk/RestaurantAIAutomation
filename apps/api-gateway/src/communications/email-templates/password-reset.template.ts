@@ -51,9 +51,6 @@ export function passwordResetEmailTemplate(
   `;
 
   return baseTemplate({
-    branding: { brandName: "Mudavym" },
-    footerAutomated: "This is an automated message from Mudavym.",
-    footerCopyright: `© ${new Date().getFullYear()} Mudavym. All rights reserved.`,
     title: "Reset your Mudavym password",
     preheader: "This link expires in 1 hour.",
     content,

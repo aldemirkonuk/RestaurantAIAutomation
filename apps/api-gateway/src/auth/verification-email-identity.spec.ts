@@ -2,9 +2,9 @@
  * ADR 0143's mail rename covers three emails: verification, password reset,
  * and the Studio invite. `account-email-sender.spec.ts` and
  * `email-templates/account-email-brand.spec.ts` already pin the reset and
- * Studio-invite identity (senderName, subject). Neither covered the
+ * Studio-invite identity (From name, subject). Neither covered the
  * verification email — the first of the three, and the one every new
- * account actually receives — so its `senderName`, `subject` and body were
+ * account actually receives — so its From name, `subject` and body were
  * free to drift back to "WineOps" with nothing failing (Lane C judge D5d/F10).
  *
  * This pins `queueEmailVerification`'s call into `GmailService.sendEmail`:
@@ -63,7 +63,8 @@ describe("queueEmailVerification — account mail identity (ADR 0143)", () => {
     const call = sendEmail.mock.calls[0][0];
 
     expect(call.to).toEqual(["reader@example.test"]);
-    expect(call.senderName).toBe("Mudavym");
+    // No From override: absent means gmail.service's "Mudavym" default.
+    expect(call.fromName ?? "Mudavym").toBe("Mudavym");
     expect(call.subject).toBe("Verify your Mudavym account");
     expect(call.html).toContain("https://mudavym.com/verify-email?token=tok-abc123");
     expect(call.html).toContain("Mudavym");

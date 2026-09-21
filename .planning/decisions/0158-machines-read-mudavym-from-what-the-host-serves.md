@@ -197,7 +197,12 @@ by default.**
 4. When a route is added or removed in `App.tsx`, edit the `/(...)(/.*)?` rewrite in
    `apps/web/vercel.json`; `crawl-surface.test.ts` names the segment.
 5. When `/privacy` or `/login` copy changes, change its registry entry in `routes.ts`.
-6. Security headers for mudavym.com go in `apps/web/vercel.json`, not the repo root.
+6. Security headers for mudavym.com go in `apps/web/vercel.json`, not the repo root. A site-wide
+   `Referrer-Policy` or `X-Robots-Tag` rule must not match the token routes: give its `source` a
+   `(?!reset-password|verify-email|invite/|studio/invite/)` lookahead, or leave those two keys out
+   of it. `crawl-surface.test.ts` checks the slashless token paths on three hosts against every
+   rule, wherever the rule sits; what it does not see is listed under "Known limits",
+   overlapping header rules.
 
 ## Known limits, found by two adversarial passes and left as stated
 
@@ -345,6 +350,47 @@ fixed; the rest are named here rather than silently accepted.
   caller is Vercel's own middleware, a small and stable set of egress addresses, and the fixed
   LRU cache means a repeat view of the same catalogue rarely re-hits the gateway at all; revisit
   the key shape if a shared-fate 503 is ever observed in production.
+- **Overlapping header rules: Vercel's winner is undocumented, so no rule may disagree.**
+  (Added 2026-09-21, after the merge.) The first guard for the token routes found the rule that
+  carries `Referrer-Policy` and checked that one. A site-wide rule appended after it passed the
+  test while, if the later rule wins, the token routes would send its policy instead of
+  `no-referrer`. Measured by mutating `apps/web/vercel.json`: appending such a rule, one setting
+  `X-Robots-Tag: all`, or one conditioned on a cookie passed the old test and fails the new one;
+  a rule whose source leaves the token routes out, and an unrelated `X-Content-Type-Options` rule,
+  still pass. Vercel's `vercel.json` page says nothing about two matching rules setting one key
+  (fetched 2026-09-21), so the guard does not lean on order. What production sends was not
+  measured under a conflicting rule, which needs a deployment carrying one: the census's
+  `token-route` lines read it from whichever deployment they are pointed at, and a repeated header
+  field is read as one joined value, so a second `Referrer-Policy` cannot hide behind the first.
+  A typical `strict-origin-when-cross-origin` is far milder than `no-referrer` (it sends only the
+  origin across sites); the rule is `no-referrer` because this ADR chose it, not because the
+  common alternative leaks a token.
+  What the guard does not see (named by the gate's two reviewers on #417, 2026-09-21):
+    - **Hosts.** It evaluates `mudavym.com`, the retired alias and one preview-shaped host. A
+      rule gated on any other host is skipped, not flagged.
+    - **Sources.** Rules are read as JavaScript regular expressions, not as Vercel's
+      path-to-regexp. A `:name` parameter and a cookie, query, regular-expression or
+      string-valued host condition throw; other syntax that only path-to-regexp reads (a bare
+      `*`) may be mis-evaluated silently.
+    - **Trailing slash.** `/reset-password/`, `/reset-password/?token=x` and `/verify-email/`
+      answer 200 on production with neither `Referrer-Policy` nor `X-Robots-Tag` (measured
+      2026-09-21; the HTML `noindex, nofollow` meta is present, and the app's emails link the
+      slashless form, `auth.service.ts:980` and `:2145`). The token rule's source, from #385,
+      has no optional trailing slash, and neither the guard nor the census probes that form.
+      Tracked by the open CLAIMS row `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH`, which fails
+      the build the day some no-referrer rule matches both forms, however the fix is shaped,
+      until it is flipped; like the guard it reads sources as Python regular expressions, and an
+      unreadable one reads as still open. The fix is one regex in `apps/web/vercel.json` plus
+      the probes, in a follow-up.
+    - **`X-Robots-Tag` off the canonical host.** On the retired alias and the preview-shaped
+      host the guard requires `noindex` in every value and `nofollow` in at least one; only
+      `mudavym.com` is held to exactly `noindex, nofollow`. A rule adding `noindex, follow`
+      on another host passes, which is low risk because those hosts are already `noindex`.
+    - **What the census reads.** The base host only, not `--duplicate-host`; slashless samples
+      only; and `X-Robots-Tag` as a superset (`noindex` and `nofollow` present), so a live
+      `noindex, nofollow, all` passes there while the static guard pins `mudavym.com` to exactly
+      `noindex, nofollow` (reported by the finish session, 2026-09-21). Pinning it is in the
+      follow-up.
 - **The ADR number.** `scripts/check_adr_numbers_unique.py` reports the next free number as
   0150, not 0158, because it sweeps git refs and cannot see an uncommitted file in another
   worktree: ADR 0149 is unpushed in `/Users/aldemirkonuk/Projects/wt-finish` (the main finish
@@ -390,3 +436,5 @@ Vercel API for this team's two projects. Parser behaviour measured locally: Pyth
 | 2026-09-17 | Founder | Three policy forks answered (table above) |
 | 2026-09-17 | Research workflow `wf_ac349d93-063` | 4 finders (Vercel mechanics, crawler standards, team docs, repo mechanics) against the BUILT tree; 2 adversaries (platform/crawler correctness; security/privacy/scale/collision) against the built tree, each re-running the full test suite live rather than trusting a prior report. One real bug found and fixed (the FIFO/LRU cache); the rest are named in "Known limits" above rather than silently accepted |
 | 2026-09-17 | `pr-audit-gate` skill, PR #385 | 3 parallel Opus auditor angles (correctness, CLAUDE.md/ADR compliance, security/blast-radius), each APPROVE WITH NOTES — findings applied: the `ADR_SEO` placeholder, a `CLAIMS.jsonl` UTF-8 re-encode, this ADR's own stale cross-references, a missing `decisions/README.md` row, and the PR description's inaccurate "additive" claim. A mandatory adversarial pass over all three reports then found and OVERTURNED the consensus: robots.txt disallowed its own advertised sitemap (see "Known limits"). Fixed and guarded (a test proven against the exact regression; a census check proven against both the buggy and fixed file as fixtures, catching a bug in the check itself along the way) |
+| 2026-09-21 | Self-review after the merge (session 83e90bf2), ahead of the site-wide security-headers block | The token-route guard was order-blind, and the census had no token-route check. Made the guard order-agnostic and added a live `token-route` census check; both mutation-tested (7 `vercel.json` mutations against old and new guard, 10 census fixtures, a parity mutation, a claim mutation). Production census at `79dfea023`: 28 PASS, 0 FAIL |
+| 2026-09-21 | `pr-audit-gate` skill, PR #417, first head `17a5a3ca8` | Opus planner PLAN: READY; two Sonnet reviewers (correctness and compliance; security and adversarial) APPROVE WITH NOTES; the resumed Opus planner **OVERTURNED**: the sentences the PR had written (cutover item 6 and the `resolved` CLAIMS row) said the guard fails on any disagreeing rule, true only for slashless token paths on three hosts. Both reviewers reproduced a live trailing-slash gap (`/reset-password/` answers with neither header; the HTML `noindex` meta is present). Wording narrowed, the limits recorded under "Known limits", the CLAIMS row's greps hardened against three mutations, and the gap tracked by an `open` CLAIMS row; the code follow-up is a separate PR |

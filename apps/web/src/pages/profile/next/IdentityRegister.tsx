@@ -13,10 +13,9 @@
  * not render as an empty box that a Save would then write as "no phone".
  *
  * The support address is the other one. `VITE_SUPPORT_EMAIL` falls back to
- * `support@mudavym.com` on the shipping page (Profile.tsx:445 — decision 0149
- * row 8) when the env var is unset. This register does not repeat that
- * fallback on purpose (profile.md §7): an unconfigured deployment gets a
- * sentence here, not a mailto that may go nowhere before the mailbox exists.
+ * `support@mudavym.com` on the shipping page (Profile.tsx:445) — the address
+ * ADR 0143 row 8 named for every contact surface. An unconfigured deployment
+ * gets a sentence here, not a mailto that goes nowhere.
  */
 
 import { useState } from 'react';

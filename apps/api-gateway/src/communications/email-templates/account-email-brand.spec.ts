@@ -24,9 +24,9 @@ describe("public account email identity", () => {
     expect(html).toContain("reader@example.test");
     expect(html).toContain("Reviewer");
   });
-  it("preserves unrelated message defaults", () => {
-    expect(
-      baseTemplate({ title: "Example", content: "<p>Example</p>" }),
-    ).toContain("WineOps AI");
+  it("gives unrelated messages the same Mudavym defaults (the PR #391 rename)", () => {
+    const html = baseTemplate({ title: "Example", content: "<p>Example</p>" });
+    expect(html).toContain("Mudavym");
+    expect(html).not.toContain("WineOps");
   });
 });

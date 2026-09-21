@@ -15,9 +15,6 @@ export interface BaseTemplateOptions {
     color?: string;
   };
   showFooter?: boolean;
-  /** Transactional account messages may use the public product identity. */
-  footerCopyright?: string;
-  footerAutomated?: string;
   branding?: RestaurantBranding & {
     brandName?: string;
     brandLogo?: string;
@@ -35,8 +32,6 @@ export function baseTemplate(options: BaseTemplateOptions): string {
     content,
     ctaButton,
     showFooter = true,
-    footerCopyright,
-    footerAutomated,
     branding,
   } = options;
   const { colors, brand, footer, styles } = EMAIL_CONFIG;
@@ -129,10 +124,10 @@ export function baseTemplate(options: BaseTemplateOptions): string {
           <tr>
             <td style="padding: 20px 30px; background-color: ${colors.gray[50]}; border-top: 1px solid ${colors.gray[200]};">
               <p style="margin: 0 0 10px; color: ${colors.gray[500]}; font-size: 12px; text-align: center;">
-                ${footerAutomated ?? footer.automated}
+                ${footer.automated}
               </p>
               <p style="margin: 0; color: ${colors.gray[400]}; font-size: 11px; text-align: center;">
-                ${footerCopyright ?? footer.copyright}
+                ${footer.copyright}
               </p>
             </td>
           </tr>

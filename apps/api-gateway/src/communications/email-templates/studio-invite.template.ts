@@ -42,9 +42,6 @@ export function studioInviteEmailTemplate(data: StudioInviteEmailData): string {
   `;
 
   return baseTemplate({
-    branding: { brandName: "Mudavym" },
-    footerAutomated: "This is an automated message from Mudavym.",
-    footerCopyright: `© ${new Date().getFullYear()} Mudavym. All rights reserved.`,
     title: "Your Mudavym Studio invite",
     preheader: `You've been invited to Mudavym Studio as ${roleLabel}.`,
     content,

@@ -1230,7 +1230,7 @@ The Features section **was** the largest single block of dead controls in the
 product. It is not there any more, and the paragraph that described it was wrong
 about *why* it was dead.
 
-**Corrected 2026-08-26 (OD-86, `OPEN-DECISIONS.md:105`).** This dossier claimed the
+**Corrected 2026-08-26 (OD-86, `OPEN-DECISIONS.md:106`).** This dossier claimed the
 page renders 22 toggles that "write a real row via `PUT /settings/feature-flags`",
 and that one of them, `enable_ai_negotiation`, "genuinely stops the autonomous
 responder". Both halves were false, and the audit found the failure to be a layer
@@ -1347,6 +1347,12 @@ that flipping something changed something.
    empty list with no comment; the rebuilt page says both possibilities.
 
 ## 13. Roadmap
+
+**[2026-09-19, settings-lane follow-up, NOT built]** Founder answer on the digest's free recipient field
+(PR #391 audit, recorded in `recommendations.md` §digest, ANSWERED bracket): when #391 lands, drop the free
+`recipient_email` field from the Settings digest control and add a per-person "send me the digest" opt-in
+here. #391's sender mails only subscribed members and never reads `recipient_email`.
+
 
 > **Added 2026-09-04 by the collapse.**
 > - **Retire the four collapsed registers' code** — `ServicesSection.tsx`,

@@ -53,7 +53,7 @@ describe("the Drive grant discloses the mail archive", () => {
       /Nothing from Drive is copied into Mudavym/i,
     );
     expect(drive.notRequested).toContain(
-      "Reading files you did not create with WineOps",
+      "Reading files you did not create with Mudavym",
     );
   });
 

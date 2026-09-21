@@ -162,7 +162,7 @@ def _send_cap_alert_email(restaurant_id: str, spend: float) -> None:
         ):
             return
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"[WineOps] Per-Restaurant Cap Reached — {restaurant_id[:8]}"
+        msg["Subject"] = f"[Mudavym] Per-Restaurant Cap Reached — {restaurant_id[:8]}"
         msg["From"] = settings.gmail_user
         msg["To"] = settings.manager_email
         body = (

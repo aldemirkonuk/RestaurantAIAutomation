@@ -982,7 +982,6 @@ export class AuthService {
       // Always call sendEmail() — it handles lazy-init and falls back to mock if OAuth unconfigured
       const result = await this.gmailService.sendEmail({
         to: [email],
-        senderName: "Mudavym",
         subject: "Verify your Mudavym account",
         html: this.buildVerificationEmailHtml(verifyUrl),
       });
@@ -2150,7 +2149,6 @@ export class AuthService {
         await import("../communications/email-templates");
       const result = await this.gmailService.sendEmail({
         to: [normalizedEmail],
-        senderName: "Mudavym",
         subject: "Reset your Mudavym password",
         html: passwordResetEmailTemplate({ name: user.name, resetUrl }),
       });
@@ -2389,7 +2387,7 @@ export class AuthService {
       me.email.toLowerCase() !== String(email).toLowerCase()
     ) {
       throw new BadRequestException(
-        "OAuth account email must match your WineOps email",
+        "OAuth account email must match your Mudavym email",
       );
     }
 
