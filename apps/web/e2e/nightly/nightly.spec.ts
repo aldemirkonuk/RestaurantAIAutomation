@@ -292,7 +292,15 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, override
       continue
     }
     const reading = await readPage(page, manifest, entry)
-    await test.info().attach(`${entry.slug}.${mode}.png`, { body: await page.screenshot(), contentType: 'image/png' })
+    // Mask anything the product marks as a rendered credential before the
+    // shutter fires. A screenshot is a picture: scrub_artifacts.py reads bytes,
+    // so a token drawn as glyphs matches no regex and would be published as
+    // "clean" for 30 days from a public repo. /connections renders the house's
+    // iCal feed address — "unauthenticated by design", in the product's own
+    // words — and it sits inside the 1440x900 viewport whenever one of Register
+    // I's reads is still pending, which is exactly when settleDom returns.
+    // Masking at capture is the only control that runs before the bytes exist.
+    await test.info().attach(`${entry.slug}.${mode}.png`, { body: await page.screenshot({ mask: [page.locator('[data-secret]')] }), contentType: 'image/png' })
 
     const newErrors = pageErrors.slice(errorsBefore)
     const evidence = { route, landed, founderCalls: (designCalls[entry.slug] ?? []).map(describeCall), nextRoots: reading.nextRoots, bodyChars: reading.bodyChars, klass: reading.klass, matched: reading.matched, testids: reading.matchedTestIds, pageErrors: newErrors, firstReadingWasFailedRead: reading.firstReadingWasFailedRead ?? false }

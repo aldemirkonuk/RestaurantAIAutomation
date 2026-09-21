@@ -253,7 +253,21 @@ actually lands is whatever the eventual squash-merge body carries).
 The founder chose "Fix trace, then land it". Findings from the 2026-09-11 audit, by status:
 - **1.1 critical (trace leak): fixed.** `playwright.nightly.config.ts` sets `trace: 'off'`
   with the reason in a comment. Screenshots stay, since the audit found they carry no
-  headers or bodies.
+  headers or bodies. **Corrected 2026-09-21 (PR #349 adversarial pass):** that finding
+  was about NETWORK data and was read here as a clearance for screenshots generally,
+  which it never was. A screenshot carries what the page *renders*. `/connections`
+  renders the house's iCal feed address — the product's own words are "an address that
+  is also a credential… unauthenticated by design" — and the adversarial pass measured
+  it inside the 1440×900 viewport at scroll-top in **40 of 243** layout states, reached
+  whenever any of Register I's four reads is still pending. That is not an edge case:
+  `settleDom` returns as soon as body text is *stable*, and pending text is stable, so
+  the walk photographs the loading plateau by construction — and `/communications/text-senders`
+  is in a permanent error loop in production today, holding one register there on every
+  run. The scrub could not see it: it regex-scans bytes, and a token drawn as glyphs
+  matches nothing, so the file was skipped and counted clean. Fixed by masking
+  `[data-secret]` at capture (`nightly.spec.ts`) and by making the scrub report a
+  `not_scanned` bucket instead of silence for file classes it cannot read. There was no
+  accepted-risk record to fall back on — this line had recorded the risk as *ruled out*.
 - **1.2 high (gateway URL unguarded): fixed.** `e2e-prod.yml` refuses an `API_GATEWAY_URL`
   that points at a local address, as it already did for `E2E_BASE_URL`. It also refuses a
   URL that is not https, because that URL receives the test password on every login.

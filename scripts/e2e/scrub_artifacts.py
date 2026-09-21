@@ -6,10 +6,20 @@ audits of PR #349 reproduced a credential reaching files: a bearer token through
 Playwright's "Call log" (2026-09-17, B1) and the plaintext test password through
 `error-context.md` and a failed `fill()` call log (2026-09-17, B2). The walk now
 redacts at the source; this step is the fail-closed backstop for the files the
-nightly actually produces: UTF-8 text, and gzip. It does NOT read a zip (a
-Playwright trace), a UTF-16 log, or a base64 body — none of which the upload set
-contains today, because traces and video are off and apps/web/test-results is
-never copied. Adding any of those to the upload means teaching this scan first.
+nightly actually produces: UTF-8 text, and gzip.
+
+WHAT IT CANNOT DO, said plainly because the previous version of this docstring
+got it wrong (corrected 2026-09-21, PR #349 adversarial pass): it reads BYTES.
+A credential that a page RENDERS is pixels in a PNG and matches no regex here.
+This docstring used to justify not reading binaries on the ground that
+"apps/web/test-results is never copied" — `e2e-prod.yml` copies its `nightly/`
+subtree, screenshots included, and always did. So for a PNG, a zip, or a UTF-16
+log this scan now reports a `not_scanned` bucket rather than counting the file
+clean; the byte scan still runs, so a credential sitting literally in PNG
+metadata is still caught and the file deleted. The control that actually
+protects a screenshot is the capture-time mask in `nightly.spec.ts`, which
+blanks `[data-secret]` before the shutter. Adding a new binary class to the
+upload means teaching this scan, or masking at the source, first.
 
 WHAT: for each file under --dir:
   * text (UTF-8): the password value, JWT-shaped strings, `Bearer <token>` and
@@ -92,6 +102,36 @@ def _scannable(data: bytes) -> str:
     return text
 
 
+# Container and picture magic numbers. A file starting with one of these holds
+# no scannable text at all: its payload is pixels or a compressed member this
+# scan does not open. gzip is deliberately ABSENT -- `_scannable` decompresses
+# it, so a gzipped log IS scanned and must not land in `not_scanned`.
+_OPAQUE_MAGIC = (
+    b"\x89PNG\r\n\x1a\n",  # PNG  -- the nightly's page screenshots
+    b"\xff\xd8\xff",         # JPEG
+    b"GIF87a",
+    b"GIF89a",
+    b"RIFF",                   # WebP / WAV container
+    b"PK\x03\x04",            # zip -- a Playwright trace, off today
+    b"\x00\x00\x00\x18ftyp",  # MP4 -- video, off today
+    b"\x00\x00\x00\x1cftyp",
+    b"\xff\xfe",              # UTF-16 LE BOM
+    b"\xfe\xff",              # UTF-16 BE BOM
+)
+
+
+def _unscannable(data: bytes) -> bool:
+    """True when this scan provably cannot read the file's content.
+
+    Not the same question as "does it leak". A PNG of a page that renders a
+    token carries that token as PIXELS: every regex here misses it and the file
+    would otherwise be counted clean. Saying "I did not read this" is the honest
+    answer, and it is what lets the capture-time mask be audited rather than
+    assumed.
+    """
+    return data.startswith(_OPAQUE_MAGIC)
+
+
 def _leaks(data: bytes, password: str | None) -> bool:
     # The password is looked for in the SCANNABLE text as well as the raw bytes:
     # a gzipped error-context.md hides it from a byte search, and its aria shape
@@ -115,6 +155,7 @@ def scrub(root: Path, password: str | None) -> dict[str, list[str]]:
         "deleted": [],
         "symlinks": [],
         "still_leaking": [],
+        "not_scanned": [],
     }
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
@@ -124,6 +165,23 @@ def scrub(root: Path, password: str | None) -> dict[str, list[str]]:
         if not path.is_file():
             continue
         data = path.read_bytes()
+        if _unscannable(data):
+            # A picture, a zip, a UTF-16 log. The byte scan below STILL runs --
+            # a credential sitting literally in PNG metadata is caught and the
+            # file deleted, exactly as before. What this bucket records is that
+            # a clean result here is not authoritative: `_leaks()` reads bytes,
+            # and a token DRAWN as glyphs matches nothing. Such a file would
+            # otherwise be counted clean, which is this repo's
+            # absence-reported-as-health fault committed by the guard built to
+            # stop it.
+            #
+            # It does not fail the step. A screenshot is the run's evidence, and
+            # the control that actually protects it runs earlier, at capture
+            # time: nightly.spec.ts masks `[data-secret]` before the shutter.
+            # This bucket is what makes that earlier control auditable rather
+            # than assumed -- a reader sees "12 files this scan cannot read"
+            # next to the verdict instead of silence.
+            report["not_scanned"].append(str(path.relative_to(root)))
         if not _leaks(data, password):
             continue
         name = str(path.relative_to(root))
@@ -180,9 +238,10 @@ def main(argv: list[str] | None = None) -> int:
             f"{d}: {len(report['redacted'])} file(s) redacted, "
             f"{len(report['deleted'])} file(s) deleted, "
             f"{len(report['symlinks'])} symlink(s), "
+            f"{len(report['not_scanned'])} file(s) this scan cannot read, "
             f"{len(report['still_leaking'])} still carrying a credential"
         )
-        for key in ("redacted", "deleted", "symlinks"):
+        for key in ("redacted", "deleted", "symlinks", "not_scanned"):
             if report[key]:
                 print(f"  {key}: " + ", ".join(report[key]))
         try:
@@ -194,7 +253,10 @@ def main(argv: list[str] | None = None) -> int:
             worst = 1
         step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
         if step_summary and (
-            report["deleted"] or report["still_leaking"] or report["symlinks"]
+            report["deleted"]
+            or report["still_leaking"]
+            or report["symlinks"]
+            or report["not_scanned"]
         ):
             # A file removed from the evidence is named where the run is read,
             # not only in a log line nobody opens.
@@ -203,7 +265,9 @@ def main(argv: list[str] | None = None) -> int:
                     f"\n**Artifact scrub ({d}):** {len(report['deleted'])} file(s) deleted"
                     f" ({', '.join(report['deleted']) or 'none'}), "
                     f"{len(report['still_leaking'])} still leaking, "
-                    f"{len(report['symlinks'])} symlink(s).\n"
+                    f"{len(report['symlinks'])} symlink(s), "
+                    f"{len(report['not_scanned'])} not readable by this scan "
+                    f"(masked at capture, not scanned here).\n"
                 )
         if report["still_leaking"]:
             print(
@@ -253,13 +317,19 @@ def self_test() -> int:
         (root / "wave_a.log").write_bytes(
             b"\xff\xfe authorization: Bearer " + jwt.encode()
         )
-        (root / "shot.png").write_bytes(b"\x89PNG\x00\xff" + pw.encode() + b"\x00")
+        (root / "shot.png").write_bytes(b"\x89PNG\r\n\x1a\n" + pw.encode() + b"\x00")
+        # A gzipped log: `_scannable` DOES decompress it, so it must be scanned
+        # and redacted-or-deleted like any text, never filed as unreadable.
+        (root / "wave_b.log.gz").write_bytes(
+            gzip.compress(f"authorization: Bearer {jwt}\n".encode())
+        )
         (root / "clean.md").write_text("nothing secret here\n", encoding="utf-8")
         report = scrub(root, pw)
         case("the four text files are redacted", len(report["redacted"]) == 4)
         case(
-            "the two undecodable files are deleted and named",
-            sorted(report["deleted"]) == ["shot.png", "wave_a.log"],
+            "the three undecodable files are deleted and named",
+            sorted(report["deleted"])
+            == ["shot.png", "wave_a.log", "wave_b.log.gz"],
         )
         case("nothing is left leaking", report["still_leaking"] == [])
         case(
@@ -275,6 +345,18 @@ def self_test() -> int:
             "an api key and a refresh token are gone",
             "ADMINKEY_SENTINEL_r3" not in (root / "cascading_report.md").read_text()
             and "REFRESH_SENTINEL_r3" not in (root / "cascading_report.md").read_text(),
+        )
+        # The screenshot class. `shot.png` above carries the password in its
+        # raw bytes, so it is deleted AND named as unreadable; a PNG whose
+        # credential is only RENDERED would match nothing, survive, and be
+        # reported clean -- which is why "not scanned" has to be said out loud.
+        case(
+            "the opaque files are named as ones this scan cannot read",
+            sorted(report["not_scanned"]) == ["shot.png", "wave_a.log"],
+        )
+        case(
+            "a gzip is NOT called unreadable -- _scannable decompresses it",
+            "wave_b.log.gz" not in report["not_scanned"],
         )
 
     with tempfile.TemporaryDirectory() as tmp:

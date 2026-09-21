@@ -309,9 +309,15 @@ jobs:
       # the run; what keeps a token out of that log is lib.ts `gateway()` plus the
       # manifest guard's rule 7 (a text match). And
       # apps/web/test-results/ (error-context.md holds every input's value when a
-      # test fails) is never uploaded (re-audit 2026-09-17, B2). The reporter's
-      # redacted summary and screenshots are copied out; wave_f.xml is copied for
-      # the cascading report and passes the scrub step like everything uploaded.
+      # test fails) is not uploaded WHOLE -- but read the `cp -R` below before
+      # relying on that: its `nightly/` subtree IS copied out, screenshots
+      # included (corrected 2026-09-21; the flat claim was wrong and three other
+      # places in the tree repeated it). The reporter's redacted summary and
+      # those screenshots are what leave; wave_f.xml is copied for the cascading
+      # report. All of it passes the scrub step -- with the limit the scrub now
+      # states out loud: it reads bytes, so for a PNG it reports "cannot read"
+      # rather than "clean", and the control that actually protects a screenshot
+      # is the capture-time `[data-secret]` mask in nightly.spec.ts.
       - name: Wave F — Browser walk (Playwright)
         working-directory: apps/web
         env:

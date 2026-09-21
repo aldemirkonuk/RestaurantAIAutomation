@@ -52,7 +52,12 @@ export default defineConfig({
     // trace carried E2E_TEST_PASSWORD and live session JWTs -- proven with a
     // sentinel password -- into a 30-day artifact on a public repository. This
     // nightly has failed 127 of 130 historical runs, so a trace would be made
-    // almost every night. Screenshots stay: they carry no headers or bodies.
+    // almost every night. Screenshots stay -- but NOT because they are safe:
+    // they carry no headers or bodies, which is a claim about NETWORK data and
+    // says nothing about what the page RENDERS. /connections draws the house's
+    // iCal feed address, a real credential, and the artifact scrub reads bytes
+    // so a token drawn as glyphs matches nothing. What protects a screenshot is
+    // the capture-time mask in nightly.spec.ts (`[data-secret]`), not this line.
     trace: 'off',
     screenshot: 'only-on-failure',
     video: 'off',

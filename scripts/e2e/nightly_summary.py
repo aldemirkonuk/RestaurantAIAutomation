@@ -634,6 +634,13 @@ def self_test() -> int:
             )
         for name, text in over.get("files", {}).items():
             (root / name).write_text(text, encoding="utf-8")
+        # `omit` deletes a file base() just wrote, so a case can ask what
+        # happens when an input is ABSENT rather than malformed. Six of the
+        # branches below are absence branches, and until 2026-09-21 none of
+        # them had a case: flipping any one to "pass" left this self-test green
+        # (PR #349 correctness angle, F1).
+        for name in over.get("omit", ()):
+            (root / name).unlink()
 
     cases: list[tuple[str, dict[str, Any], int, str | None, str | None]] = [
         ("clean run passes", {}, 0, None, None),
@@ -707,6 +714,77 @@ def self_test() -> int:
             },
             1,
             "wave.h.unrecorded.test_guarded[/procurement/documents]",
+            "cannot_check",
+        )
+    )
+    # 2026-09-21, PR #349 correctness F1: six absence branches had no case, so
+    # collapsing any of them to "pass" was a NO-OP mutation -- and this repo's
+    # rule is that a no-op mutation is a failed test. Each case below goes red
+    # if its branch stops saying cannot_check. `summary.corpus` also fires in
+    # several of them (the corpus shrinks when a wave is missing), so each one
+    # asserts on its OWN check id, not just the exit code.
+    cases.append(
+        (
+            "a missing nightly-summary.json is cannot_check, not a pass",
+            {"omit": ["nightly/nightly-summary.json"]},
+            2,
+            "wave.f",
+            "cannot_check",
+        )
+    )
+    cases.append(
+        (
+            "a walk that recorded zero checks is cannot_check, not a pass",
+            {"pw": []},
+            2,
+            "wave.f",
+            "cannot_check",
+        )
+    )
+    cases.append(
+        (
+            "a missing wave_h_checks.jsonl is cannot_check, not a pass",
+            {"omit": ["wave_h_checks.jsonl"]},
+            2,
+            "wave.h",
+            "cannot_check",
+        )
+    )
+    cases.append(
+        (
+            "a state the reporter never defined is cannot_check, not a pass",
+            {
+                "pw": [{"id": "weird", "state": "probably-fine", "reason": "?"}]
+                + [
+                    {"id": f"p{i}", "state": "pass", "reason": "ok"}
+                    for i in range(24)
+                ]
+            },
+            2,
+            "f.weird",
+            "cannot_check",
+        )
+    )
+    cases.append(
+        (
+            "a wave whose every case skipped is cannot_check, not a pass",
+            {
+                "xb": '<testsuite><testcase name="a"><skipped message="no key"/>'
+                '</testcase><testcase name="b"><skipped message="no key"/>'
+                "</testcase></testsuite>"
+            },
+            2,
+            "wave.b",
+            "cannot_check",
+        )
+    )
+    cases.append(
+        (
+            # pytest exits 5 when -k matches nothing -- what a test RENAME does.
+            "a backtest that collected no tests (exit 5) is cannot_check",
+            {"bt": [{"name": "canned_day", "exit": 5}]},
+            2,
+            "backtest.canned_day",
             "cannot_check",
         )
     )
