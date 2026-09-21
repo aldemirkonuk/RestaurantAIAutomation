@@ -251,11 +251,15 @@ export class McpToolReadersService {
     args: { limit?: number },
   ): Promise<ToolPayload> {
     const readAt = this.now();
-    // No correlation id is forwarded, and the tool's schema offers none. Given
-    // one, `getTimeline` also reads `event_store`, which is NOT house-scoped: it
-    // is filtered by the correlation id alone (logs-timeline.service.ts:122-127).
-    // A key could then read any house's events whose id it could name. The
-    // house comes from the credential row and from nowhere else (ADR 0132).
+    // No correlation id is forwarded, and the tool's schema offers none —
+    // not because forwarding one would be unsafe. `getTimeline` now proves
+    // every `event_store` row it returns against restaurantId through its
+    // aggregate before handing it back (logs-timeline.service.ts,
+    // filterEventsOwnedByHouse), so a foreign house's row is withheld even
+    // when a correlation id could name it. The tool simply does not expose
+    // correlation-id lookup as a surface yet — that is a feature-scope
+    // choice, not the security boundary. The house still comes from the
+    // credential row and from nowhere else (ADR 0132).
     const result = await this.timeline.getTimeline(restaurantId, {
       ...(args.limit ? { limit: Math.min(200, Math.max(1, args.limit)) } : {}),
     });
