@@ -859,7 +859,15 @@ export class InventoryService {
   /**
    * Create a new inventory item
    */
-  async createInventoryItem(restaurantId: string, dto: CreateInventoryItemDto) {
+  async createInventoryItem(
+    restaurantId: string,
+    dto: CreateInventoryItemDto,
+    // ADR 0193, founder 2026-09-21 (answer 5): "pass the person through on
+    // add-wine ... so every price version names who set it". From the
+    // verified JWT; the controller has already refused a priced create by
+    // anyone but an owner or manager.
+    actorUserId: string | null = null,
+  ) {
     const client = this.dbService.getClient();
 
     // Look up the canonical wine name once; used in both the re-activation and INSERT paths.
@@ -936,6 +944,13 @@ export class InventoryService {
           wineId: dto.wineId,
           inventoryId: existing.id,
         });
+        const reactPrice = await this.priceOnAdd(
+          client,
+          restaurantId,
+          existing.id,
+          dto,
+          actorUserId,
+        );
         const { data: freshReact } = await client
           .from("restaurant_inventory")
           .select(
@@ -944,10 +959,11 @@ export class InventoryService {
           .eq("id", existing.id)
           .single();
         const reactRollup = await this.fetchLotRollup(restaurantId);
-        return this.mapInventoryItem(
+        const reactMapped = this.mapInventoryItem(
           freshReact ?? reactivated,
           reactRollup.get(existing.id),
         );
+        return reactPrice ? { ...reactMapped, priceChange: reactPrice } : reactMapped;
       }
 
       // Active item: return its ID so the caller can skip re-creation
@@ -974,14 +990,11 @@ export class InventoryService {
     };
     if (dto.saleType !== undefined) insertData.sale_type = dto.saleType;
     if (dto.pourSizeMl !== undefined) insertData.pour_size_ml = dto.pourSizeMl;
-    // The house's own prices (ADR 0193: bottle = menu_price_current). The
-    // price-history trigger (20260921113200) opens this wine's first
-    // menu_price_versions row from this insert; this create path names no
-    // actor, so the row says so in its reason.
-    if (dto.menuPriceGlass !== undefined)
-      insertData.menu_price_glass = dto.menuPriceGlass;
-    if (dto.menuPriceBottle !== undefined)
-      insertData.menu_price_current = dto.menuPriceBottle;
+    // The house's own prices (ADR 0193: bottle = menu_price_current) are NOT
+    // in this insert. They go through set_house_menu_price right after it
+    // (priceOnAdd), so the wine's first menu_price_versions row names the
+    // person who set it (founder, 2026-09-21, answer 5) instead of the
+    // trigger's "no person was named".
     if (dto.bottleSizeMl !== undefined)
       insertData.bottle_size_ml = dto.bottleSizeMl;
     if (dto.glassesPerBottleOverride !== undefined)
@@ -1039,6 +1052,8 @@ export class InventoryService {
       inventoryId: data.id,
     });
 
+    const price = await this.priceOnAdd(client, restaurantId, data.id, dto, actorUserId);
+
     const { data: fresh } = await client
       .from("restaurant_inventory")
       .select(
@@ -1047,7 +1062,45 @@ export class InventoryService {
       .eq("id", data.id)
       .single();
     const rollup = await this.fetchLotRollup(restaurantId);
-    return this.mapInventoryItem(fresh ?? data, rollup.get(data.id));
+    const mapped = this.mapInventoryItem(fresh ?? data, rollup.get(data.id));
+    return price ? { ...mapped, priceChange: price } : mapped;
+  }
+
+  /**
+   * The price named when a wine is added, written through the one writer so
+   * its version row names the person (ADR 0193; founder 2026-09-21, answer 5).
+   * Null when no price was named. The wine itself is already saved when this
+   * runs, so a refused or failed price write is RETURNED, as
+   * `{ outcome: "failed", error }`, for the caller to say out loud -- never
+   * swallowed into a wine that looks priced.
+   */
+  private async priceOnAdd(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    inventoryId: string,
+    prices: { menuPriceBottle?: number; menuPriceGlass?: number },
+    actorUserId: string | null,
+  ): Promise<HousePriceResult | { outcome: "failed"; error: string } | null> {
+    if (prices.menuPriceBottle === undefined && prices.menuPriceGlass === undefined) {
+      return null;
+    }
+    try {
+      return await setHouseMenuPrice(client, {
+        restaurantId,
+        inventoryId,
+        ...(prices.menuPriceBottle !== undefined ? { bottle: prices.menuPriceBottle } : {}),
+        ...(prices.menuPriceGlass !== undefined ? { glass: prices.menuPriceGlass } : {}),
+        source: "manual",
+        changedBy: actorUserId,
+        reason: "set when the wine was added",
+      });
+    } catch (err: any) {
+      const error = err?.message ?? String(err);
+      this.logger.error(
+        `wine ${inventoryId} was added but its price was not saved: ${error}`,
+      );
+      return { outcome: "failed", error };
+    }
   }
 
   /**
@@ -1068,6 +1121,9 @@ export class InventoryService {
   async bulkCreateInventoryItems(
     restaurantId: string,
     dto: BulkCreateInventoryItemsDto,
+    // ADR 0193, founder 2026-09-21 (answer 5): the person on the token, so a
+    // price a new line carries is recorded under their name.
+    actorUserId: string | null = null,
   ) {
     const source = dto.source || "bulk_receive";
     const results: Array<Record<string, any>> = [];
@@ -1087,11 +1143,30 @@ export class InventoryService {
           source,
           dto.reason,
         );
+        // A NEW row's price goes through the one writer, by the person
+        // (receiveBulkLine no longer puts it in the insert). An existing
+        // row's price is left as it is, as before this build.
+        const price =
+          outcome.status === "created"
+            ? await this.priceOnAdd(
+                this.dbService.getClient(),
+                restaurantId,
+                outcome.inventoryId,
+                line,
+                actorUserId,
+              )
+            : null;
 
         results.push({
           index,
           status: outcome.status,
           inventoryId: outcome.inventoryId,
+          ...(price
+            ? {
+                priceSync: price.outcome,
+                ...("error" in price ? { priceError: price.error } : {}),
+              }
+            : {}),
           masterWineId: resolved.masterWineId,
           wineName: resolved.wineName || wineName,
           libraryMatched: resolved.matched,
@@ -1271,11 +1346,8 @@ export class InventoryService {
       if (line.saleType !== undefined) insertData.sale_type = line.saleType;
       if (line.pourSizeMl !== undefined)
         insertData.pour_size_ml = line.pourSizeMl;
-      // ADR 0193: bottle = menu_price_current; the trigger records the version.
-      if (line.menuPriceGlass !== undefined)
-        insertData.menu_price_glass = line.menuPriceGlass;
-      if (line.menuPriceBottle !== undefined)
-        insertData.menu_price_current = line.menuPriceBottle;
+      // ADR 0193: the line's prices are NOT in this insert -- the caller
+      // writes them through set_house_menu_price by the person (priceOnAdd).
       if (line.storageLocationId !== undefined)
         insertData.storage_location_id = line.storageLocationId;
 

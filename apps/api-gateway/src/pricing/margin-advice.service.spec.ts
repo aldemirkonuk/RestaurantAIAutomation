@@ -91,19 +91,33 @@ function service(o: FakeOpts) {
   return { svc, ...f };
 }
 
+// "Close enough" is a PERCENT of the advised price (founder, 2026-09-21). The
+// house has confirmed a 150 ml pour, so glasses are advised.
 const HOUSE_SET = {
   target_margin_bottle_pct: "65.00",
   target_margin_glass_pct: "75.00",
-  target_margin_band_pts: "2.00",
+  target_margin_band_pct: "2.00",
   target_margin_set_by: "user-1",
   target_margin_set_at: "2026-09-21T09:00:00Z",
+  default_pour_ml: 150,
+  pour_size_confirmed_by: "user-1",
+  pour_size_confirmed_at: "2026-09-21T09:05:00Z",
+};
+// Same targets, pour never confirmed: default_pour_ml is the column's DEFAULT 150.
+const HOUSE_POUR_UNCONFIRMED = {
+  ...HOUSE_SET,
+  pour_size_confirmed_by: null,
+  pour_size_confirmed_at: null,
 };
 const HOUSE_UNSET = {
   target_margin_bottle_pct: null,
   target_margin_glass_pct: null,
-  target_margin_band_pts: null,
+  target_margin_band_pct: null,
   target_margin_set_by: null,
   target_margin_set_at: null,
+  default_pour_ml: 150,
+  pour_size_confirmed_by: null,
+  pour_size_confirmed_at: null,
 };
 
 const WINE_A = {
@@ -115,9 +129,11 @@ const WINE_A = {
   menu_price_glass: "10.00",
   last_purchase_price: null,
   bottle_size_ml: 750,
-  pour_size_ml: 150,
+  // A per-wine pour the advice must NOT read: it carries a database DEFAULT
+  // and cannot be told from a typed value (ADR 0193 F7). Were it read, the
+  // glass cost below would be 20 x 50 / 750 = 1.33, not 4.
+  pour_size_ml: 50,
   master_wine_library: { name: "Barolo DOCG", bottle_size_ml: 750 },
-  restaurants: { default_pour_ml: 150 },
 };
 const WINE_NO_COST = {
   ...WINE_A,
@@ -134,17 +150,42 @@ describe("MarginAdviceService.adviseHouse", () => {
     const { svc } = service({ house: HOUSE_SET, inventory: [WINE_A, WINE_NO_COST], rollup: ROLLUP });
     const out = await svc.adviseHouse("rest-1");
 
-    expect(out.target).toEqual({ bottlePct: 65, glassPct: 75, bandPts: 2, set: true });
+    expect(out.target).toEqual({
+      bottlePct: 65,
+      glassPct: 75,
+      bandPct: 2,
+      set: true,
+      pourConfirmed: true,
+      pourMl: 150,
+    });
     const a = out.wines.find((w) => w.inventoryId === "inv-a")!;
     expect(a.costBasis).toBe("invoice_lot_wac");
     expect(a.bottle).toMatchObject({ state: "raise", advisedPrice: 57.14, price: 50 });
     expect(a.glass).toMatchObject({ state: "raise", advisedPrice: 16, price: 10 });
     expect(a.glass!.unitCost).toBeCloseTo(4, 10);
+    expect(a.bottle!.gapPct).toBeCloseTo(-12.5, 6);
 
     const b = out.wines.find((w) => w.inventoryId === "inv-b")!;
     expect(b.bottle!.state).toBe("no_cost");
     expect(b.glass).toBeNull(); // bottle-only wine, no glass price: no glass line at all
     expect(out.counts).toMatchObject({ raise: 2, no_cost: 1, lower: 0, on_target: 0 });
+  });
+
+  it("the house has not confirmed its pour: every glass waits, bottles are advised as before", async () => {
+    const { svc } = service({ house: HOUSE_POUR_UNCONFIRMED, inventory: [WINE_A], rollup: ROLLUP });
+    const out = await svc.adviseHouse("rest-1");
+    expect(out.target).toMatchObject({ pourConfirmed: false, pourMl: null });
+    const a = out.wines[0];
+    expect(a.glass).toMatchObject({ state: "pour_unconfirmed", advisedPrice: null, currentMarginPct: null });
+    expect(a.bottle).toMatchObject({ state: "raise", advisedPrice: 57.14 });
+    expect(out.counts).toMatchObject({ pour_unconfirmed: 1, raise: 1 });
+  });
+
+  it("an unconfirmed pour cannot be accepted for a glass (409), nothing is written", async () => {
+    const { svc, inserts, rpcs } = service({ house: HOUSE_POUR_UNCONFIRMED, inventory: [WINE_A], rollup: ROLLUP });
+    await expect(svc.accept("rest-1", "inv-a", "glass", 16, "user-9")).rejects.toBeInstanceOf(ConflictException);
+    expect(inserts).toHaveLength(0);
+    expect(rpcs).toHaveLength(0);
   });
 
   it("no target set: every line says 'no target', and nothing is advised", async () => {
@@ -200,7 +241,7 @@ describe("MarginAdviceService.accept — one tap, applied only when a manager ac
       recommended_price: 57.14,
       margin_floor_pct: 0.65,
       price_kind: "bottle",
-      band_pts: 2,
+      band_pct: 2,
       elasticity_method: null,
       engine_version: "margin-to-target/1",
     });

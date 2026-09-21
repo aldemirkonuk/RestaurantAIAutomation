@@ -102,6 +102,44 @@ PAGES: tuple[str, ...] = (
     "cellar",
     "connections",
     "document",
+    # ADR 0133 (2026-09-06), added after this tuple's original nineteen —
+    # without it "logs" fails "not a Mudavym page" instead of correctly
+    # reporting the no-op below (live-review.md defect 2).
+    "logs",
+)
+
+# ADR 0149 row 36 (2026-09-17, "16 locked pages"), live-review.md defect 2.
+# `useMudavymDesign.ts`'s `LIVE_PAGES` resolves these for every house in code
+# — the column stays on the row (never dropped) but nothing reads it any more
+# (see LIVE_IN_CODE_FLAGS, apps/api-gateway/src/settings/feature-flag-registry.ts).
+# A flip of one of these writes a column that changes nothing on the floor;
+# reporting that as a normal flip is exactly the "switch that lies" ADR 0020
+# forbids, and the founder's go-live procedure runs this script
+# (go-live-2026-09-06 memory) — it must not tell him a no-op succeeded.
+LIVE_IN_CODE: frozenset[str] = frozenset(
+    {
+        "dashboard",
+        "orders",
+        "receiving_door",
+        "providers",
+        "communications",
+        "team",
+        "inventory",
+        "receipts",
+        "documents_reports",
+        "document",
+        "reports",
+        "calendar",
+        "profile",
+        "connections",
+        "notifications",
+        "logs",
+        # The cellar lane, after row 36: the founder's 2026-09-19 answer was
+        # to build the sketch-121 layout first, then go live for every house
+        # (.planning/06-pages/wines.md, Seventh pass). `/menu` has no column,
+        # so it is not a slug here at all.
+        "cellar",
+    }
 )
 
 
@@ -256,11 +294,28 @@ def self_test() -> int:
     check(fields.get("mudavym_design_orders") == {"from": False, "to": True}, "NULL reads as false before")
     patch, fields = plan_change({"mudavym_design_dashboard": True}, ["dashboard"], False)
     check(fields == {"mudavym_design_dashboard": {"from": True, "to": False}}, "--off diff")
+    # ADR 0149 row 36 / live-review.md defect 2: every LIVE_PAGES page is a
+    # known slug (so it does not 404 as "not a Mudavym page") but is also
+    # live-in-code, so main()'s filter must be able to name it as a no-op.
+    check("logs" in PAGES, "logs (ADR 0133) is a known slug")
+    check(
+        LIVE_IN_CODE
+        == {
+            "dashboard", "orders", "receiving_door", "providers", "communications",
+            "team", "inventory", "receipts", "documents_reports", "document",
+            "reports", "calendar", "profile", "connections", "notifications", "logs",
+            "cellar",
+        },
+        "LIVE_IN_CODE is exactly the sixteen ADR 0149 row 36 names plus the cellar",
+    )
+    check(len(LIVE_IN_CODE) == 17, "seventeen live-in-code pages")
+    check(set(LIVE_IN_CODE) <= set(PAGES), "every live-in-code slug is a known page")
+    check("receiving" not in LIVE_IN_CODE, "the receiving DESK is not live-in-code (only the door is)")
     if failures:
         for f in failures:
             print(f"SELF-TEST FAIL: {f}")
         return 1
-    print("self-test: 9 checks pass, no database touched")
+    print("self-test: 14 checks pass, no database touched")
     return 0
 
 
@@ -384,6 +439,21 @@ def main(argv: Iterable[str] | None = None) -> int:
         print(f"REFUSED: {exc}")
         return 2
     enabled = not args.off
+
+    live_in_code = [p for p in pages if p in LIVE_IN_CODE]
+    if live_in_code:
+        print(
+            "NO-OP -- live in code for every house since ADR 0149 row 36 "
+            "(2026-09-17, 'sixteen locked pages'); the column is no longer read "
+            "(useMudavymDesign.ts LIVE_PAGES / feature-flag-registry.ts "
+            "LIVE_IN_CODE_FLAGS), so flipping it changes nothing on the floor: "
+            + ", ".join(live_in_code)
+        )
+        pages = [p for p in pages if p not in LIVE_IN_CODE]
+        if not pages:
+            print("\nNothing left to flip -- every named page is live in code. Exiting without writing.")
+            return 0
+        print(f"\nContinuing with the {len(pages)} page(s) a flag still gates: {', '.join(pages)}")
 
     load_dotenv_upward(REPO_ROOT, ("SUPABASE_SERVICE_ROLE_KEY",))
     base = os.environ.get("SUPABASE_URL")

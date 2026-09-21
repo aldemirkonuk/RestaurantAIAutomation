@@ -129,17 +129,34 @@ export async function flushSpotCountOutbox(): Promise<{
 /**
  * Flush when the network returns and when the tab regains focus.
  * Returns a cleanup function.
+ *
+ * Fixed 2026-09-19 (wave5/live-confirm.md B2, pre-existing on main): two
+ * defects combined with an unmemoized caller-side `refetch` into a refetch
+ * loop on `/inventory`.
+ *   1. `onChange` used to fire after every flush attempt, even one that sent
+ *      nothing (an empty queue, or every item failing) -- refetching the
+ *      caller's data for a no-op flush. Now it only fires when something was
+ *      actually sent.
+ *   2. The `visibilitychange` listener was an inline arrow, so the returned
+ *      cleanup (which only ever removed `online`) could never remove it --
+ *      every call (e.g. an effect re-running because its own deps were
+ *      unstable) leaked one more. Both listeners are now named and both are
+ *      removed.
  */
 export function watchSpotCountOutbox(onChange?: () => void): () => void {
   const run = () => {
-    void flushSpotCountOutbox().then(() => onChange?.())
+    void flushSpotCountOutbox().then(({ sent }) => {
+      if (sent > 0) onChange?.()
+    })
+  }
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') run()
   }
   window.addEventListener('online', run)
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') run()
-  })
+  document.addEventListener('visibilitychange', onVisible)
   run()
   return () => {
     window.removeEventListener('online', run)
+    document.removeEventListener('visibilitychange', onVisible)
   }
 }

@@ -17,11 +17,11 @@ const drive: PermissionSource = {
   scopes: [
     {
       scope: 'https://www.googleapis.com/auth/drive.file',
-      label: 'Create and manage files WineOps puts in your Drive',
+      label: 'Create and manage files Mudavym puts in your Drive',
     },
     { scope: 'openid', label: 'Confirm which Google account you connected' },
   ],
-  notRequested: ['Reading files you did not create with WineOps', 'Your Gmail messages'],
+  notRequested: ['Reading files you did not create with Mudavym', 'Your Gmail messages'],
 };
 
 const gmailSend: PermissionSource = {
@@ -41,9 +41,9 @@ const gmailSend: PermissionSource = {
 describe('what an integration would ask for', () => {
   it('draws Drive’s bullets from Drive', () => {
     expect(wouldAskFor(drive)).toEqual([
-      { text: 'Create and manage files WineOps puts in your Drive', can: true },
+      { text: 'Create and manage files Mudavym puts in your Drive', can: true },
       { text: 'Confirm which Google account you connected', can: true },
-      { text: 'Reading files you did not create with WineOps', can: false },
+      { text: 'Reading files you did not create with Mudavym', can: false },
       { text: 'Your Gmail messages', can: false },
     ]);
   });
@@ -79,7 +79,7 @@ describe('what one grant holds', () => {
 
   it('matches a stored scope tail against the definition’s full scope URL', () => {
     expect(grantHolds(['drive.file'], drive)[0]).toEqual({
-      text: 'Create and manage files WineOps puts in your Drive',
+      text: 'Create and manage files Mudavym puts in your Drive',
       can: true,
     });
   });

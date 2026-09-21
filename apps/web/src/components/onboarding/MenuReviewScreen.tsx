@@ -1,16 +1,20 @@
 import { useState } from 'react'
 import { AlertTriangle, Check, ChevronDown, Loader2, Plus, Sparkles } from 'lucide-react'
 import { Button } from '../ui/button'
+import { useAuth } from '../../contexts/AuthContext'
 import {
   addMenuItem,
+  makeMenuCurrent,
   reviewMenuItem,
   type MenuImportResult,
   type MenuImportReviewItem,
 } from '../../services/api/menus'
+import { makeCurrentSentence } from '../../pages/menu/next/MenuVersions'
 
 interface MenuReviewScreenProps {
   result: MenuImportResult
-  onConfirm: () => void
+  /** `true` when the menu was made the current one here; otherwise it stays a kept draft. */
+  onConfirm: (madeCurrent?: boolean) => void
   onSkip: () => void
 }
 
@@ -75,6 +79,36 @@ function EditableCell({ value, placeholder, onSave }: EditableCellProps) {
 }
 
 export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreenProps) {
+  // ADR 0193 (menu versions, founder 2026-09-21): a read menu is KEPT as a
+  // draft; after the extraction the person chooses whether it becomes the
+  // current menu. That choice is an owner's or a manager's; the gateway
+  // refuses anyone else regardless of what this screen offers.
+  const auth = useAuth()
+  const role = (auth?.activeRole ?? auth?.user?.role ?? null) as string | null
+  const canChoose = role === 'owner' || role === 'manager'
+  const [choosing, setChoosing] = useState(false)
+  const [chooseError, setChooseError] = useState<string | null>(null)
+  // What the switch did, when there is something to say: a line whose price
+  // failed, or a blank price that kept the last known one. Said here and the
+  // review waits for Continue, rather than moving on as if every price landed
+  // (last-call review, 2026-09-21; /menu says the same sentence).
+  const [madeNote, setMadeNote] = useState<string | null>(null)
+  const makeCurrent = async () => {
+    setChoosing(true)
+    setChooseError(null)
+    try {
+      const made = await makeMenuCurrent(result.menuId)
+      if (made.failed.length > 0 || made.flagged > 0) {
+        setMadeNote(makeCurrentSentence(made))
+        return
+      }
+      onConfirm(true)
+    } catch (e: any) {
+      setChooseError(e?.response?.data?.message || e?.message || 'no reason was given')
+    } finally {
+      setChoosing(false)
+    }
+  }
   const [items, setItems] = useState<MenuImportReviewItem[]>(result.items)
   const [showClean, setShowClean] = useState(false)
   const [addingRow, setAddingRow] = useState(false)
@@ -247,11 +281,41 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
           <button onClick={onSkip} className="text-sm text-gray-400 hover:text-gray-600">
             Skip review
           </button>
-          <Button onClick={onConfirm} className="bg-[#1A5E6B] hover:bg-[#14515C] text-white">
-            <Sparkles className="w-4 h-4 mr-1.5" />
-            Looks good, continue
-          </Button>
+          {madeNote ? (
+            <Button onClick={() => onConfirm(true)} className="bg-[#1A5E6B] hover:bg-[#14515C] text-white">
+              Continue
+            </Button>
+          ) : canChoose ? (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => onConfirm(false)} disabled={choosing}>
+                Keep it, not current
+              </Button>
+              <Button onClick={() => void makeCurrent()} disabled={choosing} className="bg-[#1A5E6B] hover:bg-[#14515C] text-white">
+                <Sparkles className="w-4 h-4 mr-1.5" />
+                {choosing ? 'Making it current...' : 'Make this the current menu'}
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={() => onConfirm(false)} className="bg-[#1A5E6B] hover:bg-[#14515C] text-white">
+              <Sparkles className="w-4 h-4 mr-1.5" />
+              Looks good, continue
+            </Button>
+          )}
         </div>
+        <p className="text-xs text-gray-500 mt-2">
+          This menu is kept either way. Its prices reach your wines only when it is the current menu
+          {canChoose ? '.' : ', which an owner or a manager chooses.'}
+        </p>
+        {madeNote && (
+          <p role="status" className="text-xs text-gray-700 mt-1">
+            {madeNote}
+          </p>
+        )}
+        {chooseError && (
+          <p role="alert" className="text-xs text-red-600 mt-1">
+            It was not made current: {chooseError}. It is kept as a draft.
+          </p>
+        )}
       </div>
     </div>
   )

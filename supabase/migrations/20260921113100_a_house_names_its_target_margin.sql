@@ -29,10 +29,15 @@
 --      spelling, is refused rather than stored as a 0.65 percent target that
 --      would tell a manager to cut every price to almost cost.
 --
--- THE BAND ("close enough"), in margin POINTS. A wine whose margin is within
--- this many points of the target is on target and gets no advice. 0 is
--- allowed and means "advise on any difference". It has no default either, and
--- a target cannot be stored without it (CHECK below), so there is never a
+-- THE BAND ("close enough"), a PERCENT OF THE ADVISED PRICE. A wine whose
+-- price is within this many percent of the advised price is on target and
+-- gets no advice. The founder, 2026-09-21, relayed: "close enough" is a
+-- percent of the advised price (within N% gets no advice), required with the
+-- target, no default -- in his words, "percent is always shown everywhere".
+-- (Written before merge as margin POINTS; changed in place, since no copy of
+-- this migration has ever been applied outside a proof build.) 0 is allowed
+-- and means "advise on any difference". It has no default either, and a
+-- target cannot be stored without it (CHECK below), so there is never a
 -- target whose "close enough" somebody else chose.
 --
 -- WHO TYPED IT TRAVELS WITH IT. The targets, the band, the person and the
@@ -47,7 +52,7 @@
 ALTER TABLE public.restaurants
   ADD COLUMN IF NOT EXISTS target_margin_bottle_pct NUMERIC(5,2),
   ADD COLUMN IF NOT EXISTS target_margin_glass_pct NUMERIC(5,2),
-  ADD COLUMN IF NOT EXISTS target_margin_band_pts NUMERIC(4,2),
+  ADD COLUMN IF NOT EXISTS target_margin_band_pct NUMERIC(4,2),
   ADD COLUMN IF NOT EXISTS target_margin_set_by UUID
     REFERENCES public.users(user_id) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS target_margin_set_at TIMESTAMPTZ;
@@ -56,8 +61,8 @@ COMMENT ON COLUMN public.restaurants.target_margin_bottle_pct IS
   'The gross margin this house needs on a BOTTLE, PERCENT of the selling price (65 = cost is 35 percent of the price). Typed by an owner or manager; no default, no backfill (founder, 2026-09-21, ADR 0193). NULL = not set: price advice says "no target set" instead of advising.';
 COMMENT ON COLUMN public.restaurants.target_margin_glass_pct IS
   'The gross margin this house needs on a GLASS, PERCENT of the glass price. Glass cost = bottle cost x pour ml / bottle ml. Same rules as target_margin_bottle_pct; independent of it (a house may set one and not the other).';
-COMMENT ON COLUMN public.restaurants.target_margin_band_pts IS
-  '"Close enough", in margin POINTS: a wine within this many points of its target gets no advice. 0 = advise on any difference. No default; required whenever a target is set.';
+COMMENT ON COLUMN public.restaurants.target_margin_band_pct IS
+  '"Close enough", a PERCENT of the advised price: a wine whose price is within this many percent of the advised price gets no advice (founder, 2026-09-21: "percent is always shown everywhere"). 0 = advise on any difference. No default; required whenever a target is set.';
 COMMENT ON COLUMN public.restaurants.target_margin_set_by IS
   'Who typed the targets, public.users(user_id) - never auth.users. RESTRICT: a target by nobody is what this prevents.';
 
@@ -90,8 +95,8 @@ BEGIN
     ALTER TABLE public.restaurants
       ADD CONSTRAINT restaurants_target_margin_band_is_plausible
       CHECK (
-        target_margin_band_pts IS NULL
-        OR (target_margin_band_pts >= 0 AND target_margin_band_pts <= 20)
+        target_margin_band_pct IS NULL
+        OR (target_margin_band_pct >= 0 AND target_margin_band_pct <= 20)
       );
   END IF;
 
@@ -108,12 +113,12 @@ BEGIN
       CHECK (
         (target_margin_bottle_pct IS NULL
           AND target_margin_glass_pct IS NULL
-          AND target_margin_band_pts IS NULL
+          AND target_margin_band_pct IS NULL
           AND target_margin_set_by IS NULL
           AND target_margin_set_at IS NULL)
         OR
         ((target_margin_bottle_pct IS NOT NULL OR target_margin_glass_pct IS NOT NULL)
-          AND target_margin_band_pts IS NOT NULL
+          AND target_margin_band_pct IS NOT NULL
           AND target_margin_set_by IS NOT NULL
           AND target_margin_set_at IS NOT NULL)
       );
@@ -131,7 +136,7 @@ BEGIN
   IF (SELECT count(*) FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = 'restaurants'
          AND column_name IN ('target_margin_bottle_pct', 'target_margin_glass_pct',
-                             'target_margin_band_pts', 'target_margin_set_by',
+                             'target_margin_band_pct', 'target_margin_set_by',
                              'target_margin_set_at')) <> 5 THEN
     RAISE EXCEPTION 'the five target-margin columns were not all added';
   END IF;
@@ -142,7 +147,7 @@ BEGIN
     SELECT 1 FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = 'restaurants'
        AND column_name IN ('target_margin_bottle_pct', 'target_margin_glass_pct',
-                           'target_margin_band_pts', 'target_margin_set_by',
+                           'target_margin_band_pct', 'target_margin_set_by',
                            'target_margin_set_at')
        AND column_default IS NOT NULL
   ) THEN
@@ -177,7 +182,7 @@ BEGIN
     FROM public.restaurants
    WHERE target_margin_bottle_pct IS NOT NULL
       OR target_margin_glass_pct IS NOT NULL
-      OR target_margin_band_pts IS NOT NULL;
+      OR target_margin_band_pct IS NOT NULL;
   IF typed_rows <> 0 THEN
     RAISE EXCEPTION
       'this migration wrote % target margins; it must write none - a backfilled target is a default with a different name',

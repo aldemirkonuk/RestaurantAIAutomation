@@ -13,7 +13,11 @@
  *      number is offered as a starting point: nothing implies a house's margin.
  *   2. Units said out loud. A PERCENT of the selling price: 65, not 0.65. The
  *      fraction spelling is refused here and by the gateway with the same
- *      bounds the database holds (5 to 95; the band 0 to 20 points).
+ *      bounds the database holds (5 to 95). "Close enough" is a PERCENT OF THE
+ *      ADVISED PRICE, 0 to 20 (founder, 2026-09-21: "percent is always shown
+ *      everywhere").
+ *   4. The pour, once. Glass advice waits until the house confirms the pour
+ *      it serves (founder, 2026-09-21); bottle advice never does.
  *   3. Three states, never two. A failed read says so; nothing set says what
  *      that costs (every wine reads "no target set"); a set target says who
  *      typed it and when.
@@ -25,6 +29,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Action, Note, Row, fieldStyle } from './SectionKit';
 import { MONO, SANS } from './st-format';
 import {
+  confirmPourSize,
   getTargetMargin,
   setTargetMargin,
   type TargetMarginReadout,
@@ -33,6 +38,25 @@ import {
 export const MIN_PCT = 5;
 export const MAX_PCT = 95;
 export const MAX_BAND = 20;
+export const MIN_POUR_ML = 10;
+export const MAX_POUR_ML = 500;
+
+/** What the pour field means before it is confirmed; one pass, so the button and the sentence agree. */
+export function readPourInput(raw: string, confirmedMl: number | null): { canConfirm: boolean; sentence: string; ml: number | null } {
+  const t = raw.trim().replace(/\s*ml$/i, '');
+  if (t === '') return { canConfirm: false, sentence: 'Type the pour this house serves, in ml (for example 125 or 150).', ml: null };
+  const n = Number(t);
+  if (!Number.isFinite(n)) return { canConfirm: false, sentence: `“${raw.trim()}” is not a number of ml.`, ml: null };
+  if (n < MIN_POUR_ML || n > MAX_POUR_ML) {
+    return { canConfirm: false, sentence: `A pour is between ${MIN_POUR_ML} and ${MAX_POUR_ML} ml.`, ml: null };
+  }
+  if (confirmedMl !== null && n === confirmedMl) return { canConfirm: false, sentence: 'That is the pour already confirmed.', ml: null };
+  return {
+    canConfirm: true,
+    sentence: `Confirm will record a ${n} ml pour. Every glass is then costed as its share of the bottle (${n} ml of the bottle's size) and advised toward your glass target.`,
+    ml: n,
+  };
+}
 
 type Parsed = { value: number | null; error: string | null };
 
@@ -59,8 +83,8 @@ export function readTargetInputs(
   bottleRaw: string,
   glassRaw: string,
   bandRaw: string,
-  recorded: { bottlePct: number | null; glassPct: number | null; bandPts: number | null },
-): { canRecord: boolean; sentence: string; body: { bottlePct: number | null; glassPct: number | null; bandPts: number } | null } {
+  recorded: { bottlePct: number | null; glassPct: number | null; bandPct: number | null },
+): { canRecord: boolean; sentence: string; body: { bottlePct: number | null; glassPct: number | null; bandPct: number } | null } {
   const b = parsePct('bottle', bottleRaw);
   const g = parsePct('glass', glassRaw);
   const err = b.error ?? g.error;
@@ -75,16 +99,21 @@ export function readTargetInputs(
       body: null,
     };
   }
-  const bandT = bandRaw.trim();
+  const bandT = bandRaw.trim().replace(/%$/, '');
   if (bandT === '') {
-    return { canRecord: false, sentence: 'Say how close is close enough, in margin points (2 means within 2 points of the target is fine; 0 means advise on any difference).', body: null };
+    return {
+      canRecord: false,
+      sentence:
+        'Say how close is close enough, as a percent of the advised price (3 means a wine priced within 3 percent of its advised price gets no advice; 0 means advise on any difference).',
+      body: null,
+    };
   }
   const band = Number(bandT);
   if (!Number.isFinite(band) || band < 0 || band > MAX_BAND) {
-    return { canRecord: false, sentence: `“Close enough” is between 0 and ${MAX_BAND} margin points.`, body: null };
+    return { canRecord: false, sentence: `“Close enough” is between 0 and ${MAX_BAND} percent of the advised price.`, body: null };
   }
   const same =
-    b.value === recorded.bottlePct && g.value === recorded.glassPct && band === recorded.bandPts;
+    b.value === recorded.bottlePct && g.value === recorded.glassPct && band === recorded.bandPct;
   if (same) return { canRecord: false, sentence: 'That is what is already recorded.', body: null };
   const parts = [
     b.value !== null ? `${b.value} percent on a bottle` : 'no bottle target',
@@ -92,8 +121,8 @@ export function readTargetInputs(
   ];
   return {
     canRecord: true,
-    sentence: `Record will write ${parts.join(' and ')}, with ${band} point${band === 1 ? '' : 's'} as close enough. Each wine then gets “raise to” or “lower to” this margin from its recorded cost, applied only when a manager accepts it.`,
-    body: { bottlePct: b.value, glassPct: g.value, bandPts: band },
+    sentence: `Record will write ${parts.join(' and ')}, treating a price within ${band} percent of the advised price as close enough. Each wine then gets “raise to” or “lower to” this margin from its recorded cost, applied only when a manager accepts it.`,
+    body: { bottlePct: b.value, glassPct: g.value, bandPct: band },
   };
 }
 
@@ -151,7 +180,11 @@ function TargetMarginBody({
 }: { reg: TargetMarginReadout; canManage: boolean; onRecorded: (reg: TargetMarginReadout) => void }) {
   const [bottle, setBottle] = useState(reg.bottlePct === null ? '' : String(reg.bottlePct));
   const [glass, setGlass] = useState(reg.glassPct === null ? '' : String(reg.glassPct));
-  const [band, setBand] = useState(reg.bandPts === null ? '' : String(reg.bandPts));
+  const [band, setBand] = useState(reg.bandPct === null ? '' : String(reg.bandPct));
+  const [pour, setPour] = useState(reg.pour.ml === null ? '' : String(reg.pour.ml));
+  const [pourBusy, setPourBusy] = useState(false);
+  const [pourFailed, setPourFailed] = useState<string | null>(null);
+  const pourRead = readPourInput(pour, reg.pour.ml);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
@@ -169,6 +202,19 @@ function TargetMarginBody({
       setFailed(messageOf(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const confirmPour = async () => {
+    if (pourRead.ml === null) return;
+    setPourBusy(true);
+    setPourFailed(null);
+    try {
+      onRecorded(await confirmPourSize(pourRead.ml));
+    } catch (err) {
+      setPourFailed(messageOf(err).replace('state the target margin', 'confirm the pour size'));
+    } finally {
+      setPourBusy(false);
     }
   };
 
@@ -212,7 +258,7 @@ function TargetMarginBody({
                   .filter(Boolean)
                   .join(' and ')}
               </strong>
-              , within {reg.bandPts} point{reg.bandPts === 1 ? '' : 's'}.
+              , close enough within {reg.bandPct} percent of the advised price.
             </>
           ) : (
             <>
@@ -231,7 +277,7 @@ function TargetMarginBody({
           <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             {field('st-target-bottle', 'bottle', bottle, setBottle, '%', '65')}
             {field('st-target-glass', 'glass', glass, setGlass, '%', '75')}
-            {field('st-target-band', 'close enough', band, setBand, 'pts', '2')}
+            {field('st-target-band', 'close enough', band, setBand, '% of advised', '3')}
             <Action disabled={!canManage || busy || !read.canRecord} onClick={() => void record()}>
               {busy ? 'Recording…' : 'Record'}
             </Action>
@@ -268,10 +314,79 @@ function TargetMarginBody({
         </p>
       )}
 
+      <Row
+        label="Pour size"
+        consequence={
+          reg.pour.confirmed ? (
+            <>
+              Glasses are costed on a <strong>{reg.pour.ml} ml</strong> pour and advised toward your glass target.
+            </>
+          ) : (
+            <>
+              <strong>No glass is advised yet.</strong> Confirm the pour this house serves, once, and glass advice
+              starts. Bottle advice does not wait for it.
+            </>
+          )
+        }
+        provenance={{
+          kept: 'restaurant',
+          when: reg.pour.confirmedAt,
+          whenUnknown: 'nobody has confirmed it yet, so there is no date to show',
+          verb: 'confirmed',
+        }}
+        control={
+          <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <label
+                htmlFor="st-pour-ml"
+                style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)' }}
+              >
+                pour
+              </label>
+              <input
+                id="st-pour-ml"
+                type="number"
+                inputMode="decimal"
+                step="1"
+                placeholder="125"
+                value={pour}
+                disabled={!canManage || pourBusy}
+                onChange={(e) => setPour(e.target.value)}
+                className="st-ink st-focus"
+                style={{ ...fieldStyle, opacity: canManage ? 1 : 0.45, width: 76, textAlign: 'right' }}
+              />
+              <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3)' }}>ml</span>
+            </span>
+            <Action disabled={!canManage || pourBusy || !pourRead.canConfirm} onClick={() => void confirmPour()}>
+              {pourBusy ? 'Confirming…' : 'Confirm'}
+            </Action>
+          </span>
+        }
+      >
+        <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+          {pourRead.sentence}
+        </p>
+        {reg.pour.confirmedBy?.name && (
+          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '6px 0 0' }}>
+            confirmed by · {reg.pour.confirmedBy.name}
+          </p>
+        )}
+      </Row>
+
+      {pourFailed && (
+        <p
+          role="alert"
+          style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.5, color: 'var(--ink-1)', background: 'var(--paper-2)', borderRadius: 8, padding: '8px 11px', margin: '10px 0 0' }}
+        >
+          The pour was not confirmed — {pourFailed}. Glass advice still waits.
+        </p>
+      )}
+
       <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '14px 0 0' }}>
         How the advice is worked out: price = cost ÷ (1 − target). A bottle that cost 20 at a 65 percent target is
-        57.14. A glass costs its share of the bottle (cost × pour ÷ bottle size). A wine with no recorded cost gets no
-        advice and says so.
+        57.14. A glass costs its share of the bottle (cost × the house's confirmed pour ÷ bottle size). A wine with no
+        recorded cost gets no advice and says so. Close enough is measured as a percent of the advised price: at 3
+        percent, a bottle advised at 57.14 is left alone anywhere from 55.43 to 58.86.
       </p>
     </>
   );

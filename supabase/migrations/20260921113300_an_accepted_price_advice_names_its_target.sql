@@ -19,7 +19,9 @@
 --      price, each with its own target. `price_kind` says which.
 --   2. `pricing_analyses` does not keep the band ("close enough") the advice
 --      was judged against, so an accepted advice could not explain later why
---      a wine 1.5 points off target was or was not advised. `band_pts` keeps it,
+--      a wine 1.5 percent off its advised price was or was not advised.
+--      `band_pct` keeps it (a PERCENT of the advised price, founder
+--      2026-09-21; written before merge in margin points, changed in place),
 --      stored per row for the same reason `margin_floor_pct` is: the house may
 --      change its setting next week and last week's advice must still explain
 --      itself.
@@ -31,12 +33,12 @@
 
 ALTER TABLE public.pricing_analyses
   ADD COLUMN IF NOT EXISTS price_kind TEXT,
-  ADD COLUMN IF NOT EXISTS band_pts NUMERIC(4,2);
+  ADD COLUMN IF NOT EXISTS band_pct NUMERIC(4,2);
 
 COMMENT ON COLUMN public.pricing_analyses.price_kind IS
   'Which of the house''s two prices this analysis advised on: bottle (restaurant_inventory.menu_price_current) or glass (menu_price_glass). NULL on rows written before ADR 0193.';
-COMMENT ON COLUMN public.pricing_analyses.band_pts IS
-  'The house''s "close enough" band, in margin points, at the moment of the advice (restaurants.target_margin_band_pts). Kept per row so an old advice explains itself after the setting changes.';
+COMMENT ON COLUMN public.pricing_analyses.band_pct IS
+  'The house''s "close enough" band, a PERCENT of the advised price, at the moment of the advice (restaurants.target_margin_band_pct). Kept per row so an old advice explains itself after the setting changes.';
 
 DO $$
 BEGIN
@@ -70,9 +72,9 @@ DO $$
 BEGIN
   IF (SELECT count(*) FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = 'pricing_analyses'
-         AND column_name IN ('price_kind', 'band_pts')
+         AND column_name IN ('price_kind', 'band_pct')
          AND column_default IS NULL) <> 2 THEN
-    RAISE EXCEPTION 'pricing_analyses.price_kind / band_pts missing, or carrying a default';
+    RAISE EXCEPTION 'pricing_analyses.price_kind / band_pct missing, or carrying a default';
   END IF;
 
   IF NOT EXISTS (
@@ -83,6 +85,6 @@ BEGIN
     RAISE EXCEPTION 'menu_price_versions.pricing_analysis_id has no FK to pricing_analyses';
   END IF;
 
-  RAISE NOTICE 'pricing_analyses: price_kind + band_pts added (no default); version rows now point at the advice they accepted';
+  RAISE NOTICE 'pricing_analyses: price_kind + band_pct added (no default); version rows now point at the advice they accepted';
 END
 $$;

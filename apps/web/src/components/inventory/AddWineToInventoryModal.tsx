@@ -102,14 +102,18 @@ export function AddWineToInventoryModal({
   const [pourSizeMl, setPourSizeMl] = useState<number>(150);
   const [customPourSizeInput, setCustomPourSizeInput] = useState("");
   const [isCustomPourSize, setIsCustomPourSize] = useState(false);
-  const [menuPriceGlass, setMenuPriceGlass] = useState<number>(0);
+  // `null` = nobody typed a glass price, the same distinction as the bottle
+  // below. It used to default to 0 and be SENT whenever the glass fields
+  // showed: an invented $0.00 glass price, and -- since a price named on add
+  // is an owner's or a manager's (ADR 0193, founder 2026-09-21) -- a refusal
+  // of the whole add for a staff member who never typed one.
+  const [menuPriceGlass, setMenuPriceGlass] = useState<number | null>(null);
   /**
    * `null` means "nobody typed a bottle price" — kept distinct from an
    * explicitly typed 0, the same distinction costPerBottle above makes and
    * for the same reason: a blank field defaulting to 0 turned into a real
-   * $0.00 house price on BottleLeaf (round-4 must_fix). menuPriceGlass still
-   * carries the old `number` / "0 if untouched" shape; that defect is
-   * out of scope here (r4_verdict, "not this task's to fix").
+   * $0.00 house price on BottleLeaf (round-4 must_fix). menuPriceGlass now
+   * has the same shape (2026-09-21, ADR 0193).
    */
   const [menuPriceBottle, setMenuPriceBottle] = useState<number | null>(null);
 
@@ -167,7 +171,7 @@ export function AddWineToInventoryModal({
     setPourSizeMl(150);
     setCustomPourSizeInput("");
     setIsCustomPourSize(false);
-    setMenuPriceGlass(0);
+    setMenuPriceGlass(null);
     setMenuPriceBottle(null);
     setCostPerBottle(null);
     setIsSample(false);
@@ -192,7 +196,8 @@ export function AddWineToInventoryModal({
       const volumeFields: VolumeFields = {
         bottleSizeMl,
         saleType,
-        ...(showGlassFields && { pourSizeMl, menuPriceGlass }),
+        ...(showGlassFields && { pourSizeMl }),
+        ...(showGlassFields && menuPriceGlass !== null && { menuPriceGlass }),
         // menuPriceBottle === null means the field was left blank: omit the
         // key entirely so the API writes NULL, not an invented $0.00 house
         // price (round-4 must_fix; mirrors costPerBottle's null handling
@@ -969,10 +974,13 @@ export function AddWineToInventoryModal({
                             type="number"
                             min="0"
                             step="0.01"
-                            value={menuPriceGlass || ""}
-                            onChange={(e) =>
-                              setMenuPriceGlass(parseFloat(e.target.value) || 0)
-                            }
+                            value={menuPriceGlass ?? ""}
+                            onChange={(e) => {
+                              // Blank stays blank (null); a typed 0 is kept as 0.
+                              const v = e.target.value.trim();
+                              const n = parseFloat(v);
+                              setMenuPriceGlass(v === "" || !Number.isFinite(n) ? null : n);
+                            }}
                             placeholder="0.00"
                             className="w-full pl-7 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-wine-500"
                           />

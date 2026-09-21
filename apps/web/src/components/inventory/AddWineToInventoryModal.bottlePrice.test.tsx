@@ -55,8 +55,10 @@ function renderModal(onAddWine = vi.fn()) {
  * `number | null` and the key is omitted unless a number was actually typed
  * (see costPerBottle's identical null handling in the same component). An
  * explicitly typed 0 still sends `menuPriceBottle: 0` — see the two new
- * tests below. `menuPriceGlass` still carries the old 0-default; that defect
- * is out of scope here.
+ * tests below. [2026-09-21, ADR 0193: `menuPriceGlass` now has the same
+ * shape -- a blank glass price is omitted, never sent as 0; see the last two
+ * tests. A price named on add is an owner's or a manager's, so the invented 0
+ * also refused a staff member's whole add.]
  */
 describe("AddWineToInventoryModal — this house's own bottle price", () => {
   it('shows "Bottle Menu Price" but not "Glass Menu Price" for the default sale type ("bottle")', async () => {
@@ -155,5 +157,32 @@ describe("AddWineToInventoryModal — this house's own bottle price", () => {
     await waitFor(() => expect(onAddWine).toHaveBeenCalled());
     const volumeFields = onAddWine.mock.calls[0][4];
     expect(volumeFields.menuPriceBottle).toBe(0);
+  });
+
+  it("never sends menuPriceGlass when the glass price is left blank -- no invented $0.00", async () => {
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.click(screen.getByRole("button", { name: "Glass" }));
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    const volumeFields = onAddWine.mock.calls[0][4];
+    expect("menuPriceGlass" in volumeFields).toBe(false);
+    expect(volumeFields.pourSizeMl).toBe(150);
+  });
+
+  it("sends a typed glass price, and a typed 0 as 0", async () => {
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.click(screen.getByRole("button", { name: "Glass" }));
+    const glassInput = screen
+      .getByText("Glass Menu Price")
+      .parentElement!.querySelector("input") as HTMLInputElement;
+    await user.type(glassInput, "14");
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(onAddWine.mock.calls[0][4].menuPriceGlass).toBe(14);
   });
 });

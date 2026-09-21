@@ -1945,6 +1945,32 @@ and the notice says on its face that dismissal is per-browser.
   (`WineLibrary.tsx:409-427`) (`v3.0-TECH-DEBT.md:391-393` — catalog reconciliation
   pending).
 
+### Ninth pass, 2026-09-21 — the founder's seven answers, menu versions, and the go-live (ADR 0193, round 2)
+
+The founder answered ADR 0193's seven forks and added menu versions the same day; the
+record, his one verbatim phrase (*"percent is always shown everywhere"*), and the four
+follow-up questions are in [ADR 0193](../decisions/0193-a-house-price-follows-its-menu-and-its-manager-and-advice-aims-at-its-own-margin.md)
+§"Amendment, round 2". This page's share:
+
+- **`/menu` keeps every menu** (`MenuVersions.tsx`): the current one and the last one
+  used named in a sentence, every kept menu with its date or cadence, who read it, its
+  line count, and its source (open the PDF/photo, or why it was not kept); a form to read
+  a new menu with an optional cadence and date; after a read, "Make this the current
+  menu" / "Keep it, not current" (owners and managers; staff are told who chooses). A
+  current menu's line whose price was blank for a price the house has shows the flag's
+  sentence under its status.
+- **The onboarding review screen** offers the same choice after a scan.
+- **Settings, Target margin**: "close enough" is typed as a percent of the advised price;
+  a new "Pour size" row confirms the house's pour once (glass advice waits for it).
+- **`/inventory` "Your price"**: a glass waiting for the pour says "glass waits for your
+  pour size"; a malformed advice answer is "advice unavailable" on the row instead of
+  crashing the page (a merge interaction with main's `InventoryCommandPage.test.tsx`).
+- **Add wine**: a blank glass price is no longer sent as 0.
+- **Go-live**: `cellar` and `menu` join `LIVE_PAGES` (18 keys), on the founder's
+  2026-09-19 answer quoted in the Seventh pass; `mudavym_design_cellar` moves to
+  `LIVE_IN_CODE_FLAGS` and the flip script's live set. `ALWAYS_ON_PAGES` is gone —
+  main's `LIVE_PAGES` is the one mechanism.
+
 ### Gaps outside this page's paths, found while building the cellar (2026-09-02)
 
 Each one is a file the p4 page agent does not own; none was built.

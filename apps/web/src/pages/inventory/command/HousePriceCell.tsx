@@ -259,5 +259,17 @@ function QuietState({ lines, targetSet }: { lines: PriceAdvice[]; targetSet: boo
     )
   if (lines.every((l) => l.state === 'on_target' || l.state === 'no_price') && states.has('on_target'))
     return <span className="text-emerald-600">on target</span>
+  // Glass advice waits for the house's pour (founder, 2026-09-21): said, so a
+  // quiet glass is never read as on target.
+  if (states.has('pour_unconfirmed'))
+    return (
+      <a
+        href="/settings?tab=target-margin"
+        className="text-gray-400 hover:text-gray-600 hover:underline"
+        title={lines.find((l) => l.state === 'pour_unconfirmed')?.sentence}
+      >
+        glass waits for your pour size
+      </a>
+    )
   return null
 }

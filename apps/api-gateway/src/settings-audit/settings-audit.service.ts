@@ -116,6 +116,12 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * against one.
    */
   "target_margin_changed",
+  /**
+   * The house confirmed its pour size (ADR 0193, founder 2026-09-21: glass
+   * price advice appears only after this one-time confirmation). Filed under
+   * the "target-margin" register, where the page asks for it.
+   */
+  "pour_size_confirmed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

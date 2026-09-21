@@ -63,29 +63,36 @@ const ROLLUP = [{ inventory_id: "inv-a", live_qty: 6, wac: "20", has_invoice_cos
 const SET = {
   target_margin_bottle_pct: "65",
   target_margin_glass_pct: null,
-  target_margin_band_pts: "2",
+  target_margin_band_pct: "2",
   target_margin_set_by: "u",
   target_margin_set_at: "2026-09-21T09:00:00Z",
+  default_pour_ml: 150,
+  pour_size_confirmed_by: null,
+  pour_size_confirmed_at: null,
 };
 const UNSET = {
   target_margin_bottle_pct: null,
   target_margin_glass_pct: null,
-  target_margin_band_pts: null,
+  target_margin_band_pct: null,
   target_margin_set_by: null,
   target_margin_set_at: null,
+  default_pour_ml: 150,
+  pour_size_confirmed_by: null,
+  pour_size_confirmed_at: null,
 };
 
 describe("the recommendations feed advises toward the house's target margin (ADR 0193)", () => {
   it("names the wine and the exact price: 'raise to 57.14', with the numbers attached", async () => {
     const out = await feed({ house: SET, inventory: [WINE, NO_COST_WINE], rollup: ROLLUP }).getRecommendations("r-1");
+    expect(out.sourcesUnread).not.toContain("price advice");
     const card = out.recommendations.find((r) => r.ruleKey === "margin_to_target");
     expect(card).toBeDefined();
     expect(card!.category).toBe("pricing");
     expect(card!.observation).toMatch(/^1 price sits outside your target margin: 1 below it, 0 above it\. 1 more cannot be judged/);
-    expect(card!.recommendation).toMatch(/Barolo: Raise the bottle to 57\.14 \(now 50\.00\)/);
+    expect(card!.recommendation).toMatch(/Barolo: Raise the bottle to 57\.14 \(now 50\.00, 12\.5% below it\)/);
     expect(card!.recommendation).toMatch(/Nothing changes until you do\./);
     expect(card!.priceAdvice).toEqual([
-      expect.objectContaining({ inventoryId: "inv-a", kind: "bottle", state: "raise", price: 50, advisedPrice: 57.14, targetPct: 65 }),
+      expect.objectContaining({ inventoryId: "inv-a", kind: "bottle", state: "raise", price: 50, advisedPrice: 57.14, targetPct: 65, gapPct: expect.closeTo(-12.5, 6) }),
     ]);
     expect(out.priceAdviceReadable).toBe(true);
   });
@@ -94,6 +101,29 @@ describe("the recommendations feed advises toward the house's target margin (ADR
     const out = await feed({ house: SET, inventory: [WINE, NO_COST_WINE], rollup: ROLLUP }).getRecommendations("r-1");
     const blind = out.recommendations.find((r) => r.ruleKey === "margin_advice_blind");
     expect(blind?.observation).toMatch(/^1 price cannot be judged against your target margin/);
+  });
+
+  it("a glass target with no confirmed pour: one entry asking for the pour, and no glass advice", async () => {
+    const out = await feed({
+      house: { ...SET, target_margin_glass_pct: "75" },
+      inventory: [{ ...WINE, sale_type: "both", menu_price_glass: "10.00" }],
+      rollup: ROLLUP,
+    }).getRecommendations("r-1");
+    const pour = out.recommendations.find((r) => r.ruleKey === "pour_size_unconfirmed");
+    expect(pour?.observation).toMatch(/^1 glass price cannot be advised yet: this house has not confirmed the pour it serves\./);
+    const card = out.recommendations.find((r) => r.ruleKey === "margin_to_target");
+    expect(card!.priceAdvice!.map((p) => p.kind)).toEqual(["bottle"]);
+  });
+
+  it("the pour confirmed: no pour entry, and the glass is advised", async () => {
+    const out = await feed({
+      house: { ...SET, target_margin_glass_pct: "75", pour_size_confirmed_by: "u", pour_size_confirmed_at: "2026-09-21T09:05:00Z" },
+      inventory: [{ ...WINE, sale_type: "both", menu_price_glass: "10.00" }],
+      rollup: ROLLUP,
+    }).getRecommendations("r-1");
+    expect(out.recommendations.map((r) => r.ruleKey)).not.toContain("pour_size_unconfirmed");
+    const card = out.recommendations.find((r) => r.ruleKey === "margin_to_target");
+    expect(card!.priceAdvice!.map((p) => p.kind).sort()).toEqual(["bottle", "glass"]);
   });
 
   it("no target set: one entry asking for it, and no price advice", async () => {
@@ -117,6 +147,9 @@ describe("the recommendations feed advises toward the house's target margin (ADR
     const out = await feed({ house: SET, inventory: [], rollup: [], inventoryError: "timeout" }).getRecommendations("r-1");
     expect(out.priceAdviceReadable).toBe(false);
     expect(out.priceAdviceReason).toMatch(/could not be read/);
+    // And the digest's "could not read" note names it (merge with main's
+    // sourcesUnread, 2026-09-21): a missing price source is never silent.
+    expect(out.sourcesUnread).toContain("price advice");
     expect(out.recommendations.map((r) => r.ruleKey)).not.toContain("margin_to_target");
   });
 });

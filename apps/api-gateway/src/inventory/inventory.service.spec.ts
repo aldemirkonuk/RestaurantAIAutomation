@@ -263,7 +263,8 @@ describe("InventoryService", () => {
       expect(Object.prototype.hasOwnProperty.call(result, "menuPriceBottle")).toBe(true);
     });
 
-    it("writes menuPriceBottle into menu_price_current on create -- never menu_price_bottle", async () => {
+    it("a price named on create goes through set_house_menu_price BY THE PERSON, never in the INSERT (founder answer 5)", async () => {
+      priceRpc({ outcome: "changed", bottle_price: 62, glass_price: null, previous_bottle: null, previous_glass: null });
       mockSingle
         .mockResolvedValueOnce({ data: { name: "Barolo Riserva" }, error: null })
         .mockResolvedValueOnce({ data: null, error: { code: "PGRST116", message: "not found" } })
@@ -278,18 +279,81 @@ describe("InventoryService", () => {
           error: null,
         });
 
-      await service.createInventoryItem("rest-1", {
-        wineId: "mw-3",
-        stockLive: 3,
-        providerId: null,
-        thresholdMin: 6,
-        thresholdMax: 24,
-        menuPriceBottle: 62,
-      } as any);
+      const result: any = await service.createInventoryItem(
+        "rest-1",
+        {
+          wineId: "mw-3",
+          stockLive: 3,
+          providerId: null,
+          thresholdMin: 6,
+          thresholdMax: 24,
+          menuPriceBottle: 62,
+        } as any,
+        "user-7",
+      );
 
       const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
-      expect(insertCall).toMatchObject({ menu_price_current: 62 });
+      // The insert carries no price, so the trigger never records a version
+      // "by nobody"; the writer below names the person.
+      expect(insertCall).not.toHaveProperty("menu_price_current");
+      expect(insertCall).not.toHaveProperty("menu_price_glass");
       expect(insertCall).not.toHaveProperty("menu_price_bottle");
+      expect(priceCalls()).toHaveLength(1);
+      expect(priceCalls()[0][1]).toMatchObject({
+        p_restaurant_id: "rest-1",
+        p_set_bottle: true,
+        p_bottle_price: 62,
+        p_set_glass: false,
+        p_change_source: "manual",
+        p_changed_by: "user-7",
+        p_reason: "set when the wine was added",
+      });
+      expect(result.priceChange).toMatchObject({ outcome: "changed" });
+    });
+
+    it("a price write that fails after the wine is added is SAID in the response, not swallowed", async () => {
+      priceRpc(null, { code: "22023", message: "a price change names the person who made it" });
+      mockSingle
+        .mockResolvedValueOnce({ data: { name: "Barolo Riserva" }, error: null })
+        .mockResolvedValueOnce({ data: null, error: { code: "PGRST116", message: "not found" } })
+        .mockResolvedValueOnce({ data: { id: "inv-10", wine_name: "Barolo Riserva" }, error: null });
+
+      const result: any = await service.createInventoryItem(
+        "rest-1",
+        { wineId: "mw-6", providerId: null, thresholdMin: 6, thresholdMax: 24, menuPriceGlass: 14 } as any,
+        null,
+      );
+      expect(result.priceChange).toMatchObject({ outcome: "failed" });
+      expect(result.priceChange.error).toMatch(/names the person/);
+    });
+
+    it("bulk: a NEW line's price is written by the person; the insert carries none", async () => {
+      priceRpc({ outcome: "changed", bottle_price: 40, glass_price: 9 });
+      // The line arrives with a wineId. maybeSingle reads, in order: the
+      // library row (resolveBulkLineWine), the house's existing row (none),
+      // and the library name for the new row's label; the insert returns the id.
+      mockMaybeSingle
+        .mockResolvedValueOnce({ data: { id: "mw-9", name: "Rioja", library_tier: 1 }, error: null })
+        .mockResolvedValueOnce({ data: null, error: null })
+        .mockResolvedValueOnce({ data: { name: "Rioja" }, error: null });
+      mockSingle.mockResolvedValueOnce({ data: { id: "inv-11" }, error: null });
+
+      const out: any = await service.bulkCreateInventoryItems(
+        "rest-1",
+        { items: [{ wineId: "mw-9", menuPriceBottle: 40, menuPriceGlass: 9 }] } as any,
+        "user-8",
+      );
+      const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall).not.toHaveProperty("menu_price_current");
+      expect(insertCall).not.toHaveProperty("menu_price_glass");
+      expect(priceCalls()[0][1]).toMatchObject({
+        p_inventory_id: "inv-11",
+        p_bottle_price: 40,
+        p_glass_price: 9,
+        p_changed_by: "user-8",
+        p_change_source: "manual",
+      });
+      expect(out.results[0]).toMatchObject({ status: "created", priceSync: "changed" });
     });
 
     it("omits the bottle price from the INSERT when the caller never sent it -- never a silent 0", async () => {

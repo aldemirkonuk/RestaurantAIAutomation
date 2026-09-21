@@ -25,7 +25,8 @@ const raise: PriceAdvice = {
   unitCost: 20,
   currentMarginPct: 60,
   targetPct: 65,
-  bandPts: 2,
+  bandPct: 2,
+  gapPct: null,
   advisedPrice: 57.14,
   sentence: 'Raise the bottle to 57.14 (now 50.00): today’s margin is 60%, your target is 65%.',
 }
@@ -135,6 +136,36 @@ describe('HousePriceCell', () => {
   it('no target set: the cell says so and points at Settings', () => {
     mount({ advice: ready({ ...raise, state: 'no_target', advisedPrice: null }, false) })
     expect(screen.getByRole('link', { name: 'no target set' })).toHaveAttribute('href', '/settings?tab=target-margin')
+  })
+
+  it('a glass waiting for the house pour says so and points at Settings -- never "on target"', () => {
+    const wait: PriceAdvice = {
+      ...raise,
+      kind: 'glass',
+      state: 'pour_unconfirmed',
+      advisedPrice: null,
+      currentMarginPct: null,
+      sentence: 'Glass advice waits until the house confirms its pour size (Settings, Target margin). Bottle advice does not.',
+    }
+    render(
+      <HousePriceCell
+        inventoryId="inv-1"
+        wineName="Barolo"
+        bottle={null}
+        glass={12}
+        advice={{
+          status: 'ready',
+          targetSet: true,
+          byId: new Map([
+            ['inv-1', { inventoryId: 'inv-1', wineName: 'Barolo', costBasis: 'invoice_lot_wac', costBasisLabel: '', bottleCost: 20, bottle: null, glass: wait }],
+          ]),
+        }}
+        canEdit
+        onChanged={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('glass waits for your pour size')).toHaveAttribute('href', '/settings?tab=target-margin')
+    expect(screen.queryByText('on target')).not.toBeInTheDocument()
   })
 
   it('no recorded cost: says so, never "on target"', () => {

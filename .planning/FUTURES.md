@@ -269,6 +269,26 @@ Locked target for menu/camera capture (product docs + implementation should conv
 
 Details: [SCANNING_PIPELINE_SETUP.md](../SCANNING_PIPELINE_SETUP.md#live-camera-capture-stack-target--2026-07-27), [PROJECT.md](./PROJECT.md) Key Decisions.
 
+### Report/export egress — founder direction, not built (2026-09-17)
+
+Said while closing OD-81's report-export build (`.planning/06-pages/reports.md`
+§13 item 2, `feat/finish-reports`): *"after some number of days exports and
+reports should be pushed out to the house's own store through an MCP
+connector — Google Drive, Notion, Gmail, Outlook, any other data holders
+store out there — or storage becomes a charged feature; regulations need
+checking; we're going to make them as they come."* Not scheduled, not
+designed, and explicitly not spiked into a research environment — recorded
+here so the shape is not lost before it is someone's turn to build it.
+
+Egress here is the REVERSE of `.planning/08-softwares/mudavym-mcp.md`,
+Mudavym's own MCP *server* (the house's data offered OUT to an assistant the
+house brings): this direction is Mudavym as an MCP *client*, pushing a
+written export INTO a store the house already owns — or, failing that,
+charging for the storage Mudavym keeps itself. Regulatory review (data
+residency, and what leaves the product once a restaurant's own figures reach
+a third party's store) is explicitly unresolved, per the founder's own
+"as they come."
+
 ---
 
 ## 10. Non-goals (for now)

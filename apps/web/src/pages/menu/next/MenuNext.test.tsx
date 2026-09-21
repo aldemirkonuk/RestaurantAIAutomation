@@ -29,7 +29,15 @@ vi.mock('../../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/menus')>(
     '../../../services/api/menus',
   );
-  return { ...actual, getMenu: vi.fn(), discardMenuItem: vi.fn(), addMenuItem: vi.fn() };
+  return {
+    ...actual,
+    getMenu: vi.fn(),
+    discardMenuItem: vi.fn(),
+    addMenuItem: vi.fn(),
+    // The kept-menus panel (MenuVersions.tsx, its own test file) reads on
+    // mount; here it answers "none kept" so this file tests the current menu.
+    listMenuVersions: vi.fn().mockResolvedValue({ current: null, lastUsed: null, versions: [] }),
+  };
 });
 
 vi.mock('../../../services/api/settings', async () => {
@@ -102,7 +110,9 @@ describe('MenuNext — reading', () => {
   it('shows a loading state, then the lines once the read settles', async () => {
     mockGetMenu.mockResolvedValue(menu());
     mount();
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    // The kept-menus panel reads on mount too, so the menu's own status line
+    // is named rather than "the only status on the page".
+    expect(screen.getByText('Reading the menu…')).toHaveAttribute('role', 'status');
     expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
   });
 

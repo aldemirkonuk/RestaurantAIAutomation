@@ -12,7 +12,14 @@
 import { apiClient } from './client'
 
 export type PriceKind = 'bottle' | 'glass'
-export type AdviceState = 'no_target' | 'no_price' | 'no_cost' | 'on_target' | 'raise' | 'lower'
+export type AdviceState =
+  | 'no_target'
+  | 'pour_unconfirmed'
+  | 'no_price'
+  | 'no_cost'
+  | 'on_target'
+  | 'raise'
+  | 'lower'
 
 export interface PriceAdvice {
   kind: PriceKind
@@ -21,9 +28,12 @@ export interface PriceAdvice {
   unitCost: number | null
   currentMarginPct: number | null
   targetPct: number | null
-  bandPts: number | null
+  /** "Close enough", a PERCENT of the advised price (founder, 2026-09-21). */
+  bandPct: number | null
   /** Set only for raise / lower: the exact price that reaches the target. */
   advisedPrice: number | null
+  /** Today's price against the advised one, PERCENT of the advised price (negative = below). */
+  gapPct: number | null
   sentence: string
 }
 
@@ -40,7 +50,15 @@ export interface WineAdvice {
 export interface HouseAdvice {
   restaurantId: string
   generatedAt: string
-  target: { bottlePct: number | null; glassPct: number | null; bandPts: number | null; set: boolean }
+  target: {
+    bottlePct: number | null
+    glassPct: number | null
+    bandPct: number | null
+    set: boolean
+    /** Glass advice waits until the house confirms its pour (founder, 2026-09-21). */
+    pourConfirmed: boolean
+    pourMl: number | null
+  }
   wines: WineAdvice[]
   counts: Record<AdviceState, number>
 }
@@ -49,7 +67,14 @@ export interface TargetMarginReadout {
   restaurantId: string
   bottlePct: number | null
   glassPct: number | null
-  bandPts: number | null
+  bandPct: number | null
+  /** The house's pour: reported only once confirmed (before that it is the database's 150 ml default). */
+  pour: {
+    confirmed: boolean
+    ml: number | null
+    confirmedAt: string | null
+    confirmedBy: { userId: string | null; name: string | null } | null
+  }
   readable: boolean
   reason: string | null
   statedAt: string | null
@@ -82,8 +107,14 @@ export async function getTargetMargin(): Promise<TargetMarginReadout> {
 export async function setTargetMargin(body: {
   bottlePct: number | null
   glassPct: number | null
-  bandPts: number
+  bandPct: number
 }): Promise<TargetMarginReadout> {
   const { data } = await apiClient.put<TargetMarginReadout>('/pricing/target-margin', body)
+  return data
+}
+
+/** Confirm the pour this house serves, once. Owner or manager; the gateway refuses anyone else. */
+export async function confirmPourSize(pourMl: number): Promise<TargetMarginReadout> {
+  const { data } = await apiClient.put<TargetMarginReadout>('/pricing/pour-size', { pourMl })
   return data
 }

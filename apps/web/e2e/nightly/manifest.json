@@ -360,6 +360,25 @@
         "registers could not be read",
         "No house is selected, so there is no timeline to read"
       ]
+    },
+    {
+      "slug": "menu",
+      "flag": "mudavym_design_menu",
+      "route": "/menu",
+      "legacy": "redirect:/cellar",
+      "source": "apps/web/src/pages/menu/next",
+      "empty": [
+        "No current menu yet.",
+        "No menu has been read yet."
+      ],
+      "failed_read": [
+        "The menu could not be read",
+        "The menus this house has kept could not be read"
+      ],
+      "failed_read_testids": [
+        "menu-error",
+        "menu-versions-error"
+      ]
     }
   ],
   "public_pages": [

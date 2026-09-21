@@ -42,13 +42,27 @@ export class SetTargetMarginDto {
 
   @ApiProperty({
     description:
-      "\"Close enough\", in margin POINTS: a wine within this many points of its target gets no advice. 0 means advise on any difference. Between 0 and 20. Required.",
-    example: 2,
+      "\"Close enough\", a PERCENT OF THE ADVISED PRICE: a wine priced within this many percent of its advised price gets no advice. 0 means advise on any difference. Between 0 and 20. Required, no default (founder, 2026-09-21: \"percent is always shown everywhere\").",
+    example: 3,
   })
   @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
   @Min(0)
   @Max(20)
-  bandPts: number;
+  bandPct: number;
+}
+
+/**
+ * The body of `PUT /pricing/pour-size`: the pour this house serves, confirmed
+ * once by an owner or manager (founder, 2026-09-21: glass advice appears only
+ * after the house confirms its pour size). The bounds are the database
+ * CHECK's (20260921115000).
+ */
+export class ConfirmPourSizeDto {
+  @ApiProperty({ description: "The pour this house serves, in ml. Between 10 and 500.", example: 125 })
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 1 })
+  @Min(10)
+  @Max(500)
+  pourMl: number;
 }
 
 /**

@@ -185,6 +185,8 @@ export class GoalsService {
     "margin_target_unset",
     "margin_to_target",
     "margin_advice_blind",
+    // ADR 0193 round 2: glass advice waits for the house's pour size.
+    "pour_size_unconfirmed",
   ];
 
   private static readonly GOAL_BEHIND_KEY =

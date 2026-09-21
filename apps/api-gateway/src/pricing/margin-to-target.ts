@@ -12,10 +12,19 @@
  *     margin      = (price - cost) / price
  *     target price = cost / (1 - target)          (priceForMargin, pricing-agility.ts)
  *
- * A wine within `band` margin points of the target is on target and gets no
- * advice. Otherwise the advice is the exact target price: "raise to X" when it
- * is above today's price, "lower to Y" when below. Nothing here changes a
- * price; a manager accepting the advice does (MarginAdviceService.accept).
+ * "Close enough" is a PERCENT OF THE ADVISED PRICE (the founder, 2026-09-21,
+ * relayed: "within N% gets no advice", and in his words "percent is always
+ * shown everywhere"): a wine whose price is within `bandPct` percent of the
+ * target price is on target and gets no advice. Otherwise the advice is the
+ * exact target price: "raise to X" when it is above today's price, "lower to
+ * Y" when below. Every sentence states the gap as a percent. Nothing here
+ * changes a price; a manager accepting the advice does
+ * (MarginAdviceService.accept).
+ *
+ * A GLASS WAITS FOR THE HOUSE'S POUR (founder, 2026-09-21, relayed: glass
+ * advice appears only after the house confirms its pour size, once; bottle
+ * advice unaffected). A glass whose house has not confirmed its pour is
+ * `pour_unconfirmed`, never priced on the database's 150 ml default.
  *
  * WHAT THIS DOES NOT USE, ON PURPOSE:
  *   - the market average (the wine library's retail-average and reference
@@ -38,6 +47,7 @@ export type PriceKind = "bottle" | "glass";
 
 export type AdviceState =
   | "no_target"
+  | "pour_unconfirmed"
   | "no_price"
   | "no_cost"
   | "on_target"
@@ -52,8 +62,13 @@ export interface AdviceInput {
   unitCost: number | null;
   /** Target gross margin in PERCENT (65 = 65 %); null when the house set none. */
   targetPct: number | null;
-  /** "Close enough", in margin points; null when the house set none. */
-  bandPts: number | null;
+  /** "Close enough", a PERCENT of the advised price; null when the house set none. */
+  bandPct: number | null;
+  /**
+   * Glass only: whether the house has confirmed its pour size. `false` makes
+   * the glass `pour_unconfirmed`. Ignored for a bottle; omitted = not asked.
+   */
+  pourConfirmed?: boolean;
 }
 
 export interface PriceAdvice {
@@ -64,9 +79,15 @@ export interface PriceAdvice {
   /** Margin in percent at today's price; null when price or cost is unknown. */
   currentMarginPct: number | null;
   targetPct: number | null;
-  bandPts: number | null;
+  bandPct: number | null;
   /** The exact price that reaches the target; set only for raise / lower. */
   advisedPrice: number | null;
+  /**
+   * How far today's price sits from the target price, as a PERCENT of the
+   * target price (negative = below it). Set whenever a target price could be
+   * computed (raise, lower, on_target); null otherwise.
+   */
+  gapPct: number | null;
   /** One plain sentence a manager can read. No currency symbol: the page adds the house's. */
   sentence: string;
 }
@@ -100,7 +121,7 @@ export function glassCostFrom(
 }
 
 export function adviseToTarget(input: AdviceInput): PriceAdvice {
-  const { kind, price, unitCost, targetPct, bandPts } = input;
+  const { kind, price, unitCost, targetPct, bandPct } = input;
   const base: PriceAdvice = {
     kind,
     state: "no_target",
@@ -108,8 +129,9 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
     unitCost,
     currentMarginPct: null,
     targetPct,
-    bandPts,
+    bandPct,
     advisedPrice: null,
+    gapPct: null,
     sentence: "",
   };
 
@@ -120,11 +142,22 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
     base.currentMarginPct = ((price - unitCost) / price) * 100;
   }
 
-  if (targetPct === null || bandPts === null) {
+  if (targetPct === null || bandPct === null) {
     return {
       ...base,
       state: "no_target",
       sentence: `No target margin is set for a ${kind}, so there is no advice. Set one in Settings.`,
+    };
+  }
+  if (kind === "glass" && input.pourConfirmed === false) {
+    return {
+      ...base,
+      // The margin at today's price rests on the same unconfirmed pour, so it
+      // is not stated either.
+      currentMarginPct: null,
+      state: "pour_unconfirmed",
+      sentence:
+        "Glass advice waits until the house confirms its pour size (Settings, Target margin). Bottle advice does not.",
     };
   }
   if (price === null || !Number.isFinite(price) || price <= 0) {
@@ -161,12 +194,17 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
     };
   }
   const advised = toCents(target);
+  // The gap as a percent of the ADVISED price: "close enough" is measured in
+  // the same unit, so the number a manager reads is the number that decided.
+  const gap = ((price - target) / target) * 100;
+  const gapAbs = pct(toCents(Math.abs(gap)));
 
-  if (Math.abs(margin - targetPct) <= bandPts || advised === toCents(price)) {
+  if (Math.abs(gap) <= bandPct || advised === toCents(price)) {
     return {
       ...base,
       state: "on_target",
-      sentence: `On target: ${pct(toCents(margin))} margin against a ${pct(targetPct)} target (close enough is within ${pct(bandPts).replace("%", "")} points).`,
+      gapPct: gap,
+      sentence: `On target: ${fmt(price)} is ${gapAbs} ${gap < 0 ? "below" : "above"} the advised ${fmt(advised)}, within your ${pct(bandPct)} (margin ${pct(toCents(margin))} against a ${pct(targetPct)} target).`,
     };
   }
 
@@ -175,8 +213,9 @@ export function adviseToTarget(input: AdviceInput): PriceAdvice {
     ...base,
     state: raise ? "raise" : "lower",
     advisedPrice: advised,
+    gapPct: gap,
     sentence: raise
-      ? `Raise the ${kind} to ${fmt(advised)} (now ${fmt(price)}): today's margin is ${pct(toCents(margin))}, your target is ${pct(targetPct)}.`
-      : `Lower the ${kind} to ${fmt(advised)} (now ${fmt(price)}): today's margin is ${pct(toCents(margin))}, above your ${pct(targetPct)} target.`,
+      ? `Raise the ${kind} to ${fmt(advised)} (now ${fmt(price)}, ${gapAbs} below it): today's margin is ${pct(toCents(margin))}, your target is ${pct(targetPct)}.`
+      : `Lower the ${kind} to ${fmt(advised)} (now ${fmt(price)}, ${gapAbs} above it): today's margin is ${pct(toCents(margin))}, above your ${pct(targetPct)} target.`,
   };
 }

@@ -17,6 +17,13 @@
  *                                              price; the page says what
  *                                              happened (housePriceNote)
  *
+ * MENUS KEPT (ADR 0193, menu versions, founder 2026-09-21): below the current
+ * menu, every menu the house has read -- its source, its lines, when and by
+ * whom -- with the current one and the last one used named, a form to read a
+ * new one (optional cadence tag and date), and the owner's or manager's act
+ * of making one current (`MenuVersions.tsx`). A blank price on a current
+ * menu's line keeps the last known price and the line says so.
+ *
  * WHAT THIS DOES NOT DO. `addMenuItem`'s DTO is the review-step shape
  * (name/producer/category/vintage/region/grape_variety/by_glass_price/
  * bottle_price) — the same fields the onboarding scanner's review screen
@@ -30,6 +37,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, type MenuLine } from '../../../services/api/menus';
 import { housePriceNote } from './menu-price-note';
+import { MenuVersions } from './MenuVersions';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { Wordmark } from '@/components/mudavym';
@@ -218,6 +226,11 @@ function MenuRow({ line, currency, onDiscard, discarding }: {
         <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
           {line.status.replace('_', ' ')}
         </span>
+        {line.price_flag ? (
+          <span className="cl-note" style={{ display: 'block' }} data-testid="menu-price-flag" title={line.price_flag_note ?? undefined}>
+            {line.price_flag_note ?? 'A blank price kept the last known one.'}
+          </span>
+        ) : null}
       </td>
       <td>
         <button
@@ -236,7 +249,11 @@ function MenuRow({ line, currency, onDiscard, discarding }: {
 }
 
 export default function MenuNext() {
-  const { activeRestaurantId, loading: authLoading } = useAuth();
+  const { activeRestaurantId, loading: authLoading, activeRole, user } = useAuth();
+  // Choosing the current menu is an owner's or a manager's (ADR 0193); the
+  // gateway refuses anyone else regardless of what this page offers.
+  const role = (activeRole ?? user?.role ?? null) as string | null;
+  const canManage = role === 'owner' || role === 'manager';
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
   const currency = useHouseCurrency();
   const [discardingId, setDiscardingId] = useState<string | null>(null);
@@ -270,8 +287,8 @@ export default function MenuNext() {
           </p>
         ) : !q.data?.menuId ? (
           <p className="cl-said" data-testid="menu-no-active">
-            No active menu yet. This restaurant has not imported or created one — Add to menu
-            below has nothing to add to until it does.
+            No current menu yet. Read one below and make it current — Add to menu has nothing to
+            add to until a menu is current.
           </p>
         ) : (
           <>
@@ -346,6 +363,8 @@ export default function MenuNext() {
             ) : null}
           </>
         )}
+
+        {activeRestaurantId ? <MenuVersions canManage={canManage} /> : null}
 
         <footer
           style={{

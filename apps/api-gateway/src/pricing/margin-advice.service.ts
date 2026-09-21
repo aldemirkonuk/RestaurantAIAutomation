@@ -18,7 +18,11 @@ import {
   adviseToTarget,
   glassCostFrom,
 } from "./margin-to-target";
-import { readHouseTargetMargin, targetsFrom } from "./target-margin.service";
+import {
+  confirmedPourFrom,
+  readHouseTargetMargin,
+  targetsFrom,
+} from "./target-margin.service";
 import { setHouseMenuPrice, type HousePriceResult } from "./house-menu-price";
 
 /**
@@ -31,8 +35,16 @@ import { setHouseMenuPrice, type HousePriceResult } from "./house-menu-price";
  *
  * Reads only: the house's bottle price (`menu_price_current`), glass price
  * (`menu_price_glass`), the recorded cost (`resolveUnitCost`: invoiced lot WAC,
- * then last purchase price, else UNKNOWN), pour and bottle size, and the
- * house's target. Never the market average: neither of the wine library's
+ * then last purchase price, else UNKNOWN), the bottle size, the house's
+ * CONFIRMED pour, and the house's target.
+ *
+ * THE POUR (founder, 2026-09-21, relayed: glass advice appears only after the
+ * house confirms its pour size, once; bottle advice unaffected). A glass is
+ * priced on the house's confirmed pour (`restaurants.default_pour_ml` with
+ * `pour_size_confirmed_at`), and on nothing else: the per-wine
+ * `restaurant_inventory.pour_size_ml` carries a database DEFAULT of its own and
+ * cannot be told from a typed value (ADR 0193 F7), so it is not read here.
+ * Until the house confirms, every glass is `pour_unconfirmed`. Never the market average: neither of the wine library's
  * market columns is selected here (CLAIMS row, ADR 0193).
  *
  * Nothing here changes a price except `accept`, which a manager calls with
@@ -61,9 +73,14 @@ export interface HouseAdvice {
   target: {
     bottlePct: number | null;
     glassPct: number | null;
-    bandPts: number | null;
+    /** "Close enough", a PERCENT of the advised price. */
+    bandPct: number | null;
     /** True once an owner or manager has set at least one target. */
     set: boolean;
+    /** True once an owner or manager has confirmed the house's pour. */
+    pourConfirmed: boolean;
+    /** The confirmed pour in ml; null until confirmed. */
+    pourMl: number | null;
   };
   wines: WineAdvice[];
   /** Advice lines by state, bottle and glass together. */
@@ -78,13 +95,20 @@ interface InventoryPriceRow {
   menu_price_glass: number | string | null;
   last_purchase_price: number | string | null;
   bottle_size_ml: number | null;
-  pour_size_ml: number | null;
   master_wine_library?: { name?: string | null; bottle_size_ml?: number | null } | null;
-  restaurants?: { default_pour_ml?: number | null } | null;
+}
+
+/** What the advice needs from the house row besides the targets. */
+interface HouseTerms {
+  bottlePct: number | null;
+  glassPct: number | null;
+  bandPct: number | null;
+  /** The confirmed pour, ml; null = not confirmed, so no glass advice. */
+  pourMl: number | null;
 }
 
 const INVENTORY_SELECT =
-  "id, wine_name, sale_type, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, master_wine_library(name, bottle_size_ml), restaurants(default_pour_ml)";
+  "id, wine_name, sale_type, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, master_wine_library(name, bottle_size_ml)";
 
 const ROLLUP_SELECT = "inventory_id, live_qty, wac, has_invoice_cost, wac_qty";
 
@@ -95,7 +119,15 @@ function n(v: unknown): number | null {
 }
 
 function emptyCounts(): Record<AdviceState, number> {
-  return { no_target: 0, no_price: 0, no_cost: 0, on_target: 0, raise: 0, lower: 0 };
+  return {
+    no_target: 0,
+    pour_unconfirmed: 0,
+    no_price: 0,
+    no_cost: 0,
+    on_target: 0,
+    raise: 0,
+    lower: 0,
+  };
 }
 
 @Injectable()
@@ -134,7 +166,7 @@ export class MarginAdviceService {
       );
     }
 
-    const t = targetsFrom(targets.row);
+    const t: HouseTerms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
     const lots = new Map<string, Record<string, unknown>>();
     for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) {
       lots.set(String(r.inventory_id), r);
@@ -151,7 +183,14 @@ export class MarginAdviceService {
     return {
       restaurantId,
       generatedAt: new Date().toISOString(),
-      target: { ...t, set: t.bottlePct !== null || t.glassPct !== null },
+      target: {
+        bottlePct: t.bottlePct,
+        glassPct: t.glassPct,
+        bandPct: t.bandPct,
+        set: t.bottlePct !== null || t.glassPct !== null,
+        pourConfirmed: t.pourMl !== null,
+        pourMl: t.pourMl,
+      },
       wines,
       counts,
     };
@@ -160,7 +199,7 @@ export class MarginAdviceService {
   adviseWine(
     row: InventoryPriceRow,
     lot: Record<string, unknown> | null,
-    t: { bottlePct: number | null; glassPct: number | null; bandPts: number | null },
+    t: HouseTerms,
   ): WineAdvice {
     const { unitCost, costBasis } = resolveUnitCost(
       { last_purchase_price: row.last_purchase_price },
@@ -173,7 +212,6 @@ export class MarginAdviceService {
     const sellsGlass = saleType === "glass" || saleType === "both" || glassPrice !== null;
 
     const bottleMl = n(row.bottle_size_ml) ?? n(row.master_wine_library?.bottle_size_ml);
-    const pourMl = n(row.pour_size_ml) ?? n(row.restaurants?.default_pour_ml);
 
     return {
       inventoryId: row.id,
@@ -187,16 +225,17 @@ export class MarginAdviceService {
             price: bottlePrice,
             unitCost,
             targetPct: t.bottlePct,
-            bandPts: t.bandPts,
+            bandPct: t.bandPct,
           })
         : null,
       glass: sellsGlass
         ? adviseToTarget({
             kind: "glass",
             price: glassPrice,
-            unitCost: glassCostFrom(unitCost, pourMl, bottleMl),
+            unitCost: glassCostFrom(unitCost, t.pourMl, bottleMl),
             targetPct: t.glassPct,
-            bandPts: t.bandPts,
+            bandPct: t.bandPct,
+            pourConfirmed: t.pourMl !== null,
           })
         : null,
     };
@@ -252,7 +291,7 @@ export class MarginAdviceService {
         `The recorded cost could not be read; nothing was changed. ${rollup.error.message}`,
       );
 
-    const t = targetsFrom(targets.row);
+    const t: HouseTerms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
     const wine = this.adviseWine(
       inv.data as unknown as InventoryPriceRow,
       (rollup.data as Record<string, unknown> | null) ?? null,
@@ -288,7 +327,7 @@ export class MarginAdviceService {
         observation_count: 0,
         confidence: null,
         price_kind: kind,
-        band_pts: advice.bandPts,
+        band_pct: advice.bandPct,
         engine_version: MARGIN_ADVICE_ENGINE,
         inputs: {
           rule: "price = cost / (1 - target)",
@@ -298,7 +337,9 @@ export class MarginAdviceService {
           bottleCost: wine.bottleCost,
           costBasis: wine.costBasis,
           targetPct: advice.targetPct,
-          bandPts: advice.bandPts,
+          bandPct: advice.bandPct,
+          gapPct: advice.gapPct,
+          pourMl: kind === "glass" ? t.pourMl : null,
           state: advice.state,
           acceptedBy: userId,
         },

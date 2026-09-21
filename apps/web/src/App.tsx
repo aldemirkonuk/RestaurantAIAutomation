@@ -93,7 +93,7 @@ const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNe
 const ConnectionsNext = lazyWithRefresh(() => import('./pages/connections/next/ConnectionsNext'))
 const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'))
 // A NEW route (ADR 0160 sec110 item 7), not a redesign of a shipping page —
-// no `mudavym_design_*` flag (`ALWAYS_ON_PAGES` in useMudavymDesign.ts makes
+// no `mudavym_design_*` flag (`LIVE_PAGES` in useMudavymDesign.ts makes
 // it on for every house with no per-house column). It still goes through
 // `PageGate` below, same as every other Mudavym page, so it gets the real
 // house header — bell, search, house switcher — rather than none at all.
@@ -381,9 +381,11 @@ function App() {
                   <Route path="/receipts" element={<PageGate page="receipts" legacy={<ReceiptsPage />} next={<ReceiptsNext />} />} />
                   <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
                   {/* ADR 0104 D12 slice 2 — one incoming document as the canonical
-                      Mudavym document. Gated OFF by default (OD-106); the legacy
-                      branch is a redirect to /receipts rather than a second page,
-                      because /receipts already IS this view's other face. */}
+                      Mudavym document. Live in code for every house since ADR
+                      0149 row 36 (2026-09-17, mudavym_design_document no longer
+                      read); the legacy branch is a redirect to /receipts rather
+                      than a second page, because /receipts already IS this
+                      view's other face. */}
                   <Route
                     path="/documents/:id"
                     element={

@@ -237,6 +237,24 @@ row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: 
 > an empty map, so `inventory.service.ts::inventory_analytics::data` drops
 > 189 → 188. Measured on this branch, not `main` — re-measure before citing.
 
+> **175 as of 2026-09-21, the cellar lane's merge of `origin/main` (ADR 0193 round 2)**
+> (`check_read_errors_not_swallowed.py` on `wt-r5-cellar`, staged tree: 1545 files
+> scanned, 175 sites, 175 baselined, 0 allowlisted). Main's own retirements and this
+> lane's `inventory_analytics` fix together left the rows summing to 176 (the stored
+> total had drifted to 188 against rows summing to 177 before the merge; it is now
+> recomputed from the rows). Menu versions then deleted `upsertMenu`, whose
+> `restaurant_menus` read was unchecked: `menus.service.ts::restaurant_menus::existing`
+> is retired, 176 → 175. Re-measure before citing.
+
+> **174 as of 2026-09-21, the cellar lane's last-call review (ADR 0193)**
+> (`check_read_errors_not_swallowed.py` on `wt-r5-cellar`, working tree: 1545 files
+> scanned, 174 sites, 174 baselined, 0 allowlisted). Make-current decides the
+> blank-price flag from `addToInventory`'s `restaurant_inventory` read, which
+> discarded its error: a failed read tried a duplicate row, counted the line
+> "not_linked" and flagged nothing. It now binds the error and reports the line
+> failed, so `menus.service.ts::restaurant_inventory::existing` is retired,
+> 175 → 174. Re-measure before citing.
+
 The 189 are recorded in `scripts/read_error_baseline.json` and held by
 `scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the
 baseline fails the build, and a baseline row the tree no longer contains **also** fails it

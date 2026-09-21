@@ -56,3 +56,54 @@ describe("PATCH inventory item — who may change a price", () => {
     expect(update).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * Founder, 2026-09-21 (answers 1 and 5): a price named when a wine is ADDED is
+ * a price edit too -- owner or manager only -- and the person is passed to the
+ * service so every price version names who set it.
+ */
+describe("POST inventory items — a price on add is gated and names the person", () => {
+  function addController(role: string | null) {
+    const organizations = new OrganizationsService({} as never);
+    jest.spyOn(organizations, "resolveRestaurantRole").mockResolvedValue(role);
+    const create = jest.fn(async () => ({ id: "inv-1" }));
+    const bulk = jest.fn(async () => ({ results: [] }));
+    const c = new InventoryController(
+      { createInventoryItem: create, bulkCreateInventoryItems: bulk } as any,
+      organizations,
+    );
+    return { c, create, bulk };
+  }
+
+  it.each(["owner", "manager"])("a %s may add with a price, and the service is told who", async (role) => {
+    const { c, create, bulk } = addController(role);
+    await c.createInventoryItem("rest-1", { wineId: "w", menuPriceBottle: 60 } as any, { userId: "u-1" });
+    await c.bulkCreateInventoryItems("rest-1", { items: [{ wineId: "w", menuPriceGlass: 12 }] } as any, { userId: "u-1" });
+    expect(create).toHaveBeenCalledWith("rest-1", { wineId: "w", menuPriceBottle: 60 }, "u-1");
+    expect(bulk).toHaveBeenCalledWith("rest-1", { items: [{ wineId: "w", menuPriceGlass: 12 }] }, "u-1");
+  });
+
+  it.each(["staff", null])("%s adding WITH a price is refused before anything is written", async (role) => {
+    const { c, create, bulk } = addController(role as string | null);
+    await expect(
+      c.createInventoryItem("rest-1", { wineId: "w", menuPriceBottle: 60 } as any, { userId: "u-1" }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      c.bulkCreateInventoryItems(
+        "rest-1",
+        { items: [{ wineId: "a" }, { wineId: "b", menuPriceBottle: 30 }] } as any,
+        { userId: "u-1" },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(create).not.toHaveBeenCalled();
+    expect(bulk).not.toHaveBeenCalled();
+  });
+
+  it("staff adding WITHOUT a price is unchanged, and still names the person", async () => {
+    const { c, create, bulk } = addController("staff");
+    await c.createInventoryItem("rest-1", { wineId: "w" } as any, { userId: "u-2" });
+    await c.bulkCreateInventoryItems("rest-1", { items: [{ wineId: "w" }] } as any, { userId: "u-2" });
+    expect(create).toHaveBeenCalledWith("rest-1", { wineId: "w" }, "u-2");
+    expect(bulk).toHaveBeenCalledWith("rest-1", { items: [{ wineId: "w" }] }, "u-2");
+  });
+});

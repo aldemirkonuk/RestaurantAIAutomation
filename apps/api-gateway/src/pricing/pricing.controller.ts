@@ -18,7 +18,11 @@ import { TenantGuard } from "../common/tenant/tenant.guard";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { TargetMarginService, type TargetMarginReadout } from "./target-margin.service";
 import { MarginAdviceService, type HouseAdvice } from "./margin-advice.service";
-import { AcceptPriceAdviceDto, SetTargetMarginDto } from "./dto/pricing.dto";
+import {
+  AcceptPriceAdviceDto,
+  ConfirmPourSizeDto,
+  SetTargetMarginDto,
+} from "./dto/pricing.dto";
 
 /**
  * A house's target margin, and price advice toward it (ADR 0193).
@@ -71,7 +75,7 @@ export class PricingController {
   @ApiOperation({
     summary: "State the margin this house needs — owner or manager only",
     description:
-      "bottlePct / glassPct are PERCENT between 5 and 95 (null = none for that kind, at least one required); bandPts is 'close enough' in margin points, 0 to 20, required. No defaults. Audited; the response carries `audited` / `auditReason`.",
+      "bottlePct / glassPct are PERCENT between 5 and 95 (null = none for that kind, at least one required); bandPct is 'close enough' as a PERCENT of the advised price, 0 to 20, required. No defaults. Audited; the response carries `audited` / `auditReason`.",
   })
   @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
   async setTargetMargin(
@@ -86,6 +90,28 @@ export class PricingController {
       "state the margin this restaurant needs",
     );
     return this.targets.write(house, dto ?? ({} as SetTargetMarginDto), userId);
+  }
+
+  @Put("pour-size")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Confirm the pour this house serves, once — owner or manager only",
+    description:
+      "Glass price advice waits until this is done (founder, 2026-09-21); bottle advice never reads it. Writes restaurants.default_pour_ml with who and when in one update. Audited as pour_size_confirmed; the response carries `audited` / `auditReason`.",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  async confirmPourSize(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Body() dto: ConfirmPourSizeDto,
+  ): Promise<TargetMarginReadout> {
+    const house = this.requireHouse(restaurantId, "nothing was recorded");
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      house,
+      "confirm this restaurant's pour size",
+    );
+    return this.targets.confirmPour(house, dto ?? ({} as ConfirmPourSizeDto), userId);
   }
 
   @Get("advice")

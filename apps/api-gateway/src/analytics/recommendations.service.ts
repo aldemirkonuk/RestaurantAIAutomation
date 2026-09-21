@@ -78,6 +78,8 @@ export interface Recommendation {
     advisedPrice: number | null;
     currentMarginPct: number | null;
     targetPct: number | null;
+    /** Today's price against the advised one, PERCENT of the advised price. */
+    gapPct: number | null;
   }>;
 }
 
@@ -112,7 +114,18 @@ export class RecommendationsService {
 
   async getRecommendations(
     restaurantId: string,
-    opts: { includeHidden?: boolean; surface?: string } = {},
+    opts: {
+      includeHidden?: boolean;
+      surface?: string;
+      /**
+       * False for a read that is not a showing. The recommendations digest
+       * composes the feed before it knows whether any mail will go out (two
+       * gateway instances may both compose; one sends), so it records what it
+       * actually mailed on its own send row (`recommendation_digest_sends.
+       * rule_keys`) instead of logging an impression for every compose.
+       */
+      recordImpressions?: boolean;
+    } = {},
   ): Promise<{
     recommendations: Recommendation[];
     rulesEvaluated: number;
@@ -122,6 +135,8 @@ export class RecommendationsService {
     suppressionsReadable: boolean;
     priceAdviceReadable: boolean;
     priceAdviceReason: string | null;
+    /** Engine sources that rejected on this read, by name. Empty = all answered. */
+    sourcesUnread: string[];
   }> {
     const [
       financial,
@@ -148,6 +163,27 @@ export class RecommendationsService {
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;
+    // Which sources did not answer. `ok()` turns a rejected source into `null`,
+    // and a rule over `null` does not fire — so without this list "nothing
+    // fired" and "nothing could be read" are the same result. The digest
+    // sender (analytics/digest) says which it was; the page may too.
+    const sourcesUnread = (
+      [
+        ["financial summary", financial],
+        ["risk profile", risk],
+        ["inventory science", invSci],
+        ["menu engineering", menu],
+        ["seasonality", seasonality],
+        ["cashflow", cashflow],
+        ["insights", insightsRes],
+        ["goals", goals],
+        // ADR 0193: price advice is a source like the others; the digest's
+        // "could not read" note names it when it rejected.
+        ["price advice", priceAdviceRes],
+      ] as Array<[string, PromiseSettledResult<unknown>]>
+    )
+      .filter(([, r]) => r.status === "rejected")
+      .map(([name]) => name);
 
     const ctx = {
       financial: ok(financial),
@@ -306,7 +342,7 @@ export class RecommendationsService {
       () => ({
         observation: `No target margin is set, so none of this house's ${pricedWines.length} priced wine${pricedWines.length === 1 ? "" : "s"} can be judged against one.`,
         recommendation:
-          "Set the margin you need on a bottle and on a glass, and how close is close enough (Settings, Target margin). Each wine then gets an exact raise-to or lower-to price, applied only when you accept it.",
+          "Set the margin you need on a bottle and on a glass, and how close is close enough as a percent of the advised price (Settings, Target margin). Each wine then gets an exact raise-to or lower-to price, applied only when you accept it.",
         rationale:
           "Advice toward a margin nobody chose would be a default dressed as a decision. The target is the house's own number, so until it is set there is no advice.",
         category: "pricing",
@@ -323,11 +359,10 @@ export class RecommendationsService {
         )
         .map((a) => ({ w, a })),
     );
-    // Furthest from target first: that is the line worth the manager's tap.
+    // Furthest from its advised price first, in percent: that is the line
+    // worth the manager's tap, in the unit the house's "close enough" uses.
     adviceLines.sort(
-      (x, y) =>
-        Math.abs((y.a.currentMarginPct ?? 0) - (y.a.targetPct ?? 0)) -
-        Math.abs((x.a.currentMarginPct ?? 0) - (x.a.targetPct ?? 0)),
+      (x, y) => Math.abs(y.a.gapPct ?? 0) - Math.abs(x.a.gapPct ?? 0),
     );
     const blind = (pa?.counts.no_cost ?? 0) + (pa?.counts.no_price ?? 0);
     rule("margin_to_target", !!pa && pa.target.set && adviceLines.length > 0, () => {
@@ -355,9 +390,28 @@ export class RecommendationsService {
           advisedPrice: a.advisedPrice,
           currentMarginPct: a.currentMarginPct,
           targetPct: a.targetPct,
+          gapPct: a.gapPct,
         })),
       };
     });
+    // The glass half waits for the house's pour (founder, 2026-09-21: glass
+    // advice appears only after the house confirms its pour size, once). Said
+    // as its own entry, so a quiet glass column is never read as on target.
+    const pourWaiting = pa?.counts.pour_unconfirmed ?? 0;
+    rule(
+      "pour_size_unconfirmed",
+      !!pa && pa.target.glassPct !== null && !pa.target.pourConfirmed && pourWaiting > 0,
+      () => ({
+        observation: `${pourWaiting} glass price${pourWaiting === 1 ? "" : "s"} cannot be advised yet: this house has not confirmed the pour it serves.`,
+        recommendation:
+          "Confirm your pour size once (Settings, Target margin). Glass advice starts from then; bottle advice does not wait for it.",
+        rationale:
+          "A glass's cost is the bottle's cost times pour over bottle. Until the house states its pour, the only number on record is the database's 150 ml default, which nobody chose.",
+        category: "pricing",
+        urgency: "this_month",
+        score: 1.3,
+      }),
+    );
     rule(
       "margin_advice_blind",
       !!pa && pa.target.set && (pa.counts.no_cost ?? 0) > 0,
@@ -616,9 +670,11 @@ export class RecommendationsService {
     // is the first time it was ever shown, not this request.
     await this.attachFirstSeen(restaurantId, visible);
 
-    void this.logImpressions(restaurantId, visible, opts.surface).catch(
-      () => undefined,
-    );
+    if (opts.recordImpressions !== false) {
+      void this.logImpressions(restaurantId, visible, opts.surface).catch(
+        () => undefined,
+      );
+    }
 
     return {
       recommendations: visible,
@@ -637,6 +693,7 @@ export class RecommendationsService {
       // every price is on target, and the reason says why.
       priceAdviceReadable: priceAdviceRes.status === "fulfilled",
       priceAdviceReason,
+      sourcesUnread,
     };
   }
 
