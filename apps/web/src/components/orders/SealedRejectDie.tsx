@@ -8,8 +8,9 @@
  * proof. Approving one redeemed a one-time seal bound to (this manager, this
  * order, "approve", the order's total and vendor). Rejecting one was
  * `confirm('Are you sure?')` followed by `apiClient.delete()` — no seal, no
- * reason, no role, no paper. The legacy desk (what a house actually sees:
- * `mudavym_design_orders` is OFF in production) sent not even a reason.
+ * reason, no role, no paper. The legacy desk (still on main, but no longer
+ * what a house sees — `orders` has been live in code for every house since
+ * ADR 0149 row 36, 2026-09-17) sent not even a reason.
  *
  * The consequence runs the other way from the one people expect. An approval
  * spends money; a cancellation ERASES money already spent. A cancelled order

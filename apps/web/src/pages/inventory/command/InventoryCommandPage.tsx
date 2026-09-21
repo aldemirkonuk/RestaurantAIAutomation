@@ -115,6 +115,9 @@ const FLAG_DEFS: Array<{ key: RowFlag; label: string; dot: string }> = [
   { key: "price", label: "Price signals", dot: "bg-emerald-500" },
 ];
 
+/** An unknown figure, never a fabricated zero (CLAUDE.md §9). */
+const UNKNOWN = "—";
+
 export function InventoryCommandPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const page = useInventoryPage({});
@@ -130,7 +133,39 @@ export function InventoryCommandPage() {
     stats,
     refetchInventory,
     updateInventoryItem,
+    error: inventoryError,
+    summaryError,
+    lowStockError,
+    hasFailedRead,
+    figuresUnknown,
   } = page;
+
+  /** Renders `value`, or the em dash when any of the three inventory reads
+   * failed OR simply has no data yet (`figuresUnknown` — wave5/live-confirm.md
+   * B2, fixed 2026-09-19: a query mid-refetch resets to `pending` and clears
+   * `error`, so checking `hasFailedRead` alone let a zero through in that
+   * window) — the figures derived from an empty
+   * `inventory`/`filteredInventory` array are unknown in that state, never
+   * genuinely zero. */
+  const fig = (value: number | string): number | string =>
+    figuresUnknown ? UNKNOWN : value;
+
+  /** "the inventory list (msg), the summary (msg) and the low-stock list
+   * (msg)" — named per failed read, so the banner is honest about which of
+   * the three queries did not answer rather than collapsing them into one
+   * generic sentence. */
+  const failedReadDetail = useMemo(() => {
+    const parts: string[] = [];
+    if (inventoryError) parts.push(`the inventory list (${inventoryError})`);
+    if (summaryError) parts.push(`the summary (${summaryError})`);
+    if (lowStockError) parts.push(`the low-stock list (${lowStockError})`);
+    if (parts.length === 0) return "";
+    const joined =
+      parts.length === 1
+        ? parts[0]
+        : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+    return `${joined[0].toUpperCase()}${joined.slice(1)}`;
+  }, [inventoryError, summaryError, lowStockError]);
 
   // See RowExpansion: the retired `/inventory-legacy` honoured the Settings
   // measurement unit and this page did not (ADR 0019 §B).
@@ -795,8 +830,8 @@ export function InventoryCommandPage() {
             Inventory
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            {stats.total} wines, {stats.liveTotal + stats.shadowTotal} bottles
-            on hand
+            {fig(stats.total)} wines, {fig(stats.liveTotal + stats.shadowTotal)}{" "}
+            bottles on hand
           </p>
         </div>
         <div
@@ -869,6 +904,55 @@ export function InventoryCommandPage() {
         </div>
       </div>
 
+      {/* A failed read is an error, not an empty success (CLAUDE.md §9 /
+          ADR 0149): without this, every KPI below and "No wines match" read
+          identically whether the house's cellar really is empty or the
+          gateway just could not be reached — go-live sweep 2026-09-17,
+          wave4/live-fix.md.
+
+          Extended 2026-09-18 (wave5/live-fix.md, live-confirm.md §8.2–3):
+          the banner used to key on the inventory-list read alone, so a
+          summary- or low-stock-only failure rendered no banner while the
+          KPIs it feeds still went to zero. It now raises on any of the
+          three reads, and the figures below render an em dash instead of a
+          zero whenever `hasFailedRead` is true — a zero here is a claim
+          ("this house owns none of this wine"), and a failed read has not
+          earned the right to make that claim.
+
+          CORRECTED 2026-09-19 (wave5/live-confirm.md B2, struck rather than
+          rewritten): `hasFailedRead` alone was not enough for the figures.
+          Under the app's real QueryClient defaults, a query with no data
+          that gets refetched resets to TanStack v5's `pending` status and
+          CLEARS `error` for the duration — measured at "0 wines, 0 bottles"
+          with no banner in 28 of 39 half-second samples (72%) on a real
+          mount, caused by a pre-existing refetch loop (unmemoized `refetch`
+          re-running the spot-count-outbox watcher effect every render; fixed
+          the same pass in useInventoryData.ts and spotCountOutbox.ts). The
+          banner below still keys on `hasFailedRead` alone — it should not
+          say a read "could not be reached" while it is merely loading — but
+          every figure now keys on `figuresUnknown` (`hasFailedRead ||
+          isPending`, computed in useInventoryPage.ts), so a zero cannot
+          reach the screen through the pending window either. */}
+      {hasFailedRead && (
+        <div
+          role="alert"
+          className="mb-3.5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5"
+        >
+          <span className="text-xs text-red-700">
+            {failedReadDetail} could not be reached. The counts and totals
+            below are unknown, not zero — this is a failed read, not an
+            empty cellar.
+          </span>
+          <button
+            type="button"
+            onClick={() => void refetchInventory()}
+            className="rounded-md border border-red-300 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
       {/* KPI strip */}
       <div
         className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-3.5"
@@ -876,18 +960,18 @@ export function InventoryCommandPage() {
       >
         <Kpi
           label="On hand"
-          value={stats.liveTotal + stats.shadowTotal}
-          sub={`${stats.total} wines`}
+          value={fig(stats.liveTotal + stats.shadowTotal)}
+          sub={figuresUnknown ? UNKNOWN : `${stats.total} wines`}
         />
         <Kpi
           label="Live"
-          value={stats.liveTotal}
+          value={fig(stats.liveTotal)}
           sub="POS-verified"
           tone="blue"
         />
         <Kpi
           label="Shadow"
-          value={stats.shadowTotal}
+          value={fig(stats.shadowTotal)}
           sub="awaiting reconcile"
           tone="violet"
           active={activeFlag === "recon"}
@@ -895,25 +979,27 @@ export function InventoryCommandPage() {
         />
         <Kpi
           label="Value on hand"
-          value={fmtMoney(kpis.valueOnHand)}
+          value={figuresUnknown ? UNKNOWN : fmtMoney(kpis.valueOnHand)}
           sub={
-            kpis.menuPotential > 0
-              ? `${fmtMoney(kpis.menuPotential)} menu`
-              : "cost basis"
+            figuresUnknown
+              ? UNKNOWN
+              : kpis.menuPotential > 0
+                ? `${fmtMoney(kpis.menuPotential)} menu`
+                : "cost basis"
           }
           tone="green"
         />
         <Kpi
           label="Below par"
-          value={stats.low + stats.critical}
-          sub={`${stats.critical} critical`}
+          value={fig(stats.low + stats.critical)}
+          sub={figuresUnknown ? UNKNOWN : `${stats.critical} critical`}
           tone="amber"
           active={activeFlag === "low"}
           onClick={() => setActiveFlag(activeFlag === "low" ? null : "low")}
         />
         <Kpi
           label="Runway alerts"
-          value={kpis.runwayAlerts}
+          value={fig(kpis.runwayAlerts)}
           sub="stockout inside 5 days"
           tone="red"
         />
@@ -989,7 +1075,7 @@ export function InventoryCommandPage() {
           >
             <span className={cn("w-1.5 h-1.5 rounded-full", f.dot)} />
             {f.label}{" "}
-            <b className="font-mono text-[11px]">{flagCounts[f.key]}</b>
+            <b className="font-mono text-[11px]">{fig(flagCounts[f.key])}</b>
           </button>
         ))}
       </div>
@@ -1383,7 +1469,7 @@ export function InventoryCommandPage() {
           </div>
           <div className="flex items-center justify-between mt-2.5 text-xs text-gray-400">
             <span>
-              Showing {rows.length} of {stats.total} wines
+              Showing {fig(rows.length)} of {fig(stats.total)} wines
             </span>
             {flagCounts.dead > 0 && (
               <span>
