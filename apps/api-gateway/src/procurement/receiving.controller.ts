@@ -477,7 +477,7 @@ export class ReceivingController {
   @ApiOperation({
     summary: "The append-only verdict ledger for one order (ADR 0149 row 23)",
     description:
-      "Oldest first, at most 50 rows per page. `before` (the previous page's `earliestCursor`, opaque) fetches the page before it — an interim engineering bound so a long ledger pages rather than growing without end; it is not sketch 107's own too-many-operations answer, which the founder has not given (06-pages/receiving.md 14e). `current` is the DERIVATION, not the latest row: per verdict word, the sum of what stands after later rows have taken their share.",
+      "Oldest first, at most 50 rows per page. `before` (the previous page's `earliestCursor`, opaque) fetches the page before it — an interim engineering bound so a long ledger pages rather than growing without end; it is not sketch 107's own too-many-operations answer, which the founder has not given (06-pages/receiving.md §1a, \"Two more forks for the founder\" — not §14e, which is this page's separate pipeline review). `current` is the DERIVATION, not the latest row: per verdict word, the sum of what stands after later rows have taken their share.",
   })
   async lineVerdicts(
     @Param("id") orderId: string,

@@ -4,18 +4,25 @@
 --
 -- WHAT THIS IS
 -- ------------
--- The /receiving desk rebuild (sketch 107, direction B+) closes the P14 fork
--- left open in `06-pages/receiving.md` §14e.3 ("whether a verdict is a record
--- or a column") in favour of the record: `verifyReceipt` today OVERWRITES
--- `procurement_orders.match_status` / `discrepancy_notes` with no re-verify
--- guard, and sets `discrepancy_notes = null` on a `matched` verdict — erasing
--- the prior narrative. This table is a second, additive ledger a manager
--- appends to at the desk; it does not change what `verifyReceipt` writes
--- today and does not touch `procurement_receipt_events` (the door's own typed
--- outcome, ADR 0062) — see the note at the foot of this file for why, and
--- OD-126 (`.planning/decisions/OPEN-DECISIONS.md`) for the fork this leaves
--- open. NOT YET ANSWERED — do not build further on either side of it without
--- the founder's word (fixer review, 2026-09-18).
+-- [CORRECTED 2026-09-20, receiving round-5 must_fix pass: this header used
+-- to claim this migration "closes the P14 fork ... in favour of the
+-- record". OD-126 and `06-pages/receiving.md:115` both say it settles NONE
+-- of P14, and a migration cannot be edited after it is applied — so this
+-- note corrects the record rather than the SQL below.] The /receiving desk
+-- rebuild (sketch 107, direction B+) does NOT close the P14 fork left open
+-- in `06-pages/receiving.md` §14e.3 ("whether a verdict is a record or a
+-- column") — that is OD-126's own fork
+-- (`.planning/decisions/OPEN-DECISIONS.md`), and it is still open.
+-- `verifyReceipt` today OVERWRITES `procurement_orders.match_status` /
+-- `discrepancy_notes` with no re-verify guard, and sets `discrepancy_notes =
+-- null` on a `matched` verdict — erasing the prior narrative. This table is
+-- a second, additive ledger a manager appends to at the desk, ALONGSIDE
+-- that still-open question rather than answering it: it does not change
+-- what `verifyReceipt` writes today and does not touch
+-- `procurement_receipt_events` (the door's own typed outcome, ADR 0062) —
+-- see the note at the foot of this file for why, and OD-126 for the fork
+-- this leaves open. NOT YET ANSWERED — do not build further on either side
+-- of it without the founder's word (fixer review, 2026-09-18).
 --
 -- WHY IT KEYS ON `procurement_orders`, NOT `deliveries`
 -- ------------------------------------------------------
