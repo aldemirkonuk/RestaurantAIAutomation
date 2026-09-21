@@ -1446,16 +1446,263 @@ def test_r6_an_assignment_the_push_may_see_is_read_in_the_safe_direction(two, co
     "export B=develop; eval B=main; git push origin HEAD:$B",
     # An assignment after a punctuation run the tokenizer fuses (`);`) is not collected.
     "f() ( git push origin feat:$B ); B=main; f",
-    # A git push behind an env prefix or a wrapper is skipped by _direct_push_problem.
-    "X=1 git push origin HEAD",
-    "nohup git push origin HEAD",
 ])
 def test_r6_the_named_residuals_are_still_not_seen(two, command):
     """Pins what ADR 0090's gate-r6 section names as not closed, so none is
-    silently claimed closed by a later change, or silently dropped."""
+    silently claimed closed by a later change, or silently dropped.
+
+    The env-prefix/wrapper push residual gate-r6 named here (`X=1 git push
+    origin HEAD`, `nohup git push origin HEAD`) moved to gate-r7 below,
+    CLOSED -- see test_r7_env_prefix_and_wrapper_pushes_are_now_blocked and
+    the named residuals that replace it, test_r7_the_named_residuals_are_still_not_seen."""
     clone, _h, env = two
     out = run_hook(clone, env, command)
     assert out.returncode == 0, (command, out.stderr)
+
+
+# --------------------------------------------------------------------------- #
+# gate-r7 (2026-09-21). Closes the residual gate-r6's own last call could only
+# NAME: "a push behind an env prefix or a wrapper (`X=1 git push origin
+# HEAD`, `nohup git push origin HEAD`), which `_direct_push_problem()` skips
+# because the segment's first word is not git." Founder's answer, as relayed:
+# a push behind leading assignments or a wrapper (nohup, env, command, time,
+# exec, sudo, xargs, a shell -c with a literal string) run from a main
+# checkout is read like a bare push; an unrecognised wrapper shape is refused.
+# --------------------------------------------------------------------------- #
+
+_WRAP = "git " + "push"  # spelled apart so this file's own text stays clean of a literal push
+
+
+@pytest.mark.parametrize("command", [
+    # The founder's own two examples, verbatim.
+    "X=1 git push origin HEAD",
+    "nohup git push origin HEAD",
+    # Every other named wrapper, bare, each read exactly like a bare push.
+    "env git push origin HEAD",
+    "command git push origin HEAD",
+    "time git push origin HEAD",
+    "exec git push origin HEAD",
+    "sudo git push origin HEAD",
+    "xargs git push origin HEAD",
+    # Chained: assignments and wrappers in any combination, still read through.
+    "sudo nohup env X=1 git push origin HEAD",
+    "X=1 Y=2 sudo git push origin HEAD",
+    # A same-command assignment behind a wrapper resolves a $-destination
+    # exactly as it already does unwrapped (r4/r6's own reading, now reached
+    # from behind a wrapper too).
+    "nohup git push origin HEAD:$B; B=main",
+    # A wrapper does not exempt the other push shapes already closed:
+    # wildcard refspecs, a force-push "+" marker, --mirror/--all.
+    "sudo git push origin 'refs/heads/*:refs/heads/*'",
+    "sudo git push origin +HEAD",
+    "nohup git push origin --mirror",
+    # "a shell -c with a literal string" -- read through recursively, one or
+    # more levels, quoted either way.
+    "bash -c 'git push origin HEAD'",
+    'bash -c "git push origin HEAD"',
+    "sh -c 'git push origin HEAD'",
+    "bash -c 'nohup git push origin HEAD'",
+    # A shell whose options carry `c` anywhere runs a command string too.
+    "bash --norc -c 'git push origin HEAD'",
+    "bash -lc 'git push origin HEAD'",
+    "sh -ec 'git push origin HEAD'",
+    "bash -o pipefail -c 'git push origin HEAD'",
+    "fish -c 'git push origin HEAD'",
+    # A command string this hook cannot read (built from a shell expansion)
+    # fails CLOSED, not open.
+    'bash -c "git push origin $B"',
+    "bash -c 'git push origin $(echo main)'",
+    # "an unrecognised wrapper shape is refused": a recognised wrapper's own
+    # flags (the last call found the first cut let each of these through) ...
+    "sudo -u root git push origin HEAD",
+    "env -i git push origin HEAD",
+    "env -C /tmp git push origin HEAD",
+    "xargs -I{} git push origin HEAD",
+    "time -p git push origin HEAD",
+    "nohup -- git push origin HEAD",
+    "env -S 'git push origin HEAD'",
+    # ... a program not on the list, a shell keyword, eval ...
+    "timeout 10 git push origin HEAD",
+    "nice -n 5 git push origin HEAD",
+    "sudo timeout 10 git push origin HEAD",
+    "find . -exec git push origin HEAD ;",
+    "if true; then git push origin HEAD; fi",
+    "{ git push origin HEAD; }",
+    "! git push origin HEAD",
+    "eval git push origin HEAD",
+    "eval 'git push origin HEAD'",
+    # ... a program that runs a string it is handed ...
+    "watch 'git push origin HEAD'",
+    "ssh localhost 'git push origin HEAD'",
+    'python3 -c \'import os; os.system("git push origin HEAD")\'',
+    # ... and refused WHATEVER the destination: an unrecognised shape is not
+    # read like a bare push, so a non-main push behind one is refused too.
+    "timeout 60 git push -u origin feat/x",
+    "sudo -E git push origin feature",
+    "timeout 5 bash -c 'git push origin feature'",
+])
+def test_r7_env_prefix_and_wrapper_pushes_are_now_blocked(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 2, (command, out.stderr)
+    assert "BLOCKED by ADR 0090" in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # An ordinary command that shares a wrapper name with the list above but
+    # has nothing to do with git must stay exactly as unblocked as ever.
+    "sudo docker push myimage:latest",
+    "sudo apt-get update",
+    "env FOO=bar npm run build",
+    # A wrapped push to a NON-main destination stays allowed, same as the
+    # un-wrapped case (r4_push_var_develop).
+    "sudo git push origin feature",
+    "nohup git push origin HEAD:develop",
+    "sudo bash -c 'git push origin feature'",
+    "X=1 git push origin feature",
+    # Behind an unrecognised shape, a git that does not push is not refused.
+    "sudo -u root git status",
+    "timeout 10 git fetch origin",
+    "bash -lc 'git status'",
+    # A script file (no `c` option) is not read -- a long-standing gap
+    # (point 23), unchanged by this round.
+    "bash deploy.sh",
+    # Named residual: eval stays trusted (the founder's keep-trusting answer),
+    # so a string built from an expansion is not refused ...
+    'eval "$(ssh-agent -s)"',
+    # ... and a quoted string handed to a program on neither list is not read:
+    # this hook cannot tell it from a quoted argument such as a PR body.
+    "gh pr create --title t --body 'nohup git push origin HEAD'",
+    # Named residual, found by the last call and left for the founder: a
+    # word the tokenizer cannot close (bash's $'...' quoting) makes the whole
+    # push check read nothing, as it did before this round.
+    "git push origin HEAD; echo $'\\''",
+    # Named residual, same: a git whose own name comes from an expansion.
+    "G=git; $G push origin HEAD",
+    "$(echo git) push origin HEAD",
+])
+def test_r7_the_named_residuals_are_still_not_seen(two, command):
+    """Pins what gate-r7 names but does not close, so it is not silently
+    claimed closed later, and pins that the fix does not over-block ordinary
+    wrapper usage that has nothing to do with a git push."""
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+def test_r7_env_prefix_push_is_confirmed_live_against_a_local_bare_origin(two, tmp_path):
+    """The residual gate-r6 named (ADR 0090's text): "a push behind an env
+    prefix or a wrapper (`X=1 git push origin HEAD`, `nohup git push origin
+    HEAD`), which `_direct_push_problem()` skips because the segment's first
+    word is not git." CONFIRMED failing on the reverted line, live against a
+    local bare origin: the push landed on remote main."""
+    clone, _h, env = two
+    command = "X=1 " + _WRAP + " origin HEAD"
+    reverted = HOOK.read_text().replace(
+        "        if not seg:\n            continue\n"
+        "        reason = _wrapper_stripped_push_reason(seg, start, assigned, _depth)\n",
+        "        if not seg or not _is_program(seg[0], \"git\"):\n            continue\n"
+        "        reason = _push_reason(seg, _env_before(assigned, start))\n", 1)
+    assert reverted != HOOK.read_text()
+    pre_fix_clone, _pre_fix_h, pre_fix_env = build(tmp_path, {"1": CLEAN, "2": OWNED}, hook_source=reverted)
+    pre_fix_out = run_hook(pre_fix_clone, pre_fix_env, command)
+    assert pre_fix_out.returncode == 0, (  # FAILING: the bug lets this through
+        "reverted-line build unexpectedly still blocks -- the scenario no "
+        "longer isolates this fix", pre_fix_out.stderr)
+    # Not only a function-level claim: run the exact vulnerable command for
+    # real (bypassing the hook entirely, the way a shell would once the hook
+    # -- wrongly, pre-fix -- said ALLOW) against the same clone/origin the
+    # pre-fix hook just approved it for, and confirm the LOCAL BARE ORIGIN's
+    # own main ref really moves, not merely that some exit code was 0. The
+    # founder's own wording is "run from a main checkout" -- `git push origin
+    # HEAD` with no explicit destination names the CURRENT LOCAL BRANCH on
+    # the remote, so the checkout must actually BE main for this to move it.
+    before_main = git(pre_fix_clone, "ls-remote", "origin", "refs/heads/main")
+    git(pre_fix_clone, "checkout", "-q", "-B", "main", "origin/main")
+    (pre_fix_clone / "proof.txt").write_text("env-prefix wrapper push proof\n")
+    git(pre_fix_clone, "add", "-A")
+    git(pre_fix_clone, "commit", "-qm", "main-checkout commit")
+    push = subprocess.run(["bash", "-c", command], cwd=pre_fix_clone, env=pre_fix_env,
+                          capture_output=True, text=True, timeout=60)
+    assert push.returncode == 0, push.stderr  # the real push itself succeeded
+    after_main = git(pre_fix_clone, "ls-remote", "origin", "refs/heads/main")
+    assert after_main != before_main, (
+        "the real push did not move the local bare origin's main ref -- the "
+        "scenario no longer demonstrates a real exploit", before_main, after_main)
+    out = run_hook(clone, env, command)  # PASSING: the real, fixed hook
+    assert out.returncode == 2, out.stderr
+    assert "BLOCKED by ADR 0090" in out.stderr, out.stderr
+    # The nohup wrapper form, same claim, same proof of a real exploit, from
+    # the same main checkout advanced one more commit.
+    command2 = "nohup " + _WRAP + " origin HEAD"
+    pre_fix_out2 = run_hook(pre_fix_clone, pre_fix_env, command2)
+    assert pre_fix_out2.returncode == 0, (pre_fix_out2.stderr)
+    before_main2 = git(pre_fix_clone, "ls-remote", "origin", "refs/heads/main")
+    (pre_fix_clone / "proof2.txt").write_text("nohup wrapper push proof\n")
+    git(pre_fix_clone, "add", "-A")
+    git(pre_fix_clone, "commit", "-qm", "second main-checkout commit")
+    push2 = subprocess.run(["bash", "-c", command2], cwd=pre_fix_clone, env=pre_fix_env,
+                           capture_output=True, text=True, timeout=60)
+    assert push2.returncode == 0, push2.stderr
+    after_main2 = git(pre_fix_clone, "ls-remote", "origin", "refs/heads/main")
+    assert after_main2 != before_main2, "the nohup-wrapped real push did not move main either"
+    out2 = run_hook(clone, env, command2)
+    assert out2.returncode == 2, out2.stderr
+
+
+# The first cut of gate-r7 read only a BARE named wrapper and an exact
+# `shell -c <arg>`: a recognised wrapper's own flag, a program not on the
+# list, a shell keyword, and a shell whose `c` came in another option shape
+# all ended the reading and were let through. These two replacements restore
+# that first cut, so the test below can show each shape was a real push.
+_R7_FIRST_CUT = (
+    ("        return _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned, wrapped, _depth)\n",
+     "        return None\n"),
+    ("    if not any(_SHELL_C_OPTION_RE.match(t) for t in rest):\n",
+     "    if rest[:1] != [\"-c\"]:\n"),
+)
+
+
+def _gated_push_moves_main(tmp_path: pathlib.Path, hook_source: str, command: str) -> tuple[int, bool]:
+    """(the hook's exit, whether the local bare origin's main moved) when
+    `command` is run from a checkout of main ONLY IF the hook allows it --
+    the way the harness itself gates a Bash call."""
+    tmp_path.mkdir()
+    clone, _h, env = build(tmp_path, {"1": CLEAN}, hook_source=hook_source)
+    git(clone, "checkout", "-q", "-B", "main", "origin/main")
+    (clone / "proof.txt").write_text("unrecognised wrapper push proof\n")
+    git(clone, "add", "-A")
+    git(clone, "commit", "-qm", "main-checkout commit")
+    before = git(clone, "ls-remote", "origin", "refs/heads/main")
+    verdict = run_hook(clone, env, command)
+    if verdict.returncode == 0:
+        subprocess.run(["bash", "-c", command], cwd=clone, env=env,
+                       capture_output=True, text=True, timeout=60)
+    return verdict.returncode, git(clone, "ls-remote", "origin", "refs/heads/main") != before
+
+
+@pytest.mark.parametrize("command", [
+    "env -u R7_UNSET " + _WRAP + " origin HEAD",
+    "nice -n 5 " + _WRAP + " origin HEAD",
+    "if true; then " + _WRAP + " origin HEAD; fi",
+    "eval '" + _WRAP + " origin HEAD'",
+    "sh -ec '" + _WRAP + " origin HEAD'",
+])
+def test_r7_unrecognised_wrapper_shapes_are_refused_live_against_a_local_bare_origin(tmp_path, command):
+    """Founder: "an unrecognised wrapper shape is refused". Each shape, gated
+    by the hook the way a Bash call is, from a checkout of main: the first
+    cut allowed it and the real push moved the bare origin's main; the fixed
+    hook refuses it and main does not move."""
+    first_cut = HOOK.read_text()
+    for old, new in _R7_FIRST_CUT:
+        assert first_cut.count(old) == 1, old
+        first_cut = first_cut.replace(old, new, 1)
+    exit_first, moved_first = _gated_push_moves_main(tmp_path / "first", first_cut, command)
+    assert (exit_first, moved_first) == (0, True), (
+        "the first cut no longer lets this shape reach remote main -- the "
+        "scenario no longer shows a real push", command, exit_first, moved_first)
+    exit_fixed, moved_fixed = _gated_push_moves_main(tmp_path / "fixed", HOOK.read_text(), command)
+    assert (exit_fixed, moved_fixed) == (2, False), (command, exit_fixed, moved_fixed)
 
 
 # --------------------------------------------------------------------------- #
@@ -1601,6 +1848,49 @@ HOOK_MUTATIONS = [
     ("last call: a name first assigned after the push trusted as that value",
      "            values.append(_UNRESOLVED)  # read before this command first assigns it\n",
      "            pass\n", "r6_env_read_before_assigned"),
+    # --------------------------------------------------------------------- #
+    # gate-r7 (2026-09-21), founder's env-prefix/wrapper push answer.
+    # --------------------------------------------------------------------- #
+    ("the whole wrapper-stripping read replaced with the old git-only-at-seg[0] check "
+     "(re-introduces the env-prefix/wrapper push hole)",
+     "        if not seg:\n            continue\n"
+     "        reason = _wrapper_stripped_push_reason(seg, start, assigned, _depth)\n",
+     "        if not seg or not _is_program(seg[0], \"git\"):\n            continue\n"
+     "        reason = _push_reason(seg, _env_before(assigned, start))\n", "r7_wrapper_stripping_removed"),
+    ("a leading NAME=value assignment no longer peeled off the front of a segment",
+     "        if _SIMPLE_ASSIGNMENT_RE.match(tok):\n", "        if False:\n", "r7_assignment_prefix"),
+    ("a named transparent wrapper (nohup/env/command/time/exec/sudo/xargs) no "
+     "longer peeled off the front of a segment",
+     "        if name in _PUSH_WRAPPER_PROGRAMS:\n", "        if False:\n", "r7_bare_wrapper"),
+    ("a shell -c with a literal string no longer read through",
+     '        if name in _PUSH_SHELL_PROGRAMS:\n',
+     "        if False:\n", "r7_shell_c_literal"),
+    ("Founder: \"an unrecognised wrapper shape is refused\" -- a -c argument built "
+     "from a shell expansion no longer fails closed (re-opens the opaque -c hole)",
+     "        if re.search(r\"[$`]\", arg):\n", "        if False:\n", "r7_shell_c_unrecognised"),
+    ("the -c recursion depth bound removed (re-opens unbounded nested -c reading)",
+     "        if _depth >= _MAX_PUSH_WRAP_DEPTH:\n", "        if False:\n", "r7_bound_depth"),
+    ("last call: an unrecognised wrapper shape read as not a push (the first cut)",
+     "        return _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned, wrapped, _depth)\n",
+     "        return None\n", "r7_unrecognised_shape"),
+    ("last call: a push behind an unrecognised shape refused only when it may reach main",
+     "            if _git_invokes_push(seg[k:], _env_before(assigned, seg_start + k)):\n",
+     "            if _push_reason(seg[k:], _env_before(assigned, seg_start + k)):\n",
+     "r7_unrecognised_any_destination"),
+    ("last call: a git push subcommand no longer counted as a push unless it may reach main",
+     '        if sub == "push" or (sub == "subtree" and j + 1 < len(seg) and seg[j + 1].lower() == "push"):\n',
+     "        if False:\n", "r7_unrecognised_any_destination"),
+    ("last call: a shell runs a command string only on an exact `-c` (the first cut)",
+     "    if not any(_SHELL_C_OPTION_RE.match(t) for t in rest):\n",
+     "    if rest[:1] != [\"-c\"]:\n", "r7_shell_option_cluster"),
+    ("last call: a string after a recognised wrapper's own flag no longer read",
+     "    reads_strings = wrapped or runner in _STRING_RUNNING_PROGRAMS\n",
+     "    reads_strings = runner in _STRING_RUNNING_PROGRAMS\n", "r7_wrapped_string"),
+    ("last call: a string handed to a string-running program no longer read",
+     "    reads_strings = wrapped or runner in _STRING_RUNNING_PROGRAMS\n",
+     "    reads_strings = wrapped\n", "r7_string_runner"),
+    ("last call: a shell string behind an unrecognised shape read like a bare push, not refused",
+     "            reads_strings = True\n", "            pass\n", "r7_shell_behind_unrecognised"),
 ]
 
 # (command, exit the unmutated hook gives, tool, extra environment)
@@ -1706,6 +1996,32 @@ SCENARIOS = {
     "r6_export_flags": lambda h: ("export -n B=main; git push origin feat:$B", 2, None, {}),
     "r6_env_any_main": lambda h: ("export B=main; git push origin feat:$B; export B=develop", 2, None, {}),
     "r6_env_read_before_assigned": lambda h: ("git push origin HEAD:$B; export B=develop", 2, None, {}),
+    # gate-r7 (2026-09-21), founder's env-prefix/wrapper push answer.
+    "r7_wrapper_stripping_removed": lambda h: ("X=1 git push origin HEAD", 2, None, {}),
+    # The unrecognised-shape reading refuses a main push on its own, so the
+    # recognised peels are pinned where they matter: a NON-main push behind
+    # one is read like a bare push and allowed, where an unrecognised shape
+    # would refuse it.
+    "r7_assignment_prefix": lambda h: ("X=1 git push origin feature", 0, None, {}),
+    "r7_bare_wrapper": lambda h: ("nohup git push origin feature", 0, None, {}),
+    "r7_shell_c_literal": lambda h: ("bash -c 'git push origin HEAD'", 2, None, {}),
+    # An unresolvable -c argument (a shell expansion) must fail CLOSED even
+    # when the recursive read, if it ran, would itself find nothing wrong --
+    # an explicit non-main destination means _push_reason()'s OWN unresolved-
+    # variable check (which only ever looks at the DESTINATION half of a
+    # refspec) never fires on the source-side "$SRC", so only THIS check
+    # stands between the mutant and a silent allow.
+    "r7_shell_c_unrecognised": lambda h: ('bash -c "git push origin $SRC:feature"', 2, None, {}),
+    # Past the depth bound with a NON-main destination: the unmutated hook
+    # fails closed (refuses) rather than recursing through to find it is
+    # actually harmless; the mutant recurses fully and allows it.
+    "r7_bound_depth": lambda h: (_nested("git push origin feature", 4), 2, None, {}),
+    "r7_unrecognised_shape": lambda h: ("sudo -u root git push origin HEAD", 2, None, {}),
+    "r7_unrecognised_any_destination": lambda h: ("timeout 60 git push -u origin feat/x", 2, None, {}),
+    "r7_shell_option_cluster": lambda h: ("sh -ec 'git push origin HEAD'", 2, None, {}),
+    "r7_wrapped_string": lambda h: ("env -S 'git push origin HEAD'", 2, None, {}),
+    "r7_string_runner": lambda h: ("eval 'git push origin HEAD'", 2, None, {}),
+    "r7_shell_behind_unrecognised": lambda h: ("timeout 5 bash -c 'git push origin feature'", 2, None, {}),
 }
 
 

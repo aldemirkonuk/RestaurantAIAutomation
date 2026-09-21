@@ -654,7 +654,169 @@ def _push_reason(seg: list[str], env: dict[str, str] | None = None) -> str | Non
     return None
 
 
-def _direct_push_problem(command: str) -> str | None:
+# gate-r7, 2026-09-21. The residual gate-r6 could only NAME (its bracket on
+# the gate-r5 "Named, not code-changed" bullet, above): "a push behind an env
+# prefix or a wrapper (`X=1 git push origin HEAD`, `nohup git push origin
+# HEAD`), which `_direct_push_problem()` skips because the segment's first
+# word is not git." CONFIRMED exit 0 before this fix, live against a local
+# bare origin: both example commands really do move the remote's main --
+# `_direct_push_problem()`'s segment loop required `seg[0]` itself to BE git
+# (`_is_program(seg[0], "git")`), so a segment opening with an assignment
+# token (`X=1`) or a wrapper program's own name (`nohup`) was skipped
+# WHOLESALE, the real `git push` sitting right after it never reached
+# `_push_reason()` at all.
+#
+# Founder's answer, as relayed by the orchestrating session (ADR 0090 Review
+# trail, gate-r7): close it, fail closed -- a push behind leading assignments
+# or a wrapper (nohup, env, command, time, exec, sudo, xargs, a shell -c with
+# a literal string) run from a main checkout is read like a bare push; an
+# unrecognised wrapper shape is refused.
+#
+# Built as three readings, one per part of that answer:
+#   RECOGNISED -- `_wrapper_stripped_push_reason()` peels any run of
+#     `NAME=value` assignments and any chain of the seven named wrappers
+#     (matched by basename, so `/usr/bin/env` counts) off the front of a
+#     segment; a `git` reached that way is read EXACTLY LIKE A BARE PUSH
+#     (`_push_reason()`, over the same `_env_before()` an un-wrapped push gets).
+#   SHELL STRING -- `_shell_string_push_reason()`: a shell whose options carry
+#     `c` anywhere (`-c`, `-lc`, `-ec`, `--norc -c`, `-o pipefail -c`) runs a
+#     command string; every later non-option word is re-checked by this same
+#     function, recursively, bounded by `_MAX_PUSH_WRAP_DEPTH` the way
+#     `_gh_api_reading()` bounds its own nested-quote reading. A word built
+#     from `$`/backtick, or nesting past the bound, is REFUSED -- this hook
+#     cannot resolve either without running a shell. A shell with no `c`
+#     option runs a script file or stdin: point 23's residual, unchanged.
+#   UNRECOGNISED -- `_unrecognised_wrapper_push_reason()`: once the chain
+#     stops at anything else (a recognised wrapper's own flag, `sudo -u root`,
+#     `env -i`, `xargs -I{}`; a program not on the list, `timeout`, `nice`,
+#     `find -exec`; a shell keyword, `then`, `do`, `{`, `!`; `eval`), a later
+#     `git` running `push` -- to ANY destination -- is REFUSED, not read. So
+#     is a shell string holding the word push behind such a shape, and any
+#     later multi-word argument holding it when what ran it is a recognised
+#     wrapper's own flag (`env -S '...'`) or a program known to run a string
+#     it is handed (`_STRING_RUNNING_PROGRAMS`: `eval '...'`, `watch '...'`,
+#     `ssh host '...'`, `python3 -c '...'`). Nothing here refuses a command
+#     with no git running push in it: `sudo docker push img`, `sudo apt-get update`,
+#     `env FOO=bar npm run build` stay exactly as unblocked as before.
+#
+# Named residuals (ADR 0090, gate-r7): a value set any way
+# `_collect_assignments()` does not read (`declare`, `typeset`, `readonly`,
+# `local`, `read`, `eval`, `NAME+=`) -- the founder's answer is to KEEP
+# TRUSTING them; heredoc and comment text keep the CURRENT reading (this push
+# check reads a heredoc body's lines as commands, as it did before, and shlex
+# drops comment text, as it did before); a program outside both lists that
+# runs a QUOTED string itself is not read, since this hook cannot tell it from
+# a quoted argument such as `gh pr create --body '...'`.
+_PUSH_WRAPPER_PROGRAMS = frozenset({"nohup", "env", "command", "time", "exec", "sudo", "xargs"})
+_PUSH_SHELL_PROGRAMS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish"})
+_MAX_PUSH_WRAP_DEPTH = 3
+# A shell option cluster that makes the shell run a command string: `-c`
+# itself, or `c` among other single-letter options (`-lc`, `-ec`, `-xc`).
+_SHELL_C_OPTION_RE = re.compile(r"^-[A-Za-z]*c[A-Za-z]*$")
+# Programs that run a string they are handed, matched by basename with any
+# trailing version stripped (`python3.11` -> `python`).
+_STRING_RUNNING_PROGRAMS = frozenset({"eval", "watch", "su", "flock", "script", "ssh",
+                                      "parallel", "python", "node", "perl", "ruby", "osascript"})
+
+
+def _git_invokes_push(seg: list[str], env: dict[str, object]) -> bool:
+    """True if `seg` (its head already confirmed to be git) runs `push`,
+    `subtree push`, or an alias `_push_reason()` says may push -- to ANY
+    destination, main or not."""
+    j = _skip_git_global_flags(seg, 1)
+    if j < len(seg):
+        sub = seg[j].lower()
+        if sub == "push" or (sub == "subtree" and j + 1 < len(seg) and seg[j + 1].lower() == "push"):
+            return True
+    return _push_reason(seg, env) is not None
+
+
+def _shell_string_push_reason(seg: list[str], i: int, _depth: int) -> str | None:
+    """`seg[i]` is a shell. Why the command string it runs is a push this
+    hook must refuse, or None -- including None when it runs no string at
+    all (no option carrying `c`: a script file or stdin, point 23)."""
+    rest = seg[i + 1:]
+    if not any(_SHELL_C_OPTION_RE.match(t) for t in rest):
+        return None
+    for arg in rest:
+        if arg.startswith(("-", "+")):
+            continue
+        if re.search(r"[$`]", arg):
+            return (f"runs `{seg[i]}` on a command string built from a shell "
+                    "expansion this hook cannot resolve, which may push "
+                    "directly to main -- an unrecognised wrapper shape, "
+                    "refused rather than silently let through")
+        if _depth >= _MAX_PUSH_WRAP_DEPTH:
+            return (f"runs `{seg[i]}` on a command string nested past the depth "
+                    "this hook re-reads, which may push directly to main")
+        reason = _direct_push_problem(arg, _depth + 1)
+        if reason:
+            return reason
+    return None
+
+
+def _unrecognised_wrapper_push_reason(seg: list[str], i: int, seg_start: int,
+                                      assigned: dict[str, list[tuple[int, object]]],
+                                      wrapped: bool, _depth: int) -> str | None:
+    """`seg[i]` ended the recognised chain: it is none of an assignment, git,
+    a named wrapper or a shell. Fail closed on what follows it -- refuse a
+    later git that pushes at all, and a string holding the word push that a
+    shell, a string-running program, or a recognised wrapper's own flags
+    (`wrapped`) may run."""
+    refusal = (f"runs a git push behind `{seg[i]}`, a wrapper shape this hook "
+               "does not recognise -- refused rather than read, whatever its "
+               "destination")
+    runner = re.sub(r"[0-9.]+$", "", os.path.basename(seg[i]).lower())
+    reads_strings = wrapped or runner in _STRING_RUNNING_PROGRAMS
+    for k in range(i + 1, len(seg)):
+        tok = seg[k]
+        if _is_program(tok, "git"):
+            if _git_invokes_push(seg[k:], _env_before(assigned, seg_start + k)):
+                return refusal
+            continue
+        if os.path.basename(tok).lower() in _PUSH_SHELL_PROGRAMS:
+            reason = _shell_string_push_reason(seg, k, _depth)
+            if reason:
+                return reason
+            reads_strings = True
+            continue
+        if reads_strings and re.search(r"\s", tok) and re.search(r"(?i)\bpush\b", tok):
+            return refusal
+    return None
+
+
+def _wrapper_stripped_push_reason(seg: list[str], seg_start: int,
+                                   assigned: dict[str, list[tuple[int, object]]],
+                                   _depth: int = 0) -> str | None:
+    """Why `seg` -- a simple command that may open with a same-command
+    `NAME=value` assignment or one of the founder's named transparent
+    wrappers, not yet confirmed to invoke `git` at all -- is a push this hook
+    must block, or None. `seg_start` is `seg[0]`'s own index in the WHOLE
+    command's token stream (not just this segment's), so `_env_before()`
+    sees exactly the same same-command assignments an un-wrapped push at
+    that position would. `assigned` is `_direct_push_problem()`'s own
+    `_collect_assignments()` map, built once for the whole command."""
+    i, n = 0, len(seg)
+    wrapped = False
+    while i < n:
+        tok = seg[i]
+        if _SIMPLE_ASSIGNMENT_RE.match(tok):
+            i += 1
+            continue
+        if _is_program(tok, "git"):
+            return _push_reason(seg[i:], _env_before(assigned, seg_start + i))
+        name = os.path.basename(tok).lower()
+        if name in _PUSH_WRAPPER_PROGRAMS:
+            wrapped = True
+            i += 1
+            continue
+        if name in _PUSH_SHELL_PROGRAMS:
+            return _shell_string_push_reason(seg, i, _depth)
+        return _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned, wrapped, _depth)
+    return None  # ran out of tokens (only assignments/wrappers, nothing after): not a push
+
+
+def _direct_push_problem(command: str, _depth: int = 0) -> str | None:
     # Cheap pre-filter: "push" covers a literal invocation (including a
     # renamed/symlinked git, which still can't rename its own SUBCOMMAND
     # away) and "git" covers the alias case, where "push" is hidden inside an
@@ -688,9 +850,9 @@ def _direct_push_problem(command: str) -> str | None:
             segments[-1].append(tok)
     assigned = _collect_assignments(toks)
     for seg, start in zip(segments, starts):
-        if not seg or not _is_program(seg[0], "git"):
+        if not seg:
             continue
-        reason = _push_reason(seg, _env_before(assigned, start))
+        reason = _wrapper_stripped_push_reason(seg, start, assigned, _depth)
         if reason:
             return reason
     return None

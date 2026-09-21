@@ -936,6 +936,113 @@ GitHub-markdown-renders-PI/CDATA-as-invisible claim is carried from
 r5-gate.json's own finding, not independently re-run against the live API
 in this round.
 
+**gate-r7 — 2026-09-21.** The one residual gate-r6's own last call could only
+NAME, not close (bracket above, "Named, not code-changed"'s sibling
+paragraph): *"a push behind an env prefix or a wrapper (`X=1 git push origin
+HEAD`, `nohup git push origin HEAD`), which `_direct_push_problem()` skips
+because the segment's first word is not git."* Founder answer, as relayed by
+the orchestrating session in the same review-trail round (see this ADR's
+Review trail): close it, fail closed — a push behind leading assignments or
+a wrapper (`nohup`, `env`, `command`, `time`, `exec`, `sudo`, `xargs`, a
+shell `-c` with a literal string) run from a main checkout is read like a
+bare push; an unrecognised wrapper shape is refused.
+
+- **CONFIRMED by execution, live against a local bare origin**, both example
+  commands: `_direct_push_problem()`'s segment loop required `seg[0]` itself
+  to be `git` (`_is_program(seg[0], "git")`); a segment opening with an
+  assignment token (`X=1`) or a wrapper's own program name (`nohup`) was
+  skipped WHOLESALE, so the real `git push` sitting right after it never
+  reached `_push_reason()` at all. `test_r7_env_prefix_push_is_confirmed_live_against_a_local_bare_origin`
+  (`scripts/test_require_pr_audit.py`) runs both example commands for real,
+  from a checkout of local `main`, against a throwaway bare origin, and
+  confirms the origin's own `refs/heads/main` really moves before the fix,
+  and that the fixed hook refuses both.
+- **Fixed, one reading per part of the answer** (`scripts/hooks/require_pr_audit.py`,
+  the gate-r7 comment block above `_direct_push_problem()`):
+  - *Recognised, read like a bare push.* `_wrapper_stripped_push_reason()`
+    peels any run of `NAME=value` assignments (the shape
+    `_collect_assignments()` already reads) and any chain of the seven named
+    wrapper programs, matched by basename so `/usr/bin/env` counts; a `git`
+    reached that way goes to `_push_reason()` over the same `_env_before()`
+    an un-wrapped push gets. So `sudo git push origin feature` stays allowed
+    and `sudo git push origin HEAD` is refused, exactly as without `sudo`.
+  - *A shell running a string.* `_shell_string_push_reason()`: a shell
+    (`sh`, `bash`, `zsh`, `dash`, `ksh`, `fish`) whose options carry `c`
+    anywhere (`-c`, `-lc`, `-ec`, `--norc -c`, `-o pipefail -c`) runs a
+    command string, and every later non-option word is re-checked by
+    `_direct_push_problem()` itself, recursively, bounded by
+    `_MAX_PUSH_WRAP_DEPTH = 3` the way `_gh_api_reading()` (point 25) bounds
+    its own nested-quote reading. A word built from `$`/backtick, or nesting
+    past the bound, is REFUSED: this hook cannot resolve either without
+    running a shell. A shell with no `c` option runs a script file or stdin
+    (`bash deploy.sh`), point 23's residual, unchanged.
+  - *Unrecognised, refused.* `_unrecognised_wrapper_push_reason()`: once the
+    chain stops at anything else — a recognised wrapper's own flag (`sudo -u
+    root`, `env -i`, `env -C dir`, `xargs -I{}`, `time -p`, `nohup --`), a
+    program not on the list (`timeout`, `nice`, `find -exec`), a shell
+    keyword (`then`, `do`, `{`, `!`), `eval` — a later `git` that runs
+    `push` to ANY destination is refused, not read; so is a shell string
+    holding the word `push` behind such a shape, and any later multi-word
+    argument holding it when what runs it is a recognised wrapper's own flag
+    (`env -S '...'`) or a program known to run a string it is handed
+    (`_STRING_RUNNING_PROGRAMS`: `eval`, `watch`, `su`, `flock`, `script`,
+    `ssh`, `parallel`, `python`, `node`, `perl`, `ruby`, `osascript`). A
+    command with no git running push in it is untouched: `sudo docker push
+    myimage:latest`, `sudo apt-get update`, `env FOO=bar npm run build`,
+    `sudo -u root git status`, `timeout 10 git fetch origin` all stay exit 0.
+- **Last call, same day: the first cut built only half the answer.** It read
+  a BARE named wrapper and an exact `shell -c <arg>`, and let every other
+  wrapper shape through as "not a push" — and pinned four of them open
+  (`sudo -u root git push origin HEAD`, `env -i ...`, `xargs -I{} ...`,
+  `bash --norc -c '...'`, each exit 0) as residuals "per the founder's own
+  words", which the founder had not said: his answer refuses an
+  unrecognised shape. Corrected to the three readings above.
+  `test_r7_unrecognised_wrapper_shapes_are_refused_live_against_a_local_bare_origin`
+  proves five of the shapes with a real push, gated by the hook the way a
+  Bash call is, from a checkout of `main`: under the first cut each is
+  allowed and the bare origin's `main` moves; under the fix each is refused
+  and `main` does not move (`env -u X`, `nice -n 5`, `if true; then ...;
+  fi`, `eval '...'`, `sh -ec '...'`).
+- **Cost, stated plainly.** Refusing an unrecognised shape cannot tell a
+  wrapper from prose: a heredoc body line that names `git push` after some
+  other word (`We checked that git push origin HEAD is refused`) is now
+  refused where the first cut let it through, and so is `echo git push
+  origin HEAD`. Write such text to a file and pass it with `-F`.
+- **Named residuals.** A value set any way `_collect_assignments()` does not
+  already read (`declare`, `typeset`, `readonly`, `local`, `read`, `eval`,
+  `NAME+=`) — the founder's answer is to **KEEP TRUSTING them**: that gap
+  (point 21's residual, and gate-r6's own "Named residuals" bullet, above)
+  stays as is, and an `eval` string built from an expansion (`eval
+  "$(ssh-agent -s)"`) is not refused. Heredoc bodies and comment text
+  **keep the current reading** — the founder's answer: this push check
+  reads a heredoc body's lines as commands and drops comment text, both as
+  before, and gate-r6's "the refusals now read the whole text again"
+  reading is unchanged. A quoted string handed to a program on neither list
+  is not read, since the hook cannot tell it from a quoted argument such as
+  `gh pr create --body '...'`. Found by the last call and left for the
+  founder, not changed here: a word the tokenizer cannot close — bash's
+  `$'...'` quoting, e.g. `git push origin HEAD; echo $'\''` — makes
+  `_tokens()` raise and the whole push check return "not a push" (exit 0),
+  as it did before this round; refusing instead would also refuse every
+  heredoc whose body holds an odd number of apostrophes. Also found by the
+  last call and left for the founder: a git whose own NAME comes from an
+  expansion (`G=git; $G push origin HEAD`, `$(echo git) push origin HEAD`)
+  is not seen, as before this round — the push-side twin of the `G=gh; $G
+  ...` merge shape in the "Not seen" list.
+
+Re-measured on this round's own tree: `test_require_pr_audit.py` alone 366
+passed (286 at gate-r6's HEAD, 321 at the first cut); 59
+`test_hook_mutations_are_killed` cases, every mutant killed, 13 of them
+gate-r7's (the first cut's 6, 2 of those re-pinned to a non-main push since
+the unrecognised reading now refuses a main push on its own, plus 7 from the
+last call); the full `ci.yml` scripts/ step 697 passed (617 at gate-r6, 652
+at the first cut); `test_pr_audit_gate.py` 103, unchanged. Not done, stated
+plainly: no branch-protection or live-repo verification, same restriction
+as every prior round; the `-c` depth bound is exercised by mutation and by
+a synthetic non-main push nested past it, not by a real push at that depth;
+`sudo`-prefixed shapes are proven by the hook's verdict only, since the
+harness cannot run `sudo`.
+
 ### Amendment — 2026-09-17, founder pipeline redesign
 
 **Founder decision, verbatim, in the main session:** *"change ADR 90 to be a
@@ -1805,3 +1912,4 @@ un-anchored and 0 when restored.
 | 2026-09-18 | Aldemir (chat) | "do the better approach for longevity, change the ADR if needed." Seven questions answered, all with the recommended option (table in the 2026-09-18 amendment). Ownership decided by `gate_ownership()` on git-native input at a pinned head: index owned unless a pure append for ADRs the PR adds; decision text naming the gate owned; owned paths case-folded and widened to `scripts/hooks/`, `.claude` and `.mcp.json` at any depth, nested `CLAUDE.md`/`AGENTS.md`; renames seen from both sides; escalation before any model call; the hook re-checks with origin/main's copy and requires `--match-head-commit`. Fixer round after the adversarial audit: `.github/workflows/` and `.github/actions/` owned whole, plus the deploy scripts `deploy.yml` calls and the gate's own tests; the hook checks every merge in a command, needs a literal PR number and one pin, and blocks MCP merge tools; a 1,000-line register-diff bound and a 600s CI deadline. Confirm round after a NOT READY: `.claude` and `.mcp.json` owned at any depth; the hook refuses a `pr` subcommand or `gh` word written with quoting or expansion, `gh alias set`/`import`, `--admin`, `--auto` and a second merge in one command, blocks rather than fails open if its word reader raises, and its marker and direct-push checks are pinned by tests; the "hard block" residual narrowed to what is checked, refused and not seen, each not-seen example pinned. Replay 125 → 104 owned of 317 (re-measured after the confirm round, unchanged commit by commit); 80 mutations, 0 survivors (`scripts/test_pr_audit_gate.py`), 23 hook mutations killed. This change edits owned paths, so it escalates by design and merges only on the founder's word through the SHA-pinned route. |
 | 2026-09-18 | Aldemir (via `AskUserQuestion`, relayed by the orchestrating session) | Chose the option labelled exactly *"Accept the widening (Recommended)"* on the question about widening the owned set: the whole `.github/workflows/` folder, `.github/actions/`, the deploy-check scripts, the gate's own tests, and `.claude/` at any depth. Recorded in the amendment's widening paragraph, which no longer asks for his word on it. `scripts/check_test_scripts_are_real.py` and `.mcp.json` at any depth were not named in the acceptance as relayed; they ride on this PR's own escalation. |
 | 2026-09-21 | Aldemir (chat, gate lane review-trail round, gate-r6) | Closed the two residuals gate-r5 had only named (bullet above, "Named, not code-changed"), verbatim: **(1)** *"Bind it to the segment"* -- the literal-PR `gh api` exemption in `_github_api_merge_reason()` was granted on a gh-api reading of the WHOLE command, so `gh api user >/dev/null; curl -X PUT .../pulls/2/merge` was exempted by an unrelated `gh api` call; it is now granted only when `_merge_call_outside_gh_api()` finds no segment (top-level, in a substitution, or in a quoted string another shell runs) that names the endpoint without itself being the recognised `gh api` call. **(2)** *"Teach it export"* -- `_collect_assignments()` read a leading `export` as the command starting and skipped the `NAME=value` after it, so `export B=main; git push origin feat:$B` reached main; `export`, `export -n` and `export --` now assign as the bare form does. The last call found the first cut of each opened what HEAD refused -- surfaces in a heredoc body (a base Merges POST, a GraphQL auto-merge mutation, a non-literal-PR merge, a curl merge) and two `export` shapes resolved to a value the push never sees -- and corrected both (bracket on the gate-r5 bullet, above, with the residuals still named). Re-measured on this branch, not copied forward: `test_require_pr_audit.py` 286 passed; the full `ci.yml` scripts/ step (9 files, `scripts/jev/prompt_gate_test.py` folded in by this branch's merge with `origin/main`) 617 passed; `test_pr_audit_gate.py` 103, unchanged; `--self-test` 98 invariants held, unchanged; every `r6_*` HOOK_MUTATIONS mutant exits 0 on its scenario where the fix exits 2. Not done, stated plainly: no branch-protection or live-repo verification, same restriction as every prior round; the `gh api` finding is the hook's own verdict in the test harness, and only the export fix was also shown with a real push, against a local bare origin. |
+| 2026-09-21 | Aldemir (chat, relayed by the orchestrating session, gate lane review-trail round, gate-r7) | Closed the residual gate-r6 could only name (this ADR's own text, not his words: *"a push behind an env prefix or a wrapper (`X=1 git push origin HEAD`, `nohup git push origin HEAD`), which `_direct_push_problem()` skips because the segment's first word is not git."*). His answer, as relayed: *"CLOSE the env-prefix / wrapper push hole, fail closed - a push behind leading assignments or a wrapper (nohup, env, command, time, exec, sudo, xargs, a shell -c with a literal string) run from a main checkout is read like a bare push; an unrecognised wrapper shape is refused."* Disposition of the two shapes named with it, as relayed: other assignment forms (`declare`, `typeset`, `readonly`, `local`, `read`, `eval`, `NAME+=`) -- **keep trusting them** (named residual, not widened); heredoc/comment text -- **keep the current reading**. Built as three readings (recognised: read like a bare push; a shell running a string: re-read, expansion refused; unrecognised: refused whatever the destination) in the gate-r7 bracket above. The last call found the first cut had read only a bare named wrapper and an exact `shell -c`, and had recorded four open shapes (`sudo -u root`, `env -i`, `xargs -I{}`, `bash --norc -c`) as residuals he had not named; corrected, and five shapes proven with a real push against a local bare origin, first cut allowed and moved main, fix refused and main stayed. `test_require_pr_audit.py` 366 passed (286 at gate-r6); the full `ci.yml` scripts/ step 697 passed (617 at gate-r6); `test_pr_audit_gate.py` 103, unchanged. |

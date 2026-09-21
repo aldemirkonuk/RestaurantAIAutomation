@@ -442,7 +442,7 @@ export default function Profile() {
                   <p className="text-xs text-gray-400 mt-1">
                     Contact{' '}
                     <a
-                      href={`mailto:${import.meta.env.VITE_SUPPORT_EMAIL || 'support@wineops.ai'}`}
+                      href={`mailto:${import.meta.env.VITE_SUPPORT_EMAIL || 'support@mudavym.com'}`}
                       className="text-wine-600 hover:underline"
                     >
                       support

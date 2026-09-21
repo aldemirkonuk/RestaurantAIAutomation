@@ -414,7 +414,15 @@ describe('RecommendationsNext — the standing book', () => {
 
     const digest = screen.getByRole('button', { name: /Stored: off/ });
     expect(digest).toBeDisabled();
-    expect(screen.getByText(/the preference stores, but nothing sends it/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/A digest goes only to a member who asked for it/),
+    ).toBeInTheDocument();
+    // The page reads no deployment state, so its reason may not assert one: neither
+    // the retired "no scheduler reads recommendation_digest_prefs" nor "the sender is
+    // switched off", which turns false the day the gateway is armed (review D5).
+    expect(
+      screen.queryByText(/no scheduler|nothing sends it|switched off|DIGEST_SEND_ENABLED/),
+    ).not.toBeInTheDocument();
   });
 
   it('moves and acts from the keyboard', () => {
