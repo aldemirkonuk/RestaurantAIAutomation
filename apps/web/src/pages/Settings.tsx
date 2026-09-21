@@ -354,7 +354,10 @@ function CalendarSubscriptionSection() {
       )}
       {fullFeedUrl && (
         <div className="flex items-center gap-2">
-          <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 font-mono truncate">
+          <div
+            data-secret="credential"
+            className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 font-mono truncate"
+          >
             {fullFeedUrl}
           </div>
           <button
