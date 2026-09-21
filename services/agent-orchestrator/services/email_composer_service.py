@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+from html import escape as _escape_html
 import re
 import statistics
 import time
@@ -708,17 +709,24 @@ class EmailComposerService:
     # =========================================================================
 
     def _wrap_html(self, body_text: str, tags: Dict[str, Any]) -> str:
-        """Wrap plain-text body into minimal, professional HTML."""
-        paragraphs = body_text.split("\n\n")
+        """Wrap plain-text body into minimal, professional HTML.
+
+        ADR 0170: a vendor email body is text, never markup. Each paragraph is
+        escaped BEFORE the <br/> is written, so the only tags in the output are
+        the ones this method writes. The body is LLM-drafted and goes to the
+        vendor under the restaurant's name, so a draft saying "<a href=...>"
+        must arrive as visible text, not as a live link.
+        """
+        paragraphs = (body_text or "").split("\n\n")
         html_paras = "".join(
-            f'<p style="margin: 0 0 12px; line-height: 1.6;">{p.replace(chr(10), "<br/>")}</p>'
+            f'<p style="margin: 0 0 12px; line-height: 1.6;">{_escape_html(p, quote=True).replace(chr(10), "<br/>")}</p>'
             for p in paragraphs
             if p.strip()
         )
 
         order_ref = tags.get("order_number") or tags.get("order_id", "")
         ref_line = (
-            f'<p style="margin: 20px 0 0; color: #9ca3af; font-size: 11px;">Ref: {order_ref}</p>'
+            f'<p style="margin: 20px 0 0; color: #9ca3af; font-size: 11px;">Ref: {_escape_html(str(order_ref), quote=True)}</p>'
             if order_ref
             else ""
         )
