@@ -37,7 +37,8 @@ the cost-free staff view on purpose.
 One event, three renderings by role:
 - **Staff**: pick which delivery you're receiving → the door flow; no prices shown
 - **Manager**: the decision queue, worst money first
-- **Owner**: one number — money that actually came back (recovered credits)
+- **Owner**: money that actually came back (recovered credits), **plus the manager
+  decision queue since 2026-09-18** (ADR 0149 row 44, §12) — no longer one number alone
 - **Verification settles COST, never quantity (ADR 0103 A1).** The bottles arrived on the shelf at the door; pressing verify posts the agreed price — an accepted proposal beats the invoice line it is about — onto that delivery's lots and flips them from `provisional` to `final`. The response's `costNote` says what could not be costed and why, rather than reporting a silent success.
 - 🚧 Nothing links here yet; the page is reachable by typed URL only (§9)
 
@@ -311,6 +312,25 @@ the denominator (`:251-258,298-304`). Keep that discipline when touching this pa
 
 **Where the UI misleads:** the staff empty state (§10) — it reports a healthy quiet
 delivery day while the request behind it is rejected.
+
+**2026-09-18 (ADR 0149 row 44):** the decision queue no longer opens for manager alone —
+owner gets it too, mounted alongside the recovered-money ledger (`ReceivingNext.tsx`'s
+`OwnerBody`).
+
+Measured live against `user_restaurant_access` (Supabase MCP, SELECT only) 2026-09-18,
+re-measured 2026-09-19: 10 owner rows across all 10 restaurants, 4 manager rows in 4 of
+them (one each), 1 staff row (Sim Bistro, `12823c23-…`, granted 2026-09-03, in a house
+that also has a manager); 6 of 10 remain owner-only. So the "permission-denied" row above
+was previously leaving that queue unreachable in most houses.
+
+There is still no gateway-level RBAC guard in this tree on `GET /procurement/receiving/queue`,
+`GET /procurement/credits`, `GET /procurement/credits/stats` or `POST
+/procurement/credits/:id/transition` — until ADR 0167 lands, any authenticated member of the
+house, staff included, can call all four today. ADR 0167 (founder: "Refuse staff on all four"
+— queue, credits list, stats, transition; peer branch `fix/receiving-credits-refuse-staff`,
+Locked 2026-09-19, not yet merged here) owns the gateway 403 for these routes. The role split
+above remains a client-side rendering choice only on this page; server-side enforcement lands
+with ADR 0167, not here.
 
 ## 13. Roadmap
 

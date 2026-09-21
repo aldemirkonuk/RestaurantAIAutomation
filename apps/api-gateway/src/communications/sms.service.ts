@@ -124,8 +124,8 @@ export class SmsService implements OnModuleInit {
     // instruction the system cannot honour is worse than no instruction.
     const message = `🚨 ${severity}: ${data.wineName}
 Stock: ${data.currentStock}/${data.threshold} bottles
-Action needed — reorder in WineOps.
-- WineOps AI`;
+Action needed — reorder in Mudavym.
+- Mudavym`;
 
     return this.sendSms({
       to: data.to,
@@ -154,7 +154,7 @@ Action needed — reorder in WineOps.
     const message = `📊 ${data.restaurantName} Daily
 Low stock: ${data.lowStockCount}
 Pending orders: ${data.pendingOrders}
-Check WineOps for details.`;
+Check Mudavym for details.`;
 
     return this.sendSms({
       to: data.to,
@@ -172,8 +172,8 @@ Check WineOps for details.`;
     estimatedTime?: string;
   }): Promise<SmsResult> {
     const message = data.estimatedTime
-      ? `📦 Delivery from ${data.providerName}: ${data.itemCount} items arriving at ${data.estimatedTime}. - WineOps AI`
-      : `📦 Delivery from ${data.providerName}: ${data.itemCount} items on the way! - WineOps AI`;
+      ? `📦 Delivery from ${data.providerName}: ${data.itemCount} items arriving at ${data.estimatedTime}. - Mudavym`
+      : `📦 Delivery from ${data.providerName}: ${data.itemCount} items on the way! - Mudavym`;
 
     return this.sendSms({
       to: data.to,
@@ -196,7 +196,7 @@ Check WineOps for details.`;
     // receives an inbound SMS. This one was the more dangerous of the two —
     // a manager who replied YES believed they had approved a purchase.
     const message = `🍷 Order Request: ${data.quantity}x ${data.wineName} ($${data.totalPrice.toFixed(0)})
-Approve or decline it in WineOps.
+Approve or decline it in Mudavym.
 Order #${data.orderId.substring(0, 8)}`;
 
     return this.sendSms({

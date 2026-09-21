@@ -149,7 +149,7 @@ Owner is the team's card from `00-index/cards.json`, never a person.
 `check_*` guards wired into `ci.yml`, so the mechanism is proven and has simply never been
 pointed at this class; the allowlist file is a **declared gap** in this team's own card
 (`cards.json` → `access-control-tenant-isolation` → `guard-census.declared_gaps`).
-S2: OD-19 (`OPEN-DECISIONS.md:33`) asks for exactly this enumeration; the 40 reproduce
+S2: OD-19 (`OPEN-DECISIONS.md:34`) asks for exactly this enumeration; the 40 reproduce
 independently today. S3: [[security-directive]] rule 3 and the `guard-census` quality bar
 (*"both numbers or the run failed"*). S4: `sec.cross_tenant_write_paths` is listed
 `unmeasured` in [[access-control-tenant-isolation-charter]] §Metrics. S5:

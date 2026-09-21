@@ -183,22 +183,38 @@ the two registers that would actually leak are refused at the gateway as well.
   of a long list. Honoured once the register behind the fragment has answered, so a
   deep link never scrolls to a skeleton.
 
-- **The house's text senders** *(ADR 0121, 2026-09-05)*. Two rows in Register I —
-  **WhatsApp Business** and **SMS sender** — because they are different products
-  with different registrars, different fees and, in Türkiye, different
-  *capabilities*: an alphanumeric Sender ID there is one-way and cannot receive
-  a reply, so one averaged row would have claimed a conversation the channel
-  cannot hold. Each row offers the founder's two paths — *bring our own* and
-  *ask Mudavym to register one* — **both disabled, carrying the server's own
-  sentence** rather than one this page invented: no provider credential for a
-  per-house sender exists on this deployment. The rows are drawn at full weight
-  with nothing connected, which is this page's structural rule applied to its
-  newest attachment: a live POS feed and an unconnected sender get the same
-  amount of design, so an absence cannot be flattered by being drawn thinner.
-  `Last proven reachable` is empty and says **never probed**, which is neither
-  "unreachable" nor health (ADR 0107). An unread register is named and is never
-  allowed to fall through to the "none" row — an outage must not read as a fact
-  about the restaurant.
+- **The house's text senders** *(ADR 0121, 2026-09-05; "Stop it" added by the
+  port reconciled 2026-09-17; the stop control rebuilt to the founder's
+  hold-to-approve ceremony the same day)*. Two rows in Register I —
+  **WhatsApp Business** and **SMS sender** — because they are different
+  products with different registrars, different fees and, in Türkiye,
+  different *capabilities*: an alphanumeric Sender ID there is one-way and
+  cannot receive a reply, so one averaged row would have claimed a
+  conversation the channel cannot hold. Each row offers the founder's two
+  paths — *bring our own* and *ask Mudavym to register one* — **both
+  disabled, carrying the server's own sentence** rather than one this page
+  invented: no provider credential for a per-house sender exists on this
+  deployment. A third control, **"Hold to stop &lt;sender&gt;"**, replaces the
+  pair whenever the house has a sender that is not already revoked: it
+  follows §1b's `RowControl.hold` pattern now (`AttachmentRow.tsx:181`,
+  wrapping `HoldToApprove`) — a typed, non-blank reason in the `<textarea>`
+  sibling below the row is what the `disabled` gate checks, so the gesture
+  cannot even arm on a placeholder, and the typed text is what reaches the
+  gateway as `reason`, not a fixed string. Success re-reads the register from
+  the server (ADR 0083) rather than the row painting "Stopped" itself; a
+  refusal — thrown by the client (network/4xx) or the gateway's own 200
+  `{revoked: false}` sentinel for a stale `senderId` or an already-revoked
+  race — lands in the row's own sentence, naming what the gateway said, and
+  the typed reason stays in the box rather than being cleared, so a retry
+  does not have to reconstruct it. Founder answer and the rebuild are recorded
+  in "Execution reconciliation" below and ADR 0121's 2026-09-17 (F3) review-
+  trail row. The rows are drawn at full weight with nothing connected, which
+  is this page's structural rule applied to its newest attachment: a live POS
+  feed and an unconnected sender get the same amount of design, so an absence
+  cannot be flattered by being drawn thinner. `Last proven reachable` is empty
+  and says **never probed**, which is neither "unreachable" nor health (ADR
+  0107). An unread register is named and is never allowed to fall through to
+  the "none" row — an outage must not read as a fact about the restaurant.
 
 - **A licensed distributor connection, defined and not offered** *(ADR 0126,
   2026-09-05; endpoint only, no component reads it yet)*. `GET
@@ -1190,3 +1206,57 @@ emailed file has no uploader identity and no sender key, so it could be stored b
 priced, and admitting prices from a channel that cannot name who handed the file over is the
 shape ADR 0126 §7 exists to prevent. A manager uploads the file on this page with the sender
 named. Rejected: store emailed 832s unpriced.
+
+
+## Execution reconciliation — 2026-09-13, reconciled 2026-09-17
+
+The text sender/reachability/allowance surfaces are ported from the accepted text port.
+The sender routes now read the signed actor through `houseActor(token).userId`, never
+the bare JWT field `user.id` (which `jwt.strategy.ts` never carries, so this was
+`undefined` on every write before the fix), and a revoked sender cannot continue
+receiving through a credential row that remains. No live registration or traffic was
+initiated.
+
+**"Stop it" (added by this port) does not follow §1b's `RowControl.hold` pattern**
+(`AttachmentRow.tsx:181`, wrapping `HoldToApprove`; also used directly by
+`HouseServerControls.tsx:332`) — the precedent the register's other revokes actually
+use. Stopping a house's text sender is one click, sends a fixed reason string
+("Stopped by a manager from the Connections page."), and the page offers no way back
+afterward — both declare controls stay disabled. **Founder question, not decided by
+this pass:** should stopping a sender require `HoldToApprove` and a typed reason,
+matching this page's other revokes? See ADR 0121's 2026-09-17 review-trail row.
+
+**Update, 2026-09-17 fixer pass:** the "Stop it" success path had a second gap besides
+the open `HoldToApprove` question above — the gateway's `revoke()` resolves 200 with
+`{revoked: false, words: ...}` rather than throwing when nothing matched (a stale
+`senderId`, or a race with another revoke), and axios resolves on 2xx, so that refusal
+was landing in `.then()` and firing a silent `onStopped?.()` reload instead of
+`stopNote`. Fixed in `ConnectionsNext.tsx`'s handler to check `result.revoked` before
+treating the promise as a success; covered by a third vitest case alongside the
+existing thrown/network-error one.
+
+**Founder answer, 2026-09-17 (F3 lane):** "Stopping a house's text sender takes
+hold-to-approve and a TYPED reason, like the other revokes on `/connections`." The
+one-click, fixed-reason control above is replaced: "Stop it" is now
+`HoldToApprove` — `RowControl.hold`, the pattern this section originally flagged as
+missing — gated `disabled` on a typed, non-blank reason in a new `<textarea>`
+sibling under the row (`data-testid="text-sender-stop-reason-<channel>"`), and that
+typed text, not a fixed string, is what `revokeTextSender({ senderId, reason })`
+sends. `RevokeSenderDto` carries no seal/challenge field (`text-senders.dto.ts`), so
+unlike the payment and grant rows' `HoldToApprove` — which mint a real one-time
+server seal through `onChallenge` — this control's `onChallenge` captures the typed
+reason locally when the hold BEGINS and refuses (the same shape as a failed seal
+mint) on a blank read; that branch is unreachable through the UI while `disabled`
+holds. A refusal, either shape, keeps the typed reason on screen rather than
+clearing it. Four vitest cases now cover: the hold refusing to arm on a blank
+reason; a held approval sending the typed reason and re-reading the register; the
+thrown-refusal path; the 200 `{revoked:false}` refusal path — replacing the three
+tests this section's prior updates pinned. Full detail and the re-measured numbers
+are in ADR 0121's 2026-09-17 (F3) review-trail row. **Left open, not this pass's
+to decide:** the production duplicate-count precondition for migration
+`20260913190100` — the founder is running the counts — and this ADR's other open
+forks (inbound-message phone-reachability override; "Main line" as a stated
+answer).
+**[CORRECTED 2026-09-19, PR #391 audit M1: the production duplicate-count precondition
+is satisfied — measured 2026-09-18, founder-authorized, read-only (Supabase MCP SELECT
+only): both predicates are 0. The two remaining ADR 0121 forks stay open.]**

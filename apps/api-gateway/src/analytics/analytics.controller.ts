@@ -1152,7 +1152,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Set daily recommendation digest preferences (NEW-303)",
     description:
-      "Body: { digestEnabled?, digestHour?, digestMinUrgency?, recipientEmail? }. Persists the manager's toggle; the scheduled send is feature-flagged in the analytics scheduler.",
+      "Body: { digestEnabled?, digestHour?, digestMinUrgency?, recipientEmail? }. Persists the house's toggle, hour and urgency floor. The sender (analytics/digest, ADR 0149 row 26; off unless DIGEST_SEND_ENABLED) mails only members who asked for it via /recommendations/digest/subscription; recipientEmail is stored and never mailed.",
   })
   async setRecommendationDigest(
     @Param("restaurantId") restaurantId: string,

@@ -748,13 +748,21 @@ describe('ProfileNext — the payment register (the provider path)', () => {
   });
 
   /**
-   * THE PORT, 2026-09-05 — the same component, still here with the flag off.
+   * THE PORT, 2026-09-05 — the same component, still here with `connections`
+   * forced off (this file's `useMudavymDesign` mock defaults `connections` to
+   * `false`, above).
    *
-   * `mudavym_design_connections` is OFF in production, so `/profile` is where a
-   * card is actually added today. The panel is no longer in this directory; if
-   * the port had broken this page, nothing else in this file would have noticed
-   * — every other payment test exercises the UNKEYED path, where the panel is
-   * never constructed.
+   * `connections` has been live in code for every house since ADR 0149 row 36
+   * (2026-09-17) — `/profile` no longer shows this panel by default in
+   * production; the card-adding path now lives at `/connections`
+   * (`StripeCardPanel.tsx`, `ConnectionsNext.tsx`). This test keeps exercising
+   * `/profile`'s own off-branch rendering of the shared panel — reachable via
+   * the QA `localStorage["mudavym.design.connections"]` override, or before
+   * this go-live — so a regression in the shared component would still be
+   * caught here even though it is no longer what a house sees by default. The
+   * panel is no longer in this directory; if the port had broken this page,
+   * nothing else in this file would have noticed — every other payment test
+   * exercises the UNKEYED path, where the panel is never constructed.
    */
   it('mounts the shared card panel here when both halves of the credential exist', async () => {
     mockData.current = base({
