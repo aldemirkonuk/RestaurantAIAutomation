@@ -487,7 +487,13 @@ test('public: the signed-out doors, with the one switch as built and forced each
       const before = s.errors.length
       const r = await readPublic(s.page, entry.route)
       const id = `public.${entry.slug}.${pass}`
-      const shot = await s.page.screenshot()
+      // Same mask as the signed-in walk above. These pages render placeholders
+      // today, not real tokens — but "today" is the argument that failed once
+      // already on /connections, so the shutter is masked here too rather than
+      // resting on a claim about which page renders what.
+      const shot = await s.page.screenshot({
+        mask: [s.page.locator('[data-secret]')],
+      })
       await test.info().attach(`public.${entry.slug}.${pass}.png`, { body: shot, contentType: 'image/png' })
       if (r.body.length < 40) {
         recordAndAssert({ id, state: 'fail', reason: `${entry.route} rendered ${r.body.length} characters signed out — a blank page`, evidence: r })
