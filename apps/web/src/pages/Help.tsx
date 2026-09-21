@@ -15,9 +15,9 @@ import { Button } from '../components/ui/button'
 import { trackGuidance } from '../guidance/analytics'
 import { cn } from '../lib/utils'
 
-const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@wineops.ai'
+const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@mudavym.com'
 const SUPPORT_SLACK_URL =
-  import.meta.env.VITE_SUPPORT_SLACK_URL || 'https://wineops.slack.com'
+  import.meta.env.VITE_SUPPORT_SLACK_URL || 'mailto:support@mudavym.com'
 
 const FAQS = [
   {

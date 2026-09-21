@@ -30,7 +30,7 @@ export async function registerPush(): Promise<void> {
 
     if (Platform.OS === "android") {
       await Notifications.setNotificationChannelAsync("default", {
-        name: "WineOps",
+        name: "Mudavym",
         importance: Notifications.AndroidImportance.HIGH,
         lightColor: color.wineStrong,
       });

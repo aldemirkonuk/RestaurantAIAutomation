@@ -109,7 +109,7 @@ describe("the four states of a house's conversation", () => {
       "The whole conversation is on this house's mailbox",
     );
     // It names what is NOT involved, which is the whole point of the condition.
-    expect(identity.conversation.words).toContain("notifications@wineops.ai");
+    expect(identity.conversation.words).toContain("notifications@mudavym.com");
     expect(identity.conversation.sending.granted).toBe(true);
     expect(identity.conversation.receiving.consented).toBe(true);
     expect(identity.conversation.receiving.switchedOn).toBe(true);
@@ -120,7 +120,7 @@ describe("the four states of a house's conversation", () => {
     expect(identity.conversation.where).toBe("letters_leave_only");
     expect(identity.conversation.words).toContain("Letters leave from");
     expect(identity.conversation.words).toContain(
-      "replies still arrive through notifications@wineops.ai",
+      "replies still arrive through notifications@mudavym.com",
     );
     // The reading grant is named by its own label, so the advice is actionable.
     expect(identity.conversation.words).toContain(

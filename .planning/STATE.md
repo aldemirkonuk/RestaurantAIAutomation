@@ -7,6 +7,20 @@
 >
 > **2026-09-12 handoff:** the merge queue, the seven unlanded branches, and the page wave in flight are in [handoff/PROGRESS.md](handoff/PROGRESS.md). Read it before continuing any of them.
 
+> **2026-09-17 — the finish goal.** The founder asked for every page on the Mudavym design,
+> legacy deleted, merged and deployed. The decisions are [ADR 0149](decisions/0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once.md)
+> (38 answers; the cutover; the deletion manifest is a gated stop on his approval) and
+> [ADR 0160](decisions/0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes.md)
+> (his sketch review, page by page). Live on main since: #384 the decisions, #386 the new
+> audit pipeline ([ADR 0090 amendment](decisions/0090-pr-audit-gate-autonomous-merge.md): Opus
+> plans, two Sonnet reviewers run the plan, Opus decides), #387 the overlay foundation and the
+> vendor-intel deciding house, and the SEO session's #385/#388 ([ADR 0158](decisions/0158-machines-read-mudavym-from-what-the-host-serves.md)).
+> Production was verified on `commit 3a752010` and on a string only #387 added. Sixteen locked
+> pages go live for every house in code in `feat/finish-live`; nothing in the database is
+> touched and no legacy file is deleted until the manifest is approved. The lane-by-lane state,
+> the worktree map and what the founder still owes are in
+> [handoff/PROGRESS.md §0c](handoff/PROGRESS.md).
+
 **Current milestone: P3 — Grade, then scale** ([ADR 0029](decisions/0029-p3-plan-of-record.md)).
 **P2 closed 2026-08-26** — all five stages deployed and verified, both held items resolved.
 **Read order:** [PROJECT.md](PROJECT.md) → [decisions/README.md](decisions/README.md) → this file → [ROADMAP.md](ROADMAP.md).

@@ -2,7 +2,7 @@
 
 > **Status: evidence for a founder call. Nothing here is decided.**
 > It is marked a founder call in
-> OD-113 ([`OPEN-DECISIONS.md`](../decisions/OPEN-DECISIONS.md):68). This document exists to
+> OD-113 ([`OPEN-DECISIONS.md`](../decisions/OPEN-DECISIONS.md):69). This document exists to
 > make that call *ready*, not to make it. No option below is recommended as settled;
 > §9 states the one question that remains.
 >
