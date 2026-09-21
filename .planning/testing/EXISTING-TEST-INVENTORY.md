@@ -12,7 +12,7 @@
 - **`runs?=yes`** only if a named CI job invokes that runner on push ([`ci.yml`](../../.github/workflows/ci.yml): `test-typescript`, `test-python`, `test-e2e`) or schedule ([`e2e-prod.yml`](../../.github/workflows/e2e-prod.yml): `e2e-prod`).
 - **`passes?` default `unknown`** unless this phase has a green local run artifact. **Never claim CI green** from file presence alone.
 - **Do not treat TFND-05 as green CI (H5).** As of 2026-07-27, push CI fails Black on `services/agent-orchestrator/api/studio_routes.py` (recent failing run `30299009969`). Lint gates `test-python` / `test-typescript` — test jobs are not trustworthy until lint is green.
-- **Layer inference:** path + `pytest.ini` markers (`unit`, `integration`, `e2e`, `prod_e2e`). Nest/Vitest default `unit` unless path/name clearly integration (`*.e2e.spec.ts`, reports integration folders). `wave_*.py` → `prod_e2e` + `ci_job=e2e-prod`. Local Playwright → `e2e` + `test-e2e`. `prod-smoke.spec.ts` notes Wave F / `e2e-prod`. Waves D, E, G retired 2026-09-12 (ADR 0137) — their rows are removed, not marked absent, since the files no longer exist.
+- **Layer inference:** path + `pytest.ini` markers (`unit`, `integration`, `e2e`, `prod_e2e`). Nest/Vitest default `unit` unless path/name clearly integration (`*.e2e.spec.ts`, reports integration folders). `wave_*.py` → `prod_e2e` + `ci_job=e2e-prod`. Local Playwright → `e2e` + `test-e2e`. `apps/web/e2e/nightly/nightly.spec.ts` notes Wave F / `e2e-prod` (ADR 0135, 2026-09-11 — replaced the retired `prod-smoke.spec.ts`). Waves D, E, G retired 2026-09-12 (ADR 0137) — their rows are removed, not marked absent, since the files no longer exist.
 - **`test-e2e` (local Playwright on push) ≠ `e2e-prod` (nightly/cloud waves).** Do not conflate them.
 - **T1-eligible evidence excludes `passes?=stale-suspect`** (C3/M1). Rows remain inventoried; scorecard must not count them toward T1.
 - **Group column** uses locked N-shortname slugs only, matching [FUNCTIONALITY-REGISTRY.md](./FUNCTIONALITY-REGISTRY.md) primaries (H1).
@@ -23,11 +23,11 @@
 
 | Runner | Files |
 |--------|------:|
-| jest | 41 |
+| jest | 42 |
 | vitest | 30 |
 | playwright | 4 |
-| pytest | 64 |
-| **Total** | **139** |
+| pytest | 65 |
+| **Total** | **141** |
 
 | Group slug | Rows | T1-eligible (`runs?=yes` ∧ not stale-suspect) |
 |------------|-----:|----------------------------------------------:|
@@ -41,10 +41,10 @@
 | `8-analytics` | 25 | 25 |
 | `9-notifications` | 6 | 6 |
 | `10-ai` | 0 | 0 |
-| `11-platform` | 30 | 29 |
+| `11-platform` | 32 | 31 |
 
 - **stale-suspect rows:** 1 (excluded from T1-eligible)  
-- **T1-eligible row total:** 138  
+- **T1-eligible row total:** 140  
 - **Corpus floors (2026-07-27 find):** api-gateway `*.spec.ts`=41 · web `src` Vitest=30 · `e2e/*.spec.ts`=4 · orch `test_*.py`+`wave_*.py`=67
 
 ---
@@ -125,7 +125,9 @@
 | 1-identity | apps/web/src/pages/Profile.test.tsx | vitest | unit | test-typescript | yes | unknown |  |
 | 5-procurement | apps/web/src/pages/inventory/command/ReceivingWorkspace.test.tsx | vitest | unit | test-typescript | yes | unknown | receiving workspace; registry primary 5 |
 | 11-platform | apps/web/e2e/navigation.spec.ts | playwright | e2e | test-e2e | yes | unknown | local Playwright smoke |
-| 11-platform | apps/web/e2e/prod-smoke.spec.ts | playwright | prod_e2e | e2e-prod | yes | unknown | Wave F / also invoked via e2e-prod schedule; secrets often empty |
+| 11-platform | apps/web/e2e/nightly/nightly.spec.ts | playwright | prod_e2e | e2e-prod | yes | unknown | Wave F (ADR 0135) — replaced prod-smoke.spec.ts 2026-09-11; walks manifest.json with the override on/off; honest-reporter.ts writes the four-state summary |
+| 11-platform | services/agent-orchestrator/tests/e2e_gateway/test_wave_h_gateway_contracts.py | pytest | prod_e2e | e2e-prod | yes | unknown | Wave H (ADR 0135) — gateway read-only: build identity, 401s, flags, forecast/insight-catalog honesty, scenario runs; own conftest, no sim teardown |
+| 11-platform | apps/api-gateway/src/analytics/engine/forecasting.backtest.spec.ts | jest | unit | test-typescript | yes | unknown | pinned forecast fixture datasets/sim/fixtures/forecast-backtest.json (ADR 0135); also run by e2e-prod's Backtests step |
 | 11-platform | apps/web/e2e/smoke.spec.ts | playwright | e2e | test-e2e | yes | unknown | local Playwright smoke |
 | 2-catalog | apps/web/e2e/studio-flow.spec.ts | playwright | e2e | test-e2e | yes | unknown | local Playwright; test-e2e ≠ e2e-prod |
 | 11-platform | services/agent-orchestrator/tests/e2e/test_api_endpoints.py | pytest | e2e | test-python | yes | unknown | orchestrator e2e suite under tests/e2e/ |

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "sh -c 'r=$(git rev-parse --show-toplevel 2>/dev/null || echo .); python3 \"$r/scripts/jev/prompt_gate.py\" --for=cursor || exit 0'",
+        "timeout": 8,
+        "failClosed": false
+      }
+    ]
+  }
+}
