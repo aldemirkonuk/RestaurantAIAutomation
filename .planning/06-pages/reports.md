@@ -291,7 +291,7 @@ this list is the note-side index (ADR 0044 §2).
 
 | id | token | fires |
 |---|---|---|
-| `rp-open` | `settle` 420ms | the opening line on mount — opacity + 6px rise, once |
+| `rp-open` | `settle` 320ms **[CORRECTED 2026-09-21, ADR 0134 rule 1: was a raw 420ms literal on the house curve, folded into `settle`]** | the opening line on mount — opacity + 6px rise, once |
 | `rp-rule` | `settle` 320ms | the twelve-column feint ruling fading up when Arrange is entered, down when the sheet is ruled off |
 | `rp-lift` | `tuck` 300ms | a cutting's shadow rising while it is dragged **or held from the keyboard**; duration + easing injected as `--rp-tuck` from the token, so the curve on screen IS `tuck` |
 | `rp-ink` | `ink` 160ms | hover/focus micro-states on cuttings, chips, buttons, links; nothing translates |

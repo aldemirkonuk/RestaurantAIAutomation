@@ -1,0 +1,1987 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Motion Rules Specimens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Sketch 116 — ADR 0134's eleven rule changes, each drawn twice: today on main, and as proposed.
+   Tokens are the .mudavym column verbatim (styles/mudavym.css, ADR 0042/0138). No hex outside this block. */
+:root { --speed: 1; }
+.mudavym, .mudavym[data-ground="charcoal"] {
+  --seal: #5FB0BC; --seal-deep: #7DC3CD; --seal-tint: rgba(95,176,188,.14); --seal-ring: rgba(95,176,188,.38);
+  --paper-0: #15130F; --paper-1: #1D1813; --paper-2: #262019;
+  --ink-1: #EFE7D9; --ink-2: #C0B6A5; --ink-3: #8E8576; --ink-4: #ABA294;
+  --shadow: rgba(0,0,0,.45); color-scheme: dark;
+}
+.mudavym[data-ground="paper"] {
+  --seal: #1a5e6b; --seal-deep: #14515c; --seal-tint: rgba(26,94,107,.10); --seal-ring: rgba(26,94,107,.32);
+  --paper-0: #fffdf8; --paper-1: #f3efe6; --paper-2: #eae4d8;
+  --ink-1: #211c16; --ink-2: #4f473c; --ink-3: #7c7365; --ink-4: #665d50;
+  --shadow: rgba(23,19,15,.22); color-scheme: light;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { background: #15130F; }
+.mudavym {
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --house: cubic-bezier(0.16, 1, 0.3, 1);
+  background: var(--paper-0); color: var(--ink-1); font: 14px/1.5 var(--sans); min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1360px; margin: 0 auto; padding: 0 40px 96px; }
+a { color: var(--seal); }
+
+/* masthead */
+.mast { padding: 44px 0 28px; border-bottom: 1px solid var(--paper-2); display: grid; grid-template-columns: 1fr 360px; gap: 40px; align-items: end; }
+.wordmark { font: 600 20px var(--serif); }
+.wordmark b { color: var(--seal); }
+.mast h1 { font: 400 40px/1.08 var(--serif); letter-spacing: -.02em; max-width: 22ch; margin: 14px 0 12px; text-wrap: balance; }
+.mast p { color: var(--ink-2); max-width: 66ch; }
+.mast p b { color: var(--ink-1); font-weight: 600; }
+.aside { font: 11.5px/1.7 var(--mono); color: var(--ink-4); border-left: 1px solid var(--paper-2); padding-left: 20px; }
+.aside b { color: var(--ink-1); font-weight: 500; }
+
+/* sticky control bar */
+.bar { position: sticky; top: 0; z-index: 30; background: var(--paper-0); border-bottom: 1px solid var(--paper-2); display: flex; gap: 22px; align-items: center; padding: 10px 0; flex-wrap: wrap; }
+.grp { display: flex; gap: 6px; align-items: center; }
+.k { font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); margin-right: 4px; }
+.btn { font: 500 12.5px var(--sans); background: transparent; border: 1px solid var(--paper-2); color: var(--ink-1); border-radius: 6px; padding: 6px 11px; cursor: pointer;
+  transition: border-color 160ms var(--house), background-color 160ms var(--house), color 160ms var(--house); }
+.btn:hover { border-color: var(--seal-ring); }
+.btn[aria-pressed="true"], .btn[aria-checked="true"] { background: var(--seal-tint); border-color: var(--seal-ring); }
+.btn--seal { background: var(--seal); color: var(--paper-0); border-color: var(--seal); }
+.btn--seal:hover { border-color: var(--seal-deep); background: var(--seal-deep); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn:focus-visible, .plain:focus-visible, .hold:focus-visible, .item:focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
+.bar .state-note { margin-left: auto; font: 11px var(--mono); color: var(--ink-4); }
+
+/* token strip */
+.strip-head { display: flex; justify-content: space-between; align-items: baseline; padding: 28px 0 12px; }
+.strip-head h2, .sec h2 { font: 400 24px/1.15 var(--serif); letter-spacing: -.01em; }
+.strip-head p, .sec > p { color: var(--ink-2); max-width: 78ch; margin-top: 6px; }
+.tokens { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 10px; padding-bottom: 28px; border-bottom: 1px solid var(--paper-2); }
+.tok { border: 1px solid var(--paper-2); border-radius: 8px; padding: 12px; background: var(--paper-1); }
+.tok__name { font: 500 18px var(--serif); }
+.tok__ms { font: 500 11px var(--mono); color: var(--seal); }
+.tok__curve { font: 10px/1.5 var(--mono); color: var(--ink-4); margin-top: 4px; min-height: 30px; overflow-wrap: normal; word-break: normal; }  /* breaks only after ", " so 0.3 never reads as 0 and 3 */
+.tok__track { position: relative; height: 6px; background: var(--paper-2); border-radius: 3px; margin: 12px 6px 0; }
+.tok__dot { position: absolute; top: -3px; left: 0; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--seal); }
+.tok__use { font: 11.5px/1.45 var(--sans); color: var(--ink-2); margin-top: 10px; }
+
+/* a rule */
+.rule { padding: 48px 0 28px; border-bottom: 1px solid var(--paper-2); }
+.rule__head { display: grid; grid-template-columns: 64px 1fr auto; gap: 20px; align-items: start; margin-bottom: 18px; }
+.rule__num { font: 300 44px/1 var(--serif); color: var(--seal); }
+.rule__title { font: 400 27px/1.15 var(--serif); letter-spacing: -.01em; text-wrap: balance; }
+.rule__dec { color: var(--ink-2); margin-top: 8px; max-width: 84ch; }
+.rule__dec b { color: var(--ink-1); font-weight: 600; }
+.replay { font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; background: transparent; border: 1px solid var(--paper-2); color: var(--ink-1); border-radius: 6px; padding: 8px 12px; cursor: pointer; white-space: nowrap;
+  transition: border-color 160ms var(--house), background-color 160ms var(--house); }
+.replay:hover { border-color: var(--seal-ring); background: var(--seal-tint); }
+.stages { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 18px; }
+.stages--3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.stage { border: 1px solid var(--paper-2); border-radius: 10px; background: var(--paper-1); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.stage__label { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; padding: 10px 14px; border-bottom: 1px solid var(--paper-2); font: 600 10px/1.4 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); }
+.stage__label b { color: var(--ink-1); }
+.stage--proposed .stage__label b { color: var(--seal); }
+.stage__label span { font-weight: 500; letter-spacing: .04em; text-transform: none; text-align: right; }
+.stage__canvas { position: relative; min-height: 300px; background: var(--paper-0); padding: 18px; overflow: hidden; flex: 1; }
+.stage__spec { padding: 10px 14px; border-top: 1px solid var(--paper-2); font: 11px/1.65 var(--mono); color: var(--ink-4); white-space: pre-wrap; word-break: break-word; }
+.stage__spec b { color: var(--ink-1); font-weight: 500; }
+.stage__spec i { color: var(--seal); font-style: normal; }
+.rule__fork { margin-top: 20px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 28px; }
+.fork { border-left: 2px solid var(--seal); padding-left: 14px; }
+.fork .k, .where .k { display: block; margin-bottom: 6px; }
+.fork ol { padding-left: 18px; color: var(--ink-2); }
+.fork li { margin: 4px 0; }
+.fork li b { color: var(--ink-1); font-weight: 600; }
+.where { font: 11px/1.75 var(--mono); color: var(--ink-4); }
+.where b { color: var(--ink-2); font-weight: 500; }
+.caption { position: absolute; left: 18px; right: 18px; bottom: 14px; font: 11.5px/1.45 var(--sans); color: var(--ink-4); }
+/* stages that end with an overlay drawn open need room under it for the sentence */
+#r3 .stage__canvas, #r6 .stage__canvas { min-height: 430px; }
+#r6 .frames { position: absolute; left: 18px; right: 18px; bottom: 14px; }
+#r10 .stage[data-k="panel"] .stage__canvas, #r10 .stage[data-k="dirt"] .stage__canvas { min-height: 340px; }
+#r4 .stage__canvas { min-height: 330px; }
+.caption b { color: var(--ink-2); font-weight: 500; }
+
+/* vocabulary inside canvases */
+.eyebrow { font: 600 10px/1.4 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); }
+.voice { font: 400 23px/1.2 var(--serif); letter-spacing: -.01em; margin: 8px 0 14px; text-wrap: balance; }
+.voice i { font-style: italic; color: var(--ink-2); }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 4px; }
+.cal__dow { font: 500 9.5px var(--mono); color: var(--ink-4); text-align: center; padding-bottom: 2px; }
+.cell { background: var(--paper-1); border: 1px solid var(--paper-2); border-radius: 4px; padding: 5px 6px; min-height: 38px; }
+.cell .d { font: 500 9.5px var(--mono); color: var(--ink-4); }
+.cell .v { font: 500 11.5px var(--mono); color: var(--ink-1); margin-top: 1px; }
+.cell .v.dash { color: var(--ink-4); }
+.cell[data-blank] { visibility: hidden; }
+.readout { font: 500 11px var(--mono); color: var(--seal); margin-top: 10px; }
+
+.act { display: grid; grid-template-columns: 150px 1fr 150px; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--paper-2); }
+.act:last-of-type { border-bottom: 0; }
+.act__meta .eyebrow { margin-bottom: 2px; }
+.act__meta .n { font: 500 13px var(--sans); color: var(--ink-1); }
+.act__meta .r { font: 10.5px var(--mono); color: var(--ink-4); margin-top: 2px; }
+.act__res { min-height: 34px; display: flex; align-items: center; gap: 8px; }
+
+.hold { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 42px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--seal-ring); background: var(--paper-1); color: var(--ink-1); font: 600 13px var(--sans); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+.hold__fill { position: absolute; inset: 0; background: var(--seal); opacity: .16; transform: scaleX(0); transform-origin: 0 50%; pointer-events: none; }
+.hold__label { position: relative; }
+.hold__done { display: none; align-items: center; gap: 8px; color: var(--seal-deep); position: relative; }
+.hold[data-sealed] { border-color: var(--seal); background: var(--seal-tint); cursor: default; }
+.hold[data-sealed] .hold__done { display: flex; }
+.hold[data-sealed] .hold__label { display: none; }
+.hold[data-dry][data-sealed] { border-color: var(--paper-2); background: var(--paper-1); }
+.hold[data-dry] .hold__done { color: var(--ink-2); }
+.hold__note { min-height: 17px; margin-top: 4px; font-size: 11px; text-align: center; color: var(--ink-4); }
+.plain { font: 600 13px var(--sans); border: 1px solid var(--paper-2); background: var(--paper-1); color: var(--ink-1); border-radius: 10px; padding: 10px 14px; cursor: pointer; width: 100%; min-height: 42px;
+  transition: border-color 160ms var(--house), background-color 160ms var(--house), opacity 160ms var(--house); }
+.plain:hover { border-color: var(--seal-ring); }
+.plain[data-hot] { background: var(--seal-tint); border-color: var(--seal-ring); }
+.plain:disabled { opacity: .45; cursor: default; }
+.said { font: 400 14.5px/1.35 var(--serif); color: var(--ink-1); opacity: 0; }
+.said i { font-style: italic; color: var(--ink-2); }
+.said.big { font-size: 17px; }
+.dry-seal { color: var(--paper-2); }
+
+.field { width: 100%; font: 13px/1.45 var(--sans); color: var(--ink-1); background: var(--paper-1); border: 1px solid var(--paper-2); border-radius: 8px; padding: 9px 11px; resize: none; }
+.field:focus { outline: 2px solid var(--seal); outline-offset: 1px; }
+.fieldset { margin: 10px 0; }
+.fieldset .k { display: block; margin-bottom: 5px; }
+.refuse { font: 12px/1.4 var(--sans); color: var(--ink-2); margin-top: 6px; min-height: 17px; }
+.quote { font: 400 15px/1.4 var(--serif); color: var(--ink-1); border-left: 2px solid var(--paper-2); padding-left: 12px; margin: 8px 0; }
+.fact { font: 11.5px var(--mono); color: var(--ink-4); margin-bottom: 8px; }
+.fact b { color: var(--ink-2); font-weight: 500; }
+
+/* overlays drawn inside a stage */
+.ov { position: absolute; inset: 0; pointer-events: none; }
+.ov[hidden] { display: none; }
+.ov__scrim { position: absolute; inset: 0; background: var(--shadow); opacity: .5; }
+.ov__panel { pointer-events: auto; position: absolute; background: var(--paper-1); border: 1px solid var(--paper-2); border-radius: 10px; box-shadow: 0 18px 48px var(--shadow); opacity: 0; }
+/* every overlay inside a stage is drawn at ONE scale, 0.65x of ADR 0112's widths, so the three shapes keep their ratio wherever they meet:
+   sheet 440 → 286 (sheet.css:113) · panel 620 → 403 (sheet.css:141) · popover 320 → 208 (Sheet.tsx:282, the default) */
+.ov--sheet .ov__panel { top: 0; right: 0; bottom: 0; width: 286px; border-radius: 0; border-width: 0 0 0 1px; box-shadow: -18px 0 48px var(--shadow); }
+.ov--panel .ov__panel { left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(403px, calc(100% - 32px)); }
+.ov--popover .ov__panel { width: 208px; box-shadow: 0 10px 28px var(--shadow); padding: 6px; }
+.ov__head { padding: 14px 16px 10px; border-bottom: 1px solid var(--paper-2); }
+.ov__title { font: 400 18px/1.2 var(--serif); margin-top: 4px; }
+.ov__contract { font-size: 12px; line-height: 1.45; color: var(--ink-2); margin-top: 5px; }
+.ov__body { padding: 12px 16px; }
+.ov__foot { padding: 12px 16px; border-top: 1px solid var(--paper-2); display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+.ov__close { font: 500 12px var(--sans); color: var(--ink-4); background: none; border: 0; cursor: pointer; margin-right: auto; }
+.item { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 7px 10px; border-radius: 6px; border: 0; background: transparent; color: var(--ink-1); font: 13px var(--sans); cursor: pointer; transition: background-color 160ms var(--house); }
+.item:hover, .item[data-hot] { background: var(--seal-tint); }
+.item svg { flex: 0 0 auto; color: var(--ink-4); }
+.note { font-size: 11px; line-height: 1.45; color: var(--ink-4); padding: 6px 10px 4px; }
+.sect { font: 600 9px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); padding: 10px 10px 4px; }
+.cand { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--paper-2); font-size: 13px; }
+.cand:last-child { border-bottom: 0; }
+.cand .tick { width: 16px; height: 16px; border: 1px solid var(--seal-ring); border-radius: 4px; background: var(--seal-tint); display: grid; place-items: center; color: var(--seal); font: 600 11px var(--mono); }
+.cand .who { color: var(--ink-1); }
+.cand .free { margin-left: auto; font: 10.5px var(--mono); color: var(--ink-4); }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1); font-size: 12.5px; }
+.chip .who { font-weight: 600; }
+.chip .when { font: 11px var(--mono); color: var(--ink-4); }
+.dots { margin-left: 6px; width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--paper-2); background: transparent; color: var(--ink-2); cursor: pointer; font: 600 12px var(--mono); }
+.dots[data-hot] { background: var(--seal-tint); border-color: var(--seal-ring); }
+.line { font-size: 12.5px; color: var(--ink-2); min-height: 18px; margin-top: 10px; }
+.capline { font: 11.5px/1.45 var(--sans); color: var(--ink-4); margin-top: 12px; }  /* a caption that sits in flow, under content that fills its stage */
+.capline b { color: var(--ink-2); font-weight: 500; }
+
+/* rule 3: the two send paths on main, side by side inside one stage; the row expander (ShiftDetail) drawn as the page draws it */
+.paths { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.paths > div { position: relative; min-width: 0; }
+.xp { border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1); padding: 10px 12px; margin-top: 10px; }
+.xp .ctitle { font: 600 9px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); margin-bottom: 6px; }
+.xp .kv { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--paper-2); font-size: 12.5px; }
+.xp .kv:last-of-type { border-bottom: 0; }
+.xp .kv b { font-weight: 500; color: var(--ink-1); }
+.xp .kv span { font: 10.5px var(--mono); color: var(--ink-4); white-space: nowrap; }
+.xp .kv span[data-noacct] { color: var(--ink-2); }
+.xp .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.xp .acts .plain { width: auto; min-height: 32px; padding: 6px 10px; font-size: 12px; }
+.xp .acts .plain[data-quiet] { color: var(--ink-2); }
+.xp .hint { font-size: 11.5px; line-height: 1.45; color: var(--ink-2); margin-top: 8px; min-height: 17px; }
+.xp .contract { font-size: 12px; line-height: 1.45; color: var(--ink-1); margin: 6px 0 2px; }
+.json { font: 11px/1.6 var(--mono); color: var(--ink-2); background: var(--paper-1); border: 1px solid var(--paper-2); border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; word-break: break-word; margin-top: 8px; }
+.json b { color: var(--seal); font-weight: 500; }
+.hole { border: 1px dashed var(--paper-2); border-radius: 8px; padding: 12px; margin-top: 8px; font: 11.5px/1.45 var(--sans); color: var(--ink-4); min-height: 44px; }
+.hole b { color: var(--ink-2); font-weight: 500; }
+
+/* swipe */
+.swipe { position: relative; width: 76px; height: 156px; border-radius: 38px; background: var(--paper-1); border: 1px solid var(--paper-2); overflow: hidden; margin: 0 auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+.swipe[data-travel="150"] { height: 210px; }
+.swipe__fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0%; background: var(--seal-tint); }
+.swipe[data-mode="today"][data-done] .swipe__fill { background: var(--seal); }   /* today: the pill fills solid and the arrow stays at the top */
+.swipe__ghost { position: absolute; left: 50%; top: 12px; margin-left: -18px; opacity: 0; }
+.swipe__handle { position: absolute; left: 50%; bottom: 8px; width: 44px; height: 44px; margin-left: -22px; border-radius: 50%; background: var(--paper-0); border: 1px solid var(--seal-ring); display: grid; place-items: center; color: var(--seal); cursor: grab; box-shadow: 0 2px 8px var(--shadow); }
+.swipe[data-done] .swipe__handle { border-color: var(--seal); }
+.swipe__mark { position: absolute; left: 8px; right: 8px; border-top: 1px dashed var(--seal-ring); pointer-events: none; }  /* the commit line on the 150 px road */
+.swipe__mark span { position: absolute; right: 0; top: 2px; font: 500 8.5px var(--mono); color: var(--seal); }
+.swipe-row { display: grid; grid-template-columns: 1fr 100px 1fr; gap: 10px; align-items: center; }
+#r5 .stages--3 .swipe-row { grid-template-columns: 1fr 100px; }
+#r5 .stages--3 .swipe-row .l:last-child { grid-column: 1 / -1; }
+.swipe-row .l { font: 11px/1.6 var(--mono); color: var(--ink-4); }
+.swipe-row .l b { color: var(--ink-1); font-weight: 500; }
+.rec { padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--paper-2); }
+.rec .amt { font: 400 22px var(--serif); margin-top: 4px; }
+.rec .amt small { font: 11px var(--mono); color: var(--ink-4); margin-left: 8px; }
+
+/* expand row (the founder's named favourite, dn-expand) */
+.row { border: 1px solid var(--paper-2); border-radius: 8px; padding: 10px 12px; background: var(--paper-1); }
+.row__t { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.row__t .v { font: 500 12px var(--mono); }
+.expand { display: grid; grid-template-rows: 0fr; transition: grid-template-rows calc(320ms / var(--speed)) var(--house); }
+.expand[data-open="true"] { grid-template-rows: 1fr; }
+.expand > div { min-height: 0; overflow: hidden; }
+.expand p { padding-top: 8px; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+.frames { font: 500 11px var(--mono); color: var(--seal); margin-top: 8px; }
+
+/* terminal */
+.term { background: var(--paper-1); border: 1px solid var(--paper-2); border-radius: 8px; padding: 12px 14px; font: 11px/1.7 var(--mono); color: var(--ink-2); white-space: pre-wrap; word-break: break-word; }
+.term div { padding-left: 7ch; text-indent: -7ch; }
+.term .p { color: var(--ink-4); }
+.term .f { color: var(--ink-1); font-weight: 600; }
+.term .a { color: var(--seal); }
+.term .m { color: var(--ink-4); }
+.term div { opacity: 0; }
+
+/* undo window */
+.entry { border: 1px solid var(--paper-2); border-radius: 8px; padding: 10px 12px; background: var(--paper-1); margin-bottom: 12px; }
+.entry .t { font: 400 16px var(--serif); }
+.entry .m { font: 11px var(--mono); color: var(--ink-4); margin-top: 2px; }
+.undo { display: none; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; }
+.undo[data-on] { display: flex; }
+.undo .bar2 { flex: 1; height: 4px; background: var(--paper-2); border-radius: 2px; overflow: hidden; }
+.undo .bar2 i { display: block; height: 100%; width: 100%; background: var(--seal); transform-origin: 0 50%; }
+.undo .cnt { font: 500 11px var(--mono); color: var(--ink-4); min-width: 54px; text-align: right; }
+
+/* sheet frames at scale (rule 9) */
+.framebox { position: relative; width: 100%; overflow-x: auto; }  /* each frame is cropped to its sheet edge plus 110 px of page, drawn at 0.8–1.0 with one scale for all four; where it is wider than its box it scrolls, opened on the sheet */
+.frame { position: absolute; left: 0; top: 0; height: 520px; transform-origin: 0 0; background: var(--paper-0); border: 1px solid var(--paper-2); border-radius: 8px; overflow: hidden; }
+.frame .pg { position: absolute; left: 0; top: 0; width: 1100px; height: 100%; padding: 28px 32px; }
+.frame .pg .voice { font-size: 30px; }
+.frame .ghost-rows div { height: 34px; border-bottom: 1px solid var(--paper-2); }
+.frame .sh { position: absolute; top: 0; right: 0; bottom: 0; background: var(--paper-1); border-left: 1px solid var(--paper-2); box-shadow: -18px 0 48px var(--shadow); opacity: 0; font-size: 16px; }
+.frame .sh .ov__head { padding: 20px 24px 14px; }
+.frame .sh .ov__title { font-size: 24px; }
+.frame .sh .ov__body { padding: 16px 24px 52px; }
+.frame .sh .sect { font-size: 11px; padding: 14px 0 6px; }
+.frame .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.frame .fld { border: 1px solid var(--paper-2); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--paper-0); }
+.frame .fld .k { font-size: 10px; }
+.frame .fld .v { font-size: 15px; margin-top: 2px; }
+.frame table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.frame th { font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-4); text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--paper-2); }
+.frame td { padding: 9px 4px; border-bottom: 1px solid var(--paper-2); }
+.frame td.n, .frame th.n { text-align: right; font-family: var(--mono); font-size: 14px; }
+.frame .li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--paper-2); }
+.frame .li .t { font-size: 15px; }
+.frame .li .s { font: 12px var(--mono); color: var(--ink-4); margin-top: 3px; }
+.frame .li .n { font: 500 14px var(--mono); white-space: nowrap; }
+.frame .side { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.frame .wtag { position: absolute; right: 12px; bottom: 10px; font: 500 11px var(--mono); color: var(--seal); text-align: right; }  /* anchored to the sheet, which is what stays in view when the box scrolls */
+.frame .plain { font-size: 15px; }
+
+/* stub and weight (rule 10) */
+.keycap { display: inline-block; font: 500 10.5px var(--mono); color: var(--ink-2); border: 1px solid var(--paper-2); border-bottom-width: 2px; border-radius: 4px; padding: 2px 7px; background: var(--paper-1); opacity: .5; }
+.keycap[data-hot] { border-color: var(--seal-ring); color: var(--seal); opacity: 1; }
+.listrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 1px solid var(--paper-2); border-radius: 8px; padding: 9px 12px; background: var(--paper-1); font-size: 13px; margin-bottom: 8px; }
+.listrow .m { font: 11px var(--mono); color: var(--ink-4); white-space: nowrap; }
+.listrow .nm { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.stub { display: none; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); background: var(--paper-0); border: 1px solid var(--seal-ring); padding: 5px 22px 5px 12px; white-space: nowrap;
+  clip-path: polygon(0 0, 96% 0, 100% 12%, 97% 24%, 100% 36%, 96% 48%, 100% 60%, 97% 72%, 100% 84%, 96% 100%, 0 100%); opacity: 0; }  /* the stub sits under the row name; its last word keeps clear of the torn edge */
+.stub[data-on] { display: flex; }
+.stub a { color: var(--seal); text-decoration: none; font-weight: 600; }
+.torn { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 3% 94%, 0 86%, 4% 78%, 1% 70%, 3% 62%, 0 54%, 4% 46%, 1% 38%, 3% 30%, 0 22%, 4% 14%, 1% 6%); }
+
+/* skeleton sheen */
+.skel { position: relative; overflow: hidden; background: var(--paper-2); border-radius: 3px; height: 14px; margin: 9px 0; }
+.skel::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, var(--paper-1), transparent);
+  animation: sheen calc(1.9s / var(--speed)) cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.skel--capped::after { animation-iteration-count: 2; }
+.skel[data-still]::after { animation: none; }
+@keyframes sheen { to { transform: translateX(100%); } }
+.tile { border: 1px solid var(--paper-2); border-radius: 8px; padding: 12px; background: var(--paper-1); }
+.tile .live { font-size: 12.5px; color: var(--ink-1); display: flex; justify-content: space-between; margin-bottom: 8px; }
+.tile .live b { font: 500 12px var(--mono); color: var(--seal); }
+
+/* phones: 390 px, to scale, the two rules the phone decides */
+.phones { display: grid; grid-template-columns: repeat(2, 390px); gap: 28px; padding: 6px 0 28px; justify-content: start; }
+.phone { width: 390px; max-width: 100%; border: 1px solid var(--paper-2); border-radius: 22px; background: var(--paper-0); overflow: hidden; position: relative; display: flex; flex-direction: column; }
+.phone__bar { display: flex; justify-content: space-between; padding: 14px 18px 10px; font: 600 10px/1.4 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); border-bottom: 1px solid var(--paper-2); }
+.phone__body { position: relative; padding: 16px 18px 18px; min-height: 560px; flex: 1; overflow: hidden; }
+.amt-lg { font: 400 30px var(--serif); margin: 6px 0 12px; }
+.amt-lg small { font: 11px var(--mono); color: var(--ink-4); margin-left: 8px; }
+.phone__lines div { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--paper-2); font-size: 13px; }
+.phone__lines b { font: 500 12px var(--mono); color: var(--ink-2); white-space: nowrap; }
+.phone__act { display: grid; grid-template-columns: 100px 1fr; gap: 14px; align-items: center; margin-top: 18px; }
+.phone__act .l { font: 11px/1.6 var(--mono); color: var(--ink-4); }
+.phone__act .l b { color: var(--ink-1); font-weight: 500; }
+.phone__tag { padding: 10px 18px; border-top: 1px solid var(--paper-2); font: 11px/1.5 var(--mono); color: var(--seal); }
+.bsheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--paper-1); border-top: 1px solid var(--paper-2); border-radius: 18px 18px 0 0; padding: 10px 18px 18px; box-shadow: 0 -18px 48px var(--shadow); opacity: 0; }
+.bsheet__grab { width: 36px; height: 4px; border-radius: 2px; background: var(--paper-2); margin: 0 auto 12px; }
+@media (max-width: 900px) { .phones { grid-template-columns: minmax(0, 390px); } }
+.stage[data-k="dirt"] .ov--sheet .ov__panel { z-index: 2; }  /* the same 286: one scale for every overlay on the canvas */
+.stage[data-k="dirt"] .said { right: 318px; }  /* the sentence wraps before the sheet's edge */
+
+/* shortlist table */
+.tblwrap { overflow-x: auto; border: 1px solid var(--paper-2); border-radius: 10px; margin-top: 18px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 760px; }
+.tbl th { font: 600 10px/1.4 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--paper-2); background: var(--paper-1); }
+.tbl td { padding: 7px 12px; border-bottom: 1px solid var(--paper-2); vertical-align: top; color: var(--ink-2); line-height: 1.45; }
+.tbl td:first-child { font: 500 11px var(--mono); color: var(--ink-4); white-space: nowrap; }
+.tbl td.n { color: var(--ink-1); white-space: nowrap; }
+.tbl tr.g td { background: var(--paper-1); color: var(--ink-1); font: 400 15px var(--serif); padding: 12px; }
+.tbl tr.g td span { font: 12px var(--sans); color: var(--ink-4); margin-left: 10px; }
+.tag { display: inline-block; font: 500 9.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 4px 7px; border-radius: 999px; border: 1px solid var(--paper-2); color: var(--ink-4); white-space: nowrap; }
+.tag--ship { border-color: var(--seal-ring); color: var(--seal); }
+.tag--adr { border-color: var(--ink-4); color: var(--ink-1); }
+.tag--no { border-style: dashed; }
+.tag--part { border-style: dotted; border-color: var(--seal-ring); color: var(--ink-1); }
+.tag--pkt { border-style: dotted; border-color: var(--ink-4); color: var(--ink-2); }
+.tally { font: 11.5px/1.7 var(--mono); color: var(--ink-4); margin-top: 10px; }
+.tally b { color: var(--ink-1); font-weight: 500; }
+.wtag-under { display: none; font: 500 11px/1.5 var(--mono); color: var(--seal); margin-top: 6px; }  /* below 700 px the width tag leaves the sheet, which is scrolled out of view, and sits under its box */
+
+/* states strip */
+.states { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-top: 18px; }
+.state { border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1); padding: 14px; }
+.state p { margin-top: 8px; color: var(--ink-1); font: 400 14px/1.35 var(--serif); }
+.state .why { color: var(--ink-4); font: 11.5px/1.45 var(--sans); margin-top: 8px; }
+
+.sec { padding: 48px 0 8px; border-bottom: 1px solid var(--paper-2); }
+.foot { padding: 36px 0 0; color: var(--ink-4); font: 11.5px/1.7 var(--mono); }
+.foot b { color: var(--ink-2); font-weight: 500; }
+
+/* reduced motion — the canvas's own toggle mirrors the OS query; rule 6's stages force it either way */
+[data-reduced="true"] .btn, [data-reduced="true"] .item, [data-reduced="true"] .plain, [data-reduced="true"] .replay { transition: none; }
+[data-reduced="true"] .expand { transition: none; }
+[data-reduced="true"] .skel::after { animation: none; }
+
+@media (max-width: 900px) {
+  .stages--3 { grid-template-columns: 1fr; }
+  .tokens { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .states { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 700px) {
+  .wrap { padding: 0 16px 64px; }
+  .mast { grid-template-columns: 1fr; gap: 20px; padding-top: 28px; }
+  .mast h1 { font-size: 29px; }
+  .aside { border-left: 0; padding-left: 0; border-top: 1px solid var(--paper-2); padding-top: 14px; }
+  .bar { gap: 8px 12px; position: static; }  /* below 700 px the bar wraps to three rows; sticky, it would cover 15 % of the viewport, so it scrolls with the page and each rule keeps its own Replay */
+  .bar .state-note { display: none; }
+  .phones { grid-template-columns: 390px; margin: 0 -16px; }  /* out of the wrap padding, so the frame is a true 390 */
+  .phone { width: 390px; max-width: 100vw; border-radius: 0; border-left: 0; border-right: 0; }
+  .tokens { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .stages { grid-template-columns: 1fr; }
+  .rule__head { grid-template-columns: 40px 1fr; }
+  .rule__head .replay { grid-column: 2; justify-self: start; }
+  .rule__num { font-size: 32px; }
+  .rule__title { font-size: 22px; }
+  .rule__fork { grid-template-columns: 1fr; gap: 16px; }
+  .states { grid-template-columns: 1fr; }
+  .act { grid-template-columns: 1fr; gap: 6px; }
+  .act__res { min-height: 0; }
+  .swipe-row { grid-template-columns: 1fr; text-align: center; }
+  .swipe-row .l { text-align: left; }
+  .voice { font-size: 20px; }
+  .stage__canvas { padding: 14px; }
+  .ov--sheet .ov__panel { width: 82%; }
+  .ov--popover .ov__panel { left: 12px !important; right: 12px; width: auto; }
+  #r10 .stage[data-k="panel"] .stage__canvas, #r10 .stage[data-k="dirt"] .stage__canvas { min-height: 460px; }
+  #r3 .stage__canvas, #r6 .stage__canvas { min-height: 560px; }
+  #r5 .stages--3 .swipe-row { grid-template-columns: 1fr; }
+  .stage[data-k="dirt"] .ov--sheet .ov__panel { bottom: 64px; }  /* leave a strip under the sheet for the sentence */
+  .stage[data-k="dirt"] .said { right: 14px; }
+  .paths { grid-template-columns: 1fr; }
+  #r3 .paths > div:has([data-pop]) { min-height: 300px; }  /* stacked, the menu column must hold its own popover (5 items + the note) instead of spilling over the expander */
+  /* rule 9: the frames open at their left edge (the page and the sheet's first column), and the width tag moves under the box */
+  .frame .wtag { display: none; }
+  .wtag-under { display: block; }
+  /* the shortlist becomes stacked cards: id and motion on one line, where below, the state tag on the right */
+  .tbl { min-width: 0; }
+  .tbl thead { display: none; }
+  .tbl, .tbl tbody { display: block; }
+  .tbl tr { display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "id motion state" "where where where"; gap: 2px 10px; padding: 9px 12px; border-bottom: 1px solid var(--paper-2); }
+  .tbl tr.g { display: block; padding: 0; }
+  .tbl tr.g td { display: block; }
+  .tbl td { display: block; padding: 0; border-bottom: 0; }
+  .tbl td:nth-child(1) { grid-area: id; align-self: baseline; }
+  .tbl td:nth-child(2) { grid-area: motion; white-space: normal; }
+  .tbl td:nth-child(3) { grid-area: where; font-size: 12px; margin-top: 2px; }
+  .tbl td:nth-child(4) { grid-area: state; justify-self: end; }
+}
+</style>
+</head>
+<body>
+<div class="mudavym" id="root" data-ground="charcoal">
+<div class="wrap">
+<header class="mast">
+  <div>
+    <div class="wordmark">Mudavym<b>.</b></div>
+    <h1>Eleven motion rules, watched before they are locked.</h1>
+    <p>ADR 0134 is Proposed and you asked to <b>review motion first</b>. Each rule below is drawn twice on the same act: <b>today on main</b> on the left, <b>as proposed</b> on the right, both live, both replayable, with the exact token values under each. Where today already equals the proposal, the right-hand stage draws the other road instead. Nothing here is imported by the app.</p>
+  </div>
+  <div class="aside">
+    <b>Sketch 116</b> · 2026-09-17 · third pass<br>
+    Source: <b>ADR 0134</b> on <b>docs/motions-and-overlays-per-page</b> (Proposed, unmerged) and the motion census of 2026-09-16.<br>
+    Ground: warm charcoal by default (ADR 0138); paper is the declared exception. Fonts: the product self-hosts; this sketch loads them from Google for the drawing only.
+  </div>
+</header>
+
+<nav class="bar" aria-label="Canvas controls">
+  <div class="grp"><button class="btn btn--seal" type="button" id="replayAll">Replay all</button></div>
+  <div class="grp"><span class="k">Reduced motion</span><button class="btn" type="button" role="switch" aria-checked="false" id="rmToggle">off</button></div>
+  <div class="grp"><span class="k">Speed</span>
+    <button class="btn" type="button" data-speed="1" aria-pressed="true">1x</button>
+    <button class="btn" type="button" data-speed="0.5">1/2x</button>
+    <button class="btn" type="button" data-speed="0.25">1/4x</button>
+  </div>
+  <div class="grp"><span class="k">Ground</span>
+    <button class="btn" type="button" data-ground="charcoal" aria-pressed="true">Charcoal</button>
+    <button class="btn" type="button" data-ground="paper">Paper</button>
+  </div>
+  <span class="state-note" id="stateNote">prefers-reduced-motion: reading the OS setting</span>
+</nav>
+
+<section class="sec" style="padding-top:8px;border-bottom:0">
+  <div class="strip-head">
+    <div>
+      <h2>The seven tokens, as the code carries them</h2>
+      <p>Verbatim from <code>lib/mudavym/motion.ts</code>. The springs are integrated here with the same sampler, so the dot runs the real curve. Every specimen below uses only these. Three values on this page sit outside them, each named where it appears: the <b>420 ms</b> literal rule 1 folds away; the <b>120 ms</b> reduced-motion fade rule 6 adds, which rule 7's guard has to be told about (that fork is stated under rule 6); and rule 8's other road, a <b>10 s</b> undo window, which is a clock run by a timer and not a motion.</p>
+    </div>
+    <button class="replay" type="button" data-replay="tok">Replay</button>
+  </div>
+  <div class="tokens" id="tokens"></div>
+</section>
+
+<!-- ─────────────────────────── RULE 1 ─────────────────────────── -->
+<section class="rule" id="r1">
+  <div class="rule__head">
+    <div class="rule__num">1</div>
+    <div>
+      <h2 class="rule__title">The eighth literal folds into <em>settle</em> 320</h2>
+      <p class="rule__dec"><code>{ easing: settle.easing, ms: 420 }</code> is the house curve at <em>turn</em>'s duration, a pairing no token carries, repeated by hand in four files for the same act: the opening line arriving. <b>Decided: all four become <em>settle</em> 320.</b> The sales calendar's month arrives ~100 ms sooner per cell; its identity, the 16 ms stagger decaying by 0.94, is untouched.</p>
+    </div>
+    <button class="replay" type="button" data-replay="r1">Replay</button>
+  </div>
+  <div class="stages">
+    <div class="stage" data-k="today">
+      <div class="stage__label"><b>Today on main = how road 2, <em>rise</em>, would feel</b><span>The Copper Pot, Austin · the dashboard opens</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Thursday 17 September · before service</div>
+        <p class="voice">Good evening, Ayşe. Three orders wait on the ledger, and the cellar is <i>two lines under par</i>.</p>
+        <div class="cal" data-cal></div>
+        <div class="readout" data-total>—</div>
+      </div>
+      <div class="stage__spec"><b>opening line</b>  easing <i>cubic-bezier(0.16, 1, 0.3, 1)</i> · <i>420 ms</i> · translateY(6px) + opacity · <b>no token named</b>
+<b>month cells</b>   same literal · delay 16 ms x 0.94 per cell · clip-path inset + translateY(6px)</div>
+    </div>
+    <div class="stage stage--proposed" data-k="proposed">
+      <div class="stage__label"><b>Proposed</b><span>the same act on the token proper</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Thursday 17 September · before service</div>
+        <p class="voice">Good evening, Ayşe. Three orders wait on the ledger, and the cellar is <i>two lines under par</i>.</p>
+        <div class="cal" data-cal></div>
+        <div class="readout" data-total>—</div>
+      </div>
+      <div class="stage__spec"><b>opening line</b>  <i>settle</i> · cubic-bezier(0.16, 1, 0.3, 1) · <i>320 ms</i> · same keyframes
+<b>month cells</b>   <i>settle</i> · delay 16 ms x 0.94 per cell <b>unchanged</b> · two pages already do exactly this at 320</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>Fold.</b> All four literals become <em>settle</em> 320. No eighth token. <i>(recommended)</i></li>
+        <li><b>Mint <em>rise</em></b> = house curve at 420 ms as an eighth token and move all five opening lines onto it. Defensible; it keeps today's feel and gives it a name.</li>
+        <li><em>Not on the table:</em> leaving a literal repeated four times. That is how the next divergence starts, and rule 7's guard would flag it.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>pages/dashboard/next/DashboardNext.tsx:76</b> (the ADR cites :68; main reads :76)<br>
+      <b>pages/dashboard/next/SalesCalendar.tsx:75</b> · <b>pages/reports/next/ReportsNext.tsx:139</b> · <b>pages/calendar/next/CalendarNext.tsx:212</b><br>
+      Two pages animate the identical keyframes at 320 with the token: the pattern the fold adopts.
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── RULE 2 ─────────────────────────── -->
+<section class="rule" id="r2">
+  <div class="rule__head">
+    <div class="rule__num">2</div>
+    <div>
+      <h2 class="rule__title">Wax only where something is committed. Nothing otherwise.</h2>
+      <p class="rule__dec">Three rules ration the seal today and they disagree on live acts: <code>/profile</code>'s <b>mechanical</b> rule, <code>/team</code>'s <b>consequence</b> rule, <code>/reports</code>' <b>counter-party</b> rule. <b>Decided: <code>/profile</code>'s rule, both clauses, literally.</b> The seal appears exactly where a server redeems one, plus an act that is irreversible in this house and has no server to ask. The demoted acts get the sentence, not a smaller stamp; the dry emboss stays only on <code>/orders</code>' bulk bar as the plural rendering of the wax. Of the four acts below, <b>two change</b> (the dry die on <code>/reports</code> and the dashboard's un-sealed die arm become sentences) and two are drawn to show they do not (<code>/profile</code> keeps its wax; <code>/team</code>'s first publish is already a plain confirm).</p>
+    </div>
+    <button class="replay" type="button" data-replay="r2">Replay</button>
+  </div>
+  <div class="stages">
+    <div class="stage" data-k="today">
+      <div class="stage__label"><b>Today on main</b><span>Meyhane Sim, Kadıköy · four acts, three rules</span></div>
+      <div class="stage__canvas" style="padding-top:8px">
+        <div class="act">
+          <div class="act__meta"><div class="eyebrow">/profile</div><div class="n">Charge this card first</div><div class="r">mechanical rule · server redeems</div></div>
+          <div><button class="hold" type="button" data-hold data-land="wax" data-done-label="Charged first"><span class="hold__fill"></span><span class="hold__label">Hold to make it the default</span><span class="hold__done"></span></button><div class="hold__note"></div></div>
+          <div class="act__res"><span class="said">Wax.</span></div>
+        </div>
+        <div class="act">
+          <div class="act__meta"><div class="eyebrow">/team</div><div class="n">Publish the week (first time)</div><div class="r">consequence rule · "destroys nothing" → a plain confirm</div></div>
+          <div><button class="plain" type="button" data-plain>Publish the week</button></div>
+          <div class="act__res"><span class="said">Published. Eleven people can see it.</span></div>
+        </div>
+        <div class="act">
+          <div class="act__meta"><div class="eyebrow">/reports</div><div class="n">Save the arrangement</div><div class="r">counter-party rule · "a private act" → the die, pressed dry</div></div>
+          <div><button class="plain" type="button" data-plain>Rule it off</button></div>
+          <div class="act__res"><span class="said" data-dryseal></span></div>
+        </div>
+        <div class="act">
+          <div class="act__meta"><div class="eyebrow">/ (dashboard)</div><div class="n">Close a hand-written note (the die arm)</div><div class="r">no rule · a hold with no <code>onChallenge</code> (ADR 0127)</div></div>
+          <div><button class="hold" type="button" data-hold data-land="wax" data-done-label="Written down"><span class="hold__fill"></span><span class="hold__label">Hold to write it down</span><span class="hold__done"></span></button><div class="hold__note"></div></div>
+          <div class="act__res"><span class="said">Wax, with no seal minted.</span></div>
+        </div>
+        <p class="capline"><b>The shipped dry die, drawn as it renders:</b> <code>--paper-2</code> on <code>--paper-0</code> is 1.15:1 on charcoal and 1.25:1 on paper (ReportsNext.tsx:366 passes <code>color="var(--paper-2)"</code>). At that contrast "dry die" and "sentence" look the same on both sides of this rule; the fork is between a mark nobody can see and no mark.</p>
+      </div>
+      <div class="stage__spec"><b>hold</b> <i>pour</i> linear 620 ms → <b>land</b> <i>stamp</i> spring 500/26 · 360 ms · 10.4 % overshoot (measured by the sampler; the docstring's "~11.1 %" is not what it produces)
+<b>dry</b> same die, paper colours, rotate −4° · scale .94 → 1 · <i>stamp</i> curve at ~1/3 amplitude · <b>/team first publish</b> is a plain button on main (TeamOverlays.tsx:128-136); only its re-publish holds</div>
+    </div>
+    <div class="stage stage--proposed" data-k="proposed">
+      <div class="stage__label"><b>Proposed</b><span>one rule: the server redeems, or nothing can undo it</span></div>
+      <div class="stage__canvas" style="padding-top:8px">
+        <div class="act">
+          <div class="act__meta"><div class="eyebrow">/profile</div><div class="n">Charge this card first</div><div class="r">PATCH /payment-methods/:id/default redeems a seal</div></div>
+          <div><button class="hold" type="button" data-hold data-land="wax" data-done-label="Charged first"><span class="hold__fill"></span><span class="hold__label">Hold to make it the default</span><span class="hold__done"></span></button><div class="hold__note"></div></div>
+          <div class="act__res"><span class="said">Wax. Unchanged.</span></div>
+        </div>
+        <div class="act">
+          <div class="act__meta"><div class="eyebrow">/team</div><div class="n">Publish the week (first time)</div><div class="r">no seal redeemed · a re-publish can follow · <b>unchanged</b></div></div>
+          <div><button class="plain" type="button" data-plain>Publish the week</button></div>
+          <div class="act__res"><span class="said">Published. Eleven people can see it.</span></div>
+        </div>
+        <div class="act">
+          <div class="act__meta"><div class="eyebrow">/reports</div><div class="n">Save the arrangement</div><div class="r">no seal redeemed · re-arrangeable → the sentence, no die</div></div>
+          <div><button class="plain" type="button" data-plain>Rule it off</button></div>
+          <div class="act__res"><span class="said">Ruled off.</span></div>
+        </div>
+        <div class="act">
+          <div class="act__meta"><div class="eyebrow">/ (dashboard)</div><div class="n">Close a hand-written note (the die arm)</div><div class="r">nothing to mint for a note → a plain control</div></div>
+          <div><button class="plain" type="button" data-plain>Write it down</button></div>
+          <div class="act__res"><span class="said">Written down.</span></div>
+        </div>
+      </div>
+      <div class="stage__spec"><b>wax</b> only where the sentence can say which seal the server redeemed
+<b>sentence</b> lands on <i>settle</i> 320 · 4 px · no die, no emboss · <b>unchanged:</b> /team re-publish and copy-week, /calendar delete (rule 8) keep the wax under clause 2; /orders' reject keeps it under clause 1 (rule 4: the cancel redeems a seal, ADR 0125); /orders' bulk emboss stays</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>The mechanical rule, both clauses</b> — wax versus <em>nothing</em>. Demoted acts get a sentence. <i>(recommended)</i></li>
+        <li><b>The consequence rule</b> (<code>/team</code>'s): wax on destructive acts. True of <code>/team</code>, silent on <code>/profile</code>'s gateway acts.</li>
+        <li><b>The counter-party rule</b> (<code>/reports</code>'): wax for committing to another party. True of <code>/reports</code>, false of <code>/team</code>.</li>
+        <li><b>Wax versus dry:</b> every non-wax act embosses. Rejected in the ADR: the wax would then stand against a smaller stamp, and "rationed" collapses the other way.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>pages/profile/next/MOTIONS.md:18-20</b> · <b>pages/team/next/MOTIONS.md:26-27</b> · <b>pages/reports/next/MOTIONS.md:59-62</b><br>
+      <b>pages/orders/next/BulkApproveBar.tsx:1-14</b> (the dry emboss) · <b>pages/dashboard/next/OneTapPanel.tsx:560-570</b> (the die arm: "Hold to write it down", no <code>onChallenge</code>, ADR 0127) · <b>pages/team/next/TeamOverlays.tsx:128-136</b> (the first publish is a plain confirm) · <b>pages/reports/next/ReportsNext.tsx:366</b> (the dry die on "Ruled off.") · <b>BUILD-PROMPT.md rule 3</b> must be amended: "bulk gets a plain button" is false today.
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── RULE 3 ─────────────────────────── -->
+<section class="rule" id="r3">
+  <div class="rule__head">
+    <div class="rule__num">3</div>
+    <div>
+      <h2 class="rule__title">A send inside a <code>/team</code> popover: the popover offers, a panel sends</h2>
+      <p class="rule__dec">Census row 105, "Shift actions": the anchored menu on a shift carries <b>Offer cover</b>, and pressing it sends. ADR 0112's ratified rule says a popover is a <em>choice</em>; a send needs a surface that states what it does. <b>The ADR decided: the popover offers; a panel sends.</b> Drawn against main, the row already has a second send path the ADR did not name: the shift's row expander (<code>ShiftDetail</code>, WeekGrid.tsx:507-611) lists the cover candidates, marks the ones with no account, and carries <b>Offer cover to 3</b> beside Edit shift. So the choice is not "add a panel or amend the rule"; it is whether the send lives in a surface that exists or in one that repeats it. Under every road, something neither surface says today has to be said: the gateway tells the web who was reached (<code>{offered: 3, notified: 2}</code>, schedule.service.ts:678) and the web discards it (<code>coverSent = cover.isSuccess</code>, :391).</p>
+    </div>
+    <button class="replay" type="button" data-replay="r3">Replay</button>
+  </div>
+  <div class="stages">
+    <div class="stage" data-k="today">
+      <div class="stage__label"><b>Today on main: two surfaces send</b><span>Meyhane Sim · Fri 18 Sept · popover 208 of 320 at 0.65x</span></div>
+      <div class="stage__canvas">
+        <div class="paths">
+          <div>
+            <div class="eyebrow">Path 1 · the menu (census row 105)</div>
+            <div style="margin-top:8px;display:flex;align-items:center"><span class="chip"><span class="who">Deniz K.</span><span class="when">18:00–01:00</span></span><button class="dots" type="button" data-dots aria-label="Shift actions">···</button></div>
+            <div class="line" data-line></div>
+            <div class="ov ov--popover" data-pop hidden>
+              <div class="ov__panel" style="left:0;top:48px">
+                <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>Edit shift</button>
+                <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>Duplicate onto the same day</button>
+                <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M10 14l4 4M14 14l-4 4"/></svg>Report a call-out</button>
+                <button class="item" type="button" data-offer><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0114 0M17 11a4 4 0 010 8"/></svg>Offer cover</button>
+                <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>Delete shift</button>
+                <p class="note">Deleting removes the shift from the week at once. Nobody who has already seen the published schedule is told it changed.</p>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="eyebrow">Path 2 · the row expander (<code>ShiftDetail</code>)</div>
+            <div class="xp">
+              <div class="ctitle">Cover, if this falls through</div>
+              <div class="kv"><b>Ayşe T.</b><span>bar</span></div>
+              <div class="kv"><b>Mert Y.</b><span>floor</span></div>
+              <div class="kv"><b>Selin A.</b><span data-noacct>no account</span></div>
+              <div class="hint" data-hint></div>
+              <div class="acts"><button class="plain" type="button" data-quiet>Edit shift</button><button class="plain" type="button" data-quiet>Report a call-out</button><button class="plain" type="button" data-xoffer>Offer cover to 3</button></div>
+            </div>
+            <div class="json" data-json hidden></div>
+          </div>
+        </div>
+        <p class="capline" data-cap></p>
+      </div>
+      <div class="stage__spec"><b>popover</b> <i>ink</i> 160 ms · 4 px up + opacity · no exit animation · the item calls <code>cover.mutate(menuFor)</code> (:467-476): <b>a send fired from a choice surface</b>, and its only sentence, the failure one, renders inside the expander (:606-610), so with the row closed it fails silently
+<b>expander</b> the candidates in view, "no account" marked (:560) · <b>Offer cover to 3</b> beside Edit shift (:591-598) · on success "Offered just now. Nothing records the offer against the shift" (:565-569) · both paths call one mutation (:213-215); the gateway pushes only to members with a linked account and returns <code>{offered, notified}</code> (schedule.service.ts:642-679), which the web never reads</div>
+    </div>
+    <div class="stage stage--proposed" data-k="proposed">
+      <div class="stage__label"><b>The ADR's road: the item opens a panel; the panel sends</b><span>panel 403 of 620 at 0.65x</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Fri 18 Sept · bar</div>
+        <div style="margin-top:8px;display:flex;align-items:center"><span class="chip"><span class="who">Deniz K.</span><span class="when">18:00–01:00</span></span><button class="dots" type="button" data-dots aria-label="Shift actions">···</button></div>
+        <div class="line" data-line></div>
+        <div class="ov ov--popover" data-pop hidden>
+          <div class="ov__panel" style="left:150px;top:74px">
+            <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>Edit shift</button>
+            <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>Duplicate onto the same day</button>
+            <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M10 14l4 4M14 14l-4 4"/></svg>Report a call-out</button>
+            <button class="item" type="button" data-offer><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0114 0M17 11a4 4 0 010 8"/></svg>Offer cover…</button>
+            <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>Delete shift</button>
+            <p class="note">Deleting removes the shift from the week at once. Nobody who has already seen the published schedule is told it changed.</p>
+          </div>
+        </div>
+        <div class="ov ov--panel" data-panel hidden>
+          <div class="ov__scrim"></div>
+          <div class="ov__panel">
+            <div class="ov__head"><div class="eyebrow">Team · Fri 18 Sept</div><div class="ov__title">Offer cover for Deniz's 18:00–01:00</div><p class="ov__contract">Offers to 3. Two have accounts and are notified now; Selin A. has no account and hears nothing from this. Nothing is assigned until someone accepts.</p></div>
+            <div class="ov__body">
+              <div class="cand"><span class="tick"></span><span class="who">Ayşe T.</span><span class="free">free · bar</span></div>
+              <div class="cand"><span class="tick"></span><span class="who">Mert Y.</span><span class="free">free · floor</span></div>
+              <div class="cand"><span class="tick"></span><span class="who">Selin A.</span><span class="free">free · bar · no account</span></div>
+            </div>
+            <div class="ov__foot"><button class="ov__close" type="button">Not now</button><button class="btn btn--seal" type="button" data-send>Offer to 3 · notify 2</button></div>
+          </div>
+        </div>
+        <div class="caption" data-cap></div>
+      </div>
+      <div class="stage__spec"><b>popover</b> <i>ink</i> 160 ms · the item now ends in an ellipsis: it opens, it does not send
+<b>panel</b> <i>settle</i> 320 ms · 6 px up + opacity · the contract sentence is the accessible description, and it says who is reached, which means reading <code>notified</code> back from the gateway · <b>Offer to 3 · notify 2</b> is a plain button: no server redeems a seal for an offer · <b>cost</b> a second surface listing the candidates the expander already lists</div>
+    </div>
+  </div>
+  <div class="stages" style="margin-top:18px">
+    <div class="stage stage--proposed" data-k="road3">
+      <div class="stage__label"><b>The other road: delete the item; the expander sends</b><span>the surface exists · one sentence added · nothing new</span></div>
+      <div class="stage__canvas">
+        <div class="paths">
+          <div>
+            <div class="eyebrow">The menu, four items</div>
+            <div style="margin-top:8px;display:flex;align-items:center"><span class="chip"><span class="who">Deniz K.</span><span class="when">18:00–01:00</span></span><button class="dots" type="button" data-dots aria-label="Shift actions">···</button></div>
+            <div class="line" data-line></div>
+            <div class="ov ov--popover" data-pop hidden>
+              <div class="ov__panel" style="left:0;top:48px">
+                <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>Edit shift</button>
+                <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>Duplicate onto the same day</button>
+                <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M10 14l4 4M14 14l-4 4"/></svg>Report a call-out</button>
+                <button class="item" type="button"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>Delete shift</button>
+                <p class="note">Deleting removes the shift from the week at once. Nobody who has already seen the published schedule is told it changed.</p>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="eyebrow">The expander says who is reached</div>
+            <div class="xp">
+              <div class="ctitle">Cover, if this falls through</div>
+              <div class="kv"><b>Ayşe T.</b><span>bar</span></div>
+              <div class="kv"><b>Mert Y.</b><span>floor</span></div>
+              <div class="kv"><b>Selin A.</b><span data-noacct>no account</span></div>
+              <p class="contract">Offers to 3. Two have accounts and are notified now; Selin A. hears nothing from this.</p>
+              <div class="hint" data-hint></div>
+              <div class="acts"><button class="plain" type="button" data-quiet>Edit shift</button><button class="plain" type="button" data-quiet>Report a call-out</button><button class="plain" type="button" data-xoffer>Offer cover to 3</button></div>
+            </div>
+          </div>
+        </div>
+        <p class="capline" data-cap></p>
+      </div>
+      <div class="stage__spec"><b>delete</b> the menu item (WeekGrid.tsx:466-476) · ADR 0112 stays literally true with no new surface: no popover sends
+<b>add</b> one contract line above the button, and a success sentence that reads <code>notified</code> back: "Offered to 3; 2 were notified" · the failure sentence already lives here (:606-610) and is in view whenever a send happens</div>
+    </div>
+    <div class="stage" data-k="unsaid">
+      <div class="stage__label"><b>What neither surface says today</b><span>the split, and the silent failure</span></div>
+      <div class="stage__canvas">
+        <div class="paths">
+          <div>
+            <div class="eyebrow">The gateway answers; the web does not read it</div>
+            <div class="json" data-xsaid style="opacity:0">POST shifts/:shiftId/offer-cover (team.controller.ts:206)
+→ { <b>offered</b>: 3, <b>notified</b>: 2 }
+push goes to members with a linked account only
+(schedule.service.ts:660-678)</div>
+            <div class="hole" data-xsaid style="opacity:0"><b>What the manager reads:</b> "Offered just now." (:565-569), from <code>coverSent = cover.isSuccess</code> (:391). Selin A. was offered and never told, and nothing on the page says so.</div>
+          </div>
+          <div>
+            <div class="eyebrow">The menu sends with the row closed, and the send fails</div>
+            <div style="margin-top:8px;display:flex;align-items:center"><span class="chip"><span class="who">Deniz K.</span><span class="when">18:00–01:00</span></span><button class="dots" type="button" aria-label="Shift actions" disabled>···</button></div>
+            <div class="hole" data-xsaid style="opacity:0"><b>Nothing renders.</b> "The cover offer did not send. Nobody was asked." is mounted inside <code>ShiftDetail</code> (:606-610), and the row is not expanded. The manager saw the menu close and assumes it went.</div>
+          </div>
+        </div>
+      </div>
+      <div class="stage__spec"><b>two live defects</b> the discarded split and the silent failure exist under every road · the ADR's road moves the failure sentence into the panel; the other road keeps it in the expander; both must read <code>notified</code> back · the states strip carries both</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>Delete the menu item; the expander sends</b>, with one contract line and <code>notified</code> read back. The surface exists on main with the candidates in view; the send leaves the choice surface and no new surface is built. <i>(recommended here; it departs from the ADR's decision text)</i></li>
+        <li><b>The popover offers; the panel sends</b> — the ADR's decision. Keeps the item and adds a panel that repeats the expander's list. The first popover→panel shape in the product; no precedent on main.</li>
+        <li><b>Amend the rule:</b> a popover may send when the send is one item with a failure sentence. Cheaper still on this row; the rule stops being literally true, and the failure sentence would still need a home outside the expander.</li>
+        <li><em>Under every road:</em> read <code>{offered, notified}</code> back and say it. Today the web says "Offered just now" to a manager whose third candidate has no account.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>pages/team/next/WeekGrid.tsx:423-491</b> (the popover) · <b>:467-476</b> (the item calls <code>cover.mutate</code>) · <b>:507-611</b> (<code>ShiftDetail</code>, the row expander) · <b>:548-563</b> (the candidates; "no account" at :560) · <b>:565-569</b> ("Offered just now") · <b>:591-598</b> ("Offer cover to N") · <b>:606-610</b> (the failure sentence, inside the expander) · <b>:391</b> (<code>coverSent = cover.isSuccess</code>)<br>
+      <b>apps/api-gateway/src/team/team.controller.ts:206</b> (<code>POST shifts/:shiftId/offer-cover</code>) · <b>schedule.service.ts:642-679</b> (pushes to linked accounts only; returns <code>{offered, notified}</code> at :678)<br>
+      Census <b>102 row 105</b> · ADR 0112 (a popover is a choice) · <b>no offer→panel precedent exists on main:</b> the ADR calls this "the bell's shape", but <b>components/mudavym/HouseBell.tsx:127</b> renders only a <code>Popover</code>, and every <code>mdv-item</code> on a rebuilt page either mutates or navigates.
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── RULE 4 ─────────────────────────── -->
+<section class="rule" id="r4">
+  <div class="rule__head">
+    <div class="rule__num">4</div>
+    <div>
+      <h2 class="rule__title">Hold-to-reject: the premise moved, so the fork is restated</h2>
+      <p class="rule__dec">ADR 0134 fork 6 reads census row 19 as "a hold that redeems nothing" and decides <em>lose the hold, keep the required reason</em>. <b>That premise is stale.</b> Since ADR 0125 (2026-09-05) the hold mints a cancel seal when it starts (<code>onChallenge</code> → <code>mintOrderCancelSeal</code>) and the gateway's <code>DELETE orders/:id</code> refuses without that seal (403) and without a reason (400). The code retired the old sentence itself (<code>ResponsesSheet.tsx:88-95</code>). Under rule 2's own clause 1 the reject <b>keeps the wax</b>; the plain Reject the ADR drew would be refused on every press. <b>Restated: (a) flip row 19 to <code>seal: true</code> and keep the hold, which is what rule 2 produces, or (b) take the seal off the gateway's DELETE and lose the hold, which reverses ADR 0125.</b></p>
+    </div>
+    <button class="replay" type="button" data-replay="r4">Replay</button>
+  </div>
+  <div class="stages stages--3">
+    <div class="stage stage--proposed" data-k="today">
+      <div class="stage__label"><b>Today on main = road (a)</b><span>Meyhane Sim · Vendor answers · Öküzgözü 2022</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Answer 2 of 3 · Kavaklıdere · 3 Sept</div>
+        <p class="quote">We can deliver Thursday. The 2022 is ₺2,400 per case and we can hold that until the 15th. — Hasan</p>
+        <div class="fact">Read as <b>a confirmation · price unchanged</b></div>
+        <div class="fieldset"><span class="k">Reject — say why</span><textarea class="field" rows="2" data-reason aria-label="Why this order is rejected" placeholder="In words: what is wrong with this answer"></textarea></div>
+        <button class="hold" type="button" data-hold data-gate="[data-reason]" data-land="wax" data-done-label="Rejected"><span class="hold__fill"></span><span class="hold__label">Hold to reject</span><span class="hold__done"></span></button>
+        <div class="hold__note"></div>
+        <p class="said" data-said>Rejected. The seal minted when the hold began was redeemed by the cancel, with the reason.</p>
+      </div>
+      <div class="stage__spec"><b>hold starts</b> <code>POST orders/:id/cancel-seal-challenge</code> mints a one-time seal bound to actor, order, act, total, vendor and state · a missing reason resolves null and the hold says so before it fills
+<b>hold completes</b> <i>pour</i> 620 → <code>DELETE orders/:id</code> with seal + reason → <b>land</b> <i>stamp</i> 360, wax · <b>the only change:</b> census row 19 <code>seal: false</code> → <code>true</code>, so a guard counts it</div>
+    </div>
+    <div class="stage" data-k="written">
+      <div class="stage__label"><b>ADR 0134 fork 6, as written</b><span>a plain Reject against a sealed DELETE</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Answer 2 of 3 · Kavaklıdere · 3 Sept</div>
+        <p class="quote">We can deliver Thursday. The 2022 is ₺2,400 per case and we can hold that until the 15th. — Hasan</p>
+        <div class="fact">Read as <b>a confirmation · price unchanged</b></div>
+        <div class="fieldset"><span class="k">Reject — say why</span><textarea class="field" rows="2" data-reason aria-label="Why this order is rejected" placeholder="In words: what is wrong with this answer"></textarea></div>
+        <button class="plain" type="button" data-reject disabled>Reject — tell Kavaklıdere why</button>
+        <div class="refuse" data-refuse></div>
+        <p class="said" data-said>Not rejected. 403 from <code>DELETE orders/:id</code>: no seal was redeemed. The order is where it was.</p>
+      </div>
+      <div class="stage__spec"><b>press</b> <i>ink</i> 160 · the reason travels, no seal does · <b>gateway</b> procurement.controller.ts:295-308 refuses a cancel whose seal is absent, and renders the refusal verbatim
+<b>not on the table:</b> a control the gateway refuses on every press. This is what a founder would have locked from the earlier draft of this page</div>
+    </div>
+    <div class="stage" data-k="unseal">
+      <div class="stage__label"><b>Road (b): unseal the DELETE</b><span>a plain Reject; ADR 0125 reversed for this act</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Answer 2 of 3 · Kavaklıdere · 3 Sept</div>
+        <p class="quote">We can deliver Thursday. The 2022 is ₺2,400 per case and we can hold that until the 15th. — Hasan</p>
+        <div class="fact">Read as <b>a confirmation · price unchanged</b></div>
+        <div class="fieldset"><span class="k">Reject — say why</span><textarea class="field" rows="2" data-reason aria-label="Why this order is rejected" placeholder="In words: what is wrong with this answer"></textarea></div>
+        <button class="plain" type="button" data-reject disabled>Reject — tell Kavaklıdere why</button>
+        <div class="refuse" data-refuse></div>
+        <p class="said" data-said>Rejected. Hasan was told why. No seal: a cancel is a decision again, not a proof.</p>
+      </div>
+      <div class="stage__spec"><b>press</b> <i>ink</i> 160 · the sentence lands on <i>settle</i> 320 · no hold, no die · <b>flag and drawing agree</b> at <code>seal: false</code>
+<b>costs</b> the gateway's seal on <code>DELETE orders/:id</code> and <code>components/orders/SealedRejectDie.tsx</code> (the legacy desk got the same hold in the same pass) · reverses ADR 0125 eleven days after it was written</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>(a) Keep the hold; flip row 19 to <code>seal: true</code>.</b> Rule 2 clause 1 produces it: a server redeems a seal. The reason gate stays. Nothing on main changes but the census flag. <i>(recommended)</i></li>
+        <li><b>(b) Take the seal off the gateway's DELETE and lose the hold.</b> Coherent with the flag as it stands; reverses ADR 0125 and the legacy desk's <code>SealedRejectDie</code> with it.</li>
+        <li><em>Not on the table:</em> fork 6 as written (a plain Reject, the seal left on) — refused with a 403 on every press. And keeping the hold with <code>seal: false</code>: the guard undercounts the wax by one, for ever.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>pages/orders/next/ResponsesSheet.tsx:283-305</b> (<code>onRejectChallenge</code> mints the cancel seal; a blank reason resolves null) · <b>:427-434</b> (<code>HoldToApprove</code> "Hold to reject" with <code>onChallenge</code>) · <b>:88-95</b> (the retired "redeems no seal" note) · <b>Responses.test.tsx:389-398</b><br>
+      <b>apps/api-gateway/src/procurement/procurement.controller.ts:264-308</b> (<code>POST orders/:id/cancel-seal-challenge</code>; <code>DELETE orders/:id</code> behind a redeemed seal and a reason) · <b>ADR 0125</b> "An order changes state through a sealed transition" (2026-09-05)<br>
+      <b>To record against ADR 0134 fork 6 / OPEN-DECISIONS:</b> the premise "the cancel route redeems no seal" and its citation (orders MOTIONS.md:50-58) were retired by ADR 0125 before the ADR was drafted; the drawing's consequence list ("/orders' reject loses the wax and the hold") follows the stale premise, not the rule.
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── RULE 5 ─────────────────────────── -->
+<section class="rule" id="r5">
+  <div class="rule__head">
+    <div class="rule__num">5</div>
+    <div>
+      <h2 class="rule__title">The 96 px swipe keeps its distance, gains resistance and a non-drag path</h2>
+      <p class="rule__dec"><code>SwipeToConfirm</code> has a keyboard path and no single-pointer non-dragging alternative: WCAG 2.5.7 (Level AA), live. <b>Decided: <code>TRAVEL</code> stays at 96 px.</b> The control gains sketch 087's resistance curve <code>p(1 − 0.22p)</code>, the ghost seal, the <em>stamp</em> landing, and a plain Confirm that arms and confirms. Both pills below are really draggable.</p>
+    </div>
+    <button class="replay" type="button" data-replay="r5">Replay</button>
+  </div>
+  <div class="stages stages--3">
+    <div class="stage" data-k="today">
+      <div class="stage__label"><b>Today on main</b><span>The Copper Pot · Receipt 4471 · Southern Glazer's</span></div>
+      <div class="stage__canvas">
+        <div class="rec"><div class="eyebrow">Receipt 4471 · 14 lines · delivered 08:40</div><div class="amt">$1,204.18<small>as received</small></div></div>
+        <div class="swipe-row">
+          <div class="l">drag <b>96 px</b> up<br>fill rises 1:1 with the thumb<br>no ghost, no landing<br>keyboard: hold Space, <b>pour</b> 620 ms</div>
+          <div class="swipe" data-swipe data-mode="today" data-travel="96" data-commit="1" tabindex="0" role="button" aria-label="Confirm receipt 4471 as received. Hold Space or drag up to complete."><div class="swipe__fill"></div><div class="swipe__handle"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></div></div>
+          <div class="l"><b>non-drag pointer path</b><br>none · a mouse or a stylus must drag<br><span data-swnote></span></div>
+        </div>
+        <p class="said" data-said style="margin-top:14px">Confirmed.</p>
+      </div>
+      <div class="stage__spec"><b>TRAVEL</b> 96 px (SwipeToConfirm.tsx:27) · progress = dy / 96, linear · commit at 100 % · release early: <i>tuck</i> 300 ms home · at rest: the pill fills solid, the arrow stays
+<b>2.5.7</b> keyboard path exists; single-pointer alternative does not</div>
+    </div>
+    <div class="stage stage--proposed" data-k="proposed">
+      <div class="stage__label"><b>Proposed</b><span>the same 96 px, felt; a seal lands; a Confirm you can tap</span></div>
+      <div class="stage__canvas">
+        <div class="rec"><div class="eyebrow">Receipt 4471 · 14 lines · delivered 08:40</div><div class="amt">$1,204.18<small>as received · not the verified invoice cost</small></div></div>
+        <div class="swipe-row">
+          <div class="l">drag <b>96 px</b> up<br>handle lags the thumb by <b>p(1 − 0.22p)</b><br>ghost seal fades up with p<br>commit: the handle gives way on <b>ink</b>, the seal lands on <b>stamp</b></div>
+          <div class="swipe" data-swipe data-mode="proposed" data-travel="96" data-commit="1" tabindex="0" role="button" aria-label="Confirm receipt 4471 as received. Drag up, hold Space, or use Confirm."><div class="swipe__fill"></div><div class="swipe__ghost" data-ghost></div><div class="swipe__handle"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></div></div>
+          <div class="l"><b>non-drag pointer path</b><br><button class="plain" type="button" data-confirm style="margin-top:6px">Confirm</button><span class="refuse" data-armnote></span><span data-swnote></span></div>
+        </div>
+        <p class="said" data-said style="margin-top:6px">Confirmed as received — $1,204.18. Not yet the verified invoice cost.</p>
+      </div>
+      <div class="stage__spec"><b>TRAVEL</b> 96 px unchanged · shown travel = 96 · p(1 − 0.22p) · ghost opacity = p · <b>land</b> handle fades on <i>ink</i> 160 so the seal is seen; seal on <i>stamp</i> 500/26 · 360 ms · the fill stays tint, not solid, so wax reads as wax
+<b>Confirm</b> first press arms ("Tap again · 3 s"), second confirms; Esc or 3 s disarms · <b>the 3 s is inherited, not chosen here:</b> <code>HoldToApprove</code>'s <code>ARM_WINDOW_MS</code> (HoldToApprove.tsx:64), the window its keyboard path and its reduced-motion pointer path already use (:169-172)</div>
+    </div>
+    <div class="stage" data-k="road150">
+      <div class="stage__label"><b>The other road</b><span>150 px, commit at 68 % · sketch 087's hero geometry</span></div>
+      <div class="stage__canvas">
+        <div class="rec"><div class="eyebrow">Receipt 4471 · 14 lines · delivered 08:40</div><div class="amt">$1,204.18<small>as received · not the verified invoice cost</small></div></div>
+        <div class="swipe-row">
+          <div class="l">drag <b>150 px</b> up<br>same resistance p(1 − 0.22p)<br>commit at <b>68 %</b> = <b>102 px</b> of thumb<br>six more than today's whole travel</div>
+          <div class="swipe" data-swipe data-mode="proposed" data-travel="150" data-commit="0.68" tabindex="0" role="button" aria-label="Confirm receipt 4471 as received. Drag up 102 px, hold Space, or use Confirm."><div class="swipe__fill"></div><div class="swipe__mark" data-mark><span>68 %</span></div><div class="swipe__ghost" data-ghost></div><div class="swipe__handle"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></div></div>
+          <div class="l"><b>non-drag pointer path</b><br><button class="plain" type="button" data-confirm style="margin-top:6px">Confirm</button><span class="refuse" data-armnote></span><span data-swnote></span></div>
+        </div>
+        <p class="said" data-said style="margin-top:6px">Confirmed as received — $1,204.18. Not yet the verified invoice cost.</p>
+      </div>
+      <div class="stage__spec"><b>TRAVEL</b> 150 · commit 0.68 · 150 × 0.68 = <b>102 px</b> of thumb before it lets go, against 96 today · the dashed line is the commit; feel both pills one-handed
+<b>the pill</b> is 54 px taller for a threshold that is 6 px further away</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>Keep 96 px</b> + resistance + ghost seal + <em>stamp</em> + a plain Confirm. <i>(recommended)</i></li>
+        <li><b>Rebuild at 150 px</b> with the 68 % commit, as sketch 087's hero draws it. The "easier" threshold is the longer gesture, one-handed at the pass; the third pill above lets you feel it rather than read the arithmetic.</li>
+        <li><b>Replace the swipe</b> with <code>HoldToApprove</code> here too. One ceremony fewer; the receipts brief named a swipe-up on purpose.</li>
+        <li><b>Open, raised by the drawing:</b> the Confirm's arm window is itself a timer. ADR 0134 keeps "timed gestures need a non-timed twin, strengthened to 2.5.7", and a second press that must land within 3 s is a timed twin for the readers 2.5.7 serves. Roads: keep the house's 3 s (it is what every <code>HoldToApprove</code> keyboard path does today); lengthen it; or arm until Esc, a click elsewhere, or the sheet closes. Not decided here.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>pages/receipts/next/SwipeToConfirm.tsx:27</b> (<code>TRAVEL = 96</code>) · <b>components/mudavym/HoldToApprove.tsx:64</b> (<code>ARM_WINDOW_MS = 3000</code>, the Confirm's inherited window) · <b>:169-172</b> (the two-step confirm) · no <code>resist</code>, <code>ghost</code> or <code>0.22</code> on main<br>
+      Sketch <b>087 sig-01</b> (the hero: 150 px, <code>p(1 − 0.22p)</code>, commit at 68 %) · WCAG <b>2.5.7</b> · the same rule binds <code>/team</code>'s two unbuilt drags and the phone sheet's detent grabber
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── RULE 6 ─────────────────────────── -->
+<section class="rule" id="r6">
+  <div class="rule__head">
+    <div class="rule__num">6</div>
+    <div>
+      <h2 class="rule__title">Reduced motion: a 120 ms opacity cross-fade on entrances only</h2>
+      <p class="rule__dec">Today the primitive renders <em>none of it</em> under <code>prefers-reduced-motion</code>: a Sheet, Panel or Popover appears with zero frames, and a modal that appears with zero frames is genuinely harder to notice. <b>Decided: keep "nothing" as the default and add one exception — a 120 ms opacity-only cross-fade for an overlay entrance.</b> Everything that expands in place keeps zero. Both stages below are drawn as a reduced-motion reader sees them, whatever the toggle above says.</p>
+    </div>
+    <button class="replay" type="button" data-replay="r6">Replay</button>
+  </div>
+  <div class="stages">
+    <div class="stage" data-k="today">
+      <div class="stage__label"><b>Today on main</b><span>data-motion="none" · zero frames</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">A reduced-motion reader opens a question</div>
+        <div class="row" style="margin-top:10px"><div class="row__t"><span>Öküzgözü 2022 · 6 cases</span><span class="v">₺14,400</span></div><div class="expand" data-expand><div><p>Ordered 3 Sept · agreed at ₺2,400 per case · Hasan confirmed Thursday. The figure opens to its sources.</p></div></div></div>
+        <div class="frames" data-frames>—</div>
+        <div class="ov ov--panel" data-panel hidden>
+          <div class="ov__scrim"></div>
+          <div class="ov__panel">
+            <div class="ov__head"><div class="eyebrow">Orders · a question</div><div class="ov__title">Send the order to Kavaklıdere?</div><p class="ov__contract">Sends six cases at ₺2,400. The hold in the footer is the only thing that sends.</p></div>
+            <div class="ov__foot"><button class="ov__close" type="button">Not now</button><button class="btn" type="button">Hold to send</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="stage__spec"><b>entrance</b> duration <i>0</i> · fill both · <code>data-motion="none"</code> (Sheet.tsx:479) · <code>animate()</code> never called
+<b>row expand</b> 0 · <b>guard</b> housePolicy.test.ts asserts the primitive renders none of it (packet 0, unmerged)</div>
+    </div>
+    <div class="stage stage--proposed" data-k="proposed">
+      <div class="stage__label"><b>Proposed</b><span>opacity only · one duration · named · panel 403 of 620 at 0.65x</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">A reduced-motion reader opens a question</div>
+        <div class="row" style="margin-top:10px"><div class="row__t"><span>Öküzgözü 2022 · 6 cases</span><span class="v">₺14,400</span></div><div class="expand" data-expand><div><p>Ordered 3 Sept · agreed at ₺2,400 per case · Hasan confirmed Thursday. The figure opens to its sources.</p></div></div></div>
+        <div class="frames" data-frames>—</div>
+        <div class="ov ov--panel" data-panel hidden>
+          <div class="ov__scrim"></div>
+          <div class="ov__panel">
+            <div class="ov__head"><div class="eyebrow">Orders · a question</div><div class="ov__title">Send the order to Kavaklıdere?</div><p class="ov__contract">Sends six cases at ₺2,400. The hold in the footer is the only thing that sends.</p></div>
+            <div class="ov__foot"><button class="ov__close" type="button">Not now</button><button class="btn" type="button">Hold to send</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="stage__spec"><b>entrance</b> opacity 0 → 1 · <i>120 ms</i> · linear · no translate, no scale · Sheet, Panel, Popover only · <code>data-motion="fade"</code> · <b>a duration no token carries:</b> rule 7's guard scans <code>components/mudavym/**</code> and fails this line unless told how (fork 3 below)
+<b>row expand</b> still 0 · <b>guard becomes</b> "renders no movement — opacity only, one duration, named" · Sheet.test.tsx's <code>none</code> assertion changes with it</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>The cross-fade.</b> 120 ms, opacity only, entrances only. WCAG 2.3.3 is AAA and lists "avoid unnecessary animation" as one technique, so this costs no conformance; Apple's guidance is a cross-dissolve, not a removal. Costs an amendment to two tests packet 0 shipped four days earlier. <i>(recommended)</i></li>
+        <li><b>Keep "nothing".</b> The guard as shipped. Zero frames for an arriving modal; the reader finds it by focus alone.</li>
+        <li><b>If the cross-fade: how rule 7's guard learns it.</b> Rule 1 locks "no eighth token", and 120 ms is a duration outside the seven, written in <code>sheet.css</code> and in <code>animate()</code>'s fade branch. <b>(a) An ALLOW line</b> by file:line citing ADR 0134 §6, the way the two sheens are carried <i>(recommended: the mechanism and the disclosure both exist and no decision text changes; the cost is that 120 is then written in three places, sheet.css, motion.ts and the allow-list, which is the drift rule 1 folded)</i>. <b>(b) A named reduced-motion constant</b> exported from <code>motion.ts</code> beside the seven and read by the guard as it reads the tokens; rule 1's text becomes "no eighth <em>motion</em> token; one reduced-motion constant". Locked as written, with neither, the guard fails rule 6's own line: the run under rule 7 shows it.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>components/mudavym/Sheet.tsx:479</b> · <b>Sheet.test.tsx:170, 220</b> · <b>sheet.css:240-244</b> (<code>animation: none !important</code>)<br>
+      <b>components/mudavym/housePolicy.test.ts</b> on <code>feat/overlays-packet-0-primitive</code> (unmerged) · <b>lib/mudavym/motion.ts:169-190</b> (<code>animate()</code> collapses to duration 0)
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── RULE 7 ─────────────────────────── -->
+<section class="rule" id="r7">
+  <div class="rule__head">
+    <div class="rule__num">7</div>
+    <div>
+      <h2 class="rule__title">The CI motion guard, and what it would flag</h2>
+      <p class="rule__dec">Fifty-eight <code>check_*</code> scripts exist on main; none is for motion, tokens, overlays or emoji. The guard as first drafted scanned <code>pages/*/next</code>, so it could see neither <code>/inventory</code> (which lives at <code>pages/inventory/command</code>) nor <code>Sidebar.tsx</code>, the two defects it was written for, while going red on two approved sheens. <b>Decided: ship it, re-specified.</b> Below is the run it would produce against the pre-fix tree.</p>
+    </div>
+    <button class="replay" type="button" data-replay="r7">Replay</button>
+  </div>
+  <div class="stages">
+    <div class="stage" data-k="today">
+      <div class="stage__label"><b>Today on main</b><span>nothing reads the tokens</span></div>
+      <div class="stage__canvas">
+        <div class="term" data-term><div><span class="p">$</span> ls scripts/ | grep -iE 'motion|token|overlay|modal|emoji'</div><div><span class="m">(no output — 58 check_* scripts, none of them)</span></div><div> </div><div><span class="p">$</span> git grep -l emoji -- scripts .github</div><div><span class="m">(no output)</span></div><div> </div><div><span class="m"># BUILD-PROMPT.md rule 8 reads "No emoji, anywhere — a guard checks".</span></div><div><span class="m"># A rule asserting its own enforcement without it: this house's named fault class,</span></div><div><span class="m"># inside the document written to prevent it.</span></div><div> </div><div><span class="p">$</span> grep -rn "ms: 420" apps/web/src/pages | wc -l</div><div><span class="f">4</span></div><div><span class="m"># invisible to CI: the literal is valid TypeScript and nothing minds it.</span></div></div>
+      </div>
+      <div class="stage__spec"><b>exists</b> the model to copy: <code>scripts/check_money_routes_are_sealed.py</code> reads the call graph, exits 2 when it cannot say what "sealed" means
+<b>missing</b> <code>check_motion_tokens.py</code> · <code>check_no_emoji.py</code> · packet 0's emoji assertion covers the primitive family's source only</div>
+    </div>
+    <div class="stage stage--proposed" data-k="proposed">
+      <div class="stage__label"><b>Proposed</b><span>a sample run against the pre-fix tree</span></div>
+      <div class="stage__canvas">
+        <div class="term" data-term><div><span class="p">$</span> python3 scripts/check_motion_tokens.py</div><div><span class="m">20 slugs from MUDAVYM_PAGES (useMudavymDesign.ts:34-65) · each directory resolved from App.tsx</span></div><div><span class="m">scanning pages/** components/layout/** components/mudavym/**</span></div><div> </div><div><span class="f">FAIL</span>  pages/dashboard/next/DashboardNext.tsx:76      literal {easing: settle.easing, ms: 420} — no token is HOUSE at 420</div><div><span class="f">FAIL</span>  pages/dashboard/next/SalesCalendar.tsx:75      literal {easing: settle.easing, ms: 420}</div><div><span class="f">FAIL</span>  pages/reports/next/ReportsNext.tsx:139         literal {easing: settle.easing, ms: 420}</div><div><span class="f">FAIL</span>  pages/calendar/next/CalendarNext.tsx:212       literal {easing: settle.easing, ms: 420}</div><div><span class="f">FAIL</span>  pages/inventory/command/**                     slug inventory (App.tsx:312) · 0 refs to lib/mudavym/motion · no reduced-motion guard</div><div><span class="f">FAIL</span>  pages/documents/next/CanonicalDocumentPage.tsx reachable at /documents/:id · no MOTIONS.md</div><div><span class="f">FAIL</span>  components/layout/Sidebar.tsx:256               framer transition {duration: .15, ease: [.4,0,.2,1]} inside the .mudavym branch — not ink</div><div><span class="a">ALLOW</span> pages/dashboard/next/dashboard-next.css:44     dn-sheen · disclosed · ADR 0134 §7 (capped at two cycles)</div><div><span class="a">ALLOW</span> pages/reports/next/reports-next.css:391        rp-sheen · disclosed · ADR 0134 §7</div><div> </div><div><span class="f">7 violations</span> · 2 allowed by ADR · <span class="f">exit 1</span></div><div> </div><div><span class="p">$</span> python3 scripts/check_motion_tokens.py   <span class="m"># hypothetical: if a slug had no route</span></div><div><span class="f">CANNOT CHECK</span>  a slug in MUDAVYM_PAGES with no lazy route in App.tsx (e.g. one named credits — none is today) · <span class="f">exit 2</span></div><div><span class="m"># red, never green, over a page it cannot see</span></div><div> </div><div><span class="p">$</span> python3 scripts/check_motion_tokens.py   <span class="m"># after rule 6 lands, before its fork 3 is answered</span></div><div><span class="f">FAIL</span>  components/mudavym/sheet.css:242              opacity 120ms linear — no token is linear at 120 · <span class="m">rule 6 fork 3: ALLOW by ADR 0134 §6, or a named constant the guard reads from motion.ts</span></div><div> </div><div><span class="p">$</span> python3 scripts/check_no_emoji.py</div><div><span class="f">FAIL</span>  apps/web/src/utils/deliveryDateUtils.ts:127     U+2705 inside a string literal</div><div><span class="f">FAIL</span>  apps/web/src/components/ui/CuisinePicker.tsx:10  U+1F377 inside a string literal</div><div><span class="m">… 157 more, all on legacy pages</span></div><div><span class="f">159 violations</span> in 30 files · 1 inside a rebuilt page (pages/notifications/next/nt-format.ts:197, a comment naming U+2B50) · <span class="f">exit 1</span></div></div>
+      </div>
+      <div class="stage__spec"><b>spec</b> enumerate slugs from <code>MUDAVYM_PAGES</code> · resolve dirs from <code>App.tsx</code> · scan components/layout and components/mudavym too · allow-list by file:line with the ADR · exit 2 on an unresolved slug · proven red on the pre-fix tree, green after
+<b>measured 2026-09-17</b> the four 420 lines, /inventory, /documents/:id, Sidebar.tsx and the 159 emoji lines are counted on the tree (a code-point scan of apps/web/src, tests excluded); the guard's wording is the sketch's</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>Ship it, re-specified</b> as the run above shows; ship <code>check_no_emoji.py</code> beside it. <i>(recommended)</i></li>
+        <li><b>Do not ship a guard;</b> keep motion in review. Rule 1's literal came through review four times.</li>
+        <li><em>Not on the table:</em> the original draft. A green guard over a standing defect is worse than no guard.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>scripts/</b> (58 <code>check_*</code>, 0 for motion) · <b>scripts/check_money_routes_are_sealed.py</b> (the model) · <b>lib/mudavym/useMudavymDesign.ts</b> (<code>MUDAVYM_PAGES</code>)<br>
+      <b>App.tsx:312</b> (/inventory in both arms) · <b>components/layout/Sidebar.tsx:256-260</b> · <b>dashboard-next.css:44</b> · <b>reports-next.css:391</b>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── RULE 8 ─────────────────────────── -->
+<section class="rule" id="r8">
+  <div class="rule__head">
+    <div class="rule__num">8</div>
+    <div>
+      <h2 class="rule__title"><code>/calendar</code>'s delete keeps the wax</h2>
+      <p class="rule__dec">A day-book entry deleted is gone: no server redeems a seal for it, and nothing undoes it. That is rule 2's second clause exactly, so <b>the wax stays</b>. The other road is coherent too: put a day-book entry on F10's undo-after list, which makes it reversible and drops it to a plain control. Today already equals the proposal, so the right-hand stage draws the other road.</p>
+    </div>
+    <button class="replay" type="button" data-replay="r8">Replay</button>
+  </div>
+  <div class="stages">
+    <div class="stage" data-k="today">
+      <div class="stage__label"><b>Today = proposed</b><span>The Copper Pot · a day-book entry · the wax</span></div>
+      <div class="stage__canvas">
+        <div class="entry" data-entry><div class="eyebrow">Sat 26 Sept · 19:00 · 24 covers</div><div class="t">Wine dinner with Duckhorn</div><div class="m">day-book · entered by Ayşe · 2 Sept</div></div>
+        <button class="hold" type="button" data-hold data-land="wax" data-done-label="Deleted"><span class="hold__fill"></span><span class="hold__label">Hold to delete this entry</span><span class="hold__done"></span></button>
+        <div class="hold__note"></div>
+        <p class="said" data-said>Deleted. The day-book has no entry for 26 September.</p>
+      </div>
+      <div class="stage__spec"><b>cn-hold-pour</b> <i>pour</i> linear 620 ms · early release retreats on <i>tuck</i> and says what did not happen
+<b>cn-seal-stamp</b> <i>stamp</i> 500/26 · 360 ms · the only place this page spends the wax (calendar MOTIONS.md:21-22)</div>
+    </div>
+    <div class="stage stage--proposed" data-k="proposed">
+      <div class="stage__label"><b>The other road</b><span>undo-after (F10) · a plain control · reversible for 10 s</span></div>
+      <div class="stage__canvas">
+        <div class="entry" data-entry><div class="eyebrow">Sat 26 Sept · 19:00 · 24 covers</div><div class="t">Wine dinner with Duckhorn</div><div class="m">day-book · entered by Ayşe · 2 Sept</div></div>
+        <button class="plain" type="button" data-plain>Delete this entry</button>
+        <div class="undo" data-undo><span>Deleted.</span><a href="#" style="color:var(--seal);font-weight:600;text-decoration:none" onclick="return false">Undo</a><div class="bar2"><i data-drain></i></div><span class="cnt" data-cnt>10 s</span></div>
+        <p class="said" data-said style="margin-top:10px">Gone. Nothing can bring it back now.</p>
+      </div>
+      <div class="stage__spec"><b>press</b> <i>ink</i> 160 ms · <b>undo window</b> 10 s · <i>linear</i>, un-eased — the countdown honesty rule: a draining bar is a clock, not a curve
+<b>ration</b> reversible for ten seconds → no wax · after the window, the sentence · (sketch 087 st-05) · <b>the 10 s is a clock, not a motion:</b> the drain is written by a timer into <code>scaleX</code>, never an <code>animate()</code> call, so no duration literal exists for rule 7's guard to read</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>Keep the wax.</b> Clause 2: irreversible here, no server to ask. The current state; the rule produces it. <i>(recommended)</i></li>
+        <li><b>Undo-after.</b> Add a day-book entry to F10's list. It becomes reversible, drops to a plain control with a ten-second window, and the calendar spends no wax at all.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>pages/calendar/next/MOTIONS.md:21-22</b> · <b>ADR 0112 F10</b> (the undo-after list) · <b>components/mudavym/HoldToApprove.tsx:180-198</b> (the release note and the <em>tuck</em> retreat)
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── RULE 9 ─────────────────────────── -->
+<section class="rule" id="r9">
+  <div class="rule__head">
+    <div class="rule__num">9</div>
+    <div>
+      <h2 class="rule__title">Two wide sheets forced to 440</h2>
+      <p class="rule__dec"><code>Sheet.tsx:171-184</code> reserves 640 for <em>a letter only</em>: prose a person reads back as prose. Census rows 33 and 59 carry <code>wide</code> and are not letters — a delivery's line table and the template library. <b>Decided: force both to 440</b>, which is what packet 1 did to the cellar's carry sheet when it caught itself. Amending the rule to "or a table a person reconciles" is a content-volume test in different words, which is what the rule forbids.</p>
+    </div>
+    <button class="replay" type="button" data-replay="r9">Replay</button>
+  </div>
+  <div class="stages">
+    <div class="stage" data-k="today">
+      <div class="stage__label"><b>Today: row 59 on main, row 33 as packet 1 targets it</b><span>Meyhane Sim · both at 640 · cropped to the sheet</span></div>
+      <div class="stage__canvas" style="padding:12px">
+        <div class="framebox" data-framebox>
+          <div class="frame">
+            <div class="pg"><div class="eyebrow">Inventory · Kadıköy</div><p class="voice">The cellar, by what it holds.</p><div class="ghost-rows"><div></div><div></div><div></div><div></div><div></div><div></div></div></div>
+            <div class="sh" data-sh style="width:640px">
+              <div class="ov__head"><div class="eyebrow">A delivery without an order</div><div class="ov__title">A delivery without an order</div></div>
+              <div class="ov__body">
+                <div class="two"><div class="fld"><div class="k">Vendor</div><div class="v">Sevilen</div></div><div class="fld"><div class="k">Invoice or reference</div><div class="v">INV-4471</div></div></div>
+                <div class="fld"><div class="k">Default zone for new lines</div><div class="v">Cellar · rack C</div></div>
+                <div class="sect">Lines</div>
+                <table><tr><th>Wine</th><th class="n">Qty</th><th class="n">Unit</th><th class="n">Total</th></tr>
+                  <tr><td>Sevilen Kalecik Karası 2021</td><td class="n">6</td><td class="n">₺240.00</td><td class="n">₺1,440</td></tr>
+                  <tr><td>Free sample · Sevilen Blanc de Noir</td><td class="n">2</td><td class="n">₺0.00</td><td class="n">₺0</td></tr>
+                  <tr><td>Sevilen Öküzgözü 2022</td><td class="n">12</td><td class="n">₺310.00</td><td class="n">₺3,720</td></tr></table>
+                <div style="margin-top:16px"><button class="plain" type="button">Record the delivery</button></div>
+              </div>
+              <div class="wtag">640 · wide · packet 1's migration, unmerged · on main this is a legacy centred modal</div>
+            </div>
+          </div>
+        </div>
+        <div class="framebox" data-framebox style="margin-top:12px">
+          <div class="frame">
+            <div class="pg"><div class="eyebrow">Communications · Kadıköy</div><p class="voice">Letters from the house.</p><div class="ghost-rows"><div></div><div></div><div></div><div></div><div></div><div></div></div></div>
+            <div class="sh" data-sh style="width:640px">
+              <div class="ov__head"><div class="eyebrow">Templates</div><div class="ov__title">Templates</div></div>
+              <div class="ov__body side">
+                <div><div class="sect">On file · 4</div><div class="li"><div><div class="t">Delivery confirmation</div><div class="s">used 12 times · last 3 Sept</div></div></div><div class="li"><div><div class="t">Price check</div><div class="s">used 3 times</div></div></div><div class="li"><div><div class="t">Short delivery</div><div class="s">used once</div></div></div></div>
+                <div><div class="sect">Editing · Delivery confirmation</div><div class="fld"><div class="k">Name</div><div class="v">Delivery confirmation</div></div><div class="fld"><div class="k">Purpose</div><div class="v">Confirm a delivery day with the vendor</div></div><div class="fld"><div class="k">Subject</div><div class="v">Order {{order}} — delivery {{day}}</div></div></div>
+              </div>
+              <div class="wtag">640 · wide · a library edited beside its list</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="stage__spec"><b>sheet</b> <i>tuck</i> spring 380/32 · 300 ms · 28 px from the right + opacity · <code>data-wide="true"</code> → max-width 640 (sheet.css:124-125)
+<b>rows</b> 33: on main a framer-motion centred modal, max-w-6xl · 94vh · white · blurred scrim (components/inventory/ManualReceiptWorkspace.tsx:228-242); the <code>wide</code> Sheet exists only in packet 1's unmerged migration · 59: <code>wide</code> at pages/communications/next/TemplateSheet.tsx:135, built</div>
+    </div>
+    <div class="stage stage--proposed" data-k="proposed">
+      <div class="stage__label"><b>Proposed</b><span>both at 440 · the letter alone keeps 640 · same scale as the left</span></div>
+      <div class="stage__canvas" style="padding:12px">
+        <div class="framebox" data-framebox>
+          <div class="frame">
+            <div class="pg"><div class="eyebrow">Inventory · Kadıköy</div><p class="voice">The cellar, by what it holds.</p><div class="ghost-rows"><div></div><div></div><div></div><div></div><div></div><div></div></div></div>
+            <div class="sh" data-sh style="width:440px">
+              <div class="ov__head"><div class="eyebrow">A delivery without an order</div><div class="ov__title">A delivery without an order</div></div>
+              <div class="ov__body">
+                <div class="two"><div class="fld"><div class="k">Vendor</div><div class="v">Sevilen</div></div><div class="fld"><div class="k">Reference</div><div class="v">INV-4471</div></div></div>
+                <div class="sect">Lines · 3</div>
+                <div class="li"><div><div class="t">Sevilen Kalecik Karası 2021</div><div class="s">6 bottles · ₺240.00</div></div><div class="n">₺1,440</div></div>
+                <div class="li"><div><div class="t">Free sample · Blanc de Noir</div><div class="s">2 bottles · ₺0.00 (sample)</div></div><div class="n">₺0</div></div>
+                <div class="li"><div><div class="t">Sevilen Öküzgözü 2022</div><div class="s">12 bottles · ₺310.00</div></div><div class="n">₺3,720</div></div>
+                <div style="margin-top:16px"><button class="plain" type="button">Record the delivery</button></div>
+              </div>
+              <div class="wtag">440 · a line is two rows, not four columns</div>
+            </div>
+          </div>
+        </div>
+        <div class="framebox" data-framebox style="margin-top:12px">
+          <div class="frame">
+            <div class="pg"><div class="eyebrow">Communications · Kadıköy</div><p class="voice">Letters from the house.</p><div class="ghost-rows"><div></div><div></div><div></div><div></div><div></div><div></div></div></div>
+            <div class="sh" data-sh style="width:440px">
+              <div class="ov__head"><div class="eyebrow">Templates</div><div class="ov__title">Delivery confirmation</div><p class="ov__contract" style="font-size:13px">One of 4 on file · used 12 times · last 3 Sept</p></div>
+              <div class="ov__body">
+                <div class="fld"><div class="k">Name</div><div class="v">Delivery confirmation</div></div><div class="fld"><div class="k">Purpose</div><div class="v">Confirm a delivery day with the vendor</div></div><div class="fld"><div class="k">Subject</div><div class="v">Order {{order}} — delivery {{day}}</div></div>
+                <div class="sect">The other three</div><div class="li"><div><div class="t">Price check</div><div class="s">used 3 times</div></div></div><div class="li"><div><div class="t">Short delivery</div><div class="s">used once</div></div></div>
+              </div>
+              <div class="wtag">440 · one template is the object; the list is below it</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="stage__spec"><b>sheet</b> <i>tuck</i> 300 ms unchanged · <code>wide</code> removed from TemplateSheet.tsx:135 and never added to the migrated delivery sheet · max-width 440 (sheet.css:112-113)
+<b>stays 640</b> row 58, "A letter from the house" (Compose/ComposeSheet.tsx:212): 440 minus padding is ~46 characters, and a letter is prose read back as prose</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>Force both to 440.</b> The line becomes a two-row item; the template becomes the object and the list sits below it. <i>(recommended)</i></li>
+        <li><b>Amend the rule</b> to "prose a person reads back, or a table a person reconciles". Row 33 keeps 640; the rule becomes a content-volume test.</li>
+        <li><b>An ADR for a third width</b> (say 540). What <code>Sheet.tsx:171-184</code> says a third width needs; what its comment warns becomes a fourth by increments.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>components/mudavym/Sheet.tsx:171-184</b> (the 640 reservation and its reason) · <b>sheet.css:112-125</b> · census <b>102 rows 33, 58, 59</b> · packet 1's cellar carry sheet (the precedent)<br>
+      Also at 640 on main and not among the ADR's two: <b>pages/orders/next/ResponsesSheet.tsx:356</b>, "Vendor answers", which the census justifies as letters (a vendor's reply is prose read back as prose). If that reading holds it stays; if it does not, it is a third sheet for this rule.
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── RULE 10 ─────────────────────────── -->
+<section class="rule" id="r10">
+  <div class="rule__head">
+    <div class="rule__num">10</div>
+    <div>
+      <h2 class="rule__title">Esc splits by shape, plus primitive-internal dirty detection</h2>
+      <p class="rule__dec">Packet 0 (unmerged) answers "Esc, the scrim and unsaved work" <b>by shape</b>: a Sheet <em>tears</em> and leaves a stub on the row; a Panel <em>leans</em> under its weight and does not lift. It takes <code>dirty</code> as a prop on sixty call sites. <b>Decided: keep the shapes, and let the primitive detect dirtiness itself</b> with one <code>input</code>/<code>change</code> listener on the node it already owns, so a caller who forgets the prop still gets the tear. Type in a field below, then press Replay; the Esc is pressed for you.</p>
+    </div>
+    <button class="replay" type="button" data-replay="r10">Replay</button>
+  </div>
+  <div class="stages stages--3">
+    <div class="stage" data-k="main">
+      <div class="stage__label"><b>Today on main</b><span>no dirty state at all · sheet 286 of 440 at 0.65x</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Providers · Kavaklıdere <span class="keycap" data-esc style="margin-left:8px">Esc</span></div>
+        <div class="listrow" style="margin-top:10px"><span>Kavaklıdere · Ankara</span><span class="m">12 orders · net 30</span></div>
+        <div class="listrow"><span>Sevilen · İzmir</span><span class="m">4 orders · prepaid</span></div>
+        <div class="ov ov--sheet" data-sheet>
+          <div class="ov__panel" style="opacity:1">
+            <div class="ov__head"><div class="eyebrow">A note on the vendor</div><div class="ov__title">Edit note</div></div>
+            <div class="ov__body"><textarea class="field" rows="4" data-words aria-label="Note">Ask Hasan whether the 15th hold covers the second six cases too.</textarea></div>
+            <div class="ov__foot"><button class="ov__close" type="button">Close</button><button class="btn" type="button">Save</button></div>
+          </div>
+        </div>
+        <p class="said" data-said style="margin-top:10px">Closed. Your words are gone.</p>
+      </div>
+      <div class="stage__spec"><b>Esc</b> closes from anywhere, topmost only (Sheet.tsx:388-401) · no exit animation · <b>no</b> dirty, tear, stub or weight on main</div>
+    </div>
+    <div class="stage" data-k="packet0">
+      <div class="stage__label"><b>Packet 0, unmerged</b><span>tears — if the caller passed dirty</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Providers · Kavaklıdere <span class="keycap" data-esc style="margin-left:8px">Esc</span></div>
+        <div class="listrow" style="margin-top:10px"><span>Kavaklıdere · Ankara</span><span class="m">12 orders · net 30</span></div>
+        <div class="listrow"><span>Sevilen · İzmir</span><span class="m">4 orders · prepaid</span></div>
+        <div class="ov ov--sheet" data-sheet>
+          <div class="ov__panel" style="opacity:1">
+            <div class="ov__head"><div class="eyebrow">A note on the vendor</div><div class="ov__title">Edit note</div></div>
+            <div class="ov__body"><textarea class="field" rows="4" data-words aria-label="Note">Ask Hasan whether the 15th hold covers the second six cases too.</textarea></div>
+            <div class="ov__foot"><button class="ov__close" type="button">Close</button><button class="btn" type="button">Save</button></div>
+          </div>
+        </div>
+        <p class="said" data-said style="margin-top:10px">Closed. This caller never passed <i>dirty</i>. Your words are gone.</p>
+      </div>
+      <div class="stage__spec"><b>dirty / onTear / Stub</b> exist on <code>feat/overlays-packet-0-primitive</code> · <code>dirty</code> is a prop, by hand, on ~60 call sites · one forgotten prop = today's behaviour</div>
+    </div>
+    <div class="stage stage--proposed" data-k="proposed">
+      <div class="stage__label"><b>Proposed</b><span>the primitive heard the input itself</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Providers · Kavaklıdere <span class="keycap" data-esc style="margin-left:8px">Esc</span></div>
+        <div class="listrow" style="margin-top:10px"><span class="nm"><span>Kavaklıdere · Ankara</span><span class="stub" data-stub>Unsaved note · <a href="#" onclick="return false">Resume</a> · <a href="#" onclick="return false">Discard</a></span></span><span class="m" data-meta>12 orders · net 30</span></div>
+        <div class="listrow"><span>Sevilen · İzmir</span><span class="m">4 orders · prepaid</span></div>
+        <div class="ov ov--sheet" data-sheet>
+          <div class="ov__panel" style="opacity:1">
+            <div class="ov__head"><div class="eyebrow">A note on the vendor</div><div class="ov__title">Edit note</div></div>
+            <div class="ov__body"><textarea class="field" rows="4" data-words aria-label="Note">Ask Hasan whether the 15th hold covers the second six cases too.</textarea></div>
+            <div class="ov__foot"><button class="ov__close" type="button">Close</button><button class="btn" type="button">Save</button></div>
+          </div>
+        </div>
+        <p class="said" data-said style="margin-top:10px">Torn, not closed. The stub holds your words on the row.</p>
+      </div>
+      <div class="stage__spec"><b>tear</b> <i>tuck</i> 300 ms · torn clip-path + 28 px right + opacity · <b>stub</b> lands on <i>settle</i> 320 · <b>detection</b> one <code>input</code>/<code>change</code> listener on the panel node; the prop stays as an override</div>
+    </div>
+  </div>
+  <div class="stages" style="margin-top:18px">
+    <div class="stage" data-k="panel">
+      <div class="stage__label"><b>The Panel, in packet 0 and proposed alike</b><span>Esc leans it; only the footer's Discard lifts it · panel 403 of 620 at 0.65x</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Providers · Kavaklıdere · terms <span class="keycap" data-esc style="margin-left:8px">Esc</span></div>
+        <div class="ov ov--panel" data-wpanel>
+          <div class="ov__panel" style="opacity:1" data-wp>
+            <div class="ov__head"><div class="eyebrow">A question with weight</div><div class="ov__title">Change Kavaklıdere's payment terms?</div><p class="ov__contract">Writes the new terms to every open order with this vendor. Leaving discards what you typed here.</p></div>
+            <div class="ov__body"><div class="two" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><span class="k">Terms</span><input class="field" value="net 45" aria-label="Terms" data-words></div><div><span class="k">From</span><input class="field" value="1 October" aria-label="From" data-words></div></div></div>
+            <div class="ov__foot"><button class="ov__close" type="button">Discard</button><button class="btn" type="button">Change the terms</button></div>
+          </div>
+        </div>
+        <p class="said" data-said style="position:absolute;left:18px;bottom:14px">It has weight. Esc did not lift it; Discard, in the footer, will.</p>
+      </div>
+      <div class="stage__spec"><b>lean</b> <i>settle</i> 320 ms · rotate −0.6° + 2 px down, shadow deepens · stays · sketch 103 1d "Weight" · <b>the footer is a plain button:</b> /providers has no <code>HoldToApprove</code> on main and no seal is minted for terms, so rule 2 gives it the sentence</div>
+    </div>
+    <div class="stage" data-k="dirt">
+      <div class="stage__label"><b>The other road: split by dirtiness, not shape</b><span>any dirty overlay resists Esc the same way</span></div>
+      <div class="stage__canvas">
+        <div class="eyebrow">Providers · Kavaklıdere <span class="keycap" data-esc style="margin-left:8px">Esc</span></div>
+        <div class="listrow" style="margin-top:10px"><span class="nm"><span>Kavaklıdere · Ankara</span></span><span class="m">12 orders · net 30</span></div>
+        <div class="listrow"><span class="nm"><span>Sevilen · İzmir</span></span><span class="m">4 orders · prepaid</span></div>
+        <div class="ov ov--sheet" data-sheet>
+          <div class="ov__panel" style="opacity:1" data-dp>
+            <div class="ov__head"><div class="eyebrow">A note on the vendor</div><div class="ov__title">Edit note</div></div>
+            <div class="ov__body"><textarea class="field" rows="4" data-words aria-label="Note">Ask Hasan whether the 15th hold covers the second six cases too.</textarea><p class="refuse" data-dirtnote style="margin-top:8px"></p></div>
+            <div class="ov__foot"><button class="ov__close" type="button">Discard</button><button class="btn" type="button">Save</button></div>
+          </div>
+        </div>
+        <p class="said" data-said style="position:absolute;left:18px;bottom:14px">It stayed. Dirty, so Esc leaned it; the footer decides. Clean, it would have closed.</p>
+      </div>
+      <div class="stage__spec"><b>one behaviour</b> a dirty Sheet leans exactly as a dirty Panel does; a clean one of either shape closes on Esc · no tear, no stub: the words stay in the surface, not on the row · <i>settle</i> 320 · <b>what it buys</b> a reader on the floor predicts Esc without knowing the shape · <b>what it costs</b> the row loses its stub, so a half-written note is only findable by reopening</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>Keep packet 0's split by shape, add primitive-internal detection</b> as the fallback; the prop stays as an override. <i>(recommended)</i></li>
+        <li><b>Split by dirtiness, not shape:</b> any dirty overlay resists Esc the same way. Simpler to predict on a floor; the tear and the lean collapse into one behaviour.</li>
+        <li><b>Prop only, as packet 0 shipped.</b> Sixty call sites carry it by hand; the sixty-first loses the reader's words.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>components/mudavym/Sheet.tsx:388-401</b> (Esc on main) · sketch <b>103</b> 1b "The Stub", 1d "Weight" · <b>feat/overlays-packet-0-primitive</b> (<code>dirty</code>, <code>onTear</code>, <code>Stub</code>, <code>Weight</code>; not an ancestor of main)
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── RULE 11 ─────────────────────────── -->
+<section class="rule" id="r11">
+  <div class="rule__head">
+    <div class="rule__num">11</div>
+    <div>
+      <h2 class="rule__title">The infinite 1.9 s shimmer stops after two cycles</h2>
+      <p class="rule__dec">A 1.9 s infinite sheen runs in parallel with live content on the dashboard and on reports: the header, the rail and the other tiles are interactive, so the preload exception of WCAG 2.2.2 (Level A) does not apply, and all three passes marked it clean. <b>Decided: two cycles (3.8 s), then still, then the wait in words.</b> Under the five-second trigger the criterion is met with no control, and the result is the house's own anti-spinner idiom. The ADR decides only "the wait in words". The first pass of this sketch drew those words counting up every second, which is auto-updating information beside live content, and 2.2.2's auto-updating clause has no five-second exemption. So the words are drawn static here, changing once at a second named threshold, and the counting version is drawn beside them as its own road with that cost stated.</p>
+    </div>
+    <button class="replay" type="button" data-replay="r11">Replay</button>
+  </div>
+  <div class="stages stages--3">
+    <div class="stage" data-k="today">
+      <div class="stage__label"><b>Today on main</b><span>The Copper Pot · the ledger tile, loading · infinite</span></div>
+      <div class="stage__canvas">
+        <div class="tile"><div class="live"><span>Orders on the ledger</span></div><div data-skels></div></div>
+        <div class="readout" data-clock>0.0 s</div>
+        <p class="said" data-said style="margin-top:10px"></p>
+      </div>
+      <div class="stage__spec"><b>dn-sheen / rp-sheen</b> 1.9 s · cubic-bezier(0.45, 0, 0.55, 1) · <i>infinite</i> · translateX(−100 % → 100 %) (dashboard-next.css:44, reports-next.css:391)
+<b>2.2.2</b> moving for more than five seconds, in parallel with other content, no pause control · the <code>prefers-reduced-motion</code> exemption both files carry is a 2.3.3 (AAA) technique, not a 2.2.2 mechanism</div>
+    </div>
+    <div class="stage stage--proposed" data-k="proposed">
+      <div class="stage__label"><b>Proposed</b><span>two cycles, then still, then the words, twice at most</span></div>
+      <div class="stage__canvas">
+        <div class="tile"><div class="live"><span>Orders on the ledger</span></div><div data-skels></div></div>
+        <div class="readout" data-clock>0.0 s</div>
+        <p class="said" data-said style="margin-top:10px"></p>
+      </div>
+      <div class="stage__spec"><b>sheen</b> same 1.9 s curve · <i>iteration-count 2</i> = 3.8 s · then <code>data-still</code>: the bar holds paper-2 with no sheen
+<b>then words</b> at 3.8 s "Still fetching the ledger." lands once on <i>settle</i>; at 20 s it changes once more: "The ledger has not answered. Nothing here is a figure yet." · two named thresholds, no counter: a state change, not an update stream · missing is not zero, so the figure stays absent until it arrives · the small clock under each tile is this canvas's instrument, not part of the drawing</div>
+    </div>
+    <div class="stage" data-k="count">
+      <div class="stage__label"><b>The counting road</b><span>the words tick every second · drawn with its 2.2.2 cost</span></div>
+      <div class="stage__canvas">
+        <div class="tile"><div class="live"><span>Orders on the ledger</span></div><div data-skels></div></div>
+        <div class="readout" data-clock>0.0 s</div>
+        <p class="said" data-said style="margin-top:10px"></p>
+      </div>
+      <div class="stage__spec"><b>then words</b> "Still fetching the ledger — 7 s", updated every second · <b>2.2.2, auto-updating:</b> information that starts automatically, updates itself and is presented in parallel with other content needs a pause, stop, hide or frequency control unless it is essential · no five-second trigger applies to this clause · so this road needs the control the decision was written to avoid</div>
+    </div>
+  </div>
+  <div class="rule__fork">
+    <div class="fork"><span class="k">You are choosing between</span>
+      <ol>
+        <li><b>Two cycles, then still, then the words, static</b> — one sentence at 3.8 s, one change at 20 s. Met with no control; the idiom is already the house's. <i>(recommended)</i></li>
+        <li><b>The counting words</b> ("Still fetching the ledger — 7 s"): the wait is more exactly said, and the sentence becomes auto-updating information beside live content, which 2.2.2 covers with no five-second exemption. It needs a pause or frequency control, or an "essential" claim that does not hold for a placeholder.</li>
+        <li><b>A pause control</b> on every skeleton: 2.2.2's other path. A button to stop a placeholder.</li>
+        <li><b>Leave it infinite</b> and claim the preload exception. It does not hold: interaction can occur on both pages while the sheen runs.</li>
+      </ol>
+    </div>
+    <div class="where"><span class="k">Where it lives</span>
+      <b>pages/dashboard/next/dashboard-next.css:38-50</b> · <b>pages/reports/next/reports-next.css:387-397</b> · WCAG <b>2.2.2</b> Pause, Stop, Hide (A) · <b>2.3.3</b> Animation from Interactions (AAA)
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── SHORTLIST MAP ─────────────────────────── -->
+<section class="sec" id="shortlist">
+  <h2>Sketch 087's shortlist, mapped to where each motion would live</h2>
+  <p>The forty-seven cards of <code>087-mudavym-motion-canvas/shortlist.html</code>: the hero and the twenty-seven signature ceremonies beside it (sig-01 to sig-28), and the nineteen motions you marked on 2026-08-29. Each is placed against the act it would answer and given an honest state. <b>Shipped</b> means it runs on main under a token; <b>0134 proposes</b> means this ADR moves it; <b>needs packet 0</b> means the surface it rides on exists only on the unmerged primitive branch; <b>partial</b> means the rule ships and the motion does not; <b>refused</b> names the page note that said no; <b>no home yet</b> means the surface it needs is not built or carries no tokens.</p>
+  <div class="tally" id="tally"></div>
+  <div class="tblwrap"><table class="tbl" id="shortlistTable"><thead><tr><th>id</th><th>motion</th><th>where it would be used</th><th>state</th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<!-- ─────────────────────────── AT 390 ─────────────────────────── -->
+<section class="sec" id="phone">
+  <div class="strip-head">
+    <div>
+      <h2>At 390 px: the two rules the phone decides</h2>
+      <p>Rule 5 is a one-handed gesture at the pass, and rule 6 is an arriving surface on a screen that draws no focus ring. Both frames are 390 px wide at true size (on a 390 px viewport they break out of the page margin to stay so); the pill is really draggable, and the Confirm beside it is the non-drag path WCAG 2.5.7 asks for.</p>
+    </div>
+    <button class="replay" type="button" data-replay="ph">Replay</button>
+  </div>
+  <div class="phones">
+    <div class="phone" data-ph="swipe">
+      <div class="phone__bar"><span>Meyhane Sim</span><span>Receipts</span></div>
+      <div class="phone__body">
+        <div class="eyebrow">Receipt 0913 · 3 lines · delivered 08:40</div>
+        <div class="amt-lg">₺5,160<small>as received</small></div>
+        <div class="phone__lines"><div><span>Sevilen Öküzgözü 2022</span><b>12 × ₺310</b></div><div><span>Kalecik Karası 2021</span><b>6 × ₺240</b></div><div><span>Blanc de Noir · sample</span><b>2 × ₺0</b></div></div>
+        <div class="phone__act">
+          <div class="swipe" data-swipe data-mode="proposed" tabindex="0" role="button" data-travel="96" data-commit="1" aria-label="Confirm receipt 0913 as received. Drag up, hold Space, or use Confirm."><div class="swipe__fill"></div><div class="swipe__ghost" data-ghost></div><div class="swipe__handle"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></div></div>
+          <div class="l"><b>96 px</b> of thumb, felt as p(1 − 0.22p)<br>the ghost seal fades up with p<br>lands on <b>stamp</b><br><button class="plain" type="button" data-confirm-ph style="margin-top:8px">Confirm</button><span class="refuse" data-armnote-ph></span></div>
+        </div>
+        <p class="said" data-said style="margin-top:14px">Confirmed as received — ₺5,160. Not yet the verified invoice cost.</p>
+      </div>
+      <div class="phone__tag">rule 5 · the same 96 px · at 150 px, a 68 % commit is 102 px of thumb</div>
+    </div>
+    <div class="phone" data-ph="fade">
+      <div class="phone__bar"><span>The Copper Pot</span><span>Orders</span></div>
+      <div class="phone__body">
+        <div class="eyebrow">Pending · 3</div>
+        <div class="listrow" style="margin-top:10px"><span>Duckhorn Merlot 2021 · 6</span><span class="m">$1,212</span></div>
+        <div class="listrow"><span>Ridge Three Valleys · 12</span><span class="m">$2,640</span></div>
+        <div class="listrow"><span>Chablis, Fèvre · 6</span><span class="m">$1,010</span></div>
+        <div class="frames" data-frames>—</div>
+        <div class="bsheet" data-bsheet>
+          <div class="bsheet__grab"></div>
+          <div class="eyebrow">Orders · a question</div>
+          <div class="ov__title">Send the order to Duckhorn?</div>
+          <p class="ov__contract">Sends six cases at $202.00, $1,212 in all. The hold below is the only thing that sends.</p>
+          <div class="ov__foot" style="padding:12px 0 0;border:0"><button class="ov__close" type="button">Not now</button><button class="btn" type="button">Hold to send</button></div>
+        </div>
+      </div>
+      <div class="phone__tag">rule 6 · reduced motion, forced · the sheet arrives on a 120 ms fade, never zero frames</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── STATES ─────────────────────────── -->
+<section class="sec" id="states">
+  <h2>The states each rule has to survive</h2>
+  <p>A specimen that only shows the happy path is a skin. These are the refusals, absences and partials the rules above produce, in the words the product would use.</p>
+  <div class="states">
+    <div class="state"><div class="eyebrow">Rule 3 · refused</div><p>The cover offer did not send. Nobody was asked.</p><div class="why">Under the ADR's road the panel stays open with the three names still ticked; under the other road the expander says it, in view. Nothing is assigned.</div></div>
+    <div class="state"><div class="eyebrow">Rule 3 · partial</div><p>Offered to 3; 2 were notified. Selin A. has no account and heard nothing from this.</p><div class="why">The gateway returns <code>{offered: 3, notified: 2}</code> (schedule.service.ts:678). Today the web says "Offered just now" and never reads the split: offered is not told.</div></div>
+    <div class="state"><div class="eyebrow">Rule 3 · silent, today</div><p>&nbsp;</p><div class="why">The menu item sent, the send failed, and the row was not expanded, so the failure sentence (WeekGrid.tsx:606-610, inside <code>ShiftDetail</code>) never rendered. The manager saw the menu close. Both roads above remove this: the menu item is the only surface that can fail without a sentence.</div></div>
+    <div class="state"><div class="eyebrow">Rule 4 · empty</div><p>Say why first — a rejection without words does not send.</p><div class="why">The hold starts, the challenge resolves null, and the fill never begins (ResponsesSheet.tsx:283-287). The gateway refuses a blank reason with a 400 anyway; the control does not make the reader discover that.</div></div>
+    <div class="state"><div class="eyebrow">Rule 4 · the seal refused</div><p>The seal could not be issued — nothing was cancelled.</p><div class="why">Minting fails at the start of the hold, not the end: a 422 for wine already on the shelf, or an order already closed, arrives before the pour. The reason stays in the field.</div></div>
+    <div class="state"><div class="eyebrow">Rule 5 · the mint fails</div><p>The seal could not be issued — nothing was confirmed.</p><div class="why">The gesture completed and the confirmation did not: a different sentence from "released early", because the operator did nothing wrong. The handle retreats on <em>tuck</em>.</div></div>
+    <div class="state"><div class="eyebrow">Rule 5 · released early</div><p>Released at 42 % — nothing confirmed.</p><div class="why"><code>HoldToApprove</code>'s shape of sentence, with the receipt's own verb: a confirmation is not a send. The ghost seal fades back with the fill.</div></div>
+    <div class="state"><div class="eyebrow">Rule 6 · loading behind a cross-fade</div><p>Fetching Kavaklıdere's twin…</p><div class="why">The sheet arrives with its skeleton, not its object. The 120 ms fade shows a surface, never a figure; missing is not zero.</div></div>
+    <div class="state"><div class="eyebrow">Rule 7 · cannot check (hypothetical)</div><p>A slug in MUDAVYM_PAGES has no lazy route in App.tsx. Exit 2.</p><div class="why">Red, never green, over a page the guard cannot see. None of the 20 slugs is in this state today; the case is drawn because a guard that reports absence as health is the fault class it exists to catch.</div></div>
+    <div class="state"><div class="eyebrow">Rule 8 · error</div><p>Not deleted — the day-book still has the entry.</p><div class="why">The hold completed and the write failed. The fill retreats; no wax lands; the entry stays as it was.</div></div>
+    <div class="state"><div class="eyebrow">Rule 11 · partial</div><p>Two of five tiles landed. Still fetching the ledger.</p><div class="why">Each tile waits in its own words after its own two cycles; at twenty seconds the sentence changes once more and never counts. A tile that landed says its figure; a tile that did not says that it is waiting, never a dash pretending to be a value.</div></div>
+  </div>
+</section>
+
+<footer class="foot">
+  <b>Every claim is cited.</b> File and line references are <code>origin/main</code> at 60ed83a7 (PR #373) unless a branch is named; ADR 0134 is read from <code>origin/docs/motions-and-overlays-per-page</code>. Rule 1's DashboardNext citation is :76 on main; the ADR wrote :68.<br>
+  <b>Example data, not a tenant.</b> The Copper Pot (Austin, $) and Meyhane Sim (Kadıköy, ₺) are invented for the drawing; every name, figure and date with them.<br>
+  <b>Not verified here:</b> real touch hardware on the two pills; paint cost on a low-battery phone; any browser other than Chrome.
+</footer>
+
+</div><!-- /wrap -->
+</div><!-- /mudavym -->
+<script>
+(() => {
+'use strict';
+/* ── tokens: a straight port of lib/mudavym/motion.ts ─────────────────────── */
+const HOUSE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+function springLinear(stiffness, damping, mass = 1, restDelta = 0.01) {
+  const dt = 1 / 1000, omega = Math.sqrt(stiffness / mass);
+  let x = 1, v = 0, t = 0; const pts = [];
+  while (t < 5) {
+    v += ((-stiffness * x - damping * v) / mass) * dt; x += v * dt; t += dt; pts.push(1 - x);
+    if (Math.hypot(x, v / omega) < restDelta) break;
+  }
+  const N = 60, last = pts.length - 1, samples = [];
+  for (let i = 0; i < N; i++) { const idx = Math.min(last, Math.round((i * last) / (N - 1))); samples.push(Number(pts[idx].toFixed(4))); }
+  let peakIdx = 0; for (let i = 1; i <= last; i++) if (pts[i] > pts[peakIdx]) peakIdx = i;
+  if (pts[peakIdx] > 1) { const at = Math.min(N - 2, Math.max(1, Math.round((peakIdx * (N - 1)) / last))); samples[at] = Number(pts[peakIdx].toFixed(4)); }
+  samples[0] = 0; samples[N - 1] = 1;
+  return { easing: `linear(${samples.join(',')})`, ms: Math.max(140, Math.round(t * 1000)), samples, peak: Math.max(...pts) };
+}
+const tuckS = springLinear(380, 32), stampS = springLinear(500, 26), tallyS = springLinear(120, 26);
+const T = {
+  settle: { easing: HOUSE, ms: 320 }, ink: { easing: HOUSE, ms: 160 }, tuck: { easing: tuckS.easing, ms: 300 },
+  turn: { easing: 'cubic-bezier(0.32, 0.72, 0, 1)', ms: 420 }, pour: { easing: 'linear', ms: 620 },
+  stamp: { easing: stampS.easing, ms: 360 }, tally: { easing: tallyS.easing, ms: 840 },
+};
+const LIT420 = { easing: HOUSE, ms: 420 }; // the eighth literal, rule 1
+
+/* ── canvas state ─────────────────────────────────────────────────────────── */
+const S = { reduced: false, speed: 1 };
+const root = document.documentElement;
+const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+const $ = (sel, el = document) => el.querySelector(sel);
+const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
+function applyState(src) {
+  root.dataset.reduced = S.reduced ? 'true' : 'false';
+  root.style.setProperty('--speed', S.speed);
+  const t = $('#rmToggle'); t.setAttribute('aria-checked', String(S.reduced)); t.textContent = S.reduced ? 'on' : 'off';
+  $$('[data-speed]').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === S.speed)));
+  $('#stateNote').textContent = `prefers-reduced-motion: ${mql.matches ? 'reduce' : 'no-preference'} (OS) · canvas: ${S.reduced ? 'reduced' : 'full'} · ${src || ''}`;
+}
+S.reduced = mql.matches;
+mql.addEventListener('change', () => { S.reduced = mql.matches; applyState('OS changed'); });
+$('#rmToggle').addEventListener('click', () => { S.reduced = !S.reduced; applyState('toggled here'); });
+$$('[data-speed]').forEach(b => b.addEventListener('click', () => { S.speed = Number(b.dataset.speed); applyState(); }));
+$$('[data-ground]').forEach(b => b.addEventListener('click', () => {
+  $('#root').dataset.ground = b.dataset.ground;
+  $$('[data-ground]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+}));
+
+/* ── anim(): mirrors motion.ts animate(); `mode` says what reduced motion does ─
+   'none' — today's rule: duration 0, end state (the change still happens)
+   'fade' — ADR 0134 §6: 120 ms opacity only, entrances only                */
+function anim(el, kf, token, opts = {}) {
+  const { mode = 'none', forceReduced = false, delay = 0, fill = 'both' } = opts;
+  const reduced = forceReduced || S.reduced;
+  let frames = kf, duration = token.ms / S.speed, easing = token.easing, d = delay / S.speed;
+  if (reduced) {
+    if (mode === 'fade') { const a = kf[0].opacity ?? 0, b = kf[kf.length - 1].opacity ?? 1; frames = [{ opacity: a }, { opacity: b }]; duration = 120 / S.speed; easing = 'linear'; }
+    else { duration = 0; easing = 'linear'; d = 0; }
+  }
+  try { return el.animate(frames, { duration, easing, fill, delay: d }); }
+  catch (e) { return el.animate(frames, { duration, easing: HOUSE, fill, delay: d }); }
+}
+const wait = (ms) => new Promise(r => setTimeout(r, ms / S.speed));
+const finished = (a) => (a && a.finished ? a.finished.catch(() => {}) : Promise.resolve());
+
+/* ── the seal: Seal.tsx verbatim (sig-hero wax, the trued A+M die, the double rule) ── */
+const WAX = 'M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z';
+const DIE = ['M0 38H72V540H0Z','M15 38H96L460 574H379Z','M0 346H305L353 416H0Z','M0 470H137V540H0Z','M99 0H151L278.7 187.8L284.8 273Z','M389.5 40H460.9L284.8 273L251.4 224Z','M412 40H483V574H412Z'];
+function seal(size = 24, pressed = true, color = 'var(--seal)') {
+  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" style="color:${color};display:block" aria-hidden="true"><path fill="currentColor" d="${WAX}"/><g opacity="${pressed ? 0.62 : 1}"><g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)"><g fill="var(--paper-0)">${DIE.map(d => `<path d="${d}"/>`).join('')}</g></g><g fill="none" stroke="var(--paper-0)" stroke-width="4.4" stroke-linecap="square"><path d="M30 71h40"/><path d="M30 77h40" stroke-width="2.6"/></g></g></svg>`;
+}
+const tickSvg = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
+$$('.cand .tick').forEach(t => { t.innerHTML = tickSvg; });
+
+/* ── the hold ceremony, HoldToApprove's own sequence: pour → (tuck) → stamp ── */
+function resetHold(btn) {
+  delete btn.dataset.sealed; delete btn.dataset.armed; btn.disabled = false; clearTimeout(btn._armT);
+  const lab = $('.hold__label', btn); if (lab && lab.dataset.orig) lab.textContent = lab.dataset.orig;
+  const fill = $('.hold__fill', btn); fill.getAnimations().forEach(a => a.cancel()); fill.style.transform = 'scaleX(0)';
+  const done = $('.hold__done', btn); done.innerHTML = ''; done.getAnimations().forEach(a => a.cancel());
+  const note = btn.parentElement && $('.hold__note', btn.parentElement); if (note) note.textContent = '';
+}
+/* under reduced motion the house control is two-step (HoldToApprove.tsx:169-172): the first press arms for ARM_WINDOW_MS (3 s, :64), the second approves */
+function armHold(btn) {
+  const lab = $('.hold__label', btn), note = btn.parentElement && $('.hold__note', btn.parentElement);
+  if (lab) { if (!lab.dataset.orig) lab.dataset.orig = lab.textContent; lab.textContent = 'Tap again to approve'; }
+  btn.dataset.armed = 'true';
+  if (note) note.textContent = 'Armed · tap again · 3 s · Esc cancels';
+  clearTimeout(btn._armT);
+  btn._armT = setTimeout(() => {
+    if (btn.dataset.sealed) return;
+    delete btn.dataset.armed; if (lab) lab.textContent = lab.dataset.orig;
+    if (note) note.textContent = 'Not approved. The 3 s passed; nothing was sent.';
+  }, 3000 / S.speed);
+}
+async function holdCeremony(btn) {
+  const fill = $('.hold__fill', btn), done = $('.hold__done', btn), land = btn.dataset.land || 'wax';
+  const note = btn.parentElement && $('.hold__note', btn.parentElement);
+  if (S.reduced) {
+    // a scripted replay presses twice; a real press (below) arms and waits for the second
+    if (!btn.dataset.armed) { armHold(btn); await wait(450); }
+    clearTimeout(btn._armT); delete btn.dataset.armed;
+    fill.style.transform = 'scaleX(1)';
+    if (note) note.textContent = 'Reduced motion: armed by the first press, approved by the second (ARM_WINDOW_MS 3 s).';
+  } else {
+    await finished(anim(fill, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], T.pour));
+  }
+  btn.dataset.sealed = 'true'; btn.disabled = true;
+  if (land === 'wax') {
+    done.innerHTML = seal(22, true) + `<span>${btn.dataset.doneLabel || 'Approved'}</span>`;
+    anim(done, [{ transform: 'scale(0.8)', opacity: 0.3 }, { transform: 'scale(1)', opacity: 1 }], T.stamp);
+  } else if (land === 'dry') {
+    done.innerHTML = `<span style="transform:rotate(-4deg);display:block">${seal(22, true, 'var(--paper-2)')}</span><span>${btn.dataset.doneLabel || 'Done'}</span>`;
+    anim(done, [{ transform: 'scale(0.94)', opacity: 0.5 }, { transform: 'scale(1)', opacity: 1 }], T.stamp);
+  }
+}
+async function releaseEarly(btn, p) {
+  const fill = $('.hold__fill', btn), note = btn.parentElement && $('.hold__note', btn.parentElement);
+  anim(fill, [{ transform: `scaleX(${p})` }, { transform: 'scaleX(0)' }], T.tuck);
+  if (note) note.textContent = `Released at ${Math.round(p * 100)}% — nothing sent.`;
+}
+// every drawn hold is really holdable, so the founder can feel the pour against his own thumb
+$$('[data-hold]').forEach(btn => {
+  let raf = 0, start = 0, holding = false;
+  const fill = $('.hold__fill', btn);
+  btn.addEventListener('pointerdown', (e) => {
+    if (btn.dataset.sealed) return;
+    const note = btn.parentElement && $('.hold__note', btn.parentElement); if (note) note.textContent = '';
+    // a hold with a gate (rule 4): the challenge resolves null before the pour begins, and the hold says why
+    if (btn.dataset.gate) { const g = $(btn.dataset.gate, btn.closest('.stage')); if (g && !g.value.trim()) { if (note) note.textContent = 'Say why first — a rejection without words does not send.'; return; } }
+    btn.setPointerCapture(e.pointerId); holding = true; start = performance.now();
+    if (S.reduced) { holding = false; if (btn.dataset.armed) holdCeremony(btn); else armHold(btn); return; }
+    const tick = (now) => { const p = Math.min(1, (now - start) / (T.pour.ms / S.speed)); fill.style.transform = `scaleX(${p})`; if (p >= 1) { holding = false; holdCeremony(btn); } else raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+  });
+  const up = () => { if (!holding) return; holding = false; cancelAnimationFrame(raf); const p = Math.min(1, (performance.now() - start) / (T.pour.ms / S.speed)); releaseEarly(btn, p); };
+  btn.addEventListener('pointerup', up); btn.addEventListener('pointercancel', up);
+  btn.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !btn.dataset.armed) return;
+    clearTimeout(btn._armT); delete btn.dataset.armed;
+    const lab = $('.hold__label', btn); if (lab) lab.textContent = lab.dataset.orig;
+    const note = btn.parentElement && $('.hold__note', btn.parentElement); if (note) note.textContent = 'Not approved. Esc cancelled the arm.';
+  });
+});
+function pressPlain(btn) { btn.dataset.hot = 'true'; return wait(160).then(() => { delete btn.dataset.hot; }); }
+function say(el) { el.style.opacity = ''; return anim(el, [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], T.settle, { mode: 'none' }); } // a sentence landing in place is not an entrance: zero frames under reduced motion
+function unsay(el) { el.getAnimations().forEach(a => a.cancel()); el.style.opacity = '0'; }
+
+/* ── registry ─────────────────────────────────────────────────────────────── */
+const R = {}; const runs = {};
+function reg(id, fn) {
+  R[id] = async () => { const my = (runs[id] = (runs[id] || 0) + 1); await fn(() => runs[id] !== my); };
+  $$(`[data-replay="${id}"]`).forEach(b => b.addEventListener('click', R[id]));
+}
+$('#replayAll').addEventListener('click', () => Object.values(R).forEach(fn => fn()));
+window.__replay = (id) => (id ? R[id]() : Object.values(R).forEach(fn => fn()));
+
+/* ── token strip ──────────────────────────────────────────────────────────── */
+const TOK_META = [
+  ['settle', 'cubic-bezier(0.16, 1, 0.3, 1)', 'Row expands, chevron turns, fades, panel swaps. The ordinary case, not a ceremony.'],
+  ['ink', 'cubic-bezier(0.16, 1, 0.3, 1)', 'Micro-states: hovers, borders, chip fills. Nothing moves more than 2 px.'],
+  ['tuck', `spring&nbsp;380/32 · ${(100 * (tuckS.peak - 1)).toFixed(1)}&nbsp;%&nbsp;overshoot`, 'Objects that move under a finger: toggle thumbs, drawers, swipe returns.'],
+  ['turn', 'cubic-bezier(0.32, 0.72, 0, 1)', '"Show the working": the page-turn reveal. Slower than settle on purpose.'],
+  ['pour', 'linear', 'The hold-to-approve fill. Linear because the operator is timing it against their own thumb. 083 calls it press.'],
+  ['stamp', `spring&nbsp;500/26 · ${(100 * (stampS.peak - 1)).toFixed(1)}&nbsp;%&nbsp;overshoot`, 'The seal landing. The only motion in the system allowed to overshoot. Measured by the sampler; motion.ts:99 says ~11.1 %, which the sampler does not produce.'],
+  ['tally', `spring&nbsp;120/26 · ${(100 * Math.max(0, tallyS.peak - 1)).toFixed(0)}&nbsp;%&nbsp;overshoot`, 'Number tickers. Overdamped: figures arrive, they never bounce past.'],
+];
+$('#tokens').innerHTML = TOK_META.map(([n, c, u]) => `<div class="tok" data-tok="${n}"><div class="tok__name">${n}</div><div class="tok__ms">${T[n].ms} ms</div><div class="tok__curve">${c}</div><div class="tok__track"><div class="tok__dot"></div></div><div class="tok__use">${u}</div></div>`).join('');
+reg('tok', async () => {
+  $$('.tok').forEach(t => {
+    const dot = $('.tok__dot', t), w = $('.tok__track', t).clientWidth;
+    anim(dot, [{ transform: 'translateX(0)' }, { transform: `translateX(${w}px)` }], T[t.dataset.tok]);
+  });
+});
+
+/* ── rule 1: the eighth literal ──────────────────────────────────────────── */
+(function buildCal() {
+  const dows = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+  const vals = [null, 2.1, 2.4, 3.1, 4.6, 5.2, 3.3, 1.8, 2.2, 2.6, 3.4, 4.9, 5.4, 3.0, 1.9, 2.3, 2.5, null, 4.4, 5.1, 3.2, 2.0, 2.2, 2.7, 3.5, 4.8, 5.6, 3.1, 1.7, 2.4];
+  $$('#r1 [data-cal]').forEach(cal => {
+    let h = dows.map(d => `<div class="cal__dow">${d}</div>`).join('');
+    h += '<div class="cell" data-blank></div>'; // September 2026 opens on a Tuesday
+    for (let d = 1; d <= 30; d++) { const v = vals[d - 1]; h += `<div class="cell"><div class="d">${d}</div><div class="v${v == null ? ' dash' : ''}">${v == null ? '—' : '$' + v.toFixed(1) + 'k'}</div></div>`; }
+    for (let i = 0; i < 4; i++) h += '<div class="cell" data-blank></div>';
+    cal.innerHTML = h;
+  });
+})();
+reg('r1', async () => {
+  $$('#r1 .stage').forEach(st => {
+    const tok = st.dataset.k === 'today' ? LIT420 : T.settle;
+    anim($('.voice', st), [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], tok);
+    let delay = 0, gap = 16, last = 0;
+    $$('.cell:not([data-blank])', st).forEach(c => {
+      anim(c, [{ opacity: 0, transform: 'translateY(6px)', clipPath: 'inset(0 100% 0 0)' }, { opacity: 1, transform: 'none', clipPath: 'inset(0 0 0 0)' }], tok, { delay });
+      last = delay; delay += gap; gap *= 0.94;
+    });
+    $('[data-total]', st).textContent = `${Math.round(tok.ms + last)} ms to the last cell (${tok.ms} + ${Math.round(last)} of stagger over 29 gaps)`;
+  });
+});
+
+/* ── rule 2: one ration rule ─────────────────────────────────────────────── */
+reg('r2', async (stale) => {
+  $$('#r2 [data-hold]').forEach(resetHold);
+  $$('#r2 .said').forEach(unsay);
+  $$('#r2 [data-dryseal]').forEach(e => { e.innerHTML = ''; });
+  await wait(200);
+  const jobs = [];
+  $$('#r2 .act').forEach((act, i) => {
+    jobs.push((async () => {
+      await wait(i * 260); if (stale()) return;
+      const hold = $('[data-hold]', act), plain = $('[data-plain]', act), said = $('.said', act), dry = $('[data-dryseal]', act);
+      if (hold) { await holdCeremony(hold); await wait(120); }
+      else if (plain) { await pressPlain(plain); await wait(80); }
+      if (stale()) return;
+      if (dry) dry.innerHTML = `<span style="display:inline-flex;align-items:center;gap:8px">${seal(20, true, 'var(--paper-2)')}<span>Ruled off.</span></span>`;
+      say(said);
+    })());
+  });
+  await Promise.all(jobs);
+});
+
+/* ── rule 3: the popover offers, the panel sends ─────────────────────────── */
+reg('r3', async (stale) => {
+  const stages = $$('#r3 .stage');
+  stages.forEach(st => {
+    $$('[data-pop]', st).forEach(p => { p.hidden = true; }); const pn = $('[data-panel]', st); if (pn) pn.hidden = true;
+    $$('[data-line]', st).forEach(l => { l.textContent = ''; }); $$('[data-cap]', st).forEach(c => { c.innerHTML = ''; });
+    $$('[data-hot]', st).forEach(e => { delete e.dataset.hot; });
+    $$('[data-hint]', st).forEach(h => { h.textContent = ''; }); $$('[data-json]', st).forEach(j => { j.hidden = true; });
+    $$('[data-xoffer]', st).forEach(b => { b.disabled = false; b.textContent = 'Offer cover to 3'; });
+    $$('[data-xsaid]', st).forEach(unsay);
+  });
+  await wait(250); if (stale()) return;
+  const openMenu = async (st) => {
+    const dots = $('[data-dots]', st), pop = $('[data-pop]', st);
+    dots.dataset.hot = 'true'; await wait(200);
+    pop.hidden = false;
+    anim($('.ov__panel', pop), [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], T.ink, { mode: 'fade' });
+  };
+  // the expander's own button, WeekGrid.tsx:591-598: "Offering…" while the mutation is pending, then the page's sentence
+  const sendFromExpander = async (st, sentence) => {
+    const b = $('[data-xoffer]', st), hint = $('[data-hint]', st);
+    await pressPlain(b); b.textContent = 'Offering…'; b.disabled = true; await wait(500); if (stale()) return;
+    b.textContent = 'Offer cover to 3'; b.disabled = false; hint.textContent = sentence;
+    const j = $('[data-json]', st); if (j) { j.hidden = false; j.innerHTML = 'gateway → { <b>offered</b>: 3, <b>notified</b>: 2 }\nthe web reads <b>cover.isSuccess</b> only (:391); the 2 is dropped'; }
+  };
+  await Promise.all(stages.map(async (st) => {
+    const k = st.dataset.k, cap = $('[data-cap]', st);
+    if (k === 'today') {
+      await openMenu(st); await wait(900); if (stale()) return;
+      $('[data-offer]', st).dataset.hot = 'true'; // the menu stays open: it is a surface that sends, drawn as found
+      await sendFromExpander(st, 'Offered just now. Nothing records the offer against the shift, so this will not show after a reload.'); if (stale()) return;
+      cap.innerHTML = '<b>Two surfaces send, one mutation.</b> The menu item sends from a choice surface with no sentence before it, and none after it unless the row is open; the expander sends with the candidates in view. Neither says that Selin A., offered, will not be told.';
+    } else if (k === 'proposed') {
+      await openMenu(st); await wait(900); if (stale()) return;
+      const item = $('[data-offer]', st); item.dataset.hot = 'true'; await wait(320); if (stale()) return;
+      $('[data-pop]', st).hidden = true; delete item.dataset.hot; delete $('[data-dots]', st).dataset.hot; // no exit animation: an overlay closes instantly
+      const panel = $('[data-panel]', st); panel.hidden = false;
+      anim($('.ov__panel', panel), [{ opacity: 0, transform: 'translate(-50%,-50%) translateY(6px)' }, { opacity: 1, transform: 'translate(-50%,-50%)' }], T.settle, { mode: 'fade' });
+      cap.innerHTML = '<b>The popover offered; the panel sends.</b> Nothing has been sent: the contract sentence says who is reached and who is not, before anything goes. It stays open here so you can read it.';
+    } else if (k === 'road3') {
+      await openMenu(st); await wait(700); if (stale()) return; // the eyebrow already says "four items"; a line under the chip would sit behind the popover
+      await sendFromExpander(st, 'Offered to 3; 2 were notified. Selin A. has no account and heard nothing from this.'); if (stale()) return;
+      cap.innerHTML = '<b>The expander was already the send surface.</b> One line above the button says who is reached; the success sentence reads <code>notified</code> back. The failure sentence is where it always was, and in view whenever a send happens.';
+    } else {
+      $$('[data-xsaid]', st).forEach((e, i) => { setTimeout(() => { if (!stale()) say(e); }, i * 220); });
+    }
+  }));
+});
+
+/* ── rule 4: the sealed hold, the ADR's plain Reject (refused), and road (b) ── */
+const REASON = 'Price is 18% over what we last paid.';
+const NEEDS = 'Say why first — a rejection without words does not send.';
+$$('#r4 .stage').forEach(st => {
+  const ta = $('[data-reason]', st), btn = $('[data-reject]', st), ref = $('[data-refuse]', st), said = $('[data-said]', st);
+  if (!btn) return;
+  ta.addEventListener('input', () => { btn.disabled = !ta.value.trim(); if (ta.value.trim()) ref.textContent = ''; });
+  btn.addEventListener('click', () => {
+    if (!ta.value.trim()) { ref.textContent = NEEDS; return; }
+    pressPlain(btn).then(() => {
+      if (st.dataset.k === 'written') ref.textContent = '403 · DELETE orders/:id: the seal was absent — nothing was cancelled.';
+      say(said);
+    });
+  });
+  btn.parentElement.addEventListener('keydown', (e) => { if (e.key === 'Enter' && btn.disabled) ref.textContent = NEEDS; });
+});
+reg('r4', async (stale) => {
+  const stages = $$('#r4 .stage');
+  stages.forEach(st => { $('[data-reason]', st).value = ''; unsay($('[data-said]', st)); const h = $('[data-hold]', st); if (h) resetHold(h); const b = $('[data-reject]', st); if (b) b.disabled = true; const r = $('[data-refuse]', st); if (r) r.textContent = ''; });
+  await wait(300); if (stale()) return;
+  await Promise.all(stages.map(async (st) => {
+    const ta = $('[data-reason]', st);
+    ta.value = REASON; ta.dispatchEvent(new Event('input'));
+    anim(ta, [{ opacity: 0.4 }, { opacity: 1 }], T.ink);
+    await wait(700); if (stale()) return;
+    const hold = $('[data-hold]', st), btn = $('[data-reject]', st), ref = $('[data-refuse]', st);
+    if (hold) { const n = $('.hold__note', st); n.textContent = 'seal minted at the start of the hold'; await holdCeremony(hold); n.textContent = 'seal redeemed by DELETE orders/:id · reason written'; }
+    else { await pressPlain(btn); if (st.dataset.k === 'written') ref.textContent = '403 · DELETE orders/:id: the seal was absent — nothing was cancelled.'; }
+    if (stale()) return;
+    await wait(120); say($('[data-said]', st));
+  }));
+});
+
+/* ── rule 5: the swipe — travel and commit read from the pill, so three geometries share one mechanism ── */
+function makeSwipe(el) {
+  const proposed = el.dataset.mode === 'proposed';
+  const TRAVEL = Number(el.dataset.travel || 96), COMMIT = Number(el.dataset.commit || 1);
+  const fill = $('.swipe__fill', el), handle = $('.swipe__handle', el), ghost = $('[data-ghost]', el), mark = $('[data-mark]', el);
+  const host = el.closest('.stage, .phone'), said = $('[data-said]', host), swnote = $('[data-swnote]', host);
+  if (ghost) ghost.innerHTML = seal(36, true);
+  let p = 0, startY = null, done = false, holdRaf = 0, holdStart = 0;
+  const shown = (q) => proposed ? q * (1 - 0.22 * q) : q; // sig-01's resistance
+  if (mark) mark.style.bottom = `${8 + 44 + shown(COMMIT) * TRAVEL}px`; // where the handle sits when the thumb has given 68 %
+  const render = (q) => { p = q; handle.style.transform = `translateY(${-shown(q) * TRAVEL}px)`; fill.style.height = `${Math.round((q / COMMIT) * 100)}%`; if (ghost) ghost.style.opacity = Math.min(1, q / COMMIT); };
+  const reset = () => { done = false; delete el.dataset.done; handle.getAnimations().forEach(a => a.cancel()); handle.style.opacity = ''; fill.getAnimations().forEach(a => a.cancel()); if (ghost) ghost.getAnimations().forEach(a => a.cancel()); render(0); if (said) unsay(said); if (swnote) swnote.textContent = ''; };
+  const complete = () => {
+    if (done) return; done = true; el.dataset.done = 'true'; fill.style.height = '100%';
+    if (proposed) {
+      // the handle gives way so the landing can be seen; the seal lands where the handle is not
+      finished(anim(handle, [{ opacity: 1 }, { opacity: 0 }], T.ink, { fill: 'forwards' })).then(() => { if (done) handle.style.opacity = '0'; });
+      if (ghost) { ghost.style.opacity = 1; anim(ghost, [{ transform: 'scale(0.8)', opacity: 0.3 }, { transform: 'scale(1)', opacity: 1 }], T.stamp); }
+    } else { handle.style.transform = `translateY(${-TRAVEL}px)`; }
+    say(said);
+  };
+  const retreat = () => { if (done) return; const from = p; anim(handle, [{ transform: `translateY(${-shown(from) * TRAVEL}px)` }, { transform: 'translateY(0)' }], T.tuck); anim(fill, [{ height: `${Math.round((from / COMMIT) * 100)}%` }, { height: '0%' }], T.tuck); if (ghost) anim(ghost, [{ opacity: Math.min(1, from / COMMIT) }, { opacity: 0 }], T.tuck); p = 0; if (swnote && from > 0.05) swnote.textContent = `Released at ${Math.round(from * 100)}% — nothing confirmed.`; };
+  el.addEventListener('pointerdown', (e) => { if (done) return; el.setPointerCapture(e.pointerId); startY = e.clientY; if (swnote) swnote.textContent = ''; });
+  el.addEventListener('pointermove', (e) => { if (startY === null || done) return; const q = Math.min(Math.max((startY - e.clientY) / TRAVEL, 0), 1); render(q); if (q >= COMMIT) { startY = null; complete(); } });
+  const up = () => { if (startY === null) return; startY = null; retreat(); };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  // keyboard path: hold Space or Enter, fills over pour (linear, per the countdown rule)
+  el.addEventListener('keydown', (e) => { if (done || (e.key !== ' ' && e.key !== 'Enter') || holdRaf) return; e.preventDefault(); holdStart = performance.now(); const tick = () => { const q = Math.min((performance.now() - holdStart) / (T.pour.ms / S.speed), 1) * COMMIT; render(q); if (q >= COMMIT) { holdRaf = 0; complete(); return; } holdRaf = requestAnimationFrame(tick); }; holdRaf = requestAnimationFrame(tick); });
+  el.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') { if (holdRaf) { cancelAnimationFrame(holdRaf); holdRaf = 0; retreat(); } } });
+  const scripted = async () => {
+    reset(); await wait(200);
+    await new Promise(res => { const t0 = performance.now(), dur = 1100 / S.speed; const tick = () => { const u = Math.min(1, (performance.now() - t0) / dur); const q = (u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2) * COMMIT; render(q); if (u < 1) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+    complete();
+  };
+  return { reset, scripted, complete };
+}
+/* the non-drag pointer path: a plain Confirm that arms, then confirms (Esc or 3 s disarms) */
+function wireConfirm(btn, note, sw) {
+  let armed = 0, timer = 0, cd = 0;
+  const disarm = () => { armed = 0; clearInterval(cd); clearTimeout(timer); btn.textContent = 'Confirm'; note.textContent = ''; };
+  btn.addEventListener('click', () => {
+    if (armed) { disarm(); sw.complete(); return; }
+    armed = 1; let left = 3; btn.textContent = 'Tap again to confirm'; note.textContent = `Tap again · ${left} s · Esc cancels`;
+    cd = setInterval(() => { left -= 1; note.textContent = `Tap again · ${left} s · Esc cancels`; }, 1000);
+    timer = setTimeout(() => { disarm(); note.textContent = 'Not confirmed. Nothing was recorded.'; }, 3000);
+  });
+  btn.addEventListener('keydown', (e) => { if (e.key === 'Escape' && armed) { disarm(); note.textContent = 'Not confirmed. Nothing was recorded.'; } });
+  return disarm;
+}
+const r5 = $$('#r5 .stage').map(st => { const sw = makeSwipe($('[data-swipe]', st)); const btn = $('[data-confirm]', st); const disarm = btn ? wireConfirm(btn, $('[data-armnote]', st), sw) : () => {}; return { sw, disarm }; });
+reg('r5', async () => { r5.forEach(x => x.disarm()); await Promise.all(r5.map(x => x.sw.scripted())); });
+
+/* ── at 390 px: the same pill, and rule 6's sheet as a bottom sheet ──────── */
+const phoneSwipe = makeSwipe($('#phone [data-swipe]'));
+const phDisarm = wireConfirm($('#phone [data-confirm-ph]'), $('#phone [data-armnote-ph]'), phoneSwipe);
+reg('ph', async (stale) => {
+  phDisarm();
+  const fr = $('#phone [data-ph="fade"]'), bs = $('[data-bsheet]', fr), frames = $('[data-frames]', fr);
+  bs.getAnimations().forEach(a => a.cancel()); bs.style.opacity = '0'; frames.textContent = '—';
+  await Promise.all([
+    phoneSwipe.scripted(),
+    (async () => {
+      await wait(500); if (stale()) return;
+      anim(bs, [{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], T.tuck, { forceReduced: true, mode: 'fade' });
+      frames.textContent = `entrance: opacity only · 120 ms · ~${Math.round(120 / S.speed / 16.7)} frames at 60 Hz · no translate`;
+    })(),
+  ]);
+});
+
+/* ── rule 6: reduced motion, forced on both stages ───────────────────────── */
+reg('r6', async (stale) => {
+  const stages = $$('#r6 .stage');
+  stages.forEach(st => { $('[data-panel]', st).hidden = true; $('[data-expand]', st).dataset.open = 'false'; $('[data-frames]', st).textContent = '—'; });
+  await wait(300); if (stale()) return;
+  stages.forEach(st => {
+    const ex = $('[data-expand]', st); ex.style.transition = 'none'; ex.dataset.open = 'true'; // in place: zero, in both
+    $('[data-frames]', st).textContent = 'row expand: 0 frames, in both';
+  });
+  await wait(900); if (stale()) return;
+  stages.forEach(st => {
+    const today = st.dataset.k === 'today', panel = $('[data-panel]', st), p = $('.ov__panel', panel);
+    panel.hidden = false; // the question stays open: it is the surface the rule is about
+    anim(p, [{ opacity: 0, transform: 'translate(-50%,-50%) translateY(6px)' }, { opacity: 1, transform: 'translate(-50%,-50%)' }], T.settle, { forceReduced: true, mode: today ? 'none' : 'fade' });
+    $('[data-frames]', st).textContent += today ? ' · entrance: 0 frames · data-motion="none"' : ` · entrance: opacity only · 120 ms · ~${Math.round(120 / S.speed / 16.7)} frames at 60 Hz · data-motion="fade"`;
+  });
+});
+
+/* ── rule 7: the guard's output, revealed line by line ───────────────────── */
+reg('r7', async () => {
+  $$('#r7 [data-term]').forEach(term => {
+    $$('div', term).forEach((line, i) => anim(line, [{ opacity: 0 }, { opacity: 1 }], T.ink, { delay: i * 45, mode: 'fade' }));
+  });
+});
+
+/* ── rule 8: the wax, and the other road ─────────────────────────────────── */
+reg('r8', async (stale) => {
+  const left = $('#r8 .stage[data-k="today"]'), right = $('#r8 .stage--proposed');
+  resetHold($('[data-hold]', left)); unsay($('[data-said]', left)); $('[data-entry]', left).style.opacity = '';
+  const undo = $('[data-undo]', right), drain = $('[data-drain]', right), cnt = $('[data-cnt]', right);
+  delete undo.dataset.on; drain.style.transform = 'scaleX(1)'; unsay($('[data-said]', right)); $('[data-entry]', right).style.opacity = '';
+  await wait(300); if (stale()) return;
+  await Promise.all([
+    (async () => { await holdCeremony($('[data-hold]', left)); if (stale()) return; $('[data-entry]', left).style.opacity = '.35'; await wait(120); say($('[data-said]', left)); })(),
+    (async () => {
+      await pressPlain($('[data-plain]', right)); if (stale()) return;
+      $('[data-entry]', right).style.opacity = '.35'; undo.dataset.on = 'true';
+      // the window is a functional timer, not a motion: it runs 10 s (at the canvas speed) whatever the reduced-motion setting says;
+      // under reduced motion the bar steps once a second instead of draining continuously
+      const total = 10000; const t0 = performance.now();
+      await new Promise(res => { const iv = setInterval(() => {
+        const left = Math.max(0, total - (performance.now() - t0) * S.speed);
+        const frac = S.reduced ? Math.ceil(left / 1000) / 10 : left / total;
+        drain.style.transform = `scaleX(${frac})`; cnt.textContent = `${Math.ceil(left / 1000)} s`;
+        if (left <= 0 || stale()) { clearInterval(iv); res(); }
+      }, S.reduced ? 250 : 50); });
+      if (stale()) return;
+      cnt.textContent = '0 s'; delete undo.dataset.on; say($('[data-said]', right));
+    })(),
+  ]);
+});
+
+/* ── rule 9: 640 → 440, drawn at scale ───────────────────────────────────── */
+function fitFrames() {
+  const PAGE = 110, FH = 520, boxes = $$('#r9 [data-framebox]');
+  const widths = boxes.map(box => PAGE + parseInt($('[data-sh]', box).style.width, 10));
+  const w = Math.min(...boxes.map(b => b.clientWidth)), s = Math.max(0.8, Math.min(1, w / Math.max(...widths))); // one scale, so 640 and 440 keep their ratio; never below 0.8
+  const narrow = window.innerWidth < 700;
+  boxes.forEach((box, i) => {
+    const f = $('.frame', box); f.style.width = `${widths[i]}px`; f.style.transform = `scale(${s})`;
+    const scrolls = widths[i] * s > box.clientWidth; box.style.height = `${Math.round(FH * s) + (scrolls ? 14 : 0)}px`;
+    // wide: open on the sheet, which is the point. narrow: open on the left edge, where the wine names and the template list are, and repeat the width tag under the box
+    box.scrollLeft = scrolls && !narrow ? box.scrollWidth : 0;
+    let under = box.nextElementSibling && box.nextElementSibling.classList.contains('wtag-under') ? box.nextElementSibling : null;
+    if (!under) { under = document.createElement('div'); under.className = 'wtag-under'; box.after(under); }
+    under.textContent = $('.wtag', box).textContent + (scrolls ? ' · scrolls sideways' : '');
+  });
+}
+fitFrames(); window.addEventListener('resize', fitFrames);
+reg('r9', async (stale) => {
+  $$('#r9 [data-sh]').forEach(sh => { sh.getAnimations().forEach(a => a.cancel()); sh.style.opacity = '0'; });
+  await wait(250); if (stale()) return;
+  $$('#r9 [data-sh]').forEach(sh => anim(sh, [{ opacity: 0, transform: 'translateX(28px)' }, { opacity: 1, transform: 'none' }], T.tuck, { mode: 'fade' }));
+});
+
+/* ── rule 10: Esc by shape, and who noticed the words ────────────────────── */
+reg('r10', async (stale) => {
+  // every sentence goes back to what the markup says before a branch rewrites it; otherwise "nothing tore" outlives a tear
+  $$('#r10 [data-said]').forEach(s => { if (!s.dataset.orig) s.dataset.orig = s.innerHTML; s.innerHTML = s.dataset.orig; });
+  const cols = $$('#r10 .stages--3 .stage');
+  cols.forEach(st => { const sh = $('[data-sheet]', st), p = $('.ov__panel', sh); sh.hidden = false; p.getAnimations().forEach(a => a.cancel()); p.classList.remove('torn'); p.style.opacity = '1'; delete $('[data-esc]', st).dataset.hot; unsay($('[data-said]', st)); const stub = $('[data-stub]', st); if (stub) { delete stub.dataset.on; stub.style.opacity = '0'; $('[data-meta]', st).hidden = false; } });
+  const wp = $('#r10 [data-wp]'), wcol = $('#r10 .stage[data-k="panel"]'); wp.getAnimations().forEach(a => a.cancel()); delete $('[data-esc]', wcol).dataset.hot; unsay($('[data-said]', wcol));
+  const dcol = $('#r10 .stage[data-k="dirt"]'), dp = $('[data-dp]', dcol), dsh = $('[data-sheet]', dcol); dsh.hidden = false; dp.getAnimations().forEach(a => a.cancel()); dp.style.opacity = '1'; delete $('[data-esc]', dcol).dataset.hot; unsay($('[data-said]', dcol)); $('[data-dirtnote]', dcol).textContent = '';
+  await wait(500); if (stale()) return;
+  $$('#r10 [data-esc]').forEach(k => { k.dataset.hot = 'true'; });
+  await wait(260); if (stale()) return;
+  cols.forEach(st => {
+    const k = st.dataset.k, sh = $('[data-sheet]', st), p = $('.ov__panel', sh), words = $('[data-words]', st).value.trim();
+    if (k === 'proposed' && words) {
+      p.classList.add('torn');
+      finished(anim(p, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(28px)' }], T.tuck, { mode: 'none' })).then(() => { sh.hidden = true; }); // an exit: zero frames under reduced motion
+      const stub = $('[data-stub]', st); stub.dataset.on = 'true'; $('[data-meta]', st).hidden = true; say(stub); say($('[data-said]', st));
+    } else {
+      sh.hidden = true; // no exit animation: an overlay closes instantly
+      if (k === 'proposed') $('[data-said]', st).textContent = 'Closed. Nothing was typed, so nothing tore.';
+      say($('[data-said]', st));
+    }
+  });
+  // the panel leans under its weight and stays
+  anim(wp, [{ transform: 'translate(-50%,-50%) rotate(0deg)', boxShadow: '0 18px 48px var(--shadow)' }, { transform: 'translate(-50%,-50%) translateY(2px) rotate(-0.6deg)', boxShadow: '0 26px 60px var(--shadow)' }], T.settle);
+  say($('[data-said]', wcol));
+  // the other road: a dirty Sheet leans exactly as the Panel does; a clean one closes
+  if ($('[data-words]', dcol).value.trim()) {
+    anim(dp, [{ transform: 'none', boxShadow: '-18px 0 48px var(--shadow)' }, { transform: 'translateX(-3px) rotate(-0.4deg)', boxShadow: '-26px 0 60px var(--shadow)' }], T.settle);
+    $('[data-dirtnote]', dcol).textContent = 'Unsaved. Esc does not discard words; Discard does.';
+  } else { dsh.hidden = true; $('[data-said]', dcol).textContent = 'Closed. Nothing was typed, so nothing held it.'; }
+  say($('[data-said]', dcol));
+});
+
+/* ── rule 11: the shimmer, capped ────────────────────────────────────────── */
+const clocks = {};
+reg('r11', async (stale) => {
+  $$('#r11 .stage').forEach(st => {
+    const k = st.dataset.k, today = k === 'today', counting = k === 'count', host = $('[data-skels]', st), clock = $('[data-clock]', st), said = $('[data-said]', st);
+    host.innerHTML = ''; // rebuilding restarts the CSS animation
+    ['82%', '64%', '91%', '48%'].forEach(w => { const d = document.createElement('div'); d.className = 'skel' + (today ? '' : ' skel--capped'); d.style.width = w; host.appendChild(d); });
+    unsay(said); said.textContent = '';
+    if (clocks[k]) clearInterval(clocks[k]);
+    const t0 = performance.now(); let phase = 0; // 0 sheen · 1 still, first sentence · 2 the one change, at 20 s
+    clocks[k] = setInterval(() => {
+      if (stale()) { clearInterval(clocks[k]); return; }
+      const el = (performance.now() - t0) * S.speed / 1000;
+      const cyc = Math.floor(el / 1.9) + 1;
+      // the clock is the canvas's instrument (it says so in the spec); the product draws no counter
+      if (today) { clock.textContent = `canvas clock ${el.toFixed(1)} s · cycle ${cyc} · still moving`; if (el > 40) clearInterval(clocks[k]); return; }
+      if (el < 3.8) { clock.textContent = `canvas clock ${el.toFixed(1)} s · cycle ${cyc} of 2`; return; }
+      if (phase === 0) {
+        phase = 1; $$('.skel', host).forEach(s => { s.dataset.still = 'true'; });
+        said.textContent = counting ? `Still fetching the ledger — ${Math.floor(el)} s` : 'Still fetching the ledger.'; say(said);
+      }
+      if (counting) {
+        const txt = `Still fetching the ledger — ${Math.floor(el)} s`; if (said.textContent !== txt) said.textContent = txt;
+        clock.textContent = `canvas clock ${el.toFixed(1)} s · still · the sentence updates every second`;
+      } else {
+        if (phase === 1 && el >= 20) { phase = 2; said.textContent = 'The ledger has not answered. Nothing here is a figure yet.'; say(said); }
+        clock.textContent = `canvas clock ${el.toFixed(1)} s · still · ${phase === 2 ? 'the sentence changed once, at 20 s' : 'the sentence is static'}`;
+      }
+      if (el > 40) clearInterval(clocks[k]);
+    }, 100);
+  });
+});
+
+/* ── the shortlist map ───────────────────────────────────────────────────── */
+const SHIP = '<span class="tag tag--ship">shipped</span>', PART = '<span class="tag tag--part">partial</span>', ADR = '<span class="tag tag--adr">0134 proposes</span>', PKT = '<span class="tag tag--pkt">needs packet 0</span>', REF = '<span class="tag">refused</span>', NO = '<span class="tag tag--no">no home yet</span>';
+const SHORT = [
+  ['Signature ceremonies', 'the hero and twenty-seven more', [
+    ['sig-01', 'The hero: swipe up, the seal lands', '/receipts <code>SwipeToConfirm</code>. Rule 5 keeps its 96 px and takes the hero\'s resistance p(1 − 0.22p), ghost seal and <em>stamp</em> landing; the 150 px / 68 % geometry is the road not taken.', ADR],
+    ['sig-02', 'The seal lands', '<code>HoldToApprove</code> completing on <em>stamp</em>, wherever a server redeems a seal: /profile payments, /orders approve, /team re-publish and copy-week, /calendar delete.', SHIP],
+    ['sig-03', 'Confirmation (dry emboss)', '/orders <code>BulkApproveBar</code> only: the plural rendering of the wax. As a general second ceremony for every non-wax act, refused by decision 3.', SHIP],
+    ['sig-04', 'The record closes', '/orders mark-as-delivered: the moment stock crosses from shadow to live. The rebuilt page has no ceremony on that act.', NO],
+    ['sig-05', 'Sealed at the door', '/door <code>DoorSeal</code>, with door forgiveness: a release at 60 % of the pour still seals (MOTIONS-door.md).', SHIP],
+    ['sig-06', 'The books close', '/reports "Ruled off." Under rule 2 it is the sentence alone, landing on <em>settle</em>: no die, no double rule. The dry die it replaces is 1.15:1 on charcoal.', ADR],
+    ['sig-07', 'The receipt files itself', '/receipts verify. The 460 ms travel was killed in the ADR: its own reduced-motion path is the behaviour it called the defect. The sentence "Filed under Verified." is the fix.', REF],
+    ['sig-08', 'The counter-signature', '/receipts: an invoice tie-out closing in the open before the control unlocks. <code>tie_out_delta</code> is rendered nowhere.', NO],
+    ['sig-09', 'It adds up, or it says an em dash', '/receipts working. The em dash idiom is the house\'s and ships; the dashed subtotal rule and the withheld second stroke are not drawn anywhere.', NO],
+    ['sig-10', 'Money came back', '/receipts credits lane. ADR 0149 row 22 owes the lane before cutover; promised credit is not recovered money until the memo lands.', NO],
+    ['sig-11', 'The count is committed', '/inventory spot count. The page carries zero motion tokens; rule 7\'s guard would flag it first.', NO],
+    ['sig-12', 'Two candidates, one wine', '/cellar scan results with duplicate identities (v3.0-TECH-DEBT 44.1b).', NO],
+    ['sig-13', 'The globe turns supply toward you', '/distributors discovery, which ADR 0149 row 22 moves into /providers.', NO],
+    ['sig-14', 'Nothing is sent until a hand sends it', '/communications compose, "Hold to send" (census row 58, <code>seal: true</code>). A draft is not sent.', SHIP],
+    ['sig-15', 'The stencil fills where the house has facts', '/communications Templates → Use (census row 59, which rule 9 narrows to 440).', NO],
+    ['sig-16', 'The house opens', '/get-started activation completing, once per house.', NO],
+    ['sig-17', 'The house knows you', '/invite/:code arrival. Your KEEP+ verdict asked for exactly this: their context "comes up as if they signed in".', NO],
+    ['sig-18', 'The day seals itself', 'The dashboard at close of service, on the insight scheduler\'s nightly sweep.', NO],
+    ['sig-19', 'Mise en place', '/inventory spot-count panel on <em>tuck</em>. Zero tokens on the page today.', NO],
+    ['sig-20', 'Scrub the day', 'The dashboard <code>SalesCalendar</code>: 0134 keeps "the scrub ghost read-out" as a row in the page\'s §13.', ADR],
+    ['sig-21', 'The ticket rises', '/orders pending bucket, by age. Buckets carry status, not age.', NO],
+    ['sig-22', 'The receipt tears', '/receipts, a void at 1 am. The tear is packet 0\'s Stub on the sheet (rule 10), on <em>tuck</em>; packet 0 is unmerged, so nothing on main tears yet.', PKT],
+    ['sig-23', 'The room dims', 'SimPOS tables. Outside the design and the deletion (ADR 0149 row 4).', REF],
+    ['sig-24', 'The case splits', '/inventory zone assignment, the counts on <em>tally</em> both ways.', NO],
+    ['sig-25', 'Money has weight', 'Consequence-scaled press: 0134 keeps it with the unknown-threshold clause added.', ADR],
+    ['sig-26', 'The proof grows', 'Prep timers. No surface in the product carries one.', NO],
+    ['sig-27', 'The shift tide', '/team coverage. The page note says the labour figure never tallies; a water level is a different reading and has no home.', NO],
+    ['sig-28', 'The sign turns', 'End of day, the service card flips: <em>turn</em> exists and /logs uses it for a thread; the card does not.', NO],
+  ]],
+  ['Committing to money', 'your picks cluster hardest here', [
+    ['prc-02', 'A draft cannot travel', '/communications compose. The rule ships (a draft is not sent, and the sheet says so in its footer); the rubber-band drag that draws it is not built.', PART],
+    ['prc-07', 'Two windows agree, one has nothing to say', '/reports comparison windows: an unknown never borrows the shape of a zero; the em dash never ticks.', SHIP],
+    ['prc-09', 'The drift spur', '/providers roster → vendor price comparison. /vendor-prices ships and nothing links to it.', NO],
+    ['st-04', 'Hold to approve — the seal lands', '<code>HoldToApprove</code>: <em>pour</em> fills, an early release retreats on <em>tuck</em>, the wax lands on <em>stamp</em>.', SHIP],
+    ['srf-08', 'AI draft stops at the human', '/communications: the send never lights on its own; Ask AI proposes, the hold sends.', SHIP],
+  ]],
+  ['Stock, and the truth about it', 'the offline seam', [
+    ['inv-02', 'The outbox drains, the table catches up', 'The door outbox (ADR 0140) carries the semantics; /inventory carries no tokens to draw it with.', NO],
+    ['inv-04', 'Three taps at the door', '/door receipt: steppers, not a keypad (MOTIONS-door.md).', SHIP],
+    ['inv-08', 'A menu becomes candidates', '/cellar menu scan seeding rows by confidence.', NO],
+    ['inv-11', 'The column that says why it is empty', '/inventory Market column: the em dash idiom ships house-wide; the column is still null on every row.', NO],
+  ]],
+  ['Numbers that refuse to flatter', 'crossing par, showing the working', [
+    ['num-07', 'Crossing par', '/inventory par line: the frame a level becomes a decision. Zero tokens on the page.', NO],
+    ['num-08', 'Ring fills on a shared clock', '/door receiving progress: one spring, read twice per frame.', NO],
+    ['num-10', 'Show the working', 'The <code>.dn-expand</code> row on <em>settle</em> (0fr → 1fr), your named favourite; a record opens on <em>turn</em> (/logs).', SHIP],
+    ['num-11', 'Live figure that yields', 'Dashboard covers during service: a hairline sweep the eye can ignore. Not drawn on the rebuilt dashboard.', NO],
+  ]],
+  ['Structure and arrival', 'how things arrive without shoving', [
+    ['nav-05', 'Sheet over its scrim', '<code>Sheet</code> on <em>tuck</em> ships. The scrim-off default (sketch 103 1a: width, never light; kept for the one interruption, discarding a half-counted session) exists only on packet 0, unmerged.', PART],
+    ['nav-08', 'Chrome condenses', 'The house header refuses it: "the bar never moves" (components/mudavym/MOTIONS.md). The door screen on a phone may still take it.', REF],
+    ['ent-08', 'Document thumbnail resolves', '/receipts capture and /documents-reports thumbnails: unblur while the scan edge walks.', NO],
+    ['srf-03', 'Scan resolves into a read document', '/receipts capture → read; fields land only once extracted.', NO],
+    ['srf-13', 'Invite code becomes a person', '/invite/:code → the roster row opens like a record. Your KEEP+ verdict.', NO],
+    ['st-09', 'A toast arrives one way, leaves another', 'Refused on the rebuilt pages: /team mounts no toaster; "a confirmation that flies in from a corner is a confirmation you can miss".', REF],
+  ]],
+];
+$('#shortlistTable tbody').innerHTML = SHORT.map(([g, blurb, rows]) => `<tr class="g"><td colspan="4">${g}<span>${blurb} · ${rows.length}</span></td></tr>` + rows.map(r => `<tr><td>${r[0]}</td><td class="n">${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join('')).join('');
+// the tally is counted from the rows, never typed, so a retag cannot leave a stale total behind
+(() => {
+  const counts = {}; let total = 0;
+  SHORT.forEach(([, , rows]) => rows.forEach(r => { total += 1; const m = r[3].match(/>([^<]+)</); counts[m[1]] = (counts[m[1]] || 0) + 1; }));
+  $('#tally').innerHTML = `<b>${total}</b> rows · ` + ['shipped', 'partial', '0134 proposes', 'needs packet 0', 'refused', 'no home yet'].map(k => `${k} <b>${counts[k] || 0}</b>`).join(' · ') + ' · counted from the rows above';
+})();
+
+/* ── init ─────────────────────────────────────────────────────────────────── */
+applyState('on load');
+setTimeout(() => Object.values(R).forEach(fn => fn()), 350);
+})();
+</script>
+</body>
+</html>

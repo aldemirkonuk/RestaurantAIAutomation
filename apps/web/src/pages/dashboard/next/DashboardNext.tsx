@@ -77,7 +77,9 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
         { opacity: 0, transform: 'translateY(6px)' },
         { opacity: 1, transform: 'none' },
       ],
-      { easing: settle.easing, ms: 420 },
+      // ADR 0134 rule 1 (2026-09-21, locked): the raw literal folded into
+      // `settle` — no eighth token.
+      settle,
     );
   }, []);
 

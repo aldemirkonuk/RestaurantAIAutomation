@@ -11,7 +11,7 @@ nowhere else.
 
 | id | token | curve · ms | fires |
 |---|---|---|---|
-| `cn-open` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 420ms | the opening block (wordmark, period line, standing sentence) on mount, once — opacity + 6px rise |
+| `cn-open` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 320ms | the opening block (wordmark, period line, standing sentence) on mount, once — opacity + 6px rise (ADR 0134 rule 1, 2026-09-21: was a raw `{easing: settle.easing, ms: 420}` literal — folded into `settle`, no eighth token) |
 | `cn-turn` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | the view stage when the magnification changes (Month ↔ Week ↔ Day ↔ Agenda) — "show the working": the same book, a page turned. Opacity + 8px rise |
 | `cn-day-settle` | `settle` | HOUSE · 320ms | the day ledger opening under the month grid — CSS `grid-template-rows: 0fr → 1fr` (`.cn-expand`). This is the row-expand the founder singled out by name on board 053 |
 | `cn-sheet-tuck` | `tuck` | HOUSE · 300ms, spring 380/32 shape | the event sheet arriving from the right, 28px + fade. **Since 2026-09-04 this is the house primitive's own `tuck`** (`components/mudavym/Sheet.tsx`, ADR 0112), run through `animate()`; the page's `@keyframes cn-sheet-in` is retired. Same curve, same distance — an object that moved under a hand |

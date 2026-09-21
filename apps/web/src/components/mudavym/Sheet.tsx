@@ -39,7 +39,16 @@
  * declared on a descendant beats one inherited from an ancestor).
  *
  * Motion is a token from lib/mudavym/motion.ts and nothing else; reduced motion
- * renders the overlay at its end state with no animation at all.
+ * renders the overlay at its end state with no animation at all — EXCEPT the
+ * entrance (ADR 0134 §6, 2026-09-21, locked): a Sheet/Panel/Popover arriving
+ * under reduced motion crosses on `REDUCED_FADE`, a 120ms opacity-only
+ * cross-fade, because a surface that appears with zero frames is genuinely
+ * harder to notice and noticing it is functional. Every OTHER motion in this
+ * family — the tear, the lean, the seal — is unaffected and still renders none.
+ * 120ms names no eighth token (ADR 0134 §1 stays literally true); it is a
+ * disclosed literal, allow-listed by file:line in
+ * `scripts/check_motion_tokens.py`, the same shape the guard gives the two
+ * pre-existing shimmer sheens.
  */
 
 import {
@@ -358,6 +367,17 @@ interface RootProps extends OverlayProps {
 
 const TOKEN: Record<OverlayShape, MotionToken> = { sheet: tuck, panel: settle, popover: ink };
 const TOKEN_NAME: Record<OverlayShape, string> = { sheet: 'tuck', panel: 'settle', popover: 'ink' };
+
+/**
+ * ADR 0134 §6 (2026-09-21, locked) — the one reduced-motion exception, an
+ * ENTRANCE only. Not exported from lib/mudavym/motion.ts and not one of the
+ * seven named tokens: minting an eighth token was the rejected alternative
+ * (ADR 0134 §1). Disclosed instead, here, and allow-listed by file:line in
+ * `scripts/check_motion_tokens.py` citing this ADR section.
+ */
+const REDUCED_FADE: MotionToken = { easing: 'linear', ms: 120 };
+/** Opacity only — nothing here is allowed to move. */
+const FADE_ENTER: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }];
 
 const ENTER: Record<OverlayShape, Keyframe[]> = {
   sheet: [
@@ -682,12 +702,19 @@ function OverlayRoot({
     return markSheetOpen(layout, bottom ? 0 : wide ? 640 : 440);
   }, [live, shape, layout, wide, bottom, holdsLevel]);
 
-  /* Enter motion. `animate()` collapses to the end state under reduced motion;
-     we skip it entirely so nothing is scheduled at all. */
+  /* Enter motion. Under full motion `animate()` runs the shape's own token;
+     under reduced motion every OTHER motion in this family skips `animate()`
+     entirely so nothing is scheduled at all — the entrance is the single
+     exception ADR 0134 §6 draws, a 120ms opacity-only cross-fade so an
+     arriving surface is not literally invisible to notice. */
   useEffect(() => {
-    if (!live || reduced || !holdsLevel()) return;
+    if (!live || !holdsLevel()) return;
     const panel = panelRef.current;
     if (!panel) return;
+    if (reduced) {
+      animate(panel, FADE_ENTER, REDUCED_FADE, { respectReducedMotion: false });
+      return;
+    }
     animate(panel, bottom ? ENTER_BOTTOM : ENTER[shape], TOKEN[shape]);
   }, [live, reduced, shape, bottom, holdsLevel]);
 
@@ -1015,7 +1042,11 @@ function OverlayRoot({
         // it; the NAME is never taken from it.
         aria-label={label}
         aria-describedby={contract && !contractRepeatsLabel ? contractId : undefined}
-        data-motion={reduced ? 'none' : TOKEN_NAME[shape]}
+        // ADR 0134 §6: reduced motion renders NO MOVEMENT, not necessarily no
+        // frames — an entrance crosses on the disclosed 120ms fade, and
+        // `data-motion` says so rather than claiming 'none' for a surface
+        // that did, in fact, animate.
+        data-motion={reduced ? 'fade' : TOKEN_NAME[shape]}
         tabIndex={-1}
         onKeyDown={onKeyDown}
         style={

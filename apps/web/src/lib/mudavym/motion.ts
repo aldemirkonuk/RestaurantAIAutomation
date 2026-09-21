@@ -173,19 +173,32 @@ export function useReducedMotion(): boolean {
  * - a browser that cannot parse `linear(…)` easings falls back to the house
  *   curve rather than throwing.
  *
+ * `respectReducedMotion` (default `true`) is the one documented opt-out, added
+ * for ADR 0134 §6 (2026-09-21, locked): a Sheet/Panel/Popover *entrance* keeps
+ * one disclosed exception under reduced motion — a 120ms opacity-only
+ * cross-fade — because a surface that appears with zero frames is genuinely
+ * harder to notice, and noticing it is functional. Every other caller keeps
+ * the default and is completely unaffected: passing `false` is always an
+ * explicit, single call site's choice, never a global relaxation of "reduced
+ * motion renders no movement". See `components/mudavym/Sheet.tsx`'s
+ * `REDUCED_FADE` for the only caller.
+ *
  * Returns the `Animation`, or `null` when WAAPI is unavailable (jsdom).
  */
 export function animate(
   el: Element,
   keyframes: Keyframe[] | PropertyIndexedKeyframes,
   token: MotionToken,
-  options: Omit<KeyframeAnimationOptions, 'duration' | 'easing'> = {},
+  options: Omit<KeyframeAnimationOptions, 'duration' | 'easing'> & {
+    respectReducedMotion?: boolean;
+  } = {},
 ): Animation | null {
   if (typeof el.animate !== 'function') return null;
-  const reduced = prefersReducedMotion();
+  const { respectReducedMotion = true, ...waapiOptions } = options;
+  const reduced = respectReducedMotion && prefersReducedMotion();
   const base: KeyframeAnimationOptions = {
     fill: 'both',
-    ...options,
+    ...waapiOptions,
     duration: reduced ? 0 : token.ms,
     easing: reduced ? 'linear' : token.easing,
   };

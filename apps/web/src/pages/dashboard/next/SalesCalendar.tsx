@@ -72,7 +72,10 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
           { opacity: 0, transform: 'translateY(6px)', clipPath: 'inset(0 100% 0 0)' },
           { opacity: 1, transform: 'none', clipPath: 'inset(0 0 0 0)' },
         ],
-        { easing: settle.easing, ms: 420 },
+        // ADR 0134 rule 1 (2026-09-21, locked): folded into `settle` — the
+        // stagger's own 16ms x 0.94 decay is unchanged, only the per-cell
+        // duration moves from 420 to 320.
+        settle,
         { delay },
       );
       delay += gap;

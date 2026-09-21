@@ -5,7 +5,7 @@
  * control is WORDS, there is no glyph and no emoji, there is exactly one
  * chromatic colour and it is the seal, colour comes from tokens and never from
  * a literal, motion comes from `lib/mudavym/motion.ts` and never from a number,
- * and `prefers-reduced-motion` renders none of it.
+ * and `prefers-reduced-motion` renders no movement.
  *
  * Six of those are stated in prose in four files and asserted nowhere, which is
  * how a policy becomes a comment. This reads the primitive family's own source
@@ -18,6 +18,15 @@
  * refactor that kept the strings and lost the guard would pass — and the
  * seal's `stamp` was unguarded all along, leaning on `animate()` collapsing to
  * zero, which is "a shorter one", exactly what the rule forbids.
+ *
+ * CORRECTED 2026-09-21 (ADR 0134 §6, locked; CLAUDE.md §5b): "renders none of
+ * it" is no longer true of an ENTRANCE — a Sheet/Panel/Popover arriving under
+ * reduced motion now crosses on `REDUCED_FADE`, a 120ms opacity-only
+ * cross-fade, the one disclosed exception the founder locked. The tear, the
+ * lean and the seal are unaffected and still schedule nothing. `REDUCED_FADE`
+ * is not one of the seven/eight named tokens (ADR 0134 §1's "no eighth token"
+ * stays literally true — it is a disclosed literal, not a token), so the
+ * animate()-token check below names it as the one allowed exception.
  */
 
 import { readFileSync } from 'node:fs';
@@ -83,8 +92,14 @@ function motionArgs(text: string): string[] {
   return out;
 }
 
-/** The seven tokens, and nothing else, may be handed to `animate()`. */
+/** The seven tokens, and nothing else, may be handed to `animate()` — with
+    exactly one named, disclosed exception: `REDUCED_FADE` (ADR 0134 §6,
+    2026-09-21, locked), the entrance-only reduced-motion cross-fade declared
+    in Sheet.tsx and allow-listed by file:line in
+    `scripts/check_motion_tokens.py`. It is listed here, not folded into
+    TOKENS, so it stays visibly an exception rather than a ninth token. */
 const TOKENS = ['settle', 'ink', 'tuck', 'turn', 'pour', 'press', 'stamp', 'tally'];
+const DISCLOSED_EXCEPTIONS = ['REDUCED_FADE'];
 
 describe('the house policy holds in the primitive family', () => {
   it('closes with words — the default is a word and there is no glyph', () => {
@@ -141,8 +156,9 @@ describe('the house policy holds in the primitive family', () => {
         // holds nothing but `tuck`/`settle`/`ink` — asserted separately below.
         const named = /^TOKEN\[/.test(token) ? 'tuck' : token;
         expect(
-          TOKENS.includes(named),
-          `${f}: animate() was handed "${token}" — motion is a token, never a number`,
+          TOKENS.includes(named) || DISCLOSED_EXCEPTIONS.includes(named),
+          `${f}: animate() was handed "${token}" — motion is a token, never a number, ` +
+            `unless it is a disclosed exception cited by ADR`,
         ).toBe(true);
       }
     }
@@ -220,22 +236,27 @@ async function driveEveryMotion() {
   expect(screen.getByText('What the seal bound')).toBeInTheDocument(); // the seal landed
 }
 
-describe('prefers-reduced-motion renders none of it — measured, not read', () => {
+describe('prefers-reduced-motion renders no movement — measured, not read', () => {
   const original = (Element.prototype as { animate?: unknown }).animate;
   let calls: KeyframeAnimationOptions[] = [];
+  // The keyframes each call was handed, index-aligned with `calls` — without
+  // them "opacity only" is a claim the reduced-motion test below cannot check.
+  let frames: unknown[] = [];
 
   beforeEach(() => {
     calls = [];
+    frames = [];
     resetLabelWarnings();
     resetSheetWidth();
     document.body.style.overflow = '';
     // jsdom has no WAAPI, so `animate()` returns early and nothing is ever
     // observable. Give it one that records what it was asked to schedule.
     (Element.prototype as { animate?: unknown }).animate = function animateSpy(
-      _keyframes: unknown,
+      keyframes: unknown,
       options: KeyframeAnimationOptions,
     ) {
       calls.push(options);
+      frames.push(keyframes);
       return { cancel() {}, finish() {}, onfinish: null } as unknown as Animation;
     };
   });
@@ -250,9 +271,26 @@ describe('prefers-reduced-motion renders none of it — measured, not read', () 
     expect(calls.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('schedules nothing at all under reduced motion — not a zero-length version', async () => {
+  it('schedules only the two disclosed entrance fades under reduced motion — the tear, the lean and the seal schedule nothing', async () => {
+    // Corrected 2026-09-21 (ADR 0134 §6, CLAUDE.md §5b): this used to assert
+    // `calls` was empty. `driveEveryMotion` opens one Sheet and one Panel —
+    // each entrance now schedules the disclosed 120ms opacity-only fade — and
+    // still drives the tear, the lean and the seal, none of which call
+    // `animate()` under reduced motion. Every recorded call is asserted to BE
+    // that fade, not just counted, so a regression that widened the exception
+    // (a longer duration, a transform, a third caller) fails here too.
     setReducedMotion(true);
     await driveEveryMotion();
-    expect(calls).toEqual([]);
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      expect(call.duration).toBe(120);
+      expect(call.easing).toBe('linear');
+      expect(call.fill).toBe('both');
+    }
+    // Opacity only: a keyframe carrying a transform (or anything but opacity)
+    // is movement, which is exactly what reduced motion forbids.
+    for (const kf of frames) {
+      expect(kf).toEqual([{ opacity: 0 }, { opacity: 1 }]);
+    }
   });
 });

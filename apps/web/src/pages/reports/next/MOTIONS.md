@@ -29,7 +29,7 @@ to those would put a moving cutting somewhere the announcement says it is not.
 
 | id | token | curve · ms | fires |
 |---|---|---|---|
-| `rp-open` | `settle` | `cubic-bezier(.16,1,.3,1)` · 420ms | the opening — wordmark, date, "What the books say." and the engine's loudest sentence — once on mount; opacity + 6px rise (`ReportsNext.tsx`, WAAPI via `animate()`) |
+| `rp-open` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | the opening — wordmark, date, "What the books say." and the engine's loudest sentence — once on mount; opacity + 6px rise (`ReportsNext.tsx`, WAAPI via `animate()`) (ADR 0134 rule 1, 2026-09-21: was a raw `{easing: settle.easing, ms: 420}` literal — folded into `settle`, no eighth token) |
 | `rp-rule` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | the twelve-column ruling fading up when Arrange is entered and back down when the sheet is ruled off (`.rp-sheet::before` opacity) |
 | `rp-lift` | `tuck` | sampled spring 380/32, `linear(…)` · 300ms | a cutting's shadow rising while it is dragged under the finger, **or held from the keyboard** (`.rp-cut[data-held='true']` takes the same shadow as `.react-draggable-dragging`). The duration and easing are injected as `--rp-tuck` from the token itself, so the curve on screen IS `tuck` rather than a hand-copied approximation |
 | `rp-ink` | `ink` | `cubic-bezier(.16,1,.3,1)` · 160ms | hover/focus micro-states on cuttings, chips, buttons and links — border, ground and colour only; nothing translates or scales |

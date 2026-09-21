@@ -198,7 +198,7 @@ Canonical copy lives beside the code in
 
 | id | token | curve · ms | fires |
 |---|---|---|---|
-| `cn-open` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 420ms | the opening block (wordmark, period line, standing sentence) on mount, once |
+| `cn-open` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 320ms **[CORRECTED 2026-09-21, ADR 0134 rule 1: was a raw 420ms literal on the house curve, folded into `settle`]** | the opening block (wordmark, period line, standing sentence) on mount, once |
 | `cn-turn` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | the view stage when the magnification changes — the same book, a page turned |
 | `cn-day-settle` | `settle` | HOUSE · 320ms | the day ledger opening under the month grid (`grid-template-rows: 0fr → 1fr`) — the row-expand the founder singled out on board 053 |
 | `cn-sheet-tuck` | `tuck` | spring 380/32 · 300ms | the event sheet arriving from the right, 28px + fade — **since 2026-09-04 run by the house primitive** (`components/mudavym/Sheet.tsx`), not by this page's keyframes |

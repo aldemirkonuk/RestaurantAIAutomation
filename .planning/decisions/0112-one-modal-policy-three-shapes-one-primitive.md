@@ -91,7 +91,7 @@ What actually carried it:
   was never the geometry — it was focus, scroll and Esc. Those live in `OverlayRoot` once:
   focus moves inside on open, Tab cycles inside, Esc closes, focus returns to the opener,
   body scroll locks (counted, so stacked overlays cannot unlock each other), and
-  `prefers-reduced-motion` renders **no** animation rather than a shorter one.
+  `prefers-reduced-motion` renders **no** animation rather than a shorter one. **[AMENDED 2026-09-21 by [[0134-one-motion-per-act-across-every-page]] §6, locked: an overlay's *entrance* is the one exception, a 120 ms opacity-only cross-fade that moves nothing; the tear, the lean and the seal still render none.]**
 - **The gate keeps ADR 0042's promise.** `lib/mudavym/shellGround.ts` is a tiny external
   store that `PageGate` claims while a `next` tree is mounted. Each shell overlay renders the
   house shape **only when it is on**; otherwise it renders its existing markup, and

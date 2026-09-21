@@ -5,17 +5,21 @@
  * reason a shared primitive exists at all: focus goes in, Tab stays in, Esc and
  * the scrim get you out, focus comes back to the control you opened it with,
  * the page's ground travels across the portal, and reduced motion means no
- * motion — not a shorter one.
+ * movement — not a shorter one. CORRECTED 2026-09-21 (ADR 0134 §6, CLAUDE.md
+ * §5b): an ENTRANCE is now the one disclosed exception, a 120ms opacity-only
+ * cross-fade (`REDUCED_FADE` in Sheet.tsx) — every other motion in the family
+ * is unaffected and still renders none.
  */
 
 import { useRef, useState } from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
-/* `data-motion="none"` says what the component INTENDS; this spy says what it
-   actually scheduled. Under reduced motion the primitive must not call
-   `animate()` at all — not call it and let it collapse to the end state — so
-   the assertion has to be on the call, not on an attribute. */
+/* `data-motion` says what the component INTENDS ('fade' under reduced motion,
+   since ADR 0134 §6); this spy says what it actually scheduled. Under reduced
+   motion the primitive must not call `animate()` for anything but the
+   disclosed entrance fade — not call it and let it collapse to the end state
+   — so the assertion has to be on the call, not on an attribute alone. */
 vi.mock('../../lib/mudavym/motion', async (orig) => {
   const actual = await orig<typeof import('../../lib/mudavym/motion')>();
   return { ...actual, animate: vi.fn(actual.animate) };
@@ -174,19 +178,27 @@ describe('the house overlay', () => {
     expect(document.body.style.overflow).toBe('');
   });
 
-  it('renders no animation under prefers-reduced-motion', () => {
+  it('renders the ADR-0134-§6 fade, not "none", under prefers-reduced-motion', () => {
+    // Corrected 2026-09-21 (ADR 0134 §6, CLAUDE.md §5b): this used to assert
+    // 'none'. An entrance is now the one disclosed exception — a 120ms
+    // opacity-only cross-fade — so 'none' would be a false claim about a
+    // surface that did, in fact, animate.
     setReducedMotion(true);
     render(<Harness shape="sheet" />);
     fireEvent.click(screen.getByRole('button', { name: 'opener' }));
-    expect(screen.getByRole('dialog')).toHaveAttribute('data-motion', 'none');
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-motion', 'fade');
   });
 
-  it('schedules no animation at all under prefers-reduced-motion', () => {
+  it('schedules exactly the 120ms opacity-only entrance fade under prefers-reduced-motion — nothing else', () => {
     setReducedMotion(true);
     render(<Harness shape="sheet" />);
     fireEvent.click(screen.getByRole('button', { name: 'opener' }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(vi.mocked(animate)).not.toHaveBeenCalled();
+    expect(vi.mocked(animate)).toHaveBeenCalledTimes(1);
+    const [, keyframes, token, options] = vi.mocked(animate).mock.calls[0];
+    expect(token).toEqual({ easing: 'linear', ms: 120 });
+    expect(options).toMatchObject({ respectReducedMotion: false });
+    expect(keyframes).toEqual([{ opacity: 0 }, { opacity: 1 }]);
   });
 
   it('does schedule one when motion is allowed — so the test above can fail', () => {

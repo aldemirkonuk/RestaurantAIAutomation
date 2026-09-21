@@ -23,6 +23,12 @@ Deliberate non-motions:
 `prefers-reduced-motion` renders **no animation at all**, not a shorter one: the
 panel carries `data-motion="none"` and `animate()` is never called. The test
 `Sheet.test.tsx` asserts both the token name and the `none`.
+**[AMENDED 2026-09-21 by ADR 0134 §6 (locked): the three entrances above now
+cross on `REDUCED_FADE` under reduced motion -- 120ms, linear, opacity only,
+no movement -- so the panel carries `data-motion="fade"` and `animate()` is
+called once per entrance, with `respectReducedMotion: false`. `Sheet.test.tsx`
+asserts the `fade` and that single call. 120ms is not an eighth token; it is
+allow-listed by file:line in `scripts/check_motion_tokens.py`.]**
 
 ---
 
@@ -57,6 +63,11 @@ tokens and never a `{ easing, ms }` literal, and — since 2026-09-17, by
 rendering them rather than by reading their source — that under reduced motion
 the open, the tear, the lean, the stub and the seal call `Element.animate`
 zero times, including the seal's `stamp`.
+**[AMENDED 2026-09-21 by ADR 0134 §6: `REDUCED_FADE` is the one named,
+disclosed exception to the token check, and under reduced motion the open now
+calls `Element.animate` once -- the 120ms opacity-only fade, asserted by its
+duration, easing and keyframes. The tear, the lean, the stub and the seal
+still call it zero times.]**
 
 ---
 
