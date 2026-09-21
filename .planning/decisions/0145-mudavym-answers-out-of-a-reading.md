@@ -296,7 +296,7 @@ panel are the two doors."*
 - **Fifteen readings** in `reading-catalogue.ts` — matching the founder's row
   33 count.
 - **Build task 6, the folio table.** `ask_reading_folios`
-  (migration `20260913190800`): a personal (`user_id ON DELETE CASCADE`),
+  (migration `20260921111000`): a personal (`user_id ON DELETE CASCADE`),
   house-scoped (`restaurant_id`) record, written BEFORE the model call so a
   resubmitted request id replays rather than paying twice; RLS,
   `service_role` only. `ai_proposed_actions` gained `reading_folio_id` with an
