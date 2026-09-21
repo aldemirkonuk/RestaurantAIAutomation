@@ -424,6 +424,11 @@ describe('RecommendationsNext — the standing book', () => {
     const yourCopy = screen.getByRole('button', { name: 'Your copy' });
     expect(housePost).toBeEnabled();
     expect(yourCopy).toBeEnabled();
+    // Carried from main (review D5): the page reads no deployment state, so no
+    // text on it may assert one.
+    expect(
+      screen.queryByText(/no scheduler|nothing sends it|switched off|DIGEST_SEND_ENABLED/),
+    ).not.toBeInTheDocument();
   });
 
   it('moves and acts from the keyboard', () => {
