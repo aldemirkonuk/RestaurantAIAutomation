@@ -11,7 +11,7 @@
 Measured 2026-09-17 with `curl -sI https://mudavym.com/`: the site sent no
 `X-Content-Type-Options`, no `X-Frame-Options` or `frame-ancestors`, no
 `Referrer-Policy`, no `Permissions-Policy`, no `Cross-Origin-Opener-Policy`, and only
-Vercel's default HSTS (`max-age=63072000`, no `includeSubDomains`). Access tokens live in
+Vercel's default HSTS (`max-age=63072000`, no `includeSubDomains`). Two subdomains resolve and both already serve HTTPS: `www.mudavym.com` (308 to the apex) and `dev.mudavym.com` (a Vercel host behind SSO), so `includeSubDomains` breaks neither. Access tokens live in
 `localStorage`, so any injected script is token theft; nothing stopped another site from
 framing the app either. The production project's Root Directory is `apps/web`, so
 `apps/web/vercel.json` is the file mudavym.com reads - the repo-root `vercel.json` only
@@ -41,8 +41,8 @@ Option 1. In `apps/web/vercel.json`, every path on every host carries:
 | Header | Value | Why this value |
 |---|---|---|
 | `X-Content-Type-Options` | `nosniff` | no MIME sniffing of uploads or API text |
-| `X-Frame-Options` | `DENY` | nothing frames mudavym.com (the only iframe is the app framing a signed document, the other way round) |
-| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | no subdomain resolves today, so nothing breaks; **no `preload`** - effectively irreversible and binds every future subdomain |
+| `X-Frame-Options` | `SAMEORIGIN` | no other site may frame mudavym.com; the app may still frame its own responses, because `DocumentsPage.tsx:1010` previews a stored report URL in an iframe and nothing proves every such URL is on another origin (a same-origin `/api/...` URL would break under `DENY`) |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | the two subdomains that resolve (`www`, `dev`) already serve HTTPS, so nothing breaks; **no `preload`** - effectively irreversible and binds every future subdomain. After deploy, production must send ONE `Strict-Transport-Security` field carrying `includeSubDomains`: Vercel sends its own, and RFC 6797 §8.1 has a browser act on the first field only |
 | `Cross-Origin-Opener-Policy` | `same-origin-allow-popups` | Google sign-in's popup fallback and the print windows still work; no COEP (it would break GSI, Maps, Stripe frames and third-party images) |
 | `Permissions-Policy` | camera and microphone for Mudavym itself; geolocation, USB, serial, HID, Bluetooth, MIDI, motion sensors, display capture and topics off | the scanner and the spoken count need camera and microphone; nothing uses the rest. `payment` and `identity-credentials-get` are deliberately unlisted (Stripe's wallet buttons, Google's FedCM) |
 
@@ -65,14 +65,14 @@ autocomplete server-side, before granting eval app-wide.
 
 - Clickjacking, MIME sniffing and downgrade-to-HTTP are closed today; the browser features
   nothing uses are off.
-- A future `api.` or `mail.` subdomain must be HTTPS-only from its first day
-  (`includeSubDomains`).
+- Every current and future subdomain must be HTTPS-only (`includeSubDomains`); `www` and
+  `dev` already are.
 - Anyone adding a header rule to `apps/web/vercel.json` meets the test's merge rule: one
   value per header per path.
 - The Railway gateway still sends `x-powered-by: Express` and no security headers of its
   own; that is a separate change (plan step H5), not in this record.
 - **Revisit when:** the CSP report-only week ends (enforce it and bracket this record);
-  a subdomain is added; a feature needs a browser permission listed as off; Stripe's key is
+  a subdomain that cannot serve HTTPS is proposed; production shows two HSTS fields; a feature needs a browser permission listed as off; Stripe's key is
   set in production (ADR 0110's CSP trigger).
 
 ## Review trail
@@ -80,3 +80,4 @@ autocomplete server-side, before granting eval app-wide.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-21 | Aldemir (founder), in session | Locked — "Add both, as planned" |
+| 2026-09-21 | SEO/GEO session (review of PR #418) | Two corrections before merge: `X-Frame-Options` is `SAMEORIGIN`, not the plan's `DENY` (a same-origin report preview would break, third-party framing stays blocked); the context wrongly said no subdomain resolves (`www` and `dev` do, both HTTPS). Added the one-HSTS-field post-deploy check |

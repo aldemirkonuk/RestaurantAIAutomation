@@ -53,7 +53,7 @@ describe('mudavym.com security headers (ADR 0185)', () => {
 
   it.each([...PAGE_SAMPLES, ...TOKEN_SAMPLES])('%s carries the protective set', (path) => {
     expect(valuesFor(path, 'X-Content-Type-Options')).toEqual(['nosniff']);
-    expect(valuesFor(path, 'X-Frame-Options')).toEqual(['DENY']);
+    expect(valuesFor(path, 'X-Frame-Options')).toEqual(['SAMEORIGIN']);
     expect(valuesFor(path, 'Strict-Transport-Security')).toEqual(['max-age=63072000; includeSubDomains']);
     expect(valuesFor(path, 'Cross-Origin-Opener-Policy')).toEqual(['same-origin-allow-popups']);
     const permissions = valuesFor(path, 'Permissions-Policy');
