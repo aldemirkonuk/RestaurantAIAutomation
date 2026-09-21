@@ -26,7 +26,15 @@ test-results
 playwright-report
 coverage
 *.log
-logs
+# 2026-09-21: ANCHORED. The bare pattern plus a `!` negation (below) still
+# excluded apps/web/src/pages/logs/ from a `vercel deploy` upload — the build
+# failed with the exact "Could not resolve ./pages/logs/next/LogsNext" this
+# file already warns about. Vercel's uploader does not re-include it the way
+# git does. Anchoring costs nothing: both directories named `logs` in this
+# repo are SOURCE (apps/api-gateway/src/logs, 5 tracked files;
+# apps/web/src/pages/logs, 8), there is no runtime logs directory, and
+# `*.log` above still covers log FILES anywhere.
+/logs
 # 2026-09-12: the bare `logs` pattern above (for runtime log output such as
 # services/agent-orchestrator/logs) also matched apps/web/src/pages/logs/ —
 # a real page's source, not log output — and Vercel silently dropped it
