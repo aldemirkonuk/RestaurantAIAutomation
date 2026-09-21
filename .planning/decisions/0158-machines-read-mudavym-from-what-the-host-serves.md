@@ -384,13 +384,14 @@ fixed; the rest are named here rather than silently accepted.
       (`/{(.*)}` compiles to `^/(.*)$`, while a plain RegExp reads the braces literally), a
       cookie, query, regular-expression or string-valued host condition, and a host outside
       `HOSTS` all throw, and so does a source path-to-regexp refuses: a bare `*` or a trailing
-      `/?` after a literal (`Unexpected MODIFIER`), an unbalanced or empty group, a capturing group
+      `/?` after a literal (`Unexpected MODIFIER`), an unclosed or empty group, a capturing group
       inside a group. Such a source fails `vercel build`, so nothing deploys, while every test here
       would otherwise stay green (found by the merge-train session with `/legal*`). That check was
       compared once with `path-to-regexp@6.1.0` over 76 sources (a scratch script, not
       committed); `vercel build` stays the authority, and the Vercel build check on a PR is not one
-      of main's required contexts. One difference remains and errs stricter: a literal `.` outside a group is a literal dot to Vercel and any
-      character to the guard. A model of Vercel must pass those options: compiling a source
+      of main's required contexts. One difference remains: a literal `.` outside a group is a literal dot to Vercel and any
+      character to the guard, which errs stricter for a weakening rule and looser for the token
+      rule's own coverage (the token rule has none). A model of Vercel must pass those options: compiling a source
       with the library's DEFAULT options is wrong twice (case-insensitive, and an optional
       trailing delimiter, so the old token source would match `/reset-password/` while
       production does not; two sessions were misled by exactly that).
@@ -406,12 +407,13 @@ fixed; the rest are named here rather than silently accepted.
       with and without a trailing slash, and the resolved CLAIMS row
       `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH` checks the source. Before the change the census
       failed on exactly the four unmatched samples (measured), so the deployed answer is read by
-      its `token-route` lines. What the gap cost is narrower than a token in a log. In the
-      production bundle (measured 2026-09-21) the axios clients are created with the absolute
+      its `token-route` lines. What the gap cost is narrower than a token in the gateway's Referer
+      header. In the production bundle (measured 2026-09-21) the axios clients found in the entry
+      bundle are created with the absolute
       gateway URL as their base (`baseURL: "https://wineopsapi-gateway-production.up.railway.app"`),
       the reset-password page posts to that URL explicitly, and the WebSocket goes to the same
-      host, so those requests are cross-origin and the browser default
-      `strict-origin-when-cross-origin` sends the gateway only the origin. The one relative
+      host, so those requests are cross-origin and the default of current browsers,
+      `strict-origin-when-cross-origin`, sends the gateway only the origin. The one relative
       `fetch("/api/...")` found (the studio-invite redeem chunk) is on a route the token rule
       already covered. The full URL, token included, went to same-origin requests only, chiefly
       the page's own assets. The scan covered the entry bundle and 60 of its lazy chunks, not
