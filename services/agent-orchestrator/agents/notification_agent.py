@@ -88,7 +88,7 @@ class NotificationAgent(BaseAgent):
             gmail_password=config.get("gmail_password"),
             sendgrid_api_key=config.get("sendgrid_api_key"),
             from_email=config.get("from_email"),
-            from_name="WineOps AI",
+            from_name="Mudavym",
             mock_mode=self.mock_mode,
         )
 

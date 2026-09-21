@@ -32,8 +32,12 @@ export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Post("generate")
-  @ApiOperation({ summary: "Generate report" })
-  @ApiResponse({ status: 201, type: ReportResponseDto })
+  @ApiOperation({
+    summary: "Retired (OD-81) — answers 410; use POST /reports/exports",
+    description:
+      "This route filed a `generated_reports` row marked pending that nothing ever wrote. It now refuses with 410 Gone and names the real export.",
+  })
+  @ApiResponse({ status: 410, description: "Retired: use POST /reports/exports" })
   async generateReport(
     @Body() dto: GenerateReportDto,
     @CurrentUser() user: { restaurantId: string },
@@ -41,6 +45,8 @@ export class ReportsController {
     try {
       return await this.reportsService.generateReport(user.restaurantId, dto);
     } catch (error) {
+      // The 410 is the answer, not a failure to wrap into a 500.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to generate report",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -107,6 +113,8 @@ export class ReportsController {
     try {
       return await this.reportsService.getReport(user.restaurantId, reportId);
     } catch (error) {
+      // A 404 (absent, foreign, or never written — OD-81) is the answer.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to fetch report",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -130,6 +138,8 @@ export class ReportsController {
         reportId,
       );
     } catch (error) {
+      // A 404 (absent, foreign, or never written — OD-81) is the answer.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to cross-file report",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -153,6 +163,8 @@ export class ReportsController {
         user.userId ?? null,
       );
     } catch (error) {
+      // A 404 (absent, foreign, or never written — OD-81) is the answer.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to refile report",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -182,6 +194,8 @@ export class ReportsController {
             : report.pdfUrl;
       return { url: url ?? null };
     } catch (error) {
+      // A 404 (absent, foreign, or never written — OD-81) is the answer.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to download report",
         HttpStatus.INTERNAL_SERVER_ERROR,

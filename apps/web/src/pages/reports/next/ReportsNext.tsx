@@ -73,6 +73,7 @@ import {
   type SheetState,
   type Slot,
 } from './rp-sheet';
+import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
 import './reports-next.css';
@@ -443,6 +444,16 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             onMove={onMove}
             containerRef={holdSheetEl}
             ghost={arrange.origin}
+          />
+        )}
+
+        {/* OD-81: the written-up cuttings. Not while arranging — a layout in
+            progress is not yet what the reader is exporting. */}
+        {data.restaurantId !== null && !arranging && (
+          <ExportsShelf
+            desk={data.exportDesk}
+            onSheet={view.cuttings.map((c) => c.id)}
+            tillDays={tillDays}
           />
         )}
 

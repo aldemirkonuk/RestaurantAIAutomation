@@ -101,7 +101,7 @@ export default function InviteLandingScreen() {
         <AuthNotice tone="success">
           <AppText variant="footnote">{where} is on your account now.</AppText>
         </AuthNotice>
-        <AuthButton label="Open WineOps" onPress={() => router.replace("/")} />
+        <AuthButton label="Open Mudavym" onPress={() => router.replace("/")} />
       </AuthShell>
     );
   }
