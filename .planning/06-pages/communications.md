@@ -135,9 +135,19 @@ outbound-email audit trail, labelled by `outbound_email_type`).
   - **A draft never looks sent**: the engine's words are grey until a person edits
     them, and nothing about opening the panel changes a draft. Each engine flag
     names the rule it tripped.
-  - **The older unsealed route still exists and the legacy desk still calls it.**
-    That is FILED (§9), not papered over: this packet does not break a live send
-    path, and deleting the legacy panel is packet 4's business.
+  - **The older route still exists and the legacy desk still calls it — CORRECTED
+    2026-09-21 (round 5, CLAUDE.md §5b).** This bullet used to call it "the older
+    UNSEALED route", implying the two new routes are sealed by contrast. They are
+    not, by default: `sendDraftedReply` lets an absent `X-Seal-Challenge` through
+    on ALL THREE routes (the legacy one and both packet-2 ones) while
+    `REQUIRE_DRAFT_SEND_SEAL` is unset — the flag's default, unset in every
+    environment this has shipped to (`legacyDraftSendMayGoUnsealed`,
+    `procurement.service.ts`; ADR 0118's dated bracket on "Codex execution,
+    2026-09-13"). What actually differs is CLIENT behavior: the legacy desk never
+    sends a challenge, and this panel always mints and sends one — a UI habit, not
+    a server requirement, until the flag flips. Still true and still FILED (§9):
+    this packet does not break a live send path, and deleting the legacy panel is
+    packet 4's business.
   - Proved by `DraftedReply.test.tsx` (18 assertions).
 - **The house letter library** (flag ON): house-owned templates under five vendor
   purposes, each showing its declared merge fields, who last edited it and when it

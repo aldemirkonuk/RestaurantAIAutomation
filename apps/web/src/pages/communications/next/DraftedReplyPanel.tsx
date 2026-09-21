@@ -26,11 +26,21 @@
  *
  * `approve-draft` is not a second, unsealed door: it funnels into the same
  * `sendDraftedReply` → `approveDraft` seal check as the new routes (lane E
- * audit D8 correction — an earlier draft of this comment said otherwise). A
- * caller that omits `X-Seal-Challenge` is refused, same as here. What is
- * still open, filed for the founder, is the ROLLOUT: a native build shipped
- * before `DraftSendSeal` calls this route with no seal at all and now gets a
- * 403 instead of a send.
+ * audit D8 correction — an earlier draft of this comment said otherwise).
+ *
+ * [Round 5 correction, 2026-09-21, CLAUDE.md §5b.] The paragraph this
+ * replaced said a caller that omits `X-Seal-Challenge` is refused, and that
+ * an old native build "now gets a 403 instead of a send." Neither is true
+ * by default: `legacyDraftSendMayGoUnsealed()` (`procurement.service.ts`)
+ * returns `true` while `REQUIRE_DRAFT_SEND_SEAL` is unset — unset in every
+ * environment this has shipped to — and `sendDraftedReply` reads that flag
+ * BEFORE deciding whether to check anything. An absent challenge on EITHER
+ * route sends UNSEALED, same as it always did; only a PRESENT challenge is
+ * always redeemed, on every build. What every caller gets now regardless
+ * of the flag is `assertCanManageRestaurant` — new in this lane, so a
+ * non-manager who could send a draft here before this lane now gets a 403.
+ * When to flip `REQUIRE_DRAFT_SEND_SEAL` is an open founder question (ADR
+ * 0118), not decided by this file.
  *
  * A DRAFT NEVER LOOKS SENT (ADR 0112 rule 5). The engine's words are grey until
  * a person edits them; an edited letter says "edited by you" and the grey does

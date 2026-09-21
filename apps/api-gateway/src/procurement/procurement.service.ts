@@ -451,13 +451,20 @@ export function draftSubjectLine(
  */
 export function legacyDraftSendMayGoUnsealed(): boolean {
   // Default (unset) = TRUE: an old native install with no seal at all still
-  // sends, exactly as it did before this lane. A caller that DOES present a
-  // challenge is unaffected either way (see sendDraftedReply below — it is
-  // always carried through and always redeemed). Setting
-  // REQUIRE_DRAFT_SEND_SEAL=true removes the grace period and makes the
-  // legacy route refuse like every other sealed act; do that only once
-  // native installs predating the seal are confirmed gone (that
-  // confirmation is the open question above, not this code).
+  // sends — UNSEALED, exactly as it did before this lane. [Round 5
+  // correction, 2026-09-21, CLAUDE.md §5b: "exactly as it did before this
+  // lane" is not true without that qualifier. sendDraftedReply and
+  // approveDraft below both now call assertCanManageRestaurant
+  // unconditionally, seal or no seal — new in this lane. A non-manager who
+  // could send a draft through this same old, unsealed route before this
+  // lane gets a 403 from it now, regardless of REQUIRE_DRAFT_SEND_SEAL. Only
+  // the SEAL half of the behavior is unchanged for a manager.] A caller
+  // that DOES present a challenge is unaffected either way (see
+  // sendDraftedReply below — it is always carried through and always
+  // redeemed). Setting REQUIRE_DRAFT_SEND_SEAL=true removes the grace
+  // period and makes the legacy route refuse like every other sealed act;
+  // do that only once native installs predating the seal are confirmed
+  // gone (that confirmation is the open question above, not this code).
   return process.env.REQUIRE_DRAFT_SEND_SEAL !== "true";
 }
 
@@ -6051,11 +6058,19 @@ export class ProcurementService {
   }
 
   /**
-   * Send the drafted reply behind a REDEEMED seal.
+   * Send the drafted reply — behind a REDEEMED seal, when the caller carries
+   * one.
    *
-   * Both HTTP routes use this manager boundary and carry their held proof
-   * into approveDraft, where redemption uses the exact pending row and actual
-   * recipient immediately before the atomic sending claim.
+   * Both HTTP routes use `assertCanManageRestaurant`, unconditionally. What
+   * they do NOT both unconditionally carry is a seal: `goUnsealed` below is
+   * `true` — no seal is checked at all — for any caller sending no
+   * `X-Seal-Challenge` while `REQUIRE_DRAFT_SEND_SEAL` is unset (its
+   * default). [Round 5 correction, 2026-09-21, CLAUDE.md §5b: this
+   * paragraph previously read "Both HTTP routes... carry their held proof
+   * into approveDraft," which overstated it into a universal — see the
+   * `goUnsealed` computation immediately below for what actually decides
+   * it.] When a challenge IS present, redemption uses the exact pending row
+   * and actual recipient immediately before the atomic sending claim.
    *
    * The seal is spent BEFORE the send, so a refused seal means nothing left the
    * building; and it is spent over the letter as EDITED, so a paragraph changed

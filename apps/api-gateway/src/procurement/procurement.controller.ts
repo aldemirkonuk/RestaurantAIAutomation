@@ -677,11 +677,19 @@ export class ProcurementController {
   }
 
   /**
-   * Send the drafted reply, behind a redeemed seal.
+   * Send the drafted reply, behind a redeemed seal — when one is presented.
    *
    * NEW ROUTE (packet 2, 2026-09-06). It wraps `approveDraft` rather than
    * replacing its atomic sending claim. Both this route and the legacy
-   * approve-draft route require the same held seal and manager boundary.
+   * approve-draft route require the same MANAGER boundary
+   * (`assertCanManageRestaurant`, unconditional). The SEAL half is not yet
+   * unconditional on either route: `sendDraftedReply` lets an absent
+   * `X-Seal-Challenge` through unsealed while `REQUIRE_DRAFT_SEND_SEAL` is
+   * unset — its default — so neither route actually refuses a sealless send
+   * until that flag is flipped (round 5 correction, 2026-09-21, CLAUDE.md
+   * §5b; see `legacyDraftSendMayGoUnsealed` and ADR 0118's dated bracket on
+   * "Codex execution, 2026-09-13"). A PRESENT challenge is always redeemed,
+   * on every build.
    *
    * The body is `ApproveDraftDto` itself, never an intersection with it: an
    * intersection type is recorded as `Object`, which the ValidationPipe skips.

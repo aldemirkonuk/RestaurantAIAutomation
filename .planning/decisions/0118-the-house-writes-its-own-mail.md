@@ -1313,6 +1313,43 @@ The recovered overlay packet now uses the existing house primitives for the cale
 
 Both draft-send HTTP routes now require a named manager and one ephemeral held seal bound to the server's pending draft ID, actual vendor address, reviewed body and CC. The final redemption precedes the atomic sending claim. Web legacy, rebuilt web and native callers all perform this ceremony; the native challenge remains in memory and never enters the offline outbox. A lost send response stays unconfirmed. The last-agreement read orders qualifying parent orders by their recorded date and refuses ambiguous embedded price lines. Ask-origin Reading verification is coordinated as a subsequent concrete integration; this packet adds no always-success placeholder.
 
+> **Correction — 2026-09-21 (round 5 fix pass, CLAUDE.md §5b).** "Require...
+> one ephemeral held seal" is not what the code does by default, and this
+> was still uncorrected across five places (this paragraph,
+> `DraftedReplyPanel.tsx:29-30`, `procurement.controller.ts` on
+> `send-drafted-reply`'s own doc comment, `procurement.service.ts` on
+> `sendDraftedReply`'s doc comment, and `communications.md:138-140`) when
+> round 4 named it as a must-fix; all five are corrected in this pass.
+>
+> **The gate, as coded.** `sendDraftedReply` (`procurement.service.ts`)
+> computes `goUnsealed = !challenge?.trim() && legacyDraftSendMayGoUnsealed()`
+> and passes `approveDraft` no seal to check at all when `goUnsealed` is
+> true. `legacyDraftSendMayGoUnsealed()` returns `true` while
+> `REQUIRE_DRAFT_SEND_SEAL` is unset — its env-var default, unset in every
+> environment this has shipped to. So an absent `X-Seal-Challenge` sends
+> UNSEALED today, on all three routes that reach this function: the legacy
+> `POST orders/:id/approve-draft`, and the two packet-2 routes,
+> `draft-seal-challenge` + `send-drafted-reply`. Nobody is actually held to
+> the seal until an operator sets `REQUIRE_DRAFT_SEND_SEAL=true`. A PRESENT
+> challenge is unaffected by the flag either way — it is always carried
+> through and always redeemed (`draft-send-seal.spec.ts`); only an ABSENT
+> one is in question.
+>
+> **The manager check is real regardless of the flag.** Both routes now call
+> `assertCanManageRestaurant(userId, restaurantId, "send a drafted reply")`
+> unconditionally, seal or no seal — new in this lane. A non-manager who
+> could send a draft through the old, unsealed `approve-draft` route before
+> this lane gets a 403 from it now, independent of `REQUIRE_DRAFT_SEND_SEAL`.
+> That is a real behavior change for every existing install, seal-cutover
+> question aside.
+>
+> **Open founder question, filed and not decided here (see this lane's
+> `founder_questions`, "Seal cutover"):** when to flip
+> `REQUIRE_DRAFT_SEND_SEAL` — now (any native build older than this lane
+> gets a 403 the moment it sends a draft), once old native builds are
+> confirmed gone (the live defect stays open until then), or after a forced
+> app-update mechanism ships (which does not exist yet).
+
 Validation: procurement gateway 74 suites / 1,423 passing tests (3 skipped), gateway and mobile typechecks exit 0, native held/draft helpers 7 passing tests. Web broad run covered 209 files; one shell suite initially failed from duplicate React installations, then passed 25/25 after dependency graph correction. Final cart regression suite passes 21/21, including case-price preservation, partial retries, unknown response, stale vendor and house changes. No production vendor message, fixture, payment or database mutation was used. Final immutable scope and exact hashes are recorded in workspace execution/overlay2-ready/manifest.json.
 
 > **Correction — 2026-09-19 (lane E audit, fix pass, CLAUDE.md §5b).** The
