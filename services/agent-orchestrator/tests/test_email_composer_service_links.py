@@ -77,7 +77,7 @@ def test_falls_back_to_mudavym_when_frontend_url_is_unset(monkeypatch):
 
 
 def test_falls_back_to_mudavym_when_frontend_url_and_environment_are_unset(monkeypatch):
-    """[Added 2026-09-19] The real production shape ADR 0149 row 45 exists to
+    """The real production shape ADR 0149 row 45 exists to
     guard: a deploy that never sets ENVIRONMENT at all (not `"production"`,
     just absent) -- unlike the test above, which sets ENVIRONMENT=production
     explicitly. This is the case settings.py:166's `self.environment`

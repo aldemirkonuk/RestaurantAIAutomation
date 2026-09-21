@@ -1750,11 +1750,10 @@ Please try again or add items to inventory manually.""",
         ``settings.frontend_url`` reads ``FRONTEND_URL`` and defaults to
         ``https://mudavym.com``, falling back to ``http://localhost:5173``
         only when ``ENVIRONMENT`` is EXPLICITLY ``"development"`` or
-        ``DEBUG`` is true (ADR 0149 row 45, decided). [Corrected 2026-09-19]
-        This used to gate on ``self.environment``, whose own default turns
-        an unset ``ENVIRONMENT`` into ``"development"`` -- silently choosing
-        localhost in production. That was never an open question; it was a
-        bug, now fixed in ``settings.py``: unset is not development.
+        ``DEBUG`` is true (ADR 0149 row 45, decided). It deliberately reads
+        ``os.getenv("ENVIRONMENT")`` rather than ``settings.environment``,
+        whose own default turns an unset ``ENVIRONMENT`` into
+        ``"development"``.
         Production is expected to set ``FRONTEND_URL`` directly (Railway,
         ``preserve()``), so this file no longer needs its own guess at what
         "production" means.

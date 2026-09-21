@@ -291,7 +291,7 @@ class Settings:
         # mirroring the TypeScript fallbacks in this same pass (ADR 0149 row
         # 28) instead of always defaulting to localhost.
         #
-        # [Fixed 2026-09-19] Deliberately reads os.getenv("ENVIRONMENT")
+        # Deliberately reads os.getenv("ENVIRONMENT")
         # again here rather than self.environment. self.environment (line
         # 166) defaults an UNSET var to "development", so gating on it made
         # "ENVIRONMENT never set" -- a real production-orchestrator shape,

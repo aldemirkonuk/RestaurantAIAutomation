@@ -317,34 +317,20 @@ delivery day while the request behind it is rejected.
 owner gets it too, mounted alongside the recovered-money ledger (`ReceivingNext.tsx`'s
 `OwnerBody`).
 
-[Corrected 2026-09-19] This paragraph previously opened with a "Correction, wave-5 links"
-notice claiming the record here "previously said production has 'no manager role at all'".
-No committed ref, on any branch or remote, ever held that text in this file (checked by
-`git grep` across every branch and remote). [Corrected 2026-09-19, re-verification pass: the
-phrase itself was not fictional — it existed, committed, in `ReceivingNext.tsx` line 19, via
-this worktree's own auto-snapshot ref `refs/snapshots/wt-fin-links/20260919T0325` (commit
-`7e8f407dd`), before being edited away. That is a committed ref, just not a branch or a
-remote, so the original sweep over `git branch -a` and remotes missed it. `receiving.md`
-itself stayed clean throughout — the claim above holds for this file, not for "any committed
-ref" anywhere.] That correction-of-a-correction is struck rather than carried forward.
-
-Measured live against `user_restaurant_access` (Supabase MCP, SELECT only). First measured
-2026-09-18; re-measured 2026-09-19 per CLAUDE.md §5b, and the counts hold: 10 owner rows
-across all 10 restaurants, 4 manager rows in 4 of them — one each — [Corrected 2026-09-19:
-previously said "in 3 of them"] and **1 staff row** (Sim Bistro, `12823c23-…`, granted
-2026-09-03, in the same restaurant as one of the four managers). 6 of the 10 restaurants
-remain owner-only. So the "permission-denied" row above was previously leaving that queue
-unreachable in most houses.
+Measured live against `user_restaurant_access` (Supabase MCP, SELECT only) 2026-09-18,
+re-measured 2026-09-19: 10 owner rows across all 10 restaurants, 4 manager rows in 4 of
+them (one each), 1 staff row (Sim Bistro, `12823c23-…`, granted 2026-09-03, in a house
+that also has a manager); 6 of 10 remain owner-only. So the "permission-denied" row above
+was previously leaving that queue unreachable in most houses.
 
 There is still no gateway-level RBAC guard in this tree on `GET /procurement/receiving/queue`,
-`GET /procurement/credits` or `POST /procurement/credits/:id/transition` — any authenticated
-member of the house, staff included, can call all three today. That is decided, not open:
-the founder said "Refuse staff on all four" (queue, credits list, stats, transition), and
-ADR 0167 (peer branch `fix/receiving-credits-refuse-staff` [Corrected 2026-09-19: previously
-said "uncommitted as of 2026-09-19" — it is in fact committed and pushed to origin on that
-branch (Locked 2026-09-19), only not yet merged into this lane's tree]) owns building the
-gateway 403 for these routes. The role split above remains a client-side
-rendering choice only on this page; server-side enforcement lands with ADR 0167, not here.
+`GET /procurement/credits`, `GET /procurement/credits/stats` or `POST
+/procurement/credits/:id/transition` — until ADR 0167 lands, any authenticated member of the
+house, staff included, can call all four today. ADR 0167 (founder: "Refuse staff on all four"
+— queue, credits list, stats, transition; peer branch `fix/receiving-credits-refuse-staff`,
+Locked 2026-09-19, not yet merged here) owns the gateway 403 for these routes. The role split
+above remains a client-side rendering choice only on this page; server-side enforcement lands
+with ADR 0167, not here.
 
 ## 13. Roadmap
 
