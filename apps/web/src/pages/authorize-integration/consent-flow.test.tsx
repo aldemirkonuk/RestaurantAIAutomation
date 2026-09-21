@@ -4,6 +4,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AuthContext } from '../../contexts/AuthContext'
+import { PageGate } from '../../components/mudavym/PageGate'
 import { integrationsApi } from '../../services/api/integrations'
 import { consentFixture } from './__tests__/consent-fixture'
 import { prepareConsentBrowser } from './consent-browser'
@@ -156,10 +157,60 @@ describe('CompleteIntegrationConsent honours the ADR 0133 public-door switch (fo
     // branch -- irrelevant to what is under test here, which is the SHELL
     // wrapping either branch, not which branch renders.
     expect(await screen.findByRole('alert')).toHaveTextContent('This tab does not hold')
-    // `.mdv-auth-shell` only exists on AuthorizeShell's own two ON branches
-    // (see AuthorizeShell.tsx) -- PublicShell's root never carries it. Before
+    // `.mdv-auth-shell` only exists on AuthorizeShell's own ON path (see
+    // AuthorizeShell.tsx) -- PublicShell's root never carries it. Before
     // this fix, this page rendered PublicShell unconditionally and this
     // assertion could never pass no matter how the switch was set.
     expect(document.querySelector('.mudavym')).toHaveClass('mdv-auth-shell')
+  })
+})
+
+// Round 5, 2026-09-21 -- the regression the round-4 review found and this
+// test is written to catch again. `AuthorizeIntegrationNext` used to pass
+// `chrome="ambient"` to `AuthorizeShell` on the belief that `PageGate`
+// (mounted here, exactly as `App.tsx` mounts it for the real route) already
+// wraps this page in a working `HouseHeader`. It does not: `authorize_
+// integration` is in `NO_CHROME` (`lib/mudavym/pageNames.ts`), so
+// `HouseHeader` returns `null` for it (`HouseHeader.tsx`) -- the flag-on page
+// had no frame at all: no wordmark, no skip link, no exit link.
+//
+// FAILING BEFORE THIS FIX: re-adding `chrome="ambient"` to
+// `AuthorizeIntegrationNext`'s `<AuthorizeShell>` call reproduces it --
+// both assertions below fail (zero level-1 headings, no link to /profile).
+vi.mock('../../lib/mudavym/useMudavymDesign', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/mudavym/useMudavymDesign')>()
+  return { ...actual, useMudavymDesign: () => true }
+})
+
+describe('AuthorizeIntegrationNext through PageGate, design flag ON (round-5 regression, KL must-fix 1)', () => {
+  const houseAuth = {
+    user: { userId: 'person', restaurantId: 'house-1', name: 'Jordan Rivera' },
+    activeRestaurantId: 'house-1',
+    availableRestaurants: [{ id: 'house-1', name: 'The Anchor', city: null, chain_id: null, chain_name: null }],
+  } as never
+
+  beforeEach(() => {
+    vi.clearAllMocks(); vi.stubGlobal('crypto', webcrypto); sessionStorage.clear()
+    vi.mocked(integrationsApi.getConsent).mockResolvedValue(disclosure)
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('PageGate mounts a masthead and an exit link for this NO_CHROME page -- neither comes from HouseHeader', async () => {
+    render(
+      <AuthContext.Provider value={houseAuth}>
+        <MemoryRouter initialEntries={['/authorize/gmail_send?returnPath=/profile']}>
+          <Routes>
+            <Route
+              path="/authorize/:integrationId"
+              element={<PageGate page="authorize_integration" legacy={<div />} next={<AuthorizeIntegrationNext />} />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+    await screen.findByRole('button', { name: /Hold to continue to Google/ })
+    expect(screen.getAllByRole('heading', { level: 1 }).length).toBeGreaterThan(0)
+    const links = screen.getAllByRole('link')
+    expect(links.some((link) => link.getAttribute('href') === '/profile')).toBe(true)
   })
 })

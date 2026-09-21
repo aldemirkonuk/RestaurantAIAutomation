@@ -44,23 +44,45 @@
  * byte for byte. This is the whole reason `PublicShell` is still imported
  * here rather than replaced outright.
  *
- * Design ON -> two chrome modes, because the two call sites are not in the
- * same position:
- *   - `chrome="own"` (the default) -- for `/authorize/complete`, which sits
- *     OUTSIDE `PageGate`/`ProtectedRoute` in App.tsx and so has no ambient
- *     masthead of any kind. Draws a light Wordmark-only signature (no Seal --
- *     neither call site has ever asked for one; both already pass
- *     `seal={false}` to today's `PublicShell`), the page's own eyebrow/title/
- *     voice, and a footer slot.
- *   - `chrome="ambient"` -- for `/authorize/:integrationId`'s Next component,
- *     which `PageGate` already wraps in a `HouseHeader` whenever its `next`
- *     branch renders (`PageGate.tsx`: "above `next`, on the branch that is
- *     already showing the redesign"). A second Wordmark signature under that
- *     would be a second, competing signed-in masthead on one screen, so this
- *     mode renders the page's own eyebrow/title/voice/content WITHOUT a
- *     second signature line. Because reaching this component at all means
- *     `PageGate` already chose the redesign, `chrome="ambient"` never falls
- *     back to `PublicShell` -- there is no "off" state reachable here.
+ * Design ON -> ONE frame, both call sites, that STATES ITS IDENTITY when it
+ * has one:
+ *   - A house is known (`AuthContext.activeRestaurantId`): the masthead names
+ *     WHO is granting (`AuthContext.user.name`) and FOR WHICH HOUSE (the
+ *     matching `AuthContext.availableRestaurants` entry), read straight from
+ *     context -- never invented, never a second network read. No navigation
+ *     accompanies it: a name and a house, never a switcher or a link to
+ *     anywhere but this shell's own single "leave" affordance (`homeHref`,
+ *     unchanged), so the identity line does not reopen the "ways to wander
+ *     off mid-grant" door App.tsx's own route comment keeps shut.
+ *   - No house is known: there is nothing true to say about who or which
+ *     house, so the masthead falls back to a plain Wordmark signature and no
+ *     identity claim -- the shape this shell has always drawn for its
+ *     design-ON, no-house case.
+ * Both `/authorize/complete` and `/authorize/:integrationId`'s Next component
+ * call this SAME function, with no mode flag between them: which branch
+ * renders is a fact about whether a house is known, not about which route
+ * called it.
+ *
+ * [CORRECTED 2026-09-21 -- what stood here before was wrong, and it was a
+ * regression, not a style choice. The prior build (2026-09-19) gave the two
+ * call sites two different `chrome` props: `chrome="own"` drew this shell's
+ * Wordmark-only frame unconditionally (never stating who or which house, so
+ * design-ON looked identical to design-OFF's `PublicShell`), and
+ * `chrome="ambient"` drew NOTHING of this shell's own -- on the belief that
+ * `PageGate` already wraps `/authorize/:integrationId`'s Next component in a
+ * working `HouseHeader`. It does not: `authorize_integration` is listed in
+ * `NO_CHROME` (`lib/mudavym/pageNames.ts`) precisely so this ceremony gets no
+ * app-wide chrome, and `HouseHeader` returns `null` for any `NO_CHROME` page
+ * (`components/mudavym/HouseHeader.tsx`). So with the design flag ON, that
+ * page lost every trace of a frame it had ever had: no wordmark, no skip
+ * link, no exit link (reproduced with a DOM probe against `PageGate`: 1
+ * wordmark and 2 links before this build, 0 and 0 after). Fixed by deleting
+ * the `chrome` prop and the mode split entirely -- there was never a real
+ * ambient masthead to defer to, so there was nothing to preserve by keeping
+ * two branches. Tests: `AuthorizeShell.test.tsx`'s former
+ * `chrome="ambient"` describe block is replaced by one covering the identity
+ * frame; `consent-flow.test.tsx` adds a `PageGate`-mounted regression test
+ * for the exact defect above.]
  *
  * Visual polish beyond reusing `PublicShell`'s own tokens and structural
  * classes (`.mdv-pub__*`, from `public-shell.css`) is deliberately NOT
@@ -68,7 +90,10 @@
  * treatment of this ceremony, and the ask was the architecture (the shell
  * choice, driven by the flag and the switch), not new unreviewed chrome --
  * the same "delegate the shape, keep the mechanism honest" split ADR 0144
- * §2 drew for `/help`.
+ * §2 drew for `/help`. The identity line added by this correction is the
+ * same discipline applied to itself: a bare, unstyled line built from
+ * `.mdv-pub__mast`'s existing rhythm, carrying its own marker class
+ * (`mdv-auth-shell__identity`) and no new CSS rule.
  */
 
 import { useContext, useId, type ReactNode } from 'react';
@@ -85,38 +110,30 @@ import { Wordmark } from '../../components/mudavym/Wordmark';
  */
 export function useAuthorizeDesignOn(): boolean {
   const activeRestaurantId = useContext(AuthContext)?.activeRestaurantId ?? null;
-  // Both hooks are always called -- Rules of Hooks -- even when the caller
-  // (chrome="ambient") never reads this value.
+  // Both hooks are always called -- Rules of Hooks -- even when the result of
+  // one is not the one that decides.
   const houseDesignOn = useMudavymDesign('authorize_integration');
   const publicDoorOn = usePublicDesign();
   return activeRestaurantId ? houseDesignOn : publicDoorOn;
 }
 
 export interface AuthorizeShellProps extends Omit<PublicShellProps, 'ground' | 'seal'> {
-  /**
-   * 'own' (default): draw a light masthead of this shell's own. Used by
-   * `/authorize/complete`, which has no ambient masthead.
-   * 'ambient': content only, no signature line. Used by
-   * `/authorize/:integrationId`'s Next component, which `PageGate` already
-   * places under a `HouseHeader`.
-   */
-  chrome?: 'own' | 'ambient';
   children: ReactNode;
 }
 
-export function AuthorizeShell({ chrome = 'own', title, eyebrow, voice, footer, measure, homeHref, className, mainClassName, children }: AuthorizeShellProps) {
+export function AuthorizeShell({ title, eyebrow, voice, footer, measure, homeHref, className, mainClassName, children }: AuthorizeShellProps) {
   const mainId = `mdv-auth-main-${useId().replace(/:/g, '')}`;
-  // Always called, unconditionally, above every branch below (Rules of
-  // Hooks) -- the 'ambient' path does not read the result, because reaching
-  // it at all means PageGate already decided the design is on.
+  const auth = useContext(AuthContext);
   const designOn = useAuthorizeDesignOn();
-  // The heading block every ON rendering shares. `signature` is `null` in
-  // ambient mode (PageGate's HouseHeader already signed the screen) and a
-  // Wordmark-only mark (never a Seal -- see file header) otherwise.
-  function heading(signature: ReactNode) {
+
+  // The heading block every ON rendering shares. `identity` is `null` when no
+  // house is known (nothing true to say) and the who/which-house line
+  // otherwise.
+  function heading(signature: ReactNode, identity: ReactNode) {
     return (
       <header className="mdv-pub__mast">
         {signature}
+        {identity}
         {eyebrow ? <span className="mdv-pub__eyebrow">{eyebrow}</span> : null}
         <h1 className="mdv-pub__title">{title}</h1>
         {voice ? <p className="mdv-pub__voice">{voice}</p> : null}
@@ -130,18 +147,6 @@ export function AuthorizeShell({ chrome = 'own', title, eyebrow, voice, footer, 
   );
   const foot = footer ? <footer className="mdv-pub__foot">{footer}</footer> : null;
 
-  if (chrome === 'ambient') {
-    return (
-      <div className={`mudavym mdv-pub mdv-auth-shell mdv-auth-shell--ambient${className ? ` ${className}` : ''}`} data-measure={measure ?? 'door'}>
-        <div className="mdv-pub__col">
-          {heading(null)}
-          {main}
-          {foot}
-        </div>
-      </div>
-    );
-  }
-
   if (!designOn) {
     return (
       <PublicShell title={title} eyebrow={eyebrow} voice={voice} footer={footer} measure={measure} homeHref={homeHref}
@@ -151,7 +156,17 @@ export function AuthorizeShell({ chrome = 'own', title, eyebrow, voice, footer, 
     );
   }
 
-  const signatureTakesFocus = Boolean(homeHref);
+  const activeRestaurantId = auth?.activeRestaurantId ?? null;
+  const houseKnown = Boolean(activeRestaurantId);
+  // Same lookup HouseHeader's own `HouseOfRecord` makes, so a person mid-list
+  // load or an id with no matching name behaves the same way here as it does
+  // there: fall back to the first known branch, else say nothing rather than
+  // invent a house name (ADR 0020).
+  const house = houseKnown
+    ? auth?.availableRestaurants?.find((b) => b.id === activeRestaurantId) ?? auth?.availableRestaurants?.[0] ?? null
+    : null;
+  const person = houseKnown ? auth?.user?.name || null : null;
+
   const mark = (
     <span className="mdv-pub__sign">
       <Wordmark size={measure === 'document' ? 15 : 19} />
@@ -165,15 +180,31 @@ export function AuthorizeShell({ chrome = 'own', title, eyebrow, voice, footer, 
     mark
   );
 
+  // Who is granting, and for which house -- no navigation, only a fact.
+  const identity = person || house ? (
+    <p className="mdv-auth-shell__identity">
+      {person ? <span className="mdv-auth-shell__person">{person}</span> : null}
+      {person && house ? (
+        <span aria-hidden="true"> · </span>
+      ) : null}
+      {house ? <span className="mdv-auth-shell__house">{house.name}</span> : null}
+    </p>
+  ) : null;
+
+  const signatureTakesFocus = Boolean(homeHref);
+
   return (
-    <div className={`mudavym mdv-pub mdv-auth-shell${className ? ` ${className}` : ''}`} data-measure={measure ?? 'door'}>
+    <div
+      className={`mudavym mdv-pub mdv-auth-shell${houseKnown ? ' mdv-auth-shell--identity' : ''}${className ? ` ${className}` : ''}`}
+      data-measure={measure ?? 'door'}
+    >
       {signatureTakesFocus ? (
         <a className="mdv-pub__skip" href={`#${mainId}`}>
           Skip to the content
         </a>
       ) : null}
       <div className="mdv-pub__col">
-        {heading(signature)}
+        {heading(signature, identity)}
         {main}
         {foot}
       </div>

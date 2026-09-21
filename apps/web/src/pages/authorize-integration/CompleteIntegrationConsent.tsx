@@ -41,11 +41,10 @@ export default function CompleteIntegrationConsent() {
   // the shell's own homeHref just below — never to a page some of the
   // people who can land here are not allowed to open.
   //
-  // `chrome="own"` (the default): this route sits outside PageGate and
-  // ProtectedRoute (App.tsx) — the round trip "can outlast a session" — so
-  // there is no ambient masthead to defer to, and this shell decides its own
+  // This route sits outside PageGate and ProtectedRoute (App.tsx) — the
+  // round trip "can outlast a session" — so this shell decides its own
   // design (per-house flag if a house is known, else the public-door switch;
-  // see AuthorizeShell.tsx).
+  // see AuthorizeShell.tsx) rather than deferring to any ambient chrome.
   return <AuthorizeShell title={error ? 'The permission did not finish' : 'Finishing your connection'} eyebrow="Returning from the provider" homeHref="/profile">
     {error ? <p role="alert" className="mdv-alert">{error}</p> : <p role="status">Checking this tab’s permission and recording the provider’s answer…</p>}
     {error && <a className="mdv-link" href="/profile">Open Profile</a>}

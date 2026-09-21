@@ -14,12 +14,20 @@ import { ReadingId } from "./reading.types";
 // this file's import and the catalogue's `allowedRoles` entries (or
 // widening every restricted entry back to `ALL_ROLES`) reproduces that: the
 // "restricted readings" test below would then find zero rows.
+//
+// [CORRECTED 2026-09-21, KL round 5: `orders.late_deliveries` added to
+// RESTRICTED. It reads the identical `open` order set `orders.open`
+// computes (`reading-runner.ts`), filtered by date, and lists the same
+// three columns -- left on `ALL_ROLES`, it let a staff caller refused
+// `orders.open` reach the same rows through a wide-enough past window. Same
+// category (open-order) as `orders.open`, so the same gate. Six restricted,
+// not five; nine open, not ten.]
 
-const RESTRICTED: ReadingId[] = ["receipts.verified_line", "vendors.active", "orders.open", "sales.check_activity", "sales.consumption"];
+const RESTRICTED: ReadingId[] = ["receipts.verified_line", "vendors.active", "orders.open", "orders.late_deliveries", "sales.check_activity", "sales.consumption"];
 const OPEN: ReadingId[] = READING_CATALOGUE.map(r => r.id).filter(id => !RESTRICTED.includes(id));
 
 describe("READING_CATALOGUE: the named restricted set matches the founder's four categories exactly", () => {
-  it("names exactly the five readings under price, vendor, open-order and sales -- no more, no fewer", () => {
+  it("names exactly the six readings under price, vendor, open-order and sales -- no more, no fewer", () => {
     const actuallyRestricted = READING_CATALOGUE.filter(r => r.allowedRoles === OWNER_MANAGER_ONLY || !r.allowedRoles.includes("staff")).map(r => r.id);
     expect(actuallyRestricted.sort()).toEqual([...RESTRICTED].sort());
   });
@@ -31,16 +39,16 @@ describe("READING_CATALOGUE: the named restricted set matches the founder's four
     }
   });
 
-  it("the ten open readings are untouched: ALL_ROLES, staff included", () => {
+  it("the nine open readings are untouched: ALL_ROLES, staff included", () => {
     for (const id of OPEN) {
       const descriptor = READING_CATALOGUE.find(r => r.id === id)!;
       expect(descriptor.allowedRoles).toEqual(ALL_ROLES);
     }
-    expect(OPEN.length).toBe(10);
+    expect(OPEN.length).toBe(9);
   });
 });
 
-describe("isReadingAllowedForRole: the five restricted readings (price, vendor, open-order, sales)", () => {
+describe("isReadingAllowedForRole: the six restricted readings (price, vendor, open-order, sales)", () => {
   for (const id of RESTRICTED) {
     it(`${id}: owner yes, manager yes, staff no, admin yes (mirrors RolesGuard), unknown/null/empty no`, () => {
       expect(isReadingAllowedForRole(id, "owner")).toBe(true);
@@ -61,7 +69,7 @@ describe("isReadingAllowedForRole: the five restricted readings (price, vendor, 
   }
 });
 
-describe("isReadingAllowedForRole: the ten open readings are reachable by every role, unchanged", () => {
+describe("isReadingAllowedForRole: the nine open readings are reachable by every role, unchanged", () => {
   for (const id of OPEN) {
     it(`${id}: owner, manager, staff, admin, and even an unrecognised/null role all pass`, () => {
       expect(isReadingAllowedForRole(id, "owner")).toBe(true);

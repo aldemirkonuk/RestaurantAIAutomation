@@ -1,6 +1,6 @@
 # 0144 — The book opens on evidence, and three pages are given a job
 
-- **Status:** Locked on four founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 11, 13 and 16: the arrival's threshold, `/onboarding` redirect and tutorial action boxes; a correction to section 3's count of locked records; and the `/authorize` residue. Answered, not built. Each is a bracket at the sentence it touches.]** **[2026-09-19, founder batch 4, KL lane — three of the four residue items below answered and two built; see the Review trail and the bracket at each.]**
+- **Status:** Locked on four founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 11, 13 and 16: the arrival's threshold, `/onboarding` redirect and tutorial action boxes; a correction to section 3's count of locked records; and the `/authorize` residue. Answered, not built. Each is a bracket at the sentence it touches.]** **[2026-09-19, founder batch 4, KL lane — three of the four residue items below answered and two built; see the Review trail and the bracket at each.]** **[2026-09-21, KL lane round 5 — the `/authorize` frame built 2026-09-19 was a regression (no masthead at all on `/authorize/:integrationId` with the flag on); corrected, one frame for both routes, plus three attribution relabels. See the Review trail and the bracket at each.]**
 - **Date:** 2026-09-12
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** mudavym, onboarding, folio zero, first evidence, help, vendor-prices, price register, promotions, offers, landed cost, design wave
@@ -262,16 +262,18 @@ the first fix round's judge, unchanged this round):**
   it"; the build binds to the TAB (`sessionStorage`), so a second tab of the
   same browser is refused. The D1 fix above is orthogonal to this question —
   it is about a second PERSON, not a second tab of one person.
-  **[CONFIRMED 2026-09-19, founder batch 4, his words: "provider grant = tab
-  scope OK." The build's narrower promise stands as built; no change made.]**
+  **[CONFIRMED 2026-09-19, founder batch 4 — the recorded answer, not a
+  quotation (see the paraphrase note dated 2026-09-21 below the amendment
+  heading): provider grant stays tab-scoped. The build's narrower promise
+  stands as built; no change made.]**
 - `/authorize` and `/authorize/complete` render on `PublicShell`, built for
   signed-OUT pages, for a signed-IN ceremony; `/authorize/complete` also
   ignores the house's design flag and the ADR 0133 public-door switch.
-  **[ANSWERED AND BUILT 2026-09-19, founder batch 4, his words: "/authorize
-  and /authorize/complete: do what's needed, not short term" -> give both
-  pages a proper signed-in frame that honours the design flag and the ADR
-  0133 public-door switch, instead of `PublicShell`. Built this round as
-  `AuthorizeShell`
+  **[ANSWERED AND BUILT 2026-09-19, founder batch 4, on `/authorize` and
+  `/authorize/complete` — his words, verbatim: "do what's needed, not short
+  term" -> give both pages a proper signed-in frame that honours the design
+  flag and the ADR 0133 public-door switch, instead of `PublicShell`. Built
+  this round as `AuthorizeShell`
   (`apps/web/src/pages/authorize-integration/AuthorizeShell.tsx`): a house
   known via `AuthContext` is gated on the per-house flag
   (`useMudavymDesign('authorize_integration')`, the same flag
@@ -293,18 +295,66 @@ the first fix round's judge, unchanged this round):**
   delegate-the-shape split ADR 0144 §2 drew for `/help`. Tests:
   `AuthorizeShell.test.tsx` (12 cases) plus the pre-existing
   `consent-flow.test.tsx` (8 cases, unmodified, still green).]**
+  **[CORRECTED 2026-09-21 — the sentence above naming `chrome="ambient"` and
+  a `HouseHeader` `PageGate` mounts was FALSE, and it was a regression, not a
+  detail. `authorize_integration` is listed in `NO_CHROME`
+  (`apps/web/src/lib/mudavym/pageNames.ts`) precisely so this ceremony gets
+  no app-wide chrome, and `HouseHeader` returns `null` for any `NO_CHROME`
+  page (`apps/web/src/components/mudavym/HouseHeader.tsx`). So with the
+  design flag ON, `/authorize/:integrationId` had NO masthead at all — no
+  wordmark, no skip link, no exit link — while `/authorize/complete`'s
+  `chrome="own"` frame drew a Wordmark with no identity claim, indistinguishable
+  from `PublicShell`. Confirmed with a DOM probe mounting `PageGate` with the
+  flag on: 1 wordmark and 2 links before this build, 0 and 0 after. Round 5
+  (2026-09-21) fixed this: the `chrome` prop and its two-mode split are
+  deleted. `AuthorizeShell` now has exactly ONE design-ON frame, used
+  unconditionally by both call sites, which additionally states WHO is
+  granting (`AuthContext.user.name`) and FOR WHICH HOUSE (the matching
+  `AuthContext.availableRestaurants` entry) whenever a house is known — no
+  navigation accompanies it, only the shell's pre-existing single exit link —
+  and falls back to the plain Wordmark signature with no identity claim only
+  when no house is known. Tests: `AuthorizeShell.test.tsx` (14 cases,
+  replacing the `chrome="ambient"` describe block with one covering the
+  identity frame) plus `consent-flow.test.tsx` (10 cases — re-measured at 9
+  pre-existing and unmodified, correcting this same bracket's earlier "8"
+  above, plus 1 new: a `PageGate`-mounted regression test proving the exact
+  defect this correction describes, shown failing against the pre-round-5
+  code and passing after). Verified against a real browser too, not only
+  jsdom: a temporary, uncommitted Vite harness mounted the actual
+  `AuthorizeShell.tsx` through Playwright, confirming design OFF renders
+  literally `.mudavym.mdv-pub` (no `mdv-auth-shell` class — real
+  `PublicShell`), design ON with no house renders `.mdv-auth-shell` alone,
+  and design ON with a house renders `.mdv-auth-shell.mdv-auth-shell--identity`
+  with the identity text present and exactly two links (the skip link and
+  the `/profile` exit) — no navigation. `apps/web` `tsc --noEmit` clean.]**
 - `integration_consent_receipts` is `ON DELETE CASCADE` with the user and the
   house; whether a consent record should outlive the account it was made on
   is undecided.
-  **[CONFIRMED 2026-09-19, founder batch 4, his words: "consent receipts =
-  delete with the account." The existing `ON DELETE CASCADE`
+  **[CONFIRMED 2026-09-19, founder batch 4 — the recorded answer, not a
+  quotation: consent receipts delete with the account. The existing
+  `ON DELETE CASCADE`
   (`supabase/migrations/20260913191200_integration_consent_receipts.sql`) is
   the intended behaviour; no migration change made.]**
+
+**Paraphrase note, added 2026-09-21 (round 5, KL must-fix 6).** Two of the
+three brackets above previously read "his words: \"...\"" around text the
+founder did not say verbatim. On this ceremony, across the whole 2026-09-19
+session, his only two
+verbatim sentences are quoted in full above: *"do what's needed, not short
+term"* (the frame question) and, on `/ask`'s roles (a different record —
+[[0145-mudavym-answers-out-of-a-reading]]), *"do not give money or sensitive
+incentives like sales etc to the staff, maybe we should exclude staff from
+this equation."* Everything else attributed to him above — "provider grant =
+tab scope OK", "consent receipts = delete with the account", and the
+"/authorize and /authorize/complete:" preamble that used to precede the real
+quote — is this session's own paraphrase of what he confirmed, not something
+he said in those words. Relabelled in place; no answer changes.
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-21 | KL lane, round 5 (fixing a round-4 review's must-fix list) | Corrected a regression the 2026-09-19 row below shipped: `/authorize/:integrationId` had no masthead at all with the design flag on, because `PageGate` never mounts a working `HouseHeader` for a `NO_CHROME` page. `AuthorizeShell`'s `chrome="own"`/`chrome="ambient"` split is deleted; one frame now states who is granting and for which house when `AuthContext` knows one, with no navigation, and falls back to a plain Wordmark signature otherwise. Also relabelled three paraphrases that had been recorded as the founder's verbatim words as the recorded answers they actually are (see the paraphrase note above). Brackets and the code both changed this round — see AuthorizeShell.tsx's own file header for the full correction |
 | 2026-09-19 | Aldemir (founder, batch 4), built same day by KL lane | Answered three of the four residue items: tab-scope binding confirmed as built (no change); consent-receipt cascade confirmed as intended (no change); `/authorize` + `/authorize/complete` given a proper signed-in frame (`AuthorizeShell`) honouring the design flag and the ADR 0133 public-door switch, replacing `PublicShell`. The WineOps-copy item stays open, unscoped. Brackets only, nothing rewritten |
 | 2026-09-17 | KL lane (2 fix rounds) | Built `/authorize` per line 135 and row 16 of ADR 0149; closed D1 (account injection via a one-callback forwarded provider URL) with a second, delivery-secret binding; made migrations `20260913190800`/`191200` idempotent; fixed the error exit's dead-end link. See amendment above |
 | 2026-09-16 | Aldemir, via ADR 0149 | Rows 11, 13, 16: threshold on folio 2, `/onboarding` redirect, tutorial action boxes for review; "six locked ADRs" corrected to the measured statuses; `/authorize` serves and seals its disclosure and claims, keeps the seal id and words digest, and each return page reads the outcome. Brackets only, nothing rewritten |

@@ -1,6 +1,6 @@
 # 0145 — Mudavym answers out of a reading, and only the query that ran may mint one
 
-- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as a future `/ask` direction, not yet specified in this repo. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]**
+- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]**
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Date:** 2026-09-12
 - **Keywords:** ask, /ask, Mudavym, assistant, reading, finding, provenance, hollow build, refusal shapes, seal, ask-ai, sommelier
@@ -350,6 +350,9 @@ build task 5 (the un-gated shelf endpoint), tasks 9, 11, 14 and 15, and the
 step has the Sonnet-5 call select up to 8 cell ids and write no prose of its
 own — narrower than Fork 1's "answer on Sonnet 5" — a question this amendment
 repeats rather than answers, since no row in ADR 0149 covers it.
+**[ANSWERED 2026-09-19 — this is exactly the question the founder's "cell
+picker confirmed" answer resolves: see "Confirmed and built: the cell
+picker" in the "Amendment, 2026-09-19" section just below.]**
 
 ---
 
@@ -374,18 +377,32 @@ sales-shaped and this rule does not touch them:
   `Provenance`/`ReadingOutcome` types already hold to (an omitted field
   silently meaning "open to everyone" is exactly the unstated assumption
   R8's statedness rule exists to forbid).
-- Five readings carry `OWNER_MANAGER_ONLY` (`reading-catalogue.ts`):
+- Six readings carry `OWNER_MANAGER_ONLY` (`reading-catalogue.ts`):
   `receipts.verified_line` (price — the only reading carrying a price
-  basis), `vendors.active` (vendor), `orders.open` (open-order, the
-  founder's own word), `sales.check_activity` and `sales.consumption`
-  (sales). The other ten keep `ALL_ROLES`, unchanged from today.
+  basis), `vendors.active` (vendor), `orders.open` and
+  `orders.late_deliveries` (open-order — the recorded category for both,
+  not the founder's own word), `sales.check_activity` and
+  `sales.consumption` (sales). The other nine keep `ALL_ROLES`, unchanged
+  from today.
+  **[CORRECTED 2026-09-21, KL round 5: `orders.late_deliveries` was left off
+  this list and off `OWNER_MANAGER_ONLY` when this section was first
+  written. `reading-runner.ts` builds it from the exact same `open` order
+  set `orders.open` computes, filtered further by date, and lists the same
+  three columns (`order_number`, `status`, `expected_delivery_date`) — so a
+  staff caller refused `orders.open` could ask for late deliveries over a
+  wide past window and read every one of those rows anyway. Closed by
+  setting `orders.late_deliveries` to `OWNER_MANAGER_ONLY` alongside
+  `orders.open`; see `reading-catalogue.spec.ts`'s matrix and
+  `CLAIMS.jsonl`'s `ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-SIX-READINGS`
+  (renamed from `...-EXACTLY-FIVE-READINGS`).]**
 - `isReadingAllowedForRole(id, role)` mirrors `RolesGuard`'s own
   admin-equivalence rule (`auth/guards/roles.guard.ts`) rather than
   reimplementing role logic a second time: owner/manager/admin pass a
   restricted reading, staff and a null/unrecognised role do not; every role
   passes an open reading, exactly as before this change (a null role is
-  NOT newly blocked from the ten open readings — only the five restricted
-  ones are newly gated).
+  NOT newly blocked from the open readings — only the restricted
+  ones are newly gated; nine and six respectively as of 2026-09-21, see
+  the corrected bullet above).
 - `BoundAskService.submit` checks this AFTER the question is classified to a
   reading (by the page's own choice or the Haiku pick call) but BEFORE
   `ReadingRunner` is ever constructed — zero DB reads, zero compose-model
@@ -418,9 +435,10 @@ sales-shaped and this rule does not touch them:
   touched files pass after. `apps/api-gateway`'s full `tsc --noEmit -p
   tsconfig.spec.json` is clean.
 
-### Confirmed, recorded, not built: the cell picker
+### The cell picker: confirmed and built [RETITLED 2026-09-21 — was "Confirmed, recorded, not built: the cell picker"]
 
-Founder batch 4, his words: *"/ask = cell picker confirmed."* Recorded as
+Founder batch 4 — the recorded answer, not a quotation: cell picker
+confirmed. Recorded as
 his direction for whatever `/ask` sketch is drawn next. **Honestly: this
 session could not find a prior specification of "the cell picker" anywhere
 in this repository** — no `.planning/06-pages/ask.md` exists yet (per this
@@ -432,6 +450,24 @@ exists. If the concept lived in a workflow scratchpad or a verbal pitch this
 session did not have access to, whoever draws the `/ask` sketch should
 recover its actual shape from the founder rather than reverse-engineering it
 from this paragraph.
+
+**[CORRECTED 2026-09-21, KL round 5 — the paragraph above misread this
+answer, on both counts the retitled heading now fixes. "Cell picker
+confirmed" is not a free-floating intent with no prior specification: it
+answers this record's OWN still-open question, bracketed ANSWERED 2026-09-19
+two sections above (the pre-amendment text ending "a question this amendment
+repeats rather than answers, since no row in ADR 0149 covers it") — whether
+`bound-ask.service.ts`'s compose step, which has Sonnet 5 select up to eight
+cell ids from a Finding and write no prose of its own, is Fork 1's intended,
+STRICTER reading of "answer on Sonnet 5". It is confirmed as exactly that.
+And it is not unbuilt: `BoundAskService.compose()` has shipped this exact
+shape since the first KL round (2026-09-17), proven in
+`bound-ask.service.spec.ts`, unchanged by this correction. No new code
+follows from this bracket — only the record. "His words" above should read
+as this session's recorded answer to that question, not a verbatim
+quotation; the founder's two verbatim sentences from this same 2026-09-19
+session are quoted in full in the "Amendment, 2026-09-19" heading's
+paragraph above and in the staff-reach bullet below.]**
 
 ### Still open, deliberately not decided here: staff reach, and dates
 
@@ -447,21 +483,24 @@ allocated, rather than leaving them findable only by reading this ADR.
 - **Whether staff reach `/ask` at all.** His words: *"do not give money or
   sensitive incentives like sales etc to the staff, maybe we should exclude
   staff from this equation."* His LEANING is to exclude staff from `/ask`
-  entirely, not only from the five restricted readings — but he named this
+  entirely, not only from the restricted readings (six as of 2026-09-21 —
+  see the corrected count above) — but he named this
   as something to confirm with the `/ask` page sketch, not a standing
-  decision. Nothing in this session narrows `/ask` access by role beyond the
-  five readings above; a staff caller can still reach `/ask` itself and every
-  one of the ten open readings today.
-- **`/ask`'s date handling.** His words: *"/ask dates = decide with the
-  `/ask` sketch."* `ReadingArgs.from`/`to` (`reading.types.ts`) exist and
+  decision. Nothing in this session narrows `/ask` access by role beyond
+  those six readings; a staff caller can still reach `/ask` itself and every
+  one of the nine open readings today.
+- **`/ask`'s date handling.** The recorded answer, not a quotation:
+  `/ask`'s dates are to be decided with the
+  `/ask` sketch. `ReadingArgs.from`/`to` (`reading.types.ts`) exist and
   several readings already declare `window: true`, but how a person actually
   picks or types a date range on the page itself is undecided and unbuilt.
 
 **Founder question this session could not settle, with options and a
 recommendation, for whoever runs the `/ask` sketch session:** given the
 founder's stated leaning (exclude staff from `/ask` outright) sits ONE STEP
-past what is actually built (staff excluded only from five readings), should
-an interim, pre-sketch state (a) leave `/ask` reachable by staff for the ten
+past what is actually built (staff excluded only from six readings as of
+2026-09-21), should
+an interim, pre-sketch state (a) leave `/ask` reachable by staff for the nine
 open readings, as built here — cheapest, matches his literal instruction
 ("money or sensitive... readings"), but staff can still use the page in the
 meantime; or (b) gate the whole `/ask` route to owner/manager now, ahead of

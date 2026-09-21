@@ -26,9 +26,10 @@ export default function AuthorizeIntegrationNext() {
   // thing was a duplicate exit (KL audit J12). `homeHref` stays -- it is the
   // shell's own "leave the flow entirely" affordance, not this page's.
   //
-  // `chrome="ambient"`: `PageGate` (App.tsx) already wraps this component in
-  // a `HouseHeader` whenever it is mounted at all -- see AuthorizeShell.tsx.
-  return <AuthorizeShell chrome="ambient" title={entry ? `Connect ${entry.label}` : 'Permission to connect'}
+  // AuthorizeShell draws its own frame -- see that file's header for why
+  // (round 5, 2026-09-21: PageGate does not mount a working HouseHeader for
+  // this NO_CHROME page, so there was never an ambient masthead to defer to).
+  return <AuthorizeShell title={entry ? `Connect ${entry.label}` : 'Permission to connect'}
     eyebrow="A personal permission" voice={doc?.statements.personalAccount} measure="document"
     homeHref="/profile">
     <div className="mdv-consent">
