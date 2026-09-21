@@ -227,7 +227,8 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // specific 2026-09-19 ~09:20Z answer (memory
     // founder-sketch-decisions-106-115.md, "19-lane blocking answers")
     // overrides that and requires exactly this gate. Column added by
-    // 20260919110000.
+    // 20260921000000 (renamed from 20260919110000 — that version was older
+    // than origin/main and several sibling worktrees; see vendor-prices.md).
     defaultValue: false,
     // Every sibling entry above cites :105, which was already stale before
     // this addition (useMudavymDesign() is at :122 as of this same edit,

@@ -140,8 +140,9 @@ export interface OwnPaperSightingRow {
    * the caller supplied a `priorCount`. Before this field existed, an
    * own-paper row was judged (`is_outlier` was a real true/false) but said
    * nothing about it, so the register read "No judge has looked at this
-   * row" for a row that HAD been looked at (review finding, ADR 0160 §112
-   * fork 6a: "the two writer changes… owed now").
+   * row" for a row that HAD been looked at. Its own review finding — not
+   * ADR 0160 §112 fork 6(a), which is the still-unbuilt `document_id` +
+   * line-reference provenance (see `vendor-prices.md` §0).
    */
   outlier_reason: string | null;
   outlier_basis: "write_time" | null;

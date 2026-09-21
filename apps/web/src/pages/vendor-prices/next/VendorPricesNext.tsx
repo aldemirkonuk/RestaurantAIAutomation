@@ -31,10 +31,14 @@
  * What it does NOT carry — named rather than silently dropped (CLAUDE.md
  * §0.5): the seal's "lowest quote before terms" (needs `vendor-terms`), C's
  * full page-turn popover with per-mark counts and cross-checked totals, and
- * fork 6(a)'s line-level document excerpt (the sketch's own costed second
- * step, needing two writer changes and an attach-a-paper step — see the page
- * note). Recording a price from a conversation (its message and person) is a
- * founder question, not built: see the fix note.
+ * fork 6(a)'s full provenance (document, message, person) — the founder put
+ * this in the FIRST build, not a later step, and none of it is built: the
+ * `document_id` + line-reference migration, both writer changes, the
+ * attach-a-paper upload, and the conversation message-and-person link
+ * (additionally blocked on a different lane's
+ * `GET /conversations/by-order/:orderId` tenant-scope gap). Only the ORDER
+ * this lands in — before or after this page's own flag ever flips on — is
+ * an open founder question; see `vendor-prices.md`.
  */
 
 import { useId, useMemo, useState, type KeyboardEvent } from 'react'

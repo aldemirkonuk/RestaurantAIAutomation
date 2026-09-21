@@ -341,22 +341,13 @@ function App() {
                   <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
                   {/* Vendor price comparison — ADR 0160 §112, direction A,
                       behind a per-house flag like every other Mudavym page.
-                      [Corrected 2026-09-19, repair pass, wt-pg-vprices]: an
-                      earlier same-day brief (2026-09-18) said this route
-                      should cut straight to Mudavym for every house with no
-                      PageGate — the founder's LATER, more specific decision
-                      overrides that: memory founder-sketch-decisions-106-115.md,
-                      "19-lane blocking answers (AskUserQuestion, 2026-09-19
-                      ~09:20Z)": "vendor-prices = behind a flag (vendor_prices
+                      Memory founder-sketch-decisions-106-115.md, "19-lane
+                      blocking answers (AskUserQuestion, 2026-09-19 ~09:20Z)":
+                      "vendor-prices = behind a flag (vendor_prices
                       mudavym_design_* column migration, he flips it; NOT
                       live on merge)". Gated on mudavym_design_vendor_prices
-                      (migration 20260919110000), OFF by default.
-                      [2026-09-19, must-fix closure pass, wt-pg-vprices: the
-                      2026-09-18 brief this superseded is not itself a
-                      locatable source — no session, doc or memory entry by
-                      that name exists to check it against (CLAUDE.md §5b) —
-                      so it is named here rather than quoted verbatim.] Role
-                      gate is enforced server-side too (owner/manager on
+                      (migration 20260921000000), OFF by default. Role gate
+                      is enforced server-side too (owner/manager on
                       /vendor-intel/*, staff on the identity routes) — a
                       hidden route is not access control. */}
                   <Route path="/vendor-prices" element={<PageGate page="vendor_prices" legacy={<VendorPriceCompare />} next={<VendorPricesNext />} />} />

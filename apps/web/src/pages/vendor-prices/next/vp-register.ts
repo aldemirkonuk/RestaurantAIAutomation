@@ -119,7 +119,10 @@ export function paperBadge(sourceRef: string | null): PaperBadge {
 }
 
 /** The order id an own-paper row names, for a future line-level document
- * link (ADR 0160 §112 fork 6 — costed as a second step, not built here). */
+ * link — part of ADR 0160 §112 fork 6(a)'s full provenance, which the
+ * founder put in the FIRST build, not a later step. Not built here; see
+ * `vendor-prices.md` for the open founder question, which is on sequencing
+ * only. */
 export function orderIdOf(sourceRef: string | null): string | null {
   if (!sourceRef) return null
   const m = /^(?:receipt_verified|order_confirmed):(.+)$/.exec(sourceRef)

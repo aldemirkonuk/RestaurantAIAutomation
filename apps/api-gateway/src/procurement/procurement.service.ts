@@ -1889,10 +1889,10 @@ export class ProcurementService {
           notes: args.notes ?? null,
         },
         // `priorUnitPrices.length` — not just the boolean — so the row can
-        // say WHY it was or was not flagged (ADR 0160 §112 fork 6a; review
-        // finding: the own-paper writer judged but never recorded a reason,
-        // so a judged-clean row and a never-judged one both read "No judge
-        // has looked at this row").
+        // say WHY it was or was not flagged (its own review finding, not
+        // ADR 0160 §112 fork 6(a): the own-paper writer judged but never
+        // recorded a reason, so a judged-clean row and a never-judged one
+        // both read "No judge has looked at this row").
         { isOutlier, priorCount: priorUnitPrices.length },
       );
       if (!decision.write) {

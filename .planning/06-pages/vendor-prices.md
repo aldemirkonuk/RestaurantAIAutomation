@@ -42,6 +42,18 @@ merge; the founder flips it per house, the same as the other seventeen
 Mudavym-gated pages. This was found and fixed by an independent verifier's
 NOT READY finding, same day.
 
+**[Renamed 2026-09-21, must-fix closure pass, wt-r5-vprices]** The migration
+named above shipped as `20260919110000_mudavym_design_vendor_prices.sql`.
+That version was older than `origin/main`'s
+`20260919120000_trust_counter_is_server_only.sql` (#396) and than versions
+several sibling worktrees had already taken (up to `20260920100100`) — the
+house-ordering rule the migration guard's uniqueness check does not itself
+enforce, only that no two files share one version (independent verifier's
+must-fix finding). Same column, same content, renamed to
+`20260921000000_mudavym_design_vendor_prices.sql`, confirmed unique again
+against `origin/main` and 36 open PRs; `feature-flag-registry.ts`, `App.tsx`
+and `useMudavymDesign.ts` all cite the new version.
+
 **Fixed against the sections below, so read them as history, not current state:**
 route is reachable now (§2's "unreachable" gap is closed); the identity log is a
 drawer opened from the page header plus staff's own 403 fallback, not the always-mounted
