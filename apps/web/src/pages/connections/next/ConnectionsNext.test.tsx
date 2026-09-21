@@ -132,7 +132,9 @@ interface Fixture {
   mailArchive: Reg;
   catalog: Reg;
   tally: Tally;
+  createFeed: unknown;
   regenerateFeed: unknown;
+  revokeFeed: unknown;
   setHouseGrantAccess: unknown;
   setConsent: unknown;
   /** Mints the one-time seal when a re-consent hold begins. */
@@ -155,7 +157,9 @@ interface Fixture {
 const setHouseGrantAccess = { mutate: vi.fn(), isPending: false };
 const setConsent = { mutate: vi.fn(), isPending: false };
 const probeServer = { mutate: vi.fn(), isPending: false };
+const createFeed = { mutate: vi.fn(), isPending: false };
 const regenerateFeed = { mutate: vi.fn(), isPending: false };
+const revokeFeed = { mutate: vi.fn(), isPending: false };
 const reloadTextSenders = vi.fn();
 
 function base(): Fixture {
@@ -275,7 +279,9 @@ function base(): Fixture {
       publicToAnyone: 1,
       houseHasLetGoOf: 0,
     },
+    createFeed,
     regenerateFeed,
+    revokeFeed,
     setHouseGrantAccess,
     setConsent,
     // Resolves a token by default, so a test that completes the gesture without
@@ -564,10 +570,59 @@ describe('the one row, four columns and no fifth', () => {
     expect(screen.getByText(/its table has no restaurant column at all/i)).toBeInTheDocument();
   });
 
-  it('offers the calendar feed as a real address and a real regenerate', () => {
+  it('offers the calendar feed as a real address, a real regenerate, and a real revoke', () => {
     render(<ConnectionsNext />);
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }));
     expect(regenerateFeed.mutate).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    expect(revokeFeed.mutate).toHaveBeenCalled();
+  });
+
+  it('offers Create, not an address, for a house with no calendar link yet — a GET never mints one (ADR 0111 §5, 2026-09-21)', () => {
+    const d = base();
+    d.ical = reg({ token: null });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText(/not created/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Regenerate' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Revoke' }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create a calendar link' }),
+    );
+    expect(createFeed.mutate).toHaveBeenCalled();
+  });
+
+  it('a REFUSED calendar-link act says so on its row, and only the latest attempt speaks', () => {
+    const d = base();
+    d.ical = reg({ token: null });
+    d.createFeed = {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      submittedAt: 2,
+      error: { response: { data: { message: 'Only managers and owners can create a calendar link for this restaurant' } } },
+    };
+    // An older failure on a different act must not be the sentence shown.
+    d.revokeFeed = {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      submittedAt: 1,
+      error: { message: 'stale revoke failure' },
+    };
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(/only managers and owners can create a calendar link for this restaurant/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/stale revoke failure/i)).not.toBeInTheDocument();
   });
 });
 
@@ -856,8 +911,14 @@ describe('a manager may see, not approve', () => {
     mockData.current = d;
     render(<ConnectionsNext />);
 
-    expect(screen.queryByRole('button', { name: /^revoke/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
+    // Scoped to the grant's OWN row, not the whole page: the calendar feed
+    // row two registers up has a legitimate "Revoke" control of its own
+    // (2026-09-21, ADR 0111 §5 bracket) — a page-wide `/^revoke/i` query would
+    // collide with it and no longer test what this case is about, which is
+    // Selin Kara's personal grant specifically.
+    const grantRow = screen.getByText(/selin kara's/i).closest('.cx-row') as HTMLElement;
+    expect(within(grantRow).queryByRole('button', { name: /^revoke/i })).not.toBeInTheDocument();
+    expect(within(grantRow).queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
     expect(
       screen.getByText(/only selin kara can revoke the grant itself/i),
     ).toBeInTheDocument();

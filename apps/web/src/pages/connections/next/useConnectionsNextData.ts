@@ -591,13 +591,15 @@ export function useConnectionsNextData() {
     staleTime: 120_000,
   });
 
-  /* read 4 — the calendar feed. Provisioned on read by the gateway, which is
-     why this is a GET that can create: the token exists so the row can name
-     it, and naming a feed that does not exist yet would be worse. */
+  /* read 4 — the calendar feed. Read-only (fixed 2026-09-21, ADR 0111 §5
+     bracket): this GET used to mint the token on a bare page mount, which was
+     a view writing a permanent bearer credential. `token` is null on a house
+     that has never created one, and `createFeed` below is the explicit act
+     that does. */
   const icalQ = useQuery({
     queryKey: ['connections-next-ical', rid],
-    queryFn: async (): Promise<{ token: string }> => {
-      const { data } = await apiClient.get<{ token: string }>('/calendar/ical-token');
+    queryFn: async (): Promise<{ token: string | null }> => {
+      const { data } = await apiClient.get<{ token: string | null }>('/calendar/ical-token');
       return data;
     },
     enabled: on,
@@ -805,6 +807,31 @@ export function useConnectionsNextData() {
   const regenerateFeed = useMutation({
     mutationFn: async () => {
       await apiClient.post('/calendar/ical-token/regenerate');
+    },
+    onSuccess: () => invalidate('connections-next-ical'),
+  });
+
+  /**
+   * Create the calendar feed. The explicit act `getIcalToken`'s GET used to
+   * perform silently on every page mount — now a button, and manager/owner
+   * only at the gateway (this whole page already is, see `isManager` above).
+   */
+  const createFeed = useMutation({
+    mutationFn: async () => {
+      await apiClient.post('/calendar/ical-token');
+    },
+    onSuccess: () => invalidate('connections-next-ical'),
+  });
+
+  /**
+   * Revoke the calendar feed. The old address then reads exactly like a
+   * token that never existed — an empty calendar, not an error (T-30-09,
+   * ADR 0111 §5 bracket, 2026-09-21) — so this is the only way to actually
+   * stop it, short of rotating past it.
+   */
+  const revokeFeed = useMutation({
+    mutationFn: async () => {
+      await apiClient.delete('/calendar/ical-token');
     },
     onSuccess: () => invalidate('connections-next-ical'),
   });
@@ -1275,7 +1302,9 @@ export function useConnectionsNextData() {
       (auth?.user as { email?: string } | undefined)?.email?.trim() ||
       null,
     tally,
+    createFeed,
     regenerateFeed,
+    revokeFeed,
     uploadDistributorFile,
     declarePriceCode,
     withdrawPriceCode,

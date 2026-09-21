@@ -264,10 +264,19 @@ export function Dashboard() {
 
   const handleCopyICalUrl = async () => {
     try {
-      const { data: { token } } = await apiClient.get<{ token: string }>(
+      // Read-only since 2026-09-21 (ADR 0111 §5 bracket) — this GET used to
+      // mint the token itself on a house with none, which made this click
+      // indistinguishable from a page view that happened to write a bearer
+      // credential. A house with no link yet is sent to create one
+      // explicitly, on /settings or /connections, rather than minted here.
+      const { data } = await apiClient.get<{ token: string | null }>(
         '/calendar/ical-token',
       )
-      const fullUrl = `${window.location.origin}/api/v1/calendar/feed/${token}.ics`
+      if (!data.token) {
+        toast.error('No calendar link yet — create one from Settings → Calendar.')
+        return
+      }
+      const fullUrl = `${window.location.origin}/api/v1/calendar/feed/${data.token}.ics`
       await navigator.clipboard.writeText(fullUrl)
       toast.success('Calendar subscription URL copied!')
     } catch {

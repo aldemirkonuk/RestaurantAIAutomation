@@ -81,8 +81,13 @@ export const PROVENANCE_UNKNOWN = {
   /** The token is a column on the restaurant row; that row's date is not its own. */
   icalToken:
     'the token has no date of its own — it is a column on the restaurant row, whose date moves for any change to the branch',
-  /** A regeneration is not recorded anywhere. */
-  icalRegen: 'no table records a regeneration',
+  /**
+   * A create/rotate/revoke IS recorded now (`system_audit_log`, ADR 0111 §5
+   * bracket, 2026-09-21 — `calendar.service.ts`'s `writeIcalAudit`), but this
+   * row does not read it back and show a date, so the date shown here stays
+   * unknown even though the fact is not.
+   */
+  icalRegen: 'this row does not read the audit trail back, though the act itself is now recorded',
   /** A test send writes no row. */
   testSend: 'a test send is not recorded',
   /** The preference row has never been written for this account. */

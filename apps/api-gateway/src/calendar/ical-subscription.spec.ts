@@ -6,6 +6,7 @@ import { CalendarRemindersService } from "./calendar-reminders.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { WeatherService } from "../weather/weather.service";
 import { DayRecordService } from "./day-record.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 
 /**
  * The two subscribe suspects that live in the CONTROLLER, not the feed body
@@ -35,7 +36,8 @@ describe("iCal subscription — the controller half", () => {
   let controller: CalendarController;
   const calendar = {
     getICalFeed: jest.fn(),
-    getOrGenerateICalToken: jest.fn(),
+    getICalToken: jest.fn(),
+    createICalToken: jest.fn(),
     regenerateICalToken: jest.fn(),
   };
   const savedPublicUrl = process.env.API_PUBLIC_URL;
@@ -43,7 +45,8 @@ describe("iCal subscription — the controller half", () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     delete process.env.API_PUBLIC_URL;
-    calendar.getOrGenerateICalToken.mockResolvedValue(TOKEN);
+    calendar.getICalToken.mockResolvedValue(TOKEN);
+    calendar.createICalToken.mockResolvedValue({ token: TOKEN, created: true });
     calendar.regenerateICalToken.mockResolvedValue(TOKEN);
     calendar.getICalFeed.mockResolvedValue("BEGIN:VCALENDAR\r\nEND:VCALENDAR");
 
@@ -67,6 +70,13 @@ describe("iCal subscription — the controller half", () => {
           // calendar/day-record.spec.ts; here it only has to resolve.
           provide: DayRecordService,
           useValue: { windowFor: jest.fn() },
+        },
+        {
+          // The create/rotate/revoke role gate (2026-09-21). Who may pass it
+          // is `ical-token-role-gate.spec.ts`'s job; this file always lets the
+          // caller through so it stays about the URL shape.
+          provide: OrganizationsService,
+          useValue: { assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     })
@@ -148,6 +158,6 @@ describe("iCal subscription — the controller half", () => {
       `https://api.mudavym.com/api/v1/calendar/feed/${TOKEN}.ics`,
     );
     expect(out.webcalUrl?.startsWith("webcal://")).toBe(true);
-    expect(calendar.regenerateICalToken).toHaveBeenCalledWith("r-1");
+    expect(calendar.regenerateICalToken).toHaveBeenCalledWith("r-1", USER.userId);
   });
 });

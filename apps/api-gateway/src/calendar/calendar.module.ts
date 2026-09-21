@@ -13,6 +13,7 @@ import { NwsWeatherProvider } from "../weather/nws.provider";
 import { WeatherPrefetchService } from "../weather/weather-prefetch.service";
 import { RecordedDaysService } from "./recorded-days.service";
 import { DayRecordService } from "./day-record.service";
+import { OrganizationsModule } from "../organizations/organizations.module";
 
 @Module({
   imports: [
@@ -20,6 +21,10 @@ import { DayRecordService } from "./day-record.service";
     DatabaseModule,
     EventsModule,
     AuthModule,
+    // Gates the ical-token create/rotate/revoke acts on manager/owner
+    // (`OrganizationsService.assertCanManageRestaurant`). Imports only
+    // DatabaseModule and AuthModule itself, so this adds no cycle.
+    OrganizationsModule,
     // The reminder cron writes through `persistForRestaurant` and enumerates
     // its tenants with `ScheduledTenantsService` (ADR 0022). Both are
     // forwardRef'd for the same reason CommunicationsModule forwardRefs

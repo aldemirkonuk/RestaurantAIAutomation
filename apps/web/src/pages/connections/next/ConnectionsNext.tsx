@@ -232,6 +232,21 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
       : null;
 
   /**
+   * What the gateway said about the LAST create / rotate / revoke on the
+   * calendar feed (ADR 0111 §5 bracket, 2026-09-21). All three are
+   * manager/owner acts that the gateway can refuse with a 403 sentence; with
+   * no place to put it, a refused click left the row looking exactly as it
+   * did — a refusal reported as nothing. Only the most recent attempt
+   * speaks, so an old failure never sits under a later success.
+   */
+  const feedAlert = (): string | null => {
+    const latest = [d.createFeed, d.regenerateFeed, d.revokeFeed]
+      .filter((m) => (m.submittedAt ?? 0) > 0)
+      .sort((a, b) => b.submittedAt - a.submittedAt)[0];
+    return latest?.isError ? readError(latest.error) : null;
+  };
+
+  /**
    * What the gateway said about the last attempt on THIS instrument.
    *
    * Keyed by the mutation's own `variables`, so a refusal is reported on the
@@ -597,48 +612,85 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               icon={<CalendarDays {...ICON} />}
               title="Calendar feed"
               owner="public to anyone with the link"
-              chips={[{ label: feed ? 'Published' : 'Not published', tone: feed ? 'on' : 'off' }]}
+              chips={[{ label: feed ? 'Published' : 'Not created', tone: feed ? 'on' : 'off' }]}
               subtitle={feed ?? DASH}
               subtitleIsSecret={Boolean(feed)}
               why={
-                <>
-                  A read-only iCal address. It is{' '}
-                  <em>unauthenticated by design</em> so Outlook and Apple
-                  Calendar can subscribe — which means anyone holding the URL
-                  reads this house&rsquo;s deliveries, deadlines and shifts.
-                </>
+                feed ? (
+                  <>
+                    A read-only iCal address. It is{' '}
+                    <em>unauthenticated by design</em> so Outlook and Apple
+                    Calendar can subscribe — which means anyone holding the URL
+                    reads this house&rsquo;s deliveries, deadlines and shifts.
+                  </>
+                ) : (
+                  <>
+                    No link exists yet. Creating one mints an address that
+                    is <em>unauthenticated by design</em> — anyone who holds
+                    it can subscribe, no login required — so it is a
+                    manager&rsquo;s act, not something a page view does for
+                    you.
+                  </>
+                )
               }
               permissionsLabel="Grants"
-              permissions={[
-                { text: 'Read every calendar event', can: true },
-                { text: 'Cannot write, cannot see prices', can: false },
-              ]}
+              permissions={
+                feed
+                  ? [
+                      { text: 'Read every calendar event', can: true },
+                      { text: 'Cannot write, cannot see prices', can: false },
+                    ]
+                  : []
+              }
               lastLabel="Last fetched"
               last={null}
-              lastDetail="Feed fetches are not recorded, so who has subscribed and when they last read is unknown."
-              controls={[
-                {
-                  label: copied ? 'Copied' : 'Copy address',
-                  disabled: !feed,
-                  onClick: () => {
-                    if (!feed) return;
-                    void navigator.clipboard?.writeText(feed);
-                    setCopied(true);
-                    window.setTimeout(() => setCopied(false), 1600);
-                  },
-                },
-                {
-                  // No seal ring on this any more (audit, 2026-09-04). It is a
-                  // consequential click and it was wearing the seal's colour
-                  // for emphasis, which made the seal mean "this matters" on
-                  // one row and "this was proven" on another. Its weight is
-                  // carried by `stopNote` below, in words.
-                  label: 'Regenerate',
-                  busy: d.regenerateFeed.isPending,
-                  onClick: () => d.regenerateFeed.mutate(),
-                },
-              ]}
-              stopNote="Regenerating revokes every subscription at once, and nothing here can tell you how many that is."
+              lastDetail={
+                feed
+                  ? 'Feed fetches are not recorded, so who has subscribed and when they last read is unknown.'
+                  : undefined
+              }
+              controls={
+                feed
+                  ? [
+                      {
+                        label: copied ? 'Copied' : 'Copy address',
+                        onClick: () => {
+                          void navigator.clipboard?.writeText(feed);
+                          setCopied(true);
+                          window.setTimeout(() => setCopied(false), 1600);
+                        },
+                      },
+                      {
+                        // No seal ring on this any more (audit, 2026-09-04). It
+                        // is a consequential click and it was wearing the
+                        // seal's colour for emphasis, which made the seal mean
+                        // "this matters" on one row and "this was proven" on
+                        // another. Its weight is carried by `stopNote` below,
+                        // in words.
+                        label: 'Regenerate',
+                        busy: d.regenerateFeed.isPending,
+                        onClick: () => d.regenerateFeed.mutate(),
+                      },
+                      {
+                        label: 'Revoke',
+                        busy: d.revokeFeed.isPending,
+                        onClick: () => d.revokeFeed.mutate(),
+                      },
+                    ]
+                  : [
+                      {
+                        label: 'Create a calendar link',
+                        busy: d.createFeed.isPending,
+                        onClick: () => d.createFeed.mutate(),
+                      },
+                    ]
+              }
+              stopNote={
+                feed
+                  ? 'Regenerating or revoking breaks every existing subscription at once, and nothing here can tell you how many that is.'
+                  : 'Nothing is published until you create a link. Managers and owners only.'
+              }
+              alert={feedAlert()}
             />
           )}
 

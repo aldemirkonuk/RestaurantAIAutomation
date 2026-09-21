@@ -41,12 +41,14 @@ import {
   UpdateEventTypeDto,
   UpdateEventStatusDto,
   ICalTokenResponseDto,
+  ICalTokenRevokedResponseDto,
 } from "./dto/calendar.dto";
 import { WeatherService } from "../weather/weather.service";
 import type { WeatherWindow } from "../weather/weather.service";
 import { GetWeatherQueryDto } from "../weather/dto/weather.dto";
 import { DayRecordService } from "./day-record.service";
 import type { DayRecordWindow } from "./day-record.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 
 @ApiTags("calendar")
 @Controller("calendar")
@@ -59,6 +61,10 @@ export class CalendarController {
     private readonly reminders: CalendarRemindersService,
     private readonly weather: WeatherService,
     private readonly dayRecord: DayRecordService,
+    // Gates the three write acts below (create / rotate / revoke) the same
+    // way `SettingsController` gates a feature-flag flip — one implementation
+    // of "may this person manage this house" (organizations.service.ts:192).
+    private readonly organizations: OrganizationsService,
   ) {}
 
   // ==========================================================================
@@ -785,16 +791,32 @@ export class CalendarController {
     return { origin: null, source: "none" };
   }
 
-  /** Build the three URL fields of `ICalTokenResponseDto` from one token. */
+  /**
+   * Build `ICalTokenResponseDto` from a token that may not exist. Null
+   * collapses every derived field to null and `exists: false` — a GET on a
+   * house with no link answers this honestly rather than pretending a link
+   * is pending.
+   */
   private icalTokenResponse(
-    token: string,
+    token: string | null,
     req: Request,
   ): ICalTokenResponseDto {
+    if (!token) {
+      return {
+        token: null,
+        exists: false,
+        feedUrl: null,
+        absoluteFeedUrl: null,
+        webcalUrl: null,
+        originSource: this.feedOrigin(req).source,
+      };
+    }
     const path = `/api/v1/calendar/feed/${token}.ics`;
     const { origin, source } = this.feedOrigin(req);
     const absolute = origin ? `${origin}${path}` : null;
     return {
       token,
+      exists: true,
       feedUrl: path,
       absoluteFeedUrl: absolute,
       // `webcal://` is not an IANA scheme, it is the de-facto handler
@@ -810,31 +832,94 @@ export class CalendarController {
 
   @Get("ical-token")
   @ApiOperation({
-    summary: "Get or generate iCal subscription token for current restaurant",
+    summary:
+      "Read this restaurant's calendar link, if it has one. Never creates " +
+      "one — a GET that wrote a permanent bearer credential on every page " +
+      "view was the defect this endpoint used to carry.",
   })
   @ApiResponse({ status: 200, type: ICalTokenResponseDto })
   async getICalToken(
     @CurrentUser() user: { userId: string; restaurantId: string },
     @Req() req: Request,
   ): Promise<ICalTokenResponseDto> {
-    const token = await this.calendarService.getOrGenerateICalToken(
+    const token = await this.calendarService.getICalToken(user.restaurantId);
+    return this.icalTokenResponse(token, req);
+  }
+
+  @Post("ical-token")
+  @ApiOperation({
+    summary:
+      "Create this restaurant's calendar link. Manager/owner only. " +
+      "Idempotent — a house that already has one gets it back unchanged.",
+  })
+  @ApiResponse({ status: 201, type: ICalTokenResponseDto })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner or manager of this restaurant.",
+  })
+  async createICalToken(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Req() req: Request,
+  ): Promise<ICalTokenResponseDto> {
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
       user.restaurantId,
+      "create a calendar link for this restaurant",
+    );
+    const { token } = await this.calendarService.createICalToken(
+      user.restaurantId,
+      user.userId,
     );
     return this.icalTokenResponse(token, req);
   }
 
   @Post("ical-token/regenerate")
   @ApiOperation({
-    summary: "Regenerate iCal token — invalidates all existing subscriptions",
+    summary:
+      "Rotate the iCal token — invalidates every existing subscription. " +
+      "Manager/owner only.",
   })
   @ApiResponse({ status: 201, type: ICalTokenResponseDto })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner or manager of this restaurant.",
+  })
   async regenerateICalToken(
     @CurrentUser() user: { userId: string; restaurantId: string },
     @Req() req: Request,
   ): Promise<ICalTokenResponseDto> {
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "rotate the calendar link for this restaurant",
+    );
     const token = await this.calendarService.regenerateICalToken(
       user.restaurantId,
+      user.userId,
     );
     return this.icalTokenResponse(token, req);
+  }
+
+  @Delete("ical-token")
+  @ApiOperation({
+    summary:
+      "Revoke this restaurant's calendar link. The old address then answers " +
+      "the same empty-calendar response a token that never existed does " +
+      "(T-30-09) — it simply stops naming any restaurant. Manager/owner only.",
+  })
+  @ApiResponse({ status: 200, type: ICalTokenRevokedResponseDto })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner or manager of this restaurant.",
+  })
+  async revokeICalToken(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<ICalTokenRevokedResponseDto> {
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "revoke the calendar link for this restaurant",
+    );
+    return this.calendarService.revokeICalToken(user.restaurantId, user.userId);
   }
 }

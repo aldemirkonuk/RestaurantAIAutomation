@@ -6,6 +6,7 @@ import { CalendarRemindersService } from "./calendar-reminders.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { WeatherService } from "../weather/weather.service";
 import { DayRecordService } from "./day-record.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 import {
   CalendarEventType,
   CalendarEventStatus,
@@ -63,6 +64,14 @@ describe("CalendarController", () => {
           // calendar/day-record.spec.ts; here it only has to resolve.
           provide: DayRecordService,
           useValue: { windowFor: jest.fn() },
+        },
+        {
+          // The ical-token create/rotate/revoke role gate (2026-09-21). Who
+          // may pass it is `ical-token-role-gate.spec.ts`'s job; here it only
+          // has to resolve, since none of this file's cases exercise those
+          // routes.
+          provide: OrganizationsService,
+          useValue: { assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     })

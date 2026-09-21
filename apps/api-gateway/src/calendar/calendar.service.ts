@@ -1149,8 +1149,33 @@ export class CalendarService {
   // ==========================================================================
   // iCAL SUBSCRIPTION FEED (D-07, D-08, D-09)
   // ==========================================================================
+  //
+  // A VIEW MUST NOT MINT A CREDENTIAL (fixed 2026-09-21, ADR 0111 §5 bracket).
+  // Until today `getOrGenerateICalToken` was reachable from a plain GET
+  // (`/connections`'s `useConnectionsNextData.ts` fetches it on mount, and
+  // legacy `Settings.tsx`'s `CalendarSubscriptionSection` does the same in a
+  // `useEffect`), and it minted `crypto.randomBytes(32)` and persisted it —
+  // a page VIEW writing a permanent, unauthenticated bearer credential with no
+  // role check and no audit trail. `getICalToken` below is now a pure read:
+  // it returns the existing token or null, and never writes. Minting is
+  // `createICalToken`, reached only from `POST /calendar/ical-token`, gated
+  // on manager/owner (`OrganizationsService.assertCanManageRestaurant`) and
+  // audited. `regenerateICalToken` (rotate) and the new `revokeICalToken`
+  // carry the same gate and the same audit.
+  //
+  // `writeIcalAudit` never stores the token's own value — `system_audit_log`
+  // is read back on `/logs` by anyone this restaurant's role check admits, and
+  // a bearer credential does not belong in a trail read for a different
+  // reason. The actor and the fact that a mint/rotate/revoke happened is the
+  // whole record; the token itself is already readable, live, from the GET.
 
-  async getOrGenerateICalToken(restaurantId: string): Promise<string> {
+  /**
+   * The house's existing iCal token, or null. Never writes — see the header.
+   * A failed read is thrown, not swallowed into "no token" (CLAUDE.md §absence
+   * is not health): a null token and an unreadable row must render as two
+   * different sentences on the page.
+   */
+  async getICalToken(restaurantId: string): Promise<string | null> {
     const { data, error } = await this.databaseService.supabase
       .from("restaurants")
       .select("calendar_ical_token")
@@ -1158,27 +1183,78 @@ export class CalendarService {
       .single();
 
     if (error) {
-      throw new Error(`Failed to fetch iCal token: ${error.message}`);
+      throw new Error(`Failed to read the calendar link: ${error.message}`);
     }
 
-    if (data?.calendar_ical_token) {
-      return data.calendar_ical_token;
+    return data?.calendar_ical_token ?? null;
+  }
+
+  /**
+   * Mint the house's iCal token. Idempotent: a house that already has one
+   * gets it back unchanged, with no write and no audit row — nothing changed,
+   * so nothing is filed (`SettingsAuditService`'s same rule, `settings-audit
+   * .service.ts:214`). Only a house with none gets a write, and that write is
+   * audited under the caller's own id.
+   *
+   * The write is conditional on the column still being NULL (`.is(...,
+   * null)`), so two creates racing — a double click, two managers — cannot
+   * both mint: the loser's UPDATE matches no row, and it hands back the
+   * winner's token with `created: false` and no audit row. Without the
+   * condition the second write silently replaced the first, and the first
+   * caller was shown an address that was already dead.
+   */
+  async createICalToken(
+    restaurantId: string,
+    actorUserId: string,
+  ): Promise<{ token: string; created: boolean }> {
+    const existing = await this.getICalToken(restaurantId);
+    if (existing) {
+      return { token: existing, created: false };
     }
 
     const token = crypto.randomBytes(32).toString("hex");
-    const { error: updateError } = await this.databaseService.supabase
+    const { data: won, error } = await this.databaseService.supabase
       .from("restaurants")
       .update({ calendar_ical_token: token })
-      .eq("id", restaurantId);
+      .eq("id", restaurantId)
+      .is("calendar_ical_token", null)
+      .select("calendar_ical_token");
 
-    if (updateError) {
-      throw new Error(`Failed to store iCal token: ${updateError.message}`);
+    if (error) {
+      throw new Error(`Failed to create the calendar link: ${error.message}`);
     }
 
-    return token;
+    if ((won ?? []).length === 0) {
+      // Lost a race: another act created the link between the read above and
+      // this write. Return what is actually stored, never the token we minted.
+      const winner = await this.getICalToken(restaurantId);
+      if (winner) return { token: winner, created: false };
+      throw new Error(
+        "Failed to create the calendar link: the restaurant row was not updated.",
+      );
+    }
+
+    await this.writeIcalAudit(restaurantId, actorUserId, "calendar_ical_token_created");
+    return { token, created: true };
   }
 
-  async regenerateICalToken(restaurantId: string): Promise<string> {
+  /**
+   * Replace the house's iCal token with a fresh one — audited, and role-gated
+   * at the controller the same as `createICalToken`.
+   *
+   * The OLD token is not separately revoked: it simply no longer matches any
+   * `restaurants` row, so `getICalFeed` below already answers it the same
+   * empty-calendar 200 it gives a token that never existed (T-30-09,
+   * `ical-feed.spec.ts:132-138`). That is deliberate and unchanged by this
+   * fix — an old token reading 404 here and 200 there would be exactly the
+   * validity oracle T-30-09 exists to prevent, so rotation stopping the feed
+   * is a fact about the SELECT no longer matching, never a distinguishable
+   * response.
+   */
+  async regenerateICalToken(
+    restaurantId: string,
+    actorUserId: string,
+  ): Promise<string> {
     const token = crypto.randomBytes(32).toString("hex");
     const { error } = await this.databaseService.supabase
       .from("restaurants")
@@ -1189,7 +1265,83 @@ export class CalendarService {
       throw new Error(`Failed to regenerate iCal token: ${error.message}`);
     }
 
+    await this.writeIcalAudit(restaurantId, actorUserId, "calendar_ical_token_rotated");
     return token;
+  }
+
+  /**
+   * Null the house's iCal token. Idempotent: a house with none already gets
+   * `revoked: false` and no audit row. The feed then answers the old token
+   * exactly as it answers any token that never existed — see the rotation
+   * note above; the same T-30-09 reasoning applies here unchanged.
+   */
+  async revokeICalToken(
+    restaurantId: string,
+    actorUserId: string,
+  ): Promise<{ revoked: boolean }> {
+    const existing = await this.getICalToken(restaurantId);
+    if (!existing) {
+      return { revoked: false };
+    }
+
+    const { error } = await this.databaseService.supabase
+      .from("restaurants")
+      .update({ calendar_ical_token: null })
+      .eq("id", restaurantId);
+
+    if (error) {
+      throw new Error(`Failed to revoke the calendar link: ${error.message}`);
+    }
+
+    await this.writeIcalAudit(restaurantId, actorUserId, "calendar_ical_token_revoked");
+    return { revoked: true };
+  }
+
+  /**
+   * File one row to `system_audit_log`. Same shape as `recordAccessChange`
+   * (`team/access-audit.ts:81`) and `SettingsAuditService.record`
+   * (`settings-audit/settings-audit.service.ts:214`) — `actor_id` is
+   * `public.users.user_id`, never an `auth.users` id (the two tables are
+   * disjoint and the column carries no FK, so a wrong id would insert cleanly
+   * and never resolve to a person). Never throws: the token change has
+   * already happened by the time this runs, and failing the request because
+   * the paper failed would undo a change the caller can already see took
+   * effect — so a failed write is logged, not surfaced as a 500.
+   */
+  private async writeIcalAudit(
+    restaurantId: string,
+    actorUserId: string,
+    action:
+      | "calendar_ical_token_created"
+      | "calendar_ical_token_rotated"
+      | "calendar_ical_token_revoked",
+  ): Promise<void> {
+    if (!actorUserId) {
+      this.logger.error(
+        `${action} was not recorded: no actor on the request.`,
+      );
+      return;
+    }
+    try {
+      const { error } = await this.databaseService.supabase
+        .from("system_audit_log")
+        .insert({
+          actor_type: "user",
+          actor_id: actorUserId,
+          action,
+          entity_type: "restaurant",
+          entity_id: restaurantId,
+          // No token value here — see the header above this section.
+          changes: { credential: "calendar_ical_token" },
+          restaurant_id: restaurantId,
+        });
+      if (error) {
+        this.logger.error(`${action} happened but the audit row failed to write: ${error.message}`);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`${action} happened but the audit row threw: ${message}`);
+    }
   }
 
   /**

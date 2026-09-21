@@ -565,16 +565,31 @@ export class UpdateEventStatusDto {
 // ============================================================================
 
 export class ICalTokenResponseDto {
-  @ApiProperty({ description: "64-char hex token", example: "abc123..." })
-  token: string;
+  @ApiProperty({
+    description:
+      "64-char hex token, or null when this house has never created a " +
+      "calendar link. A GET never mints one — see `exists` — so null is a " +
+      "true answer, not a pending state.",
+    example: "abc123...",
+    nullable: true,
+  })
+  token: string | null;
+
+  @ApiProperty({
+    description: "Whether this house has a calendar link at all.",
+    example: true,
+  })
+  exists: boolean;
 
   @ApiProperty({
     description:
       "Subscription path, relative to the gateway. Kept for the callers that " +
-      "already read it; a calendar client cannot subscribe to a relative path.",
+      "already read it; a calendar client cannot subscribe to a relative path. " +
+      "Null when `exists` is false.",
     example: "/api/v1/calendar/feed/abc123.ics",
+    nullable: true,
   })
-  feedUrl: string;
+  feedUrl: string | null;
 
   @ApiProperty({
     description:
@@ -604,4 +619,14 @@ export class ICalTokenResponseDto {
     example: "config",
   })
   originSource: "config" | "request" | "none";
+}
+
+export class ICalTokenRevokedResponseDto {
+  @ApiProperty({
+    description:
+      "Whether a token was actually removed. False when this house already " +
+      "had none — a no-op, not an error.",
+    example: true,
+  })
+  revoked: boolean;
 }

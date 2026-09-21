@@ -596,6 +596,68 @@ citations across ~89 files — see the register-row memo); the parent files them
 
 ## Review trail
 
+- 2026-09-21 — **a page view minted the feed's bearer credential; fixed, and
+  existing tokens stay valid until an owner or manager revokes or rotates
+  them.** Measured by the merge-train session: `GET /calendar/ical-token`
+  (`getOrGenerateICalToken`) ran `crypto.randomBytes(32)` and `UPDATE
+  restaurants SET calendar_ical_token` whenever the house had none — a read
+  minting and persisting a permanent, unauthenticated bearer credential. It
+  was reached on mount by `/connections` (`useConnectionsNextData.ts:589-595`
+  pre-fix), by legacy `Settings.tsx:284-296` with no role gate at all, by the
+  `/settings` calendar section (`useSettingsNextData.ts`) and by get-started's
+  `OptionalTail.tsx`; `Dashboard.tsx`'s copy button reached it on a click.
+  Production baseline (that session's read-only census, not re-measured
+  here): 14 houses, 9 with `calendar_ical_token IS NULL`, 5 already set.
+
+  Fixed in `calendar.service.ts` / `calendar.controller.ts`: the GET
+  (`getICalToken`) is a pure read that returns the token or null and never
+  writes; a failed read is an error, not "no link" (pinned in
+  `ical-token-no-mint-on-read.spec.ts` on a stateful double that records every
+  UPDATE; mutation-tested — a write put back on the read path fails 5 of its
+  12 cases). Minting is `createICalToken`, reached only from the new `POST
+  /calendar/ical-token`, gated on manager/owner
+  (`OrganizationsService.assertCanManageRestaurant`, the helper
+  `SettingsController` uses) and audited to `system_audit_log` under the JWT's
+  `public.users.user_id`, never with the token's value. Its UPDATE is
+  conditional on the column still being NULL, so two racing creates cannot
+  both mint: the loser returns the winner's token, `created: false`, no audit
+  row. Two acts this feed never had: `DELETE /calendar/ical-token` (revoke —
+  nulls the token, audited) and the existing `POST
+  /calendar/ical-token/regenerate` (rotate), which had no role gate and no
+  audit and now has both. Every client surface now reads on open and creates
+  only on a click: `/connections` and `/settings` offer "Create a calendar
+  link", legacy Settings the same behind a client-side role check (the route
+  is the rule), and `OptionalTail` reads on mount with a create button — the
+  first cut of this fix had swapped its mount-time GET for a mount-time POST,
+  which moved the defect instead of closing it (caught at verify, fixed
+  before merge; pinned in `OptionalTail.calendar.test.tsx`). A refused create,
+  rotate or revoke on `/connections` now says so on the row.
+
+  **Revoke and rotate answer the old token the way T-30-09 answers any bad
+  token — an empty 200, not the 404 the lane brief asked for.** T-30-09 is
+  Phase 30's threat-model entry (`30-03-PLAN.md`, commit `9280954a6`,
+  retired with the phase trees under ADR 0032), not a clause of this ADR; it
+  survives as the comment at `calendar.service.ts`'s `getICalFeed` ("Return
+  empty calendar (not 404)") and the test at `ical-feed.spec.ts:132`: a
+  404-for-bad / 200-for-good split would make the feed URL an oracle for valid
+  tokens. Revoking or rotating makes the old token match no `restaurants` row,
+  so it gets the byte-identical empty calendar a never-issued token gets, and
+  stops serving events (pinned: events before revoke, none after; the new
+  token serves after a rotate). A visible "revoked" answer — which a
+  subscriber's calendar app would surface as an error instead of silently
+  showing nothing — is a founder question, not built either way.
+
+  **Existing tokens are unaffected.** The 5 houses already holding a token
+  keep it, and it keeps serving until an owner or manager revokes or rotates
+  it; nothing here expires, rotates or revokes on its own. Whether a token
+  should ever EXPIRE is a founder question — no expiry was built. The GET stays
+  open to any signed-in member of the house, staff included, as it was before
+  (reading is not the gated act); whether staff should see the address at all
+  is also a founder question.
+
+  No migration: `restaurants.calendar_ical_token` and `system_audit_log`
+  already existed (baseline, `20260805000000`); nothing new is stored.
+
 - 2026-09-04 — **observations recorded from today, and the forecast is scored.**
   `weather_observations` (`20260904140000`) stores what the nearest station
   measured; `day-record.service.ts` writes the first non-null `accuracy_score`

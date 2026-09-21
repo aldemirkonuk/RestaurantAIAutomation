@@ -5,12 +5,28 @@ import { toast } from 'sonner'
 import { GoogleLinkButton } from '../auth/GoogleLinkButton'
 import { InviteTeamDialog } from '../team/InviteTeamDialog'
 import { getVendorEmail } from '../../services/api/menus'
-import { getIcalToken } from '../../services/api/calendar'
+import { createIcalToken, getIcalToken } from '../../services/api/calendar'
+import { getErrorMessage } from '../../services/api/client'
 import { profileApi, type LinkedProviders } from '../../services/api/profile'
 
 interface OptionalTailProps {
   restaurantId: string
 }
+
+/**
+ * The calendar row's four honest states. `none` and `error` are different
+ * sentences: a house with no link is offered one, a read that failed says it
+ * failed — it is never rendered as "no link yet", and never as a spinner that
+ * waits forever (the pre-2026-09-21 row did exactly that on any error).
+ */
+type IcalState =
+  | { kind: 'loading' }
+  | { kind: 'none' }
+  | { kind: 'ready'; url: string }
+  | { kind: 'error'; message: string }
+
+const feedUrlFor = (token: string) =>
+  `${window.location.origin}/api/v1/calendar/feed/${token}.ics`
 
 function OptionalRow({
   icon,
@@ -42,7 +58,8 @@ function OptionalRow({
 export function OptionalTail({ restaurantId }: OptionalTailProps) {
   const navigate = useNavigate()
   const [vendorEmail, setVendorEmail] = useState<string | null | undefined>(undefined)
-  const [icalUrl, setIcalUrl] = useState<string | null>(null)
+  const [ical, setIcal] = useState<IcalState>({ kind: 'loading' })
+  const [creatingIcal, setCreatingIcal] = useState(false)
   const [linked, setLinked] = useState<LinkedProviders | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
 
@@ -50,14 +67,35 @@ export function OptionalTail({ restaurantId }: OptionalTailProps) {
     getVendorEmail()
       .then((r) => setVendorEmail(r.address))
       .catch(() => setVendorEmail(null))
+    // READ only (ADR 0111 §5 bracket, 2026-09-21). This panel mounts on its
+    // own the moment a menu import finishes, so a create here would be a
+    // screen minting a permanent bearer credential nobody asked for — the
+    // exact defect the bracket closes, moved from a GET to a POST. Creating
+    // the link is the button below, the same explicit act /connections and
+    // /settings ask for.
     getIcalToken()
-      .then((r) => setIcalUrl(`${window.location.origin}/api/v1/calendar/feed/${r.token}.ics`))
-      .catch(() => setIcalUrl(null))
+      .then((r) => setIcal(r.token ? { kind: 'ready', url: feedUrlFor(r.token) } : { kind: 'none' }))
+      .catch((e) => setIcal({ kind: 'error', message: getErrorMessage(e) }))
     profileApi
       .getLinkedProviders()
       .then(setLinked)
       .catch(() => setLinked(null))
   }, [])
+
+  const createIcal = async () => {
+    setCreatingIcal(true)
+    try {
+      const r = await createIcalToken()
+      if (!r.token) throw new Error('the gateway answered without a link')
+      setIcal({ kind: 'ready', url: feedUrlFor(r.token) })
+    } catch (e) {
+      // Refused (403 for anyone but a manager/owner) or failed: say so, and
+      // leave the row offering the act again rather than pretending.
+      toast.error(`No calendar link was created — ${getErrorMessage(e)}`)
+    } finally {
+      setCreatingIcal(false)
+    }
+  }
 
   const copy = async (text: string, label: string) => {
     try {
@@ -106,27 +144,40 @@ export function OptionalTail({ restaurantId }: OptionalTailProps) {
         </OptionalRow>
 
         <OptionalRow icon={<ExternalLink className="w-4 h-4 text-gray-500" />} title="Subscribe to your calendar">
-          {icalUrl ? (
+          {ical.kind === 'ready' ? (
             <div className="flex items-center gap-2">
               <code
                 data-secret="credential"
                 className="text-xs bg-gray-50 border border-gray-100 rounded px-2 py-1 truncate flex-1"
               >
-                {icalUrl}
+                {ical.url}
               </code>
               <button
-                onClick={() => copy(icalUrl, 'Calendar feed URL')}
+                onClick={() => copy(ical.url, 'Calendar feed URL')}
                 className="text-xs text-[#1A5E6B] hover:text-[#14515C] font-medium flex items-center gap-1"
               >
                 <Copy className="w-3 h-3" /> Copy
               </button>
             </div>
+          ) : ical.kind === 'none' ? (
+            <button
+              onClick={() => void createIcal()}
+              disabled={creatingIcal}
+              className="text-xs text-[#1A5E6B] hover:text-[#14515C] font-medium disabled:opacity-50"
+            >
+              {creatingIcal ? 'Creating…' : 'Create a calendar link'}
+            </button>
+          ) : ical.kind === 'error' ? (
+            <p className="text-xs text-red-700">
+              Couldn&apos;t read your calendar link — {ical.message}
+            </p>
           ) : (
             <p className="text-xs text-gray-400">Loading your calendar feed link…</p>
           )}
           <p className="text-xs text-gray-400 mt-1">
-            Add this URL in Google Calendar / Apple Calendar / Outlook as a subscribed calendar —
-            no login required.
+            {ical.kind === 'none'
+              ? 'Creates an address anyone holding it can subscribe to — no login required — so nothing is published until you ask.'
+              : 'Add this URL in Google Calendar / Apple Calendar / Outlook as a subscribed calendar — no login required.'}
           </p>
         </OptionalRow>
 

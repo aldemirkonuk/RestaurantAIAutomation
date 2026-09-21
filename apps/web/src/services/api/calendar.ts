@@ -398,19 +398,53 @@ export async function deleteRecurringEventFuture(
   await apiClient.delete(`/calendar/events/${id}/recurring?fromDate=${fromDate}`)
 }
 
+export interface IcalTokenResponse {
+  token: string | null
+  exists: boolean
+  feedUrl: string | null
+  absoluteFeedUrl: string | null
+  webcalUrl: string | null
+  originSource: 'config' | 'request' | 'none'
+}
+
 /**
- * Get (provisioning if needed) this user's iCal subscription token.
+ * Read this restaurant's iCal subscription link, if it has one. Never
+ * creates one — a GET that minted a permanent bearer credential on every
+ * page view was the defect fixed 2026-09-21 (ADR 0111 §5 bracket).
  */
-export async function getIcalToken(): Promise<{ token: string }> {
-  const response = await apiClient.get<{ token: string }>('/calendar/ical-token')
+export async function getIcalToken(): Promise<IcalTokenResponse> {
+  const response = await apiClient.get<IcalTokenResponse>('/calendar/ical-token')
+  return response.data
+}
+
+/**
+ * Create this restaurant's iCal subscription link. Manager/owner only —
+ * the gateway is the rule (`assertCanManageRestaurant`); a caller without
+ * that role gets a 403. Idempotent: a house that already has a link gets it
+ * back unchanged.
+ */
+export async function createIcalToken(): Promise<IcalTokenResponse> {
+  const response = await apiClient.post<IcalTokenResponse>('/calendar/ical-token')
   return response.data
 }
 
 /**
  * Regenerate the iCal subscription token, invalidating the previous feed URL.
+ * Manager/owner only.
  */
-export async function regenerateIcalToken(): Promise<{ token: string }> {
-  const response = await apiClient.post<{ token: string }>('/calendar/ical-token/regenerate')
+export async function regenerateIcalToken(): Promise<IcalTokenResponse> {
+  const response = await apiClient.post<IcalTokenResponse>('/calendar/ical-token/regenerate')
+  return response.data
+}
+
+/**
+ * Revoke this restaurant's iCal subscription link. The old address then
+ * reads exactly like a token that never existed — an empty calendar, not an
+ * error — so a subscriber sees no events rather than a broken feed.
+ * Manager/owner only.
+ */
+export async function revokeIcalToken(): Promise<{ revoked: boolean }> {
+  const response = await apiClient.delete<{ revoked: boolean }>('/calendar/ical-token')
   return response.data
 }
 

@@ -138,6 +138,16 @@ export interface TeamRegister {
   invitesDenied: boolean;
 }
 
+/**
+ * The house's calendar link. `token` is null on a house that has never
+ * created one — a true answer, not a pending state (ADR 0111 §5 bracket,
+ * 2026-09-21: the GET that reads this used to mint the token itself).
+ */
+export interface IcalRegister {
+  token: string | null;
+  exists: boolean;
+}
+
 export interface ChainRow {
   id: string;
   name: string;
@@ -465,8 +475,13 @@ export function useSettingsNextData(active: SectionId) {
     return data ?? {};
   });
 
-  const ical = useRemote<{ token: string }>(tenantKey('calendar'), async () => {
-    const { data } = await apiClient.get<{ token: string }>('/calendar/ical-token');
+  // Read-only (fixed 2026-09-21, ADR 0111 §5 bracket): this GET used to mint
+  // the token itself when the house had none, so opening this tab was
+  // enough to write a permanent bearer credential. `token` is null on a
+  // house with no link — `CalendarSection` renders that as "create one",
+  // not as a pending value.
+  const ical = useRemote<IcalRegister>(tenantKey('calendar'), async () => {
+    const { data } = await apiClient.get<IcalRegister>('/calendar/ical-token');
     return data;
   });
 
@@ -602,11 +617,29 @@ export function useSettingsNextData(active: SectionId) {
     [writer],
   );
 
+  const createIcal = useCallback(
+    () =>
+      writer.run('ical-create', async () => {
+        const { data } = await apiClient.post<IcalRegister>('/calendar/ical-token');
+        ical.set(data);
+      }),
+    [writer, ical],
+  );
+
   const regenerateIcal = useCallback(
     () =>
       writer.run('ical', async () => {
         const { data } = await apiClient.post<{ token: string }>('/calendar/ical-token/regenerate');
-        ical.set(data);
+        ical.set({ token: data.token, exists: true });
+      }),
+    [writer, ical],
+  );
+
+  const revokeIcal = useCallback(
+    () =>
+      writer.run('ical-revoke', async () => {
+        await apiClient.delete('/calendar/ical-token');
+        ical.set({ token: null, exists: false });
       }),
     [writer, ical],
   );
@@ -743,7 +776,7 @@ export function useSettingsNextData(active: SectionId) {
     team, flags, ical, sender, chains, pos, prefs, notif, integrations,
     vendorTerms, thresholds, ledger, houseCurrency, houseCarryingCost,
     writer,
-    saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, regenerateIcal,
+    saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, createIcal, regenerateIcal, revokeIcal,
     setMemberRole, removeMember, revokeInvite, disconnectIntegration,
     saveVendorTerms, saveThreshold, saveCurrency, saveCarryingCost,
   };

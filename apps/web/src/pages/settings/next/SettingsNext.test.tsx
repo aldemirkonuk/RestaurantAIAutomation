@@ -115,7 +115,7 @@ function base(over: Record<string, unknown> = {}) {
     refreshBranches: vi.fn(),
     team: remote({ members: [], invites: [], invitesDenied: false }),
     flags: remote({}),
-    ical: remote({ token: 'tok' }),
+    ical: remote({ token: 'tok', exists: true }),
     sender: remote(null),
     chains: remote([]),
     pos: remote({ providers: { summary: { total: 0, byTier: {}, byStatus: {} }, providers: [] }, status: null, statusError: null }),
@@ -128,7 +128,8 @@ function base(over: Record<string, unknown> = {}) {
     houseCurrency: remote(currencyRegister()),
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     saveFlag, savePrefs, saveNotif,
-    saveSender: vi.fn(), sendTestEmail: vi.fn(), regenerateIcal: vi.fn(),
+    saveSender: vi.fn(), sendTestEmail: vi.fn(),
+    createIcal: vi.fn(), regenerateIcal: vi.fn(), revokeIcal: vi.fn(),
     setMemberRole: vi.fn(), removeMember: vi.fn(), revokeInvite: vi.fn(), disconnectIntegration: vi.fn(),
     saveVendorTerms, saveThreshold, saveCurrency,
     ...over,
@@ -581,6 +582,27 @@ describe('SettingsNext — provenance and unknowns', () => {
     expect(regenerateIcal).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /Yes, break the old address/i }));
     expect(regenerateIcal).toHaveBeenCalled();
+  });
+
+  it('arms a destructive revoke before it fires', () => {
+    const revokeIcal = vi.fn();
+    mock.current = base({ revokeIcal });
+    mount('/settings?tab=calendar');
+    fireEvent.click(screen.getByRole('button', { name: /^Revoke$/ }));
+    expect(revokeIcal).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Yes, revoke it/i }));
+    expect(revokeIcal).toHaveBeenCalled();
+  });
+
+  it('a house with no calendar link yet: no address, no Regenerate/Revoke, only Create — the GET never minted it (ADR 0111 §5, 2026-09-21)', () => {
+    const createIcal = vi.fn();
+    mock.current = base({ ical: remote({ token: null, exists: false }), createIcal });
+    mount('/settings?tab=calendar');
+    expect(screen.getByText(/no calendar link exists yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Regenerate$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Revoke$/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Create$/ }));
+    expect(createIcal).toHaveBeenCalled();
   });
 
   it('mounts the cellar rebuild’s own register control rather than a second copy', () => {

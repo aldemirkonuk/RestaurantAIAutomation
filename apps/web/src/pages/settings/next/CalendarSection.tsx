@@ -1,14 +1,20 @@
 /**
  * Calendar subscription — an address that is also a credential.
  *
- * Two honesty rules do the work here. The first: no external calendar client
+ * Three honesty rules do the work here. The first: no external calendar client
  * has ever been observed subscribing to this feed (`v3.0-TECH-DEBT.md:346-348`),
  * and the gateway serves it as `Content-Disposition: attachment`
  * (`calendar/calendar.controller.ts:601-604`), which most clients read as
  * "download this once". The steps are therefore filed under *Untested* rather
- * than promised. The second: regeneration silently breaks every existing
- * subscription (`calendar.controller.ts:624`), so it is an armed confirm that
- * states the consequence — the die pressed dry, never the seal.
+ * than promised. The second: regeneration and revocation each silently break
+ * every existing subscription (`calendar.controller.ts:624`), so both are an
+ * armed confirm that states the consequence — the die pressed dry, never the
+ * seal. The third, added 2026-09-21 (ADR 0111 §5 bracket): this GET used to
+ * MINT the token on a bare page open — `Register` below is handed `token:
+ * null` on a house with none, rendered as "create one", never as a pending
+ * value; creating, rotating and revoking are all audited to
+ * `system_audit_log` now, which `PROVENANCE_UNKNOWN.icalRegen`'s old claim
+ * ("no table records a regeneration") no longer describes.
  *
  * The em dash on the token is one of the four that survived being checked. The
  * token is a column on the restaurant row (`restaurants.calendar_ical_token`,
@@ -22,13 +28,39 @@ import { MONO, PROVENANCE_UNKNOWN, SANS } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
 
 export function CalendarSection({ data }: { data: SettingsNextData }) {
-  const { ical, regenerateIcal, writer } = data;
+  const { ical, createIcal, regenerateIcal, revokeIcal, writer } = data;
   const [copied, setCopied] = useState<string | null>(null);
   const [howOpen, setHowOpen] = useState(false);
 
   return (
     <Register remote={ical} name="your subscription token">
       {(reg) => {
+        if (!reg.token) {
+          return (
+            <>
+              <Note>
+                No calendar link exists yet for this restaurant. Creating one mints an
+                address that needs no login — the token in it <em>is</em> the
+                credential, so it is a deliberate act, not something opening this
+                page does for you.
+              </Note>
+              <Row
+                label="Feed address"
+                provenance={{ kept: 'restaurant', when: null, whenUnknown: PROVENANCE_UNKNOWN.icalToken }}
+                consequence="Anyone holding the resulting address can read this restaurant's calendar."
+                control={
+                  <Action
+                    disabled={writer.busy === 'ical-create'}
+                    onClick={() => void createIcal()}
+                  >
+                    {writer.busy === 'ical-create' ? 'Creating…' : 'Create'}
+                  </Action>
+                }
+              />
+              <SaveFailure failed={writer.failed} what="No link was created." />
+            </>
+          );
+        }
         const url = `${window.location.origin}/api/v1/calendar/feed/${reg.token}.ics`;
         return (
           <>
@@ -74,6 +106,21 @@ export function CalendarSection({ data }: { data: SettingsNextData }) {
                   busy={writer.busy === 'ical'}
                   consequence="Every existing subscription stops. There is no undo."
                   onConfirm={() => void regenerateIcal()}
+                />
+              }
+            />
+
+            <Row
+              label="Revoke the link entirely"
+              provenance={{ kept: 'restaurant', when: null, whenUnknown: PROVENANCE_UNKNOWN.icalRegen }}
+              consequence="Removes the address. Every existing subscription stops, and no new one can be created until you make another."
+              control={
+                <ConfirmAction
+                  label="Revoke"
+                  confirmLabel="Yes, revoke it"
+                  busy={writer.busy === 'ical-revoke'}
+                  consequence="Every existing subscription stops. There is no undo."
+                  onConfirm={() => void revokeIcal()}
                 />
               }
             />
