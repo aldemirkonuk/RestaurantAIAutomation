@@ -104,7 +104,12 @@ IDENTITY_FIELDS = (
 # The canonical scrub lists, and the three files that must agree on them.
 # One declaration per runtime is the source of truth for that runtime; this
 # guard is what makes the three declarations one rule.
-SHARED_LISTS = ("PII_USER_KEYS", "PII_KEYS", "SENSITIVE_HEADERS")
+# TOKEN_PATH_PREFIXES joined 2026-09-21: PR #427's compliance audit mutation-tested
+# the omission and proved the guard was specifically blind to it — dropping
+# `/invite/` from one runtime exited 0, while dropping a PII_USER_KEYS entry the
+# same way exited 1. ADR 0040 set the standing rule for these cross-runtime
+# lists: "Enforced duplication, not silent duplication."
+SHARED_LISTS = ("PII_USER_KEYS", "PII_KEYS", "SENSITIVE_HEADERS", "TOKEN_PATH_PREFIXES")
 DRIFT_FILES = (
     "apps/web/src/lib/error-tracking.ts",
     "apps/api-gateway/src/common/error-tracking/sentry.service.ts",
@@ -155,6 +160,15 @@ CONTAINER_PATTERNS = {
     # was not, so a JS error on a reset page shipped the token to Sentry.
     # Pinned here so that closing it in one runtime and not the others fails the
     # build, and so that removing it later fails the build too.
+    # Sibling of `request.url`, set separately by the SDKs' request-data
+    # integrations. `/inbound-email` takes INBOUND_WEBHOOK_SECRET as
+    # @Query("secret") and the OAuth callback takes @Query("code"), so this
+    # field carries real credentials. Scrubbing one and not the other is the
+    # shape this guard exists to remove. Added 2026-09-21 by PR #427's audit.
+    "request.query_string": {
+        "ts": r"query_string",
+        "py": r"""query_string""",
+    },
     "request.url": {
         "ts": r"request\??\.url\b",
         "py": r"""request\.(?:get|pop)\(\s*['"]url['"]""",
@@ -472,12 +486,106 @@ def check_no_drift(drift_files: tuple[str, ...] = DRIFT_FILES) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Every `@Public()` route with a path parameter must be CLASSIFIED.
+#
+# Added 2026-09-21. PR #427 shipped `TOKEN_PATH_PREFIXES` to redact a path-borne
+# credential from a Sentry event URL, and its own security audit blocked it for
+# missing `/calendar/feed/<token>.ics` -- an unauthenticated, tenant-wide,
+# never-expiring bearer token. The list was an allow-list, and an allow-list
+# reports health for every route nobody remembered to add. That is precisely the
+# property the founder rejected when he chose "strip the query entirely" over
+# redacting known parameter names, so the same property must not survive here.
+#
+# This check inverts it: a new `@Public()` route that takes a path parameter
+# FAILS THE BUILD until someone says which it is. Either it bears a credential
+# (and its prefix goes in TOKEN_PATH_PREFIXES in all three runtimes) or it does
+# not (and it is named below, with a reason). Silence is not an option, which is
+# what makes this a check rather than a list.
+# ---------------------------------------------------------------------------
+
+# Reviewed 2026-09-21 and found NOT to carry a credential in the path.
+PUBLIC_PATH_PARAMS_NOT_CREDENTIALS = {
+    ":provider": "OAuth provider name (google, microsoft) -- not a secret",
+    ":slug": "public vendor slug, deliberately guessable and indexed",
+    ":page": "sitemap page number",
+    ":key": "experiment / series key -- a name, not a secret",
+    ":restaurantId": "tenant id, already in the JWT and in every URL",
+    ":id": "opaque row id, authorised separately",
+    ":orderId": "order id, authorised separately",
+}
+
+_PUBLIC_RE = re.compile(r"@Public\(\)")
+_ROUTE_RE = re.compile(r"""@(?:Get|Post|Put|Patch|Delete)\(\s*["']([^"']*)["']""")
+_CONTROLLER_RE = re.compile(r"""@Controller\(\s*["']([^"']*)["']""")
+
+
+def check_public_path_params(repo: Path) -> tuple[list[str], int]:
+    """Every @Public() route taking a path param is either a known credential
+    route covered by TOKEN_PATH_PREFIXES, or explicitly named as not one."""
+    failures: list[str] = []
+    controllers = sorted((repo / "apps/api-gateway/src").rglob("*.controller.ts"))
+    if not controllers:
+        raise CannotCheck("no gateway controllers found")
+
+    prefixes = _token_path_prefixes(repo)
+    if not prefixes:
+        raise CannotCheck("TOKEN_PATH_PREFIXES not found in any runtime")
+
+    checked = 0
+    for f in controllers:
+        text = f.read_text(encoding="utf-8")
+        cm = _CONTROLLER_RE.search(text)
+        base = "/" + cm.group(1).strip("/") if cm else ""
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            rm = _ROUTE_RE.search(line)
+            if not rm:
+                continue
+            # @Public() sits within a few decorator lines of the route
+            window = "\n".join(lines[max(0, i - 6) : i + 7])
+            if not _PUBLIC_RE.search(window):
+                continue
+            route = rm.group(1)
+            params = re.findall(r"(:[A-Za-z_][A-Za-z0-9_]*)", route)
+            if not params:
+                continue
+            checked += 1
+            full = (base + "/" + route.strip("/")).replace("//", "/")
+            covered = any(pfx.rstrip("/") + "/" in full + "/" for pfx in prefixes)
+            unclassified = [
+                p for p in params if p not in PUBLIC_PATH_PARAMS_NOT_CREDENTIALS
+            ]
+            if covered or not unclassified:
+                continue
+            failures.append(
+                f"{f.relative_to(repo)}: @Public() route {full!r} takes "
+                f"{', '.join(unclassified)} and is neither covered by "
+                f"TOKEN_PATH_PREFIXES nor listed in "
+                f"PUBLIC_PATH_PARAMS_NOT_CREDENTIALS. If it bears a credential, "
+                f"add its prefix to TOKEN_PATH_PREFIXES in ALL THREE runtimes; "
+                f"if it does not, name the parameter above with a reason."
+            )
+    return failures, checked
+
+
+def _token_path_prefixes(repo: Path) -> set[str]:
+    """Read TOKEN_PATH_PREFIXES out of the web runtime (the guard already proves
+    the three runtimes agree on the containers they scrub; this reads one)."""
+    f = repo / "apps/web/src/lib/error-tracking.ts"
+    if not f.exists():
+        return set()
+    m = re.search(r"TOKEN_PATH_PREFIXES\s*=\s*\[(.*?)\]", f.read_text(encoding="utf-8"), re.S)
+    return set(re.findall(r"""['"](/[^'"]*)['"]""", m.group(1))) if m else set()
+
+
 _FIXTURE_LISTS_TS = """
 const PII_USER_KEYS = ['email', 'username', 'name', 'ip_address']
 const PII_KEYS = new Set(['email', 'name', 'username', 'first_name', 'last_name',
   'phone', 'phone_number', 'ip_address', 'address', 'password', 'ssn'])
 const SENSITIVE_HEADERS = new Set(['authorization', 'cookie', 'x-api-key',
   'proxy-authorization'])
+const TOKEN_PATH_PREFIXES = ['/invite/', '/studio/invite/', '/calendar/feed/', '/digest/unsubscribe/'] as const
 """
 
 _FIXTURE_SCRUBBER_TS = """
@@ -486,6 +594,7 @@ export function scrubSentryEvent(event) {
     const headers = event.request.headers
     delete event.request.cookies
     event.request.url = scrubUrl(event.request.url)
+    delete event.request.query_string
   }
   if (event.user) { drop(event.user) }
   scrubPiiKeys(event.extra)
@@ -500,6 +609,7 @@ PII_USER_KEYS = ("email", "username", "name", "ip_address")
 PII_KEYS = ("email", "name", "username", "first_name", "last_name", "phone",
             "phone_number", "ip_address", "address", "password", "ssn")
 SENSITIVE_HEADERS = ("authorization", "cookie", "x-api-key", "proxy-authorization")
+TOKEN_PATH_PREFIXES = ("/invite/", "/studio/invite/", "/calendar/feed/", "/digest/unsubscribe/")
 """
 
 # The shape the audit actually found: identical key lists, three fewer
@@ -521,6 +631,7 @@ def scrub_sentry_event(event, hint=None):
         headers = request.get("headers")
         request.pop("cookies", None)
         request["url"] = scrub_url(request.get("url"))
+        request.pop("query_string", None)
         _scrub_pii_keys(request.get("data"))
     user = event.get("user")
     _scrub_pii_keys(event.get("extra"))
@@ -662,6 +773,12 @@ def main(argv: list[str]) -> int:
         init_problems, init_checked = check_init_posture(files)
         user_problems, user_checked = check_user_scope(files)
         drift_problems = check_no_drift()
+        public_problems, public_checked = check_public_path_params(REPO)
+        if public_checked == 0:
+            raise CannotCheck(
+                "no @Public() route with a path parameter found — this check "
+                "would pass vacuously on an empty scan"
+            )
         if init_checked == 0:
             raise CannotCheck(
                 "no Sentry init call site found — the guard would pass "
@@ -674,7 +791,7 @@ def main(argv: list[str]) -> int:
         print("Exiting 2 — a guard that cannot verify must not report success.")
         return 2
 
-    problems = init_problems + user_problems + drift_problems
+    problems = init_problems + user_problems + drift_problems + public_problems
     if problems:
         print("FAIL: an identity may be reaching the error tracker.")
         for line in problems:
@@ -694,7 +811,9 @@ def main(argv: list[str]) -> int:
         f"PASS — {init_checked} Sentry init site(s) declare their PII posture, "
         f"{user_checked} user scope(s)/shape(s) carry opaque identifiers only, "
         f"and {len(DRIFT_FILES)} runtimes agree on {len(SHARED_LISTS)} scrub "
-        f"list(s) and all {len(REQUIRED_CONTAINERS)} scrubbed containers."
+        f"list(s) and all {len(REQUIRED_CONTAINERS)} scrubbed containers; "
+        f"{public_checked} @Public() route(s) with a path parameter are all "
+        f"classified."
     )
     return 0
 

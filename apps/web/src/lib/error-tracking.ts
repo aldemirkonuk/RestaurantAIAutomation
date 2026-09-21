@@ -77,7 +77,8 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
 /**
  * Remove PII from a Sentry event before it is transmitted.
  * - drops credential request headers and cookies
- * - reduces `request.url` to origin+path, and redacts a path-borne token
+ * - reduces `request.url` to origin+path, drops `request.query_string`,
+ *   redacts a path-borne token, and does the same to breadcrumb URLs
  * - reduces `user` to a pseudonymous id (+ non-PII custom keys like restaurantId)
  * - strips common PII keys from free-form extra/contexts/request payloads
  *
@@ -88,38 +89,62 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
  * Exported so the scrubbing contract can be unit-tested.
  */
 /**
- * Routes that carry a credential in the PATH rather than the query. Stripping
- * the query does not reach these: `/invite/<code>` IS the invite credential.
- * Kept as route prefixes, not parameter names — the thing being enumerated is
- * "which routes bear a secret", which is already a maintained fact in this repo
- * (apps/web/src/lib/seo/routes.ts TOKEN_PREFIXES), not "which parameter names
- * someone remembered".
+ * Route prefixes whose NEXT path segment is a credential.
+ *
+ * Stripping the query does not reach these — `/invite/<code>` IS the invite
+ * credential. This enumerates ROUTES that bear a secret, which is a fact the
+ * repo already maintains, rather than parameter names someone has to remember.
+ *
+ * It is still an allow-list, and an allow-list fails open — which is the exact
+ * property the founder rejected when he chose "strip the query entirely" over
+ * redacting known parameter names. So it does not stand alone:
+ * `scripts/check_sentry_pii_scope.py` enumerates every `@Public()` gateway route
+ * whose path parameter is named like a credential and FAILS THE BUILD if one is
+ * not covered here. Adding a token-bearing public route without adding it here
+ * is a red build, not a silent leak.
+ *
+ * The three gateway entries were found by PR #427's own security audit, which
+ * blocked the first version of this fix for missing them.
  */
-const TOKEN_PATH_PREFIXES = ['/invite/', '/studio/invite/'] as const
+const TOKEN_PATH_PREFIXES = [
+  '/invite/', // web invite, and the gateway's /auth/invite/<code>
+  '/studio/invite/', // studio invite
+  '/calendar/feed/', // @Public() iCal feed — a tenant-wide 64-char bearer
+  '/digest/unsubscribe/', // @Public() one-click unsubscribe token
+] as const
 
 /**
- * The URL as Sentry may keep it: origin and path only, with a path-borne token
- * replaced.
+ * The URL as Sentry may keep it: origin and path, with a path-borne credential
+ * replaced and the query gone entirely.
  *
  * Founder ruling 2026-09-21 — strip the query ENTIRELY rather than redact known
- * secret-bearing parameter names. A redaction allow-list reports health for
- * every parameter nobody remembered to add, which is exactly how the gap this
- * closes arose: `scrubSentryEvent` covered headers, cookies, user, extra,
- * request.data and contexts, and never `request.url`, so a JS error thrown on
- * `/reset-password?token=...` shipped the token to Sentry.
+ * secret-bearing parameter names, because an allow-list reports health for every
+ * parameter nobody remembered to add. That is exactly how the gap this closes
+ * arose: the scrubber covered headers, cookies, user, extra, request.data and
+ * contexts, and never `request.url`, so a JS error on `/reset-password?token=...`
+ * shipped the token to Sentry with a live DSN.
  *
- * What is traded: the query no longer tells you which page state produced an
- * error. That is the accepted cost of failing closed.
+ * What is traded: the query no longer says which page state produced an error.
+ *
+ * Only the ONE segment after the prefix is replaced, not the whole tail, so
+ * `/auth/invite/<code>/accept` keeps `/accept` and an on-call can still tell the
+ * routes apart. Over-redaction is the safe direction and is accepted: a path
+ * that merely looks like a token route loses one segment.
  *
  * A plain string cut, never `new URL()` — this runs inside `before_send` on an
- * error path and must not itself throw, and it must work on a relative URL.
+ * error path, so it must not raise a second failure, and it must work on a
+ * relative URL.
  */
 export function scrubUrl(raw: string): string {
-  const q = raw.search(/[?#]/)
-  const path = q === -1 ? raw : raw.slice(0, q)
+  const cut = raw.search(/[?#]/)
+  const path = cut === -1 ? raw : raw.slice(0, cut)
   for (const prefix of TOKEN_PATH_PREFIXES) {
     const at = path.indexOf(prefix)
-    if (at !== -1) return `${path.slice(0, at + prefix.length)}<redacted>`
+    if (at === -1) continue
+    const from = at + prefix.length
+    const nextSlash = path.indexOf('/', from)
+    const tail = nextSlash === -1 ? '' : path.slice(nextSlash)
+    return `${path.slice(0, from)}<redacted>${tail}`
   }
   return path
 }
@@ -135,6 +160,23 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
     delete event.request.cookies
     if (typeof event.request.url === 'string') {
       event.request.url = scrubUrl(event.request.url)
+    }
+    // `query_string` is set separately by the SDK's request-data integration and
+    // is a sibling of the field above — scrubbing one and not the other is the
+    // shape this whole fix exists to remove. The founder's ruling is that the
+    // query goes, so it goes here too rather than being redacted key by key.
+    delete (event.request as Record<string, unknown>).query_string
+  }
+  // Breadcrumbs are merged onto the event BEFORE `beforeSend`, so a navigation
+  // away from `/reset-password?token=...` leaves the token in the buffer for the
+  // next hundred breadcrumbs even though `request.url` is now clean.
+  if (Array.isArray(event.breadcrumbs)) {
+    for (const crumb of event.breadcrumbs) {
+      const data = crumb?.data as Record<string, unknown> | undefined
+      if (!data) continue
+      for (const key of ['from', 'to', 'url']) {
+        if (typeof data[key] === 'string') data[key] = scrubUrl(data[key] as string)
+      }
     }
   }
   if (event.user) {

@@ -258,6 +258,18 @@ describe("request.url never carries a credential (founder ruling 2026-09-21)", (
       "https://mudavym.com/studio/invite/S",
       "https://mudavym.com/studio/invite/<redacted>",
     ],
+    // the @Public() iCal feed: a tenant-wide, never-expiring bearer. PR #427's
+    // own security audit BLOCKED the first version of this fix for missing it.
+    ["/api/v1/calendar/feed/9f3c1a.ics", "/api/v1/calendar/feed/<redacted>"],
+    [
+      "/api/v1/recommendations/digest/unsubscribe/TOK",
+      "/api/v1/recommendations/digest/unsubscribe/<redacted>",
+    ],
+    // only ONE segment goes, so the route stays legible to an on-call
+    [
+      "/api/v1/auth/invite/CODE/accept",
+      "/api/v1/auth/invite/<redacted>/accept",
+    ],
     ["/invite/SECRET?x=1", "/invite/<redacted>"],
     ["https://mudavym.com/orders", "https://mudavym.com/orders"],
     ["/", "/"],
@@ -272,6 +284,22 @@ describe("request.url never carries a credential (founder ruling 2026-09-21)", (
     });
     expect(event.request.url).toBe("https://mudavym.com/reset-password");
     expect(JSON.stringify(event)).not.toContain("SECRET");
+  });
+
+  it("drops request.query_string — INBOUND_WEBHOOK_SECRET arrives as a query param", () => {
+    const event: any = scrubSentryEvent({
+      request: { url: "/api/v1/inbound-email", query_string: "secret=SECRET" },
+    });
+    expect(event.request.query_string).toBeUndefined();
+    expect(JSON.stringify(event)).not.toContain("SECRET");
+  });
+
+  it("scrubs the interceptor's extra.url, which scrubPiiKeys never reached", () => {
+    const event: any = scrubSentryEvent({
+      extra: { url: "/api/v1/calendar/feed/SECRETTOKEN.ics", method: "GET" },
+    });
+    expect(event.extra.url).toBe("/api/v1/calendar/feed/<redacted>");
+    expect(JSON.stringify(event)).not.toContain("SECRETTOKEN");
   });
 
   it("does not throw on a malformed URL, because it runs on an error path", () => {

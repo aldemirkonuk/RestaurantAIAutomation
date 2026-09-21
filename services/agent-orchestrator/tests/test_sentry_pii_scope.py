@@ -182,6 +182,15 @@ def test_scrub_lists_match_the_typescript_runtimes():
             "https://mudavym.com/studio/invite/S",
             "https://mudavym.com/studio/invite/<redacted>",
         ),
+        # the @Public() iCal feed: a tenant-wide, never-expiring bearer. PR #427's
+        # own security audit BLOCKED the first version of this fix for missing it.
+        ("/api/v1/calendar/feed/9f3c1a.ics", "/api/v1/calendar/feed/<redacted>"),
+        (
+            "/api/v1/recommendations/digest/unsubscribe/TOK",
+            "/api/v1/recommendations/digest/unsubscribe/<redacted>",
+        ),
+        # only ONE segment goes, so the route stays legible to an on-call
+        ("/api/v1/auth/invite/CODE/accept", "/api/v1/auth/invite/<redacted>/accept"),
         ("/invite/SECRET?x=1", "/invite/<redacted>"),
         ("https://mudavym.com/orders", "https://mudavym.com/orders"),
         ("/", "/"),
@@ -218,3 +227,15 @@ def test_a_non_string_url_is_left_alone():
     event = {"request": {"url": 42}}
     scrub_sentry_event(event)
     assert event["request"]["url"] == 42
+
+
+def test_query_string_is_dropped_because_asgi_puts_the_query_there():
+    """In the ASGI integration `url` is built WITHOUT the querystring
+    (_asgi_common._get_url), so scrubbing only `url` was a no-op for the thing
+    this fix is named after. Found by PR #427's security audit."""
+    from utils.sentry_client import scrub_sentry_event
+
+    event = {"request": {"url": "/reset-password", "query_string": "token=SECRET"}}
+    scrub_sentry_event(event)
+    assert "query_string" not in event["request"]
+    assert "SECRET" not in repr(event)

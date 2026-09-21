@@ -198,3 +198,63 @@ agreeing *constant* is the easy half to check and the half that matters least.
 |---|---|---|
 | 2026-08-28 | — | Created; proposed, awaiting founder lock |
 | 2026-08-28 | audit | Scrubber symmetry gap found and closed; guard extended to containers (amendment above) |
+
+---
+
+## Amendment — the path-borne credential, and the query at `before_send` (2026-09-21, PR #427)
+
+This record's Decision already says Sentry receives **"never … a request
+parameter's value"**, and its *"Request parameters by name, not by value"*
+remedy shipped in `sentry.interceptor.ts`. That remedy was **one layer and one
+runtime**. Three gaps were measured on 2026-09-21 and closed here; none is a new
+decision, all are this decision reaching where it had not:
+
+1. **`before_send` never scrubbed `event.request.url`.** The browser SDK's
+   `httpContextIntegration` fills it from `getLocationHref()` — the full URL with
+   its query — so a JavaScript error on `/reset-password?token=…` shipped the
+   token to Sentry. Confirmed live: the shipped production bundle carries a real
+   DSN, and carried no redaction. The interceptor's `split("?")` never applied,
+   because it is a different layer.
+2. **`request.query_string` is a sibling the SDKs set separately.** On the
+   gateway it carries `INBOUND_WEBHOOK_SECRET` (`@Query("secret")` on a
+   `@Public()` route) and the OAuth `code`. In the Python runtime it is the
+   *only* place the query appears — `_asgi_common._get_url` builds `url`
+   **without** it — so scrubbing `url` alone was a no-op there.
+3. **A credential can be in the PATH, where stripping the query cannot reach it.**
+   `/invite/<code>`, `/studio/invite/<token>`, and — found by this PR's own
+   security audit, which blocked the first version of the fix — the `@Public()`
+   `/calendar/feed/<token>.ics`, a tenant-wide, never-expiring, unauthenticated
+   bearer over a house's whole calendar, and `/digest/unsubscribe/<token>`.
+
+**The founder's ruling (2026-09-21) on the query half:** strip it **entirely**,
+not redact known secret-bearing parameter names. *Rejected:* redaction by name —
+it keeps the page state that produced an error, but reports health for every
+parameter nobody remembered to add. *Traded:* the query no longer says which page
+state produced an error.
+
+**The path half is an allow-list, and that is only safe because it is enforced.**
+`TOKEN_PATH_PREFIXES` would otherwise have the exact fail-open property the
+founder rejected. Two guards prevent that, both mutation-tested with a NO-OP
+control:
+
+- It joined `SHARED_LISTS` in `scripts/check_sentry_pii_scope.py`, so the three
+  runtimes' copies cannot drift — this record's own *"Enforced duplication, not
+  silent duplication"* rule. Before this, dropping `/invite/` from one runtime
+  exited **0**; it now exits **1**.
+- `check_public_path_params` enumerates every `@Public()` gateway route taking a
+  path parameter and **fails the build** unless it is either covered by
+  `TOKEN_PATH_PREFIXES` or named in `PUBLIC_PATH_PARAMS_NOT_CREDENTIALS` with a
+  reason. A new token-bearing public route is a red build, not a silent leak.
+
+Only the **one segment** after a prefix is redacted, so `/auth/invite/<code>/accept`
+keeps `/accept` and an on-call can still tell routes apart. Over-redaction is the
+safe direction and is accepted.
+
+**Still open, filed not fixed:** breadcrumb URLs are scrubbed in the web runtime
+only; `Referer` is not in `SENSITIVE_HEADERS`, which matters for the token routes
+that do not match ADR 0158's `no-referrer` source (the trailing-slash form,
+`ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH`, still `open`).
+
+**Revisit when:** a new `@Public()` route takes a credential in its path (the
+guard will say so); Sentry's SDK adds another container carrying a URL; or the
+trailing-slash referrer gap is closed.

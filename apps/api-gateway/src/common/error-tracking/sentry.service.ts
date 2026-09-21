@@ -57,7 +57,8 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
 /**
  * Remove secrets and PII from a Sentry event before transmission.
  * - drops credential request headers and cookies
- * - reduces `request.url` to origin+path, and redacts a path-borne token
+ * - reduces `request.url` to origin+path, drops `request.query_string`,
+ *   redacts a path-borne token, and scrubs the interceptor's `extra.url`
  * - reduces `user` to a pseudonymous id (+ non-PII custom keys like restaurant_id)
  * - strips common PII keys from free-form extra/contexts/request payloads
  *
@@ -68,27 +69,40 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
  * Exported so the scrubbing contract can be unit-tested.
  */
 /**
- * Routes that carry a credential in the PATH rather than the query. Stripping
- * the query does not reach these: `/invite/<code>` IS the invite credential.
+ * Route prefixes whose NEXT path segment is a credential. Enumerates ROUTES
+ * that bear a secret, not parameter names. It is still an allow-list, so it
+ * does not stand alone: `scripts/check_sentry_pii_scope.py` enumerates every
+ * `@Public()` route here whose path parameter is named like a credential and
+ * FAILS THE BUILD if one is not covered. The three gateway entries were found
+ * by PR #427's own security audit, which blocked the first version of this fix.
  */
-const TOKEN_PATH_PREFIXES = ["/invite/", "/studio/invite/"] as const;
+const TOKEN_PATH_PREFIXES = [
+  "/invite/", // web invite, and this service's /auth/invite/<code>
+  "/studio/invite/",
+  "/calendar/feed/", // @Public() iCal feed — a tenant-wide 64-char bearer
+  "/digest/unsubscribe/", // @Public() one-click unsubscribe token
+] as const;
 
 /**
- * The URL as Sentry may keep it: origin and path only, with a path-borne token
- * replaced. Founder ruling 2026-09-21 — strip the query ENTIRELY rather than
- * redact known secret-bearing parameter names, because an allow-list reports
- * health for every parameter nobody remembered to add. A plain string cut,
- * never `new URL()`: this runs on an error path and must not itself throw.
+ * The URL as Sentry may keep it: origin and path, with a path-borne credential
+ * replaced and the query gone entirely. Founder ruling 2026-09-21.
  *
- * Kept identical in all three runtimes; scripts/check_sentry_pii_scope.py fails
- * the build if one of them stops covering `request.url`.
+ * Only the ONE segment after the prefix is replaced, so `/auth/invite/<code>/accept`
+ * keeps `/accept`. Over-redaction is the safe direction.
+ *
+ * A plain string cut, never `new URL()`: this runs on an error path and must not
+ * raise a second failure. Kept identical in all three runtimes.
  */
 export function scrubUrl(raw: string): string {
-  const q = raw.search(/[?#]/);
-  const path = q === -1 ? raw : raw.slice(0, q);
+  const cut = raw.search(/[?#]/);
+  const path = cut === -1 ? raw : raw.slice(0, cut);
   for (const prefix of TOKEN_PATH_PREFIXES) {
     const at = path.indexOf(prefix);
-    if (at !== -1) return `${path.slice(0, at + prefix.length)}<redacted>`;
+    if (at === -1) continue;
+    const from = at + prefix.length;
+    const nextSlash = path.indexOf("/", from);
+    const tail = nextSlash === -1 ? "" : path.slice(nextSlash);
+    return `${path.slice(0, from)}<redacted>${tail}`;
   }
   return path;
 }
@@ -105,6 +119,16 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
     if (typeof event.request.url === "string") {
       event.request.url = scrubUrl(event.request.url);
     }
+    // Set separately by @sentry/node's requestDataIntegration. `/inbound-email`
+    // takes INBOUND_WEBHOOK_SECRET as @Query("secret") and the OAuth callback
+    // takes @Query("code"), so this field carries real credentials on a 5xx.
+    delete (event.request as Record<string, unknown>).query_string;
+  }
+  // The interceptor puts its own copy of the URL in `extra.url`, and
+  // `scrubPiiKeys` never touches it because PII_KEYS has no `url`.
+  const extra = event.extra as Record<string, unknown> | undefined;
+  if (extra && typeof extra.url === "string") {
+    extra.url = scrubUrl(extra.url);
   }
   if (event.user) {
     for (const key of PII_USER_KEYS) {

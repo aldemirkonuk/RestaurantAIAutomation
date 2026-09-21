@@ -75,24 +75,30 @@ def _scrub_pii_keys(obj: Any) -> None:
             obj.pop(key, None)
 
 
-# Routes that carry a credential in the PATH rather than the query. Stripping
-# the query does not reach these: `/invite/<code>` IS the invite credential.
-TOKEN_PATH_PREFIXES = ("/invite/", "/studio/invite/")
+# Route prefixes whose NEXT path segment is a credential. Enumerates ROUTES that
+# bear a secret, not parameter names. Still an allow-list, so it does not stand
+# alone: scripts/check_sentry_pii_scope.py enumerates every @Public() gateway
+# route whose path parameter is named like a credential and FAILS THE BUILD if
+# one is not covered. The gateway entries were found by PR #427's own security
+# audit, which blocked the first version of this fix for missing them.
+TOKEN_PATH_PREFIXES = (
+    "/invite/",
+    "/studio/invite/",
+    "/calendar/feed/",
+    "/digest/unsubscribe/",
+)
 
 
 def scrub_url(raw: str) -> str:
     """
-    The URL as Sentry may keep it: origin and path only, with a path-borne
-    token replaced.
+    The URL as Sentry may keep it: origin and path, with a path-borne credential
+    replaced and the query gone. Founder ruling 2026-09-21.
 
-    Founder ruling 2026-09-21 -- strip the query ENTIRELY rather than redact
-    known secret-bearing parameter names, because an allow-list reports health
-    for every parameter nobody remembered to add. A plain string cut, never
-    urlparse: this runs inside `before_send` on an error path and must not
-    itself throw, and it must work on a relative URL.
+    Only the ONE segment after the prefix is replaced, so `/auth/invite/<code>/accept`
+    keeps `/accept`. Over-redaction is the safe direction.
 
-    Kept identical in all three runtimes; scripts/check_sentry_pii_scope.py
-    fails the build if one of them stops covering `request.url`.
+    A plain string cut, never urlparse: this runs inside `before_send` on an error
+    path and must not raise a second failure, and it must work on a relative URL.
     """
     path = raw
     for sep in ("?", "#"):
@@ -101,8 +107,12 @@ def scrub_url(raw: str) -> str:
             path = path[:cut]
     for prefix in TOKEN_PATH_PREFIXES:
         at = path.find(prefix)
-        if at != -1:
-            return path[: at + len(prefix)] + "<redacted>"
+        if at == -1:
+            continue
+        start_of_seg = at + len(prefix)
+        next_slash = path.find("/", start_of_seg)
+        tail = "" if next_slash == -1 else path[next_slash:]
+        return path[:start_of_seg] + "<redacted>" + tail
     return path
 
 
@@ -136,6 +146,11 @@ def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dic
         url = request.get("url")
         if isinstance(url, str):
             request["url"] = scrub_url(url)
+        # In the ASGI integration `url` is built WITHOUT the querystring
+        # (sentry_sdk/integrations/_asgi_common.py `_get_url`), and the query is
+        # put here instead -- so scrubbing only `url` would have been a no-op for
+        # the thing this fix is named after. Found by PR #427's security audit.
+        request.pop("query_string", None)
         _scrub_pii_keys(request.get("data"))
 
     user = event.get("user")

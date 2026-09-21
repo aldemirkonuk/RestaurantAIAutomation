@@ -199,6 +199,13 @@ describe('request.url never carries a credential (founder ruling 2026-09-21)', (
     // path-borne: stripping the query does NOT reach these
     ['https://mudavym.com/invite/SECRETCODE', 'https://mudavym.com/invite/<redacted>'],
     ['https://mudavym.com/studio/invite/SECRET', 'https://mudavym.com/studio/invite/<redacted>'],
+    // the @Public() iCal feed — a tenant-wide, never-expiring bearer. PR #427's
+    // security audit BLOCKED the first version of this fix for missing it.
+    ['https://gw/api/v1/calendar/feed/9f3c1a.ics', 'https://gw/api/v1/calendar/feed/<redacted>'],
+    // the @Public() one-click unsubscribe token
+    ['https://gw/api/v1/recommendations/digest/unsubscribe/TOK', 'https://gw/api/v1/recommendations/digest/unsubscribe/<redacted>'],
+    // only the ONE segment after the prefix goes, so the route stays legible
+    ['https://gw/api/v1/auth/invite/CODE/accept', 'https://gw/api/v1/auth/invite/<redacted>/accept'],
     // relative URLs must work — this runs before the SDK normalises anything
     ['/invite/SECRETCODE?x=1', '/invite/<redacted>'],
     // ordinary pages are left alone
@@ -216,6 +223,30 @@ describe('request.url never carries a credential (founder ruling 2026-09-21)', (
     const event: any = { request: { url: 'https://mudavym.com/reset-password?token=SECRET' } }
     scrubSentryEvent(event)
     expect(event.request.url).toBe('https://mudavym.com/reset-password')
+    expect(JSON.stringify(event)).not.toContain('SECRET')
+  })
+
+
+  it('drops request.query_string, the sibling field the SDK sets separately', async () => {
+    const { scrubSentryEvent } = await freshModule()
+    const event: any = { request: { url: 'https://mudavym.com/x', query_string: 'token=SECRET' } }
+    scrubSentryEvent(event)
+    expect(event.request.query_string).toBeUndefined()
+    expect(JSON.stringify(event)).not.toContain('SECRET')
+  })
+
+  it('scrubs breadcrumb URLs — they are merged onto the event BEFORE beforeSend', async () => {
+    const { scrubSentryEvent } = await freshModule()
+    const event: any = {
+      breadcrumbs: [
+        { category: 'navigation', data: { from: '/reset-password?token=SECRET', to: '/login' } },
+        { category: 'fetch', data: { url: '/invite/SECRETCODE' } },
+        { category: 'ui.click' },
+      ],
+    }
+    scrubSentryEvent(event)
+    expect(event.breadcrumbs[0].data.from).toBe('/reset-password')
+    expect(event.breadcrumbs[1].data.url).toBe('/invite/<redacted>')
     expect(JSON.stringify(event)).not.toContain('SECRET')
   })
 
