@@ -1384,7 +1384,21 @@ Validation: procurement gateway 74 suites / 1,423 passing tests (3 skipped), gat
 >     failing on lane B's `logs-timeline.service.ts` comment rename; the
 >     comment change is a real, wanted fix — the query still filters by
 >     `payload.restaurant_id` — so the CLAIMS row's grep string was corrected
->     to match it, not the code reverted)
+>     to match it, not the code reverted) **[CORRECTED 2026-09-21, round 5 fix
+>     pass, CLAUDE.md §5b: "lane B's... comment rename" and "the query still
+>     filters" (implying unchanged) are both wrong, re-verified directly —
+>     `git show 8c5219516:.../logs-timeline.service.ts` (this lane's own
+>     snapshot) carries the current comment AND the
+>     `.contains(payload, {restaurant_id})` filter together, with
+>     `fetchEventStore` taking `restaurantId` as a parameter; `git show
+>     origin/main:.../logs-timeline.service.ts` still has the OLD comment and
+>     calls `fetchEventStore(db, correlationId, cursor)` with no
+>     `restaurantId` at all. This lane's own drop added the filter alongside
+>     the comment reword; no wt-fin-B snapshot carries either half. What was
+>     correctly fixed here is the CLAIMS row's grep string, which still
+>     matches current code — only the attribution and the "unchanged" claim
+>     were wrong. See `CLAIMS.jsonl`'s own dated correction on
+>     `ADR-0132-NO-UNSCOPED-TIMELINE-LEG` for the same fix in place.]**
 >   - 15 static guards relevant to the touched paths: exit 0 each
 >
 > Not run here either: a vite build, browser/visual/simulator checks, the
