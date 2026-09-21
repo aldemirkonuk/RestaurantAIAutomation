@@ -215,6 +215,31 @@ describe('door two — a vendor of your own', () => {
     );
   });
 
+  // Founder, 2026-09-21: "a vendor added without a business type gets a new
+  // 'Not stated' choice instead of silently becoming 'Distributor' - nothing
+  // assumed, settable later".
+  it('a vendor added without a type goes as "Not stated" — never a guessed Distributor', async () => {
+    draw();
+    fillCleanly();
+    const typeSelect = screen.getByTestId('vendor-type') as HTMLSelectElement;
+    expect(typeSelect).toHaveValue('');
+    expect(typeSelect.selectedOptions[0].textContent).toBe('Not stated');
+    fireEvent.click(screen.getByTestId('vendor-save'));
+    await waitFor(() => expect(create.mutateAsync).toHaveBeenCalled());
+    const body = create.mutateAsync.mock.calls[0][0] as Record<string, unknown>;
+    expect(body.primaryBusinessType).toBeUndefined();
+  });
+
+  it('a type the person chose is sent as chosen', async () => {
+    draw();
+    fillCleanly();
+    fireEvent.change(screen.getByTestId('vendor-type'), { target: { value: 'Importer' } });
+    fireEvent.click(screen.getByTestId('vendor-save'));
+    await waitFor(() => expect(create.mutateAsync).toHaveBeenCalled());
+    const body = create.mutateAsync.mock.calls[0][0] as Record<string, unknown>;
+    expect(body.primaryBusinessType).toBe('Importer');
+  });
+
   it('a terms failure never presents as "failed to add vendor"', async () => {
     terms.set.mockRejectedValue(new Error('terms table missing'));
     draw();

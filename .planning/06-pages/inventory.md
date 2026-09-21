@@ -55,12 +55,13 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
   - **An unstated premium is refused, never read as zero.** "There was no premium" and
     "nobody typed the premium" are different facts, and only the first can produce a
     cost.
-  - 🚧 **The lot's own details have no column and are NOT saved** — auction house, lot
-    number, sale date. The sheet takes them, uses them, prints them back to be copied
-    somewhere that keeps them, and says plainly that the book keeps the figure and not
-    the lot (ADR 0083). See §9. *The census's own footer claimed "the ledger keeps
-    both"; it was corrected on 2026-09-06 against the schema.*
-  - Proved by `AuctionLot.test.tsx` (12 assertions).
+  - **The lot's own details are saved (2026-09-21, founder answer 2)** — auction
+    house, lot number, sale date, hammer price and buyer's premium WITH an
+    ISO-4217 currency, never inferred. Written to `auction_lot_records`, linked
+    to the `restaurant_inventory` row the carry produced (ADR 0083's review
+    trail). See §9. *The census's own footer claimed "the ledger keeps both"
+    back on 2026-09-06, when it did not; it does now.*
+  - Proved by `AuctionLot.test.tsx`.
 - Attention rail surfacing low stock first
 - Spot counts with an offline-safe outbox (counts queue and sync when back online)
 - Receiving verification as a pinned task, not a popup — verify a delivery against its documents
@@ -239,15 +240,23 @@ never renders. Shared layout chrome applies (see dashboard.md §7).
 
 ## 9. Gaps
 
-- **An auction lot's own details have nowhere to live** (found 2026-09-06 while
-  building the fourth start). `inventory_lots` carries `unit_cost` and
-  `cost_provenance` and nothing else about where a bottle came from, so the auction
-  house, the lot number and the sale date are taken, used to work out the cost, and
-  then dropped. The sheet says so rather than pretending. Fixing it is a column (or a
-  provenance row), which is a migration and therefore not a decision an overlay packet
-  takes. Two dead routes go with it: `POST /wines/research` and
-  `POST /wines/auction-purchase`, which the legacy modal called and which have never
-  existed.
+- ~~**An auction lot's own details have nowhere to live**~~ **CLOSED 2026-09-21**
+  (founder answer 2, "Build all now"). Found 2026-09-06 while building the fourth
+  start: `inventory_lots` carried `unit_cost` and `cost_provenance` and nothing
+  else about where a bottle came from, so the auction house, the lot number and
+  the sale date were taken, used to work out the cost, and then dropped. Now
+  written to `auction_lot_records` (`20260921113900_an_auction_lot_keeps_its_own_details.sql`)
+  — auction house, lot number, sale date, hammer price and buyer's premium WITH
+  an ISO-4217 currency, never inferred — linked to the `restaurant_inventory`
+  row the carry produced, and shown on the row-expand detail
+  (`RowExpansion.tsx`, "Auction lots" card) whenever a wine has one. The sheet
+  will not carry a lot until the auction house, lot number, sale date and
+  currency are all stated, because the record holds them `NOT NULL`. NOT closed
+  by this: the two dead routes the legacy `AuctionPurchaseModal.tsx` still
+  calls — `POST /wines/research` and `POST /wines/auction-purchase`, which have
+  never existed — and the lot's per-bottle cost landing in `unit_cost` in the
+  lot's currency rather than the house's (ADR 0083 addendum, put to the
+  founder).
 
 - `v3.0-TECH-DEBT.md:357` — `INVENTORY_SOTA_PLAN.md` phases 2–3 (§6, §7) remain
   unbuilt; Phase 1 is what this page ships. Phase 0's ground-truth check "still worth

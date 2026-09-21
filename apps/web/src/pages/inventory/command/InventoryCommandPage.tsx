@@ -1450,7 +1450,7 @@ export function InventoryCommandPage() {
         open={showAuctionLot}
         onClose={() => setShowAuctionLot(false)}
         onCarry={async ({ wine, quantity, costPerBottle }) => {
-          await createInventoryItem.mutateAsync({
+          const created = await createInventoryItem.mutateAsync({
             wineId: wine.id,
             stockLive: quantity,
             thresholdMin: 0,
@@ -1461,6 +1461,10 @@ export function InventoryCommandPage() {
             costProvenance: "manual" as const,
           } as any);
           void refetchInventory();
+          // The lot's own details (2026-09-21) link to THIS restaurant_inventory
+          // row — see AuctionLotStart's header for why that row and not a
+          // specific inventory_lots one.
+          return { inventoryId: (created as { id: string }).id };
         }}
       />
 

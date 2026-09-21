@@ -15,6 +15,7 @@ import {
   Min,
   Max,
   MaxLength,
+  IsDateString,
 } from "class-validator";
 
 /** Provenances accepted by inventory_lots.cost_provenance (see 20260729120000 migration). */
@@ -601,5 +602,94 @@ export class UnmappedToastItemResponseDto {
   isActive: boolean;
 
   @ApiProperty({ description: "Created timestamp" })
+  createdAt: string;
+}
+
+// ============================================================================
+// AUCTION LOT RECORDS — an auction lot's own details, kept. Built 2026-09-21
+// (founder answer 2) closing the "nowhere to live" gap AuctionLotStart.tsx and
+// inventory.md §9 named 2026-09-06 (ADR 0083). See
+// 20260921113900_an_auction_lot_keeps_its_own_details.sql for the full case.
+// ============================================================================
+
+export class CreateAuctionLotRecordDto {
+  @ApiProperty({
+    description: "The restaurant_inventory row this lot carried stock into",
+  })
+  @IsUUID()
+  inventoryId: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(200)
+  auctionHouse: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(80)
+  lotNumber: string;
+
+  @ApiProperty({ description: "YYYY-MM-DD" })
+  @IsDateString()
+  saleDate: string;
+
+  @ApiProperty()
+  @IsNumber()
+  @Min(0)
+  hammerPrice: number;
+
+  @ApiProperty({
+    description:
+      "Never omitted and never a silent 0 — the sheet itself refuses to compute a cost without one",
+  })
+  @IsNumber()
+  @Min(0)
+  buyersPremium: number;
+
+  @ApiProperty({
+    description: "ISO-4217 code — never inferred (founder, 2026-09-21)",
+  })
+  @IsString()
+  @MaxLength(3)
+  currency: string;
+
+  @ApiProperty()
+  @IsInt()
+  @Min(1)
+  bottles: number;
+}
+
+export class AuctionLotRecordResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  inventoryId: string;
+
+  @ApiProperty()
+  auctionHouse: string;
+
+  @ApiProperty()
+  lotNumber: string;
+
+  @ApiProperty()
+  saleDate: string;
+
+  @ApiProperty()
+  hammerPrice: number;
+
+  @ApiProperty()
+  buyersPremium: number;
+
+  @ApiProperty()
+  currency: string;
+
+  @ApiProperty()
+  bottles: number;
+
+  @ApiProperty()
+  recordedByName: string;
+
+  @ApiProperty()
   createdAt: string;
 }

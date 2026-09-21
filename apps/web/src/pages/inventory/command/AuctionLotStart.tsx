@@ -29,13 +29,17 @@
  * (`20260805000000_baseline_from_production.sql:3188`), and of those four,
  * manual is what a figure a person typed IS.
  *
- * WHAT CANNOT BE KEPT, SAID ON THE SHEET. The auction house, the lot number and
- * the sale date have NO COLUMN anywhere in this schema. This sheet does not
- * offer to save them and then drop them; it takes them, uses them to work out
- * the cost, prints them back so they can be copied somewhere that does keep
- * them, and says plainly that the book keeps the figure and not the lot. ADR
- * 0083 — a control may not claim a write it never makes. The gap is filed in
- * `inventory.md` §9.
+ * THE LOT'S OWN DETAILS, NOW KEPT (2026-09-21, founder answer 2). The auction
+ * house, the lot number, the sale date, and the hammer price and premium WITH
+ * an ISO-4217 currency used to have no column anywhere in this schema; this
+ * sheet used to print them back so they could be copied somewhere that kept
+ * them, and said plainly that the book kept the figure and not the lot (ADR
+ * 0083 — a control may not claim a write it never makes). They are now
+ * written to `auction_lot_records`, a table of their own, linked to the
+ * `restaurant_inventory` row the carry produced — see
+ * `20260921113900_an_auction_lot_keeps_its_own_details.sql` for why that
+ * table and not a column on `inventory_lots`. `inventory.md` §9 is amended to
+ * match.
  *
  * MERGE POINT WITH PACKET 1. Packet 1 is moving the carry sheet
  * (`components/inventory/AddWineToInventoryModal.tsx`) onto the primitive. This
@@ -49,6 +53,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Sheet } from '@/components/mudavym';
 import { getErrorMessage } from '@/services/api/client';
 import { searchWines } from '@/services/api/wines';
+import { createAuctionLotRecord } from '@/services/api/inventory';
+import { CURRENCY_CODES, currencyLabel } from '@/lib/currency';
 
 export interface AuctionLot {
   house: string;
@@ -56,6 +62,8 @@ export interface AuctionLot {
   saleDate: string;
   hammer: string;
   premium: string;
+  /** ISO-4217, never inferred (founder, 2026-09-21) — '' is "not chosen yet", never a guessed default. */
+  currency: string;
   bottles: string;
 }
 
@@ -65,6 +73,7 @@ export const EMPTY_LOT: AuctionLot = {
   saleDate: '',
   hammer: '',
   premium: '',
+  currency: '',
   bottles: '1',
 };
 
@@ -125,6 +134,29 @@ export function lotCost(lot: AuctionLot): LotCost {
   };
 }
 
+/**
+ * What the lot's own record still needs before the bottles may be carried
+ * (2026-09-21), or null when nothing is missing. `auction_lot_records` holds
+ * the auction house, the lot number, the sale date and the currency NOT NULL,
+ * so the sheet refuses to carry until every one is stated: carrying first and
+ * then failing the record would put the stock in the book with its receipt
+ * missing — the one outcome this sheet cannot undo from here.
+ */
+export function lotDetailsMissing(lot: AuctionLot): string | null {
+  const missing = [
+    lot.house.trim() ? null : 'the auction house',
+    lot.lotNumber.trim() ? null : 'the lot number',
+    lot.saleDate.trim() ? null : 'the sale date',
+    lot.currency ? null : 'the currency',
+  ].filter((m): m is string => m !== null);
+  if (missing.length === 0) return null;
+  const named =
+    missing.length === 1
+      ? missing[0]
+      : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`;
+  return `Not carried yet: ${named} ${missing.length === 1 ? 'has' : 'have'} not been stated, and the lot's record keeps ${missing.length === 1 ? 'it' : 'them'}.`;
+}
+
 /** How the lot reads back, for copying somewhere that can keep it. */
 export function lotWords(lot: AuctionLot): string {
   const bits = [
@@ -140,13 +172,15 @@ export interface AuctionLotStartProps {
   onClose: () => void;
   /**
    * Carry it in. The page owns the write, exactly as it owns the carry sheet's:
-   * one path into the book, not two.
+   * one path into the book, not two. Returns the `restaurant_inventory` row's
+   * id, which is what the auction's own record links to (2026-09-21) — see
+   * the file header for why that row and not a specific `inventory_lots` one.
    */
   onCarry: (input: {
     wine: RegisterWine;
     quantity: number;
     costPerBottle: number;
-  }) => Promise<void>;
+  }) => Promise<{ inventoryId: string }>;
 }
 
 export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps) {
@@ -185,27 +219,64 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
   }, [query, open]);
 
   const cost = useMemo(() => lotCost(lot), [lot]);
-  const canCarry = !!wine && cost.ok && !busy;
+  // Currency is required to CARRY, not only to record: "an auction lot
+  // records its hammer price and premium WITH a currency" (founder,
+  // 2026-09-21) — never inferred, so an unchosen currency holds the button
+  // exactly as an unstated premium already does.
+  // The auction house, the lot number and the sale date gate the carry the
+  // same way: the record holds them NOT NULL (see `lotDetailsMissing`).
+  const detailsMissing = lotDetailsMissing(lot);
+  const canCarry = !!wine && !detailsMissing && cost.ok && !!lot.currency && !busy;
 
   const carry = async () => {
-    if (!wine || !cost.ok || busy) return;
+    if (!wine || detailsMissing || !cost.ok || !lot.currency || busy) return;
     setBusy(true);
     setFailure(null);
     setDone(null);
+
+    let inventoryId: string;
     try {
-      await onCarry({ wine, quantity: cost.bottles, costPerBottle: cost.perBottle });
-      setDone(
-        `${wine.name} carried in — ${cost.bottles} ${cost.bottles === 1 ? 'bottle' : 'bottles'} at ${cost.perBottle} each. The lot's own details (${lotWords(lot)}) were NOT saved: the book has no column for them.`,
-      );
-      setWine(null);
-      setLot(EMPTY_LOT);
-      setQuery('');
+      const carried = await onCarry({ wine, quantity: cost.bottles, costPerBottle: cost.perBottle });
+      inventoryId = carried.inventoryId;
     } catch (e) {
+      setBusy(false);
       setFailure(
         `The bottles were not carried in (${getErrorMessage(e)}). Nothing was written to the book and your figures are still here.`,
       );
+      return;
+    }
+
+    const wineLabel = wine.name;
+    const carriedSentence = `${wineLabel} carried in — ${cost.bottles} ${cost.bottles === 1 ? 'bottle' : 'bottles'} at ${cost.perBottle} ${lot.currency} each.`;
+
+    // The stock is already written and cannot be un-carried from here — a
+    // second failure now is a DIFFERENT fact than the first, and gets its own
+    // sentence rather than being folded into "nothing was written".
+    try {
+      // hammer/premium are re-read via `num()` rather than carried on `cost`:
+      // `cost.ok` already proved both parse, so this cannot fail here — it
+      // just avoids widening `LotCost`'s shape for two fields only this
+      // caller needs.
+      await createAuctionLotRecord({
+        inventoryId,
+        auctionHouse: lot.house.trim(),
+        lotNumber: lot.lotNumber.trim(),
+        saleDate: lot.saleDate,
+        hammerPrice: num(lot.hammer) as number,
+        buyersPremium: num(lot.premium) as number,
+        currency: lot.currency,
+        bottles: cost.bottles,
+      });
+      setDone(`${carriedSentence} The lot's own details (${lotWords(lot)}) were saved.`);
+    } catch (e) {
+      setFailure(
+        `${carriedSentence} The stock is in the book. The lot's own details (${lotWords(lot)}) were NOT saved (${getErrorMessage(e)}) — write them down somewhere else for now.`,
+      );
     } finally {
       setBusy(false);
+      setWine(null);
+      setLot(EMPTY_LOT);
+      setQuery('');
     }
   };
 
@@ -233,7 +304,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       open={open}
       onClose={onClose}
       /* The contract, as the accessible name. */
-      label="This carries bottles bought at auction into the book. Carrying them writes stock and a unit cost worked out from the lot; the auction's own details are not saved, because the book has no column for them. Leaving writes nothing."
+      label="This carries bottles bought at auction into the book. Carrying them writes stock and a unit cost worked out from the lot, and saves the lot's own details — auction house, lot number, sale date, hammer price and premium with their currency. Leaving writes nothing."
       eyebrow="The register"
       title="Carry this bottle · an auction lot"
       closeLabel="Put it down"
@@ -394,6 +465,25 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
           />
         </div>
         <div className="col-span-2">
+          <label style={legend} htmlFor="auction-currency">
+            Currency
+          </label>
+          <select
+            id="auction-currency"
+            style={field}
+            value={lot.currency}
+            data-testid="auction-currency"
+            onChange={(e) => setLot({ ...lot, currency: e.target.value })}
+          >
+            <option value="">Choose a code…</option>
+            {CURRENCY_CODES.map((c) => (
+              <option key={c} value={c}>
+                {currencyLabel(c)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-span-2">
           <label style={legend} htmlFor="auction-bottles">
             Bottles in the lot
           </label>
@@ -421,11 +511,16 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       >
         {cost.ok ? cost.working : cost.why}
       </p>
+      {detailsMissing && (
+        <p className="mt-2" data-testid="auction-details-missing" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
+          {detailsMissing}
+        </p>
+      )}
 
-      <p className="mt-2" data-testid="auction-not-kept" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
-        The book keeps the cost per bottle and records it as typed by a person. It does NOT keep
-        the auction house, the lot number or the sale date — there is no column for any of them.
-        Copy them somewhere that keeps them: {lotWords(lot)}.
+      <p className="mt-2" data-testid="auction-lot-saved-note" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+        The book keeps the cost per bottle and records it as typed by a person. Carrying this in
+        also saves the lot's own details — {lotWords(lot)} — with the hammer price and premium in
+        the currency chosen above.
       </p>
 
       {done && (

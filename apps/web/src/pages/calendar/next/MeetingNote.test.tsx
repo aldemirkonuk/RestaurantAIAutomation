@@ -1,24 +1,43 @@
 /**
  * "A note from this meeting?" — the owed act on `/calendar`.
  *
- * THE REGRESSION. The legacy prompt asked the question and threw the answer
- * away: `CalendarPage.tsx:325` is an underscore-prefixed argument and the
- * comment `// Future: persist to documents API`. So `writes the note onto the
- * day-book entry` fails against every version of this page that has ever
- * shipped, in both the legacy and the rebuilt tree.
+ * THE ORIGINAL REGRESSION. The legacy prompt asked the question and threw the
+ * answer away: `CalendarPage.tsx:325` was an underscore-prefixed argument and
+ * the comment `// Future: persist to documents API`. So `saves the note` fails
+ * against every version of this page that has ever shipped, in both the
+ * legacy and the rebuilt tree, unless it is actually wired to a write.
  *
- * The thing that must never happen here is losing what was already written, so
- * `appendNote` is asserted on its own before anything renders.
+ * REVISED 2026-09-21 (founder answer 2, "Build all now"). The write moved
+ * again: this panel used to `PATCH /calendar/events/:eventId` and append the
+ * note under a dated heading inside `description` — the founder's own words
+ * ("own table, not the calendar event description") end that. It now POSTs
+ * to `/calendar/day-notes`. `appendNote` / `hasNoteFor` are KEPT below and
+ * still tested on their own (they still back `meetingsAwaitingNote`'s
+ * across-reload signal — see that function's own comment for the shortcut
+ * this leaves, stated rather than hidden), but the panel's save button no
+ * longer calls them.
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
+const dayNotesApi = vi.hoisted(() => ({ createDayNote: vi.fn() }));
+const existingDayNotes = vi.hoisted(() => ({ current: [] as { id: string }[] }));
+
 vi.mock('@/services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
+vi.mock('@/services/api/calendar', () => ({
+  createDayNote: (...a: unknown[]) => dayNotesApi.createDayNote(...a),
+}));
+vi.mock('@/hooks/queries', () => ({
+  // `existingDayNotes.current` lets one test set what "already recorded"
+  // looks like; every other test leaves it empty.
+  useDayNotes: () => ({ data: existingDayNotes.current, isLoading: false }),
+}));
 
 import {
+  withoutNotedMeetings,
   MeetingNotePanel,
   appendNote,
   hasNoteFor,
@@ -49,9 +68,9 @@ const EVENT = {
   reminderDaysBefore: null,
 } as unknown as CalEvent;
 
-function dataWith(update: { mutateAsync: ReturnType<typeof vi.fn> }, over: Partial<CalendarData> = {}) {
+function dataWith(over: Partial<CalendarData> = {}) {
   return {
-    update,
+    update: { mutateAsync: vi.fn().mockResolvedValue({}) },
     providersKnown: true,
     providersById: new Map([['prov-1', { id: 'prov-1', name: 'Kavaklıdere' }]]),
     ...over,
@@ -59,8 +78,7 @@ function dataWith(update: { mutateAsync: ReturnType<typeof vi.fn> }, over: Parti
 }
 
 function draw(over: Partial<React.ComponentProps<typeof MeetingNotePanel>> = {}) {
-  const mutateAsync = vi.fn().mockResolvedValue({});
-  const data = (over.data as CalendarData | undefined) ?? dataWith({ mutateAsync });
+  const data = (over.data as CalendarData | undefined) ?? dataWith();
   const onSaved = vi.fn();
   render(
     <MeetingNotePanel
@@ -72,12 +90,16 @@ function draw(over: Partial<React.ComponentProps<typeof MeetingNotePanel>> = {})
       {...over}
     />,
   );
-  return { mutateAsync, onSaved };
+  return { onSaved };
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  dayNotesApi.createDayNote.mockResolvedValue({ id: 'note-1' });
+  existingDayNotes.current = [];
+});
 
-describe('appendNote — nothing already written is lost', () => {
+describe('appendNote — nothing already written is lost (kept for meetingsAwaitingNote)', () => {
   it('writes the first note under a dated heading naming its kind', () => {
     expect(appendNote(null, 'meeting_memo', '  Hasan will hold the price.  ', '1 Sep 2026')).toBe(
       'Meeting note · 1 Sep 2026\nHasan will hold the price.',
@@ -146,11 +168,10 @@ describe('meetingsAwaitingNote — which meetings the house asks about', () => {
 /*
  * A REPEATING MEETING is one row. The page expands it into its dates, and every
  * date carries the series row's id and the series row's description
- * (`useCalendarNextData.ts`: `seriesId` is the parent for an occurrence). Until
- * the lane E audit (D3) a note about the 10th was appended to the series row
- * with a heading that named only the day it was written, so it read as a note
- * about every date, and because any description answered the question, it
- * silenced the prompt for every past and future meeting of the series.
+ * (`useCalendarNextData.ts`: `seriesId` is the parent for an occurrence).
+ * `appendNote`/`hasNoteFor` still carry the per-date heading shape that made
+ * that safe for the OLD description-based write; they are exercised here as
+ * pure functions independent of the panel's own (now table-based) save.
  */
 describe('a repeating meeting — a note is about ONE date of it', () => {
   const SERIES_ROW = 'weekly-1';
@@ -199,35 +220,36 @@ describe('a repeating meeting — a note is about ONE date of it', () => {
     expect(meetingsAwaitingNote([occurrence('2026-09-17'), occurrence('2026-09-24')], now)).toEqual([]);
   });
 
-  it('writes onto the series row, headed with the date of THIS meeting, and says so', async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({});
+  it('saves against THIS date of the series, and names the meeting in the record', async () => {
     const event = occurrence('2026-09-10', { description: 'Agenda: stock and price.' });
-    render(
-      <MeetingNotePanel open event={event} data={dataWith({ mutateAsync })} onClose={() => {}} />,
-    );
+    const data = dataWith();
+    render(<MeetingNotePanel open event={event} data={data} onClose={() => {}} />);
     expect(screen.getByTestId('note-series')).toHaveTextContent(
-      /repeats.*one entry for the whole series.*about 2026-09-10.*every date of the series/,
+      /repeats.*THIS date, 2026-09-10.*will not show against any other date/,
     );
-    expect(screen.getByTestId('note-existing')).toHaveTextContent(/^The series entry already carries/);
     fireEvent.change(screen.getByTestId('note-body'), { target: { value: 'Price held.' } });
     fireEvent.click(screen.getByTestId('note-save'));
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
-    const arg = mutateAsync.mock.calls[0][0] as { id: string; patch: { description: string } };
-    expect(arg.id).toBe(SERIES_ROW);
-    expect(arg.patch.description.startsWith('Agenda: stock and price.')).toBe(true);
-    expect(arg.patch.description).toMatch(/\nMeeting note · for 2026-09-10 · .+\nPrice held\.$/);
-    expect(hasNoteFor(arg.patch.description, '2026-09-10')).toBe(true);
+    await waitFor(() => expect(dayNotesApi.createDayNote).toHaveBeenCalled());
+    expect(dayNotesApi.createDayNote).toHaveBeenCalledWith({
+      businessDate: '2026-09-10',
+      docType: 'meeting_memo',
+      eventTitle: 'Weekly call with Hasan',
+      body: 'Price held.',
+    });
+    // The series row itself is never touched by this panel any more: the
+    // event update (the old PATCH into `description`) is not called at all.
+    expect(data.update.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it('a one-off meeting says nothing about a series and names no date in its heading', async () => {
-    const { mutateAsync } = draw();
+  it('a one-off meeting says nothing about a series', async () => {
+    draw();
     expect(screen.queryByTestId('note-series')).not.toBeInTheDocument();
     fireEvent.change(screen.getByTestId('note-body'), { target: { value: 'x' } });
     fireEvent.click(screen.getByTestId('note-save'));
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
-    expect(
-      (mutateAsync.mock.calls[0][0] as { patch: { description: string } }).patch.description,
-    ).not.toMatch(/ · for /);
+    await waitFor(() => expect(dayNotesApi.createDayNote).toHaveBeenCalled());
+    expect(dayNotesApi.createDayNote).toHaveBeenCalledWith(
+      expect.objectContaining({ businessDate: '2026-09-01' }),
+    );
   });
 });
 
@@ -240,46 +262,48 @@ describe('the panel', () => {
     expect(screen.getByRole('button', { name: 'Later' })).toBeInTheDocument();
   });
 
-  it('writes the note onto the day-book entry — the write the legacy prompt never made', async () => {
-    const { mutateAsync, onSaved } = draw();
+  it('saves the note to its own table — the write the legacy prompt never made', async () => {
+    const { onSaved } = draw();
     fireEvent.change(screen.getByTestId('note-body'), {
       target: { value: 'Hasan will hold the price to the 15th.' },
     });
     fireEvent.click(screen.getByTestId('note-save'));
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
-    const arg = mutateAsync.mock.calls[0][0] as { id: string; patch: { description: string } };
-    expect(arg.id).toBe('e1');
-    expect(arg.patch.description).toContain('Hasan will hold the price to the 15th.');
-    expect(arg.patch.description).toContain('Meeting note ·');
+    await waitFor(() => expect(dayNotesApi.createDayNote).toHaveBeenCalled());
+    expect(dayNotesApi.createDayNote).toHaveBeenCalledWith({
+      businessDate: '2026-09-01',
+      docType: 'meeting_memo',
+      eventTitle: 'Kavaklıdere tasting',
+      body: 'Hasan will hold the price to the 15th.',
+    });
     expect(onSaved).toHaveBeenCalled();
   });
 
-  it('sends the chosen kind in the heading', async () => {
-    const { mutateAsync } = draw();
+  it('sends the chosen kind as its own field, never folded into the words', async () => {
+    draw();
     fireEvent.change(screen.getByTestId('note-body'), { target: { value: 'Six wines.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Tasting notes' }));
     fireEvent.click(screen.getByTestId('note-save'));
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
-    expect(
-      (mutateAsync.mock.calls[0][0] as { patch: { description: string } }).patch.description,
-    ).toContain('Tasting notes ·');
+    await waitFor(() => expect(dayNotesApi.createDayNote).toHaveBeenCalled());
+    expect(dayNotesApi.createDayNote).toHaveBeenCalledWith(
+      expect.objectContaining({ docType: 'tasting_notes', body: 'Six wines.' }),
+    );
   });
 
   it('writes nothing on an empty note', () => {
-    const { mutateAsync } = draw();
+    draw();
     expect(screen.getByTestId('note-save')).toBeDisabled();
     fireEvent.click(screen.getByTestId('note-save'));
-    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(dayNotesApi.createDayNote).not.toHaveBeenCalled();
   });
 
   it('says what did not happen when the write is refused, and keeps the words', async () => {
-    const mutateAsync = vi.fn().mockRejectedValue(new Error('409 conflict'));
-    draw({ data: dataWith({ mutateAsync }) });
+    dayNotesApi.createDayNote.mockRejectedValue(new Error('409 conflict'));
+    draw();
     fireEvent.change(screen.getByTestId('note-body'), { target: { value: 'Kept words.' } });
     fireEvent.click(screen.getByTestId('note-save'));
     await waitFor(() =>
       expect(screen.getByTestId('note-failure')).toHaveTextContent(
-        /was not saved \(409 conflict\)\. Nothing was written to the entry/,
+        /was not saved \(409 conflict\)\. Nothing was written/,
       ),
     );
     expect(screen.getByTestId('note-body')).toHaveValue('Kept words.');
@@ -291,18 +315,61 @@ describe('the panel', () => {
   });
 
   it('tells an unreadable vendor book from an entry with no vendor', () => {
-    const mutateAsync = vi.fn();
-    draw({ data: dataWith({ mutateAsync }, { providersKnown: false, providersById: null }) });
+    draw({ data: dataWith({ providersKnown: false, providersById: null }) });
     expect(screen.getByTestId('note-filed')).toHaveTextContent(/could not be read/);
   });
 
-  it('says the kind is written into the heading, because there is no column', () => {
+  it('says the kind is its own column now, not folded into the words', () => {
     draw();
-    expect(screen.getByTestId('note-kind-note')).toHaveTextContent(/no column for it/);
+    expect(screen.getByTestId('note-kind-note')).toHaveTextContent(/its own column/);
   });
 
-  it('says how much is already on the entry, so nothing looks replaced', () => {
-    draw({ event: { ...EVENT, description: 'Booked by Ayşe.' } });
-    expect(screen.getByTestId('note-existing')).toHaveTextContent(/goes underneath them/);
+  it('shows what this day already has, read from the table — not from event.description', () => {
+    existingDayNotes.current = [{ id: 'n1' }, { id: 'n2' }];
+    draw({ event: { ...EVENT, description: 'Unrelated event copy, not a note.' } });
+    expect(screen.getByTestId('note-existing')).toHaveTextContent('2026-09-01 already has 2 notes');
+  });
+
+  it('says nothing already exists when the day has no notes, even with an event description', () => {
+    existingDayNotes.current = [];
+    draw({ event: { ...EVENT, description: 'Just a description, not a note.' } });
+    expect(screen.queryByTestId('note-existing')).not.toBeInTheDocument();
+  });
+});
+
+describe('withoutNotedMeetings — a kept note answers its own meeting, and only it', () => {
+  const m = (id: string, date: string, title: string) =>
+    ({ ...EVENT, id, seriesId: id, date, title }) as unknown as CalEvent;
+
+  it('drops a meeting whose day and title a note carries', () => {
+    const out = withoutNotedMeetings(
+      [m('a', '2026-09-10', 'Weekly call'), m('b', '2026-09-11', 'Tasting')],
+      [{ businessDate: '2026-09-10', eventTitle: 'Weekly call' }],
+    );
+    expect(out.map((e) => e.id)).toEqual(['b']);
+  });
+
+  it('keeps a meeting on the same day with a different title, and the same title on another day', () => {
+    const out = withoutNotedMeetings(
+      [m('a', '2026-09-10', 'Tasting'), m('b', '2026-09-17', 'Weekly call')],
+      [{ businessDate: '2026-09-10', eventTitle: 'Weekly call' }],
+    );
+    expect(out.map((e) => e.id)).toEqual(['a', 'b']);
+  });
+
+  it('a note kept against no event answers no meeting', () => {
+    const out = withoutNotedMeetings(
+      [m('a', '2026-09-10', 'Weekly call')],
+      [{ businessDate: '2026-09-10', eventTitle: null }],
+    );
+    expect(out.map((e) => e.id)).toEqual(['a']);
+  });
+
+  it('matches through surrounding whitespace in either title', () => {
+    const out = withoutNotedMeetings(
+      [m('a', '2026-09-10', ' Weekly call ')],
+      [{ businessDate: '2026-09-10', eventTitle: 'Weekly call' }],
+    );
+    expect(out).toEqual([]);
   });
 });

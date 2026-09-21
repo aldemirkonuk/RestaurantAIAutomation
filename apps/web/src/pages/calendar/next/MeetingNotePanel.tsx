@@ -13,41 +13,36 @@
  * — an underscore-prefixed argument and a comment where the write should be. So
  * this act is not a migration; it is the first time the note is kept.
  *
- * WHERE THE NOTE GOES, AND WHY THERE
- * ----------------------------------
- * Onto the day-book entry itself: `PATCH /calendar/events/:eventId`
- * (`calendar.controller.ts:174`), appended to `description`. ADR 0111 makes the
- * calendar the house's day-book, and a note about what was said at a meeting is
- * a line in that book about that meeting. The two alternatives were both worse
- * on the evidence:
+ * WHERE THE NOTE GOES, AND WHY THERE (REVISED 2026-09-21)
+ * ---------------------------------------------------------
+ * `calendar_day_notes`, its own table — never `calendar_events.description`
+ * (founder, 2026-09-21, answer 2, "Build all now"). This panel used to
+ * `PATCH /calendar/events/:eventId` and append the note under a dated heading
+ * inside `description`, reasoning at the time that a documents table or a new
+ * event column were both worse. The founder's own words override that: a
+ * migration is exactly the right size for this, `calendar_day_notes`
+ * (`20260921113800_a_meeting_note_gets_its_own_table.sql`) is additive, and
+ * folding an independent fact into a column two authors race to overwrite —
+ * "what this event is" and "what was actually discussed" — was never right
+ * either. `appendNote` / `hasNoteFor` below are KEPT (read by
+ * `meetingsAwaitingNote`'s legacy branch and covered by their own tests) but
+ * are no longer written by this panel; a meeting noted in the table is kept
+ * off the "without a note" list by `withoutNotedMeetings` below, read by
+ * `CalendarNext.tsx` from `GET /calendar/day-notes?from=&to=`.
  *
- *   * A DOCUMENTS table. `procurement_documents` is about vendor paper —
- *     invoices, credits, price lists — and filing a tasting note there would put
- *     prose in a table every matching routine reads as money. A new table means
- *     a migration, and migrations auto-apply on merge; that is not a decision to
- *     take inside a packet about overlays.
- *   * A `metadata` column on the event. `UpdateCalendarEventDto` has none, and
- *     the events table has none. Inventing one is the same migration problem.
+ * THE KIND OF NOTE now has a real column (`doc_type`) on `calendar_day_notes` —
+ * see the migration — rather than being folded into free text.
  *
- * IT APPENDS; IT NEVER OVERWRITES. The entry's description may already carry
- * what somebody wrote when they made the entry. The note is added under a dated
- * heading that names the kind of note and the day it was written, so the book
- * reads in order and nothing a person typed is destroyed. `appendNote` is pure
- * and tested on its own for exactly that reason.
- *
- * THE KIND OF NOTE IS RECORDED IN THE TEXT, because there is no column for it.
- * The panel says so rather than showing a "Document type" field that files
- * nothing — the census drawing's own quiet line ("Obsidian sync — coming soon")
- * is the shape of a promise this house does not make any more.
- *
- * WHERE IT IS FILED is SHOWN and never chosen: the entry's own vendor, read
- * from the book. A filing picker that wrote nowhere is what was wrong with the
- * legacy prompt.
+ * WHERE IT IS FILED is still SHOWN and never chosen: the entry's own vendor,
+ * read from the book. A filing picker that wrote nowhere is what was wrong
+ * with the legacy prompt.
  */
 
 import { useMemo, useRef, useState } from 'react';
 import { Panel } from '@/components/mudavym';
 import { getErrorMessage } from '@/services/api/client';
+import { createDayNote } from '@/services/api/calendar';
+import { useDayNotes } from '@/hooks/queries';
 import type { CalEvent, CalendarData } from './useCalendarNextData';
 
 export type NoteKind = 'meeting_memo' | 'call_log' | 'tasting_notes' | 'general';
@@ -149,6 +144,12 @@ export const MEETING_KINDS = new Set([
 /**
  * Meetings that have ENDED and carry no note yet, oldest first.
  *
+ * Since 2026-09-21 a note lives in `calendar_day_notes`, not in the entry's
+ * `description`. This function still honours a description written before
+ * then (the legacy branch below); the table half is `withoutNotedMeetings`,
+ * applied by `CalendarNext.tsx` once that read has answered, so a meeting
+ * noted in an earlier session is not listed again after a reload.
+ *
  * Pure and exported so the rule is testable without a calendar. Three things it
  * deliberately does NOT do:
  *
@@ -183,13 +184,26 @@ export function meetingsAwaitingNote(events: CalEvent[], now: Date): CalEvent[] 
   return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
-/** Today as the heading writes it. Local, because a meeting happened locally. */
-function todayWords(): string {
-  return new Date().toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+/**
+ * `meetingsAwaitingNote` minus the meetings a `calendar_day_notes` row already
+ * answers (2026-09-21). A note is matched to a meeting by its day and the
+ * event title it was written against — `event_title` is the snapshot the note
+ * keeps, never a foreign key (a note is a day's marginalia and must survive
+ * its event being edited or deleted; see the migration header), so day +
+ * title is the only link there is. A meeting renamed after it was noted is
+ * asked about again, which is the safe direction: asking twice, never hiding
+ * a meeting nobody wrote about.
+ *
+ * Only ever called with notes that were actually READ. A read that failed or
+ * has not answered is not "no notes" — `CalendarNext.tsx` says so instead.
+ */
+export function withoutNotedMeetings(
+  candidates: CalEvent[],
+  notes: ReadonlyArray<{ businessDate: string; eventTitle?: string | null }>,
+): CalEvent[] {
+  const key = (day: string, title: string | null | undefined) => `${day}\u0000${(title ?? '').trim()}`;
+  const noted = new Set(notes.map((n) => key(n.businessDate, n.eventTitle)));
+  return candidates.filter((e) => !noted.has(key(e.date, e.title)));
 }
 
 export interface MeetingNotePanelProps {
@@ -226,6 +240,11 @@ export function MeetingNotePanel({ open, event, data, onClose, onSaved }: Meetin
     return name ? `The day-book · ${name}` : 'The day-book · a vendor no longer in the book';
   }, [event?.providerId, data.providersKnown, data.providersById]);
 
+  // What this day already holds, read back rather than assumed from
+  // `event.description` (2026-09-21 — notes no longer live there; see the
+  // file header). Only fetched while the panel is actually open.
+  const { data: existingNotes } = useDayNotes(open ? (event?.date ?? null) : null);
+
   if (!event) return null;
 
   const save = async () => {
@@ -233,26 +252,21 @@ export function MeetingNotePanel({ open, event, data, onClose, onSaved }: Meetin
     setBusy(true);
     setFailure(null);
     try {
-      await data.update.mutateAsync({
-        // The only row there is. For a date of a repeating series that is the
-        // series row, so the heading names the date (`appendNote`).
-        id: event.seriesId,
-        patch: {
-          description: appendNote(
-            event.description,
-            kind,
-            note,
-            todayWords(),
-            isSeriesDate(event) ? event.date : null,
-          ),
-        },
+      // Its own table (2026-09-21) — never calendar_events.description. See
+      // the file header. `event.date` is this occurrence's own day, real for
+      // both a plain entry and a date of a repeating series.
+      await createDayNote({
+        businessDate: event.date,
+        docType: kind,
+        eventTitle: event.title,
+        body: note,
       });
       setNote('');
       onSaved?.();
       onClose();
     } catch (e) {
       setFailure(
-        `The note was not saved (${getErrorMessage(e)}). Nothing was written to the entry and your words are still here.`,
+        `The note was not saved (${getErrorMessage(e)}). Nothing was written and your words are still here.`,
       );
     } finally {
       setBusy(false);
@@ -266,14 +280,14 @@ export function MeetingNotePanel({ open, event, data, onClose, onSaved }: Meetin
       open={open}
       onClose={onClose}
       /* The contract, as the accessible name. */
-      label="This asks whether to keep a note from this meeting. Saving appends it to the day-book entry under a dated heading; nothing already written is replaced. Leaving writes nothing."
+      label="This asks whether to keep a note from this meeting. Saving records it against this day, in its own place — never inside the entry's own description. Leaving writes nothing."
       eyebrow={`${when} · ${event.title}`}
       title="A note from this meeting?"
       closeLabel="Later"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="cn-quiet" style={{ fontSize: 11.5 }}>
-            The note is added to the entry. Nothing already written is replaced.
+            The note is saved against this day, on its own — the entry itself is untouched.
           </span>
           <span style={{ display: 'inline-flex', gap: 6 }}>
             <button
@@ -333,8 +347,7 @@ export function MeetingNotePanel({ open, event, data, onClose, onSaved }: Meetin
           ))}
         </div>
         <p className="cn-quiet" style={{ marginTop: 4, fontSize: 11 }} data-testid="note-kind-note">
-          The kind is written into the note’s own heading. The day-book has no column for it, and
-          a field that filed nowhere is what was wrong with the old prompt.
+          The kind is its own column on the note — saved as chosen, never folded into the words.
         </p>
       </fieldset>
 
@@ -344,16 +357,15 @@ export function MeetingNotePanel({ open, event, data, onClose, onSaved }: Meetin
 
       {isSeriesDate(event) ? (
         <p className="cn-quiet" style={{ marginTop: 4, fontSize: 11 }} data-testid="note-series">
-          This meeting repeats, and the day-book keeps one entry for the whole series. The note is
-          written there under a heading that says it is about {event.date}, so it shows on every
-          date of the series with that date on it.
+          This meeting repeats. The note is about THIS date, {event.date}, only — it will not show
+          against any other date of the series.
         </p>
       ) : null}
 
-      {event.description ? (
+      {existingNotes && existingNotes.length > 0 ? (
         <p className="cn-quiet" style={{ marginTop: 4, fontSize: 11 }} data-testid="note-existing">
-          {isSeriesDate(event) ? 'The series entry' : 'This entry'} already carries{' '}
-          {event.description.trim().length} characters of notes. Yours goes underneath them.
+          {event.date} already has {existingNotes.length}{' '}
+          {existingNotes.length === 1 ? 'note' : 'notes'}. Yours is added, not a replacement.
         </p>
       ) : null}
 
