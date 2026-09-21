@@ -463,6 +463,28 @@ def test_relay_final_refusal_code_is_none_for_non_relay_shaped_errors(text):
     assert ProviderConversationAgent._relay_final_refusal_code(text) is None
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        # A 5xx may follow an accepted send. Its detail is the gateway's (or an
+        # upstream's) text, which can quote another refusal sentence.
+        "gateway refused the send: HTTP 503 — upstream said: "
+        "gateway refused the send: HTTP 422 — refused",
+        # A 200 `success: false` carries the provider's own error text.
+        "gateway refused the send: HTTP 200 — provider error quoting "
+        "gateway refused the send: HTTP 403 — refused",
+    ],
+)
+def test_relay_final_refusal_code_reads_only_the_composer_s_own_status(text):
+    """Only the status `send_via_gateway` wrote at the FRONT of its sentence
+    decides. A relay-final code quoted later, inside the detail, must not close
+    a send that may have reached the vendor: RELAY_REFUSED tells the manager
+    "not sent", and a resend from there is the duplicate order this classifier
+    exists to prevent (last call, 2026-09-21: a mutant that closed on ANY
+    quoted 400/403/422 passed all 85 tests before this one)."""
+    assert ProviderConversationAgent._relay_final_refusal_code(text) is None
+
+
 @pytest.mark.asyncio
 async def test_a_relay_401_stays_ambiguous_and_parks_for_a_person(
     composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch

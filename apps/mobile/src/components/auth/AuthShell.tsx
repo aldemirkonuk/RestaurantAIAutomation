@@ -54,7 +54,7 @@ export function AuthShell({
             style={{ gap: space.sm, marginBottom: space.xl }}
           >
             <AppText variant="signature" tone="wine">
-              WineOps
+              Mudavym
             </AppText>
             <AppText variant="display">{title}</AppText>
             {intro ? (

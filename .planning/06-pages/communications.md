@@ -1133,3 +1133,15 @@ been asked to choose yet, only floated.
    `drive-says-it-may-hold-the-mail.spec.ts` fails if a future pass widens the
    scope list, which is what makes "no re-authorisation loop" checkable rather
    than remembered.
+
+## Execution reconciliation — 2026-09-13, reconciled 2026-09-17
+
+The WhatsApp inbound webhook and the `POST communications/text-senders/whatsapp/reply` /
+`GET .../whatsapp/window/:providerId` endpoints exist under ADR 0121 P1 — durable,
+tenant-scoped inbound receipts, retryable database failures, a signed-actor reply path,
+and (added 2026-09-17) delivery-status callbacks applied to the house's own outbound row.
+**No page surface consumes either endpoint yet** — this page has no composer for a
+WhatsApp reply and no rendering of the 24-hour window state; a grep of `apps/web/src`
+for `whatsapp/reply` or `whatsapp/window` returns nothing. That is on the pages build
+backlog, not shipped. See ADR 0121's 2026-09-17 review-trail row for what was fixed and
+what still needs a founder answer.

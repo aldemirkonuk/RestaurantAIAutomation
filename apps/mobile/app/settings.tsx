@@ -194,7 +194,7 @@ export default function SettingsScreen() {
         </PressableScale>
 
         <AppText variant="caption" tone="tertiary" align="center">
-          WineOps {Constants.expoConfig?.version ?? ""}
+          Mudavym {Constants.expoConfig?.version ?? ""}
         </AppText>
       </ScrollView>
     </>

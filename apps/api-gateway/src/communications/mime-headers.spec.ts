@@ -328,7 +328,48 @@ describe("GmailService.createMimeMessage — headers (ADR 0172)", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it("keeps the From brand text and encodes non-ASCII recipient names", async () => {
+  // The house's own name reaches the From header (ADR 0149 / PR #391) and must
+  // still go through ADR 0172's encoder rather than being written raw -- this is
+  // the seam where the two changes meet, so it is pinned here and not only in
+  // fromDisplayName's unit tests.
+  it("routes a caller-supplied fromName through the ADR 0172 encoder", async () => {
+    const { raw } = await sendAndCapture({ fromName: "Kaleiçi, Antalya" });
+    const hs = parseHeaders(splitMessage(raw).headerBlock);
+    const from = header(hs, "From")[0];
+    // Non-ASCII never travels bare, and the address never sits in an encoded-word.
+    expect(from).not.toContain("Kaleiçi");
+    expect(from).toMatch(/=\?UTF-8\?/);
+    expect(from).toContain("<siparis@lokantamudavim.com>");
+    expect(decodeHeaderValue(from)).toBe(
+      "Kaleiçi, Antalya <siparis@lokantamudavim.com>",
+    );
+  });
+
+  it("escapes a quote inside fromName rather than deleting it", async () => {
+    // This is what distinguishes ADR 0172's encoder from the branch's
+    // fromDisplayName: safeFromName strips `"` and `\` outright, so the house
+    // loses characters from its own name. mailboxPieces escapes them instead.
+    const { raw } = await sendAndCapture({
+      fromName: 'Ops "Night" Desk, Kadikoy',
+    });
+    const from = header(parseHeaders(splitMessage(raw).headerBlock), "From")[0];
+    expect(from).toBe(
+      '"Ops \\"Night\\" Desk, Kadikoy" <siparis@lokantamudavim.com>',
+    );
+  });
+
+  it("refuses to write a CR/LF smuggled through fromName", async () => {
+    const { raw } = await sendAndCapture({
+      fromName: "Evil\r\nBcc: attacker@evil.example",
+    });
+    const { headerBlock } = splitMessage(raw);
+    expectWellFormed(headerBlock);
+    const hs = parseHeaders(headerBlock);
+    expect(header(hs, "Bcc")).toEqual([]);
+    expect(header(hs, "From")[0]).toContain("<siparis@lokantamudavim.com>");
+  });
+
+  it("keeps the From brand text (Mudavym by default) and encodes non-ASCII recipient names", async () => {
     const { raw } = await sendAndCapture({
       to: ["Fikri Tarım <fikri@fikritarim.com>", "orders@trakya.example"],
       cc: ['"Doe, Jane" <jane@x.example>'],
@@ -339,8 +380,11 @@ describe("GmailService.createMimeMessage — headers (ADR 0172)", () => {
     const { headerBlock } = splitMessage(raw);
     expectWellFormed(headerBlock);
     const hs = parseHeaders(headerBlock);
+    // ADR 0149: Mudavym is the only brand. The From display name is no longer a
+    // hard-coded string -- it is safeFromName(options.fromName), which falls back
+    // to "Mudavym" when a caller names no house.
     expect(header(hs, "From")).toEqual([
-      "WineOps AI <siparis@lokantamudavim.com>",
+      "Mudavym <siparis@lokantamudavim.com>",
     ]);
     expect(decodeHeaderValue(header(hs, "To")[0])).toBe(
       "Fikri Tarım <fikri@fikritarim.com>, orders@trakya.example",

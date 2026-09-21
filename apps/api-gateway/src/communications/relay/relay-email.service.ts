@@ -201,8 +201,8 @@ export interface RelayResult {
    * provider call) rather than a transport failure — GmailService/
    * `sendThroughGrant` never called the provider, so nothing left the
    * process. `sendAsOrchestrator` reads this to answer 422 rather than 200
-   * (founder, 2026-09-21: "a header refusal on the relay path answers a
-   * FINAL 422 — not 200 success:false — so both send paths behave alike").
+   * (founder's answer, 2026-09-21, as recorded rather than quoted: a header
+   * refusal on the relay path answers a final 422, not 200 success:false).
    * Typed, never inferred from `error`'s text (PR #405's own rule: classify
    * by fields, not strings).
    */
@@ -356,9 +356,10 @@ export class RelayEmailService {
       references: dto.references,
     });
 
-    // Founder, 2026-09-21: "a header refusal on the relay path answers a
-    // FINAL 422 (not 200 success:false), so both send paths behave alike and
-    // the draft closes with the reason shown." `dispatch()` already wrote the
+    // Founder's answer, 2026-09-21 (recorded, not quoted; ADR 0099's bracket
+    // says which words are his): a header refusal on the relay path answers a
+    // final 422, not 200 success:false, and the draft closes with the reason
+    // shown. `dispatch()` already wrote the
     // ATTEMPTED and FAILED rows (with `refusedBeforeSend: true` on the
     // latter) before returning — this only decides what the HTTP RESPONSE
     // says, the same way `sendAsPerson`'s guardrail refusal already answers

@@ -13,11 +13,13 @@
 -- out — a malformed body, a recipient or conversation outside the house's
 -- book, or a blocked guardrail. Retrying the identical request refuses it
 -- again, identically; only a person editing the draft changes the outcome.
--- His words: "a 400/403/422 relay refusal is FINAL = 'Close, no retry'"
--- (delegating the shape: "do the best option from UI and UX standpoint, if
--- needed change your decision and build again") and "a header refusal on
--- the relay path answers a FINAL 422 (not 200 success:false), so both send
--- paths behave alike and the draft closes with the reason shown."
+-- What he chose: option (b) of the round-6 relay question, "Close, no
+-- retry". His own words were the delegation: "do the best option from UI
+-- and UX standpoint, if needed change your decision and build again". The
+-- same day's answer on this route: a header refusal answers a final 422,
+-- not 200 success:false, and the draft closes with the reason shown. That
+-- last sentence is the recorded answer, not a quote. ADR 0099's
+-- 2026-09-21 bracket says which words are his.
 --
 -- WHAT THIS MIGRATION ADDS
 -- --------------------------

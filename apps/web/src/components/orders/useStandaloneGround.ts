@@ -11,7 +11,9 @@ import { useLayoutEffect, useRef, useState } from 'react';
  * is unconditionally charcoal became a dark slab with cream ink on a light
  * page. That is the failure `SealedApproveDie`'s own header records, inverted,
  * and it breaks ADR 0042's flag-off-is-byte-identical promise on a screen every
- * house can reach: `mudavym_design_orders` has a row for one restaurant.
+ * house can reach: `orders` has been live in code for every house since ADR
+ * 0149 row 36 (2026-09-17), and legacy `/orders` stays on main until the
+ * founder approves its deletion, so both builds are still real screens.
  *
  * The rule, in one line: **if a page has already decided, inherit; if nothing
  * has, follow the theme the surrounding page is actually painting.**
