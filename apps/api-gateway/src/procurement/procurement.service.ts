@@ -117,12 +117,22 @@ import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { escapeHtml, textToEmailHtml } from "../common/html/escape-html";
 import {
   ORDER_CANCEL_ACT,
+  ORDER_CONFIRM_DEAL_ACT,
   ORDER_SEAL_ACT,
   ORDER_SEND_DRAFT_ACT,
+  ORDER_SEND_MANUAL_REPLY_ACT,
+  dealSealArgs,
   draftSealArgs,
+  letterVersionHash,
   orderCancelSealArgs,
   orderSealArgs,
 } from "./order-seal";
+import {
+  VendorSendAuthorityService,
+  type SendOrAsk,
+  type VendorSendReading,
+} from "../organizations/vendor-send-authority.service";
+import { type ActAmount } from "../organizations/vendor-send-authority";
 import {
   ORDER_GOODS_ARRIVED_STATUSES,
   ORDER_TERMINAL_STATUSES,
@@ -436,37 +446,31 @@ export function draftSubjectLine(
 }
 
 /**
- * FOUNDER QUESTION, OPEN (lane E, 2026-09-19 round-4 audit; not yet asked).
- * `POST orders/:id/approve-draft` is the pre-existing route: every native app
- * build issued before `DraftSendSeal` (this lane) calls it with no
- * `x-seal-challenge` header at all, because it does not know one exists. With
- * the seal unconditionally required, `sealChallenges.redeem` refuses an
- * absent challenge (`seal-challenge.service.ts`, `refuse("absent")`), so
- * every such install would start getting a 403 on every draft approval the
- * moment this ships, with nothing in that old build able to explain why.
- * This gate defers that: it does not decide whether that break is
- * acceptable, it only keeps this lane from forcing the answer by shipping.
+ * THE SEAL IS REQUIRED ON EVERY VENDOR SEND (founder, 2026-09-21).
  *
- * Module-level (not a class method) for the same reason as `draftSubjectLine`
- * above: directly unit-testable without a private-method workaround.
+ * Until this date `legacyDraftSendMayGoUnsealed()` let an ABSENT
+ * `X-Seal-Challenge` send unsealed while `REQUIRE_DRAFT_SEND_SEAL` was unset —
+ * a grace period for native installs predating the seal. The founder's answer
+ * of 2026-09-21 deleted it: *"the draft-send seal is REQUIRED on every vendor
+ * send now - delete the REQUIRE_DRAFT_SEND_SEAL grace"*, on OD-109's record
+ * that the phone app has never been run on a device (and ADR 0175's context:
+ * production `mobile_devices` held 0 rows on 2026-09-19 — cited, not
+ * re-measured by this lane, which may not read production). There is no flag
+ * any more: an absent challenge reaches `sealChallenges.redeem` and is refused
+ * there (`refuse("absent")`) like every other sealed act.
  */
-export function legacyDraftSendMayGoUnsealed(): boolean {
-  // Default (unset) = TRUE: an old native install with no seal at all still
-  // sends — UNSEALED, exactly as it did before this lane. [Round 5
-  // correction, 2026-09-21, CLAUDE.md §5b: "exactly as it did before this
-  // lane" is not true without that qualifier. sendDraftedReply and
-  // approveDraft below both now call assertCanManageRestaurant
-  // unconditionally, seal or no seal — new in this lane. A non-manager who
-  // could send a draft through this same old, unsealed route before this
-  // lane gets a 403 from it now, regardless of REQUIRE_DRAFT_SEND_SEAL. Only
-  // the SEAL half of the behavior is unchanged for a manager.] A caller
-  // that DOES present a challenge is unaffected either way (see
-  // sendDraftedReply below — it is always carried through and always
-  // redeemed). Setting REQUIRE_DRAFT_SEND_SEAL=true removes the grace
-  // period and makes the legacy route refuse like every other sealed act;
-  // do that only once native installs predating the seal are confirmed
-  // gone (that confirmation is the open question above, not this code).
-  return process.env.REQUIRE_DRAFT_SEND_SEAL !== "true";
+
+/** The "send or ask" readout, re-exported from where it is built. */
+export type { SendOrAsk } from "../organizations/vendor-send-authority.service";
+
+/** A staff member's request on a draft, as the panels read it. */
+export interface SendRequestView {
+  requestedBy: string | null;
+  requestedByName: string | null;
+  requestedAt: string;
+  /** false once the letter's words changed after the request (edit, regenerate). */
+  current: boolean;
+  ccEmails: string[];
 }
 
 /**
@@ -514,7 +518,57 @@ export class ProcurementService {
     // seal check that disappears with its own dependency is not a seal check.
     @Optional()
     private readonly sealChallenges?: SealChallengeService,
+    // ── Who may send to a vendor (ADR 0175 D10; founder, 2026-09-21) ────────
+    // Last, for the positional specs. NOT optional in the DI graph —
+    // `ProcurementModule` imports `VendorSendAuthorityModule` — and every
+    // vendor send REFUSES when it is missing: a gate that opens when its own
+    // dependency is absent is not a gate (`requireSendAuthority`).
+    @Optional()
+    private readonly vendorSendAuthority?: VendorSendAuthorityService,
   ) {}
+
+  /**
+   * The one door every vendor send goes through for WHO: an owner, a manager,
+   * or a person holding a live ADR 0112 F12 grant. Anybody else is refused with
+   * the whole sentence, and — where the act has a request path — told to hold
+   * again to ask a manager (`requestDraftSend`).
+   */
+  private async requireSendAuthority(
+    userId: string,
+    restaurantId: string,
+    act: string,
+    opts: { amount?: ActAmount | null; canAsk: boolean },
+  ): Promise<Extract<VendorSendReading, { mode: "send" }>> {
+    if (!userId?.trim()) {
+      throw new ForbiddenException("A named person is required to send to a vendor. Nothing was sent.");
+    }
+    if (!this.vendorSendAuthority) {
+      throw new InternalServerErrorException(
+        "Who may send to a vendor could not be checked (the authority service is not wired into procurement), so nothing was sent. This is a gateway fault, not a decision about this letter.",
+      );
+    }
+    return this.vendorSendAuthority.assertMaySend(userId, restaurantId, act, opts);
+  }
+
+  /**
+   * The "send or ask" readout for a panel — `mayApprove`'s shape, for letters
+   * (built in `VendorSendAuthorityService.readout`, so the composer and the
+   * draft panels cannot word it differently).
+   */
+  async sendOrAskFor(userId: string, restaurantId: string): Promise<SendOrAsk> {
+    if (!this.vendorSendAuthority) {
+      return {
+        readable: false,
+        maySend: false,
+        mode: null,
+        basis: null,
+        grant: null,
+        sentence:
+          "Whether your hold sends could not be read (the authority service is not wired into procurement). Nothing will be sent until it can.",
+      };
+    }
+    return this.vendorSendAuthority.readout(userId, restaurantId, { canAsk: true });
+  }
 
   /**
    * Manually (re)run the autonomous responder for an order's most recent inbound
@@ -6012,10 +6066,11 @@ export class ProcurementService {
     userId: string,
     letter: { body: string; to?: string | null; cc?: string[] | null },
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
-    if (!userId?.trim() || !this.organizations) {
-      throw new ForbiddenException("A named manager is required to send this draft. Nothing was sent.");
-    }
-    await this.organizations.assertCanManageRestaurant(userId, restaurantId, "send a drafted reply");
+    // WHO first (ADR 0175 D10): an owner, a manager or a grantee. Anybody else
+    // is refused BEFORE a seal is issued — a seal handed to a person whose hold
+    // cannot send teaches that the seal is decoration — and is told to hold
+    // again to ASK (founder, 2026-09-21), which `requestDraftSend` records.
+    await this.requireSendAuthority(userId, restaurantId, "send this letter", { canAsk: true });
     if (!this.sealChallenges) {
       throw new InternalServerErrorException(
         "The seal could not be issued (the seal service is not wired into procurement), " +
@@ -6067,24 +6122,24 @@ export class ProcurementService {
   }
 
   /**
-   * Send the drafted reply — behind a REDEEMED seal, when the caller carries
-   * one.
+   * Send the drafted reply, behind a REDEEMED seal — always.
    *
-   * Both HTTP routes use `assertCanManageRestaurant`, unconditionally. What
-   * they do NOT both unconditionally carry is a seal: `goUnsealed` below is
-   * `true` — no seal is checked at all — for any caller sending no
-   * `X-Seal-Challenge` while `REQUIRE_DRAFT_SEND_SEAL` is unset (its
-   * default). [Round 5 correction, 2026-09-21, CLAUDE.md §5b: this
-   * paragraph previously read "Both HTTP routes... carry their held proof
-   * into approveDraft," which overstated it into a universal — see the
-   * `goUnsealed` computation immediately below for what actually decides
-   * it.] When a challenge IS present, redemption uses the exact pending row
-   * and actual recipient immediately before the atomic sending claim.
+   * Both HTTP routes (`approve-draft`, `send-drafted-reply`) land here. Two
+   * gates, both unconditional since 2026-09-21:
+   *
+   *   1. WHO — `requireSendAuthority`: an owner, a manager, or a person holding
+   *      a live grant (ADR 0175 D10; ADR 0112 F12). Anybody else gets a 403 that
+   *      tells them to hold again to ASK (`requestDraftSend`).
+   *   2. THE SEAL — carried into `approveDraft`, which redeems it over the exact
+   *      pending row and the vendor's address on file immediately before the
+   *      atomic sending claim. An ABSENT challenge is refused there like every
+   *      other sealed act; the `REQUIRE_DRAFT_SEND_SEAL` grace is deleted
+   *      (founder, 2026-09-21).
    *
    * The seal is spent BEFORE the send, so a refused seal means nothing left the
    * building; and it is spent over the letter as EDITED, so a paragraph changed
    * between the hold and the release is refused by the args hash rather than
-   * quietly posted.
+   * quietly posted — an edit is a new version and needs a new seal.
    */
   async sendDraftedReply(
     restaurantId: string,
@@ -6093,34 +6148,250 @@ export class ProcurementService {
     dto: ApproveDraftDto,
     challenge: string | null | undefined,
   ): Promise<{ conversationId: string; sentAt: string }> {
-    if (!userId?.trim() || !this.organizations) {
-      throw new ForbiddenException("A named manager is required to send this draft. Nothing was sent.");
-    }
-    await this.organizations.assertCanManageRestaurant(userId, restaurantId, "send a drafted reply");
-    // A PRESENT challenge is always carried through and always redeemed,
-    // on every build, regardless of the gate below — this only ever widens
-    // what an ABSENT challenge does. See legacyDraftSendMayGoUnsealed above.
-    const goUnsealed = !challenge?.trim() && legacyDraftSendMayGoUnsealed();
-    return this.approveDraft(
-      restaurantId,
-      orderId,
-      dto,
-      goUnsealed ? undefined : { userId, challenge },
-    );
+    const standing = await this.requireSendAuthority(userId, restaurantId, "send this letter", {
+      canAsk: true,
+    });
+    return this.approveDraft(restaurantId, orderId, dto, {
+      userId,
+      challenge,
+      grantId: standing.basis === "grant" ? standing.grant.id : null,
+    });
   }
 
+  /**
+   * A staff member's hold: the letter becomes a REQUEST (founder, 2026-09-21).
+   *
+   * *"When a staff member holds, the letter becomes a REQUEST: save the
+   * staffer's exact edited text as the version, record who asked, mark the
+   * draft waiting for a manager, notify managers and owners (web bell now) ...
+   * a manager releases it with one hold over that exact text; an edit is a new
+   * version needing a new seal; the staffer sees who sent it."*
+   *
+   * WHAT IT WRITES
+   *   - A draft is waiting: its `content` becomes the staffer's exact words (the
+   *     version), and `send_requested_by/_at/_sha256/_cc` record who asked, when,
+   *     over which words and with which copies. The row stays PENDING_APPROVAL,
+   *     so every reader that lists pending drafts keeps listing it, and the
+   *     manager's release is the ordinary sealed send over these exact words.
+   *   - No draft is waiting (a letter the staffer wrote from the thread, the
+   *     manual-reply case): a PENDING_APPROVAL row is created from their words,
+   *     threaded to the vendor's latest message the way `manualReply` threads,
+   *     so the release is the same sealed send.
+   *
+   * WHAT IT REFUSES
+   *   - A person who may SEND: 409 — nothing is asked on their behalf, they
+   *     hold to send.
+   *   - A person with no role in the house: 403.
+   *   - A standing, a draft or a vendor that could not be READ: 500, never a
+   *     quiet request over nothing.
+   *
+   * Nothing leaves the building here, so no seal is spent: the hold's intent is
+   * recorded as a request, and the SEAL belongs to the person who releases it.
+   */
+  async requestDraftSend(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    input: { content: string; ccEmails?: string[] | null },
+  ): Promise<{ conversationId: string; requestedAt: string; told: number; says: string }> {
+    const content = input.content ?? "";
+    if (!content.trim()) throw new BadRequestException("An empty letter cannot be asked for. Nothing was asked.");
+    if (!userId?.trim()) throw new ForbiddenException("A named person is required to ask. Nothing was asked.");
+    if (!this.vendorSendAuthority) {
+      throw new InternalServerErrorException(
+        "Who may send could not be checked (the authority service is not wired into procurement), so nothing was asked.",
+      );
+    }
+    const standing = await this.vendorSendAuthority.standing(userId, restaurantId);
+    if (standing.mode === "send") {
+      throw new ConflictException(
+        "You may send this yourself with one hold, so nothing was asked on your behalf.",
+      );
+    }
+    if (!standing.role) {
+      throw new ForbiddenException("You hold no role in this house, so nothing was asked.");
+    }
+
+    const cc = [...new Set((input.ccEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean))].sort();
+    const requestedAt = new Date().toISOString();
+    const request = {
+      send_requested_by: userId,
+      send_requested_at: requestedAt,
+      send_requested_sha256: letterVersionHash(content),
+      send_requested_cc: cc,
+    };
+
+    const { data: pending, error: pendingError } = await this.databaseService.supabase
+      .from("procurement_conversations")
+      .select("id, providers!left(name, restaurant_id)")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("status", "PENDING_APPROVAL")
+      .maybeSingle();
+    if (pendingError) {
+      throw new InternalServerErrorException(
+        `Whether a draft is waiting on this order could not be read (${pendingError.message}), so nothing was asked.`,
+      );
+    }
+
+    let conversationId: string;
+    let vendorName: string | null;
+    if (pending) {
+      const { data: saved, error: saveError } = await this.databaseService.supabase
+        .from("procurement_conversations")
+        .update({ content, ...request })
+        .eq("id", (pending as any).id)
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("status", "PENDING_APPROVAL")
+        .select("id");
+      if (saveError) {
+        throw new InternalServerErrorException(
+          `Your version was not saved (${saveError.message}), so nothing was asked.`,
+        );
+      }
+      if (!saved || (saved as any[]).length === 0) {
+        throw new ConflictException(
+          "The draft was sent or discarded while you were holding, so nothing was asked. Refresh the order to see what happened.",
+        );
+      }
+      conversationId = (pending as any).id;
+      const provider = Array.isArray((pending as any).providers) ? (pending as any).providers[0] : (pending as any).providers;
+      vendorName = provider?.name ?? null;
+    } else {
+      // No draft: the staffer wrote this letter themself. Build the pending
+      // row the release will send, threaded the way manualReply threads.
+      const { data: order, error: orderError } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("id, provider_id, providers!left(name, contact_email, restaurant_id), restaurant_inventory:inventory_id(wine_name)")
+        .eq("id", orderId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (orderError) {
+        throw new InternalServerErrorException(`The order could not be read (${orderError.message}), so nothing was asked.`);
+      }
+      if (!order) throw new NotFoundException(`Order ${orderId} not found in this house. Nothing was asked.`);
+      if (!(order as any).providers?.contact_email) {
+        throw new BadRequestException("This vendor has no email address on file, so there is nowhere to send. Nothing was asked.");
+      }
+      const { data: lastInbound, error: inboundError } = await this.databaseService.supabase
+        .from("procurement_conversations")
+        .select("gmail_thread_id, message_id, email_headers")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("direction", "inbound")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (inboundError) {
+        throw new InternalServerErrorException(
+          `The vendor's last message could not be read (${inboundError.message}), so the reply could not be threaded and nothing was asked.`,
+        );
+      }
+      const inHeaders = ((lastInbound as any)?.email_headers ?? {}) as Record<string, any>;
+      const wineName = (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
+      const { data: inserted, error: insertError } = await this.databaseService.supabase
+        .from("procurement_conversations")
+        .insert({
+          order_id: orderId,
+          restaurant_id: restaurantId,
+          provider_id: (order as any).provider_id,
+          direction: "outbound",
+          channel: "email",
+          content,
+          message_text: content,
+          ai_generated: false,
+          status: "PENDING_APPROVAL",
+          outbound_email_type: "MANUAL_REPLY",
+          gmail_thread_id: (lastInbound as any)?.gmail_thread_id || null,
+          email_headers: {
+            subject: inHeaders.subject || `Re: Order Request: ${wineName}`,
+            in_reply_to: (lastInbound as any)?.message_id || inHeaders.message_id || null,
+            references: inHeaders.references || null,
+          },
+          ...request,
+        })
+        .select("id")
+        .single();
+      if (insertError || !inserted) {
+        throw new InternalServerErrorException(
+          `Your letter was not saved (${insertError?.message ?? "no row returned"}), so nothing was asked.`,
+        );
+      }
+      conversationId = (inserted as any).id;
+      vendorName = (order as any).providers?.name ?? null;
+    }
+
+    const told = await this.tellManagersOfRequest({ restaurantId, orderId, userId, vendorName });
+    this.emitConvUpdate(restaurantId, orderId, null, conversationId);
+    return {
+      conversationId,
+      requestedAt,
+      told,
+      says:
+        told > 0
+          ? `Asked. Your version is saved exactly as you wrote it, and ${told} ${told === 1 ? "owner or manager was" : "owners and managers were"} told. Nothing has been sent; you will see who sends it.`
+          : "Asked. Your version is saved exactly as you wrote it, but no owner or manager could be told; tell one yourself. Nothing has been sent.",
+    };
+  }
+
+  private async tellManagersOfRequest(input: {
+    restaurantId: string;
+    orderId: string;
+    userId: string;
+    vendorName: string | null;
+  }): Promise<number> {
+    if (!this.notificationsService || !this.vendorSendAuthority) return 0;
+    try {
+      const { owners, managers } = await this.vendorSendAuthority.ownersAndManagers(input.restaurantId);
+      const audience = [...new Set([...owners, ...managers])].filter((id) => id !== input.userId);
+      if (audience.length === 0) return 0;
+      const names = await this.vendorSendAuthority.namesOf([input.userId]);
+      const who = names.get(input.userId) ?? "A member of the team";
+      const { inserted } = await this.notificationsService.persistForRestaurant(
+        input.restaurantId,
+        {
+          type: "vendor_send_requested",
+          title: `${who} asks you to send a letter`,
+          message: `${who} wrote a letter to ${input.vendorName ?? "a vendor"} and asks an owner or a manager to send it. It waits for one hold; nothing has been sent.`,
+          // The web bell only, for the reason given at `tellRequesterItWent`:
+          // a push would carry a vendor's name to a locked screen (ADR 0175 D3).
+          priority: "low",
+          // /orders lists every waiting draft with who asked; it has no
+          // per-order deep link, so none is claimed. The order is in metadata.
+          actionUrl: "/orders",
+          actionLabel: "Read it and send",
+          metadata: { orderId: input.orderId, requestedBy: input.userId },
+        },
+        { onlyUserIds: audience },
+      );
+      return inserted;
+    } catch (e: any) {
+      this.logger.warn(`A send request could not be told to the managers: ${e?.message}`);
+      return 0;
+    }
+  }
+
+  /**
+   * The atomic send. `actor` is REQUIRED: there is no unsealed path through
+   * this method any more (founder, 2026-09-21). Callers reach it only through
+   * `sendDraftedReply`, which has already checked who may send.
+   */
   async approveDraft(
     restaurantId: string,
     orderId: string,
     dto: ApproveDraftDto,
-    seal?: { userId: string; challenge: string | null | undefined },
+    actor: { userId: string; challenge: string | null | undefined; grantId: string | null },
   ): Promise<{ conversationId: string; sentAt: string }> {
+    if (!actor?.userId?.trim()) {
+      throw new ForbiddenException("A named person is required to send this letter. Nothing was sent.");
+    }
     // Fetch conversation + provider email before updating
     const { data: conv, error: fetchError } =
       await this.databaseService.supabase
         .from("procurement_conversations")
         .select(
-          "id, content, created_at, gmail_thread_id, message_id, email_headers, providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id), procurement_orders!inner(inventory:inventory_id(wine_name))",
+          "id, content, created_at, gmail_thread_id, message_id, email_headers, send_requested_by, send_requested_sha256, providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id), procurement_orders!inner(inventory:inventory_id(wine_name))",
         )
         .eq("restaurant_id", restaurantId)
         .eq("order_id", orderId)
@@ -6177,19 +6448,19 @@ export class ProcurementService {
     }
 
     const conversationId = (conv as any).id as string;
-    if (seal) {
-      if (!this.sealChallenges) throw new InternalServerErrorException("The draft seal cannot be checked. Nothing was sent.");
-      if ((conv as any).providers?.restaurant_id !== restaurantId) throw new ForbiddenException("The vendor does not belong to this house. Nothing was sent.");
-      // Bind the actual row and actual recipient used below, immediately before
-      // the atomic claim. A stale UI address or replacement draft cannot spend
-      // a seal over the earlier letter.
-      await this.sealChallenges.redeem({
-        restaurantId, actorUserId: seal.userId, subjectKind: "procurement_order", subjectId: orderId,
-        action: ORDER_SEND_DRAFT_ACT,
-        args: { ...draftSealArgs({ body: rawEmailBody, to: providerEmail, cc: dto.ccEmails }), draftId: conversationId },
-        challenge: seal.challenge,
-      });
-    }
+    // THE SEAL, UNCONDITIONALLY (founder, 2026-09-21). No `if`: an absent
+    // challenge is redeemed like any other and refused as "absent".
+    if (!this.sealChallenges) throw new InternalServerErrorException("The draft seal cannot be checked. Nothing was sent.");
+    if ((conv as any).providers?.restaurant_id !== restaurantId) throw new ForbiddenException("The vendor does not belong to this house. Nothing was sent.");
+    // Bind the actual row and actual recipient used below, immediately before
+    // the atomic claim. A stale UI address or replacement draft cannot spend
+    // a seal over the earlier letter.
+    await this.sealChallenges.redeem({
+      restaurantId, actorUserId: actor.userId, subjectKind: "procurement_order", subjectId: orderId,
+      action: ORDER_SEND_DRAFT_ACT,
+      args: { ...draftSealArgs({ body: rawEmailBody, to: providerEmail, cc: dto.ccEmails }), draftId: conversationId },
+      challenge: actor.challenge,
+    });
 
     // ── Atomic claim, BEFORE the send ────────────────────────────────────────
     // Two managers tapping "approve" at the same moment both used to pass the
@@ -6295,6 +6566,10 @@ export class ProcurementService {
       ...(gmailMessageId && { gmail_message_id: gmailMessageId }),
       ...(gmailThreadId && { gmail_thread_id: gmailThreadId }),
       message_id: rfc822MessageId || outboundMessageId,
+      // Who sent it, and under which grant (ADR 0175 D9/D10 — "with an actor
+      // recorded"). The requester, if a staff member asked, stays on the row.
+      sent_by_user_id: actor.userId,
+      sent_under_grant_id: actor.grantId,
     };
     if (dto.modifiedContent) {
       updatePayload.content = dto.modifiedContent;
@@ -6358,7 +6633,64 @@ export class ProcurementService {
       );
     }
 
+    // The staffer sees who sent it (founder, 2026-09-21). Told on their bell,
+    // and said whether it went as they wrote it or with the sender's changes.
+    // Best-effort: the letter has gone, and failing the send because the bell
+    // failed would tell the sender something false.
+    const requester = (conv as any).send_requested_by as string | null;
+    if (requester && requester !== actor.userId) {
+      await this.tellRequesterItWent({
+        restaurantId,
+        orderId,
+        requester,
+        senderUserId: actor.userId,
+        vendorName: (conv as any).providers?.name ?? null,
+        asWritten:
+          !!(conv as any).send_requested_sha256 &&
+          (conv as any).send_requested_sha256 === letterVersionHash(rawEmailBody),
+      });
+    }
+
     return { conversationId: (data as any).id, sentAt: (data as any).sent_at };
+  }
+
+  private async tellRequesterItWent(input: {
+    restaurantId: string;
+    orderId: string;
+    requester: string;
+    senderUserId: string;
+    vendorName: string | null;
+    asWritten: boolean;
+  }): Promise<void> {
+    if (!this.notificationsService || !this.vendorSendAuthority) return;
+    try {
+      const names = await this.vendorSendAuthority.namesOf([input.senderUserId]);
+      const sender = names.get(input.senderUserId) ?? "A manager";
+      await this.notificationsService.persistForRestaurant(
+        input.restaurantId,
+        {
+          type: "vendor_send_released",
+          title: `${sender} sent your letter`,
+          message: `${sender} sent your letter to ${input.vendorName ?? "the vendor"}${
+            input.asWritten ? ", as you wrote it." : ", with their own changes."
+          }`,
+          // "low" = the web bell only. `persistForRestaurant` fans every other
+          // priority out to phones as a push, and this message names a vendor
+          // and a person — ADR 0175 D3 keeps those off a locked screen, and the
+          // per-phone payload rules are not built. The founder asked for the
+          // web bell now (2026-09-21); push waits for D3's payload work.
+          priority: "low",
+          // /orders lists every waiting draft with who asked; it has no
+          // per-order deep link, so none is claimed. The order is in metadata.
+          actionUrl: "/orders",
+          actionLabel: "See the thread",
+          metadata: { orderId: input.orderId, sentBy: input.senderUserId, asWritten: input.asWritten },
+        },
+        { onlyUserIds: [input.requester] },
+      );
+    } catch (e: any) {
+      this.logger.warn(`The requester could not be told their letter went: ${e?.message}`);
+    }
   }
 
   /**
@@ -6921,34 +7253,118 @@ export class ProcurementService {
   // MANUAL REPLY + AI PAUSE
   // =========================================================================
 
-  /** Manager writes and sends their own threaded reply (bypasses the AI draft). */
-  async manualReply(
+  /**
+   * The vendor a hand-written reply on this order goes to, read once for the
+   * mint and once for the send, so the seal and the send cannot disagree about
+   * the address.
+   */
+  private async manualReplyTarget(
     restaurantId: string,
     orderId: string,
-    content: string,
-    ccEmails?: string[],
-  ): Promise<{ conversationId: string; sentAt: string }> {
-    if (!content || !content.trim()) {
-      throw new BadRequestException("Reply content cannot be empty");
-    }
-
-    const { data: order } = await this.databaseService.supabase
+  ): Promise<{ order: any; providerEmail: string; wineName: string }> {
+    const { data: order, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "id, provider_id, providers!left(contact_email), restaurant_inventory:inventory_id(wine_name)",
+        "id, provider_id, providers!left(contact_email, restaurant_id), restaurant_inventory:inventory_id(wine_name)",
       )
       .eq("id", orderId)
       .eq("restaurant_id", restaurantId)
-      .single();
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order could not be read (${error.message}), so nothing was sent.`,
+      );
+    }
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
     const providerEmail = (order as any)?.providers?.contact_email ?? null;
-    const wineName =
-      (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
     if (!providerEmail) {
       throw new BadRequestException(
         "Provider has no email address — cannot send reply",
       );
     }
+    return {
+      order,
+      providerEmail,
+      wineName: (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order",
+    };
+  }
+
+  /**
+   * Mint the seal a hand-written reply must carry back (ADR 0175 D9, the
+   * `manual-reply` door). Same shape as the drafted-reply mint: WHO first, then
+   * the vendor's address on file, then a seal over the words, that address and
+   * the copies.
+   */
+  async issueManualReplySeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    letter: { content: string; ccEmails?: string[] | null },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    await this.requireSendAuthority(userId, restaurantId, "send this letter", { canAsk: true });
+    if (!letter.content?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued (the seal service is not wired into procurement), so nothing can be sent.",
+      );
+    }
+    const { providerEmail } = await this.manualReplyTarget(restaurantId, orderId);
+    const issued = await this.sealChallenges.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_SEND_MANUAL_REPLY_ACT,
+      args: draftSealArgs({ body: letter.content, to: providerEmail, cc: letter.ccEmails ?? [] }),
+    });
+    return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
+  }
+
+  /**
+   * A person writes and sends their own threaded reply (bypasses the AI draft).
+   *
+   * THE THIRD DOOR, CLOSED (ADR 0175 D9/D10; founder, 2026-09-21). Until this
+   * date this took no user id: no role check, no seal and no actor, and it
+   * discarded the waiting AI draft — so a staff member refused on a drafted
+   * reply could paste the same words here and send them, unsealed and
+   * unnamed. Now: WHO (owner, manager or grantee; anybody else is told to hold
+   * again to ASK, which `requestDraftSend` records), then the seal redeemed
+   * over these exact words, the vendor's address on file and these copies,
+   * BEFORE the send, then `sent_by_user_id` on the row.
+   */
+  async manualReply(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    content: string,
+    ccEmails: string[] | undefined,
+    challenge: string | null | undefined,
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    if (!content || !content.trim()) {
+      throw new BadRequestException("Reply content cannot be empty");
+    }
+    const standing = await this.requireSendAuthority(userId, restaurantId, "send this letter", {
+      canAsk: true,
+    });
+
+    const { order, providerEmail, wineName } = await this.manualReplyTarget(restaurantId, orderId);
+    if ((order as any)?.providers?.restaurant_id && (order as any).providers.restaurant_id !== restaurantId) {
+      throw new ForbiddenException("The vendor does not belong to this house. Nothing was sent.");
+    }
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException("The reply's seal cannot be checked. Nothing was sent.");
+    }
+    // Spent BEFORE the send: a refused seal means nothing left the building,
+    // and a second request with the same token is refused as "spent".
+    await this.sealChallenges.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_SEND_MANUAL_REPLY_ACT,
+      args: draftSealArgs({ body: content, to: providerEmail, cc: ccEmails ?? [] }),
+      challenge,
+    });
 
     // Thread to the vendor's latest inbound message if there is one.
     const { data: lastInbound } = await this.databaseService.supabase
@@ -7003,6 +7419,8 @@ export class ProcurementService {
           in_reply_to: inReplyTo || null,
           references: references || null,
         },
+        sent_by_user_id: userId,
+        sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
       })
       .select("id, sent_at")
       .single();
@@ -7284,28 +7702,113 @@ export class ProcurementService {
       .eq("id", (row as any).id);
   }
 
+  /** The order a deal confirmation commits, read the same way for the mint and the act. */
+  private async dealTarget(restaurantId: string, orderId: string): Promise<any> {
+    const { data: order, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select(
+        "id, provider_id, inventory_id, quantity, bottles_total, final_price, negotiated_price, quoted_price, currency, providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id), restaurant_inventory:inventory_id(wine_name)",
+      )
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order could not be read (${error.message}), so nothing was confirmed.`,
+      );
+    }
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    return order;
+  }
+
   /**
-   * Manager confirms an AI-detected deal: commit the order to CONFIRMED at the
-   * (possibly edited) terms and, by default, send the vendor a confirmation email.
+   * The money a deal confirmation commits, for a grant's limit: the confirmed
+   * price (or the order's own, when the person did not change it) times the
+   * quantity, in the order's currency. Either unreadable → `null`, which a
+   * grantee's limit cannot cover (owners and managers are not limited here).
+   */
+  private dealAmount(
+    order: any,
+    opts: { finalPrice?: number; quantity?: number },
+  ): ActAmount {
+    const price = Number(
+      opts.finalPrice ?? order?.final_price ?? order?.negotiated_price ?? order?.quoted_price,
+    );
+    const qty = Number(opts.quantity ?? order?.quantity);
+    const value = Number.isFinite(price) && Number.isFinite(qty) ? Math.round(price * qty * 100) / 100 : null;
+    const currency = typeof order?.currency === "string" && order.currency.trim() ? order.currency.trim().toUpperCase() : null;
+    return { value, currency };
+  }
+
+  private dealSeal(orderId: string, order: any, opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean }) {
+    return dealSealArgs({
+      orderId,
+      finalPrice: opts.finalPrice ?? null,
+      quantity: opts.quantity ?? order?.quantity ?? null,
+      sendConfirmation: opts.sendConfirmation !== false,
+      to: order?.providers?.contact_email ?? null,
+    });
+  }
+
+  /**
+   * Mint the seal a deal confirmation must carry back (ADR 0175 D9, the
+   * `confirm-deal` door): WHO first — with the deal's money, so a grantee's
+   * limit is checked before a seal is issued — then a seal over the terms and
+   * the vendor's address.
+   */
+  async issueConfirmDealSeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    const order = await this.dealTarget(restaurantId, orderId);
+    await this.requireSendAuthority(userId, restaurantId, "confirm this deal", {
+      amount: this.dealAmount(order, opts),
+      canAsk: false,
+    });
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued (the seal service is not wired into procurement), so nothing can be confirmed.",
+      );
+    }
+    const issued = await this.sealChallenges.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_CONFIRM_DEAL_ACT,
+      args: this.dealSeal(orderId, order, opts),
+    });
+    return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
+  }
+
+  /**
+   * Confirm an AI-detected deal: commit the order at the (possibly edited)
+   * terms and, by default, send the vendor a confirmation email.
+   *
+   * THE SECOND DOOR, CLOSED (ADR 0175 D9/D10; founder, 2026-09-21). Until this
+   * date it took no user id: any member could commit money at a price and
+   * quantity from the request body and mail the vendor, with no seal and no
+   * actor. Now: WHO — an owner, a manager, or a grantee whose limit covers this
+   * deal's total in its currency — then the seal, redeemed over the terms and
+   * the vendor's address BEFORE anything is written, then `approved_by` on the
+   * order and `sent_by_user_id` on the confirmation letter. Staff are refused
+   * with the sentence; a request path for deals is an open fork (ADR 0175
+   * amendment), not built.
    */
   async confirmDeal(
     restaurantId: string,
     orderId: string,
+    userId: string,
     opts: {
       finalPrice?: number;
       quantity?: number;
       sendConfirmation?: boolean;
     },
+    challenge: string | null | undefined,
   ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
-    const { data: order } = await this.databaseService.supabase
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, inventory_id, quantity, bottles_total, final_price, negotiated_price, quoted_price, providers!left(name, contact_email, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
-      )
-      .eq("id", orderId)
-      .eq("restaurant_id", restaurantId)
-      .single();
-    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    const order = await this.dealTarget(restaurantId, orderId);
 
     // Gate: don't commit terms while a newer reply is still being analyzed.
     if (await this.newerReplyStillAnalyzing(orderId, null)) {
@@ -7313,6 +7816,28 @@ export class ProcurementService {
         "A newer vendor reply just arrived and the AI is still reading it. Please review the updated terms before confirming.",
       );
     }
+
+    const standing = await this.requireSendAuthority(userId, restaurantId, "confirm this deal", {
+      amount: this.dealAmount(order, opts),
+      canAsk: false,
+    });
+    if ((order as any)?.providers?.restaurant_id && (order as any).providers.restaurant_id !== restaurantId) {
+      throw new ForbiddenException("The vendor does not belong to this house. Nothing was confirmed.");
+    }
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException("The deal's seal cannot be checked. Nothing was confirmed.");
+    }
+    // Spent BEFORE the first write: a refused seal means nothing was committed
+    // and nothing was mailed.
+    await this.sealChallenges.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_CONFIRM_DEAL_ACT,
+      args: this.dealSeal(orderId, order, opts),
+      challenge,
+    });
 
     const providerEmail = (order as any)?.providers?.contact_email ?? null;
     const greetName =
@@ -7335,6 +7860,8 @@ export class ProcurementService {
       status: ProcurementOrderStatus.APPROVED,
       approved_at: new Date().toISOString(),
       confirmed_at: new Date().toISOString(),
+      // Who committed it (ADR 0175 D9/D10: "with an actor recorded").
+      approved_by: userId,
     };
     // `negotiated_price` is this order's own column and stays here. `final_price`
     // does NOT: ADR 0119 Q2 (founder, 2026-09-05) made the header an echo of the
@@ -7570,6 +8097,8 @@ export class ProcurementService {
             gmail_message_id: ids.gmailMessageId || null,
             message_id: ids.rfc822MessageId || null,
             email_headers: { subject },
+            sent_by_user_id: userId,
+            sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
           });
         sentConfirmation = true;
       } catch (e: any) {
@@ -7698,6 +8227,7 @@ export class ProcurementService {
       .select(
         `
         id, content, message_text, outbound_email_type, constraint_flags, round_count, created_at,
+        send_requested_by, send_requested_at, send_requested_sha256, send_requested_cc,
         providers!left(name, contact_email),
         procurement_orders!inner(
           order_number,
@@ -7718,14 +8248,64 @@ export class ProcurementService {
     if (error) return null;
     if (!data) return null;
     const row = data as any;
+    const content = row.content ?? row.message_text ?? null;
+    const [request] = await this.sendRequestViews([{ ...row, content }]);
+    const {
+      send_requested_by: _by,
+      send_requested_at: _at,
+      send_requested_sha256: _sha,
+      send_requested_cc: _cc,
+      ...rest
+    } = row;
     return {
-      ...row,
-      content: row.content ?? row.message_text ?? null,
+      ...rest,
+      content,
       provider_name: row.providers?.name ?? null,
       provider_email: row.providers?.contact_email ?? null,
       wine_name: row.procurement_orders?.inventory?.wine_name ?? null,
       order_number: row.procurement_orders?.order_number ?? null,
+      // A staff member's request on this draft (founder, 2026-09-21), or null.
+      send_request: request,
     };
+  }
+
+  /**
+   * The request state of each row, in order: who asked (with their name), when,
+   * with which copies, and whether the draft's words are still the version they
+   * asked for. A name that could not be read is `null` and the page says so; it
+   * never drops the request.
+   */
+  private async sendRequestViews(
+    rows: Array<{
+      content?: string | null;
+      send_requested_by?: string | null;
+      send_requested_at?: string | null;
+      send_requested_sha256?: string | null;
+      send_requested_cc?: string[] | null;
+    }>,
+  ): Promise<Array<SendRequestView | null>> {
+    let names = new Map<string, string>();
+    const asked = rows.filter((r) => r.send_requested_at);
+    if (asked.length > 0 && this.vendorSendAuthority) {
+      try {
+        names = await this.vendorSendAuthority.namesOf(asked.map((r) => r.send_requested_by));
+      } catch (e: any) {
+        this.logger.warn(`Requesters' names could not be read: ${e?.message}`);
+      }
+    }
+    return rows.map((r) =>
+      r.send_requested_at
+        ? {
+            requestedBy: r.send_requested_by ?? null,
+            requestedByName: r.send_requested_by ? (names.get(r.send_requested_by) ?? null) : null,
+            requestedAt: r.send_requested_at,
+            current:
+              !!r.send_requested_sha256 &&
+              r.send_requested_sha256 === letterVersionHash(r.content ?? ""),
+            ccEmails: r.send_requested_cc ?? [],
+          }
+        : null,
+    );
   }
 
   // =========================================================================
@@ -7752,6 +8332,10 @@ export class ProcurementService {
         content,
         message_text,
         email_headers,
+        send_requested_by,
+        send_requested_at,
+        send_requested_sha256,
+        send_requested_cc,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price,
           inventory:inventory_id(wine_name)
@@ -7771,7 +8355,10 @@ export class ProcurementService {
       throw error;
     }
 
-    return (data || []).map((row: any) => {
+    const requests = await this.sendRequestViews(
+      (data || []).map((row: any) => ({ ...row, content: row.content ?? row.message_text ?? null })),
+    );
+    return (data || []).map((row: any, i: number) => {
       const wineName = row.procurement_orders?.inventory?.wine_name ?? null;
       // This is a READ of what a send WOULD use, not a second opinion: it
       // calls approveDraft's own draftSubjectLine() (this file) rather than
@@ -7799,6 +8386,8 @@ export class ProcurementService {
         providerName: row.providers?.name ?? null,
         providerEmail: row.providers?.contact_email ?? null,
         subject,
+        // A staff member's request on this draft, or null (founder, 2026-09-21).
+        sendRequest: requests[i],
       };
     });
   }
@@ -7963,6 +8552,9 @@ export class ProcurementService {
         ai_generated,
         conversation_context,
         email_headers,
+        send_requested_by,
+        sent_by_user_id,
+        sent_under_grant_id,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price, status, ai_autonomy_paused,
           inventory:inventory_id(wine_name)
@@ -7983,10 +8575,28 @@ export class ProcurementService {
       throw error;
     }
 
+    // Who sent each letter and who asked for it (founder, 2026-09-21: "the
+    // staffer sees who sent it"). A name that could not be read is null and
+    // the page says "not recorded"; the id stays.
+    let people = new Map<string, string>();
+    if (this.vendorSendAuthority) {
+      try {
+        people = await this.vendorSendAuthority.namesOf(
+          (data || []).flatMap((r: any) => [r.sent_by_user_id, r.send_requested_by]),
+        );
+      } catch (e: any) {
+        this.logger.warn(`Senders' names could not be read: ${e?.message}`);
+      }
+    }
     return (data || []).map((row: any) => ({
       id: row.id,
       orderId: row.order_id,
       status: row.status,
+      sentBy: row.sent_by_user_id ?? null,
+      sentByName: row.sent_by_user_id ? (people.get(row.sent_by_user_id) ?? null) : null,
+      sentUnderGrant: !!row.sent_under_grant_id,
+      requestedBy: row.send_requested_by ?? null,
+      requestedByName: row.send_requested_by ? (people.get(row.send_requested_by) ?? null) : null,
       // DB stores direction lowercase ('inbound'/'outbound'); the UI compares
       // against uppercase, so normalize here or inbound replies render as rounds.
       direction: String(row.direction ?? "outbound").toUpperCase() as

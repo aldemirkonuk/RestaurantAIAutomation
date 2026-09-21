@@ -1,6 +1,35 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+  Optional,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import axios from "axios";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
+import { VendorSendAuthorityService } from "../organizations/vendor-send-authority.service";
+import { draftSealArgs } from "../procurement/order-seal";
+
+/**
+ * The act `POST /conversations/:id/approve` is sealed as (ADR 0175 D9,
+ * 2026-09-21). Its own act, so a seal minted to send a drafted reply on the
+ * same order can never be spent here, and the reverse.
+ */
+export const CONVERSATION_APPROVE_ACT = "approve_conversation";
+
+/** What the hold was over: the message the agent will send, its recipient, this row. */
+export function conversationApproveSealArgs(input: {
+  conversationId: string;
+  message: string;
+  to: string | null | undefined;
+}): Record<string, unknown> {
+  return {
+    ...draftSealArgs({ body: input.message, to: input.to, cc: [] }),
+    conversationId: input.conversationId,
+  };
+}
 
 const AGENT_ORCHESTRATOR_URL =
   process.env.AGENT_ORCHESTRATOR_URL || "http://localhost:8000";
@@ -107,7 +136,72 @@ function flattenWineName(rows: any[]): any[] {
 export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    // Both last and @Optional so the positional specs keep compiling; both are
+    // supplied by ConversationsModule, and approve REFUSES when either is
+    // missing — a gate that opens when its dependency is absent is not a gate.
+    @Optional() private readonly sealChallenges?: SealChallengeService,
+    @Optional() private readonly vendorSendAuthority?: VendorSendAuthorityService,
+  ) {}
+
+  /**
+   * The message an approval would release: the manager's edit when there is
+   * one, else the agent's own words on the row. Read ONCE per call, from this
+   * house's row, so the mint and the redemption hash the same words.
+   */
+  private approvalTarget(conversation: any, modifiedMessage?: string | null) {
+    const message =
+      (modifiedMessage && modifiedMessage.trim() ? modifiedMessage : null) ??
+      conversation?.content ??
+      conversation?.message_text ??
+      "";
+    const to = conversation?.providers?.contact_email ?? null;
+    return { message, to };
+  }
+
+  private requireGate(): { seal: SealChallengeService; authority: VendorSendAuthorityService } {
+    if (!this.sealChallenges || !this.vendorSendAuthority) {
+      throw new InternalServerErrorException(
+        "This approval cannot be checked (the seal or the authority service is not wired into conversations), so nothing was approved. This is a gateway fault, not a decision about the message.",
+      );
+    }
+    return { seal: this.sealChallenges, authority: this.vendorSendAuthority };
+  }
+
+  /**
+   * Mint the seal `POST /conversations/:id/approve` must carry back (ADR 0175
+   * D9/D10, 2026-09-21): this house's row first (another house's is a 404,
+   * ADR 0171), then WHO — an owner, a manager or a grantee (D10: "a grantee is
+   * added there") — then a seal over the message, its recipient and the row.
+   */
+  async issueApproveSeal(
+    conversationId: string,
+    restaurantId: string,
+    userId: string,
+    modifiedMessage?: string | null,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    this.requireHouse(restaurantId);
+    const conversation = await this.getConversation(conversationId, restaurantId);
+    if (!conversation) throw this.notFound();
+    const { seal, authority } = this.requireGate();
+    await authority.assertMaySend(userId, restaurantId, "approve this message to the vendor", {
+      canAsk: false,
+    });
+    const { message, to } = this.approvalTarget(conversation, modifiedMessage);
+    if (!message.trim()) {
+      throw new ForbiddenException("There is no message on this conversation to approve. Nothing was approved.");
+    }
+    const issued = await seal.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_conversation",
+      subjectId: conversationId,
+      action: CONVERSATION_APPROVE_ACT,
+      args: conversationApproveSealArgs({ conversationId, message, to }),
+    });
+    return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
+  }
 
   /**
    * Publish a domain event to the orchestrator's event bus.
@@ -710,8 +804,31 @@ export class ConversationsService {
     conversationId: string,
     restaurantId: string,
     options: ApprovalOptions,
+    actor: { userId: string; challenge: string | null | undefined },
   ): Promise<{ success: boolean; messageSent: boolean; error?: string }> {
     this.requireHouse(restaurantId);
+    // ── THE GATE, BEFORE ANYTHING IS WRITTEN (ADR 0175 D9/D10, 2026-09-21) ──
+    // Outside the try below on purpose: that block turns every error into
+    // `{ success: false }`, and a refused seal is a 403, not a failed approval.
+    // Order: this house's row (404 otherwise — ADR 0171), then WHO (owner,
+    // manager or grantee), then the seal over the exact words that would be
+    // released — so an edited message needs its own seal.
+    const target = await this.getConversation(conversationId, restaurantId);
+    if (!target) throw this.notFound();
+    const { seal, authority } = this.requireGate();
+    await authority.assertMaySend(actor?.userId ?? "", restaurantId, "approve this message to the vendor", {
+      canAsk: false,
+    });
+    const { message, to } = this.approvalTarget(target, options.modifiedMessage);
+    await seal.redeem({
+      restaurantId,
+      actorUserId: actor.userId,
+      subjectKind: "procurement_conversation",
+      subjectId: conversationId,
+      action: CONVERSATION_APPROVE_ACT,
+      args: conversationApproveSealArgs({ conversationId, message, to }),
+      challenge: actor.challenge,
+    });
     try {
       // 1. Update conversation in database
       const updates: any = {

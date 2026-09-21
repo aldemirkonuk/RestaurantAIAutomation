@@ -37,6 +37,20 @@ import { HouseLettersController } from "./house-letters.controller";
 import { HouseLettersService } from "./house-letters.service";
 import { GMAIL_SEND_SCOPE, HouseSenderService } from "./house-sender.service";
 
+/**
+ * The composer's two gates (ADR 0175 D9/D10, 2026-09-21), as stand-ins that
+ * admit: this file is about the book, the guardrails, the identity and the
+ * actor, not about who may send. house-letters-sealed.spec.ts runs the real
+ * gates.
+ */
+const PASSING_GATES = [
+  {
+    assertMaySend: async () => ({ mode: "send", basis: "manager", grant: null, role: "manager" }),
+    readout: async () => ({ readable: true, maySend: true, mode: "send", basis: "manager", grant: null, sentence: null }),
+  },
+  { redeem: async () => ({ sealId: "seal-1" }), issue: async () => ({ challenge: "c", expiresAt: "t", action: "queue_house_letter" }) },
+] as [any, any];
+
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const PROVIDER = "cccccccc-0000-4000-8000-cccccccccccc";
 const PERSON = "dddddddd-0000-4000-8000-dddddddddddd";
@@ -140,7 +154,7 @@ function asNestWould(
 function controllerOver(rows: Record<string, Rows>) {
   const { rec, db } = build(rows);
   const sender = new HouseSenderService(db, config);
-  const letters = new HouseLettersService(db, sender, oauthOk);
+  const letters = new HouseLettersService(db, sender, oauthOk, ...PASSING_GATES);
   const cron = { lastRun: jest.fn(() => null) };
   const inboxCron = { lastRun: jest.fn(() => null) };
   const inbox = { statusFor: jest.fn(async () => ({})) };

@@ -17,24 +17,27 @@ type Request = (path: string, options: { method: 'POST'; scope: Scope; body: unk
 /** The held letter and its scope stay in memory; no outbox receives a proof. */
 export function draftReplyApproval(input: {
   orderId: string; body: string; recipient: string; scope: Scope;
+  /** Copies to seal and send — a staff member's request carries theirs (2026-09-21). */
+  ccEmails?: string[];
   request: Request; onApproved: () => Promise<void>;
   state: (phase: 'idle' | 'holding' | 'sending' | 'approved', message?: string) => void;
 }) {
   const scope = { ...input.scope };
   const { orderId, body, recipient } = input;
+  const ccEmails = [...(input.ccEmails ?? [])];
   return heldApproval({
     issue: async () => {
       if (!scope.userId || !scope.restaurantId || !body.trim() || !recipient.trim())
         throw new Error('Review a letter and recipient in an unlocked branch before sending.');
       const result = await input.request(`/procurement/orders/${orderId}/draft-seal-challenge`, {
-        method: 'POST', scope, body: { content: body, to: recipient, ccEmails: [] },
+        method: 'POST', scope, body: { content: body, to: recipient, ccEmails },
       });
       return result.challenge;
     },
     approve: async (challenge) => {
       try {
         await input.request(`/procurement/orders/${orderId}/approve-draft`, {
-          method: 'POST', scope, body: { modifiedContent: body, ccEmails: [] }, sealChallenge: challenge,
+          method: 'POST', scope, body: { modifiedContent: body, ccEmails }, sealChallenge: challenge,
         });
       } catch (error) {
         // A seal refusal (403) is not a timeout or a dropped response — the

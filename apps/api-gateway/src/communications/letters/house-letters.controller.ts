@@ -18,6 +18,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -68,6 +69,9 @@ export class HouseLettersController {
     const identity = await this.sender.resolve(restaurantId, userId);
     return {
       ...identity,
+      // Whether THIS person's hold sends (ADR 0175 D10; 2026-09-21) — read
+      // before the hold so the sheet never discovers it as a refusal after.
+      sendOrAsk: await this.letters.sendOrAsk(userId, restaurantId),
       dispatcher: this.cron.lastRun(),
       // The receive half's own report. `dispatcher` says whether letters can
       // still leave; this says whether replies are still arriving, and from
@@ -117,10 +121,22 @@ export class HouseLettersController {
     return this.letters.upsertTemplate({ restaurantId, userId, dto });
   }
 
+  /**
+   * Begin the hold on a composer letter: a one-time seal over the vendor, the
+   * address, the subject and the words (ADR 0175 D9; sealed 2026-09-21).
+   */
+  @Post("seal-challenge")
+  @ApiOperation({ summary: "Mint the one-time seal a composer letter's queue has to carry back" })
+  @ApiResponse({ status: 403, description: "The caller is not an owner, a manager or a grantee" })
+  async issueQueueSeal(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.issueQueueSeal({ restaurantId, userId, dto });
+  }
+
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
-    summary: "Queue one letter from this house. Never sends immediately.",
+    summary: "Queue one letter from this house, behind a redeemed seal. Never sends immediately.",
   })
   @ApiResponse({
     status: 202,
@@ -138,11 +154,15 @@ export class HouseLettersController {
   @ApiResponse({
     status: 403,
     description:
-      "The house has stopped using the grant this identity rests on (ADR 0114).",
+      "The house has stopped using the grant this identity rests on (ADR 0114); or the seal was absent, spent or over different words; or the caller is not an owner, a manager or a grantee (ADR 0175 D10).",
   })
-  async queue(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
+  async queue(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: QueueLetterDto,
+    @Headers("x-seal-challenge") challenge?: string,
+  ) {
     const { userId, restaurantId } = houseActor(user);
-    return this.letters.queue({ restaurantId, userId, dto });
+    return this.letters.queue({ restaurantId, userId, dto, challenge });
   }
 
   @Post(":id/cancel")

@@ -29,10 +29,18 @@ import { EventsService } from "../../events/events.service";
 import { InventoryLedgerService } from "../../inventory-ledger/inventory-ledger.service";
 import { ConfigService } from "@nestjs/config";
 import { GmailService } from "../../communications/gmail.service";
+import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 
 type Row = Record<string, any>;
 
 const RESTAURANT_ID = "rest-1";
+/**
+ * The seal is required on every send since 2026-09-21, so every call here
+ * carries an actor and a (stub-redeemed) seal. The seal is not what this file
+ * tests — the atomic claim is — so its redemption is a stand-in that always
+ * accepts; staff-ask-manager-sends.spec.ts runs the real one.
+ */
+const ACTOR = { userId: "manager-1", challenge: "seal-token", grantId: null };
 const ORDER_ID = "order-1";
 const CONVERSATION_ID = "conv-1";
 
@@ -143,6 +151,7 @@ function makeStore() {
         providers: {
           name: "Bordeaux Suppliers",
           contact_email: "supplier@bordeaux.com",
+          restaurant_id: RESTAURANT_ID,
           contact_first_name: "Marie",
           primary_contact: null,
         },
@@ -183,6 +192,10 @@ async function buildService(
         useValue: { recordTransaction: jest.fn() },
       },
       { provide: GmailService, useValue: { sendEmail } },
+      {
+        provide: SealChallengeService,
+        useValue: { redeem: async () => ({ sealId: "seal-1" }) },
+      },
     ],
   }).compile();
 
@@ -214,8 +227,8 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     const service = await buildService(store, sendEmail);
 
     const results = await Promise.allSettled([
-      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
-      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
+      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
     ]);
 
     // The whole point: the vendor gets one purchase order, not two.
@@ -250,7 +263,7 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     });
     const service = await buildService(store, sendEmail);
 
-    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any);
+    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR);
 
     expect(messageIdAtSendTime).toMatch(
       /^<mudavym-[0-9a-f-]{36}@wineops\.ai>$/,
@@ -269,7 +282,7 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     });
     const service = await buildService(store, sendEmail);
 
-    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any);
+    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR);
 
     // If this were still PENDING_APPROVAL, a second tap could slip through.
     expect(statusDuringSend).toBe("SENDING");
@@ -286,7 +299,7 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     const service = await buildService(store, sendEmail);
 
     await expect(
-      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
     ).rejects.toThrow(/could not be delivered/i);
 
     // Nothing reached the vendor, so re-approval is safe and expected.
@@ -324,7 +337,7 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     const service = await buildService(store, sendEmail);
 
     const err = await service
-      .approveDraft(RESTAURANT_ID, ORDER_ID, {} as any)
+      .approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR)
       .catch((e: Error) => e);
 
     expect(err).toBeInstanceOf(SendRefusedBeforeSendError);
@@ -353,7 +366,7 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     const service = await buildService(store, sendEmail);
 
     await expect(
-      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
     ).rejects.toThrow(/may or may not have reached the vendor/i);
     expect(conversationRow(store).status).toBe("SEND_UNCONFIRMED");
   });
@@ -364,7 +377,7 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     const { send, sendEmail } = realGmail();
     const service = await buildService(store, sendEmail);
 
-    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any);
+    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR);
 
     expect(send).toHaveBeenCalledTimes(1);
     expect(conversationRow(store).status).toBe("SENT");
@@ -390,7 +403,7 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
       const service = await buildService(store, sendEmail);
 
       await expect(
-        service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+        service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
       ).rejects.toThrow(/may or may not have reached the vendor/i);
 
       expect(conversationRow(store).status).toBe("SEND_UNCONFIRMED");
@@ -405,12 +418,12 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
       const service = await buildService(store, sendEmail);
 
       await expect(
-        service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+        service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
       ).rejects.toThrow();
 
       // The human taps approve again. There must be no draft left to send.
       await expect(
-        service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+        service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
       ).rejects.toThrow(/no pending draft/i);
 
       // One attempt, one delivery-at-most. Never a second copy.
@@ -445,12 +458,12 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     const service = await buildService(store, sendEmail);
 
     await expect(
-      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
     ).rejects.toThrow();
     expect(conversationRow(store).status).toBe("PENDING_APPROVAL");
 
     // The manager retries the released draft.
-    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any);
+    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR);
 
     expect(seenMessageIds).toHaveLength(2);
     expect(seenMessageIds[0]).toMatch(/^<mudavym-[0-9a-f-]{36}@wineops\.ai>$/);
@@ -489,7 +502,7 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     };
 
     await expect(
-      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
     ).rejects.toThrow(/WAS delivered/i);
 
     expect(sendEmail).toHaveBeenCalledTimes(1);

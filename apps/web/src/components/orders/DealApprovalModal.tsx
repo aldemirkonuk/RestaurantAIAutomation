@@ -1,24 +1,39 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  X, CheckCircle, XCircle, Pencil, MessageSquare, Loader2, Sparkles,
+  X, XCircle, Pencil, MessageSquare, Loader2, Sparkles,
   AlertTriangle, ChevronDown, ShieldCheck, TrendingDown, TrendingUp,
 } from 'lucide-react'
 import type { DealProposalDto } from '../../hooks/queries/useDraftEmailQueries'
+import { HoldToApprove } from '@/components/mudavym'
 import { CommercialTermsPanel } from './CommercialTermsPanel'
 
 interface DealApprovalModalProps {
   isOpen: boolean
   deal: DealProposalDto | null
-  onConfirm: (finalPrice: number, quantity: number) => void
+  /**
+   * The confirmation itself, carrying the one-time seal minted when the hold
+   * began (ADR 0175 D9, 2026-09-21). Return the write so a refusal returns the
+   * die to rest instead of stamping it.
+   */
+  onConfirm: (finalPrice: number, quantity: number, challenge: string) => Promise<unknown>
+  /** Mint the seal over exactly these terms, at the start of the hold. */
+  onChallenge: (finalPrice: number, quantity: number) => Promise<string | null>
   onDismiss: () => void
   onAskForMore: () => void
   onClose: () => void
   isSubmitting?: boolean
+  /**
+   * Why this person's hold cannot confirm a deal, said BEFORE the hold, or null
+   * when it can (ADR 0175 D10: an owner, a manager, or a grantee whose limit
+   * covers it). A deal has no request path, so this names who can instead.
+   */
+  confirmBlockedReason?: string | null
 }
 
 export function DealApprovalModal({
-  isOpen, deal, onConfirm, onDismiss, onAskForMore, onClose, isSubmitting,
+  isOpen, deal, onConfirm, onChallenge, onDismiss, onAskForMore, onClose, isSubmitting,
+  confirmBlockedReason = null,
 }: DealApprovalModalProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [price, setPrice] = useState(0)
@@ -167,14 +182,32 @@ export function DealApprovalModal({
                   : `New/unproven vendor (${deal.trust.completedOrders} completed orders) — you confirm every deal until trust is earned.`}
               </div>
 
+              {/* Who may confirm, said before the hold (ADR 0175 D10). */}
+              {confirmBlockedReason && (
+                <p role="status" data-testid="deal-confirm-blocked" className="text-[11px] text-gray-600 px-1">
+                  {confirmBlockedReason}
+                </p>
+              )}
+
               {/* Actions */}
               <div className="space-y-2.5">
                 <div className="grid grid-cols-2 gap-3">
-                  <button type="button" onClick={() => onConfirm(price, qty)} disabled={isSubmitting}
-                    className="h-14 bg-wine-700 hover:bg-wine-800 active:bg-wine-900 disabled:opacity-60 text-white font-bold text-sm rounded-xl transition-colors flex items-center justify-center gap-2">
-                    {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
-                    {isVerify ? 'Confirm order' : 'Accept & confirm'}
-                  </button>
+                  {/* A hold, not a click: confirming commits money and mails the
+                      vendor, so it is sealed over these exact terms (ADR 0175 D9). */}
+                  <div data-testid="deal-confirm-seal">
+                    <HoldToApprove
+                      key={`${deal.conversationId}-${price}-${qty}`}
+                      label={isVerify ? 'Hold to confirm the order' : 'Hold to accept & confirm'}
+                      approvedLabel="Confirmed"
+                      disabled={!!isSubmitting || !!confirmBlockedReason}
+                      onChallenge={() => onChallenge(price, qty)}
+                      onApprove={async (challenge) => {
+                        if (!challenge) throw new Error('No seal was issued, so nothing was confirmed.')
+                        await onConfirm(price, qty, challenge)
+                      }}
+                    />
+                    {isSubmitting && <Loader2 className="w-4 h-4 animate-spin mt-1" aria-hidden />}
+                  </div>
                   <button type="button" onClick={onDismiss} disabled={isSubmitting}
                     className="h-14 bg-white hover:bg-red-50 border border-gray-300 hover:border-red-200 text-gray-700 hover:text-red-600 font-semibold text-sm rounded-xl transition-colors flex items-center justify-center gap-2">
                     <XCircle className="w-5 h-5" /> Decline

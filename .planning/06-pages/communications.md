@@ -148,6 +148,14 @@ outbound-email audit trail, labelled by `outbound_email_type`).
     a server requirement, until the flag flips. Still true and still FILED (§9):
     this packet does not break a live send path, and deleting the legacy panel is
     packet 4's business.
+    **[2026-09-21, ADR 0175 amendment ("Staff ask, manager sends").]** The flag
+    is deleted and the seal is required on every route. The panel now reads the
+    viewer's `sendOrAsk` beside the draft (`GET orders/:id/draft`): an owner, a
+    manager or a grantee holds to send; anybody else holds to ask a manager, who
+    releases their exact words with one hold. The composer's sender readout
+    carries the same field, and its queue is sealed and gated too. Proved by
+    `DraftedReply.test.tsx`, 25 tests as measured 2026-09-21 (the count below
+    is the packet-2 count, kept as its record).
   - Proved by `DraftedReply.test.tsx` (18 assertions).
 - **The house letter library** (flag ON): house-owned templates under five vendor
   purposes, each showing its declared merge fields, who last edited it and when it

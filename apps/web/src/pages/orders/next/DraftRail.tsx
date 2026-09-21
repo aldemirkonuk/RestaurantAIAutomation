@@ -21,16 +21,22 @@ import { useEffect, useRef, useState } from "react";
 import { getErrorMessage, getErrorStatus } from "@/services/api/client";
 import { HoldToApprove } from "@/components/mudavym";
 import { ink, settle, turn, useReducedMotion } from "@/lib/mudavym/motion";
+import { useQueryClient } from "@tanstack/react-query";
 import {
+  activeConversationKeys,
+  draftKeys,
   useActiveConversations,
   useApproveDraft,
   issueDraftSendChallenge,
+  requestDraftSend,
   useCancelScheduledSend,
   useDiscardDraft,
+  useDraftStanding,
   useOrderConversations,
   type ActiveConversationDto,
   type OrderConversationDto,
 } from "@/hooks/queries/useDraftEmailQueries";
+import { SendStandingNote, holdAct } from "@/components/orders/SendStanding";
 import {
   EM,
   MONO,
@@ -219,9 +225,16 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
         }}
       >
         {isDraft
-          ? "draft — not sent"
+          ? row.requestedByName || row.requestedBy
+            ? `draft — asked by ${row.requestedByName ?? "a colleague"}, not sent`
+            : "draft — not sent"
           : row.sentAt
-            ? `sent ${fmtDate(row.sentAt)}`
+            ? `sent ${fmtDate(row.sentAt)}${
+                // Who sent it (founder, 2026-09-21: "the staffer sees who
+                // sent it"). Only said when the gateway recorded it; rows
+                // sent before that day carry no sender and say nothing.
+                row.sentBy ? ` by ${row.sentByName ?? "someone whose name could not be read"}` : ""
+              }${row.sentBy && row.requestedBy ? `, asked by ${row.requestedByName ?? "a colleague"}` : ""}`
             : fmtDate(row.createdAt)}
       </span>
     </div>
@@ -232,6 +245,11 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
 
 function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
   const conversations = useOrderConversations(draft.orderId);
+  // WHO (founder, 2026-09-21): does this viewer's hold send, or ask a manager?
+  const standing = useDraftStanding(draft.orderId);
+  const act = holdAct(standing.data?.sendOrAsk);
+  const queryClient = useQueryClient();
+  const [asked, setAsked] = useState<string | null>(null);
   const approveDraft = useApproveDraft();
   const discardDraft = useDiscardDraft();
   const cancelSend = useCancelScheduledSend();
@@ -377,33 +395,75 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
       )}
 
       <div className="grid gap-1">
-        <HoldToApprove
-          key={`send-${draft.orderId}-${attempt}`}
-          label={`Hold to approve & send to ${draft.providerName ?? "the vendor"}`}
-          approvedLabel="Approved — leaving the house"
-          disabled={approveDraft.isPending || discardDraft.isPending}
-          onChallenge={() =>
-            issueDraftSendChallenge({
-              orderId: draft.orderId,
-              body: draft.draftContent ?? "",
-              to: draft.providerEmail,
-            })
-          }
-          onApprove={async (challenge) => {
-            setActionError(null);
-            if (!challenge) throw new Error("No draft seal was issued.");
-            try {
-              await approveDraft.mutateAsync({
+        {act === "ask" ? (
+          <HoldToApprove
+            key={`ask-${draft.orderId}-${attempt}`}
+            label="Hold to ask a manager to send it"
+            approvedLabel="Asked — waiting for a manager"
+            disabled={discardDraft.isPending || !!asked || !(draft.draftContent ?? "").trim()}
+            onApprove={async () => {
+              setActionError(null);
+              try {
+                const out = await requestDraftSend({
+                  orderId: draft.orderId,
+                  content: draft.draftContent ?? "",
+                  ccEmails: [],
+                });
+                setAsked(out?.says ?? "Asked. Nothing has been sent.");
+                await queryClient.invalidateQueries({ queryKey: draftKeys.all });
+                await queryClient.invalidateQueries({ queryKey: activeConversationKeys.all });
+              } catch (error) {
+                setActionError(`Nobody was asked (${getErrorMessage(error)}). Nothing was sent.`);
+                setAttempt((a) => a + 1);
+                throw error;
+              }
+            }}
+          />
+        ) : (
+          <HoldToApprove
+            key={`send-${draft.orderId}-${attempt}`}
+            label={`Hold to approve & send to ${draft.providerName ?? "the vendor"}`}
+            approvedLabel="Approved — leaving the house"
+            disabled={approveDraft.isPending || discardDraft.isPending || act !== "send"}
+            onChallenge={() =>
+              issueDraftSendChallenge({
                 orderId: draft.orderId,
-                modifiedContent: draft.draftContent ?? "",
-                challenge,
-              });
-            } catch (error) {
-              fail("sent")(error);
-              throw error;
+                body: draft.draftContent ?? "",
+                to: draft.providerEmail,
+                // A staff member's request carries their copies, and the seal
+                // binds copies: release it over the same ones.
+                ccEmails: draft.sendRequest?.current ? draft.sendRequest.ccEmails : [],
+              })
             }
-          }}
+            onApprove={async (challenge) => {
+              setActionError(null);
+              if (!challenge) throw new Error("No draft seal was issued.");
+              try {
+                await approveDraft.mutateAsync({
+                  orderId: draft.orderId,
+                  modifiedContent: draft.draftContent ?? "",
+                  ccEmails: draft.sendRequest?.current ? draft.sendRequest.ccEmails : undefined,
+                  challenge,
+                });
+              } catch (error) {
+                fail("sent")(error);
+                throw error;
+              }
+            }}
+          />
+        )}
+        <SendStandingNote
+          standing={standing.data?.sendOrAsk}
+          request={standing.data?.draft?.send_request ?? draft.sendRequest ?? null}
+          loading={standing.isPending}
+          error={standing.isError ? getErrorMessage(standing.error) : null}
+          testId="rail-standing"
         />
+        {asked && (
+          <p role="status" style={{ fontSize: 11, color: "var(--ink-2, #4F473C)", margin: 0 }}>
+            {asked}
+          </p>
+        )}
         <button
           type="button"
           disabled={discardDraft.isPending || approveDraft.isPending}
@@ -478,6 +538,13 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
             style={{ fontSize: 11, color: "var(--ink-3, #7C7365)" }}
           >
             {draft.providerName ?? EM} · drafted {fmtDate(draft.createdAt)}
+            {draft.sendRequest
+              ? ` · ${
+                  draft.sendRequest.current
+                    ? `asked by ${draft.sendRequest.requestedByName ?? "a colleague"}, waiting for a manager`
+                    : "asked for, since changed"
+                }`
+              : ""}
           </span>
         </span>
         <span

@@ -395,6 +395,7 @@ nothing in the repository writes), :516 (`restaurants/members`), :87 (`calendar`
 | POST | `…/broadcast` | ManagerShiftDesk → `team.ts:289-305` |
 | GET/PATCH | `…/settings` | `team.ts:308-315` |
 | GET | `/calendar/events` | desk overlays events — `ManagerShiftDesk.tsx:17` → `services/api/calendar.ts:221` (legacy half only; the Mudavym grid does not overlay calendar events — §13.9) |
+| GET/POST | `/authority/grants`, `/authority/grants/:id/revoke` | "Who may send to vendors" — `SendGrantsSection.tsx` (2026-09-21, ADR 0175 amendment; the ADR 0112 F12 grant row). Owners see, name and revoke; anyone else, managers included, is sent only the grants that name them, and an empty list reads "No grant names you", never "Nobody has been named" (last-call fix, 2026-09-21); a failed read says "unknown, not nobody" |
 | GET | `/settings-audit?limit=100` | the trail, read through the ONE reader `/settings` uses (`apps/api-gateway/src/settings-audit/`) — `useTeamNextData.ts` → `TeamRecord.tsx`. No new table and no second reader: `settings-audit.service.ts:80-84` already reads back the two actions `team/access-audit.ts:73` files |
 
 ## 5. Signals

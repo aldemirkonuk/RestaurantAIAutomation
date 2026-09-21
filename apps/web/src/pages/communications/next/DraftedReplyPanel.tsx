@@ -28,19 +28,18 @@
  * `sendDraftedReply` → `approveDraft` seal check as the new routes (lane E
  * audit D8 correction — an earlier draft of this comment said otherwise).
  *
- * [Round 5 correction, 2026-09-21, CLAUDE.md §5b.] The paragraph this
- * replaced said a caller that omits `X-Seal-Challenge` is refused, and that
- * an old native build "now gets a 403 instead of a send." Neither is true
- * by default: `legacyDraftSendMayGoUnsealed()` (`procurement.service.ts`)
- * returns `true` while `REQUIRE_DRAFT_SEND_SEAL` is unset — unset in every
- * environment this has shipped to — and `sendDraftedReply` reads that flag
- * BEFORE deciding whether to check anything. An absent challenge on EITHER
- * route sends UNSEALED, same as it always did; only a PRESENT challenge is
- * always redeemed, on every build. What every caller gets now regardless
- * of the flag is `assertCanManageRestaurant` — new in this lane, so a
- * non-manager who could send a draft here before this lane now gets a 403.
- * When to flip `REQUIRE_DRAFT_SEND_SEAL` is an open founder question (ADR
- * 0118), not decided by this file.
+ * [Round 5 correction, 2026-09-21, CLAUDE.md §5b.] An earlier paragraph here
+ * described a `REQUIRE_DRAFT_SEND_SEAL` grace that let an absent challenge send
+ * unsealed. The founder deleted it the same day: the seal is REQUIRED on every
+ * vendor send, and an absent challenge is refused on both routes.
+ *
+ * SEND OR ASK (founder, 2026-09-21, "Staff ask, manager sends"). The panel
+ * reads this viewer's standing beside the draft (`GET orders/:id/draft`,
+ * `sendOrAsk`) BEFORE the hold. An owner, a manager or a person an owner has
+ * granted holds to SEND; anybody else holds to ASK — their exact words are
+ * saved as the version, the owners and managers are told, and a manager's one
+ * hold over that version sends it. A grant is shown as "granted by"; a waiting
+ * request is shown with who asked and whether it is still their version.
  *
  * A DRAFT NEVER LOOKS SENT (ADR 0112 rule 5). The engine's words are grey until
  * a person edits them; an edited letter says "edited by you" and the grey does
@@ -56,6 +55,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Panel, HoldToApprove } from '@/components/mudavym';
 import { apiClient, getErrorMessage } from '@/services/api/client';
 import { queryKeys } from '@/lib/query-keys';
+import {
+  draftKeys,
+  requestDraftSend,
+  useDraftStanding,
+} from '@/hooks/queries/useDraftEmailQueries';
+import { SendStandingNote, holdAct } from '@/components/orders/SendStanding';
 import { MONO, SANS, SERIF } from './cm-format';
 
 export interface ConstraintWarning {
@@ -184,6 +189,15 @@ export function DraftedReplyPanel({
   const [sent, setSent] = useState<string | null>(null);
   /** Bumped after a refusal so the die returns to rest rather than staying sealed. */
   const [attempt, setAttempt] = useState(0);
+  /** The gateway's own sentence after a staff member's hold became a request. */
+  const [asked, setAsked] = useState<string | null>(null);
+
+  // WHO: this viewer's standing and any request waiting on this draft, read
+  // together so the hold's face is decided before anyone presses it.
+  const standingQuery = useDraftStanding(reply?.orderId ?? null);
+  const sendOrAsk = standingQuery.data?.sendOrAsk ?? null;
+  const request = standingQuery.data?.draft?.send_request ?? null;
+  const act = holdAct(sendOrAsk);
 
   const engineWords = useMemo(() => {
     const raw = reply?.draftContent ?? '';
@@ -202,7 +216,18 @@ export function DraftedReplyPanel({
     setCcProblem(null);
     setFailure(null);
     setSent(null);
+    setAsked(null);
   }, [reply, engineWords]);
+
+  // A request that is still the requester's version carries their copies;
+  // the seal binds copies, so the releasing manager must hold over the same.
+  const ccLoadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!reply || !request?.current) return;
+    if (ccLoadedFor.current === reply.id) return;
+    ccLoadedFor.current = reply.id;
+    setCc(request.ccEmails ?? []);
+  }, [reply, request]);
 
   const warnings = useMemo(() => warningsOf(reply?.constraintFlags), [reply?.constraintFlags]);
   const edited = reply !== null && body !== engineWords;
@@ -259,15 +284,18 @@ export function DraftedReplyPanel({
     setBusy(true);
     setFailure(null);
     try {
+      // No `to`: the letter goes to the vendor's address on file and the
+      // gateway refuses a caller-named recipient with a 400
+      // (draft-routes-validate-bodies.spec.ts). The seal is always carried —
+      // there is no unsealed send any more (founder, 2026-09-21).
       const { data } = await apiClient.post<{ sentAt?: string }>(
         `/procurement/orders/${reply.orderId}/send-drafted-reply`,
         {
           modifiedContent: body,
           managerNotes: notes.trim() || undefined,
           ccEmails: cc.length > 0 ? cc : undefined,
-          to: reply.providerEmail,
         },
-        challenge ? { headers: { 'X-Seal-Challenge': challenge } } : undefined,
+        { headers: { 'X-Seal-Challenge': challenge ?? '' } },
       );
       // Said only after the gateway accepted it, and from what it answered.
       setSent(
@@ -284,6 +312,28 @@ export function DraftedReplyPanel({
           ? `${getErrorMessage(e)} Nothing was sent.`
           : `The send could not be confirmed (${getErrorMessage(e)}). Check the conversation before trying again; the vendor may already have received it.`,
       );
+      setAttempt((a) => a + 1);
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * A staff member's hold: ask a manager. Nothing is sent and no seal is
+   * minted — the gateway saves these exact words and copies as the version and
+   * tells the owners and managers (founder, 2026-09-21).
+   */
+  const ask = async () => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      const out = await requestDraftSend({ orderId: reply.orderId, content: body, ccEmails: cc });
+      setAsked(out?.says ?? 'Asked. Nothing has been sent.');
+      await queryClient.invalidateQueries({ queryKey: draftKeys.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+    } catch (e) {
+      setFailure(`Nobody was asked (${getErrorMessage(e)}). Nothing was sent.`);
       setAttempt((a) => a + 1);
       throw e;
     } finally {
@@ -313,7 +363,11 @@ export function DraftedReplyPanel({
       open={open}
       onClose={onClose}
       /* The contract, as the accessible name. */
-      label={`This asks whether to send the house's drafted reply to ${reply.providerName ?? 'this vendor'}. Holding the seal sends the letter to them. Leaving sends nothing and keeps the draft waiting.`}
+      label={
+        act === 'ask'
+          ? `This asks whether to send the house's drafted reply to ${reply.providerName ?? 'this vendor'}. Holding asks a manager to send your version. Leaving sends nothing and keeps the draft waiting.`
+          : `This asks whether to send the house's drafted reply to ${reply.providerName ?? 'this vendor'}. Holding the seal sends the letter to them. Leaving sends nothing and keeps the draft waiting.`
+      }
       eyebrow={`Drafted · ${reply.orderNumber ?? 'this order'} · round ${reply.roundCount}`}
       title="The house's reply, drafted"
       closeLabel="Leave it waiting"
@@ -494,22 +548,47 @@ export function DraftedReplyPanel({
           onChange={(e) => setNotes(e.target.value)}
         />
 
-        {/* ── the seal ─────────────────────────────────────────────────── */}
+        {/* ── the seal: send, or ask a manager ───────────────────────────── */}
         <div className="mt-4" data-testid="draft-seal">
-          <HoldToApprove
-            key={attempt}
-            label={`Hold to send it to ${reply.providerName ?? 'the vendor'}`}
-            approvedLabel="Sent"
-            disabled={busy || empty || !reply.providerEmail}
-            onChallenge={mint}
-            onApprove={send}
+          {act === 'ask' ? (
+            <HoldToApprove
+              key={`ask-${attempt}`}
+              label="Hold to ask a manager to send it"
+              approvedLabel="Asked"
+              disabled={busy || empty || !reply.providerEmail || !!asked}
+              onApprove={ask}
+            />
+          ) : (
+            <HoldToApprove
+              key={attempt}
+              label={`Hold to send it to ${reply.providerName ?? 'the vendor'}`}
+              approvedLabel="Sent"
+              disabled={busy || empty || !reply.providerEmail || act !== 'send'}
+              onChallenge={mint}
+              onApprove={send}
+            />
+          )}
+          <SendStandingNote
+            standing={sendOrAsk}
+            request={request}
+            loading={standingQuery.isPending}
+            error={standingQuery.isError ? getErrorMessage(standingQuery.error) : null}
+            testId="draft-standing"
           />
           <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
-            {reply.providerEmail
-              ? 'The seal is minted when the hold begins, over this letter, this recipient and these copies. Change any of them after the hold and the send is refused rather than posted.'
-              : 'No address is on file for this vendor, so there is nowhere to send it. Nothing can be held.'}
+            {!reply.providerEmail
+              ? 'No address is on file for this vendor, so there is nowhere to send it. Nothing can be held.'
+              : act === 'ask'
+                ? 'Nothing leaves the house from your hold. A manager reads your version and sends it with their own hold.'
+                : 'The seal is minted when the hold begins, over this letter, this recipient and these copies. Change any of them after the hold and the send is refused rather than posted.'}
           </p>
         </div>
+
+        {asked && (
+          <p role="status" data-testid="draft-asked" style={{ margin: '10px 0 0', fontSize: 11.5 }}>
+            {asked}
+          </p>
+        )}
 
         {sent && (
           <p role="status" data-testid="draft-sent" style={{ margin: '10px 0 0', fontSize: 11.5 }}>

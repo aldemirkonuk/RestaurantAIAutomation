@@ -33,6 +33,125 @@ export interface ActiveConversationDto {
   providerEmail: string | null;
   /** What the gateway will actually put in the subject line if this is sent (lane E audit D5). */
   subject: string;
+  /** A staff member's request on this draft, or null (founder, 2026-09-21). */
+  sendRequest?: SendRequestDto | null;
+}
+
+/**
+ * A staff member's hold on a letter, recorded as a request a manager releases
+ * (founder, 2026-09-21: "Staff ask, manager sends").
+ */
+export interface SendRequestDto {
+  requestedBy: string | null;
+  /** null when the name could not be read — the page says so; the request stays. */
+  requestedByName: string | null;
+  requestedAt: string;
+  /** false once the letter's words changed after the request (an edit, a regenerate). */
+  current: boolean;
+  ccEmails: string[];
+}
+
+/**
+ * Whether THIS viewer's hold sends the letter or asks a manager to — the
+ * `mayApprove` twin the gateway returns beside the draft (`GET orders/:id/draft`,
+ * `VendorSendAuthorityService.readout`). `readable: false` is an error the page
+ * shows; it is never "ask" and never "send".
+ */
+export interface SendOrAskDto {
+  readable: boolean;
+  maySend: boolean;
+  mode: "send" | "ask" | null;
+  basis: "owner" | "manager" | "grant" | null;
+  grant: {
+    id: string;
+    grantedBy: { userId: string; name: string | null };
+    expiresAt: string | null;
+    limitAmount: number | null;
+    limitCurrency: string | null;
+  } | null;
+  sentence: string | null;
+}
+
+/** The draft readout's own request shape (snake case, like the rest of that object). */
+export interface DraftSendRequestView {
+  requestedBy: string | null;
+  requestedByName: string | null;
+  requestedAt: string;
+  current: boolean;
+  ccEmails: string[];
+}
+
+export interface DraftStandingDto {
+  draft: ({ id: string; content: string | null; send_request: DraftSendRequestView | null } & Record<string, unknown>) | null;
+  sendOrAsk: SendOrAskDto;
+}
+
+export const draftStandingKeys = {
+  byOrder: (orderId: string) => [...draftKeys.all, "standing", orderId] as const,
+};
+
+/**
+ * The pending draft AND whether this viewer's hold sends or asks — one read,
+ * so a panel never shows "hold to send" to a person whose hold would ask.
+ */
+export function useDraftStanding(orderId: string | null) {
+  return useQuery({
+    queryKey: draftStandingKeys.byOrder(orderId ?? ""),
+    queryFn: () =>
+      apiClient
+        .get(`/procurement/orders/${orderId}/draft`)
+        .then((r) => r.data as DraftStandingDto),
+    enabled: !!orderId,
+    staleTime: 10_000,
+  });
+}
+
+/**
+ * A staff member's hold: the letter becomes a request (founder, 2026-09-21).
+ * Nothing is sent and no seal is spent; the gateway saves these exact words as
+ * the version, records who asked and rings the owners' and managers' bells.
+ */
+export async function requestDraftSend(input: {
+  orderId: string;
+  content: string;
+  ccEmails?: string[];
+}): Promise<{ conversationId: string; requestedAt: string; told: number; says: string }> {
+  const { data } = await apiClient.post(
+    `/procurement/orders/${input.orderId}/draft-send-request`,
+    { content: input.content, ccEmails: input.ccEmails ?? [] },
+  );
+  return data;
+}
+
+/** Mint the seal a hand-written reply must carry back (ADR 0175 D9, 2026-09-21). */
+export async function issueManualReplyChallenge(input: {
+  orderId: string;
+  content: string;
+  ccEmails?: string[];
+}): Promise<string | null> {
+  const { data } = await apiClient.post<{ challenge?: string }>(
+    `/procurement/orders/${input.orderId}/manual-reply-seal-challenge`,
+    { content: input.content, ccEmails: input.ccEmails ?? [] },
+  );
+  return data?.challenge ?? null;
+}
+
+/** Mint the seal a deal confirmation must carry back (ADR 0175 D9, 2026-09-21). */
+export async function issueConfirmDealChallenge(input: {
+  orderId: string;
+  finalPrice?: number;
+  quantity?: number;
+  sendConfirmation?: boolean;
+}): Promise<string | null> {
+  const { data } = await apiClient.post<{ challenge?: string }>(
+    `/procurement/orders/${input.orderId}/confirm-deal-seal-challenge`,
+    {
+      finalPrice: input.finalPrice,
+      quantity: input.quantity,
+      sendConfirmation: input.sendConfirmation,
+    },
+  );
+  return data?.challenge ?? null;
 }
 
 export function useActiveConversations() {
@@ -213,6 +332,14 @@ export interface OrderConversationDto {
   providerEmail: string | null;
   /** Latest inbound sender authentication (DKIM/DMARC); null when unknown / pre-Phase-0. */
   senderVerified?: boolean | null;
+  /** Who sent this outbound letter; null on rows sent before 2026-09-21 (not recorded). */
+  sentBy?: string | null;
+  sentByName?: string | null;
+  /** True when the sender sent under an owner's grant rather than their own role. */
+  sentUnderGrant?: boolean;
+  /** The staff member who asked for this letter to be sent, if one did. */
+  requestedBy?: string | null;
+  requestedByName?: string | null;
 }
 
 export const orderConversationKeys = {
@@ -259,7 +386,11 @@ export function useOrderAttachments(orderId: string | null, enabled = true) {
   });
 }
 
-/** Manager writes & sends their own threaded reply (bypasses the AI draft). */
+/**
+ * A person's own threaded reply (bypasses the AI draft) — behind a redeemed
+ * seal since 2026-09-21 (ADR 0175 D9): the challenge comes from
+ * `issueManualReplyChallenge`, minted when the hold began.
+ */
 export function useManualReply() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -267,16 +398,19 @@ export function useManualReply() {
       orderId,
       content,
       ccEmails,
+      challenge,
     }: {
       orderId: string;
       content: string;
       ccEmails?: string[];
+      challenge: string;
     }) =>
       apiClient
-        .post(`/procurement/orders/${orderId}/manual-reply`, {
-          content,
-          ccEmails,
-        })
+        .post(
+          `/procurement/orders/${orderId}/manual-reply`,
+          { content, ccEmails },
+          { headers: { "X-Seal-Challenge": challenge } },
+        )
         .then((r) => r.data),
     onSettled: (_d, _e, variables) => {
       queryClient.invalidateQueries({
@@ -430,6 +564,11 @@ export function useDealProposal(orderId: string | null, enabled = true) {
   });
 }
 
+/**
+ * Confirm a deal — behind a redeemed seal since 2026-09-21 (ADR 0175 D9): the
+ * challenge comes from `issueConfirmDealChallenge`, minted over the same terms
+ * when the hold began.
+ */
 export function useConfirmDeal() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -438,18 +577,20 @@ export function useConfirmDeal() {
       finalPrice,
       quantity,
       sendConfirmation,
+      challenge,
     }: {
       orderId: string;
       finalPrice?: number;
       quantity?: number;
       sendConfirmation?: boolean;
+      challenge: string;
     }) =>
       apiClient
-        .post(`/procurement/orders/${orderId}/confirm-deal`, {
-          finalPrice,
-          quantity,
-          sendConfirmation,
-        })
+        .post(
+          `/procurement/orders/${orderId}/confirm-deal`,
+          { finalPrice, quantity, sendConfirmation },
+          { headers: { "X-Seal-Challenge": challenge } },
+        )
         .then(
           (r) => r.data as { confirmed: boolean; sentConfirmation: boolean },
         ),

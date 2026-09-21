@@ -26,8 +26,14 @@ import {
   UpdateOrderDto,
   VerifyReceiptDto,
 } from "./dto/procurement.dto";
-import { ApproveDraftDto, DraftSealChallengeDto } from "./dto/approve-draft.dto";
-import { ProcurementService } from "./procurement.service";
+import {
+  ApproveDraftDto,
+  ConfirmDealDto,
+  DraftSealChallengeDto,
+  DraftSendRequestDto,
+  ManualReplyDto,
+} from "./dto/approve-draft.dto";
+import { ProcurementService, type SendOrAsk } from "./procurement.service";
 
 /**
  * `?quantityReceivedInOrderUom=` -> a whole non-negative count, or a 400 that
@@ -677,19 +683,16 @@ export class ProcurementController {
   }
 
   /**
-   * Send the drafted reply, behind a redeemed seal — when one is presented.
+   * Send the drafted reply, behind a redeemed seal — always.
    *
    * NEW ROUTE (packet 2, 2026-09-06). It wraps `approveDraft` rather than
    * replacing its atomic sending claim. Both this route and the legacy
-   * approve-draft route require the same MANAGER boundary
-   * (`assertCanManageRestaurant`, unconditional). The SEAL half is not yet
-   * unconditional on either route: `sendDraftedReply` lets an absent
-   * `X-Seal-Challenge` through unsealed while `REQUIRE_DRAFT_SEND_SEAL` is
-   * unset — its default — so neither route actually refuses a sealless send
-   * until that flag is flipped (round 5 correction, 2026-09-21, CLAUDE.md
-   * §5b; see `legacyDraftSendMayGoUnsealed` and ADR 0118's dated bracket on
-   * "Codex execution, 2026-09-13"). A PRESENT challenge is always redeemed,
-   * on every build.
+   * approve-draft route land in `sendDraftedReply`, which requires an owner, a
+   * manager or a grantee (ADR 0175 D10) and ALWAYS redeems the seal: the
+   * `REQUIRE_DRAFT_SEND_SEAL` grace was deleted on the founder's answer of
+   * 2026-09-21, so an absent `X-Seal-Challenge` is refused like every other
+   * sealed act. A member who may not send is told to hold again to ASK
+   * (`draft-send-request`).
    *
    * The body is `ApproveDraftDto` itself, never an intersection with it: an
    * intersection type is recorded as `Object`, which the ValidationPipe skips.
@@ -735,6 +738,32 @@ export class ProcurementController {
     }
   }
 
+  /**
+   * A staff member's hold: the letter becomes a REQUEST a manager releases
+   * (founder, 2026-09-21, "Staff ask, manager sends").
+   *
+   * Saves the person's exact edited words as the draft's version, records who
+   * asked, keeps the draft PENDING_APPROVAL (waiting for a manager) and tells
+   * the owners and managers on their bell. Nothing is sent, so no seal is
+   * spent; the release is the ordinary sealed send over these words. 409 when
+   * the caller may send themself.
+   */
+  @Post("orders/:id/draft-send-request")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Ask a manager to send this letter (a staff member's hold)" })
+  @ApiResponse({ status: 201, description: "Asked: the version, when, how many were told, and the sentence" })
+  @ApiResponse({ status: 409, description: "The caller may send it themself, or the draft went while they held" })
+  async requestDraftSend(
+    @Param("id") orderId: string,
+    @Body() body: DraftSendRequestDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ conversationId: string; requestedAt: string; told: number; says: string }> {
+    return this.procurementService.requestDraftSend(user.restaurantId, orderId, user.userId, {
+      content: body.content,
+      ccEmails: body.ccEmails ?? [],
+    });
+  }
+
   @Post("orders/:id/generate-ai-reply")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
@@ -778,29 +807,61 @@ export class ProcurementController {
     }
   }
 
+  /**
+   * Begin the hold on a hand-written reply: a one-time seal over its words,
+   * the vendor's address on file and its copies (ADR 0175 D9, 2026-09-21).
+   */
+  @Post("orders/:id/manual-reply-seal-challenge")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Mint the one-time seal a hand-written reply's send has to carry back" })
+  async issueManualReplySeal(
+    @Param("id") orderId: string,
+    @Body() body: ManualReplyDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issueManualReplySeal(user.restaurantId, orderId, user.userId, {
+      content: body.content,
+      ccEmails: body.ccEmails ?? [],
+    });
+  }
+
+  /**
+   * A person's own threaded reply to the vendor — sealed, gated and named
+   * since 2026-09-21 (ADR 0175 D9/D10). Until then this route took no user id,
+   * checked no role, spent no seal and recorded no sender.
+   */
   @Post("orders/:id/manual-reply")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
-    summary: "Send a manager-written threaded reply to the provider",
+    summary: "Send a hand-written threaded reply to the provider, behind a redeemed seal",
   })
   @ApiResponse({
     status: 200,
-    description: "Manual reply sent and recorded on the thread",
+    description: "Manual reply sent and recorded on the thread, with its sender",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The seal was absent, spent or issued over different words, or the caller may not send (they are told to hold again to ask)",
   })
   async manualReply(
     @Param("id") orderId: string,
-    @Body() body: { content: string; ccEmails?: string[] },
+    @Body() body: ManualReplyDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<{ conversationId: string; sentAt: string }> {
     try {
       return await this.procurementService.manualReply(
         user.restaurantId,
         orderId,
+        user.userId,
         body?.content,
         body?.ccEmails,
+        challenge,
       );
     } catch (error: any) {
-      if (error instanceof ForbiddenException) throw error;
+      // Every deliberate refusal keeps its status and its sentence.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to send manual reply",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -881,35 +942,58 @@ export class ProcurementController {
     }
   }
 
+  /**
+   * Begin the hold on a deal confirmation: a one-time seal over its terms and
+   * the vendor's address (ADR 0175 D9, 2026-09-21). A grantee's money limit is
+   * checked here, before any seal is issued.
+   */
+  @Post("orders/:id/confirm-deal-seal-challenge")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Mint the one-time seal a deal confirmation has to carry back" })
+  async issueConfirmDealSeal(
+    @Param("id") orderId: string,
+    @Body() body: ConfirmDealDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issueConfirmDealSeal(user.restaurantId, orderId, user.userId, {
+      finalPrice: body?.finalPrice,
+      quantity: body?.quantity,
+      sendConfirmation: body?.sendConfirmation,
+    });
+  }
+
   @Post("orders/:id/confirm-deal")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary:
-      "Confirm an AI-detected deal: commit the order and optionally email the vendor",
+      "Confirm an AI-detected deal behind a redeemed seal: commit the order and optionally email the vendor",
   })
   @ApiResponse({ status: 200 })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The seal was absent, spent or over different terms, or the caller is not an owner, a manager or a grantee whose limit covers this deal",
+  })
   async confirmDeal(
     @Param("id") orderId: string,
-    @Body()
-    body: {
-      finalPrice?: number;
-      quantity?: number;
-      sendConfirmation?: boolean;
-    },
+    @Body() body: ConfirmDealDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
     try {
       return await this.procurementService.confirmDeal(
         user.restaurantId,
         orderId,
+        user.userId,
         {
           finalPrice: body?.finalPrice,
           quantity: body?.quantity,
           sendConfirmation: body?.sendConfirmation,
         },
+        challenge,
       );
     } catch (error: any) {
-      if (error instanceof ForbiddenException) throw error;
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to confirm deal",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -1050,21 +1134,32 @@ export class ProcurementController {
   @Get("orders/:id/draft")
   @UseGuards(JwtAuthGuard)
   @Header("Cache-Control", "no-store")
-  @ApiOperation({ summary: "Get pending AI email draft for an order" })
+  @ApiOperation({
+    summary:
+      "Get pending AI email draft for an order, and whether this viewer's hold sends it or asks a manager",
+  })
   @ApiResponse({ status: 200 })
   async getPendingDraft(
     @Param("id") orderId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<{ draft: Record<string, any> | null }> {
+  ): Promise<{ draft: Record<string, any> | null; sendOrAsk: SendOrAsk }> {
     try {
       const draft = await this.procurementService.getPendingDraft(
         user.restaurantId,
         orderId,
       );
+      // `sendOrAsk` is the viewer's own standing (founder, 2026-09-21): the
+      // panel says "hold to send" or "hold to ask a manager" BEFORE the hold,
+      // never as a refusal after it. It is present even when no draft waits,
+      // because the thread's own reply box reads it too.
+      const sendOrAsk = await this.procurementService.sendOrAskFor(
+        user.userId,
+        user.restaurantId,
+      );
       // Always return a JSON object so the browser receives Content-Type: application/json
       // and a non-empty body. Returning `null` directly causes NestJS to send Content-Length: 0
       // which Safari DevTools flags as an error and Axios deserialises as an empty string.
-      return { draft };
+      return { draft, sendOrAsk };
     } catch (error: any) {
       throw new HttpException(
         error.message || "Failed to get draft",

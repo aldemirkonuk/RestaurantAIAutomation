@@ -21,12 +21,19 @@ import {
   useDismissDeal,
   useForceFetchReplies,
   useOrderAttachments,
+  useDraftStanding,
+  requestDraftSend,
+  issueManualReplyChallenge,
+  issueConfirmDealChallenge,
   orderConversationKeys,
   dealProposalKeys,
+  draftKeys,
   type OrderConversationDto,
   type OrderAttachmentDto,
 } from '../../hooks/queries/useDraftEmailQueries'
 import { DealApprovalModal } from './DealApprovalModal'
+import { HoldToApprove } from '@/components/mudavym'
+import { SendStandingNote, holdAct } from './SendStanding'
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, {
@@ -258,6 +265,14 @@ export function CommsThreadDrawer({
 
   const busy = generateAiReply.isPending || regenerateDraft.isPending || manualReply.isPending
 
+  // WHO (ADR 0175 D10; founder, 2026-09-21): does this viewer's hold send a
+  // reply, or ask a manager to? Read beside the draft, before the hold.
+  const standing = useDraftStanding(isOpen ? orderId : null)
+  const replyAct = holdAct(standing.data?.sendOrAsk)
+  const queryClientForAsk = useQueryClient()
+  const [askedSays, setAskedSays] = useState<string | null>(null)
+  const [replyAttempt, setReplyAttempt] = useState(0)
+
   const handleDraftAiReply = () => {
     if (!orderId) return
     setReplyError(null)
@@ -290,16 +305,59 @@ export function CommsThreadDrawer({
     cancelScheduledSend.mutate(orderId)
   }
 
-  const handleSendManual = () => {
+  /**
+   * A hand-written reply, sealed since 2026-09-21 (ADR 0175 D9): the seal is
+   * minted over these exact words when the hold begins and spent on the send.
+   * Until then this was a plain click that mailed the vendor unsealed and
+   * unnamed.
+   */
+  const mintManualReply = async (): Promise<string | null> => {
+    if (!orderId || !manualText.trim()) return null
+    setReplyError(null)
+    try {
+      return await issueManualReplyChallenge({ orderId, content: manualText.trim(), ccEmails: [] })
+    } catch (e: any) {
+      setReplyError(`The seal could not be issued (${e?.response?.data?.message ?? e?.message ?? 'no reason given'}), so nothing was sent.`)
+      return null
+    }
+  }
+
+  const handleSendManual = async (challenge?: string | null) => {
+    if (!orderId || !manualText.trim()) return
+    if (!challenge) throw new Error('No seal was issued, so nothing was sent.')
+    setReplyError(null)
+    try {
+      await manualReply.mutateAsync({ orderId, content: manualText.trim(), challenge })
+      setManualText('')
+      setShowManualComposer(false)
+    } catch (e: any) {
+      const status = e?.response?.status
+      setReplyError(
+        status === 403
+          ? `${e?.response?.data?.message ?? 'The hold was refused.'} Nothing was sent.`
+          : 'The send could not be confirmed. Check the thread before trying again; the vendor may already have it.',
+      )
+      setReplyAttempt((a) => a + 1)
+      throw e
+    }
+  }
+
+  /** A staff member's hold on their own reply: it becomes a request (founder, 2026-09-21). */
+  const handleAskManual = async () => {
     if (!orderId || !manualText.trim()) return
     setReplyError(null)
-    manualReply.mutate(
-      { orderId, content: manualText.trim() },
-      {
-        onSuccess: () => { setManualText(''); setShowManualComposer(false) },
-        onError: () => setReplyError('Could not send your reply. Please try again.'),
-      },
-    )
+    try {
+      const out = await requestDraftSend({ orderId, content: manualText.trim(), ccEmails: [] })
+      setAskedSays(out?.says ?? 'Asked. Nothing has been sent.')
+      setManualText('')
+      setShowManualComposer(false)
+      await queryClientForAsk.invalidateQueries({ queryKey: draftKeys.all })
+      await queryClientForAsk.invalidateQueries({ queryKey: orderConversationKeys.all })
+    } catch (e: any) {
+      setReplyError(`Nobody was asked (${e?.response?.data?.message ?? e?.message ?? 'no reason given'}). Nothing was sent.`)
+      setReplyAttempt((a) => a + 1)
+      throw e
+    }
   }
 
   // ── AI deal proposal (offer / verification → approval modal) ──────────────
@@ -317,12 +375,27 @@ export function CommsThreadDrawer({
     }
   }, [dealProposal?.conversationId, dealProposal?.urgency, autoOpenedDealId])
 
-  const handleConfirmDeal = (finalPrice: number, quantity: number) => {
+  // A deal confirmation commits money and mails the vendor, so it is sealed
+  // over its exact terms (ADR 0175 D9) and gated on who may (D10). A deal has
+  // no request path: a staff member is told who can confirm it instead.
+  const dealBlockedReason =
+    standing.isPending
+      ? 'Reading whether you may confirm deals…'
+      : standing.isError
+        ? 'Whether you may confirm deals could not be read. Nothing can be confirmed until it can.'
+        : replyAct === 'ask'
+          ? 'Only an owner, a manager, or someone an owner has named may confirm a deal. Ask one of them to confirm it.'
+          : replyAct === null
+            ? (standing.data?.sendOrAsk?.sentence ?? 'Whether you may confirm deals could not be read.')
+            : null
+  const handleDealChallenge = async (finalPrice: number, quantity: number) => {
+    if (!orderId) return null
+    return issueConfirmDealChallenge({ orderId, finalPrice, quantity, sendConfirmation: true })
+  }
+  const handleConfirmDeal = async (finalPrice: number, quantity: number, challenge: string) => {
     if (!orderId) return
-    confirmDeal.mutate(
-      { orderId, finalPrice, quantity, sendConfirmation: true },
-      { onSuccess: () => setShowDealModal(false) },
-    )
+    await confirmDeal.mutateAsync({ orderId, finalPrice, quantity, sendConfirmation: true, challenge })
+    setShowDealModal(false)
   }
   const handleDismissDeal = () => {
     if (!orderId) return
@@ -639,6 +712,11 @@ export function CommsThreadDrawer({
             {/* ── Sticky footer: composer / auto-send countdown / CTAs ── */}
             {!isCancelled && !isDelivered && (
               <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+                {askedSays && (
+                  <p role="status" data-testid="manual-reply-asked" className="px-4 pt-2 text-[11px] text-gray-600">
+                    {askedSays}
+                  </p>
+                )}
                 {showManualComposer ? (
                   /* ── Manual reply composer ── */
                   <div className="px-4 py-3">
@@ -682,16 +760,31 @@ export function CommsThreadDrawer({
                       aria-label="Manual reply body"
                       className="w-full text-[12px] leading-relaxed text-gray-800 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-wine-200 focus:border-wine-300 resize-none"
                     />
-                    <div className="mt-2 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSendManual}
-                        disabled={!manualText.trim() || manualReply.isPending}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-wine-700 hover:bg-wine-800 active:bg-wine-900 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors"
-                      >
-                        {manualReply.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                        {manualReply.isPending ? 'Sending…' : 'Send reply'}
-                      </button>
+                    <div className="mt-2" data-testid="manual-reply-seal">
+                      {replyAct === 'ask' ? (
+                        <HoldToApprove
+                          key={`ask-${replyAttempt}`}
+                          label="Hold to ask a manager to send it"
+                          approvedLabel="Asked"
+                          disabled={!manualText.trim()}
+                          onApprove={handleAskManual}
+                        />
+                      ) : (
+                        <HoldToApprove
+                          key={`send-${replyAttempt}`}
+                          label="Hold to send your reply"
+                          approvedLabel="Sent"
+                          disabled={!manualText.trim() || manualReply.isPending || replyAct !== 'send'}
+                          onChallenge={mintManualReply}
+                          onApprove={handleSendManual}
+                        />
+                      )}
+                      <SendStandingNote
+                        standing={standing.data?.sendOrAsk}
+                        loading={standing.isPending}
+                        error={standing.isError ? String((standing.error as Error)?.message ?? 'unknown error') : null}
+                        testId="manual-reply-standing"
+                      />
                     </div>
                     {replyError && <p className="mt-1.5 text-[10px] text-center text-red-500 font-medium">{replyError}</p>}
                   </div>
@@ -841,6 +934,8 @@ export function CommsThreadDrawer({
         isOpen={showDealModal}
         deal={dealProposal ?? null}
         onConfirm={handleConfirmDeal}
+        onChallenge={handleDealChallenge}
+        confirmBlockedReason={dealBlockedReason}
         onDismiss={handleDismissDeal}
         onAskForMore={handleAskForMore}
         onClose={() => setShowDealModal(false)}

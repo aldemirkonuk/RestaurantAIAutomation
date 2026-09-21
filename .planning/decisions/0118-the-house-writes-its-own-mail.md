@@ -1349,6 +1349,15 @@ Both draft-send HTTP routes now require a named manager and one ephemeral held s
 > gets a 403 the moment it sends a draft), once old native builds are
 > confirmed gone (the live defect stays open until then), or after a forced
 > app-update mechanism ships (which does not exist yet).
+>
+> **[Answered 2026-09-21 — the founder, "Staff ask, manager sends"; ADR 0175's
+> amendment of that date.]** The grace is deleted: `legacyDraftSendMayGoUnsealed`
+> and `REQUIRE_DRAFT_SEND_SEAL` no longer exist, and an absent challenge is
+> refused on both routes. The manager-only check described above is replaced by
+> the ADR 0112 F12 authority rule — an owner, a manager or a person an owner has
+> granted sends with one hold — and a staff member's hold now becomes a request
+> a manager releases instead of a 403. The two paragraphs above describe the
+> tree before that answer and are kept as its record.
 
 Validation: procurement gateway 74 suites / 1,423 passing tests (3 skipped), gateway and mobile typechecks exit 0, native held/draft helpers 7 passing tests. Web broad run covered 209 files; one shell suite initially failed from duplicate React installations, then passed 25/25 after dependency graph correction. Final cart regression suite passes 21/21, including case-price preservation, partial retries, unknown response, stale vendor and house changes. No production vendor message, fixture, payment or database mutation was used. Final immutable scope and exact hashes are recorded in workspace execution/overlay2-ready/manifest.json.
 

@@ -136,6 +136,11 @@ export const SEAL_SUBJECT_KINDS = [
   "text_credit_purchase",
   "commodity_exposure",
   "procurement_document",
+  // ADR 0175 D9 (sealed 2026-09-21; admitted by 20260921113500): the AI
+  // negotiation's pause-for-approval, keyed on the conversation row, and the
+  // house composer's letter, keyed on the vendor it is written to.
+  "procurement_conversation",
+  "house_letter",
 ] as const;
 
 export type SealSubjectKind = (typeof SEAL_SUBJECT_KINDS)[number];
@@ -186,6 +191,16 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // would name the row a correction touches rather than the record somebody
       // is standing behind.
       return "document";
+    case "procurement_conversation":
+      // "conversation": the subject of POST /conversations/:id/approve is the
+      // negotiation's pending message, and "a different order" would name the
+      // wrong thing — a conversation need not have one.
+      return "conversation";
+    case "house_letter":
+      // "letter": the composer's subject id is the VENDOR it writes to, but the
+      // thing sealed is the letter, and "a different vendor" would read as a
+      // statement about the book rather than about what was held.
+      return "letter";
   }
 }
 

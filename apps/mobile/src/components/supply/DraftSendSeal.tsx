@@ -11,12 +11,15 @@ export function DraftSendSeal({
   orderId,
   body,
   recipient,
+  ccEmails,
   scope: reviewScope,
   onApproved,
 }: {
   orderId: string;
   body: string;
   recipient: string;
+  /** A staff member's request carries their copies; the seal binds copies. */
+  ccEmails?: string[];
   scope: RequestScope;
   onApproved: () => void;
 }) {
@@ -39,7 +42,7 @@ export function DraftSendSeal({
   const [error, setError] = useState<string>();
   const control = useMemo(() => {
     return draftReplyApproval({
-      orderId, body, recipient, scope: reviewScope, request: api,
+      orderId, body, recipient, ccEmails, scope: reviewScope, request: api,
       onApproved: async () => {
         await Promise.all([queryClient.invalidateQueries({ queryKey: ["orders"] }), queryClient.invalidateQueries({ queryKey: ["mobile", "feed"] })]);
         onApproved();
@@ -53,6 +56,7 @@ export function DraftSendSeal({
     orderId,
     body,
     recipient,
+    ccEmails,
     reviewScope.userId,
     reviewScope.restaurantId,
     onApproved,

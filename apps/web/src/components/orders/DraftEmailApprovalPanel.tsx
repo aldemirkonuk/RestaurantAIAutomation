@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { HoldToApprove } from "@/components/mudavym";
-import { issueDraftSendChallenge } from "@/hooks/queries/useDraftEmailQueries";
+import {
+  issueDraftSendChallenge,
+  type DraftSendRequestView,
+  type SendOrAskDto,
+} from "@/hooks/queries/useDraftEmailQueries";
+import { SendStandingNote, holdAct } from "./SendStanding";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   XCircle,
@@ -52,6 +57,19 @@ interface DraftEmailApprovalPanelProps {
   onDiscard: () => void;
   onClose: (dirtyContent?: string) => void;
   isSubmitting?: boolean;
+  /**
+   * This viewer's standing (founder, 2026-09-21): whether their hold SENDS or
+   * ASKS a manager. Read by the page from `GET orders/:id/draft`. Absent means
+   * not yet known, and the hold stays disabled until it is — the panel never
+   * guesses "send".
+   */
+  sendOrAsk?: SendOrAskDto | null;
+  standingLoading?: boolean;
+  standingError?: string | null;
+  /** A staff member's request waiting on this draft, if any. */
+  sendRequest?: DraftSendRequestView | null;
+  /** A staff member's hold: record the request; resolves to the gateway's sentence. */
+  onAsk?: (content: string, ccEmails: string[]) => Promise<string>;
 }
 
 type EmailBadge = { label: string; bg: string; text: string; dot: string };
@@ -142,7 +160,14 @@ export function DraftEmailApprovalPanel({
   onDiscard,
   onClose,
   isSubmitting = false,
+  sendOrAsk,
+  standingLoading = false,
+  standingError = null,
+  sendRequest = null,
+  onAsk,
 }: DraftEmailApprovalPanelProps) {
+  const act = holdAct(sendOrAsk);
+  const [asked, setAsked] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState("");
   const [editedSubject, setEditedSubject] = useState("");
@@ -160,8 +185,15 @@ export function DraftEmailApprovalPanel({
       setIsEditing(false);
       setCcEmails([]);
       setCcInput("");
+      setAsked(null);
     }
   }, [draftData, managerName]);
+
+  // A request still in the requester's words carries their copies, and the
+  // seal binds copies: the releasing manager holds over the same ones.
+  useEffect(() => {
+    if (sendRequest?.current) setCcEmails(sendRequest.ccEmails ?? []);
+  }, [sendRequest?.current, sendRequest?.requestedAt]);
 
   const addCcEmail = (raw: string) => {
     const email = raw.trim().toLowerCase();
@@ -503,6 +535,21 @@ export function DraftEmailApprovalPanel({
                   {/* Spacer */}
                   <div className="flex-1" />
 
+                  {act === "ask" && onAsk ? (
+                    <HoldToApprove
+                      label="Hold to ask a manager to send it"
+                      approvedLabel="Asked"
+                      disabled={
+                        isSubmitting ||
+                        !!asked ||
+                        !editedContent.trim() ||
+                        !draftData.providerEmail
+                      }
+                      onApprove={async () => {
+                        setAsked(await onAsk(editedContent, ccEmails));
+                      }}
+                    />
+                  ) : (
                   <HoldToApprove
                     label={
                       isDirty
@@ -512,6 +559,7 @@ export function DraftEmailApprovalPanel({
                     approvedLabel="Sent"
                     disabled={
                       isSubmitting ||
+                      act !== "send" ||
                       !editedContent.trim() ||
                       !draftData.providerEmail
                     }
@@ -534,6 +582,23 @@ export function DraftEmailApprovalPanel({
                       );
                     }}
                   />
+                  )}
+                </div>
+
+                {/* Send or ask, said before the hold (founder, 2026-09-21) */}
+                <div className="px-5 pb-2 flex-shrink-0">
+                  <SendStandingNote
+                    standing={sendOrAsk}
+                    request={sendRequest}
+                    loading={standingLoading}
+                    error={standingError}
+                    testId="legacy-draft-standing"
+                  />
+                  {asked && (
+                    <p role="status" className="text-[11px] text-gray-600 mt-1" data-testid="legacy-draft-asked">
+                      {asked}
+                    </p>
+                  )}
                 </div>
 
                 {/* Footer */}

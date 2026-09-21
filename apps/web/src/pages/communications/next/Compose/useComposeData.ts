@@ -39,6 +39,25 @@ export interface SenderIdentity {
   deployment: { address: string; refusedBecause: string };
   subdomain: { provisioned: boolean; tier: 'paid'; words: string };
   categories: string[];
+  /**
+   * Whether THIS person's hold sends (ADR 0175 D10; 2026-09-21): an owner, a
+   * manager or a grantee. Absent on a gateway that predates it — the sheet
+   * then treats the standing as unknown and does not offer the send.
+   */
+  sendOrAsk?: {
+    readable: boolean;
+    maySend: boolean;
+    mode: 'send' | 'ask' | null;
+    basis: 'owner' | 'manager' | 'grant' | null;
+    grant: {
+      id: string;
+      grantedBy: { userId: string; name: string | null };
+      expiresAt: string | null;
+      limitAmount: number | null;
+      limitCurrency: string | null;
+    } | null;
+    sentence: string | null;
+  };
   dispatcher: {
     at: string;
     considered: number;

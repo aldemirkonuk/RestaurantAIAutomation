@@ -19,12 +19,39 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const api = vi.hoisted(() => ({ post: vi.fn() }));
+const api = vi.hoisted(() => ({ post: vi.fn(), get: vi.fn() }));
 
 vi.mock('@/services/api/client', () => ({
-  apiClient: { post: (...a: unknown[]) => api.post(...a) },
+  apiClient: {
+    post: (...a: unknown[]) => api.post(...a),
+    get: (...a: unknown[]) => api.get(...a),
+  },
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
+
+/** The gateway's `sendOrAsk` for a manager — the default standing below. */
+const AS_MANAGER = {
+  readable: true,
+  maySend: true,
+  mode: 'send',
+  basis: 'manager',
+  grant: null,
+  sentence: null,
+};
+const AS_STAFF = {
+  readable: true,
+  maySend: false,
+  mode: 'ask',
+  basis: null,
+  grant: null,
+  sentence:
+    'Your hold will ask a manager to send it; your version is kept exactly as you wrote it. Only an owner, a manager, or someone an owner has named may send it with one hold.',
+};
+function standing(sendOrAsk: unknown, sendRequest: unknown = null) {
+  api.get.mockResolvedValue({
+    data: { draft: { id: 'conv-1', content: 'x', send_request: sendRequest }, sendOrAsk },
+  });
+}
 
 import {
   DraftedReplyPanel,
@@ -77,11 +104,16 @@ function draw(over: Partial<React.ComponentProps<typeof DraftedReplyPanel>> = {}
 /** Complete the hold: Enter arms the die, Enter again releases it. */
 async function hold() {
   const die = await screen.findByRole('button', { name: /Hold to send it/ });
+  // The hold's face waits for the viewer's standing (send or ask), so it is
+  // disabled for the one read before it; press it only once it is live.
+  await waitFor(() => expect(die).not.toBeDisabled());
   fireEvent.keyDown(die, { key: 'Enter' });
   fireEvent.keyDown(die, { key: 'Enter' });
 }
 
 beforeEach(() => {
+  api.get.mockReset();
+  standing(AS_MANAGER);
   api.post.mockReset();
   api.post.mockImplementation((path: string) => {
     if (String(path).endsWith('/draft-seal-challenge')) {
@@ -139,6 +171,9 @@ describe('the seal — mint, then spend', () => {
     expect(sendPath).toBe('/procurement/orders/ord-118/send-drafted-reply');
     expect(config?.headers?.['X-Seal-Challenge']).toBe('tok-1');
     expect(sendBody.modifiedContent).toBe(mintBody.content);
+    // The send names no recipient: the gateway refuses one with a 400 and
+    // sends to the address on file.
+    expect(sendBody).not.toHaveProperty('to');
     await waitFor(() => expect(onSent).toHaveBeenCalled());
   });
 
@@ -283,5 +318,107 @@ describe('the words', () => {
   it('says when there is no address on file rather than leaving it blank', () => {
     draw({ reply: { ...REPLY, providerEmail: null } });
     expect(screen.getByTestId('draft-to')).toHaveTextContent(/no address on file/);
+  });
+});
+
+describe('send or ask — the founder\u2019s answer of 2026-09-21', () => {
+  it('reads the viewer\u2019s standing from the draft readout before the hold', async () => {
+    draw();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/procurement/orders/ord-118/draft'));
+  });
+
+  it('a staff member holds to ASK: the exact words and copies are requested, no seal is minted, nothing is sent', async () => {
+    standing(AS_STAFF);
+    api.post.mockResolvedValue({
+      data: { conversationId: 'conv-1', requestedAt: 't', told: 2, says: 'Asked. Your version is saved exactly as you wrote it.' },
+    });
+    draw();
+    const die = await screen.findByRole('button', { name: /Hold to ask a manager to send it/ });
+    await waitFor(() => expect(die).not.toBeDisabled());
+    expect(screen.getByTestId('draft-standing')).toHaveTextContent(/Your hold will ask a manager/);
+    fireEvent.change(screen.getByTestId('draft-body'), { target: { value: 'Six cases, delivered Tuesday.' } });
+    fireEvent.change(screen.getByTestId('draft-cc-input'), { target: { value: 'ops@house.example' } });
+    fireEvent.click(screen.getByTestId('draft-cc-add'));
+    fireEvent.keyDown(die, { key: 'Enter' });
+    fireEvent.keyDown(die, { key: 'Enter' });
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(api.post.mock.calls[0]).toEqual([
+      '/procurement/orders/ord-118/draft-send-request',
+      { content: 'Six cases, delivered Tuesday.', ccEmails: ['ops@house.example'] },
+    ]);
+    await waitFor(() => expect(screen.getByTestId('draft-asked')).toHaveTextContent(/saved exactly as you wrote it/));
+    expect(api.post.mock.calls.some((c: unknown[]) => String(c[0]).includes('seal-challenge'))).toBe(false);
+    expect(api.post.mock.calls.some((c: unknown[]) => String(c[0]).includes('send-drafted-reply'))).toBe(false);
+  });
+
+  it('a manager sees who asked, and releases their version with their copies under one hold', async () => {
+    standing(AS_MANAGER, {
+      requestedBy: 'u-staff',
+      requestedByName: 'Ayşe',
+      requestedAt: '2026-09-21T11:00:00.000Z',
+      current: true,
+      ccEmails: ['ops@house.example'],
+    });
+    draw();
+    await waitFor(() => expect(screen.getByTestId('draft-standing')).toHaveTextContent(/Ayşe asked for this to be sent/));
+    expect(screen.getByTestId('draft-standing')).toHaveTextContent(/one hold sends it/);
+    await hold();
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect((api.post.mock.calls[0][1] as Record<string, unknown>).ccEmails).toEqual(['ops@house.example']);
+    expect((api.post.mock.calls[1][1] as Record<string, unknown>).ccEmails).toEqual(['ops@house.example']);
+  });
+
+  it('says so when the words changed after the request', async () => {
+    standing(AS_MANAGER, {
+      requestedBy: 'u-staff',
+      requestedByName: 'Ayşe',
+      requestedAt: '2026-09-21T11:00:00.000Z',
+      current: false,
+      ccEmails: [],
+    });
+    draw();
+    await waitFor(() =>
+      expect(screen.getByTestId('draft-standing')).toHaveTextContent(/no longer the version they asked for/),
+    );
+  });
+
+  it('a grantee sees who granted them, where the grant is used', async () => {
+    standing({
+      ...AS_MANAGER,
+      basis: 'grant',
+      grant: {
+        id: 'g-1',
+        grantedBy: { userId: 'u-owner', name: 'Olcay' },
+        expiresAt: null,
+        limitAmount: null,
+        limitCurrency: null,
+      },
+    });
+    draw();
+    await waitFor(() =>
+      expect(screen.getByTestId('draft-standing')).toHaveTextContent(/You send under a grant from Olcay, until an owner revokes it/),
+    );
+    expect(await screen.findByRole('button', { name: /Hold to send it/ })).not.toBeDisabled();
+  });
+
+  it('a standing that could not be read disables the hold and says why — never a quiet "send"', async () => {
+    standing({
+      readable: false,
+      maySend: false,
+      mode: null,
+      basis: null,
+      grant: null,
+      sentence: 'Whether your hold sends could not be read (permission denied). Nothing will be sent until it can.',
+    });
+    draw();
+    await waitFor(() => expect(screen.getByTestId('draft-standing')).toHaveTextContent(/could not be read/));
+    expect(screen.getByRole('button', { name: /Hold to send it/ })).toBeDisabled();
+  });
+
+  it('a failed read of the standing disables the hold too', async () => {
+    api.get.mockRejectedValue(new Error('network down'));
+    draw();
+    await waitFor(() => expect(screen.getByTestId('draft-standing')).toHaveTextContent(/network down/));
+    expect(screen.getByRole('button', { name: /Hold to send it/ })).toBeDisabled();
   });
 });

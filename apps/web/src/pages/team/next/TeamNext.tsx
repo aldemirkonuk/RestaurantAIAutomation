@@ -77,6 +77,7 @@ import {
   TimeOffSheet,
 } from './TeamOverlays';
 import { TeamRecordSection, TrailSheet } from './TeamRecord';
+import { SendGrantsSection } from './SendGrantsSection';
 import {
   useActiveRestaurantId,
   useTeamNextData,
@@ -727,6 +728,13 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           onEditShift={(target) => setOverlay({ kind: 'shift', target })}
           onChanged={refreshWeek}
         />
+
+        <hr className="tm-rule" />
+
+        {/* Who may send to vendors — the owners' grants (ADR 0112 F12;
+            founder, 2026-09-21). Owners see, name and revoke; anyone else
+            sees only the grants that name them. */}
+        <SendGrantsSection restaurantId={rid} members={data.members} />
 
         <hr className="tm-rule" />
 

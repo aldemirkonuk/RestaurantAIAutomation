@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { CommsThreadDrawer } from '../CommsThreadDrawer'
@@ -10,11 +10,36 @@ vi.mock('../../../contexts/ToastContext', () => ({
   ToastProvider: ({ children }: any) => <>{children}</>,
 }))
 
+const seams = vi.hoisted(() => ({
+  standing: {
+    readable: true,
+    maySend: true,
+    mode: 'send',
+    basis: 'manager',
+    grant: null,
+    sentence: null,
+  } as Record<string, unknown>,
+  manualReplyMutateAsync: vi.fn(),
+  requestDraftSend: vi.fn(),
+  issueManualReplyChallenge: vi.fn(),
+  issueConfirmDealChallenge: vi.fn(),
+}))
+
 vi.mock('../../../hooks/queries/useDraftEmailQueries', () => ({
   useOrderConversations: vi.fn(),
   useOrderAttachments: vi.fn(() => ({ data: [] })),
   useGenerateAiReply: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
-  useManualReply: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+  useManualReply: vi.fn(() => ({ mutateAsync: seams.manualReplyMutateAsync, isPending: false })),
+  // WHO, and the sealed doors (ADR 0175 D9/D10; founder, 2026-09-21).
+  useDraftStanding: vi.fn(() => ({
+    data: { draft: null, sendOrAsk: seams.standing },
+    isPending: false,
+    isError: false,
+  })),
+  requestDraftSend: (...a: unknown[]) => seams.requestDraftSend(...a),
+  issueManualReplyChallenge: (...a: unknown[]) => seams.issueManualReplyChallenge(...a),
+  issueConfirmDealChallenge: (...a: unknown[]) => seams.issueConfirmDealChallenge(...a),
+  draftKeys: { all: ['drafts'] },
   useToggleAiPaused: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useCancelScheduledSend: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useRegenerateDraft: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
@@ -204,5 +229,87 @@ describe('CommsThreadDrawer', () => {
     })
     // Should show 3 rounds badge on Thread tab
     expect(screen.getByText('3')).toBeInTheDocument()
+  })
+})
+
+describe('CommsThreadDrawer — the reply box is sealed, and a staff hold asks (ADR 0175 D9; founder, 2026-09-21)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(useOrderConversations).mockReturnValue({
+      data: [makeConv({ status: 'SENT', direction: 'OUTBOUND' })],
+      isLoading: false,
+    } as any)
+  })
+
+  function openComposerAndType(text: string) {
+    fireEvent.click(screen.getByRole('button', { name: /Write a reply/ }))
+    fireEvent.change(screen.getByLabelText('Manual reply body'), { target: { value: text } })
+  }
+
+  function holdIt(name: RegExp) {
+    const die = screen.getByRole('button', { name })
+    fireEvent.keyDown(die, { key: 'Enter' })
+    fireEvent.keyDown(die, { key: 'Enter' })
+  }
+
+  it('a manager holds to SEND: the seal is minted over the words and the send carries it', async () => {
+    seams.standing = { readable: true, maySend: true, mode: 'send', basis: 'manager', grant: null, sentence: null }
+    seams.issueManualReplyChallenge.mockResolvedValue('reply-proof')
+    seams.manualReplyMutateAsync.mockResolvedValue({ conversationId: 'c', sentAt: 't' })
+    renderDrawer({ orderStatus: 'approved' })
+    openComposerAndType('Tuesday works for us.')
+    holdIt(/Hold to send your reply/)
+    await waitFor(() => expect(seams.manualReplyMutateAsync).toHaveBeenCalledOnce())
+    expect(seams.issueManualReplyChallenge).toHaveBeenCalledWith({
+      orderId: 'order-1',
+      content: 'Tuesday works for us.',
+      ccEmails: [],
+    })
+    expect(seams.manualReplyMutateAsync).toHaveBeenCalledWith({
+      orderId: 'order-1',
+      content: 'Tuesday works for us.',
+      challenge: 'reply-proof',
+    })
+    expect(seams.requestDraftSend).not.toHaveBeenCalled()
+  })
+
+  it('a staff member holds to ASK: the words become a request, nothing is minted or sent', async () => {
+    seams.standing = {
+      readable: true,
+      maySend: false,
+      mode: 'ask',
+      basis: null,
+      grant: null,
+      sentence: 'Your hold will ask a manager to send it; your version is kept exactly as you wrote it.',
+    }
+    seams.requestDraftSend.mockResolvedValue({ says: 'Asked. Your version is saved exactly as you wrote it.' })
+    renderDrawer({ orderStatus: 'approved' })
+    openComposerAndType('Tuesday works for us.')
+    expect(screen.getByTestId('manual-reply-standing')).toHaveTextContent(/Your hold will ask a manager/)
+    holdIt(/Hold to ask a manager to send it/)
+    await waitFor(() => expect(seams.requestDraftSend).toHaveBeenCalledOnce())
+    expect(seams.requestDraftSend).toHaveBeenCalledWith({
+      orderId: 'order-1',
+      content: 'Tuesday works for us.',
+      ccEmails: [],
+    })
+    await waitFor(() => expect(screen.getByTestId('manual-reply-asked')).toHaveTextContent(/saved exactly/))
+    expect(seams.issueManualReplyChallenge).not.toHaveBeenCalled()
+    expect(seams.manualReplyMutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('an unreadable standing leaves the send hold disabled', () => {
+    seams.standing = {
+      readable: false,
+      maySend: false,
+      mode: null,
+      basis: null,
+      grant: null,
+      sentence: 'Whether your hold sends could not be read (permission denied). Nothing will be sent until it can.',
+    }
+    renderDrawer({ orderStatus: 'approved' })
+    openComposerAndType('Tuesday works for us.')
+    expect(screen.getByRole('button', { name: /Hold to send your reply/ })).toBeDisabled()
+    expect(screen.getByTestId('manual-reply-standing')).toHaveTextContent(/could not be read/)
   })
 })

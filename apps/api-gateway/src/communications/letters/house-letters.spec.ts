@@ -46,6 +46,20 @@ import {
   sendThroughGrant,
 } from "./house-letters.service";
 
+/**
+ * The composer's two gates (ADR 0175 D9/D10, 2026-09-21), as stand-ins that
+ * admit: this file is about the book, the guardrails, the identity and the
+ * actor, not about who may send. house-letters-sealed.spec.ts runs the real
+ * gates.
+ */
+const PASSING_GATES = [
+  {
+    assertMaySend: async () => ({ mode: "send", basis: "manager", grant: null, role: "manager" }),
+    readout: async () => ({ readable: true, maySend: true, mode: "send", basis: "manager", grant: null, sentence: null }),
+  },
+  { redeem: async () => ({ sealId: "seal-1" }), issue: async () => ({ challenge: "c", expiresAt: "t", action: "queue_house_letter" }) },
+] as [any, any];
+
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const PROVIDER = "cccccccc-0000-4000-8000-cccccccccccc";
 const PERSON = "dddddddd-0000-4000-8000-dddddddddddd";
@@ -259,7 +273,7 @@ describe("queueing a letter", () => {
   ) {
     const { rec, db } = build(rows);
     const sender = new HouseSenderService(db, configWith(config));
-    return { rec, service: new HouseLettersService(db, sender, oauth) };
+    return { rec, service: new HouseLettersService(db, sender, oauth, ...PASSING_GATES) };
   }
 
   const draft = {
@@ -461,7 +475,7 @@ describe("pulling a letter back", () => {
   function svcWith(row: Record<string, unknown>) {
     const { rec, db } = build({ procurement_conversations: [row] });
     const sender = new HouseSenderService(db, configWith({}));
-    return { rec, service: new HouseLettersService(db, sender, OAUTH_OK) };
+    return { rec, service: new HouseLettersService(db, sender, OAUTH_OK, ...PASSING_GATES) };
   }
 
   it("cancels a letter still inside its window", async () => {
@@ -633,7 +647,7 @@ describe("the gmail_send grant, end to end", () => {
     });
     const sender = new HouseSenderService(db, configWith({}));
     (globalThis as unknown as { fetch: unknown }).fetch = fetchImpl;
-    return { rec, svc: new HouseLettersService(db, sender, OAUTH_OK) };
+    return { rec, svc: new HouseLettersService(db, sender, OAUTH_OK, ...PASSING_GATES) };
   }
 
   const realFetch = globalThis.fetch;
@@ -738,7 +752,7 @@ describe("the gmail_send grant, end to end", () => {
     const sent = jest.fn();
     (globalThis as unknown as { fetch: unknown }).fetch = sent;
 
-    const svc = new HouseLettersService(db, sender, forbidding);
+    const svc = new HouseLettersService(db, sender, forbidding, ...PASSING_GATES);
     const result = await svc.dispatchDue(Date.parse("2026-09-04T10:00:00Z"));
 
     expect(result).toMatchObject({ sent: 0, failed: 1 });

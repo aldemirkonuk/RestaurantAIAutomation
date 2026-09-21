@@ -34,6 +34,10 @@ links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 
 `markDelivered` resolves the order's unit and pack before its status write, books bottle quantities, and converts a stated agreement price to the same bottle unit. Unknown packs and opaque units refuse before booking; the historical order-unit display cache is retained. Native approval now opens order review and mints a challenge when the held approval gesture starts, then redeems it in the request header. A short release or background transition cancels; the screen reader path uses two explicit actions. These one-time seals are not stored in the durable outbox or refreshed by a background retry. The server's response, rather than an elapsed grace timer, determines approval success.
 
+## Send or ask — 2026-09-21 (ADR 0175 amendment, "Staff ask, manager sends")
+
+Every hold on a vendor letter on this page says before the hold whether it sends or asks: the DraftRail card and detail, the legacy DraftEmailApprovalPanel, and the thread drawer's reply box read `sendOrAsk` beside the draft (`GET orders/:id/draft`). An owner, a manager or a grantee ("granted by …" shown) holds to send under a seal that is now always required; anybody else holds to ask, and their exact words wait for a manager, named on the card ("asked by …, waiting for a manager"). The thread shows who sent each letter and who asked for it. The drawer's reply and the deal confirmation are sealed holds (they were plain clicks); a deal has no request path, so a staff member is told who can confirm it. Proved by `DraftRail.test.tsx`, `DraftEmailApprovalPanel.test.tsx` and `CommsThreadDrawer.test.tsx`.
+
 ## 1. Purpose
 
 The procurement cockpit: draft, approve, cancel and track purchase orders through

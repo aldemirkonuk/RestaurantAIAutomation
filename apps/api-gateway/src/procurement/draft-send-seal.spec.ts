@@ -24,7 +24,6 @@ import {
   ORDER_SEND_DRAFT_ACT,
   draftSealArgs,
 } from "./order-seal";
-import { legacyDraftSendMayGoUnsealed } from "./procurement.service";
 
 describe("the act", () => {
   it("is its own act, distinct from approving and cancelling", () => {
@@ -108,9 +107,9 @@ function stub(opts: { pending?: unknown; readError?: string }) {
     issued,
     self: {
       databaseService: { supabase: { from: () => builder } },
-      organizations: {
-        assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined),
-      },
+      // WHO is not what this block tests (staff-ask-manager-sends.spec.ts runs
+      // the real authority service); this stands in for "a manager".
+      requireSendAuthority: jest.fn().mockResolvedValue({ mode: "send", basis: "manager", grant: null }),
       sealChallenges: {
         issue: (p: unknown) => {
           issued.push(p);
@@ -175,157 +174,73 @@ describe("issueDraftSendSeal", () => {
 
 /* ── the send ───────────────────────────────────────────────────────────── */
 
-describe("legacyDraftSendMayGoUnsealed — the gate itself", () => {
-  const ENV_KEY = "REQUIRE_DRAFT_SEND_SEAL";
-  const before = process.env[ENV_KEY];
-  afterEach(() => {
-    if (before === undefined) delete process.env[ENV_KEY];
-    else process.env[ENV_KEY] = before;
-  });
-
-  it("defaults to true (the grace period) when the env var is unset", () => {
-    delete process.env[ENV_KEY];
-    expect(legacyDraftSendMayGoUnsealed()).toBe(true);
-  });
-
-  it('is false only for the exact string "true"', () => {
-    process.env[ENV_KEY] = "1";
-    expect(legacyDraftSendMayGoUnsealed()).toBe(true);
-    process.env[ENV_KEY] = "TRUE";
-    expect(legacyDraftSendMayGoUnsealed()).toBe(true);
-    process.env[ENV_KEY] = "true";
-    expect(legacyDraftSendMayGoUnsealed()).toBe(false);
-  });
-});
-
-describe("sendDraftedReply — the legacy route's absent-seal gate (lane E, open founder question: native-403 ship order)", () => {
-  const ENV_KEY = "REQUIRE_DRAFT_SEND_SEAL";
-  const before = process.env[ENV_KEY];
-  afterEach(() => {
-    if (before === undefined) delete process.env[ENV_KEY];
-    else process.env[ENV_KEY] = before;
-  });
-
-  it("lets an old native install with no seal at all still send, by default (the founder has not said whether that grace period should end)", async () => {
-    delete process.env[ENV_KEY];
-    const { ProcurementService } = await import("./procurement.service");
-    const approveDraft = jest
-      .fn()
-      .mockResolvedValue({ conversationId: "c", sentAt: "t" });
-    const organizations = {
-      assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined),
-    };
-    const dto = { modifiedContent: "Dear Hasan" };
-    await ProcurementService.prototype.sendDraftedReply.call(
-      { organizations, approveDraft } as never,
-      "rest-A",
-      "ord-1",
-      "manager",
-      dto,
-      undefined,
-    );
-    expect(approveDraft).toHaveBeenCalledWith(
-      "rest-A",
-      "ord-1",
-      dto,
-      undefined,
-    );
-  });
-
-  it("stops granting that grace once REQUIRE_DRAFT_SEND_SEAL=true is set — an absent challenge then reaches redemption (and is refused there) like every other sealed act", async () => {
-    process.env[ENV_KEY] = "true";
-    const { ProcurementService } = await import("./procurement.service");
-    const approveDraft = jest
-      .fn()
-      .mockResolvedValue({ conversationId: "c", sentAt: "t" });
-    const organizations = {
-      assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined),
-    };
-    const dto = { modifiedContent: "Dear Hasan" };
-    await ProcurementService.prototype.sendDraftedReply.call(
-      { organizations, approveDraft } as never,
-      "rest-A",
-      "ord-1",
-      "manager",
-      dto,
-      undefined,
-    );
-    expect(approveDraft).toHaveBeenCalledWith("rest-A", "ord-1", dto, {
-      userId: "manager",
-      challenge: undefined,
-    });
-  });
-
-  it("always carries a PRESENT challenge through to redemption, gate on or off — the gate only ever widens the absent case", async () => {
-    for (const flag of [undefined, "true"] as const) {
-      if (flag === undefined) delete process.env[ENV_KEY];
-      else process.env[ENV_KEY] = flag;
-      const { ProcurementService } = await import("./procurement.service");
-      const approveDraft = jest
-        .fn()
-        .mockResolvedValue({ conversationId: "c", sentAt: "t" });
-      const organizations = {
-        assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined),
-      };
-      const dto = { modifiedContent: "Dear Hasan" };
-      await ProcurementService.prototype.sendDraftedReply.call(
-        { organizations, approveDraft } as never,
-        "rest-A",
-        "ord-1",
-        "manager",
-        dto,
-        "tok",
-      );
-      expect(approveDraft).toHaveBeenCalledWith("rest-A", "ord-1", dto, {
-        userId: "manager",
-        challenge: "tok",
-      });
-    }
-  });
-});
+/*
+ * The `REQUIRE_DRAFT_SEND_SEAL` grace and its four specs were deleted on the
+ * founder's answer of 2026-09-21 ("the draft-send seal is REQUIRED on every
+ * vendor send now"). What replaces them — an absent seal refused as absent,
+ * through the real SealChallengeService — is in staff-ask-manager-sends.spec.ts.
+ */
 
 describe("sendDraftedReply", () => {
-  it("requires manager authority before reading or sending the letter", async () => {
+  it("checks who may send before reading or sending the letter", async () => {
     const { ProcurementService } = await import("./procurement.service");
     const approveDraft = jest.fn();
-    const organizations = {
-      assertCanManageRestaurant: jest
-        .fn()
-        .mockRejectedValue(new Error("not manager")),
-    };
+    const requireSendAuthority = jest.fn().mockRejectedValue(new Error("may only ask"));
     await expect(
       ProcurementService.prototype.sendDraftedReply.call(
-        { organizations, approveDraft } as never,
+        { requireSendAuthority, approveDraft } as never,
         "rest-A",
         "ord-1",
         "staff",
         {},
         "tok",
       ),
-    ).rejects.toThrow("not manager");
+    ).rejects.toThrow("may only ask");
     expect(approveDraft).not.toHaveBeenCalled();
   });
 
-  it("passes the proof into the atomic sending path, with no caller-supplied recipient to redeem against", async () => {
+  it("passes the proof, the actor and the grant into the atomic sending path, with no caller-supplied recipient", async () => {
     const { ProcurementService } = await import("./procurement.service");
     const approveDraft = jest
       .fn()
       .mockResolvedValue({ conversationId: "c", sentAt: "t" });
-    const organizations = {
-      assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined),
-    };
+    const requireSendAuthority = jest.fn().mockResolvedValue({
+      mode: "send",
+      basis: "grant",
+      grant: { id: "grant-9" },
+    });
     const dto = { modifiedContent: "Dear Hasan" };
     await ProcurementService.prototype.sendDraftedReply.call(
-      { organizations, approveDraft } as never,
+      { requireSendAuthority, approveDraft } as never,
       "rest-A",
       "ord-1",
-      "manager",
+      "grantee",
       dto,
       "tok",
     );
     expect(approveDraft).toHaveBeenCalledWith("rest-A", "ord-1", dto, {
-      userId: "manager",
+      userId: "grantee",
       challenge: "tok",
+      grantId: "grant-9",
+    });
+  });
+
+  it("carries an ABSENT challenge to redemption too — there is no unsealed branch any more", async () => {
+    const { ProcurementService } = await import("./procurement.service");
+    const approveDraft = jest.fn().mockResolvedValue({ conversationId: "c", sentAt: "t" });
+    const requireSendAuthority = jest.fn().mockResolvedValue({ mode: "send", basis: "manager", grant: null });
+    await ProcurementService.prototype.sendDraftedReply.call(
+      { requireSendAuthority, approveDraft } as never,
+      "rest-A",
+      "ord-1",
+      "manager",
+      {},
+      undefined,
+    );
+    expect(approveDraft).toHaveBeenCalledWith("rest-A", "ord-1", {}, {
+      userId: "manager",
+      challenge: undefined,
+      grantId: null,
     });
   });
 
@@ -363,7 +278,7 @@ describe("sendDraftedReply", () => {
         "rest-A",
         "ord-1",
         {},
-        { userId: "manager", challenge: "tok" },
+        { userId: "manager", challenge: "tok", grantId: null },
       ),
     ).rejects.toThrow("changed draft or address");
     expect(redeem).toHaveBeenCalledWith(

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { Card, Button } from '../components/ui'
 import { Header } from '../components/layout/Header'
@@ -9,7 +10,7 @@ import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApproval
 import { ActiveConversationsPanel } from '../components/orders/ActiveConversationsPanel'
 import { ContextualInsights } from '../components/insights/ContextualInsights'
 import { CommsThreadDrawer } from '../components/orders/CommsThreadDrawer'
-import { useApproveDraft, useDiscardDraft, useEditDraft, useActiveConversations, type ActiveConversationDto } from '../hooks/queries/useDraftEmailQueries'
+import { useApproveDraft, useDiscardDraft, useEditDraft, useActiveConversations, useDraftStanding, requestDraftSend, draftKeys, type ActiveConversationDto } from '../hooks/queries/useDraftEmailQueries'
 import {
   Package,
   Clock,
@@ -260,6 +261,10 @@ export function Orders() {
   const [isDraftPanelOpen, setIsDraftPanelOpen] = useState(false)
   const [commsDrawerOrder, setCommsDrawerOrder] = useState<{ orderId: string; wineName: string; orderStatus: string } | null>(null)
   const approveDraftMutation = useApproveDraft()
+  // Whether this viewer's hold on the open draft sends or asks a manager
+  // (founder, 2026-09-21). Read only while the panel is open.
+  const draftStanding = useDraftStanding(isDraftPanelOpen ? draftPanelData?.orderId ?? null : null)
+  const queryClient = useQueryClient()
   const discardDraftMutation = useDiscardDraft()
   const editDraftMutation = useEditDraft()
   const [isActiveConvPanelOpen, setIsActiveConvPanelOpen] = useState(false)
@@ -3307,6 +3312,16 @@ Shadow stock has been moved to Live Stock.`)
           setDraftPanelData(null)
         }}
         isSubmitting={approveDraftMutation.isPending || discardDraftMutation.isPending}
+        sendOrAsk={draftStanding.data?.sendOrAsk ?? null}
+        standingLoading={draftStanding.isPending}
+        standingError={draftStanding.isError ? String((draftStanding.error as Error)?.message ?? 'unknown error') : null}
+        sendRequest={draftStanding.data?.draft?.send_request ?? null}
+        onAsk={async (content, ccEmails) => {
+          if (!draftPanelData) return 'Nothing was asked: the draft is no longer open.'
+          const out = await requestDraftSend({ orderId: draftPanelData.orderId, content, ccEmails })
+          await queryClient.invalidateQueries({ queryKey: draftKeys.all })
+          return out?.says ?? 'Asked. Nothing has been sent.'
+        }}
       />
 
       {/* Comms Thread Drawer */}

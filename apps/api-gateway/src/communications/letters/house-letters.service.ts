@@ -55,11 +55,18 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
+import { SealChallengeService } from "../../common/seal/seal-challenge.service";
+import {
+  VendorSendAuthorityService,
+  type SendOrAsk,
+} from "../../organizations/vendor-send-authority.service";
 import { assertNamedActor } from "./house-letters.actor";
 import { COMMITMENT_PATTERN_SOURCES } from "../../common/orchestrator/commitment-patterns";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
@@ -75,6 +82,31 @@ import type {
   QueueLetterDto,
   UpsertLetterTemplateDto,
 } from "./house-letters.dto";
+
+/**
+ * The act a composer letter is sealed as (ADR 0175 D9; 2026-09-21). Its own
+ * act, over its own subject kind (`house_letter`, keyed on the VENDOR it is
+ * written to — there is no letter row until the seal is redeemed), so a seal
+ * minted for any other send can never queue a composer letter.
+ */
+export const HOUSE_LETTER_ACT = "queue_house_letter";
+
+/** What the hold was over: the recipient, the vendor, the subject and the words. */
+export function houseLetterSealArgs(dto: {
+  providerId: string;
+  to: string;
+  subject: string;
+  body: string;
+  orderId?: string | null;
+}): Record<string, unknown> {
+  return {
+    providerId: dto.providerId,
+    to: (dto.to ?? "").trim().toLowerCase(),
+    subject: (dto.subject ?? "").replace(/\s+/g, " ").trim(),
+    body: (dto.body ?? "").replace(/\s+/g, " ").trim(),
+    orderId: dto.orderId ?? null,
+  };
+}
 
 /** The lifecycle words this path owns. Chosen so no other cron can claim them. */
 export const LETTER_STATUS = {
@@ -147,7 +179,64 @@ export class HouseLettersService {
     private readonly db: DatabaseService,
     private readonly sender: HouseSenderService,
     private readonly oauth: IntegrationsOauthService,
+    // The composer's two gates (ADR 0175 D9/D10, 2026-09-21). Last and
+    // @Optional for the positional specs; CommunicationsModule supplies both,
+    // and `queue` REFUSES when either is missing.
+    @Optional() private readonly authority?: VendorSendAuthorityService,
+    @Optional() private readonly seal?: SealChallengeService,
   ) {}
+
+  private requireGates(): { authority: VendorSendAuthorityService; seal: SealChallengeService } {
+    if (!this.authority || !this.seal) {
+      throw new InternalServerErrorException(
+        "Who may send, or the seal, could not be checked (not wired into the composer), so nothing was queued and nothing was sent. This is a gateway fault, not a decision about this letter.",
+      );
+    }
+    return { authority: this.authority, seal: this.seal };
+  }
+
+  /**
+   * Whether this person's hold on the composer sends — the readout the sheet
+   * shows BEFORE the hold. The composer has no request path yet (an open fork
+   * in the ADR 0175 amendment), so "ask" says who can send instead.
+   */
+  async sendOrAsk(userId: string, restaurantId: string): Promise<SendOrAsk> {
+    if (!this.authority) {
+      return {
+        readable: false,
+        maySend: false,
+        mode: null,
+        basis: null,
+        grant: null,
+        sentence: "Whether your hold sends could not be read (not wired into the composer). Nothing will be sent until it can.",
+      };
+    }
+    return this.authority.readout(userId, restaurantId, { canAsk: false });
+  }
+
+  /**
+   * Mint the seal a composer letter must carry back (the house composer door,
+   * sealed 2026-09-21 on the judge's finding that every composer recipient is
+   * a vendor in the book). WHO first; then a seal over the letter as it stands.
+   */
+  async issueQueueSeal(params: {
+    restaurantId: string;
+    userId: string;
+    dto: QueueLetterDto;
+  }): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    const userId = assertNamedActor(params.userId, "sealed and nothing was sent");
+    const { authority, seal } = this.requireGates();
+    await authority.assertMaySend(userId, params.restaurantId, "send this letter", { canAsk: false });
+    const issued = await seal.issue({
+      restaurantId: params.restaurantId,
+      actorUserId: userId,
+      subjectKind: "house_letter",
+      subjectId: params.dto.providerId,
+      action: HOUSE_LETTER_ACT,
+      args: houseLetterSealArgs(params.dto),
+    });
+    return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
+  }
 
   // ==========================================================================
   // The book
@@ -327,6 +416,8 @@ export class HouseLettersService {
     restaurantId: string;
     userId: string;
     dto: QueueLetterDto;
+    /** The seal minted by `issueQueueSeal` at the start of the hold. */
+    challenge?: string | null;
   }): Promise<{
     id: string;
     status: string;
@@ -342,6 +433,14 @@ export class HouseLettersService {
       params.userId,
       "queued and nothing was sent",
     );
+
+    // ── 0. WHO (ADR 0175 D10, 2026-09-21) ────────────────────────────────────
+    // An owner, a manager or a grantee. First, so a person whose hold cannot
+    // send is told so before the book, the guardrails or the mailbox are read.
+    const gates = this.requireGates();
+    const standing = await gates.authority.assertMaySend(userId, restaurantId, "send this letter", {
+      canAsk: false,
+    });
 
     // ── 1. the recipient must be in the book ────────────────────────────────
     // `book()` states the failure; this caller adds what it means HERE, because
@@ -419,6 +518,21 @@ export class HouseLettersService {
       dto.insights ?? [],
     );
 
+    // ── THE SEAL (ADR 0175 D9, 2026-09-21) ──────────────────────────────────
+    // Redeemed over exactly what is about to be written — the vendor, the
+    // address, the subject and the words — immediately before the row exists.
+    // A refused seal means nothing was queued; an edit after the hold is
+    // refused by the args hash, so an edited letter needs a new hold.
+    await gates.seal.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "house_letter",
+      subjectId: dto.providerId,
+      action: HOUSE_LETTER_ACT,
+      args: houseLetterSealArgs(dto),
+      challenge: params.challenge,
+    });
+
     const now = Date.now();
     const dispatchAt = new Date(now + (identity.undoMs ?? 0)).toISOString();
 
@@ -438,6 +552,9 @@ export class HouseLettersService {
         outbound_email_type: "HOUSE_LETTER",
         round_count: (priorOutbound ?? 0) + 1,
         inserted_insights: verified.length > 0 ? verified : null,
+        // Who released it, and under which grant (ADR 0175 D9/D10).
+        sent_by_user_id: userId,
+        sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
         email_headers: {
           subject: dto.subject,
           to: match.email,

@@ -38,6 +38,11 @@ const ORDER = "22222222-2222-4222-8222-222222222222";
 const service = {
   sendDraftedReply: jest.fn(),
   issueDraftSendSeal: jest.fn(),
+  requestDraftSend: jest.fn(),
+  manualReply: jest.fn(),
+  issueManualReplySeal: jest.fn(),
+  confirmDeal: jest.fn(),
+  issueConfirmDealSeal: jest.fn(),
 };
 
 let app: INestApplication;
@@ -114,7 +119,19 @@ const INJECTED_CC = "not-an-email\r\nBcc: someone@evil.example";
 const TOO_LONG = "x".repeat(5001);
 
 describe("the root cause: each draft route's @Body is a class the pipe can see", () => {
-  it.each(["approveDraft", "sendDraftedReply", "issueDraftSendSeal"])(
+  it.each([
+    "approveDraft",
+    "sendDraftedReply",
+    "issueDraftSendSeal",
+    // The doors sealed on 2026-09-21 (ADR 0175 D9) and the staff request. The
+    // manual reply and the deal were inline types, recorded as Object and
+    // never validated, until they took a seal.
+    "requestDraftSend",
+    "manualReply",
+    "issueManualReplySeal",
+    "confirmDeal",
+    "issueConfirmDealSeal",
+  ])(
     "%s records its body type as a class, never Object",
     (handler) => {
       const args = Reflect.getMetadata(
@@ -257,3 +274,63 @@ describe.each(["send-drafted-reply", "approve-draft"])(
     });
   },
 );
+
+describe("POST orders/:id/draft-send-request — a staff member's hold (founder, 2026-09-21)", () => {
+  it("refuses a copy address carrying a header, and asks nothing", async () => {
+    const res = await post("draft-send-request", { content: "Dear Hasan", ccEmails: [INJECTED_CC] });
+    expect(res.status).toBe(400);
+    expect(service.requestDraftSend).not.toHaveBeenCalled();
+  });
+
+  it("refuses a caller-named recipient: a request goes to the address on file too", async () => {
+    const res = await post("draft-send-request", { content: "Dear Hasan", to: "someone@else.example" });
+    expect(res.status).toBe(400);
+    expect(service.requestDraftSend).not.toHaveBeenCalled();
+  });
+
+  it("hands the exact words, the copies and the caller from the token to the request", async () => {
+    service.requestDraftSend.mockResolvedValue({ conversationId: "c", requestedAt: "t", told: 2, says: "Asked." });
+    const res = await post("draft-send-request", { content: "Dear Hasan", ccEmails: ["ops@house.example"] });
+    expect(res.status).toBe(201);
+    expect(service.requestDraftSend).toHaveBeenCalledWith(HOUSE, ORDER, "manager-1", {
+      content: "Dear Hasan",
+      ccEmails: ["ops@house.example"],
+    });
+  });
+});
+
+describe("POST orders/:id/manual-reply — sealed since 2026-09-21 (ADR 0175 D9)", () => {
+  it("refuses a copy address carrying a header, and sends nothing", async () => {
+    const res = await post("manual-reply", { content: "Hi", ccEmails: [INJECTED_CC] }, { "X-Seal-Challenge": "tok" });
+    expect(res.status).toBe(400);
+    expect(service.manualReply).not.toHaveBeenCalled();
+  });
+
+  it("carries the actor from the token and the seal from the header into the send", async () => {
+    service.manualReply.mockResolvedValue({ conversationId: "c", sentAt: "t" });
+    const res = await post("manual-reply", { content: "Hi" }, { "X-Seal-Challenge": "tok" });
+    expect(res.status).toBe(201);
+    expect(service.manualReply).toHaveBeenCalledWith(HOUSE, ORDER, "manager-1", "Hi", undefined, "tok");
+  });
+});
+
+describe("POST orders/:id/confirm-deal — sealed since 2026-09-21 (ADR 0175 D9)", () => {
+  it("refuses a price that is not a number, and commits nothing", async () => {
+    const res = await post("confirm-deal", { finalPrice: "twelve" }, { "X-Seal-Challenge": "tok" });
+    expect(res.status).toBe(400);
+    expect(service.confirmDeal).not.toHaveBeenCalled();
+  });
+
+  it("carries the actor from the token and the seal from the header into the confirmation", async () => {
+    service.confirmDeal.mockResolvedValue({ confirmed: true, sentConfirmation: true });
+    const res = await post("confirm-deal", { finalPrice: 12, quantity: 6 }, { "X-Seal-Challenge": "tok" });
+    expect(res.status).toBe(201);
+    expect(service.confirmDeal).toHaveBeenCalledWith(
+      HOUSE,
+      ORDER,
+      "manager-1",
+      { finalPrice: 12, quantity: 6, sendConfirmation: undefined },
+      "tok",
+    );
+  });
+});
