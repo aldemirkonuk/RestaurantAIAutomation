@@ -27,17 +27,8 @@
     <link rel="preload" as="font" type="font/woff2" href="/fonts/fraunces-latin-normal.woff2" crossorigin>
     <link rel="preload" as="font" type="font/woff2" href="/fonts/jetbrains-mono-latin.woff2" crossorigin>
 
-    <!-- Plus Jakarta Sans and DM Sans are NOT yet self-hosted. Doing so needs
-         new woff2 files this session could not add: fetching them requires
-         downloading from fonts.gstatic.com, which needs the founder's
-         explicit go-ahead in chat (this repo's download rule) and this pass
-         had no live chat turn to ask on. Tracked open in
-         .planning/decisions/OPEN-DECISIONS.md ("Font hosting" row) and
-         CLAIMS.jsonl (ADR-0158-FONTS-NOT-YET-SELF-HOSTED) until someone
-         with that turn fetches the two families and removes this link. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+    <!-- Plus Jakarta Sans and DM Sans are self-hosted too (styles/fonts-sans.css);
+         no font is fetched from any other origin. -->
   </head>
   <body>
     <div id="root"></div>

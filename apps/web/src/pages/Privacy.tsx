@@ -113,10 +113,8 @@ export default function Privacy() {
               technical details, page or request information and account or
               restaurant identifiers. The application filters contact details,
               credentials and request values before reporting. The app's own
-              code makes no third-party font request — Fraunces and the house
-              monospace are self-hosted; <code>index.html</code> still loads two
-              other faces from Google Fonts until that link is removed in a
-              follow-up.
+              code makes no third-party font request: every face it uses is
+              served from mudavym.com itself.
             </p>
           </section>
           <section className="mdv-pub__plate">
@@ -203,7 +201,7 @@ export default function Privacy() {
           <Section
             icon={LineChart}
             title="Product analytics"
-            body="The deployment controls whether optional interaction telemetry is enabled. Personal connection consents and restaurant service settings serve different purposes; review the permissions listed for each connection. The app's own code makes no third-party font request: Fraunces and the house monospace are self-hosted, though index.html still loads two other faces from Google Fonts until that link is removed in a follow-up."
+            body="The deployment controls whether optional interaction telemetry is enabled. Personal connection consents and restaurant service settings serve different purposes; review the permissions listed for each connection. The app's own code makes no third-party font request: every face it uses is served from mudavym.com itself."
           />
 
           <Section
