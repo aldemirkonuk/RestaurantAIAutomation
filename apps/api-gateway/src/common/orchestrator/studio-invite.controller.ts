@@ -33,6 +33,7 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { TenantBypass } from "../tenant/tenant.decorator";
 import { OrchestratorService } from "./orchestrator.service";
 import { GmailService } from "../../communications/gmail.service";
+import { canonicalOrigin } from "../../communications/email-templates/template-config";
 
 const ROLE_LABELS: Record<string, string> = {
   developer: "Developer",
@@ -89,9 +90,12 @@ export class StudioInviteController {
       );
     }
 
+    // Shared with the rest of the gateway's link builders (template-config.ts,
+    // auth.service.ts) so the comma-separated FRONTEND_URL allow-list is
+    // always reduced to its canonical first entry the same way.
     const base =
-      this.config.get<string>("FRONTEND_URL")?.split(",")[0]?.trim() ||
-      "https://restaurant-ai-automation-web.vercel.app";
+      canonicalOrigin(this.config.get<string>("FRONTEND_URL")) ||
+      "https://mudavym.com";
     const inviteUrl = `${base}/studio/invite/${token}`;
     const roleLabel = ROLE_LABELS[data.role] ?? data.role;
     const expiresOn = data.expires_at
