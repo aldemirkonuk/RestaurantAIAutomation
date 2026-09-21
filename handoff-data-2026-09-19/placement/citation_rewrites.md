@@ -103,7 +103,7 @@ Hand-verified against the actual current file content (not line arithmetic alone
 - `.planning/decisions/0141-a-stock-write-names-the-house-it-is-for.md:114` -> **adr0141-null-restaurant-id-deferred [already-existing CLAIMS.jsonl row (verify it names the same fact)]** — names the same gap this key already tracks: `services/agent-orchestrator/core/database.py:1077`'s `update_stock` cannot name a restaurant, filed as the one thing ADR 0141 leaves open (verifier NOT-READY finding (a), 2026-09-19)
 - `.planning/decisions/0141-a-stock-write-names-the-house-it-is-for.md:182` -> **adr0141-null-restaurant-id-deferred [already-existing CLAIMS.jsonl row (verify it names the same fact)]** — same gap restated in the ADR's own 'What this does NOT settle' section, same `database.py#update_stock` citation (verifier NOT-READY finding (a), 2026-09-19)
 - `.planning/decisions/0162-managers-grant-manager-or-staff-on-both-doors.md:115` -> **44.1i [already-existing CLAIMS.jsonl row (verify it names the same fact)]** — explicit id on the next source line (44.1i); grep is line-scoped and missed the wrap, same pattern as `team.service.ts:453` below (verifier NOT-READY finding (b), 2026-09-19)
-- `.planning/decisions/OPEN-DECISIONS.md:14` -> **__GENERIC_HISTORICAL__** — closed historical narrative about a past OD renumbering; leave untouched like other frozen historical records
+- `.planning/decisions/OPEN-DECISIONS.md`, preamble (the "ID collision, reconciled 2026-08-24" blockquote near the top of the file, not a `| OD-nn |` row) -> **__GENERIC_HISTORICAL__** — closed historical narrative about a past OD renumbering; leave untouched like other frozen historical records. **[R6, 2026-09-21]** — was anchored by line number (line 14) until `check_citation_pairing.py` correctly reported it UNANCHORED: the preamble has no register row to pair a line number against, so a bare line pointer was never a valid anchor form here. Re-anchored by section content instead, which does not rot the way a line number does; meaning is unchanged.
 - `CLAUDE.md:124` -> **__CLAUDE_MD_124__** — gate-owned; exact replacement text given in report, not applied here
 - `CLAUDE.md:130` -> **__CLAUDE_MD_130__** — gate-owned; exact replacement text given in report, not applied here
 - `apps/api-gateway/src/calendar/calendar.controller.ts:744` -> **__ICAL_DRIFT__** — cites :243-245 but that range is now 44.1g content (POST /auth/register); the actual iCal text ('Phase 30 iCal ... no client has ever confirmed the feed subscribes') is at register:1103-1105, inside 44.4's range, with NO dedicated key of its own
@@ -491,13 +491,18 @@ A 01-org/04-specs/00-index/sketches structural or census mention of the register
   44.13 is Autonomous Vendor Discovery — the UX catalog / 760-path burn-down is **44.15**'s subject.
   This is a pre-existing miscite in the current file, independent of the retirement. Rewrite:
   correct "44.13" to "44.15" AND point at wherever 44.15 lands (ROADMAP/FUTURES per its MOVE mark).
-- **OPEN-DECISIONS.md:14** — inside a frozen historical note about a past renumbering of decisions
-  57 through 63. Leave as-is; it is a closed historical record of an event, not a live pointer
-  (same convention CLAUDE.md already applies to archive/*.md and v2.0-MILESTONE-AUDIT.md).
-  **[REWORDED 2026-09-21, R5]** — "OD-57..63" rephrased to avoid a false-positive trip on
-  `check_citation_pairing.py`'s `OD-\d+` locator once this reference file entered the tracked
-  repo tree for the first time (it previously lived only in a session scratchpad, outside the
-  guard's scan root). Meaning is unchanged; this is not a content fix.
+- **`.planning/decisions/OPEN-DECISIONS.md`, preamble** (the "ID collision, reconciled
+  2026-08-24" blockquote near the top of the file; not a `| OD-nn |` row) — a frozen
+  historical note about a past renumbering of decisions 57 through 63. Leave as-is; it is a
+  closed historical record of an event, not a live pointer (same convention CLAUDE.md
+  already applies to archive/*.md and v2.0-MILESTONE-AUDIT.md).
+  **[REWORDED 2026-09-21, R5; SUPERSEDED 2026-09-21, R6]** — R5 rephrased "OD-57..63" to
+  dodge the `OD-\d+` half of the pairing check but kept a bare line-number locator (line
+  14), which `check_citation_pairing.py` still treats as a citation needing a paired id and
+  correctly reported UNANCHORED (round 5's own last call reproduced the regression at this
+  file, this line, exit 1). No line number can ever pair here — the preamble is not a
+  register row. R6 drops the line-number form and anchors by section content instead.
+  Meaning is unchanged; this is still not a content fix to the register itself.
 - **4 migration comments that cannot be edited** (all resolved above with a specific item):
   `20260906023000_the_library_may_say_it_does_not_know.sql:77` -> library-identity-item1-repair (REMOVE/closed);
   `20260906233000_stock_at_the_door_cost_at_verified.sql:5` -> vendor-lens-slice3stop3-finding2-cost-state;
