@@ -12,8 +12,10 @@ tags: [recommendations, goals, one-tap, seal, hold-to-approve, digest, mail, sub
 
 Round 4 (sketch 120, `winner: null`) drew one direction — the built Wave Four page, unchanged in its
 skeleton, with the Morning Letter's functionality bound in. It has not been judged. Before it could be,
-the founder gave new, more specific spoken feedback (memory `founder-sketch-decisions-106-115.md`, batch 3,
-2026-09-19 ~09:45Z), on top of round 4 rather than instead of it:
+the founder gave new, more specific spoken feedback. What follows is the memory file's own summary of that
+feedback (memory `founder-sketch-decisions-106-115.md`, batch 3, 2026-09-19 ~09:45Z) — a condensed paraphrase
+written down after the fact, not a verbatim transcript of his words — applying on top of round 4 rather than
+instead of it:
 
 > "KEEP the days rail on top; SHOW THE HOUSE'S DECIDED GOALS ON TOP ('whatever the restaurant has decided …
 > on top as the goal'); recommendations must be brief/punchy with how to act, plus a goals chart where we
@@ -79,7 +81,7 @@ in either file):
 
 | Control | Looks like | Used for | Backing rule |
 |---|---|---|---|
-| **Tap** (solid pill) | a button that fills on press | dismiss, snooze, pin, mark-as-briefed; opening a page with the act already recorded | ADR 0112 F10 (founder answer): *"Dismiss an entry, archive a thread, remove a shift, a note: the act fires and Undo is offered for a few seconds."* No seal — reversible, client-visible, backed by a real write this page already makes (`POST …/action`) |
+| **Tap** (solid pill) | a button that fills on press | dismiss (F10, built) — plus snooze, pin and mark-as-briefed, this round's proposed amendment to F10's list, asked below | ADR 0112 F10 (founder answer, 0112:270-272): *"Dismiss an entry, archive a thread, remove a shift, a note: the act fires and Undo is offered for a few seconds… The list is closed; adding to it is an amendment here, not a builder's call."* Snooze, pin and mark-as-briefed are drawn the same way (one tap, Undo, no seal) but are **not yet** on that list — see the new founder question below |
 | **Die** (a ring, hold-to-approve) | the existing `HoldToApprove` shape | anything that books stock or money | ADR 0112 F10's other half, same line: *"Money, sends and ledger rows keep the seal before."* Mechanically the same mint → hold → redeem → write sequence ADR 0107's addendum already ships for a delivery confirmation, and ADR 0125 generalizes to `procurement_order` acts |
 
 **Which of the five example entries records "acted" the moment you tap, and which don't, and why** — this
@@ -87,13 +89,14 @@ is a rule, stated once here rather than left for the reader to reverse-engineer 
 buttons:
 
 - **Self-contained acts** (mark as briefed) — the tap **is** the act. Recorded immediately.
-- **A tap that hands off to a Mudavym page which itself completes the concrete step** (reprice → Vendor
-  Prices; schedule → Calendar) — recorded as acted at the moment of navigating, with Undo, on the reasoning
-  that the destination page holds the person accountable for finishing it, the same shape ADR 0083 accepts
-  for a queued send (recorded as "queued," not "sent," until the real event happens).
-- **A tap that hands off to something Mudavym cannot see at all** ("Call a vendor" → Providers, a real phone
-  call) — **not** recorded as acted. The button stays a plain navigate with no receipt line, because nothing
-  happened yet that this product can honestly claim.
+- **A tap that hands off to another page to complete the concrete step** (reprice → Vendor Prices; schedule
+  → Calendar; call a vendor → Providers) — **never** recorded as "acted." Nothing has actually happened at
+  the moment of the tap — that is equally true whether the destination is a Mudavym page or a real phone
+  call, so it gets the same honest treatment: the button either records nothing (a plain navigate, as
+  "Call a vendor" and "Schedule it" already draw it), or an honest "opened," never a claim that the step
+  itself is done. ADR 0083's "queued, not sent" pattern does not apply here — a queued send is a real,
+  written intermediate state; a tap that only navigates writes nothing at all, so there is nothing to call
+  "acted" and nothing to Undo.
 - **"Order it"** is the flagship stock/money case and gets the die, not a tap — see next.
 
 **"Order it," today vs. proposed.** Today the button only navigates to Orders; nothing is recorded until a
@@ -101,6 +104,14 @@ person drafts the PO there by hand — drawn as the honest baseline. This round 
 drafting the PO from the rule's own already-known numbers (product, quantity, vendor) at fire time, so the
 hold-to-approve die can seal that draft in place, one motion. That is a gateway change, not a copy change,
 and it is asked as a question below rather than shipped silently.
+
+**The die's own label follows the house's order mode — it is not one fixed script.** The founder's own
+answer (memory `founder-sketch-decisions-106-115.md`, "Answered 2026-09-18 evening"): for an order, "auto"
+means the hold-to-approve die is still held every time — only the extra are-you-sure *after* the hold is
+skipped; the default mode is hold, then that are-you-sure; only owners and managers may change which mode a
+house is in. Nothing here lets a tap alone book an order in either mode — the hold is never optional. The
+reorder die's label in both frames below says which mode this example house is in, rather than assuming one
+silently.
 
 **Setting a goal is a deliberate exception, and the dossier is why.** `06-pages/recommendations.md:453-455`:
 *"the target is typed, because a rule states a gap, not a number a house should be held to… any figure
@@ -132,69 +143,91 @@ Read from batch-3 (memory file) against what sketch 120 actually drew:
 **A count correction, stated plainly rather than quietly matched.** Sketch 120 named nine forks. Re-reading
 all nine against batch-3: #1 (delta placement) is resolved (1A over 1B), and the digest builder's five
 choices (a separate, also-owed item there) were answered and built elsewhere per the same memory file. That
-leaves **seven**, not five, by this reading — questions 4 and 5 below (the account door's scope, and where
+leaves **seven**, not five, by this reading — questions 5 and 6 below (the account door's scope, and where
 the post is edited) got a *lean* from batch-3 ("good if it shows more than the table," "liked, unsure") but
 not a lock, so they're kept open rather than counted as decided; trimming them to force the count to five
 would drop a real fork rather than resolve one (CLAUDE.md §0.4). If "the five" meant a narrower, specific
 set that already covers 3 and 5, that is worth a direct correction rather than silently trusting either
-count. All seven fold into this round because round 5 cannot be judged as a whole page without them. Two
-more (1-2 below) are this round's own new forks, ahead of the seven carried from 120.
+count. All seven fold into this round because round 5 cannot be judged as a whole page without them. Three
+more (1-3 below) are this round's own new forks, ahead of the seven carried from 120.
 
 1. **Goals rail (A) or goals in the masthead (B)?**
    **Recommendation: A.** The founder described two things that both go "on top" — closer to two peers than
    one nested in the other. A also scales past three goals by wrapping a row; B's margin column starts
-   crowding at exactly that count. B is the better pick only if he wants goals felt as *part of* the letter
-   rather than beside it, and if 1-3 goals per house is genuinely the ceiling.
-2. **The reorder die's backend upgrade** — build "draft the PO from the rule's own numbers so the hold
+   crowding at exactly that count. At 390, B's `.mast-b` grid collapses to a single column before the day
+   strip begins, and the goals column sits second in source order below the letter's own title — so on a
+   phone B puts the goals ahead of the day strip, moving the rail he said to keep on top underneath them; A
+   keeps the day strip first at every width, unchanged. B is the better pick only if he wants goals felt as
+   *part of* the letter rather than beside it, and if 1-3 goals per house is genuinely the ceiling.
+2. **Which one-tap acts join ADR 0112 F10's closed undo-after list?** F10's list, as answered, is exactly
+   dismiss an entry, archive a thread, remove a shift, a note, and (added 2026-09-05, night) a door count
+   within ten minutes (0112:270-272, 319-321) — *"the list is closed; adding to it is an amendment here, not
+   a builder's call."* This sketch draws snooze, pin and mark-as-briefed the same way — one tap, Undo, no
+   seal — which would be an amendment to that list, not something F10 already covers. A hand-off that only
+   opens another page (reprice, schedule, call a vendor) records nothing at all, never "acted," since
+   nothing has actually happened at the moment of the tap.
+   **Recommendation: add snooze, pin and mark-as-briefed.** They only change a recommendation's own status —
+   no money, no send, no ledger row — the same shape F10 already reasons from. A hand-off should record
+   nothing, or an honest "opened," until the destination page completes the step.
+3. **The reorder die's backend upgrade** — build "draft the PO from the rule's own numbers so the hold
    seals it in place" this round, or ship the honest two-step (navigate, draft by hand) now and revisit?
    **Recommendation: ship the two-step now.** Zero gateway risk, still an honest improvement (nothing
-   regresses), and it doesn't block picking a direction on a backend change.
-3. **The C graft** (round 4's quiet tier) — fund a real per-rule `reading · threshold · state` field, or
-   accept the `sourcesUnread` substitute already on the branch (no quiet tier)?
-   **Recommendation: accept the substitute** for now; it's shipped, cheap, and nobody has asked for graded
-   quietness by name — revisit only if the plain unread/read split proves too coarse in practice.
-4. **The account door's scope** — a subject on every rule that could carry one, or keep it on just the two
+   regresses), and it doesn't block picking a direction on a backend change. Either way the hold stays, as
+   he answered for cellar orders — the house's own order mode (Default or Auto) only decides whether an
+   are-you-sure follows the hold, never whether the hold itself happens.
+4. **The C graft's timing** (round 4's quiet tier) — he already picked "A with C's quiet tier" for 108
+   (ADR 0160, 108 row; memory `founder-sketch-decisions-106-115.md` line 21: *"108 recommendations: A
+   (Morning Letter) + C's quiet tier"*), so whether to build it isn't open — only the sequencing is: fund
+   the real per-rule `reading · threshold · state` field this round, or ship the `sourcesUnread` substitute
+   already on the branch now and build the field next?
+   **Recommendation: ship the substitute now, build the field next.** It keeps his 108 pick without holding
+   this round behind a change to every rule's condition; dropping the quiet tier instead would reverse his
+   pick and needs ADR 0160's 108 row superseded, not assumed here.
+5. **The account door's scope** — a subject on every rule that could carry one, or keep it on just the two
    baseline rules the gateway can key today?
    **Recommendation: keep it on the two.** Building the richer sheet shape against a single real example
    (Tuesdays) is reasonable; generalizing it before a second example exists is guessing at a pattern.
-5. **Where the house's post (digest cadence/hour) is edited** — (a) side sheet, drawn in both directions'
+6. **Where the house's post (digest cadence/hour) is edited** — (a) side sheet, drawn in both directions'
    "Your copy" frame and already built in round 4; (b) a second `Popover modal` component, which ADR 0112
    F2 names as the exact move that collapses the three-shape policy; (c) a read-only tile on `/settings`
    row 26 with a link here.
    **Recommendation: (a).** He said "liked, unsure" rather than objecting; (b) requires reopening a locked
    ADR, not working around it; (c) removes a surface this page currently has for a small navigation saving.
-6. **The act-verb split** — "Mark as briefed" (records the act, no navigation) on floor entries vs. the
+7. **The act-verb split** — "Mark as briefed" (records the act, no navigation) on floor entries vs. the
    built "Open Reports →" (navigates, records nothing) on weekday-pattern entries: keep the disagreement,
    or force one verb?
    **Recommendation: keep it.** It's principled, not accidental — briefing is something you do right now;
    "test a Tuesday offer" is something you go analyze first. Forcing one verb would make one of the two
    dishonest.
-7. **The house-level send log** — even a bare count ("someone got today's post") shown to a member who
+8. **The house-level send log** — even a bare count ("someone got today's post") shown to a member who
    isn't the recipient: is that more than they should see?
    **Recommendation: show the count, suppress who** by default, as round 4 drew it — a manager benefits
    from knowing the house was told even when they weren't the one told.
-8. **Per-subscriber or per-house delta** — "since Monday's letter" (this reader's own last copy) or "since
+9. **Per-subscriber or per-house delta** — "since Monday's letter" (this reader's own last copy) or "since
    the last send to anyone in the house" (one shared clock)?
    **Recommendation: per-subscriber.** A shared clock would misdescribe what a newer subscriber has or
    hasn't already seen.
-9. **Refusal copy** — keep it trimmed to the two genuinely refused entries (round 4's settled style), or
-   restore a "not refused" explanation on every entry?
-   **Recommendation: keep it trimmed.** Restoring it on every entry re-adds exactly the density this round
-   was asked to cut.
+10. **Refusal copy** — keep it trimmed to the two genuinely refused entries (round 4's settled style), or
+    restore a "not refused" explanation on every entry?
+    **Recommendation: keep it trimmed.** Restoring it on every entry re-adds exactly the density this round
+    was asked to cut.
 
 *A lighter, non-blocking flag rather than a numbered question:* his "1A over 1B… not the fifth item… the
 sixth is fine" is read here against sketch 120's own frame order (delta cutting · the post's two sheets ·
 the rail alternative · subject's account · **the catalogue leaf** · **five states** · mobile) — "fifth" =
 the catalogue leaf (dropped from this round, matches "browse every insight type" staying a separate page
-per the dossier's own Surface table) and "sixth" = the states handling (folded into this round's one-tap
-states frame). Both readings are converging inferences from two independent orderings in sketch 120, not a
-re-read transcript — worth a one-line confirmation, not a blocking question.
+per the dossier's own Surface table) and "sixth" = the states handling — loading, empty, refused, partial.
+122 draws none of those; that handling stays exactly as round 4 (sketch 120) left it, not folded into this
+round's own tap/die states frame, which is a different thing (a control's interaction states, not the
+page's data states). Both readings are converging inferences from two independent orderings in sketch 120,
+not a re-read transcript — worth a one-line confirmation, not a blocking question.
 
 ## The example house, held identical across both files
 
 Same clock, same rules as round 4's own worked example, so a side-by-side comparison isn't also comparing
 different data: **Meyhouse Palo Alto**, Wed 16 Sep 2026, 06:58 PT read, 14 rules evaluated (12 + 2 goals),
-5 stand, 1 withheld. The five entries (Order it/`stockout_imminent`, Price it/`plowhorse_repricing`, Call a
+6 stand, 1 withheld — five recommendation entries plus the one "Goals slipping" entry the behind-pace goal
+also feeds. The five recommendation entries (Order it/`stockout_imminent`, Price it/`plowhorse_repricing`, Call a
 vendor/`vendor_concentration`, Brief the floor/`sales_below_weekday_baseline`, Schedule it/`weekday_gap`)
 are round 4's own, rewritten brief. Two goals are new, invented for this round from real rows in the
 rule→metric table (`06-pages/recommendations.md:457-469`): purchase spend ≤ $9,500 this month (from
@@ -218,12 +251,17 @@ own convention, not a live prototype.
 
 ## Screenshots
 
-`shots/direction-a-1440.png` (1440×4714), `shots/direction-a-390.png` (390×6592), `shots/direction-b-1440.png`
-(1440×4805), `shots/direction-b-390.png` (390×6533) — all four rendered with `p4-scratch/render-sketch.mjs`
-(system Chrome via Playwright), all four reporting `errors: []` and `horizontalOverflow: false`. Additionally
-spot-checked (not shipped as a file): both the main page and the goals module rendered with
-`data-ground="charcoal"` at 1440, to confirm the new goal-chip, die and masthead-margin components — which
-round 4 never had to draw in dark mode — hold contrast and legibility there too; they do.
+`shots/direction-a-1440.png` (1440×4895), `shots/direction-a-390.png` (390×7034), `shots/direction-b-1440.png`
+(1440×4937), `shots/direction-b-390.png` (390×6926) — re-rendered in round 5 after the must-fix pass changed
+the goals chart, the "behind" bar, the die labels and the mail sheet. `p4-scratch/render-sketch.mjs` is not
+present in this worktree, so round 5 used an equivalent script (system Chrome via Playwright, the same
+cached build) doing the same three checks: `errors: []`, `horizontalOverflow: false`, and now also a
+`.entry` count (6, matching the corrected "6 stand" in the masthead) on all four renders. Heights grew from
+round 4's own numbers (4714/6592/4805/6533) because the goals chart is now a labelled, baselined chart
+instead of a 30px sliver, and the die rows carry an honesty badge and a longer, order-mode-aware label.
+Additionally spot-checked (not shipped as a file): the goals module rendered with `data-ground="charcoal"`
+at 1440, to confirm the new warm "behind"/"below baseline" color and the die's honesty badge hold contrast
+and legibility in dark mode too; they do.
 
 One real bug was caught and fixed during this pass, not just a cosmetic one: an early draft hid the ENTIRE
 main page frame at the 390 viewport (a stray `desk-only` class copied from round 4's CSS, whose matching

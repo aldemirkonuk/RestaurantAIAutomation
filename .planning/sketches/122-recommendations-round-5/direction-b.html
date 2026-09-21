@@ -21,12 +21,14 @@ body{background:#F3EFE6;color:#4F473C;font-family:"Plus Jakarta Sans",system-ui,
 /* ── Mudavym tokens — Paper is the ground by default (founder, 2026-09-19, batch 3) ── */
 .mudavym{
   --seal:#1A5E6B;--seal-deep:#14515C;--seal-tint:rgba(26,94,107,.10);--seal-ring:rgba(26,94,107,.32);
+  --warn:#B8590C;--warn-deep:#8A4207;--warn-tint:rgba(184,89,12,.12);
   --paper-0:#FFFDF8;--paper-1:#F3EFE6;--paper-2:#EAE4D8;
   --ink-1:#211C16;--ink-2:#4F473C;--ink-3:#7C7365;--ink-4:#665D50;
   color-scheme:light;background:var(--paper-0);color:var(--ink-1);
   font-family:"Plus Jakarta Sans","DM Sans",system-ui,sans-serif;font-size:13px;line-height:1.5}
 .mudavym[data-ground="charcoal"]{
   --seal:#5FB0BC;--seal-deep:#7DC3CD;--seal-tint:rgba(95,176,188,.14);--seal-ring:rgba(95,176,188,.38);
+  --warn:#E0954A;--warn-deep:#F0AF6E;--warn-tint:rgba(224,149,74,.16);
   --paper-0:#15130F;--paper-1:#1D1813;--paper-2:#262019;
   --ink-1:#EFE7D9;--ink-2:#C0B6A5;--ink-3:#8E8576;--ink-4:#ABA294;color-scheme:dark}
 .mudavym[data-ground="charcoal"] .mail{--paper-0:#FFFDF8;--paper-1:#F3EFE6;--paper-2:#EAE4D8;--ink-1:#211C16;--ink-2:#4F473C;--ink-3:#7C7365;--ink-4:#665D50}
@@ -65,9 +67,10 @@ body{background:#F3EFE6;color:#4F473C;font-family:"Plus Jakarta Sans",system-ui,
 .mgoal .gname{font-size:11.5px;font-weight:600;line-height:1.3}
 .mgoal .gbar{height:4px;border-radius:2px;background:var(--paper-2);margin:6px 0 4px;overflow:hidden}
 .mgoal .gbar i{display:block;height:100%;background:var(--seal);border-radius:2px}
-.mgoal.behind .gbar{background:repeating-linear-gradient(90deg,var(--paper-2),var(--paper-2) 3px,var(--paper-0) 3px,var(--paper-0) 6px)}
-.mgoal.behind .gbar i{background:transparent;border:1px dashed var(--ink-3)}
+.mgoal.behind .gbar{background:var(--paper-2)}
+.mgoal.behind .gbar i{background:var(--warn);border:0}
 .mgoal .gfoot{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3)}
+.mgoal.behind .gfoot span:last-child{color:var(--warn-deep);font-weight:600}
 .mgoal.suggest{background:var(--seal-tint);border:1.5px dashed var(--seal-ring);border-radius:8px;padding:8px 9px;margin-top:8px}
 .mgoal.suggest .gname{font-weight:500}
 .mini{font:inherit;font-size:10.5px;font-weight:600;padding:4px 8px;border-radius:7px;border:1px solid var(--seal-ring);background:transparent;color:var(--seal-deep);cursor:pointer;white-space:nowrap;margin-top:6px}
@@ -112,7 +115,8 @@ body{background:#F3EFE6;color:#4F473C;font-family:"Plus Jakarta Sans",system-ui,
   .mast-b{grid-template-columns:1fr}.mast-goals{border-left:0;border-top:1px solid var(--paper-2);padding-left:0;padding-top:14px;margin-top:14px}}
 
 /* ── the die ──────────────────────────────────────────────────────────── */
-.die-row{display:flex;align-items:center;gap:10px}
+.die-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.notbuilt{margin-top:6px;font-size:11px;color:var(--ink-4);border:1px dashed var(--paper-2);border-radius:8px;padding:7px 10px;display:inline-block}
 .die{width:38px;height:38px;border-radius:50%;border:2px solid var(--seal);display:grid;place-items:center;position:relative;flex:0 0 auto}
 .die svg{width:16px;height:16px;color:var(--seal-deep)}
 .die.mid{border-color:var(--paper-2)}
@@ -187,7 +191,7 @@ below are identical to direction A — this file isolates the ONE placement ques
       <div class="mast-letter">
         <div class="kicker">The Morning Letter</div>
         <h1>Recommendations</h1>
-        <div class="denom">Wed 16 Sep, 06:58 read · <b>14 rules evaluated</b> (12 + 2 goals) · <b>5 stand</b> · 1 withheld</div>
+        <div class="denom">Wed 16 Sep, 06:58 read · <b>14 rules evaluated</b> (12 + 2 goals) · <b>6 stand</b> · 1 withheld</div>
       </div>
       <aside class="mast-goals">
         <div class="mg-label"><span class="micro">This month's goals</span><a class="lnk" href="#">All →</a></div>
@@ -247,7 +251,8 @@ below are identical to direction A — this file isolates the ONE placement ques
           </div>
           <div class="die-row">
             <div class="die"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></div>
-            <span class="die-label"><b>Hold to approve the reorder</b>booked to Orders the moment it seals — see the Today/Proposed pair below</span>
+            <span class="die-label"><b>Hold to approve the reorder</b>this house's order mode is Default: hold, then one are-you-sure, then it books to Orders — see Today/Proposed below</span>
+            <span class="notbuilt">Proposed — not built</span>
           </div>
           <div class="controls"><span class="micro">File it</span><button class="quiet">Snooze</button><button class="quiet">Dismiss</button><button class="quiet">Pin</button></div>
         </div>
@@ -268,7 +273,7 @@ below are identical to direction A — this file isolates the ONE placement ques
           </div>
           <div class="controls">
             <button class="tap">Reprice it →</button>
-            <span class="receipt">tap records "acted" now, opens Vendor Prices to set the number — <span class="undo">Undo</span></span>
+            <span class="receipt">opens Vendor Prices to set the number — nothing recorded until you do</span>
           </div>
           <div class="controls"><span class="micro">File it</span><button class="quiet">Make this a goal</button><button class="quiet">Snooze</button><button class="quiet">Dismiss</button><button class="quiet">Pin</button></div>
         </div>
@@ -341,7 +346,7 @@ below are identical to direction A — this file isolates the ONE placement ques
         <div class="gutter">06</div>
         <div>
           <p class="do">Bottles goal is behind pace.</p>
-          <p class="why">210 of 340 sold, 9 days left — needs 15 a day from here, not the current 8.</p>
+          <p class="why">210 of 340 sold, 9 days left — needs 15 a day from here, not the current 13.</p>
           <div class="controls"><button class="quiet">See where it stands →</button><button class="quiet">Snooze</button><button class="quiet">Dismiss</button></div>
         </div>
       </article>
@@ -359,8 +364,11 @@ below are identical to direction A — this file isolates the ONE placement ques
 
 <div class="sk-sec">
 <p class="sk-label">One-tap, honestly — identical mechanics to direction A</p>
-<p class="sk-note">Two controls, never confused for each other. A <b>tap</b> (solid pill) is for what F10 already allows client-side:
-dismiss, snooze, pin, mark-as-briefed, opening a page with the act already recorded — reversible, with Undo, no seal. A
+<p class="sk-note">Two controls, never confused for each other. A <b>tap</b> (solid pill) is reversible, client-visible, with
+Undo, no seal. F10's own closed list is dismiss, archive a thread, remove a shift, a note, a door count within ten
+minutes — snooze, pin and mark-as-briefed are drawn the same way here, but adding them to F10's list is this round's
+proposed amendment, asked below, not something F10 already allows. A hand-off to another page (reprice, schedule,
+call a vendor) records nothing, or an honest "opened" — never "acted," since nothing has actually happened yet. A
 <b>die</b> (the ring) is for what moves stock or money — the same mechanism the one-tap desk already seals for a
 delivery (ADR 0107/0125): mint, hold, redeem, then the write. Nothing here claims an autonomous execution that does not
 exist — "Let Mudavym do it" stays off (dossier §1a); a tap always fires a write this product already makes, per ADR 0083.</p>
@@ -397,10 +405,10 @@ exist — "Let Mudavym do it" stays off (dossier §1a); a tap always fires a wri
     </div>
     <div>
       <p class="micro">"Order it" — proposed this round</p>
-      <div class="die-row"><div class="die"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></div><span class="die-label"><b>Hold to approve the reorder</b>the rule already names the product, quantity and vendor — this asks the gateway to draft the PO from those and let the hold seal it, one motion</span></div>
+      <div class="die-row"><div class="die"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg></div><span class="die-label"><b>Hold to approve the reorder</b>the rule already names the product, quantity and vendor — this asks the gateway to draft the PO from those and let the hold seal it, one motion. The house's order mode still applies: <b style="display:inline;font-weight:600">Default</b> asks one are-you-sure after the hold; <b style="display:inline;font-weight:600">Auto</b> skips only that, never the hold itself.</span></div>
     </div>
   </div>
-  <p class="sk-note" style="margin-top:14px"><b>Not yet built:</b> drafting a PO from a fired rule's own numbers is a gateway change, not a copy change — flagged as a question below, not claimed as shipped.</p>
+  <p class="sk-note" style="margin-top:14px"><b>Not yet built:</b> drafting a PO from a fired rule's own numbers is a gateway change, not a copy change — flagged as a question below, not claimed as shipped. <b>Order mode</b> (founder, memory `founder-sketch-decisions-106-115.md`, 2026-09-18 evening): "auto" only skips the extra are-you-sure — the hold itself is never skippable — and only owners and managers may change a house's mode.</p>
 </div>
 </div>
 </div>
@@ -444,7 +452,7 @@ a blank the person fills, honestly, rather than a figure Mudavym invents.</p>
       <div class="sh-head"><p class="micro">Your copy</p><h3>Daily, 07:00 Pacific</h3></div>
       <div class="sh-body">
         <div class="mail">
-          <div class="env"><span>From</span><span>Mudavym · Meyhouse Palo Alto</span><span>Sent</span><span>Tue 15 Sep, 07:00:41 · 4 entries</span></div>
+          <div class="env"><span>From</span><span>Mudavym · Meyhouse Palo Alto</span><span>Sent</span><span>Wed 16 Sep, 07:00:41 · 3 entries</span></div>
           <div class="mbody">
             <div class="card">
               <h4>Since yesterday's letter</h4>
@@ -458,7 +466,7 @@ a blank the person fills, honestly, rather than a figure Mudavym invents.</p>
         </div>
         <div style="margin-top:14px;display:flex;gap:6px"><button class="quiet" aria-pressed="true">Daily</button><button class="quiet">Weekly</button></div>
       </div>
-      <div class="sh-foot">Last send: Tue 15, 07:00:41, 4 entries. Next due: today, 07:00.</div>
+      <div class="sh-foot">Last send: Wed 16, 07:00:41, 3 entries. Next due: tomorrow, 07:00.</div>
     </aside>
   </div>
 </div>
