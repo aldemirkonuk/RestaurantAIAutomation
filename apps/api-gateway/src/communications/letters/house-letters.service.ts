@@ -826,7 +826,7 @@ export class HouseLettersService {
    *
    * The provenance chip is only worth the row it is written from. A sentence
    * the client made up, or one whose row has since been retracted (the
-   * generator-version rule in `insight-generator.service.ts:283-296`), is
+   * generator-version rule, `getStored()` in `insight-generator.service.ts`), is
    * dropped here rather than recorded as if the engine had said it — and the
    * caller is told how many survived.
    */

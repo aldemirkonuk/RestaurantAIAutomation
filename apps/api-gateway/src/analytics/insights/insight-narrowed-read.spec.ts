@@ -1,3 +1,4 @@
+import { stateBookFrom } from "./item-state";
 import { InsightGeneratorService } from "./insight-generator.service";
 
 /**
@@ -107,8 +108,8 @@ function generator() {
       load: async () => ({ dates: new Set(), readable: true, problem: null }),
     } as any,
     {
-      listSuppressions: async () => ({
-        keys: new Set<string>(),
+      readState: async () => ({
+        book: stateBookFrom([]),
         readable: true,
         problem: null,
       }),

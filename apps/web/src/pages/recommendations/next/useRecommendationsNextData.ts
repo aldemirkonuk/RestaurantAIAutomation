@@ -45,6 +45,7 @@ import {
   type StakeId,
   type SuppressionScope,
   type SuppressionVM,
+  itemKeyOf,
 } from './rec-format';
 import { type PosVM } from './rec-days';
 
@@ -94,6 +95,26 @@ export interface EntryVM {
    * where the stored `ruleKey` IS the key.
    */
   suppression: SuppressionVM | null;
+  /**
+   * The gateway's own answer (`recommendation-actions.service.ts`): this
+   * row's key silences a WHOLE rule — no subject, no period. Returning such
+   * a dismissal to the book is an owner/manager act (founder, 2026-09-21).
+   * False on standing entries, whose own key is not what was stored.
+   */
+  ruleWide: boolean;
+}
+
+/** The roles that may dismiss or return a WHOLE rule — the gateway's set. */
+export function mayActRuleWide(role: string | null | undefined): boolean {
+  const r = role ? role.toLowerCase() : '';
+  return r === 'owner' || r === 'manager' || r === 'admin';
+}
+
+/** The house-log receipt a rule-wide write returns (ADR 0191). */
+function auditMissOf(data: unknown): string | null {
+  const audit = (data as { audit?: { recorded?: unknown; reason?: unknown } } | null)?.audit;
+  if (!audit || audit.recorded !== false) return null;
+  return typeof audit.reason === 'string' && audit.reason ? audit.reason : 'no reason given';
 }
 
 export interface StateCounts {
@@ -222,6 +243,7 @@ function toEntry(raw: Record<string, unknown>, fallbackStatus: Disposition): Ent
     subject: typeof raw.subject === 'string' && raw.subject ? raw.subject : null,
     periodKey: typeof raw.periodKey === 'string' && raw.periodKey ? raw.periodKey : null,
     suppression: readSuppression(raw.suppression),
+    ruleWide: raw.ruleWide === true,
   };
 }
 
@@ -345,15 +367,30 @@ export interface RecommendationsData {
     patch: Record<string, unknown>,
     said: string,
     removeFromLeaf: boolean,
+    /** Write to this key instead of the rule's own (snooze and done: the item). */
+    atKey?: string,
   ) => Promise<boolean>;
   dismiss: (entry: EntryVM, choice: DismissChoice) => Promise<void>;
   restore: (ruleKey: string) => Promise<void>;
-  bulk: (entries: EntryVM[], patch: Record<string, unknown>, said: string) => Promise<void>;
+  bulk: (
+    entries: EntryVM[],
+    patch: Record<string, unknown>,
+    said: string,
+    atItem?: boolean,
+  ) => Promise<void>;
+  /**
+   * Whether this person may dismiss or return a WHOLE rule — owner, manager
+   * or admin (founder, 2026-09-21: "owner/manager only and audited
+   * EVERYWHERE"). The gateway enforces it; the page only stops offering what
+   * would be refused, and says why.
+   */
+  canActRuleWide: boolean;
 }
 
 export function useRecommendationsNextData(): RecommendationsData {
-  const { activeRestaurantId } = useAuth();
+  const { activeRestaurantId, activeRole, user } = useAuth();
   const rid = activeRestaurantId ?? null;
+  const canActRuleWide = mayActRuleWide(activeRole ?? user?.role ?? null);
 
   const [leaf, setLeaf] = useState<Leaf>('standing');
   const [phase, setPhase] = useState<Phase>('loading');
@@ -829,22 +866,26 @@ export function useRecommendationsNextData(): RecommendationsData {
       patch: Record<string, unknown>,
       said: string,
       removeFromLeaf: boolean,
+      atKey?: string,
     ): Promise<boolean> => {
       if (!rid) return false;
       const before = entry;
+      const key = atKey ?? entry.ruleKey;
       if (removeFromLeaf) setEntries((prev) => prev.filter((e) => e.ruleKey !== entry.ruleKey));
       else
         setEntries((prev) =>
           prev.map((e) => (e.ruleKey === entry.ruleKey ? { ...e, ...patch } : e)),
         );
       try {
-        await apiClient.post(`${BASE}/${rid}/action`, {
-          ruleKey: entry.ruleKey,
+        const { data } = await apiClient.post(`${BASE}/${rid}/action`, {
+          ruleKey: key,
           ...patch,
           snapshot: snapshotOf(entry),
         });
-        say(said);
-        if (removeFromLeaf) offerUndo(entry.ruleKey, said);
+        const miss = auditMissOf(data);
+        say(miss ? `${said} Saved, but not written to the house log (${miss}).` : said);
+        // Undo returns the key that was WRITTEN — the item's, for a snooze.
+        if (removeFromLeaf) offerUndo(key, said);
         return true;
       } catch (err) {
         const f = failureOf(err);
@@ -885,13 +926,15 @@ export function useRecommendationsNextData(): RecommendationsData {
       if (!rid) return;
       const before = entry;
       setEntries((prev) => prev.filter((e) => e.ruleKey !== entry.ruleKey));
+      let miss: string | null = null;
       try {
-        await apiClient.post(`${BASE}/${rid}/action`, {
+        const { data } = await apiClient.post(`${BASE}/${rid}/action`, {
           ruleKey: choice.key,
           status: 'dismissed',
           reason: choice.reason,
           snapshot: snapshotOf(entry),
         });
+        miss = auditMissOf(data);
       } catch (err) {
         const f = failureOf(err);
         setEntries((prev) => [before, ...prev.filter((e) => e.ruleKey !== before.ruleKey)]);
@@ -910,7 +953,8 @@ export function useRecommendationsNextData(): RecommendationsData {
           ? ` ${choice.excludeDate} is also out of the analysis — its numbers stop counting toward every average.`
           : ` The entry is dismissed, but ${choice.excludeDate} could NOT be excluded from the analysis — the averages still count it.`;
       }
-      say(`${choice.said}${tail} Undo here, or on the History leaf.`);
+      const paper = miss ? ` It holds, but it was not written to the house log (${miss}).` : '';
+      say(`${choice.said}${tail}${paper} Undo here, or on the History leaf.`);
       offerUndo(choice.key, choice.said);
     },
     [rid, say, offerUndo, excludeDay],
@@ -920,11 +964,21 @@ export function useRecommendationsNextData(): RecommendationsData {
     async (ruleKey: string) => {
       if (!rid) return;
       try {
-        await apiClient.post(`${BASE}/${rid}/action`, { ruleKey, status: 'active' });
+        const { data } = await apiClient.post(`${BASE}/${rid}/action`, {
+          ruleKey,
+          status: 'active',
+        });
         setUndo(null);
-        say('Restored to the standing book.');
+        const miss = auditMissOf(data);
+        say(
+          miss
+            ? `Restored to the standing book — but not written to the house log (${miss}).`
+            : 'Restored to the standing book.',
+        );
         void load(leaf);
       } catch (err) {
+        // A 403 carries the gateway's own sentence: a whole rule is returned
+        // by an owner or manager.
         say(`Could not restore it (${failureOf(err).message}).`);
       }
     },
@@ -932,17 +986,33 @@ export function useRecommendationsNextData(): RecommendationsData {
   );
 
   const bulk = useCallback(
-    async (list: EntryVM[], patch: Record<string, unknown>, said: string) => {
+    async (list: EntryVM[], patch: Record<string, unknown>, said: string, atItem = false) => {
       if (!rid || list.length === 0) return;
       const keys = new Set(list.map((e) => e.ruleKey));
       const before = entries;
       setEntries((prev) => prev.filter((e) => !keys.has(e.ruleKey)));
       try {
-        await apiClient.post(`${BASE}/${rid}/bulk-action`, {
-          items: list.map((e) => ({ ruleKey: e.ruleKey, snapshot: snapshotOf(e) })),
+        const { data } = await apiClient.post<{
+          updated?: number;
+          audit?: { recorded?: number; missed?: number };
+        }>(`${BASE}/${rid}/bulk-action`, {
+          items: list.map((e) => ({
+            ruleKey: atItem ? itemKeyOf(e) : e.ruleKey,
+            snapshot: snapshotOf(e),
+          })),
           ...patch,
         });
-        say(said);
+        // The gateway says how many landed. Saying "Dismissed 5" over 3 that
+        // were stored is the claim this page exists to refuse.
+        const updated = typeof data?.updated === 'number' ? data.updated : null;
+        const missed = data?.audit?.missed ?? 0;
+        const parts = [
+          updated !== null && updated < list.length
+            ? `Only ${updated} of ${list.length} were saved — the rest are back on the book.`
+            : said,
+        ];
+        if (missed > 0) parts.push(`${missed} not written to the house log.`);
+        say(parts.join(' '));
         void load(leaf);
       } catch (err) {
         setEntries(before);
@@ -991,5 +1061,6 @@ export function useRecommendationsNextData(): RecommendationsData {
     dismiss,
     restore,
     bulk,
+    canActRuleWide,
   };
 }

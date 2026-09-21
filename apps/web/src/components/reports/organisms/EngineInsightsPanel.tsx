@@ -24,6 +24,7 @@ import {
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { apiClient, getErrorMessage } from "../../../services/api/client";
+import { DISMISS_REASONS, insightActKey } from "../../../lib/recommendationState";
 
 interface EngineInsight {
   sentence: string;
@@ -36,6 +37,13 @@ interface EngineInsight {
   evidence?: Record<string, unknown>;
   entityLabel?: string | null;
   pinned?: boolean;
+  /**
+   * The gateway-built key an act on this item writes (ADR 0191) — null when
+   * the row carries none, and then the item is shown and never acted on.
+   */
+  actKey: string | null;
+  /** That key is the whole type: no one-item Dismiss (the catalogue's On/Off). */
+  ruleWide: boolean;
 }
 
 /** NEW-434 — where an insight's "Act" takes you (parity w/ Recommendations). */
@@ -105,6 +113,10 @@ export function EngineInsightsPanel({
   const [insights, setInsights] = useState<EngineInsight[]>([]);
   const [expandedInsight, setExpandedInsight] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ ruleKey: string } | null>(null);
+  const [reasonFor, setReasonFor] = useState<string | null>(null);
+  // The gateway could not read what has been dismissed, snoozed or done, so
+  // the list may hold items already put away (ADR 0191). Said, never clean.
+  const [stateUnread, setStateUnread] = useState(false);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [progressByGoal, setProgressByGoal] = useState<
     Record<string, GoalProgress>
@@ -164,21 +176,16 @@ export function EngineInsightsPanel({
           ),
         ]);
 
-        // Manager disposition on insight cards (hidden + pinned).
-        const hidden = new Set<string>();
+        // Pins only. The gateway withholds dismissed / snoozed / done items
+        // from the read itself, at every scope (ADR 0191); this panel's old
+        // client-side filter matched `insight:<candidate>:<entity>`, a key
+        // nothing server-side wrote, so a dismissal here held here alone.
         const pinnedSet = new Set<string>();
         if (dispRes.status === "fulfilled") {
-          const now = Date.now();
           const items: any[] = dispRes.value.data?.items ?? [];
           for (const it of items) {
             if (!String(it.ruleKey ?? "").startsWith("insight:")) continue;
             if (it.pinned) pinnedSet.add(it.ruleKey);
-            const snoozedActive =
-              it.status === "snoozed" &&
-              it.snoozeUntil &&
-              new Date(it.snoozeUntil).getTime() > now;
-            if (it.status === "dismissed" || it.status === "done" || snoozedActive)
-              hidden.add(it.ruleKey);
           }
         }
 
@@ -186,11 +193,14 @@ export function EngineInsightsPanel({
         {
           const body = insRes.value.data ?? {};
           const rows: any[] = body.insights ?? [];
+          setStateUnread(body.suppressionsReadable === false);
           const mapped = rows
             .map((r) => {
               const candidateKey = r.candidate_key ?? r.candidateKey ?? "";
               const entityKey = r.entity_key ?? r.entityKey ?? "";
+              // Display identity only (React key, deep link, "Explain").
               const ruleKey = `insight:${candidateKey}${entityKey ? ":" + entityKey : ""}`;
+              const item = insightActKey(r);
               return {
                 sentence: r.sentence,
                 category: r.category,
@@ -200,10 +210,12 @@ export function EngineInsightsPanel({
                 zScore: r.z_score ?? r.z ?? null,
                 evidence: r.evidence,
                 entityLabel: r.entity_label ?? r.entityLabel ?? null,
-                pinned: pinnedSet.has(ruleKey),
+                pinned: item ? pinnedSet.has(item.key) : false,
+                actKey: item?.key ?? null,
+                ruleWide: item?.ruleWide ?? true,
               } as EngineInsight;
             })
-            .filter((r) => r.sentence && !hidden.has(r.ruleKey));
+            .filter((r) => r.sentence);
           // Pinned float to the top; then by score.
           mapped.sort((a, b) =>
             !!a.pinned !== !!b.pinned
@@ -274,13 +286,13 @@ export function EngineInsightsPanel({
 
   // ---- NEW-434: insight card actions (Act / Dismiss / Explain / Pin) ------
   const insightAction = useCallback(
-    async (ins: EngineInsight, patch: Record<string, unknown>) => {
-      if (!restaurantId) return;
+    async (ins: EngineInsight, patch: Record<string, unknown>): Promise<boolean> => {
+      if (!restaurantId || !ins.actKey) return false;
       try {
         await apiClient.post(
           `${base}/recommendations/${restaurantId}/action`,
           {
-            ruleKey: ins.ruleKey,
+            ruleKey: ins.actKey,
             ...patch,
             snapshot: {
               observation: ins.sentence,
@@ -289,31 +301,40 @@ export function EngineInsightsPanel({
             },
           },
         );
-      } catch {
-        toast.error("Couldn't save that");
+        return true;
+      } catch (e) {
+        toast.error(`Couldn't save that — ${getErrorMessage(e)}`);
+        return false;
       }
     },
     [restaurantId, base, toast],
   );
 
-  const dismissInsight = async (ins: EngineInsight) => {
+  /** A one-item dismissal, with the reason the person picked (ADR 0191). */
+  const dismissInsight = async (ins: EngineInsight, reason: string) => {
+    if (!ins.actKey || ins.ruleWide) return;
+    setReasonFor(null);
     setInsights((prev) => prev.filter((i) => i.ruleKey !== ins.ruleKey));
-    setUndo({ ruleKey: ins.ruleKey });
-    await insightAction(ins, { status: "dismissed", reason: "not_relevant" });
+    const landed = await insightAction(ins, { status: "dismissed", reason });
+    if (landed) setUndo({ ruleKey: ins.actKey });
+    else loadAll(); // put it back — the write did not land
   };
 
   const restoreInsight = async (ruleKey: string) => {
     setUndo(null);
-    await apiClient
-      .post(`${base}/recommendations/${restaurantId}/action`, {
+    try {
+      await apiClient.post(`${base}/recommendations/${restaurantId}/action`, {
         ruleKey,
         status: "active",
-      })
-      .catch(() => {});
+      });
+    } catch (e) {
+      toast.error(`Couldn't restore it — ${getErrorMessage(e)}`);
+    }
     loadAll();
   };
 
   const pinInsight = async (ins: EngineInsight) => {
+    if (!ins.actKey) return;
     const next = !ins.pinned;
     setInsights((prev) => {
       const updated = prev.map((i) =>
@@ -375,6 +396,12 @@ export function EngineInsightsPanel({
           </div>
         </div>
 
+        {!loading && !error && stateUnread && (
+          <p role="status" className="mb-2 text-xs text-amber-800">
+            What was dismissed, snoozed or marked done could not be read just
+            now, so some of these may be ones you already put away.
+          </p>
+        )}
         {loading ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
@@ -443,14 +470,38 @@ export function EngineInsightsPanel({
                         >
                           <Pin className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => dismissInsight(ins)}
-                          title="Dismiss"
-                          className="p-0.5 rounded-md text-gray-300 hover:bg-gray-100 hover:text-gray-600"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                        {ins.actKey && !ins.ruleWide && (
+                          <button
+                            onClick={() =>
+                              setReasonFor(reasonFor === ins.ruleKey ? null : ins.ruleKey)
+                            }
+                            title="Dismiss"
+                            aria-label="Dismiss"
+                            aria-expanded={reasonFor === ins.ruleKey}
+                            className="p-0.5 rounded-md text-gray-300 hover:bg-gray-100 hover:text-gray-600"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
+                      {reasonFor === ins.ruleKey && (
+                        <div
+                          role="group"
+                          aria-label="Why dismiss it"
+                          className="mt-1 flex flex-wrap items-center gap-1 text-[11px]"
+                        >
+                          <span className="text-gray-500">Why?</span>
+                          {DISMISS_REASONS.map((r) => (
+                            <button
+                              key={r.id}
+                              onClick={() => void dismissInsight(ins, r.id)}
+                              className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            >
+                              {r.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {open && (
                         <div className="mt-2 p-2.5 bg-gray-50 rounded-lg text-xs text-gray-500 leading-relaxed space-y-0.5">
                           {ins.effectPct != null && (

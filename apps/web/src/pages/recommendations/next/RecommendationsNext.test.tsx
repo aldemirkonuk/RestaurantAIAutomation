@@ -212,6 +212,9 @@ const base = {
   dismiss: dismissFn,
   restore,
   bulk,
+  // A manager's page: the existing expectations are the whole-rule choices.
+  // Staff are drawn explicitly in "rule-wide acts are owner/manager only".
+  canActRuleWide: true,
 };
 
 const draw = (path = '/recommendations') =>
@@ -373,6 +376,8 @@ describe('RecommendationsNext — the standing book', () => {
       expect.objectContaining({ status: 'snoozed' }),
       expect.any(String),
       true,
+      // the ITEM's key (ADR 0191) — for a rule naming nothing, its bare key
+      'stockout_imminent',
     );
 
     fireEvent.click(within(row).getByText('Pin'));
@@ -458,9 +463,13 @@ describe('RecommendationsNext — the standing book', () => {
     fireEvent.click(within(screen.getAllByTestId('rc-entry')[0]).getByText('Select'));
     expect(screen.getByText('1 selected')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Dismiss them — whole rules'));
+    // The bar asks the reason — a labelled signal, never a stamped one.
+    expect(bulk).not.toHaveBeenCalled();
+    const why = screen.getByRole('group', { name: 'Why dismiss them' });
+    fireEvent.click(within(why).getByText('I disagree'));
     expect(bulk).toHaveBeenCalledWith(
       [expect.objectContaining({ ruleKey: 'stockout_imminent' })],
-      expect.objectContaining({ status: 'dismissed' }),
+      expect.objectContaining({ status: 'dismissed', reason: 'disagree' }),
       expect.stringContaining('1'),
     );
   });
@@ -1423,5 +1432,113 @@ describe('RecommendationsNext — the catalogue nav tab', () => {
     );
     fireEvent.click(screen.getByRole('link', { name: 'The catalogue' }));
     expect(screen.getByTestId('rc-catalog-stub')).toBeInTheDocument();
+  });
+});
+
+/*
+ * The founder, 2026-09-21 (ADR 0191): rule-wide dismiss and restore are
+ * "owner/manager only and audited EVERYWHERE; staff keep dismissing a single
+ * finding or subject" — and snooze and done are the ITEM's state, read the
+ * same way by every surface. The gateway refuses a staff whole-rule write
+ * with a 403; the page stops offering it and says why.
+ */
+describe('rule-wide acts are owner/manager only; snooze and done are the item', () => {
+  const staff = { ...base, canActRuleWide: false };
+  const openSheet = () => {
+    const row = screen.getByTestId('rc-entry');
+    fireEvent.click(within(row).getByText('Dismiss'));
+    return row;
+  };
+
+  it('staff are offered this finding and this subject, never the whole rule', () => {
+    mockData.current = { ...staff, entries: [weekdayEntry()] };
+    draw();
+    const row = openSheet();
+    const radios = within(row).getAllByRole('radio');
+    expect(radios).toHaveLength(2);
+    expect(
+      within(row).queryByRole('radio', { name: /This rule entirely/ }),
+    ).not.toBeInTheDocument();
+    expect(within(row).getByTestId('rc-dismiss-rule-withheld')).toBeInTheDocument();
+  });
+
+  it('staff cannot dismiss a rule that names nothing — the sheet says so and the button is dark', () => {
+    mockData.current = { ...staff, entries: [entry()] };
+    draw();
+    const row = openSheet();
+    expect(within(row).queryAllByRole('radio')).toHaveLength(0);
+    expect(within(row).getByTestId('rc-dismiss-whole-rule-only')).toBeInTheDocument();
+    fireEvent.click(within(row).getByText('Not relevant'));
+    expect(within(row).getByRole('button', { name: 'Dismiss it' })).toBeDisabled();
+    fireEvent.click(within(row).getByText('Dismiss it'));
+    expect(dismissFn).not.toHaveBeenCalled();
+  });
+
+  it('staff see the bulk whole-rule dismissal dark', () => {
+    mockData.current = { ...staff, entries: [entry()] };
+    draw();
+    fireEvent.click(within(screen.getByTestId('rc-entry')).getByText('Select'));
+    expect(screen.getByTestId('rc-bulk-dismiss-dark')).toBeDisabled();
+    expect(bulk).not.toHaveBeenCalled();
+  });
+
+  it('staff cannot return a whole-rule dismissal; a one-finding dismissal they can', () => {
+    mockData.current = {
+      ...staff,
+      leaf: 'dismissed',
+      entries: [
+        entry({ status: 'dismissed', ruleWide: true, suppression: null }),
+        entry({
+          ruleKey: 'sales_below_weekday_baseline#wednesday#d:2026-09-02',
+          status: 'dismissed',
+          ruleWide: false,
+          suppression: null,
+        }),
+      ],
+    };
+    draw();
+    const [whole, one] = screen.getAllByTestId('rc-entry');
+    expect(within(whole).getByTestId('rc-restore-dark')).toBeDisabled();
+    fireEvent.click(within(one).getByText('Return it to the book'));
+    expect(restore).toHaveBeenCalledWith('sales_below_weekday_baseline#wednesday#d:2026-09-02');
+  });
+
+  it('a manager may return a whole-rule dismissal', () => {
+    mockData.current = {
+      ...base,
+      leaf: 'dismissed',
+      entries: [entry({ status: 'dismissed', ruleWide: true, suppression: null })],
+    };
+    draw();
+    fireEvent.click(within(screen.getByTestId('rc-entry')).getByText('Return it to the book'));
+    expect(restore).toHaveBeenCalledWith('stockout_imminent');
+  });
+
+  it('a snooze goes to the finding, so next Wednesday still stands', () => {
+    mockData.current = { ...staff, entries: [weekdayEntry()] };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    fireEvent.click(within(row).getByText('Snooze'));
+    fireEvent.click(within(row).getByText('Until tomorrow'));
+    expect(setDisposition).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleKey: 'sales_below_weekday_baseline' }),
+      { status: 'snoozed', snoozeUntil: expect.any(String) },
+      expect.any(String),
+      true,
+      'sales_below_weekday_baseline#wednesday#d:2026-09-02',
+    );
+  });
+
+  it('a bulk snooze goes to each finding', () => {
+    mockData.current = { ...staff, entries: [weekdayEntry()] };
+    draw();
+    fireEvent.click(within(screen.getByTestId('rc-entry')).getByText('Select'));
+    fireEvent.click(screen.getByText('Snooze a week'));
+    expect(bulk).toHaveBeenCalledWith(
+      [expect.objectContaining({ ruleKey: 'sales_below_weekday_baseline' })],
+      expect.objectContaining({ status: 'snoozed' }),
+      expect.any(String),
+      true,
+    );
   });
 });

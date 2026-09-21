@@ -432,6 +432,38 @@ export interface FailureVM {
   forbidden: boolean;
 }
 
+/**
+ * The dismissal reasons — the gateway's closed label set. One list for the
+ * whole web app (`@/lib/recommendationState`), re-exported for this page.
+ */
+export { DISMISS_REASONS } from '@/lib/recommendationState';
+
+/**
+ * The key a state write about THIS item goes to — snooze, done, a one-item
+ * dismiss (ADR 0191: one shared per-item state). The gateway built it
+ * (`suppression.key`, the exact finding); a row read back from the actions
+ * table has none, and its own `ruleKey` IS the stored key. Pin, rating,
+ * assignment and acted-on stay on the rule's own row, as before.
+ */
+export function itemKeyOf(e: {
+  ruleKey: string;
+  suppression?: { key: string } | null;
+}): string {
+  return e.suppression?.key ?? e.ruleKey;
+}
+
+/**
+ * The snooze vocabulary — `value` is the number of days the label already
+ * says out loud, and nothing here describes the tenant (descriptor keys,
+ * per `scripts/check_no_seeded_defaults.py` S1). Shared by the feed's entry
+ * and the catalogue's live items, so a snooze means one thing on both.
+ */
+export const SNOOZE_CHOICES: ReadonlyArray<{ id: string; label: string; value: number }> = [
+  { id: 'tomorrow', label: 'Until tomorrow', value: 1 },
+  { id: 'week', label: 'Until next week', value: 7 },
+  { id: 'month', label: 'Until next month', value: 30 },
+];
+
 export function failureOf(err: unknown): FailureVM {
   const status =
     num((err as { response?: { status?: unknown } } | null)?.response?.status) ?? null;

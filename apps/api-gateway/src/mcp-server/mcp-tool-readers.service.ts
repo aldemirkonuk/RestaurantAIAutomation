@@ -23,7 +23,7 @@ import { ToolPayload } from "./mcp-server.types";
  *
  * The cost, stated: these tools inherit their service's posture exactly,
  * including its defects. `getStored` swallows its own read error and returns
- * `[]` (`analytics/insights/insight-generator.service.ts:299-308`), so
+ * `[]` (`queryStored()` in `analytics/insights/insight-generator.service.ts`), so
  * `insights.list` CANNOT tell "nothing computed" from "the read failed". That
  * is said in the result rather than hidden by it — see `insights`.
  *
@@ -196,7 +196,7 @@ export class McpToolReadersService {
         value: null,
         reason:
           "No stored insights came back. This reader cannot tell 'none have been computed' from 'the read failed': the generator logs its own error and returns an empty list " +
-          "(analytics/insights/insight-generator.service.ts:299-308). Recomputing would spend, and this server does not spend on a read — ask on /recommendations in Mudavym.",
+          "(queryStored() in analytics/insights/insight-generator.service.ts). Recomputing would spend, and this server does not spend on a read — ask on /recommendations in Mudavym.",
         provenance: {
           readAt,
           rows: 0,

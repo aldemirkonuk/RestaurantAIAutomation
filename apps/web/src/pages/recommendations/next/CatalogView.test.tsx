@@ -28,7 +28,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import CatalogView from './CatalogView';
 import type { CatalogPayload } from './rec-catalog';
@@ -203,19 +203,48 @@ describe('CatalogView — type on/off (ADR 0191)', () => {
     await drawAndExpand('overall.revenue.vs_same_weekday');
     const toggle = await screen.findByRole('button', { name: 'On' });
     fireEvent.click(toggle);
+    // Off is a whole-type dismissal: it asks the reason before it writes —
+    // the founder's labelled signal (2026-09-21), never a stamped one.
+    expect(api.put).not.toHaveBeenCalled();
+    const why = await screen.findByRole('group', { name: 'Why turn it off' });
+    fireEvent.click(within(why).getByText('I disagree'));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith(
         '/analytics/insight-catalog/types/r1/overall.revenue.vs_same_weekday/toggle',
-        { enabled: false },
+        { enabled: false, reason: 'disagree' },
       ),
     );
     expect(await screen.findByRole('button', { name: 'Off' })).toBeInTheDocument();
+  });
+
+  it('turning a type back on asks nothing — a restore carries no reason', async () => {
+    api.get.mockImplementation((url: string) =>
+      url.includes('/actions?status=dismissed')
+        ? Promise.resolve({
+            data: { items: [{ ruleKey: 'insight:overall.revenue.vs_same_weekday', status: 'dismissed' }] },
+          })
+        : Promise.resolve({ data: PAYLOAD }),
+    );
+    api.put.mockResolvedValue({ data: { audit: { recorded: true, reason: null } } });
+    draw();
+    await waitFor(() => expect(screen.getAllByTestId('rc-catalog-row')).toHaveLength(3));
+    fireEvent.click(screen.getByText('overall.revenue.vs_same_weekday'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Off' }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        '/analytics/insight-catalog/types/r1/overall.revenue.vs_same_weekday/toggle',
+        { enabled: true },
+      ),
+    );
   });
 
   it('rolls the optimistic flip back when the write fails', async () => {
     api.put.mockRejectedValue({ response: { status: 500, data: { message: 'db down' } } });
     await drawAndExpand('overall.revenue.vs_same_weekday');
     fireEvent.click(await screen.findByRole('button', { name: 'On' }));
+    fireEvent.click(
+      within(await screen.findByRole('group', { name: 'Why turn it off' })).getByText('Not right now'),
+    );
     expect(await screen.findByRole('alert')).toHaveTextContent('Not saved');
     expect(await screen.findByRole('button', { name: 'On' })).toBeInTheDocument();
   });
@@ -300,10 +329,18 @@ describe('CatalogView — open live items (ADR 0191)', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    // The reason is asked, not stamped.
+    expect(api.post).not.toHaveBeenCalledWith(
+      '/analytics/recommendations/r1/action',
+      expect.objectContaining({ status: 'dismissed' }),
+    );
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Why dismiss this item' })).getByText('Already handled'),
+    );
     expect(api.post).toHaveBeenCalledWith('/analytics/recommendations/r1/action', {
       ruleKey: 'insight:overall.revenue.vs_same_weekday#tuesday#d:2026-09-16',
       status: 'dismissed',
-      reason: 'not_relevant',
+      reason: 'already_handled',
       snapshot: expect.objectContaining({ category: 'sales' }),
     });
     expect(screen.queryByText('Tuesday sales were 12% below average Tuesdays.')).not.toBeInTheDocument();
@@ -361,6 +398,9 @@ describe('CatalogView — absence is not health (ADR 0191, last-call fixes)', ()
     api.put.mockResolvedValue({ data: { audit: { recorded: false, reason: 'permission denied' } } });
     await drawAndExpand('overall.revenue.vs_same_weekday');
     fireEvent.click(await screen.findByRole('button', { name: 'On' }));
+    fireEvent.click(
+      within(await screen.findByRole('group', { name: 'Why turn it off' })).getByText('Not relevant'),
+    );
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Saved, but not written to the house log (permission denied).',
     );
@@ -383,6 +423,9 @@ describe('CatalogView — absence is not health (ADR 0191, last-call fixes)', ()
     fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
     expect(await screen.findByText(LIVE.sentence)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Why dismiss this item' })).getByText('Not relevant'),
+    );
     expect(await screen.findByRole('alert')).toHaveTextContent('Not saved (db down)');
     expect(screen.getByText(LIVE.sentence)).toBeInTheDocument();
   });
@@ -399,6 +442,63 @@ describe('CatalogView — absence is not health (ADR 0191, last-call fixes)', ()
     expect(screen.getByRole('button', { name: 'Pin' })).toBeInTheDocument();
   });
 
+  it('snoozes one item at its own key, until an instant, and it leaves the list', async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({ data: { insights: [LIVE], suppressionsReadable: true } }),
+    );
+    api.post.mockResolvedValue({ data: {} });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Snooze' }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Snooze this item' })).getByText('Until next week'),
+    );
+    expect(api.post).toHaveBeenCalledWith('/analytics/recommendations/r1/action', {
+      ruleKey: LIVE.suppression.key,
+      status: 'snoozed',
+      snoozeUntil: expect.any(String),
+      snapshot: expect.objectContaining({ category: 'sales' }),
+    });
+    const until = Date.parse(
+      (api.post.mock.calls.at(-1)?.[1] as { snoozeUntil: string }).snoozeUntil,
+    );
+    expect(until).toBeGreaterThan(Date.now() + 6 * 86_400_000);
+    expect(screen.queryByText(LIVE.sentence)).not.toBeInTheDocument();
+  });
+
+  it('marks one item done at its own key, with no reason — completion is no negative signal', async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({ data: { insights: [LIVE], suppressionsReadable: true } }),
+    );
+    api.post.mockResolvedValue({ data: {} });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Done' }));
+    expect(api.post).toHaveBeenCalledWith('/analytics/recommendations/r1/action', {
+      ruleKey: LIVE.suppression.key,
+      status: 'done',
+      snapshot: expect.objectContaining({ category: 'sales' }),
+    });
+    expect(screen.queryByText(LIVE.sentence)).not.toBeInTheDocument();
+  });
+
+  it('says how many of this type the shared state is holding back, and that it holds everywhere', async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: {
+          insights: [LIVE],
+          suppressionsReadable: true,
+          withheld: { dismissed: 1, snoozed: 2, done: 0 },
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    expect(await screen.findByTestId('rc-live-withheld')).toHaveTextContent(
+      /1 dismissed · 2 snoozed · 0 done/,
+    );
+  });
+
   it('never offers a one-item Dismiss that would silence the whole type', async () => {
     await drawAndExpand('overall.revenue.vs_same_weekday');
     api.get.mockImplementationOnce(() =>
@@ -411,9 +511,11 @@ describe('CatalogView — absence is not health (ADR 0191, last-call fixes)', ()
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
     expect(await screen.findByTestId('rc-live-whole-type')).toHaveTextContent(
-      'Dismissing this one hides the whole type',
+      'Acting on this one acts on the whole type',
     );
     expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Snooze' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument();
   });
 
   it('names unreadable dismissals on the live list instead of presenting it as clean', async () => {

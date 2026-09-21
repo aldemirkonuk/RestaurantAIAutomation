@@ -26,6 +26,8 @@ import { RecommendationsService } from "./recommendations.service";
 import {
   RecommendationActionsService,
   RecommendationStatus,
+  RuleWideActForbidden,
+  actorOf,
 } from "./recommendation-actions.service";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
@@ -312,14 +314,16 @@ export class AnalyticsController {
    * feed, Reports, the contextual rails) — "off" here holds house-wide, not
    * just on this page.
    *
-   * Owner/manager only ON THIS DOOR: this is a standing house policy, so it
-   * is role-gated and the actor is read from the JWT — never the body — per
-   * the `goal-scenarios/requests` precedent in this controller: a
-   * client-supplied actor id is an unverified claim. NOT gated: the feed's
-   * own rule-scope dismiss and the Dismissed tab's restore
-   * (`POST recommendations/:restaurantId/action`, any signed-in member)
-   * write the identical row — ADR 0191 names that as an open fork for the
-   * founder rather than changing staff's existing feed acts here.
+   * Owner/manager only: this is a standing house policy, so it is
+   * role-gated and the actor is read from the JWT — never the body — per the
+   * `goal-scenarios/requests` precedent in this controller: a
+   * client-supplied actor id is an unverified claim. The feed's own
+   * rule-scope dismiss and restore (`POST recommendations/:restaurantId/
+   * action`) are now gated and audited too — the founder, 2026-09-21:
+   * "owner/manager only and audited EVERYWHERE" (ADR 0191).
+   *
+   * Off is a rule-wide dismissal and carries a reason label like every
+   * dismissal (`item-state.ts` DISMISS_REASONS); a missing label is a 400.
    *
    * Audited: every toggle files a `system_audit_log` row
    * (`RecommendationActionsService.setTypeEnabled`), and the receipt comes
@@ -331,12 +335,12 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Turn a catalogue type on or off for this house (owner/manager, audited)",
     description:
-      "Body: { enabled: boolean }. 'Off' suppresses every live instance of this type house-wide (feed, Reports, contextual rails) by writing recommendation_actions at rule scope — the same store and the same `insight:<candidate_key>` key NEW-434 already uses. 'On' restores it. The actor is the authenticated caller, not the body; each toggle files a system_audit_log row and returns its receipt as `audit`.",
+      "Body: { enabled: boolean, reason?: not_relevant|already_handled|disagree|not_now }. 'Off' (reason required) suppresses every live instance of this type house-wide (feed, Reports, contextual rails) by writing recommendation_actions at rule scope — the same store and the same `insight:<candidate_key>` key NEW-434 already uses. 'On' restores it. The actor is the authenticated caller, not the body; each toggle files a system_audit_log row and returns its receipt as `audit`.",
   })
   async toggleCatalogType(
     @Param("restaurantId") restaurantId: string,
     @Param("candidateKey") candidateKey: string,
-    @Body() body: { enabled?: boolean },
+    @Body() body: { enabled?: boolean; reason?: string | null },
     @CurrentUser() user?: { userId?: string },
   ) {
     const actor = typeof user?.userId === "string" ? user.userId : "";
@@ -357,6 +361,7 @@ export class AnalyticsController {
           candidateKey,
           body.enabled,
           actor,
+          body.reason ?? null,
         );
       return {
         candidateKey,
@@ -415,11 +420,22 @@ export class AnalyticsController {
           persist: true,
         });
       }
-      const stored = await this.insightGenerator.getStored(restaurantId, {
+      const stored = await this.insightGenerator.readStored(restaurantId, {
         categories,
         limit: limitStr ? parseInt(limitStr, 10) : undefined,
       });
-      if (stored.length > 0) return { source: "stored", insights: stored };
+      // Stored rows go out through the same shared per-item state as a live
+      // compute (ADR 0191): withheld counts and the readability flag travel
+      // with them, and a cache whose every row is withheld is an answer, not
+      // a cold start.
+      if (stored.read > 0)
+        return {
+          source: "stored",
+          insights: stored.rows,
+          suppressed: stored.withheld.dismissed,
+          withheld: stored.withheld,
+          suppressionsReadable: stored.suppressionsReadable,
+        };
       // cold start: compute live once and persist
       return await this.insightGenerator.generate(restaurantId, {
         categories,
@@ -1034,7 +1050,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Set a recommendation's disposition (NEW-284…NEW-298)",
     description:
-      "Body: { ruleKey, status?, reason?, snoozeUntil?, pinned?, acted?, feedback?, snapshot? }. Upserts the manager's action on a card so it survives recompute. Reused by the Reports insight panel with ruleKey 'insight:<candidate_key>'.",
+      "Body: { ruleKey, status?, reason?, snoozeUntil?, pinned?, acted?, feedback?, snapshot? }. Upserts the state of one item so it survives recompute and holds on every surface (ADR 0191). A dismissal needs a reason label (not_relevant|already_handled|disagree|not_now); a snooze needs a future snoozeUntil. A RULE-WIDE dismiss or restore (a key with no subject and no period) is owner/manager only — 403 otherwise — and files a system_audit_log row whose receipt comes back as `audit`. The actor is the authenticated caller; a body `createdBy` is ignored.",
   })
   async setRecommendationAction(
     @Param("restaurantId") restaurantId: string,
@@ -1055,12 +1071,12 @@ export class AnalyticsController {
         category?: string;
         urgency?: string;
       };
-      createdBy?: string;
     },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
       if (!body?.ruleKey) throw new Error("ruleKey is required");
-      return await this.recommendationActions.setAction(
+      const { row, audit } = await this.recommendationActions.setActionAs(
         restaurantId,
         body.ruleKey,
         {
@@ -1074,9 +1090,14 @@ export class AnalyticsController {
           assignedName: body.assignedName,
         },
         body.snapshot,
-        body.createdBy,
+        actorOf(user),
       );
+      // The row's own fields at the top level, as before, plus the audit
+      // receipt when this was a rule-wide act (null otherwise).
+      return { ...row, audit };
     } catch (error) {
+      if (error instanceof RuleWideActForbidden)
+        throw new HttpException(error.message, HttpStatus.FORBIDDEN);
       throw new HttpException(
         error.message || "Failed to set recommendation action",
         HttpStatus.BAD_REQUEST,
@@ -1088,7 +1109,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Bulk-set disposition on many cards (NEW-293)",
     description:
-      "Body: { items: [{ ruleKey, snapshot? }], status?, reason?, snoozeUntil?, pinned? }.",
+      "Body: { items: [{ ruleKey, snapshot? }], status?, reason?, snoozeUntil?, pinned? }. Same rules as the single write; a selection holding any rule-wide dismiss or restore is refused whole (403) for anyone but an owner/manager, before anything is written. Returns { updated, audit: { recorded, missed } }.",
   })
   async bulkRecommendationAction(
     @Param("restaurantId") restaurantId: string,
@@ -1107,13 +1128,13 @@ export class AnalyticsController {
       reason?: string | null;
       snoozeUntil?: string | null;
       pinned?: boolean;
-      createdBy?: string;
     },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
       const items = Array.isArray(body?.items) ? body.items : [];
       if (items.length === 0) throw new Error("items[] is required");
-      const updated = await this.recommendationActions.bulkSetAction(
+      return await this.recommendationActions.bulkSetActionAs(
         restaurantId,
         items,
         {
@@ -1122,10 +1143,11 @@ export class AnalyticsController {
           snoozeUntil: body.snoozeUntil,
           pinned: body.pinned,
         },
-        body.createdBy,
+        actorOf(user),
       );
-      return { updated };
     } catch (error) {
+      if (error instanceof RuleWideActForbidden)
+        throw new HttpException(error.message, HttpStatus.FORBIDDEN);
       throw new HttpException(
         error.message || "Failed to bulk-set recommendation actions",
         HttpStatus.BAD_REQUEST,
