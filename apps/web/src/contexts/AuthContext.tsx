@@ -25,6 +25,8 @@ export class LoginError extends Error {
     message: string,
     public code?: string,
     public provider?: "google" | "microsoft",
+    /** The gateway's HTTP status, when there was a response (401, 429 …). */
+    public status?: number,
   ) {
     super(message);
     this.name = "LoginError";
@@ -570,6 +572,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         message,
         err?.response?.data?.code,
         err?.response?.data?.provider,
+        err?.response?.status,
       );
     } finally {
       setLoading(false);
